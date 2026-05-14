@@ -1,0 +1,641 @@
+import {
+  Injectable, Logger, NotFoundException,
+  ConflictException, BadRequestException,
+  ForbiddenException, UnprocessableEntityException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+
+import { PagoRepository }       from './repositories/pago.repository';
+import { MercadoPagoService }   from './mercadopago.service';
+import { FacturacionService }   from '../facturacion/facturacion.service';
+import { ContratosService }     from '../contratos/contratos.service';
+import { AuditoriaService }     from '../auth/auditoria.service';
+import { JwtPayload }           from '../../common/decorators/current-user.decorator';
+
+import { Pago, EstadoPago, MetodoPago, CuentaBancaria } from './entities/pago.entity';
+import { EstadoContrato }       from '../contratos/entities/contrato.entity';
+import { EstadoFactura }        from '../facturacion/entities/factura.entity';
+import {
+  RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
+  FilterPagoDto, CrearPreferenciaDto,
+  CreateCuentaBancariaDto, ResumenCobranzaDto,
+} from './dto/pago.dto';
+import { formatPaginatedResponse } from '../../common/utils/pagination.util';
+
+// ─── Métodos que se auto-verifican sin revisión manual ───────
+const METODOS_AUTO_VERIFICAR: MetodoPago[] = [
+  MetodoPago.MERCADOPAGO, // Verificado por webhook
+];
+
+// ─── Métodos que SIEMPRE requieren verificación manual ───────
+const METODOS_REQUIEREN_NUMERO_OP: MetodoPago[] = [
+  MetodoPago.YAPE,
+  MetodoPago.PLIN,
+  MetodoPago.TRANSFERENCIA_BANCARIA,
+  MetodoPago.DEPOSITO_BANCARIO,
+];
+
+@Injectable()
+export class PagosService {
+  private readonly logger = new Logger(PagosService.name);
+
+  constructor(
+    private readonly pagoRepo:     PagoRepository,
+    private readonly mpSvc:        MercadoPagoService,
+    private readonly facturacionSvc: FacturacionService,
+    private readonly contratosSvc: ContratosService,
+    private readonly auditoria:    AuditoriaService,
+    private readonly config:       ConfigService,
+    @InjectDataSource() private readonly ds: DataSource,
+  ) {}
+
+  // ────────────────────────────────────────────────────────────
+  // REGISTRAR PAGO
+  // Flujo:
+  // 1. Validar campos requeridos según método
+  // 2. Detectar duplicados por número de operación
+  // 3. Guardar pago
+  // 4. Si se auto-verifica: aplicar a factura + trigger reactivación
+  // ────────────────────────────────────────────────────────────
+  async registrar(
+    dto:    RegistrarPagoDto,
+    user:   JwtPayload,
+    req?:   any,
+  ): Promise<Pago> {
+
+    // ── 1. Validaciones de negocio ─────────────────────────
+    await this.validarPago(dto, user.empresaId);
+
+    // ── 2. Detectar duplicado por número de operación ──────
+    if (dto.numeroOperacion) {
+      const { existe, pagoExistente } = await this.pagoRepo.existeDuplicado(
+        user.empresaId,
+        dto.metodoPago,
+        dto.numeroOperacion,
+      );
+      if (existe) {
+        throw new ConflictException(
+          `Ya existe un pago registrado con el número de operación ${dto.numeroOperacion} ` +
+          `(${dto.metodoPago}). Pago existente ID: ${pagoExistente.id} · ` +
+          `Registrado: ${pagoExistente.registradoEn.toLocaleString('es-PE')}`,
+        );
+      }
+    }
+
+    // ── 3. Determinar estado inicial ───────────────────────
+    const autoVerificar = dto.autoVerificar ||
+      METODOS_AUTO_VERIFICAR.includes(dto.metodoPago);
+
+    const estadoInicial = autoVerificar
+      ? EstadoPago.VERIFICADO
+      : EstadoPago.PENDIENTE_VERIFICACION;
+
+    // ── 4. Crear el pago ───────────────────────────────────
+    const pago = this.pagoRepo.create({
+      empresaId:       user.empresaId,
+      clienteId:       dto.clienteId,
+      facturaId:       dto.facturaId,
+      contratoId:      dto.contratoId,
+      monto:           dto.monto,
+      moneda:          dto.moneda || 'PEN',
+      metodoPago:      dto.metodoPago,
+      banco:           dto.banco,
+      numeroOperacion: dto.numeroOperacion,
+      numeroCuenta:    dto.numeroCuenta,
+      fechaPago:       dto.fechaPago || new Date().toISOString().split('T')[0],
+      comprobanteUrl:  dto.comprobanteUrl,
+      notas:           dto.notas,
+      estado:          estadoInicial,
+      cajeroId:        user.sub,
+      verificadoPor:   autoVerificar ? user.sub : null,
+      verificadoEn:    autoVerificar ? new Date() : null,
+    });
+
+    const saved = await this.pagoRepo.save(pago);
+
+    this.logger.log(
+      `Pago registrado: ${saved.id} | ${dto.metodoPago} | S/ ${dto.monto} | ` +
+      `cliente: ${dto.clienteId} | estado: ${estadoInicial}`,
+    );
+
+    // ── 5. Si auto-verificado: aplicar a factura ───────────
+    if (autoVerificar) {
+      await this.aplicarPagoAFacturaYContrato(saved, user);
+    }
+
+    // ── 6. Auditoría ───────────────────────────────────────
+    await this.auditoria.logCreate({
+      empresaId:    user.empresaId,
+      usuarioId:    user.sub,
+      usuarioEmail: user.email,
+      modulo:       'pagos',
+      entidadId:    saved.id,
+      descripcion:  `Pago ${dto.metodoPago} S/ ${dto.monto} | cliente: ${dto.clienteId} | ${estadoInicial}`,
+      req,
+    });
+
+    return saved;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // VERIFICAR / APROBAR PAGO
+  // El cajero/supervisor revisa el voucher y aprueba o rechaza.
+  // Si aprueba → aplicar pago a la factura + trigger reactivación.
+  // ────────────────────────────────────────────────────────────
+  async verificar(
+    id:   string,
+    dto:  VerificarPagoDto,
+    user: JwtPayload,
+    req?: any,
+  ): Promise<Pago> {
+    const pago = await this.findOne(id, user.empresaId);
+
+    if (pago.estado !== EstadoPago.PENDIENTE_VERIFICACION) {
+      throw new BadRequestException(
+        `El pago ya fue ${pago.estado === EstadoPago.VERIFICADO ? 'verificado' : pago.estado}`,
+      );
+    }
+
+    if (dto.aprobado) {
+      // ── APROBAR ──────────────────────────────────────────
+      await this.pagoRepo.update(id, {
+        estado:          EstadoPago.VERIFICADO,
+        verificadoPor:   user.sub,
+        verificadoEn:    new Date(),
+        extractoBancoRef: dto.extractoBancoRef,
+      });
+
+      const pagoVerificado = await this.findOne(id, user.empresaId);
+      await this.aplicarPagoAFacturaYContrato(pagoVerificado, user);
+
+      await this.auditoria.logUpdate({
+        empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+        modulo: 'pagos', entidadId: id,
+        descripcion: `Pago verificado/aprobado S/ ${pago.monto} | ${pago.metodoPago}`, req,
+      });
+
+      this.logger.log(`Pago aprobado: ${id} | S/ ${pago.monto} | por: ${user.email}`);
+      return pagoVerificado;
+
+    } else {
+      // ── RECHAZAR ─────────────────────────────────────────
+      if (!dto.motivoRechazo?.trim()) {
+        throw new BadRequestException('Debes indicar el motivo del rechazo');
+      }
+
+      await this.pagoRepo.update(id, {
+        estado:        EstadoPago.RECHAZADO,
+        motivoRechazo: dto.motivoRechazo,
+        verificadoPor: user.sub,
+        verificadoEn:  new Date(),
+      });
+
+      this.logger.log(`Pago rechazado: ${id} | motivo: ${dto.motivoRechazo} | por: ${user.email}`);
+
+      await this.auditoria.logUpdate({
+        empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+        modulo: 'pagos', entidadId: id,
+        descripcion: `Pago rechazado: ${dto.motivoRechazo}`, req,
+      });
+
+      return this.findOne(id, user.empresaId);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // CONCILIAR PAGO
+  // Marcar un pago como conciliado con el extracto bancario.
+  // ────────────────────────────────────────────────────────────
+  async conciliar(
+    id:   string,
+    dto:  ConciliarPagoDto,
+    user: JwtPayload,
+    req?: any,
+  ): Promise<Pago> {
+    const pago = await this.findOne(id, user.empresaId);
+
+    if (pago.estado !== EstadoPago.VERIFICADO) {
+      throw new BadRequestException('Solo se pueden conciliar pagos verificados');
+    }
+    if (pago.conciliado) {
+      throw new BadRequestException('El pago ya está conciliado');
+    }
+
+    await this.pagoRepo.update(id, {
+      conciliado:      true,
+      conciliadoEn:    new Date(),
+      conciliadoPor:   user.sub,
+      extractoBancoRef: dto.extractoBancoRef,
+      notas:           dto.notas ? `${pago.notas || ''}\n[Conciliación]: ${dto.notas}`.trim() : pago.notas,
+    });
+
+    return this.findOne(id, user.empresaId);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // WEBHOOK MERCADOPAGO
+  // MercadoPago notifica cuando un pago es procesado.
+  // Verificamos la firma, consultamos el pago, y lo procesamos.
+  // ────────────────────────────────────────────────────────────
+  async procesarWebhookMercadoPago(
+    body:       any,
+    rawBody:    Buffer,
+    xSignature: string,
+    xRequestId: string,
+  ): Promise<void> {
+
+    // ── 1. Validar firma ───────────────────────────────────
+    const firmaValida = this.mpSvc.validarWebhookSignature(rawBody, xSignature, xRequestId);
+    if (!firmaValida) {
+      this.logger.warn(`Webhook MP rechazado: firma inválida | requestId: ${xRequestId}`);
+      throw new ForbiddenException('Firma de webhook inválida');
+    }
+
+    // Solo procesar notificaciones de pagos
+    if (body.type !== 'payment') {
+      this.logger.debug(`Webhook MP ignorado: tipo=${body.type}`);
+      return;
+    }
+
+    const mpPaymentId = String(body.data?.id);
+    if (!mpPaymentId) {
+      this.logger.warn('Webhook MP sin payment ID');
+      return;
+    }
+
+    this.logger.log(`Webhook MP recibido: payment ${mpPaymentId} | acción: ${body.action}`);
+
+    // ── 2. Verificar si ya procesamos este pago ────────────
+    const pagoExistente = await this.pagoRepo.findByMpPaymentId(mpPaymentId);
+    if (pagoExistente?.estado === EstadoPago.VERIFICADO) {
+      this.logger.debug(`Webhook MP: pago ${mpPaymentId} ya procesado`);
+      return;
+    }
+
+    // ── 3. Consultar detalles en la API de MP ──────────────
+    let mpPayment: any;
+    try {
+      mpPayment = await this.mpSvc.consultarPago(mpPaymentId);
+    } catch (err) {
+      this.logger.error(`Error consultando pago MP ${mpPaymentId}: ${err.message}`);
+      return; // No fallar el webhook — MP reintentará
+    }
+
+    this.logger.log(
+      `MP Payment ${mpPaymentId}: status=${mpPayment.status} | ` +
+      `monto=${mpPayment.transaction_amount} | external_ref=${mpPayment.external_reference}`,
+    );
+
+    // ── 4. Identificar la factura por external_reference ───
+    const facturaId = mpPayment.external_reference;
+    if (!facturaId) {
+      this.logger.warn(`Webhook MP: sin external_reference en pago ${mpPaymentId}`);
+      return;
+    }
+
+    // Buscar empresa de la factura
+    const [facturaRow] = await this.ds.query(
+      'SELECT empresa_id, cliente_id, contrato_id, total, saldo FROM facturas WHERE id = $1',
+      [facturaId],
+    );
+
+    if (!facturaRow) {
+      this.logger.warn(`Webhook MP: factura ${facturaId} no encontrada`);
+      return;
+    }
+
+    const { empresa_id: empresaId, cliente_id: clienteId, contrato_id: contratoId } = facturaRow;
+
+    // ── 5. Procesar según el status del pago ──────────────
+    if (this.mpSvc.esAprobado(mpPayment)) {
+      // Crear o actualizar el pago en nuestro sistema
+      let pago: Pago;
+
+      if (pagoExistente) {
+        // Actualizar pago existente (era pendiente → ahora verificado)
+        await this.pagoRepo.update(pagoExistente.id, {
+          mpStatus:  mpPayment.status,
+          mpDetail:  mpPayment,
+          estado:    EstadoPago.VERIFICADO,
+          verificadoEn: new Date(),
+        });
+        pago = await this.pagoRepo.findById(pagoExistente.id, empresaId);
+
+      } else {
+        // Crear nuevo pago registrado automáticamente por webhook
+        pago = await this.pagoRepo.save(this.pagoRepo.create({
+          empresaId,
+          clienteId,
+          facturaId,
+          contratoId,
+          monto:           mpPayment.transaction_amount,
+          moneda:          mpPayment.currency_id || 'PEN',
+          metodoPago:      MetodoPago.MERCADOPAGO,
+          mpPaymentId:     String(mpPayment.id),
+          mpStatus:        mpPayment.status,
+          mpPreferenceId:  mpPayment.preference_id,
+          mpDetail:        mpPayment,
+          numeroOperacion: String(mpPayment.id),
+          fechaPago:       new Date().toISOString().split('T')[0],
+          estado:          EstadoPago.VERIFICADO,
+          verificadoEn:    new Date(),
+          cajeroId:        'sistema-mp',
+          notas:           `Pago automático via MercadoPago | ${mpPayment.payment_method_id}`,
+        }));
+      }
+
+      // Aplicar el pago a la factura y verificar reactivación
+      const userSistema = {
+        sub: 'sistema-mp', email: 'webhook@mercadopago.com',
+        empresaId, roles: ['Administrador'], permisos: [], nombreCompleto: 'MercadoPago', tema: 'dark',
+      } as any;
+
+      await this.aplicarPagoAFacturaYContrato(pago, userSistema);
+      this.logger.log(`Pago MP aprobado aplicado: factura ${facturaId} | S/ ${pago.monto}`);
+
+    } else if (this.mpSvc.esPendiente(mpPayment)) {
+      this.logger.log(`Pago MP ${mpPaymentId} pendiente — esperando confirmación`);
+
+    } else {
+      // Rechazado / cancelado
+      if (pagoExistente) {
+        await this.pagoRepo.update(pagoExistente.id, {
+          estado:    EstadoPago.RECHAZADO,
+          mpStatus:  mpPayment.status,
+          mpDetail:  mpPayment,
+          motivoRechazo: `MercadoPago: ${mpPayment.status_detail}`,
+        });
+      }
+      this.logger.log(`Pago MP ${mpPaymentId} rechazado: ${mpPayment.status_detail}`);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // CREAR PREFERENCIA MERCADOPAGO (para el link de pago)
+  // ────────────────────────────────────────────────────────────
+  async crearPreferenciaMp(
+    dto:  CrearPreferenciaDto,
+    user: JwtPayload,
+  ) {
+    const factura = await this.facturacionSvc.findOne(dto.facturaId, user.empresaId);
+
+    if (factura.estado === EstadoFactura.PAGADA) {
+      throw new BadRequestException('La factura ya está pagada');
+    }
+    if (factura.estado === EstadoFactura.ANULADA) {
+      throw new BadRequestException('La factura está anulada');
+    }
+
+    // Datos del cliente para la preferencia
+    const [cliente] = await this.ds.query(
+      'SELECT nombre_completo, email FROM clientes WHERE id = $1',
+      [factura.clienteId],
+    );
+
+    return this.mpSvc.crearPreferencia({
+      facturaId:   factura.id,
+      titulo:      `${factura.numeroCompleto} — FibraNet ISP`,
+      descripcion: factura.descripcion || 'Servicio de internet',
+      monto:       Number(factura.saldo || factura.total),
+      clienteEmail: cliente?.email || `cliente-${factura.clienteId}@fibranet.pe`,
+      urlExito:    dto.urlExito,
+      urlFallo:    dto.urlFallo,
+      urlPendiente: dto.urlPendiente,
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // APLICAR PAGO A FACTURA + TRIGGER DE REACTIVACIÓN
+  // Este es el corazón del módulo: cuando un pago se verifica,
+  // aplica el monto a la factura y, si el contrato tiene deuda
+  // cero después del pago, lo reactiva automáticamente.
+  // ────────────────────────────────────────────────────────────
+  private async aplicarPagoAFacturaYContrato(pago: Pago, user: JwtPayload): Promise<void> {
+    try {
+      let facturaId   = pago.facturaId;
+      let contratoId  = pago.contratoId;
+      const empresaId = pago.empresaId;
+
+      // ── A. Aplicar a factura específica ──────────────────
+      if (facturaId) {
+        await this.facturacionSvc.aplicarPago(
+          facturaId,
+          Number(pago.monto),
+          empresaId,
+          pago.fechaPago,
+        );
+        this.logger.log(`Pago ${pago.id} aplicado a factura ${facturaId}`);
+
+        // Obtener contratoId de la factura si no vino en el pago
+        if (!contratoId) {
+          const [row] = await this.ds.query(
+            'SELECT contrato_id FROM facturas WHERE id = $1',
+            [facturaId],
+          );
+          contratoId = row?.contrato_id;
+        }
+      }
+
+      // ── B. Si hay contrato, verificar si se saldó la deuda ─
+      if (contratoId) {
+        await this.verificarYReactivarContrato(contratoId, empresaId, user);
+      }
+
+    } catch (err) {
+      // Loggear pero no fallar — el pago ya quedó registrado
+      this.logger.error(
+        `Error aplicando pago ${pago.id} a factura/contrato: ${err.message}`,
+        err.stack,
+      );
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // TRIGGER DE REACTIVACIÓN AUTOMÁTICA
+  // Si el contrato está suspendido por mora y ya no tiene deuda,
+  // se reactiva automáticamente sin intervención humana.
+  // ────────────────────────────────────────────────────────────
+  private async verificarYReactivarContrato(
+    contratoId: string,
+    empresaId:  string,
+    user:       JwtPayload,
+  ): Promise<void> {
+    // Recalcular deuda total del contrato
+    const { deuda, meses } = await this.pagoRepo.calcularDeudaContrato(contratoId);
+
+    // Actualizar deuda en el contrato
+    await this.contratosSvc.actualizarDeuda(contratoId, deuda, meses, empresaId);
+
+    this.logger.debug(
+      `Contrato ${contratoId}: deuda recalculada = S/ ${deuda} (${meses} meses)`,
+    );
+
+    // Si la deuda quedó en cero, verificar si el contrato está suspendido
+    if (deuda <= 0) {
+      let contrato: any;
+      try {
+        contrato = await this.contratosSvc.findOne(contratoId, empresaId);
+      } catch {
+        return; // Contrato no encontrado, ignorar
+      }
+
+      const estadosSuspendidos = [
+        EstadoContrato.SUSPENDIDO_MORA,
+        EstadoContrato.PRORROGA,
+      ];
+
+      if (estadosSuspendidos.includes(contrato.estado)) {
+        // ── REACTIVAR AUTOMÁTICAMENTE ─────────────────────
+        await this.contratosSvc.cambiarEstado(
+          contratoId,
+          {
+            estado: EstadoContrato.ACTIVO,
+            motivo: `Reactivación automática — pago S/ ${contrato.deudaTotal} registrado`,
+          },
+          user,
+          true, // automatico = true (saltea validación de transición)
+        );
+
+        this.logger.log(
+          `🟢 Contrato REACTIVADO automáticamente: ${contratoId} | ` +
+          `deuda saldada: S/ ${contrato.deudaTotal}`,
+        );
+
+        // Nota: el módulo de notificaciones se encarga de avisar al cliente
+        // a través del sistema de eventos (ver gateway.module.ts)
+      }
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // VALIDACIONES DE NEGOCIO
+  // ────────────────────────────────────────────────────────────
+  private async validarPago(dto: RegistrarPagoDto, empresaId: string): Promise<void> {
+    // Número de operación requerido para métodos bancarios/digitales
+    if (
+      METODOS_REQUIEREN_NUMERO_OP.includes(dto.metodoPago) &&
+      !dto.numeroOperacion?.trim()
+    ) {
+      throw new BadRequestException(
+        `El número de operación es obligatorio para pagos con ${dto.metodoPago}`,
+      );
+    }
+
+    // Si se especifica una factura, verificar que pertenezca a la empresa
+    if (dto.facturaId) {
+      const [row] = await this.ds.query(
+        'SELECT id, estado, empresa_id FROM facturas WHERE id = $1',
+        [dto.facturaId],
+      );
+      if (!row || row.empresa_id !== empresaId) {
+        throw new NotFoundException('Factura no encontrada');
+      }
+      if (row.estado === EstadoFactura.PAGADA) {
+        throw new BadRequestException('La factura ya está completamente pagada');
+      }
+      if (row.estado === EstadoFactura.ANULADA) {
+        throw new BadRequestException('La factura está anulada');
+      }
+    }
+
+    // Si se especifica contrato, verificar existencia
+    if (dto.contratoId && !dto.facturaId) {
+      const [row] = await this.ds.query(
+        'SELECT id, empresa_id FROM contratos WHERE id = $1',
+        [dto.contratoId],
+      );
+      if (!row || row.empresa_id !== empresaId) {
+        throw new NotFoundException('Contrato no encontrado');
+      }
+    }
+
+    // Monto mínimo razonable
+    if (Number(dto.monto) < 0.01) {
+      throw new BadRequestException('El monto debe ser mayor a S/ 0.01');
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // LISTAR / OBTENER
+  // ────────────────────────────────────────────────────────────
+  async findAll(empresaId: string, filters: FilterPagoDto) {
+    const result = await this.pagoRepo.findAllPaginated(empresaId, filters);
+    return formatPaginatedResponse(result);
+  }
+
+  async findOne(id: string, empresaId: string): Promise<Pago> {
+    const p = await this.pagoRepo.findById(id, empresaId);
+    if (!p) throw new NotFoundException(`Pago ${id} no encontrado`);
+    return p;
+  }
+
+  async findByCliente(clienteId: string, empresaId: string): Promise<Pago[]> {
+    return this.pagoRepo.findByCliente(clienteId, empresaId);
+  }
+
+  async findByFactura(facturaId: string, empresaId: string): Promise<Pago[]> {
+    return this.pagoRepo.findByFactura(facturaId, empresaId);
+  }
+
+  async findByContrato(contratoId: string, empresaId: string): Promise<Pago[]> {
+    return this.pagoRepo.findByContrato(contratoId, empresaId);
+  }
+
+  async findPendientes(empresaId: string): Promise<Pago[]> {
+    return this.pagoRepo.findPendientesVerificar(empresaId);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // RESUMEN DE COBRANZA
+  // ────────────────────────────────────────────────────────────
+  async getResumen(empresaId: string): Promise<ResumenCobranzaDto> {
+    const [raw, ultimos] = await Promise.all([
+      this.pagoRepo.getResumenCobranza(empresaId),
+      this.pagoRepo.findUltimos(empresaId, 10),
+    ]);
+
+    const porMetodo: Record<string, { total: number; monto: number }> = {};
+    for (const r of (raw.porMetodo || [])) {
+      porMetodo[r.metodo_pago] = {
+        total: parseInt(r.total, 10),
+        monto: parseFloat(r.monto || '0'),
+      };
+    }
+
+    return {
+      cobradoHoy:          parseFloat(raw.cobrado_hoy         || '0'),
+      cobradoSemana:       parseFloat(raw.cobrado_semana       || '0'),
+      cobradoMes:          parseFloat(raw.cobrado_mes          || '0'),
+      cobradoMesAnterior:  parseFloat(raw.cobrado_mes_anterior || '0'),
+      pagosHoy:            parseInt(raw.pagos_hoy              || '0', 10),
+      pagosSemana:         parseInt(raw.pagos_semana           || '0', 10),
+      pagosMes:            parseInt(raw.pagos_mes              || '0', 10),
+      pendientesVerificar: parseInt(raw.pendientes_verificar   || '0', 10),
+      porMetodo,
+      ultimosPagos:        ultimos,
+    };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // CUENTAS BANCARIAS
+  // ────────────────────────────────────────────────────────────
+  async getCuentasBancarias(empresaId: string): Promise<CuentaBancaria[]> {
+    return this.pagoRepo.findCuentas(empresaId);
+  }
+
+  async createCuentaBancaria(
+    dto:  CreateCuentaBancariaDto,
+    user: JwtPayload,
+  ): Promise<CuentaBancaria> {
+    if (dto.esPrincipal) {
+      // Desmarcar la cuenta principal anterior
+      await this.ds.query(
+        'UPDATE cuentas_bancarias SET es_principal = false WHERE empresa_id = $1',
+        [user.empresaId],
+      );
+    }
+    return this.pagoRepo.createCuenta({ ...dto, empresaId: user.empresaId });
+  }
+}

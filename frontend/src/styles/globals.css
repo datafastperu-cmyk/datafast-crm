@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Variables de tema ─────────────────────────────────────── */
+@layer base {
+  :root {
+    --background:   220 20% 97%;
+    --foreground:   220 15% 15%;
+
+    --card:         0 0% 100%;
+    --card-foreground: 220 15% 15%;
+
+    --popover:      0 0% 100%;
+    --popover-foreground: 220 15% 15%;
+
+    --primary:      217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary:    220 14% 92%;
+    --secondary-foreground: 220 15% 30%;
+
+    --muted:        220 14% 92%;
+    --muted-foreground: 220 8% 55%;
+
+    --accent:       220 14% 92%;
+    --accent-foreground: 220 15% 15%;
+
+    --destructive:  0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border:       220 14% 88%;
+    --input:        220 14% 88%;
+    --ring:         217 91% 60%;
+
+    --radius:       0.5rem;
+
+    /* Sidebar */
+    --sidebar-bg:       220 25% 15%;
+    --sidebar-fg:       220 10% 85%;
+    --sidebar-active:   217 91% 60%;
+    --sidebar-hover:    220 25% 20%;
+    --sidebar-border:   220 25% 20%;
+    --sidebar-width:    240px;
+    --topbar-height:    56px;
+  }
+
+  .dark {
+    --background:   222 28% 9%;
+    --foreground:   220 10% 92%;
+
+    --card:         222 28% 12%;
+    --card-foreground: 220 10% 92%;
+
+    --popover:      222 28% 12%;
+    --popover-foreground: 220 10% 92%;
+
+    --primary:      217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary:    222 28% 17%;
+    --secondary-foreground: 220 10% 80%;
+
+    --muted:        222 28% 17%;
+    --muted-foreground: 220 8% 50%;
+
+    --accent:       222 28% 17%;
+    --accent-foreground: 220 10% 92%;
+
+    --destructive:  0 63% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border:       222 28% 18%;
+    --input:        222 28% 18%;
+    --ring:         217 91% 60%;
+
+    --sidebar-bg:       222 28% 7%;
+    --sidebar-fg:       220 10% 75%;
+    --sidebar-active:   217 91% 60%;
+    --sidebar-hover:    222 28% 12%;
+    --sidebar-border:   222 28% 12%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Scrollbar personalizada */
+  ::-webkit-scrollbar       { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track  { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb  { @apply bg-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/30; }
+
+  /* Focus ring consistente */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+/* ── Utilidades custom ─────────────────────────────────────── */
+@layer utilities {
+  /* Punto de estado (verde parpadeante = online) */
+  .status-dot-online {
+    @apply w-2 h-2 rounded-full bg-green-500 animate-pulse-dot;
+  }
+  .status-dot-offline {
+    @apply w-2 h-2 rounded-full bg-red-500;
+  }
+  .status-dot-warning {
+    @apply w-2 h-2 rounded-full bg-yellow-500 animate-pulse-dot;
+  }
+
+  /* Tabla de datos */
+  .data-table { @apply w-full border-collapse; }
+  .data-table th {
+    @apply text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider
+           px-4 py-3 bg-muted/50 border-b border-border;
+  }
+  .data-table td {
+    @apply px-4 py-3 border-b border-border text-sm;
+  }
+  .data-table tr:hover td { @apply bg-muted/30; }
+  .data-table tr:last-child td { @apply border-b-0; }
+
+  /* Skeleton loading */
+  .skeleton {
+    @apply animate-pulse bg-muted rounded;
+  }
+
+  /* Truncar texto con tooltip */
+  .truncate-cell {
+    @apply max-w-[200px] truncate;
+  }
+
+  /* Badge de estado de contrato */
+  .badge-activo        { @apply bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400; }
+  .badge-suspendido    { @apply bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400; }
+  .badge-moroso        { @apply bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400; }
+  .badge-prorroga      { @apply bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400; }
+  .badge-pendiente     { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400; }
+  .badge-baja          { @apply bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400; }
+
+  /* Card glassmorphism para el dashboard */
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl;
+  }
+}
+
+/* ── Transiciones de página ────────────────────────────────── */
+.page-transition {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-width);
+  background: hsl(var(--sidebar-bg));
+  color: hsl(var(--sidebar-fg));
+  border-right: 1px solid hsl(var(--sidebar-border));
+}
+
+.sidebar-nav-item {
+  @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+         transition-all duration-150 cursor-pointer select-none;
+  color: hsl(var(--sidebar-fg));
+}
+
+.sidebar-nav-item:hover {
+  background: hsl(var(--sidebar-hover));
+  color: white;
+}
+
+.sidebar-nav-item.active {
+  background: hsl(var(--sidebar-active) / 0.2);
+  color: hsl(var(--sidebar-active));
+  border-left: 3px solid hsl(var(--sidebar-active));
+}
+
+/* ── Recharts custom ───────────────────────────────────────── */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  @apply bg-card border border-border rounded-lg shadow-lg text-foreground !important;
+}
+
+/* Quitar outline de select en formularios */
+select:focus { outline: none; }
