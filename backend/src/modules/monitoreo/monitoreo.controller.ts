@@ -194,7 +194,7 @@ export class MonitoreoController {
     const nodo = await this.nodoRepo.findOne({ where: { id, empresaId: user.empresaId } });
     if (!nodo?.snmpHabilitado) return StdResponse.ok([], 'SNMP no habilitado en este nodo');
 
-    const interfaces = await this.snmpSvc.listarInterfaces(
+    const interfaces = await this.snmpSvc.getInterfaces(
       nodo.ipMonitoreo, nodo.snmpCommunity, nodo.snmpVersion,
     );
     return StdResponse.ok(interfaces);
@@ -208,7 +208,7 @@ export class MonitoreoController {
     const nodo = await this.nodoRepo.findOne({ where: { id, empresaId: user.empresaId } });
     if (!nodo) return StdResponse.ok({ conectado: false }, 'Nodo no encontrado');
 
-    const conectado = await this.snmpSvc.testSnmp(
+    const conectado = await this.snmpSvc.testConnection(
       nodo.ipMonitoreo, nodo.snmpCommunity, nodo.snmpVersion,
     );
     return StdResponse.ok({ conectado, ip: nodo.ipMonitoreo, community: nodo.snmpCommunity });

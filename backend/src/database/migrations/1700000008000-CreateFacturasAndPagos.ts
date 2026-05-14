@@ -255,7 +255,7 @@ export class CreateFacturasAndPagos1700000008000 implements MigrationInterface {
       COMMENT ON COLUMN pagos.numero_operacion IS 'Número de operación del banco/Yape/Plin para verificar duplicados';
     `);
 
-    -- ── CUENTAS BANCARIAS DE LA EMPRESA ───────────────────────
+    // CUENTAS BANCARIAS DE LA EMPRESA
     await queryRunner.query(`
       CREATE TABLE cuentas_bancarias (
         id              UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),

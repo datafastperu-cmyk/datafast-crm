@@ -9,7 +9,7 @@ import { HealthService } from './health.service';
   imports: [
     TerminusModule.forRoot({
       // Errores de health no deben crashear logs con stack traces
-      errorLogStyle: 'minimal',
+      errorLogStyle: 'json',
     }),
     HttpModule,
     TypeOrmModule,

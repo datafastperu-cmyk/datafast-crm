@@ -4,7 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { Contrato, ContratoHistorial, EstadoContrato } from '../entities/contrato.entity';
 import { SegmentoIpv4, IpAsignada } from '../entities/red.entity';
 import { FilterContratoDto } from '../dto/contrato.dto';
-import { paginate, PaginatedResult } from '../dto/response.dto';
+import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
 
 @Injectable()
 export class ContratoRepository {

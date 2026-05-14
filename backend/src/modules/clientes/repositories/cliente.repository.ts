@@ -3,7 +3,7 @@ import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Cliente, ClienteHistorialEstado, EstadoCliente } from '../entities/cliente.entity';
 import { FilterClienteDto } from '../dto/cliente.dto';
-import { paginate, PaginatedResult } from '../dto/response.dto';
+import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
 
 @Injectable()
 export class ClienteRepository {

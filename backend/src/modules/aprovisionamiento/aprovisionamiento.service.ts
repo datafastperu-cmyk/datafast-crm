@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectDataSource }       from '@nestjs/typeorm';
 import { DataSource }             from 'typeorm';
-import { EventEmitter }          from '@nestjs/event-emitter';
+import { EventEmitter2 }          from '@nestjs/event-emitter';
 
 import { WhatsAppService }        from '../notificaciones/services/whatsapp.service';
 import { PppoeService }           from '../mikrotik/services/pppoe.service';
@@ -52,7 +52,7 @@ interface Ctx {
 // - Rollback automático si rollbackEnError = true
 // - Notificación WhatsApp al cliente al finalizar
 // - Auditoría de cada paso
-// - Evento EventEmitter al completar (para WebSocket broadcast)
+// - Evento EventEmitter2 al completar (para WebSocket broadcast)
 // ─────────────────────────────────────────────────────────────
 @Injectable()
 export class OrquestadorAprovisionamientoService {
@@ -65,7 +65,7 @@ export class OrquestadorAprovisionamientoService {
     private readonly velocidadOrc: VelocidadOrquestador,
     private readonly smartoltApi:  SmartoltApiService,
     private readonly whatsapp:     WhatsAppService,
-    private readonly events:       EventEmitter,
+    private readonly events:       EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
@@ -723,7 +723,7 @@ export class OrquestadorAprovisionamientoService {
       LEFT JOIN olts    ol ON ol.id = $2
       LEFT JOIN onus    on2 ON on2.id = co.onu_id
       WHERE co.id = $1
-    `, [dto.contratoId, dto?.dto?.oltId || '00000000-0000-0000-0000-000000000000']).catch(() => [null]);
+    `, [dto.contratoId]).catch(() => [null]);
 
     // ── 1. Eliminar de SmartOLT ──────────────────────────────
     if (dto.eliminarSmartolt !== false) {

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Request } from 'express';
-import { AuditoriaLog } from '../../usuarios/entities/auditoria-log.entity';
+import { AuditoriaLog } from '../usuarios/entities/auditoria-log.entity';
 
 export interface AuditParams {
   empresaId?: string;

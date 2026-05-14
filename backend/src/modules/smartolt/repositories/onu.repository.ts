@@ -3,7 +3,7 @@ import { DataSource, Repository } from 'typeorm';
 import { InjectDataSource }       from '@nestjs/typeorm';
 import { Olt, Onu, EstadoOnu }   from '../entities/onu.entity';
 import { FilterOnuDto }           from '../dto/smartolt.dto';
-import { paginate, PaginatedResult } from '../dto/response.dto';
+import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
 
 @Injectable()
 export class OnuRepository {

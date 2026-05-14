@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RouterConnectionPool, RouterCredentials } from '../services/connection-pool.service';
+import { RouterConnectionPool, RouterCredentials } from '../../services/connection-pool.service';
 
 // ─── Marcas de tráfico por cliente ──────────────────────────
 export interface ClienteMangle {

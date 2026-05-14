@@ -3,7 +3,7 @@ import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Pago, EstadoPago, MetodoPago, CuentaBancaria } from '../entities/pago.entity';
 import { FilterPagoDto } from '../dto/pago.dto';
-import { paginate, PaginatedResult } from '../dto/response.dto';
+import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
 
 @Injectable()
 export class PagoRepository {

@@ -57,3 +57,4 @@ export function formatPaginatedResponse<T>(result: PaginatedResult<T>) {
     },
   };
 }
+

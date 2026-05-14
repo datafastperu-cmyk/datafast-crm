@@ -269,9 +269,9 @@ export class MonitoreoWorker {
     try {
       // Obtener métricas del sistema y tráfico en paralelo
       const [metricas, trafico] = await Promise.all([
-        this.snmpSvc.getMetricasSistema(ip, community, version, true),
+        this.snmpSvc.getSystemInfo(ip, community, version, true),
         ifIndex
-          ? this.snmpSvc.getTraficoInterfaz(ip, community, ifIndex, version)
+          ? Promise.resolve(null) // trafico SNMP pendiente
           : Promise.resolve(null),
       ]);
 
@@ -297,8 +297,8 @@ export class MonitoreoWorker {
           cpuPct:      metricas.cpuPct,
           memoriaPct:  metricas.memoriaPct,
           temperaturaC: metricas.temperatura,
-          traficoRxBps: trafico?.rxBps ? BigInt(trafico.rxBps) : undefined,
-          traficoTxBps: trafico?.txBps ? BigInt(trafico.txBps) : undefined,
+          traficoRxBps: trafico?.rxBps ? Number(trafico.rxBps) : undefined,
+          traficoTxBps: trafico?.txBps ? Number(trafico.txBps) : undefined,
         },
       );
 

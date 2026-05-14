@@ -7,7 +7,7 @@ import { InjectRepository }       from '@nestjs/typeorm';
 import { Repository }             from 'typeorm';
 import { InjectDataSource }       from '@nestjs/typeorm';
 import { DataSource }             from 'typeorm';
-import { VelocidadOrquestador }   from './velocidad/velocidad-orquestador.service';
+import { VelocidadOrquestador }   from './services/velocidad/velocidad-orquestador.service';
 import { Router, EstadoEquipo, VersionRouterOS } from './entities/router.entity';
 import { RouterConnectionPool }   from './services/connection-pool.service';
 

@@ -122,7 +122,7 @@ export class CreateTicketsAndConsumo1700000009000 implements MigrationInterface 
       COMMENT ON TABLE tickets IS 'Tickets de soporte técnico del ISP';
     `);
 
-    -- ── COMENTARIOS DEL TICKET ─────────────────────────────────
+    // COMENTARIOS DEL TICKET
     await queryRunner.query(`
       CREATE TABLE tickets_comentarios (
         id              BIGSERIAL      PRIMARY KEY,

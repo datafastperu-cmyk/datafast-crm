@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RouterConnectionPool, RouterCredentials } from '../services/connection-pool.service';
-import { MangleService }                           from './velocidad/mangle.service';
-import { ConfigVelocidad }                         from './velocidad/velocidad.service';
+import { RouterConnectionPool, RouterCredentials } from '../../services/connection-pool.service';
+import { MangleService }                           from './mangle.service';
+import { ConfigVelocidad }                         from './velocidad.service';
 
 // ─── Nombres de queues para un cliente ───────────────────────
 export interface NombresQueueTree {

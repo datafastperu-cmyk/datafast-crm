@@ -1,11 +1,11 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectDataSource }       from '@nestjs/typeorm';
 import { DataSource }             from 'typeorm';
-import { RouterConnectionPool, RouterCredentials } from '../services/connection-pool.service';
-import { VelocidadService, EstrategiaQueue }       from './velocidad/velocidad.service';
-import { MangleService }                           from './velocidad/mangle.service';
-import { QueueTreeClienteService }                 from './velocidad/queue-tree-cliente.service';
-import { QueueService }                            from '../services/queue.service';
+import { RouterConnectionPool, RouterCredentials } from '../../services/connection-pool.service';
+import { VelocidadService, EstrategiaQueue }       from './velocidad.service';
+import { MangleService }                           from './mangle.service';
+import { QueueTreeClienteService }                 from './queue-tree-cliente.service';
+import { QueueService }                            from '../../services/queue.service';
 
 // ─── Parámetros de aprovisionamiento de velocidad ────────────
 export interface AplicarVelocidadParams {
