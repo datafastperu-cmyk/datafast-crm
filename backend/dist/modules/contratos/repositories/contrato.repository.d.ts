@@ -1,0 +1,35 @@
+import { DataSource, SelectQueryBuilder } from 'typeorm';
+import { Contrato, ContratoHistorial } from '../entities/contrato.entity';
+import { SegmentoIpv4, IpAsignada } from '../entities/red.entity';
+import { FilterContratoDto } from '../dto/contrato.dto';
+import { PaginatedResult } from '../../../common/utils/pagination.util';
+export declare class ContratoRepository {
+    private readonly ds;
+    private readonly repo;
+    private readonly histRepo;
+    private readonly segmentoRepo;
+    private readonly ipRepo;
+    constructor(ds: DataSource);
+    create(d: Partial<Contrato>): Contrato;
+    save(c: Contrato): Promise<Contrato>;
+    update(id: string, d: Partial<Contrato>): Promise<void>;
+    findById(id: string, empresaId: string): Promise<Contrato | null>;
+    findByClienteId(clienteId: string, empresaId: string): Promise<Contrato[]>;
+    softDelete(id: string, empresaId: string): Promise<void>;
+    findAllPaginated(empresaId: string, filters: FilterContratoDto): Promise<PaginatedResult<Contrato>>;
+    buildFilterQuery(empresaId: string, f: FilterContratoDto): SelectQueryBuilder<Contrato>;
+    findCompleto(id: string, empresaId: string): Promise<any>;
+    findSegmento(id: string, empresaId: string): Promise<SegmentoIpv4 | null>;
+    getIpsUsadas(segmentoId: string): Promise<string[]>;
+    getIpsReservadas(segmentoId: string): Promise<string[]>;
+    asignarIp(d: Partial<IpAsignada>): Promise<IpAsignada>;
+    liberarIp(contratoId: string): Promise<void>;
+    ipYaAsignada(ip: string, segmentoId: string): Promise<boolean>;
+    generarNumeroContrato(empresaId: string): Promise<string>;
+    guardarHistorial(d: Partial<ContratoHistorial>): Promise<void>;
+    getHistorial(contratoId: string): Promise<ContratoHistorial[]>;
+    findMorososParaCorte(graceDays: number): Promise<Contrato[]>;
+    findParaReactivar(): Promise<Contrato[]>;
+    findProrrogasVencidas(): Promise<Contrato[]>;
+    getResumen(empresaId: string): Promise<any[]>;
+}

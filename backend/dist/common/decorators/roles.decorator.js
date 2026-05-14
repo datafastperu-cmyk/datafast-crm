@@ -1,0 +1,46 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Permission = exports.Role = exports.RequirePermission = exports.Roles = exports.PERMISSIONS_KEY = exports.ROLES_KEY = void 0;
+const common_1 = require("@nestjs/common");
+exports.ROLES_KEY = 'roles';
+exports.PERMISSIONS_KEY = 'permissions';
+const Roles = (...roles) => (0, common_1.SetMetadata)(exports.ROLES_KEY, roles);
+exports.Roles = Roles;
+const RequirePermission = (...permissions) => (0, common_1.SetMetadata)(exports.PERMISSIONS_KEY, permissions);
+exports.RequirePermission = RequirePermission;
+var Role;
+(function (Role) {
+    Role["ADMIN"] = "admin";
+    Role["SUPERVISOR"] = "supervisor";
+    Role["VENDEDOR"] = "vendedor";
+    Role["CAJERO"] = "cajero";
+    Role["TECNICO"] = "tecnico";
+    Role["CLIENTE"] = "cliente";
+})(Role || (exports.Role = Role = {}));
+var Permission;
+(function (Permission) {
+    Permission["CLIENTES_VIEW"] = "clientes:view";
+    Permission["CLIENTES_CREATE"] = "clientes:create";
+    Permission["CLIENTES_EDIT"] = "clientes:edit";
+    Permission["CLIENTES_DELETE"] = "clientes:delete";
+    Permission["FACTURAS_VIEW"] = "facturas:view";
+    Permission["FACTURAS_CREATE"] = "facturas:create";
+    Permission["FACTURAS_DELETE"] = "facturas:delete";
+    Permission["PAGOS_VIEW"] = "pagos:view";
+    Permission["PAGOS_CREATE"] = "pagos:create";
+    Permission["PAGOS_VERIFY"] = "pagos:verify";
+    Permission["MIKROTIK_VIEW"] = "mikrotik:view";
+    Permission["MIKROTIK_MANAGE"] = "mikrotik:manage";
+    Permission["ONU_PROVISION"] = "onu:provision";
+    Permission["ONU_VIEW"] = "onu:view";
+    Permission["MONITORING_VIEW"] = "monitoring:view";
+    Permission["TICKETS_VIEW"] = "tickets:view";
+    Permission["TICKETS_CREATE"] = "tickets:create";
+    Permission["TICKETS_MANAGE"] = "tickets:manage";
+    Permission["REPORTS_VIEW"] = "reports:view";
+    Permission["REPORTS_EXPORT"] = "reports:export";
+    Permission["USERS_MANAGE"] = "users:manage";
+    Permission["ROLES_MANAGE"] = "roles:manage";
+    Permission["SYSTEM_CONFIG"] = "system:config";
+})(Permission || (exports.Permission = Permission = {}));
+//# sourceMappingURL=roles.decorator.js.map
