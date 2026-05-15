@@ -35,6 +35,10 @@ _ask_config() {
         return
     fi
 
+    # Cuando se ejecuta via "curl | bash", stdin es la tubería.
+    # Redirigir al terminal para que los read funcionen.
+    exec </dev/tty
+
     echo -e "\n${BOLD}${C}── CONFIGURACIÓN DEL SISTEMA ──────────────────────────${NC}\n"
 
     read -rp "  Nombre de tu empresa ISP [DATAFAST S.A.C.]: " EMPRESA_NOMBRE
