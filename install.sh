@@ -3,12 +3,27 @@
 #  CRM ISP DATAFAST — Instalador Principal v1.0.0
 #  Ubuntu 22.04 / 24.04 LTS
 # ═══════════════════════════════════════════════════════════════
+
+# ── Auto-reejecutar desde archivo si viene por pipe ───────────
+# "curl URL | bash" pone stdin en la tubería, no en el terminal.
+# Los prompts interactivos necesitan stdin=terminal.
+# Solución: si stdin no es un tty, descargamos el script a un
+# archivo temporal y lo re-ejecutamos desde ahí.
+_REPO_RAW="https://raw.githubusercontent.com/datafastperu-cmyk/datafast-crm/main"
+if [[ ! -t 0 ]]; then
+    _tmp=$(mktemp /tmp/datafast-install-XXXXXX.sh)
+    curl -fsSL "${_REPO_RAW}/install.sh" -o "$_tmp" 2>/dev/null \
+        && chmod +x "$_tmp" \
+        && exec bash "$_tmp" "$@"
+    # Si curl falló, continuar con stdin pipe (sin prompts interactivos)
+fi
+
 set -euo pipefail
 IFS=$'\n\t'
 
 # ── Configuración ─────────────────────────────────────────────
 readonly DATAFAST_VERSION="1.0.0"
-readonly REPO_RAW="https://raw.githubusercontent.com/datafastperu-cmyk/datafast-crm/main"
+readonly REPO_RAW="${_REPO_RAW}"
 readonly INSTALL_DIR="/opt/datafast"
 readonly LOG_DIR="/var/log/datafast"
 readonly LOG_FILE="${LOG_DIR}/install-$(date +%Y%m%d_%H%M%S).log"
