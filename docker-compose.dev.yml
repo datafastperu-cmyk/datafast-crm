@@ -1,7 +1,7 @@
-version: '3.9'
+﻿version: '3.9'
 
 # ==============================================================
-# FibraNet ISP — Docker Compose DESARROLLO (hot-reload)
+# CRM ISP DATAFAST — Docker Compose DESARROLLO (hot-reload)
 # Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 # ==============================================================
 
@@ -50,25 +50,25 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: fibranet_pgadmin
+    container_name: datafast_pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@fibranet.pe
+      PGADMIN_DEFAULT_EMAIL: admin@datafast.pe
       PGADMIN_DEFAULT_PASSWORD: admin123
     ports:
       - "5050:80"
     networks:
-      - fibranet_internal
+      - datafast_internal
     depends_on:
       - postgres
 
   redis-commander:
     image: rediscommander/redis-commander:latest
-    container_name: fibranet_redis_ui
+    container_name: datafast_redis_ui
     environment:
       REDIS_HOSTS: "redis:redis:6379:0:${REDIS_PASSWORD:-devpassword}"
     ports:
       - "8081:8081"
     networks:
-      - fibranet_internal
+      - datafast_internal
     depends_on:
       - redis

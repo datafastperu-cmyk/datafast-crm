@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 # ==============================================================
-# FibraNet ISP — Deploy con zero-downtime
+# CRM ISP DATAFAST — Deploy con zero-downtime
 # Uso: bash scripts/deploy.sh
 # ==============================================================
 
@@ -12,7 +12,7 @@ warn() { echo -e "${YELLOW}[$(date '+%H:%M:%S')]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-log "Iniciando deploy FibraNet ISP..."
+log "Iniciando deploy CRM ISP DATAFAST..."
 
 # Pull últimos cambios
 log "Pull del repositorio..."

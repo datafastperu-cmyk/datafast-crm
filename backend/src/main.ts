@@ -1,4 +1,4 @@
-import { NestFactory, Reflector } from '@nestjs/core';
+﻿import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, VersioningType, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -106,7 +106,7 @@ async function bootstrap() {
   // ── Swagger — Documentación de la API ────────────────────────
   if (env !== 'production') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('FibraNet ISP ERP — API')
+      .setTitle('CRM ISP DATAFAST — API')
       .setDescription(
         `API REST del sistema ERP/CRM para proveedores de internet (FTTH/WISP).
 
@@ -115,7 +115,7 @@ async function bootstrap() {
 **Versión**: v1 | **Timezone**: America/Lima | **Moneda**: PEN (S/)`,
       )
       .setVersion('1.0.0')
-      .setContact('Soporte FibraNet', '', 'soporte@fibranet.pe')
+      .setContact('Soporte DATAFAST', '', 'soporte@datafast.pe')
       .addBearerAuth(
         { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', in: 'header' },
         'JWT',
@@ -153,7 +153,7 @@ async function bootstrap() {
         showRequestDuration: true,
         tryItOutEnabled: true,
       },
-      customSiteTitle: 'FibraNet ISP — API Docs',
+      customSiteTitle: 'CRM ISP DATAFAST — API Docs',
       customCss: '.swagger-ui .topbar { background-color: #1a1a2e; }',
     });
 
@@ -179,7 +179,7 @@ async function bootstrap() {
   await app.listen(port, '0.0.0.0');
 
   logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  logger.log(`  FibraNet ISP ERP — Backend`);
+  logger.log(`  CRM ISP DATAFAST — Backend`);
   logger.log(`  Entorno:   ${env.toUpperCase()}`);
   logger.log(`  URL:       http://localhost:${port}`);
   logger.log(`  API:       http://localhost:${port}/api/v1`);

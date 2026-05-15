@@ -1,4 +1,4 @@
-import { registerAs } from '@nestjs/config';
+﻿import { registerAs } from '@nestjs/config';
 import * as Joi from 'joi';
 
 // ─── Schema de validación de variables de entorno ──────────────
@@ -52,7 +52,7 @@ export const validationSchema = Joi.object({
   SMTP_PORT: Joi.number().default(587),
   SMTP_USER: Joi.string().optional(),
   SMTP_PASS: Joi.string().optional(),
-  SMTP_FROM_NAME: Joi.string().default('FibraNet ISP'),
+  SMTP_FROM_NAME: Joi.string().default('CRM ISP DATAFAST'),
   SMTP_FROM_EMAIL: Joi.string().email().optional(),
   TWILIO_ACCOUNT_SID: Joi.string().optional(),
   TWILIO_AUTH_TOKEN: Joi.string().optional(),

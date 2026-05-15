@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable, Logger, NotFoundException,
   ConflictException, BadRequestException,
   ForbiddenException, UnprocessableEntityException,
@@ -396,10 +396,10 @@ export class PagosService {
 
     return this.mpSvc.crearPreferencia({
       facturaId:   factura.id,
-      titulo:      `${factura.numeroCompleto} — FibraNet ISP`,
+      titulo:      `${factura.numeroCompleto} — CRM ISP DATAFAST`,
       descripcion: factura.descripcion || 'Servicio de internet',
       monto:       Number(factura.saldo || factura.total),
-      clienteEmail: cliente?.email || `cliente-${factura.clienteId}@fibranet.pe`,
+      clienteEmail: cliente?.email || `cliente-${factura.clienteId}@datafast.pe`,
       urlExito:    dto.urlExito,
       urlFallo:    dto.urlFallo,
       urlPendiente: dto.urlPendiente,

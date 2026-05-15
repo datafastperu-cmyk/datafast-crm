@@ -1,4 +1,4 @@
-import { registerAs } from '@nestjs/config';
+﻿import { registerAs } from '@nestjs/config';
 
 export const jwtConfig = registerAs('jwt', () => ({
   secret: process.env.JWT_SECRET,
@@ -7,8 +7,8 @@ export const jwtConfig = registerAs('jwt', () => ({
   refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
 
   // Opciones adicionales
-  issuer: 'fibranet-isp',
-  audience: 'fibranet-app',
+  issuer: 'datafast-crm',
+  audience: 'datafast-app',
 
   // Duración del blacklist de tokens en segundos
   // Debe ser >= al tiempo máximo de expiración del access token

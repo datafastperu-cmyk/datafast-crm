@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+﻿import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -27,8 +27,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       secretOrKey: config.get<string>('jwt.secret'),
       // Pasar el request completo para poder acceder al token raw
       passReqToCallback: true,
-      issuer: 'fibranet-isp',
-      audience: 'fibranet-app',
+      issuer: 'datafast-crm',
+      audience: 'datafast-app',
     });
   }
 

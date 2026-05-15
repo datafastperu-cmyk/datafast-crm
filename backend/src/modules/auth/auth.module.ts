@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -30,8 +30,8 @@ import { AuditoriaLog } from '../usuarios/entities/auditoria-log.entity';
         secret: config.get<string>('jwt.secret'),
         signOptions: {
           expiresIn: config.get<string>('jwt.expiresIn', '15m'),
-          issuer: 'fibranet-isp',
-          audience: 'fibranet-app',
+          issuer: 'datafast-crm',
+          audience: 'datafast-app',
         },
       }),
       inject: [ConfigService],

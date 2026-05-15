@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable, Logger, NotFoundException,
   BadRequestException, ConflictException,
 } from '@nestjs/common';
@@ -159,7 +159,7 @@ export class MikrotikService {
       profile:       dto.perfilPppoe || 'default',
       service:       'pppoe',
       remoteAddress: dto.ipAsignada,
-      comment:       `FibraNet:ClienteID:${dto.clienteId}`,
+      comment:       `DATAFAST:ClienteID:${dto.clienteId}`,
       disabled:      false,
     });
 
@@ -177,14 +177,14 @@ export class MikrotikService {
         burstLimitUp:   dto.burstUpMbps,
         burstTimeDown:  dto.burstTiempoSegundos,
         burstTimeUp:    dto.burstTiempoSegundos,
-        comment:       `FibraNet:ClienteID:${dto.clienteId}`,
+        comment:       `DATAFAST:ClienteID:${dto.clienteId}`,
       });
     } else if (dto.tipoQueue === 'queue_tree' || dto.tipoQueue === 'pcq') {
       // Verificar si PCQ está configurado, si no, configurarlo primero
       const tienePcq = await this.queueSvc.tienePcqConfigurado(creds);
       if (!tienePcq) {
         await this.queueSvc.configurarPcqCompleto(creds, {
-          namePrefix:   'fibranet',
+          namePrefix:   'datafast',
           downloadMbps: dto.downloadMbps * 10, // límite total del nodo
           uploadMbps:   dto.uploadMbps * 10,
         });

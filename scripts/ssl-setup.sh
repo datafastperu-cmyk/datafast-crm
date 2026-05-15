@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 # ==============================================================
-# FibraNet ISP — Obtener certificados SSL con Let's Encrypt
+# CRM ISP DATAFAST — Obtener certificados SSL con Let's Encrypt
 # Uso: bash scripts/ssl-setup.sh
 # Requisito: Dominio apuntando al servidor ANTES de ejecutar
 # ==============================================================
@@ -69,5 +69,5 @@ mkdir -p ./nginx/ssl
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout ./nginx/ssl/selfsigned.key \
     -out ./nginx/ssl/selfsigned.crt \
-    -subj "/C=PE/ST=Piura/L=Piura/O=FibraNet/CN=localhost" 2>/dev/null
+    -subj "/C=PE/ST=Piura/L=Piura/O=DATAFAST/CN=localhost" 2>/dev/null
 log "Certificado auto-firmado creado en ./nginx/ssl/"

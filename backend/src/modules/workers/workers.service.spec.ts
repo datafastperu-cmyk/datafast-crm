@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+﻿import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken }  from '@nestjs/typeorm';
 import { EventEmitter }       from '@nestjs/event-emitter';
 import { getQueueToken }       from '@nestjs/bull';
@@ -29,11 +29,11 @@ const mockContrato = {
 
 const mockCliente = {
   nombre_completo: 'Juan Pérez', whatsapp: '987654321', telefono: '987654321',
-  empresa_nombre: 'FibraNet ISP',
+  empresa_nombre: 'CRM ISP DATAFAST',
 };
 
 const mockEmpresa = {
-  id: 'emp-001', razon_social: 'FibraNet ISP',
+  id: 'emp-001', razon_social: 'CRM ISP DATAFAST',
   igv_rate: 0.18, serie_boleta: 'B001',
 };
 

@@ -1,4 +1,4 @@
-import {
+﻿import {
   IsEmail, IsString, MinLength, MaxLength,
   IsOptional, IsNotEmpty, Matches,
 } from 'class-validator';
@@ -7,12 +7,12 @@ import { Transform } from 'class-transformer';
 
 // ─── Login ───────────────────────────────────────────────────
 export class LoginDto {
-  @ApiProperty({ example: 'admin@fibranet.pe' })
+  @ApiProperty({ example: 'admin@datafast.pe' })
   @IsEmail({}, { message: 'Ingresa un email válido' })
   @Transform(({ value }) => value?.toLowerCase().trim())
   email: string;
 
-  @ApiProperty({ example: 'Admin@FibraNet2024!' })
+  @ApiProperty({ example: 'Admin@DATAFAST2024!' })
   @IsString()
   @IsNotEmpty({ message: 'La contraseña es requerida' })
   @MinLength(6, { message: 'Mínimo 6 caracteres' })
@@ -56,7 +56,7 @@ export class ChangePasswordDto {
 
 // ─── Forgot Password ──────────────────────────────────────────
 export class ForgotPasswordDto {
-  @ApiProperty({ example: 'usuario@fibranet.pe' })
+  @ApiProperty({ example: 'usuario@datafast.pe' })
   @IsEmail({}, { message: 'Email inválido' })
   @Transform(({ value }) => value?.toLowerCase().trim())
   email: string;

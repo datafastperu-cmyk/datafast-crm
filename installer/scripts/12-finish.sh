@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Módulo 12 — Herramientas de admin, CLI y pantalla final
 
 # ── Flujo completo de instalación ────────────────────────────
@@ -37,15 +37,15 @@ _ask_config() {
 
     echo -e "\n${BOLD}${C}── CONFIGURACIÓN DEL SISTEMA ──────────────────────────${NC}\n"
 
-    read -rp "  Nombre de tu empresa ISP [FibraNet S.A.C.]: " EMPRESA_NOMBRE
-    EMPRESA_NOMBRE="${EMPRESA_NOMBRE:-FibraNet S.A.C.}"
+    read -rp "  Nombre de tu empresa ISP [DATAFAST S.A.C.]: " EMPRESA_NOMBRE
+    EMPRESA_NOMBRE="${EMPRESA_NOMBRE:-DATAFAST S.A.C.}"
 
     read -rp "  RUC (11 dígitos) [20000000001]: " EMPRESA_RUC
     EMPRESA_RUC="${EMPRESA_RUC:-20000000001}"
 
     echo ""
-    read -rp "  Email del administrador [admin@fibranet.pe]: " ADMIN_EMAIL
-    ADMIN_EMAIL="${ADMIN_EMAIL:-admin@fibranet.pe}"
+    read -rp "  Email del administrador [admin@datafast.pe]: " ADMIN_EMAIL
+    ADMIN_EMAIL="${ADMIN_EMAIL:-admin@datafast.pe}"
 
     while true; do
         read -rsp "  Contraseña del administrador (mínimo 8 chars): " ADMIN_PASSWORD
@@ -87,58 +87,58 @@ _generate_secrets() {
 # ── CLI principal ─────────────────────────────────────────────
 _create_cli() {
     info "Creando CLI de administración..."
-    cat > /usr/local/bin/fibranet << 'CLIEOF'
+    cat > /usr/local/bin/datafast << 'CLIEOF'
 #!/usr/bin/env bash
-INSTALL_DIR="/opt/fibranet"
+INSTALL_DIR="/opt/datafast"
 cmd="${1:-help}"
 case "$cmd" in
   status)   bash "${INSTALL_DIR}/scripts/health.sh" ;;
   start)    pm2 start "${INSTALL_DIR}/ecosystem.config.js" 2>/dev/null || pm2 restart all; pm2 status ;;
   stop)     pm2 stop all ;;
   restart)  pm2 restart all; pm2 status ;;
-  reload)   pm2 reload fibranet-backend; pm2 restart fibranet-frontend; pm2 status ;;
-  logs)     pm2 logs "fibranet-${2:-backend}" --lines "${3:-50}" ;;
+  reload)   pm2 reload datafast-backend; pm2 restart datafast-frontend; pm2 status ;;
+  logs)     pm2 logs "datafast-${2:-backend}" --lines "${3:-50}" ;;
   backup)   bash "${INSTALL_DIR}/scripts/backup.sh" ;;
   restore)  bash "${INSTALL_DIR}/scripts/restore.sh" ;;
   update)   bash "${INSTALL_DIR}/scripts/update.sh" ;;
-  ssl)      [[ -z "${2:-}" ]] && echo "Uso: fibranet ssl dominio.pe" || certbot --nginx -d "$2" --agree-tos --non-interactive ;;
+  ssl)      [[ -z "${2:-}" ]] && echo "Uso: datafast ssl dominio.pe" || certbot --nginx -d "$2" --agree-tos --non-interactive ;;
   db)
     case "${2:-}" in
-      shell) source "${INSTALL_DIR}/config/secrets.conf"; PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U fibranet_db_user -d fibranet_db ;;
-      stats) source "${INSTALL_DIR}/config/secrets.conf"; PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U fibranet_db_user -d fibranet_db -c "SELECT 'clientes' AS tabla, COUNT(*)::TEXT AS total FROM clientes WHERE deleted_at IS NULL UNION ALL SELECT 'contratos activos', COUNT(*)::TEXT FROM contratos WHERE estado='activo' AND deleted_at IS NULL;" ;;
-      size)  source "${INSTALL_DIR}/config/secrets.conf"; PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U fibranet_db_user -d fibranet_db -c "SELECT pg_size_pretty(pg_database_size('fibranet_db')) AS tamaño;" ;;
-      *) echo "Uso: fibranet db [shell|stats|size]" ;;
+      shell) source "${INSTALL_DIR}/config/secrets.conf"; PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user -d datafast_db ;;
+      stats) source "${INSTALL_DIR}/config/secrets.conf"; PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user -d datafast_db -c "SELECT 'clientes' AS tabla, COUNT(*)::TEXT AS total FROM clientes WHERE deleted_at IS NULL UNION ALL SELECT 'contratos activos', COUNT(*)::TEXT FROM contratos WHERE estado='activo' AND deleted_at IS NULL;" ;;
+      size)  source "${INSTALL_DIR}/config/secrets.conf"; PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user -d datafast_db -c "SELECT pg_size_pretty(pg_database_size('datafast_db')) AS tamaño;" ;;
+      *) echo "Uso: datafast db [shell|stats|size]" ;;
     esac ;;
   info)
-    echo "FibraNet ISP ERP"
+    echo "CRM ISP DATAFAST"
     echo "Servidor: $(hostname) ($(hostname -I | awk '{print $1}'))"
     echo "Node.js:  $(node --version 2>/dev/null)"
     echo "PM2:      $(pm2 --version 2>/dev/null)"
     ;;
   help|*)
     echo ""
-    echo "FibraNet ISP ERP — CLI"
+    echo "CRM ISP DATAFAST — CLI"
     echo ""
-    echo "  fibranet status          Ver estado del sistema"
-    echo "  fibranet start           Iniciar aplicación"
-    echo "  fibranet stop            Detener aplicación"
-    echo "  fibranet restart         Reiniciar"
-    echo "  fibranet reload          Zero-downtime reload"
-    echo "  fibranet logs            Ver logs backend"
-    echo "  fibranet logs frontend   Ver logs frontend"
-    echo "  fibranet backup          Crear backup"
-    echo "  fibranet restore         Restaurar backup"
-    echo "  fibranet update          Actualizar sistema"
-    echo "  fibranet ssl dominio.pe  Configurar HTTPS"
-    echo "  fibranet db shell        Consola SQL"
-    echo "  fibranet db stats        Estadísticas BD"
-    echo "  fibranet info            Info del servidor"
+    echo "  datafast status          Ver estado del sistema"
+    echo "  datafast start           Iniciar aplicación"
+    echo "  datafast stop            Detener aplicación"
+    echo "  datafast restart         Reiniciar"
+    echo "  datafast reload          Zero-downtime reload"
+    echo "  datafast logs            Ver logs backend"
+    echo "  datafast logs frontend   Ver logs frontend"
+    echo "  datafast backup          Crear backup"
+    echo "  datafast restore         Restaurar backup"
+    echo "  datafast update          Actualizar sistema"
+    echo "  datafast ssl dominio.pe  Configurar HTTPS"
+    echo "  datafast db shell        Consola SQL"
+    echo "  datafast db stats        Estadísticas BD"
+    echo "  datafast info            Info del servidor"
     echo ""
     ;;
 esac
 CLIEOF
-    chmod +x /usr/local/bin/fibranet
-    ok "CLI 'fibranet' creado"
+    chmod +x /usr/local/bin/datafast
+    ok "CLI 'datafast' creado"
 }
 
 # ── Guardar secretos ──────────────────────────────────────────
@@ -163,9 +163,9 @@ _save_install_info() {
     mkdir -p "${INSTALL_DIR}/config"
     cat > "${INSTALL_DIR}/config/install-info.txt" << INFOEOF
 ═══════════════════════════════════════════════════════
-  FIBRANET ISP ERP — Información de Instalación
+  DATAFAST ISP ERP — Información de Instalación
   Instalado: $(date)
-  Versión:   v${FIBRANET_VERSION}
+  Versión:   v${DATAFAST_VERSION}
 ═══════════════════════════════════════════════════════
 
 ACCESO AL PANEL
@@ -175,16 +175,16 @@ ACCESO AL PANEL
 
 BASE DE DATOS
   Host:    localhost:5432
-  BD:      fibranet_db
-  Usuario: fibranet_db_user
+  BD:      datafast_db
+  Usuario: datafast_db_user
 
 COMANDOS
-  fibranet status    Ver estado
-  fibranet logs      Ver logs
-  fibranet backup    Crear backup
-  fibranet restart   Reiniciar
-  fibranet update    Actualizar
-  fibranet help      Ayuda
+  datafast status    Ver estado
+  datafast logs      Ver logs
+  datafast backup    Crear backup
+  datafast restart   Reiniciar
+  datafast update    Actualizar
+  datafast help      Ayuda
 
 ARCHIVOS
   Backend .env:  ${INSTALL_DIR}/backend/.env.production
@@ -194,7 +194,7 @@ ARCHIVOS
 ═══════════════════════════════════════════════════════
 INFOEOF
     chmod 600 "${INSTALL_DIR}/config/install-info.txt"
-    echo "${FIBRANET_VERSION}" > "${INSTALL_DIR}/.installed"
+    echo "${DATAFAST_VERSION}" > "${INSTALL_DIR}/.installed"
     ok "Información de instalación guardada"
 }
 
@@ -208,7 +208,7 @@ show_completion() {
     echo -e "\033[1;32m"
     echo "  ╔══════════════════════════════════════════════════════════╗"
     echo "  ║                                                          ║"
-    echo "  ║   ✅  FIBRANET ISP ERP INSTALADO EXITOSAMENTE           ║"
+    echo "  ║   ✅  DATAFAST ISP ERP INSTALADO EXITOSAMENTE           ║"
     echo "  ║                                                          ║"
     echo "  ╚══════════════════════════════════════════════════════════╝"
     echo -e "\033[0m"
@@ -221,11 +221,11 @@ show_completion() {
     echo -e "    Contraseña: \033[1;33m${ADMIN_PASSWORD}\033[0m"
     echo ""
     echo -e "  \033[1mComandos:\033[0m"
-    echo -e "    \033[36mfibranet status\033[0m   — Estado del sistema"
-    echo -e "    \033[36mfibranet logs\033[0m     — Ver logs"
-    echo -e "    \033[36mfibranet backup\033[0m   — Crear backup"
-    echo -e "    \033[36mfibranet restart\033[0m  — Reiniciar"
-    echo -e "    \033[36mfibranet update\033[0m   — Actualizar"
+    echo -e "    \033[36mdatafast status\033[0m   — Estado del sistema"
+    echo -e "    \033[36mdatafast logs\033[0m     — Ver logs"
+    echo -e "    \033[36mdatafast backup\033[0m   — Crear backup"
+    echo -e "    \033[36mdatafast restart\033[0m  — Reiniciar"
+    echo -e "    \033[36mdatafast update\033[0m   — Actualizar"
     echo ""
     echo -e "  \033[2mInfo: ${INSTALL_DIR}/config/install-info.txt\033[0m"
     echo ""
@@ -233,19 +233,19 @@ show_completion() {
 
 # ── Desinstalar ───────────────────────────────────────────────
 run_uninstall() {
-    echo -e "\033[1;31m⚠  DESINSTALAR FIBRANET\033[0m"
+    echo -e "\033[1;31m⚠  DESINSTALAR DATAFAST\033[0m"
     read -rp "Escribe 'DESINSTALAR' para confirmar: " conf
     [[ "$conf" != "DESINSTALAR" ]] && { echo "Cancelado."; exit 0; }
 
     "${INSTALL_DIR}/scripts/backup.sh" 2>/dev/null || true
     pm2 stop all 2>/dev/null || true
     pm2 delete all 2>/dev/null || true
-    systemctl stop  fibranet 2>/dev/null || true
-    systemctl disable fibranet 2>/dev/null || true
-    rm -f /etc/nginx/sites-enabled/fibranet-*
-    rm -f /etc/nginx/sites-available/fibranet-*
+    systemctl stop  datafast 2>/dev/null || true
+    systemctl disable datafast 2>/dev/null || true
+    rm -f /etc/nginx/sites-enabled/datafast-*
+    rm -f /etc/nginx/sites-available/datafast-*
     systemctl reload nginx 2>/dev/null || true
-    rm -f /usr/local/bin/fibranet
-    rm -f /etc/systemd/system/fibranet.service
-    echo "FibraNet desinstalado. Backups en: ${INSTALL_DIR}/backups/"
+    rm -f /usr/local/bin/datafast
+    rm -f /etc/systemd/system/datafast.service
+    echo "DATAFAST desinstalado. Backups en: ${INSTALL_DIR}/backups/"
 }

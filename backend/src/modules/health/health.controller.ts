@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+﻿import { Controller, Get } from '@nestjs/common';
 import {
   HealthCheck,
   HealthCheckService,
@@ -82,7 +82,7 @@ export class HealthController {
     const info = await this.healthService.getSystemInfo();
     return {
       success: true,
-      app: 'FibraNet ISP ERP',
+      app: 'CRM ISP DATAFAST',
       version: process.env.npm_package_version || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
       timezone: process.env.TZ || 'America/Lima',

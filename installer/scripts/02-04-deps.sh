@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 #  Módulo 02 — Node.js 20 LTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ _ensure_npm_globals() {
 
     # Configurar PM2 para arrancar con el sistema
     local startup_cmd
-    startup_cmd=$(pm2 startup systemd -u fibranet --hp /home/fibranet 2>&1 | grep "sudo env" || true)
+    startup_cmd=$(pm2 startup systemd -u datafast --hp /home/datafast 2>&1 | grep "sudo env" || true)
     if [[ -n "$startup_cmd" ]]; then
         eval "$startup_cmd" >> "${LOG_FILE}" 2>&1
         ok "PM2 configurado para arrancar automáticamente"
@@ -69,20 +69,20 @@ install_postgres() {
 
     # Crear base de datos y usuario (idempotente)
     info "Configurando base de datos..."
-    sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='fibranet_db_user'" \
+    sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='datafast_db_user'" \
         | grep -q 1 || \
         sudo -u postgres psql -c \
-            "CREATE USER fibranet_db_user WITH PASSWORD '${DB_PASSWORD}';" \
+            "CREATE USER datafast_db_user WITH PASSWORD '${DB_PASSWORD}';" \
             >> "${LOG_FILE}" 2>&1
 
-    sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='fibranet_db'" \
+    sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='datafast_db'" \
         | grep -q 1 || \
         sudo -u postgres psql -c \
-            "CREATE DATABASE fibranet_db OWNER fibranet_db_user ENCODING 'UTF8';" \
+            "CREATE DATABASE datafast_db OWNER datafast_db_user ENCODING 'UTF8';" \
             >> "${LOG_FILE}" 2>&1
 
     sudo -u postgres psql -c \
-        "GRANT ALL PRIVILEGES ON DATABASE fibranet_db TO fibranet_db_user;" \
+        "GRANT ALL PRIVILEGES ON DATABASE datafast_db TO datafast_db_user;" \
         >> "${LOG_FILE}" 2>&1
 
     # Tuning básico según RAM disponible
@@ -154,7 +154,7 @@ install_redis() {
 
     info "Configurando Redis (maxmemory: ${max_mem})..."
     cat > /etc/redis/redis.conf << EOF
-# FibraNet — Redis Configuration
+# DATAFAST — Redis Configuration
 bind 127.0.0.1 ::1
 port 6379
 protected-mode yes
@@ -178,9 +178,9 @@ logfile /var/log/redis/redis-server.log
 # Seguridad
 rename-command FLUSHALL ""
 rename-command FLUSHDB  ""
-rename-command CONFIG   "FIBRANET-CONFIG-CMD"
+rename-command CONFIG   "DATAFAST-CONFIG-CMD"
 rename-command DEBUG    ""
-rename-command KEYS     "FIBRANET-KEYS-CMD"
+rename-command KEYS     "DATAFAST-KEYS-CMD"
 
 # Rendimiento
 hz 15

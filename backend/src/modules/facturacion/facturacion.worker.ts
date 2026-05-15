@@ -1,4 +1,4 @@
-import { Process, Processor, OnQueueFailed, OnQueueCompleted } from '@nestjs/bull';
+﻿import { Process, Processor, OnQueueFailed, OnQueueCompleted } from '@nestjs/bull';
 import { Logger, Injectable } from '@nestjs/common';
 import { Job } from 'bull';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -100,7 +100,7 @@ export class FacturacionWorker {
     // Construir un user mock para el servicio (el sistema actúa como admin)
     const userSistema = {
       sub:           usuarioId,
-      email:         'sistema@fibranet.pe',
+      email:         'sistema@datafast.pe',
       empresaId,
       nombreCompleto: 'Sistema',
       roles:         ['Administrador'],

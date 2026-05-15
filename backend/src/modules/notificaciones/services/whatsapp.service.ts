@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable, Logger,
 } from '@nestjs/common';
 import { HttpService }    from '@nestjs/axios';
@@ -38,57 +38,57 @@ const TEMPLATES: Record<TipoNotificacion, {
   paramKeys: string[];
 }> = {
   [TipoNotificacion.BIENVENIDA]: {
-    name:      'fibranet_bienvenida',
+    name:      'datafast_bienvenida',
     language:  'es',
     paramKeys: ['clienteNombre', 'planNombre', 'velocidadBajada', 'velocidadSubida', 'usuarioPppoe'],
   },
   [TipoNotificacion.SERVICIO_ACTIVADO]: {
-    name:      'fibranet_servicio_activado',
+    name:      'datafast_servicio_activado',
     language:  'es',
     paramKeys: ['clienteNombre', 'planNombre', 'ipAsignada', 'usuarioPppoe'],
   },
   [TipoNotificacion.SERVICIO_SUSPENDIDO]: {
-    name:      'fibranet_servicio_suspendido',
+    name:      'datafast_servicio_suspendido',
     language:  'es',
     paramKeys: ['clienteNombre', 'deudaTotal', 'numeroCuenta', 'nombreEmpresa'],
   },
   [TipoNotificacion.SERVICIO_REACTIVADO]: {
-    name:      'fibranet_servicio_reactivado',
+    name:      'datafast_servicio_reactivado',
     language:  'es',
     paramKeys: ['clienteNombre', 'planNombre'],
   },
   [TipoNotificacion.FACTURA_EMITIDA]: {
-    name:      'fibranet_factura_emitida',
+    name:      'datafast_factura_emitida',
     language:  'es',
     paramKeys: ['clienteNombre', 'numeroFactura', 'montoTotal', 'fechaVencimiento'],
   },
   [TipoNotificacion.PAGO_RECIBIDO]: {
-    name:      'fibranet_pago_recibido',
+    name:      'datafast_pago_recibido',
     language:  'es',
     paramKeys: ['clienteNombre', 'montoPago', 'metodoPago', 'saldoPendiente'],
   },
   [TipoNotificacion.PAGO_VENCE_HOY]: {
-    name:      'fibranet_pago_vence_hoy',
+    name:      'datafast_pago_vence_hoy',
     language:  'es',
     paramKeys: ['clienteNombre', 'montoDeuda', 'linkPago'],
   },
   [TipoNotificacion.PAGO_VENCIDO]: {
-    name:      'fibranet_pago_vencido',
+    name:      'datafast_pago_vencido',
     language:  'es',
     paramKeys: ['clienteNombre', 'montoDeuda', 'diasVencido', 'numeroCuenta'],
   },
   [TipoNotificacion.PRORROGA_CONCEDIDA]: {
-    name:      'fibranet_prorroga',
+    name:      'datafast_prorroga',
     language:  'es',
     paramKeys: ['clienteNombre', 'fechaProrroga', 'montoDeuda'],
   },
   [TipoNotificacion.ONU_OFFLINE]: {
-    name:      'fibranet_onu_offline',
+    name:      'datafast_onu_offline',
     language:  'es',
     paramKeys: ['clienteNombre', 'fechaHora'],
   },
   [TipoNotificacion.MANTENIMIENTO]: {
-    name:      'fibranet_mantenimiento',
+    name:      'datafast_mantenimiento',
     language:  'es',
     paramKeys: ['clienteNombre', 'fechaInicio', 'duracionEstimada', 'motivo'],
   },
@@ -217,7 +217,7 @@ export class WhatsAppService {
         clienteNombre: params.clienteNombre,
         deudaTotal:    `S/ ${params.deudaTotal.toFixed(2)}`,
         numeroCuenta:  params.numeroCuenta || 'ver al asesor',
-        nombreEmpresa: params.nombreEmpresa || 'FibraNet ISP',
+        nombreEmpresa: params.nombreEmpresa || 'CRM ISP DATAFAST',
       },
       empresaId: params.empresaId,
       clienteId: params.clienteId,

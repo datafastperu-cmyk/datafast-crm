@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { RouterConnectionPool, RouterCredentials } from '../../services/connection-pool.service';
 
 // ─── Marcas de tráfico por cliente ──────────────────────────
@@ -23,7 +23,7 @@ export interface MangleResult {
 export class MangleService {
   private readonly logger = new Logger(MangleService.name);
 
-  // Prefijo de todas las reglas de FibraNet
+  // Prefijo de todas las reglas de DATAFAST
   private readonly PREFIX = 'fn';
 
   constructor(private readonly pool: RouterConnectionPool) {}
@@ -177,7 +177,7 @@ export class MangleService {
   }
 
   // ────────────────────────────────────────────────────────────
-  // LISTAR TODOS LOS MANGLES DE FIBRANET
+  // LISTAR TODOS LOS MANGLES DE DATAFAST
   // ────────────────────────────────────────────────────────────
   async listarManglesFirebranet(creds: RouterCredentials): Promise<any[]> {
     return this.pool.execute(creds, async (api) => {

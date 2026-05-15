@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState }       from 'react';
 import { useForm }        from 'react-hook-form';
@@ -179,7 +179,7 @@ export function UsuariosTab() {
                 <input {...register('nombreCompleto')} placeholder="Juan Pérez" className={inp(!!errors.nombreCompleto)} />
               </Field>
               <Field label="Email *" error={errors.email?.message}>
-                <input {...register('email')} type="email" placeholder="juan@fibranet.pe" className={inp(!!errors.email)} />
+                <input {...register('email')} type="email" placeholder="juan@datafast.pe" className={inp(!!errors.email)} />
               </Field>
               <Field label="Contraseña inicial *" error={errors.password?.message}>
                 <input {...register('password')} type="password" placeholder="Mínimo 8 caracteres" className={inp(!!errors.password)} />

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Process, Processor,
   OnQueueFailed, OnQueueCompleted,
 } from '@nestjs/bull';
@@ -404,7 +404,7 @@ export class FacturacionWorker {
 
     // Usar el servicio de facturación existente para una sola
     const userSistema = {
-      sub: 'sistema', email: 'sistema@fibranet.pe',
+      sub: 'sistema', email: 'sistema@datafast.pe',
       empresaId, roles: ['Administrador'], permisos: [],
       nombreCompleto: 'Sistema', tema: 'dark',
     } as any;

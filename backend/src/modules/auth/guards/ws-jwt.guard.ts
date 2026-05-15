@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
+﻿import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { WsException } from '@nestjs/websockets';
@@ -36,8 +36,8 @@ export class WsJwtGuard implements CanActivate {
 
       const payload = this.jwtService.verify(token, {
         secret: this.config.get('jwt.secret'),
-        issuer: 'fibranet-isp',
-        audience: 'fibranet-app',
+        issuer: 'datafast-crm',
+        audience: 'datafast-app',
       });
 
       // Adjuntar usuario al socket para uso posterior

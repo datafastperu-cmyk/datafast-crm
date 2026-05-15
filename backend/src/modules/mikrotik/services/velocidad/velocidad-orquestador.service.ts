@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectDataSource }       from '@nestjs/typeorm';
 import { DataSource }             from 'typeorm';
 import { RouterConnectionPool, RouterCredentials } from '../../services/connection-pool.service';
@@ -116,7 +116,7 @@ export class VelocidadOrquestador {
           const tienePcq = await this.queueSvc.tienePcqConfigurado(creds);
           if (!tienePcq) {
             await this.queueSvc.configurarPcqCompleto(creds, {
-              namePrefix:   'fibranet',
+              namePrefix:   'datafast',
               downloadMbps: params.downloadMbps * 20, // capacidad total estimada del nodo
               uploadMbps:   params.uploadMbps * 20,
             });
@@ -158,7 +158,7 @@ export class VelocidadOrquestador {
             burstThreshUp:   params.burstUpMbps
               ? Math.round(params.uploadMbps * 0.8)
               : undefined,
-            comment: `FibraNet:ClienteID:${clienteId}`,
+            comment: `DATAFAST:ClienteID:${clienteId}`,
           });
           resultado = {
             estrategia,

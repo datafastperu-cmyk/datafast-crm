@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Módulo 09 — Seguridad: Firewall, Fail2ban
 
 setup_security() {
@@ -54,7 +54,7 @@ _harden_ssh() {
     cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
     cat >> /etc/ssh/sshd_config << 'EOF'
 
-# FibraNet — SSH Hardening
+# DATAFAST — SSH Hardening
 MaxAuthTries 3
 MaxSessions 5
 ClientAliveInterval 300

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { RouterConnectionPool, RouterCredentials } from './connection-pool.service';
 
 // Lista de morosos: IPs bloqueadas por mora
@@ -146,7 +146,7 @@ export class FirewallService {
         chain:  'forward',
         srcList: ADDRESS_LIST_MOROSOS,
         action: 'drop',
-        comment: 'FibraNet: Bloquear morosos',
+        comment: 'DATAFAST: Bloquear morosos',
       });
 
       // Regla 2: Morosos pueden acceder al portal de pago (DNS + HTTP portal)
@@ -157,7 +157,7 @@ export class FirewallService {
         dstPort: '80,443',
         proto:   'tcp',
         action:  'accept',
-        comment: 'FibraNet: Morosos portal pago',
+        comment: 'DATAFAST: Morosos portal pago',
         position: 'top',
       });
 
@@ -168,14 +168,14 @@ export class FirewallService {
         dstPort: '80,443,53',
         proto:   'tcp',
         action:  'accept',
-        comment: 'FibraNet: Prorroga acceso web',
+        comment: 'DATAFAST: Prorroga acceso web',
       });
 
       await this.agregarReglaFirewallSiNoExiste(api, {
         chain:   'forward',
         srcList: ADDRESS_LIST_PRORROGA,
         action:  'drop',
-        comment: 'FibraNet: Prorroga bloquear resto',
+        comment: 'DATAFAST: Prorroga bloquear resto',
       });
 
       this.logger.log(`Reglas de control configuradas en ${creds.ip}`);

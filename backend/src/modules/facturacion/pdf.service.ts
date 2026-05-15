@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -72,7 +72,7 @@ export class PdfService {
           Title:    `${factura.tipoComprobante.toUpperCase()} ${factura.numeroCompleto}`,
           Author:   empresa.razonSocial,
           Subject:  'Comprobante de pago — Servicio de internet',
-          Creator:  'FibraNet ISP ERP',
+          Creator:  'CRM ISP DATAFAST',
         },
       });
 
@@ -436,7 +436,7 @@ export class PdfService {
 
     doc.fontSize(6).fillColor(this.colors.textLight)
       .text(
-        'Representación impresa del Comprobante de Pago Electrónico · Generado por FibraNet ISP ERP',
+        'Representación impresa del Comprobante de Pago Electrónico · Generado por CRM ISP DATAFAST',
         m, footerY + 14,
         { width: pageW - m * 2, align: 'center' },
       );

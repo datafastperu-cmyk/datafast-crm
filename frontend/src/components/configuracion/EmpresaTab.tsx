@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useForm }             from 'react-hook-form';
@@ -112,7 +112,7 @@ export function EmpresaTab() {
       <Section title="Datos de la empresa">
         <div className="grid grid-cols-2 gap-4">
           <Field label="Razón social *" error={errors.razonSocial?.message} span={2}>
-            <input {...register('razonSocial')} placeholder="FibraNet S.A.C." className={inp(!!errors.razonSocial)} />
+            <input {...register('razonSocial')} placeholder="DATAFAST S.A.C." className={inp(!!errors.razonSocial)} />
           </Field>
           <Field label="RUC *" error={errors.ruc?.message}>
             <input {...register('ruc')} placeholder="20123456789" className={cn(inp(!!errors.ruc), 'font-mono')} maxLength={11} />
@@ -121,13 +121,13 @@ export function EmpresaTab() {
             <input {...register('telefono')} placeholder="+51 073 123456" className={inp()} />
           </Field>
           <Field label="Email" error={errors.email?.message} span={2}>
-            <input {...register('email')} type="email" placeholder="contacto@fibranet.pe" className={inp(!!errors.email)} />
+            <input {...register('email')} type="email" placeholder="contacto@datafast.pe" className={inp(!!errors.email)} />
           </Field>
           <Field label="Dirección" span={2}>
             <input {...register('direccion')} placeholder="Av. Sánchez Cerro 1234, Piura" className={inp()} />
           </Field>
           <Field label="Sitio web" error={errors.websiteUrl?.message} span={2}>
-            <input {...register('websiteUrl')} type="url" placeholder="https://fibranet.pe" className={inp(!!errors.websiteUrl)} />
+            <input {...register('websiteUrl')} type="url" placeholder="https://datafast.pe" className={inp(!!errors.websiteUrl)} />
           </Field>
         </div>
       </Section>

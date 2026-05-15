@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Módulo 06 — SSL / Let's Encrypt
 
 setup_ssl() {
@@ -6,7 +6,7 @@ setup_ssl() {
 
     if [[ -z "${DOMINIO_FRONTEND:-}" ]]; then
         warn "Sin dominio configurado. SSL omitido."
-        warn "Para activar SSL después ejecuta: fibranet ssl tu-dominio.pe"
+        warn "Para activar SSL después ejecuta: datafast ssl tu-dominio.pe"
         return
     fi
 
@@ -28,7 +28,7 @@ setup_ssl() {
     else
         warn "No se pudo obtener el certificado SSL."
         warn "Asegúrate de que el DNS apunta a: $(hostname -I | awk '{print $1}')"
-        warn "Luego ejecuta: fibranet ssl ${DOMINIO_FRONTEND}"
+        warn "Luego ejecuta: datafast ssl ${DOMINIO_FRONTEND}"
     fi
 
     # Cron para renovación automática

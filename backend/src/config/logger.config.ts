@@ -1,4 +1,4 @@
-import * as winston from 'winston';
+﻿import * as winston from 'winston';
 import { WinstonModule } from 'nest-winston';
 import * as path from 'path';
 
@@ -30,7 +30,7 @@ export const winstonConfig = WinstonModule.createLogger({
   level: logLevel,
   format: isProduction ? productionFormat : developmentFormat,
   defaultMeta: {
-    service: 'fibranet-backend',
+    service: 'datafast-backend',
     env: process.env.NODE_ENV,
   },
   transports: [

@@ -10,6 +10,7 @@ import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { appConfig, databaseConfig, redisConfig, jwtConfig, validationSchema } from './config';
 
 
+import { LicenciaGuard }         from './modules/licencia/licencia.guard';
 import { JwtAuthGuard }          from './common/guards/jwt-auth.guard';
 import { RolesGuard }            from './common/guards/roles.guard';
 import { TransformInterceptor }  from './common/interceptors/transform.interceptor';
@@ -18,8 +19,10 @@ import { TimeoutInterceptor }    from './common/interceptors/timeout.interceptor
 import { AuditInterceptor }      from './common/interceptors/audit.interceptor';
 import { AllExceptionsFilter }   from './common/filters/http-exception.filter';
 
-import { HealthModule } from './modules/health/health.module';
-import { AuthModule }   from './modules/auth/auth.module';
+import { LicenciaModule } from './modules/licencia/licencia.module';
+import { HealthModule }   from './modules/health/health.module';
+import { AuthModule }    from './modules/auth/auth.module';
+import { SistemaModule } from './modules/sistema/sistema.module';
 
 @Module({
   imports: [
@@ -95,10 +98,13 @@ import { AuthModule }   from './modules/auth/auth.module';
       }),
       inject: [ConfigService],
     }),
+    LicenciaModule,
     HealthModule,
     AuthModule,
+    SistemaModule,
   ],
   providers: [
+    { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
     { provide: APP_GUARD,       useClass: JwtAuthGuard },
     { provide: APP_GUARD,       useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },

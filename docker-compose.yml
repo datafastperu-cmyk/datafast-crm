@@ -1,15 +1,15 @@
-version: '3.9'
+﻿version: '3.9'
 
 # ══════════════════════════════════════════════════════════════════════
-#  FibraNet ISP ERP — Docker Compose de Producción
+#  CRM ISP DATAFAST — Docker Compose de Producción
 #  Uso: docker compose up -d
 # ══════════════════════════════════════════════════════════════════════
 
 networks:
-  fibranet-internal:
+  datafast-internal:
     driver: bridge
     internal: true                    # La red interna no tiene acceso externo
-  fibranet-public:
+  datafast-public:
     driver: bridge                    # Solo Nginx está en esta red
 
 volumes:
@@ -38,20 +38,20 @@ services:
   # ── PostgreSQL 16 ──────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: fibranet-postgres
+    container_name: datafast-postgres
     <<: *restart-policy
     networks:
-      - fibranet-internal
+      - datafast-internal
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB:       ${DB_NAME:-fibranet_db}
-      POSTGRES_USER:     ${DB_USER:-fibranet_db_user}
+      POSTGRES_DB:       ${DB_NAME:-datafast_db}
+      POSTGRES_USER:     ${DB_USER:-datafast_db_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD requerida}
       TZ:                America/Lima
     healthcheck:
       <<: *hc-defaults
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fibranet_db_user} -d ${DB_NAME:-fibranet_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-datafast_db_user} -d ${DB_NAME:-datafast_db}"]
     command: >
       postgres
       -c shared_buffers=512MB
@@ -69,10 +69,10 @@ services:
   # ── Redis 7 ───────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: fibranet-redis
+    container_name: datafast-redis
     <<: *restart-policy
     networks:
-      - fibranet-internal
+      - datafast-internal
     volumes:
       - redis-data:/data
     command: >
@@ -99,11 +99,11 @@ services:
       target: production
       args:
         - NODE_VERSION=20
-    image: fibranet/backend:${FIBRANET_VERSION:-latest}
-    container_name: fibranet-backend
+    image: datafast/backend:${DATAFAST_VERSION:-latest}
+    container_name: datafast-backend
     <<: *restart-policy
     networks:
-      - fibranet-internal
+      - datafast-internal
     volumes:
       - app-logs:/app/logs
     env_file: ./backend/.env.production
@@ -138,11 +138,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: runner
-    image: fibranet/frontend:${FIBRANET_VERSION:-latest}
-    container_name: fibranet-frontend
+    image: datafast/frontend:${DATAFAST_VERSION:-latest}
+    container_name: datafast-frontend
     <<: *restart-policy
     networks:
-      - fibranet-internal
+      - datafast-internal
     env_file: ./frontend/.env.production
     environment:
       NODE_ENV: production
@@ -159,16 +159,16 @@ services:
         limits:   { cpus: '0.5', memory: 512M }
     expose: ["3000"]
     networks:
-      - fibranet-internal
+      - datafast-internal
 
   # ── Nginx + SSL ────────────────────────────────────────────────────
   nginx:
     image: nginx:1.25-alpine
-    container_name: fibranet-nginx
+    container_name: datafast-nginx
     <<: *restart-policy
     networks:
-      - fibranet-internal
-      - fibranet-public
+      - datafast-internal
+      - datafast-public
     ports:
       - "80:80"
       - "443:443"
@@ -188,7 +188,7 @@ services:
   # ── Certbot (renovación SSL automática) ───────────────────────────
   certbot:
     image: certbot/certbot
-    container_name: fibranet-certbot
+    container_name: datafast-certbot
     volumes:
       - certbot-conf:/etc/letsencrypt
       - certbot-www:/var/www/certbot
@@ -207,7 +207,7 @@ services:
   # ── Watchtower (actualizaciones automáticas de imágenes) ──────────
   # watchtower:
   #   image: containrrr/watchtower
-  #   container_name: fibranet-watchtower
+  #   container_name: datafast-watchtower
   #   volumes:
   #     - /var/run/docker.sock:/var/run/docker.sock
   #   environment:

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Módulo 03 — PostgreSQL 16
 
 install_postgres() {
@@ -28,21 +28,21 @@ install_postgres() {
 
     info "Creando base de datos..."
     sudo -u postgres psql -tc \
-        "SELECT 1 FROM pg_roles WHERE rolname='fibranet_db_user'" 2>/dev/null \
+        "SELECT 1 FROM pg_roles WHERE rolname='datafast_db_user'" 2>/dev/null \
         | grep -q 1 || \
         sudo -u postgres psql -c \
-            "CREATE USER fibranet_db_user WITH PASSWORD '${DB_PASSWORD}';" \
+            "CREATE USER datafast_db_user WITH PASSWORD '${DB_PASSWORD}';" \
             >> "${LOG_FILE}" 2>&1
 
     sudo -u postgres psql -tc \
-        "SELECT 1 FROM pg_database WHERE datname='fibranet_db'" 2>/dev/null \
+        "SELECT 1 FROM pg_database WHERE datname='datafast_db'" 2>/dev/null \
         | grep -q 1 || \
         sudo -u postgres psql -c \
-            "CREATE DATABASE fibranet_db OWNER fibranet_db_user ENCODING 'UTF8';" \
+            "CREATE DATABASE datafast_db OWNER datafast_db_user ENCODING 'UTF8';" \
             >> "${LOG_FILE}" 2>&1
 
     sudo -u postgres psql -c \
-        "GRANT ALL PRIVILEGES ON DATABASE fibranet_db TO fibranet_db_user;" \
+        "GRANT ALL PRIVILEGES ON DATABASE datafast_db TO datafast_db_user;" \
         >> "${LOG_FILE}" 2>&1
 
     # Tuning según RAM

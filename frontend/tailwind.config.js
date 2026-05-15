@@ -1,4 +1,4 @@
-/** @type {import('tailwindcss').Config} */
+﻿/** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode:  ['class'],
   content:   [
@@ -9,7 +9,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // ── Sistema de colores FibraNet ───────────────────────
+        // ── Sistema de colores DATAFAST ───────────────────────
         border:      'hsl(var(--border))',
         input:       'hsl(var(--input))',
         ring:        'hsl(var(--ring))',
@@ -51,7 +51,7 @@ module.exports = {
         warning:  '#f59e0b',
         degraded: '#f97316',
 
-        // ── Brand FibraNet ────────────────────────────────────
+        // ── Brand DATAFAST ────────────────────────────────────
         brand: {
           50:  '#eff6ff',
           100: '#dbeafe',

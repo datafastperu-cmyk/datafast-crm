@@ -1,4 +1,4 @@
-# FibraNet ISP ERP
+﻿# CRM ISP DATAFAST
 
 Sistema ERP/CRM completo para proveedores de internet FTTH y WISP.
 
@@ -15,8 +15,8 @@ Sistema ERP/CRM completo para proveedores de internet FTTH y WISP.
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/tuempresa/fibranet-isp.git
-cd fibranet-isp
+git clone https://github.com/tuempresa/datafast-crm.git
+cd datafast-crm
 
 # 2. Configurar variables de entorno
 cp .env.example .env
@@ -55,8 +55,8 @@ sudo bash scripts/setup.sh
 
 # 2. Clonar proyecto
 cd /opt
-git clone https://github.com/tuempresa/fibranet-isp.git fibranet
-cd fibranet
+git clone https://github.com/tuempresa/datafast-crm.git datafast
+cd datafast
 
 # 3. Configurar variables
 cp .env.example .env
@@ -132,4 +132,4 @@ Swagger disponible en: `https://app.tudominio.com/api/docs`
 
 ## Licencia
 
-Propietario — FibraNet ISP © 2024
+Propietario — CRM ISP DATAFAST © 2024

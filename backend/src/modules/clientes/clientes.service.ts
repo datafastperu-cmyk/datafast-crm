@@ -1,7 +1,8 @@
 import {
   Injectable, NotFoundException, ConflictException,
-  BadRequestException, Logger, ForbiddenException,
+  BadRequestException, Logger, ForbiddenException, HttpException,
 } from '@nestjs/common';
+import { LicenciaService } from '../licencia/licencia.service';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 
@@ -39,10 +40,19 @@ export class ClientesService {
     private readonly reniecSvc: ReniecService,
     private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService,
+    private readonly licenciaSvc: LicenciaService,
   ) {}
 
   // ── Crear cliente ─────────────────────────────────────────
   async create(dto: CreateClienteDto, user: JwtPayload, req?: any): Promise<Cliente> {
+    // Verificar límite de clientes según plan de licencia
+    await this.licenciaSvc.verificarLimiteClientes(user.empresaId).catch((e) => {
+      throw new HttpException(
+        { statusCode: 402, error: e.error || 'LICENSE_LIMIT', message: e.message },
+        402,
+      );
+    });
+
     // Verificar duplicado de documento
     const tipoDoc = dto.tipoDocumento || TipoDocumento.DNI;
     const existe = await this.clienteRepo.existeDocumento(

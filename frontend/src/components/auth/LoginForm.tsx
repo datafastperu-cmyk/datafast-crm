@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState }       from 'react';
 import { useRouter }      from 'next/navigation';
@@ -72,7 +72,7 @@ export function LoginForm() {
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="admin@fibranet.pe"
+            placeholder="admin@datafast.pe"
             disabled={loading}
             {...register('email')}
             className={`

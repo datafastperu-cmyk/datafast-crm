@@ -46,6 +46,16 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+    // ── 402: licencia inválida o límite de clientes ───────────
+    if (error.response?.status === 402) {
+      const data = error.response.data as any;
+      const razon = data?.error || data?.razon || 'NO_LICENSE_KEY';
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('licencia:bloqueada', { detail: { razon } }));
+      }
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Si ya se está haciendo refresh, encolar esta petición
       if (isRefreshing) {

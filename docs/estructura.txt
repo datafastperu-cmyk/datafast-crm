@@ -1,4 +1,4 @@
-fibranet-isp/
+﻿datafast-crm/
 │
 ├── .env.example                    ← Variables de entorno (copiar a .env)
 ├── .env                            ← NO commitear — ignorado por .gitignore

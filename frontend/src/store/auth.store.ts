@@ -1,4 +1,4 @@
-import { create }         from 'zustand';
+﻿import { create }         from 'zustand';
 import { persist }        from 'zustand/middleware';
 import { jwtDecode }      from 'jwt-decode';
 import { setAuthCookies, clearAuthCookies } from '@/lib/api';
@@ -57,7 +57,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name:    'fibranet-auth',
+      name:    'datafast-auth',
       // Solo persistir datos del usuario, no el token (viene de cookies)
       partialize: (state) => ({
         usuario:  state.usuario,

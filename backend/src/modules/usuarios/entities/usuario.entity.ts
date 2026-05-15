@@ -1,4 +1,4 @@
-import {
+﻿import {
   Column, Entity, ManyToMany, JoinTable,
   BeforeInsert, BeforeUpdate,
 } from 'typeorm';
@@ -28,7 +28,7 @@ export class Usuario extends BaseModel {
   @Column({ length: 100 })
   apellidos: string;
 
-  @ApiProperty({ example: 'juan@fibranet.pe' })
+  @ApiProperty({ example: 'juan@datafast.pe' })
   @Column({ length: 150 })
   email: string;
 

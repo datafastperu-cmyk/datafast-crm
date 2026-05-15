@@ -1,5 +1,5 @@
 # ==============================================================
-# FibraNet ISP — .gitignore
+# CRM ISP DATAFAST — .gitignore
 # ==============================================================
 
 # ── Entorno ───────────────────────────────────────────────────
@@ -65,3 +65,7 @@ coverage/
 
 # ── Docker volumes locales ────────────────────────────────────
 .docker/
+
+# ── Herramientas privadas de licencias (NUNCA versionar) ──────
+tools/private.pem
+tools/generate-license.js

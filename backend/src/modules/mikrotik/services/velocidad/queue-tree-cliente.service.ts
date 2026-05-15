@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { RouterConnectionPool, RouterCredentials } from '../../services/connection-pool.service';
 import { MangleService }                           from './mangle.service';
 import { ConfigVelocidad }                         from './velocidad.service';
@@ -240,7 +240,7 @@ export class QueueTreeClienteService {
     return this.pool.execute(creds, async (api) => {
       // Buscar por comentario que contenga el clienteId
       const queues = await api.write('/queue/simple/print', [
-        `?comment~FibraNet:ClienteID:${clienteId}`,
+        `?comment~DATAFAST:ClienteID:${clienteId}`,
       ]).catch(() => []);
 
       if (!queues.length) return false;
@@ -322,7 +322,7 @@ export class QueueTreeClienteService {
     };
   }
 
-  // ── Listar todos los Queue Trees de FibraNet ─────────────
+  // ── Listar todos los Queue Trees de DATAFAST ─────────────
   async listarQueueTreesFibranet(creds: RouterCredentials): Promise<any[]> {
     return this.pool.execute(creds, async (api) => {
       const all = await api.write('/queue/tree/print');

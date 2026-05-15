@@ -1,17 +1,17 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Módulo 10 — Monitoreo
 setup_monitoring() {
     step "Configurando monitoreo del servidor"
     info "Creando script de health check..."
     cat > "${INSTALL_DIR}/scripts/health.sh" << 'HEALTHEOF'
 #!/usr/bin/env bash
-readonly INSTALL_DIR="/opt/fibranet"
+readonly INSTALL_DIR="/opt/datafast"
 G='\033[0;32m' R='\033[0;31m' Y='\033[1;33m' C='\033[0;36m' BOLD='\033[1m' NC='\033[0m'
 ok()   { echo -e "  ${G}✓${NC} $*"; }
 fail() { echo -e "  ${R}✗${NC} $*"; }
 warn() { echo -e "  ${Y}!${NC} $*"; }
 echo -e "\n${BOLD}${C}══════════════════════════════════════${NC}"
-echo -e "${BOLD}  FibraNet — Health Check $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+echo -e "${BOLD}  DATAFAST — Health Check $(date '+%Y-%m-%d %H:%M:%S')${NC}"
 echo -e "${BOLD}${C}══════════════════════════════════════${NC}"
 echo -e "\n${BOLD}── Procesos PM2:${NC}"
 pm2 jlist 2>/dev/null | python3 -c "

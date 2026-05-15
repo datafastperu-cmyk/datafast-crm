@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Módulo 07 — Despliegue de la aplicación
 
 deploy_app() {
-    step "Desplegando FibraNet ISP ERP"
+    step "Desplegando CRM ISP DATAFAST"
     _deploy_code
     _write_backend_env
     _write_frontend_env
@@ -14,19 +14,19 @@ deploy_app() {
 
 _deploy_code() {
     info "Clonando repositorio..."
-    local REPO="https://github.com/datafastperu-cmyk/fibranet-isp.git"
+    local REPO="https://github.com/datafastperu-cmyk/datafast-crm.git"
 
     if [[ -d "${INSTALL_DIR}/backend/.git" ]]; then
         git -C "${INSTALL_DIR}" pull >> "${LOG_FILE}" 2>&1
     else
         # Clonar en temp y copiar
-        rm -rf /tmp/fibranet-src
-        git clone --depth 1 "$REPO" /tmp/fibranet-src >> "${LOG_FILE}" 2>&1
-        cp -r /tmp/fibranet-src/backend/.  "${INSTALL_DIR}/backend/"
-        cp -r /tmp/fibranet-src/frontend/. "${INSTALL_DIR}/frontend/"
-        rm -rf /tmp/fibranet-src
+        rm -rf /tmp/datafast-src
+        git clone --depth 1 "$REPO" /tmp/datafast-src >> "${LOG_FILE}" 2>&1
+        cp -r /tmp/datafast-src/backend/.  "${INSTALL_DIR}/backend/"
+        cp -r /tmp/datafast-src/frontend/. "${INSTALL_DIR}/frontend/"
+        rm -rf /tmp/datafast-src
     fi
-    chown -R fibranet:fibranet "${INSTALL_DIR}/backend" "${INSTALL_DIR}/frontend"
+    chown -R datafast:datafast "${INSTALL_DIR}/backend" "${INSTALL_DIR}/frontend"
     ok "Código desplegado"
 }
 
@@ -83,8 +83,8 @@ _run_seed() {
     set -a; source .env.production; set +a
 
     local count
-    count=$(PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U fibranet_db_user \
-        -d fibranet_db -t -c "SELECT COUNT(*) FROM empresas;" 2>/dev/null | tr -d ' ' || echo "0")
+    count=$(PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user \
+        -d datafast_db -t -c "SELECT COUNT(*) FROM empresas;" 2>/dev/null | tr -d ' ' || echo "0")
 
     if [[ "${count}" == "0" ]]; then
         npm run seed:run >> "${LOG_FILE}" 2>&1
@@ -107,8 +107,8 @@ TZ=America/Lima
 
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
-DATABASE_NAME=fibranet_db
-DATABASE_USER=fibranet_db_user
+DATABASE_NAME=datafast_db
+DATABASE_USER=datafast_db_user
 DATABASE_PASSWORD=${DB_PASSWORD}
 DATABASE_SSL=false
 DATABASE_SYNCHRONIZE=false
@@ -125,18 +125,18 @@ JWT_SECRET=${JWT_SECRET}
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
 JWT_REFRESH_EXPIRES_IN=7d
-JWT_ISSUER=fibranet-isp
-JWT_AUDIENCE=fibranet-app
+JWT_ISSUER=datafast-crm
+JWT_AUDIENCE=datafast-app
 
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
 FRONTEND_URL=${frontend_url}
 ALLOWED_ORIGINS=${frontend_url}
 
-EMPRESA_NOMBRE=${EMPRESA_NOMBRE:-FibraNet ISP}
+EMPRESA_NOMBRE=${EMPRESA_NOMBRE:-CRM ISP DATAFAST}
 EMPRESA_RUC=${EMPRESA_RUC:-20000000001}
-ADMIN_EMAIL=${ADMIN_EMAIL:-admin@fibranet.pe}
-ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin@FibraNet2024!}
+ADMIN_EMAIL=${ADMIN_EMAIL:-admin@datafast.pe}
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin@DATAFAST2024!}
 
 WHATSAPP_TOKEN=
 WHATSAPP_PHONE_ID=
@@ -163,8 +163,8 @@ _write_frontend_env() {
     cat > "${INSTALL_DIR}/frontend/.env.production" << ENVEOF
 NEXT_PUBLIC_API_URL=${api_url}
 NEXT_PUBLIC_WS_URL=${api_url}
-NEXT_PUBLIC_APP_NAME=${EMPRESA_NOMBRE:-FibraNet ISP}
-NEXT_PUBLIC_VERSION=${FIBRANET_VERSION}
+NEXT_PUBLIC_APP_NAME=${EMPRESA_NOMBRE:-CRM ISP DATAFAST}
+NEXT_PUBLIC_VERSION=${DATAFAST_VERSION}
 NEXT_TELEMETRY_DISABLED=1
 ENVEOF
     chmod 640 "${INSTALL_DIR}/frontend/.env.production"
@@ -172,13 +172,13 @@ ENVEOF
 }
 
 upgrade_app() {
-    step "Actualizando FibraNet"
+    step "Actualizando DATAFAST"
     "${INSTALL_DIR}/scripts/backup.sh" >> "${LOG_FILE}" 2>&1
     _deploy_code
     _install_backend
     _install_frontend
     _run_migrations
-    pm2 reload fibranet-backend  >> "${LOG_FILE}" 2>&1 || true
-    pm2 restart fibranet-frontend >> "${LOG_FILE}" 2>&1 || true
-    ok "FibraNet actualizado"
+    pm2 reload datafast-backend  >> "${LOG_FILE}" 2>&1 || true
+    pm2 restart datafast-frontend >> "${LOG_FILE}" 2>&1 || true
+    ok "DATAFAST actualizado"
 }

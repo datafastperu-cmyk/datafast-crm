@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 #  Módulo 09 — Seguridad: Firewall, Fail2ban y SSH
 # ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ _harden_ssh() {
     # Parámetros de seguridad SSH
     cat >> /etc/ssh/sshd_config << 'EOF'
 
-# FibraNet — SSH Hardening
+# DATAFAST — SSH Hardening
 PermitRootLogin no
 MaxAuthTries 3
 MaxSessions 5

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 #  Módulo 10 — Monitoreo del servidor (Netdata + scripts de salud)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -10,8 +10,8 @@ setup_monitoring() {
     info "Creando script de salud del sistema..."
     cat > "${INSTALL_DIR}/scripts/health.sh" << 'HEALTHEOF'
 #!/usr/bin/env bash
-# FibraNet ISP ERP — Health Check
-readonly INSTALL_DIR="/opt/fibranet"
+# CRM ISP DATAFAST — Health Check
+readonly INSTALL_DIR="/opt/datafast"
 readonly RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m'
 readonly CYAN='\033[0;36m' BOLD='\033[1m' NC='\033[0m'
 
@@ -21,7 +21,7 @@ warn() { echo -e "  ${YELLOW}!${NC} $*"; }
 
 echo ""
 echo -e "${BOLD}${CYAN}══════════════════════════════════════════${NC}"
-echo -e "${BOLD}  FibraNet ISP — Health Check$(date '+  %Y-%m-%d %H:%M:%S')${NC}"
+echo -e "${BOLD}  CRM ISP DATAFAST — Health Check$(date '+  %Y-%m-%d %H:%M:%S')${NC}"
 echo -e "${BOLD}${CYAN}══════════════════════════════════════════${NC}"
 
 # PM2
@@ -53,11 +53,11 @@ code=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null
 
 # PostgreSQL
 echo -e "\n${BOLD}── PostgreSQL:${NC}"
-if PGPASSWORD="${DB_PASSWORD:-}" psql -h localhost -U fibranet_db_user -d fibranet_db -c "SELECT 1" \
+if PGPASSWORD="${DB_PASSWORD:-}" psql -h localhost -U datafast_db_user -d datafast_db -c "SELECT 1" \
     > /dev/null 2>&1; then
-    clientes=$(PGPASSWORD="${DB_PASSWORD:-}" psql -h localhost -U fibranet_db_user -d fibranet_db \
+    clientes=$(PGPASSWORD="${DB_PASSWORD:-}" psql -h localhost -U datafast_db_user -d datafast_db \
         -t -c "SELECT COUNT(*) FROM clientes WHERE deleted_at IS NULL" 2>/dev/null | tr -d ' ')
-    contratos=$(PGPASSWORD="${DB_PASSWORD:-}" psql -h localhost -U fibranet_db_user -d fibranet_db \
+    contratos=$(PGPASSWORD="${DB_PASSWORD:-}" psql -h localhost -U datafast_db_user -d datafast_db \
         -t -c "SELECT COUNT(*) FROM contratos WHERE deleted_at IS NULL AND estado='activo'" \
         2>/dev/null | tr -d ' ')
     ok "Conectado | Clientes: ${clientes:-?} | Contratos activos: ${contratos:-?}"
@@ -153,11 +153,11 @@ setup_backup() {
     cat > "${INSTALL_DIR}/scripts/backup.sh" << 'BACKUPEOF'
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-#  FibraNet ISP — Sistema de Backup v1.0
+#  CRM ISP DATAFAST — Sistema de Backup v1.0
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-readonly INSTALL_DIR="/opt/fibranet"
+readonly INSTALL_DIR="/opt/datafast"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups"
 readonly FECHA=$(date +%Y%m%d_%H%M%S)
 readonly LOG="${INSTALL_DIR}/logs/backup.log"
@@ -176,9 +176,9 @@ mkdir -p "${BACKUP_DIR}/db" "${BACKUP_DIR}/files"
 
 # ── 1. Base de datos ──────────────────────────────────────────────────────────
 log "Backup de PostgreSQL..."
-BACKUP_DB="${BACKUP_DIR}/db/fibranet_${FECHA}.sql.gz"
+BACKUP_DB="${BACKUP_DIR}/db/datafast_${FECHA}.sql.gz"
 PGPASSWORD="${DB_PASSWORD}" pg_dump \
-    -h localhost -U fibranet_db_user fibranet_db \
+    -h localhost -U datafast_db_user datafast_db \
     --clean --if-exists \
     | gzip -9 > "${BACKUP_DB}"
 
@@ -212,13 +212,13 @@ find "${BACKUP_DIR}" -name "*.gz" -mtime +${MAX_DIAS_LOCAL} -delete
 TOTAL=$(ls "${BACKUP_DIR}/db/" | wc -l)
 log "✓ Backups actuales: ${TOTAL}"
 
-# ── 5. Backup en nube (opcional — configurar en /opt/fibranet/config/backup.conf)
+# ── 5. Backup en nube (opcional — configurar en /opt/datafast/config/backup.conf)
 CLOUD_CONF="${INSTALL_DIR}/config/backup.conf"
 if [[ -f "$CLOUD_CONF" ]]; then
     source "$CLOUD_CONF"
     if [[ -n "${S3_BUCKET:-}" ]]; then
-        log "Subiendo a S3: s3://${S3_BUCKET}/fibranet/"
-        aws s3 cp "${BACKUP_DB}"  "s3://${S3_BUCKET}/fibranet/db/" >> "$LOG" 2>&1 && \
+        log "Subiendo a S3: s3://${S3_BUCKET}/datafast/"
+        aws s3 cp "${BACKUP_DB}"  "s3://${S3_BUCKET}/datafast/db/" >> "$LOG" 2>&1 && \
             log "✓ Subido a S3" || log "✗ Error al subir a S3"
     fi
     if [[ -n "${GDRIVE_FOLDER:-}" ]]; then
@@ -236,17 +236,17 @@ BACKUPEOF
     cat > "${INSTALL_DIR}/scripts/restore.sh" << 'RESTOREEOF'
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-#  FibraNet ISP — Restaurar desde backup
+#  CRM ISP DATAFAST — Restaurar desde backup
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-readonly INSTALL_DIR="/opt/fibranet"
+readonly INSTALL_DIR="/opt/datafast"
 readonly BACKUP_DIR="${INSTALL_DIR}/backups/db"
 
 source "${INSTALL_DIR}/config/secrets.conf" 2>/dev/null || true
 
 echo "═══════════════════════════════════════"
-echo "  FibraNet — Restaurar Backup"
+echo "  DATAFAST — Restaurar Backup"
 echo "═══════════════════════════════════════"
 echo ""
 
@@ -280,20 +280,20 @@ fi
 
 # Parar aplicación
 echo "Pausando la aplicación..."
-sudo -u fibranet pm2 stop fibranet-backend 2>/dev/null || true
+sudo -u datafast pm2 stop datafast-backend 2>/dev/null || true
 
 # Restaurar
 echo "Restaurando base de datos..."
 PGPASSWORD="${DB_PASSWORD}" psql \
-    -h localhost -U fibranet_db_user \
-    -d fibranet_db \
+    -h localhost -U datafast_db_user \
+    -d datafast_db \
     < <(gunzip -c "$backup_file")
 
 echo ""
 echo "✓ Base de datos restaurada"
 
 # Reiniciar
-sudo -u fibranet pm2 start fibranet-backend 2>/dev/null || true
+sudo -u datafast pm2 start datafast-backend 2>/dev/null || true
 echo "✓ Aplicación reiniciada"
 echo ""
 echo "Restauración completada."
@@ -303,13 +303,13 @@ RESTOREEOF
     # ── Programar backups automáticos ─────────────────────────────────────
     info "Programando backups automáticos..."
     (crontab -l 2>/dev/null; cat << 'CRONEOF'
-# FibraNet — Backup automático
+# DATAFAST — Backup automático
 # Backup diario a las 2:00 AM
-0 2 * * * /opt/fibranet/scripts/backup.sh
+0 2 * * * /opt/datafast/scripts/backup.sh
 # Limpieza de logs de la aplicación (domingo 3 AM)
 0 3 * * 0 pm2 flush 2>/dev/null
 # Limpiar logs de monitoreo viejos
-0 4 1 * * find /opt/fibranet/logs -name "*.log" -mtime +90 -delete 2>/dev/null
+0 4 1 * * find /opt/datafast/logs -name "*.log" -mtime +90 -delete 2>/dev/null
 CRONEOF
     ) | sort -u | crontab -
 

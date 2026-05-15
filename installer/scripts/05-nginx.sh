@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 #  Módulo 05 — Nginx Reverse Proxy
 # ─────────────────────────────────────────────────────────────────────────────
@@ -102,9 +102,9 @@ EOF
 
     # ── Site: Backend API ─────────────────────────────────────────────────
     info "Configurando vhost para la API..."
-    cat > /etc/nginx/sites-available/fibranet-api << EOF
+    cat > /etc/nginx/sites-available/datafast-api << EOF
 # ── Upstreams ─────────────────────────────────────────────────────────
-upstream fibranet_backend {
+upstream datafast_backend {
     server 127.0.0.1:4000;
     keepalive 32;
     keepalive_requests 1000;
@@ -134,8 +134,8 @@ server {
     server_name ${BE_HOST};
 
     # SSL (se activa con Certbot)
-    ssl_certificate     /etc/nginx/ssl/fibranet.crt;
-    ssl_certificate_key /etc/nginx/ssl/fibranet.key;
+    ssl_certificate     /etc/nginx/ssl/datafast.crt;
+    ssl_certificate_key /etc/nginx/ssl/datafast.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
@@ -147,20 +147,20 @@ server {
 
     client_max_body_size 25M;
 
-    access_log /var/log/nginx/fibranet-api-access.log main;
-    error_log  /var/log/nginx/fibranet-api-error.log warn;
+    access_log /var/log/nginx/datafast-api-access.log main;
+    error_log  /var/log/nginx/datafast-api-error.log warn;
 
     # Health check (sin log ni rate limit)
     location = /api/v1/health {
         access_log off;
-        proxy_pass http://fibranet_backend;
+        proxy_pass http://datafast_backend;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
     }
 
     # WebSocket (monitoreo tiempo real)
     location /socket.io/ {
-        proxy_pass http://fibranet_backend;
+        proxy_pass http://datafast_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade    \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -175,7 +175,7 @@ server {
 
     # Webhooks (MercadoPago, sin rate limit)
     location /api/v1/pagos/webhooks/ {
-        proxy_pass http://fibranet_backend;
+        proxy_pass http://datafast_backend;
         proxy_set_header Host              \$host;
         proxy_set_header X-Real-IP         \$remote_addr;
         proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
@@ -188,7 +188,7 @@ server {
         limit_req_status 429;
         limit_conn conn 10;
 
-        proxy_pass http://fibranet_backend;
+        proxy_pass http://datafast_backend;
         proxy_set_header Host              \$host;
         proxy_set_header X-Real-IP         \$remote_addr;
         proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
@@ -200,7 +200,7 @@ server {
         limit_req zone=api burst=30 nodelay;
         limit_req_status 429;
 
-        proxy_pass http://fibranet_backend;
+        proxy_pass http://datafast_backend;
         proxy_http_version 1.1;
         proxy_set_header Connection        "";
         proxy_set_header Host              \$host;
@@ -213,8 +213,8 @@ EOF
 
     # ── Site: Frontend ────────────────────────────────────────────────────
     info "Configurando vhost para el frontend..."
-    cat > /etc/nginx/sites-available/fibranet-frontend << EOF
-upstream fibranet_frontend {
+    cat > /etc/nginx/sites-available/datafast-frontend << EOF
+upstream datafast_frontend {
     server 127.0.0.1:3000;
     keepalive 16;
 }
@@ -238,8 +238,8 @@ server {
     listen [::]:443 ssl http2;
     server_name ${FE_HOST};
 
-    ssl_certificate     /etc/nginx/ssl/fibranet.crt;
-    ssl_certificate_key /etc/nginx/ssl/fibranet.key;
+    ssl_certificate     /etc/nginx/ssl/datafast.crt;
+    ssl_certificate_key /etc/nginx/ssl/datafast.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
     ssl_session_cache   shared:SSL:10m;
@@ -251,19 +251,19 @@ server {
 
     client_max_body_size 10M;
 
-    access_log /var/log/nginx/fibranet-frontend-access.log main;
-    error_log  /var/log/nginx/fibranet-frontend-error.log warn;
+    access_log /var/log/nginx/datafast-frontend-access.log main;
+    error_log  /var/log/nginx/datafast-frontend-error.log warn;
 
     # Archivos estáticos Next.js (caché agresiva)
     location /_next/static/ {
-        proxy_pass http://fibranet_frontend;
+        proxy_pass http://datafast_frontend;
         proxy_set_header Host \$host;
         add_header Cache-Control "public, max-age=31536000, immutable";
         expires 1y;
     }
 
     location /favicon.ico {
-        proxy_pass http://fibranet_frontend;
+        proxy_pass http://datafast_frontend;
         access_log off;
         add_header Cache-Control "public, max-age=86400";
     }
@@ -272,7 +272,7 @@ server {
     location / {
         limit_req zone=web burst=50 nodelay;
 
-        proxy_pass http://fibranet_frontend;
+        proxy_pass http://datafast_frontend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade           \$http_upgrade;
         proxy_set_header Connection        "upgrade";
@@ -290,15 +290,15 @@ EOF
     info "Creando certificado SSL auto-firmado temporal..."
     mkdir -p /etc/nginx/ssl /var/www/certbot
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /etc/nginx/ssl/fibranet.key \
-        -out    /etc/nginx/ssl/fibranet.crt \
-        -subj   "/C=PE/ST=Lima/L=Lima/O=FibraNet/CN=${FE_HOST}" \
+        -keyout /etc/nginx/ssl/datafast.key \
+        -out    /etc/nginx/ssl/datafast.crt \
+        -subj   "/C=PE/ST=Lima/L=Lima/O=DATAFAST/CN=${FE_HOST}" \
         >> "${LOG_FILE}" 2>&1
     ok "Certificado temporal creado"
 
     # ── Activar sites ─────────────────────────────────────────────────────
-    ln -sf /etc/nginx/sites-available/fibranet-api      /etc/nginx/sites-enabled/
-    ln -sf /etc/nginx/sites-available/fibranet-frontend /etc/nginx/sites-enabled/
+    ln -sf /etc/nginx/sites-available/datafast-api      /etc/nginx/sites-enabled/
+    ln -sf /etc/nginx/sites-available/datafast-frontend /etc/nginx/sites-enabled/
 
     nginx -t >> "${LOG_FILE}" 2>&1
     systemctl enable nginx >> "${LOG_FILE}" 2>&1
@@ -314,7 +314,7 @@ setup_ssl() {
 
     if [[ -z "${DOMINIO_FRONTEND:-}" ]]; then
         warn "Sin dominio configurado. SSL omitido."
-        warn "Para activar SSL después: fibranet-ssl tu-dominio.pe"
+        warn "Para activar SSL después: datafast-ssl tu-dominio.pe"
         return
     fi
 
@@ -335,7 +335,7 @@ setup_ssl() {
     else
         warn "No se pudo obtener el certificado SSL."
         warn "Asegúrate de que el DNS apunta a esta IP: $(hostname -I | awk '{print $1}')"
-        warn "Luego ejecuta: fibranet-ssl ${DOMINIO_FRONTEND}"
+        warn "Luego ejecuta: datafast-ssl ${DOMINIO_FRONTEND}"
     fi
 
     # Cron para renovación automática

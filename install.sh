@@ -1,16 +1,16 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-#  FibraNet ISP ERP — Instalador Principal v1.0.0
+#  CRM ISP DATAFAST — Instalador Principal v1.0.0
 #  Ubuntu 22.04 / 24.04 LTS
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 IFS=$'\n\t'
 
 # ── Configuración ─────────────────────────────────────────────
-readonly FIBRANET_VERSION="1.0.0"
-readonly REPO_RAW="https://raw.githubusercontent.com/datafastperu-cmyk/fibranet-isp/main"
-readonly INSTALL_DIR="/opt/fibranet"
-readonly LOG_DIR="/var/log/fibranet"
+readonly DATAFAST_VERSION="1.0.0"
+readonly REPO_RAW="https://raw.githubusercontent.com/datafastperu-cmyk/datafast-crm/main"
+readonly INSTALL_DIR="/opt/datafast"
+readonly LOG_DIR="/var/log/datafast"
 readonly LOG_FILE="${LOG_DIR}/install-$(date +%Y%m%d_%H%M%S).log"
 readonly MIN_RAM_MB=1500
 readonly MIN_DISK_GB=5
@@ -53,7 +53,7 @@ show_banner() {
     clear
     echo -e "${C}"
     echo "  ╔══════════════════════════════════════════════════════╗"
-    echo -e "  ║  ${W}FIBRANET ISP ERP${C} — Instalador v${FIBRANET_VERSION}              ║"
+    echo -e "  ║  ${W}DATAFAST ISP ERP${C} — Instalador v${DATAFAST_VERSION}              ║"
     echo -e "  ║  ${D}Sistema de Gestión para Proveedores de Internet${C}  ║"
     echo "  ╚══════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -64,7 +64,7 @@ init_logs() {
     mkdir -p "${LOG_DIR}"
     touch "${LOG_FILE}"
     chmod 640 "${LOG_FILE}"
-    _log "INFO" "FibraNet Installer v${FIBRANET_VERSION} iniciado"
+    _log "INFO" "DATAFAST Installer v${DATAFAST_VERSION} iniciado"
     _log "INFO" "OS: $(lsb_release -ds 2>/dev/null || echo unknown)"
     _log "INFO" "IP: $(hostname -I | awk '{print $1}')"
 }

@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -80,10 +80,10 @@ export class MercadoPagoService {
       },
       auto_return: 'approved',
       notification_url: `${this.config.get('app.url')}/api/v1/pagos/webhooks/mercadopago`,
-      statement_descriptor: 'FibraNet ISP',
+      statement_descriptor: 'CRM ISP DATAFAST',
       metadata: {
         factura_id:  params.facturaId,
-        sistema:     'fibranet-isp',
+        sistema:     'datafast-crm',
       },
     };
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 #  Módulo 08 — PM2 Process Manager
 # ─────────────────────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ setup_pm2() {
     # ── ecosystem.config.js ───────────────────────────────────────────────
     info "Generando ecosystem.config.js..."
     cat > "${INSTALL_DIR}/ecosystem.config.js" << EOF
-// FibraNet ISP ERP — PM2 Ecosystem
+// CRM ISP DATAFAST — PM2 Ecosystem
 // Generado: $(date)
 // Instancias backend: ${instances} (CPUs disponibles: ${cpus})
 
@@ -23,7 +23,7 @@ module.exports = {
 
     // ── Backend NestJS ────────────────────────────────────────────────────
     {
-      name:       'fibranet-backend',
+      name:       'datafast-backend',
       script:     './dist/main.js',
       cwd:        '${INSTALL_DIR}/backend',
       instances:  ${instances},
@@ -70,7 +70,7 @@ module.exports = {
 
     // ── Frontend Next.js ──────────────────────────────────────────────────
     {
-      name:    'fibranet-frontend',
+      name:    'datafast-frontend',
       script:  'node_modules/.bin/next',
       args:    'start',
       cwd:     '${INSTALL_DIR}/frontend',
@@ -100,33 +100,33 @@ module.exports = {
   ],
 };
 EOF
-    chown fibranet:fibranet "${INSTALL_DIR}/ecosystem.config.js"
+    chown datafast:datafast "${INSTALL_DIR}/ecosystem.config.js"
 
     # ── Iniciar procesos ──────────────────────────────────────────────────
     info "Iniciando procesos con PM2..."
     cd "${INSTALL_DIR}"
-    sudo -u fibranet pm2 start ecosystem.config.js >> "${LOG_FILE}" 2>&1
-    sudo -u fibranet pm2 save >> "${LOG_FILE}" 2>&1
+    sudo -u datafast pm2 start ecosystem.config.js >> "${LOG_FILE}" 2>&1
+    sudo -u datafast pm2 save >> "${LOG_FILE}" 2>&1
 
     # ── Unidad systemd para PM2 ───────────────────────────────────────────
     info "Creando servicio systemd para PM2..."
-    cat > /etc/systemd/system/fibranet.service << 'EOF'
+    cat > /etc/systemd/system/datafast.service << 'EOF'
 [Unit]
-Description=FibraNet ISP ERP (via PM2)
+Description=CRM ISP DATAFAST (via PM2)
 After=network.target network-online.target postgresql.service redis-server.service
 Requires=postgresql.service redis-server.service
 Wants=network-online.target
 
 [Service]
 Type=forking
-User=fibranet
-Group=fibranet
+User=datafast
+Group=datafast
 LimitNOFILE=65536
-PIDFile=/home/fibranet/.pm2/pm2.pid
+PIDFile=/home/datafast/.pm2/pm2.pid
 Restart=on-failure
 RestartSec=10
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-Environment=PM2_HOME=/home/fibranet/.pm2
+Environment=PM2_HOME=/home/datafast/.pm2
 ExecStart=/usr/bin/pm2 resurrect
 ExecReload=/usr/bin/pm2 reload all
 ExecStop=/usr/bin/pm2 kill
@@ -138,12 +138,12 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload   >> "${LOG_FILE}" 2>&1
-    systemctl enable fibranet >> "${LOG_FILE}" 2>&1
-    systemctl start  fibranet >> "${LOG_FILE}" 2>&1
+    systemctl enable datafast >> "${LOG_FILE}" 2>&1
+    systemctl start  datafast >> "${LOG_FILE}" 2>&1
 
     # ── Verificar que los procesos están corriendo ────────────────────────
     sleep 5
-    if sudo -u fibranet pm2 list | grep -q "online"; then
+    if sudo -u datafast pm2 list | grep -q "online"; then
         ok "PM2 iniciado correctamente (${instances} instancias del backend)"
     else
         warn "PM2 arrancó pero los procesos no están online. Revisa los logs."
@@ -151,7 +151,7 @@ EOF
 
     # ── Configurar logrotate para PM2 ─────────────────────────────────────
     info "Configurando rotación de logs..."
-    cat > /etc/logrotate.d/fibranet << EOF
+    cat > /etc/logrotate.d/datafast << EOF
 ${INSTALL_DIR}/logs/*.log {
     daily
     rotate 30
@@ -159,10 +159,10 @@ ${INSTALL_DIR}/logs/*.log {
     delaycompress
     missingok
     notifempty
-    create 0640 fibranet fibranet
+    create 0640 datafast datafast
     sharedscripts
     postrotate
-        sudo -u fibranet pm2 reloadLogs 2>/dev/null || true
+        sudo -u datafast pm2 reloadLogs 2>/dev/null || true
     endscript
 }
 EOF

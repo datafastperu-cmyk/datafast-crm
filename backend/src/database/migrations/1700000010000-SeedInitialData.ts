@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+﻿import { MigrationInterface, QueryRunner } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 
 // ─────────────────────────────────────────────────────────────
@@ -23,11 +23,11 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
         serie_boleta, serie_factura, estado
       ) VALUES (
         'a0000000-0000-0000-0000-000000000001',
-        'FibraNet Internet S.A.C.',
-        'FibraNet ISP',
+        'DATAFAST Internet S.A.C.',
+        'CRM ISP DATAFAST',
         '20600000001',
         '+51 073 000000',
-        'admin@fibranet.pe',
+        'admin@datafast.pe',
         'PEN', 'S/',
         0.18, 1, 5,
         'B001', 'F001', 'activo'
@@ -186,7 +186,7 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
 
     // ── 5. Usuario administrador inicial ──────────────────────
     // CAMBIAR ESTE PASSWORD INMEDIATAMENTE después del primer login
-    const passwordHash = await bcrypt.hash('Admin@FibraNet2024!', 12);
+    const passwordHash = await bcrypt.hash('Admin@DATAFAST2024!', 12);
 
     await queryRunner.query(`
       INSERT INTO usuarios (
@@ -196,7 +196,7 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
         'c0000000-0000-0000-0000-000000000001',
         'a0000000-0000-0000-0000-000000000001',
         'Super', 'Administrador',
-        'admin@fibranet.pe',
+        'admin@datafast.pe',
         '${passwordHash}',
         'activo', TRUE
       )

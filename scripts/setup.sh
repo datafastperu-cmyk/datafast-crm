@@ -1,6 +1,6 @@
-#!/bin/bash
+﻿#!/bin/bash
 # ==============================================================
-# FibraNet ISP — Script de instalación en servidor producción
+# CRM ISP DATAFAST — Script de instalación en servidor producción
 # Probado en: Ubuntu 22.04 LTS
 # Uso: sudo bash scripts/setup.sh
 # ==============================================================
@@ -15,7 +15,7 @@ err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
 echo ""
 echo "╔════════════════════════════════════════╗"
-echo "║     FibraNet ISP — Setup Servidor      ║"
+echo "║     CRM ISP DATAFAST — Setup Servidor      ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 
@@ -82,7 +82,7 @@ systemctl enable --now fail2ban
 
 # ── 7. Crear directorio del proyecto ──────────────────────────
 log "Creando directorio del proyecto..."
-PROJECT_DIR="/opt/fibranet"
+PROJECT_DIR="/opt/datafast"
 mkdir -p $PROJECT_DIR
 chown $SUDO_USER:$SUDO_USER $PROJECT_DIR
 
@@ -100,7 +100,7 @@ fi
 # ── 9. Optimizaciones del kernel ──────────────────────────────
 log "Aplicando optimizaciones del kernel..."
 cat >> /etc/sysctl.conf << 'EOF'
-# FibraNet ISP optimizaciones
+# CRM ISP DATAFAST optimizaciones
 net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 65535
 net.ipv4.ip_local_port_range = 1024 65535
@@ -130,7 +130,7 @@ echo "║           Setup completado exitosamente        ║"
 echo "╚════════════════════════════════════════════════╝"
 echo ""
 echo "  Próximos pasos:"
-echo "  1. Clonar el repositorio en /opt/fibranet"
+echo "  1. Clonar el repositorio en /opt/datafast"
 echo "  2. Copiar .env.example a .env y configurar variables"
 echo "  3. Ejecutar: bash scripts/ssl-setup.sh"
 echo "  4. Ejecutar: docker compose up -d"

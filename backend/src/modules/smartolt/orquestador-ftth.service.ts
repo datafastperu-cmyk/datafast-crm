@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource }   from '@nestjs/typeorm';
 import { DataSource }         from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
@@ -270,7 +270,7 @@ export class OrquestadorFtthService {
             password,
             profile:       router.ppp_profile || 'default',
             remoteAddress: ctx.ipAsignada,
-            comment:       `FibraNet:${dto.contratoId}`,
+            comment:       `DATAFAST:${dto.contratoId}`,
           });
 
           return `PPPoE creado: ${ctx.usuarioPppoe} | IP remota: ${ctx.ipAsignada}`;

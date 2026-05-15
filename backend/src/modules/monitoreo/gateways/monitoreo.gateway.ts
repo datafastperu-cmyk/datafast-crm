@@ -1,4 +1,4 @@
-import {
+﻿import {
   WebSocketGateway, WebSocketServer,
   SubscribeMessage, OnGatewayConnection,
   OnGatewayDisconnect, OnGatewayInit,
@@ -80,8 +80,8 @@ export class MonitoreoGateway
       try {
         const payload = this.jwt.verify(token, {
           secret:   this.config.get<string>('jwt.secret'),
-          issuer:   'fibranet-isp',
-          audience: 'fibranet-app',
+          issuer:   'datafast-crm',
+          audience: 'datafast-app',
         });
         (socket as any).user = payload;
         next();

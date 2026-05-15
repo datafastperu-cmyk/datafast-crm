@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpModule } from '@nestjs/axios';
 import { MulterModule } from '@nestjs/platform-express';
@@ -26,7 +26,7 @@ import { AuthModule }         from '../auth/auth.module';
       maxRedirects: 3,
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'FibraNet-ISP/1.0',
+        'User-Agent': 'DATAFAST-ISP/1.0',
       },
     }),
 

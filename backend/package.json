@@ -1,8 +1,8 @@
-{
-  "name": "fibranet-backend",
+﻿{
+  "name": "datafast-backend",
   "version": "1.0.0",
-  "description": "FibraNet ISP ERP — Backend API (NestJS)",
-  "author": "FibraNet ISP",
+  "description": "CRM ISP DATAFAST — Backend API (NestJS)",
+  "author": "CRM ISP DATAFAST",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {

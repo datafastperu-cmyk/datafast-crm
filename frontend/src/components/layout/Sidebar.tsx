@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link            from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -62,7 +62,7 @@ export function Sidebar() {
           <Wifi className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <p className="font-bold text-white text-sm leading-tight">FibraNet</p>
+          <p className="font-bold text-white text-sm leading-tight">DATAFAST</p>
           <p className="text-[10px] text-[hsl(var(--sidebar-fg)/0.5)]">ISP Manager</p>
         </div>
       </div>

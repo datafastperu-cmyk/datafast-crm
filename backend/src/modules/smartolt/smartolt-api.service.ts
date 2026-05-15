@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable, Logger, BadRequestException,
   ServiceUnavailableException, NotFoundException,
 } from '@nestjs/common';
@@ -304,7 +304,7 @@ export class SmartoltApiService {
       'Authorization':  `Bearer ${this.token}`,
       'Content-Type':   'application/json',
       'Accept':         'application/json',
-      'X-Client':       'FibraNet-ISP/1.0',
+      'X-Client':       'DATAFAST-ISP/1.0',
     };
   }
 

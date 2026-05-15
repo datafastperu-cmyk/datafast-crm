@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import * as React     from 'react';
 import * as ToastPrim from '@radix-ui/react-toast';
@@ -38,7 +38,7 @@ export function Toaster() {
 
   // Exponer globalmente
   React.useEffect(() => {
-    (window as any).__fibranet_toast = addToast;
+    (window as any).__datafast_toast = addToast;
   }, [addToast]);
 
   const STYLES: Record<ToastType, string> = {
@@ -86,7 +86,7 @@ export function Toaster() {
 export function useToast() {
   return {
     toast: (title: string, opts?: { description?: string; type?: ToastType }) => {
-      (window as any).__fibranet_toast?.(title, opts);
+      (window as any).__datafast_toast?.(title, opts);
     },
   };
 }

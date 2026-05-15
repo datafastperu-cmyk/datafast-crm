@@ -1,4 +1,4 @@
-import { Test, TestingModule }   from '@nestjs/testing';
+﻿import { Test, TestingModule }   from '@nestjs/testing';
 import { getDataSourceToken }     from '@nestjs/typeorm';
 import { EventEmitter }          from '@nestjs/event-emitter';
 
@@ -36,7 +36,7 @@ const mockContratoRow = {
   usar_ssl: false, puerto_api: 8728, puerto_api_ssl: 8729,
   timeout_conexion: 10, auto_configurar_queues: true,
   olt_id: 'olt-001', smartolt_id: 'smart-olt-001', olt_nombre: 'OLT Centro',
-  empresa_nombre: 'FibraNet ISP', serie_boleta: 'B001',
+  empresa_nombre: 'CRM ISP DATAFAST', serie_boleta: 'B001',
   igv_rate: 0.18, dias_gracia: 5,
 };
 

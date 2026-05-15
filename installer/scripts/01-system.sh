@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Módulo 01 — Preparación del sistema operativo
 
 install_system() {
@@ -31,7 +31,7 @@ install_system() {
     ok "NTP configurado (chrony)"
 
     info "Optimizando parámetros del kernel..."
-    cat > /etc/sysctl.d/99-fibranet.conf << 'SYSCTL'
+    cat > /etc/sysctl.d/99-datafast.conf << 'SYSCTL'
 net.core.somaxconn = 65535
 net.ipv4.tcp_fin_timeout = 15
 net.ipv4.tcp_keepalive_time = 300
@@ -40,11 +40,11 @@ vm.overcommit_memory = 1
 fs.file-max = 1048576
 fs.inotify.max_user_watches = 524288
 SYSCTL
-    sysctl -p /etc/sysctl.d/99-fibranet.conf >> "${LOG_FILE}" 2>&1
+    sysctl -p /etc/sysctl.d/99-datafast.conf >> "${LOG_FILE}" 2>&1
 
-    cat > /etc/security/limits.d/99-fibranet.conf << 'LIMITS'
-fibranet soft nofile 65536
-fibranet hard nofile 65536
+    cat > /etc/security/limits.d/99-datafast.conf << 'LIMITS'
+datafast soft nofile 65536
+datafast hard nofile 65536
 root     soft nofile 65536
 root     hard nofile 65536
 LIMITS
@@ -63,8 +63,8 @@ LIMITS
     fi
 
     info "Creando usuario de aplicación..."
-    id fibranet &>/dev/null || useradd -r -m -s /bin/bash -d /home/fibranet fibranet
-    ok "Usuario 'fibranet' listo"
+    id datafast &>/dev/null || useradd -r -m -s /bin/bash -d /home/datafast datafast
+    ok "Usuario 'datafast' listo"
 
     info "Creando estructura de directorios..."
     mkdir -p \
@@ -77,7 +77,7 @@ LIMITS
         "${INSTALL_DIR}/config" \
         "${INSTALL_DIR}/ssl" \
         "${LOG_DIR}"
-    chown -R fibranet:fibranet "${INSTALL_DIR}"
+    chown -R datafast:datafast "${INSTALL_DIR}"
     chmod -R 750 "${INSTALL_DIR}"
     ok "Directorios creados en ${INSTALL_DIR}"
 }

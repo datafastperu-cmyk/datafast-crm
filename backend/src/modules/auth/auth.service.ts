@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable, UnauthorizedException, ForbiddenException,
   BadRequestException, NotFoundException, Logger,
   ConflictException,
@@ -272,16 +272,16 @@ export class AuthService {
       this.jwtService.signAsync(payload, {
         secret: jwtSecret,
         expiresIn,
-        issuer: 'fibranet-isp',
-        audience: 'fibranet-app',
+        issuer: 'datafast-crm',
+        audience: 'datafast-app',
       }),
       this.jwtService.signAsync(
         { sub: usuario.id },  // Refresh token lleva solo el ID (mínimo)
         {
           secret: jwtRefreshSecret,
           expiresIn: refreshExpiresIn,
-          issuer: 'fibranet-isp',
-          audience: 'fibranet-app',
+          issuer: 'datafast-crm',
+          audience: 'datafast-app',
         },
       ),
     ]);

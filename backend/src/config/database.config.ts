@@ -1,12 +1,12 @@
-import { registerAs } from '@nestjs/config';
+﻿import { registerAs } from '@nestjs/config';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 export const databaseConfig = registerAs('database', (): TypeOrmModuleOptions => ({
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT, 10) || 5432,
-  database: process.env.DB_NAME || 'fibranet',
-  username: process.env.DB_USER || 'fibranet',
+  database: process.env.DB_NAME || 'datafast',
+  username: process.env.DB_USER || 'datafast',
   password: process.env.DB_PASSWORD,
   ssl: process.env.DB_SSL === 'true'
     ? { rejectUnauthorized: false }
