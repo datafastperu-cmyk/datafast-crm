@@ -9,19 +9,25 @@ export const validationSchema = Joi.object({
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test', 'staging')
     .default('development'),
-  PORT: Joi.number().default(3000),
+  PORT: Joi.number().default(4000),
   TZ: Joi.string().default('America/Lima'),
-  APP_URL: Joi.string().uri().required(),
+  APP_URL: Joi.string().uri().optional(),
   FRONTEND_URL: Joi.string().uri().required(),
   ALLOWED_ORIGINS: Joi.string().required(),
 
-  // Database
-  DB_HOST: Joi.string().required(),
-  DB_PORT: Joi.number().default(5432),
-  DB_NAME: Joi.string().required(),
-  DB_USER: Joi.string().required(),
-  DB_PASSWORD: Joi.string().min(8).required(),
-  DB_SSL: Joi.boolean().default(false),
+  // Database — acepta tanto DB_* como DATABASE_* (alias)
+  DB_HOST:      Joi.string().optional(),
+  DB_PORT:      Joi.number().default(5432),
+  DB_NAME:      Joi.string().optional(),
+  DB_USER:      Joi.string().optional(),
+  DB_PASSWORD:  Joi.string().optional(),
+  DB_SSL:       Joi.boolean().default(false),
+  DATABASE_HOST:     Joi.string().optional(),
+  DATABASE_PORT:     Joi.number().default(5432),
+  DATABASE_NAME:     Joi.string().optional(),
+  DATABASE_USER:     Joi.string().optional(),
+  DATABASE_PASSWORD: Joi.string().optional(),
+  DATABASE_SSL:      Joi.boolean().default(false),
 
   // Redis
   REDIS_HOST: Joi.string().required(),
@@ -37,27 +43,28 @@ export const validationSchema = Joi.object({
   // Encryption
   ENCRYPTION_KEY: Joi.string().length(64).required(), // 32 bytes hex
 
-  // Opcionales (integraciones externas)
-  RENIEC_API_URL: Joi.string().uri().optional(),
-  RENIEC_API_TOKEN: Joi.string().optional(),
-  GOOGLE_MAPS_API_KEY: Joi.string().optional(),
-  SMARTOLT_URL: Joi.string().uri().optional(),
-  SMARTOLT_TOKEN: Joi.string().optional(),
-  MP_ACCESS_TOKEN: Joi.string().optional(),
-  MP_WEBHOOK_SECRET: Joi.string().optional(),
-  WHATSAPP_TOKEN: Joi.string().optional(),
-  WHATSAPP_PHONE_ID: Joi.string().optional(),
-  WHATSAPP_VERIFY_TOKEN: Joi.string().optional(),
-  SMTP_HOST: Joi.string().optional(),
+  // Opcionales (integraciones externas) — permiten string vacío
+  RENIEC_API_URL: Joi.string().uri().allow('').optional(),
+  RENIEC_API_TOKEN: Joi.string().allow('').optional(),
+  GOOGLE_MAPS_API_KEY: Joi.string().allow('').optional(),
+  SMARTOLT_URL: Joi.string().uri().allow('').optional(),
+  SMARTOLT_TOKEN: Joi.string().allow('').optional(),
+  MP_ACCESS_TOKEN: Joi.string().allow('').optional(),
+  MP_WEBHOOK_SECRET: Joi.string().allow('').optional(),
+  MP_SANDBOX: Joi.boolean().default(true),
+  WHATSAPP_TOKEN: Joi.string().allow('').optional(),
+  WHATSAPP_PHONE_ID: Joi.string().allow('').optional(),
+  WHATSAPP_VERIFY_TOKEN: Joi.string().allow('').optional(),
+  SMTP_HOST: Joi.string().allow('').optional(),
   SMTP_PORT: Joi.number().default(587),
-  SMTP_USER: Joi.string().optional(),
-  SMTP_PASS: Joi.string().optional(),
+  SMTP_USER: Joi.string().allow('').optional(),
+  SMTP_PASS: Joi.string().allow('').optional(),
   SMTP_FROM_NAME: Joi.string().default('CRM ISP DATAFAST'),
-  SMTP_FROM_EMAIL: Joi.string().email().optional(),
-  TWILIO_ACCOUNT_SID: Joi.string().optional(),
-  TWILIO_AUTH_TOKEN: Joi.string().optional(),
-  TWILIO_PHONE_NUMBER: Joi.string().optional(),
-  TELEGRAM_BOT_TOKEN: Joi.string().optional(),
+  SMTP_FROM_EMAIL: Joi.string().email().allow('').optional(),
+  TWILIO_ACCOUNT_SID: Joi.string().allow('').optional(),
+  TWILIO_AUTH_TOKEN: Joi.string().allow('').optional(),
+  TWILIO_PHONE_NUMBER: Joi.string().allow('').optional(),
+  TELEGRAM_BOT_TOKEN: Joi.string().allow('').optional(),
 
   // Negocio
   BILLING_DAY: Joi.number().min(1).max(28).default(1),

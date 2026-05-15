@@ -3,12 +3,12 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 export const databaseConfig = registerAs('database', (): TypeOrmModuleOptions => ({
   type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT, 10) || 5432,
-  database: process.env.DB_NAME || 'datafast',
-  username: process.env.DB_USER || 'datafast',
-  password: process.env.DB_PASSWORD,
-  ssl: process.env.DB_SSL === 'true'
+  host:     process.env.DATABASE_HOST     || process.env.DB_HOST     || 'localhost',
+  port:     parseInt(process.env.DATABASE_PORT || process.env.DB_PORT, 10) || 5432,
+  database: process.env.DATABASE_NAME     || process.env.DB_NAME     || 'datafast_db',
+  username: process.env.DATABASE_USER     || process.env.DB_USER     || 'datafast_db_user',
+  password: process.env.DATABASE_PASSWORD || process.env.DB_PASSWORD,
+  ssl: (process.env.DATABASE_SSL || process.env.DB_SSL) === 'true'
     ? { rejectUnauthorized: false }
     : false,
 
