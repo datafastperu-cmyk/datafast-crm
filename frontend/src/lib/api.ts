@@ -111,18 +111,18 @@ api.interceptors.response.use(
 
 // ─── Helpers de cookies de autenticación ─────────────────────
 export function setAuthCookies(accessToken: string, refreshToken: string): void {
-  // Access token: 15 minutos en cookie
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
   Cookies.set('access_token', accessToken, {
     expires:  1 / 96,  // 15 minutos
-    secure:   process.env.NODE_ENV === 'production',
+    secure:   isHttps,
     sameSite: 'strict',
     path:     '/',
   });
 
-  // Refresh token: 7 días
   Cookies.set('refresh_token', refreshToken, {
     expires:  7,
-    secure:   process.env.NODE_ENV === 'production',
+    secure:   isHttps,
     sameSite: 'strict',
     path:     '/',
   });
