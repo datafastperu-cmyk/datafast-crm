@@ -245,8 +245,8 @@ export class CreateViewsAndFunctions1700000011000 implements MigrationInterface 
         RETURN QUERY
         SELECT
           COALESCE(SUM(f.saldo), 0)::DECIMAL,
-          COUNT(f.id)::INTEGER FILTER (WHERE f.estado IN ('vencida', 'emitida')),
-          COUNT(f.id)::INTEGER FILTER (WHERE f.estado IN ('vencida', 'emitida', 'pagada_parcial'))
+          (COUNT(f.id) FILTER (WHERE f.estado IN ('vencida', 'emitida')))::INTEGER,
+          (COUNT(f.id) FILTER (WHERE f.estado IN ('vencida', 'emitida', 'pagada_parcial')))::INTEGER
         FROM facturas f
         WHERE f.contrato_id = p_contrato_id
           AND f.estado IN ('emitida', 'pagada_parcial', 'vencida')
