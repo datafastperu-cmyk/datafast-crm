@@ -7,15 +7,19 @@
 # ── Auto-reejecutar desde archivo si viene por pipe ───────────
 # "curl URL | bash" pone stdin en la tubería, no en el terminal.
 # Los prompts interactivos necesitan stdin=terminal.
-# Solución: si stdin no es un tty, descargamos el script a un
-# archivo temporal y lo re-ejecutamos desde ahí.
+# Solución: descargamos el script a un archivo temporal y lo
+# re-ejecutamos con stdin=/dev/tty.
+# DATAFAST_REEXEC evita el loop infinito (el nuevo proceso
+# hereda el mismo fd0=pipe, detectaría otra vez "no es tty").
 _REPO_RAW="https://raw.githubusercontent.com/datafastperu-cmyk/datafast-crm/main"
-if [[ ! -t 0 ]]; then
+if [[ ! -t 0 && -z "${DATAFAST_REEXEC:-}" ]]; then
     _tmp=$(mktemp /tmp/datafast-install-XXXXXX.sh)
-    curl -fsSL "${_REPO_RAW}/install.sh" -o "$_tmp" 2>/dev/null \
-        && chmod +x "$_tmp" \
-        && exec bash "$_tmp" "$@"
-    # Si curl falló, continuar con stdin pipe (sin prompts interactivos)
+    if curl -fsSL "${_REPO_RAW}/install.sh" -o "$_tmp" 2>/dev/null; then
+        chmod +x "$_tmp"
+        export DATAFAST_REEXEC=1
+        exec bash "$_tmp" "$@" </dev/tty
+    fi
+    # Si curl falló, continuar de todos modos (reads usarán </dev/tty individualmente)
 fi
 
 set -euo pipefail
