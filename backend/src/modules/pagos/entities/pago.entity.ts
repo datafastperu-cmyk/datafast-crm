@@ -27,7 +27,7 @@ export enum EstadoPago {
 @Index(['empresaId', 'estado'])
 @Index(['clienteId', 'fechaPago'])
 @Index(['facturaId'])
-@Index(['empresaId', 'metodo_pago', 'numero_operacion'], { unique: true, where: 'numero_operacion IS NOT NULL' })
+@Index(['empresaId', 'metodoPago', 'numeroOperacion'], { unique: true, where: 'numero_operacion IS NOT NULL' })
 export class Pago {
   @Column({ primary: true, generated: 'uuid' })
   id: string;

@@ -186,7 +186,7 @@ exports.Pago = Pago = __decorate([
     (0, typeorm_1.Index)(['empresaId', 'estado']),
     (0, typeorm_1.Index)(['clienteId', 'fechaPago']),
     (0, typeorm_1.Index)(['facturaId']),
-    (0, typeorm_1.Index)(['empresaId', 'metodo_pago', 'numero_operacion'], { unique: true, where: 'numero_operacion IS NOT NULL' })
+    (0, typeorm_1.Index)(['empresaId', 'metodoPago', 'numeroOperacion'], { unique: true, where: 'numero_operacion IS NOT NULL' })
 ], Pago);
 let CuentaBancaria = class CuentaBancaria {
 };
