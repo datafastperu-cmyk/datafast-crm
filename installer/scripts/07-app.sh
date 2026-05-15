@@ -45,8 +45,13 @@ _install_backend() {
 
     info "Compilando backend (TypeScript)..."
     npm install -g @nestjs/cli >> "${LOG_FILE}" 2>&1
-    npm run build >> "${LOG_FILE}" 2>&1
-    ok "Backend compilado"
+    if npm run build >> "${LOG_FILE}" 2>&1; then
+        ok "Backend compilado"
+    else
+        warn "Compilación con errores — últimas 30 líneas del log:"
+        tail -30 "${LOG_FILE}" >&2
+        error "npm run build falló. Revisa el log: ${LOG_FILE}"
+    fi
 }
 
 _install_frontend() {
