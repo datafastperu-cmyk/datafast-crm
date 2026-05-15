@@ -41,13 +41,19 @@ rename-command FLUSHDB  ""
 rename-command DEBUG    ""
 REDISEOF
 
+    mkdir -p /var/log/redis
+    chown redis:adm /var/log/redis 2>/dev/null || chown redis:redis /var/log/redis 2>/dev/null || true
+    chmod 750 /var/log/redis
+
+    systemctl daemon-reload >> "${LOG_FILE}" 2>&1
     systemctl enable redis-server >> "${LOG_FILE}" 2>&1
-    systemctl restart redis-server >> "${LOG_FILE}" 2>&1
+    systemctl restart redis-server >> "${LOG_FILE}" 2>&1 \
+        || { warn "Primer intento fallido, reintentando en 3s..."; sleep 3; systemctl start redis-server >> "${LOG_FILE}" 2>&1 || true; }
     sleep 2
 
     if redis-cli -a "${REDIS_PASSWORD}" --no-auth-warning ping 2>/dev/null | grep -q PONG; then
         ok "Redis instalado y respondiendo"
     else
-        warn "Redis instalado — verificar manualmente"
+        warn "Redis instalado — verificar: systemctl status redis-server"
     fi
 }

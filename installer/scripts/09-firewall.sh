@@ -44,8 +44,8 @@ filter   = nginx-http-auth
 logpath  = /var/log/nginx/error.log
 maxretry = 5
 EOF
-    systemctl enable fail2ban >> "${LOG_FILE}" 2>&1
-    systemctl restart fail2ban >> "${LOG_FILE}" 2>&1
+    systemctl enable fail2ban >> "${LOG_FILE}" 2>&1 || true
+    systemctl restart fail2ban >> "${LOG_FILE}" 2>&1 || warn "fail2ban no iniciado"
     ok "Fail2ban configurado"
 }
 
@@ -62,6 +62,6 @@ ClientAliveCountMax 2
 LoginGraceTime 30
 X11Forwarding no
 EOF
-    systemctl restart sshd >> "${LOG_FILE}" 2>&1
+    systemctl restart sshd >> "${LOG_FILE}" 2>&1 || warn "SSHD no reiniciado"
     ok "SSH reforzado"
 }

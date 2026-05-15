@@ -26,8 +26,8 @@ install_system() {
 
     info "Configurando NTP..."
     apt-get install -y chrony >> "${LOG_FILE}" 2>&1
-    systemctl enable chrony >> "${LOG_FILE}" 2>&1
-    systemctl start  chrony >> "${LOG_FILE}" 2>&1
+    systemctl enable chrony >> "${LOG_FILE}" 2>&1 || true
+    systemctl start  chrony >> "${LOG_FILE}" 2>&1 || warn "chrony no iniciado"
     ok "NTP configurado (chrony)"
 
     info "Optimizando parámetros del kernel..."

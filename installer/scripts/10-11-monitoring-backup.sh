@@ -132,8 +132,8 @@ HEALTHEOF
             # Solo accesible localmente por seguridad
             sed -i 's/bind to = .*/bind to = 127.0.0.1/' \
                 /etc/netdata/netdata.conf 2>/dev/null || true
-            systemctl enable netdata >> "${LOG_FILE}" 2>&1
-            systemctl start  netdata >> "${LOG_FILE}" 2>&1
+            systemctl enable netdata >> "${LOG_FILE}" 2>&1 || true
+            systemctl start  netdata >> "${LOG_FILE}" 2>&1 || warn "netdata no iniciado"
             ok "Netdata instalado (http://localhost:19999)"
         fi
     else

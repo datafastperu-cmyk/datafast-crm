@@ -74,8 +74,8 @@ maxretry = 2
 bantime  = 86400
 EOF
 
-    systemctl enable fail2ban >> "${LOG_FILE}" 2>&1
-    systemctl restart fail2ban >> "${LOG_FILE}" 2>&1
+    systemctl enable fail2ban >> "${LOG_FILE}" 2>&1 || true
+    systemctl restart fail2ban >> "${LOG_FILE}" 2>&1 || warn "fail2ban no iniciado — verificar manualmente"
     ok "Fail2ban configurado (bloqueo automático de IPs maliciosas)"
 }
 
@@ -99,6 +99,6 @@ X11Forwarding no
 AllowTcpForwarding no
 EOF
 
-    systemctl restart sshd >> "${LOG_FILE}" 2>&1
+    systemctl restart sshd >> "${LOG_FILE}" 2>&1 || warn "SSHD no reiniciado — verificar /etc/ssh/sshd_config"
     ok "SSH reforzado (root login deshabilitado)"
 }
