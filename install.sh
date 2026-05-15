@@ -142,14 +142,14 @@ main() {
     show_banner
     init_logs
 
-    # Descargar scripts si no existen localmente
-    if [[ ! -d "${INSTALL_DIR}/installer/scripts" ]]; then
-        # Si el repo está clonado localmente, copiar desde ahí
-        if [[ -d "./installer/scripts" ]]; then
-            cp -r ./installer "${INSTALL_DIR}/"
-        else
-            download_scripts
-        fi
+    # Siempre descargar/actualizar scripts (garantiza LF y versión correcta)
+    if [[ -d "./installer/scripts" ]]; then
+        # Ejecutando desde repo clonado: copiar y limpiar CRLF
+        cp -r ./installer "${INSTALL_DIR}/"
+        find "${INSTALL_DIR}/installer" -name "*.sh" -exec sed -i 's/\r//' {} +
+        find "${INSTALL_DIR}/installer" -name "*.conf" -exec sed -i 's/\r//' {} +
+    else
+        download_scripts
     fi
 
     load_modules
