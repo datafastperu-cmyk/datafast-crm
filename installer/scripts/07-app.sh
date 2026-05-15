@@ -89,7 +89,7 @@ _run_seed() {
 
     local count
     count=$(PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user \
-        -d datafast_db -t -c "SELECT COUNT(*) FROM empresas;" 2>/dev/null | tr -d ' ' || echo "0")
+        -d datafast_db -t -c "SELECT COUNT(*) FROM empresas;" 2>/dev/null | tr -d ' \n' || echo "0")
 
     if [[ "${count}" == "0" ]]; then
         npm run seed:run >> "${LOG_FILE}" 2>&1
@@ -104,54 +104,35 @@ _write_backend_env() {
     local frontend_url="http://${ip}"
     [[ -n "${DOMINIO_FRONTEND:-}" ]] && frontend_url="https://${DOMINIO_FRONTEND}"
 
+    local api_url="http://${ip}:4000"
+    [[ -n "${DOMINIO_BACKEND:-}" ]] && api_url="https://${DOMINIO_BACKEND}"
+
     cat > "${INSTALL_DIR}/backend/.env.production" << ENVEOF
 NODE_ENV=production
 PORT=4000
-API_PREFIX=api/v1
 TZ=America/Lima
 
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_NAME=datafast_db
-DATABASE_USER=datafast_db_user
-DATABASE_PASSWORD=${DB_PASSWORD}
-DATABASE_SSL=false
-DATABASE_SYNCHRONIZE=false
-DATABASE_RUN_MIGRATIONS=false
-DATABASE_LOGGING=false
-DATABASE_MAX_CONNECTIONS=20
+APP_URL=${api_url}
+FRONTEND_URL=${frontend_url}
+ALLOWED_ORIGINS=${frontend_url}
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=datafast_db
+DB_USER=datafast_db_user
+DB_PASSWORD=${DB_PASSWORD}
+DB_SSL=false
 
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=${REDIS_PASSWORD}
-REDIS_DB=0
 
 JWT_SECRET=${JWT_SECRET}
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
 JWT_REFRESH_EXPIRES_IN=7d
-JWT_ISSUER=datafast-crm
-JWT_AUDIENCE=datafast-app
 
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
-
-FRONTEND_URL=${frontend_url}
-ALLOWED_ORIGINS=${frontend_url}
-
-EMPRESA_NOMBRE=${EMPRESA_NOMBRE:-CRM ISP DATAFAST}
-EMPRESA_RUC=${EMPRESA_RUC:-20000000001}
-ADMIN_EMAIL=${ADMIN_EMAIL:-admin@datafast.pe}
-ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin@DATAFAST2024!}
-
-WHATSAPP_TOKEN=
-WHATSAPP_PHONE_ID=
-RENIEC_API_URL=
-RENIEC_API_TOKEN=
-SMARTOLT_URL=https://api.smartolt.com
-SMARTOLT_TOKEN=
-MP_ACCESS_TOKEN=
-MP_WEBHOOK_SECRET=
-MP_SANDBOX=true
 
 LOG_LEVEL=warn
 LOG_FILE=${INSTALL_DIR}/logs/backend.log
