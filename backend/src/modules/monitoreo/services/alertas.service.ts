@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource }   from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { InjectRepository }   from '@nestjs/typeorm';
-import { EventEmitter }      from '@nestjs/event-emitter';
+import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
 import {
   Alerta, ConfiguracionAlerta,

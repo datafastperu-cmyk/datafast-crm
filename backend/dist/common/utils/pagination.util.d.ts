@@ -14,3 +14,4 @@ export declare function formatPaginatedResponse<T>(result: PaginatedResult<T>): 
         to: number;
     };
 };
+export type { PaginatedResult } from '../dto/response.dto';

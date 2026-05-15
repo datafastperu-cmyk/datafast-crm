@@ -1,6 +1,6 @@
 import { Repository } from 'typeorm';
 import { DataSource } from 'typeorm';
-import { EventEmitter } from '@nestjs/event-emitter';
+import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 import { Router } from './entities/router.entity';
 import { RouterConnectionPool } from './services/connection-pool.service';
 import { PppoeService } from './services/pppoe.service';

@@ -7,7 +7,7 @@ export declare class ContratosController {
     private readonly svc;
     constructor(svc: ContratosService);
     create(dto: CreateContratoDto, user: JwtPayload, req: Request): Promise<StdResponse<import("./entities/contrato.entity").Contrato>>;
-    findAll(filters: FilterContratoDto, user: JwtPayload): Promise<StdResponse<unknown[]>>;
+    findAll(filters: FilterContratoDto, user: JwtPayload): Promise<StdResponse<import("./entities/contrato.entity").Contrato[]>>;
     getResumen(user: JwtPayload): Promise<StdResponse<any>>;
     findOne(id: string, user: JwtPayload): Promise<StdResponse<any>>;
     findByCliente(clienteId: string, user: JwtPayload): Promise<StdResponse<import("./entities/contrato.entity").Contrato[]>>;

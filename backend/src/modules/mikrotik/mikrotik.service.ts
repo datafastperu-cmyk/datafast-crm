@@ -6,7 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
-import { EventEmitter }     from '@nestjs/event-emitter';
+import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
 import { Router, VersionRouterOS, EstadoEquipo } from './entities/router.entity';
 import { RouterConnectionPool, RouterCredentials } from './services/connection-pool.service';

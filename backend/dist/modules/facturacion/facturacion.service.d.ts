@@ -37,7 +37,7 @@ export declare class FacturacionService {
     aplicarPago(facturaId: string, montoPago: number, empresaId: string, fechaPago: string): Promise<Factura>;
     regenerarPdf(id: string, empresaId: string): Promise<Factura>;
     findAll(empresaId: string, filters: FilterFacturaDto): Promise<{
-        data: unknown[];
+        data: Factura[];
         meta: {
             total: number;
             page: number;

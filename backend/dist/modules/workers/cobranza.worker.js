@@ -12,7 +12,6 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 var CobranzaScheduler_1, CobranzaWorker_1;
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CobranzaWorker = exports.CobranzaScheduler = void 0;
 const bull_1 = require("@nestjs/bull");
@@ -545,6 +544,8 @@ exports.CobranzaWorker = CobranzaWorker = CobranzaWorker_1 = __decorate([
         pppoe_service_1.PppoeService,
         whatsapp_service_1.WhatsAppService,
         facturacion_service_1.FacturacionService,
-        auditoria_service_1.AuditoriaService, typeof (_a = typeof event_emitter_1.EventEmitter !== "undefined" && event_emitter_1.EventEmitter) === "function" ? _a : Object, typeorm_2.DataSource])
+        auditoria_service_1.AuditoriaService,
+        event_emitter_1.EventEmitter2,
+        typeorm_2.DataSource])
 ], CobranzaWorker);
 //# sourceMappingURL=cobranza.worker.js.map

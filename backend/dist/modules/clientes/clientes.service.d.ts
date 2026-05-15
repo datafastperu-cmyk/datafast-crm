@@ -15,7 +15,7 @@ export declare class ClientesService {
     constructor(clienteRepo: ClienteRepository, reniecSvc: ReniecService, auditoria: AuditoriaService, config: ConfigService);
     create(dto: CreateClienteDto, user: JwtPayload, req?: any): Promise<Cliente>;
     findAll(empresaId: string, filters: FilterClienteDto): Promise<{
-        data: unknown[];
+        data: Cliente[];
         meta: {
             total: number;
             page: number;

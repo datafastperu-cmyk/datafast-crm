@@ -34,7 +34,7 @@ export declare class SmartoltService {
     getSeñalOnu(id: string, empresaId: string): Promise<any>;
     reiniciarOnu(id: string, user: JwtPayload): Promise<void>;
     findAll(empresaId: string, filters: FilterOnuDto): Promise<{
-        data: unknown[];
+        data: Onu[];
         meta: {
             total: number;
             page: number;

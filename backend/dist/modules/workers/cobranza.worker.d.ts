@@ -1,6 +1,6 @@
 import { Job, Queue } from 'bull';
 import { DataSource } from 'typeorm';
-import { EventEmitter } from '@nestjs/event-emitter';
+import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 import { FirewallService } from '../mikrotik/services/firewall.service';
 import { PppoeService } from '../mikrotik/services/pppoe.service';
 import { WhatsAppService } from '../notificaciones/services/whatsapp.service';

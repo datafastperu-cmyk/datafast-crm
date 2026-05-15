@@ -8,7 +8,7 @@ export declare class ClientesController {
     private readonly logger;
     constructor(clientesSvc: ClientesService);
     create(dto: CreateClienteDto, user: JwtPayload, req: Request): Promise<StdResponse<import("./entities/cliente.entity").Cliente>>;
-    findAll(filters: FilterClienteDto, user: JwtPayload): Promise<StdResponse<unknown[]>>;
+    findAll(filters: FilterClienteDto, user: JwtPayload): Promise<StdResponse<import("./entities/cliente.entity").Cliente[]>>;
     getResumen(user: JwtPayload): Promise<StdResponse<{
         totales: any[];
         nuevosEsteMes: number;

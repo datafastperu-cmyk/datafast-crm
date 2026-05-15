@@ -1,5 +1,5 @@
 import { DataSource, Repository } from 'typeorm';
-import { EventEmitter } from '@nestjs/event-emitter';
+import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 import { Alerta, ConfiguracionAlerta, MetricaAlerta, Nodo } from '../entities/monitoreo.entity';
 import { WhatsAppService } from '../../notificaciones/services/whatsapp.service';
 export declare const EVENTO_ALERTA_NUEVA = "monitoreo.alerta.nueva";

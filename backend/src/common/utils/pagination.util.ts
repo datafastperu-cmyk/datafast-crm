@@ -58,3 +58,6 @@ export function formatPaginatedResponse<T>(result: PaginatedResult<T>) {
   };
 }
 
+
+// Re-export PaginatedResult para compatibilidad
+export type { PaginatedResult } from '../dto/response.dto';

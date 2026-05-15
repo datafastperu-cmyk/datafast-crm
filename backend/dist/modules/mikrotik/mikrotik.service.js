@@ -12,7 +12,6 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 var MikrotikService_1;
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MikrotikService = exports.EVENT_CLIENTE_REACTIVADO = exports.EVENT_CLIENTE_SUSPENDIDO = void 0;
 const common_1 = require("@nestjs/common");
@@ -319,6 +318,8 @@ exports.MikrotikService = MikrotikService = MikrotikService_1 = __decorate([
         queue_service_1.QueueService,
         firewall_service_1.FirewallService,
         interface_service_1.InterfaceService,
-        auditoria_service_1.AuditoriaService, typeof (_a = typeof event_emitter_1.EventEmitter !== "undefined" && event_emitter_1.EventEmitter) === "function" ? _a : Object, typeorm_4.DataSource])
+        auditoria_service_1.AuditoriaService,
+        event_emitter_1.EventEmitter2,
+        typeorm_4.DataSource])
 ], MikrotikService);
 //# sourceMappingURL=mikrotik.service.js.map

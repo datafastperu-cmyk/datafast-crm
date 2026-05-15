@@ -27,7 +27,7 @@ export declare class PagosService {
     private verificarYReactivarContrato;
     private validarPago;
     findAll(empresaId: string, filters: FilterPagoDto): Promise<{
-        data: unknown[];
+        data: Pago[];
         meta: {
             total: number;
             page: number;

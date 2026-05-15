@@ -24,7 +24,7 @@ export declare class SmartoltController {
     }>>;
     provisionar(dto: ProvisionarOnuDto, user: JwtPayload, req: Request): Promise<StdResponse<import("./entities/onu.entity").Onu>>;
     flujoCompleto(dto: FlujoComipletoFtthDto, user: JwtPayload): Promise<StdResponse<import("./dto/smartolt.dto").FlujoComipletoResultadoDto>>;
-    findAll(filters: FilterOnuDto, user: JwtPayload): Promise<StdResponse<unknown[]>>;
+    findAll(filters: FilterOnuDto, user: JwtPayload): Promise<StdResponse<import("./entities/onu.entity").Onu[]>>;
     getResumen(user: JwtPayload): Promise<StdResponse<{
         resumen: Record<string, number>;
         perfilesDisponibles: any[] | import("./smartolt-api.service").SmartoltProfile[];

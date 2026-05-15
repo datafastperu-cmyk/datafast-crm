@@ -8,7 +8,7 @@ import { Job, Queue }          from 'bull';
 import { Cron }                from '@nestjs/schedule';
 import { InjectDataSource }    from '@nestjs/typeorm';
 import { DataSource }          from 'typeorm';
-import { EventEmitter }       from '@nestjs/event-emitter';
+import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
 import { FirewallService }     from '../mikrotik/services/firewall.service';
 import { PppoeService }        from '../mikrotik/services/pppoe.service';

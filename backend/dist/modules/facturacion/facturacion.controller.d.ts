@@ -9,7 +9,7 @@ export declare class FacturacionController {
     constructor(svc: FacturacionService);
     create(dto: CreateFacturaDto, user: JwtPayload, req: Request): Promise<StdResponse<import("./entities/factura.entity").Factura>>;
     generarMensual(dto: GenerarFacturasMensualesDto, user: JwtPayload, req: Request): Promise<StdResponse<import("./facturacion.service").ResultadoGeneracion>>;
-    findAll(filters: FilterFacturaDto, user: JwtPayload): Promise<StdResponse<unknown[]>>;
+    findAll(filters: FilterFacturaDto, user: JwtPayload): Promise<StdResponse<import("./entities/factura.entity").Factura[]>>;
     getResumen(user: JwtPayload): Promise<StdResponse<import("./dto/factura.dto").ResumenFinancieroDto>>;
     findByContrato(contratoId: string, user: JwtPayload): Promise<StdResponse<import("./entities/factura.entity").Factura[]>>;
     findByCliente(clienteId: string, user: JwtPayload): Promise<StdResponse<import("./entities/factura.entity").Factura[]>>;

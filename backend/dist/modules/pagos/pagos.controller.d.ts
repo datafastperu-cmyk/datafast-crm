@@ -9,7 +9,7 @@ export declare class PagosController {
     private readonly logger;
     constructor(svc: PagosService);
     registrar(dto: RegistrarPagoDto, user: JwtPayload, req: Request): Promise<StdResponse<import("./entities/pago.entity").Pago>>;
-    findAll(filters: FilterPagoDto, user: JwtPayload): Promise<StdResponse<unknown[]>>;
+    findAll(filters: FilterPagoDto, user: JwtPayload): Promise<StdResponse<import("./entities/pago.entity").Pago[]>>;
     getResumen(user: JwtPayload): Promise<StdResponse<import("./dto/pago.dto").ResumenCobranzaDto>>;
     findPendientes(user: JwtPayload): Promise<StdResponse<import("./entities/pago.entity").Pago[]>>;
     getCuentas(user: JwtPayload): Promise<StdResponse<import("./entities/pago.entity").CuentaBancaria[]>>;

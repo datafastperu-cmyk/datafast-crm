@@ -16,7 +16,7 @@ export declare class ContratosService {
     private asignarIpDesdePool;
     private generarPassword;
     findAll(empresaId: string, filters: FilterContratoDto): Promise<{
-        data: unknown[];
+        data: Contrato[];
         meta: {
             total: number;
             page: number;

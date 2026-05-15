@@ -12,7 +12,6 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 var AlertasService_1;
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AlertasService = exports.EVENTO_NODO_ONLINE = exports.EVENTO_NODO_OFFLINE = exports.EVENTO_ALERTA_RESUELTA = exports.EVENTO_ALERTA_NUEVA = void 0;
 const common_1 = require("@nestjs/common");
@@ -239,6 +238,8 @@ exports.AlertasService = AlertasService = AlertasService_1 = __decorate([
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        whatsapp_service_1.WhatsAppService, typeof (_a = typeof event_emitter_1.EventEmitter !== "undefined" && event_emitter_1.EventEmitter) === "function" ? _a : Object, typeorm_2.DataSource])
+        whatsapp_service_1.WhatsAppService,
+        event_emitter_1.EventEmitter2,
+        typeorm_2.DataSource])
 ], AlertasService);
 //# sourceMappingURL=alertas.service.js.map

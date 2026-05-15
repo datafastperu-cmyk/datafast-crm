@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource }   from '@nestjs/typeorm';
 import { DataSource }         from 'typeorm';
-import { EventEmitter }      from '@nestjs/event-emitter';
+import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
 import { SmartoltService }    from './smartolt.service';
 import { SmartoltApiService } from './smartolt-api.service';

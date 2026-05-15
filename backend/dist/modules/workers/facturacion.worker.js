@@ -12,7 +12,6 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 var FacturacionScheduler_1, FacturacionWorker_1;
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FacturacionWorker = exports.FacturacionScheduler = void 0;
 const bull_1 = require("@nestjs/bull");
@@ -349,6 +348,8 @@ exports.FacturacionWorker = FacturacionWorker = FacturacionWorker_1 = __decorate
     __param(4, (0, typeorm_1.InjectDataSource)()),
     __metadata("design:paramtypes", [facturacion_service_1.FacturacionService,
         whatsapp_service_1.WhatsAppService,
-        auditoria_service_1.AuditoriaService, typeof (_a = typeof event_emitter_1.EventEmitter !== "undefined" && event_emitter_1.EventEmitter) === "function" ? _a : Object, typeorm_2.DataSource])
+        auditoria_service_1.AuditoriaService,
+        event_emitter_1.EventEmitter2,
+        typeorm_2.DataSource])
 ], FacturacionWorker);
 //# sourceMappingURL=facturacion.worker.js.map

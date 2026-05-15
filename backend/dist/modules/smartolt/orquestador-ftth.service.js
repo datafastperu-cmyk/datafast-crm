@@ -12,7 +12,6 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 var OrquestadorFtthService_1;
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrquestadorFtthService = void 0;
 const common_1 = require("@nestjs/common");
@@ -341,6 +340,8 @@ exports.OrquestadorFtthService = OrquestadorFtthService = OrquestadorFtthService
         pppoe_service_1.PppoeService,
         velocidad_orquestador_service_1.VelocidadOrquestador,
         firewall_service_1.FirewallService,
-        auditoria_service_1.AuditoriaService, typeof (_a = typeof event_emitter_1.EventEmitter !== "undefined" && event_emitter_1.EventEmitter) === "function" ? _a : Object, typeorm_2.DataSource])
+        auditoria_service_1.AuditoriaService,
+        event_emitter_1.EventEmitter2,
+        typeorm_2.DataSource])
 ], OrquestadorFtthService);
 //# sourceMappingURL=orquestador-ftth.service.js.map

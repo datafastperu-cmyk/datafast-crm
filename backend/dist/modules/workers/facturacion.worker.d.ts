@@ -1,6 +1,6 @@
 import { Job, Queue } from 'bull';
 import { DataSource } from 'typeorm';
-import { EventEmitter } from '@nestjs/event-emitter';
+import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 import { FacturacionService } from '../facturacion/facturacion.service';
 import { WhatsAppService } from '../notificaciones/services/whatsapp.service';
 import { AuditoriaService } from '../auth/auditoria.service';
