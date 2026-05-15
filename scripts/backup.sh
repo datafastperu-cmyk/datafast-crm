@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # ==============================================================
 # CRM ISP DATAFAST — Backup automático PostgreSQL
 # Cron sugerido: 0 2 * * * /opt/datafast/scripts/backup.sh

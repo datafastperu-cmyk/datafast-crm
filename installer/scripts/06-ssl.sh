@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Módulo 06 — SSL / Let's Encrypt
 
 setup_ssl() {

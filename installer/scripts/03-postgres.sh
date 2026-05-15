@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Módulo 03 — PostgreSQL 16
 
 install_postgres() {

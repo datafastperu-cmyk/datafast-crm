@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # ==============================================================
 # CRM ISP DATAFAST — Deploy con zero-downtime
 # Uso: bash scripts/deploy.sh

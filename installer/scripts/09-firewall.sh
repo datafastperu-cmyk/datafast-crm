@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Módulo 09 — Seguridad: Firewall, Fail2ban
 
 setup_security() {

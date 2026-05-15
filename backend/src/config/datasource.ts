@@ -1,4 +1,4 @@
-﻿// ─── DataSource para CLI de TypeORM (migraciones) ─────────────
+// ─── DataSource para CLI de TypeORM (migraciones) ─────────────
 // Uso: npm run migration:generate -- src/database/migrations/NombreMigracion
 // Uso: npm run migration:run
 //

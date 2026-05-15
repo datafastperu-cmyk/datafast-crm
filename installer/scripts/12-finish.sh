@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Módulo 12 — Herramientas de admin, CLI y pantalla final
 
 # ── Flujo completo de instalación ────────────────────────────

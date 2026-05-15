@@ -1,4 +1,4 @@
-﻿import {
+import {
   IsEmail, IsString, MinLength, MaxLength,
   IsOptional, IsNotEmpty, Matches,
 } from 'class-validator';

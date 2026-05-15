@@ -1,4 +1,4 @@
-﻿import {
+import {
   Column, Entity, ManyToMany, JoinTable,
   BeforeInsert, BeforeUpdate,
 } from 'typeorm';

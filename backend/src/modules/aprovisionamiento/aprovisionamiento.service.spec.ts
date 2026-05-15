@@ -1,4 +1,4 @@
-﻿import { Test, TestingModule }   from '@nestjs/testing';
+import { Test, TestingModule }   from '@nestjs/testing';
 import { getDataSourceToken }     from '@nestjs/typeorm';
 import { EventEmitter }          from '@nestjs/event-emitter';
 

@@ -1,4 +1,4 @@
-﻿import type { Metadata } from 'next';
+import type { Metadata } from 'next';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { Wifi } from 'lucide-react';
 

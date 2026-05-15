@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Módulo 01 — Preparación del sistema operativo
 
 install_system() {

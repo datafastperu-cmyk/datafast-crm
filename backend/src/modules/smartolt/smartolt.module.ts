@@ -1,4 +1,4 @@
-﻿import { EventEmitterModule } from '@nestjs/event-emitter';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Module }          from '@nestjs/common';
 import { TypeOrmModule }   from '@nestjs/typeorm';
 import { HttpModule }      from '@nestjs/axios';

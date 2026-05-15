@@ -1,4 +1,4 @@
-﻿import { registerAs } from '@nestjs/config';
+import { registerAs } from '@nestjs/config';
 import * as Joi from 'joi';
 
 // ─── Schema de validación de variables de entorno ──────────────

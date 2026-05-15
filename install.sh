@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
 #  CRM ISP DATAFAST — Instalador Principal v1.0.0
 #  Ubuntu 22.04 / 24.04 LTS
@@ -97,7 +97,8 @@ download_scripts() {
         local dest="${INSTALL_DIR}/installer/${script}"
         mkdir -p "$(dirname "$dest")"
         if curl -fsSL "$url" -o "$dest" 2>>"${LOG_FILE}"; then
-            sed -i 's/\r//' "$dest" 2>/dev/null || true   # strip Windows CRLF
+            sed -i 's/\r//' "$dest" 2>/dev/null || true        # strip CRLF
+            sed -i $'1s/^\xef\xbb\xbf//' "$dest" 2>/dev/null || true  # strip UTF-8 BOM
             chmod +x "$dest" 2>/dev/null || true
             detail "✓ $script"
         else

@@ -1,4 +1,4 @@
-﻿# CRM ISP DATAFAST
+# CRM ISP DATAFAST
 
 Sistema ERP/CRM completo para proveedores de internet FTTH y WISP.
 

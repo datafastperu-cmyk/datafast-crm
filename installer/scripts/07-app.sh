@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Módulo 07 — Despliegue de la aplicación
 
 deploy_app() {

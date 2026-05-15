@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { RouterConnectionPool, RouterCredentials } from './connection-pool.service';
 
 // Lista de morosos: IPs bloqueadas por mora

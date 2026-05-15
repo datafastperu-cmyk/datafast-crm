@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # ==============================================================
 # CRM ISP DATAFAST — Obtener certificados SSL con Let's Encrypt
 # Uso: bash scripts/ssl-setup.sh

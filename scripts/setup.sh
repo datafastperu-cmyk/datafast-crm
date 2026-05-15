@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # ==============================================================
 # CRM ISP DATAFAST — Script de instalación en servidor producción
 # Probado en: Ubuntu 22.04 LTS

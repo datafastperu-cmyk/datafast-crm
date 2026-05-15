@@ -1,4 +1,4 @@
-﻿import {
+import {
   Process, Processor,
   OnQueueFailed, OnQueueCompleted,
 } from '@nestjs/bull';

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Módulo 10 — Monitoreo
 setup_monitoring() {
     step "Configurando monitoreo del servidor"

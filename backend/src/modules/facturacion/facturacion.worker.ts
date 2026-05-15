@@ -1,4 +1,4 @@
-﻿import { Process, Processor, OnQueueFailed, OnQueueCompleted } from '@nestjs/bull';
+import { Process, Processor, OnQueueFailed, OnQueueCompleted } from '@nestjs/bull';
 import { Logger, Injectable } from '@nestjs/common';
 import { Job } from 'bull';
 import { Cron, CronExpression } from '@nestjs/schedule';

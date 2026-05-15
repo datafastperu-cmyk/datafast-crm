@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Módulo 11 — Backups automáticos
 setup_backup() {
     step "Configurando backups automáticos"
