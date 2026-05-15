@@ -2,13 +2,13 @@
 // La clave PRIVADA vive exclusivamente en el servidor de licencias.
 // Cambiar esta clave invalida TODAS las licencias emitidas previamente.
 export const LICENCIA_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxVjFjdNfpPlHUyV4FfyG
-g8jcndwNCrIW1oSR0H7yKukD6IihdlgFt2NWez6dr2vjB4x9yZWdyaf+7cQzLWAo
-fG6Nsh9bEEe5za8bSngHZibUJpadgQ8nR/sU1lCKDWTmaphfBKHVpnhbgJx2beyb
-N+iWFh2R0jCObk0asv73sJQx+ZKwGJJLPp7M6TpUgg3NOoPEIKwqxZy0wj4LYLd9
-yeFx7ZlXRkLV00ef9nIxeTrgNHP4E7RyqIiOQV0nYRFXt4KN+0Sq3eyZo0ajLL4O
-5eLjR+v/b4QfhePq/cPNUS4ZHJbzC5YTnVerQoh9oNFduqBVql/CF7pQu7AZSDx9
-EQIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx2lDjBl2OhIQtujscwXS
+1fhQwT1ubEK3BSI3QsKbniL+KOK43JHtFb5H6POSZ4xOLg50mGua36DUE+Ft2j/h
+tfXetHttV7UsRCjLVKC1XB0K7QQWU9g9rB35vh+g/Kfvt8MKKPwfi8mobEaDpE96
+/Xz+aasbS7GGuvAVDmpyG0ASSEAuVZtBZQN+xZVBA+hhAi/EYpvphFTwKdnxeI9z
+JA2gZXSjrJC3AgnI3wDZvjm7MaQEXohaoq0neY8tVb2j88RJ8Esv+Cm4hF+9tD9D
+8cFDY9Elv7Vz/mFRaqqz1T0WqsKjkXegmB8xY0y5dV8BLRu1Dj9NcnzRSjuzaHX6
+LwIDAQAB
 -----END PUBLIC KEY-----`;
 
 // ─── Emisor válido en el JWT ───────────────────────────────────────────────────
