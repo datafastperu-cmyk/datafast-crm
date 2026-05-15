@@ -2,26 +2,19 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeor
 
 @Entity('auditoria_logs')
 export class AuditoriaLog {
-  @PrimaryGeneratedColumn('uuid') id: string;
-  @Column({ nullable: true }) usuarioId: string;
-  @Column({ nullable: true }) usuarioEmail: string;
-  @Column({ nullable: true }) empresaId: string;
-  @Column({ nullable: true }) modulo: string;
-  @Column({ nullable: true }) accion: string;
-  @Column({ nullable: true }) entidad: string;
-  @Column({ nullable: true }) entidadId: string;
-  @Column({ nullable: true }) ipAddress: string;
-  @Column({ nullable: true }) ip: string;
-  @Column({ nullable: true }) userAgent: string;
-  @Column({ nullable: true }) descripcion: string;
-  @Column({ nullable: true }) resultado: string;
-  @Column({ nullable: true }) exitoso: boolean;
-  @Column({ nullable: true }) metodoHttp: string;
-  @Column({ nullable: true }) url: string;
-  @Column({ nullable: true }) ruta: string;
-  @Column({ nullable: true }) statusCode: number;
-  @Column({ type: 'jsonb', nullable: true }) datosAnteriores: any;
-  @Column({ type: 'jsonb', nullable: true }) datosNuevos: any;
-  @Column({ type: 'jsonb', nullable: true }) metadatos: any;
-  @CreateDateColumn() createdAt: Date;
+  @PrimaryGeneratedColumn('increment') id: number;
+  @Column({ name: 'empresa_id',    nullable: true }) empresaId: string;
+  @Column({ name: 'usuario_id',    nullable: true }) usuarioId: string;
+  @Column({ name: 'usuario_email', nullable: true }) usuarioEmail: string;
+  @Column({ name: 'accion'  }) accion: string;
+  @Column({ name: 'modulo'  }) modulo: string;
+  @Column({ name: 'entidad_id',    nullable: true }) entidadId: string;
+  @Column({ name: 'descripcion',   nullable: true }) descripcion: string;
+  @Column({ name: 'ip_address',    nullable: true }) ipAddress: string;
+  @Column({ name: 'user_agent',    nullable: true }) userAgent: string;
+  @Column({ name: 'metodo_http',   nullable: true }) metodoHttp: string;
+  @Column({ name: 'ruta',          nullable: true }) ruta: string;
+  @Column({ name: 'datos_anteriores', type: 'jsonb', nullable: true }) datosAnteriores: any;
+  @Column({ name: 'datos_nuevos',  type: 'jsonb', nullable: true }) datosNuevos: any;
+  @CreateDateColumn({ name: 'created_at' }) createdAt: Date;
 }
