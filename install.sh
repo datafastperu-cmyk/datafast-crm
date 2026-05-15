@@ -97,6 +97,7 @@ download_scripts() {
         local dest="${INSTALL_DIR}/installer/${script}"
         mkdir -p "$(dirname "$dest")"
         if curl -fsSL "$url" -o "$dest" 2>>"${LOG_FILE}"; then
+            sed -i 's/\r//' "$dest" 2>/dev/null || true   # strip Windows CRLF
             chmod +x "$dest" 2>/dev/null || true
             detail "✓ $script"
         else

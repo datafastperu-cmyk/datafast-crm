@@ -1,0 +1,38 @@
+# Forzar LF en todos los archivos de texto para evitar CRLF en Linux
+* text=auto
+
+# Shell scripts — siempre LF
+*.sh        text eol=lf
+*.bash      text eol=lf
+Makefile    text eol=lf
+Dockerfile  text eol=lf
+
+# Configuración
+*.conf      text eol=lf
+*.cfg       text eol=lf
+*.env       text eol=lf
+
+# JavaScript / TypeScript
+*.js        text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.jsx       text eol=lf
+*.json      text eol=lf
+
+# Web
+*.html      text eol=lf
+*.css       text eol=lf
+
+# Markdown
+*.md        text eol=lf
+
+# Binarios — sin conversión
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.gz        binary
+*.pem       binary
