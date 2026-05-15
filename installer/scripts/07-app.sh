@@ -135,7 +135,6 @@ JWT_REFRESH_EXPIRES_IN=7d
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
 LOG_LEVEL=warn
-LOG_FILE=${INSTALL_DIR}/logs/backend.log
 ENVEOF
     chmod 600 "${INSTALL_DIR}/backend/.env.production"
     ok "Variables de entorno del backend creadas"
