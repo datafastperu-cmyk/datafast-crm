@@ -35,24 +35,22 @@ _ask_config() {
         return
     fi
 
-    # Cuando se ejecuta via "curl | bash", stdin es la tubería.
-    # Redirigir al terminal para que los read funcionen.
-    exec </dev/tty
-
     echo -e "\n${BOLD}${C}── CONFIGURACIÓN DEL SISTEMA ──────────────────────────${NC}\n"
 
-    read -rp "  Nombre de tu empresa ISP [DATAFAST S.A.C.]: " EMPRESA_NOMBRE
+    # Cada read usa </dev/tty para leer del terminal aunque el script
+    # venga por pipe (curl | bash), donde stdin es la tubería, no el teclado.
+    read -rp "  Nombre de tu empresa ISP [DATAFAST S.A.C.]: " EMPRESA_NOMBRE </dev/tty
     EMPRESA_NOMBRE="${EMPRESA_NOMBRE:-DATAFAST S.A.C.}"
 
-    read -rp "  RUC (11 dígitos) [20000000001]: " EMPRESA_RUC
+    read -rp "  RUC (11 dígitos) [20000000001]: " EMPRESA_RUC </dev/tty
     EMPRESA_RUC="${EMPRESA_RUC:-20000000001}"
 
     echo ""
-    read -rp "  Email del administrador [admin@datafast.pe]: " ADMIN_EMAIL
+    read -rp "  Email del administrador [admin@datafast.pe]: " ADMIN_EMAIL </dev/tty
     ADMIN_EMAIL="${ADMIN_EMAIL:-admin@datafast.pe}"
 
     while true; do
-        read -rsp "  Contraseña del administrador (mínimo 8 chars): " ADMIN_PASSWORD
+        read -rsp "  Contraseña del administrador (mínimo 8 chars): " ADMIN_PASSWORD </dev/tty
         echo ""
         [[ ${#ADMIN_PASSWORD} -ge 8 ]] && break
         echo "  Mínimo 8 caracteres."
@@ -60,8 +58,8 @@ _ask_config() {
 
     echo ""
     echo -e "  ${D}Dominio opcional — presiona Enter para usar IP directa${NC}"
-    read -rp "  Dominio del panel ERP (ej: erp.tuisp.pe): " DOMINIO_FRONTEND
-    read -rp "  Dominio de la API     (ej: api.tuisp.pe): " DOMINIO_BACKEND
+    read -rp "  Dominio del panel ERP (ej: erp.tuisp.pe): " DOMINIO_FRONTEND </dev/tty
+    read -rp "  Dominio de la API     (ej: api.tuisp.pe): " DOMINIO_BACKEND </dev/tty
     [[ -n "${DOMINIO_FRONTEND:-}" && -z "${DOMINIO_BACKEND:-}" ]] && DOMINIO_BACKEND="$DOMINIO_FRONTEND"
 
     _generate_secrets
@@ -72,7 +70,7 @@ _ask_config() {
     echo "    Admin:   ${ADMIN_EMAIL}"
     [[ -n "${DOMINIO_FRONTEND:-}" ]] && echo "    Panel:   https://${DOMINIO_FRONTEND}"
     echo ""
-    read -rp "  ¿Continuar con la instalación? [S/n]: " confirmar
+    read -rp "  ¿Continuar con la instalación? [S/n]: " confirmar </dev/tty
     [[ "${confirmar:-s}" =~ ^[nN]$ ]] && exit 0
 
     export EMPRESA_NOMBRE EMPRESA_RUC ADMIN_EMAIL ADMIN_PASSWORD
