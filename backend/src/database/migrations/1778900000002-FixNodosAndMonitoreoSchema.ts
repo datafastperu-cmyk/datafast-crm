@@ -139,7 +139,15 @@ export class FixNodosAndMonitoreoSchema1778900000002 implements MigrationInterfa
         ON nodos_mediciones (empresa_id, "timestamp" DESC);
     `);
 
-    // ── 10. Crear tipos enum para alertas ─────────────────────────────────────
+    // ── 10. Columnas faltantes en otras tablas ────────────────────────────────
+    await queryRunner.query(`
+      ALTER TABLE nodos ADD COLUMN IF NOT EXISTS snmp_version SMALLINT NOT NULL DEFAULT 2
+    `);
+    await queryRunner.query(`
+      ALTER TABLE pagos ADD COLUMN IF NOT EXISTS mp_detail JSONB
+    `);
+
+    // ── 11. Crear tipos enum para alertas ─────────────────────────────────────
     await queryRunner.query(`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'alertas_nivel_enum') THEN
