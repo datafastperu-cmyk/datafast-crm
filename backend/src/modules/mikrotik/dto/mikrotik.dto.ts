@@ -6,7 +6,7 @@ import {
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  MetodoConexion, VersionRouterOS,
+  MetodoConexion, VersionRouterOS, TipoControl,
 } from '../entities/router.entity';
 
 // ─── Crear Router ─────────────────────────────────────────────
@@ -70,6 +70,14 @@ export class CreateRouterDto {
   @ApiPropertyOptional({ example: -80.6328 })
   @IsOptional() @IsNumber() @Min(-180) @Max(180) @Type(() => Number)
   longitud?: number;
+
+  @ApiPropertyOptional({ example: '10.8.0.2', description: 'IP asignada por el túnel OpenVPN' })
+  @IsOptional() @IsString() @MaxLength(50)
+  vpnIp?: string;
+
+  @ApiPropertyOptional({ enum: TipoControl, default: TipoControl.NINGUNA })
+  @IsOptional() @IsEnum(TipoControl)
+  tipoControl?: TipoControl;
 
   @ApiPropertyOptional({ default: 'public' })
   @IsOptional() @IsString() @MaxLength(100)
@@ -200,6 +208,29 @@ export class ActualizarQueueDto {
   @ApiProperty({ example: 15 })
   @IsInt() @Min(1) @Type(() => Number)
   uploadMbps: number;
+}
+
+// ─── Amarre IP-MAC (ARP estático + opcionalmente DHCP lease) ─────
+export class AmareIpMacDto {
+  @ApiProperty({ example: '192.168.1.10' })
+  @IsIP()
+  ip: string;
+
+  @ApiProperty({ example: 'AA:BB:CC:DD:EE:FF' })
+  @IsString() @IsNotEmpty() @MaxLength(17)
+  mac: string;
+
+  @ApiPropertyOptional({ example: 'PC-Juan-Perez' })
+  @IsOptional() @IsString() @MaxLength(100)
+  hostname?: string;
+
+  @ApiPropertyOptional({ description: 'UUID del cliente en el sistema' })
+  @IsOptional() @IsString()
+  clienteId?: string;
+
+  @ApiPropertyOptional({ example: 'dhcp1', description: 'Servidor DHCP en el router' })
+  @IsOptional() @IsString() @MaxLength(100)
+  dhcpServer?: string;
 }
 
 // ─── Ping desde el router ─────────────────────────────────────

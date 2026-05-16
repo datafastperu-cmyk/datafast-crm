@@ -22,6 +22,12 @@ export enum EstadoEquipo {
   DESCONOCIDO   = 'desconocido',
 }
 
+export enum TipoControl {
+  NINGUNA            = 'ninguna',
+  AMARRE_IP_MAC      = 'amarre_ip_mac',
+  AMARRE_IP_MAC_DHCP = 'amarre_ip_mac_dhcp',
+}
+
 @Entity('routers')
 @Index(['empresaId', 'activo'])
 @Index(['empresaId', 'estado'])
@@ -141,6 +147,19 @@ export class Router extends BaseModel {
 
   @Column({ name: 'snmp_version', type: 'smallint', default: 2 })
   snmpVersion: number;
+
+  // ── VPN ───────────────────────────────────────────────────
+  @Column({ name: 'vpn_ip', length: 50, nullable: true })
+  vpnIp: string;
+
+  // ── Control de seguridad ──────────────────────────────────
+  @Column({
+    name: 'tipo_control',
+    type: 'enum',
+    enum: TipoControl,
+    default: TipoControl.NINGUNA,
+  })
+  tipoControl: TipoControl;
 
   @Column({ default: true })
   activo: boolean;

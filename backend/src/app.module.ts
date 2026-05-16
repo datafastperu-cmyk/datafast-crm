@@ -33,6 +33,8 @@ import { AprovisionamientoModule } from './modules/aprovisionamiento/aprovisiona
 import { MikrotikModule }         from './modules/mikrotik/mikrotik.module';
 import { SmartoltModule }         from './modules/smartolt/smartolt.module';
 import { WorkersModule }          from './modules/workers/workers.module';
+import { OpenvpnModule }          from './modules/openvpn/openvpn.module';
+import { PlantillasModule }       from './modules/plantillas/plantillas.module';
 
 @Module({
   imports: [
@@ -122,6 +124,8 @@ import { WorkersModule }          from './modules/workers/workers.module';
     MikrotikModule,
     SmartoltModule,
     WorkersModule,
+    OpenvpnModule,
+    PlantillasModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia

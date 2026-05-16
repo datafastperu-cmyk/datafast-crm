@@ -8,7 +8,7 @@ import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
-import { Router, VersionRouterOS, EstadoEquipo } from './entities/router.entity';
+import { Router, VersionRouterOS, EstadoEquipo, TipoControl } from './entities/router.entity';
 import { RouterConnectionPool, RouterCredentials } from './services/connection-pool.service';
 import { PppoeService, CreatePppoeParams }         from './services/pppoe.service';
 import { QueueService, QueueParams }               from './services/queue.service';
@@ -20,7 +20,7 @@ import { encrypt, decrypt }                        from '../../common/utils/encr
 
 import {
   CreateRouterDto, UpdateRouterDto, ProvisionarClienteDto,
-  SuspenderClienteDto, ReactivarClienteDto,
+  SuspenderClienteDto, ReactivarClienteDto, AmareIpMacDto,
 } from './dto/mikrotik.dto';
 
 // ─── Evento emitido al suspender/reactivar ────────────────────
@@ -124,9 +124,11 @@ export class MikrotikService {
   private async getCredentials(routerId: string, empresaId: string): Promise<RouterCredentials> {
     const router = await this.findOne(routerId, empresaId);
     const port   = router.usarSsl ? router.puertoApiSsl : router.puertoApi;
+    // Si el router tiene VPN configurada, conectar por esa IP
+    const ip = router.vpnIp || router.ipGestion;
     return {
       id:              router.id,
-      ip:              router.ipGestion,
+      ip,
       port,
       user:            router.usuario,
       passwordCifrado: router.passwordCifrado,
@@ -134,6 +136,68 @@ export class MikrotikService {
       timeoutSec:      router.timeoutConexion || 10,
       version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
     };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // AMARRE IP + MAC  (ARP estático + opcionalmente DHCP lease)
+  // ────────────────────────────────────────────────────────────
+  async aplicarAmareIpMac(
+    routerId: string,
+    dto:      AmareIpMacDto,
+    user:     JwtPayload,
+  ): Promise<{ arp: boolean; dhcp: boolean }> {
+    const router = await this.findOne(routerId, user.empresaId);
+    const creds  = await this.getCredentials(routerId, user.empresaId);
+    const comment = `DATAFAST:${dto.clienteId ? `ClienteID:${dto.clienteId}` : dto.hostname || dto.ip}`;
+
+    let dhcpAdded = false;
+
+    await this.pool.execute(creds, async (api) => {
+      // 1. Agregar entrada ARP estática en IP > ARP
+      const arpExistente = await api.write('/ip/arp/print', [
+        `?address=${dto.ip}`,
+        `?mac-address=${dto.mac}`,
+      ]);
+      if (!arpExistente.length) {
+        await api.write('/ip/arp/add', [
+          `=address=${dto.ip}`,
+          `=mac-address=${dto.mac}`,
+          `=comment=${comment}`,
+        ]);
+      }
+
+      // 2. Si el control incluye DHCP lease, también agregar en DHCP Server > Leases
+      if (
+        router.tipoControl === TipoControl.AMARRE_IP_MAC_DHCP ||
+        dto.dhcpServer
+      ) {
+        const server = dto.dhcpServer || 'dhcp1';
+        const leaseExistente = await api.write('/ip/dhcp-server/lease/print', [
+          `?address=${dto.ip}`,
+        ]);
+        if (!leaseExistente.length) {
+          await api.write('/ip/dhcp-server/lease/add', [
+            `=address=${dto.ip}`,
+            `=mac-address=${dto.mac}`,
+            `=server=${server}`,
+            `=comment=${comment}`,
+          ]);
+          dhcpAdded = true;
+        } else {
+          dhcpAdded = true; // ya existía
+        }
+      }
+    });
+
+    await this.auditoria.log({
+      empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+      accion:       'AMARRE_IP_MAC',
+      modulo:       'mikrotik',
+      entidadId:    dto.clienteId || routerId,
+      descripcion:  `Amarre IP ${dto.ip} ↔ MAC ${dto.mac} en ${creds.ip}${dhcpAdded ? ' + DHCP lease' : ''}`,
+    });
+
+    return { arp: true, dhcp: dhcpAdded };
   }
 
   // ────────────────────────────────────────────────────────────

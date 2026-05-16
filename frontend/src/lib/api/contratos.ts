@@ -166,6 +166,39 @@ export const planesApi = {
   },
 };
 
+// ─── Tipos segmentos ──────────────────────────────────────────
+export interface SegmentoIpv4 {
+  id:             string;
+  nombre:         string;
+  descripcion?:   string;
+  redCidr:        string;
+  gateway:        string;
+  dnsPrimario:    string;
+  dnsSecundario?: string;
+  routerId?:      string;
+  nodoId?:        string;
+  tipoServicio:   string;
+  vlanId?:        number;
+  totalIps:       number;
+  ipsUsadas:      number;
+  ipsDisponibles: number;
+  activo:         boolean;
+}
+
+export interface CreateSegmentoDto {
+  nombre:         string;
+  descripcion?:   string;
+  redCidr:        string;
+  gateway:        string;
+  dnsPrimario?:   string;
+  dnsSecundario?: string;
+  routerId?:      string;
+  nodoId?:        string;
+  tipoServicio?:  string;
+  vlanId?:        number;
+  ipsReservadas?: string[];
+}
+
 // ─── Routers API (para selects) ───────────────────────────────
 export const redesApi = {
   listRouters: async () => {
@@ -176,9 +209,26 @@ export const redesApi = {
     const res = await api.get<ApiRespuesta>('/smartolt/olts');
     return res.data.data ?? [];
   },
-  listSegmentos: async () => {
-    const res = await api.get<ApiRespuesta>('/contratos/segmentos');
+  listNodos: async () => {
+    const res = await api.get<ApiRespuesta>('/monitoreo/nodos');
     return res.data.data ?? [];
+  },
+  listSegmentos: async (routerId?: string): Promise<SegmentoIpv4[]> => {
+    const res = await api.get<ApiRespuesta>('/contratos/segmentos', {
+      params: routerId ? { routerId } : {},
+    });
+    return res.data.data ?? [];
+  },
+  createSegmento: async (dto: CreateSegmentoDto): Promise<SegmentoIpv4> => {
+    const res = await api.post<ApiRespuesta<SegmentoIpv4>>('/contratos/segmentos', dto);
+    return res.data.data;
+  },
+  deleteSegmento: async (id: string): Promise<void> => {
+    await api.delete(`/contratos/segmentos/${id}`);
+  },
+  getDisponibilidad: async (id: string) => {
+    const res = await api.get<ApiRespuesta>(`/contratos/segmentos/${id}/disponibilidad`);
+    return res.data.data;
   },
   listPerfilesSmartolt: async () => {
     const res = await api.get<ApiRespuesta>('/smartolt/perfiles');

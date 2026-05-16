@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { SegmentoIpv4, IpAsignada } from './entities/segmento-ipv4.entity';
+import { SegmentoIpv4, IpAsignada } from './entities/red.entity';
 import {
   ipToInt, intToIp, getCidrRange,
   getNextAvailableIp, isIpInCidr, isValidCidr,
@@ -233,6 +233,11 @@ export class IpPoolService {
       ips: ips.slice(0, 256), // Máximo 256 para no saturar respuesta
       hayMas: ips.length > 256,
     };
+  }
+
+  async desactivarSegmento(id: string, empresaId: string): Promise<void> {
+    const seg = await this.getSegmento(id, empresaId);
+    await this.segRepo.update(seg.id, { activo: false });
   }
 
   // ── Estadísticas de todos los segmentos ───────────────────

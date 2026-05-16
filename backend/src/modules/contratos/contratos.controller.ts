@@ -1,15 +1,36 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Req, ParseUUIDPipe, HttpCode, HttpStatus, SetMetadata } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { IsString, IsOptional, IsNotEmpty, MaxLength, IsIP, IsInt, IsBoolean, IsArray, IsEnum } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { Request } from 'express';
 import { ContratosService } from './contratos.service';
+import { IpPoolService } from './ip-pool.service';
 import { CreateContratoDto, UpdateContratoDto, FilterContratoDto, CambiarEstadoContratoDto, OtorgarProrrogaDto } from './dto/contrato.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/roles.decorator';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 
+class CreateSegmentoDto {
+  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(100) nombre: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() descripcion?: string;
+  @ApiProperty({ example: '192.168.1.0/24' }) @IsString() @IsNotEmpty() redCidr: string;
+  @ApiProperty({ example: '192.168.1.1' }) @IsIP() gateway: string;
+  @ApiPropertyOptional({ default: '8.8.8.8' }) @IsOptional() @IsIP() dnsPrimario?: string;
+  @ApiPropertyOptional() @IsOptional() @IsIP() dnsSecundario?: string;
+  @ApiPropertyOptional() @IsOptional() routerId?: string;
+  @ApiPropertyOptional() @IsOptional() nodoId?: string;
+  @ApiPropertyOptional({ enum: ['ftth','wisp','dedicado'], default: 'ftth' }) @IsOptional() @IsString() tipoServicio?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Type(() => Number) vlanId?: number;
+  @ApiPropertyOptional() @IsOptional() @IsArray() ipsReservadas?: string[];
+}
+
 @ApiTags('Contratos') @ApiBearerAuth('JWT') @Controller('contratos')
 export class ContratosController {
-  constructor(private readonly svc: ContratosService) {}
+  constructor(
+    private readonly svc: ContratosService,
+    private readonly ipPool: IpPoolService,
+  ) {}
 
   @Post() @RequirePermission('contratos:create')
   @ApiOperation({ summary: 'Crear contrato — asigna IP automáticamente del pool si se provee segmentoId' })
@@ -81,6 +102,43 @@ export class ContratosController {
   @ApiParam({ name:'id' })
   async getHistorial(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return StdResponse.ok(await this.svc.getHistorial(id, user.empresaId));
+  }
+
+  // ── Segmentos IPv4 ──────────────────────────────────────────
+
+  @Get('segmentos') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Listar segmentos IPv4 de la empresa' })
+  @ApiQuery({ name: 'routerId', required: false })
+  async listSegmentos(@Query('routerId') routerId: string, @CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.ipPool.getSegmentos(user.empresaId, routerId));
+  }
+
+  @Post('segmentos') @RequirePermission('contratos:create')
+  @ApiOperation({ summary: 'Crear segmento IPv4' })
+  async createSegmento(@Body() dto: CreateSegmentoDto, @CurrentUser() user: JwtPayload) {
+    const seg = await this.ipPool.createSegmento({ ...dto, empresaId: user.empresaId });
+    return StdResponse.ok(seg, 'Segmento creado correctamente');
+  }
+
+  @Get('segmentos/:segId') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Obtener segmento por ID' })
+  @ApiParam({ name: 'segId' })
+  async getSegmento(@Param('segId', ParseUUIDPipe) segId: string, @CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.ipPool.getSegmento(segId, user.empresaId));
+  }
+
+  @Get('segmentos/:segId/disponibilidad') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Ver disponibilidad de IPs en un segmento' })
+  @ApiParam({ name: 'segId' })
+  async getDisponibilidad(@Param('segId', ParseUUIDPipe) segId: string, @CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.ipPool.getDisponibilidad(segId, user.empresaId));
+  }
+
+  @Delete('segmentos/:segId') @RequirePermission('contratos:delete') @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Desactivar segmento IPv4' })
+  @ApiParam({ name: 'segId' })
+  async removeSegmento(@Param('segId', ParseUUIDPipe) segId: string, @CurrentUser() user: JwtPayload): Promise<void> {
+    await this.ipPool.desactivarSegmento(segId, user.empresaId);
   }
 
   @Delete(':id') @RequirePermission('contratos:delete') @HttpCode(HttpStatus.NO_CONTENT)

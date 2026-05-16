@@ -15,7 +15,7 @@ import {
   CreateRouterDto, UpdateRouterDto,
   ProvisionarClienteDto, SuspenderClienteDto,
   ReactivarClienteDto, DhcpBindingDto,
-  ActualizarQueueDto, PingDto,
+  ActualizarQueueDto, PingDto, AmareIpMacDto,
 } from './dto/mikrotik.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission, Roles }  from '../../common/decorators/roles.decorator';
@@ -253,20 +253,26 @@ export class MikrotikController {
     return StdResponse.ok(null, `IP ${dto.ipAsignada} reactivada — acceso restaurado`);
   }
 
-  // ─── DHCP BINDINGS ────────────────────────────────────────
+  // ─── AMARRE IP + MAC ──────────────────────────────────────
 
-  @Post('routers/:id/dhcp/binding')
+  @Post('routers/:id/amarre-ip-mac')
   @RequirePermission('mikrotik:manage')
-  @ApiOperation({ summary: 'Crear binding estático DHCP (amarre IP-MAC)' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Aplicar amarre IP-MAC en el router',
+    description:
+      'Agrega entrada ARP estática en IP>ARP. ' +
+      'Si el router tiene tipo_control=amarre_ip_mac_dhcp o se envía dhcpServer, ' +
+      'también agrega lease estático en IP>DHCP Server>Leases.',
+  })
   @ApiParam({ name: 'id' })
-  async crearDhcpBinding(
+  async aplicarAmareIpMac(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: DhcpBindingDto,
+    @Body() dto: AmareIpMacDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    const router = await this.svc.findOne(id, user.empresaId);
-    // Delegamos directamente al servicio de firewall vía MikrotikService
-    return StdResponse.ok({ mensaje: 'DHCP binding creado' }, 'Binding creado');
+    const result = await this.svc.aplicarAmareIpMac(id, dto, user);
+    return StdResponse.ok(result, `Amarre IP ${dto.ip} ↔ MAC ${dto.mac} aplicado`);
   }
 
   // ─── QUEUES ───────────────────────────────────────────────

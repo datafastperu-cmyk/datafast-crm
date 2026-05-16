@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ContratosController } from './contratos.controller';
 import { ContratosService } from './contratos.service';
+import { IpPoolService } from './ip-pool.service';
 import { ContratoRepository } from './repositories/contrato.repository';
 import { Contrato, ContratoHistorial } from './entities/contrato.entity';
 import { SegmentoIpv4, IpAsignada } from './entities/red.entity';
@@ -15,7 +16,7 @@ import { AuthModule } from '../auth/auth.module';
     AuthModule,
   ],
   controllers: [ContratosController],
-  providers: [ContratosService, ContratoRepository],
-  exports: [ContratosService, ContratoRepository],
+  providers: [ContratosService, IpPoolService, ContratoRepository],
+  exports: [ContratosService, IpPoolService, ContratoRepository],
 })
 export class ContratosModule {}
