@@ -56,7 +56,7 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/login')) {
       // Si ya se está haciendo refresh, encolar esta petición
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
