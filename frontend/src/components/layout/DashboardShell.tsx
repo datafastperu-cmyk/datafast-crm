@@ -11,7 +11,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-background">
       {sidebarOpen && (
         <div
-          className="sidebar-overlay"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}

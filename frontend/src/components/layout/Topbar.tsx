@@ -134,7 +134,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleSidebar}
-          className="mobile-toggle p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="lg:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           aria-label="Abrir menú"
         >
           <Menu className="w-5 h-5" />

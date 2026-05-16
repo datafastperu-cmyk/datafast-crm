@@ -217,7 +217,6 @@ export class MonitoreoController {
   // ─── DASHBOARD ────────────────────────────────────────────
 
   @Get('dashboard/trafico')
-  @RequirePermission('monitoreo:view')
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Historial de tráfico agregado por hora (últimas 24h)' })
   async getTrafico(@CurrentUser() user: JwtPayload) {

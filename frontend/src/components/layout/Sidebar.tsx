@@ -102,7 +102,13 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     href === '/dashboard' ? pathname === href : pathname.startsWith(href);
 
   return (
-    <aside className={cn('sidebar flex flex-col flex-shrink-0', isOpen && 'sidebar-open')}>
+    <aside className={cn(
+      'flex flex-col flex-shrink-0 w-60',
+      'bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-fg))] border-r border-[hsl(var(--sidebar-border))]',
+      'fixed inset-y-0 left-0 z-50 transition-transform duration-300 ease-in-out',
+      'lg:static lg:h-full lg:translate-x-0',
+      isOpen ? 'translate-x-0' : '-translate-x-full',
+    )}>
       <div className="flex items-center gap-3 px-4 py-4 border-b border-[hsl(var(--sidebar-border))]">
         <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/20">
           <Wifi className="w-5 h-5 text-primary" />
