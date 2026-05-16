@@ -8,10 +8,11 @@ export enum VersionRouterOS {
 }
 
 export enum MetodoConexion {
-  API     = 'api',
-  API_SSL = 'api_ssl',
-  SSH     = 'ssh',
-  SNMP    = 'snmp',
+  API         = 'api',
+  API_SSL     = 'api_ssl',
+  SSH         = 'ssh',
+  SNMP        = 'snmp',
+  VPN_TUNNEL  = 'vpn_tunnel',
 }
 
 export enum EstadoEquipo {
@@ -151,6 +152,14 @@ export class Router extends BaseModel {
   // ── VPN ───────────────────────────────────────────────────
   @Column({ name: 'vpn_ip', length: 50, nullable: true })
   vpnIp: string;
+
+  // ── Zona / Sector ─────────────────────────────────────────
+  @Column({ length: 100, nullable: true })
+  zona: string;
+
+  // ── Reintentos de reconexión ──────────────────────────────
+  @Column({ type: 'smallint', default: 3 })
+  reintentos: number;
 
   // ── Control de seguridad ──────────────────────────────────
   @Column({

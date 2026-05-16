@@ -1,43 +1,69 @@
 import api from '@/lib/api';
 
+export type MetodoConexion = 'api' | 'api_ssl' | 'ssh' | 'snmp' | 'vpn_tunnel';
+export type VersionRouterOS = 'v6' | 'v7' | 'desconocida';
+export type EstadoEquipo    = 'online' | 'offline' | 'degradado' | 'mantenimiento' | 'desconocido';
+export type TipoControl     = 'ninguna' | 'amarre_ip_mac' | 'amarre_ip_mac_dhcp';
+
 export interface Router {
-  id:              string;
+  id:               string;
+  nombre:           string;
+  descripcion?:     string;
+  ubicacion?:       string;
+  modelo?:          string;
+  ipGestion:        string;
+  vpnIp?:           string;
+  zona?:            string;
+  puertoApi:        number;
+  puertoApiSsl:     number;
+  puertoSsh:        number;
+  usuario:          string;
+  metodoConexion:   MetodoConexion;
+  usarSsl:          boolean;
+  timeoutConexion:  number;
+  reintentos:       number;
+  versionRos:       VersionRouterOS;
+  estado:           EstadoEquipo;
+  ultimoPing?:      string;
+  latenciaMs?:      number;
+  versionFirmware?: string;
+  identityRouteros?: string;
+  cpuUsoPct?:       number;
+  memoriaUsoPct?:   number;
+  tipoControl:      TipoControl;
+  autoConfigurarQueues:   boolean;
+  autoConfigurarPppoe:    boolean;
+  autoConfigurarFirewall: boolean;
+  snmpCommunity:    string;
+  activo:           boolean;
+  createdAt:        string;
+}
+
+export interface CreateRouterDto {
   nombre:          string;
   descripcion?:    string;
   ubicacion?:      string;
   modelo?:         string;
   ipGestion:       string;
   vpnIp?:          string;
-  puertoApi:       number;
+  zona?:           string;
+  puertoApi?:      number;
+  puertoApiSsl?:   number;
+  puertoSsh?:      number;
   usuario:         string;
-  metodoConexion:  string;
-  usarSsl:         boolean;
-  estado:          string;
-  ultimoPing?:     string;
-  latenciaMs?:     number;
-  versionFirmware?: string;
-  identityRouteros?: string;
-  cpuUsoPct?:      number;
-  memoriaUsoPct?:  number;
-  tipoControl:     'ninguna' | 'amarre_ip_mac' | 'amarre_ip_mac_dhcp';
-  activo:          boolean;
-  createdAt:       string;
-}
-
-export interface CreateRouterDto {
-  nombre:         string;
-  descripcion?:   string;
-  ubicacion?:     string;
-  modelo?:        string;
-  ipGestion:      string;
-  vpnIp?:         string;
-  puertoApi?:     number;
-  usuario:        string;
-  password:       string;
-  metodoConexion?: string;
-  usarSsl?:       boolean;
+  password:        string;
+  metodoConexion?: MetodoConexion;
+  usarSsl?:        boolean;
   timeoutConexion?: number;
-  tipoControl?:   'ninguna' | 'amarre_ip_mac' | 'amarre_ip_mac_dhcp';
+  reintentos?:     number;
+  versionRos?:     VersionRouterOS;
+  tipoControl?:    TipoControl;
+  autoConfigurarQueues?:   boolean;
+  autoConfigurarPppoe?:    boolean;
+  autoConfigurarFirewall?: boolean;
+  snmpCommunity?:  string;
+  latitud?:        number;
+  longitud?:       number;
 }
 
 export interface UpdateRouterDto extends Partial<CreateRouterDto> {}
@@ -50,8 +76,27 @@ export interface AmareIpMacDto {
   dhcpServer?: string;
 }
 
+export interface TestConexionDto {
+  ip:              string;
+  puerto:          number;
+  usuario:         string;
+  password:        string;
+  usarSsl?:        boolean;
+  timeoutConexion?: number;
+  metodoConexion?: MetodoConexion;
+  versionRos?:     VersionRouterOS;
+}
+
+export interface TestConexionResult {
+  exitoso:           boolean;
+  mensaje:           string;
+  latenciaMs?:       number;
+  versionDetectada?: string;
+  identityDetectada?: string;
+  rosVersion?:       string;
+}
+
 export const mikrotikApi = {
-  // Routers CRUD
   listar: async (): Promise<Router[]> => {
     const { data } = await api.get('/mikrotik/routers');
     return data.data;
@@ -78,6 +123,11 @@ export const mikrotikApi = {
 
   testConexion: async (id: string): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> => {
     const { data } = await api.post(`/mikrotik/routers/${id}/test`);
+    return data.data;
+  },
+
+  testConexionDirecta: async (dto: TestConexionDto): Promise<TestConexionResult> => {
+    const { data } = await api.post('/mikrotik/test-connection', dto);
     return data.data;
   },
 

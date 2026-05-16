@@ -7,8 +7,9 @@ import { Repository }       from 'typeorm';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
+import * as net from 'net';
 
-import { Router, VersionRouterOS, EstadoEquipo, TipoControl } from './entities/router.entity';
+import { Router, VersionRouterOS, EstadoEquipo, TipoControl, MetodoConexion } from './entities/router.entity';
 import { RouterConnectionPool, RouterCredentials } from './services/connection-pool.service';
 import { PppoeService, CreatePppoeParams }         from './services/pppoe.service';
 import { QueueService, QueueParams }               from './services/queue.service';
@@ -21,6 +22,7 @@ import { encrypt, decrypt }                        from '../../common/utils/encr
 import {
   CreateRouterDto, UpdateRouterDto, ProvisionarClienteDto,
   SuspenderClienteDto, ReactivarClienteDto, AmareIpMacDto,
+  TestConexionDirectaDto,
 } from './dto/mikrotik.dto';
 
 // ─── Evento emitido al suspender/reactivar ────────────────────
@@ -460,6 +462,102 @@ export class MikrotikService {
       await this.routerRepo.update(routerId, { estado: EstadoEquipo.OFFLINE });
       return { exitoso: false, mensaje: `No se pudo conectar: ${error.message}` };
     }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // TEST DE CONEXIÓN DIRECTA (antes de guardar el router)
+  // ────────────────────────────────────────────────────────────
+
+  async testConexionDirecta(dto: TestConexionDirectaDto): Promise<{
+    exitoso: boolean;
+    mensaje: string;
+    latenciaMs?: number;
+    versionDetectada?: string;
+    identityDetectada?: string;
+    rosVersion?: string;
+  }> {
+    const inicio  = Date.now();
+    const metodo  = dto.metodoConexion || MetodoConexion.API;
+
+    // SSH / SNMP: solo verificar accesibilidad TCP
+    if (metodo === MetodoConexion.SSH || metodo === MetodoConexion.SNMP) {
+      return this._tcpCheck(dto.ip, dto.puerto, dto.timeoutConexion ?? 10, inicio);
+    }
+
+    // API / API_SSL / VPN_TUNNEL: autenticar con RouterOS API
+    const useSsl   = dto.usarSsl ?? (metodo === MetodoConexion.API_SSL);
+    const tempCreds: RouterCredentials = {
+      id:              `temp-${Date.now()}`,
+      ip:              dto.ip,
+      port:            dto.puerto,
+      user:            dto.usuario,
+      passwordCifrado: dto.password,   // el pool hace fallback a texto plano si no está cifrado
+      useSsl,
+      timeoutSec:      dto.timeoutConexion ?? 10,
+      version:         dto.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+    };
+
+    let api: any = null;
+    try {
+      api = await this.pool.connectDirect(tempCreds);
+
+      const [[ident], [res]] = await Promise.all([
+        api.write('/system/identity/print'),
+        api.write('/system/resource/print'),
+      ]);
+
+      const latencia = Date.now() - inicio;
+      const version  = res?.version || '';
+      const rosVer   = version.startsWith('7') ? 'v7' : 'v6';
+
+      return {
+        exitoso:           true,
+        mensaje:           `Conectado: "${ident?.name || 'router'}" | RouterOS ${version} | ${latencia}ms`,
+        latenciaMs:        latencia,
+        versionDetectada:  version,
+        identityDetectada: ident?.name || '',
+        rosVersion:        rosVer,
+      };
+    } catch (err: any) {
+      return { exitoso: false, mensaje: this._connectionErrorMsg(err.message || '') };
+    } finally {
+      if (api) try { api.close?.(); } catch { /* ignore */ }
+    }
+  }
+
+  private _connectionErrorMsg(msg: string): string {
+    const m = msg.toLowerCase();
+    if (m.includes('econnrefused'))                     return 'Puerto cerrado — verificar IP y puerto';
+    if (m.includes('timeout'))                          return 'Timeout — verificar IP, puerto y firewall del router';
+    if (m.includes('login') || m.includes('wrong'))     return 'Autenticación fallida — verificar usuario y contraseña';
+    if (m.includes('enotfound') || m.includes('ehostunreach')) return 'Host no encontrado — verificar IP o dominio';
+    if (m.includes('pool exhausto'))                    return 'Pool saturado — intenta en unos segundos';
+    return msg;
+  }
+
+  private _tcpCheck(
+    host: string, port: number, timeoutSec: number, inicio: number,
+  ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> {
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      const timer  = setTimeout(() => {
+        socket.destroy();
+        resolve({ exitoso: false, mensaje: `Timeout al conectar a ${host}:${port}` });
+      }, timeoutSec * 1000);
+
+      socket.connect(port, host, () => {
+        clearTimeout(timer);
+        socket.destroy();
+        const ms = Date.now() - inicio;
+        resolve({ exitoso: true, mensaje: `Puerto ${port} accesible en ${ms}ms`, latenciaMs: ms });
+      });
+
+      socket.on('error', (err: Error) => {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve({ exitoso: false, mensaje: this._connectionErrorMsg(err.message) });
+      });
+    });
   }
 
   // ── Detectar versión RouterOS de forma asíncrona ──────────

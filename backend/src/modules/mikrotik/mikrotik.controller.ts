@@ -16,6 +16,7 @@ import {
   ProvisionarClienteDto, SuspenderClienteDto,
   ReactivarClienteDto, DhcpBindingDto,
   ActualizarQueueDto, PingDto, AmareIpMacDto,
+  TestConexionDirectaDto,
 } from './dto/mikrotik.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission, Roles }  from '../../common/decorators/roles.decorator';
@@ -28,6 +29,21 @@ export class MikrotikController {
   private readonly logger = new Logger(MikrotikController.name);
 
   constructor(private readonly svc: MikrotikService) {}
+
+  // ─── TEST DE CONEXIÓN DIRECTA (antes de guardar) ─────────
+
+  @Post('test-connection')
+  @RequirePermission('mikrotik:view')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Probar conexión directa sin guardar',
+    description:
+      'Valida credenciales y conectividad con un router antes de registrarlo en el sistema. ' +
+      'Para API/API-SSL: autentica con RouterOS API. Para SSH/SNMP: verifica accesibilidad TCP.',
+  })
+  async testConexionDirecta(@Body() dto: TestConexionDirectaDto) {
+    return StdResponse.ok(await this.svc.testConexionDirecta(dto));
+  }
 
   // ─── GESTIÓN DE ROUTERS ───────────────────────────────────
 

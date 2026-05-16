@@ -94,6 +94,18 @@ export class CreateRouterDto {
   @ApiPropertyOptional({ default: true })
   @IsOptional() @IsBoolean()
   autoConfigurarFirewall?: boolean;
+
+  @ApiPropertyOptional({ example: 'Norte', description: 'Zona o sector del router' })
+  @IsOptional() @IsString() @MaxLength(100)
+  zona?: string;
+
+  @ApiPropertyOptional({ default: 3, description: 'Intentos de reconexión automática' })
+  @IsOptional() @IsInt() @Min(1) @Max(10) @Type(() => Number)
+  reintentos?: number;
+
+  @ApiPropertyOptional({ enum: VersionRouterOS, default: VersionRouterOS.DESCONOCIDA })
+  @IsOptional() @IsEnum(VersionRouterOS)
+  versionRos?: VersionRouterOS;
 }
 
 export class UpdateRouterDto extends PartialType(CreateRouterDto) {}
@@ -242,4 +254,39 @@ export class PingDto {
   @ApiPropertyOptional({ default: 4 })
   @IsOptional() @IsInt() @Min(1) @Max(20) @Type(() => Number)
   count?: number;
+}
+
+// ─── Test de conexión directa (previo a guardar el router) ────
+export class TestConexionDirectaDto {
+  @ApiProperty({ example: '192.168.1.1', description: 'IP o dominio del router' })
+  @IsString() @IsNotEmpty()
+  ip: string;
+
+  @ApiProperty({ example: 8728, description: 'Puerto de conexión' })
+  @IsInt() @Min(1) @Max(65535) @Type(() => Number)
+  puerto: number;
+
+  @ApiProperty({ example: 'admin' })
+  @IsString() @IsNotEmpty() @MaxLength(100)
+  usuario: string;
+
+  @ApiProperty({ example: 'P@ssw0rd' })
+  @IsString() @IsNotEmpty() @MaxLength(200)
+  password: string;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional() @IsBoolean()
+  usarSsl?: boolean;
+
+  @ApiPropertyOptional({ default: 10 })
+  @IsOptional() @IsInt() @Min(3) @Max(30) @Type(() => Number)
+  timeoutConexion?: number;
+
+  @ApiPropertyOptional({ enum: MetodoConexion, default: MetodoConexion.API })
+  @IsOptional() @IsEnum(MetodoConexion)
+  metodoConexion?: MetodoConexion;
+
+  @ApiPropertyOptional({ enum: VersionRouterOS, default: VersionRouterOS.DESCONOCIDA })
+  @IsOptional() @IsEnum(VersionRouterOS)
+  versionRos?: VersionRouterOS;
 }
