@@ -4,9 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "prebuild": "tailwindcss --input src/styles/globals.css --output public/tailwind.css --minify",
     "build": "next build",
-    "postbuild": "node -e \"require('fs').copyFileSync('public/tailwind.css','.next/static/css/c63fc425abcfe2d4.css')\"",
     "start": "next start -p 3000",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
