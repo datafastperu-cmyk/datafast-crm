@@ -92,6 +92,7 @@ download_scripts() {
         "scripts/10-monitoring.sh"
         "scripts/11-backup.sh"
         "scripts/12-finish.sh"
+        "scripts/13-openvpn.sh"
         "config/defaults.conf"
     )
 
@@ -128,6 +129,7 @@ load_modules() {
         "${base}/scripts/10-monitoring.sh"
         "${base}/scripts/11-backup.sh"
         "${base}/scripts/12-finish.sh"
+        "${base}/scripts/13-openvpn.sh"
     )
     for m in "${modules[@]}"; do
         [[ -f "$m" ]] && source "$m" || warn "Módulo no encontrado: $m"

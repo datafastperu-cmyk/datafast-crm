@@ -6,6 +6,9 @@ import {
   Shield, Download, Save, Loader2, Info,
   CheckCircle2, XCircle, Server, Router,
   RefreshCw, ChevronDown, ChevronUp,
+  Play, Square, RotateCcw, Terminal,
+  Users, Key, Trash2, Plus, AlertTriangle,
+  Wifi, WifiOff, Database,
 } from 'lucide-react';
 
 import { openvpnApi }   from '@/lib/api/openvpn';
@@ -18,20 +21,43 @@ const DEFAULTS: UpsertOpenvpnDto = {
   nombre:      'Servidor VPN',
   servidorIp:  '',
   puerto:      1194,
-  protocolo:   'udp',
+  protocolo:   'tcp',
   dispositivo: 'tun',
   vpnNetwork:  '10.8.0.0',
   vpnNetmask:  '255.255.255.0',
 };
 
+type Tab = 'config' | 'status' | 'clients' | 'logs';
+
 export function VpnContent() {
   const { toast }   = useToast();
   const queryClient = useQueryClient();
+  const [tab, setTab]           = useState<Tab>('status');
   const [showCerts, setShowCerts] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [showLogs, setShowLogs] = useState(false);
 
   const { data: config, isLoading: loadingConfig } = useQuery({
     queryKey: ['openvpn-config'],
     queryFn:  openvpnApi.getConfig,
+  });
+
+  const { data: status, isLoading: loadingStatus, refetch: refetchStatus } = useQuery({
+    queryKey: ['openvpn-status'],
+    queryFn:  openvpnApi.getSystemStatus,
+    refetchInterval: tab === 'status' ? 15000 : false,
+  });
+
+  const { data: clients = [], isLoading: loadingClients, refetch: refetchClients } = useQuery({
+    queryKey: ['openvpn-clients'],
+    queryFn:  openvpnApi.listClients,
+    enabled:  tab === 'clients',
+  });
+
+  const { data: logs = '', isLoading: loadingLogs, refetch: refetchLogs } = useQuery({
+    queryKey: ['openvpn-logs'],
+    queryFn:  () => openvpnApi.getLogs(150),
+    enabled:  tab === 'logs',
   });
 
   const { data: routers = [] } = useQuery({
@@ -55,6 +81,7 @@ export function VpnContent() {
       serverCert:  config.serverCert ?? '',
       serverKey:   config.serverKey ?? '',
       dhParams:    config.dhParams ?? '',
+      taKey:       config.taKey ?? '',
     });
     setInitialized(true);
   }
@@ -64,6 +91,47 @@ export function VpnContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['openvpn-config'] });
       toast('Configuración OpenVPN guardada', { type: 'success' });
+    },
+    onError: (err) => toast(parseApiError(err), { type: 'error' }),
+  });
+
+  const syncMut = useMutation({
+    mutationFn: openvpnApi.syncCerts,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['openvpn-config'] });
+      setInitialized(false);
+      toast('Certificados sincronizados desde el servidor', { type: 'success' });
+    },
+    onError: (err) => toast(parseApiError(err), { type: 'error' }),
+  });
+
+  const controlMut = useMutation({
+    mutationFn: (action: 'start' | 'stop' | 'restart' | 'reload') =>
+      openvpnApi.controlService(action),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['openvpn-status'] });
+      toast(result.ok ? 'Servicio actualizado' : `Error: ${result.output}`, {
+        type: result.ok ? 'success' : 'error',
+      });
+    },
+    onError: (err) => toast(parseApiError(err), { type: 'error' }),
+  });
+
+  const generateMut = useMutation({
+    mutationFn: (nombre: string) => openvpnApi.generateClient(nombre),
+    onSuccess: (_, nombre) => {
+      queryClient.invalidateQueries({ queryKey: ['openvpn-clients'] });
+      toast(`Certificado generado para "${nombre}"`, { type: 'success' });
+      setNewClientName('');
+    },
+    onError: (err) => toast(parseApiError(err), { type: 'error' }),
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: (nombre: string) => openvpnApi.revokeClient(nombre),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['openvpn-clients'] });
+      toast('Certificado revocado', { type: 'success' });
     },
     onError: (err) => toast(parseApiError(err), { type: 'error' }),
   });
@@ -79,214 +147,580 @@ export function VpnContent() {
     saveMut.mutate(form);
   };
 
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'status',  label: 'Estado',       icon: <Server className="w-3.5 h-3.5" /> },
+    { id: 'config',  label: 'Configuración', icon: <Shield className="w-3.5 h-3.5" /> },
+    { id: 'clients', label: 'Certificados',  icon: <Key className="w-3.5 h-3.5" /> },
+    { id: 'logs',    label: 'Logs',          icon: <Terminal className="w-3.5 h-3.5" /> },
+  ];
+
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
+    <div className="p-6 space-y-6 max-w-5xl">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-white flex items-center gap-2">
-          <Shield className="w-5 h-5 text-primary" />
-          Servidor OpenVPN
-        </h1>
-        <p className="text-sm text-gray-400 mt-1">
-          Configura el túnel VPN para conectar los routers MikroTik al VPS de forma segura.
-        </p>
-      </div>
-
-      {/* Info banner */}
-      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 text-sm text-blue-300">
-        <div className="flex items-start gap-2">
-          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <div className="text-xs">
-            <p className="font-medium mb-1">¿Cómo funciona?</p>
-            <ol className="list-decimal list-inside space-y-0.5 text-blue-300/80">
-              <li>Configura los parámetros del servidor y guarda.</li>
-              <li>Descarga el <code>server.conf</code> y copia los certificados al VPS.</li>
-              <li>Para cada router MikroTik, descarga su archivo <code>.ovpn</code>, agrega los certificados y cárgalo en el router.</li>
-              <li>Una vez conectado, registra la IP VPN asignada en la configuración del router.</li>
-            </ol>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" />
+            Servidor OpenVPN
+          </h1>
+          <p className="text-sm text-gray-400 mt-1">
+            VPN de gestión para routers MikroTik, Huawei OLT, ZTE, VSOL, Ubiquiti.
+          </p>
+        </div>
+        {status && (
+          <div className={cn(
+            'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
+            status.serviceActive
+              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+              : 'bg-red-500/10 text-red-400 border border-red-500/20',
+          )}>
+            {status.serviceActive
+              ? <><Wifi className="w-3.5 h-3.5" /> Activo</>
+              : <><WifiOff className="w-3.5 h-3.5" /> Inactivo</>}
           </div>
-        </div>
+        )}
       </div>
 
-      {loadingConfig ? (
-        <div className="flex items-center gap-2 text-gray-400">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Cargando configuración...
-        </div>
-      ) : (
-        <>
-          {/* Formulario de configuración */}
-          <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5 space-y-4">
-            <h2 className="font-medium text-white text-sm flex items-center gap-2">
-              <Server className="w-4 h-4 text-primary" />
-              Parámetros del servidor
-            </h2>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors',
+              tab === t.id
+                ? 'bg-primary text-white'
+                : 'text-gray-400 hover:text-white',
+            )}
+          >
+            {t.icon}
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <label className="text-xs text-gray-400 mb-1 block">Nombre</label>
-                <input
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
-                  value={form.nombre}
-                  onChange={(e) => set('nombre', e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">IP pública del VPS *</label>
-                <input
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
-                  value={form.servidorIp}
-                  onChange={(e) => set('servidorIp', e.target.value)}
-                  placeholder="149.34.48.224"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Puerto</label>
-                <input
-                  type="number"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
-                  value={form.puerto}
-                  onChange={(e) => set('puerto', parseInt(e.target.value))}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Protocolo</label>
-                <select
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
-                  value={form.protocolo}
-                  onChange={(e) => set('protocolo', e.target.value)}
-                >
-                  <option value="udp">UDP (recomendado)</option>
-                  <option value="tcp">TCP</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Dispositivo</label>
-                <select
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
-                  value={form.dispositivo}
-                  onChange={(e) => set('dispositivo', e.target.value)}
-                >
-                  <option value="tun">TUN (enrutado)</option>
-                  <option value="tap">TAP (bridged)</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Red VPN</label>
-                <input
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
-                  value={form.vpnNetwork}
-                  onChange={(e) => set('vpnNetwork', e.target.value)}
-                  placeholder="10.8.0.0"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Máscara VPN</label>
-                <input
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
-                  value={form.vpnNetmask}
-                  onChange={(e) => set('vpnNetmask', e.target.value)}
-                  placeholder="255.255.255.0"
-                />
+      {/* ── TAB: Estado ──────────────────────────────────────────── */}
+      {tab === 'status' && (
+        <div className="space-y-4">
+          {loadingStatus ? (
+            <div className="flex items-center gap-2 text-gray-400 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" /> Consultando estado...
+            </div>
+          ) : !status?.installed ? (
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-5 text-sm">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-yellow-300 mb-1">OpenVPN no está instalado</p>
+                  <p className="text-yellow-400/80 text-xs">
+                    El instalador del sistema ejecuta <code className="bg-white/5 px-1 rounded">scripts/openvpn-setup.sh</code> automáticamente.
+                    Si instalaste manualmente, ejecuta ese script en el VPS.
+                  </p>
+                </div>
               </div>
             </div>
+          ) : (
+            <>
+              {/* Cards de estado */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatusCard
+                  label="Servicio"
+                  value={status.serviceActive ? 'Activo' : 'Detenido'}
+                  icon={status.serviceActive ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <XCircle className="w-4 h-4 text-red-400" />}
+                  ok={status.serviceActive}
+                />
+                <StatusCard
+                  label="Versión"
+                  value={status.openvpnVersion || '—'}
+                  icon={<Server className="w-4 h-4 text-blue-400" />}
+                  ok
+                />
+                <StatusCard
+                  label="Clientes conectados"
+                  value={String(status.connectedClients.length)}
+                  icon={<Users className="w-4 h-4 text-purple-400" />}
+                  ok
+                />
+                <StatusCard
+                  label="Interfaz TUN"
+                  value={status.tunIp ? `tun0 — ${status.tunIp}` : (status.tunInterface ?? 'No disponible')}
+                  icon={<Router className="w-4 h-4 text-cyan-400" />}
+                  ok={!!status.tunInterface}
+                />
+              </div>
 
-            {/* Certificados (colapsable) */}
-            <button
-              onClick={() => setShowCerts(!showCerts)}
-              className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
-            >
-              {showCerts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              Certificados y claves (opcional — pegar para incluirlos en los .ovpn generados)
-            </button>
+              {/* Info adicional */}
+              <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-4 grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                <InfoRow label="Puerto"      value={`${status.port}/${status.protocol.toUpperCase()}`} />
+                <InfoRow label="Red VPN"     value={status.network} />
+                <InfoRow label="IP servidor" value={status.serverIp || '—'} />
+                <InfoRow label="CA expira"   value={status.caExpiry ?? '—'} />
+                <InfoRow label="Cert server" value={status.serverExpiry ?? '—'} />
+                <InfoRow label="Instalado"   value={status.installedAt ? new Date(status.installedAt).toLocaleDateString('es-PE') : '—'} />
+              </div>
 
-            {showCerts && (
-              <div className="space-y-3 pt-1">
-                {[
-                  { key: 'caCert',     label: 'CA Certificate (ca.crt)' },
-                  { key: 'serverCert', label: 'Server Certificate (server.crt)' },
-                  { key: 'serverKey',  label: 'Server Key (server.key)' },
-                  { key: 'dhParams',   label: 'DH Parameters (dh.pem)' },
-                ].map(({ key, label }) => (
-                  <div key={key}>
-                    <label className="text-xs text-gray-400 mb-1 block">{label}</label>
-                    <textarea
-                      rows={3}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-gray-300 focus:outline-none focus:border-primary/50 resize-none"
-                      value={(form as any)[key] ?? ''}
-                      onChange={(e) => set(key as any, e.target.value)}
-                      placeholder={`-----BEGIN ${key === 'dhParams' ? 'DH PARAMETERS' : 'CERTIFICATE'}-----`}
+              {/* Controles del servicio */}
+              <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-4">
+                <h3 className="text-xs font-medium text-gray-400 mb-3">Control del servicio</h3>
+                <div className="flex flex-wrap gap-2">
+                  <ServiceBtn
+                    label="Iniciar"
+                    icon={<Play className="w-3.5 h-3.5" />}
+                    color="green"
+                    disabled={status.serviceActive || controlMut.isPending}
+                    loading={controlMut.isPending}
+                    onClick={() => controlMut.mutate('start')}
+                  />
+                  <ServiceBtn
+                    label="Detener"
+                    icon={<Square className="w-3.5 h-3.5" />}
+                    color="red"
+                    disabled={!status.serviceActive || controlMut.isPending}
+                    loading={controlMut.isPending}
+                    onClick={() => controlMut.mutate('stop')}
+                  />
+                  <ServiceBtn
+                    label="Reiniciar"
+                    icon={<RotateCcw className="w-3.5 h-3.5" />}
+                    color="yellow"
+                    disabled={controlMut.isPending}
+                    loading={controlMut.isPending}
+                    onClick={() => controlMut.mutate('restart')}
+                  />
+                  <button
+                    onClick={() => refetchStatus()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-white/5 rounded-lg transition-colors"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Actualizar
+                  </button>
+                </div>
+              </div>
+
+              {/* Clientes conectados ahora */}
+              {status.connectedClients.length > 0 && (
+                <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-4">
+                  <h3 className="text-xs font-medium text-gray-400 mb-3">
+                    Clientes conectados ahora ({status.connectedClients.length})
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-gray-500 border-b border-white/5">
+                          <th className="text-left pb-2 pr-4">Nombre</th>
+                          <th className="text-left pb-2 pr-4">IP Real</th>
+                          <th className="text-left pb-2 pr-4">IP VPN</th>
+                          <th className="text-left pb-2 pr-4">Recibido</th>
+                          <th className="text-left pb-2">Enviado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {status.connectedClients.map((c) => (
+                          <tr key={c.commonName} className="border-b border-white/5 last:border-0">
+                            <td className="py-2 pr-4 font-mono text-white">{c.commonName}</td>
+                            <td className="py-2 pr-4 text-gray-300">{c.realAddress}</td>
+                            <td className="py-2 pr-4 text-green-400 font-mono">{c.vpnAddress}</td>
+                            <td className="py-2 pr-4 text-gray-400">{formatBytes(c.bytesReceived)}</td>
+                            <td className="py-2 text-gray-400">{formatBytes(c.bytesSent)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: Configuración ───────────────────────────────────── */}
+      {tab === 'config' && (
+        <div className="space-y-4">
+          {loadingConfig ? (
+            <div className="flex items-center gap-2 text-gray-400 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" /> Cargando...
+            </div>
+          ) : (
+            <>
+              <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-medium text-white text-sm flex items-center gap-2">
+                    <Server className="w-4 h-4 text-primary" />
+                    Parámetros del servidor
+                  </h2>
+                  {config && (
+                    <button
+                      onClick={() => syncMut.mutate()}
+                      disabled={syncMut.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+                    >
+                      {syncMut.isPending
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Database className="w-3.5 h-3.5" />}
+                      Sincronizar certs desde servidor
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-xs text-gray-400 mb-1 block">Nombre</label>
+                    <input
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      value={form.nombre}
+                      onChange={(e) => set('nombre', e.target.value)}
                     />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">IP pública del VPS *</label>
+                    <input
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      value={form.servidorIp}
+                      onChange={(e) => set('servidorIp', e.target.value)}
+                      placeholder="149.34.48.224"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Puerto</label>
+                    <input
+                      type="number"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      value={form.puerto}
+                      onChange={(e) => set('puerto', parseInt(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Protocolo</label>
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      value={form.protocolo}
+                      onChange={(e) => set('protocolo', e.target.value)}
+                    >
+                      <option value="tcp">TCP (RouterOS 6.x compatible)</option>
+                      <option value="udp">UDP (mejor rendimiento)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Dispositivo</label>
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      value={form.dispositivo}
+                      onChange={(e) => set('dispositivo', e.target.value)}
+                    >
+                      <option value="tun">TUN (enrutado)</option>
+                      <option value="tap">TAP (bridged)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Red VPN</label>
+                    <input
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      value={form.vpnNetwork}
+                      onChange={(e) => set('vpnNetwork', e.target.value)}
+                      placeholder="10.8.0.0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Máscara VPN</label>
+                    <input
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      value={form.vpnNetmask}
+                      onChange={(e) => set('vpnNetmask', e.target.value)}
+                      placeholder="255.255.255.0"
+                    />
+                  </div>
+                </div>
+
+                {/* Certificados colapsables */}
+                <button
+                  onClick={() => setShowCerts(!showCerts)}
+                  className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  {showCerts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  Certificados y claves PKI
+                </button>
+
+                {showCerts && (
+                  <div className="space-y-3 pt-1">
+                    {[
+                      { key: 'caCert',     label: 'CA Certificate (ca.crt)' },
+                      { key: 'serverCert', label: 'Server Certificate (server.crt)' },
+                      { key: 'serverKey',  label: 'Server Key (server.key)' },
+                      { key: 'dhParams',   label: 'DH Parameters (dh.pem)' },
+                      { key: 'taKey',      label: 'TLS-Crypt Key (ta.key)' },
+                    ].map(({ key, label }) => (
+                      <div key={key}>
+                        <label className="text-xs text-gray-400 mb-1 block">{label}</label>
+                        <textarea
+                          rows={3}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-gray-300 focus:outline-none focus:border-primary/50 resize-none"
+                          value={(form as any)[key] ?? ''}
+                          onChange={(e) => set(key as any, e.target.value)}
+                          placeholder="-----BEGIN ..."
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <button
+                    onClick={handleSave}
+                    disabled={saveMut.isPending}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-50"
+                  >
+                    {saveMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Guardar configuración
+                  </button>
+
+                  {config && (
+                    <>
+                      <button
+                        onClick={() => openvpnApi.downloadServerConf().catch(() => toast('Error al descargar', { type: 'error' }))}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white/10 text-white rounded-lg hover:bg-white/15 transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        server.conf
+                      </button>
+                      <button
+                        onClick={() => openvpnApi.downloadInstrucciones().catch(() => toast('Error al descargar', { type: 'error' }))}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white/10 text-white rounded-lg hover:bg-white/15 transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        Instrucciones
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Descarga por router (legacy inline) */}
+              {config && routers.length > 0 && (
+                <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5">
+                  <h2 className="font-medium text-white text-sm flex items-center gap-2 mb-4">
+                    <Router className="w-4 h-4 text-primary" />
+                    .ovpn inline por router (certs de BD)
+                  </h2>
+                  <div className="space-y-2">
+                    {routers.map((r) => (
+                      <div
+                        key={r.id}
+                        className="flex items-center justify-between p-3 rounded-lg border border-white/10 hover:border-white/20 transition-colors"
+                      >
+                        <div>
+                          <div className="text-sm font-medium text-white">{r.nombre}</div>
+                          <div className="text-xs text-gray-400">
+                            {r.ipGestion}
+                            {r.vpnIp && <span className="ml-2 text-blue-400">VPN: {r.vpnIp}</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => openvpnApi.downloadClienteOvpn(r.nombre).catch(() => toast('Error al descargar', { type: 'error' }))}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary/20 text-primary rounded-lg hover:bg-primary/30 transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          .ovpn
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: Certificados ────────────────────────────────────── */}
+      {tab === 'clients' && (
+        <div className="space-y-4">
+          <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-medium text-white text-sm flex items-center gap-2">
+                <Key className="w-4 h-4 text-primary" />
+                Certificados de clientes
+              </h2>
+              <button
+                onClick={() => refetchClients()}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Actualizar
+              </button>
+            </div>
+
+            {/* Generar nuevo */}
+            <div className="flex gap-2 mb-4">
+              <input
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                placeholder="Nombre del cliente (ej: router-sucursal-norte)"
+                value={newClientName}
+                onChange={(e) => setNewClientName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && newClientName && generateMut.mutate(newClientName)}
+              />
+              <button
+                onClick={() => newClientName && generateMut.mutate(newClientName)}
+                disabled={!newClientName || generateMut.isPending}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-50"
+              >
+                {generateMut.isPending
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Plus className="w-4 h-4" />}
+                Generar
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 mb-4">
+              El nombre debe tener 2-64 caracteres alfanuméricos, guión o guión bajo. Ejemplo: <code className="bg-white/5 px-1 rounded">mikrotik-ccb-norte</code>
+            </p>
+
+            {/* Lista */}
+            {loadingClients ? (
+              <div className="flex items-center gap-2 text-gray-400 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" /> Cargando...
+              </div>
+            ) : clients.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-6">
+                No hay certificados generados todavía.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {clients.map((name) => (
+                  <div
+                    key={name}
+                    className="flex items-center justify-between p-3 rounded-lg border border-white/10 hover:border-white/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Key className="w-3.5 h-3.5 text-green-400" />
+                      <span className="text-sm font-mono text-white">{name}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => openvpnApi.downloadClient(name).catch(() => toast('Error al descargar', { type: 'error' }))}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/20 text-primary rounded-lg hover:bg-primary/30 transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        .ovpn
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`¿Revocar certificado de "${name}"?`)) {
+                            revokeMut.mutate(name);
+                          }
+                        }}
+                        disabled={revokeMut.isPending}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Revocar
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
 
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={handleSave}
-                disabled={saveMut.isPending}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-50"
-              >
-                {saveMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Guardar configuración
-              </button>
-
-              {config && (
-                <>
-                  <button
-                    onClick={() => openvpnApi.downloadServerConf().catch(() => toast('Error al descargar', { type: 'error' }))}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white/10 text-white rounded-lg hover:bg-white/15 transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    server.conf
-                  </button>
-                  <button
-                    onClick={() => openvpnApi.downloadInstrucciones().catch(() => toast('Error al descargar', { type: 'error' }))}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white/10 text-white rounded-lg hover:bg-white/15 transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Instrucciones
-                  </button>
-                </>
-              )}
-            </div>
+      {/* ── TAB: Logs ────────────────────────────────────────────── */}
+      {tab === 'logs' && (
+        <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-medium text-white text-sm flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-primary" />
+              Log del servidor OpenVPN
+            </h2>
+            <button
+              onClick={() => refetchLogs()}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Actualizar
+            </button>
           </div>
 
-          {/* Clientes VPN — uno por router */}
-          {config && routers.length > 0 && (
-            <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5">
-              <h2 className="font-medium text-white text-sm flex items-center gap-2 mb-4">
-                <Router className="w-4 h-4 text-primary" />
-                Descargar configuración de cliente por router
-              </h2>
-              <div className="space-y-2">
-                {routers.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between p-3 rounded-lg border border-white/10 hover:border-white/20 transition-colors"
-                  >
-                    <div>
-                      <div className="text-sm font-medium text-white">{r.nombre}</div>
-                      <div className="text-xs text-gray-400">
-                        {r.ipGestion}
-                        {r.vpnIp && <span className="ml-2 text-blue-400">VPN: {r.vpnIp}</span>}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => openvpnApi.downloadClienteOvpn(r.nombre).catch(() => toast('Error al descargar', { type: 'error' }))}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary/20 text-primary rounded-lg hover:bg-primary/30 transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      .ovpn
-                    </button>
-                  </div>
-                ))}
-              </div>
+          {loadingLogs ? (
+            <div className="flex items-center gap-2 text-gray-400 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" /> Cargando logs...
             </div>
+          ) : !logs ? (
+            <p className="text-sm text-gray-500 text-center py-6">
+              Log no disponible. El servicio debe estar instalado y con logs activos.
+            </p>
+          ) : (
+            <pre className="text-xs font-mono text-gray-300 bg-black/30 rounded-lg p-4 overflow-x-auto max-h-[500px] overflow-y-auto leading-relaxed whitespace-pre-wrap">
+              {logs}
+            </pre>
           )}
-        </>
+        </div>
       )}
     </div>
   );
+}
+
+// ── Componentes auxiliares ────────────────────────────────────
+
+function StatusCard({
+  label, value, icon, ok,
+}: {
+  label: string; value: string; icon: React.ReactNode; ok: boolean;
+}) {
+  return (
+    <div className={cn(
+      'rounded-xl border p-4 space-y-2',
+      ok
+        ? 'bg-white/3 border-white/10'
+        : 'bg-red-500/5 border-red-500/20',
+    )}>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">{label}</span>
+        {icon}
+      </div>
+      <div className="text-sm font-medium text-white truncate">{value}</div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-gray-500 mb-0.5">{label}</div>
+      <div className="text-white font-mono">{value}</div>
+    </div>
+  );
+}
+
+function ServiceBtn({
+  label, icon, color, disabled, loading, onClick,
+}: {
+  label: string; icon: React.ReactNode; color: 'green' | 'red' | 'yellow';
+  disabled: boolean; loading: boolean; onClick: () => void;
+}) {
+  const colors = {
+    green:  'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20',
+    red:    'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20',
+    yellow: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500/20',
+  };
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors disabled:opacity-40',
+        colors[color],
+      )}
+    >
+      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : icon}
+      {label}
+    </button>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

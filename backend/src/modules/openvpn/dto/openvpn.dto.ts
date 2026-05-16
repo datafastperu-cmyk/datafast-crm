@@ -18,8 +18,8 @@ export class CreateOpenvpnConfigDto {
   @IsOptional() @IsInt() @Min(1) @Max(65535) @Type(() => Number)
   puerto?: number;
 
-  @ApiPropertyOptional({ enum: ['udp', 'tcp'], default: 'udp' })
-  @IsOptional() @IsIn(['udp', 'tcp'])
+  @ApiPropertyOptional({ enum: ['tcp', 'udp'], default: 'tcp' })
+  @IsOptional() @IsIn(['tcp', 'udp'])
   protocolo?: string;
 
   @ApiPropertyOptional({ enum: ['tun', 'tap'], default: 'tun' })
@@ -49,6 +49,10 @@ export class CreateOpenvpnConfigDto {
   @ApiPropertyOptional({ description: 'Parámetros Diffie-Hellman (PEM)' })
   @IsOptional() @IsString()
   dhParams?: string;
+
+  @ApiPropertyOptional({ description: 'Clave TLS-Crypt (ta.key)' })
+  @IsOptional() @IsString()
+  taKey?: string;
 }
 
 export class UpdateOpenvpnConfigDto extends PartialType(CreateOpenvpnConfigDto) {}

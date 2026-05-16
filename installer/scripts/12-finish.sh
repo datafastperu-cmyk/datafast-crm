@@ -13,6 +13,7 @@ run_install() {
     deploy_app
     setup_pm2
     setup_security
+    setup_openvpn
     setup_monitoring
     setup_backup
     setup_ssl

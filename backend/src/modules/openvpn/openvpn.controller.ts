@@ -1,10 +1,10 @@
 import {
   Controller, Get, Post, Put, Delete,
-  Body, Param, ParseUUIDPipe,
-  HttpCode, HttpStatus, Res,
+  Body, Param, Query, ParseIntPipe,
+  HttpCode, HttpStatus, Res, DefaultValuePipe,
 } from '@nestjs/common';
 import { Response }       from 'express';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 import { OpenvpnService }          from './openvpn.service';
 import { CreateOpenvpnConfigDto, UpdateOpenvpnConfigDto } from './dto/openvpn.dto';
@@ -17,6 +17,8 @@ import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 @Controller('openvpn')
 export class OpenvpnController {
   constructor(private readonly svc: OpenvpnService) {}
+
+  // ── Config CRUD ──────────────────────────────────────────────
 
   @Get('config')
   @RequirePermission('mikrotik:view')
@@ -53,25 +55,106 @@ export class OpenvpnController {
     await this.svc.deleteConfig(user.empresaId);
   }
 
-  // ── Descargar server.conf ──────────────────────────────────
+  // ── Sincronizar certs desde filesystem → BD ─────────────────
+
+  @Post('config/sync-certs')
+  @RequirePermission('mikrotik:manage')
+  @ApiOperation({ summary: 'Leer certs instalados en el servidor y guardarlos en BD' })
+  async syncCerts(@CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(
+      await this.svc.syncCertsFromFilesystem(user.empresaId),
+      'Certificados sincronizados',
+    );
+  }
+
+  // ── Estado del sistema VPN ───────────────────────────────────
+
+  @Get('system/status')
+  @RequirePermission('mikrotik:view')
+  @ApiOperation({ summary: 'Estado actual del servidor OpenVPN (systemd, clientes conectados, PKI)' })
+  async getSystemStatus() {
+    return StdResponse.ok(await this.svc.getSystemStatus());
+  }
+
+  // ── Control del servicio ─────────────────────────────────────
+
+  @Post('service/:action')
+  @RequirePermission('mikrotik:manage')
+  @ApiOperation({ summary: 'Controlar el servicio OpenVPN (start|stop|restart|reload)' })
+  async controlService(@Param('action') action: string) {
+    const allowed = ['start', 'stop', 'restart', 'reload'] as const;
+    const result = await this.svc.controlService(action as any);
+    return StdResponse.ok(result, result.ok ? `Servicio ${action} exitoso` : `Error en ${action}`);
+  }
+
+  // ── Clientes (certificados) ───────────────────────────────────
+
+  @Get('clients')
+  @RequirePermission('mikrotik:view')
+  @ApiOperation({ summary: 'Listar certificados de clientes generados' })
+  async listClients() {
+    return StdResponse.ok(await this.svc.listClients());
+  }
+
+  @Post('clients/:nombre/generate')
+  @RequirePermission('mikrotik:manage')
+  @ApiOperation({ summary: 'Generar certificado de cliente y archivo .ovpn' })
+  async generateClient(@Param('nombre') nombre: string) {
+    const result = await this.svc.generateClientConfig(nombre);
+    return StdResponse.ok({ name: result.name }, 'Certificado generado');
+  }
+
+  @Get('clients/:nombre/download')
+  @RequirePermission('mikrotik:manage')
+  @ApiOperation({ summary: 'Descargar archivo .ovpn del cliente' })
+  async downloadClient(
+    @Param('nombre') nombre: string,
+    @Res() res: Response,
+  ) {
+    const content = await this.svc.getClientOvpnContent(nombre);
+    res.setHeader('Content-Type', 'application/x-openvpn-profile');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}.ovpn"`);
+    return res.send(content);
+  }
+
+  @Delete('clients/:nombre')
+  @RequirePermission('mikrotik:manage')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Revocar certificado de cliente' })
+  async revokeClient(@Param('nombre') nombre: string): Promise<void> {
+    await this.svc.revokeClientCert(nombre);
+  }
+
+  // ── Logs ─────────────────────────────────────────────────────
+
+  @Get('logs')
+  @RequirePermission('mikrotik:view')
+  @ApiQuery({ name: 'lines', required: false, type: Number, example: 100 })
+  @ApiOperation({ summary: 'Obtener últimas líneas del log de OpenVPN' })
+  async getLogs(
+    @Query('lines', new DefaultValuePipe(100), ParseIntPipe) lines: number,
+  ) {
+    return StdResponse.ok({ logs: await this.svc.getServerLogs(lines) });
+  }
+
+  // ── Descargas de archivos de configuración ───────────────────
+
   @Get('config/download/server-conf')
   @RequirePermission('mikrotik:manage')
-  @ApiOperation({ summary: 'Descargar el archivo server.conf para OpenVPN' })
+  @ApiOperation({ summary: 'Descargar server.conf generado desde la configuración en BD' })
   async downloadServerConf(
     @CurrentUser() user: JwtPayload,
     @Res() res: Response,
   ) {
     const config = await this.svc.getConfig(user.empresaId);
-    if (!config) {
-      return res.status(404).json({ message: 'No hay configuración OpenVPN' });
-    }
+    if (!config) return res.status(404).json({ message: 'No hay configuración OpenVPN' });
+
     const content = this.svc.generarServerConf(config);
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', 'attachment; filename="server.conf"');
     return res.send(content);
   }
 
-  // ── Descargar instrucciones de instalación ─────────────────
   @Get('config/download/instrucciones')
   @RequirePermission('mikrotik:manage')
   @ApiOperation({ summary: 'Descargar instrucciones de instalación del servidor VPN' })
@@ -80,28 +163,25 @@ export class OpenvpnController {
     @Res() res: Response,
   ) {
     const config = await this.svc.getConfig(user.empresaId);
-    if (!config) {
-      return res.status(404).json({ message: 'No hay configuración OpenVPN' });
-    }
+    if (!config) return res.status(404).json({ message: 'No hay configuración OpenVPN' });
+
     const content = this.svc.generarInstrucciones(config);
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', 'attachment; filename="instalacion-openvpn.sh"');
     return res.send(content);
   }
 
-  // ── Generar .ovpn para un router específico ────────────────
   @Get('config/cliente/:routerNombre')
   @RequirePermission('mikrotik:manage')
-  @ApiOperation({ summary: 'Generar archivo .ovpn de cliente para importar en MikroTik' })
+  @ApiOperation({ summary: 'Generar .ovpn de cliente inline (certs de BD)' })
   async generarClienteOvpn(
     @Param('routerNombre') routerNombre: string,
     @CurrentUser() user: JwtPayload,
     @Res() res: Response,
   ) {
     const config = await this.svc.getConfig(user.empresaId);
-    if (!config) {
-      return res.status(404).json({ message: 'No hay configuración OpenVPN' });
-    }
+    if (!config) return res.status(404).json({ message: 'No hay configuración OpenVPN' });
+
     const content = this.svc.generarClienteOvpn(config, routerNombre);
     res.setHeader('Content-Type', 'application/x-openvpn-profile');
     res.setHeader('Content-Disposition', `attachment; filename="router-${routerNombre}.ovpn"`);
