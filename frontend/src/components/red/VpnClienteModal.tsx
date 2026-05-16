@@ -6,7 +6,7 @@ import {
   AlertTriangle, CheckCircle2, Loader2, Terminal,
   Shield, Router, Info, ArrowRight, RotateCcw,
 } from 'lucide-react';
-import { vpnApi, VpnCliente, ValidarTunelResult } from '@/lib/api/vpn';
+import { vpnApi, VpnCliente, ValidarTunelResult, VersionRos } from '@/lib/api/vpn';
 
 // ── Tipos ─────────────────────────────────────────────────────
 type Step = 'form' | 'script' | 'connecting';
@@ -15,6 +15,7 @@ interface FormData {
   nombre:      string;
   ubicacion:   string;
   descripcion: string;
+  versionRos:  VersionRos;
 }
 
 interface VpnClienteModalProps {
@@ -25,7 +26,7 @@ interface VpnClienteModalProps {
 // ── Componente principal ──────────────────────────────────────
 export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
   const [step, setStep]           = useState<Step>('form');
-  const [form, setForm]           = useState<FormData>({ nombre: '', ubicacion: '', descripcion: '' });
+  const [form, setForm]           = useState<FormData>({ nombre: '', ubicacion: '', descripcion: '', versionRos: 'v7' });
   const [errors, setErrors]       = useState<Partial<FormData>>({});
   const [loading, setLoading]     = useState(false);
   const [cliente, setCliente]     = useState<VpnCliente | null>(null);
@@ -57,6 +58,7 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
         nombre:      form.nombre.trim(),
         ubicacion:   form.ubicacion.trim(),
         descripcion: form.descripcion.trim() || undefined,
+        versionRos:  form.versionRos,
       });
       setCliente(res.cliente);
       setScript(res.script);
@@ -123,6 +125,7 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
         nombre:      form.nombre.trim(),
         ubicacion:   form.ubicacion.trim(),
         descripcion: form.descripcion.trim() || undefined,
+        versionRos:  form.versionRos,
       });
       setCliente(res.cliente);
       setScript(res.script);
@@ -292,6 +295,33 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
                 />
               </div>
 
+              {/* Versión RouterOS */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                  <Router className="w-3.5 h-3.5" />
+                  Versión RouterOS <span className="text-red-400">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['v6', 'v7'] as VersionRos[]).map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, versionRos: v }))}
+                      className={`py-2.5 px-4 rounded-lg text-sm font-medium border transition-all text-left ${
+                        form.versionRos === v
+                          ? 'bg-blue-500/15 border-blue-500/50 text-blue-300'
+                          : 'bg-white/5 border-white/10 text-white/45 hover:bg-white/8 hover:text-white/70'
+                      }`}
+                    >
+                      <span className="font-mono font-semibold">RouterOS {v.toUpperCase()}</span>
+                      <span className="block text-[10px] mt-0.5 opacity-70">
+                        {v === 'v6' ? 'v6.x — fetch address/src-path' : 'v7.x — fetch url= nativo'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Info box */}
               <div className="flex gap-3 p-3.5 bg-blue-500/8 border border-blue-500/20 rounded-xl">
                 <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
@@ -370,12 +400,16 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
 
               {/* Datos del cliente */}
               {cliente && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="px-3 py-2.5 bg-white/4 rounded-lg border border-white/8">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="px-3 py-2.5 bg-white/4 rounded-lg border border-white/8 col-span-2">
                     <p className="text-[10px] text-white/40 uppercase tracking-wide mb-1">Certificado</p>
                     <p className="text-xs text-white/80 font-mono break-all">{cliente.nombreCert}</p>
                   </div>
                   <div className="px-3 py-2.5 bg-white/4 rounded-lg border border-white/8">
+                    <p className="text-[10px] text-white/40 uppercase tracking-wide mb-1">Versión ROS</p>
+                    <p className="text-xs font-mono font-semibold text-blue-300">{(cliente.versionRos ?? form.versionRos).toUpperCase()}</p>
+                  </div>
+                  <div className="px-3 py-2.5 bg-white/4 rounded-lg border border-white/8 col-span-3">
                     <p className="text-[10px] text-white/40 uppercase tracking-wide mb-1">Token expira</p>
                     <p className="text-xs text-white/80">{new Date(cliente.tokenExpiresAt).toLocaleString('es-PE')}</p>
                   </div>

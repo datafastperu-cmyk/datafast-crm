@@ -2,6 +2,8 @@ import api from '@/lib/api';
 
 export type EstadoVpnCliente = 'pendiente' | 'conectado' | 'desconectado' | 'revocado';
 
+export type VersionRos = 'v6' | 'v7';
+
 export interface VpnCliente {
   id:              string;
   empresaId:       string;
@@ -9,6 +11,7 @@ export interface VpnCliente {
   ubicacion?:      string;
   descripcion?:    string;
   nombreCert:      string;
+  versionRos:      VersionRos;
   estado:          EstadoVpnCliente;
   vpnIp?:          string;
   routerId?:       string;
@@ -24,6 +27,7 @@ export interface CrearVpnClienteDto {
   nombre:       string;
   ubicacion?:   string;
   descripcion?: string;
+  versionRos:   VersionRos;
 }
 
 export interface ValidarTunelResult {

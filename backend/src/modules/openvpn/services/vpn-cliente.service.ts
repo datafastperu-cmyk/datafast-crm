@@ -95,6 +95,7 @@ export class VpnClienteService {
       ubicacion:    dto.ubicacion,
       descripcion:  dto.descripcion,
       nombreCert,
+      versionRos:   dto.versionRos ?? 'v7',
       estado:       'pendiente',
       tokenDescarga,
       tokenExpiresAt,
@@ -341,18 +342,21 @@ export class VpnClienteService {
   // ── Generador de script RouterOS ──────────────────────────────
 
   private _generarScript(cliente: VpnCliente): string {
-    const fecha      = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });
-    const fetchPath  = `/api/v1/openvpn/mikrotik-clients/${cliente.tokenDescarga}/certs`;
-    const cn         = cliente.nombreCert;
-    const prefix     = `df-${cn}`;
+    return cliente.versionRos === 'v6'
+      ? this._scriptV6(cliente)
+      : this._scriptV7(cliente);
+  }
 
+  private _header(cliente: VpnCliente, version: string): string {
+    const fecha = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });
     return `# ================================================================
-# DATAFAST ISP - Configuracion Tunel VPN MikroTik
+# DATAFAST ISP - Configuracion Tunel VPN MikroTik ${version}
 # ================================================================
 # Router     : ${cliente.nombre}
 # Ubicacion  : ${cliente.ubicacion || 'Sin especificar'}
 # Servidor   : ${VPS_IP}:${VPN_PORT}
-# Certificado: ${cn}
+# Certificado: ${cliente.nombreCert}
+# Version    : RouterOS ${version}
 # Generado   : ${fecha}
 # ----------------------------------------------------------------
 # INSTRUCCIONES:
@@ -360,7 +364,25 @@ export class VpnClienteService {
 #  2. Copiar y pegar TODO el script
 #  3. Presionar Enter y esperar el mensaje de confirmacion
 #  4. Volver al panel DATAFAST y presionar CONECTAR
-# ================================================================
+# ================================================================`;
+  }
+
+  private _bloqueComun(cliente: VpnCliente): { cn: string; prefix: string; fetchPath: string } {
+    return {
+      cn:        cliente.nombreCert,
+      prefix:    `df-${cliente.nombreCert}`,
+      fetchPath: `/api/v1/openvpn/mikrotik-clients/${cliente.tokenDescarga}/certs`,
+    };
+  }
+
+  // ── Script para RouterOS v6 ───────────────────────────────────
+  // fetch: address + src-path (url= no parsea host desde variable en v6)
+  // port: hardcodeado (variable int no funciona en port= en v6)
+  // cipher/auth: solo en add, no en set
+  // Líneas ≤122 chars para evitar syntax error de parser v6
+  private _scriptV6(cliente: VpnCliente): string {
+    const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
+    return `${this._header(cliente, 'v6')}
 
 :local vpnServer "${VPS_IP}"
 :local certCN "${cn}"
@@ -369,7 +391,7 @@ export class VpnClienteService {
 :local fetchHost "${VPS_IP}"
 :local fetchPath "${fetchPath}"
 
-:log info "DATAFAST-VPN: === Iniciando configuracion ==="
+:log info "DATAFAST-VPN: === Iniciando configuracion (v6) ==="
 
 # Eliminar interfaz OVPN previa
 :if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
@@ -379,11 +401,11 @@ export class VpnClienteService {
 :log info "DATAFAST-VPN: Interfaz previa eliminada"
 }
 
-# Eliminar certificados previos de este cliente
+# Eliminar certificados previos
 :foreach c in=[/certificate find where common-name=$certCN] do={ /certificate remove $c }
 :delay 1
 
-# Descargar certificados desde servidor DATAFAST
+# Descargar certificados (sintaxis v6: address + src-path)
 :local fCa   ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey  ($certPrefix . "-client.key")
@@ -410,21 +432,96 @@ export class VpnClienteService {
 /certificate import file-name=$fKey passphrase=""
 :delay 3
 
-# Verificar que el certificado fue importado
+# Verificar importacion
 :if ([:len [/certificate find where common-name=$certCN]] = 0) do={
-:log error "DATAFAST-VPN: Error - certificado no importado correctamente"
+:log error "DATAFAST-VPN: Error - certificado no importado"
 :error "Certificado no importado. Verificar descarga e importacion."
 }
 
-# Crear interfaz OVPN
-# cipher y auth solo se aceptan en "add" en RouterOS v6, no en "set"
+# Crear interfaz OVPN (cipher/auth van en add — limitacion v6)
 :log info "DATAFAST-VPN: Creando interfaz OVPN..."
 /interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=aes256 auth=sha256 disabled=yes
 /interface ovpn-client set $tunnelName user=$certCN certificate=$certCN
 /interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
 /interface ovpn-client enable $tunnelName
 
-:log info "DATAFAST-VPN: === Configuracion completada exitosamente ==="
+:log info "DATAFAST-VPN: === Configuracion completada (v6) ==="
+:log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
+  }
+
+  // ── Script para RouterOS v7 ───────────────────────────────────
+  // fetch: url= con variable pre-construida (v7 parsea host correctamente)
+  // port: hardcodeado para consistencia
+  // cipher/auth: en add + set separados (mismo enfoque, v7 no tiene restriccion)
+  private _scriptV7(cliente: VpnCliente): string {
+    const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
+    const fetchUrl = `http://${VPS_IP}${fetchPath}`;
+    return `${this._header(cliente, 'v7')}
+
+:local vpnServer "${VPS_IP}"
+:local certCN "${cn}"
+:local tunnelName "datafast-vpn"
+:local certPrefix "${prefix}"
+:local fetchUrl "${fetchUrl}"
+
+:log info "DATAFAST-VPN: === Iniciando configuracion (v7) ==="
+
+# Eliminar interfaz OVPN previa
+:if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
+/interface ovpn-client disable [find where name=$tunnelName]
+:delay 2
+/interface ovpn-client remove [find where name=$tunnelName]
+:log info "DATAFAST-VPN: Interfaz previa eliminada"
+}
+
+# Eliminar certificados previos
+:foreach c in=[/certificate find where common-name=$certCN] do={ /certificate remove $c }
+:delay 1
+
+# Descargar certificados (sintaxis v7: url= con variable pre-construida)
+:local fCa   ($certPrefix . "-ca.crt")
+:local fCert ($certPrefix . "-client.crt")
+:local fKey  ($certPrefix . "-client.key")
+:local urlCa   ($fetchUrl . "/ca.crt")
+:local urlCert ($fetchUrl . "/client.crt")
+:local urlKey  ($fetchUrl . "/client.key")
+:log info "DATAFAST-VPN: Descargando certificados..."
+/tool fetch url=$urlCa dst-path=$fCa
+:delay 3
+/tool fetch url=$urlCert dst-path=$fCert
+:delay 3
+/tool fetch url=$urlKey dst-path=$fKey
+:delay 3
+:log info "DATAFAST-VPN: Certificados descargados"
+
+# Importar CA (solo si no existe)
+:if ([:len [/certificate find where common-name="DATAFAST-CA"]] = 0) do={
+:log info "DATAFAST-VPN: Importando CA..."
+/certificate import file-name=$fCa passphrase=""
+:delay 3
+}
+
+# Importar certificado y clave del cliente
+:log info "DATAFAST-VPN: Importando certificado cliente..."
+/certificate import file-name=$fCert passphrase=""
+:delay 3
+/certificate import file-name=$fKey passphrase=""
+:delay 3
+
+# Verificar importacion
+:if ([:len [/certificate find where common-name=$certCN]] = 0) do={
+:log error "DATAFAST-VPN: Error - certificado no importado"
+:error "Certificado no importado. Verificar descarga e importacion."
+}
+
+# Crear interfaz OVPN
+:log info "DATAFAST-VPN: Creando interfaz OVPN..."
+/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=aes256 auth=sha256 disabled=yes
+/interface ovpn-client set $tunnelName user=$certCN certificate=$certCN
+/interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
+/interface ovpn-client enable $tunnelName
+
+:log info "DATAFAST-VPN: === Configuracion completada (v7) ==="
 :log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
   }
 }

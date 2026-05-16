@@ -24,7 +24,10 @@ export class VpnCliente extends BaseModel {
 
   // ── PKI ───────────────────────────────────────────────────
   @Column({ name: 'nombre_cert', length: 100, unique: true })
-  nombreCert: string;  // CN del certificado X.509 generado
+  nombreCert: string;
+
+  @Column({ name: 'version_ros', length: 5, default: 'v7' })
+  versionRos: 'v6' | 'v7';
 
   // ── Estado ────────────────────────────────────────────────
   @Column({ length: 20, default: 'pendiente' })

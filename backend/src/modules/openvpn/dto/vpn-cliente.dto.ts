@@ -1,5 +1,5 @@
 import {
-  IsString, IsNotEmpty, IsOptional, MaxLength,
+  IsString, IsNotEmpty, IsOptional, MaxLength, IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -15,4 +15,8 @@ export class CrearVpnClienteDto {
   @ApiPropertyOptional({ example: 'Router principal sector norte' })
   @IsOptional() @IsString()
   descripcion?: string;
+
+  @ApiProperty({ example: 'v7', enum: ['v6', 'v7'] })
+  @IsIn(['v6', 'v7'])
+  versionRos: 'v6' | 'v7';
 }
