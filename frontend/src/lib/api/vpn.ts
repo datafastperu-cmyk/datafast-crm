@@ -34,8 +34,6 @@ export interface CrearVpnClienteDto {
   descripcion?:      string;
   versionRos:        VersionRos;
   usarCertificados?: boolean;
-  vpnUsuario?:       string;
-  vpnPassword?:      string;
   cipher?:           string;
   authAlg?:          string;
   verifyServerCert?: boolean;

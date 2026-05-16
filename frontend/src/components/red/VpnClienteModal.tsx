@@ -5,7 +5,7 @@ import {
   X, Wifi, MapPin, FileText, Copy, Check, RefreshCw,
   AlertTriangle, CheckCircle2, Loader2, Terminal,
   Shield, Router, Info, ArrowRight, RotateCcw,
-  Key, Eye, EyeOff, ChevronDown, ChevronUp, Download, Settings2,
+  Key, ChevronDown, ChevronUp, Download, Settings2, Shuffle,
 } from 'lucide-react';
 import { vpnApi, VpnCliente, ValidarTunelResult, VersionRos } from '@/lib/api/vpn';
 
@@ -18,18 +18,14 @@ interface FormData {
   descripcion:      string;
   versionRos:       VersionRos;
   usarCertificados: boolean;
-  vpnUsuario:       string;
-  vpnPassword:      string;
   cipher:           string;
   authAlg:          string;
   verifyServerCert: boolean;
 }
 
 interface FormErrors {
-  nombre?:      string;
-  ubicacion?:   string;
-  vpnUsuario?:  string;
-  vpnPassword?: string;
+  nombre?:    string;
+  ubicacion?: string;
 }
 
 interface VpnClienteModalProps {
@@ -59,7 +55,6 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
   const [form, setForm]         = useState<FormData>({
     nombre: '', ubicacion: '', descripcion: '',
     versionRos: 'v7', usarCertificados: true,
-    vpnUsuario: '', vpnPassword: '',
     cipher: 'aes256', authAlg: 'sha256', verifyServerCert: false,
   });
   const [errors, setErrors]           = useState<FormErrors>({});
@@ -71,7 +66,6 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
   const [validating, setValidating]   = useState(false);
   const [validResult, setValidResult] = useState<ValidarTunelResult | null>(null);
   const [retryError, setRetryError]   = useState(false);
-  const [showPass, setShowPass]       = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const pollRef   = useRef<NodeJS.Timeout | null>(null);
   const scriptRef = useRef<HTMLPreElement>(null);
@@ -91,26 +85,20 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
     const e: FormErrors = {};
     if (!form.nombre.trim())    e.nombre    = 'El nombre es obligatorio';
     if (!form.ubicacion.trim()) e.ubicacion = 'La ubicación es obligatoria';
-    if (!form.usarCertificados) {
-      if (!form.vpnUsuario.trim())  e.vpnUsuario  = 'El usuario VPN es obligatorio';
-      if (!form.vpnPassword.trim()) e.vpnPassword = 'La contraseña es obligatoria';
-    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   // ── Construir DTO ─────────────────────────────────────────────
   const buildDto = () => ({
-    nombre:            form.nombre.trim(),
-    ubicacion:         form.ubicacion.trim(),
-    descripcion:       form.descripcion.trim() || undefined,
-    versionRos:        form.versionRos,
-    usarCertificados:  form.usarCertificados,
-    vpnUsuario:        !form.usarCertificados ? form.vpnUsuario.trim() : undefined,
-    vpnPassword:       !form.usarCertificados ? form.vpnPassword : undefined,
-    cipher:            form.cipher,
-    authAlg:           form.authAlg,
-    verifyServerCert:  form.verifyServerCert,
+    nombre:           form.nombre.trim(),
+    ubicacion:        form.ubicacion.trim(),
+    descripcion:      form.descripcion.trim() || undefined,
+    versionRos:       form.versionRos,
+    usarCertificados: form.usarCertificados,
+    cipher:           form.cipher,
+    authAlg:          form.authAlg,
+    verifyServerCert: form.verifyServerCert,
   });
 
   // ── Paso 1 → Generar script ───────────────────────────────────
@@ -422,51 +410,15 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
                   </button>
                 </div>
 
-                {/* Campos usuario/contraseña cuando switch es OFF */}
+                {/* Info auto-generación cuando switch es OFF */}
                 {!form.usarCertificados && (
-                  <div className="pt-2 space-y-3 border-t border-white/8">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-white/50">
-                        Usuario VPN <span className="text-red-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={form.vpnUsuario}
-                        onChange={e => setField('vpnUsuario', e.target.value)}
-                        placeholder="Ej: router-norte"
-                        maxLength={100}
-                        autoComplete="off"
-                        className={`w-full px-3 py-2 bg-white/5 border rounded-lg text-sm text-white placeholder-white/25 focus:outline-none focus:ring-1 transition-colors ${
-                          errors.vpnUsuario ? 'border-red-500/60 focus:ring-red-500/40' : 'border-white/10 focus:border-amber-500/50 focus:ring-amber-500/25'
-                        }`}
-                      />
-                      {errors.vpnUsuario && <p className="text-xs text-red-400">{errors.vpnUsuario}</p>}
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-white/50">
-                        Contraseña VPN <span className="text-red-400">*</span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPass ? 'text' : 'password'}
-                          value={form.vpnPassword}
-                          onChange={e => setField('vpnPassword', e.target.value)}
-                          placeholder="Contraseña segura"
-                          maxLength={200}
-                          autoComplete="new-password"
-                          className={`w-full px-3 py-2 pr-9 bg-white/5 border rounded-lg text-sm text-white placeholder-white/25 focus:outline-none focus:ring-1 transition-colors ${
-                            errors.vpnPassword ? 'border-red-500/60 focus:ring-red-500/40' : 'border-white/10 focus:border-amber-500/50 focus:ring-amber-500/25'
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPass(s => !s)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
-                        >
-                          {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
+                  <div className="pt-2 space-y-2 border-t border-white/8">
+                    <div className="flex items-start gap-2.5 p-3 bg-white/4 border border-white/8 rounded-lg">
+                      <Shuffle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                      <div className="text-[11px] text-white/60 space-y-0.5">
+                        <p className="font-medium text-white/75">Credenciales generadas automáticamente</p>
+                        <p>El sistema creará un usuario y contraseña seguros (96 bits de entropía) e incluirá las credenciales directamente en el script RouterOS.</p>
                       </div>
-                      {errors.vpnPassword && <p className="text-xs text-red-400">{errors.vpnPassword}</p>}
                     </div>
                     <div className="flex items-start gap-2 text-[10px] text-amber-300/70 bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2">
                       <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />

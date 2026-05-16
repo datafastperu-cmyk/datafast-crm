@@ -68,7 +68,9 @@ export class VpnClienteService {
       .substring(0, 40);
     const shortId = generateToken(3);
 
-    let nombreCert: string;
+    let nombreCert:      string;
+    let autoVpnUsuario:  string | undefined;
+    let autoVpnPassword: string | undefined;
 
     if (usarCerts) {
       nombreCert = `mt-${slug}-${shortId}`;
@@ -95,13 +97,9 @@ export class VpnClienteService {
         throw new BadRequestException(`Error generando certificado: ${err.message}`);
       }
     } else {
-      if (!dto.vpnUsuario?.trim()) {
-        throw new BadRequestException('vpnUsuario es requerido en modo sin certificados');
-      }
-      if (!dto.vpnPassword?.trim()) {
-        throw new BadRequestException('vpnPassword es requerido en modo sin certificados');
-      }
-      nombreCert = `user-${slug}-${shortId}`;
+      nombreCert         = `user-${slug}-${shortId}`;
+      autoVpnUsuario     = `df-${slug}-${shortId}`;
+      autoVpnPassword    = generateToken(12); // 24-char hex — 96 bits de entropía
     }
 
     const tokenDescarga  = generateToken(32);
@@ -115,8 +113,8 @@ export class VpnClienteService {
       nombreCert,
       versionRos,
       usarCertificados:   usarCerts,
-      vpnUsuario:         dto.vpnUsuario?.trim(),
-      vpnPasswordCifrado: dto.vpnPassword ? encrypt(dto.vpnPassword) : undefined,
+      vpnUsuario:         autoVpnUsuario,
+      vpnPasswordCifrado: autoVpnPassword ? encrypt(autoVpnPassword) : undefined,
       cipher,
       authAlg,
       verifyServerCert:   dto.verifyServerCert ?? false,

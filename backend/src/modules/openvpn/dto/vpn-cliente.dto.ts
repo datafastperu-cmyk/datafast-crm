@@ -24,14 +24,6 @@ export class CrearVpnClienteDto {
   @IsOptional() @IsBoolean()
   usarCertificados?: boolean;
 
-  @ApiPropertyOptional({ example: 'router-norte' })
-  @IsOptional() @IsString() @MaxLength(100)
-  vpnUsuario?: string;
-
-  @ApiPropertyOptional({ example: 'P@ssw0rd123' })
-  @IsOptional() @IsString() @MaxLength(200)
-  vpnPassword?: string;
-
   @ApiPropertyOptional({ example: 'aes256', enum: ['aes128', 'aes192', 'aes256', 'blowfish128', 'aes128-gcm', 'aes256-gcm'] })
   @IsOptional() @IsIn(['aes128', 'aes192', 'aes256', 'blowfish128', 'aes128-gcm', 'aes256-gcm'])
   cipher?: string;
