@@ -35,6 +35,7 @@ import { SmartoltModule }         from './modules/smartolt/smartolt.module';
 import { WorkersModule }          from './modules/workers/workers.module';
 import { OpenvpnModule }          from './modules/openvpn/openvpn.module';
 import { PlantillasModule }       from './modules/plantillas/plantillas.module';
+import { DashboardModule }        from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -126,6 +127,7 @@ import { PlantillasModule }       from './modules/plantillas/plantillas.module';
     WorkersModule,
     OpenvpnModule,
     PlantillasModule,
+    DashboardModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia

@@ -216,6 +216,24 @@ export class MonitoreoController {
 
   // ─── DASHBOARD ────────────────────────────────────────────
 
+  @Get('dashboard/trafico')
+  @RequirePermission('monitoreo:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Historial de tráfico agregado por hora (últimas 24h)' })
+  async getTrafico(@CurrentUser() user: JwtPayload) {
+    const rows = await this.medicionRepo
+      .createQueryBuilder('m')
+      .select("TO_CHAR(DATE_TRUNC('hour', m.timestamp), 'HH24:MI')", 'hora')
+      .addSelect("ROUND(COALESCE(AVG(m.trafico_rx_bps), 0) / 1000000.0, 2)", 'rx')
+      .addSelect("ROUND(COALESCE(AVG(m.trafico_tx_bps), 0) / 1000000.0, 2)", 'tx')
+      .where('m.empresa_id = :empresaId', { empresaId: user.empresaId })
+      .andWhere("m.timestamp >= NOW() - INTERVAL '24 hours'")
+      .groupBy("DATE_TRUNC('hour', m.timestamp)")
+      .orderBy("DATE_TRUNC('hour', m.timestamp)", 'ASC')
+      .getRawMany();
+    return StdResponse.ok(rows);
+  }
+
   @Get('dashboard')
   @RequirePermission('monitoreo:view')
   @SetMetadata('skipAudit', true)
