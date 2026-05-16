@@ -7,9 +7,10 @@ import {
   LayoutDashboard, Users, Wifi, Activity, Settings, BarChart2,
   ChevronDown, Router, Shield, Network, Server, Globe, Box,
   Package, MapPin, Wrench, DollarSign, Receipt, TrendingUp,
-  Ticket, MessageSquare, Send, Layers, HardDrive, Warehouse,
-  UserCheck, Terminal, Zap, PanelLeftClose,
-  PanelLeftOpen, List, Tv, BotMessageSquare, Scissors,
+  Ticket, MessageSquare, Send, HardDrive,
+  UserCheck, Terminal, Zap,
+  List, Tv, Scissors, Layers,
+  ChevronRight,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -81,9 +82,9 @@ const NAV: NavEntry[] = [
   },
 
   {
-    id: 'inventario', label: 'Inventario', icon: Warehouse,
+    id: 'inventario', label: 'Inventario', icon: Package,
     items: [
-      { href: '/inventario', label: 'Stock de Equipos', icon: Warehouse, permiso: null },
+      { href: '/inventario', label: 'Stock de Equipos', icon: Package, permiso: null },
     ],
   },
 
@@ -100,7 +101,7 @@ const NAV: NavEntry[] = [
     id: 'mensajeria', label: 'Mensajería', icon: MessageSquare,
     items: [
       { href: '/mensajeria/enviados',  label: 'Mensajes Enviados', icon: Send,           permiso: null },
-      { href: '/mensajeria/whatsapp',  label: 'WhatsApp Bot',      icon: BotMessageSquare,permiso: null },
+      { href: '/mensajeria/whatsapp',  label: 'WhatsApp Bot',      icon: MessageSquare,   permiso: null },
     ],
   },
 
@@ -278,10 +279,7 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
           )}
           title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
         >
-          {collapsed
-            ? <PanelLeftOpen  className="w-4 h-4" />
-            : <PanelLeftClose className="w-4 h-4" />
-          }
+          <ChevronRight className={cn('w-4 h-4 transition-transform duration-300', !collapsed && 'rotate-180')} />
         </button>
       )}
     </aside>
