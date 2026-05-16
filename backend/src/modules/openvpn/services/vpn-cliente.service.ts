@@ -384,27 +384,30 @@ export class VpnClienteService {
 :delay 1
 
 # Descargar certificados desde servidor DATAFAST
+:local fCa   ($certPrefix . "-ca.crt")
+:local fCert ($certPrefix . "-client.crt")
+:local fKey  ($certPrefix . "-client.key")
 :log info "DATAFAST-VPN: Descargando certificados..."
-/tool fetch url=($fetchUrl . "/ca.crt") dst-path=($certPrefix . "-ca.crt")
+/tool fetch mode=http url=($fetchUrl . "/ca.crt") dst-path=$fCa
 :delay 3
-/tool fetch url=($fetchUrl . "/client.crt") dst-path=($certPrefix . "-client.crt")
+/tool fetch mode=http url=($fetchUrl . "/client.crt") dst-path=$fCert
 :delay 3
-/tool fetch url=($fetchUrl . "/client.key") dst-path=($certPrefix . "-client.key")
+/tool fetch mode=http url=($fetchUrl . "/client.key") dst-path=$fKey
 :delay 3
 :log info "DATAFAST-VPN: Certificados descargados"
 
 # Importar CA (solo si no existe)
 :if ([:len [/certificate find where common-name="DATAFAST-CA"]] = 0) do={
 :log info "DATAFAST-VPN: Importando CA..."
-/certificate import file-name=($certPrefix . "-ca.crt") passphrase=""
+/certificate import file-name=$fCa passphrase=""
 :delay 3
 }
 
 # Importar certificado y clave del cliente
 :log info "DATAFAST-VPN: Importando certificado cliente..."
-/certificate import file-name=($certPrefix . "-client.crt") passphrase=""
+/certificate import file-name=$fCert passphrase=""
 :delay 3
-/certificate import file-name=($certPrefix . "-client.key") passphrase=""
+/certificate import file-name=$fKey passphrase=""
 :delay 3
 
 # Verificar que el certificado fue importado
@@ -413,9 +416,13 @@ export class VpnClienteService {
 :error "Certificado no importado. Verificar descarga e importacion."
 }
 
-# Crear interfaz OVPN
+# Crear interfaz OVPN (dividido en lineas cortas — compatibilidad v6/v7)
 :log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=$vpnPort mode=ip user=$certCN certificate=$certCN cipher=aes256 auth=sha256 add-default-route=no disabled=no comment="DATAFAST-VPN"
+/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=$vpnPort mode=ip disabled=yes
+/interface ovpn-client set [find name=$tunnelName] user=$certCN certificate=$certCN
+/interface ovpn-client set [find name=$tunnelName] cipher=aes256 auth=sha256
+/interface ovpn-client set [find name=$tunnelName] add-default-route=no comment="DATAFAST-VPN"
+/interface ovpn-client enable [find name=$tunnelName]
 
 :log info "DATAFAST-VPN: === Configuracion completada exitosamente ==="
 :log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
