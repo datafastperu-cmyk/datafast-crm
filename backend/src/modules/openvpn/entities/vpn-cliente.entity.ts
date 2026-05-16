@@ -29,6 +29,24 @@ export class VpnCliente extends BaseModel {
   @Column({ name: 'version_ros', length: 5, default: 'v7' })
   versionRos: 'v6' | 'v7';
 
+  @Column({ name: 'usar_certificados', default: true })
+  usarCertificados: boolean;
+
+  @Column({ name: 'vpn_usuario', length: 100, nullable: true })
+  vpnUsuario: string;
+
+  @Column({ name: 'vpn_password_cifrado', type: 'text', nullable: true })
+  vpnPasswordCifrado: string;
+
+  @Column({ length: 20, default: 'aes256' })
+  cipher: string;
+
+  @Column({ name: 'auth_alg', length: 20, default: 'sha256' })
+  authAlg: string;
+
+  @Column({ name: 'verify_server_cert', default: false })
+  verifyServerCert: boolean;
+
   // ── Estado ────────────────────────────────────────────────
   @Column({ length: 20, default: 'pendiente' })
   estado: EstadoVpnCliente;

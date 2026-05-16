@@ -13,7 +13,7 @@ import { Response }         from 'express';
 import { VpnCliente, EstadoVpnCliente } from '../entities/vpn-cliente.entity';
 import { CrearVpnClienteDto }           from '../dto/vpn-cliente.dto';
 import { JwtPayload }                   from '../../../common/decorators/current-user.decorator';
-import { generateToken }                from '../../../common/utils/encryption.util';
+import { generateToken, encrypt }       from '../../../common/utils/encryption.util';
 import { Router, MetodoConexion, EstadoEquipo, VersionRouterOS } from '../../mikrotik/entities/router.entity';
 
 const execFileAsync = promisify(execFile);
@@ -53,58 +53,82 @@ export class VpnClienteService {
     cliente: VpnCliente;
     script:  string;
   }> {
-    // Cert name: mt-{slug}-{6hex}  (max 64 chars, safe for PKI CN)
+    const usarCerts  = dto.usarCertificados !== false;
+    const versionRos = dto.versionRos ?? 'v7';
+    const { cipher, authAlg } = this._resolveParams(
+      versionRos,
+      dto.cipher  ?? 'aes256',
+      dto.authAlg ?? 'sha256',
+    );
+
     const slug = dto.nombre
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .substring(0, 40);
-    const shortId    = generateToken(3);           // 6 hex chars
-    const nombreCert = `mt-${slug}-${shortId}`;
+    const shortId = generateToken(3);
 
-    // Generate PKI certificate via easyrsa
-    this.logger.log(`Generando certificado: ${nombreCert}`);
-    try {
-      await execFileAsync(
-        `${EASYRSA_DIR}/easyrsa`,
-        ['build-client-full', nombreCert, 'nopass'],
-        {
-          cwd:     EASYRSA_DIR,
-          env:     {
-            ...process.env,
-            EASYRSA_BATCH:      'yes',
-            EASYRSA_VARS_FILE:  `${EASYRSA_DIR}/vars-clients`,
+    let nombreCert: string;
+
+    if (usarCerts) {
+      nombreCert = `mt-${slug}-${shortId}`;
+      this.logger.log(`Generando certificado: ${nombreCert}`);
+      try {
+        await execFileAsync(
+          `${EASYRSA_DIR}/easyrsa`,
+          ['build-client-full', nombreCert, 'nopass'],
+          {
+            cwd:     EASYRSA_DIR,
+            env:     {
+              ...process.env,
+              EASYRSA_BATCH:      'yes',
+              EASYRSA_VARS_FILE:  `${EASYRSA_DIR}/vars-clients`,
+            },
+            timeout: 60_000,
           },
-          timeout: 60_000,
-        },
-      );
-    } catch (err: any) {
-      if (err.stderr?.includes('already exists') || err.message?.includes('already exists')) {
-        throw new ConflictException('Nombre de certificado duplicado, intenta nuevamente');
+        );
+      } catch (err: any) {
+        if (err.stderr?.includes('already exists') || err.message?.includes('already exists')) {
+          throw new ConflictException('Nombre de certificado duplicado, intenta nuevamente');
+        }
+        this.logger.error(`easyrsa error: ${err.stderr || err.message}`);
+        throw new BadRequestException(`Error generando certificado: ${err.message}`);
       }
-      this.logger.error(`easyrsa error: ${err.stderr || err.message}`);
-      throw new BadRequestException(`Error generando certificado: ${err.message}`);
+    } else {
+      if (!dto.vpnUsuario?.trim()) {
+        throw new BadRequestException('vpnUsuario es requerido en modo sin certificados');
+      }
+      if (!dto.vpnPassword?.trim()) {
+        throw new BadRequestException('vpnPassword es requerido en modo sin certificados');
+      }
+      nombreCert = `user-${slug}-${shortId}`;
     }
 
-    const tokenDescarga  = generateToken(32);  // 64-char hex token
-    const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);  // 24h
+    const tokenDescarga  = generateToken(32);
+    const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const cliente = this.repo.create({
-      empresaId:    user.empresaId,
-      nombre:       dto.nombre,
-      ubicacion:    dto.ubicacion,
-      descripcion:  dto.descripcion,
+      empresaId:          user.empresaId,
+      nombre:             dto.nombre,
+      ubicacion:          dto.ubicacion,
+      descripcion:        dto.descripcion,
       nombreCert,
-      versionRos:   dto.versionRos ?? 'v7',
-      estado:       'pendiente',
+      versionRos,
+      usarCertificados:   usarCerts,
+      vpnUsuario:         dto.vpnUsuario?.trim(),
+      vpnPasswordCifrado: dto.vpnPassword ? encrypt(dto.vpnPassword) : undefined,
+      cipher,
+      authAlg,
+      verifyServerCert:   dto.verifyServerCert ?? false,
+      estado:             'pendiente',
       tokenDescarga,
       tokenExpiresAt,
-      activo:       true,
+      activo:             true,
     });
     await this.repo.save(cliente);
     this.logger.log(`VPN cliente creado: ${cliente.id} | cert: ${nombreCert}`);
 
-    const script = this._generarScript(cliente);
+    const script = await this._generarScript(cliente);
     return { cliente, script };
   }
 
@@ -146,8 +170,13 @@ export class VpnClienteService {
       return { conectado: false, mensaje: 'Cliente VPN revocado' };
     }
 
+    // Para modo sin certificados, el CN en status.log es el vpnUsuario
+    const cn = (!cliente.usarCertificados && cliente.vpnUsuario)
+      ? cliente.vpnUsuario
+      : cliente.nombreCert;
+
     const connectedClients = await this._leerStatusLog();
-    const found = connectedClients.find(c => c.commonName === cliente.nombreCert);
+    const found = connectedClients.find(c => c.commonName === cn);
 
     if (!found) {
       return {
@@ -161,10 +190,10 @@ export class VpnClienteService {
       : found.realAddress;
 
     const updates: Partial<VpnCliente> = {
-      estado:           'conectado',
-      vpnIp:            found.vpnAddress,
+      estado:          'conectado',
+      vpnIp:           found.vpnAddress,
       ipReal,
-      ultimoHandshake:  new Date(),
+      ultimoHandshake: new Date(),
     };
 
     let routerRegistrado = false;
@@ -184,12 +213,12 @@ export class VpnClienteService {
     await this.repo.update(cliente.id, updates);
 
     return {
-      conectado:         true,
-      vpnIp:             found.vpnAddress,
+      conectado:        true,
+      vpnIp:            found.vpnAddress,
       ipReal,
       routerRegistrado,
-      routerId:          routerId ?? undefined,
-      mensaje:           `Túnel activo | IP VPN: ${found.vpnAddress} | Conectado desde: ${found.connectedSince}`,
+      routerId:         routerId ?? undefined,
+      mensaje:          `Túnel activo | IP VPN: ${found.vpnAddress} | Conectado desde: ${found.connectedSince}`,
     };
   }
 
@@ -199,24 +228,26 @@ export class VpnClienteService {
     const cliente = await this._getCliente(id, empresaId);
     if (cliente.estado === 'revocado') throw new ConflictException('Ya revocado');
 
-    const easyrsaEnv = {
-      ...process.env,
-      EASYRSA_BATCH:     'yes',
-      EASYRSA_VARS_FILE: `${EASYRSA_DIR}/vars-clients`,
-    };
-    try {
-      await execFileAsync(
-        `${EASYRSA_DIR}/easyrsa`,
-        ['revoke', cliente.nombreCert],
-        { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
-      );
-      await execFileAsync(
-        `${EASYRSA_DIR}/easyrsa`,
-        ['gen-crl'],
-        { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
-      );
-    } catch (err: any) {
-      this.logger.warn(`Error revocando ${cliente.nombreCert}: ${err.message}`);
+    if (cliente.usarCertificados) {
+      const easyrsaEnv = {
+        ...process.env,
+        EASYRSA_BATCH:     'yes',
+        EASYRSA_VARS_FILE: `${EASYRSA_DIR}/vars-clients`,
+      };
+      try {
+        await execFileAsync(
+          `${EASYRSA_DIR}/easyrsa`,
+          ['revoke', cliente.nombreCert],
+          { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
+        );
+        await execFileAsync(
+          `${EASYRSA_DIR}/easyrsa`,
+          ['gen-crl'],
+          { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
+        );
+      } catch (err: any) {
+        this.logger.warn(`Error revocando ${cliente.nombreCert}: ${err.message}`);
+      }
     }
 
     await this.repo.update(cliente.id, { estado: 'revocado', activo: false });
@@ -306,23 +337,22 @@ export class VpnClienteService {
     ipReal:     string,
     empresaId:  string,
   ): Promise<Router> {
-    // Evitar duplicados por vpnIp
     const existing = await this.routerRepo.findOne({
       where: { vpnIp, empresaId },
     });
     if (existing) return existing;
 
-    const { encrypt } = await import('../../../common/utils/encryption.util');
+    const { encrypt: enc } = await import('../../../common/utils/encryption.util');
 
     const router = this.routerRepo.create({
       empresaId,
       nombre:          cliente.nombre,
       descripcion:     cliente.descripcion,
       ubicacion:       cliente.ubicacion,
-      ipGestion:       vpnIp,       // Usar vpnIp como IP de gestión principal
+      ipGestion:       vpnIp,
       vpnIp,
       usuario:         'admin',
-      passwordCifrado: encrypt(''),  // Sin credenciales aún — admin configura después
+      passwordCifrado: enc(''),
       metodoConexion:  MetodoConexion.VPN_TUNNEL,
       estado:          EstadoEquipo.DESCONOCIDO,
       versionRos:      VersionRouterOS.DESCONOCIDA,
@@ -339,24 +369,50 @@ export class VpnClienteService {
     return router;
   }
 
-  // ── Generador de script RouterOS ──────────────────────────────
+  // ── Resolver compatibilidad cipher/auth ───────────────────────
 
-  private _generarScript(cliente: VpnCliente): string {
-    return cliente.versionRos === 'v6'
-      ? this._scriptV6(cliente)
-      : this._scriptV7(cliente);
+  private _resolveParams(
+    versionRos: 'v6' | 'v7',
+    cipher: string,
+    authAlg: string,
+  ): { cipher: string; authAlg: string } {
+    // RouterOS v6 no soporta ciphers GCM
+    if (versionRos === 'v6') {
+      if (cipher === 'aes256-gcm') cipher = 'aes256';
+      if (cipher === 'aes128-gcm') cipher = 'aes128';
+    }
+    return { cipher, authAlg };
   }
 
-  private _header(cliente: VpnCliente, version: string): string {
+  private async _decryptPassword(encrypted?: string): Promise<string> {
+    if (!encrypted) return '';
+    const { decrypt } = await import('../../../common/utils/encryption.util');
+    return decrypt(encrypted);
+  }
+
+  // ── Generador de script ───────────────────────────────────────
+
+  private async _generarScript(cliente: VpnCliente): Promise<string> {
+    if (cliente.usarCertificados) {
+      return cliente.versionRos === 'v6'
+        ? this._scriptV6Cert(cliente)
+        : this._scriptV7Cert(cliente);
+    }
+    const pass = await this._decryptPassword(cliente.vpnPasswordCifrado);
+    return cliente.versionRos === 'v6'
+      ? this._scriptV6NoCert(cliente, pass)
+      : this._scriptV7NoCert(cliente, pass);
+  }
+
+  private _header(cliente: VpnCliente, modo: string): string {
     const fecha = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });
     return `# ================================================================
-# DATAFAST ISP - Configuracion Tunel VPN MikroTik ${version}
+# DATAFAST ISP - Configuracion Tunel VPN MikroTik
 # ================================================================
 # Router     : ${cliente.nombre}
 # Ubicacion  : ${cliente.ubicacion || 'Sin especificar'}
 # Servidor   : ${VPS_IP}:${VPN_PORT}
-# Certificado: ${cliente.nombreCert}
-# Version    : RouterOS ${version}
+# Modo       : ${modo}
 # Generado   : ${fecha}
 # ----------------------------------------------------------------
 # INSTRUCCIONES:
@@ -375,14 +431,15 @@ export class VpnClienteService {
     };
   }
 
-  // ── Script para RouterOS v6 ───────────────────────────────────
-  // fetch: address + src-path (url= no parsea host desde variable en v6)
-  // port: hardcodeado (variable int no funciona en port= en v6)
-  // cipher/auth: solo en add, no en set
-  // Líneas ≤122 chars para evitar syntax error de parser v6
-  private _scriptV6(cliente: VpnCliente): string {
+  // ── RouterOS v6 + Certificados ────────────────────────────────
+  // fetch: address + src-path (v6 no parsea host desde variable en url=)
+  // cipher/auth: solo en add, no en set (limitacion v6)
+  // Líneas ≤122 chars para evitar syntax error del parser v6
+  private _scriptV6Cert(cliente: VpnCliente): string {
     const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
-    return `${this._header(cliente, 'v6')}
+    const cipher  = cliente.cipher  || 'aes256';
+    const authAlg = cliente.authAlg || 'sha256';
+    return `${this._header(cliente, `RouterOS v6 + Certificados | ${cipher}/${authAlg}`)}
 
 :local vpnServer "${VPS_IP}"
 :local certCN "${cn}"
@@ -390,8 +447,10 @@ export class VpnClienteService {
 :local certPrefix "${prefix}"
 :local fetchHost "${VPS_IP}"
 :local fetchPath "${fetchPath}"
+:local c "${cipher}"
+:local a "${authAlg}"
 
-:log info "DATAFAST-VPN: === Iniciando configuracion (v6) ==="
+:log info "DATAFAST-VPN: === Iniciando configuracion (v6 + certs) ==="
 
 # Eliminar interfaz OVPN previa
 :if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
@@ -402,7 +461,7 @@ export class VpnClienteService {
 }
 
 # Eliminar certificados previos
-:foreach c in=[/certificate find where common-name=$certCN] do={ /certificate remove $c }
+:foreach cert in=[/certificate find where common-name=$certCN] do={ /certificate remove $cert }
 :delay 1
 
 # Descargar certificados (sintaxis v6: address + src-path)
@@ -440,31 +499,71 @@ export class VpnClienteService {
 
 # Crear interfaz OVPN (cipher/auth van en add — limitacion v6)
 :log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=aes256 auth=sha256 disabled=yes
+/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$c auth=$a disabled=yes
 /interface ovpn-client set $tunnelName user=$certCN certificate=$certCN
 /interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
 /interface ovpn-client enable $tunnelName
 
-:log info "DATAFAST-VPN: === Configuracion completada (v6) ==="
+:log info "DATAFAST-VPN: === Configuracion completada (v6 + certs) ==="
 :log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
   }
 
-  // ── Script para RouterOS v7 ───────────────────────────────────
+  // ── RouterOS v6 + Usuario/Contraseña ─────────────────────────
+  private _scriptV6NoCert(cliente: VpnCliente, pass: string): string {
+    const cipher  = cliente.cipher  || 'aes256';
+    const authAlg = cliente.authAlg || 'sha256';
+    const vpnUser = cliente.vpnUsuario || '';
+    return `${this._header(cliente, `RouterOS v6 + Usuario/Contraseña | ${cipher}/${authAlg}`)}
+
+:local vpnServer "${VPS_IP}"
+:local tunnelName "datafast-vpn"
+:local vpnUser "${vpnUser}"
+:local vpnPass "${pass}"
+:local c "${cipher}"
+:local a "${authAlg}"
+
+:log info "DATAFAST-VPN: === Iniciando configuracion (v6 + user/pass) ==="
+
+# Eliminar interfaz OVPN previa
+:if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
+/interface ovpn-client disable [find where name=$tunnelName]
+:delay 2
+/interface ovpn-client remove [find where name=$tunnelName]
+:log info "DATAFAST-VPN: Interfaz previa eliminada"
+}
+
+# Crear interfaz OVPN con usuario/contraseña (sin certificados)
+:log info "DATAFAST-VPN: Creando interfaz OVPN..."
+/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$c auth=$a disabled=yes
+/interface ovpn-client set $tunnelName user=$vpnUser password=$vpnPass
+/interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
+/interface ovpn-client enable $tunnelName
+
+:log info "DATAFAST-VPN: === Configuracion completada (v6 + user/pass) ==="
+:log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
+  }
+
+  // ── RouterOS v7 + Certificados ────────────────────────────────
   // fetch: url= con variable pre-construida (v7 parsea host correctamente)
-  // port: hardcodeado para consistencia
-  // cipher/auth: en add + set separados (mismo enfoque, v7 no tiene restriccion)
-  private _scriptV7(cliente: VpnCliente): string {
+  private _scriptV7Cert(cliente: VpnCliente): string {
     const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
-    const fetchUrl = `http://${VPS_IP}${fetchPath}`;
-    return `${this._header(cliente, 'v7')}
+    const cipher    = cliente.cipher  || 'aes256';
+    const authAlg   = cliente.authAlg || 'sha256';
+    const fetchUrl  = `http://${VPS_IP}${fetchPath}`;
+    const verifyLine = cliente.verifyServerCert
+      ? '\n/interface ovpn-client set $tunnelName verify-server-certificate=yes'
+      : '';
+    return `${this._header(cliente, `RouterOS v7 + Certificados | ${cipher}/${authAlg}`)}
 
 :local vpnServer "${VPS_IP}"
 :local certCN "${cn}"
 :local tunnelName "datafast-vpn"
 :local certPrefix "${prefix}"
 :local fetchUrl "${fetchUrl}"
+:local vpnCipher "${cipher}"
+:local vpnAuth "${authAlg}"
 
-:log info "DATAFAST-VPN: === Iniciando configuracion (v7) ==="
+:log info "DATAFAST-VPN: === Iniciando configuracion (v7 + certs) ==="
 
 # Eliminar interfaz OVPN previa
 :if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
@@ -475,7 +574,7 @@ export class VpnClienteService {
 }
 
 # Eliminar certificados previos
-:foreach c in=[/certificate find where common-name=$certCN] do={ /certificate remove $c }
+:foreach cert in=[/certificate find where common-name=$certCN] do={ /certificate remove $cert }
 :delay 1
 
 # Descargar certificados (sintaxis v7: url= con variable pre-construida)
@@ -516,12 +615,50 @@ export class VpnClienteService {
 
 # Crear interfaz OVPN
 :log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=aes256 auth=sha256 disabled=yes
-/interface ovpn-client set $tunnelName user=$certCN certificate=$certCN
+/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$vpnCipher auth=$vpnAuth disabled=yes
+/interface ovpn-client set $tunnelName user=$certCN certificate=$certCN${verifyLine}
 /interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
 /interface ovpn-client enable $tunnelName
 
-:log info "DATAFAST-VPN: === Configuracion completada (v7) ==="
+:log info "DATAFAST-VPN: === Configuracion completada (v7 + certs) ==="
+:log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
+  }
+
+  // ── RouterOS v7 + Usuario/Contraseña ─────────────────────────
+  private _scriptV7NoCert(cliente: VpnCliente, pass: string): string {
+    const cipher    = cliente.cipher  || 'aes256';
+    const authAlg   = cliente.authAlg || 'sha256';
+    const vpnUser   = cliente.vpnUsuario || '';
+    const verifyLine = cliente.verifyServerCert
+      ? '\n/interface ovpn-client set $tunnelName verify-server-certificate=yes'
+      : '';
+    return `${this._header(cliente, `RouterOS v7 + Usuario/Contraseña | ${cipher}/${authAlg}`)}
+
+:local vpnServer "${VPS_IP}"
+:local tunnelName "datafast-vpn"
+:local vpnUser "${vpnUser}"
+:local vpnPass "${pass}"
+:local vpnCipher "${cipher}"
+:local vpnAuth "${authAlg}"
+
+:log info "DATAFAST-VPN: === Iniciando configuracion (v7 + user/pass) ==="
+
+# Eliminar interfaz OVPN previa
+:if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
+/interface ovpn-client disable [find where name=$tunnelName]
+:delay 2
+/interface ovpn-client remove [find where name=$tunnelName]
+:log info "DATAFAST-VPN: Interfaz previa eliminada"
+}
+
+# Crear interfaz OVPN con usuario/contraseña (sin certificados)
+:log info "DATAFAST-VPN: Creando interfaz OVPN..."
+/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$vpnCipher auth=$vpnAuth disabled=yes
+/interface ovpn-client set $tunnelName user=$vpnUser password=$vpnPass${verifyLine}
+/interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
+/interface ovpn-client enable $tunnelName
+
+:log info "DATAFAST-VPN: === Configuracion completada (v7 + user/pass) ==="
 :log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
   }
 }

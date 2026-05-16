@@ -5,29 +5,40 @@ export type EstadoVpnCliente = 'pendiente' | 'conectado' | 'desconectado' | 'rev
 export type VersionRos = 'v6' | 'v7';
 
 export interface VpnCliente {
-  id:              string;
-  empresaId:       string;
-  nombre:          string;
-  ubicacion?:      string;
-  descripcion?:    string;
-  nombreCert:      string;
-  versionRos:      VersionRos;
-  estado:          EstadoVpnCliente;
-  vpnIp?:          string;
-  routerId?:       string;
-  tokenDescarga:   string;
-  tokenExpiresAt:  string;
+  id:               string;
+  empresaId:        string;
+  nombre:           string;
+  ubicacion?:       string;
+  descripcion?:     string;
+  nombreCert:       string;
+  versionRos:       VersionRos;
+  usarCertificados: boolean;
+  vpnUsuario?:      string;
+  cipher:           string;
+  authAlg:          string;
+  verifyServerCert: boolean;
+  estado:           EstadoVpnCliente;
+  vpnIp?:           string;
+  routerId?:        string;
+  tokenDescarga:    string;
+  tokenExpiresAt:   string;
   ultimoHandshake?: string;
-  ipReal?:         string;
-  activo:          boolean;
-  createdAt:       string;
+  ipReal?:          string;
+  activo:           boolean;
+  createdAt:        string;
 }
 
 export interface CrearVpnClienteDto {
-  nombre:       string;
-  ubicacion?:   string;
-  descripcion?: string;
-  versionRos:   VersionRos;
+  nombre:            string;
+  ubicacion?:        string;
+  descripcion?:      string;
+  versionRos:        VersionRos;
+  usarCertificados?: boolean;
+  vpnUsuario?:       string;
+  vpnPassword?:      string;
+  cipher?:           string;
+  authAlg?:          string;
+  verifyServerCert?: boolean;
 }
 
 export interface ValidarTunelResult {
