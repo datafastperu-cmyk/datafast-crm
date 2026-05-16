@@ -374,10 +374,13 @@ export class VpnClienteService {
     cipher: string,
     authAlg: string,
   ): { cipher: string; authAlg: string } {
-    // RouterOS v6 no soporta ciphers GCM
     if (versionRos === 'v6') {
+      // RouterOS v6 no soporta GCM → downgrade a CBC equivalente
       if (cipher === 'aes256-gcm') cipher = 'aes256';
       if (cipher === 'aes128-gcm') cipher = 'aes128';
+    } else {
+      // RouterOS v7: preferir GCM (AEAD, sin auth separado, evita ambigüedad)
+      if (!cipher.endsWith('-gcm')) cipher = 'aes256-gcm';
     }
     return { cipher, authAlg };
   }
@@ -543,6 +546,7 @@ export class VpnClienteService {
 
   // ── RouterOS v7 + Certificados ────────────────────────────────
   // fetch: url= con variable pre-construida (v7 parsea host correctamente)
+  // auth= omitido: RouterOS v7 trata "sha256" como ambiguo con "sha256-96" en prefix matching
   private _scriptV7Cert(cliente: VpnCliente): string {
     const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
     const cipher    = cliente.cipher  || 'aes256';
@@ -559,7 +563,6 @@ export class VpnClienteService {
 :local certPrefix "${prefix}"
 :local fetchUrl "${fetchUrl}"
 :local vpnCipher "${cipher}"
-:local vpnAuth "${authAlg}"
 
 :log info "DATAFAST-VPN: === Iniciando configuracion (v7 + certs) ==="
 
@@ -612,8 +615,9 @@ export class VpnClienteService {
 }
 
 # Crear interfaz OVPN
+# auth= omitido: v7 lo negocia via TLS (sha256/sha256-96 son ambiguos en v7)
 :log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$vpnCipher auth=$vpnAuth disabled=yes
+/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$vpnCipher disabled=yes
 /interface ovpn-client set $tunnelName user=$certCN certificate=$certCN${verifyLine}
 /interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
 /interface ovpn-client enable $tunnelName
@@ -637,7 +641,6 @@ export class VpnClienteService {
 :local vpnUser "${vpnUser}"
 :local vpnPass "${pass}"
 :local vpnCipher "${cipher}"
-:local vpnAuth "${authAlg}"
 
 :log info "DATAFAST-VPN: === Iniciando configuracion (v7 + user/pass) ==="
 
@@ -650,8 +653,9 @@ export class VpnClienteService {
 }
 
 # Crear interfaz OVPN con usuario/contraseña (sin certificados)
+# auth= omitido: v7 lo negocia via TLS (sha256/sha256-96 son ambiguos en v7)
 :log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$vpnCipher auth=$vpnAuth disabled=yes
+/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$vpnCipher disabled=yes
 /interface ovpn-client set $tunnelName user=$vpnUser password=$vpnPass${verifyLine}
 /interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
 /interface ovpn-client enable $tunnelName

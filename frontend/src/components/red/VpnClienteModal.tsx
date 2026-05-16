@@ -55,7 +55,7 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
   const [form, setForm]         = useState<FormData>({
     nombre: '', ubicacion: '', descripcion: '',
     versionRos: 'v7', usarCertificados: true,
-    cipher: 'aes256', authAlg: 'sha256', verifyServerCert: false,
+    cipher: 'aes256-gcm', authAlg: 'sha256', verifyServerCert: false,
   });
   const [errors, setErrors]           = useState<FormErrors>({});
   const [loading, setLoading]         = useState(false);
@@ -353,11 +353,14 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
                       key={v}
                       type="button"
                       onClick={() => {
-                        setField('versionRos', v);
-                        // Auto-downgrade cipher si v6 + GCM seleccionado
-                        if (v === 'v6' && form.cipher.endsWith('-gcm')) {
-                          setField('cipher', form.cipher === 'aes128-gcm' ? 'aes128' : 'aes256');
-                        }
+                        setForm(f => ({
+                          ...f,
+                          versionRos: v,
+                          // v7 → GCM (sin auth separado); v6 → CBC (con auth)
+                          cipher: v === 'v7'
+                            ? (f.cipher.endsWith('-gcm') ? f.cipher : 'aes256-gcm')
+                            : (f.cipher.endsWith('-gcm') ? (f.cipher === 'aes128-gcm' ? 'aes128' : 'aes256') : f.cipher),
+                        }));
                       }}
                       className={`py-2.5 px-4 rounded-lg text-sm font-medium border transition-all text-left ${
                         form.versionRos === v
@@ -367,7 +370,7 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
                     >
                       <span className="font-mono font-semibold">RouterOS {v.toUpperCase()}</span>
                       <span className="block text-[10px] mt-0.5 opacity-70">
-                        {v === 'v6' ? 'v6.x — fetch address/src-path' : 'v7.x — fetch url= nativo'}
+                        {v === 'v6' ? 'v6.x — AES-256-CBC + auth=sha256' : 'v7.x — AES-256-GCM (AEAD, sin auth)'}
                       </span>
                     </button>
                   ))}
