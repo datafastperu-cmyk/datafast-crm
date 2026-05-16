@@ -70,7 +70,11 @@ export class VpnClienteService {
         ['build-client-full', nombreCert, 'nopass'],
         {
           cwd:     EASYRSA_DIR,
-          env:     { ...process.env, EASYRSA_BATCH: 'yes' },
+          env:     {
+            ...process.env,
+            EASYRSA_BATCH:      'yes',
+            EASYRSA_VARS_FILE:  `${EASYRSA_DIR}/vars-clients`,
+          },
           timeout: 60_000,
         },
       );
@@ -194,16 +198,21 @@ export class VpnClienteService {
     const cliente = await this._getCliente(id, empresaId);
     if (cliente.estado === 'revocado') throw new ConflictException('Ya revocado');
 
+    const easyrsaEnv = {
+      ...process.env,
+      EASYRSA_BATCH:     'yes',
+      EASYRSA_VARS_FILE: `${EASYRSA_DIR}/vars-clients`,
+    };
     try {
       await execFileAsync(
         `${EASYRSA_DIR}/easyrsa`,
         ['revoke', cliente.nombreCert],
-        { cwd: EASYRSA_DIR, env: { ...process.env, EASYRSA_BATCH: 'yes' }, timeout: 30_000 },
+        { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
       );
       await execFileAsync(
         `${EASYRSA_DIR}/easyrsa`,
         ['gen-crl'],
-        { cwd: EASYRSA_DIR, env: { ...process.env, EASYRSA_BATCH: 'yes' }, timeout: 30_000 },
+        { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
       );
     } catch (err: any) {
       this.logger.warn(`Error revocando ${cliente.nombreCert}: ${err.message}`);
