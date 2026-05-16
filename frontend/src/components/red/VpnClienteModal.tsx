@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import {
   X, Wifi, MapPin, FileText, Copy, Check, RefreshCw,
   AlertTriangle, CheckCircle2, Loader2, Terminal,
-  Shield, Router, Info, ArrowRight,
+  Shield, Router, Info, ArrowRight, RotateCcw,
 } from 'lucide-react';
 import { vpnApi, VpnCliente, ValidarTunelResult } from '@/lib/api/vpn';
 
@@ -30,10 +30,13 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
   const [loading, setLoading]     = useState(false);
   const [cliente, setCliente]     = useState<VpnCliente | null>(null);
   const [script, setScript]       = useState('');
-  const [copied, setCopied]       = useState(false);
-  const [validating, setValidating] = useState(false);
+  const [copied, setCopied]           = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [validating, setValidating]   = useState(false);
   const [validResult, setValidResult] = useState<ValidarTunelResult | null>(null);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const [retryError, setRetryError]   = useState(false);
+  const pollRef   = useRef<NodeJS.Timeout | null>(null);
+  const scriptRef = useRef<HTMLPreElement>(null);
 
   // ── Validación del formulario ─────────────────────────────────
   const validate = (): boolean => {
@@ -48,6 +51,7 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
   const handleGenerar = async () => {
     if (!validate()) return;
     setLoading(true);
+    setRetryError(false);
     try {
       const res = await vpnApi.crear({
         nombre:      form.nombre.trim(),
@@ -66,9 +70,69 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
 
   // ── Copiar script ─────────────────────────────────────────────
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(script);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    let success = false;
+
+    // Método 1: Clipboard API (HTTPS o localhost)
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(script);
+        success = true;
+      } catch { /* fallthrough */ }
+    }
+
+    // Método 2: selección directa sobre el <pre> ref
+    if (!success && scriptRef.current) {
+      try {
+        const sel   = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(scriptRef.current);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        success = document.execCommand('copy');
+        sel?.removeAllRanges();
+      } catch { /* fallthrough */ }
+    }
+
+    // Método 3: textarea temporal fuera del viewport
+    if (!success) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = script;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:absolute;left:-99999px;top:-99999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+        success = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch { /* fallthrough */ }
+    }
+
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  // ── Regenerar script (nuevo certificado, mismos datos) ────────
+  const handleRegenerarScript = async () => {
+    setRegenerating(true);
+    try {
+      const res = await vpnApi.crear({
+        nombre:      form.nombre.trim(),
+        ubicacion:   form.ubicacion.trim(),
+        descripcion: form.descripcion.trim() || undefined,
+      });
+      setCliente(res.cliente);
+      setScript(res.script);
+      setCopied(false);
+    } catch (err: any) {
+      // No bloquea el paso — solo log silencioso
+      console.error('Error regenerando script:', err?.response?.data?.message || err.message);
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   // ── Paso 2 → Validar túnel (polling) ─────────────────────────
@@ -79,7 +143,7 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
     setValidResult(null);
 
     let attempts = 0;
-    const MAX_ATTEMPTS = 24; // 2min (cada 5s)
+    const MAX_ATTEMPTS = 3;
 
     const poll = async () => {
       try {
@@ -93,9 +157,12 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
           return;
         }
         if (attempts >= MAX_ATTEMPTS) {
-          setValidResult({ conectado: false, mensaje: 'Tiempo de espera agotado. Verifica que el script se ejecutó correctamente.' });
-          setValidating(false);
           if (pollRef.current) clearInterval(pollRef.current);
+          setValidating(false);
+          setCliente(null);
+          setScript('');
+          setRetryError(true);
+          setStep('form');
         }
       } catch {
         // Silenciar errores de red durante polling
@@ -163,6 +230,15 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
           {/* PASO 1: Formulario */}
           {step === 'form' && (
             <div className="p-6 space-y-5">
+              {retryError && (
+                <div className="flex items-start gap-3 p-3.5 bg-red-500/8 border border-red-500/25 rounded-xl">
+                  <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                  <div className="text-xs text-red-300/85 space-y-0.5">
+                    <p className="font-medium text-red-300">Túnel no detectado tras 3 intentos</p>
+                    <p>Verifica que el script se ejecutó correctamente en el MikroTik y vuelve a generarlo.</p>
+                  </div>
+                </div>
+              )}
               {/* Nombre del router */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
@@ -259,19 +335,35 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
               <div className="relative">
                 <div className="flex items-center justify-between px-3 py-2 bg-[#1a1d27] border border-white/10 rounded-t-lg border-b-0">
                   <span className="text-xs text-white/40 font-mono">RouterOS Script</span>
-                  <button
-                    onClick={handleCopy}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                      copied
-                        ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                        : 'bg-white/6 text-white/60 border border-white/10 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    {copied ? 'Copiado' : 'Copiar'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleRegenerarScript}
+                      disabled={regenerating}
+                      title="Genera un nuevo certificado PKI con los mismos datos"
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all bg-white/6 text-white/50 border border-white/10 hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {regenerating
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <RotateCcw className="w-3 h-3" />}
+                      {regenerating ? 'Generando...' : 'Nuevo código'}
+                    </button>
+                    <button
+                      onClick={handleCopy}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                        copied
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                          : 'bg-white/6 text-white/60 border border-white/10 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copied ? 'Copiado' : 'Copiar'}
+                    </button>
+                  </div>
                 </div>
-                <pre className="w-full h-56 overflow-auto px-4 py-3 bg-[#0d0f16] border border-white/10 rounded-b-lg text-xs text-green-300/90 font-mono leading-relaxed whitespace-pre select-all">
+                <pre
+                  ref={scriptRef}
+                  className="w-full h-56 overflow-auto px-4 py-3 bg-[#0d0f16] border border-white/10 rounded-b-lg text-xs text-green-300/90 font-mono leading-relaxed whitespace-pre select-all"
+                >
                   {script}
                 </pre>
               </div>
