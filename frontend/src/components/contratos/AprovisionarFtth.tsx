@@ -11,7 +11,7 @@ import {
   Loader2, SkipForward, AlertTriangle, RefreshCw,
 } from 'lucide-react';
 
-import { contratosApi, redesApi, type AprovisionarDto, type ResultadoPasoFtth } from '@/lib/api/contratos';
+import { contratosApi, redesApi, type AprovisionarDto, type ResultadoPasoFtth, type ResultadoAprovisionamiento } from '@/lib/api/contratos';
 import { useToast }   from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
@@ -48,16 +48,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
   const router    = useRouter();
   const { toast } = useToast();
 
-  const [resultado, setResultado] = useState<{
-    pasos: ResultadoPasoFtth[];
-    exitoso: boolean;
-    mensajeFinal: string;
-    ipAsignada?: string;
-    usuarioPppoe?: string;
-    serialNumber?: string;
-    duracionTotalMs?: number;
-    rollbackEjecutado?: boolean;
-  } | null>(null);
+  const [resultado, setResultado] = useState<ResultadoAprovisionamiento | null>(null);
 
   // ── Datos del contrato ──────────────────────────────────────
   const { data: contrato, isLoading: cargandoContrato } = useQuery({
@@ -197,7 +188,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
             <Field label="OLT *" error={errors.oltId?.message}>
               <select {...register('oltId')} className={inp(!!errors.oltId)}>
                 <option value="">— Selecciona el OLT —</option>
-                {(olts as any[]).map((o) => (
+                {olts.map((o) => (
                   <option key={o.id} value={o.id}>{o.nombre}</option>
                 ))}
               </select>
@@ -218,7 +209,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
                 ONUs detectadas en este OLT ({onusSinAprovi.smartolt.length}):
               </p>
               <div className="flex flex-wrap gap-2">
-                {(onusSinAprovi.smartolt as any[]).slice(0, 8).map((o) => (
+                {onusSinAprovi.smartolt.slice(0, 8).map((o) => (
                   <button
                     type="button"
                     key={o.serial}
@@ -248,7 +239,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
             <Field label="Perfil SmartOLT *" error={errors.perfilSmartolt?.message}>
               <select {...register('perfilSmartolt')} className={inp(!!errors.perfilSmartolt)}>
                 <option value="">— Selecciona perfil —</option>
-                {(perfiles as any[]).map((p) => (
+                {perfiles.map((p) => (
                   <option key={p.id ?? p.name} value={p.name}>{p.name}</option>
                 ))}
                 {/* Opciones manuales como fallback */}
@@ -283,7 +274,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
             <Field label="Router *" error={errors.routerId?.message}>
               <select {...register('routerId')} className={inp(!!errors.routerId)}>
                 <option value="">— Selecciona router —</option>
-                {(routers as any[]).map((r) => (
+                {routers.map((r) => (
                   <option key={r.id} value={r.id}>{r.nombre} ({r.ipGestion})</option>
                 ))}
               </select>
@@ -291,7 +282,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
             <Field label="Segmento IPv4">
               <select {...register('segmentoId')} className={inp()}>
                 <option value="">— Usar IP del contrato —</option>
-                {(segmentos as any[]).map((s) => (
+                {segmentos.map((s) => (
                   <option key={s.id} value={s.id}>{s.redCidr} · {s.nombre}</option>
                 ))}
               </select>
@@ -359,7 +350,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
 function ResultadoView({
   resultado, contratoId, onVolver, onVerContrato, onReintentar,
 }: {
-  resultado: any;
+  resultado: ResultadoAprovisionamiento;
   contratoId: string;
   onVolver: () => void;
   onVerContrato: () => void;

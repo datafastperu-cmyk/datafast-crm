@@ -1,5 +1,5 @@
 import api from '@/lib/api';
-import type { Cliente, PaginaRespuesta, ApiRespuesta } from '@/types';
+import type { Cliente, Contrato, HistorialEntry, PaginaRespuesta, ApiRespuesta } from '@/types';
 
 export interface FiltrosCliente {
   search?:      string;
@@ -98,13 +98,13 @@ export const clientesApi = {
     return res.data.data;
   },
 
-  getContratos: async (clienteId: string) => {
-    const res = await api.get<ApiRespuesta>(`/clientes/${clienteId}/contratos`);
-    return res.data.data;
+  getContratos: async (clienteId: string): Promise<Contrato[]> => {
+    const res = await api.get<ApiRespuesta<Contrato[]>>(`/clientes/${clienteId}/contratos`);
+    return res.data.data ?? [];
   },
 
-  getHistorial: async (clienteId: string) => {
-    const res = await api.get<ApiRespuesta>(`/clientes/${clienteId}/historial`);
-    return res.data.data;
+  getHistorial: async (clienteId: string): Promise<HistorialEntry[]> => {
+    const res = await api.get<ApiRespuesta<HistorialEntry[]>>(`/clientes/${clienteId}/historial`);
+    return res.data.data ?? [];
   },
 };

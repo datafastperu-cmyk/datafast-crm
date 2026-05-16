@@ -144,9 +144,7 @@ export const configApi = {
 // ─── Reportes API ─────────────────────────────────────────────
 export const reportesApi = {
 
-  getResumenGeneral: async (): Promise<{
-    clientes: any; contratos: any; facturacion: any; red: any;
-  }> => {
+  getResumenGeneral: async (): Promise<Record<string, Record<string, number>>> => {
     const res = await api.get<ApiRespuesta>('/reportes/resumen');
     return res.data.data;
   },

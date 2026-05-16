@@ -1,24 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useQuery }            from '@tanstack/react-query';
+import { useState }            from 'react';
+import Link                    from 'next/link';
 import {
   Users, CreditCard, Wifi, AlertTriangle, Ticket,
   TrendingUp, Activity, ArrowUpRight, ArrowDownRight,
-  Zap, BarChart3, RefreshCcw,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, BarChart, Bar,
+  Tooltip, ResponsiveContainer,
 } from 'recharts';
 
 import { useMonitoreo }    from '@/hooks/useMonitoreo';
-import { cn }              from '@/lib/utils';
+import { cn, formatBps }   from '@/lib/utils';
 import {
   mockDashboardStats, mockTrafico24h, mockTrafico7d,
-  mockNodos, mockPagos, mockAlertas, mockTickets, formatBps,
+  mockNodos, mockPagos, mockAlertas, mockTickets,
 } from '@/mock-data';
-import type { WsEventDashboard } from '@/types';
+import type { Nodo, WsEventDashboard } from '@/types';
 
 // ─── StatCard premium ──────────────────────────────────────────
 const COLORS = {
@@ -82,12 +81,13 @@ function StatCard({
 }
 
 // ─── Tooltip personalizado para recharts ─────────────────────
-function CustomTooltip({ active, payload, label }: any) {
+interface TooltipEntry { dataKey: string; name: string; value: number; color: string; }
+function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipEntry[]; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-popover border border-border rounded-xl shadow-xl px-3 py-2.5 text-xs">
       <p className="font-semibold text-foreground mb-1.5">{label}</p>
-      {payload.map((p: any) => (
+      {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center justify-between gap-6">
           <span className="flex items-center gap-1.5 text-muted-foreground">
             <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
@@ -115,16 +115,127 @@ const ESTADO_DOT: Record<string, string> = {
   mantenimiento: 'status-dot-info',
 };
 
+// ─── TrafficChart ─────────────────────────────────────────────
+function TrafficChart({ totalRxBps }: { totalRxBps?: number }) {
+  const [view, setView] = useState<'24h' | '7d'>('24h');
+  const trafico = view === '24h' ? mockTrafico24h : mockTrafico7d;
+  const xKey    = view === '24h' ? 'hora' : 'dia';
+
+  return (
+    <div className="lg:col-span-2 bg-card border border-border rounded-xl p-5">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Tráfico de Red</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pico: {formatBps(totalRxBps ?? 2_840_000_000)} bajada
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded bg-blue-400" />Bajada</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded bg-emerald-400" />Subida</span>
+          </div>
+          <div className="flex gap-1 bg-muted rounded-lg p-0.5">
+            {(['24h', '7d'] as const).map((v) => (
+              <button key={v} onClick={() => setView(v)}
+                className={cn('text-xs px-2.5 py-1 rounded-md transition-colors',
+                  view === v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                )}>
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={210}>
+        <AreaChart data={trafico} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <defs>
+            <linearGradient id="gRx" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"  stopColor="#60a5fa" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="gTx" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"  stopColor="#34d399" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+          <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} stroke="transparent" />
+          <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} stroke="transparent"
+                 tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}G` : `${v}M`} />
+          <Tooltip content={<CustomTooltip />} />
+          <Area type="monotone" dataKey="rx" stroke="#60a5fa" fill="url(#gRx)" strokeWidth={2} dot={false} name="Bajada" />
+          <Area type="monotone" dataKey="tx" stroke="#34d399" fill="url(#gTx)" strokeWidth={2} dot={false} name="Subida" />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ─── NodoStatusList ───────────────────────────────────────────
+function NodoStatusList({
+  nodos, online, offline, totalRxBps,
+}: {
+  nodos: readonly Nodo[];
+  online: number;
+  offline: number;
+  totalRxBps?: number;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-foreground">Nodos</h3>
+        <div className="flex gap-2 text-[11px] font-medium">
+          <span className="pill-online">{online} online</span>
+          {offline > 0 && <span className="pill-offline">{offline} offline</span>}
+        </div>
+      </div>
+
+      <div className="mb-4 p-3 bg-muted/40 rounded-lg">
+        <div className="flex justify-between text-xs mb-1.5">
+          <span className="text-muted-foreground">Capacidad de red</span>
+          <span className="font-semibold text-foreground">
+            {formatBps(totalRxBps ?? 2_840_000_000)} / {formatBps(4_000_000_000)}
+          </span>
+        </div>
+        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-blue-400 to-blue-500 rounded-full transition-all"
+               style={{ width: `${Math.round((2840 / 4000) * 100)}%` }} />
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-1">71% utilización</p>
+      </div>
+
+      <div className="flex-1 space-y-1.5 overflow-y-auto max-h-60 pr-1">
+        {nodos.slice(0, 10).map((nodo) => (
+          <div key={nodo.id}
+               className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/50 transition-colors">
+            <span className={ESTADO_DOT[nodo.estado] ?? 'status-dot-offline'} />
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-medium text-foreground truncate">{nodo.nombre}</p>
+              <p className="text-[10px] text-muted-foreground">{nodo.ipMonitoreo}</p>
+            </div>
+            {nodo.latenciaMs != null && (
+              <span className={cn('text-[10px] font-mono',
+                nodo.latenciaMs < 10 ? 'text-emerald-400' :
+                nodo.latenciaMs < 30 ? 'text-amber-400' : 'text-red-400',
+              )}>
+                {nodo.latenciaMs}ms
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── COMPONENT ───────────────────────────────────────────────
 export function DashboardContent() {
   const [wsStats, setWsStats] = useState<WsEventDashboard | null>(null);
-  const [traficoView, setTraficoView] = useState<'24h' | '7d'>('24h');
 
   const { conectado, alertas } = useMonitoreo({ onDashboard: setWsStats });
 
-  const stats   = mockDashboardStats;
-  const trafico = traficoView === '24h' ? mockTrafico24h : mockTrafico7d;
-  const xKey    = traficoView === '24h' ? 'hora' : 'dia';
+  const stats = mockDashboardStats;
 
   const nodesOnline  = wsStats?.online  ?? stats.nodos.online;
   const nodesOffline = wsStats?.offline ?? stats.nodos.offline;
@@ -139,7 +250,7 @@ export function DashboardContent() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Panel Principal</h2>
-          <p className="text-sm text-muted-foreground">Operaciones en tiempo real · {new Date().toLocaleDateString('es-PE', { weekday:'long', day:'2-digit', month:'long' })}</p>
+          <p className="text-sm text-muted-foreground">Operaciones en tiempo real · {new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long' })}</p>
         </div>
         <div className={cn(
           'flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border',
@@ -199,102 +310,13 @@ export function DashboardContent() {
 
       {/* ── Row 2: Tráfico + Nodos ─────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Gráfico de tráfico */}
-        <div className="lg:col-span-2 bg-card border border-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Tráfico de Red</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Pico: {formatBps(wsStats?.totalRxBps ?? 2_840_000_000)} bajada
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded bg-blue-400" />Bajada</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded bg-emerald-400" />Subida</span>
-              </div>
-              <div className="flex gap-1 bg-muted rounded-lg p-0.5">
-                {(['24h','7d'] as const).map((v) => (
-                  <button key={v} onClick={() => setTraficoView(v)}
-                    className={cn('text-xs px-2.5 py-1 rounded-md transition-colors',
-                      traficoView === v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    )}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={210}>
-            <AreaChart data={trafico} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gRx" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#60a5fa" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gTx" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#34d399" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
-              <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} stroke="transparent" />
-              <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} stroke="transparent"
-                     tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}G` : `${v}M`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="rx" stroke="#60a5fa" fill="url(#gRx)" strokeWidth={2} dot={false} name="Bajada" />
-              <Area type="monotone" dataKey="tx" stroke="#34d399" fill="url(#gTx)" strokeWidth={2} dot={false} name="Subida" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Estado de nodos */}
-        <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-foreground">Nodos</h3>
-            <div className="flex gap-2 text-[11px] font-medium">
-              <span className="pill-online">{nodesOnline} online</span>
-              {nodesOffline > 0 && <span className="pill-offline">{nodesOffline} offline</span>}
-            </div>
-          </div>
-
-          {/* Barra de utilización */}
-          <div className="mb-4 p-3 bg-muted/40 rounded-lg">
-            <div className="flex justify-between text-xs mb-1.5">
-              <span className="text-muted-foreground">Capacidad de red</span>
-              <span className="font-semibold text-foreground">
-                {formatBps(wsStats?.totalRxBps ?? 2_840_000_000)} / {formatBps(4_000_000_000)}
-              </span>
-            </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-400 to-blue-500 rounded-full transition-all"
-                   style={{ width: `${Math.round((2840 / 4000) * 100)}%` }} />
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1">71% utilización</p>
-          </div>
-
-          <div className="flex-1 space-y-1.5 overflow-y-auto max-h-60 pr-1">
-            {(mockNodos as any[]).slice(0, 10).map((nodo) => {
-              const estado = nodo.estado as string;
-              return (
-                <div key={nodo.id}
-                     className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted/50 transition-colors">
-                  <span className={ESTADO_DOT[estado] ?? 'status-dot-offline'} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-medium text-foreground truncate">{nodo.nombre}</p>
-                    <p className="text-[10px] text-muted-foreground">{nodo.ipMonitoreo}</p>
-                  </div>
-                  {nodo.latenciaMs != null && (
-                    <span className={cn('text-[10px] font-mono', nodo.latenciaMs < 10 ? 'text-emerald-400' : nodo.latenciaMs < 30 ? 'text-amber-400' : 'text-red-400')}>
-                      {nodo.latenciaMs}ms
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <TrafficChart totalRxBps={wsStats?.totalRxBps} />
+        <NodoStatusList
+          nodos={mockNodos as readonly Nodo[]}
+          online={nodesOnline}
+          offline={nodesOffline}
+          totalRxBps={wsStats?.totalRxBps}
+        />
       </div>
 
       {/* ── Row 3: Pagos + Alertas ─────────────────────────── */}
@@ -379,7 +401,7 @@ export function DashboardContent() {
       <div className="bg-card border border-border rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-foreground">Tickets recientes</h3>
-          <a href="/tickets/nuevos" className="text-xs text-primary hover:underline">Ver todos →</a>
+          <Link href="/tickets/nuevos" className="text-xs text-primary hover:underline">Ver todos →</Link>
         </div>
         <div className="overflow-x-auto">
           <table className="data-table">

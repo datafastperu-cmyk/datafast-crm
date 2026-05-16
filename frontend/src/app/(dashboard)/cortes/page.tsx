@@ -3,8 +3,8 @@
 import { useState }   from 'react';
 import { Zap, Play, Pause, Settings, AlertTriangle, Users, Clock, CheckCircle } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { cn }         from '@/lib/utils';
-import { mockClientes, formatPEN } from '@/mock-data';
+import { cn, formatPEN } from '@/lib/utils';
+import { mockClientes } from '@/mock-data';
 
 // Clientes morosos aptos para corte
 const clientesMorosos = mockClientes.filter(c => c.estado === 'moroso' || c.estado === 'suspendido');

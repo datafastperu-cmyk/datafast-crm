@@ -1,7 +1,7 @@
 'use client';
 
 import { useState }   from 'react';
-import { BotMessageSquare, Send, CheckCheck, Clock, AlertCircle, Plus, MessageSquare } from 'lucide-react';
+import { MessageSquare, Send, CheckCheck, Clock, AlertCircle, Plus } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { cn }         from '@/lib/utils';
 import { mockMensajesWhatsapp } from '@/mock-data';
@@ -13,7 +13,7 @@ const ESTADO_STYLE = {
   error:     { icon: AlertCircle,class: 'text-red-400',     label: 'Error' },
 };
 
-const TIPO_BADGE = {
+const TIPO_BADGE: Record<string, string> = {
   factura:      'bg-blue-500/10 text-blue-400',
   corte:        'bg-red-500/10 text-red-400',
   recordatorio: 'bg-amber-500/10 text-amber-400',
@@ -98,7 +98,7 @@ export default function WhatsAppPage() {
                     <td className="font-medium text-foreground">{m.nombre}</td>
                     <td className="font-mono text-xs text-muted-foreground">+51 {m.telefono}</td>
                     <td>
-                      <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full capitalize', (TIPO_BADGE as any)[m.tipo])}>
+                      <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full capitalize', TIPO_BADGE[m.tipo])}>
                         {m.tipo}
                       </span>
                     </td>
@@ -129,7 +129,7 @@ export default function WhatsAppPage() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <p className="text-sm font-semibold text-foreground">{p.nombre}</p>
-                  <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full capitalize mt-1 inline-block', (TIPO_BADGE as any)[p.tipo])}>
+                  <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full capitalize mt-1 inline-block', TIPO_BADGE[p.tipo])}>
                     {p.tipo}
                   </span>
                 </div>

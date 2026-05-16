@@ -321,14 +321,5 @@ export const mockMensajesWhatsapp: ContactoWhatsapp[] = [
   { id:'wa8',  nombre:'Rosa Palomino',        telefono:'948901234', estado:'entregado',  mensaje:'✅ Su pago de S/ 59.00 fue registrado exitosamente.',                                        tipo:'factura',      enviado:'2025-05-15T10:12:00' },
 ];
 
-// ─── HELPERS ────────────────────────────────────────────────────
-export function formatBps(bps: number): string {
-  if (bps >= 1_000_000_000) return `${(bps / 1_000_000_000).toFixed(1)} Gbps`;
-  if (bps >= 1_000_000)     return `${(bps / 1_000_000).toFixed(0)} Mbps`;
-  if (bps >= 1_000)         return `${(bps / 1_000).toFixed(0)} Kbps`;
-  return `${bps} bps`;
-}
-
-export function formatPEN(amount: number): string {
-  return `S/ ${amount.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+// Re-export helpers from utils so pages can import all from '@/mock-data' transitionally
+export { formatBps, formatPEN } from '@/lib/utils';

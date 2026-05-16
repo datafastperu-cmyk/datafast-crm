@@ -2,8 +2,8 @@
 
 import { HardDrive, TrendingUp, TrendingDown, DollarSign, Plus, Printer } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { cn }         from '@/lib/utils';
-import { mockMovimientosCaja, formatPEN } from '@/mock-data';
+import { cn, formatPEN } from '@/lib/utils';
+import { mockMovimientosCaja } from '@/mock-data';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';

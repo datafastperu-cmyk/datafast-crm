@@ -242,8 +242,8 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
             <Field label="Banco">
               <select {...register('banco')} className={input()}>
                 <option value="">— Seleccionar —</option>
-                {(cuentas as any[]).length > 0
-                  ? (cuentas as any[]).map((c) => (
+                {cuentas.length > 0
+                  ? cuentas.map((c) => (
                     <option key={c.id} value={c.banco}>
                       {c.banco} ···{c.numeroCuenta?.slice(-4)} ({c.moneda})
                     </option>

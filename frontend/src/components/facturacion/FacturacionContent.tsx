@@ -73,7 +73,7 @@ export function FacturacionContent() {
 
   const { mutate: generarMasivo, isPending: generando } = useMutation({
     mutationFn: () => facturacionApi.generarMensual({ mes: genMes, anio: genAnio, forzar: genForzar }),
-    onSuccess: (r: any) => {
+    onSuccess: (r) => {
       toast(`Facturas generadas: ${r.exitosas ?? 0} ✓ | ${r.errores ?? 0} errores`, {
         type: r.errores > 0 ? 'warning' : 'success',
       });
@@ -254,7 +254,7 @@ export function FacturacionContent() {
                         <span className="ml-1.5 text-[9px] text-muted-foreground">AUTO</span>
                       )}
                     </td>
-                    <td className="max-w-[160px] truncate text-sm">{(f as any).clienteNombre ?? '—'}</td>
+                    <td className="max-w-[160px] truncate text-sm">{f.clienteNombre ?? '—'}</td>
                     <td>
                       <span className="text-xs text-muted-foreground">
                         {f.periodoInicio ? `${formatDate(f.periodoInicio)} – ${formatDate(f.periodoFin)}` : '—'}

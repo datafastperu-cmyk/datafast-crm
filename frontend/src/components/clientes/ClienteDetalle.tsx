@@ -8,12 +8,12 @@ import {
   FileText, CreditCard, Clock, MoreVertical, Loader2,
 } from 'lucide-react';
 
-import { clientesApi }     from '@/lib/api/clientes';
+import { clientesApi } from '@/lib/api/clientes';
 import { ClienteForm }     from './ClienteForm';
 import { ClienteEstadoBadge } from './ClienteEstadoBadge';
 import { useToast }        from '@/components/ui/toaster';
 import { formatDate, formatDateTime, formatPEN, cn, labelContrato, badgeContrato } from '@/lib/utils';
-import type { Contrato }   from '@/types';
+import type { Contrato, HistorialEntry } from '@/types';
 
 const TABS = ['Información', 'Contratos', 'Historial'] as const;
 type Tab = typeof TABS[number];
@@ -344,7 +344,7 @@ export function ClienteDetalle({ id }: { id: string }) {
               {historial.length === 0 ? (
                 <EmptyState icon={Clock} title="Sin historial" desc="No hay eventos registrados." />
               ) : (
-                (historial as any[]).map((h: any, i: number) => (
+                (historial as HistorialEntry[]).map((h, i) => (
                   <div key={i} className="flex items-start gap-3 pb-3 border-b border-border last:border-0">
                     <div className="w-2 h-2 rounded-full bg-primary mt-2 flex-shrink-0" />
                     <div className="flex-1">

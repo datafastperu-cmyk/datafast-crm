@@ -160,9 +160,9 @@ export function ConfiguracionAlertas() {
               <span className="col-span-1" />
             </div>
             <div className="divide-y divide-border">
-              {(configs as any[]).map((cfg) => {
+              {configs.map((cfg) => {
                 const metrica = METRICAS_ALERTA.find((m) => m.value === cfg.metrica);
-                const nodo    = (nodos as any[]).find((n) => n.id === cfg.nodoId);
+                const nodo    = nodos.find((n) => n.id === cfg.nodoId);
 
                 return (
                   <div key={cfg.id}
@@ -269,7 +269,7 @@ export function ConfiguracionAlertas() {
               <Field label="Nodo específico (dejar vacío = todos)">
                 <select {...register('nodoId')} className={inp()}>
                   <option value="">Todos los nodos</option>
-                  {(nodos as any[]).map((n) => (
+                  {nodos.map((n) => (
                     <option key={n.id} value={n.id}>{n.nombre}</option>
                   ))}
                 </select>

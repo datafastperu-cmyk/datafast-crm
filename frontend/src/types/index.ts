@@ -33,11 +33,25 @@ export interface PaginaRespuesta<T> {
   meta:    PaginaMeta;
 }
 
-export interface ApiRespuesta<T = any> {
+export interface ApiRespuesta<T = unknown> {
   success:   boolean;
   data:      T;
   message?:  string;
-  meta?:     Record<string, any>;
+  meta?:     Record<string, unknown>;
+}
+
+// ─── Historial de eventos (compartido entre módulos) ──────────
+export interface HistorialEntry {
+  id?:           string;
+  accion?:       string;
+  descripcion?:  string;
+  usuarioEmail?: string;
+  createdAt?:    string;
+  timestamp?:    string;
+  estadoNuevo?:  string;
+  motivo?:       string;
+  automatico?:   boolean;
+  metadata?:     Record<string, unknown>;
 }
 
 // ─── Clientes ─────────────────────────────────────────────────
@@ -169,6 +183,16 @@ export interface Factura {
   fechaPago?:       string;
   pdfUrl?:          string;
   generadaAutomaticamente: boolean;
+  // Campos denormalizados
+  clienteNombre?:   string;
+  items?:           FacturaItem[];
+}
+
+export interface FacturaItem {
+  descripcion:   string;
+  cantidad:      number;
+  precioUnitario: number;
+  subtotal:      number;
 }
 
 // ─── Pagos ────────────────────────────────────────────────────
@@ -196,6 +220,9 @@ export interface Pago {
   notas?:          string;
   comprobanteUrl?: string;
   conciliado:      boolean;
+  // Campos denormalizados (viene del backend o mock)
+  clienteNombre?:  string;
+  cliente_nombre?: string;
 }
 
 // ─── Monitoreo ────────────────────────────────────────────────
@@ -240,11 +267,14 @@ export interface Alerta {
 
 // ─── Dashboard ────────────────────────────────────────────────
 export interface DashboardStats {
-  clientes:    { total: number; activos: number; morosos: number; nuevosHoy: number };
+  clientes:    { total: number; activos: number; morosos: number; nuevosHoy: number; nuevosMes: number };
   contratos:   { total: number; activos: number; suspendidos: number; porVencer: number };
-  facturacion: { cobradoHoy: number; cobradoMes: number; cuentasPorCobrar: number; tasaCobranza: number };
+  facturacion: { cobradoHoy: number; cobradoMes: number; cuentasPorCobrar: number; tasaCobranza: number; meta: number };
   nodos:       { total: number; online: number; offline: number; degradado: number };
   alertas:     { activas: number; criticas: number; warnings: number };
+  tickets:     { abiertos: number; urgentes: number; resueltosMes: number };
+  pppoe:       { sesionesActivas: number; pico24h: number };
+  banda:       { totalRxMbps: number; totalTxMbps: number; capacidad: number };
 }
 
 // ─── WebSocket events ─────────────────────────────────────────

@@ -4,23 +4,23 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getAccessToken } from '@/lib/api';
 import type {
-  WsEventMedicion, WsEventAlerta, WsEventNodoStatus, WsEventDashboard, Nodo,
+  WsEventMedicion, WsEventAlerta, WsEventNodoStatus, WsEventDashboard,
 } from '@/types';
 
 interface MonitoreoState {
-  conectado:   boolean;
-  mediciones:  Map<string, WsEventMedicion>;  // nodoId → última medición
-  alertas:     WsEventAlerta[];
-  dashboard:   WsEventDashboard | null;
+  conectado:    boolean;
+  mediciones:   Map<string, WsEventMedicion>;
+  alertas:      WsEventAlerta[];
+  dashboard:    WsEventDashboard | null;
   ultimaAlerta: WsEventAlerta | null;
 }
 
 interface UseMonitoreoOptions {
-  onMedicion?:    (data: WsEventMedicion) => void;
-  onAlerta?:      (data: WsEventAlerta) => void;
-  onNodoStatus?:  (data: WsEventNodoStatus) => void;
-  onDashboard?:   (data: WsEventDashboard) => void;
-  nodoIds?:       string[];   // Suscribirse solo a nodos específicos
+  onMedicion?:   (data: WsEventMedicion) => void;
+  onAlerta?:     (data: WsEventAlerta) => void;
+  onNodoStatus?: (data: WsEventNodoStatus) => void;
+  onDashboard?:  (data: WsEventDashboard) => void;
+  nodoIds?:      string[];
 }
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
@@ -28,11 +28,22 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
 export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
   const socketRef = useRef<Socket | null>(null);
 
+  // Stable refs for callbacks — avoids stale closure without re-creating socket
+  const onMedicionRef   = useRef(opts.onMedicion);
+  const onAlertaRef     = useRef(opts.onAlerta);
+  const onNodoStatusRef = useRef(opts.onNodoStatus);
+  const onDashboardRef  = useRef(opts.onDashboard);
+
+  useEffect(() => { onMedicionRef.current   = opts.onMedicion;   }, [opts.onMedicion]);
+  useEffect(() => { onAlertaRef.current     = opts.onAlerta;     }, [opts.onAlerta]);
+  useEffect(() => { onNodoStatusRef.current = opts.onNodoStatus; }, [opts.onNodoStatus]);
+  useEffect(() => { onDashboardRef.current  = opts.onDashboard;  }, [opts.onDashboard]);
+
   const [state, setState] = useState<MonitoreoState>({
-    conectado:   false,
-    mediciones:  new Map(),
-    alertas:     [],
-    dashboard:   null,
+    conectado:    false,
+    mediciones:   new Map(),
+    alertas:      [],
+    dashboard:    null,
     ultimaAlerta: null,
   });
 
@@ -42,8 +53,8 @@ export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
     if (!token) return;
 
     const socket = io(`${WS_URL}/monitoreo`, {
-      auth:       { token },
-      transports: ['websocket', 'polling'],
+      auth:                  { token },
+      transports:            ['websocket', 'polling'],
       reconnection:          true,
       reconnectionDelay:     2000,
       reconnectionAttempts:  10,
@@ -53,59 +64,46 @@ export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
 
     socket.on('connect', () => {
       setState((s) => ({ ...s, conectado: true }));
-
-      // Suscribirse a nodos específicos si se indicaron
       if (opts.nodoIds?.length) {
-        opts.nodoIds.forEach((id) =>
-          socket.emit('monitoreo:subscribe', { nodoId: id }),
-        );
+        opts.nodoIds.forEach((id) => socket.emit('monitoreo:subscribe', { nodoId: id }));
       }
     });
 
-    socket.on('disconnect', () => {
-      setState((s) => ({ ...s, conectado: false }));
-    });
+    socket.on('disconnect', () => setState((s) => ({ ...s, conectado: false })));
 
-    // ── Medición de nodo ─────────────────────────────────────
     socket.on('monitoreo:medicion', (data: WsEventMedicion) => {
       setState((s) => {
         const nuevas = new Map(s.mediciones);
         nuevas.set(data.nodoId, data);
         return { ...s, mediciones: nuevas };
       });
-      opts.onMedicion?.(data);
+      onMedicionRef.current?.(data);
     });
 
-    // ── Nueva alerta ─────────────────────────────────────────
     socket.on('monitoreo:alerta', (data: WsEventAlerta) => {
       setState((s) => ({
         ...s,
         alertas:      [data, ...s.alertas].slice(0, 50),
         ultimaAlerta: data,
       }));
-      opts.onAlerta?.(data);
+      onAlertaRef.current?.(data);
     });
 
-    // ── Recovery (alerta resuelta) ───────────────────────────
     socket.on('monitoreo:recovery', (data: WsEventAlerta) => {
       setState((s) => ({
         ...s,
-        alertas: s.alertas.map((a) =>
-          a.alerta?.id === data.alerta?.id ? data : a,
-        ),
+        alertas: s.alertas.map((a) => a.alerta?.id === data.alerta?.id ? data : a),
       }));
-      opts.onAlerta?.(data);
+      onAlertaRef.current?.(data);
     });
 
-    // ── Estado de nodo ───────────────────────────────────────
     socket.on('monitoreo:nodo_status', (data: WsEventNodoStatus) => {
-      opts.onNodoStatus?.(data);
+      onNodoStatusRef.current?.(data);
     });
 
-    // ── Dashboard broadcast ──────────────────────────────────
     socket.on('monitoreo:dashboard', (data: WsEventDashboard) => {
       setState((s) => ({ ...s, dashboard: data }));
-      opts.onDashboard?.(data);
+      onDashboardRef.current?.(data);
     });
 
     return () => {

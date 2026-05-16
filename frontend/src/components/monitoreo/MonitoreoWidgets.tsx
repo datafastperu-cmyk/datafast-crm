@@ -40,11 +40,11 @@ export function TraficoChart({
 
   // Convertir mediciones a puntos del gráfico
   const chartData: TraficoPoint[] = nodoSel && mediciones.length > 0
-    ? mediciones.slice(-48).map((m: any) => ({
+    ? mediciones.slice(-48).map((m) => ({
         hora:     new Date(m.timestamp).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
         rx:       Math.round((m.traficoRxBps ?? 0) / 1_000_000 * 100) / 100,
         tx:       Math.round((m.traficoTxBps ?? 0) / 1_000_000 * 100) / 100,
-        sesiones: m.sesionesPppoe ?? 0,
+        sesiones: 0,
       }))
     : Array.from({ length: 24 }, (_, i) => ({
         hora:     `${String(i).padStart(2, '0')}:00`,

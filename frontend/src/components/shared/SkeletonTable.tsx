@@ -43,9 +43,16 @@ export function SkeletonCard({ className }: { className?: string }) {
   );
 }
 
+const GRID_COLS: Record<number, string> = {
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  6: 'lg:grid-cols-6',
+};
+
 export function SkeletonStats({ count = 4 }: { count?: number }) {
   return (
-    <div className={`grid grid-cols-2 lg:grid-cols-${count} gap-4`}>
+    <div className={cn('grid grid-cols-2 gap-4', GRID_COLS[count] ?? 'lg:grid-cols-4')}>
       {Array.from({ length: count }).map((_, i) => (
         <SkeletonCard key={i} />
       ))}

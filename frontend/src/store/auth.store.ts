@@ -1,6 +1,5 @@
 import { create }         from 'zustand';
 import { persist }        from 'zustand/middleware';
-import { jwtDecode }      from 'jwt-decode';
 import { setAuthCookies, clearAuthCookies } from '@/lib/api';
 import type { Usuario, AuthTokens } from '@/types';
 

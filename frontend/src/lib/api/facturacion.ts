@@ -64,7 +64,16 @@ export interface ResumenCobranza {
   pagosMes:            number;
   pendientesVerificar: number;
   porMetodo:           Record<string, { total: number; monto: number }>;
-  ultimosPagos:        any[];
+  ultimosPagos:        Pago[];
+}
+
+export interface CuentaBancaria {
+  id:            string;
+  banco:         string;
+  numeroCuenta?: string;
+  titular?:      string;
+  moneda?:       string;
+  activa?:       boolean;
 }
 
 // ─── Facturación API ──────────────────────────────────────────
@@ -90,8 +99,8 @@ export const facturacionApi = {
     return res.data.data;
   },
 
-  generarMensual: async (dto: GenerarMensualDto) => {
-    const res = await api.post<ApiRespuesta>('/facturacion/generar-mensual', dto);
+  generarMensual: async (dto: GenerarMensualDto): Promise<{ exitosas: number; errores: number }> => {
+    const res = await api.post<ApiRespuesta<{ exitosas: number; errores: number }>>('/facturacion/generar-mensual', dto);
     return res.data.data;
   },
 
@@ -166,8 +175,8 @@ export const pagosApi = {
     return res.data.data;
   },
 
-  getCuentasBancarias: async () => {
-    const res = await api.get<ApiRespuesta>('/pagos/cuentas');
+  getCuentasBancarias: async (): Promise<CuentaBancaria[]> => {
+    const res = await api.get<ApiRespuesta<CuentaBancaria[]>>('/pagos/cuentas');
     return res.data.data ?? [];
   },
 };

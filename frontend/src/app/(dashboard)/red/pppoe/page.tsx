@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { Zap, Search, RefreshCcw, Download, Filter } from 'lucide-react';
 import { PageHeader }    from '@/components/shared/PageHeader';
-import { cn }            from '@/lib/utils';
-import { mockSesionesPppoe, mockDashboardStats, formatBps } from '@/mock-data';
+import { cn, formatBps } from '@/lib/utils';
+import { mockSesionesPppoe, mockDashboardStats } from '@/mock-data';
 
 export default function PPPoEPage() {
   const [search, setSearch] = useState('');

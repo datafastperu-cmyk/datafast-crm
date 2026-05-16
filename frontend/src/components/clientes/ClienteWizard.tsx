@@ -354,7 +354,7 @@ function Step3Form({ onBack, onSubmit }: { onBack: () => void; onSubmit: (d: Ste
               <Field label="Plan de internet *">
                 <select {...register('planId')} className={inputCls()}>
                   <option value="">Seleccionar plan...</option>
-                  {(planes as any[]).map((p: any) => (
+                  {planes.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.nombre} — S/. {p.precioMensual}/mes
                     </option>
@@ -370,7 +370,7 @@ function Step3Form({ onBack, onSubmit }: { onBack: () => void; onSubmit: (d: Ste
               <Field label="Router MikroTik">
                 <select {...register('routerId')} className={inputCls()}>
                   <option value="">Sin asignar</option>
-                  {(routers as any[]).map((r: any) => (
+                  {routers.map((r) => (
                     <option key={r.id} value={r.id}>{r.nombre} — {r.host}</option>
                   ))}
                 </select>
@@ -378,7 +378,7 @@ function Step3Form({ onBack, onSubmit }: { onBack: () => void; onSubmit: (d: Ste
               <Field label="Nodo / Antena">
                 <select {...register('nodoId')} className={inputCls()}>
                   <option value="">Sin asignar</option>
-                  {(nodos as any[]).map((n: any) => (
+                  {nodos.map((n) => (
                     <option key={n.id} value={n.id}>{n.nombre}</option>
                   ))}
                 </select>
@@ -388,7 +388,7 @@ function Step3Form({ onBack, onSubmit }: { onBack: () => void; onSubmit: (d: Ste
             <Field label="Segmento IPv4 (pool de IPs)">
               <select {...register('segmentoId')} className={inputCls()}>
                 <option value="">Sin asignar / asignar manual</option>
-                {(segmentos as any[]).map((s: any) => (
+                {segmentos.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.nombre} ({s.redCidr}) — {s.ipsDisponibles} IPs libres
                   </option>

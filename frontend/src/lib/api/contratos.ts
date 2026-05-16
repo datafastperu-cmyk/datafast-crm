@@ -1,5 +1,6 @@
 import api from '@/lib/api';
-import type { Contrato, Plan, PaginaRespuesta, ApiRespuesta } from '@/types';
+import type { Contrato, Plan, Nodo, HistorialEntry, PaginaRespuesta, ApiRespuesta } from '@/types';
+import type { Router } from '@/lib/api/mikrotik';
 
 // ─── Filtros ──────────────────────────────────────────────────
 export interface FiltrosContrato {
@@ -120,9 +121,9 @@ export const contratosApi = {
     return res.data.data;
   },
 
-  getHistorial: async (id: string) => {
-    const res = await api.get<ApiRespuesta>(`/contratos/${id}/historial`);
-    return res.data.data;
+  getHistorial: async (id: string): Promise<HistorialEntry[]> => {
+    const res = await api.get<ApiRespuesta<HistorialEntry[]>>(`/contratos/${id}/historial`);
+    return res.data.data ?? [];
   },
 
   getFacturas: async (id: string) => {
@@ -185,6 +186,21 @@ export interface SegmentoIpv4 {
   activo:         boolean;
 }
 
+export interface IpEntry {
+  ip:     string;
+  estado: 'libre' | 'asignada' | 'reservada';
+}
+
+export interface DisponibilidadSegmento {
+  segmento: {
+    ipsDisponibles: number;
+    totalIps:       number;
+    porcentajeUso:  number;
+  };
+  ips?:    IpEntry[];
+  hayMas?: boolean;
+}
+
 export interface CreateSegmentoDto {
   nombre:         string;
   descripcion?:   string;
@@ -199,18 +215,43 @@ export interface CreateSegmentoDto {
   ipsReservadas?: string[];
 }
 
+export interface Olt {
+  id:      string;
+  nombre:  string;
+  host?:   string;
+  modelo?: string;
+}
+
+export interface SmartOltPerfil {
+  id?:    string | number;
+  name:   string;
+}
+
+export interface OnuSinAprovisionar {
+  id?:           string;
+  serial?:       string;
+  pon_port?:     string;
+  oltId?:        string;
+  oltNombre?:    string;
+}
+
+export interface OnusPendientes {
+  smartolt: OnuSinAprovisionar[];
+  local:    OnuSinAprovisionar[];
+}
+
 // ─── Routers API (para selects) ───────────────────────────────
 export const redesApi = {
-  listRouters: async () => {
-    const res = await api.get<ApiRespuesta>('/mikrotik/routers');
+  listRouters: async (): Promise<Router[]> => {
+    const res = await api.get<ApiRespuesta<Router[]>>('/mikrotik/routers');
     return res.data.data ?? [];
   },
-  listOlts: async () => {
-    const res = await api.get<ApiRespuesta>('/smartolt/olts');
+  listOlts: async (): Promise<Olt[]> => {
+    const res = await api.get<ApiRespuesta<Olt[]>>('/smartolt/olts');
     return res.data.data ?? [];
   },
-  listNodos: async () => {
-    const res = await api.get<ApiRespuesta>('/monitoreo/nodos');
+  listNodos: async (): Promise<Nodo[]> => {
+    const res = await api.get<ApiRespuesta<Nodo[]>>('/monitoreo/nodos');
     return res.data.data ?? [];
   },
   listSegmentos: async (routerId?: string): Promise<SegmentoIpv4[]> => {
@@ -226,16 +267,16 @@ export const redesApi = {
   deleteSegmento: async (id: string): Promise<void> => {
     await api.delete(`/contratos/segmentos/${id}`);
   },
-  getDisponibilidad: async (id: string) => {
-    const res = await api.get<ApiRespuesta>(`/contratos/segmentos/${id}/disponibilidad`);
+  getDisponibilidad: async (id: string): Promise<DisponibilidadSegmento> => {
+    const res = await api.get<ApiRespuesta<DisponibilidadSegmento>>(`/contratos/segmentos/${id}/disponibilidad`);
     return res.data.data;
   },
-  listPerfilesSmartolt: async () => {
-    const res = await api.get<ApiRespuesta>('/smartolt/perfiles');
+  listPerfilesSmartolt: async (): Promise<SmartOltPerfil[]> => {
+    const res = await api.get<ApiRespuesta<SmartOltPerfil[]>>('/smartolt/perfiles');
     return res.data.data ?? [];
   },
-  onusNoAprovisionadas: async (oltId?: string) => {
-    const res = await api.get<ApiRespuesta>('/smartolt/onus/sin-aprovisionar', {
+  onusNoAprovisionadas: async (oltId?: string): Promise<OnusPendientes> => {
+    const res = await api.get<ApiRespuesta<OnusPendientes>>('/smartolt/onus/sin-aprovisionar', {
       params: oltId ? { oltId } : {},
     });
     return res.data.data ?? { smartolt: [], local: [] };

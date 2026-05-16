@@ -1,13 +1,13 @@
 'use client';
 
 import { useState }       from 'react';
-import { Warehouse, Search, Plus, AlertTriangle, Package } from 'lucide-react';
+import { Package, Search, Plus, AlertTriangle } from 'lucide-react';
 import { PageHeader }     from '@/components/shared/PageHeader';
 import { EmptyState }     from '@/components/shared/EmptyState';
-import { cn }             from '@/lib/utils';
-import { mockInventario, formatPEN } from '@/mock-data';
+import { cn, formatPEN } from '@/lib/utils';
+import { mockInventario } from '@/mock-data';
 
-const ESTADO_STYLE = {
+const ESTADO_STYLE: Record<string, string> = {
   disponible: 'pill-online',
   bajo_stock: 'pill-warning',
   agotado:    'pill-offline',
@@ -154,7 +154,7 @@ export default function InventarioPage() {
                     <td className="text-xs font-semibold text-foreground">{formatPEN(item.cantidad * item.precioUnitario)}</td>
                     <td className="text-xs text-muted-foreground">{item.ubicacion}</td>
                     <td>
-                      <span className={(ESTADO_STYLE as any)[item.estado]}>
+                      <span className={ESTADO_STYLE[item.estado]}>
                         {item.estado.replace('_', ' ')}
                       </span>
                     </td>

@@ -97,7 +97,7 @@ export function UsuariosTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {(usuarios as any[]).map((u) => (
+          {usuarios.map((u) => (
             <div key={u.id}
                  className="flex items-center gap-4 p-4 rounded-xl border border-border
                             hover:bg-muted/30 transition-colors">

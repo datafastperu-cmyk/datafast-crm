@@ -61,7 +61,7 @@ export function MonitoreoContent() {
   // ── Scan manual ────────────────────────────────────────────
   const { mutate: forzarScan, isPending: escaneando } = useMutation({
     mutationFn: monitoreoApi.forzarScan,
-    onSuccess: (r: any) => {
+    onSuccess: (r) => {
       toast(`Scan encolado: ${r.encolados} nodos`, { type: 'success' });
       setTimeout(() => refetch(), 5000);
     },

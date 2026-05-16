@@ -233,8 +233,16 @@ const METODO_BADGE: Record<string, string> = {
   tarjeta_debito:          '💳 Débito',
 };
 
+interface PagoResumen {
+  id:          string;
+  cliente_nombre?: string;
+  metodo_pago: string;
+  monto:       string | number;
+  estado:      string;
+}
+
 export function UltimosPagos() {
-  const { data: pagos = [], isLoading } = useQuery<any[]>({
+  const { data: pagos = [], isLoading } = useQuery<PagoResumen[]>({
     queryKey: ['pagos-recientes'],
     queryFn:  async () => {
       const res = await api.get('/pagos?soloHoy=true&limit=10');
@@ -260,7 +268,7 @@ export function UltimosPagos() {
               Sin pagos registrados hoy
             </p>
           ) : (
-            pagos.map((p: any) => (
+            pagos.map((p) => (
               <div key={p.id}
                    className="flex items-center justify-between gap-2 p-2.5 rounded-lg
                               border border-border hover:bg-muted/50 transition-colors">

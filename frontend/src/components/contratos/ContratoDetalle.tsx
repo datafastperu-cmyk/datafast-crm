@@ -12,7 +12,7 @@ import { contratosApi }      from '@/lib/api/contratos';
 import { ContratoEstadoBadge } from './ContratosTable';
 import { useToast }          from '@/components/ui/toaster';
 import { formatDate, formatDateTime, formatPEN, cn, parseApiError } from '@/lib/utils';
-import type { Factura }      from '@/types';
+import type { Factura, HistorialEntry } from '@/types';
 
 const TABS = ['Información', 'Facturas', 'Historial'] as const;
 type Tab = typeof TABS[number];
@@ -292,10 +292,10 @@ export function ContratoDetalle({ id }: { id: string }) {
           {/* ── Historial ────────────────────────────────── */}
           {tab === 'Historial' && (
             <div className="space-y-2">
-              {(historial as any[]).length === 0 ? (
+              {(historial as HistorialEntry[]).length === 0 ? (
                 <Empty icon={FileText} title="Sin historial" desc="No hay eventos registrados." />
               ) : (
-                (historial as any[]).map((h, i) => (
+                (historial as HistorialEntry[]).map((h, i) => (
                   <div key={i} className="flex items-start gap-3 pb-3 border-b border-border last:border-0">
                     <div className="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0" />
                     <div>

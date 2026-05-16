@@ -241,7 +241,7 @@ export function PagosContent() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium text-foreground">
-                      {(p as any).cliente_nombre ?? 'Cliente'}
+                      {p.cliente_nombre ?? 'Cliente'}
                     </p>
                     <span className={cn(
                       'text-[10px] font-semibold px-1.5 py-px rounded-full',
@@ -342,7 +342,14 @@ export function PagosContent() {
   );
 }
 
-function Pag({ children, onClick, disabled, active }: any) {
+interface PagProps {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+}
+
+function Pag({ children, onClick, disabled, active }: PagProps) {
   return (
     <button onClick={onClick} disabled={disabled}
       className={cn('px-3 py-1.5 text-xs rounded-lg border transition-colors',

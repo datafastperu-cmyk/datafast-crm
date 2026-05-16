@@ -172,7 +172,7 @@ export function FacturaDetalle({ id }: { id: string }) {
               Cliente
             </p>
             <p className="text-sm font-semibold text-foreground">
-              {(factura as any).clienteNombre ?? '—'}
+              {factura.clienteNombre ?? '—'}
             </p>
           </div>
 
@@ -192,7 +192,7 @@ export function FacturaDetalle({ id }: { id: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {((factura as any).items ?? [{ descripcion: factura.descripcion, cantidad: 1, precioUnitario: factura.subtotal, subtotal: factura.subtotal }]).map((item: any, i: number) => (
+                  {(factura.items ?? [{ descripcion: factura.descripcion, cantidad: 1, precioUnitario: factura.subtotal, subtotal: factura.subtotal }]).map((item, i) => (
                     <tr key={i} className="border-b border-border last:border-0">
                       <td className="px-4 py-3 text-foreground">{item.descripcion}</td>
                       <td className="px-4 py-3 text-right text-muted-foreground">{item.cantidad}</td>

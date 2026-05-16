@@ -121,7 +121,7 @@ export function PagosPendientes() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-0.5">
                     <p className="text-sm font-semibold text-foreground">
-                      {(p as any).cliente_nombre ?? 'Cliente'}
+                      {p.cliente_nombre ?? 'Cliente'}
                     </p>
                     <span className="text-xs text-muted-foreground">·</span>
                     <p className="text-sm font-bold text-foreground">{formatPEN(p.monto)}</p>
@@ -190,7 +190,7 @@ export function PagosPendientes() {
             </div>
             <p className="text-sm text-muted-foreground">
               Pago de <strong>{formatPEN(selected.monto)}</strong> por{' '}
-              {(selected as any).cliente_nombre ?? 'el cliente'}.
+              {selected.cliente_nombre ?? 'el cliente'}.
             </p>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-foreground">Motivo del rechazo *</label>

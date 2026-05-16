@@ -87,19 +87,19 @@ export function NodoDetalle({ id }: { id: string }) {
   });
 
   // ── Preparar datos para gráficos ──────────────────────────
-  const latenciaData = mediciones.slice(-48).map((m: any) => ({
+  const latenciaData = mediciones.slice(-48).map((m) => ({
     hora:     new Date(m.timestamp).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
     latencia: m.latenciaMs,
     perdida:  m.perdidaPct,
   }));
 
-  const traficoData = mediciones.slice(-48).map((m: any) => ({
+  const traficoData = mediciones.slice(-48).map((m) => ({
     hora: new Date(m.timestamp).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
     rx:   Math.round((m.traficoRxBps ?? 0) / 1_000_000 * 100) / 100,
     tx:   Math.round((m.traficoTxBps ?? 0) / 1_000_000 * 100) / 100,
   }));
 
-  const cpuData = mediciones.slice(-48).map((m: any) => ({
+  const cpuData = mediciones.slice(-48).map((m) => ({
     hora: new Date(m.timestamp).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
     cpu:  m.cpuPct,
     ram:  m.memoriaPct,
@@ -328,7 +328,7 @@ export function NodoDetalle({ id }: { id: string }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {(interfaces as any[]).map((iface) => (
+                      {interfaces.map((iface) => (
                         <tr key={iface.index}>
                           <td><span className="font-mono text-xs">{iface.index}</span></td>
                           <td><span className="text-sm font-medium">{iface.descripcion}</span></td>
@@ -355,13 +355,13 @@ export function NodoDetalle({ id }: { id: string }) {
           {/* ── Alertas ──────────────────────────────────── */}
           {tab === 'Alertas' && (
             <div className="space-y-2">
-              {(alertasNodo as any[]).length === 0 ? (
+              {alertasNodo.length === 0 ? (
                 <div className="text-center py-10">
                   <Activity className="w-10 h-10 text-green-500 opacity-60 mx-auto mb-3" />
                   <p className="text-sm font-medium text-foreground">Sin alertas registradas</p>
                 </div>
               ) : (
-                (alertasNodo as any[]).map((a) => (
+                alertasNodo.map((a) => (
                   <div key={a.id} className="flex items-start gap-3 p-3.5 rounded-xl border border-border">
                     <span className={cn(
                       'text-[10px] font-bold px-1.5 py-px rounded-full flex-shrink-0 mt-0.5',

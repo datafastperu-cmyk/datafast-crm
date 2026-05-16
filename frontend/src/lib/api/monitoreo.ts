@@ -37,6 +37,10 @@ export interface CreateConfigAlertaDto {
   descripcion?:      string;
 }
 
+export interface ConfigAlerta extends CreateConfigAlertaDto {
+  id: string;
+}
+
 export interface MedicionHistorica {
   timestamp:    string;
   latenciaMs:   number | null;
@@ -146,8 +150,8 @@ export const monitoreoApi = {
   },
 
   // ── Configuración de alertas ───────────────────────────────
-  getConfigAlertas: async () => {
-    const res = await api.get<ApiRespuesta>('/monitoreo/alertas/configuracion');
+  getConfigAlertas: async (): Promise<ConfigAlerta[]> => {
+    const res = await api.get<ApiRespuesta<ConfigAlerta[]>>('/monitoreo/alertas/configuracion');
     return res.data.data ?? [];
   },
 
@@ -167,8 +171,8 @@ export const monitoreoApi = {
   },
 
   // ── Scan manual ───────────────────────────────────────────
-  forzarScan: async () => {
-    const res = await api.post<ApiRespuesta>('/monitoreo/scan');
+  forzarScan: async (): Promise<{ encolados: number }> => {
+    const res = await api.post<ApiRespuesta<{ encolados: number }>>('/monitoreo/scan');
     return res.data.data;
   },
 };

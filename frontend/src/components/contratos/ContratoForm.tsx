@@ -229,7 +229,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
           <Field label="Router Mikrotik">
             <select {...register('routerId')} className={input()}>
               <option value="">— Sin asignar —</option>
-              {(routers as any[]).map((r) => (
+              {routers.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.nombre} ({r.ipGestion})
                 </option>
@@ -239,7 +239,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
           <Field label="OLT (para FTTH)">
             <select {...register('oltId')} className={input()}>
               <option value="">— Sin asignar —</option>
-              {(olts as any[]).map((o) => (
+              {olts.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.nombre}
                 </option>
@@ -249,7 +249,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
           <Field label="Segmento IPv4 (pool de IPs)">
             <select {...register('segmentoId')} className={input()}>
               <option value="">— Asignar IP manualmente —</option>
-              {(segmentos as any[]).map((s) => (
+              {segmentos.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.redCidr} ({s.nombre ?? ''})
                 </option>

@@ -1,17 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar }  from '@/components/layout/Topbar';
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen,    setSidebarOpen]    = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('sidebar-collapsed');
-    if (saved === 'true') setSidebarCollapsed(true);
-  }, []);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem('sidebar-collapsed') === 'true',
+  );
 
   const toggleCollapse = () => {
     const next = !sidebarCollapsed;

@@ -1,1 +1,1 @@
-export { parseApiError } from './api';
+export { parseApiError } from './utils';

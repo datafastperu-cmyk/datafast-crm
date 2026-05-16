@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Eye, Wifi, Server, ChevronDown } from 'lucide-react';
-import { redesApi, type SegmentoIpv4, type CreateSegmentoDto } from '@/lib/api/contratos';
+import { redesApi, type SegmentoIpv4, type CreateSegmentoDto, type DisponibilidadSegmento } from '@/lib/api/contratos';
+import type { Router } from '@/lib/api/mikrotik';
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
@@ -182,14 +183,14 @@ function SegmentoRow({
 }
 
 // ─── Disponibilidad view ─────────────────────────────────────
-function DisponibilidadView({ dispo }: { dispo: any }) {
+function DisponibilidadView({ dispo }: { dispo: DisponibilidadSegmento }) {
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-foreground">
         {dispo.segmento.ipsDisponibles} IPs libres de {dispo.segmento.totalIps} — {dispo.segmento.porcentajeUso}% usado
       </p>
       <div className="flex flex-wrap gap-1">
-        {dispo.ips?.map((entry: any) => (
+        {dispo.ips?.map((entry) => (
           <span
             key={entry.ip}
             title={entry.ip}
@@ -216,7 +217,7 @@ function DisponibilidadView({ dispo }: { dispo: any }) {
 function SegmentoForm({
   routers, onClose, onCreated,
 }: {
-  routers: any[];
+  routers: Router[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -308,7 +309,7 @@ function SegmentoForm({
           <label className="text-xs font-medium text-foreground">Router MikroTik (opcional)</label>
           <select value={form.routerId} onChange={(e) => set('routerId', e.target.value)} className={inputCls()}>
             <option value="">Sin asignar</option>
-            {routers.map((r: any) => (
+            {routers.map((r) => (
               <option key={r.id} value={r.id}>{r.nombre} — {r.host}</option>
             ))}
           </select>
