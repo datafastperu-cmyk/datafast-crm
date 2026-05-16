@@ -16,6 +16,8 @@ import type {
   Router as RouterType, CreateRouterDto,
   MetodoConexion, TestConexionResult,
 } from '@/lib/api/mikrotik';
+import { VpnClienteModal } from './VpnClienteModal';
+import type { VpnCliente } from '@/lib/api/vpn';
 
 // ─── Constantes de UI ─────────────────────────────────────────────
 
@@ -691,9 +693,10 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
 export function RoutersContent() {
   const { toast }   = useToast();
   const queryClient = useQueryClient();
-  const [showModal, setShowModal]   = useState(false);
-  const [editRouter, setEditRouter] = useState<RouterType | null>(null);
-  const [testingId, setTestingId]   = useState<string | null>(null);
+  const [showModal, setShowModal]       = useState(false);
+  const [showVpnModal, setShowVpnModal] = useState(false);
+  const [editRouter, setEditRouter]     = useState<RouterType | null>(null);
+  const [testingId, setTestingId]       = useState<string | null>(null);
 
   const { data: routers = [], isLoading } = useQuery<RouterType[]>({
     queryKey:        ['routers'],
@@ -747,13 +750,22 @@ export function RoutersContent() {
             {routers.length} router{routers.length !== 1 ? 's' : ''} registrado{routers.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Agregar router
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowVpnModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600/80 hover:bg-blue-600 border border-blue-500/30 text-white rounded-lg transition-colors"
+          >
+            <Wifi className="w-4 h-4" />
+            Agregar Cliente VPN
+          </button>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Agregar router
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -903,6 +915,17 @@ export function RoutersContent() {
           router={editRouter}
           onClose={() => setShowModal(false)}
           onSaved={onSaved}
+        />
+      )}
+
+      {showVpnModal && (
+        <VpnClienteModal
+          onClose={() => setShowVpnModal(false)}
+          onSuccess={(_cliente: VpnCliente) => {
+            setShowVpnModal(false);
+            queryClient.invalidateQueries({ queryKey: ['routers'] });
+            toast('Cliente VPN registrado — router vinculado en la tabla', { type: 'success' });
+          }}
         />
       )}
     </div>

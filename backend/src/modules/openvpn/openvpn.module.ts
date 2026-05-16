@@ -1,14 +1,20 @@
 import { Module }        from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { OpenvpnConfig }    from './entities/openvpn-config.entity';
-import { OpenvpnService }   from './openvpn.service';
-import { OpenvpnController } from './openvpn.controller';
+import { OpenvpnConfig }         from './entities/openvpn-config.entity';
+import { VpnCliente }            from './entities/vpn-cliente.entity';
+import { OpenvpnService }        from './openvpn.service';
+import { VpnClienteService }     from './services/vpn-cliente.service';
+import { OpenvpnController }     from './openvpn.controller';
+import { VpnClienteController }  from './vpn-cliente.controller';
+import { Router }                from '../mikrotik/entities/router.entity';
 
 @Module({
-  imports:     [TypeOrmModule.forFeature([OpenvpnConfig])],
-  controllers: [OpenvpnController],
-  providers:   [OpenvpnService],
-  exports:     [OpenvpnService],
+  imports: [
+    TypeOrmModule.forFeature([OpenvpnConfig, VpnCliente, Router]),
+  ],
+  controllers: [OpenvpnController, VpnClienteController],
+  providers:   [OpenvpnService, VpnClienteService],
+  exports:     [OpenvpnService, VpnClienteService],
 })
 export class OpenvpnModule {}
