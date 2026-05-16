@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 const PKI_DIR    = '/etc/openvpn/server';
 const PKI_META   = '/etc/openvpn/server/pki-meta.json';
 const CLIENTS_DIR = '/etc/openvpn/server/clients';
-const STATUS_LOG  = '/var/log/openvpn/openvpn-status.log';
+const STATUS_LOG  = '/var/log/openvpn/status.log';
 const OPENVPN_LOG = '/var/log/openvpn/openvpn.log';
 const CLIENT_SCRIPT = '/opt/datafast/scripts/openvpn-client.sh';
 
@@ -139,13 +139,13 @@ export class OpenvpnService {
     try {
       const raw = await fs.readFile(PKI_META, 'utf8');
       const meta = JSON.parse(raw);
-      status.port        = meta.port        ?? status.port;
-      status.protocol    = meta.protocol    ?? status.protocol;
-      status.network     = meta.network     ?? status.network;
-      status.serverIp    = meta.server_ip   ?? '';
-      status.caExpiry    = meta.ca_expiry   ?? null;
-      status.serverExpiry = meta.server_expiry ?? null;
-      status.installedAt = meta.installed_at ?? null;
+      status.port        = meta.vpnPort      ?? meta.port     ?? status.port;
+      status.protocol    = meta.vpnProtocol  ?? meta.protocol ?? status.protocol;
+      status.network     = meta.vpnNetwork   ?? meta.network  ?? status.network;
+      status.serverIp    = meta.publicIp     ?? meta.server_ip ?? '';
+      status.caExpiry    = meta.caExpiry     ?? meta.ca_expiry ?? null;
+      status.serverExpiry = meta.serverExpiry ?? meta.server_expiry ?? null;
+      status.installedAt = meta.installedAt  ?? meta.installed_at ?? null;
     } catch { /* PKI no instalada */ }
 
     // Clientes conectados (status.log formato v2)
