@@ -488,20 +488,22 @@ export class VpnClienteService {
 :local urlCa ($fetchUrl . "/ca.crt")
 :local urlCert ($fetchUrl . "/client.crt")
 :local urlKey ($fetchUrl . "/client.key")
-/tool fetch url=$urlCa dst-path=$fCa
+/tool fetch url=$urlCa mode=http dst-path=$fCa
 :delay 3
-/tool fetch url=$urlCert dst-path=$fCert
+/tool fetch url=$urlCert mode=http dst-path=$fCert
 :delay 3
-/tool fetch url=$urlKey dst-path=$fKey
+/tool fetch url=$urlKey mode=http dst-path=$fKey
 :delay 3
 /certificate import file-name=$fCa passphrase=""
 :delay 3
 /certificate import file-name=$fCert passphrase=""
 :delay 3
 /certificate import file-name=$fKey passphrase=""
-:delay 3
+:delay 5
+:local certEntry [/certificate find where common-name=$certCN]
+:local certName [/certificate get $certEntry name]
 /interface ovpn-client
-add certificate=$certCN cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN mac-address=${mac}${verifyLine}`;
+add certificate=$certName cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN mac-address=${mac}${verifyLine}`;
   }
 
   private _scriptV7NoCert(cliente: VpnCliente, pass: string): string {
