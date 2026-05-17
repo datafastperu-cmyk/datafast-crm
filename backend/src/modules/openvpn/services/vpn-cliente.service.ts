@@ -396,7 +396,7 @@ export class VpnClienteService {
   // ── Verificar credenciales VPN (llamado por vpn-auth.sh) ─────
   async verifyAuth(username: string, password: string): Promise<boolean> {
     // No-cert: buscar por vpnUsuario
-    const byUser = await this.clienteRepo.findOne({
+    const byUser = await this.repo.findOne({
       where: { vpnUsuario: username, activo: true },
     });
     if (byUser) {
@@ -405,7 +405,7 @@ export class VpnClienteService {
       return plain === password;
     }
     // Cert client: buscar por nombreCert
-    const byCert = await this.clienteRepo.findOne({
+    const byCert = await this.repo.findOne({
       where: { nombreCert: username, activo: true },
     });
     return !!(byCert && byCert.usarCertificados);
