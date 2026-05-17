@@ -54,21 +54,6 @@ export const vpnApi = {
     return data.data;
   },
 
-  listar: async (): Promise<VpnCliente[]> => {
-    const { data } = await api.get('/openvpn/mikrotik-clients');
-    return data.data;
-  },
-
-  obtener: async (id: string): Promise<VpnCliente> => {
-    const { data } = await api.get(`/openvpn/mikrotik-clients/${id}`);
-    return data.data;
-  },
-
-  obtenerScript: async (id: string): Promise<string> => {
-    const { data } = await api.get(`/openvpn/mikrotik-clients/${id}/script`);
-    return data.data.script;
-  },
-
   validarTunel: async (id: string): Promise<ValidarTunelResult> => {
     const { data } = await api.post(`/openvpn/mikrotik-clients/${id}/validar`);
     return data.data;

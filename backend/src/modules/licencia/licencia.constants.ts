@@ -53,5 +53,7 @@ export const BYPASS_LICENSE_PATHS = [
   '/api/v1/auth/login',
   '/api/v1/auth/refresh',
   '/api/v1/health',
-  '/api/v1/admin/licencia',
+  '/api/v1/admin/licencia',          // toda la gestión de licencia
+  '/api/v1/install',
+  '/status',
 ];

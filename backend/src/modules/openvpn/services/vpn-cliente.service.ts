@@ -8,6 +8,7 @@ import { execFile }         from 'child_process';
 import { promisify }        from 'util';
 import * as fs              from 'fs/promises';
 import * as path            from 'path';
+import * as net             from 'net';
 import { Response }         from 'express';
 
 import { VpnCliente, EstadoVpnCliente } from '../entities/vpn-cliente.entity';
@@ -89,6 +90,8 @@ export class VpnClienteService {
             timeout: 60_000,
           },
         );
+        // pki/issued/*.crt must be world-readable: OpenVPN runs as 'nobody'
+        await execFileAsync('chmod', ['o+r', `${PKI_DIR}/issued/${nombreCert}.crt`]);
       } catch (err: any) {
         if (err.stderr?.includes('already exists') || err.message?.includes('already exists')) {
           throw new ConflictException('Nombre de certificado duplicado, intenta nuevamente');
@@ -130,26 +133,44 @@ export class VpnClienteService {
     return { cliente, script };
   }
 
-  // ── Listar clientes ───────────────────────────────────────────
+  // ── Listar por router (para revocación al eliminar router) ────
 
-  async listar(empresaId: string): Promise<VpnCliente[]> {
+  async listarPorRouterId(routerId: string, empresaId: string): Promise<VpnCliente[]> {
     return this.repo.find({
-      where: { empresaId, activo: true },
-      order: { createdAt: 'DESC' },
+      where: { routerId, empresaId, activo: true },
     });
   }
 
-  // ── Obtener cliente ───────────────────────────────────────────
+  // ── Limpiar túneles huérfanos ─────────────────────────────────
+  // Revoca todos los clientes VPN activos cuyo router fue eliminado o no existe.
 
-  async obtener(id: string, empresaId: string): Promise<VpnCliente> {
-    return this._getCliente(id, empresaId);
-  }
+  async limpiarHuerfanos(empresaId: string): Promise<{ revocados: number; ids: string[] }> {
+    const todos = await this.repo.find({ where: { empresaId, activo: true } });
+    const activos = todos.filter(c => c.estado !== 'revocado');
+    if (!activos.length) return { revocados: 0, ids: [] };
 
-  // ── Obtener script (regenerar con token actualizado) ──────────
+    const routersActivos = await this.routerRepo.find({
+      where: { empresaId, activo: true },
+      select: ['id'],
+    });
+    const activeIds = new Set(routersActivos.map(r => r.id));
 
-  async obtenerScript(id: string, empresaId: string): Promise<string> {
-    const cliente = await this._getCliente(id, empresaId);
-    return this._generarScript(cliente);
+    const huerfanos = activos.filter(
+      c => !c.routerId || !activeIds.has(c.routerId),
+    );
+
+    const ids: string[] = [];
+    for (const c of huerfanos) {
+      try {
+        await this.revocar(c.id, empresaId);
+        ids.push(c.id);
+      } catch (err: any) {
+        this.logger.warn(`Huérfano ${c.id} (${c.nombreCert}): error al revocar — ${err.message}`);
+      }
+    }
+
+    this.logger.log(`Limpieza VPN: ${ids.length}/${huerfanos.length} clientes huérfanos revocados para empresa ${empresaId}`);
+    return { revocados: ids.length, ids };
   }
 
   // ── Validar túnel (lee status.log) ────────────────────────────
@@ -194,29 +215,16 @@ export class VpnClienteService {
       ultimoHandshake: new Date(),
     };
 
-    let routerRegistrado = false;
-    let routerId = cliente.routerId;
-
-    if (!cliente.routerId) {
-      try {
-        const router = await this._autoRegistrarRouter(cliente, found.vpnAddress, ipReal, empresaId);
-        updates.routerId = router.id;
-        routerId         = router.id;
-        routerRegistrado = true;
-      } catch (err: any) {
-        this.logger.warn(`Auto-registro fallido (${cliente.nombreCert}): ${err.message}`);
-      }
-    }
+    const routerId = cliente.routerId;
 
     await this.repo.update(cliente.id, updates);
 
     return {
-      conectado:        true,
-      vpnIp:            found.vpnAddress,
+      conectado: true,
+      vpnIp:     found.vpnAddress,
       ipReal,
-      routerRegistrado,
-      routerId:         routerId ?? undefined,
-      mensaje:          `Túnel activo | IP VPN: ${found.vpnAddress} | Conectado desde: ${found.connectedSince}`,
+      routerId:  routerId ?? undefined,
+      mensaje:   `Túnel activo | IP VPN: ${found.vpnAddress} | Conectado desde: ${found.connectedSince}`,
     };
   }
 
@@ -243,11 +251,17 @@ export class VpnClienteService {
           ['gen-crl'],
           { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
         );
+        await fs.copyFile(
+          `${PKI_DIR}/crl.pem`,
+          '/etc/openvpn/server/crl.pem',
+        );
+        this.logger.log(`CRL actualizado en /etc/openvpn/server/crl.pem`);
       } catch (err: any) {
         this.logger.warn(`Error revocando ${cliente.nombreCert}: ${err.message}`);
       }
     }
 
+    await this.killClienteVpnManagement(cliente.nombreCert);
     await this.repo.update(cliente.id, { estado: 'revocado', activo: false });
     this.logger.log(`VPN cliente revocado: ${cliente.id}`);
   }
@@ -297,7 +311,43 @@ export class VpnClienteService {
     }
   }
 
+  // ── Vincular cliente VPN a router registrado ─────────────────
+
+  async vincularARouter(vpnIp: string, empresaId: string, routerId: string): Promise<void> {
+    await this.repo.update(
+      { vpnIp, empresaId, activo: true } as any,
+      { routerId },
+    );
+  }
+
   // ── Helpers privados ──────────────────────────────────────────
+
+  private killClienteVpnManagement(nombreCert: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const socket = new net.Socket();
+      let sent = false;
+
+      const done = () => { socket.destroy(); resolve(); };
+
+      socket.setTimeout(3000);
+      socket.on('timeout', done);
+      socket.on('error',   done);
+      socket.on('close',   done);
+
+      socket.connect(7505, '127.0.0.1', () => {
+        socket.on('data', (buf) => {
+          const text = buf.toString();
+          if (!sent && text.includes('>INFO:')) {
+            sent = true;
+            socket.write(`kill ${nombreCert}\r\n`);
+          } else if (sent) {
+            this.logger.log(`OpenVPN kill [${nombreCert}]: ${text.trim()}`);
+            done();
+          }
+        });
+      });
+    });
+  }
 
   private async _getCliente(id: string, empresaId: string): Promise<VpnCliente> {
     const c = await this.repo.findOne({ where: { id, empresaId } });
@@ -444,6 +494,9 @@ export class VpnClienteService {
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
+:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
+:delay 1s
+:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
 /tool fetch url="${urlCa}" dst-path=$fCa
 :delay 3
 /tool fetch url="${urlCert}" dst-path=$fCert
@@ -466,7 +519,10 @@ export class VpnClienteService {
   private _scriptV6NoCert(cliente: VpnCliente, pass: string): string {
     const vpnUser = cliente.vpnUsuario || '';
     const mac     = this._generarMac();
-    return `/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 disabled=yes
+    return `:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
+:delay 1s
+:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 disabled=yes
 /interface ovpn-client set vpndatafast user=${vpnUser}
 /interface ovpn-client set vpndatafast password=${pass}
 /interface ovpn-client set vpndatafast mac-address=${mac}
@@ -487,6 +543,9 @@ export class VpnClienteService {
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
+:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
+:delay 1s
+:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
 /tool fetch url="${urlCa}" dst-path=$fCa
 :delay 3
 /tool fetch url="${urlCert}" dst-path=$fCert
@@ -511,7 +570,10 @@ export class VpnClienteService {
     const verifyLine = cliente.verifyServerCert
       ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
       : '';
-    return `/interface ovpn-client
+    return `:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
+:delay 1s
+:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
+/interface ovpn-client
 add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac}${verifyLine}`;
   }
 }

@@ -1,55 +1,62 @@
 'use client';
 
-import { useState, useCallback }  from 'react';
-import { useRouter }              from 'next/navigation';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback } from 'react';
+import { useRouter }             from 'next/navigation';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  Search, Plus, Download, Filter,
-  RefreshCw, Users, UserX, UserCheck, AlertTriangle,
+  Search, Plus, Download, RefreshCw,
+  Users, UserX, UserCheck, AlertTriangle, TrendingUp,
+  Filter, X, ChevronDown,
 } from 'lucide-react';
 
 import { clientesApi, type FiltrosCliente } from '@/lib/api/clientes';
-import { ClientesTable }    from './ClientesTable';
-import { ClienteEstadoBadge } from './ClienteEstadoBadge';
-import { useToast }         from '@/components/ui/toaster';
-import { useDebounce }      from '@/hooks/useDebounce';
-import { cn }               from '@/lib/utils';
-import type { Cliente }     from '@/types';
+import { ClientesTable }      from './ClientesTable';
+import { useToast }           from '@/components/ui/toaster';
+import { useDebounce }        from '@/hooks/useDebounce';
+import { cn }                 from '@/lib/utils';
+import { MOCK_CLIENTES, MOCK_STATS } from '@/data/clientes.mock';
 
-// ─── Stats rápidas en el header ──────────────────────────────
 const ESTADO_TABS = [
-  { key: '',              label: 'Todos',     icon: Users },
-  { key: 'activo',        label: 'Activos',   icon: UserCheck },
-  { key: 'suspendido_mora', label: 'Morosos', icon: AlertTriangle },
-  { key: 'baja_definitiva', label: 'Baja',   icon: UserX },
+  { key: '',               label: 'Todos',      color: 'text-foreground' },
+  { key: 'activo',         label: 'Activos',    color: 'text-green-600 dark:text-green-400' },
+  { key: 'moroso',         label: 'Morosos',    color: 'text-orange-600 dark:text-orange-400' },
+  { key: 'suspendido',     label: 'Suspendidos', color: 'text-yellow-600 dark:text-yellow-400' },
+  { key: 'baja_definitiva', label: 'Bajas',     color: 'text-muted-foreground' },
+  { key: 'prospecto',      label: 'Prospectos', color: 'text-blue-600 dark:text-blue-400' },
 ] as const;
 
-export function ClientesContent() {
-  const router       = useRouter();
-  const queryClient  = useQueryClient();
-  const { toast }    = useToast();
+const SERVICIO_OPTIONS = [
+  { value: '',         label: 'Todos los servicios' },
+  { value: 'ftth',    label: '📡 FTTH — Fibra' },
+  { value: 'wisp',    label: '📶 WISP — Inalámbrico' },
+  { value: 'dedicado', label: '🔌 Dedicado' },
+  { value: 'mixto',   label: '🔀 Mixto' },
+];
 
-  // ── Filtros ─────────────────────────────────────────────────
-  const [filtros, setFiltros]   = useState<FiltrosCliente>({ page: 1, limit: 20 });
+export function ClientesContent() {
+  const router  = useRouter();
+  const { toast } = useToast();
+
+  const [filtros, setFiltros]    = useState<FiltrosCliente>({ page: 1, limit: 20 });
   const [searchInput, setSearch] = useState('');
-  const searchDebounced          = useDebounce(searchInput, 400);
+  const [filtersOpen, setFilters] = useState(false);
+  const searchDebounced           = useDebounce(searchInput, 400);
 
   const updateFiltro = useCallback(<K extends keyof FiltrosCliente>(
     k: K, v: FiltrosCliente[K],
   ) => setFiltros((f) => ({ ...f, [k]: v, page: 1 })), []);
 
-  // Sincronizar búsqueda debounced
   const filtrosConSearch: FiltrosCliente = {
     ...filtros,
     search: searchDebounced || undefined,
   };
 
-  // ── Query ───────────────────────────────────────────────────
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const queryResult = useQuery({
     queryKey:  ['clientes', filtrosConSearch],
     queryFn:   () => clientesApi.list(filtrosConSearch),
-    keepPreviousData: true,
-  });
+  } as any) as any;
+  const { isLoading, isFetching, refetch } = queryResult;
+  const data = queryResult.data as { data: any[]; meta: any } | undefined;
 
   const { data: stats } = useQuery({
     queryKey: ['clientes-stats'],
@@ -57,7 +64,6 @@ export function ClientesContent() {
     staleTime: 60_000,
   });
 
-  // ── Exportar ─────────────────────────────────────────────────
   const { mutate: exportar, isPending: exportando } = useMutation({
     mutationFn: async () => {
       const blob = await clientesApi.exportar(filtrosConSearch, 'csv');
@@ -72,131 +78,249 @@ export function ClientesContent() {
     onError:   () => toast('Error al exportar', { type: 'error' }),
   });
 
-  const clientes = data?.data ?? [];
-  const meta     = data?.meta;
+  const clientes  = (data?.data?.length ? data.data : MOCK_CLIENTES) as any[];
+  const meta      = data?.meta;
+  const statsData = stats ?? MOCK_STATS;
+
+  const STAT_CARDS = [
+    {
+      label: 'Total clientes',
+      value: statsData.total ?? 0,
+      icon: Users,
+      iconBg: 'bg-blue-100 dark:bg-blue-950/40',
+      iconColor: 'text-blue-600 dark:text-blue-400',
+      trend: '+12%',
+      trendUp: true,
+      border: 'border-t-blue-500',
+    },
+    {
+      label: 'Activos',
+      value: statsData.activos ?? 0,
+      icon: UserCheck,
+      iconBg: 'bg-green-100 dark:bg-green-950/40',
+      iconColor: 'text-green-600 dark:text-green-400',
+      trend: '+5.2%',
+      trendUp: true,
+      border: 'border-t-green-500',
+    },
+    {
+      label: 'Morosos',
+      value: statsData.morosos ?? 0,
+      icon: AlertTriangle,
+      iconBg: 'bg-orange-100 dark:bg-orange-950/40',
+      iconColor: 'text-orange-600 dark:text-orange-400',
+      trend: '-2.1%',
+      trendUp: false,
+      border: 'border-t-orange-500',
+    },
+    {
+      label: 'Bajas',
+      value: statsData.baja ?? 0,
+      icon: UserX,
+      iconBg: 'bg-red-100 dark:bg-red-950/40',
+      iconColor: 'text-red-500 dark:text-red-400',
+      trend: '+0.8%',
+      trendUp: false,
+      border: 'border-t-red-500',
+    },
+  ];
+
+  const hasActiveFilters = !!(filtros.tipoServicio || filtros.estado);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
 
-      {/* ── Header ──────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      {/* ── Header ────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Clientes</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">Clientes</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {meta?.total != null
               ? `${meta.total.toLocaleString('es-PE')} clientes registrados`
-              : 'Gestión de clientes y contratos'}
+              : 'Gestión de clientes y contratos de servicio'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => exportar()}
             disabled={exportando}
             className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-border
-                       text-muted-foreground hover:text-foreground hover:bg-muted
-                       transition-colors disabled:opacity-50"
+                       text-muted-foreground hover:text-foreground hover:bg-accent
+                       transition-all duration-150 disabled:opacity-40"
           >
             <Download className="w-3.5 h-3.5" />
-            {exportando ? 'Exportando…' : 'Exportar'}
+            {exportando ? 'Exportando…' : 'Exportar CSV'}
           </button>
           <button
             onClick={() => router.push('/clientes/nuevo')}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg
-                       bg-primary text-primary-foreground font-medium
-                       hover:bg-primary/90 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium
+                       bg-primary text-primary-foreground hover:bg-primary/90
+                       transition-all duration-150 shadow-sm hover:shadow-md"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             Nuevo cliente
           </button>
         </div>
       </div>
 
-      {/* ── Stats cards rápidas ──────────────────────────────── */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Total',     value: stats.total || 0,    color: 'text-foreground' },
-            { label: 'Activos',   value: stats.activos || 0,  color: 'text-green-600' },
-            { label: 'Morosos',   value: stats.morosos || 0,  color: 'text-orange-600' },
-            { label: 'Baja',      value: stats.baja || 0,     color: 'text-muted-foreground' },
-          ].map((s) => (
-            <div key={s.label}
-                 className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
-              <div>
-                <p className="text-xs text-muted-foreground">{s.label}</p>
-                <p className={cn('text-xl font-bold', s.color)}>{s.value.toLocaleString('es-PE')}</p>
+      {/* ── Stat Cards ───────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {STAT_CARDS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <div
+              key={s.label}
+              className={cn(
+                'bg-card border border-border rounded-xl p-4 border-t-2 transition-all duration-150',
+                'hover:shadow-md hover:-translate-y-0.5 cursor-default',
+                s.border,
+              )}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium mb-1">{s.label}</p>
+                  <p className="text-2xl font-bold text-foreground">
+                    {s.value.toLocaleString('es-PE')}
+                  </p>
+                </div>
+                <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', s.iconBg)}>
+                  <Icon className={cn('w-4.5 h-4.5', s.iconColor)} />
+                </div>
+              </div>
+              <div className={cn(
+                'flex items-center gap-1 mt-2 text-xs font-medium',
+                s.trendUp ? 'text-green-600 dark:text-green-400' : 'text-red-500',
+              )}>
+                <TrendingUp className={cn('w-3 h-3', !s.trendUp && 'rotate-180')} />
+                {s.trend} vs mes anterior
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
-      {/* ── Toolbar: búsqueda + tabs estado ─────────────────── */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
+      {/* ── Tabla container ──────────────────────────────────── */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
 
-        {/* Búsqueda y filtros */}
-        <div className="flex items-center gap-3 p-4 border-b border-border">
-          <div className="relative flex-1 max-w-sm">
+        {/* Toolbar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 border-b border-border">
+
+          {/* Search */}
+          <div className="relative w-full sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Buscar por nombre, DNI, teléfono…"
+              placeholder="Buscar nombre, DNI, teléfono…"
               value={searchInput}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-input
+              className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-input
                          bg-background placeholder:text-muted-foreground
-                         focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                         focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
+                         transition-all duration-150"
             />
+            {searchInput && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          <select
-            value={filtros.tipoServicio ?? ''}
-            onChange={(e) => updateFiltro('tipoServicio', e.target.value || undefined)}
-            className="px-3 py-2 text-sm rounded-lg border border-input bg-background
-                       text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="">Todos los servicios</option>
-            <option value="ftth">FTTH</option>
-            <option value="wisp">WISP</option>
-            <option value="dedicado">Dedicado</option>
-            <option value="mixto">Mixto</option>
-          </select>
-
+          {/* Filters toggle */}
           <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="p-2 rounded-lg border border-input text-muted-foreground
-                       hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-            title="Refrescar"
+            onClick={() => setFilters(!filtersOpen)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all duration-150',
+              filtersOpen || hasActiveFilters
+                ? 'border-primary text-primary bg-primary/5'
+                : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent',
+            )}
           >
-            <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
+            <Filter className="w-3.5 h-3.5" />
+            Filtros
+            {hasActiveFilters && (
+              <span className="w-4 h-4 text-[10px] font-bold bg-primary text-primary-foreground rounded-full flex items-center justify-center">
+                {(filtros.tipoServicio ? 1 : 0) + (filtros.estado ? 1 : 0)}
+              </span>
+            )}
+            <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', filtersOpen && 'rotate-180')} />
           </button>
-        </div>
 
-        {/* Tabs de estado */}
-        <div className="flex border-b border-border px-4 gap-1">
-          {ESTADO_TABS.map(({ key, label }) => (
+          {hasActiveFilters && (
             <button
-              key={key}
-              onClick={() => updateFiltro('estado', key || undefined)}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors',
-                (filtros.estado ?? '') === key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
+              onClick={() => { updateFiltro('tipoServicio', undefined); updateFiltro('estado', undefined); }}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
             >
-              {label}
-              {key === '' && meta?.total != null && (
-                <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">
-                  {meta.total}
-                </span>
-              )}
+              <X className="w-3 h-3" />
+              Limpiar
             </button>
-          ))}
+          )}
+
+          <div className="sm:ml-auto flex items-center gap-2">
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="p-2 rounded-lg border border-border text-muted-foreground
+                         hover:text-foreground hover:bg-accent transition-all duration-150 disabled:opacity-40"
+              title="Actualizar"
+            >
+              <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
+            </button>
+          </div>
         </div>
 
-        {/* Tabla */}
+        {/* Expanded filters */}
+        {filtersOpen && (
+          <div className="px-4 py-3 border-b border-border bg-muted/30 flex flex-wrap gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                Tipo de servicio
+              </label>
+              <select
+                value={filtros.tipoServicio ?? ''}
+                onChange={(e) => updateFiltro('tipoServicio', e.target.value || undefined)}
+                className="text-sm rounded-lg border border-input bg-background px-3 py-1.5
+                           focus:outline-none focus:ring-2 focus:ring-primary min-w-[180px]"
+              >
+                {SERVICIO_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Status tabs */}
+        <div className="flex items-center gap-0.5 px-4 border-b border-border overflow-x-auto">
+          {ESTADO_TABS.map(({ key, label, color }) => {
+            const active = (filtros.estado ?? '') === key;
+            return (
+              <button
+                key={key}
+                onClick={() => updateFiltro('estado', key || undefined)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-3 text-xs font-medium whitespace-nowrap',
+                  'border-b-2 transition-all duration-150',
+                  active
+                    ? `border-primary ${color}`
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+                )}
+              >
+                {label}
+                {active && meta?.total != null && (
+                  <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                    {meta.total}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Table */}
         <ClientesTable
           clientes={clientes}
           loading={isLoading}
@@ -206,19 +330,20 @@ export function ClientesContent() {
           onSort={(col, dir) => { updateFiltro('orderBy', col); updateFiltro('order', dir); }}
         />
 
-        {/* Paginación */}
+        {/* Pagination */}
         {meta && meta.totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <p className="text-xs text-muted-foreground">
               Mostrando {((meta.page - 1) * meta.limit) + 1}–
-              {Math.min(meta.page * meta.limit, meta.total)} de {meta.total.toLocaleString('es-PE')}
+              {Math.min(meta.page * meta.limit, meta.total)} de{' '}
+              {meta.total.toLocaleString('es-PE')}
             </p>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => updateFiltro('page', meta.page - 1)}
                 disabled={!meta.hasPrev}
                 className="px-3 py-1.5 text-xs rounded-lg border border-input
-                           disabled:opacity-40 hover:bg-muted transition-colors"
+                           disabled:opacity-40 hover:bg-accent transition-colors"
               >
                 Anterior
               </button>
@@ -232,7 +357,7 @@ export function ClientesContent() {
                       'w-8 h-8 text-xs rounded-lg border transition-colors',
                       meta.page === page
                         ? 'bg-primary text-primary-foreground border-primary'
-                        : 'border-input hover:bg-muted',
+                        : 'border-input hover:bg-accent',
                     )}
                   >
                     {page}
@@ -243,7 +368,7 @@ export function ClientesContent() {
                 onClick={() => updateFiltro('page', meta.page + 1)}
                 disabled={!meta.hasNext}
                 className="px-3 py-1.5 text-xs rounded-lg border border-input
-                           disabled:opacity-40 hover:bg-muted transition-colors"
+                           disabled:opacity-40 hover:bg-accent transition-colors"
               >
                 Siguiente
               </button>

@@ -14,11 +14,9 @@ import { useToast }    from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 import type {
   Router as RouterType, CreateRouterDto,
-  MetodoConexion, TestConexionResult,
+  MetodoConexion, TestConexionResult, TipoControlVelocidad,
 } from '@/lib/api/mikrotik';
-import { VpnClienteModal } from './VpnClienteModal';
-import { vpnApi } from '@/lib/api/vpn';
-import type { VpnCliente } from '@/lib/api/vpn';
+import { AgregarRouterWizard } from './AgregarRouterWizard';
 
 // ─── Constantes de UI ─────────────────────────────────────────────
 
@@ -37,6 +35,13 @@ const TIPO_CONTROL_OPTS = [
   { val: 'ninguna',            label: 'Sin control de seguridad',   icon: ShieldOff, color: 'text-gray-400',   desc: 'No aplica controles de seguridad IP-MAC' },
   { val: 'amarre_ip_mac',      label: 'Amarre IP + MAC',            icon: Shield,    color: 'text-blue-400',   desc: 'Agrega entrada estática en IP > ARP al provisionar clientes' },
   { val: 'amarre_ip_mac_dhcp', label: 'IP + MAC + DHCP Lease',      icon: Lock,      color: 'text-violet-400', desc: 'Agrega ARP estático + lease en IP > DHCP Server > Leases' },
+];
+
+const TIPO_VELOCIDAD_OPTS: { val: TipoControlVelocidad; label: string; desc: string }[] = [
+  { val: 'ninguno',          label: 'Sin control de velocidad',      desc: 'No aplica límites de velocidad' },
+  { val: 'colas_simples',    label: 'Colas simples (estáticas)',      desc: 'Simple Queue por cliente — control estático' },
+  { val: 'pcq_addresslist',  label: 'PCQ + AddressList',              desc: 'Per Connection Queue con Address List — escalable' },
+  { val: 'dhcp_lease_queues', label: 'DHCP Lease (colas dinámicas)', desc: 'Simple Queue dinámica vinculada al DHCP Lease' },
 ];
 
 const ESTADO_COLORS: Record<string, string> = {
@@ -98,7 +103,8 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     timeoutConexion: router?.timeoutConexion  ?? 10,
     reintentos:      router?.reintentos       ?? 3,
     versionRos:      router?.versionRos      ?? 'desconocida',
-    tipoControl:     router?.tipoControl     ?? 'ninguna',
+    tipoControl:            router?.tipoControl            ?? 'ninguna',
+    tipoControlVelocidad:   router?.tipoControlVelocidad   ?? 'ninguno',
     autoConfigurarQueues:   router?.autoConfigurarQueues   ?? true,
     autoConfigurarPppoe:    router?.autoConfigurarPppoe    ?? true,
     autoConfigurarFirewall: router?.autoConfigurarFirewall ?? true,
@@ -612,6 +618,37 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                 </div>
               </div>
 
+              {/* Control de velocidad */}
+              <div>
+                <p className={sectionHdr}>
+                  <Network className="w-3.5 h-3.5" />
+                  Control de velocidad
+                </p>
+                <div className="space-y-2">
+                  {TIPO_VELOCIDAD_OPTS.map((opt) => {
+                    const active = form.tipoControlVelocidad === opt.val;
+                    return (
+                      <label key={opt.val}
+                        className={cn(
+                          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                          active ? 'border-primary/50 bg-primary/10' : 'border-white/10 hover:border-white/20',
+                        )}
+                      >
+                        <input type="radio" name="tipoControlVelocidad" value={opt.val}
+                          checked={active} onChange={() => set('tipoControlVelocidad', opt.val)}
+                          className="mt-0.5 accent-primary" />
+                        <div>
+                          <div className={cn('text-sm font-medium', active ? 'text-white' : 'text-gray-300')}>
+                            {opt.label}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">{opt.desc}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Auto-configuración */}
               <div>
                 <p className={sectionHdr}>
@@ -694,41 +731,16 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
 export function RoutersContent() {
   const { toast }   = useToast();
   const queryClient = useQueryClient();
-  const [showModal, setShowModal]       = useState(false);
-  const [showVpnModal, setShowVpnModal] = useState(false);
-  const [editRouter, setEditRouter]     = useState<RouterType | null>(null);
-  const [testingId, setTestingId]       = useState<string | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const [showModal, setShowModal]   = useState(false);
+  const [editRouter, setEditRouter] = useState<RouterType | null>(null);
+  const [testingId, setTestingId]   = useState<string | null>(null);
 
   const { data: routers = [], isLoading } = useQuery<RouterType[]>({
     queryKey:        ['routers'],
     queryFn:         mikrotikApi.listar,
     refetchInterval: 60_000,
   });
-
-  const { data: vpnClientes = [], refetch: refetchVpn } = useQuery<VpnCliente[]>({
-    queryKey: ['vpn-clientes'],
-    queryFn:  vpnApi.listar,
-  });
-
-  const [validatingVpnId, setValidatingVpnId] = useState<string | null>(null);
-
-  const handleValidarVpn = async (cliente: VpnCliente) => {
-    setValidatingVpnId(cliente.id);
-    try {
-      const res = await vpnApi.validarTunel(cliente.id);
-      if (res.conectado) {
-        toast(`Túnel activo — IP VPN: ${res.vpnIp}${res.routerRegistrado ? ' — Router registrado' : ''}`, { type: 'success' });
-        queryClient.invalidateQueries({ queryKey: ['routers'] });
-        refetchVpn();
-      } else {
-        toast(res.mensaje, { type: 'error' });
-      }
-    } catch (err) {
-      toast(parseApiError(err), { type: 'error' });
-    } finally {
-      setValidatingVpnId(null);
-    }
-  };
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => mikrotikApi.eliminar(id),
@@ -760,7 +772,7 @@ export function RoutersContent() {
 
   const onSaved = () => queryClient.invalidateQueries({ queryKey: ['routers'] });
 
-  const openAdd  = () => { setEditRouter(null); setShowModal(true); };
+  const openAdd  = () => setShowWizard(true);
   const openEdit = (r: RouterType) => { setEditRouter(r); setShowModal(true); };
 
   return (
@@ -776,22 +788,13 @@ export function RoutersContent() {
             {routers.length} router{routers.length !== 1 ? 's' : ''} registrado{routers.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowVpnModal(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600/80 hover:bg-blue-600 border border-blue-500/30 text-white rounded-lg transition-colors"
-          >
-            <Wifi className="w-4 h-4" />
-            Agregar Cliente VPN
-          </button>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Agregar router
-          </button>
-        </div>
+        <button
+          onClick={openAdd}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Agregar router
+        </button>
       </div>
 
       {/* Table */}
@@ -920,61 +923,6 @@ export function RoutersContent() {
         </div>
       )}
 
-      {/* Clientes VPN MikroTik */}
-      {vpnClientes.length > 0 && (
-        <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-            <h2 className="text-sm font-medium text-white flex items-center gap-2">
-              <Shield className="w-4 h-4 text-primary" />
-              Clientes VPN MikroTik
-            </h2>
-            <button onClick={() => setShowVpnModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Nuevo cliente
-            </button>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-gray-500 border-b border-white/5">
-                <th className="text-left px-4 py-2">Nombre</th>
-                <th className="text-left px-4 py-2">Cert</th>
-                <th className="text-left px-4 py-2">Estado</th>
-                <th className="text-left px-4 py-2">IP VPN</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {vpnClientes.map((c) => {
-                const isValidating = validatingVpnId === c.id;
-                const estadoColor  = c.estado === 'conectado' ? 'text-green-400' : c.estado === 'revocado' ? 'text-red-400' : 'text-yellow-400';
-                return (
-                  <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/3 transition-colors">
-                    <td className="px-4 py-3 text-white font-medium">{c.nombre}</td>
-                    <td className="px-4 py-3 text-xs font-mono text-gray-400">{c.nombreCert}</td>
-                    <td className={cn('px-4 py-3 text-xs font-medium capitalize', estadoColor)}>{c.estado}</td>
-                    <td className="px-4 py-3 text-xs font-mono text-blue-400">{c.vpnIp ?? '—'}</td>
-                    <td className="px-4 py-3 text-right">
-                      {c.estado !== 'revocado' && (
-                        <button
-                          onClick={() => handleValidarVpn(c)}
-                          disabled={isValidating}
-                          title="Verificar túnel y registrar router"
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/20 text-primary rounded-lg hover:bg-primary/30 transition-colors disabled:opacity-50 ml-auto"
-                        >
-                          {isValidating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wifi className="w-3.5 h-3.5" />}
-                          Validar túnel
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {/* Info VPN */}
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 text-sm">
         <div className="flex items-start gap-2.5 text-blue-300">
@@ -991,6 +939,13 @@ export function RoutersContent() {
         </div>
       </div>
 
+      {showWizard && (
+        <AgregarRouterWizard
+          onClose={() => setShowWizard(false)}
+          onSaved={onSaved}
+        />
+      )}
+
       {showModal && (
         <RouterModal
           router={editRouter}
@@ -999,16 +954,6 @@ export function RoutersContent() {
         />
       )}
 
-      {showVpnModal && (
-        <VpnClienteModal
-          onClose={() => setShowVpnModal(false)}
-          onSuccess={(_cliente: VpnCliente) => {
-            setShowVpnModal(false);
-            queryClient.invalidateQueries({ queryKey: ['routers'] });
-            toast('Cliente VPN registrado — router vinculado en la tabla', { type: 'success' });
-          }}
-        />
-      )}
     </div>
   );
 }

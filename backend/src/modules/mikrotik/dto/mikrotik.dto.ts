@@ -6,7 +6,7 @@ import {
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  MetodoConexion, VersionRouterOS, TipoControl,
+  MetodoConexion, VersionRouterOS, TipoControl, TipoControlVelocidad,
 } from '../entities/router.entity';
 
 // ─── Crear Router ─────────────────────────────────────────────
@@ -78,6 +78,10 @@ export class CreateRouterDto {
   @ApiPropertyOptional({ enum: TipoControl, default: TipoControl.NINGUNA })
   @IsOptional() @IsEnum(TipoControl)
   tipoControl?: TipoControl;
+
+  @ApiPropertyOptional({ enum: TipoControlVelocidad, default: TipoControlVelocidad.NINGUNO })
+  @IsOptional() @IsEnum(TipoControlVelocidad)
+  tipoControlVelocidad?: TipoControlVelocidad;
 
   @ApiPropertyOptional({ default: 'public' })
   @IsOptional() @IsString() @MaxLength(100)

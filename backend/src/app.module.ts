@@ -22,6 +22,8 @@ import { AllExceptionsFilter }   from './common/filters/http-exception.filter';
 import { LicenciaModule }        from './modules/licencia/licencia.module';
 import { HealthModule }           from './modules/health/health.module';
 import { AuthModule }             from './modules/auth/auth.module';
+import { InstallModule }          from './modules/install/install.module';
+import { UsuariosModule }         from './modules/usuarios/usuarios.module';
 import { SistemaModule }          from './modules/sistema/sistema.module';
 import { ClientesModule }         from './modules/clientes/clientes.module';
 import { ContratosModule }        from './modules/contratos/contratos.module';
@@ -114,6 +116,8 @@ import { DashboardModule }        from './modules/dashboard/dashboard.module';
     LicenciaModule,
     HealthModule,
     AuthModule,
+    InstallModule,
+    UsuariosModule,
     SistemaModule,
     ClientesModule,
     ContratosModule,

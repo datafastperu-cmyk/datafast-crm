@@ -32,39 +32,6 @@ export class VpnClienteController {
     return StdResponse.ok({ cliente, script }, 'Cliente VPN creado');
   }
 
-  // ── Listar clientes ───────────────────────────────────────────
-
-  @Get()
-  @RequirePermission('mikrotik:view')
-  @ApiOperation({ summary: 'Listar clientes VPN MikroTik de la empresa' })
-  async listar(@CurrentUser() user: JwtPayload) {
-    return StdResponse.ok(await this.svc.listar(user.empresaId));
-  }
-
-  // ── Obtener cliente ───────────────────────────────────────────
-
-  @Get(':id')
-  @RequirePermission('mikrotik:view')
-  @ApiOperation({ summary: 'Obtener cliente VPN por ID' })
-  async obtener(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return StdResponse.ok(await this.svc.obtener(id, user.empresaId));
-  }
-
-  // ── Obtener script (regenera con token actualizado si expiró) ─
-
-  @Get(':id/script')
-  @RequirePermission('mikrotik:manage')
-  @ApiOperation({ summary: 'Obtener script RouterOS para configurar el túnel' })
-  async obtenerScript(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return StdResponse.ok({ script: await this.svc.obtenerScript(id, user.empresaId) });
-  }
-
   // ── Validar túnel (polling del status.log) ────────────────────
 
   @Post(':id/validar')
@@ -78,17 +45,28 @@ export class VpnClienteController {
     return StdResponse.ok(await this.svc.validarTunel(id, user.empresaId));
   }
 
-  // ── Revocar certificado ───────────────────────────────────────
+  // ── Revocar cliente VPN (wizard cancelado / registro interrumpido) ────────
 
   @Delete(':id')
   @RequirePermission('mikrotik:manage')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Revocar certificado VPN del cliente' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Revocar cliente VPN (cancela certificado y elimina registro)' })
   async revocar(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
-  ): Promise<void> {
+  ) {
     await this.svc.revocar(id, user.empresaId);
+    return StdResponse.ok(null, 'Cliente VPN revocado');
+  }
+
+  // ── Limpiar túneles huérfanos ─────────────────────────────────
+
+  @Post('limpiar-huerfanos')
+  @RequirePermission('mikrotik:manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Revocar clientes VPN cuyo router fue eliminado o nunca registrado' })
+  async limpiarHuerfanos(@CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.svc.limpiarHuerfanos(user.empresaId), 'Limpieza completada');
   }
 
   // ── Verificar credenciales VPN (llamado por vpn-auth.sh en el servidor) ─

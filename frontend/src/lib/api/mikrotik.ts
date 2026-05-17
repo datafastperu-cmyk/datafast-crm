@@ -1,9 +1,10 @@
 import api from '@/lib/api';
 
-export type MetodoConexion = 'api' | 'api_ssl' | 'ssh' | 'snmp' | 'vpn_tunnel';
-export type VersionRouterOS = 'v6' | 'v7' | 'desconocida';
-export type EstadoEquipo    = 'online' | 'offline' | 'degradado' | 'mantenimiento' | 'desconocido';
-export type TipoControl     = 'ninguna' | 'amarre_ip_mac' | 'amarre_ip_mac_dhcp';
+export type MetodoConexion        = 'api' | 'api_ssl' | 'ssh' | 'snmp' | 'vpn_tunnel';
+export type VersionRouterOS       = 'v6' | 'v7' | 'desconocida';
+export type EstadoEquipo          = 'online' | 'offline' | 'degradado' | 'mantenimiento' | 'desconocido';
+export type TipoControl           = 'ninguna' | 'amarre_ip_mac' | 'amarre_ip_mac_dhcp';
+export type TipoControlVelocidad  = 'ninguno' | 'colas_simples' | 'pcq_addresslist' | 'dhcp_lease_queues';
 
 export interface Router {
   id:               string;
@@ -30,7 +31,8 @@ export interface Router {
   identityRouteros?: string;
   cpuUsoPct?:       number;
   memoriaUsoPct?:   number;
-  tipoControl:      TipoControl;
+  tipoControl:             TipoControl;
+  tipoControlVelocidad:   TipoControlVelocidad;
   autoConfigurarQueues:   boolean;
   autoConfigurarPppoe:    boolean;
   autoConfigurarFirewall: boolean;
@@ -57,7 +59,8 @@ export interface CreateRouterDto {
   timeoutConexion?: number;
   reintentos?:     number;
   versionRos?:     VersionRouterOS;
-  tipoControl?:    TipoControl;
+  tipoControl?:            TipoControl;
+  tipoControlVelocidad?:  TipoControlVelocidad;
   autoConfigurarQueues?:   boolean;
   autoConfigurarPppoe?:    boolean;
   autoConfigurarFirewall?: boolean;

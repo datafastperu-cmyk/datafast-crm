@@ -2,17 +2,15 @@
 
 import { useState }       from 'react';
 import { useQuery }       from '@tanstack/react-query';
-import { Settings, Building2, Users, Server } from 'lucide-react';
+import { Settings, Building2, Server } from 'lucide-react';
 
 import { EmpresaTab }   from './EmpresaTab';
-import { UsuariosTab }  from './UsuariosTab';
 import { PerfilTab }    from './PerfilTab';
 import { ServidorTab }  from './ServidorTab';
 import { cn }           from '@/lib/utils';
 
 const TABS = [
   { key: 'empresa',   label: 'Empresa',    icon: Building2 },
-  { key: 'usuarios',  label: 'Usuarios',   icon: Users },
   { key: 'perfil',    label: 'Mi Perfil',  icon: Settings },
   { key: 'servidor',  label: 'Servidor',   icon: Server },
 ] as const;
@@ -58,7 +56,6 @@ export function ConfiguracionContent() {
 
         <div className="p-6">
           {tab === 'empresa'   && <EmpresaTab />}
-          {tab === 'usuarios'  && <UsuariosTab />}
           {tab === 'perfil'    && <PerfilTab />}
           {tab === 'servidor'  && <ServidorTab />}
         </div>

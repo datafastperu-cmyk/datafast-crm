@@ -79,6 +79,10 @@ export const validationSchema = Joi.object({
   ALERT_LATENCY_THRESHOLD_MS: Joi.number().default(100),
   ALERT_PACKET_LOSS_THRESHOLD: Joi.number().default(10),
 
+  // Licenciamiento
+  LICENSE_KEY:       Joi.string().allow('').optional(),
+  HEARTBEAT_SECRET:  Joi.string().min(16).allow('').optional(),
+
   // Logging
   LOG_LEVEL: Joi.string()
     .valid('error', 'warn', 'info', 'debug', 'verbose')

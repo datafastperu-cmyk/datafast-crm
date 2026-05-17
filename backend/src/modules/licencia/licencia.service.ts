@@ -4,7 +4,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { createVerify, createHash } from 'crypto';
+import { createVerify, createHash, createHmac } from 'crypto';
 import { readFileSync } from 'fs';
 import { hostname } from 'os';
 import * as https from 'https';
@@ -57,11 +57,17 @@ export class LicenciaService implements OnModuleInit {
 
   // ── Carga y verificación completa al iniciar ──────────────────
   async cargarYVerificar(): Promise<void> {
-    const licenseKey = this.config.get<string>('LICENSE_KEY') || '';
+    // Primero intentar desde env, luego fallback desde BD
+    let licenseKey = this.config.get<string>('LICENSE_KEY') || process.env.LICENSE_KEY || '';
 
     if (!licenseKey || licenseKey === 'PASTE_YOUR_LICENSE_HERE') {
+      // Fallback: cargar el JWT más reciente válido desde la BD
+      licenseKey = await this.cargarJwtDesdeBD();
+    }
+
+    if (!licenseKey) {
       this.setEstado(false, 'NO_LICENSE_KEY');
-      this.logger.warn('⚠  Sistema sin licencia — configure LICENSE_KEY en .env');
+      this.logger.warn('⚠  Sistema sin licencia — configure LICENSE_KEY en .env o active una licencia');
       return;
     }
 
@@ -171,14 +177,20 @@ export class LicenciaService implements OnModuleInit {
     if (!this.estado.licenseId) return;
 
     try {
+      const ts = Date.now().toString();
       const body = JSON.stringify({
         licenseId: this.estado.licenseId,
         machineId: this.estado.machineId,
         plan:      this.estado.plan,
         version:   process.env.npm_package_version || '1.0.0',
+        ts,
       });
 
-      const respText = await this.httpPost(LICENCIA_VALIDATION_URL, body);
+      // HMAC-SHA256 del body para que el LS verifique autenticidad
+      const secret = this.config.get<string>('HEARTBEAT_SECRET') || MACHINE_ID_SALT;
+      const sig = createHmac('sha256', secret).update(body).digest('hex');
+
+      const respText = await this.httpPost(LICENCIA_VALIDATION_URL, body, sig);
       const resp = JSON.parse(respText);
 
       if (resp.revoked === true) {
@@ -252,10 +264,29 @@ export class LicenciaService implements OnModuleInit {
 
   // ── Activar nueva licencia (reemplazar la actual) ─────────────
   async activarLicencia(licenseKey: string): Promise<EstadoMemoria> {
-    // Guardar en env temporal para recargar
+    // Establecer en proceso para que cargarYVerificar lo encuentre
     process.env.LICENSE_KEY = licenseKey.trim();
     await this.cargarYVerificar();
+    // Si fue válida, ya quedó persistida en BD por persistirEnBd()
+    // process.env persiste hasta reinicio; BD persiste para siempre (fallback)
     return this.estado;
+  }
+
+  // ── Cargar JWT desde BD (fallback cuando no hay LICENSE_KEY en env) ──
+  private async cargarJwtDesdeBD(): Promise<string> {
+    try {
+      const registro = await this.repo.findOne({
+        where: { estado: 'valid' },
+        order: { updatedAt: 'DESC' },
+      });
+      if (registro?.licenseJwt) {
+        this.logger.log('Cargando licencia desde BD (fallback)');
+        return registro.licenseJwt;
+      }
+    } catch {
+      // BD no disponible aún — ignorar, se reintentará en el cron
+    }
+    return '';
   }
 
   // ── Verificar límite de clientes ──────────────────────────────
@@ -286,6 +317,15 @@ export class LicenciaService implements OnModuleInit {
     return parseInt(result[0]?.total ?? '0', 10);
   }
 
+  // ── Revocación push desde Licensing Server (webhook) ─────────
+  async revocarPorWebhook(licenseId: string, razon: string): Promise<void> {
+    if (this.estado.licenseId === licenseId) {
+      this.setEstado(false, 'REVOKED');
+    }
+    await this.repo.update({ licenseId }, { estado: 'locked' }).catch(() => {});
+    this.logger.error(`🔴 Licencia revocada remotamente: ${licenseId} — ${razon}`);
+  }
+
   // ── Getters públicos ──────────────────────────────────────────
   getEstadoActual(): EstadoMemoria { return this.estado; }
 
@@ -305,14 +345,15 @@ export class LicenciaService implements OnModuleInit {
     };
   }
 
-  private httpPost(url: string, body: string): Promise<string> {
+  private httpPost(url: string, body: string, hmacSig?: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const client = url.startsWith('https') ? https : http;
       const req = client.request(url, {
         method:  'POST',
         headers: {
-          'Content-Type':   'application/json',
-          'Content-Length': Buffer.byteLength(body),
+          'Content-Type':    'application/json',
+          'Content-Length':  Buffer.byteLength(body),
+          ...(hmacSig ? { 'X-License-Sig': hmacSig } : {}),
         },
         timeout: 8000,
       }, (res) => {

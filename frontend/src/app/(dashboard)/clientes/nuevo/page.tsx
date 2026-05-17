@@ -5,7 +5,7 @@ export const metadata: Metadata = { title: 'Nuevo Cliente' };
 
 export default function NuevoClientePage() {
   return (
-    <div className="max-w-3xl p-6">
+    <div className="p-6">
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-foreground">Nuevo Cliente</h2>
         <p className="text-sm text-muted-foreground">

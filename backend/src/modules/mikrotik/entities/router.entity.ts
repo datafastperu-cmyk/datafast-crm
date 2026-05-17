@@ -29,6 +29,13 @@ export enum TipoControl {
   AMARRE_IP_MAC_DHCP = 'amarre_ip_mac_dhcp',
 }
 
+export enum TipoControlVelocidad {
+  NINGUNO           = 'ninguno',
+  COLAS_SIMPLES     = 'colas_simples',
+  PCQ_ADDRESSLIST   = 'pcq_addresslist',
+  DHCP_LEASE_QUEUES = 'dhcp_lease_queues',
+}
+
 @Entity('routers')
 @Index(['empresaId', 'activo'])
 @Index(['empresaId', 'estado'])
@@ -169,6 +176,15 @@ export class Router extends BaseModel {
     default: TipoControl.NINGUNA,
   })
   tipoControl: TipoControl;
+
+  // ── Control de velocidad ───────────────────────────────────
+  @Column({
+    name: 'tipo_control_velocidad',
+    type: 'enum',
+    enum: TipoControlVelocidad,
+    default: TipoControlVelocidad.NINGUNO,
+  })
+  tipoControlVelocidad: TipoControlVelocidad;
 
   @Column({ default: true })
   activo: boolean;

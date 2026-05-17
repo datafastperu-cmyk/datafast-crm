@@ -4,7 +4,7 @@
 # ── Flujo completo de instalación ────────────────────────────
 run_install() {
     run_checks
-    _ask_config
+    _prepare_config
     install_system
     install_nodejs
     install_postgres
@@ -29,53 +29,33 @@ run_upgrade() {
     show_completion
 }
 
-# ── Configuración interactiva ─────────────────────────────────
-_ask_config() {
-    if ${FLAG_SILENT:-false}; then
-        _generate_secrets
-        return
-    fi
+# ── Preparación automática (sin interacción) ──────────────────
+# NO solicita ningún dato al usuario.
+# Todos los valores se detectan o usan valores por defecto seguros.
+_prepare_config() {
+    # Detectar IP pública del servidor
+    PUBLIC_IP=$(hostname -I | awk '{print $1}')
+    [[ -z "$PUBLIC_IP" ]] && PUBLIC_IP=$(curl -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || echo "127.0.0.1")
 
-    echo -e "\n${BOLD}${C}── CONFIGURACIÓN DEL SISTEMA ──────────────────────────${NC}\n"
-
-    # Cada read usa </dev/tty para leer del terminal aunque el script
-    # venga por pipe (curl | bash), donde stdin es la tubería, no el teclado.
-    read -rp "  Nombre de tu empresa ISP [DATAFAST S.A.C.]: " EMPRESA_NOMBRE </dev/tty
-    EMPRESA_NOMBRE="${EMPRESA_NOMBRE:-DATAFAST S.A.C.}"
-
-    read -rp "  RUC (11 dígitos) [20000000001]: " EMPRESA_RUC </dev/tty
+    # Empresa — usar defaults, el ISP los configura desde el panel después de instalar
+    EMPRESA_NOMBRE="${EMPRESA_NOMBRE:-DATAFAST Internet S.A.C.}"
     EMPRESA_RUC="${EMPRESA_RUC:-20000000001}"
 
-    echo ""
-    read -rp "  Email del administrador [admin@datafast.pe]: " ADMIN_EMAIL </dev/tty
-    ADMIN_EMAIL="${ADMIN_EMAIL:-admin@datafast.pe}"
+    # Admin — credenciales fijas para la instalación inicial
+    # El usuario las cambia después del primer login a través del instalador web
+    ADMIN_EMAIL="admin@datafast.pe"
+    ADMIN_PASSWORD="admin"
 
-    while true; do
-        read -rsp "  Contraseña del administrador (mínimo 8 chars): " ADMIN_PASSWORD </dev/tty
-        echo ""
-        [[ ${#ADMIN_PASSWORD} -ge 8 ]] && break
-        echo "  Mínimo 8 caracteres."
-    done
-
-    echo ""
-    echo -e "  ${D}Dominio opcional — presiona Enter para usar IP directa${NC}"
-    read -rp "  Dominio del panel ERP (ej: erp.tuisp.pe): " DOMINIO_FRONTEND </dev/tty
-    read -rp "  Dominio de la API     (ej: api.tuisp.pe): " DOMINIO_BACKEND </dev/tty
-    [[ -n "${DOMINIO_FRONTEND:-}" && -z "${DOMINIO_BACKEND:-}" ]] && DOMINIO_BACKEND="$DOMINIO_FRONTEND"
+    # Sin dominio por defecto — se configura después desde el panel
+    DOMINIO_FRONTEND="${DOMINIO_FRONTEND:-}"
+    DOMINIO_BACKEND="${DOMINIO_BACKEND:-}"
 
     _generate_secrets
 
-    echo ""
-    echo -e "  ${BOLD}Resumen:${NC}"
-    echo "    Empresa: ${EMPRESA_NOMBRE}"
-    echo "    Admin:   ${ADMIN_EMAIL}"
-    [[ -n "${DOMINIO_FRONTEND:-}" ]] && echo "    Panel:   https://${DOMINIO_FRONTEND}"
-    echo ""
-    read -rp "  ¿Continuar con la instalación? [S/n]: " confirmar </dev/tty
-    [[ "${confirmar:-s}" =~ ^[nN]$ ]] && exit 0
-
-    export EMPRESA_NOMBRE EMPRESA_RUC ADMIN_EMAIL ADMIN_PASSWORD
+    export PUBLIC_IP EMPRESA_NOMBRE EMPRESA_RUC ADMIN_EMAIL ADMIN_PASSWORD
     export DOMINIO_FRONTEND DOMINIO_BACKEND
+
+    _log "INFO" "Configuración automática: empresa=${EMPRESA_NOMBRE} | ip=${PUBLIC_IP}"
 }
 
 _generate_secrets() {
@@ -120,7 +100,7 @@ case "$cmd" in
     ;;
   help|*)
     echo ""
-    echo "CRM ISP DATAFAST — CLI"
+    echo "CRM ISP DATAFAST — CLI de Administración"
     echo ""
     echo "  datafast status          Ver estado del sistema"
     echo "  datafast start           Iniciar aplicación"
@@ -159,9 +139,8 @@ SECEOF
 
 # ── Guardar info de instalación ───────────────────────────────
 _save_install_info() {
-    local ip; ip=$(hostname -I | awk '{print $1}')
-    local url="http://${ip}/dashboard"
-    [[ -n "${DOMINIO_FRONTEND:-}" ]] && url="https://${DOMINIO_FRONTEND}/dashboard"
+    local ip="${PUBLIC_IP:-$(hostname -I | awk '{print $1}')}"
+    local web_installer_url="http://${ip}/installl"
 
     mkdir -p "${INSTALL_DIR}/config"
     cat > "${INSTALL_DIR}/config/install-info.txt" << INFOEOF
@@ -171,10 +150,9 @@ _save_install_info() {
   Versión:   v${DATAFAST_VERSION}
 ═══════════════════════════════════════════════════════
 
-ACCESO AL PANEL
-  URL:         ${url}
-  Usuario:     ${ADMIN_EMAIL}
-  Contraseña:  ${ADMIN_PASSWORD}
+INSTALACIÓN WEB (Fase 2)
+  URL: ${web_installer_url}
+  Ingresa a esta URL después de reiniciar para completar la instalación.
 
 BASE DE DATOS
   Host:    localhost:5432
@@ -197,40 +175,32 @@ ARCHIVOS
 ═══════════════════════════════════════════════════════
 INFOEOF
     chmod 600 "${INSTALL_DIR}/config/install-info.txt"
-    echo "${DATAFAST_VERSION}" > "${INSTALL_DIR}/.installed"
+    echo "${DATAFAST_VERSION}" > "${INSTALL_DIR}/.installed_console"
     ok "Información de instalación guardada"
 }
 
-# ── Pantalla final ────────────────────────────────────────────
+# ── Pantalla final — Instalación consola concluida ───────────
 show_completion() {
-    local ip; ip=$(hostname -I | awk '{print $1}')
-    local url="http://${ip}/dashboard"
-    [[ -n "${DOMINIO_FRONTEND:-}" ]] && url="https://${DOMINIO_FRONTEND}/dashboard"
+    local ip="${PUBLIC_IP:-$(hostname -I | awk '{print $1}')}"
 
     echo ""
     echo -e "\033[1;32m"
-    echo "  ╔══════════════════════════════════════════════════════════╗"
-    echo "  ║                                                          ║"
-    echo "  ║   ✅  DATAFAST ISP ERP INSTALADO EXITOSAMENTE           ║"
-    echo "  ║                                                          ║"
-    echo "  ╚══════════════════════════════════════════════════════════╝"
+    echo "  ╔════════════════════════════════════════════════════════════════╗"
+    echo "  ║                                                                ║"
+    echo -e "  ║   \033[0;37m✅  INSTALACIÓN VÍA CONSOLA CONCLUIDA\033[1;32m                        ║"
+    echo "  ║                                                                ║"
+    echo "  ╚════════════════════════════════════════════════════════════════╝"
     echo -e "\033[0m"
     echo ""
-    echo -e "  \033[1mAbre en tu navegador:\033[0m"
-    echo -e "  \033[1;36m  ➜  ${url}\033[0m"
+    echo -e "  Instalación vía consola concluida, reiniciar el cloud ahora y"
+    echo -e "  procedemos la instalación vía navegador web ingresando a la URL"
     echo ""
-    echo -e "  \033[1mCredenciales:\033[0m"
-    echo -e "    Usuario:    \033[1;33m${ADMIN_EMAIL}\033[0m"
-    echo -e "    Contraseña: \033[1;33m${ADMIN_PASSWORD}\033[0m"
+    echo -e "  \033[1;36m  http://${ip}/installl\033[0m"
     echo ""
-    echo -e "  \033[1mComandos:\033[0m"
-    echo -e "    \033[36mdatafast status\033[0m   — Estado del sistema"
+    echo -e "  \033[2mComandos disponibles:\033[0m"
+    echo -e "    \033[36mdatafast status\033[0m   — Ver estado"
     echo -e "    \033[36mdatafast logs\033[0m     — Ver logs"
-    echo -e "    \033[36mdatafast backup\033[0m   — Crear backup"
-    echo -e "    \033[36mdatafast restart\033[0m  — Reiniciar"
-    echo -e "    \033[36mdatafast update\033[0m   — Actualizar"
-    echo ""
-    echo -e "  \033[2mInfo: ${INSTALL_DIR}/config/install-info.txt\033[0m"
+    echo -e "    \033[36mdatafast help\033[0m     — Ayuda"
     echo ""
 }
 

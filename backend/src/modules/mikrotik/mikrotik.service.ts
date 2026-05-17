@@ -9,13 +9,14 @@ import { DataSource }        from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 import * as net from 'net';
 
-import { Router, VersionRouterOS, EstadoEquipo, TipoControl, MetodoConexion } from './entities/router.entity';
+import { Router, VersionRouterOS, EstadoEquipo, TipoControl, TipoControlVelocidad, MetodoConexion } from './entities/router.entity';
 import { RouterConnectionPool, RouterCredentials } from './services/connection-pool.service';
 import { PppoeService, CreatePppoeParams }         from './services/pppoe.service';
 import { QueueService, QueueParams }               from './services/queue.service';
 import { FirewallService }                          from './services/firewall.service';
 import { InterfaceService }                        from './services/interface.service';
 import { AuditoriaService }                        from '../auth/auditoria.service';
+import { VpnClienteService }                       from '../openvpn/services/vpn-cliente.service';
 import { JwtPayload }                              from '../../common/decorators/current-user.decorator';
 import { encrypt, decrypt }                        from '../../common/utils/encryption.util';
 
@@ -44,6 +45,7 @@ export class MikrotikService {
     private readonly auditoria:   AuditoriaService,
     private readonly events:      EventEmitter,
     @InjectDataSource() private readonly ds: DataSource,
+    private readonly vpnSvc:      VpnClienteService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -51,17 +53,65 @@ export class MikrotikService {
   // ────────────────────────────────────────────────────────────
 
   async crearRouter(dto: CreateRouterDto, user: JwtPayload): Promise<Router> {
-    const existe = await this.routerRepo.findOne({
-      where: { ipGestion: dto.ipGestion, empresaId: user.empresaId, deletedAt: null as any },
-    });
-    if (existe) throw new ConflictException(`Ya existe un router con IP ${dto.ipGestion}`);
-
-    // Cifrar la contraseña antes de guardar
     let passwordCifrado: string;
     try {
       passwordCifrado = encrypt(dto.password);
     } catch {
       passwordCifrado = dto.password;
+    }
+
+    const updateFields = {
+      nombre:               dto.nombre,
+      ubicacion:            dto.ubicacion,
+      descripcion:          dto.descripcion,
+      ipGestion:            dto.ipGestion,
+      vpnIp:                dto.vpnIp ?? dto.ipGestion,
+      usuario:              dto.usuario,
+      passwordCifrado,
+      puertoApi:            dto.puertoApi ?? 8728,
+      versionRos:           (dto.versionRos as VersionRouterOS) ?? VersionRouterOS.DESCONOCIDA,
+      tipoControl:          (dto.tipoControl ?? TipoControl.NINGUNA) as TipoControl,
+      tipoControlVelocidad: (dto.tipoControlVelocidad ?? TipoControlVelocidad.NINGUNO) as TipoControlVelocidad,
+      activo:               true,
+    };
+
+    // Verificar conflicto de ipGestion
+    const existePorIp = await this.routerRepo.findOne({
+      where: { ipGestion: dto.ipGestion, empresaId: user.empresaId, deletedAt: null as any },
+    });
+
+    if (existePorIp) {
+      if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
+        await this.routerRepo.update(existePorIp.id, updateFields);
+        const updated = await this.findOne(existePorIp.id, user.empresaId);
+        this.detectarVersionAsync(updated);
+        await this.vpnSvc.vincularARouter(dto.ipGestion, user.empresaId, existePorIp.id);
+        await this.auditoria.logCreate({
+          empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+          modulo: 'mikrotik', entidadId: existePorIp.id,
+          descripcion: `Router VPN registrado: ${dto.nombre} (${dto.ipGestion})`,
+        });
+        return updated;
+      }
+      throw new ConflictException(`Ya existe un router con IP ${dto.ipGestion}`);
+    }
+
+    if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL && dto.vpnIp && dto.vpnIp !== dto.ipGestion) {
+      const existePorVpnIp = await this.routerRepo.findOne({
+        where: { vpnIp: dto.vpnIp, empresaId: user.empresaId, deletedAt: null as any },
+      });
+      if (existePorVpnIp) {
+        await this.routerRepo.update(existePorVpnIp.id, updateFields);
+        const updated = await this.findOne(existePorVpnIp.id, user.empresaId);
+        this.detectarVersionAsync(updated);
+        await this.vpnSvc.vincularARouter(dto.vpnIp, user.empresaId, existePorVpnIp.id);
+        await this.auditoria.logCreate({
+          empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+          modulo: 'mikrotik', entidadId: existePorVpnIp.id,
+          descripcion: `Router VPN registrado: ${dto.nombre} (${dto.vpnIp})`,
+        });
+        return updated;
+      }
     }
 
     const router = this.routerRepo.create({
@@ -70,18 +120,18 @@ export class MikrotikService {
       empresaId: user.empresaId,
       estado:    EstadoEquipo.DESCONOCIDO,
     });
-
     const saved = await this.routerRepo.save(router);
-
-    // Intentar detectar la versión del RouterOS automáticamente
     this.detectarVersionAsync(saved);
+
+    if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
+      await this.vpnSvc.vincularARouter(dto.vpnIp ?? dto.ipGestion, user.empresaId, saved.id);
+    }
 
     await this.auditoria.logCreate({
       empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
       modulo: 'mikrotik', entidadId: saved.id,
       descripcion: `Router creado: ${dto.nombre} (${dto.ipGestion})`,
     });
-
     return saved;
   }
 
@@ -120,6 +170,17 @@ export class MikrotikService {
     await this.findOne(id, user.empresaId);
     await this.routerRepo.update(id, { deletedAt: new Date(), activo: false });
     await this.pool.invalidate(id);
+
+    // Revocar certificados VPN vinculados a este router
+    try {
+      const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);
+      for (const c of vpnClientes) {
+        await this.vpnSvc.revocar(c.id, user.empresaId);
+        this.logger.log(`VPN cliente revocado al eliminar router ${id}: ${c.id}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Error revocando VPN clientes del router ${id}: ${err.message}`);
+    }
   }
 
   // ── Construir credenciales para el pool ───────────────────

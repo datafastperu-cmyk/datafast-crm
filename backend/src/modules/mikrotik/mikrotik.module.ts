@@ -22,6 +22,7 @@ import { VelocidadWorker, VelocidadScheduler, VELOCIDAD_QUEUE } from './velocida
 
 import { Router }                    from './entities/router.entity';
 import { AuthModule }                from '../auth/auth.module';
+import { OpenvpnModule }             from '../openvpn/openvpn.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { AuthModule }                from '../auth/auth.module';
     }),
 
     AuthModule,
+    OpenvpnModule,
   ],
   controllers: [
     MikrotikController,

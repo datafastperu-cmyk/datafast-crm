@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Select options — fondo oscuro para que sean legibles en tema dark ─── */
+select option {
+  background-color: #0f1117;
+  color: #ffffff;
+}
+
 /* ── Variables de tema ─────────────────────────────────────────────── */
 @layer base {
   :root {
