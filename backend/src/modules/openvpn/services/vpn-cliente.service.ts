@@ -429,7 +429,7 @@ export class VpnClienteService {
     return {
       cn:        cliente.nombreCert,
       prefix:    `df-${cliente.nombreCert}`,
-      fetchPath: `/api/v1/openvpn/mikrotik-clients/${cliente.tokenDescarga}/certs`,
+      fetchPath: `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`,
     };
   }
 
@@ -454,11 +454,10 @@ export class VpnClienteService {
 /certificate import file-name=$fCert passphrase=""
 :delay 3
 /certificate import file-name=$fKey passphrase=""
-:delay 3
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 disabled=yes
-/interface ovpn-client set vpndatafast user=$certCN
-/interface ovpn-client set vpndatafast certificate=$certCN
-/interface ovpn-client set vpndatafast mac-address=${mac}
+:delay 5
+:local certEntry [/certificate find where common-name=$certCN]
+:local certName [/certificate get $certEntry name]
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 user=$certCN certificate=$certName mac-address=${mac}
 /interface ovpn-client enable vpndatafast`;
   }
 
@@ -485,11 +484,11 @@ export class VpnClienteService {
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
-/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/ca.crt") dst-path=$fCa
+/tool fetch url=("http://" . $fetchHost . $fetchPath . "/ca.crt") dst-path=$fCa
 :delay 3
-/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/client.crt") dst-path=$fCert
+/tool fetch url=("http://" . $fetchHost . $fetchPath . "/client.crt") dst-path=$fCert
 :delay 3
-/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/client.key") dst-path=$fKey
+/tool fetch url=("http://" . $fetchHost . $fetchPath . "/client.key") dst-path=$fKey
 :delay 3
 /certificate import file-name=$fCa passphrase=""
 :delay 3
