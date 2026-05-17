@@ -458,7 +458,7 @@ export class VpnClienteService {
 :delay 5
 :local certEntry [/certificate find where common-name=$certCN]
 :local certName [/certificate get $certEntry name]
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 user=$certCN certificate=$certName
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha1 user=$certCN certificate=$certName
 /interface ovpn-client enable vpndatafast
 }`;
   }
