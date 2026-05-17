@@ -474,25 +474,22 @@ export class VpnClienteService {
 
   private _scriptV7Cert(cliente: VpnCliente): string {
     const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
-    const fetchUrl   = `http://${VPS_IP}${fetchPath}`;
     const mac        = this._generarMac();
     const verifyLine = cliente.verifyServerCert
       ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
       : '';
     return `:local certCN "${cn}"
 :local certPrefix "${prefix}"
-:local fetchUrl "${fetchUrl}"
+:local fetchHost "${VPS_IP}"
+:local fetchPath "${fetchPath}"
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
-:local urlCa ($fetchUrl . "/ca.crt")
-:local urlCert ($fetchUrl . "/client.crt")
-:local urlKey ($fetchUrl . "/client.key")
-/tool fetch url=$urlCa mode=http dst-path=$fCa
+/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/ca.crt") dst-path=$fCa
 :delay 3
-/tool fetch url=$urlCert mode=http dst-path=$fCert
+/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/client.crt") dst-path=$fCert
 :delay 3
-/tool fetch url=$urlKey mode=http dst-path=$fKey
+/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/client.key") dst-path=$fKey
 :delay 3
 /certificate import file-name=$fCa passphrase=""
 :delay 3
