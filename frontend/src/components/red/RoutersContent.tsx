@@ -17,6 +17,7 @@ import type {
   MetodoConexion, TestConexionResult,
 } from '@/lib/api/mikrotik';
 import { VpnClienteModal } from './VpnClienteModal';
+import { vpnApi } from '@/lib/api/vpn';
 import type { VpnCliente } from '@/lib/api/vpn';
 
 // ─── Constantes de UI ─────────────────────────────────────────────
@@ -704,6 +705,31 @@ export function RoutersContent() {
     refetchInterval: 60_000,
   });
 
+  const { data: vpnClientes = [], refetch: refetchVpn } = useQuery<VpnCliente[]>({
+    queryKey: ['vpn-clientes'],
+    queryFn:  vpnApi.listar,
+  });
+
+  const [validatingVpnId, setValidatingVpnId] = useState<string | null>(null);
+
+  const handleValidarVpn = async (cliente: VpnCliente) => {
+    setValidatingVpnId(cliente.id);
+    try {
+      const res = await vpnApi.validarTunel(cliente.id);
+      if (res.conectado) {
+        toast(`Túnel activo — IP VPN: ${res.vpnIp}${res.routerRegistrado ? ' — Router registrado' : ''}`, { type: 'success' });
+        queryClient.invalidateQueries({ queryKey: ['routers'] });
+        refetchVpn();
+      } else {
+        toast(res.mensaje, { type: 'error' });
+      }
+    } catch (err) {
+      toast(parseApiError(err), { type: 'error' });
+    } finally {
+      setValidatingVpnId(null);
+    }
+  };
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => mikrotikApi.eliminar(id),
     onSuccess:  () => { queryClient.invalidateQueries({ queryKey: ['routers'] }); toast('Router eliminado', { type: 'success' }); },
@@ -885,6 +911,61 @@ export function RoutersContent() {
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Clientes VPN MikroTik */}
+      {vpnClientes.length > 0 && (
+        <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+            <h2 className="text-sm font-medium text-white flex items-center gap-2">
+              <Shield className="w-4 h-4 text-primary" />
+              Clientes VPN MikroTik
+            </h2>
+            <button onClick={() => setShowVpnModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Nuevo cliente
+            </button>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-gray-500 border-b border-white/5">
+                <th className="text-left px-4 py-2">Nombre</th>
+                <th className="text-left px-4 py-2">Cert</th>
+                <th className="text-left px-4 py-2">Estado</th>
+                <th className="text-left px-4 py-2">IP VPN</th>
+                <th className="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {vpnClientes.map((c) => {
+                const isValidating = validatingVpnId === c.id;
+                const estadoColor  = c.estado === 'conectado' ? 'text-green-400' : c.estado === 'revocado' ? 'text-red-400' : 'text-yellow-400';
+                return (
+                  <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/3 transition-colors">
+                    <td className="px-4 py-3 text-white font-medium">{c.nombre}</td>
+                    <td className="px-4 py-3 text-xs font-mono text-gray-400">{c.nombreCert}</td>
+                    <td className={cn('px-4 py-3 text-xs font-medium capitalize', estadoColor)}>{c.estado}</td>
+                    <td className="px-4 py-3 text-xs font-mono text-blue-400">{c.vpnIp ?? '—'}</td>
+                    <td className="px-4 py-3 text-right">
+                      {c.estado !== 'revocado' && (
+                        <button
+                          onClick={() => handleValidarVpn(c)}
+                          disabled={isValidating}
+                          title="Verificar túnel y registrar router"
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary/20 text-primary rounded-lg hover:bg-primary/30 transition-colors disabled:opacity-50 ml-auto"
+                        >
+                          {isValidating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wifi className="w-3.5 h-3.5" />}
+                          Validar túnel
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
