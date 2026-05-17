@@ -1,6 +1,7 @@
 import {
   Controller, Get, Post, Delete,
   Body, Param, Res, HttpCode, HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Response }       from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -88,6 +89,19 @@ export class VpnClienteController {
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     await this.svc.revocar(id, user.empresaId);
+  }
+
+  // ── Verificar credenciales VPN (llamado por vpn-auth.sh en el servidor) ─
+  // Endpoint público — protegido solo por red interna (llamado solo desde localhost)
+
+  @Post('verify-auth')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verificar credenciales VPN (uso interno del servidor OpenVPN)' })
+  async verifyAuth(@Body() body: { username: string; password: string }) {
+    const ok = await this.svc.verifyAuth(body.username ?? '', body.password ?? '');
+    if (!ok) throw new UnauthorizedException('Credenciales inválidas');
+    return StdResponse.ok(null, 'Autenticado');
   }
 
   // ── Descargar certificado (público — protegido por token de 24h) ─

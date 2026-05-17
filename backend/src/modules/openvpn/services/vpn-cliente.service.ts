@@ -393,6 +393,24 @@ export class VpnClienteService {
     return decrypt(encrypted);
   }
 
+  // ── Verificar credenciales VPN (llamado por vpn-auth.sh) ─────
+  async verifyAuth(username: string, password: string): Promise<boolean> {
+    // No-cert: buscar por vpnUsuario
+    const byUser = await this.clienteRepo.findOne({
+      where: { vpnUsuario: username, activo: true },
+    });
+    if (byUser) {
+      if (byUser.usarCertificados) return true; // cert client — TLS ya lo verificó
+      const plain = await this._decryptPassword(byUser.vpnPasswordCifrado);
+      return plain === password;
+    }
+    // Cert client: buscar por nombreCert
+    const byCert = await this.clienteRepo.findOne({
+      where: { nombreCert: username, activo: true },
+    });
+    return !!(byCert && byCert.usarCertificados);
+  }
+
   // ── Generador de script ───────────────────────────────────────
 
   private async _generarScript(cliente: VpnCliente): Promise<string> {
