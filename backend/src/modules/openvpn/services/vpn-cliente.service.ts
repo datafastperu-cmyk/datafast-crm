@@ -374,15 +374,17 @@ export class VpnClienteService {
     cipher: string,
     authAlg: string,
   ): { cipher: string; authAlg: string } {
+    // RouterOS v6 no soporta GCM → downgrade a CBC equivalente
     if (versionRos === 'v6') {
-      // RouterOS v6 no soporta GCM → downgrade a CBC equivalente
       if (cipher === 'aes256-gcm') cipher = 'aes256';
       if (cipher === 'aes128-gcm') cipher = 'aes128';
-    } else {
-      // RouterOS v7: preferir GCM (AEAD, sin auth separado, evita ambigüedad)
-      if (!cipher.endsWith('-gcm')) cipher = 'aes256-gcm';
     }
     return { cipher, authAlg };
+  }
+
+  private _generarMac(): string {
+    const h = () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0').toUpperCase();
+    return `FE:${h()}:${h()}:${h()}:${h()}:${h()}`;
   }
 
   private async _decryptPassword(encrypted?: string): Promise<string> {
@@ -405,25 +407,6 @@ export class VpnClienteService {
       : this._scriptV7NoCert(cliente, pass);
   }
 
-  private _header(cliente: VpnCliente, modo: string): string {
-    const fecha = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });
-    return `# ================================================================
-# DATAFAST ISP - Configuracion Tunel VPN MikroTik
-# ================================================================
-# Router     : ${cliente.nombre}
-# Ubicacion  : ${cliente.ubicacion || 'Sin especificar'}
-# Servidor   : ${VPS_IP}:${VPN_PORT}
-# Modo       : ${modo}
-# Generado   : ${fecha}
-# ----------------------------------------------------------------
-# INSTRUCCIONES:
-#  1. Abrir Terminal MikroTik (Winbox > New Terminal o SSH)
-#  2. Copiar y pegar TODO el script
-#  3. Presionar Enter y esperar el mensaje de confirmacion
-#  4. Volver al panel DATAFAST y presionar CONECTAR
-# ================================================================`;
-  }
-
   private _bloqueComun(cliente: VpnCliente): { cn: string; prefix: string; fetchPath: string } {
     return {
       cn:        cliente.nombreCert,
@@ -432,235 +415,84 @@ export class VpnClienteService {
     };
   }
 
-  // ── RouterOS v6 + Certificados ────────────────────────────────
-  // fetch: address + src-path (v6 no parsea host desde variable en url=)
-  // cipher/auth: solo en add, no en set (limitacion v6)
-  // Líneas ≤122 chars para evitar syntax error del parser v6
   private _scriptV6Cert(cliente: VpnCliente): string {
     const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
-    const cipher  = cliente.cipher  || 'aes256';
-    const authAlg = cliente.authAlg || 'sha256';
-    return `${this._header(cliente, `RouterOS v6 + Certificados | ${cipher}/${authAlg}`)}
-
-:local vpnServer "${VPS_IP}"
-:local certCN "${cn}"
-:local tunnelName "datafast-vpn"
+    const mac = this._generarMac();
+    return `:local certCN "${cn}"
 :local certPrefix "${prefix}"
 :local fetchHost "${VPS_IP}"
 :local fetchPath "${fetchPath}"
-:local c "${cipher}"
-:local a "${authAlg}"
-
-:log info "DATAFAST-VPN: === Iniciando configuracion (v6 + certs) ==="
-
-# Eliminar interfaz OVPN previa
-:if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
-/interface ovpn-client disable [find where name=$tunnelName]
-:delay 2
-/interface ovpn-client remove [find where name=$tunnelName]
-:log info "DATAFAST-VPN: Interfaz previa eliminada"
-}
-
-# Eliminar certificados previos
-:foreach cert in=[/certificate find where common-name=$certCN] do={ /certificate remove $cert }
-:delay 1
-
-# Descargar certificados (sintaxis v6: address + src-path)
-:local fCa   ($certPrefix . "-ca.crt")
+:local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
-:local fKey  ($certPrefix . "-client.key")
-:log info "DATAFAST-VPN: Descargando certificados..."
+:local fKey ($certPrefix . "-client.key")
 /tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/ca.crt") dst-path=$fCa
 :delay 3
 /tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/client.crt") dst-path=$fCert
 :delay 3
 /tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/client.key") dst-path=$fKey
 :delay 3
-:log info "DATAFAST-VPN: Certificados descargados"
-
-# Importar CA (solo si no existe)
-:if ([:len [/certificate find where common-name="DATAFAST-CA"]] = 0) do={
-:log info "DATAFAST-VPN: Importando CA..."
 /certificate import file-name=$fCa passphrase=""
 :delay 3
-}
-
-# Importar certificado y clave del cliente
-:log info "DATAFAST-VPN: Importando certificado cliente..."
 /certificate import file-name=$fCert passphrase=""
 :delay 3
 /certificate import file-name=$fKey passphrase=""
 :delay 3
-
-# Verificar importacion
-:if ([:len [/certificate find where common-name=$certCN]] = 0) do={
-:log error "DATAFAST-VPN: Error - certificado no importado"
-:error "Certificado no importado. Verificar descarga e importacion."
-}
-
-# Crear interfaz OVPN (cipher/auth van en add — limitacion v6)
-:log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$c auth=$a disabled=yes
-/interface ovpn-client set $tunnelName user=$certCN certificate=$certCN
-/interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
-/interface ovpn-client enable $tunnelName
-
-:log info "DATAFAST-VPN: === Configuracion completada (v6 + certs) ==="
-:log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 disabled=yes
+/interface ovpn-client set vpndatafast user=$certCN
+/interface ovpn-client set vpndatafast certificate=$certCN
+/interface ovpn-client set vpndatafast mac-address=${mac}
+/interface ovpn-client enable vpndatafast`;
   }
 
-  // ── RouterOS v6 + Usuario/Contraseña ─────────────────────────
   private _scriptV6NoCert(cliente: VpnCliente, pass: string): string {
-    const cipher  = cliente.cipher  || 'aes256';
-    const authAlg = cliente.authAlg || 'sha256';
     const vpnUser = cliente.vpnUsuario || '';
-    return `${this._header(cliente, `RouterOS v6 + Usuario/Contraseña | ${cipher}/${authAlg}`)}
-
-:local vpnServer "${VPS_IP}"
-:local tunnelName "datafast-vpn"
-:local vpnUser "${vpnUser}"
-:local vpnPass "${pass}"
-:local c "${cipher}"
-:local a "${authAlg}"
-
-:log info "DATAFAST-VPN: === Iniciando configuracion (v6 + user/pass) ==="
-
-# Eliminar interfaz OVPN previa
-:if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
-/interface ovpn-client disable [find where name=$tunnelName]
-:delay 2
-/interface ovpn-client remove [find where name=$tunnelName]
-:log info "DATAFAST-VPN: Interfaz previa eliminada"
-}
-
-# Crear interfaz OVPN con usuario/contraseña (sin certificados)
-:log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$c auth=$a disabled=yes
-/interface ovpn-client set $tunnelName user=$vpnUser password=$vpnPass
-/interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
-/interface ovpn-client enable $tunnelName
-
-:log info "DATAFAST-VPN: === Configuracion completada (v6 + user/pass) ==="
-:log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
+    const mac     = this._generarMac();
+    return `/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 disabled=yes
+/interface ovpn-client set vpndatafast user=${vpnUser}
+/interface ovpn-client set vpndatafast password=${pass}
+/interface ovpn-client set vpndatafast mac-address=${mac}
+/interface ovpn-client enable vpndatafast`;
   }
 
-  // ── RouterOS v7 + Certificados ────────────────────────────────
-  // fetch: url= con variable pre-construida (v7 parsea host correctamente)
-  // auth= omitido: RouterOS v7 trata "sha256" como ambiguo con "sha256-96" en prefix matching
   private _scriptV7Cert(cliente: VpnCliente): string {
     const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
-    const cipher    = cliente.cipher  || 'aes256';
-    const authAlg   = cliente.authAlg || 'sha256';
-    const fetchUrl  = `http://${VPS_IP}${fetchPath}`;
+    const fetchUrl   = `http://${VPS_IP}${fetchPath}`;
+    const mac        = this._generarMac();
     const verifyLine = cliente.verifyServerCert
-      ? '\n/interface ovpn-client set $tunnelName verify-server-certificate=yes'
+      ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
       : '';
-    return `${this._header(cliente, `RouterOS v7 + Certificados | ${cipher}/${authAlg}`)}
-
-:local vpnServer "${VPS_IP}"
-:local certCN "${cn}"
-:local tunnelName "datafast-vpn"
+    return `:local certCN "${cn}"
 :local certPrefix "${prefix}"
 :local fetchUrl "${fetchUrl}"
-:local vpnCipher "${cipher}"
-
-:log info "DATAFAST-VPN: === Iniciando configuracion (v7 + certs) ==="
-
-# Eliminar interfaz OVPN previa
-:if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
-/interface ovpn-client disable [find where name=$tunnelName]
-:delay 2
-/interface ovpn-client remove [find where name=$tunnelName]
-:log info "DATAFAST-VPN: Interfaz previa eliminada"
-}
-
-# Eliminar certificados previos
-:foreach cert in=[/certificate find where common-name=$certCN] do={ /certificate remove $cert }
-:delay 1
-
-# Descargar certificados (sintaxis v7: url= con variable pre-construida)
-:local fCa   ($certPrefix . "-ca.crt")
+:local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
-:local fKey  ($certPrefix . "-client.key")
-:local urlCa   ($fetchUrl . "/ca.crt")
+:local fKey ($certPrefix . "-client.key")
+:local urlCa ($fetchUrl . "/ca.crt")
 :local urlCert ($fetchUrl . "/client.crt")
-:local urlKey  ($fetchUrl . "/client.key")
-:log info "DATAFAST-VPN: Descargando certificados..."
+:local urlKey ($fetchUrl . "/client.key")
 /tool fetch url=$urlCa dst-path=$fCa
 :delay 3
 /tool fetch url=$urlCert dst-path=$fCert
 :delay 3
 /tool fetch url=$urlKey dst-path=$fKey
 :delay 3
-:log info "DATAFAST-VPN: Certificados descargados"
-
-# Importar CA (solo si no existe)
-:if ([:len [/certificate find where common-name="DATAFAST-CA"]] = 0) do={
-:log info "DATAFAST-VPN: Importando CA..."
 /certificate import file-name=$fCa passphrase=""
 :delay 3
-}
-
-# Importar certificado y clave del cliente
-:log info "DATAFAST-VPN: Importando certificado cliente..."
 /certificate import file-name=$fCert passphrase=""
 :delay 3
 /certificate import file-name=$fKey passphrase=""
 :delay 3
-
-# Verificar importacion
-:if ([:len [/certificate find where common-name=$certCN]] = 0) do={
-:log error "DATAFAST-VPN: Error - certificado no importado"
-:error "Certificado no importado. Verificar descarga e importacion."
-}
-
-# Crear interfaz OVPN
-# auth= omitido: v7 lo negocia via TLS (sha256/sha256-96 son ambiguos en v7)
-:log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$vpnCipher disabled=yes
-/interface ovpn-client set $tunnelName user=$certCN certificate=$certCN${verifyLine}
-/interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
-/interface ovpn-client enable $tunnelName
-
-:log info "DATAFAST-VPN: === Configuracion completada (v7 + certs) ==="
-:log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
+/interface ovpn-client
+add certificate=$certCN cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN mac-address=${mac}${verifyLine}`;
   }
 
-  // ── RouterOS v7 + Usuario/Contraseña ─────────────────────────
   private _scriptV7NoCert(cliente: VpnCliente, pass: string): string {
-    const cipher    = cliente.cipher  || 'aes256';
-    const authAlg   = cliente.authAlg || 'sha256';
-    const vpnUser   = cliente.vpnUsuario || '';
+    const vpnUser    = cliente.vpnUsuario || '';
+    const mac        = this._generarMac();
     const verifyLine = cliente.verifyServerCert
-      ? '\n/interface ovpn-client set $tunnelName verify-server-certificate=yes'
+      ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
       : '';
-    return `${this._header(cliente, `RouterOS v7 + Usuario/Contraseña | ${cipher}/${authAlg}`)}
-
-:local vpnServer "${VPS_IP}"
-:local tunnelName "datafast-vpn"
-:local vpnUser "${vpnUser}"
-:local vpnPass "${pass}"
-:local vpnCipher "${cipher}"
-
-:log info "DATAFAST-VPN: === Iniciando configuracion (v7 + user/pass) ==="
-
-# Eliminar interfaz OVPN previa
-:if ([:len [/interface ovpn-client find where name=$tunnelName]] > 0) do={
-/interface ovpn-client disable [find where name=$tunnelName]
-:delay 2
-/interface ovpn-client remove [find where name=$tunnelName]
-:log info "DATAFAST-VPN: Interfaz previa eliminada"
-}
-
-# Crear interfaz OVPN con usuario/contraseña (sin certificados)
-# auth= omitido: v7 lo negocia via TLS (sha256/sha256-96 son ambiguos en v7)
-:log info "DATAFAST-VPN: Creando interfaz OVPN..."
-/interface ovpn-client add name=$tunnelName connect-to=$vpnServer port=1195 mode=ip cipher=$vpnCipher disabled=yes
-/interface ovpn-client set $tunnelName user=$vpnUser password=$vpnPass${verifyLine}
-/interface ovpn-client set $tunnelName add-default-route=no comment="DATAFAST-VPN"
-/interface ovpn-client enable $tunnelName
-
-:log info "DATAFAST-VPN: === Configuracion completada (v7 + user/pass) ==="
-:log info "DATAFAST-VPN: Estado: /interface ovpn-client print"`;
+    return `/interface ovpn-client
+add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac}${verifyLine}`;
   }
 }

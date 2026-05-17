@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
   X, Wifi, MapPin, FileText, Copy, Check, RefreshCw,
-  AlertTriangle, CheckCircle2, Loader2, Terminal,
+  AlertTriangle, CheckCircle2, Loader2,
   Shield, Router, Info, ArrowRight, RotateCcw,
   Key, ChevronDown, ChevronUp, Download, Settings2, Shuffle,
 } from 'lucide-react';
@@ -540,33 +540,12 @@ export function VpnClienteModal({ onClose, onSuccess }: VpnClienteModalProps) {
           {/* PASO 2: Script */}
           {step === 'script' && (
             <div className="p-6 space-y-4">
-              <div className="flex gap-3 p-3.5 bg-amber-500/8 border border-amber-500/20 rounded-xl">
-                <Terminal className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                <div className="text-xs text-amber-300/90 space-y-1">
-                  <p className="font-medium text-amber-300">Instrucciones de configuración</p>
-                  <p>Copia el script y pégalo directamente en la <strong>Terminal del router MikroTik</strong> para crear el túnel VPN.</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2">
-                {[
-                  `RouterOS ${form.versionRos.toUpperCase()} | ${form.usarCertificados ? 'Certificados PKI' : 'Usuario/Contraseña'} | ${form.cipher}/${form.authAlg}`,
-                  'El router debe tener salida a internet activa',
-                  'El puerto 1195 TCP debe estar permitido hacia el servidor',
-                  'No modificar el script manualmente — usar tal cual',
-                ].map((w, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs text-white/50">
-                    <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${i === 0 ? 'bg-blue-400' : 'bg-white/30'}`} />
-                    {w}
-                  </div>
-                ))}
-              </div>
-
               {/* Script box */}
               <div className="relative">
                 <div className="flex items-center justify-between px-3 py-2 bg-[#1a1d27] border border-white/10 rounded-t-lg border-b-0">
                   <span className="text-xs text-white/40 font-mono">RouterOS Script (.rsc)</span>
                   <div className="flex items-center gap-2">
+                    <span className="text-xs text-white/40 italic">Copia y pega en la terminal del Mikrotik</span>
                     <button
                       onClick={handleRegenerarScript}
                       disabled={regenerating}
