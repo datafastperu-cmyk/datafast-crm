@@ -435,7 +435,6 @@ export class VpnClienteService {
 
   private _scriptV6Cert(cliente: VpnCliente): string {
     const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
-    const mac = this._generarMac();
     return `:local certCN "${cn}"
 :local certPrefix "${prefix}"
 :local fetchHost "${VPS_IP}"
@@ -443,11 +442,14 @@ export class VpnClienteService {
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
-/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/ca.crt") dst-path=$fCa
+:local srcCa ($fetchPath . "/ca.crt")
+:local srcCert ($fetchPath . "/client.crt")
+:local srcKey ($fetchPath . "/client.key")
+/tool fetch mode=http address=$fetchHost port=80 src-path=$srcCa dst-path=$fCa
 :delay 3
-/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/client.crt") dst-path=$fCert
+/tool fetch mode=http address=$fetchHost port=80 src-path=$srcCert dst-path=$fCert
 :delay 3
-/tool fetch address=$fetchHost mode=http port=80 src-path=($fetchPath . "/client.key") dst-path=$fKey
+/tool fetch mode=http address=$fetchHost port=80 src-path=$srcKey dst-path=$fKey
 :delay 3
 /certificate import file-name=$fCa passphrase=""
 :delay 3
@@ -457,7 +459,7 @@ export class VpnClienteService {
 :delay 5
 :local certEntry [/certificate find where common-name=$certCN]
 :local certName [/certificate get $certEntry name]
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 user=$certCN certificate=$certName mac-address=${mac}
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 user=$certCN certificate=$certName
 /interface ovpn-client enable vpndatafast`;
   }
 
@@ -473,7 +475,6 @@ export class VpnClienteService {
 
   private _scriptV7Cert(cliente: VpnCliente): string {
     const { cn, prefix, fetchPath } = this._bloqueComun(cliente);
-    const mac        = this._generarMac();
     const verifyLine = cliente.verifyServerCert
       ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
       : '';
@@ -484,14 +485,14 @@ export class VpnClienteService {
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
-:local urlCa ("http://" . $fetchHost . $fetchPath . "/ca.crt")
-:local urlCert ("http://" . $fetchHost . $fetchPath . "/client.crt")
-:local urlKey ("http://" . $fetchHost . $fetchPath . "/client.key")
-/tool fetch mode=http url=$urlCa dst-path=$fCa
+:local srcCa ($fetchPath . "/ca.crt")
+:local srcCert ($fetchPath . "/client.crt")
+:local srcKey ($fetchPath . "/client.key")
+/tool fetch mode=http address=$fetchHost port=80 src-path=$srcCa dst-path=$fCa
 :delay 3
-/tool fetch mode=http url=$urlCert dst-path=$fCert
+/tool fetch mode=http address=$fetchHost port=80 src-path=$srcCert dst-path=$fCert
 :delay 3
-/tool fetch mode=http url=$urlKey dst-path=$fKey
+/tool fetch mode=http address=$fetchHost port=80 src-path=$srcKey dst-path=$fKey
 :delay 3
 /certificate import file-name=$fCa passphrase=""
 :delay 3
@@ -502,7 +503,7 @@ export class VpnClienteService {
 :local certEntry [/certificate find where common-name=$certCN]
 :local certName [/certificate get $certEntry name]
 /interface ovpn-client
-add certificate=$certName cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN mac-address=${mac}${verifyLine}`;
+add certificate=$certName cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN${verifyLine}`;
   }
 
   private _scriptV7NoCert(cliente: VpnCliente, pass: string): string {
