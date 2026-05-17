@@ -484,11 +484,14 @@ export class VpnClienteService {
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
-/tool fetch url=("http://" . $fetchHost . $fetchPath . "/ca.crt") dst-path=$fCa
+:local urlCa ("http://" . $fetchHost . $fetchPath . "/ca.crt")
+:local urlCert ("http://" . $fetchHost . $fetchPath . "/client.crt")
+:local urlKey ("http://" . $fetchHost . $fetchPath . "/client.key")
+/tool fetch url=$urlCa dst-path=$fCa
 :delay 3
-/tool fetch url=("http://" . $fetchHost . $fetchPath . "/client.crt") dst-path=$fCert
+/tool fetch url=$urlCert dst-path=$fCert
 :delay 3
-/tool fetch url=("http://" . $fetchHost . $fetchPath . "/client.key") dst-path=$fKey
+/tool fetch url=$urlKey dst-path=$fKey
 :delay 3
 /certificate import file-name=$fCa passphrase=""
 :delay 3
