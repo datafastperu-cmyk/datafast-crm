@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { Wifi } from 'lucide-react';
 
@@ -19,7 +20,9 @@ export default function LoginPage() {
       </div>
 
       {/* Formulario */}
-      <LoginForm />
+      <Suspense>
+        <LoginForm />
+      </Suspense>
 
       <p className="text-center text-xs text-muted-foreground">
         © {new Date().getFullYear()} CRM ISP DATAFAST · Todos los derechos reservados

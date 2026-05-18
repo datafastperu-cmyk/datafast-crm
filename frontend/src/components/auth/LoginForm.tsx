@@ -1,7 +1,7 @@
 'use client';
 
 import { useState }       from 'react';
-import { useRouter }      from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm }        from 'react-hook-form';
 import { zodResolver }    from '@hookform/resolvers/zod';
 import { z }              from 'zod';
@@ -20,6 +20,7 @@ type LoginValues = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const router       = useRouter();
+  const searchParams = useSearchParams();
   const login        = useAuthStore((s) => s.login);
   const [showPass, setShowPass]   = useState(false);
   const [error,    setError]      = useState<string | null>(null);
@@ -46,7 +47,8 @@ export function LoginForm() {
 
       if (res.data.success) {
         login(res.data.data);
-        router.replace('/dashboard');
+        const next = searchParams.get('next');
+        router.replace(next && next.startsWith('/') ? next : '/dashboard');
       }
     } catch (err) {
       setError(parseApiError(err));
