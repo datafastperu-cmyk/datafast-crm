@@ -8,6 +8,7 @@ interface AuthState {
   accessToken:  string | null;
   isAuth:       boolean;
   isLoading:    boolean;
+  _hydrated:    boolean;
 
   // Actions
   login:        (tokens: AuthTokens) => void;
@@ -24,6 +25,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       isAuth:      false,
       isLoading:   false,
+      _hydrated:   false,
 
       login: (tokens: AuthTokens) => {
         setAuthCookies(tokens.accessToken, tokens.refreshToken);
@@ -57,11 +59,13 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name:    'datafast-auth',
-      // Solo persistir datos del usuario, no el token (viene de cookies)
       partialize: (state) => ({
         usuario:  state.usuario,
         isAuth:   state.isAuth,
       }),
+      onRehydrateStorage: () => () => {
+        useAuthStore.setState({ _hydrated: true });
+      },
     },
   ),
 );

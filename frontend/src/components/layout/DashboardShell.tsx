@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Sidebar } from '@/components/layout/Sidebar';
-import { Topbar }  from '@/components/layout/Topbar';
+import { Sidebar }               from '@/components/layout/Sidebar';
+import { Topbar }                from '@/components/layout/Topbar';
+import { useInactivityLogout }   from '@/hooks/useInactivityLogout';
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
+  useInactivityLogout();
   const [sidebarOpen,    setSidebarOpen]    = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem('sidebar-collapsed') === 'true',
