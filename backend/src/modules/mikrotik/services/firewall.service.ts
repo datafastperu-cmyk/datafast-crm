@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RouterConnectionPool, RouterCredentials } from './connection-pool.service';
 
 // Lista de morosos: IPs bloqueadas por mora
-export const ADDRESS_LIST_MOROSOS = 'morosos';
+export const ADDRESS_LIST_MOROSOS = 'morosos_datafast';
 // Lista de IPs en prórroga (acceso limitado)
 export const ADDRESS_LIST_PRORROGA = 'prorroga';
 // Lista de IPs con acceso restringido al portal de pago
@@ -188,7 +188,7 @@ export class FirewallService {
       await this.agregarReglaFirewallSiNoExiste(api, {
         chain:   'forward',
         srcList: ADDRESS_LIST_MOROSOS,
-        dstList: '!ips_permitidas_morosos',
+        dstList: '!ips_permitidas_morosos_datafast',
         action:  'drop',
         comment: 'Datafast-Bloquear Morosos',
       });
