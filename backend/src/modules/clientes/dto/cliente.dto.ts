@@ -1,7 +1,7 @@
 import {
   IsString, IsEmail, IsOptional, IsEnum, IsBoolean,
   IsNumber, MaxLength, IsArray, Min, Max,
-  ValidateIf, Matches, IsNotEmpty, Length,
+  ValidateIf, Matches, IsNotEmpty, Length, ArrayMinSize,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType, OmitType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
@@ -277,4 +277,24 @@ export class ExportClientesDto extends OmitType(FilterClienteDto, ['page', 'limi
   @ApiPropertyOptional({ enum: ['csv', 'xlsx'], default: 'csv' })
   @IsOptional()
   formato?: 'csv' | 'xlsx' = 'csv';
+}
+
+export type BulkClienteAction = 'suspender' | 'reactivar' | 'baja_temporal' | 'marcar_moroso';
+
+export class BulkActionClienteDto {
+  @ApiProperty({ type: [String], example: ['uuid-1', 'uuid-2'] })
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  ids: string[];
+
+  @ApiProperty({ enum: ['suspender', 'reactivar', 'baja_temporal', 'marcar_moroso'] })
+  @IsEnum(['suspender', 'reactivar', 'baja_temporal', 'marcar_moroso'])
+  action: BulkClienteAction;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  motivo?: string;
 }

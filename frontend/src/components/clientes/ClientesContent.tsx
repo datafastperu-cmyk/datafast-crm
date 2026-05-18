@@ -2,11 +2,11 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter }             from 'next/navigation';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Plus, Download, RefreshCw,
   Users, UserX, UserCheck, AlertTriangle, TrendingUp,
-  Filter, X, ChevronDown,
+  Filter, X, ChevronDown, Ban, ShieldCheck, Clock, AlertOctagon,
 } from 'lucide-react';
 
 import { clientesApi, type FiltrosCliente } from '@/lib/api/clientes';
@@ -36,11 +36,13 @@ const SERVICIO_OPTIONS = [
 export function ClientesContent() {
   const router  = useRouter();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [filtros, setFiltros]    = useState<FiltrosCliente>({ page: 1, limit: 20 });
   const [searchInput, setSearch] = useState('');
   const [filtersOpen, setFilters] = useState(false);
   const searchDebounced           = useDebounce(searchInput, 400);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const updateFiltro = useCallback(<K extends keyof FiltrosCliente>(
     k: K, v: FiltrosCliente[K],
@@ -62,6 +64,40 @@ export function ClientesContent() {
     queryKey: ['clientes-stats'],
     queryFn:  clientesApi.getStats,
     staleTime: 60_000,
+  });
+
+  const toggleId = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAll = useCallback((ids: string[]) => {
+    setSelectedIds((prev) => {
+      const allSelected = ids.every((id) => prev.has(id));
+      if (allSelected) {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...ids]);
+    });
+  }, []);
+
+  const { mutate: bulkAction, isPending: bulkPending } = useMutation({
+    mutationFn: ({ action, motivo }: { action: 'suspender' | 'reactivar' | 'baja_temporal' | 'marcar_moroso'; motivo?: string }) =>
+      clientesApi.bulkAction(Array.from(selectedIds), action, motivo),
+    onSuccess: (result) => {
+      toast(`${result.ok} clientes actualizados${result.errors ? `, ${result.errors} errores` : ''}`, {
+        type: result.errors ? 'warning' : 'success',
+      });
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['clientes'] });
+      queryClient.invalidateQueries({ queryKey: ['clientes-stats'] });
+    },
+    onError: () => toast('Error al aplicar acción masiva', { type: 'error' }),
   });
 
   const { mutate: exportar, isPending: exportando } = useMutation({
@@ -320,6 +356,63 @@ export function ClientesContent() {
           })}
         </div>
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-primary/5 border-b border-primary/20 flex-wrap">
+            <span className="text-xs font-semibold text-primary">
+              {selectedIds.size} seleccionados
+            </span>
+            <div className="w-px h-4 bg-border mx-1" />
+            <button
+              onClick={() => bulkAction({ action: 'suspender' })}
+              disabled={bulkPending}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg font-medium
+                         bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-950/40
+                         dark:text-yellow-400 dark:hover:bg-yellow-900/40 transition-colors disabled:opacity-50"
+            >
+              <Ban className="w-3.5 h-3.5" />
+              Suspender
+            </button>
+            <button
+              onClick={() => bulkAction({ action: 'reactivar' })}
+              disabled={bulkPending}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg font-medium
+                         bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-950/40
+                         dark:text-green-400 dark:hover:bg-green-900/40 transition-colors disabled:opacity-50"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Reactivar
+            </button>
+            <button
+              onClick={() => bulkAction({ action: 'marcar_moroso' })}
+              disabled={bulkPending}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg font-medium
+                         bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-950/40
+                         dark:text-orange-400 dark:hover:bg-orange-900/40 transition-colors disabled:opacity-50"
+            >
+              <AlertOctagon className="w-3.5 h-3.5" />
+              Marcar moroso
+            </button>
+            <button
+              onClick={() => bulkAction({ action: 'baja_temporal' })}
+              disabled={bulkPending}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg font-medium
+                         bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800
+                         dark:text-gray-400 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Baja temporal
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Deseleccionar
+            </button>
+          </div>
+        )}
+
         {/* Table */}
         <ClientesTable
           clientes={clientes}
@@ -328,6 +421,9 @@ export function ClientesContent() {
           sortBy={filtros.orderBy}
           sortOrder={filtros.order}
           onSort={(col, dir) => { updateFiltro('orderBy', col); updateFiltro('order', dir); }}
+          selectedIds={selectedIds}
+          onToggleId={toggleId}
+          onToggleAll={toggleAll}
         />
 
         {/* Pagination */}

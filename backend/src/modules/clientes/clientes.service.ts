@@ -14,7 +14,7 @@ import { JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Cliente, EstadoCliente, TipoDocumento } from './entities/cliente.entity';
 import {
   CreateClienteDto, UpdateClienteDto, FilterClienteDto,
-  CambiarEstadoDto, ReniecResponseDto, ExportClientesDto,
+  CambiarEstadoDto, ReniecResponseDto, ExportClientesDto, BulkActionClienteDto,
 } from './dto/cliente.dto';
 import { ApiResponse, PaginationDto } from '../../common/dto/response.dto';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
@@ -391,6 +391,28 @@ export class ClientesService {
       return `"${str.replace(/"/g, '""')}"`;
     }
     return str;
+  }
+
+  async bulkAction(
+    dto: BulkActionClienteDto,
+    user: JwtPayload,
+    req?: any,
+  ): Promise<{ ok: number; errors: number; total: number }> {
+    const estadoMap: Record<string, EstadoCliente> = {
+      suspender:      EstadoCliente.SUSPENDIDO,
+      reactivar:      EstadoCliente.ACTIVO,
+      baja_temporal:  EstadoCliente.BAJA_TEMPORAL,
+      marcar_moroso:  EstadoCliente.MOROSO,
+    };
+    const nuevoEstado = estadoMap[dto.action];
+    const results = await Promise.allSettled(
+      dto.ids.map((id) =>
+        this.cambiarEstado(id, { estado: nuevoEstado, motivo: dto.motivo }, user, false, req),
+      ),
+    );
+    const ok     = results.filter((r) => r.status === 'fulfilled').length;
+    const errors = results.filter((r) => r.status === 'rejected').length;
+    return { ok, errors, total: dto.ids.length };
   }
 
   private async generarCodigoCliente(empresaId: string): Promise<string> {

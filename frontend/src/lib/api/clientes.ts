@@ -107,4 +107,13 @@ export const clientesApi = {
     const res = await api.get<ApiRespuesta<HistorialEntry[]>>(`/clientes/${clienteId}/historial`);
     return res.data.data ?? [];
   },
+
+  bulkAction: async (
+    ids: string[],
+    action: 'suspender' | 'reactivar' | 'baja_temporal' | 'marcar_moroso',
+    motivo?: string,
+  ): Promise<{ ok: number; errors: number; total: number }> => {
+    const res = await api.post<ApiRespuesta>('/clientes/bulk-action', { ids, action, motivo });
+    return res.data.data;
+  },
 };

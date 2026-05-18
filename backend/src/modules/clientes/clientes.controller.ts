@@ -15,7 +15,7 @@ import { SetMetadata } from '@nestjs/common';
 import { ClientesService } from './clientes.service';
 import {
   CreateClienteDto, UpdateClienteDto, FilterClienteDto,
-  CambiarEstadoDto, ConsultarReniecDto, ExportClientesDto,
+  CambiarEstadoDto, ConsultarReniecDto, ExportClientesDto, BulkActionClienteDto,
 } from './dto/cliente.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -64,6 +64,24 @@ export class ClientesController {
   ) {
     const result = await this.clientesSvc.findAll(user.empresaId, filters);
     return StdResponse.ok(result.data, 'Clientes obtenidos', { meta: result.meta });
+  }
+
+  // ── POST /clientes/bulk-action — Acciones masivas ────────
+  @Post('bulk-action')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('clientes:edit')
+  @ApiOperation({
+    summary: 'Acciones masivas sobre clientes',
+    description: 'Aplica suspender, reactivar, baja_temporal o marcar_moroso a múltiples clientes.',
+  })
+  @ApiResponse({ status: 200, description: '{ ok, errors, total }' })
+  async bulkAction(
+    @Body() dto: BulkActionClienteDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    const result = await this.clientesSvc.bulkAction(dto, user, req);
+    return StdResponse.ok(result, `Acción masiva: ${result.ok} ok, ${result.errors} errores`);
   }
 
   // ── GET /clientes/resumen — Dashboard stats ───────────────

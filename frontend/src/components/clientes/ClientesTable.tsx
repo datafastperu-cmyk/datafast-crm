@@ -12,12 +12,15 @@ import type { Cliente }       from '@/types';
 import type { ClienteRich }   from '@/data/clientes.mock';
 
 interface Props {
-  clientes:   (Cliente | ClienteRich)[];
-  loading:    boolean;
-  onRowClick: (c: Cliente) => void;
-  sortBy?:    string;
-  sortOrder?: 'ASC' | 'DESC';
-  onSort:     (col: string, dir: 'ASC' | 'DESC') => void;
+  clientes:    (Cliente | ClienteRich)[];
+  loading:     boolean;
+  onRowClick:  (c: Cliente) => void;
+  sortBy?:     string;
+  sortOrder?:  'ASC' | 'DESC';
+  onSort:      (col: string, dir: 'ASC' | 'DESC') => void;
+  selectedIds?: Set<string>;
+  onToggleId?:  (id: string) => void;
+  onToggleAll?: (ids: string[]) => void;
 }
 
 // ── Servicio badge ────────────────────────────────────────────
@@ -108,7 +111,9 @@ const COLUMNAS = [
   { key: 'acciones',        label: '',            sortable: false },
 ];
 
-export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder, onSort }: Props) {
+export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder, onSort, selectedIds, onToggleId, onToggleAll }: Props) {
+  const allSelected = selectedIds != null && clientes.length > 0 && clientes.every(c => selectedIds.has((c as any).id));
+  const someSelected = selectedIds != null && clientes.some(c => selectedIds.has((c as any).id));
   const handleSort = (col: string) => {
     onSort(col, sortBy === col && sortOrder === 'ASC' ? 'DESC' : 'ASC');
   };
@@ -157,6 +162,17 @@ export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
+              {onToggleAll && (
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                    onChange={() => onToggleAll(clientes.map((c) => (c as any).id))}
+                    className="rounded border-border cursor-pointer accent-primary"
+                  />
+                </th>
+              )}
               {COLUMNAS.map((col) => (
                 <th
                   key={col.key}
@@ -186,8 +202,21 @@ export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder
                 <tr
                   key={c.id}
                   onClick={() => onRowClick(c)}
-                  className="group cursor-pointer hover:bg-accent/50 transition-colors duration-100"
+                  className={cn(
+                    'group cursor-pointer hover:bg-accent/50 transition-colors duration-100',
+                    selectedIds?.has(c.id) && 'bg-primary/5',
+                  )}
                 >
+                  {onToggleId && (
+                    <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds?.has(c.id) ?? false}
+                        onChange={() => onToggleId(c.id)}
+                        className="rounded border-border cursor-pointer accent-primary"
+                      />
+                    </td>
+                  )}
                   {/* Cliente */}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
