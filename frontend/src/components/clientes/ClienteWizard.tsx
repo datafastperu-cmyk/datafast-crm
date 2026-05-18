@@ -23,12 +23,19 @@ import { MOCK_PLANES, MOCK_ROUTERS }         from '@/data/clientes.mock';
 const step1Schema = z.object({
   idCliente:       z.string().optional(),
   passwordPortal:  z.string().optional(),
+  tipoDocumento:   z.string().optional(),
   numeroDocumento: z.string().min(6, 'Identificación requerida'),
-  nombreCompleto:  z.string().min(3, 'Nombre completo requerido'),
+  nombres:         z.string().min(2, 'Nombres requeridos'),
+  apellidoPaterno: z.string().min(2, 'Apellido paterno requerido'),
+  apellidoMaterno: z.string().optional(),
   direccion:       z.string().optional(),
   ubicacionId:     z.string().optional(),
+  departamento:    z.string().optional(),
+  provincia:       z.string().optional(),
+  distrito:        z.string().optional(),
   telefonoFijo:    z.string().optional(),
-  telefono:        z.string().optional(),
+  telefono:        z.string().min(7, 'Teléfono requerido'),
+  whatsapp:        z.string().optional(),
   email:           z.string().email('Email inválido').optional().or(z.literal('')),
 });
 
@@ -335,9 +342,16 @@ export function ClienteWizard() {
   const handleRegistrar = async (data: S3) => {
     if (!s1) return;
     const cliente = await crearCliente({
-      ...s1,
-      email:        s1.email || undefined,
-      tipoServicio: 'ftth',
+      tipoDocumento:   (s1.tipoDocumento as any) || 'dni',
+      numeroDocumento: s1.numeroDocumento,
+      nombres:         s1.nombres,
+      apellidoPaterno: s1.apellidoPaterno,
+      apellidoMaterno: s1.apellidoMaterno || undefined,
+      telefono:        s1.telefono,
+      whatsapp:        (s1 as any).whatsapp || undefined,
+      email:           s1.email || undefined,
+      direccion:       s1.direccion || '',
+      tipoServicio:    'ftth',
     });
     await crearContrato({
       clienteId:      cliente.id,
@@ -391,9 +405,10 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
     setReniecStatus('loading');
     try {
       const datos = await clientesApi.consultarReniec(doc);
-      const nombre = [datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno]
-        .filter(Boolean).join(' ').trim();
-      setValue('nombreCompleto', nombre, { shouldDirty: true });
+      setValue('nombres',         datos.nombres         || '', { shouldDirty: true });
+      setValue('apellidoPaterno', datos.apellidoPaterno || '', { shouldDirty: true });
+      setValue('apellidoMaterno', datos.apellidoMaterno || '', { shouldDirty: true });
+      const nombre = [datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' ');
       setReniecStatus('ok');
       setReniecMsg(nombre);
     } catch (err) {
@@ -457,18 +472,41 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
           )}
         </FormRow>
 
-        {/* Nombre Completo */}
-        <FormRow label="Nombre Completo" required hintColor="gray">
+        {/* Nombres */}
+        <FormRow label="Nombres" required hintColor="gray">
           <input
-            {...register('nombreCompleto')}
-            placeholder="Carlos Miguel Santana Castro"
-            className={inputCls(!!errors.nombreCompleto)}
+            {...register('nombres')}
+            placeholder="Juan Carlos"
+            className={inputCls(!!errors.nombres)}
           />
-          {errors.nombreCompleto && (
+          {errors.nombres && (
             <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
-              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.nombreCompleto.message}
+              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.nombres.message}
             </p>
           )}
+        </FormRow>
+
+        {/* Apellido Paterno */}
+        <FormRow label="Apellido Paterno" required hintColor="gray">
+          <input
+            {...register('apellidoPaterno')}
+            placeholder="Pérez"
+            className={inputCls(!!errors.apellidoPaterno)}
+          />
+          {errors.apellidoPaterno && (
+            <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.apellidoPaterno.message}
+            </p>
+          )}
+        </FormRow>
+
+        {/* Apellido Materno */}
+        <FormRow label="Apellido Materno" hintColor="gray">
+          <input
+            {...register('apellidoMaterno')}
+            placeholder="García"
+            className={inputCls()}
+          />
         </FormRow>
 
         {/* Dirección principal */}
@@ -476,24 +514,23 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
           <input {...register('direccion')} placeholder="Av. Unios 4453" className={inputCls()} />
         </FormRow>
 
-        {/* Ubicación */}
-        <FormRow label="Ubicación" hintColor="gray">
-          <select {...register('ubicacionId')} className={inputCls()}>
-            <option value="">Seleccionar Ubicación</option>
-            {MOCK_UBICACIONES.map((u) => (
-              <option key={u.id} value={u.id}>{u.nombre}</option>
-            ))}
-          </select>
+        {/* Teléfono Móvil */}
+        <FormRow label="Teléfono Móvil" required hintColor="gray">
+          <input
+            {...register('telefono')}
+            placeholder="987654321"
+            className={inputCls(!!errors.telefono)}
+          />
+          {errors.telefono && (
+            <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.telefono.message}
+            </p>
+          )}
         </FormRow>
 
-        {/* Teléfono fijo */}
-        <FormRow label="Teléfono fijo" hintColor="gray">
-          <input {...register('telefonoFijo')} placeholder="564567" className={inputCls()} />
-        </FormRow>
-
-        {/* Teléfono Movil */}
-        <FormRow label="Teléfono Movil" hintColor="gray">
-          <input {...register('telefono')} placeholder="9876526478" className={inputCls()} />
+        {/* WhatsApp */}
+        <FormRow label="WhatsApp" hintColor="gray">
+          <input {...register('whatsapp')} placeholder="987654321" className={inputCls()} />
         </FormRow>
 
         {/* E-mail */}
