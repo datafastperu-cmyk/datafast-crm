@@ -1,78 +1,73 @@
 'use client';
 
-import { useState }  from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter }                   from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Edit, Phone, Mail, MapPin, Wifi,
-  FileText, CreditCard, Clock, MoreVertical, Loader2,
-  Monitor, Ticket, ScrollText, FolderOpen,
-  CheckCircle2, XCircle, AlertTriangle, Radio,
-  Building2, MessageCircle, Hash, User, Activity,
-  Cable, Shuffle, TrendingUp,
+  ArrowLeft, Search, Calendar, Monitor, MessageSquare,
+  CreditCard, Wifi, Loader2, Radio, Cable, Shuffle,
+  XCircle, ScrollText, FolderOpen, Wrench, Save,
+  Receipt, BarChart2, Ticket,
 } from 'lucide-react';
 
 import { clientesApi }        from '@/lib/api/clientes';
-import { ClienteForm }        from './ClienteForm';
 import { ClienteEstadoBadge } from './ClienteEstadoBadge';
 import { useToast }           from '@/components/ui/toaster';
-import {
-  formatDate, formatDateTime, formatPEN, cn,
-  labelContrato, badgeContrato,
-} from '@/lib/utils';
-import type { Contrato, HistorialEntry } from '@/types';
+import { formatDate, formatPEN, cn } from '@/lib/utils';
+import type { Contrato } from '@/types';
 
-// ── Tabs config ───────────────────────────────────────────────
+// ── Tabs ──────────────────────────────────────────────────────
 const TABS = [
-  { key: 'info',        label: 'Información',  icon: User        },
-  { key: 'servicios',   label: 'Servicios',    icon: Wifi        },
-  { key: 'facturacion', label: 'Facturación',  icon: CreditCard  },
-  { key: 'equipos',     label: 'Equipos',      icon: Monitor     },
-  { key: 'historial',   label: 'Historial',    icon: Clock       },
-  { key: 'tickets',     label: 'Tickets',      icon: Ticket      },
-  { key: 'logs',        label: 'Logs',         icon: ScrollText  },
-  { key: 'documentos',  label: 'Documentos',   icon: FolderOpen  },
+  { key: 'resumen',      label: 'Resumen',      icon: Monitor      },
+  { key: 'servicios',    label: 'Servicios',    icon: Wifi         },
+  { key: 'facturacion',  label: 'Facturación',  icon: CreditCard   },
+  { key: 'tickets',      label: 'Tickets',      icon: Ticket       },
+  { key: 'email_sms',    label: 'Email & SMS',  icon: MessageSquare},
+  { key: 'documentos',   label: 'Documentos',   icon: FolderOpen   },
+  { key: 'estadisticas', label: 'Estadísticas', icon: BarChart2    },
+  { key: 'logs',         label: 'Log',          icon: ScrollText   },
 ] as const;
-
 type TabKey = typeof TABS[number]['key'];
 
-// ── Avatar color helper ───────────────────────────────────────
+// ── Avatar ────────────────────────────────────────────────────
 const AV_COLORS = [
-  'from-blue-500 to-blue-700',
-  'from-violet-500 to-violet-700',
-  'from-emerald-500 to-emerald-700',
-  'from-orange-500 to-orange-700',
-  'from-pink-500 to-pink-700',
-  'from-teal-500 to-teal-700',
+  'from-blue-500 to-blue-700', 'from-violet-500 to-violet-700',
+  'from-emerald-500 to-emerald-700', 'from-orange-500 to-orange-700',
+  'from-pink-500 to-pink-700', 'from-teal-500 to-teal-700',
 ];
-
 function avatarGradient(name: string) {
-  const sum = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  return AV_COLORS[sum % AV_COLORS.length];
+  const s = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return AV_COLORS[s % AV_COLORS.length];
 }
-
 function initials(name: string) {
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  const p = name.trim().split(' ');
+  return p.length >= 2 ? (p[0][0] + p[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
 }
 
-// ── Service type badge ────────────────────────────────────────
-const SVC_CFG: Record<string, { icon: React.ElementType; bg: string; text: string; label: string }> = {
-  ftth:     { icon: Radio,   label: 'FTTH',    bg: 'bg-blue-100 dark:bg-blue-950/40',    text: 'text-blue-700 dark:text-blue-400' },
-  wisp:     { icon: Wifi,    label: 'WISP',    bg: 'bg-purple-100 dark:bg-purple-950/40', text: 'text-purple-700 dark:text-purple-400' },
-  dedicado: { icon: Cable,   label: 'Dedicado', bg: 'bg-emerald-100 dark:bg-emerald-950/40', text: 'text-emerald-700 dark:text-emerald-400' },
-  mixto:    { icon: Shuffle, label: 'Mixto',   bg: 'bg-orange-100 dark:bg-orange-950/40', text: 'text-orange-700 dark:text-orange-400' },
+// ── Service badge ─────────────────────────────────────────────
+const SVC: Record<string, { icon: React.ElementType; label: string }> = {
+  ftth:     { icon: Radio,   label: 'FTTH'     },
+  wisp:     { icon: Wifi,    label: 'WISP'     },
+  dedicado: { icon: Cable,   label: 'Dedicado' },
+  mixto:    { icon: Shuffle, label: 'Mixto'    },
 };
 
-// ── Main component ────────────────────────────────────────────
+// ── Field input style ─────────────────────────────────────────
+const INPUT = [
+  'w-full px-3 py-2 text-sm bg-background border border-input rounded-lg',
+  'text-foreground placeholder:text-muted-foreground',
+  'focus:outline-none focus:ring-1 focus:ring-primary transition-colors',
+].join(' ');
+
+// ─────────────────────────────────────────────────────────────
 export function ClienteDetalle({ id }: { id: string }) {
   const router      = useRouter();
   const queryClient = useQueryClient();
   const { toast }   = useToast();
-  const [tab, setTab]       = useState<TabKey>('info');
-  const [editMode, setEdit] = useState(false);
-  const [menuOpen, setMenu] = useState(false);
+  const [tab, setTab]         = useState<TabKey>('resumen');
+  const [form, setForm]       = useState<Record<string, string>>({});
+  const [formDirty, setDirty] = useState(false);
+  const initialized           = useRef(false);
 
   const { data: cliente, isLoading } = useQuery({
     queryKey: ['cliente', id],
@@ -82,232 +77,134 @@ export function ClienteDetalle({ id }: { id: string }) {
   const { data: contratos = [] } = useQuery({
     queryKey: ['cliente-contratos', id],
     queryFn:  () => clientesApi.getContratos(id),
-    enabled:  tab === 'servicios',
+    enabled:  tab === 'servicios' || tab === 'resumen',
   });
 
-  const { data: historial = [] } = useQuery({
-    queryKey: ['cliente-historial', id],
-    queryFn:  () => clientesApi.getHistorial(id),
-    enabled:  tab === 'historial',
+  // Inicializar formulario una sola vez
+  useEffect(() => {
+    if (cliente && !initialized.current) {
+      initialized.current = true;
+      setForm({
+        nombres:         (cliente as any).nombres         ?? '',
+        apellidoPaterno: (cliente as any).apellidoPaterno ?? '',
+        apellidoMaterno: (cliente as any).apellidoMaterno ?? '',
+        numeroDocumento: cliente.numeroDocumento          ?? '',
+        telefono:        cliente.telefono                 ?? '',
+        telefonoAlt:     (cliente as any).telefonoAlt     ?? '',
+        whatsapp:        (cliente as any).whatsapp        ?? '',
+        email:           (cliente as any).email           ?? '',
+        direccion:       (cliente as any).direccion       ?? '',
+        referencia:      (cliente as any).referencia      ?? '',
+        departamento:    (cliente as any).departamento    ?? '',
+        provincia:       (cliente as any).provincia       ?? '',
+        distrito:        (cliente as any).distrito        ?? '',
+      });
+    }
+  }, [cliente]);
+
+  const { mutate: guardar, isPending: guardando } = useMutation({
+    mutationFn: () => clientesApi.update(id, form as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cliente', id] });
+      queryClient.invalidateQueries({ queryKey: ['clientes'] });
+      toast('Datos guardados correctamente', { type: 'success' });
+      setDirty(false);
+    },
+    onError: () => toast('Error al guardar los datos', { type: 'error' }),
   });
 
-  const { mutate: cambiarEstado, isPending: cambiandoEstado } = useMutation({
-    mutationFn: ({ estado, motivo }: { estado: string; motivo?: string }) =>
-      clientesApi.cambiarEstado(id, estado, motivo),
+  const { mutate: cambiarEstado } = useMutation({
+    mutationFn: (estado: string) => clientesApi.cambiarEstado(id, estado),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cliente', id] });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
       toast('Estado actualizado', { type: 'success' });
-      setMenu(false);
     },
     onError: () => toast('No se pudo cambiar el estado', { type: 'error' }),
   });
 
-  // ── Loading skeleton ──────────────────────────────────────
+  const set = (key: string, val: string) => {
+    setForm((f) => ({ ...f, [key]: val }));
+    setDirty(true);
+  };
+
+  // ── Loading ───────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="space-y-4 animate-pulse max-w-5xl">
-        <div className="skeleton h-10 w-48 rounded-lg" />
-        <div className="skeleton h-48 rounded-2xl" />
+      <div className="space-y-4 animate-pulse max-w-6xl">
+        <div className="skeleton h-14 rounded-xl" />
         <div className="skeleton h-12 rounded-xl" />
-        <div className="skeleton h-64 rounded-xl" />
+        <div className="skeleton h-96 rounded-2xl" />
       </div>
     );
   }
-
   if (!cliente) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <XCircle className="w-12 h-12 text-muted-foreground mb-4" />
         <p className="text-sm font-semibold text-foreground">Cliente no encontrado</p>
         <button onClick={() => router.back()} className="mt-4 text-sm text-primary hover:underline">
-          Volver al listado
+          Volver
         </button>
       </div>
     );
   }
 
-  if (editMode) {
-    return (
-      <div className="max-w-3xl">
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => setEdit(false)}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="w-4 h-4" /> Cancelar edición
-          </button>
-          <h2 className="text-lg font-semibold text-foreground">Editar cliente</h2>
-        </div>
-        <ClienteForm
-          clienteId={id}
-          initialValues={cliente as any}
-          onSuccess={() => {
-            setEdit(false);
-            queryClient.invalidateQueries({ queryKey: ['cliente', id] });
-          }}
-        />
-      </div>
-    );
-  }
-
-  const grad   = avatarGradient(cliente.nombreCompleto);
-  const svcCfg = SVC_CFG[cliente.tipoServicio ?? ''];
+  const grad         = avatarGradient(cliente.nombreCompleto);
+  const ctrato       = (contratos as any[])[0];
+  const diaPago      = ctrato?.diaPago ? `Día ${ctrato.diaPago} de cada mes` : '—';
+  const deuda        = formatPEN(ctrato?.deudaTotal ?? 0);
+  const proxCorte    = ctrato?.fechaProximaFacturacion ? formatDate(ctrato.fechaProximaFacturacion) : '—';
+  const routerNombre = (contratos as any[]).map((c) => c.nodo ?? c.router ?? '').filter(Boolean).join(', ') || '—';
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="max-w-6xl space-y-4">
 
-      {/* ── Breadcrumb nav ─────────────────────────────────── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* ── Header ───────────────────────────────────────── */}
+      <div className="flex items-center gap-3">
         <button
           onClick={() => router.push('/clientes')}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Clientes
         </button>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => router.push(`/contratos/nuevo?clienteId=${id}`)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-input
-                       text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
-          >
-            <FileText className="w-3.5 h-3.5" /> Nuevo contrato
-          </button>
-          <button
-            onClick={() => setEdit(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium
-                       bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
-          >
-            <Edit className="w-3.5 h-3.5" /> Editar
-          </button>
+        <div className={cn(
+          'w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0',
+          'text-sm font-bold text-white bg-gradient-to-br shadow',
+          grad,
+        )}>
+          {initials(cliente.nombreCompleto)}
+        </div>
 
-          {/* Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setMenu(!menuOpen)}
-              className="p-2 rounded-lg border border-input text-muted-foreground hover:bg-accent transition-all"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 z-20 w-48 bg-popover border border-border
-                                rounded-xl shadow-xl overflow-hidden animate-fade-in">
-                  <div className="p-1 space-y-0.5">
-                    {cliente.estado !== 'suspendido' && cliente.estado !== 'baja_definitiva' && (
-                      <button
-                        onClick={() => cambiarEstado({ estado: 'suspendido', motivo: 'Suspensión manual' })}
-                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm
-                                   text-yellow-700 hover:bg-yellow-50 dark:hover:bg-yellow-950/20 rounded-lg transition-colors"
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        Suspender
-                      </button>
-                    )}
-                    {cliente.estado === 'suspendido' && (
-                      <button
-                        onClick={() => cambiarEstado({ estado: 'activo' })}
-                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm
-                                   text-green-700 hover:bg-green-50 dark:hover:bg-green-950/20 rounded-lg transition-colors"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Reactivar
-                      </button>
-                    )}
-                    {cliente.estado !== 'baja_definitiva' && (
-                      <button
-                        onClick={() => cambiarEstado({ estado: 'baja_definitiva', motivo: 'Baja solicitada' })}
-                        disabled={cambiandoEstado}
-                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm
-                                   text-destructive hover:bg-destructive/10 rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {cambiandoEstado
-                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          : <XCircle className="w-3.5 h-3.5" />
-                        }
-                        Dar de baja
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-base font-bold text-foreground truncate leading-tight">
+            {cliente.nombreCompleto}
+            {cliente.codigoCliente && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                (#{cliente.codigoCliente})
+              </span>
             )}
-          </div>
+          </h1>
+          <nav className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+            <button onClick={() => router.push('/')} className="hover:text-foreground transition-colors">
+              Inicio
+            </button>
+            <span>/</span>
+            <button onClick={() => router.push('/clientes')} className="hover:text-foreground transition-colors">
+              Lista abonados ({cliente.estado})
+            </button>
+            <span>/</span>
+            <span className="text-foreground font-medium">Editar abonado</span>
+          </nav>
         </div>
       </div>
 
-      {/* ── Hero card ──────────────────────────────────────── */}
+      {/* ── Card principal ────────────────────────────────── */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-        {/* Gradient banner */}
-        <div className={cn('h-20 bg-gradient-to-r opacity-80', grad)} />
 
-        <div className="px-6 pb-6">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-8">
-            {/* Avatar + name */}
-            <div className="flex items-end gap-4">
-              <div className={cn(
-                'w-20 h-20 rounded-2xl border-4 border-card flex items-center justify-center',
-                'text-2xl font-bold text-white bg-gradient-to-br flex-shrink-0 shadow-lg',
-                grad,
-              )}>
-                {initials(cliente.nombreCompleto)}
-              </div>
-              <div className="pb-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-xl font-bold text-foreground">{cliente.nombreCompleto}</h1>
-                  <ClienteEstadoBadge estado={cliente.estado} />
-                  {svcCfg && (
-                    <span className={cn(
-                      'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold',
-                      svcCfg.bg, svcCfg.text,
-                    )}>
-                      <svcCfg.icon className="w-3 h-3" />
-                      {svcCfg.label}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground font-mono mt-0.5">
-                  {cliente.tipoDocumento?.toUpperCase()} {cliente.numeroDocumento}
-                  {cliente.codigoCliente && (
-                    <span className="ml-2 font-sans font-medium text-foreground/70">
-                      · Cód. {cliente.codigoCliente}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-
-            {/* Quick info chips */}
-            <div className="hidden md:flex items-center gap-3 pb-1">
-              <Chip icon={Phone}    text={cliente.telefono} />
-              {cliente.whatsapp && <Chip icon={MessageCircle} text="WhatsApp" className="text-green-600 dark:text-green-400" />}
-              {cliente.email    && <Chip icon={Mail}   text={cliente.email} />}
-              {cliente.direccion && <Chip icon={MapPin} text={cliente.distrito ?? cliente.direccion} />}
-            </div>
-          </div>
-
-          {/* Mobile chips */}
-          <div className="flex flex-wrap gap-2 mt-3 md:hidden">
-            <Chip icon={Phone} text={cliente.telefono} />
-            {cliente.email && <Chip icon={Mail} text={cliente.email} />}
-          </div>
-
-          {/* Stats row */}
-          <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border">
-            <MiniStat label="Cliente desde" value={formatDate(cliente.createdAt)} icon={User} />
-            <MiniStat label="Estado desde"  value={cliente.fechaEstado ? formatDate(cliente.fechaEstado) : '—'} icon={Activity} />
-            <MiniStat label="Tipo servicio" value={svcCfg?.label ?? 'Sin servicio'} icon={Wifi} />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Tabs ───────────────────────────────────────────── */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         {/* Tab bar */}
-        <div className="flex items-center gap-0 border-b border-border overflow-x-auto scrollbar-none">
+        <div className="flex items-center border-b border-border overflow-x-auto scrollbar-none bg-muted/20">
           {TABS.map(({ key, label, icon: Icon }) => {
             const active = tab === key;
             return (
@@ -315,11 +212,11 @@ export function ClienteDetalle({ id }: { id: string }) {
                 key={key}
                 onClick={() => setTab(key)}
                 className={cn(
-                  'flex items-center gap-1.5 px-4 py-3.5 text-xs font-medium whitespace-nowrap',
-                  'border-b-2 transition-all duration-150 flex-shrink-0',
+                  'flex items-center gap-1.5 px-4 py-3 text-xs font-medium whitespace-nowrap flex-shrink-0',
+                  'border-b-2 transition-all duration-150',
                   active
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+                    ? 'border-primary text-primary bg-card'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-card/60',
                 )}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -327,203 +224,213 @@ export function ClienteDetalle({ id }: { id: string }) {
               </button>
             );
           })}
+          <button className="ml-auto px-3 py-3 text-muted-foreground hover:text-foreground flex-shrink-0 transition-colors">
+            <Wrench className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {/* Tab content */}
-        <div className="p-6">
+        {/* ── Resumen ──────────────────────────────────────── */}
+        {tab === 'resumen' && (
+          <div className="grid lg:grid-cols-[1fr_300px] divide-y lg:divide-y-0 lg:divide-x divide-border">
 
-          {/* ── Información ─────────────────────────────── */}
-          {tab === 'info' && (
-            <div className="grid md:grid-cols-2 gap-6">
-              <InfoGroup title="Datos personales" icon={User}>
-                <InfoRow label="Nombre completo" value={cliente.nombreCompleto} />
-                <InfoRow label="Tipo documento"  value={cliente.tipoDocumento?.toUpperCase()} />
-                <InfoRow label="N° documento"    value={cliente.numeroDocumento} mono />
-                {cliente.esEmpresa && (
-                  <>
-                    <InfoRow label="RUC"          value={cliente.rucEmpresa} mono />
-                    <InfoRow label="Razón social" value={cliente.razonSocial} />
-                  </>
-                )}
-              </InfoGroup>
+            {/* Izquierda: Datos del cliente */}
+            <div className="p-6 space-y-1">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-4">
+                <span className="text-primary font-bold">&raquo;</span> Datos del cliente
+              </h3>
 
-              <InfoGroup title="Contacto" icon={Phone}>
-                <InfoRow label="Teléfono"    value={cliente.telefono} />
-                <InfoRow label="Alternativo" value={cliente.telefonoAlt} />
-                <InfoRow label="WhatsApp"    value={cliente.whatsapp} />
-                <InfoRow label="Email"       value={cliente.email} />
-              </InfoGroup>
-
-              <div className="md:col-span-2">
-                <InfoGroup title="Dirección de instalación" icon={MapPin}>
-                  <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2">
-                    <InfoRow label="Dirección"    value={cliente.direccion} />
-                    <InfoRow label="Referencia"   value={cliente.referencia} />
-                    <InfoRow label="Departamento" value={cliente.departamento} />
-                    <InfoRow label="Provincia"    value={cliente.provincia} />
-                    <InfoRow label="Distrito"     value={cliente.distrito} />
-                  </div>
-                </InfoGroup>
-              </div>
-
-              {cliente.notasInternas && (
-                <div className="md:col-span-2">
-                  <InfoGroup title="Notas internas" icon={ScrollText}>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                      {cliente.notasInternas}
-                    </p>
-                  </InfoGroup>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Servicios ───────────────────────────────── */}
-          {tab === 'servicios' && (
-            <div className="space-y-3">
-              {contratos.length === 0 ? (
-                <PlaceholderTab
-                  icon={Wifi}
-                  title="Sin contratos activos"
-                  desc="Este cliente no tiene contratos de servicio registrados."
-                  action={{ label: 'Crear contrato', href: `/contratos/nuevo?clienteId=${id}` }}
-                />
-              ) : (
-                (contratos as Contrato[]).map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => router.push(`/contratos/${c.id}`)}
-                    className="w-full flex items-center justify-between gap-4 p-4 rounded-xl
-                               border border-border hover:bg-accent/50 transition-colors text-left group"
+              <FormRow label="Estado">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <ClienteEstadoBadge estado={cliente.estado} />
+                  <select
+                    value={cliente.estado}
+                    onChange={(e) => cambiarEstado(e.target.value)}
+                    className="text-xs bg-muted border border-input rounded-lg px-2 py-1.5
+                               text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Wifi className="w-4 h-4 text-primary" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <p className="text-sm font-semibold text-foreground">{c.numeroContrato}</p>
-                          <span className={cn(
-                            'text-[11px] font-semibold px-2 py-0.5 rounded-full',
-                            badgeContrato(c.estado),
-                          )}>
-                            {labelContrato(c.estado)}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {c.planNombre} · {c.velocidadBajada}/{c.velocidadSubida} Mbps
-                          {c.ipAsignada && <span className="font-mono"> · {c.ipAsignada}</span>}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-bold text-foreground">
-                        {formatPEN(c.precioFinal ?? 0)}/mes
-                      </p>
-                      {c.deudaTotal > 0 && (
-                        <p className="text-xs text-destructive font-semibold">
-                          Deuda: {formatPEN(c.deudaTotal)}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* ── Facturación ─────────────────────────────── */}
-          {tab === 'facturacion' && (
-            <PlaceholderTab
-              icon={CreditCard}
-              title="Módulo de facturación"
-              desc="Aquí se mostrarán las facturas, cobros y estado de cuenta del cliente."
-              badge="Próximamente"
-            />
-          )}
-
-          {/* ── Equipos ─────────────────────────────────── */}
-          {tab === 'equipos' && (
-            <PlaceholderTab
-              icon={Monitor}
-              title="Equipos del cliente"
-              desc="ONU, antenas, routers CPE y otros equipos asociados aparecerán aquí."
-              badge="Próximamente"
-            />
-          )}
-
-          {/* ── Historial ───────────────────────────────── */}
-          {tab === 'historial' && (
-            <div>
-              {historial.length === 0 ? (
-                <PlaceholderTab
-                  icon={Clock}
-                  title="Sin historial registrado"
-                  desc="Los cambios de estado, pagos y eventos del cliente aparecerán aquí."
-                />
-              ) : (
-                <div className="space-y-0">
-                  {(historial as HistorialEntry[]).map((h, i) => (
-                    <div key={i} className="flex items-start gap-4 pb-4 last:pb-0">
-                      <div className="flex flex-col items-center">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <Activity className="w-3.5 h-3.5 text-primary" />
-                        </div>
-                        {i < historial.length - 1 && (
-                          <div className="w-px flex-1 bg-border mt-2" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0 pb-4">
-                        <p className="text-sm text-foreground font-medium">
-                          {h.descripcion ?? h.accion}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatDateTime(h.createdAt ?? h.timestamp ?? '')} · {h.usuarioEmail ?? 'Sistema'}
-                        </p>
-                        {h.estadoNuevo && (
-                          <span className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5
-                                           bg-muted rounded-full text-muted-foreground">
-                            → {h.estadoNuevo}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    <option value="activo">Activo</option>
+                    <option value="suspendido">Suspendido</option>
+                    <option value="moroso">Moroso</option>
+                    <option value="baja_temporal">Baja temporal</option>
+                    <option value="baja_definitiva">Baja definitiva</option>
+                  </select>
                 </div>
-              )}
+              </FormRow>
+
+              <FormRow label="Conectado al Router(s)">
+                <span className="text-sm text-foreground">{routerNombre}</span>
+              </FormRow>
+
+              <FormRow label="ID">
+                <input
+                  value={cliente.codigoCliente ?? ''}
+                  readOnly
+                  className={cn(INPUT, 'bg-muted/50 cursor-default')}
+                />
+              </FormRow>
+
+              <FormRow label="Nº Identificación">
+                <div className="space-y-1">
+                  <div className="flex gap-2">
+                    <input
+                      value={form.numeroDocumento ?? ''}
+                      onChange={(e) => set('numeroDocumento', e.target.value)}
+                      className={cn(INPUT, 'flex-1')}
+                    />
+                    <button className="flex items-center gap-1 px-3 py-2 text-xs rounded-lg
+                                       border border-input hover:bg-accent transition-colors
+                                       text-muted-foreground flex-shrink-0">
+                      <Search className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    CEDULA, DNI, RUC, CUIT, NIT, SAT, RUT, RTN, ETC.
+                  </p>
+                </div>
+              </FormRow>
+
+              <FormRow label="Cliente">
+                <input
+                  value={cliente.nombreCompleto}
+                  readOnly
+                  className={cn(INPUT, 'bg-muted/50 cursor-default')}
+                />
+              </FormRow>
+
+              <FormRow label="Dirección Principal">
+                <input
+                  value={form.direccion ?? ''}
+                  onChange={(e) => set('direccion', e.target.value)}
+                  className={INPUT}
+                />
+              </FormRow>
+
+              <FormRow label="Teléfono fijo">
+                <input
+                  value={form.telefonoAlt ?? ''}
+                  onChange={(e) => set('telefonoAlt', e.target.value)}
+                  className={INPUT}
+                />
+              </FormRow>
+
+              <FormRow label="Teléfono Movil">
+                <input
+                  value={form.telefono ?? ''}
+                  onChange={(e) => set('telefono', e.target.value)}
+                  className={INPUT}
+                />
+              </FormRow>
+
+              <FormRow label="E-mail">
+                <input
+                  value={form.email ?? ''}
+                  onChange={(e) => set('email', e.target.value)}
+                  type="email"
+                  className={INPUT}
+                />
+              </FormRow>
+
+              <FormRow label="Ubicación">
+                <input
+                  value={[form.departamento, form.provincia, form.distrito].filter(Boolean).join(', ')}
+                  onChange={(e) => set('distrito', e.target.value)}
+                  placeholder="Seleccionar..."
+                  className={INPUT}
+                />
+              </FormRow>
+
+              <FormRow label="Referencia">
+                <input
+                  value={form.referencia ?? ''}
+                  onChange={(e) => set('referencia', e.target.value)}
+                  className={INPUT}
+                />
+              </FormRow>
+
+              <div className="pt-4">
+                <button
+                  onClick={() => guardar()}
+                  disabled={guardando || !formDirty}
+                  className={cn(
+                    'flex items-center gap-2 px-5 py-2.5 text-sm rounded-lg font-medium',
+                    'bg-primary text-primary-foreground hover:bg-primary/90',
+                    'transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed',
+                  )}
+                >
+                  {guardando
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Save className="w-4 h-4" />
+                  }
+                  Guardar datos
+                </button>
+              </div>
             </div>
-          )}
 
-          {/* ── Tickets ─────────────────────────────────── */}
-          {tab === 'tickets' && (
-            <PlaceholderTab
-              icon={Ticket}
-              title="Tickets de soporte"
-              desc="Los tickets de soporte técnico y reclamos del cliente aparecerán aquí."
-              badge="Próximamente"
-            />
-          )}
+            {/* Derecha: Resumen Notificaciones */}
+            <div className="p-6 space-y-1">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-4">
+                <span className="text-primary font-bold">&raquo;</span> Resumen Notificaciones
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                <NotifCard color="blue"   icon={Calendar}       label="Día de Pago"           value={diaPago}   />
+                <NotifCard color="orange" icon={Receipt}        label="Crear & Enviar Factura" value="—"         />
+                <NotifCard color="teal"   icon={Monitor}        label="Aviso en pantalla"      value="Desactivado" />
+                <NotifCard color="purple" icon={MessageSquare}  label="Aviso SMS"              value="—"         />
+                <NotifCard color="red"    icon={XCircle}        label="Próximo Corte"          value={proxCorte} />
+                <NotifCard color="indigo" icon={CreditCard}     label="Deuda Actual"           value={deuda}     />
+                <NotifCard color="pink"   icon={BarChart2}      label="Saldos"                 value={formatPEN(0)} className="col-span-2" />
+              </div>
+            </div>
+          </div>
+        )}
 
-          {/* ── Logs ────────────────────────────────────── */}
-          {tab === 'logs' && (
-            <PlaceholderTab
-              icon={ScrollText}
-              title="Logs de actividad"
-              desc="Registro detallado de acciones del sistema para este cliente."
-              badge="Próximamente"
-            />
-          )}
+        {/* ── Servicios ────────────────────────────────────── */}
+        {tab === 'servicios' && (
+          <div className="p-6 space-y-3">
+            {(contratos as Contrato[]).length === 0 ? (
+              <PlaceholderTab icon={Wifi} title="Sin contratos activos"
+                desc="Este cliente no tiene contratos de servicio registrados."
+                action={{ label: 'Crear contrato', href: `/contratos/nuevo?clienteId=${id}` }}
+              />
+            ) : (
+              (contratos as Contrato[]).map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => router.push(`/contratos/${c.id}`)}
+                  className="w-full flex items-center justify-between gap-4 p-4 rounded-xl
+                             border border-border hover:bg-accent/50 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Wifi className="w-4 h-4 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{c.numeroContrato}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {c.planNombre} · {c.velocidadBajada}/{c.velocidadSubida} Mbps
+                        {c.ipAsignada && <span className="font-mono"> · {c.ipAsignada}</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-bold text-foreground">{formatPEN(c.precioFinal ?? 0)}/mes</p>
+                    {c.deudaTotal > 0 && (
+                      <p className="text-xs text-destructive font-semibold">Deuda: {formatPEN(c.deudaTotal)}</p>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
 
-          {/* ── Documentos ──────────────────────────────── */}
-          {tab === 'documentos' && (
-            <PlaceholderTab
-              icon={FolderOpen}
-              title="Documentos del cliente"
-              desc="Contratos firmados, comprobantes, fotos de instalación y más."
-              badge="Próximamente"
-            />
-          )}
-        </div>
+        {/* Tabs placeholder */}
+        {tab === 'facturacion'  && <div className="p-6"><PlaceholderTab icon={CreditCard}    title="Módulo de facturación"  desc="Facturas, cobros y estado de cuenta." badge="Próximamente" /></div>}
+        {tab === 'tickets'      && <div className="p-6"><PlaceholderTab icon={Ticket}        title="Tickets de soporte"     desc="Tickets y reclamos del cliente."      badge="Próximamente" /></div>}
+        {tab === 'email_sms'    && <div className="p-6"><PlaceholderTab icon={MessageSquare} title="Email & SMS"            desc="Notificaciones enviadas al cliente."   badge="Próximamente" /></div>}
+        {tab === 'documentos'   && <div className="p-6"><PlaceholderTab icon={FolderOpen}    title="Documentos"             desc="Contratos, comprobantes y fotos."      badge="Próximamente" /></div>}
+        {tab === 'estadisticas' && <div className="p-6"><PlaceholderTab icon={BarChart2}     title="Estadísticas"           desc="Consumo, pagos históricos y tendencias." badge="Próximamente" /></div>}
+        {tab === 'logs'         && <div className="p-6"><PlaceholderTab icon={ScrollText}    title="Log de actividad"       desc="Registro detallado de acciones."       badge="Próximamente" /></div>}
       </div>
     </div>
   );
@@ -531,63 +438,41 @@ export function ClienteDetalle({ id }: { id: string }) {
 
 // ── Sub-components ────────────────────────────────────────────
 
-function Chip({
-  icon: Icon, text, className,
-}: { icon: React.ElementType; text: string; className?: string }) {
+function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <span className={cn(
-      'flex items-center gap-1.5 text-xs text-muted-foreground',
-      'bg-muted/60 px-2.5 py-1 rounded-full',
+    <div className="grid grid-cols-[140px_1fr] items-start gap-3 py-2 border-b border-border/50 last:border-0">
+      <span className="text-xs text-muted-foreground pt-2.5 font-medium leading-none">{label}</span>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+const NOTIF_STYLES: Record<string, string> = {
+  blue:   'bg-blue-500',
+  orange: 'bg-orange-500',
+  teal:   'bg-teal-500',
+  purple: 'bg-purple-600',
+  red:    'bg-red-500',
+  indigo: 'bg-indigo-600',
+  pink:   'bg-pink-500',
+};
+
+function NotifCard({
+  color, icon: Icon, label, value, className,
+}: {
+  color: string; icon: React.ElementType; label: string; value: string; className?: string;
+}) {
+  return (
+    <div className={cn(
+      'rounded-xl p-3 text-white flex flex-col gap-1',
+      NOTIF_STYLES[color] ?? 'bg-slate-500',
       className,
     )}>
-      <Icon className="w-3 h-3 flex-shrink-0" />
-      <span className="truncate max-w-[140px]">{text}</span>
-    </span>
-  );
-}
-
-function MiniStat({ label, value, icon: Icon }: {
-  label: string; value: string; icon: React.ElementType;
-}) {
-  return (
-    <div className="flex flex-col items-center text-center sm:items-start sm:text-left gap-0.5">
-      <div className="flex items-center gap-1 text-[11px] text-muted-foreground uppercase tracking-wide font-medium">
-        <Icon className="w-3 h-3" /> {label}
+      <div className="flex items-center gap-1.5">
+        <Icon className="w-3.5 h-3.5 opacity-80 flex-shrink-0" />
+        <span className="text-[11px] font-semibold opacity-90 leading-tight">{label}</span>
       </div>
-      <p className="text-sm font-semibold text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function InfoGroup({
-  title, icon: Icon, children,
-}: { title: string; icon: React.ElementType; children: React.ReactNode }) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 pb-2 border-b border-border">
-        <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {title}
-        </h4>
-      </div>
-      <div className="space-y-2">{children}</div>
-    </div>
-  );
-}
-
-function InfoRow({ label, value, mono }: {
-  label: string; value?: string | null; mono?: boolean;
-}) {
-  return (
-    <div className="flex items-baseline gap-2">
-      <span className="text-xs text-muted-foreground min-w-[110px] flex-shrink-0">{label}</span>
-      <span className={cn(
-        'text-sm text-foreground flex-1 break-words',
-        mono && 'font-mono',
-        !value && 'text-muted-foreground italic',
-      )}>
-        {value ?? '—'}
-      </span>
+      <p className="text-sm font-bold truncate">{value}</p>
     </div>
   );
 }
@@ -596,8 +481,7 @@ function PlaceholderTab({
   icon: Icon, title, desc, badge, action,
 }: {
   icon: React.ElementType; title: string; desc: string;
-  badge?: string;
-  action?: { label: string; href: string };
+  badge?: string; action?: { label: string; href: string };
 }) {
   const router = useRouter();
   return (
@@ -606,8 +490,7 @@ function PlaceholderTab({
         <Icon className="w-7 h-7 text-muted-foreground" />
       </div>
       {badge && (
-        <span className="mb-2 text-[11px] font-semibold px-2.5 py-1 rounded-full
-                         bg-primary/10 text-primary">
+        <span className="mb-2 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
           {badge}
         </span>
       )}
@@ -617,8 +500,7 @@ function PlaceholderTab({
         <button
           onClick={() => router.push(action.href)}
           className="mt-5 px-5 py-2.5 text-sm rounded-lg font-medium
-                     bg-primary text-primary-foreground hover:bg-primary/90
-                     transition-all shadow-sm"
+                     bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
         >
           {action.label}
         </button>
