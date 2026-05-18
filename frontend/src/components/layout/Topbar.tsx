@@ -16,7 +16,7 @@ import Link              from 'next/link';
 
 const LABELS: Record<string, string> = {
   dashboard:     'Dashboard',
-  clientes:      'Abonados',
+  clientes:      'Clientes',
   contratos:     'Contratos',
   facturacion:   'Facturación',
   pagos:         'Transacciones',
