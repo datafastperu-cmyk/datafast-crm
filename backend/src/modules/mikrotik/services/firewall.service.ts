@@ -195,38 +195,44 @@ export class FirewallService {
   // colgada indefinidamente. Fix: obtener TODAS las reglas sin filtro y buscar en JS.
   async inyectarReglaBloqueoMorosos(creds: RouterCredentials): Promise<void> {
     const comment = 'Datafast-Bloquear Morosos';
+    const ruleArgs = [
+      `=chain=forward`,
+      `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
+      `=dst-address-list=!ips_permitidas_morosos_datafast`,
+      `=action=drop`,
+      `=comment=${comment}`,
+    ];
 
-    // Conexión 1: verificar si la regla ya existe (sin filtro en RouterOS)
-    let ruleExists = false;
+    // Conexión 1: obtener todas las reglas sin filtro (filtro ?comment=X lanza
+    // UNKNOWNREPLY en event-listener en v7, no captureable con try/catch en Promise)
+    let existingId: string | null = null;
     const checkApi = await this.pool.connectDirect(creds);
     try {
       const allRules = await checkApi.write('/ip/firewall/filter/print');
-      ruleExists = allRules.some((r: any) => r.comment === comment);
+      const match = allRules.find((r: any) => r.comment === comment);
+      existingId = match ? match['.id'] : null;
     } catch (err: any) {
       if (err?.errno !== 'UNKNOWNREPLY') throw err;
-      // !empty = no existe ninguna regla → ruleExists queda false
+      // !empty = no existe ninguna regla
     } finally {
       checkApi.close().catch(() => {});
     }
 
-    if (ruleExists) {
-      this.logger.warn(`Regla '${comment}' ya existe en ${creds.ip}`);
-      return;
-    }
-
-    // Conexión 2: agregar la regla con conexión fresca
-    const addApi = await this.pool.connectDirect(creds);
+    // Conexión 2: actualizar si existe, agregar si no
+    const writeApi = await this.pool.connectDirect(creds);
     try {
-      await addApi.write('/ip/firewall/filter/add', [
-        `=chain=forward`,
-        `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
-        `=dst-address-list=!ips_permitidas_morosos_datafast`,
-        `=action=drop`,
-        `=comment=${comment}`,
-      ]);
-      this.logger.log(`Regla '${comment}' inyectada en ${creds.ip}`);
+      if (existingId) {
+        await writeApi.write('/ip/firewall/filter/set', [
+          `=.id=${existingId}`,
+          ...ruleArgs,
+        ]);
+        this.logger.log(`Regla '${comment}' actualizada en ${creds.ip}`);
+      } else {
+        await writeApi.write('/ip/firewall/filter/add', ruleArgs);
+        this.logger.log(`Regla '${comment}' inyectada en ${creds.ip}`);
+      }
     } finally {
-      addApi.close().catch(() => {});
+      writeApi.close().catch(() => {});
     }
   }
 
