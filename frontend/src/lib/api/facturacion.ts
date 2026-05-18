@@ -47,6 +47,31 @@ export interface RegistrarPagoDto {
   moneda?:         string;
 }
 
+export interface UpdateFacturaDto {
+  descripcion?:      string;
+  fechaVencimiento?: string;
+}
+
+export interface CreateFacturaDto {
+  clienteId:         string;
+  contratoId?:       string;
+  tipoComprobante?:  'boleta' | 'factura' | 'recibo_interno';
+  periodoInicio:     string;
+  periodoFin:        string;
+  descripcion?:      string;
+  items?: {
+    descripcion:     string;
+    cantidad:        number;
+    precioUnitario:  number;
+    descuento?:      number;
+  }[];
+  subtotal?:         number;
+  descuento?:        number;
+  fechaVencimiento?: string;
+  aplicaIgv?:        boolean;
+  moneda?:           string;
+}
+
 export interface GenerarMensualDto {
   mes:          number;
   anio:         number;
@@ -84,6 +109,11 @@ export const facturacionApi = {
     return { data: res.data.data, meta: res.data.meta?.meta };
   },
 
+  create: async (dto: CreateFacturaDto): Promise<Factura> => {
+    const res = await api.post<ApiRespuesta<Factura>>('/facturacion', dto);
+    return res.data.data;
+  },
+
   getById: async (id: string): Promise<Factura> => {
     const res = await api.get<ApiRespuesta<Factura>>(`/facturacion/${id}`);
     return res.data.data;
@@ -94,8 +124,22 @@ export const facturacionApi = {
     return res.data;
   },
 
+  getByCliente: async (clienteId: string): Promise<Factura[]> => {
+    const res = await api.get<ApiRespuesta<Factura[]>>(`/facturacion/cliente/${clienteId}`);
+    return res.data.data ?? [];
+  },
+
+  update: async (id: string, dto: UpdateFacturaDto): Promise<Factura> => {
+    const res = await api.patch<ApiRespuesta<Factura>>(`/facturacion/${id}`, dto);
+    return res.data.data;
+  },
+
+  eliminar: async (id: string): Promise<void> => {
+    await api.delete(`/facturacion/${id}`);
+  },
+
   anular: async (id: string, motivo: string): Promise<Factura> => {
-    const res = await api.post<ApiRespuesta<Factura>>(`/facturacion/${id}/anular`, { motivo });
+    const res = await api.patch<ApiRespuesta<Factura>>(`/facturacion/${id}/anular`, { motivo });
     return res.data.data;
   },
 

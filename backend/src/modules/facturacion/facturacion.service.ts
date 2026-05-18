@@ -18,7 +18,7 @@ import {
 import {
   CreateFacturaDto, GenerarFacturasMensualesDto,
   CreateNotaCreditoDto, AnularFacturaDto, FilterFacturaDto,
-  ResumenFinancieroDto,
+  ResumenFinancieroDto, UpdateFacturaDto,
 } from './dto/factura.dto';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 
@@ -460,6 +460,21 @@ export class FacturacionService {
 
   async findByCliente(clienteId: string, empresaId: string): Promise<Factura[]> {
     return this.facturaRepo.findByCliente(clienteId, empresaId);
+  }
+
+  async update(id: string, empresaId: string, dto: UpdateFacturaDto): Promise<Factura> {
+    const factura = await this.findOne(id, empresaId);
+    if (factura.estado === EstadoFactura.ANULADA)
+      throw new BadRequestException('No se puede editar una factura anulada');
+    await this.facturaRepo.update(id, dto);
+    return this.findOne(id, empresaId);
+  }
+
+  async remove(id: string, empresaId: string): Promise<void> {
+    const factura = await this.findOne(id, empresaId);
+    if (factura.estado === EstadoFactura.PAGADA)
+      throw new BadRequestException('No se puede eliminar una factura pagada');
+    await this.facturaRepo.delete(id);
   }
 
   async getResumenFinanciero(empresaId: string): Promise<ResumenFinancieroDto> {

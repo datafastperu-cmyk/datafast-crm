@@ -99,6 +99,15 @@ export class CreateNotaCreditoDto {
   montoAcreditar?: number;
 }
 
+// ─── Actualizar factura ──────────────────────────────────────
+export class UpdateFacturaDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500)
+  descripcion?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsDateString()
+  fechaVencimiento?: string;
+}
+
 // ─── Anular factura ──────────────────────────────────────────
 export class AnularFacturaDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(500)

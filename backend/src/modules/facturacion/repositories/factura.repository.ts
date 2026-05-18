@@ -19,6 +19,9 @@ export class FacturaRepository {
   async update(id: string, data: Partial<Factura>): Promise<void> {
     await this.repo.update({ id }, data);
   }
+  async delete(id: string): Promise<void> {
+    await this.repo.delete({ id });
+  }
 
   async findById(id: string, empresaId: string): Promise<Factura | null> {
     return this.repo.findOne({ where: { id, empresaId, deletedAt: null as any } });

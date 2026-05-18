@@ -15,6 +15,7 @@ import { FacturacionService } from './facturacion.service';
 import {
   CreateFacturaDto, GenerarFacturasMensualesDto,
   CreateNotaCreditoDto, AnularFacturaDto, FilterFacturaDto,
+  UpdateFacturaDto,
 } from './dto/factura.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission, Roles } from '../../common/decorators/roles.decorator';
@@ -199,6 +200,33 @@ export class FacturacionController {
       user, req,
     );
     return StdResponse.ok(nc, 'Nota de crédito emitida');
+  }
+
+  // ── PATCH /facturacion/:id — Editar ─────────────────────
+  @Patch(':id')
+  @RequirePermission('facturas:create')
+  @ApiOperation({ summary: 'Editar descripción o fecha de vencimiento de una factura' })
+  @ApiParam({ name: 'id' })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateFacturaDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const f = await this.svc.update(id, user.empresaId, dto);
+    return StdResponse.ok(f, 'Factura actualizada');
+  }
+
+  // ── DELETE /facturacion/:id — Eliminar ───────────────────
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermission('facturas:delete')
+  @ApiOperation({ summary: 'Eliminar factura (solo no pagadas)' })
+  @ApiParam({ name: 'id' })
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.svc.remove(id, user.empresaId);
   }
 
   // ── PATCH /facturacion/:id/anular — Anular ───────────────

@@ -7,14 +7,20 @@ import {
   ArrowLeft, Search, Calendar, Monitor, MessageSquare,
   CreditCard, Wifi, Loader2, Radio, Cable, Shuffle,
   XCircle, ScrollText, FolderOpen, Wrench, Save,
-  Receipt, BarChart2, Ticket,
+  Receipt, BarChart2, Ticket, Plus, FileText, ChevronDown,
+  Trash2, X, Pencil,
 } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
 
-import { clientesApi }        from '@/lib/api/clientes';
-import { ClienteEstadoBadge } from './ClienteEstadoBadge';
-import { useToast }           from '@/components/ui/toaster';
+import { clientesApi }                          from '@/lib/api/clientes';
+import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
+import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
+import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
+import { useToast }                  from '@/components/ui/toaster';
 import { formatDate, formatPEN, cn } from '@/lib/utils';
-import type { Contrato } from '@/types';
+import type { Contrato, Factura, Pago } from '@/types';
 
 // ── Tabs ──────────────────────────────────────────────────────
 const TABS = [
@@ -425,11 +431,11 @@ export function ClienteDetalle({ id }: { id: string }) {
         )}
 
         {/* Tabs placeholder */}
-        {tab === 'facturacion'  && <div className="p-6"><PlaceholderTab icon={CreditCard}    title="Módulo de facturación"  desc="Facturas, cobros y estado de cuenta." badge="Próximamente" /></div>}
+        {tab === 'facturacion'  && <TabFacturacion clienteId={id} contratos={contratos as Contrato[]} />}
         {tab === 'tickets'      && <div className="p-6"><PlaceholderTab icon={Ticket}        title="Tickets de soporte"     desc="Tickets y reclamos del cliente."      badge="Próximamente" /></div>}
         {tab === 'email_sms'    && <div className="p-6"><PlaceholderTab icon={MessageSquare} title="Email & SMS"            desc="Notificaciones enviadas al cliente."   badge="Próximamente" /></div>}
         {tab === 'documentos'   && <div className="p-6"><PlaceholderTab icon={FolderOpen}    title="Documentos"             desc="Contratos, comprobantes y fotos."      badge="Próximamente" /></div>}
-        {tab === 'estadisticas' && <div className="p-6"><PlaceholderTab icon={BarChart2}     title="Estadísticas"           desc="Consumo, pagos históricos y tendencias." badge="Próximamente" /></div>}
+        {tab === 'estadisticas' && <TabEstadisticas clienteId={id} contratos={contratos as Contrato[]} />}
         {tab === 'logs'         && <div className="p-6"><PlaceholderTab icon={ScrollText}    title="Log de actividad"       desc="Registro detallado de acciones."       badge="Próximamente" /></div>}
       </div>
     </div>
@@ -505,6 +511,969 @@ function PlaceholderTab({
           {action.label}
         </button>
       )}
+    </div>
+  );
+}
+
+// ── FacturaBadge ──────────────────────────────────────────────
+const FBADGE: Record<string, string> = {
+  borrador:       'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  emitida:        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  pagada:         'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  pagada_parcial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  vencida:        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  anulada:        'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500',
+  en_cobranza:    'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+};
+const FLABEL: Record<string, string> = {
+  borrador: 'BORRADOR', emitida: 'EMITIDA', pagada: 'PAGADO',
+  pagada_parcial: 'PARCIAL', vencida: 'VENCIDA', anulada: 'ANULADA', en_cobranza: 'COBRANZA',
+};
+function FacturaBadge({ estado }: { estado: string }) {
+  return (
+    <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold', FBADGE[estado] ?? 'bg-gray-100 text-gray-600')}>
+      {FLABEL[estado] ?? estado.toUpperCase()}
+    </span>
+  );
+}
+
+// ── TabFacturacion ────────────────────────────────────────────
+type FSubTab = 'facturas' | 'transacciones' | 'saldos' | 'config';
+const F_SUBTABS: { key: FSubTab; label: string }[] = [
+  { key: 'facturas',       label: 'Facturas'       },
+  { key: 'transacciones',  label: 'Transacciones'  },
+  { key: 'saldos',         label: 'Saldos'         },
+  { key: 'config',         label: 'Configuración'  },
+];
+
+function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos: Contrato[] }) {
+  const { toast }   = useToast();
+  const queryClient = useQueryClient();
+  const [subTab, setSubTab]         = useState<FSubTab>('facturas');
+  const [search, setSearch]         = useState('');
+  const [showModal, setShowModal]   = useState(false);
+  const [editando, setEditando]     = useState<Factura | null>(null);
+
+  const { data: facturas = [], isLoading: loadingF } = useQuery({
+    queryKey: ['cliente-facturas', clienteId],
+    queryFn:  () => facturacionApi.getByCliente(clienteId),
+  });
+
+  const { data: pagos = [], isLoading: loadingP } = useQuery({
+    queryKey: ['cliente-pagos', clienteId],
+    queryFn:  () => pagosApi.getPorCliente(clienteId),
+    enabled:  subTab === 'transacciones',
+  });
+
+  const { mutate: anularFactura } = useMutation({
+    mutationFn: (facturaId: string) =>
+      facturacionApi.anular(facturaId, 'Anulado desde detalle de cliente'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cliente-facturas', clienteId] });
+      toast('Factura anulada', { type: 'success' });
+    },
+    onError: () => toast('No se pudo anular la factura', { type: 'error' }),
+  });
+
+  const { mutate: eliminarFactura } = useMutation({
+    mutationFn: (facturaId: string) => facturacionApi.eliminar(facturaId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cliente-facturas', clienteId] });
+      toast('Factura eliminada', { type: 'success' });
+    },
+    onError: () => toast('No se pudo eliminar la factura', { type: 'error' }),
+  });
+
+  const q         = search.toLowerCase();
+  const filtradas = (facturas as Factura[]).filter(
+    (f) => !q || f.numeroCompleto.toLowerCase().includes(q) || f.estado.toLowerCase().includes(q),
+  );
+
+  return (
+    <div>
+      {/* Sub-tabs */}
+      <div className="flex border-b border-border bg-muted/10">
+        {F_SUBTABS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setSubTab(key)}
+            className={cn(
+              'px-4 py-2.5 text-xs font-medium border-b-2 transition-all whitespace-nowrap',
+              subTab === key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Facturas ─────────────────────────────────────────── */}
+      {subTab === 'facturas' && (
+        <div className="p-4 space-y-3">
+          {/* Toolbar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-muted-foreground bg-muted px-2.5 py-1 rounded-lg min-w-[2rem] text-center">
+              {filtradas.length}
+            </span>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground">
+              <Plus className="w-3.5 h-3.5" /> Factura Libre
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground"
+            >
+              <Plus className="w-3.5 h-3.5" /> Factura de servicios
+            </button>
+            <div className="ml-auto relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar..."
+                className="pl-8 pr-3 py-1.5 text-xs bg-background border border-input rounded-lg w-44
+                           focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Table / States */}
+          {loadingF ? (
+            <div className="animate-pulse space-y-2">
+              {[1, 2, 3].map((i) => <div key={i} className="h-10 rounded-lg bg-muted" />)}
+            </div>
+          ) : filtradas.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <CreditCard className="w-10 h-10 text-muted-foreground mb-3" />
+              <p className="text-sm font-semibold text-foreground">Sin facturas registradas</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Las facturas de este cliente aparecerán aquí
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      {['N° FACTURA', 'EMITIDO', 'VENCIMIENTO', 'ESTADO', 'TOTAL', 'IGV', 'TIPO', 'PAGADO', 'FECHA PAGO', ''].map((h) => (
+                        <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filtradas.map((f) => (
+                      <tr key={f.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-3 py-2.5 font-mono font-semibold text-foreground whitespace-nowrap">
+                          {f.numeroCompleto}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {formatDate(f.fechaEmision)}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {formatDate(f.fechaVencimiento)}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <FacturaBadge estado={f.estado} />
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-foreground whitespace-nowrap">
+                          {formatPEN(f.total)}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {formatPEN(f.igv)}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground uppercase whitespace-nowrap">
+                          {f.tipoComprobante}
+                        </td>
+                        <td className={cn(
+                          'px-3 py-2.5 font-semibold whitespace-nowrap',
+                          f.montoPagado > 0
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-muted-foreground',
+                        )}>
+                          {formatPEN(f.montoPagado)}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {f.fechaPago ? formatDate(f.fechaPago) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <div className="flex items-center gap-0.5">
+                            {f.pdfUrl && (
+                              <a
+                                href={f.pdfUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Ver PDF"
+                                className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                            {f.estado !== 'anulada' && (
+                              <button
+                                onClick={() => setEditando(f)}
+                                title="Editar"
+                                className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {f.estado !== 'anulada' && f.estado !== 'pagada' && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm('¿Anular esta factura?')) anularFactura(f.id);
+                                }}
+                                title="Anular"
+                                className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {f.estado !== 'pagada' && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm('¿Eliminar esta factura? Esta acción no se puede deshacer.')) eliminarFactura(f.id);
+                                }}
+                                title="Eliminar"
+                                className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-2.5 border-t border-border text-xs text-muted-foreground">
+                Mostrando {filtradas.length} de {(facturas as Factura[]).length} registros
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Transacciones ─────────────────────────────────────── */}
+      {subTab === 'transacciones' && (
+        <div className="p-4">
+          {loadingP ? (
+            <div className="animate-pulse space-y-2">
+              {[1, 2, 3].map((i) => <div key={i} className="h-10 rounded-lg bg-muted" />)}
+            </div>
+          ) : (pagos as Pago[]).length === 0 ? (
+            <PlaceholderTab icon={Receipt} title="Sin transacciones" desc="Los pagos de este cliente aparecerán aquí." />
+          ) : (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      {['FECHA', 'MONTO', 'MÉTODO', 'N° OPERACIÓN', 'ESTADO', 'NOTAS'].map((h) => (
+                        <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {(pagos as Pago[]).map((p) => (
+                      <tr key={p.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {formatDate((p as any).fechaPago ?? (p as any).createdAt ?? '')}
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-foreground">
+                          {formatPEN(p.monto)}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground capitalize">
+                          {(p as any).metodoPago?.replace(/_/g, ' ') ?? '—'}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-muted-foreground">
+                          {(p as any).numeroOperacion ?? '—'}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span className={cn(
+                            'px-2 py-0.5 rounded-full text-[10px] font-bold',
+                            (p as any).estado === 'verificado'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                              : (p as any).estado === 'rechazado'
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                          )}>
+                            {(p as any).estado?.replace(/_/g, ' ')?.toUpperCase() ?? '—'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground max-w-[200px] truncate">
+                          {(p as any).notas ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Saldos / Config ───────────────────────────────────── */}
+      {subTab === 'saldos' && (
+        <div className="p-6">
+          <PlaceholderTab icon={Receipt} title="Saldos" desc="Balance de cuenta y créditos disponibles del cliente." badge="Próximamente" />
+        </div>
+      )}
+      {subTab === 'config' && (
+        <div className="p-6">
+          <PlaceholderTab icon={Wrench} title="Configuración de facturación" desc="Día de pago, ajustes de cobro automático y preferencias." badge="Próximamente" />
+        </div>
+      )}
+
+      {/* ── Modal nueva factura ───────────────────────────────── */}
+      {showModal && (
+        <ModalFacturaServicio
+          clienteId={clienteId}
+          contratos={contratos}
+          onClose={() => setShowModal(false)}
+          onSuccess={() => {
+            setShowModal(false);
+            queryClient.invalidateQueries({ queryKey: ['cliente-facturas', clienteId] });
+            queryClient.invalidateQueries({ queryKey: ['facturas-cliente-pago', clienteId] });
+            toast('Factura creada correctamente', { type: 'success' });
+          }}
+        />
+      )}
+
+      {/* ── Modal editar factura ──────────────────────────────── */}
+      {editando && (
+        <ModalEditarFactura
+          factura={editando}
+          onClose={() => setEditando(null)}
+          onSuccess={() => {
+            setEditando(null);
+            queryClient.invalidateQueries({ queryKey: ['cliente-facturas', clienteId] });
+            toast('Factura actualizada', { type: 'success' });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── ModalEditarFactura ────────────────────────────────────────
+function ModalEditarFactura({
+  factura, onClose, onSuccess,
+}: { factura: Factura; onClose: () => void; onSuccess: () => void }) {
+  const { toast }   = useToast();
+  const [form, setForm] = useState<UpdateFacturaDto>({
+    descripcion:      factura.descripcion ?? '',
+    fechaVencimiento: factura.fechaVencimiento ?? '',
+  });
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => facturacionApi.update(factura.id, form),
+    onSuccess,
+    onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al actualizar', { type: 'error' }),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-background rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold">Editar Factura</h2>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-accent text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Número</label>
+            <p className="text-sm font-mono font-semibold">{factura.numeroCompleto}</p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Descripción</label>
+            <textarea
+              value={form.descripcion}
+              onChange={(e) => setForm((p) => ({ ...p, descripcion: e.target.value }))}
+              rows={3}
+              className="w-full px-3 py-2 text-sm bg-background border border-input rounded-lg
+                         focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha de vencimiento</label>
+            <input
+              type="date"
+              value={form.fechaVencimiento}
+              onChange={(e) => setForm((p) => ({ ...p, fechaVencimiento: e.target.value }))}
+              className="w-full px-3 py-2 text-sm bg-background border border-input rounded-lg
+                         focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => mutate()}
+            disabled={isPending}
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground
+                       hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ModalFacturaServicio ──────────────────────────────────────
+interface LineaItem {
+  descripcion:    string;
+  cantidad:       number;
+  precioUnitario: number;
+  descuento:      number;
+}
+
+const TIPO_COMPROBANTE_OPTS = [
+  { value: 'boleta',         label: 'Boleta de venta' },
+  { value: 'factura',        label: 'Factura' },
+  { value: 'recibo_interno', label: 'Recibo interno' },
+] as const;
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function endOfMonthStr() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+function ModalFacturaServicio({
+  clienteId, contratos, onClose, onSuccess,
+}: {
+  clienteId: string;
+  contratos:  Contrato[];
+  onClose:   () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+
+  const [tipoComprobante, setTipoComprobante] = useState<'boleta' | 'factura' | 'recibo_interno'>('boleta');
+  const [contratoId,      setContratoId]      = useState(contratos[0]?.id ?? '');
+  const [periodoInicio,   setPeriodoInicio]   = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+  });
+  const [periodoFin,      setPeriodoFin]      = useState(endOfMonthStr);
+  const [fechaVenc,       setFechaVenc]       = useState('');
+  const [aplicaIgv,       setAplicaIgv]       = useState(true);
+  const [descripcion,     setDescripcion]     = useState('');
+  const [items,           setItems]           = useState<LineaItem[]>([
+    { descripcion: 'Servicio de Internet', cantidad: 1, precioUnitario: 0, descuento: 0 },
+  ]);
+
+  // Totales
+  const subtotalCalc = items.reduce((s, it) => {
+    const base = it.cantidad * it.precioUnitario;
+    return s + base - (base * (it.descuento / 100));
+  }, 0);
+  const igvCalc   = aplicaIgv ? subtotalCalc * 0.18 : 0;
+  const totalCalc = subtotalCalc + igvCalc;
+
+  function addItem() {
+    setItems(prev => [...prev, { descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0 }]);
+  }
+  function removeItem(idx: number) {
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  }
+  function updateItem(idx: number, field: keyof LineaItem, value: string | number) {
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it));
+  }
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => {
+      const dto: CreateFacturaDto = {
+        clienteId,
+        contratoId:      contratoId || undefined,
+        tipoComprobante,
+        periodoInicio,
+        periodoFin,
+        descripcion:     descripcion || undefined,
+        aplicaIgv,
+        fechaVencimiento: fechaVenc || undefined,
+        items: items.map(it => ({
+          descripcion:    it.descripcion,
+          cantidad:       it.cantidad,
+          precioUnitario: it.precioUnitario,
+          descuento:      it.descuento || undefined,
+        })),
+      };
+      return facturacionApi.create(dto);
+    },
+    onSuccess,
+    onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al crear factura', { type: 'error' }),
+  });
+
+  const fmtS = (n: number) => n.toFixed(2);
+  const inputCls = `w-full px-3 py-2 text-sm border border-input rounded-lg bg-background
+                    text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-3xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Receipt className="w-5 h-5 text-primary" />
+            <h2 className="text-base font-semibold">Nueva Factura de Servicios</h2>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          {/* Row 1: tipo + contrato */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Tipo comprobante</label>
+              <select value={tipoComprobante} onChange={e => setTipoComprobante(e.target.value as typeof tipoComprobante)} className={inputCls}>
+                {TIPO_COMPROBANTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Contrato</label>
+              <select value={contratoId} onChange={e => setContratoId(e.target.value)} className={inputCls}>
+                <option value="">— Sin contrato —</option>
+                {contratos.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.numeroContrato} {c.planNombre ? `· ${c.planNombre}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Row 2: período + vencimiento */}
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Período inicio</label>
+              <input type="date" value={periodoInicio} onChange={e => setPeriodoInicio(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Período fin</label>
+              <input type="date" value={periodoFin} onChange={e => setPeriodoFin(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Vencimiento</label>
+              <input type="date" value={fechaVenc} onChange={e => setFechaVenc(e.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Descripción (opcional)</label>
+            <input
+              type="text"
+              value={descripcion}
+              onChange={e => setDescripcion(e.target.value)}
+              placeholder="Descripción general de la factura"
+              className={inputCls}
+            />
+          </div>
+
+          {/* Items */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Conceptos</label>
+              <button onClick={addItem} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                <Plus className="w-3.5 h-3.5" /> Agregar línea
+              </button>
+            </div>
+
+            <div className="border border-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase">
+                    <th className="px-3 py-2 text-left w-[40%]">Descripción</th>
+                    <th className="px-3 py-2 text-center w-[10%]">Cant.</th>
+                    <th className="px-3 py-2 text-right w-[15%]">P. Unit.</th>
+                    <th className="px-3 py-2 text-right w-[12%]">Desc. %</th>
+                    <th className="px-3 py-2 text-right w-[15%]">Subtotal</th>
+                    <th className="px-3 py-2 w-[8%]" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {items.map((it, idx) => {
+                    const base = it.cantidad * it.precioUnitario;
+                    const sub  = base - (base * (it.descuento / 100));
+                    return (
+                      <tr key={idx} className="bg-background hover:bg-muted/20 transition-colors">
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="text"
+                            value={it.descripcion}
+                            onChange={e => updateItem(idx, 'descripcion', e.target.value)}
+                            placeholder="Servicio / Concepto"
+                            className="w-full px-2 py-1 text-xs bg-transparent border border-border rounded
+                                       focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="number"
+                            value={it.cantidad}
+                            min={0.001}
+                            step={0.001}
+                            onChange={e => updateItem(idx, 'cantidad', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-xs text-center bg-transparent border border-border rounded
+                                       focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="number"
+                            value={it.precioUnitario}
+                            min={0}
+                            step={0.01}
+                            onChange={e => updateItem(idx, 'precioUnitario', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded
+                                       focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="number"
+                            value={it.descuento}
+                            min={0}
+                            max={100}
+                            step={0.1}
+                            onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded
+                                       focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </td>
+                        <td className="px-3 py-1.5 text-right text-xs font-semibold text-foreground">
+                          {fmtS(sub)}
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          {items.length > 1 && (
+                            <button onClick={() => removeItem(idx)} className="text-muted-foreground hover:text-destructive transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Totales + IGV */}
+          <div className="flex items-end justify-between gap-6">
+            {/* IGV toggle */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <div
+                onClick={() => setAplicaIgv(v => !v)}
+                className={cn(
+                  'relative w-9 h-5 rounded-full transition-colors',
+                  aplicaIgv ? 'bg-primary' : 'bg-muted',
+                )}
+              >
+                <div className={cn(
+                  'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                  aplicaIgv ? 'translate-x-4' : 'translate-x-0.5',
+                )} />
+              </div>
+              <span className="text-sm text-muted-foreground">Aplica IGV 18%</span>
+            </label>
+
+            {/* Totals */}
+            <div className="text-right space-y-1 min-w-[200px]">
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Subtotal</span>
+                <span>S/. {fmtS(subtotalCalc)}</span>
+              </div>
+              {aplicaIgv && (
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>IGV (18%)</span>
+                  <span>S/. {fmtS(igvCalc)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-base font-bold text-foreground border-t border-border pt-1">
+                <span>Total</span>
+                <span className="text-primary">S/. {fmtS(totalCalc)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/20">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg
+                       hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={isPending || items.some(it => !it.descripcion || it.precioUnitario <= 0)}
+            onClick={() => mutate()}
+            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg text-white
+                       bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isPending
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <FileText className="w-4 h-4" />}
+            Crear Factura
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TabEstadisticas ───────────────────────────────────────────
+interface Sesion {
+  num:          number;
+  conectado:    string;
+  desconectado: string;
+  tiempo:       string;
+  descarga:     string;
+  subida:       string;
+  ipv4:         string;
+  mac:          string;
+  ipRouter:     string;
+}
+
+function fmtBytes(mb: number): string {
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GiB`;
+  return `${mb.toFixed(1)} MiB`;
+}
+
+function TabEstadisticas({
+  clienteId, contratos,
+}: { clienteId: string; contratos: Contrato[] }) {
+  const [servicio,   setServicio]   = useState('todos');
+  const [frecuencia, setFrecuencia] = useState('diario');
+
+  const hoy   = new Date();
+  const d15   = new Date(); d15.setDate(hoy.getDate() - 15);
+  const [desde, setDesde] = useState(d15.toISOString().split('T')[0]);
+  const [hasta, setHasta] = useState(hoy.toISOString().split('T')[0]);
+
+  // Sin endpoint RADIUS aún — datos vacíos
+  const sesiones: Sesion[] = [];
+  const chartData: { fecha: string; descarga: number; subida: number }[] = [];
+  const resumen = { sesiones: 0, tiempo: '00:00:00', descarga: '0 MiB', subida: '0 MiB' };
+
+  const [buscar, setBuscar] = useState('');
+  const filtradas = sesiones.filter(
+    (s) => !buscar || s.ipv4.includes(buscar) || s.mac.toLowerCase().includes(buscar.toLowerCase()),
+  );
+
+  return (
+    <div className="p-4 space-y-4">
+
+      {/* ── Filtros ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Servicio</span>
+          <div className="relative">
+            <select
+              value={servicio}
+              onChange={(e) => setServicio(e.target.value)}
+              className="appearance-none text-xs bg-background border border-input rounded-lg
+                         pl-3 pr-8 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="todos">Todos los servicios</option>
+              {contratos.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {(c as any).numeroContrato ?? (c as any).planNombre ?? c.id.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+          </div>
+        </div>
+
+        <div className="relative">
+          <select
+            value={frecuencia}
+            onChange={(e) => setFrecuencia(e.target.value)}
+            className="appearance-none text-xs bg-background border border-input rounded-lg
+                       pl-3 pr-8 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="diario">Gráfico diario</option>
+            <option value="semanal">Gráfico semanal</option>
+            <option value="mensual">Gráfico mensual</option>
+          </select>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          <input
+            type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+            className="text-xs bg-background border border-input rounded-lg px-3 py-1.5
+                       focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <span className="text-xs text-muted-foreground">al</span>
+          <input
+            type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+            className="text-xs bg-background border border-input rounded-lg px-3 py-1.5
+                       focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+      </div>
+
+      {/* ── Resumen + Gráfico ────────────────────────────────── */}
+      <div className="grid lg:grid-cols-[240px_1fr] gap-4">
+
+        {/* Resumen */}
+        <div className="border border-border rounded-xl p-4 flex flex-col gap-3">
+          <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <BarChart2 className="w-3.5 h-3.5 text-primary" /> Resumen
+          </h3>
+          <div className="flex-1 space-y-0">
+            {[
+              { label: 'Sesiones',  value: resumen.sesiones  },
+              { label: 'Tiempo',    value: resumen.tiempo    },
+              { label: 'Descarga',  value: resumen.descarga  },
+              { label: 'Subida',    value: resumen.subida    },
+            ].map(({ label, value }) => (
+              <div key={label}
+                className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                <span className="text-xs text-muted-foreground">{label}</span>
+                <span className="text-xs font-semibold text-foreground">{String(value)}</span>
+              </div>
+            ))}
+          </div>
+          <button className="w-full py-2 text-xs rounded-lg font-medium
+                             bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+            + Sitios visitados Hoy
+          </button>
+        </div>
+
+        {/* Gráfico */}
+        <div className="border border-border rounded-xl p-4">
+          <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5 mb-3">
+            <BarChart2 className="w-3.5 h-3.5 text-primary" /> Gráfico
+          </h3>
+          {chartData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[200px] text-center gap-2">
+              <BarChart2 className="w-10 h-10 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground font-medium">Sin datos de tráfico</p>
+              <p className="text-[11px] text-muted-foreground/60">Requiere integración con RADIUS/AAA</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={chartData} barSize={10} barGap={1} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="fecha" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
+                <YAxis
+                  tick={{ fontSize: 9 }} tickLine={false} axisLine={false}
+                  tickFormatter={(v) => v >= 1 ? `${v}GB` : `${(v * 1024).toFixed(0)}MB`}
+                />
+                <Tooltip
+                  contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                  formatter={(v: number, name: string) => [
+                    fmtBytes(v * 1024),
+                    name === 'descarga' ? 'DOWN' : 'UP',
+                  ]}
+                />
+                <Bar dataKey="descarga" fill="#3b82f6" radius={[2, 2, 0, 0]} name="DOWN" />
+                <Bar dataKey="subida"   fill="#10b981" radius={[2, 2, 0, 0]} name="UP"   />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ── Tabla de sesiones ────────────────────────────────── */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        {/* Toolbar */}
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-muted/10">
+          <span className="text-xs font-bold text-muted-foreground bg-muted px-2.5 py-1 rounded-lg min-w-[2rem] text-center">
+            {filtradas.length}
+          </span>
+          <div className="ml-auto relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              value={buscar}
+              onChange={(e) => setBuscar(e.target.value)}
+              placeholder="Buscar..."
+              className="pl-8 pr-3 py-1.5 text-xs bg-background border border-input rounded-lg w-44
+                         focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                {['#', 'CONECTADO', 'DESCONECTADO', 'TIEMPO', 'DESCARGA', 'SUBIDA', 'IPV4', 'MAC', 'IP ROUTER'].map((h) => (
+                  <th key={h}
+                    className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-3 py-14 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <Monitor className="w-8 h-8 text-muted-foreground" />
+                      <p className="text-xs font-semibold text-muted-foreground">
+                        Sin sesiones registradas
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/60">
+                        Requiere integración con RADIUS/AAA
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtradas.map((s) => (
+                  <tr key={s.num} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                    <td className="px-3 py-2 text-muted-foreground">{s.num}</td>
+                    <td className="px-3 py-2 font-mono text-foreground whitespace-nowrap">{s.conectado}</td>
+                    <td className="px-3 py-2 font-mono text-muted-foreground whitespace-nowrap">{s.desconectado || '—'}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{s.tiempo}</td>
+                    <td className="px-3 py-2 text-blue-600 dark:text-blue-400 font-semibold">{s.descarga}</td>
+                    <td className="px-3 py-2 text-emerald-600 dark:text-emerald-400 font-semibold">{s.subida}</td>
+                    <td className="px-3 py-2 font-mono text-muted-foreground">{s.ipv4}</td>
+                    <td className="px-3 py-2 font-mono text-muted-foreground text-[10px]">{s.mac}</td>
+                    <td className="px-3 py-2 font-mono text-muted-foreground">{s.ipRouter}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-4 py-2.5 border-t border-border text-xs text-muted-foreground">
+          Mostrando {filtradas.length} de {sesiones.length} registros
+        </div>
+      </div>
     </div>
   );
 }
