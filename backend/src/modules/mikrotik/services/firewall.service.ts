@@ -196,13 +196,11 @@ export class FirewallService {
       const existing = await checkApi.write('/ip/firewall/filter/print', [`?comment=${comment}`]);
       ruleExists = existing.length > 0;
     } catch (err: any) {
-      if (err?.errno !== 'UNKNOWNREPLY') {
-        try { await checkApi.close(); } catch { /* ignorar */ }
-        throw err;
-      }
+      if (err?.errno !== 'UNKNOWNREPLY') throw err;
       // !empty = regla no existe
     } finally {
-      try { await checkApi.close(); } catch { /* ignorar */ }
+      // fire-and-forget: no await para evitar bloqueo si socket queda corrupto tras !empty
+      checkApi.close().catch(() => {});
     }
 
     if (ruleExists) {
@@ -222,7 +220,7 @@ export class FirewallService {
       ]);
       this.logger.warn(`Regla '${comment}' inyectada en ${creds.ip}`);
     } finally {
-      try { await addApi.close(); } catch { /* ignorar */ }
+      addApi.close().catch(() => {});
     }
   }
 
