@@ -209,9 +209,14 @@ export class FirewallService {
       position?: 'top';
     },
   ): Promise<void> {
-    const existing = await api.write('/ip/firewall/filter/print', [
-      `?comment=${params.comment}`,
-    ]);
+    // RouterOS v7 devuelve !empty cuando no hay coincidencias → node-routeros lanza UNKNOWNREPLY
+    let existing: any[] = [];
+    try {
+      existing = await api.write('/ip/firewall/filter/print', [`?comment=${params.comment}`]);
+    } catch (err: any) {
+      if (err?.errno !== 'UNKNOWNREPLY') throw err;
+      // !empty = sin resultados, continuar
+    }
     if (existing.length > 0) return;
 
     const args = [
