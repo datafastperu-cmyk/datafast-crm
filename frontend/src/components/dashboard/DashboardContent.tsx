@@ -11,8 +11,10 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts';
 
+import { useQuery }         from '@tanstack/react-query';
 import { useMonitoreo }    from '@/hooks/useMonitoreo';
 import { cn, formatBps }   from '@/lib/utils';
+import api                 from '@/lib/api';
 import {
   mockDashboardStats, mockTrafico24h, mockTrafico7d,
   mockNodos, mockPagos, mockAlertas, mockTickets,
@@ -235,13 +237,32 @@ export function DashboardContent() {
 
   const { conectado, alertas } = useMonitoreo({ onDashboard: setWsStats });
 
-  const stats = mockDashboardStats;
+  const { data: liveStats } = useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn:  async () => { const res = await api.get('/dashboard/stats'); return res.data.data; },
+    refetchInterval: 60_000,
+    staleTime:       30_000,
+  });
+
+  const stats = {
+    clientes:    liveStats?.clientes    ?? mockDashboardStats.clientes,
+    contratos:   liveStats?.contratos   ?? mockDashboardStats.contratos,
+    facturacion: {
+      cobradoHoy:       liveStats?.facturacion.cobradoHoy       ?? mockDashboardStats.facturacion.cobradoHoy,
+      cobradoMes:       liveStats?.facturacion.cobradoMes       ?? mockDashboardStats.facturacion.cobradoMes,
+      cuentasPorCobrar: liveStats?.facturacion.cuentasPorCobrar ?? 0,
+      tasaCobranza:     liveStats?.facturacion.tasaCobranza      ?? 0,
+    },
+    nodos:       liveStats?.nodos       ?? mockDashboardStats.nodos,
+    alertas:     liveStats?.alertas     ?? mockDashboardStats.alertas,
+    tickets:     mockDashboardStats.tickets,
+  };
 
   const nodesOnline  = wsStats?.online  ?? stats.nodos.online;
   const nodesOffline = wsStats?.offline ?? stats.nodos.offline;
   const nodesTotal   = wsStats?.total   ?? stats.nodos.total;
 
-  const metaPct = Math.round((stats.facturacion.cobradoMes / stats.facturacion.meta) * 100);
+  const metaPct = stats.facturacion.tasaCobranza || 0;
 
   return (
     <div className="space-y-5">
@@ -282,9 +303,9 @@ export function DashboardContent() {
         <StatCard
           label="Cobrado este mes"
           value={`S/ ${(stats.facturacion.cobradoMes / 1000).toFixed(1)}K`}
-          sub={`Meta: S/ ${(stats.facturacion.meta / 1000).toFixed(0)}K · ${metaPct}% cumplido`}
+          sub={`Por cobrar: S/ ${(stats.facturacion.cuentasPorCobrar / 1000).toFixed(1)}K · ${metaPct}% cobranza`}
           icon={TrendingUp} color="cyan"
-          trend={{ value: metaPct, label: '% de meta', up: metaPct >= 80 }}
+          trend={{ value: metaPct, label: '% cobrado', up: metaPct >= 80 }}
         />
         <StatCard
           label="Nodos en línea"

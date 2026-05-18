@@ -138,4 +138,9 @@ export const mikrotikApi = {
     const { data } = await api.post(`/mikrotik/routers/${id}/amarre-ip-mac`, dto);
     return data.data;
   },
+
+  getMorosos: async (id: string): Promise<Array<{ ip: string; comment: string; addedAt: string }>> => {
+    const { data } = await api.get(`/mikrotik/routers/${id}/morosos`);
+    return data.data;
+  },
 };

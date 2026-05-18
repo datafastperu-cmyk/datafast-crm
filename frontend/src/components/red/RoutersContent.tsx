@@ -7,6 +7,7 @@ import {
   RefreshCw, CheckCircle2, XCircle, Loader2, AlertTriangle,
   Lock, Shield, ShieldOff, Network, Terminal, Radio,
   Key, Settings, ChevronRight, Activity, Cpu, MemoryStick,
+  Copy, Check, Users, FileCode,
 } from 'lucide-react';
 
 import { mikrotikApi } from '@/lib/api/mikrotik';
@@ -63,6 +64,188 @@ const VERSION_OPTS = [
 const inputCls = 'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary/50 transition-colors';
 const labelCls = 'text-xs text-gray-400 mb-1 block';
 const sectionHdr = 'text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2';
+
+function genPassword(len = 16): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
+  return Array.from(crypto.getRandomValues(new Uint8Array(len)))
+    .map((b) => chars[b % chars.length]).join('');
+}
+
+// ─── Script de Conexión Dialog ────────────────────────────────────
+
+function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose: () => void }) {
+  const [apiPass] = useState(genPassword);
+  const [copied, setCopied] = useState(false);
+
+  const apiUser = router.usuario || 'datafast-crm';
+  const apiPort = router.puertoApi ?? 8728;
+
+  const script = [
+    `# DATAFAST ISP Manager — Script de configuración`,
+    `# Pega esto en: WinBox → Nueva Terminal`,
+    ``,
+    `# 1. Habilitar servicio API`,
+    `/ip/service/set api disabled=no port=${apiPort}`,
+    ``,
+    `# 2. Crear grupo con permisos para el CRM`,
+    `/user/group/add name=datafast-crm policy=api,read,write,!local,!telnet,!ssh,!ftp,!reboot,!password,!web,!winbox,!sniff,!sensitive comment="DATAFAST ISP Manager"`,
+    ``,
+    `# 3. Crear usuario API`,
+    `/user/add name="${apiUser}" password="${apiPass}" group=datafast-crm comment="DATAFAST CRM User"`,
+    ``,
+    `# 4. (Recomendado) Regla firewall — solo el servidor CRM puede usar la API`,
+    `# Reemplaza IP-DEL-SERVIDOR con la IP pública/VPN de tu servidor DataFast:`,
+    `# /ip/firewall/filter/add chain=input src-address=IP-DEL-SERVIDOR/32 protocol=tcp dst-port=${apiPort} action=accept comment="DATAFAST: Allow CRM" place-before=0`,
+  ].join('\n');
+
+  const doCopy = async () => {
+    await navigator.clipboard.writeText(script);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+              <FileCode className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-white text-base">Script de Conexión MikroTik</h2>
+              <p className="text-xs text-gray-500">{router.nombre} — {router.ipGestion}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300 flex gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium mb-1">Instrucciones de uso</p>
+              <p className="text-amber-300/70">
+                1. Copia el script y pégalo en <strong>WinBox → Nueva Terminal</strong> del router.<br />
+                2. Guarda la contraseña generada — la necesitarás al registrar el router en el sistema.<br />
+                3. Usa el usuario <code className="bg-black/30 px-1 rounded">{apiUser}</code> y la contraseña mostrada al registrar.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-black/40 border border-white/10 rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/3">
+              <span className="text-xs text-gray-400 font-mono">RouterOS Terminal</span>
+              <button onClick={doCopy}
+                className={cn(
+                  'flex items-center gap-1.5 text-xs px-3 py-1 rounded-md transition-colors',
+                  copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-gray-300 hover:bg-white/15'
+                )}
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? 'Copiado' : 'Copiar script'}
+              </button>
+            </div>
+            <pre className="text-xs text-green-400 font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed">
+              {script}
+            </pre>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="bg-white/3 border border-white/10 rounded-lg p-3">
+              <p className="text-gray-500 mb-1">Usuario API</p>
+              <p className="text-white font-mono font-medium">{apiUser}</p>
+            </div>
+            <div className="bg-white/3 border border-white/10 rounded-lg p-3">
+              <p className="text-gray-500 mb-1">Contraseña generada</p>
+              <p className="text-primary font-mono font-medium break-all">{apiPass}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-white/10 flex justify-end">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sincronizar Morosos Dialog ───────────────────────────────────
+
+function MorososDialog({ router, onClose }: { router: RouterType; onClose: () => void }) {
+  const { data: morosos = [], isLoading } = useQuery({
+    queryKey: ['morosos', router.id],
+    queryFn:  () => mikrotikApi.getMorosos(router.id),
+    staleTime: 30_000,
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl w-full max-w-lg flex flex-col shadow-2xl max-h-[80vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center">
+              <Users className="w-4 h-4 text-red-400" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-white text-base">Morosos en MikroTik</h2>
+              <p className="text-xs text-gray-500">{router.nombre} — address-list <code className="text-gray-400">morosos_datafast</code></p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : morosos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-32 text-gray-500 text-center">
+              <CheckCircle2 className="w-8 h-8 mb-2 text-emerald-400 opacity-60" />
+              <p className="text-sm">Sin IPs en address-list morosos</p>
+              <p className="text-xs mt-1 opacity-60">Todos los clientes tienen acceso libre en este router</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs text-gray-500 px-2 mb-2">
+                <span>{morosos.length} IP{morosos.length !== 1 ? 's' : ''} bloqueada{morosos.length !== 1 ? 's' : ''}</span>
+                <span className="text-red-400 font-medium">morosos_datafast</span>
+              </div>
+              {morosos.map((m, i) => (
+                <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/3 border border-white/8 hover:bg-white/5 transition-colors">
+                  <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-mono text-white">{m.ip}</p>
+                    {m.comment && <p className="text-xs text-gray-500 truncate">{m.comment}</p>}
+                  </div>
+                  {m.addedAt && (
+                    <p className="text-xs text-gray-600 flex-shrink-0">{m.addedAt}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-white/10 flex justify-end">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Modal Agregar / Editar Router ────────────────────────────────
 
@@ -731,10 +914,12 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
 export function RoutersContent() {
   const { toast }   = useToast();
   const queryClient = useQueryClient();
-  const [showWizard, setShowWizard] = useState(false);
-  const [showModal, setShowModal]   = useState(false);
-  const [editRouter, setEditRouter] = useState<RouterType | null>(null);
-  const [testingId, setTestingId]   = useState<string | null>(null);
+  const [showWizard, setShowWizard]   = useState(false);
+  const [showModal, setShowModal]     = useState(false);
+  const [editRouter, setEditRouter]   = useState<RouterType | null>(null);
+  const [testingId, setTestingId]     = useState<string | null>(null);
+  const [scriptRouter, setScriptRouter]   = useState<RouterType | null>(null);
+  const [morososRouter, setMorososRouter] = useState<RouterType | null>(null);
 
   const { data: routers = [], isLoading } = useQuery<RouterType[]>({
     queryKey:        ['routers'],
@@ -903,6 +1088,16 @@ export function RoutersContent() {
                             : <RefreshCw className="w-4 h-4" />
                           }
                         </button>
+                        <button onClick={() => setScriptRouter(r)} title="Script de conexión MikroTik"
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-cyan-400 transition-colors"
+                        >
+                          <Terminal className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setMorososRouter(r)} title="Ver morosos en MikroTik"
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-red-400 transition-colors"
+                        >
+                          <Users className="w-4 h-4" />
+                        </button>
                         <button onClick={() => openEdit(r)} title="Editar"
                           className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-blue-400 transition-colors"
                         >
@@ -951,6 +1146,20 @@ export function RoutersContent() {
           router={editRouter}
           onClose={() => setShowModal(false)}
           onSaved={onSaved}
+        />
+      )}
+
+      {scriptRouter && (
+        <ScriptConexionDialog
+          router={scriptRouter}
+          onClose={() => setScriptRouter(null)}
+        />
+      )}
+
+      {morososRouter && (
+        <MorososDialog
+          router={morososRouter}
+          onClose={() => setMorososRouter(null)}
         />
       )}
 
