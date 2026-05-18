@@ -94,7 +94,7 @@ export const clientesApi = {
   },
 
   getStats: async (): Promise<Record<string, number>> => {
-    const res = await api.get<ApiRespuesta>('/clientes/stats');
+    const res = await api.get<ApiRespuesta>('/clientes/resumen');
     return res.data.data;
   },
 

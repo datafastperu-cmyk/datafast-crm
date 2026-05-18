@@ -14,7 +14,7 @@ import { ClientesTable }      from './ClientesTable';
 import { useToast }           from '@/components/ui/toaster';
 import { useDebounce }        from '@/hooks/useDebounce';
 import { cn }                 from '@/lib/utils';
-import { MOCK_CLIENTES, MOCK_STATS } from '@/data/clientes.mock';
+import { MOCK_STATS } from '@/data/clientes.mock';
 
 const ESTADO_TABS = [
   { key: '',               label: 'Todos',      color: 'text-foreground' },
@@ -114,7 +114,7 @@ export function ClientesContent() {
     onError:   () => toast('Error al exportar', { type: 'error' }),
   });
 
-  const clientes  = (data?.data?.length ? data.data : MOCK_CLIENTES) as any[];
+  const clientes  = (data?.data ?? []) as any[];
   const meta      = data?.meta;
   const statsData = stats ?? MOCK_STATS;
 
