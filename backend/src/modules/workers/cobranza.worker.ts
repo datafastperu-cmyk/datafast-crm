@@ -35,7 +35,43 @@ export class CobranzaScheduler {
   constructor(
     @InjectQueue(QUEUES.COBRANZA) private readonly queue: Queue,
     @InjectDataSource()           private readonly ds: DataSource,
+    private readonly facturacionSvc: FacturacionService,
   ) {}
+
+  // ─── GENERACIÓN AUTOMÁTICA DE FACTURAS (05:00 AM Lima) ───
+  // Por cada empresa activa, genera facturas para los contratos
+  // cuyo dia_facturacion coincide con el día de hoy.
+  @Cron('0 5 * * *', { timeZone: 'America/Lima', name: 'auto-facturacion-diaria' })
+  async generarFacturasDiarias(): Promise<void> {
+    const hoy  = new Date();
+    const dia  = hoy.getDate();
+    const mes  = hoy.getMonth() + 1;
+    const anio = hoy.getFullYear();
+
+    this.logger.log(`[CRON] Auto-facturación día ${dia}/${mes}/${anio}`);
+
+    const empresas: { id: string }[] = await this.ds.query(
+      `SELECT id FROM empresas WHERE deleted_at IS NULL`,
+    );
+
+    let totalExitosas = 0;
+    let totalErrores  = 0;
+
+    for (const emp of empresas) {
+      try {
+        const r = await this.facturacionSvc.generarFacturasDelDia(emp.id, dia, mes, anio);
+        totalExitosas += r.exitosas;
+        totalErrores  += r.errores;
+      } catch (err) {
+        totalErrores++;
+        this.logger.error(`[CRON] Error auto-facturación empresa ${emp.id}: ${err.message}`);
+      }
+    }
+
+    this.logger.log(
+      `[CRON] Auto-facturación completada: ${totalExitosas} facturas | ${totalErrores} errores | ${empresas.length} empresas`,
+    );
+  }
 
   // ─── DETECCIÓN DIARIA DE MOROSOS (06:00 AM Lima) ─────────
   // Busca contratos activos con deuda y los suspende si superan

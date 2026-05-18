@@ -113,6 +113,7 @@ export class FacturaRepository {
     mes: number,
     anio: number,
     soloContratoId?: string,
+    soloDia?: number,
   ): Promise<any[]> {
     let query = `
       SELECT
@@ -155,6 +156,11 @@ export class FacturaRepository {
     if (soloContratoId) {
       query += ` AND co.id = $${params.length + 1}`;
       params.push(soloContratoId);
+    }
+
+    if (soloDia !== undefined) {
+      query += ` AND co.dia_facturacion = $${params.length + 1}`;
+      params.push(soloDia);
     }
 
     query += ' ORDER BY co.dia_facturacion, cl.nombre_completo';

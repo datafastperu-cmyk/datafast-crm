@@ -254,6 +254,110 @@ export class FacturacionService {
   }
 
   // ────────────────────────────────────────────────────────────
+  // GENERACIÓN AUTOMÁTICA DIARIA (llamado desde CobranzaScheduler)
+  // Genera facturas para los contratos cuyo dia_facturacion = dia
+  // ────────────────────────────────────────────────────────────
+  async generarFacturasDelDia(
+    empresaId: string,
+    dia: number,
+    mes: number,
+    anio: number,
+  ): Promise<ResultadoGeneracion> {
+    const contratos = await this.facturaRepo.findContratosParaFacturar(
+      empresaId, mes, anio, undefined, dia,
+    );
+
+    if (!contratos.length) {
+      return { total: 0, exitosas: 0, omitidas: 0, errores: 0, detalles: [] };
+    }
+
+    const resultado: ResultadoGeneracion = {
+      total: contratos.length, exitosas: 0, omitidas: 0, errores: 0, detalles: [],
+    };
+    const igvRate    = parseFloat(contratos[0]?.igv_rate || '0.18');
+    const diasGracia = parseInt(contratos[0]?.dias_gracia || '5', 10);
+
+    for (const contrato of contratos) {
+      try {
+        const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
+        const periodoFin    = this.ultimoDiaMes(anio, mes);
+
+        if (await this.facturaRepo.existeFacturaPeriodo(contrato.contrato_id, periodoInicio, periodoFin)) {
+          resultado.omitidas++;
+          resultado.detalles.push({
+            contratoId: contrato.contrato_id, numeroContrato: contrato.numero_contrato,
+            resultado: 'omitida — ya facturado',
+          });
+          continue;
+        }
+
+        const precioBase = parseFloat(contrato.precio || '0');
+        const aplicaIgv  = contrato.aplica_igv === true || contrato.aplica_igv === 'true';
+        const { subtotal, igv, total } = this.calcularMontosDesdeBase(precioBase, 0, aplicaIgv, igvRate);
+        const { serie, correlativo }   = await this.obtenerSerieCorrelativo(empresaId, TipoComprobante.BOLETA);
+
+        const diaVenc = Math.min(dia + diasGracia, 28);
+        const fechaVencimiento = `${anio}-${String(mes).padStart(2, '0')}-${String(diaVenc).padStart(2, '0')}`;
+
+        const factura = this.facturaRepo.create({
+          empresaId,
+          clienteId:               contrato.cliente_id,
+          contratoId:              contrato.contrato_id,
+          tipoComprobante:         TipoComprobante.BOLETA,
+          serie, correlativo, periodoInicio, periodoFin,
+          descripcion:             `Servicio de internet ${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
+          subtotal, descuento: 0, igv, total, montoPagado: 0,
+          items:                   this.buildItemsDesdeContrato(contrato, mes, anio),
+          estado:                  EstadoFactura.EMITIDA,
+          fechaEmision:            new Date().toISOString().split('T')[0],
+          fechaVencimiento, moneda: 'PEN',
+          generadaAutomaticamente: true,
+        });
+
+        const saved = await this.facturaRepo.save(factura);
+
+        this.generarPdfAsync(saved, empresaId, {
+          razonSocial:     contrato.empresa_nombre,
+          ruc:             contrato.empresa_ruc,
+          direccionFiscal: contrato.empresa_direccion,
+        }, {
+          nombreCompleto:  contrato.cliente_nombre,
+          tipoDocumento:   contrato.tipo_documento,
+          numeroDocumento: contrato.cliente_documento,
+          direccion:       contrato.cliente_direccion,
+          email:           contrato.cliente_email,
+          telefono:        contrato.cliente_telefono,
+        });
+
+        resultado.exitosas++;
+        resultado.detalles.push({
+          contratoId: contrato.contrato_id, numeroContrato: contrato.numero_contrato,
+          resultado: `generada: ${serie}-${correlativo} | S/ ${total.toFixed(2)}`,
+        });
+      } catch (err) {
+        resultado.errores++;
+        resultado.detalles.push({
+          contratoId: contrato.contrato_id, numeroContrato: contrato.numero_contrato,
+          resultado: 'error', error: err.message,
+        });
+        this.logger.error(`[AUTO] Error contrato ${contrato.numero_contrato}: ${err.message}`);
+      }
+    }
+
+    await this.auditoria.log({
+      empresaId,
+      accion:      'AUTO_GENERATE_DAILY',
+      modulo:      'facturacion',
+      descripcion: `Auto-generación día ${dia}/${mes}/${anio}: ${resultado.exitosas} exitosas, ${resultado.omitidas} omitidas, ${resultado.errores} errores`,
+    });
+
+    this.logger.log(
+      `[AUTO] Empresa ${empresaId} día ${dia}: ${resultado.exitosas}/${resultado.total} facturas generadas`,
+    );
+    return resultado;
+  }
+
+  // ────────────────────────────────────────────────────────────
   // ANULAR FACTURA (con opción de nota de crédito automática)
   // ────────────────────────────────────────────────────────────
   async anular(
