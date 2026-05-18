@@ -141,16 +141,23 @@ export class FirewallService {
   // ────────────────────────────────────────────────────────────
   async configurarReglasControl(creds: RouterCredentials): Promise<void> {
     await this.pool.execute(creds, async (api) => {
-      // Regla 1: Bloquear morosos — drop total
+      // Obtener todas las reglas una sola vez y filtrar en JS para evitar el bug
+      // de RouterOS v7 donde ?comment=X devuelve !empty (no captureable con try/catch)
+      let allRules: any[] = [];
+      try {
+        allRules = await api.write('/ip/firewall/filter/print');
+      } catch (err: any) {
+        if (err?.errno !== 'UNKNOWNREPLY') throw err;
+        // !empty = no hay reglas todavía
+      }
+
       await this.agregarReglaFirewallSiNoExiste(api, {
         chain:  'forward',
         srcList: ADDRESS_LIST_MOROSOS,
         action: 'drop',
         comment: 'DATAFAST: Bloquear morosos',
-      });
+      }, allRules);
 
-      // Regla 2: Morosos pueden acceder al portal de pago (DNS + HTTP portal)
-      // Nota: esta regla debe ir ANTES de la de drop
       await this.agregarReglaFirewallSiNoExiste(api, {
         chain:   'forward',
         srcList: ADDRESS_LIST_MOROSOS,
@@ -159,9 +166,8 @@ export class FirewallService {
         action:  'accept',
         comment: 'DATAFAST: Morosos portal pago',
         position: 'top',
-      });
+      }, allRules);
 
-      // Regla 3: Prorroga — acceso limitado (solo web)
       await this.agregarReglaFirewallSiNoExiste(api, {
         chain:   'forward',
         srcList: ADDRESS_LIST_PRORROGA,
@@ -169,37 +175,37 @@ export class FirewallService {
         proto:   'tcp',
         action:  'accept',
         comment: 'DATAFAST: Prorroga acceso web',
-      });
+      }, allRules);
 
       await this.agregarReglaFirewallSiNoExiste(api, {
         chain:   'forward',
         srcList: ADDRESS_LIST_PRORROGA,
         action:  'drop',
         comment: 'DATAFAST: Prorroga bloquear resto',
-      });
+      }, allRules);
 
       this.logger.log(`Reglas de control configuradas en ${creds.ip}`);
     });
   }
 
   // ── Inyectar regla principal de bloqueo morosos (al registrar router) ─
-  // Usa conexiones directas (no del pool) porque RouterOS v7 responde con !empty
-  // al print sin coincidencias, lo que cierra el canal y corrompe la conexión pooled.
-  // Dos conexiones separadas: una para el check (descartable), otra para el add.
+  // NOTA: NO usar '?comment=X' como filtro en el print — RouterOS v7 responde !empty
+  // cuando no hay coincidencias, y node-routeros lanza UNKNOWNREPLY en un event-listener
+  // (no como Promise rejection), por lo que try/catch no lo captura y la promesa queda
+  // colgada indefinidamente. Fix: obtener TODAS las reglas sin filtro y buscar en JS.
   async inyectarReglaBloqueoMorosos(creds: RouterCredentials): Promise<void> {
     const comment = 'Datafast-Bloquear Morosos';
 
-    // Conexión 1: verificar si la regla ya existe
+    // Conexión 1: verificar si la regla ya existe (sin filtro en RouterOS)
     let ruleExists = false;
     const checkApi = await this.pool.connectDirect(creds);
     try {
-      const existing = await checkApi.write('/ip/firewall/filter/print', [`?comment=${comment}`]);
-      ruleExists = existing.length > 0;
+      const allRules = await checkApi.write('/ip/firewall/filter/print');
+      ruleExists = allRules.some((r: any) => r.comment === comment);
     } catch (err: any) {
       if (err?.errno !== 'UNKNOWNREPLY') throw err;
-      // !empty = regla no existe
+      // !empty = no existe ninguna regla → ruleExists queda false
     } finally {
-      // fire-and-forget: no await para evitar bloqueo si socket queda corrupto tras !empty
       checkApi.close().catch(() => {});
     }
 
@@ -218,14 +224,14 @@ export class FirewallService {
         `=action=drop`,
         `=comment=${comment}`,
       ]);
-      this.logger.warn(`Regla '${comment}' inyectada en ${creds.ip}`);
+      this.logger.log(`Regla '${comment}' inyectada en ${creds.ip}`);
     } finally {
       addApi.close().catch(() => {});
     }
   }
 
   private async agregarReglaFirewallSiNoExiste(
-    api:    any,
+    api:       any,
     params: {
       chain:    string;
       srcList?: string;
@@ -236,16 +242,11 @@ export class FirewallService {
       comment:  string;
       position?: 'top';
     },
+    existingRules: any[],
   ): Promise<void> {
-    // RouterOS v7 devuelve !empty cuando no hay coincidencias → node-routeros lanza UNKNOWNREPLY
-    let existing: any[] = [];
-    try {
-      existing = await api.write('/ip/firewall/filter/print', [`?comment=${params.comment}`]);
-    } catch (err: any) {
-      if (err?.errno !== 'UNKNOWNREPLY') throw err;
-      // !empty = sin resultados, continuar
-    }
-    if (existing.length > 0) return;
+    // La búsqueda se hace en el array ya obtenido para evitar el bug de RouterOS v7
+    // donde ?comment=X devuelve !empty → lanza UNKNOWNREPLY en event-listener (no en Promise)
+    if (existingRules.some((r: any) => r.comment === params.comment)) return;
 
     const args = [
       `=chain=${params.chain}`,
@@ -258,7 +259,6 @@ export class FirewallService {
     ];
 
     if (params.position === 'top') {
-      // Insertar al principio de la cadena
       await api.write('/ip/firewall/filter/add', [...args, `=place-before=0`]);
     } else {
       await api.write('/ip/firewall/filter/add', args);
