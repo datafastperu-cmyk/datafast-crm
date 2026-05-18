@@ -648,7 +648,7 @@ export class MikrotikService {
   private detectarVersionAsync(router: Router): void {
     const creds: RouterCredentials = {
       id:              router.id,
-      ip:              router.ipGestion,
+      ip:              router.vpnIp || router.ipGestion,
       port:            router.usarSsl ? router.puertoApiSsl : router.puertoApi,
       user:            router.usuario,
       passwordCifrado: router.passwordCifrado,
@@ -662,6 +662,6 @@ export class MikrotikService {
         const rosVersion = version === 'v7' ? VersionRouterOS.V7 : VersionRouterOS.V6;
         return this.routerRepo.update(router.id, { versionRos: rosVersion });
       })
-      .catch((err) => this.logger.warn(`No se pudo detectar versión de ${router.ipGestion}: ${err.message}`));
+      .catch((err) => this.logger.warn(`No se pudo detectar versión de ${router.vpnIp || router.ipGestion}: ${err.message}`));
   }
 }
