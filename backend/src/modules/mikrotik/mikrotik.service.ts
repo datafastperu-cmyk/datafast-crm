@@ -85,6 +85,7 @@ export class MikrotikService {
         await this.routerRepo.update(existePorIp.id, updateFields);
         const updated = await this.findOne(existePorIp.id, user.empresaId);
         this.detectarVersionAsync(updated);
+        this.inyectarReglasMorososAsync(updated);
         await this.vpnSvc.vincularARouter(dto.ipGestion, user.empresaId, existePorIp.id);
         await this.auditoria.logCreate({
           empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
@@ -104,6 +105,7 @@ export class MikrotikService {
         await this.routerRepo.update(existePorVpnIp.id, updateFields);
         const updated = await this.findOne(existePorVpnIp.id, user.empresaId);
         this.detectarVersionAsync(updated);
+        this.inyectarReglasMorososAsync(updated);
         await this.vpnSvc.vincularARouter(dto.vpnIp, user.empresaId, existePorVpnIp.id);
         await this.auditoria.logCreate({
           empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
@@ -122,6 +124,7 @@ export class MikrotikService {
     });
     const saved = await this.routerRepo.save(router);
     this.detectarVersionAsync(saved);
+    this.inyectarReglasMorososAsync(saved);
 
     if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
       await this.vpnSvc.vincularARouter(dto.vpnIp ?? dto.ipGestion, user.empresaId, saved.id);
@@ -619,6 +622,26 @@ export class MikrotikService {
         resolve({ exitoso: false, mensaje: this._connectionErrorMsg(err.message) });
       });
     });
+  }
+
+  // ── Inyectar regla morosos de forma asíncrona ─────────────
+  private inyectarReglasMorososAsync(router: Router): void {
+    const ip   = router.vpnIp || router.ipGestion;
+    const port = router.usarSsl ? router.puertoApiSsl : router.puertoApi;
+    const creds: RouterCredentials = {
+      id:              router.id,
+      ip,
+      port,
+      user:            router.usuario,
+      passwordCifrado: router.passwordCifrado,
+      useSsl:          router.usarSsl,
+      timeoutSec:      15,
+      version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+    };
+
+    this.firewallSvc.inyectarReglaBloqueoMorosos(creds)
+      .then(() => this.logger.log(`Regla morosos aplicada: ${ip}`))
+      .catch((err) => this.logger.warn(`No se pudo aplicar regla morosos en ${ip}: ${err.message}`));
   }
 
   // ── Detectar versión RouterOS de forma asíncrona ──────────

@@ -182,11 +182,26 @@ export class FirewallService {
     });
   }
 
+  // ── Inyectar regla principal de bloqueo morosos (al registrar router) ─
+  async inyectarReglaBloqueoMorosos(creds: RouterCredentials): Promise<void> {
+    await this.pool.execute(creds, async (api) => {
+      await this.agregarReglaFirewallSiNoExiste(api, {
+        chain:   'forward',
+        srcList: ADDRESS_LIST_MOROSOS,
+        dstList: '!ips_permitidas_morosos',
+        action:  'drop',
+        comment: 'Datafast-Bloquear Morosos',
+      });
+      this.logger.log(`Regla bloqueo morosos inyectada en ${creds.ip}`);
+    });
+  }
+
   private async agregarReglaFirewallSiNoExiste(
     api:    any,
     params: {
       chain:    string;
       srcList?: string;
+      dstList?: string;
       dstPort?: string;
       proto?:   string;
       action:   string;
@@ -202,6 +217,7 @@ export class FirewallService {
     const args = [
       `=chain=${params.chain}`,
       ...(params.srcList ? [`=src-address-list=${params.srcList}`] : []),
+      ...(params.dstList ? [`=dst-address-list=${params.dstList}`] : []),
       ...(params.proto   ? [`=protocol=${params.proto}`]           : []),
       ...(params.dstPort ? [`=dst-port=${params.dstPort}`]         : []),
       `=action=${params.action}`,
