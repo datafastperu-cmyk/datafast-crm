@@ -59,9 +59,9 @@ const NAV: NavEntry[] = [
   },
 
   {
-    id: 'clientes', label: 'Clientes', icon: Users,
+    id: 'clientes', label: 'Abonados', icon: Users,
     items: [
-      { href: '/clientes',               label: 'Clientes',      icon: Users,     permiso: 'clientes:view' },
+      { href: '/clientes',               label: 'Abonados',      icon: Users,     permiso: 'clientes:view' },
       { href: '/contratos',              label: 'Contratos',     icon: Receipt,   permiso: 'clientes:view' },
       { href: '/clientes/mapa',          label: 'Mapa',          icon: MapPin,    permiso: 'clientes:view' },
       { href: '/clientes/instalaciones', label: 'Instalaciones', icon: Wrench,    permiso: 'clientes:view' },
