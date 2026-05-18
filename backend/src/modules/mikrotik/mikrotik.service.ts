@@ -135,7 +135,10 @@ export class MikrotikService {
       modulo: 'mikrotik', entidadId: saved.id,
       descripcion: `Router creado: ${dto.nombre} (${dto.ipGestion})`,
     });
-    return saved;
+
+    // Esperar que detectarVersionAsync actualice estado antes de responder
+    await new Promise(r => setTimeout(r, 3000));
+    return this.findOne(saved.id, user.empresaId);
   }
 
   async findAll(empresaId: string): Promise<Router[]> {
