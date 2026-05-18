@@ -40,6 +40,9 @@ frontend/build/
 logs/
 *.log
 log/
+# Excepción: rutas Next.js que se llaman "log"
+!frontend/src/**/log/
+!frontend/src/**/log/**
 
 # ── Uploads (no versionar archivos subidos por usuarios) ──────
 backend/uploads/
