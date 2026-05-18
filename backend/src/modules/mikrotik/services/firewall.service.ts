@@ -183,17 +183,47 @@ export class FirewallService {
   }
 
   // ── Inyectar regla principal de bloqueo morosos (al registrar router) ─
+  // Usa conexiones directas (no del pool) porque RouterOS v7 responde con !empty
+  // al print sin coincidencias, lo que cierra el canal y corrompe la conexión pooled.
+  // Dos conexiones separadas: una para el check (descartable), otra para el add.
   async inyectarReglaBloqueoMorosos(creds: RouterCredentials): Promise<void> {
-    await this.pool.execute(creds, async (api) => {
-      await this.agregarReglaFirewallSiNoExiste(api, {
-        chain:   'forward',
-        srcList: ADDRESS_LIST_MOROSOS,
-        dstList: '!ips_permitidas_morosos_datafast',
-        action:  'drop',
-        comment: 'Datafast-Bloquear Morosos',
-      });
-      this.logger.log(`Regla bloqueo morosos inyectada en ${creds.ip}`);
-    });
+    const comment = 'Datafast-Bloquear Morosos';
+
+    // Conexión 1: verificar si la regla ya existe
+    let ruleExists = false;
+    const checkApi = await this.pool.connectDirect(creds);
+    try {
+      const existing = await checkApi.write('/ip/firewall/filter/print', [`?comment=${comment}`]);
+      ruleExists = existing.length > 0;
+    } catch (err: any) {
+      if (err?.errno !== 'UNKNOWNREPLY') {
+        try { await checkApi.close(); } catch { /* ignorar */ }
+        throw err;
+      }
+      // !empty = regla no existe
+    } finally {
+      try { await checkApi.close(); } catch { /* ignorar */ }
+    }
+
+    if (ruleExists) {
+      this.logger.warn(`Regla '${comment}' ya existe en ${creds.ip}`);
+      return;
+    }
+
+    // Conexión 2: agregar la regla con conexión fresca
+    const addApi = await this.pool.connectDirect(creds);
+    try {
+      await addApi.write('/ip/firewall/filter/add', [
+        `=chain=forward`,
+        `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
+        `=dst-address-list=!ips_permitidas_morosos_datafast`,
+        `=action=drop`,
+        `=comment=${comment}`,
+      ]);
+      this.logger.warn(`Regla '${comment}' inyectada en ${creds.ip}`);
+    } finally {
+      try { await addApi.close(); } catch { /* ignorar */ }
+    }
   }
 
   private async agregarReglaFirewallSiNoExiste(

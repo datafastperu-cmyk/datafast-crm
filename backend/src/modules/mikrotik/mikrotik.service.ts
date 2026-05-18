@@ -660,8 +660,15 @@ export class MikrotikService {
     this.ifaceSvc.detectarVersion(creds)
       .then((version) => {
         const rosVersion = version === 'v7' ? VersionRouterOS.V7 : VersionRouterOS.V6;
-        return this.routerRepo.update(router.id, { versionRos: rosVersion });
+        return this.routerRepo.update(router.id, {
+          versionRos: rosVersion,
+          estado:     EstadoEquipo.ONLINE,
+          ultimoPing: new Date(),
+        });
       })
-      .catch((err) => this.logger.warn(`No se pudo detectar versión de ${router.vpnIp || router.ipGestion}: ${err.message}`));
+      .catch((err) => {
+        this.logger.warn(`No se pudo conectar a ${router.vpnIp || router.ipGestion}: ${err.message}`);
+        return this.routerRepo.update(router.id, { estado: EstadoEquipo.OFFLINE });
+      });
   }
 }
