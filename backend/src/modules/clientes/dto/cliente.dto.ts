@@ -68,11 +68,11 @@ export class CreateClienteDto {
   @MaxLength(20)
   whatsapp?: string;
 
-  @ApiProperty({ example: 'Av. Sánchez Cerro 1234' })
+  @ApiPropertyOptional({ example: 'Av. Sánchez Cerro 1234' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(500)
-  direccion: string;
+  direccion?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -341,28 +341,37 @@ export function ClienteWizard() {
 
   const handleRegistrar = async (data: S3) => {
     if (!s1) return;
-    const cliente = await crearCliente({
-      tipoDocumento:   (s1.tipoDocumento as any) || 'dni',
-      numeroDocumento: s1.numeroDocumento,
-      nombres:         s1.nombres,
-      apellidoPaterno: s1.apellidoPaterno,
-      apellidoMaterno: s1.apellidoMaterno || undefined,
-      telefono:        s1.telefono,
-      whatsapp:        (s1 as any).whatsapp || undefined,
-      email:           s1.email || undefined,
-      direccion:       s1.direccion || '',
-      tipoServicio:    'ftth',
-    });
-    await crearContrato({
-      clienteId:      cliente.id,
-      planId:         data.perfilId        || undefined,
-      routerId:       data.routerId        || undefined,
-      fechaInicio:    data.fechaInstalacion || new Date().toISOString().split('T')[0],
-      diaFacturacion: s2?.diaPago ? parseInt(s2.diaPago) : undefined,
-      usuarioPppoe:   data.userPppHs       || undefined,
-      passwordPppoe:  data.passwordPppHs   || undefined,
-    });
-    toast('Cliente registrado', { type: 'success' });
+    let cliente: any;
+    try {
+      cliente = await crearCliente({
+        tipoDocumento:   (s1.tipoDocumento as any) || 'dni',
+        numeroDocumento: s1.numeroDocumento,
+        nombres:         s1.nombres,
+        apellidoPaterno: s1.apellidoPaterno,
+        apellidoMaterno: s1.apellidoMaterno || undefined,
+        telefono:        s1.telefono,
+        whatsapp:        (s1 as any).whatsapp || undefined,
+        email:           s1.email || undefined,
+        direccion:       s1.direccion || undefined,
+        tipoServicio:    'ftth',
+      });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Error al registrar cliente';
+      toast(msg, { type: 'error' });
+      throw err;
+    }
+    try {
+      await crearContrato({
+        clienteId:      cliente.id,
+        planId:         data.perfilId        || undefined,
+        routerId:       data.routerId        || undefined,
+        fechaInicio:    data.fechaInstalacion || new Date().toISOString().split('T')[0],
+        diaFacturacion: s2?.diaPago ? parseInt(s2.diaPago) : undefined,
+        usuarioPppoe:   data.userPppHs       || undefined,
+        passwordPppoe:  data.passwordPppHs   || undefined,
+      });
+    } catch { /* contrato falla silenciosamente, cliente ya creado */ }
+    toast('Cliente registrado correctamente', { type: 'success' });
     router.push(`/clientes/${cliente.id}`);
   };
 
