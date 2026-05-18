@@ -8,7 +8,6 @@ interface AuthState {
   accessToken:  string | null;
   isAuth:       boolean;
   isLoading:    boolean;
-  _hydrated:    boolean;
 
   // Actions
   login:        (tokens: AuthTokens) => void;
@@ -25,7 +24,6 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       isAuth:      false,
       isLoading:   false,
-      _hydrated:   false,
 
       login: (tokens: AuthTokens) => {
         setAuthCookies(tokens.accessToken, tokens.refreshToken);
@@ -63,9 +61,6 @@ export const useAuthStore = create<AuthState>()(
         usuario:  state.usuario,
         isAuth:   state.isAuth,
       }),
-      onRehydrateStorage: () => () => {
-        useAuthStore.setState({ _hydrated: true });
-      },
     },
   ),
 );

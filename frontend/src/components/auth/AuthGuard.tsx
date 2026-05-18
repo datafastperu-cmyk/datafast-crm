@@ -1,23 +1,26 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth.store';
 import { Loader2 } from 'lucide-react';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const router     = useRouter();
-  const isAuth     = useAuthStore((s) => s.isAuth);
-  const isLoading  = useAuthStore((s) => s.isLoading);
-  const _hydrated  = useAuthStore((s) => s._hydrated);
+  const router  = useRouter();
+  const isAuth  = useAuthStore((s) => s.isAuth);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (_hydrated && !isLoading && !isAuth) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted && !isAuth) {
       router.replace('/login');
     }
-  }, [isAuth, isLoading, _hydrated, router]);
+  }, [mounted, isAuth, router]);
 
-  if (!_hydrated || isLoading) {
+  if (!mounted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
