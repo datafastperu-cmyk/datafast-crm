@@ -1,18 +1,19 @@
 'use client';
 
 import { useState }       from 'react';
-import { useQuery }       from '@tanstack/react-query';
-import { Settings, Building2, Server } from 'lucide-react';
+import { Settings, Building2, Server, Terminal } from 'lucide-react';
 
 import { EmpresaTab }   from './EmpresaTab';
 import { PerfilTab }    from './PerfilTab';
 import { ServidorTab }  from './ServidorTab';
+import { LogsTab }      from './LogsTab';
 import { cn }           from '@/lib/utils';
 
 const TABS = [
   { key: 'empresa',   label: 'Empresa',    icon: Building2 },
   { key: 'perfil',    label: 'Mi Perfil',  icon: Settings },
   { key: 'servidor',  label: 'Servidor',   icon: Server },
+  { key: 'logs',      label: 'Logs',       icon: Terminal },
 ] as const;
 
 type TabKey = typeof TABS[number]['key'];
@@ -58,6 +59,7 @@ export function ConfiguracionContent() {
           {tab === 'empresa'   && <EmpresaTab />}
           {tab === 'perfil'    && <PerfilTab />}
           {tab === 'servidor'  && <ServidorTab />}
+          {tab === 'logs'      && <LogsTab />}
         </div>
       </div>
     </div>

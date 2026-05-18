@@ -8,7 +8,7 @@ import {
   ChevronDown, Router, Shield, Network, Server, Globe, Box,
   Package, MapPin, Wrench, DollarSign, Receipt, TrendingUp,
   Ticket, MessageSquare, Send, HardDrive,
-  UserCheck, Terminal, Zap,
+  UserCheck, Zap,
   List, Tv, Scissors, Layers,
   ChevronRight,
 } from 'lucide-react';
@@ -105,7 +105,6 @@ const NAV: NavEntry[] = [
     ],
   },
 
-  { id: 'logs',    href: '/logs',           label: 'Logs del Sistema', icon: Terminal, permiso: 'sistema:config' },
   { id: 'ajustes', href: '/configuracion',  label: 'Configuración',    icon: Settings, permiso: 'sistema:config' },
 ];
 
@@ -131,12 +130,12 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
       const hasActive = entry.items.some((item) =>
         item.href === '/dashboard' ? pathname === item.href : pathname.startsWith(item.href),
       );
-      if (hasActive) setOpen((prev) => prev.includes(entry.id) ? prev : [...prev, entry.id]);
+      if (hasActive) setOpen([entry.id]);
     });
   }, [pathname, collapsed]);
 
   const toggle = (id: string) =>
-    setOpen((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+    setOpen((prev) => prev.includes(id) ? [] : [id]);
 
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === href : pathname.startsWith(href);
