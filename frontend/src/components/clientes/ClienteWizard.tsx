@@ -616,6 +616,8 @@ function Step2Form({ initial, onBack, onNext }: {
   const [bajarVel, setBajarVel]   = useState((initial?.facturacion as any)?.bajarVelocidad ?? 'desactivado');
   const [fechaFija, setFechaFija] = useState((initial?.facturacion as any)?.fechaFija ?? '');
   const [corteFijo, setCorteFijo] = useState((initial?.facturacion as any)?.corteFijoProgramado ?? '');
+  const [costoInstalacion, setCostoInstalacion]       = useState((initial?.facturacion as any)?.costoInstalacion ?? false);
+  const [montoCostoInstalacion, setMontoCostoInstalacion] = useState<number>((initial?.facturacion as any)?.montoCostoInstalacion ?? 0);
 
   const { data: plantillas = [] } = useQuery({
     queryKey: ['plantillas-abonados'],
@@ -635,7 +637,7 @@ function Step2Form({ initial, onBack, onNext }: {
     setNotif(prev => ({ ...prev, [k]: v }));
   }
   function handleContinuar() {
-    onNext({ facturacion: { ...fact, bajarVelocidad: bajarVel, fechaFija: fechaFija || null, corteFijoProgramado: corteFijo || null } as any, notificaciones: notif });
+    onNext({ facturacion: { ...fact, bajarVelocidad: bajarVel, fechaFija: fechaFija || null, corteFijoProgramado: corteFijo || null, costoInstalacion, montoCostoInstalacion } as any, notificaciones: notif });
   }
 
   return (
@@ -713,6 +715,19 @@ function Step2Form({ initial, onBack, onNext }: {
               )}
             </div>
           </Field>
+          <div className="flex items-center justify-between py-1">
+            <span className="text-sm text-foreground">Añadir costo de instalación</span>
+            <div className="flex items-center gap-3">
+              <ToggleSwitch checked={costoInstalacion} onChange={v => setCostoInstalacion(v)} />
+              {costoInstalacion && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-muted-foreground">S/</span>
+                  <DecimalInput2 className={inputCls()} placeholder="Monto instalación"
+                    value={montoCostoInstalacion} onChange={v => setMontoCostoInstalacion(v)} />
+                </div>
+              )}
+            </div>
+          </div>
           <div className="flex items-center justify-between py-1">
             <span className="text-sm text-foreground">Aplicar Mora</span>
             <div className="flex items-center gap-3">
