@@ -30,10 +30,10 @@ const TABS = [
   { key: 'onu_router',   label: 'ONU/Router',   icon: Radio        },
   { key: 'servicios',    label: 'Servicios',    icon: Wifi         },
   { key: 'facturacion',  label: 'Facturación',  icon: CreditCard   },
-  { key: 'tickets',      label: 'Tickets',      icon: Ticket       },
   { key: 'email_sms',    label: 'Mensajes',     icon: MessageSquare},
   { key: 'documentos',   label: 'Documentos',   icon: FolderOpen   },
   { key: 'estadisticas', label: 'Consumo',      icon: BarChart2    },
+  { key: 'tickets',      label: 'Tickets',      icon: Ticket       },
   { key: 'logs',         label: 'Log',          icon: ScrollText   },
 ] as const;
 type TabKey = typeof TABS[number]['key'];
