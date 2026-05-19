@@ -1,10 +1,11 @@
 import {
-  Controller, Get, Post, HttpCode, HttpStatus, Logger,
+  Controller, Get, Post, Patch, Body, HttpCode, HttpStatus, Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Roles }       from '../../common/decorators/roles.decorator';
 import { ApiResponse } from '../../common/dto/response.dto';
-import { SistemaService } from './sistema.service';
+import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { SistemaService, CronHorarios } from './sistema.service';
 
 @ApiTags('Sistema — Admin')
 @ApiBearerAuth('JWT')
@@ -53,5 +54,24 @@ export class SistemaController {
       null,
       'Actualización iniciada en background — el servidor se reiniciará al terminar',
     );
+  }
+
+  // ── GET /admin/sistema/crontab ───────────────────────────────
+  @Get('crontab')
+  @ApiOperation({ summary: 'Obtener horarios de tareas programadas' })
+  async getCrontab(@CurrentUser() user: JwtPayload) {
+    const horarios = await this.sistema.getCronHorarios(user.empresaId);
+    return ApiResponse.ok(horarios);
+  }
+
+  // ── PATCH /admin/sistema/crontab ─────────────────────────────
+  @Patch('crontab')
+  @ApiOperation({ summary: 'Actualizar horarios de tareas programadas' })
+  async updateCrontab(
+    @Body() body: Partial<CronHorarios>,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const horarios = await this.sistema.updateCronHorarios(user.empresaId, body);
+    return ApiResponse.ok(horarios, 'Horarios actualizados');
   }
 }

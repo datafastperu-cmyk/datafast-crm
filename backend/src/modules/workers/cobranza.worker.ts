@@ -2,12 +2,14 @@ import {
   Process, Processor,
   OnQueueFailed, OnQueueCompleted, OnQueueStalled,
 } from '@nestjs/bull';
-import { Injectable, Logger }  from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { InjectQueue }         from '@nestjs/bull';
 import { Job, Queue }          from 'bull';
 import { Cron }                from '@nestjs/schedule';
 import { InjectDataSource }    from '@nestjs/typeorm';
 import { DataSource }          from 'typeorm';
+import { CACHE_MANAGER }       from '@nestjs/cache-manager';
+import { Cache }               from 'cache-manager';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
 import { FirewallService }     from '../mikrotik/services/firewall.service';
@@ -36,13 +38,47 @@ export class CobranzaScheduler {
     @InjectQueue(QUEUES.COBRANZA) private readonly queue: Queue,
     @InjectDataSource()           private readonly ds: DataSource,
     private readonly facturacionSvc: FacturacionService,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
-  // ─── GENERACIÓN AUTOMÁTICA DE FACTURAS (05:00 AM Lima) ───
-  // Por cada empresa activa, genera facturas para los contratos
-  // cuyo dia_facturacion coincide con el día de hoy.
-  @Cron('0 5 * * *', { timeZone: 'America/Lima', name: 'auto-facturacion-diaria' })
+  // Lee el horario configurado para un job; devuelve [hora, minuto]
+  private async getHoraConf(key: string, defaultHora = '05:00'): Promise<[number, number]> {
+    const cacheKey = `cron:horario:${key}`;
+    let valor = await this.cache.get<string>(cacheKey);
+
+    if (!valor) {
+      const [emp] = await this.ds.query(
+        `SELECT cron_horarios->>'${key}' AS hora FROM empresas LIMIT 1`,
+      ).catch(() => [null]);
+      valor = emp?.hora ?? defaultHora;
+      await this.cache.set(cacheKey, valor, 5 * 60 * 1000); // cache 5 min
+    }
+
+    const [h, m] = (valor as string).split(':').map(Number);
+    return [h || 0, m || 0];
+  }
+
+  // Retorna true si es el momento de ejecutar y adquiere un lock diario
+  private async debeEjecutar(jobKey: string, hora: number, minuto: number): Promise<boolean> {
+    const now = new Date();
+    if (now.getHours() !== hora || now.getMinutes() !== minuto) return false;
+
+    const lockKey = `cron:ran:${jobKey}:${now.toISOString().split('T')[0]}`;
+    const yaCorrio = await this.cache.get(lockKey);
+    if (yaCorrio) return false;
+
+    await this.cache.set(lockKey, '1', 23 * 60 * 60 * 1000); // lock 23h
+    return true;
+  }
+
+  // ─── GENERACIÓN AUTOMÁTICA DE FACTURAS ───────────────────
+  // Corre cada minuto; ejecuta cuando la hora coincide con la
+  // hora configurada en empresas.cron_horarios.facturacion
+  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'auto-facturacion-diaria' })
   async generarFacturasDiarias(): Promise<void> {
+    const [hora, min] = await this.getHoraConf('facturacion', '05:00');
+    if (!await this.debeEjecutar('facturacion', hora, min)) return;
+
     const hoy  = new Date();
     const dia  = hoy.getDate();
     const mes  = hoy.getMonth() + 1;
@@ -73,11 +109,14 @@ export class CobranzaScheduler {
     );
   }
 
-  // ─── DETECCIÓN DIARIA DE MOROSOS (06:00 AM Lima) ─────────
+  // ─── DETECCIÓN DIARIA DE MOROSOS ──────────────────────────
   // Busca contratos activos con deuda y los suspende si superan
   // los días de gracia configurados por la empresa.
-  @Cron('0 6 * * *', { timeZone: 'America/Lima', name: 'deteccion-morosos' })
+  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'deteccion-morosos' })
   async detectarMorosos(): Promise<void> {
+    const [hora, min] = await this.getHoraConf('corte', '06:00');
+    if (!await this.debeEjecutar('corte', hora, min)) return;
+
     this.logger.log('[CRON] Iniciando detección diaria de morosos');
 
     const morosos = await this.ds.query(`
@@ -193,10 +232,32 @@ export class CobranzaScheduler {
     }
   }
 
-  // ─── NOTIFICACIONES PREVENTIVAS (08:00 AM) ────────────────
-  // Avisa a clientes que vencen en 3 días y en el día
-  @Cron('0 8 * * *', { timeZone: 'America/Lima', name: 'notif-preventivas' })
+  // ─── NOTIFICACIONES PREVENTIVAS ───────────────────────────
+  // Avisa a clientes que vencen en 3 días y en el día.
+  // Corre cada minuto; ejecuta en hora configurada (recordatorio1).
+  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'notif-preventivas' })
   async notificacionesPreventivas(): Promise<void> {
+    const [hora1, min1] = await this.getHoraConf('recordatorio1', '09:00');
+    const [hora2, min2] = await this.getHoraConf('recordatorio2', '12:00');
+    const [hora3, min3] = await this.getHoraConf('recordatorio3', '19:00');
+
+    const now = new Date();
+    const h   = now.getHours();
+    const m   = now.getMinutes();
+
+    const esR1 = h === hora1 && m === min1;
+    const esR2 = h === hora2 && m === min2;
+    const esR3 = h === hora3 && m === min3;
+
+    // Ejecutar en el primer recordatorio que coincida y no haya corrido
+    let lockKey: string | null = null;
+    if      (esR1 && !await this.cache.get(`cron:ran:rec1:${now.toISOString().split('T')[0]}`)) lockKey = 'rec1';
+    else if (esR2 && !await this.cache.get(`cron:ran:rec2:${now.toISOString().split('T')[0]}`)) lockKey = 'rec2';
+    else if (esR3 && !await this.cache.get(`cron:ran:rec3:${now.toISOString().split('T')[0]}`)) lockKey = 'rec3';
+
+    if (!lockKey) return;
+    await this.cache.set(`cron:ran:${lockKey}:${now.toISOString().split('T')[0]}`, '1', 23 * 60 * 60 * 1000);
+
     for (const diasAntes of [3, 1]) {
       const fecha = new Date();
       fecha.setDate(fecha.getDate() + diasAntes);

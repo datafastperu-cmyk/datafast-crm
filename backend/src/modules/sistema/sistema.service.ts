@@ -1,11 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
+
+export interface CronHorarios {
+  facturacion:   string;
+  corte:         string;
+  recordatorio1: string;
+  recordatorio2: string;
+  recordatorio3: string;
+}
 
 const execAsync = promisify(exec);
 
@@ -19,7 +29,10 @@ export class SistemaService {
   private readonly sourceBranch: string;
   private readonly sourceToken: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @InjectDataSource() private readonly ds: DataSource,
+  ) {
     this.appDir       = this.config.get('UPDATE_DIR')            || '/opt/datafast';
     this.sourceType   = this.config.get('UPDATE_SOURCE_TYPE')    || 'git';
     this.sourceUrl    = this.config.get('UPDATE_SOURCE_URL')     || '';
@@ -238,6 +251,39 @@ export class SistemaService {
     }
 
     return null;
+  }
+
+  // ─── Crontab — leer y guardar horarios ───────────────────────
+
+  private readonly DEFAULT_HORARIOS: CronHorarios = {
+    facturacion:   '05:00',
+    corte:         '06:00',
+    recordatorio1: '09:00',
+    recordatorio2: '12:00',
+    recordatorio3: '19:00',
+  };
+
+  async getCronHorarios(empresaId: string): Promise<CronHorarios> {
+    const [row] = await this.ds.query(
+      `SELECT cron_horarios FROM empresas WHERE id = $1`,
+      [empresaId],
+    );
+    return { ...this.DEFAULT_HORARIOS, ...(row?.cron_horarios ?? {}) };
+  }
+
+  async updateCronHorarios(
+    empresaId: string,
+    horarios: Partial<CronHorarios>,
+  ): Promise<CronHorarios> {
+    const actual = await this.getCronHorarios(empresaId);
+    const nuevo  = { ...actual, ...horarios };
+
+    await this.ds.query(
+      `UPDATE empresas SET cron_horarios = $1 WHERE id = $2`,
+      [JSON.stringify(nuevo), empresaId],
+    );
+
+    return nuevo;
   }
 
   // ─── Log de actualización ────────────────────────────────────
