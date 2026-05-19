@@ -120,6 +120,8 @@ export interface Plan {
   pppProfile?:          string;
   prioridad?:           number;
   addresslist?:         string;
+  cuentaIptv?:          boolean;
+  sesionesIptv?:        number;
   activo:               boolean;
   visibleEnPortal:      boolean;
   ordenDisplay:         number;

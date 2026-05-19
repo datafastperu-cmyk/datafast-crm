@@ -38,6 +38,8 @@ export class Plan extends BaseModel {
   @Column({ name:'limite_datos_gb', type:'int', nullable:true }) limiteDatosGb: number;
   @Column({ name:'accion_al_limite', type:'enum', enum:AccionAlLimite, default:AccionAlLimite.REDUCIR_VELOCIDAD }) accionAlLimite: AccionAlLimite;
   @Column({ name:'velocidad_post_limite', type:'int', nullable:true }) velocidadPostLimite: number;
+  @Column({ name:'cuenta_iptv', default:false }) cuentaIptv: boolean;
+  @Column({ name:'sesiones_iptv', type:'smallint', nullable:true }) sesionesIptv: number;
   @Column({ default:true }) activo: boolean;
   @Column({ name:'visible_en_portal', default:false }) visibleEnPortal: boolean;
   @Column({ name:'orden_display', type:'smallint', default:0 }) ordenDisplay: number;

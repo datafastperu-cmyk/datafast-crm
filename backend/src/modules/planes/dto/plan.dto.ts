@@ -32,6 +32,8 @@ export class CreatePlanDto {
   @ValidateIf(o=>o.tieneLimiteDatos===true) @IsInt() @Min(1) @Type(()=>Number) limiteDatosGb?: number;
   @ApiPropertyOptional({ enum:AccionAlLimite }) @IsOptional() @IsEnum(AccionAlLimite) accionAlLimite?: AccionAlLimite;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Type(()=>Number) velocidadPostLimite?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() cuentaIptv?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(5) @Type(()=>Number) sesionesIptv?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() activo?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() visibleEnPortal?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Type(()=>Number) ordenDisplay?: number;

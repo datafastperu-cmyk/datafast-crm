@@ -31,6 +31,8 @@ const schema = z.object({
   burstTiempo:          z.coerce.number().int().min(0).default(0),
   prioridad:            z.coerce.number().int().min(1).max(8).default(8),
   addresslist:          z.string().optional(),
+  crearCuentaIptv:      z.boolean().default(false),
+  sesionesIptv:         z.coerce.number().int().min(1).max(5).default(1),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -52,6 +54,7 @@ const DEFAULTS: FormValues = {
   noCrearReglas: false, velocidadBajada: 0, velocidadSubida: 0,
   velocidadGarantizada: 10, burstKbps: 0, burstUmbral: 0,
   burstTiempo: 0, prioridad: 8, addresslist: '',
+  crearCuentaIptv: false, sesionesIptv: 1,
 };
 
 function planToForm(p: Plan): FormValues {
@@ -69,6 +72,8 @@ function planToForm(p: Plan): FormValues {
     burstTiempo:          p.burstTiempo ?? 0,
     prioridad:            p.prioridad ?? 8,
     addresslist:          p.addresslist ?? '',
+    crearCuentaIptv:      p.cuentaIptv ?? false,
+    sesionesIptv:         p.sesionesIptv ?? 1,
   };
 }
 
@@ -88,6 +93,8 @@ function formToPayload(v: FormValues) {
     burstTiempo:          v.burstTiempo,
     prioridad:            v.prioridad,
     addresslist:          v.addresslist,
+    cuentaIptv:           v.crearCuentaIptv,
+    sesionesIptv:         v.crearCuentaIptv ? v.sesionesIptv : null,
   };
 }
 
@@ -205,8 +212,9 @@ export function PlanesTab() {
   const { register, handleSubmit, reset, watch, setValue, control, formState: { errors } } =
     useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: DEFAULTS });
 
-  const noCrearReglas = watch('noCrearReglas');
-  const descarga      = watch('velocidadBajada');
+  const noCrearReglas    = watch('noCrearReglas');
+  const crearCuentaIptv  = watch('crearCuentaIptv');
+  const descarga         = watch('velocidadBajada');
   const subida        = watch('velocidadSubida');
   const limitAt       = watch('velocidadGarantizada');
   const burstKbps     = watch('burstKbps');
@@ -421,6 +429,48 @@ export function PlanesTab() {
                 <span className="text-xs text-muted-foreground">
                   {noCrearReglas ? 'Sin límite de velocidad en MikroTik' : 'Aplicar QoS al plan'}
                 </span>
+              </div>
+
+              {/* Crear cuenta IPTV */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 py-1">
+                  <label className="text-sm text-foreground">Crear cuenta IPTV</label>
+                  <Controller
+                    name="crearCuentaIptv"
+                    control={control}
+                    render={({ field }) => (
+                      <button type="button"
+                        onClick={() => field.onChange(!field.value)}
+                        className={cn(
+                          'relative w-10 h-5 rounded-full transition-colors',
+                          field.value ? 'bg-primary' : 'bg-muted-foreground/30',
+                        )}>
+                        <span className={cn(
+                          'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                          field.value ? 'translate-x-5' : 'translate-x-0',
+                        )} />
+                      </button>
+                    )}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {crearCuentaIptv ? 'Se creará cuenta IPTV al contratar' : 'Sin cuenta IPTV'}
+                  </span>
+                </div>
+                {crearCuentaIptv && (
+                  <div className="ml-0 space-y-1 max-w-xs">
+                    <label className="text-sm text-foreground">
+                      Sesiones simultáneas
+                      <span className="ml-1 text-[11px] text-muted-foreground">
+                        * Cantidad de sesiones que pueden estar activas por cada cuenta
+                      </span>
+                    </label>
+                    <select {...register('sesionesIptv')} className={inp()}>
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <option key={n} value={n}>{n} sesión{n > 1 ? 'es' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Velocidades (oculto si noCrearReglas) */}
