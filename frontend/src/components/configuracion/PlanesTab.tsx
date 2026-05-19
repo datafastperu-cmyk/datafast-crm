@@ -433,7 +433,7 @@ export function PlanesTab() {
 
               {/* Crear cuenta IPTV */}
               <div className="space-y-2">
-                <div className="flex items-center gap-3 py-1">
+                <div className="flex items-center gap-3 py-1 flex-wrap">
                   <label className="text-sm text-foreground">Crear cuenta IPTV</label>
                   <Controller
                     name="crearCuentaIptv"
@@ -452,23 +452,18 @@ export function PlanesTab() {
                       </button>
                     )}
                   />
+                  {crearCuentaIptv && (
+                    <div className="space-y-1">
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">* Cantidad de sesiones que pueden estar activas por cada cuenta</p>
+                      <select {...register('sesionesIptv')} className={inp()}>
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <option key={n} value={n}>{n} sesión{n > 1 ? 'es' : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 <p className="text-[11px] text-amber-600 dark:text-amber-400">* Se creará cuenta IPTV al contratar</p>
-                {crearCuentaIptv && (
-                  <div className="ml-0 space-y-1 max-w-xs">
-                    <label className="text-sm text-foreground">
-                      Sesiones simultáneas
-                      <span className="ml-1 text-[11px] text-muted-foreground">
-                        * Cantidad de sesiones que pueden estar activas por cada cuenta
-                      </span>
-                    </label>
-                    <select {...register('sesionesIptv')} className={inp()}>
-                      {[1, 2, 3, 4, 5].map(n => (
-                        <option key={n} value={n}>{n} sesión{n > 1 ? 'es' : ''}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
 
               {/* Velocidades (oculto si noCrearReglas) */}
