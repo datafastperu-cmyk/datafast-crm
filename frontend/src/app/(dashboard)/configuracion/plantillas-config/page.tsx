@@ -144,7 +144,11 @@ export default function PlantillasConfigPage() {
   }
 
   function guardarNueva() {
-    const nombre = nombreNueva.trim() || `Plantilla ${plantillas.length + 1}`;
+    const nombre = nombreNueva.trim();
+    if (!nombre) {
+      toast('Nombre requerido', { description: 'Ingresa un nombre para la nueva plantilla.', type: 'warning' });
+      return;
+    }
     mutCreate.mutate(nombre);
   }
 
@@ -186,11 +190,13 @@ export default function PlantillasConfigPage() {
             )}
           </div>
           <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Nombre Plantilla</label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              Nombre Plantilla <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
-              className={inputCls}
-              placeholder="Nombre para nueva plantilla..."
+              className={`${inputCls} ${!nombreNueva.trim() ? 'border-red-300 focus:ring-red-400' : ''}`}
+              placeholder="Requerido para guardar nueva plantilla"
               value={nombreNueva}
               onChange={e => setNombreNueva(e.target.value)}
             />
