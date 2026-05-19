@@ -10,7 +10,7 @@ import {
   Ticket, MessageSquare, Send, HardDrive,
   UserCheck, Zap,
   List, Tv, Scissors, Layers,
-  ChevronRight,
+  ChevronRight, Plug,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -105,7 +105,13 @@ const NAV: NavEntry[] = [
     ],
   },
 
-  { id: 'ajustes', href: '/configuracion',  label: 'Configuración',    icon: Settings, permiso: 'sistema:config' },
+  {
+    id: 'ajustes', label: 'Configuración', icon: Settings,
+    items: [
+      { href: '/configuracion',             label: 'General',       icon: Settings, permiso: 'sistema:config' },
+      { href: '/configuracion/integraciones', label: 'Integraciones', icon: Plug,   permiso: 'sistema:config' },
+    ],
+  },
 ];
 
 interface SidebarProps {
