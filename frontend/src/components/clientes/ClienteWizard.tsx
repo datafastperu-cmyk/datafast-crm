@@ -15,6 +15,7 @@ import {
 
 import { clientesApi }                       from '@/lib/api/clientes';
 import { contratosApi, redesApi, planesApi } from '@/lib/api/contratos';
+import { facturacionApi }                    from '@/lib/api/facturacion';
 import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
 import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
 import { useToast }                          from '@/components/ui/toaster';
@@ -338,7 +339,7 @@ export function ClienteWizard() {
   const { mutateAsync: crearCliente  } = useMutation({ mutationFn: clientesApi.create });
   const { mutateAsync: crearContrato } = useMutation({ mutationFn: contratosApi.create });
 
-  const handleRegistrar = async (data: S3) => {
+  const handleRegistrar = async (data: S3 & { _costoInstalacion?: boolean; _montoCostoInstalacion?: number }) => {
     if (!s1) return;
     let cliente: any;
     try {
@@ -373,6 +374,35 @@ export function ClienteWizard() {
     if (s2) {
       try {
         await clientesApi.saveFacturacionConfig(cliente.id, s2.facturacion, s2.notificaciones);
+      } catch { /* no bloquea el flujo */ }
+    }
+    // Facturas automáticas al registrar
+    const esPrepago = s2?.facturacion?.tipo === 'prepago';
+    const conInstalacion = data._costoInstalacion && (data._montoCostoInstalacion ?? 0) > 0;
+    if (esPrepago || conInstalacion) {
+      try {
+        const hoy = new Date().toISOString().split('T')[0];
+        const items: { descripcion: string; cantidad: number; precioUnitario: number }[] = [];
+        if (esPrepago) {
+          items.push({
+            descripcion:    data.descripcion || 'Servicio de internet',
+            cantidad:       1,
+            precioUnitario: data.costo ?? 0,
+          });
+        }
+        if (conInstalacion) {
+          items.push({
+            descripcion:    'Costo de instalación',
+            cantidad:       1,
+            precioUnitario: data._montoCostoInstalacion!,
+          });
+        }
+        await facturacionApi.create({
+          clienteId:     cliente.id,
+          periodoInicio: hoy,
+          periodoFin:    hoy,
+          items,
+        });
       } catch { /* no bloquea el flujo */ }
     }
     toast('Cliente registrado correctamente', { type: 'success' });
@@ -831,7 +861,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
   const onFormSubmit = async (data: S3) => {
     setSubmitting(true);
-    try   { await onSubmit(data); }
+    try   { await onSubmit({ ...data, _costoInstalacion: costoInstalacion, _montoCostoInstalacion: montoCostoInstalacion } as any); }
     catch { setSubmitting(false); }
   };
 
