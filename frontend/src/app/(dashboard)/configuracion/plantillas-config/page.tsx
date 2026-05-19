@@ -22,20 +22,41 @@ const DEFAULT_NOTIFICACIONES: NotificacionesConfig = {
 
 // ─── Opciones ─────────────────────────────────────────────────────
 const DIAS_MES = Array.from({ length: 28 }, (_, i) => String(i + 1).padStart(2, '0'));
-const DIAS_GRACIA = [
-  { value: '0', label: '0 Días' }, { value: '1', label: '1 Día' },
-  { value: '2', label: '2 Días' }, { value: '3', label: '3 Días' },
-  { value: '5', label: '5 Días' }, { value: '7', label: '7 Días' },
-  { value: '10', label: '10 Días' }, { value: '15', label: '15 Días' },
+
+const CREAR_FACTURA_OPTS = [
+  { value: 'desactivado', label: 'Desactivado' },
+  ...Array.from({ length: 25 }, (_, i) => ({
+    value: String(i + 1),
+    label: i === 0 ? '1 día antes' : `${i + 1} días antes`,
+  })),
 ];
+
+const DIAS_GRACIA_OPTS = [
+  { value: '0', label: '0 Días' },
+  ...Array.from({ length: 25 }, (_, i) => ({
+    value: String(i + 1),
+    label: i === 0 ? '1 Día' : `${i + 1} Días`,
+  })),
+];
+
+const APLICAR_CORTE_OPTS = [
+  { value: 'desactivado', label: 'Desactivado' },
+  ...Array.from({ length: 5 }, (_, i) => ({
+    value: String(i + 1),
+    label: i === 0 ? '1 mes vencido' : `${i + 1} meses vencidos`,
+  })),
+];
+
 const RECORDATORIO_OPTS = [
   { value: 'desactivado', label: 'Desactivado' },
-  { value: '-7', label: '7 días antes' }, { value: '-5', label: '5 días antes' },
-  { value: '-3', label: '3 días antes' }, { value: '-2', label: '2 días antes' },
-  { value: '-1', label: '1 día antes' }, { value: '0', label: 'Día de vencimiento' },
-  { value: '1', label: '1 día después' }, { value: '2', label: '2 días después' },
-  { value: '3', label: '3 días después' }, { value: '5', label: '5 días después' },
-  { value: '7', label: '7 días después' },
+  ...Array.from({ length: 10 }, (_, i) => ({
+    value: String(-(i + 1)),
+    label: i === 0 ? '1 día antes' : `${i + 1} días antes`,
+  })),
+  ...Array.from({ length: 25 }, (_, i) => ({
+    value: String(i + 1),
+    label: i === 0 ? '1 día después' : `${i + 1} días después`,
+  })),
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────
@@ -226,7 +247,6 @@ export default function PlantillasConfigPage() {
                 <select className={selectCls} value={facturacion.tipo} onChange={e => updateF('tipo', e.target.value)}>
                   <option value="prepago">Prepago (Adelantado)</option>
                   <option value="postpago">Postpago (Mes vencido)</option>
-                  <option value="mixto">Mixto</option>
                 </select>
               </Field>
               <Field label="Día pago">
@@ -236,26 +256,24 @@ export default function PlantillasConfigPage() {
               </Field>
               <Field label="Crear Factura">
                 <select className={selectCls} value={facturacion.crearFactura} onChange={e => updateF('crearFactura', e.target.value)}>
-                  <option value="desactivado">Desactivado</option>
-                  <option value="activado">Activado</option>
+                  {CREAR_FACTURA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
               <Field label="Tipo impuesto">
                 <select className={selectCls} value={facturacion.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
-                  <option value="incluido">Impuestos incluido</option>
-                  <option value="sin_impuesto">Sin impuesto</option>
-                  <option value="igv">Con IGV 18%</option>
+                  <option value="ninguno">Ninguno</option>
+                  <option value="incluido">Impuestos incluidos</option>
+                  <option value="mas_impuestos">Más impuestos</option>
                 </select>
               </Field>
               <Field label="Días de gracia" note="*días tolerancia para aplicar corte">
                 <select className={selectCls} value={facturacion.diasGracia} onChange={e => updateF('diasGracia', e.target.value)}>
-                  {DIAS_GRACIA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {DIAS_GRACIA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
               <Field label="Aplicar Corte">
                 <select className={selectCls} value={facturacion.aplicarCorte} onChange={e => updateF('aplicarCorte', e.target.value)}>
-                  <option value="desactivado">Desactivado</option>
-                  <option value="activado">Activado</option>
+                  {APLICAR_CORTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
               <Field label="Aplicar Mora">
