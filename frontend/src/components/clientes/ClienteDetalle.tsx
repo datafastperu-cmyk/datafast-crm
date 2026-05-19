@@ -696,6 +696,34 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
         <SvcPagination total={filtered.length} />
       </div>
 
+      {/* ── Productos y otros Servicios Recurrentes ───────────── */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <SvcSectionHeader
+          title="Productos y otros Servicios Recurrentes (CUOTAS Y MENSUAL)"
+          icon={Package}
+        />
+        <SvcToolbar count={0} search={q4} onSearch={setQ4} onAdd={() => {}} addLabel="+ Nuevo" />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/20">
+                <SvcTh>ID</SvcTh>
+                <SvcTh>PRODUCTO</SvcTh>
+                <SvcTh>MONTO</SvcTh>
+                <SvcTh>N° SERIE</SvcTh>
+                <SvcTh>N° MAC</SvcTh>
+                <SvcTh>FECHA INICIO</SvcTh>
+                <SvcTh>ESTADO</SvcTh>
+              </tr>
+            </thead>
+            <tbody>
+              <EmptyRow cols={7} icon={Package} msg="Ningún registro disponible" />
+            </tbody>
+          </table>
+        </div>
+        <SvcPagination total={0} />
+      </div>
+
       {/* ── Equipos Asignados ─────────────────────────────────── */}
       <div className="border border-border rounded-xl overflow-hidden">
         <SvcSectionHeader title="Equipos Asignados" icon={Radio} />
@@ -741,34 +769,6 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
             </thead>
             <tbody>
               <EmptyRow cols={9} icon={Phone} msg="Ningún registro disponible" />
-            </tbody>
-          </table>
-        </div>
-        <SvcPagination total={0} />
-      </div>
-
-      {/* ── Productos y otros Servicios Recurrentes ───────────── */}
-      <div className="border border-border rounded-xl overflow-hidden">
-        <SvcSectionHeader
-          title="Productos y otros Servicios Recurrentes (CUOTAS Y MENSUAL)"
-          icon={Package}
-        />
-        <SvcToolbar count={0} search={q4} onSearch={setQ4} onAdd={() => {}} addLabel="+ Nuevo" />
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border bg-muted/20">
-                <SvcTh>ID</SvcTh>
-                <SvcTh>PRODUCTO</SvcTh>
-                <SvcTh>MONTO</SvcTh>
-                <SvcTh>N° SERIE</SvcTh>
-                <SvcTh>N° MAC</SvcTh>
-                <SvcTh>FECHA INICIO</SvcTh>
-                <SvcTh>ESTADO</SvcTh>
-              </tr>
-            </thead>
-            <tbody>
-              <EmptyRow cols={7} icon={Package} msg="Ningún registro disponible" />
             </tbody>
           </table>
         </div>
