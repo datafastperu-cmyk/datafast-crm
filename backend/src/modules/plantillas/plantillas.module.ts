@@ -3,9 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlantillasController } from './plantillas.controller';
 import { PlantillasService } from './plantillas.service';
 import { PlantillaMensaje } from './entities/plantilla-mensaje.entity';
+import { PlantillaAbonado } from './entities/plantilla-abonado.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PlantillaMensaje])],
+  imports: [TypeOrmModule.forFeature([PlantillaMensaje, PlantillaAbonado])],
   controllers: [PlantillasController],
   providers: [PlantillasService],
   exports: [PlantillasService],

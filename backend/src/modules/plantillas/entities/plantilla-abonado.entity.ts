@@ -1,0 +1,44 @@
+import { Entity, Column, Index } from 'typeorm';
+import { BaseModel } from '../../../common/entities/base.entity';
+
+export interface FacturacionConfig {
+  tipo:             string;
+  diaPago:          string;
+  crearFactura:     string;
+  tipoImpuesto:     string;
+  diasGracia:       string;
+  aplicarCorte:     string;
+  aplicarMora:      boolean;
+  aplicarReconexion: boolean;
+  impuesto1:        number;
+  impuesto2:        number;
+  impuesto3:        number;
+}
+
+export interface NotificacionesConfig {
+  avisoNuevaFactura: string;
+  avisoPantalla:     string;
+  recordatoriosPago: string;
+  recordatorio1:     string;
+  recordatorio2:     string;
+  recordatorio3:     string;
+}
+
+@Entity('plantillas_abonados')
+@Index(['empresaId'])
+export class PlantillaAbonado extends BaseModel {
+  @Column({ name: 'empresa_id' })
+  empresaId: string;
+
+  @Column({ length: 150 })
+  nombre: string;
+
+  @Column({ type: 'jsonb' })
+  facturacion: FacturacionConfig;
+
+  @Column({ type: 'jsonb' })
+  notificaciones: NotificacionesConfig;
+
+  @Column({ name: 'es_default', default: false })
+  esDefault: boolean;
+}

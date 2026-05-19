@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PlantillaMensaje, TipoPlantilla } from './entities/plantilla-mensaje.entity';
+import { PlantillaAbonado, FacturacionConfig, NotificacionesConfig } from './entities/plantilla-abonado.entity';
 
 // ─── Defaults por tipo ────────────────────────────────────────
 const DEFAULTS: Record<TipoPlantilla, Record<string, { nombre: string; contenido: string }>> = {
@@ -165,6 +166,8 @@ export class PlantillasService {
   constructor(
     @InjectRepository(PlantillaMensaje)
     private readonly repo: Repository<PlantillaMensaje>,
+    @InjectRepository(PlantillaAbonado)
+    private readonly abonadoRepo: Repository<PlantillaAbonado>,
   ) {}
 
   async listar(empresaId: string, tipo: TipoPlantilla): Promise<PlantillaDto[]> {
@@ -222,5 +225,41 @@ export class PlantillasService {
       activo: true,
       esDefault: true,
     };
+  }
+
+  // ─── Plantillas Abonados ──────────────────────────────────────
+  async listarAbonados(empresaId: string): Promise<PlantillaAbonado[]> {
+    return this.abonadoRepo.find({ where: { empresaId }, order: { createdAt: 'ASC' } });
+  }
+
+  async crearAbonado(
+    empresaId: string,
+    nombre: string,
+    facturacion: FacturacionConfig,
+    notificaciones: NotificacionesConfig,
+  ): Promise<PlantillaAbonado> {
+    const nueva = this.abonadoRepo.create({ empresaId, nombre, facturacion, notificaciones });
+    return this.abonadoRepo.save(nueva);
+  }
+
+  async actualizarAbonado(
+    id: string,
+    empresaId: string,
+    nombre: string,
+    facturacion: FacturacionConfig,
+    notificaciones: NotificacionesConfig,
+  ): Promise<PlantillaAbonado> {
+    const plantilla = await this.abonadoRepo.findOne({ where: { id, empresaId } });
+    if (!plantilla) throw new NotFoundException('Plantilla no encontrada');
+    plantilla.nombre = nombre;
+    plantilla.facturacion = facturacion;
+    plantilla.notificaciones = notificaciones;
+    return this.abonadoRepo.save(plantilla);
+  }
+
+  async eliminarAbonado(id: string, empresaId: string): Promise<void> {
+    const plantilla = await this.abonadoRepo.findOne({ where: { id, empresaId } });
+    if (!plantilla) throw new NotFoundException('Plantilla no encontrada');
+    await this.abonadoRepo.softDelete(id);
   }
 }

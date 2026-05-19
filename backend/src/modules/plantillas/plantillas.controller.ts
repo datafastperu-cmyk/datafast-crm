@@ -1,14 +1,21 @@
-import { Controller, Get, Put, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsObject, IsOptional } from 'class-validator';
 import { PlantillasService } from './plantillas.service';
 import { TipoPlantilla } from './entities/plantilla-mensaje.entity';
+import { FacturacionConfig, NotificacionesConfig } from './entities/plantilla-abonado.entity';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/roles.decorator';
 import { ApiResponse } from '../../common/dto/response.dto';
 
 class GuardarPlantillaDto {
   @IsString() @IsNotEmpty() contenido: string;
+}
+
+class SavePlantillaAbonadoDto {
+  @IsString() @IsNotEmpty() nombre: string;
+  @IsObject() facturacion: FacturacionConfig;
+  @IsObject() notificaciones: NotificacionesConfig;
 }
 
 @ApiTags('Plantillas de Mensajes')
@@ -49,5 +56,42 @@ export class PlantillasController {
   ) {
     const data = await this.svc.restaurar(user.empresaId, tipo, codigo);
     return ApiResponse.ok(data, 'Plantilla restaurada al valor por defecto');
+  }
+
+  // ─── Plantillas Abonados ─────────────────────────────────────
+  @Get('abonados')
+  @RequirePermission('configuracion:view')
+  @ApiOperation({ summary: 'Listar plantillas de configuración de abonados' })
+  async listarAbonados(@CurrentUser() user: JwtPayload) {
+    const data = await this.svc.listarAbonados(user.empresaId);
+    return ApiResponse.ok(data);
+  }
+
+  @Post('abonados')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Crear nueva plantilla de abonado' })
+  async crearAbonado(@Body() dto: SavePlantillaAbonadoDto, @CurrentUser() user: JwtPayload) {
+    const data = await this.svc.crearAbonado(user.empresaId, dto.nombre, dto.facturacion, dto.notificaciones);
+    return ApiResponse.ok(data, 'Plantilla creada');
+  }
+
+  @Put('abonados/:id')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Actualizar plantilla de abonado' })
+  async actualizarAbonado(
+    @Param('id') id: string,
+    @Body() dto: SavePlantillaAbonadoDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.svc.actualizarAbonado(id, user.empresaId, dto.nombre, dto.facturacion, dto.notificaciones);
+    return ApiResponse.ok(data, 'Plantilla actualizada');
+  }
+
+  @Delete('abonados/:id')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Eliminar plantilla de abonado' })
+  async eliminarAbonado(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.svc.eliminarAbonado(id, user.empresaId);
+    return ApiResponse.ok(null, 'Plantilla eliminada');
   }
 }

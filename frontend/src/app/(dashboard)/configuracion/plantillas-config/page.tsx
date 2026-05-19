@@ -1,94 +1,40 @@
 'use client';
 
-import { useState } from 'react';
-import { Save, Plus, FileText } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Save, Plus, FileText, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toaster';
+import { plantillasAbonadosApi } from '@/lib/api/plantillas-abonados';
+import type { PlantillaAbonado, FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
+import { parseApiError } from '@/lib/utils';
 
-// ─── Types ───────────────────────────────────────────────────────
-interface PlantillaConfig {
-  id: string;
-  nombre: string;
-  facturacion: {
-    tipo: string;
-    diaPago: string;
-    crearFactura: string;
-    tipoImpuesto: string;
-    diasGracia: string;
-    aplicarCorte: string;
-    aplicarMora: boolean;
-    aplicarReconexion: boolean;
-    impuesto1: number;
-    impuesto2: number;
-    impuesto3: number;
-  };
-  notificaciones: {
-    avisoNuevaFactura: string;
-    avisoPantalla: string;
-    recordatoriosPago: string;
-    recordatorio1: string;
-    recordatorio2: string;
-    recordatorio3: string;
-  };
-}
-
-const DEFAULT_FACTURACION: PlantillaConfig['facturacion'] = {
-  tipo: 'prepago',
-  diaPago: '01',
-  crearFactura: 'desactivado',
-  tipoImpuesto: 'incluido',
-  diasGracia: '0',
-  aplicarCorte: 'desactivado',
-  aplicarMora: false,
-  aplicarReconexion: false,
-  impuesto1: 0,
-  impuesto2: 0,
-  impuesto3: 0,
+// ─── Defaults ────────────────────────────────────────────────────
+const DEFAULT_FACTURACION: FacturacionConfig = {
+  tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
+  tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
+  aplicarMora: false, aplicarReconexion: false, impuesto1: 0, impuesto2: 0, impuesto3: 0,
+};
+const DEFAULT_NOTIFICACIONES: NotificacionesConfig = {
+  avisoNuevaFactura: 'desactivado', avisoPantalla: 'desactivado',
+  recordatoriosPago: 'desactivado', recordatorio1: 'desactivado',
+  recordatorio2: 'desactivado', recordatorio3: 'desactivado',
 };
 
-const DEFAULT_NOTIFICACIONES: PlantillaConfig['notificaciones'] = {
-  avisoNuevaFactura: 'desactivado',
-  avisoPantalla: 'desactivado',
-  recordatoriosPago: 'desactivado',
-  recordatorio1: 'desactivado',
-  recordatorio2: 'desactivado',
-  recordatorio3: 'desactivado',
-};
-
-const PLANTILLAS_INICIALES: PlantillaConfig[] = [
-  {
-    id: '1',
-    nombre: 'Plantilla predeterminada',
-    facturacion: { ...DEFAULT_FACTURACION },
-    notificaciones: { ...DEFAULT_NOTIFICACIONES },
-  },
-];
-
-// ─── Helpers ─────────────────────────────────────────────────────
-const DIAS_MES = Array.from({ length: 28 }, (_, i) =>
-  String(i + 1).padStart(2, '0'),
-);
-const DIAS_GRACIA_OPTS = [
-  { value: '0', label: '0 Días' },
-  { value: '1', label: '1 Día' },
-  { value: '2', label: '2 Días' },
-  { value: '3', label: '3 Días' },
-  { value: '5', label: '5 Días' },
-  { value: '7', label: '7 Días' },
-  { value: '10', label: '10 Días' },
-  { value: '15', label: '15 Días' },
+// ─── Opciones ─────────────────────────────────────────────────────
+const DIAS_MES = Array.from({ length: 28 }, (_, i) => String(i + 1).padStart(2, '0'));
+const DIAS_GRACIA = [
+  { value: '0', label: '0 Días' }, { value: '1', label: '1 Día' },
+  { value: '2', label: '2 Días' }, { value: '3', label: '3 Días' },
+  { value: '5', label: '5 Días' }, { value: '7', label: '7 Días' },
+  { value: '10', label: '10 Días' }, { value: '15', label: '15 Días' },
 ];
 const RECORDATORIO_OPTS = [
   { value: 'desactivado', label: 'Desactivado' },
-  { value: '-7', label: '7 días antes' },
-  { value: '-5', label: '5 días antes' },
-  { value: '-3', label: '3 días antes' },
-  { value: '-2', label: '2 días antes' },
-  { value: '-1', label: '1 día antes' },
-  { value: '0', label: 'Día de vencimiento' },
-  { value: '1', label: '1 día después' },
-  { value: '2', label: '2 días después' },
-  { value: '3', label: '3 días después' },
-  { value: '5', label: '5 días después' },
+  { value: '-7', label: '7 días antes' }, { value: '-5', label: '5 días antes' },
+  { value: '-3', label: '3 días antes' }, { value: '-2', label: '2 días antes' },
+  { value: '-1', label: '1 día antes' }, { value: '0', label: 'Día de vencimiento' },
+  { value: '1', label: '1 día después' }, { value: '2', label: '2 días después' },
+  { value: '3', label: '3 días después' }, { value: '5', label: '5 días después' },
   { value: '7', label: '7 días después' },
 ];
 
@@ -102,11 +48,9 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
         checked ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
       }`}
     >
-      <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-          checked ? 'translate-x-4' : 'translate-x-0.5'
-        }`}
-      />
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+        checked ? 'translate-x-4' : 'translate-x-0.5'
+      }`} />
     </button>
   );
 }
@@ -114,9 +58,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[160px_1fr] items-start gap-3 py-1.5">
-      <label className="text-sm text-gray-600 dark:text-gray-400 text-right pt-1.5 leading-tight">
-        {label}
-      </label>
+      <label className="text-sm text-gray-600 dark:text-gray-400 text-right pt-1.5 leading-tight">{label}</label>
       <div className="space-y-0.5">
         {children}
         {note && <p className="text-xs text-orange-500">{note}</p>}
@@ -125,52 +67,95 @@ function Field({ label, note, children }: { label: string; note?: string; childr
   );
 }
 
-const selectCls =
-  'w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500';
+const selectCls = 'w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500';
+const inputCls  = 'w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500';
 
-const inputCls =
-  'w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500';
-
-// ─── Main Page ────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────
 export default function PlantillasConfigPage() {
   const { toast } = useToast();
-  const [plantillas, setPlantillas] = useState<PlantillaConfig[]>(PLANTILLAS_INICIALES);
-  const [selId, setSelId] = useState<string>(PLANTILLAS_INICIALES[0].id);
+  const qc = useQueryClient();
+
+  const { data: plantillas = [], isLoading } = useQuery<PlantillaAbonado[]>({
+    queryKey: ['plantillas-abonados'],
+    queryFn: plantillasAbonadosApi.list,
+  });
+
+  const [selId, setSelId] = useState<string | null>(null);
   const [nombreNueva, setNombreNueva] = useState('');
+  const [facturacion, setFact] = useState<FacturacionConfig>({ ...DEFAULT_FACTURACION });
+  const [notificaciones, setNotif] = useState<NotificacionesConfig>({ ...DEFAULT_NOTIFICACIONES });
 
-  const sel = plantillas.find(p => p.id === selId) ?? plantillas[0];
+  // Cuando cargan las plantillas, selecciona la primera
+  useEffect(() => {
+    if (plantillas.length > 0 && selId === null) {
+      const primera = plantillas[0];
+      setSelId(primera.id);
+      setFact({ ...DEFAULT_FACTURACION, ...primera.facturacion });
+      setNotif({ ...DEFAULT_NOTIFICACIONES, ...primera.notificaciones });
+    }
+  }, [plantillas, selId]);
 
-  function updateFacturacion(key: keyof PlantillaConfig['facturacion'], value: string | boolean | number) {
-    setPlantillas(prev =>
-      prev.map(p => p.id === selId ? { ...p, facturacion: { ...p.facturacion, [key]: value } } : p),
-    );
+  // Cuando cambia la selección, carga sus datos
+  function seleccionarPlantilla(id: string) {
+    const p = plantillas.find(x => x.id === id);
+    if (!p) return;
+    setSelId(id);
+    setFact({ ...DEFAULT_FACTURACION, ...p.facturacion });
+    setNotif({ ...DEFAULT_NOTIFICACIONES, ...p.notificaciones });
   }
-  function updateNotif(key: keyof PlantillaConfig['notificaciones'], value: string) {
-    setPlantillas(prev =>
-      prev.map(p => p.id === selId ? { ...p, notificaciones: { ...p.notificaciones, [key]: value } } : p),
-    );
-  }
+
+  const mutUpdate = useMutation({
+    mutationFn: ({ id, nombre }: { id: string; nombre: string }) =>
+      plantillasAbonadosApi.update(id, { nombre, facturacion, notificaciones }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['plantillas-abonados'] });
+      toast({ title: 'Plantilla guardada', description: 'Los cambios fueron guardados.' });
+    },
+    onError: (e) => toast({ title: 'Error', description: parseApiError(e), variant: 'destructive' }),
+  });
+
+  const mutCreate = useMutation({
+    mutationFn: (nombre: string) =>
+      plantillasAbonadosApi.create({ nombre, facturacion, notificaciones }),
+    onSuccess: (nueva) => {
+      qc.invalidateQueries({ queryKey: ['plantillas-abonados'] });
+      setSelId(nueva.id);
+      setNombreNueva('');
+      toast({ title: 'Plantilla creada', description: `"${nueva.nombre}" guardada.` });
+    },
+    onError: (e) => toast({ title: 'Error', description: parseApiError(e), variant: 'destructive' }),
+  });
+
+  const mutDelete = useMutation({
+    mutationFn: (id: string) => plantillasAbonadosApi.remove(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['plantillas-abonados'] });
+      setSelId(null);
+      toast({ title: 'Plantilla eliminada' });
+    },
+    onError: (e) => toast({ title: 'Error', description: parseApiError(e), variant: 'destructive' }),
+  });
+
+  const selPlantilla = plantillas.find(p => p.id === selId);
 
   function guardarCambios() {
-    toast({ title: 'Plantilla guardada', description: `"${sel.nombre}" actualizada.` });
+    if (!selId || !selPlantilla) return;
+    mutUpdate.mutate({ id: selId, nombre: selPlantilla.nombre });
   }
 
   function guardarNueva() {
     const nombre = nombreNueva.trim() || `Plantilla ${plantillas.length + 1}`;
-    const nueva: PlantillaConfig = {
-      id: Date.now().toString(),
-      nombre,
-      facturacion: { ...sel.facturacion },
-      notificaciones: { ...sel.notificaciones },
-    };
-    setPlantillas(prev => [...prev, nueva]);
-    setSelId(nueva.id);
-    setNombreNueva('');
-    toast({ title: 'Nueva plantilla creada', description: `"${nombre}" guardada.` });
+    mutCreate.mutate(nombre);
   }
 
-  const f = sel.facturacion;
-  const n = sel.notificaciones;
+  const busy = mutUpdate.isPending || mutCreate.isPending;
+
+  function updateF<K extends keyof FacturacionConfig>(k: K, v: FacturacionConfig[K]) {
+    setFact(prev => ({ ...prev, [k]: v }));
+  }
+  function updateN<K extends keyof NotificacionesConfig>(k: K, v: NotificacionesConfig[K]) {
+    setNotif(prev => ({ ...prev, [k]: v }));
+  }
 
   return (
     <div className="p-0 min-h-screen bg-gray-100 dark:bg-gray-950">
@@ -184,23 +169,24 @@ export default function PlantillasConfigPage() {
         {/* Selector + Nombre */}
         <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 px-5 py-4 flex flex-wrap gap-6 items-center">
           <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-              Seleccionar Plantilla
-            </label>
-            <select
-              className={selectCls}
-              value={selId}
-              onChange={e => setSelId(e.target.value)}
-            >
-              {plantillas.map(p => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
-              ))}
-            </select>
+            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Seleccionar Plantilla</label>
+            {isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Cargando...
+              </div>
+            ) : (
+              <select
+                className={selectCls}
+                value={selId ?? ''}
+                onChange={e => seleccionarPlantilla(e.target.value)}
+              >
+                {plantillas.length === 0 && <option value="">Sin plantillas</option>}
+                {plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+            )}
           </div>
           <div className="flex items-center gap-3 flex-1 min-w-[280px]">
-            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-              Nombre Plantilla
-            </label>
+            <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Nombre Plantilla</label>
             <input
               type="text"
               className={inputCls}
@@ -209,6 +195,16 @@ export default function PlantillasConfigPage() {
               onChange={e => setNombreNueva(e.target.value)}
             />
           </div>
+          {selId && (
+            <button
+              type="button"
+              onClick={() => { if (confirm('¿Eliminar esta plantilla?')) mutDelete.mutate(selId); }}
+              disabled={mutDelete.isPending}
+              className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Panels */}
@@ -221,85 +217,67 @@ export default function PlantillasConfigPage() {
             </div>
             <div className="px-4 py-3 space-y-0.5">
               <Field label="Tipo">
-                <select className={selectCls} value={f.tipo} onChange={e => updateFacturacion('tipo', e.target.value)}>
+                <select className={selectCls} value={facturacion.tipo} onChange={e => updateF('tipo', e.target.value)}>
                   <option value="prepago">Prepago (Adelantado)</option>
                   <option value="postpago">Postpago (Mes vencido)</option>
                   <option value="mixto">Mixto</option>
                 </select>
               </Field>
-
               <Field label="Día pago">
-                <select className={selectCls} value={f.diaPago} onChange={e => updateFacturacion('diaPago', e.target.value)}>
+                <select className={selectCls} value={facturacion.diaPago} onChange={e => updateF('diaPago', e.target.value)}>
                   {DIAS_MES.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </Field>
-
               <Field label="Crear Factura">
-                <select className={selectCls} value={f.crearFactura} onChange={e => updateFacturacion('crearFactura', e.target.value)}>
+                <select className={selectCls} value={facturacion.crearFactura} onChange={e => updateF('crearFactura', e.target.value)}>
                   <option value="desactivado">Desactivado</option>
                   <option value="activado">Activado</option>
                 </select>
               </Field>
-
               <Field label="Tipo impuesto">
-                <select className={selectCls} value={f.tipoImpuesto} onChange={e => updateFacturacion('tipoImpuesto', e.target.value)}>
+                <select className={selectCls} value={facturacion.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
                   <option value="incluido">Impuestos incluido</option>
                   <option value="sin_impuesto">Sin impuesto</option>
                   <option value="igv">Con IGV 18%</option>
                 </select>
               </Field>
-
               <Field label="Días de gracia" note="*días tolerancia para aplicar corte">
-                <select className={selectCls} value={f.diasGracia} onChange={e => updateFacturacion('diasGracia', e.target.value)}>
-                  {DIAS_GRACIA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                <select className={selectCls} value={facturacion.diasGracia} onChange={e => updateF('diasGracia', e.target.value)}>
+                  {DIAS_GRACIA.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
-
               <Field label="Aplicar Corte">
-                <select className={selectCls} value={f.aplicarCorte} onChange={e => updateFacturacion('aplicarCorte', e.target.value)}>
+                <select className={selectCls} value={facturacion.aplicarCorte} onChange={e => updateF('aplicarCorte', e.target.value)}>
                   <option value="desactivado">Desactivado</option>
                   <option value="activado">Activado</option>
                 </select>
               </Field>
-
               <Field label="Aplicar Mora">
                 <div className="pt-1">
-                  <Toggle checked={f.aplicarMora} onChange={v => updateFacturacion('aplicarMora', v)} />
+                  <Toggle checked={facturacion.aplicarMora} onChange={v => updateF('aplicarMora', v)} />
                 </div>
               </Field>
-
               <Field label="Aplicar Reconexión">
                 <div className="pt-1">
-                  <Toggle checked={f.aplicarReconexion} onChange={v => updateFacturacion('aplicarReconexion', v)} />
+                  <Toggle checked={facturacion.aplicarReconexion} onChange={v => updateF('aplicarReconexion', v)} />
                 </div>
               </Field>
 
-              {/* Otros impuestos */}
               <div className="pt-4 pb-1">
-                <h4 className="text-center text-sm font-semibold text-gray-700 dark:text-gray-200 mb-0.5">
-                  Otros Impuestos
-                </h4>
-                <p className="text-center text-xs text-gray-500 mb-3">
-                  Estos Impuestos serán Agregados al total de la factura
-                </p>
-                {([1, 2, 3] as const).map(n => {
-                  const key = `impuesto${n}` as 'impuesto1' | 'impuesto2' | 'impuesto3';
-                  return (
-                    <div key={n} className="mb-2">
-                      <Field label={`Impuesto #${n} (%)`} note="* Dejar en 0 (cero) para quedar deshabilitado">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={0.01}
-                          className={inputCls}
-                          value={f[key]}
-                          onChange={e => updateFacturacion(key, parseFloat(e.target.value) || 0)}
-                        />
-                      </Field>
-                    </div>
-                  );
-                })}
+                <h4 className="text-center text-sm font-semibold text-gray-700 dark:text-gray-200 mb-0.5">Otros Impuestos</h4>
+                <p className="text-center text-xs text-gray-500 mb-3">Estos Impuestos serán Agregados al total de la factura</p>
+                {(['impuesto1', 'impuesto2', 'impuesto3'] as const).map((key, i) => (
+                  <div key={key} className="mb-2">
+                    <Field label={`Impuesto #${i + 1} (%)`} note="* Dejar en 0 (cero) para quedar deshabilitado">
+                      <input
+                        type="number" min={0} max={100} step={0.01}
+                        className={inputCls}
+                        value={facturacion[key]}
+                        onChange={e => updateF(key, parseFloat(e.target.value) || 0)}
+                      />
+                    </Field>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -314,68 +292,56 @@ export default function PlantillasConfigPage() {
             </div>
             <div className="px-4 py-3 space-y-0.5">
               <Field label="Aviso nueva factura">
-                <select className={selectCls} value={n.avisoNuevaFactura} onChange={e => updateNotif('avisoNuevaFactura', e.target.value)}>
+                <select className={selectCls} value={notificaciones.avisoNuevaFactura} onChange={e => updateN('avisoNuevaFactura', e.target.value)}>
                   <option value="desactivado">Desactivado</option>
                   <option value="whatsapp">WhatsApp</option>
                   <option value="sms">SMS</option>
                   <option value="ambos">WhatsApp + SMS</option>
                 </select>
               </Field>
-
               <Field label="Aviso en Pantalla" note="* Aviso sólo en páginas HTTP">
-                <select className={selectCls} value={n.avisoPantalla} onChange={e => updateNotif('avisoPantalla', e.target.value)}>
+                <select className={selectCls} value={notificaciones.avisoPantalla} onChange={e => updateN('avisoPantalla', e.target.value)}>
                   <option value="desactivado">Desactivado</option>
                   <option value="activado">Activado</option>
                 </select>
               </Field>
-
               <Field label="Recordatorios de pago">
-                <select className={selectCls} value={n.recordatoriosPago} onChange={e => updateNotif('recordatoriosPago', e.target.value)}>
+                <select className={selectCls} value={notificaciones.recordatoriosPago} onChange={e => updateN('recordatoriosPago', e.target.value)}>
                   <option value="desactivado">Desactivado</option>
                   <option value="whatsapp">WhatsApp</option>
                   <option value="sms">SMS</option>
                   <option value="ambos">WhatsApp + SMS</option>
                 </select>
               </Field>
-
-              <Field label="Recordatorio #1">
-                <select className={selectCls} value={n.recordatorio1} onChange={e => updateNotif('recordatorio1', e.target.value)}>
-                  {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </Field>
-
-              <Field label="Recordatorio #2">
-                <select className={selectCls} value={n.recordatorio2} onChange={e => updateNotif('recordatorio2', e.target.value)}>
-                  {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </Field>
-
-              <Field label="Recordatorio #3">
-                <select className={selectCls} value={n.recordatorio3} onChange={e => updateNotif('recordatorio3', e.target.value)}>
-                  {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </Field>
-
+              {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => (
+                <Field key={key} label={`Recordatorio #${i + 1}`}>
+                  <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
+                    {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </Field>
+              ))}
               <p className="text-xs text-orange-500 pl-[172px] pt-1">
                 * Días antes/después del vencimiento de una factura
               </p>
 
-              {/* Buttons */}
+              {/* Botones */}
               <div className="pt-6 pb-2 flex items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={guardarCambios}
-                  className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-4 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                  disabled={busy || !selId}
+                  className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-4 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50"
                 >
-                  <Save className="h-3.5 w-3.5" />
+                  {mutUpdate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                   Guardar cambios
                 </button>
                 <button
                   type="button"
                   onClick={guardarNueva}
-                  className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-4 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                  disabled={busy}
+                  className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-4 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  {mutCreate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   Guardar Nueva plantilla
                 </button>
               </div>
