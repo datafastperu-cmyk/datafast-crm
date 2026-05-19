@@ -4,15 +4,9 @@ export class CreateBackups1779700000001 implements MigrationInterface {
   name = 'CreateBackups1779700000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      CREATE TYPE estado_backup AS ENUM ('en_progreso', 'completado', 'error')
-    `);
-    await queryRunner.query(`
-      CREATE TYPE tipo_backup AS ENUM ('manual', 'auto')
-    `);
-    await queryRunner.query(`
-      CREATE TYPE estado_subida AS ENUM ('pendiente', 'subido', 'error', 'deshabilitado')
-    `);
+    await queryRunner.query(`DO $$ BEGIN CREATE TYPE estado_backup AS ENUM ('en_progreso', 'completado', 'error'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
+    await queryRunner.query(`DO $$ BEGIN CREATE TYPE tipo_backup AS ENUM ('manual', 'auto'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
+    await queryRunner.query(`DO $$ BEGIN CREATE TYPE estado_subida AS ENUM ('pendiente', 'subido', 'error', 'deshabilitado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
     await queryRunner.query(`
       CREATE TABLE backups (
