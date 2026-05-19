@@ -27,12 +27,13 @@ import type { Contrato, Factura, Pago } from '@/types';
 // ── Tabs ──────────────────────────────────────────────────────
 const TABS = [
   { key: 'resumen',      label: 'Resumen',      icon: Monitor      },
+  { key: 'onu_router',   label: 'ONU/Router',   icon: Radio        },
   { key: 'servicios',    label: 'Servicios',    icon: Wifi         },
   { key: 'facturacion',  label: 'Facturación',  icon: CreditCard   },
   { key: 'tickets',      label: 'Tickets',      icon: Ticket       },
-  { key: 'email_sms',    label: 'Email & SMS',  icon: MessageSquare},
+  { key: 'email_sms',    label: 'Mensajes',     icon: MessageSquare},
   { key: 'documentos',   label: 'Documentos',   icon: FolderOpen   },
-  { key: 'estadisticas', label: 'Estadísticas', icon: BarChart2    },
+  { key: 'estadisticas', label: 'Consumo',      icon: BarChart2    },
   { key: 'logs',         label: 'Log',          icon: ScrollText   },
 ] as const;
 type TabKey = typeof TABS[number]['key'];
@@ -396,6 +397,9 @@ export function ClienteDetalle({ id }: { id: string }) {
         {tab === 'servicios' && (
           <TabServicios clienteId={id} contratos={contratos as Contrato[]} />
         )}
+
+        {/* ── ONU/Router ───────────────────────────────────── */}
+        {tab === 'onu_router' && <div className="p-6"><PlaceholderTab icon={Radio} title="ONU / Router" desc="Gestión de equipos ONU y routers asociados al abonado." badge="Próximamente" /></div>}
 
         {/* Tabs placeholder */}
         {tab === 'facturacion'  && <TabFacturacion clienteId={id} contratos={contratos as Contrato[]} />}
