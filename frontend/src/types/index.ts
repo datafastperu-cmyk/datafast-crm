@@ -101,23 +101,28 @@ export type TipoPlan    = 'residencial' | 'empresarial' | 'dedicado' | 'prepago'
 export type TipoQueue   = 'simple_queue' | 'queue_tree' | 'pcq' | 'sin_limite';
 
 export interface Plan {
-  id:               string;
-  nombre:           string;
-  descripcion?:     string;
-  tipo:             TipoPlan;
-  colorUi:          string;
-  velocidadBajada:  number;
-  velocidadSubida:  number;
-  burstBajada?:     number;
-  burstSubida?:     number;
-  precio:           number;
-  precioInstalacion: number;
-  aplicaIgv:        boolean;
-  tipoQueue:        TipoQueue;
-  pppProfile?:      string;
-  activo:           boolean;
-  visibleEnPortal:  boolean;
-  ordenDisplay:     number;
+  id:                   string;
+  nombre:               string;
+  descripcion?:         string;
+  tipo:                 TipoPlan;
+  colorUi:              string;
+  velocidadBajada:      number;
+  velocidadSubida:      number;
+  burstBajada?:         number;
+  burstSubida?:         number;
+  burstUmbral?:         number;
+  burstTiempo?:         number;
+  velocidadGarantizada?: number;
+  precio:               number;
+  precioInstalacion:    number;
+  aplicaIgv:            boolean;
+  tipoQueue:            TipoQueue;
+  pppProfile?:          string;
+  prioridad?:           number;
+  addresslist?:         string;
+  activo:               boolean;
+  visibleEnPortal:      boolean;
+  ordenDisplay:         number;
 }
 
 // ─── Contratos ────────────────────────────────────────────────

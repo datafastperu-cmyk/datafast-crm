@@ -162,7 +162,7 @@ export const contratosApi = {
 // ─── Planes API ───────────────────────────────────────────────
 export const planesApi = {
   list: async (): Promise<Plan[]> => {
-    const res = await api.get<ApiRespuesta<Plan[]>>('/planes?activo=true');
+    const res = await api.get<ApiRespuesta<Plan[]>>('/planes');
     return res.data.data;
   },
 };

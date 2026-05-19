@@ -18,8 +18,11 @@ export class Plan extends BaseModel {
   @Column({ name:'velocidad_subida', type:'int' }) velocidadSubida: number;
   @Column({ name:'burst_bajada', type:'int', nullable:true }) burstBajada: number;
   @Column({ name:'burst_subida', type:'int', nullable:true }) burstSubida: number;
+  @Column({ name:'burst_umbral', type:'smallint', default:0 }) burstUmbral: number;
   @Column({ name:'burst_tiempo', type:'smallint', default:0 }) burstTiempo: number;
   @Column({ name:'velocidad_garantizada', type:'int', nullable:true }) velocidadGarantizada: number;
+  @Column({ type:'smallint', default:8 }) prioridad: number;
+  @Column({ length:100, nullable:true }) addresslist: string;
   @Column({ type:'decimal', precision:10, scale:2 }) precio: number;
   @Column({ name:'precio_instalacion', type:'decimal', precision:10, scale:2, default:0 }) precioInstalacion: number;
   @Column({ name:'aplica_igv', default:true }) aplicaIgv: boolean;
