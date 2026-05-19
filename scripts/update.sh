@@ -26,38 +26,24 @@ step() { echo -e "\n${W}━━━ $1${NC}" | tee -a "$LOG_FILE"; }
 
 mkdir -p "$LOG_DIR"
 
-# ── Liberar puerto: mata cualquier proceso (de cualquier usuario) que lo ocupe ──
-# Usa ss para obtener PIDs directamente — funciona aunque el proceso sea de otro usuario.
-kill_port() {
-  local port="$1"
-  local pids
-  pids=$(ss -tlnp "sport = :${port}" 2>/dev/null \
-         | { grep -oP 'pid=\K[0-9]+' || true; } | sort -u)
-  if [[ -n "$pids" ]]; then
-    warn "Puerto ${port} ocupado (PIDs: ${pids}) — matando..."
-    echo "$pids" | xargs -r kill -9 2>/dev/null || true
-    sleep 2
+# ── Safety net: el frontend siempre queda corriendo al salir el script ───────────
+# Esto se ejecuta sin importar si el script termina bien, mal, o con kill.
+_ensure_frontend() {
+  local status
+  status=$(pm2 jlist 2>/dev/null | python3 -c "
+import sys,json
+procs=json.load(sys.stdin)
+fe=[p for p in procs if p.get('name')=='datafast-frontend']
+print(fe[0]['pm2_env']['status'] if fe else 'missing')
+" 2>/dev/null || echo 'unknown')
+
+  if [[ "$status" != "online" ]]; then
+    warn "EXIT-TRAP: frontend no estaba online (estado: ${status}) — levantando..."
+    pm2 start "${ECOSYSTEM}" --only datafast-frontend >> "$LOG_FILE" 2>&1 || true
+    pm2 save >> "$LOG_FILE" 2>&1 || true
   fi
 }
-
-# ── Esperar que el puerto quede libre (con kill forzado como fallback) ───────────
-wait_port_free() {
-  local port="$1"
-  local timeout="${2:-20}"
-  local elapsed=0
-
-  while ss -tlnp "sport = :${port}" 2>/dev/null | grep -q "LISTEN"; do
-    if (( elapsed >= timeout )); then
-      kill_port "${port}"
-      sleep 1
-      return
-    fi
-    sleep 1
-    (( elapsed++ ))
-  done
-
-  log "Puerto ${port} liberado (${elapsed}s)"
-}
+trap '_ensure_frontend' EXIT
 
 CURRENT_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo '?')"
 echo ""
@@ -116,11 +102,9 @@ step "Reconstruyendo frontend"
 cd "${INSTALL_DIR}/frontend"
 npm install >> "$LOG_FILE" 2>&1
 
-# Build atómico: construir en .next.building → si tiene éxito → reemplazar .next
-# Esto evita que un build interrumpido deje .next en estado corrupto
+# Build atómico: build en .next.building → swap atómico → sin .next corrupto
 rm -rf .next.building 2>/dev/null || true
 NEXT_DIST_DIR=".next.building" NODE_ENV=production npm run build >> "$LOG_FILE" 2>&1
-# Build exitoso → swap atómico
 rm -rf .next.old 2>/dev/null || true
 [[ -d .next ]] && mv .next .next.old
 mv .next.building .next
@@ -147,27 +131,33 @@ pm2 reload "${ECOSYSTEM}" --only datafast-backend >> "$LOG_FILE" 2>&1 \
     || warn "PM2 backend no reiniciado"
 log "Backend recargado"
 
-# ── 7. Restart frontend SIN colisión de puertos ───────────────────────────────
+# ── 7. Restart frontend ───────────────────────────────────────────────────────
+# set -e desactivado en esta sección: ningún error aquí puede dejar el frontend caído.
+# El trap EXIT es el safety net definitivo.
 step "Restart seguro del frontend"
+set +e
 
 log "Deteniendo datafast-frontend..."
-pm2 stop datafast-frontend >> "$LOG_FILE" 2>&1 || true
+pm2 stop datafast-frontend >> "$LOG_FILE" 2>&1
 
-log "Liberando puerto 3000..."
-wait_port_free 3000 15
-# Segunda pasada: kill directo por si algo sobrevivió
-kill_port 3000
+log "Liberando puerto 3000 (fuser)..."
+sleep 2
+fuser -k 3000/tcp >> "$LOG_FILE" 2>&1
+sleep 2
 
-# Verificar que el proceso usa server.js (no npm) — si no, recrear
-if pm2 describe datafast-frontend 2>/dev/null | grep -q '"script".*"npm"'; then
-    warn "Proceso frontend usaba npm start — recreando desde ecosystem..."
-    pm2 delete datafast-frontend >> "$LOG_FILE" 2>&1 || true
+log "Iniciando datafast-frontend..."
+pm2 start "${ECOSYSTEM}" --only datafast-frontend >> "$LOG_FILE" 2>&1
+FRONTEND_EXIT=$?
+
+set -e
+
+if [[ $FRONTEND_EXIT -eq 0 ]]; then
+    log "Frontend arrancado correctamente"
+else
+    warn "pm2 start retornó ${FRONTEND_EXIT} — el trap EXIT se encargará"
 fi
 
-pm2 start "${ECOSYSTEM}" --only datafast-frontend >> "$LOG_FILE" 2>&1
-log "Frontend arrancado con ecosystem.config.js"
-
-pm2 save >> "$LOG_FILE" 2>&1
+pm2 save >> "$LOG_FILE" 2>&1 || true
 log "Estado PM2 guardado"
 
 # ── 8. Resultado ──────────────────────────────────────────────────────────────
