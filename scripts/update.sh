@@ -32,7 +32,7 @@ kill_port() {
   local port="$1"
   local pids
   pids=$(ss -tlnp "sport = :${port}" 2>/dev/null \
-         | grep -oP 'pid=\K[0-9]+' | sort -u)
+         | { grep -oP 'pid=\K[0-9]+' || true; } | sort -u)
   if [[ -n "$pids" ]]; then
     warn "Puerto ${port} ocupado (PIDs: ${pids}) — matando..."
     echo "$pids" | xargs -r kill -9 2>/dev/null || true
