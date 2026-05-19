@@ -8,6 +8,11 @@ import { createVerify, createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { hostname } from 'os';
 
+// ─── MODO DESARROLLO ──────────────────────────────────────────────────────────
+// Cambia a false cuando el CRM esté terminado y se integre el sistema de licencias.
+const DEV_BYPASS = true;
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Stub local — reemplaza @datafast/license-sdk sin dependencia externa
 class LicenseClient {
   private opts: { serverUrl: string; heartbeatSecret: string; productSlug: string; timeoutMs: number };
@@ -82,11 +87,17 @@ export class LicenciaService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    if (DEV_BYPASS) {
+      this.estado = { valid: true, plan: 'gold', maxClientes: -1, licenseId: 'dev', issuedTo: 'Desarrollo', expiresAt: null, machineId: null, razon: 'DEV_BYPASS', lastChecked: new Date() };
+      this.logger.warn('⚠  MODO DESARROLLO: licencia desactivada (DEV_BYPASS=true)');
+      return;
+    }
     await this.cargarYVerificar();
   }
 
   // ── Carga y verificación completa al iniciar ──────────────────
   async cargarYVerificar(): Promise<void> {
+    if (DEV_BYPASS) return;
     let licenseKey = this.config.get<string>('LICENSE_KEY') || process.env.LICENSE_KEY || '';
 
     if (!licenseKey || licenseKey === 'PASTE_YOUR_LICENSE_HERE') {
@@ -199,6 +210,7 @@ export class LicenciaService implements OnModuleInit {
 
   // ── Validación online via SDK (revocación) ───────────────────
   async validarOnline(): Promise<void> {
+    if (DEV_BYPASS) return;
     if (!this.estado.licenseId) return;
 
     try {
@@ -310,6 +322,7 @@ export class LicenciaService implements OnModuleInit {
 
   // ── Verificar límite de clientes ──────────────────────────────
   async verificarLimiteClientes(empresaId: string, currentCount?: number): Promise<void> {
+    if (DEV_BYPASS) return;
     const { valid, maxClientes } = this.estado;
     if (!valid) return;
     if (maxClientes === -1) return;
