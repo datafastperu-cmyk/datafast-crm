@@ -109,9 +109,9 @@ export default function PlantillasConfigPage() {
       plantillasAbonadosApi.update(id, { nombre, facturacion, notificaciones }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['plantillas-abonados'] });
-      toast({ title: 'Plantilla guardada', description: 'Los cambios fueron guardados.' });
+      toast('Plantilla guardada', { description: 'Los cambios fueron guardados.' });
     },
-    onError: (e) => toast({ title: 'Error', description: parseApiError(e), variant: 'destructive' }),
+    onError: (e) => toast('Error', { description: parseApiError(e), type: 'error' }),
   });
 
   const mutCreate = useMutation({
@@ -121,9 +121,9 @@ export default function PlantillasConfigPage() {
       qc.invalidateQueries({ queryKey: ['plantillas-abonados'] });
       setSelId(nueva.id);
       setNombreNueva('');
-      toast({ title: 'Plantilla creada', description: `"${nueva.nombre}" guardada.` });
+      toast('Plantilla creada', { description: `"${nueva.nombre}" guardada.` });
     },
-    onError: (e) => toast({ title: 'Error', description: parseApiError(e), variant: 'destructive' }),
+    onError: (e) => toast('Error', { description: parseApiError(e), type: 'error' }),
   });
 
   const mutDelete = useMutation({
@@ -131,9 +131,9 @@ export default function PlantillasConfigPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['plantillas-abonados'] });
       setSelId(null);
-      toast({ title: 'Plantilla eliminada' });
+      toast('Plantilla eliminada');
     },
-    onError: (e) => toast({ title: 'Error', description: parseApiError(e), variant: 'destructive' }),
+    onError: (e) => toast('Error', { description: parseApiError(e), type: 'error' }),
   });
 
   const selPlantilla = plantillas.find(p => p.id === selId);
