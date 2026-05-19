@@ -452,10 +452,8 @@ export function PlanesTab() {
                       </button>
                     )}
                   />
-                  <span className="text-xs text-muted-foreground">
-                    {crearCuentaIptv ? 'Se creará cuenta IPTV al contratar' : 'Sin cuenta IPTV'}
-                  </span>
                 </div>
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">* Se creará cuenta IPTV al contratar</p>
                 {crearCuentaIptv && (
                   <div className="ml-0 space-y-1 max-w-xs">
                     <label className="text-sm text-foreground">
