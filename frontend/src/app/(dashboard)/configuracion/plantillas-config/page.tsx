@@ -289,6 +289,7 @@ export default function PlantillasConfigPage() {
                         placeholder="Monto de mora"
                         value={facturacion.montoMora}
                         onChange={e => updateF('montoMora', parseFloat(e.target.value) || 0)}
+                        onBlur={e => updateF('montoMora', parseFloat((parseFloat(e.target.value) || 0).toFixed(2)))}
                       />
                     </div>
                   )}
@@ -306,6 +307,7 @@ export default function PlantillasConfigPage() {
                         placeholder="Monto de reconexión"
                         value={facturacion.montoReconexion}
                         onChange={e => updateF('montoReconexion', parseFloat(e.target.value) || 0)}
+                        onBlur={e => updateF('montoReconexion', parseFloat((parseFloat(e.target.value) || 0).toFixed(2)))}
                       />
                     </div>
                   )}
@@ -323,6 +325,7 @@ export default function PlantillasConfigPage() {
                         className={inputCls}
                         value={facturacion[key]}
                         onChange={e => updateF(key, parseFloat(e.target.value) || 0)}
+                        onBlur={e => updateF(key, parseFloat((parseFloat(e.target.value) || 0).toFixed(2)))}
                       />
                     </Field>
                   </div>
