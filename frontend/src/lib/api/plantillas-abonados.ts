@@ -9,7 +9,9 @@ export interface FacturacionConfig {
   diasGracia:        string;
   aplicarCorte:      string;
   aplicarMora:       boolean;
+  montoMora:         number;
   aplicarReconexion: boolean;
+  montoReconexion:   number;
   impuesto1:         number;
   impuesto2:         number;
   impuesto3:         number;

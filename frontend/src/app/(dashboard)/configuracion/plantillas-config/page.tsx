@@ -12,7 +12,8 @@ import { parseApiError } from '@/lib/utils';
 const DEFAULT_FACTURACION: FacturacionConfig = {
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
-  aplicarMora: false, aplicarReconexion: false, impuesto1: 0, impuesto2: 0, impuesto3: 0,
+  aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
+  impuesto1: 0, impuesto2: 0, impuesto3: 0,
 };
 const DEFAULT_NOTIFICACIONES: NotificacionesConfig = {
   avisoNuevaFactura: 'desactivado', avisoPantalla: 'desactivado',
@@ -277,13 +278,37 @@ export default function PlantillasConfigPage() {
                 </select>
               </Field>
               <Field label="Aplicar Mora">
-                <div className="pt-1">
+                <div className="flex items-center gap-3 pt-1">
                   <Toggle checked={facturacion.aplicarMora} onChange={v => updateF('aplicarMora', v)} />
+                  {facturacion.aplicarMora && (
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <span className="text-sm text-gray-500">S/</span>
+                      <input
+                        type="number" min={0} step={0.01}
+                        className={inputCls}
+                        placeholder="Monto de mora"
+                        value={facturacion.montoMora}
+                        onChange={e => updateF('montoMora', parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  )}
                 </div>
               </Field>
               <Field label="Aplicar Reconexión">
-                <div className="pt-1">
+                <div className="flex items-center gap-3 pt-1">
                   <Toggle checked={facturacion.aplicarReconexion} onChange={v => updateF('aplicarReconexion', v)} />
+                  {facturacion.aplicarReconexion && (
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <span className="text-sm text-gray-500">S/</span>
+                      <input
+                        type="number" min={0} step={0.01}
+                        className={inputCls}
+                        placeholder="Monto de reconexión"
+                        value={facturacion.montoReconexion}
+                        onChange={e => updateF('montoReconexion', parseFloat(e.target.value) || 0)}
+                      />
+                    </div>
+                  )}
                 </div>
               </Field>
 
