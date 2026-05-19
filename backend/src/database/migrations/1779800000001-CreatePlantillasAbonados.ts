@@ -5,7 +5,7 @@ export class CreatePlantillasAbonados1779800000001 implements MigrationInterface
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE TABLE plantillas_abonados (
+      CREATE TABLE IF NOT EXISTS plantillas_abonados (
         id             UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
         empresa_id     UUID         NOT NULL,
         nombre         VARCHAR(150) NOT NULL,
@@ -19,13 +19,15 @@ export class CreatePlantillasAbonados1779800000001 implements MigrationInterface
     `);
 
     await queryRunner.query(`
-      CREATE INDEX idx_plantillas_abonados_empresa ON plantillas_abonados (empresa_id)
+      CREATE INDEX IF NOT EXISTS idx_plantillas_abonados_empresa ON plantillas_abonados (empresa_id)
     `);
 
     await queryRunner.query(`
-      CREATE TRIGGER set_updated_at_plantillas_abonados
-        BEFORE UPDATE ON plantillas_abonados
-        FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at()
+      DO $$ BEGIN
+        CREATE TRIGGER set_updated_at_plantillas_abonados
+          BEFORE UPDATE ON plantillas_abonados
+          FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$
     `);
   }
 

@@ -9,7 +9,7 @@ export class CreateBackups1779700000001 implements MigrationInterface {
     await queryRunner.query(`DO $$ BEGIN CREATE TYPE estado_subida AS ENUM ('pendiente', 'subido', 'error', 'deshabilitado'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
 
     await queryRunner.query(`
-      CREATE TABLE backups (
+      CREATE TABLE IF NOT EXISTS backups (
         id            UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
         empresa_id    UUID         NOT NULL,
         tipo          tipo_backup  NOT NULL DEFAULT 'auto',
@@ -32,13 +32,15 @@ export class CreateBackups1779700000001 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE INDEX idx_backups_empresa_fecha ON backups (empresa_id, created_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_backups_empresa_fecha ON backups (empresa_id, created_at DESC)
     `);
 
     await queryRunner.query(`
-      CREATE TRIGGER set_updated_at_backups
-        BEFORE UPDATE ON backups
-        FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at()
+      DO $$ BEGIN
+        CREATE TRIGGER set_updated_at_backups
+          BEFORE UPDATE ON backups
+          FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$
     `);
 
     await queryRunner.query(`
