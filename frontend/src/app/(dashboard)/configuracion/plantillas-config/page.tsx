@@ -61,6 +61,29 @@ const RECORDATORIO_OPTS = [
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────
+function DecimalInput({ value, onChange, className, placeholder }: {
+  value: number; onChange: (v: number) => void; className?: string; placeholder?: string;
+}) {
+  const [display, setDisplay] = useState(value.toFixed(2));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setDisplay(value.toFixed(2)); }, [value, focused]);
+  return (
+    <input
+      type="text" inputMode="decimal" className={className} placeholder={placeholder}
+      value={display}
+      onChange={e => setDisplay(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        const parsed = Math.max(0, parseFloat(display) || 0);
+        const formatted = parsed.toFixed(2);
+        setDisplay(formatted);
+        onChange(parseFloat(formatted));
+      }}
+    />
+  );
+}
+
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -283,13 +306,11 @@ export default function PlantillasConfigPage() {
                   {facturacion.aplicarMora && (
                     <div className="flex items-center gap-1.5 flex-1">
                       <span className="text-sm text-gray-500">S/</span>
-                      <input
-                        type="number" min={0} step={0.01}
+                      <DecimalInput
                         className={inputCls}
                         placeholder="Monto de mora"
                         value={facturacion.montoMora}
-                        onChange={e => updateF('montoMora', parseFloat(e.target.value) || 0)}
-                        onBlur={e => updateF('montoMora', parseFloat((parseFloat(e.target.value) || 0).toFixed(2)))}
+                        onChange={v => updateF('montoMora', v)}
                       />
                     </div>
                   )}
@@ -301,13 +322,11 @@ export default function PlantillasConfigPage() {
                   {facturacion.aplicarReconexion && (
                     <div className="flex items-center gap-1.5 flex-1">
                       <span className="text-sm text-gray-500">S/</span>
-                      <input
-                        type="number" min={0} step={0.01}
+                      <DecimalInput
                         className={inputCls}
                         placeholder="Monto de reconexión"
                         value={facturacion.montoReconexion}
-                        onChange={e => updateF('montoReconexion', parseFloat(e.target.value) || 0)}
-                        onBlur={e => updateF('montoReconexion', parseFloat((parseFloat(e.target.value) || 0).toFixed(2)))}
+                        onChange={v => updateF('montoReconexion', v)}
                       />
                     </div>
                   )}
@@ -320,12 +339,10 @@ export default function PlantillasConfigPage() {
                 {(['impuesto1', 'impuesto2', 'impuesto3'] as const).map((key, i) => (
                   <div key={key} className="mb-2">
                     <Field label={`Impuesto #${i + 1} (%)`} note="* Dejar en 0 (cero) para quedar deshabilitado">
-                      <input
-                        type="number" min={0} max={100} step={0.01}
+                      <DecimalInput
                         className={inputCls}
                         value={facturacion[key]}
-                        onChange={e => updateF(key, parseFloat(e.target.value) || 0)}
-                        onBlur={e => updateF(key, parseFloat((parseFloat(e.target.value) || 0).toFixed(2)))}
+                        onChange={v => updateF(key, v)}
                       />
                     </Field>
                   </div>
