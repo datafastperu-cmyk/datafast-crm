@@ -352,6 +352,22 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 <option value="ambos">WhatsApp + SMS</option>
               </select>
             </Field>
+            {/* Fechas calculadas — encima de recordatorios */}
+            <div className="pt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 px-3 py-2 text-xs text-center">
+                <span className="text-muted-foreground">Día de pago: </span>
+                <span className="font-semibold text-yellow-700 dark:text-yellow-400">{fechas.pago}</span>
+              </div>
+              <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 px-3 py-2 text-xs text-center">
+                <span className="text-muted-foreground">Día de corte: </span>
+                <span className="font-semibold text-red-600 dark:text-red-400">{fechas.corte ?? 'Sin corte'}</span>
+              </div>
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 px-3 py-2 text-xs text-center">
+                <span className="text-muted-foreground">Crear factura: </span>
+                <span className="font-semibold text-blue-600 dark:text-blue-400">{fechas.crear ?? 'Desactivado'}</span>
+              </div>
+            </div>
+
             {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => (
               <Field key={key} label={`Recordatorio #${i + 1}`}>
                 <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
@@ -364,7 +380,7 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
             </p>
 
             {/* Preview recordatorios */}
-            <div className="pt-4 grid grid-cols-2 gap-2">
+            <div className="pt-3 grid grid-cols-2 gap-2">
               <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2 text-xs">
                 <span className="text-muted-foreground">Aviso pantalla: </span>
                 <span className="font-medium">{notificaciones.avisoPantalla === 'activado' ? 'Activado' : 'Desactivado'}</span>
@@ -386,37 +402,17 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
               })}
             </div>
 
+            {/* Botón guardar */}
+            <div className="pt-4 pb-1 flex justify-center">
+              <button type="button" onClick={() => mut.mutate()} disabled={mut.isPending}
+                className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-6 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50">
+                {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Guardar cambios
+              </button>
+            </div>
+
           </div>
         </div>
-      </div>
-
-      {/* ── Barra de fechas calculadas ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 px-4 py-2.5 text-sm text-center">
-          <span className="text-muted-foreground">Día de pago: </span>
-          <span className="font-semibold text-yellow-700 dark:text-yellow-400">{fechas.pago}</span>
-        </div>
-        <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 px-4 py-2.5 text-sm text-center">
-          <span className="text-muted-foreground">Día de corte: </span>
-          <span className="font-semibold text-red-600 dark:text-red-400">
-            {fechas.corte ?? 'Sin corte'}
-          </span>
-        </div>
-        <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 px-4 py-2.5 text-sm text-center">
-          <span className="text-muted-foreground">Crear factura: </span>
-          <span className="font-semibold text-blue-600 dark:text-blue-400">
-            {fechas.crear ?? 'Desactivado'}
-          </span>
-        </div>
-      </div>
-
-      {/* ── Botón único ── */}
-      <div className="flex justify-center pb-2">
-        <button type="button" onClick={() => mut.mutate()} disabled={mut.isPending}
-          className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-6 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50">
-          {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Guardar cambios
-        </button>
       </div>
     </div>
   );
