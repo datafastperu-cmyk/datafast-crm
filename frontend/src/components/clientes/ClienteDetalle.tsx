@@ -5,10 +5,11 @@ import { useRouter }                   from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Search, Calendar, Monitor, MessageSquare,
-  CreditCard, Wifi, Loader2, Radio, Cable, Shuffle,
+  CreditCard, Wifi, WifiOff, Loader2, Radio, Cable, Shuffle,
   XCircle, ScrollText, FolderOpen, Wrench, Save,
   Receipt, BarChart2, Ticket, Plus, FileText, ChevronDown,
-  Trash2, X, Pencil,
+  Trash2, X, Pencil, Copy, Download, AlignJustify,
+  LayoutGrid, RefreshCcw, Maximize2, Minus, Phone, Package,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -393,42 +394,7 @@ export function ClienteDetalle({ id }: { id: string }) {
 
         {/* ── Servicios ────────────────────────────────────── */}
         {tab === 'servicios' && (
-          <div className="p-6 space-y-3">
-            {(contratos as Contrato[]).length === 0 ? (
-              <PlaceholderTab icon={Wifi} title="Sin contratos activos"
-                desc="Este cliente no tiene contratos de servicio registrados."
-                action={{ label: 'Crear contrato', href: `/contratos/nuevo?clienteId=${id}` }}
-              />
-            ) : (
-              (contratos as Contrato[]).map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => router.push(`/contratos/${c.id}`)}
-                  className="w-full flex items-center justify-between gap-4 p-4 rounded-xl
-                             border border-border hover:bg-accent/50 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Wifi className="w-4 h-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{c.numeroContrato}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {c.planNombre} · {c.velocidadBajada}/{c.velocidadSubida} Mbps
-                        {c.ipAsignada && <span className="font-mono"> · {c.ipAsignada}</span>}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-bold text-foreground">{formatPEN(c.precioFinal ?? 0)}/mes</p>
-                    {c.deudaTotal > 0 && (
-                      <p className="text-xs text-destructive font-semibold">Deuda: {formatPEN(c.deudaTotal)}</p>
-                    )}
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
+          <TabServicios clienteId={id} contratos={contratos as Contrato[]} />
         )}
 
         {/* Tabs placeholder */}
@@ -512,6 +478,303 @@ function PlaceholderTab({
           {action.label}
         </button>
       )}
+    </div>
+  );
+}
+
+// ── TabServicios ──────────────────────────────────────────────
+
+function SvcSectionHeader({ title, icon: Icon }: { title: string; icon: React.ElementType }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40 border-b border-border">
+      <div className="flex items-center gap-2">
+        <Icon className="w-3.5 h-3.5 text-primary" />
+        <span className="text-xs font-semibold text-foreground">{title}</span>
+      </div>
+      <div className="flex items-center gap-0.5">
+        <button className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"><Maximize2 className="w-3 h-3" /></button>
+        <button className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"><RefreshCcw className="w-3 h-3" /></button>
+        <button className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"><Minus className="w-3 h-3" /></button>
+      </div>
+    </div>
+  );
+}
+
+function SvcToolbar({
+  count, onAdd, addLabel = '+ Nuevo', search, onSearch,
+}: {
+  count: number; onAdd?: () => void; addLabel?: string;
+  search: string; onSearch: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-background">
+      <span className="text-[11px] font-bold text-muted-foreground border border-border rounded px-2 py-0.5 min-w-[2rem] text-center">
+        {count}
+      </span>
+      <button className="p-1.5 rounded border border-border text-muted-foreground hover:bg-accent transition-colors">
+        <AlignJustify className="w-3.5 h-3.5" />
+      </button>
+      <button className="p-1.5 rounded border border-border text-muted-foreground hover:bg-accent transition-colors">
+        <Download className="w-3.5 h-3.5" />
+      </button>
+      {onAdd && (
+        <button
+          onClick={onAdd}
+          className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded
+                     bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-3 h-3" /> {addLabel}
+        </button>
+      )}
+      <div className="ml-auto relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={e => onSearch(e.target.value)}
+          placeholder="Buscar..."
+          className="pl-7 pr-3 py-1.5 text-[11px] bg-muted border border-input rounded w-40
+                     focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+        />
+      </div>
+    </div>
+  );
+}
+
+function SvcTh({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <th className={cn('px-3 py-2 text-left text-[10px] font-bold text-muted-foreground whitespace-nowrap select-none', className)}>
+      <span className="flex items-center gap-1">
+        {children}
+        <span className="text-muted-foreground/40 text-[8px]">↕</span>
+      </span>
+    </th>
+  );
+}
+
+function ContratoEstadoBadge({ estado }: { estado: string }) {
+  const on = estado === 'activo';
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold',
+      on
+        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    )}>
+      {on ? <Wifi className="w-2.5 h-2.5" /> : <WifiOff className="w-2.5 h-2.5" />}
+      {on ? 'ONLINE' : 'OFFLINE'}
+    </span>
+  );
+}
+
+function EmptyRow({ cols, icon: Icon, msg }: { cols: number; icon: React.ElementType; msg: string }) {
+  return (
+    <tr>
+      <td colSpan={cols} className="py-10 text-center">
+        <div className="flex flex-col items-center gap-2">
+          <Icon className="w-8 h-8 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground">{msg}</p>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function SvcPagination({ total }: { total: number }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2 border-t border-border text-[10px] text-muted-foreground">
+      <span>Mostrando 1 al {total} de un total de {total}</span>
+      <div className="flex items-center gap-1">
+        <button className="px-2 py-0.5 border border-border rounded hover:bg-accent transition-colors">←</button>
+        <button className="px-2.5 py-0.5 border border-primary bg-primary text-primary-foreground rounded text-[10px]">1</button>
+        <button className="px-2 py-0.5 border border-border rounded hover:bg-accent transition-colors">→</button>
+      </div>
+    </div>
+  );
+}
+
+function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: Contrato[] }) {
+  const router = useRouter();
+  const [q1, setQ1] = useState('');
+  const [q2, setQ2] = useState('');
+  const [q3, setQ3] = useState('');
+  const [q4, setQ4] = useState('');
+
+  const filtered = contratos.filter(c =>
+    !q1 ||
+    (c.planNombre ?? '').toLowerCase().includes(q1.toLowerCase()) ||
+    (c.ipAsignada ?? '').includes(q1) ||
+    (c.routerNombre ?? '').toLowerCase().includes(q1.toLowerCase()) ||
+    c.numeroContrato.toLowerCase().includes(q1.toLowerCase()),
+  );
+
+  return (
+    <div className="p-4 space-y-4">
+
+      {/* ── Servicios de Internet ─────────────────────────────── */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <SvcSectionHeader title="Servicios de Internet" icon={Wifi} />
+        <SvcToolbar
+          count={filtered.length}
+          search={q1}
+          onSearch={setQ1}
+          onAdd={() => router.push(`/contratos/nuevo?clienteId=${clienteId}`)}
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/20">
+                <SvcTh>ID</SvcTh>
+                <SvcTh>PLAN</SvcTh>
+                <SvcTh>COSTO</SvcTh>
+                <SvcTh>IP</SvcTh>
+                <SvcTh>ROUTER</SvcTh>
+                <SvcTh>INSTALADO</SvcTh>
+                <SvcTh>ESTADO</SvcTh>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {filtered.length === 0 ? (
+                <EmptyRow cols={8} icon={Wifi} msg="Ningún registro disponible" />
+              ) : filtered.map(c => (
+                <tr key={c.id} className="hover:bg-muted/20 transition-colors">
+                  <td className="px-3 py-2.5 font-mono text-muted-foreground">
+                    {(c as any).codigoServicio ?? c.numeroContrato ?? c.id.slice(0, 6)}
+                  </td>
+                  <td className="px-3 py-2.5 font-semibold text-foreground max-w-[200px] truncate">
+                    {c.planNombre ?? '—'}
+                    {(c.velocidadBajada || c.velocidadSubida) && (
+                      <span className="ml-1 text-muted-foreground font-normal">
+                        {c.velocidadBajada}/{c.velocidadSubida} Mbps
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-foreground font-semibold whitespace-nowrap">
+                    S/. {(c.precioFinal ?? 0).toFixed(2)}
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-primary whitespace-nowrap">
+                    {c.ipAsignada ?? '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                    {(c as any).routerNombre ?? '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                    {c.fechaInicio ? formatDate(c.fechaInicio) : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <ContratoEstadoBadge estado={c.estado} />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => navigator.clipboard?.writeText(c.id)}
+                        title="Copiar ID"
+                        className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => router.push(`/contratos/${c.id}`)}
+                        title="Editar"
+                        className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button
+                        title="Eliminar"
+                        className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <SvcPagination total={filtered.length} />
+      </div>
+
+      {/* ── Equipos Asignados ─────────────────────────────────── */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <SvcSectionHeader title="Equipos Asignados" icon={Radio} />
+        <SvcToolbar count={0} search={q2} onSearch={setQ2} />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/20">
+                <SvcTh>ID</SvcTh>
+                <SvcTh>N° SERIE</SvcTh>
+                <SvcTh>N° MAC</SvcTh>
+                <SvcTh>EQUIPO</SvcTh>
+                <SvcTh>FECHA</SvcTh>
+                <SvcTh>ESTADO</SvcTh>
+              </tr>
+            </thead>
+            <tbody>
+              <EmptyRow cols={6} icon={Radio} msg="Ningún registro disponible" />
+            </tbody>
+          </table>
+        </div>
+        <SvcPagination total={0} />
+      </div>
+
+      {/* ── Servicios Voip ────────────────────────────────────── */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <SvcSectionHeader title="Servicios Voip" icon={Phone} />
+        <SvcToolbar count={0} search={q3} onSearch={setQ3} onAdd={() => {}} addLabel="+ Nuevo" />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/20">
+                <SvcTh>ID</SvcTh>
+                <SvcTh>PLAN</SvcTh>
+                <SvcTh>SIP SERVER</SvcTh>
+                <SvcTh>SIP USER</SvcTh>
+                <SvcTh>AUTHENTICATE ID</SvcTh>
+                <SvcTh>N° TELÉFONO</SvcTh>
+                <SvcTh>COSTO</SvcTh>
+                <SvcTh>INSTALADO</SvcTh>
+                <SvcTh>NOTAS</SvcTh>
+              </tr>
+            </thead>
+            <tbody>
+              <EmptyRow cols={9} icon={Phone} msg="Ningún registro disponible" />
+            </tbody>
+          </table>
+        </div>
+        <SvcPagination total={0} />
+      </div>
+
+      {/* ── Productos y otros Servicios Recurrentes ───────────── */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <SvcSectionHeader
+          title="Productos y otros Servicios Recurrentes (CUOTAS Y MENSUAL)"
+          icon={Package}
+        />
+        <SvcToolbar count={0} search={q4} onSearch={setQ4} onAdd={() => {}} addLabel="+ Nuevo" />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/20">
+                <SvcTh>ID</SvcTh>
+                <SvcTh>PRODUCTO</SvcTh>
+                <SvcTh>MONTO</SvcTh>
+                <SvcTh>N° SERIE</SvcTh>
+                <SvcTh>N° MAC</SvcTh>
+                <SvcTh>FECHA INICIO</SvcTh>
+                <SvcTh>ESTADO</SvcTh>
+              </tr>
+            </thead>
+            <tbody>
+              <EmptyRow cols={7} icon={Package} msg="Ningún registro disponible" />
+            </tbody>
+          </table>
+        </div>
+        <SvcPagination total={0} />
+      </div>
+
     </div>
   );
 }
