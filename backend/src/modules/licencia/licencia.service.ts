@@ -8,7 +8,36 @@ import { createVerify, createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { hostname } from 'os';
 
-import { LicenseClient } from '@datafast/license-sdk';
+// Stub local — reemplaza @datafast/license-sdk sin dependencia externa
+class LicenseClient {
+  private opts: { serverUrl: string; heartbeatSecret: string; productSlug: string; timeoutMs: number };
+  constructor(opts: { serverUrl: string; heartbeatSecret: string; productSlug: string; timeoutMs: number }) {
+    this.opts = opts;
+  }
+  async heartbeat(data: { licenseId: string; machineId: string; plan?: string; version: string }): Promise<{ revoked: boolean }> {
+    try {
+      const resp = await fetch(`${this.opts.serverUrl}/api/v1/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Heartbeat-Secret': this.opts.heartbeatSecret },
+        body: JSON.stringify({ ...data, product: this.opts.productSlug }),
+        signal: AbortSignal.timeout(this.opts.timeoutMs),
+      });
+      if (!resp.ok) return { revoked: false };
+      const json = await resp.json() as any;
+      return { revoked: !!json.revoked };
+    } catch { return { revoked: false }; }
+  }
+  async activate(data: { licenseId: string; machineId: string; hostname: string; version: string }): Promise<void> {
+    try {
+      await fetch(`${this.opts.serverUrl}/api/v1/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Heartbeat-Secret': this.opts.heartbeatSecret },
+        body: JSON.stringify({ ...data, product: this.opts.productSlug }),
+        signal: AbortSignal.timeout(this.opts.timeoutMs),
+      });
+    } catch { /* activación no crítica */ }
+  }
+}
 import { LicenciaEstado } from './entities/licencia-estado.entity';
 import {
   LICENCIA_PUBLIC_KEY, LICENCIA_ISSUER, MACHINE_ID_SALT,
