@@ -442,12 +442,12 @@ export function PlanesTab() {
                   />
                   {crearCuentaIptv && (
                     <div className="space-y-1">
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400">* Cantidad de sesiones que pueden estar activas por cada cuenta</p>
                       <select {...register('sesionesIptv')} className={inp()}>
                         {[1, 2, 3, 4, 5].map(n => (
                           <option key={n} value={n}>{n} sesión{n > 1 ? 'es' : ''}</option>
                         ))}
                       </select>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">* Cantidad de sesiones que pueden estar activas por cada cuenta</p>
                     </div>
                   )}
                 </div>
