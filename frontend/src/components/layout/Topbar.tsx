@@ -5,14 +5,15 @@ import { useTheme }               from 'next-themes';
 import {
   Sun, Moon, Bell, LogOut, User,
   ChevronDown, Settings, DollarSign,
-  Search, Loader2, Menu,
+  Search, Loader2, Menu, Undo2, Redo2,
 } from 'lucide-react';
-import { useAuthStore }  from '@/store/auth.store';
-import api               from '@/lib/api';
-import { cn }            from '@/lib/utils';
+import { useAuthStore }   from '@/store/auth.store';
+import api                from '@/lib/api';
+import { cn }             from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
-import type { Cliente }  from '@/types';
-import Link              from 'next/link';
+import type { Cliente }   from '@/types';
+import Link               from 'next/link';
+import { useUndoRedo }    from '@/lib/contexts/undo-redo.context';
 
 const LABELS: Record<string, string> = {
   dashboard:     'Dashboard',
@@ -123,6 +124,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { theme, setTheme }  = useTheme();
   const { usuario, logout }  = useAuthStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { canUndo, canRedo, undoing, redoing, undo, redo, estado } = useUndoRedo();
 
   const handleLogout = async () => {
     try { await api.post('/auth/logout'); } catch { /* ignorar */ }
@@ -162,6 +164,46 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
 
         {/* Búsqueda de clientes */}
         <ClienteSearch />
+
+        {/* Undo / Redo */}
+        <div className="hidden sm:flex items-center gap-0.5 border border-border rounded-lg p-0.5 bg-muted/30">
+          <button
+            onClick={undo}
+            disabled={!canUndo || undoing}
+            title={canUndo && estado?.lastUndo
+              ? `Deshacer: ${estado.lastUndo.descripcion} (Ctrl+Z)`
+              : 'Nada que deshacer (Ctrl+Z)'}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors',
+              canUndo
+                ? 'text-foreground hover:bg-muted cursor-pointer'
+                : 'text-muted-foreground/40 cursor-not-allowed',
+            )}
+          >
+            {undoing
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Undo2 className="w-3.5 h-3.5" />}
+            <span className="hidden md:inline">Deshacer</span>
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo || redoing}
+            title={canRedo && estado?.lastRedo
+              ? `Rehacer: ${estado.lastRedo.descripcion} (Ctrl+Y)`
+              : 'Nada que rehacer (Ctrl+Y)'}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors',
+              canRedo
+                ? 'text-foreground hover:bg-muted cursor-pointer'
+                : 'text-muted-foreground/40 cursor-not-allowed',
+            )}
+          >
+            {redoing
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Redo2 className="w-3.5 h-3.5" />}
+            <span className="hidden md:inline">Rehacer</span>
+          </button>
+        </div>
 
         {/* Registro de pago rápido */}
         <Link href="/pagos/nuevo">

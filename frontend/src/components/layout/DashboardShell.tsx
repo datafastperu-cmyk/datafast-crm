@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Sidebar }               from '@/components/layout/Sidebar';
 import { Topbar }                from '@/components/layout/Topbar';
 import { useInactivityLogout }   from '@/hooks/useInactivityLogout';
+import { UndoRedoProvider }      from '@/lib/contexts/undo-redo.context';
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   useInactivityLogout();
@@ -19,6 +20,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
+    <UndoRedoProvider>
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -44,5 +46,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
+    </UndoRedoProvider>
   );
 }

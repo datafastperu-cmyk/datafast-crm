@@ -1,19 +1,23 @@
 'use client';
 
 import { useState }       from 'react';
-import { Settings, Building2, Server, Terminal } from 'lucide-react';
+import { Settings, Building2, Server, Terminal, ShieldCheck, Trash2 } from 'lucide-react';
 
-import { EmpresaTab }   from './EmpresaTab';
-import { PerfilTab }    from './PerfilTab';
-import { ServidorTab }  from './ServidorTab';
-import { LogsTab }      from './LogsTab';
-import { cn }           from '@/lib/utils';
+import { EmpresaTab }    from './EmpresaTab';
+import { PerfilTab }     from './PerfilTab';
+import { ServidorTab }   from './ServidorTab';
+import { LogsTab }       from './LogsTab';
+import { AuditoriaTab }  from './AuditoriaTab';
+import { PapeleraTab }   from './PapeleraTab';
+import { cn }            from '@/lib/utils';
 
 const TABS = [
-  { key: 'empresa',   label: 'Empresa',    icon: Building2 },
-  { key: 'perfil',    label: 'Mi Perfil',  icon: Settings },
-  { key: 'servidor',  label: 'Servidor',   icon: Server },
-  { key: 'logs',      label: 'Logs',       icon: Terminal },
+  { key: 'empresa',    label: 'Empresa',    icon: Building2   },
+  { key: 'perfil',     label: 'Mi Perfil',  icon: Settings    },
+  { key: 'servidor',   label: 'Servidor',   icon: Server      },
+  { key: 'logs',       label: 'Logs',       icon: Terminal    },
+  { key: 'auditoria',  label: 'Auditoría',  icon: ShieldCheck },
+  { key: 'papelera',   label: 'Papelera',   icon: Trash2      },
 ] as const;
 
 type TabKey = typeof TABS[number]['key'];
@@ -22,7 +26,7 @@ export function ConfiguracionContent() {
   const [tab, setTab] = useState<TabKey>('empresa');
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 max-w-5xl">
 
       {/* Header */}
       <div>
@@ -60,6 +64,8 @@ export function ConfiguracionContent() {
           {tab === 'perfil'    && <PerfilTab />}
           {tab === 'servidor'  && <ServidorTab />}
           {tab === 'logs'      && <LogsTab />}
+          {tab === 'auditoria' && <AuditoriaTab />}
+          {tab === 'papelera'  && <PapeleraTab />}
         </div>
       </div>
     </div>
