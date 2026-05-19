@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 
 import { clientesApi }                          from '@/lib/api/clientes';
+import { TabConfigFacturacion }                from './TabConfigFacturacion';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
 import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
@@ -827,9 +828,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
         </div>
       )}
       {subTab === 'config' && (
-        <div className="p-6">
-          <PlaceholderTab icon={Wrench} title="Configuración de facturación" desc="Día de pago, ajustes de cobro automático y preferencias." badge="Próximamente" />
-        </div>
+        <TabConfigFacturacion clienteId={clienteId} />
       )}
 
       {/* ── Modal nueva factura ───────────────────────────────── */}

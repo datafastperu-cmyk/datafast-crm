@@ -208,6 +208,35 @@ export class ClientesController {
     return StdResponse.ok(data, `Estado cambiado a ${dto.estado}`);
   }
 
+  // ── GET /clientes/:id/facturacion-config ─────────────────
+  @Get(':id/facturacion-config')
+  @RequirePermission('clientes:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Obtener configuración de facturación del cliente' })
+  async getFacturacionConfig(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.clientesSvc.getFacturacionConfig(id, user.empresaId);
+    return StdResponse.ok(data);
+  }
+
+  // ── PUT /clientes/:id/facturacion-config ──────────────────
+  @Put(':id/facturacion-config')
+  @RequirePermission('clientes:edit')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Guardar configuración de facturación del cliente' })
+  async saveFacturacionConfig(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { facturacion: Record<string, any>; notificaciones: Record<string, any> },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.clientesSvc.saveFacturacionConfig(
+      id, user.empresaId, body.facturacion, body.notificaciones,
+    );
+    return StdResponse.ok(data, 'Configuración guardada');
+  }
+
   // ── GET /clientes/:id/historial — Historial de estados ───
   @Get(':id/historial')
   @RequirePermission('clientes:view')

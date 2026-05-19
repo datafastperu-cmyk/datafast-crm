@@ -143,6 +143,12 @@ export class Cliente extends BaseModel {
   @Column({ name: 'reniec_datos_raw', type: 'jsonb', nullable: true })
   reniecDatosRaw: Record<string, any>;
 
+  @Column({ name: 'facturacion_config', type: 'jsonb', nullable: true })
+  facturacionConfig: Record<string, any> | null;
+
+  @Column({ name: 'notificaciones_config', type: 'jsonb', nullable: true })
+  notificacionesConfig: Record<string, any> | null;
+
   @Column({ name: 'created_by', nullable: true })
   createdBy: string;
 

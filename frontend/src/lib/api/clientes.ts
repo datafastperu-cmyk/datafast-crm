@@ -116,4 +116,17 @@ export const clientesApi = {
     const res = await api.post<ApiRespuesta>('/clientes/bulk-action', { ids, action, motivo });
     return res.data.data;
   },
+
+  getFacturacionConfig: async (clienteId: string): Promise<{ facturacion: Record<string, any> | null; notificaciones: Record<string, any> | null }> => {
+    const res = await api.get<ApiRespuesta>(`/clientes/${clienteId}/facturacion-config`);
+    return res.data.data;
+  },
+
+  saveFacturacionConfig: async (
+    clienteId: string,
+    facturacion: Record<string, any>,
+    notificaciones: Record<string, any>,
+  ): Promise<void> => {
+    await api.put(`/clientes/${clienteId}/facturacion-config`, { facturacion, notificaciones });
+  },
 };

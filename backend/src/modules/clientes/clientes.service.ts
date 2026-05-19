@@ -415,6 +415,24 @@ export class ClientesService {
     return { ok, errors, total: dto.ids.length };
   }
 
+  async getFacturacionConfig(id: string, empresaId: string) {
+    const c = await this.clienteRepo.findById(id, empresaId);
+    if (!c) throw new NotFoundException('Cliente no encontrado');
+    return { facturacion: c.facturacionConfig ?? null, notificaciones: c.notificacionesConfig ?? null };
+  }
+
+  async saveFacturacionConfig(
+    id: string,
+    empresaId: string,
+    facturacion: Record<string, any>,
+    notificaciones: Record<string, any>,
+  ) {
+    const c = await this.clienteRepo.findById(id, empresaId);
+    if (!c) throw new NotFoundException('Cliente no encontrado');
+    await this.clienteRepo.update(id, { facturacionConfig: facturacion, notificacionesConfig: notificaciones });
+    return { facturacion, notificaciones };
+  }
+
   private async generarCodigoCliente(empresaId: string): Promise<string> {
     // Formato: CLI-YYYYMMDD-XXXX (4 dígitos aleatorios para colisiones mínimas)
     const hoy = new Date();
