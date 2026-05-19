@@ -352,7 +352,18 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 <option value="ambos">WhatsApp + SMS</option>
               </select>
             </Field>
-            {/* Fechas calculadas — encima de recordatorios */}
+            {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => (
+              <Field key={key} label={`Recordatorio #${i + 1}`}>
+                <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
+                  {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+            ))}
+            <p className="text-xs text-orange-500 pl-[192px] pt-1">
+              * Días antes/después del vencimiento de una factura
+            </p>
+
+            {/* Fechas calculadas — debajo de Recordatorio #3 */}
             <div className="pt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 px-3 py-2 text-xs text-center">
                 <span className="text-muted-foreground">Día de pago: </span>
@@ -367,17 +378,6 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 <span className="font-semibold text-blue-600 dark:text-blue-400">{fechas.crear ?? 'Desactivado'}</span>
               </div>
             </div>
-
-            {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => (
-              <Field key={key} label={`Recordatorio #${i + 1}`}>
-                <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
-                  {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </Field>
-            ))}
-            <p className="text-xs text-orange-500 pl-[192px] pt-1">
-              * Días antes/después del vencimiento de una factura
-            </p>
 
             {/* Preview recordatorios */}
             <div className="pt-3 grid grid-cols-2 gap-2">
