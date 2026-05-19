@@ -318,13 +318,6 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
               ))}
             </div>
 
-            <div className="pt-3 pb-1 flex justify-center">
-              <button type="button" onClick={() => mut.mutate()} disabled={mut.isPending}
-                className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-4 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50">
-                {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                Guardar cambios
-              </button>
-            </div>
           </div>
         </div>
 
@@ -393,13 +386,6 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
               })}
             </div>
 
-            <div className="pt-3 pb-1 flex justify-center">
-              <button type="button" onClick={() => mut.mutate()} disabled={mut.isPending}
-                className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-4 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50">
-                {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                Guardar cambios
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -422,6 +408,15 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
             {fechas.crear ?? 'Desactivado'}
           </span>
         </div>
+      </div>
+
+      {/* ── Botón único ── */}
+      <div className="flex justify-center pb-2">
+        <button type="button" onClick={() => mut.mutate()} disabled={mut.isPending}
+          className="flex items-center gap-1.5 rounded-full border border-blue-500 text-blue-600 dark:text-blue-400 px-6 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50">
+          {mut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Guardar cambios
+        </button>
       </div>
     </div>
   );
