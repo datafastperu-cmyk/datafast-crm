@@ -570,7 +570,30 @@ export class FacturacionService {
     const factura = await this.findOne(id, empresaId);
     if (factura.estado === EstadoFactura.ANULADA)
       throw new BadRequestException('No se puede editar una factura anulada');
-    await this.facturaRepo.update(id, dto);
+
+    const patch: Partial<Factura> = {};
+    if (dto.contratoId      !== undefined) patch.contratoId      = dto.contratoId;
+    if (dto.tipoComprobante !== undefined) patch.tipoComprobante = dto.tipoComprobante;
+    if (dto.periodoInicio   !== undefined) patch.periodoInicio   = dto.periodoInicio;
+    if (dto.periodoFin      !== undefined) patch.periodoFin      = dto.periodoFin;
+    if (dto.descripcion     !== undefined) patch.descripcion     = dto.descripcion;
+    if (dto.fechaVencimiento !== undefined) patch.fechaVencimiento = dto.fechaVencimiento;
+
+    if (dto.items !== undefined || dto.aplicaIgv !== undefined) {
+      const items     = dto.items ?? factura.items ?? [];
+      const aplicaIgv = dto.aplicaIgv ?? (Number(factura.igv) > 0);
+      const subtotal  = items.reduce((acc, it) => {
+        const base = it.cantidad * it.precioUnitario;
+        return acc + base - (base * ((it.descuento ?? 0) / 100));
+      }, 0);
+      const igv   = aplicaIgv ? subtotal * 0.18 : 0;
+      if (dto.items !== undefined) patch.items = items;
+      patch.subtotal = +subtotal.toFixed(2);
+      patch.igv      = +igv.toFixed(2);
+      patch.total    = +(subtotal + igv).toFixed(2);
+    }
+
+    await this.facturaRepo.update(id, patch);
     return this.findOne(id, empresaId);
   }
 

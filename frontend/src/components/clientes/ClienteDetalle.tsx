@@ -851,6 +851,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
       {editando && (
         <ModalEditarFactura
           factura={editando}
+          contratos={contratos}
           onClose={() => setEditando(null)}
           onSuccess={() => {
             setEditando(null);
@@ -865,70 +866,255 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
 
 // ── ModalEditarFactura ────────────────────────────────────────
 function ModalEditarFactura({
-  factura, onClose, onSuccess,
-}: { factura: Factura; onClose: () => void; onSuccess: () => void }) {
-  const { toast }   = useToast();
-  const [form, setForm] = useState<UpdateFacturaDto>({
-    descripcion:      factura.descripcion ?? '',
-    fechaVencimiento: factura.fechaVencimiento ?? '',
-  });
+  factura, contratos, onClose, onSuccess,
+}: {
+  factura:   Factura;
+  contratos: Contrato[];
+  onClose:   () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+
+  type LineaEdit = { descripcion: string; cantidad: number; precioUnitario: number; descuento: number };
+
+  const initItems = (): LineaEdit[] => {
+    if (factura.items && factura.items.length > 0) {
+      return factura.items.map(it => ({
+        descripcion:    it.descripcion,
+        cantidad:       it.cantidad,
+        precioUnitario: it.precioUnitario,
+        descuento:      0,
+      }));
+    }
+    return [{ descripcion: factura.descripcion ?? '', cantidad: 1, precioUnitario: Number(factura.subtotal ?? 0), descuento: 0 }];
+  };
+
+  const [tipoComprobante, setTipoComprobante] = useState<'boleta' | 'factura' | 'recibo_interno'>(
+    (factura.tipoComprobante as any) ?? 'boleta',
+  );
+  const [contratoId,      setContratoId]      = useState(factura.contratoId ?? '');
+  const [periodoInicio,   setPeriodoInicio]   = useState(factura.periodoInicio ?? '');
+  const [periodoFin,      setPeriodoFin]      = useState(factura.periodoFin ?? '');
+  const [descripcion,     setDescripcion]     = useState(factura.descripcion ?? '');
+  const [fechaVenc,       setFechaVenc]       = useState(factura.fechaVencimiento ?? '');
+  const [aplicaIgv,       setAplicaIgv]       = useState(Number(factura.igv ?? 0) > 0);
+  const [items,           setItems]           = useState<LineaEdit[]>(initItems);
+
+  function addItem()  { setItems(p => [...p, { descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0 }]); }
+  function removeItem(idx: number) { setItems(p => p.filter((_, i) => i !== idx)); }
+  function updateItem(idx: number, field: keyof LineaEdit, value: string | number) {
+    setItems(p => p.map((it, i) => i === idx ? { ...it, [field]: value } : it));
+  }
+
+  const subtotalCalc = items.reduce((acc, it) => {
+    const base = it.cantidad * it.precioUnitario;
+    return acc + base - (base * (it.descuento / 100));
+  }, 0);
+  const igvCalc   = aplicaIgv ? subtotalCalc * 0.18 : 0;
+  const totalCalc = subtotalCalc + igvCalc;
 
   const { mutate, isPending } = useMutation({
-    mutationFn: () => facturacionApi.update(factura.id, form),
+    mutationFn: () => facturacionApi.update(factura.id, {
+      contratoId:       contratoId || undefined,
+      tipoComprobante,
+      periodoInicio,
+      periodoFin,
+      descripcion:      descripcion || undefined,
+      fechaVencimiento: fechaVenc   || undefined,
+      aplicaIgv,
+      items: items.map(it => ({
+        descripcion:    it.descripcion,
+        cantidad:       it.cantidad,
+        precioUnitario: it.precioUnitario,
+        descuento:      it.descuento || undefined,
+      })),
+    }),
     onSuccess,
     onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al actualizar', { type: 'error' }),
   });
 
+  const fmtS    = (n: number) => n.toFixed(2);
+  const inputCls = `w-full px-3 py-2 text-sm border border-input rounded-lg bg-background
+                    text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-background rounded-2xl shadow-xl w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-3xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-base font-semibold">Editar Factura</h2>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-accent text-muted-foreground">
-            <X className="w-4 h-4" />
+          <div className="flex items-center gap-2">
+            <Receipt className="w-5 h-5 text-primary" />
+            <div>
+              <h2 className="text-base font-semibold">Editar Factura</h2>
+              <p className="text-xs text-muted-foreground font-mono">{factura.numeroCompleto}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Número</label>
-            <p className="text-sm font-mono font-semibold">{factura.numeroCompleto}</p>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          {/* Row 1: tipo + contrato */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Tipo comprobante</label>
+              <select value={tipoComprobante} onChange={e => setTipoComprobante(e.target.value as typeof tipoComprobante)} className={inputCls}>
+                {TIPO_COMPROBANTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Contrato</label>
+              <select value={contratoId} onChange={e => setContratoId(e.target.value)} className={inputCls}>
+                <option value="">— Sin contrato —</option>
+                {contratos.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.numeroContrato} {c.planNombre ? `· ${c.planNombre}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Descripción</label>
-            <textarea
-              value={form.descripcion}
-              onChange={(e) => setForm((p) => ({ ...p, descripcion: e.target.value }))}
-              rows={3}
-              className="w-full px-3 py-2 text-sm bg-background border border-input rounded-lg
-                         focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-            />
+
+          {/* Row 2: período + vencimiento */}
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Período inicio</label>
+              <input type="date" value={periodoInicio} onChange={e => setPeriodoInicio(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Período fin</label>
+              <input type="date" value={periodoFin} onChange={e => setPeriodoFin(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Vencimiento</label>
+              <input type="date" value={fechaVenc} onChange={e => setFechaVenc(e.target.value)} className={inputCls} />
+            </div>
           </div>
+
+          {/* Descripción */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Fecha de vencimiento</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Descripción (opcional)</label>
             <input
-              type="date"
-              value={form.fechaVencimiento}
-              onChange={(e) => setForm((p) => ({ ...p, fechaVencimiento: e.target.value }))}
-              className="w-full px-3 py-2 text-sm bg-background border border-input rounded-lg
-                         focus:outline-none focus:ring-1 focus:ring-primary"
+              type="text"
+              value={descripcion}
+              onChange={e => setDescripcion(e.target.value)}
+              placeholder="Descripción general de la factura"
+              className={inputCls}
             />
+          </div>
+
+          {/* Items */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Conceptos</label>
+              <button onClick={addItem} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                <Plus className="w-3.5 h-3.5" /> Agregar línea
+              </button>
+            </div>
+            <div className="border border-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50 text-[11px] font-semibold text-muted-foreground uppercase">
+                    <th className="px-3 py-2 text-left w-[40%]">Descripción</th>
+                    <th className="px-3 py-2 text-center w-[10%]">Cant.</th>
+                    <th className="px-3 py-2 text-right w-[15%]">P. Unit.</th>
+                    <th className="px-3 py-2 text-right w-[12%]">Desc. %</th>
+                    <th className="px-3 py-2 text-right w-[15%]">Subtotal</th>
+                    <th className="px-3 py-2 w-[8%]" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {items.map((it, idx) => {
+                    const base = it.cantidad * it.precioUnitario;
+                    const sub  = base - (base * (it.descuento / 100));
+                    return (
+                      <tr key={idx} className="bg-background hover:bg-muted/20 transition-colors">
+                        <td className="px-2 py-1.5">
+                          <input type="text" value={it.descripcion}
+                            onChange={e => updateItem(idx, 'descripcion', e.target.value)}
+                            placeholder="Servicio / Concepto"
+                            className="w-full px-2 py-1 text-xs bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" value={it.cantidad} min={0.001} step={0.001}
+                            onChange={e => updateItem(idx, 'cantidad', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-xs text-center bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" value={it.precioUnitario} min={0} step={0.01}
+                            onChange={e => updateItem(idx, 'precioUnitario', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" value={it.descuento} min={0} max={100} step={0.1}
+                            onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary" />
+                        </td>
+                        <td className="px-3 py-1.5 text-right text-xs font-semibold text-foreground">
+                          {fmtS(sub)}
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          {items.length > 1 && (
+                            <button onClick={() => removeItem(idx)} className="text-muted-foreground hover:text-destructive transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Totales + IGV */}
+          <div className="flex items-end justify-between gap-6">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <div
+                onClick={() => setAplicaIgv(v => !v)}
+                className={cn('relative w-9 h-5 rounded-full transition-colors', aplicaIgv ? 'bg-primary' : 'bg-muted')}
+              >
+                <div className={cn('absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform', aplicaIgv ? 'translate-x-4' : 'translate-x-0.5')} />
+              </div>
+              <span className="text-sm text-muted-foreground">Aplica IGV 18%</span>
+            </label>
+            <div className="text-right space-y-1 min-w-[200px]">
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Subtotal</span><span>S/. {fmtS(subtotalCalc)}</span>
+              </div>
+              {aplicaIgv && (
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>IGV (18%)</span><span>S/. {fmtS(igvCalc)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-base font-bold text-foreground border-t border-border pt-1">
+                <span>Total</span><span className="text-primary">S/. {fmtS(totalCalc)}</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/20">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-accent transition-colors"
+            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors"
           >
             Cancelar
           </button>
           <button
+            disabled={isPending || items.some(it => !it.descripcion || it.precioUnitario <= 0)}
             onClick={() => mutate()}
-            disabled={isPending}
-            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground
-                       hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg text-white
+                       bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            Guardar
+            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Guardar cambios
           </button>
         </div>
       </div>

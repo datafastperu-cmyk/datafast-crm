@@ -101,11 +101,31 @@ export class CreateNotaCreditoDto {
 
 // ─── Actualizar factura ──────────────────────────────────────
 export class UpdateFacturaDto {
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  contratoId?: string;
+
+  @ApiPropertyOptional({ enum: TipoComprobante })
+  @IsOptional() @IsEnum(TipoComprobante)
+  tipoComprobante?: TipoComprobante;
+
+  @ApiPropertyOptional() @IsOptional() @IsDateString()
+  periodoInicio?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsDateString()
+  periodoFin?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500)
   descripcion?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsDateString()
   fechaVencimiento?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsBoolean()
+  aplicaIgv?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => ItemFacturaDto)
+  items?: ItemFacturaDto[];
 }
 
 // ─── Anular factura ──────────────────────────────────────────

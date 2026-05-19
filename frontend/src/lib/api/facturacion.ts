@@ -48,8 +48,19 @@ export interface RegistrarPagoDto {
 }
 
 export interface UpdateFacturaDto {
+  contratoId?:       string;
+  tipoComprobante?:  'boleta' | 'factura' | 'recibo_interno';
+  periodoInicio?:    string;
+  periodoFin?:       string;
   descripcion?:      string;
   fechaVencimiento?: string;
+  aplicaIgv?:        boolean;
+  items?: {
+    descripcion:    string;
+    cantidad:       number;
+    precioUnitario: number;
+    descuento?:     number;
+  }[];
 }
 
 export interface CreateFacturaDto {
