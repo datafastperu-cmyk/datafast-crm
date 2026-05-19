@@ -10,7 +10,7 @@ import {
   Ticket, MessageSquare, Send, HardDrive,
   UserCheck, Zap,
   List, Tv, Scissors, Layers,
-  ChevronRight,
+  ChevronRight, Gift, Trophy, Settings2,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -102,6 +102,14 @@ const NAV: NavEntry[] = [
     items: [
       { href: '/mensajeria/enviados',  label: 'Mensajes Enviados', icon: Send,           permiso: null },
       { href: '/mensajeria/whatsapp',  label: 'WhatsApp Bot',      icon: MessageSquare,   permiso: null },
+    ],
+  },
+
+  {
+    id: 'lealtad', label: 'Lealtad', icon: Gift,
+    items: [
+      { href: '/lealtad/premios',        label: 'Premios',       icon: Trophy,    permiso: null },
+      { href: '/lealtad/configuracion',  label: 'Configuración', icon: Settings2, permiso: null },
     ],
   },
 
