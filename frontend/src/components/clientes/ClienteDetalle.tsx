@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 
 import { clientesApi }                          from '@/lib/api/clientes';
+import { TabOnuRouter }                        from './TabOnuRouter';
 import { TabConfigFacturacion }                from './TabConfigFacturacion';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
@@ -399,7 +400,7 @@ export function ClienteDetalle({ id }: { id: string }) {
         )}
 
         {/* ── ONU/Router ───────────────────────────────────── */}
-        {tab === 'onu_router' && <div className="p-6"><PlaceholderTab icon={Radio} title="ONU / Router" desc="Gestión de equipos ONU y routers asociados al abonado." badge="Próximamente" /></div>}
+        {tab === 'onu_router' && <TabOnuRouter clienteId={id} />}
 
         {/* Tabs placeholder */}
         {tab === 'facturacion'  && <TabFacturacion clienteId={id} contratos={contratos as Contrato[]} />}
