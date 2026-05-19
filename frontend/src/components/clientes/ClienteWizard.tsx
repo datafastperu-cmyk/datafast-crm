@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter }         from 'next/navigation';
 import { useForm }           from 'react-hook-form';
 import { zodResolver }       from '@hookform/resolvers/zod';
@@ -15,6 +15,8 @@ import {
 
 import { clientesApi }                       from '@/lib/api/clientes';
 import { contratosApi, redesApi, planesApi } from '@/lib/api/contratos';
+import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
+import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
 import { useToast }                          from '@/components/ui/toaster';
 import { parseApiError, cn }                 from '@/lib/utils';
 import { MOCK_PLANES, MOCK_ROUTERS }         from '@/data/clientes.mock';
@@ -39,27 +41,7 @@ const step1Schema = z.object({
   email:           z.string().email('Email inválido').optional().or(z.literal('')),
 });
 
-const step2Schema = z.object({
-  plantillaId:        z.string().optional(),
-  tipoFacturacion:    z.string().optional(),
-  diaPago:            z.string().optional(),
-  crearFactura:       z.string().optional(),
-  tipoImpuesto:       z.string().optional(),
-  diasGracia:         z.string().optional(),
-  aplicarCorte:       z.string().optional(),
-  fechaFija:          z.string().optional(),
-  aplicarMora:        z.boolean().optional(),
-  aplicarReconexion:  z.boolean().optional(),
-  impuesto1:          z.coerce.number().min(0).max(100).optional(),
-  impuesto2:          z.coerce.number().min(0).max(100).optional(),
-  impuesto3:          z.coerce.number().min(0).max(100).optional(),
-  avisosNuevaFactura: z.string().optional(),
-  avisoPantalla:      z.string().optional(),
-  canalRecordatorio:  z.string().optional(),
-  recordatorio1:      z.string().optional(),
-  recordatorio2:      z.string().optional(),
-  recordatorio3:      z.string().optional(),
-});
+const step2Schema = z.object({ _placeholder: z.string().optional() });
 
 const step3Schema = z.object({
   // Configuración de servicio
@@ -86,7 +68,7 @@ const step3Schema = z.object({
 });
 
 type S1 = z.infer<typeof step1Schema>;
-type S2 = z.infer<typeof step2Schema>;
+type S2 = { facturacion: FacturacionConfig; notificaciones: NotificacionesConfig };
 type S3 = z.infer<typeof step3Schema>;
 
 // ── Mock data ─────────────────────────────────────────────────
@@ -101,11 +83,6 @@ const MOCK_UBICACIONES = [
   { id: 'loc-8', nombre: 'Piura — Paita — Paita' },
 ];
 
-const MOCK_PLANTILLAS = [
-  { id: 'p1', nombre: 'Residencial Básico' },
-  { id: 'p2', nombre: 'Residencial Premium' },
-  { id: 'p3', nombre: 'Empresarial' },
-];
 
 const MOCK_PERFILES = [
   { id: 'prf-1', nombre: '10 Mbps — Básico' },
@@ -218,6 +195,28 @@ function FormRow({ label, required, hint, hintColor = 'amber', children }: {
         )}
       </div>
     </div>
+  );
+}
+
+function DecimalInput2({ value, onChange, className, placeholder }: {
+  value: number; onChange: (v: number) => void; className?: string; placeholder?: string;
+}) {
+  const [display, setDisplay] = useState(value.toFixed(2));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setDisplay(value.toFixed(2)); }, [value, focused]);
+  return (
+    <input type="text" inputMode="decimal" className={className} placeholder={placeholder}
+      value={display}
+      onChange={e => setDisplay(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        const parsed = Math.max(0, parseFloat(display) || 0);
+        const formatted = parsed.toFixed(2);
+        setDisplay(formatted);
+        onChange(parseFloat(formatted));
+      }}
+    />
   );
 }
 
@@ -366,11 +365,16 @@ export function ClienteWizard() {
         planId:         data.perfilId        || undefined,
         routerId:       data.routerId        || undefined,
         fechaInicio:    data.fechaInstalacion || new Date().toISOString().split('T')[0],
-        diaFacturacion: s2?.diaPago ? parseInt(s2.diaPago) : undefined,
+        diaFacturacion: s2?.facturacion?.diaPago ? parseInt(s2.facturacion.diaPago) : undefined,
         usuarioPppoe:   data.userPppHs       || undefined,
         passwordPppoe:  data.passwordPppHs   || undefined,
       });
     } catch { /* contrato falla silenciosamente, cliente ya creado */ }
+    if (s2) {
+      try {
+        await clientesApi.saveFacturacionConfig(cliente.id, s2.facturacion, s2.notificaciones);
+      } catch { /* no bloquea el flujo */ }
+    }
     toast('Cliente registrado correctamente', { type: 'success' });
     router.push(`/clientes/${cliente.id}`);
   };
@@ -566,60 +570,83 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
   );
 }
 
+// ── Step 2 options (iguales a plantillas-config) ───────────────
+const S2_DIAS_MES = Array.from({ length: 28 }, (_, i) => String(i + 1).padStart(2, '0'));
+const S2_CREAR_FACTURA_OPTS = [
+  { value: 'desactivado', label: 'Desactivado' },
+  ...Array.from({ length: 25 }, (_, i) => ({ value: String(i + 1), label: i === 0 ? '1 día antes' : `${i + 1} días antes` })),
+];
+const S2_DIAS_GRACIA_OPTS = [
+  { value: '0', label: '0 Días' },
+  ...Array.from({ length: 25 }, (_, i) => ({ value: String(i + 1), label: i === 0 ? '1 Día' : `${i + 1} Días` })),
+];
+const S2_APLICAR_CORTE_OPTS = [
+  { value: 'desactivado', label: 'Desactivado' },
+  ...Array.from({ length: 5 }, (_, i) => ({ value: String(i + 1), label: i === 0 ? '1 mes vencido' : `${i + 1} meses vencidos` })),
+];
+const S2_BAJAR_VEL_OPTS = [
+  { value: 'desactivado', label: 'Desactivado' },
+  { value: '512k', label: '512 Kbps' },
+  { value: '1m',   label: '1 Mbps'   },
+  { value: '2m',   label: '2 Mbps'   },
+];
+const S2_RECORDATORIO_OPTS = [
+  { value: 'desactivado', label: 'Desactivado' },
+  ...Array.from({ length: 10 }, (_, i) => ({ value: String(-(i + 1)), label: i === 0 ? '1 día antes' : `${i + 1} días antes` })),
+  ...Array.from({ length: 25 }, (_, i) => ({ value: String(i + 1), label: i === 0 ? '1 día después' : `${i + 1} días después` })),
+];
+const DEF_FACT: FacturacionConfig = {
+  tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
+  tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
+  aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
+  impuesto1: 0, impuesto2: 0, impuesto3: 0,
+};
+const DEF_NOTIF: NotificacionesConfig = {
+  avisoNuevaFactura: 'desactivado', avisoPantalla: 'desactivado',
+  recordatoriosPago: 'desactivado', recordatorio1: 'desactivado',
+  recordatorio2: 'desactivado', recordatorio3: 'desactivado',
+};
+
 // ── Step 2: Facturación y Recordatorios ───────────────────────
 function Step2Form({ initial, onBack, onNext }: {
   initial: S2 | null; onBack: () => void; onNext: (d: S2) => void;
 }) {
-  const { register, handleSubmit, watch, setValue } = useForm<S2>({
-    resolver:      zodResolver(step2Schema),
-    defaultValues: initial ?? {
-      tipoFacturacion:    'prepago',
-      diaPago:            '01',
-      crearFactura:       '5_antes',
-      tipoImpuesto:       'incluido',
-      diasGracia:         '5',
-      aplicarCorte:       '1_mes',
-      aplicarMora:        false,
-      aplicarReconexion:  false,
-      avisosNuevaFactura: 'desactivado',
-      avisoPantalla:      'desactivado',
-      canalRecordatorio:  'correo',
-      recordatorio1:      '2_antes',
-      recordatorio2:      'desactivado',
-      recordatorio3:      'desactivado',
-    },
+  const [fact, setFact]   = useState<FacturacionConfig>(initial?.facturacion ?? { ...DEF_FACT });
+  const [notif, setNotif] = useState<NotificacionesConfig>(initial?.notificaciones ?? { ...DEF_NOTIF });
+  const [bajarVel, setBajarVel]   = useState((initial?.facturacion as any)?.bajarVelocidad ?? 'desactivado');
+  const [fechaFija, setFechaFija] = useState((initial?.facturacion as any)?.fechaFija ?? '');
+  const [corteFijo, setCorteFijo] = useState((initial?.facturacion as any)?.corteFijoProgramado ?? '');
+
+  const { data: plantillas = [] } = useQuery({
+    queryKey: ['plantillas-abonados'],
+    queryFn: plantillasAbonadosApi.list,
   });
 
-  const mora       = watch('aplicarMora')       ?? false;
-  const reconexion = watch('aplicarReconexion') ?? false;
-  const fechaFija  = watch('fechaFija');
-  const DIAS_MES   = Array.from({ length: 28 }, (_, i) => String(i + 1).padStart(2, '0'));
-
-  const RECORDATORIO_OPT = [
-    { value: 'desactivado', label: 'Desactivado' },
-    { value: '7_antes',     label: '7 Días Antes' },
-    { value: '5_antes',     label: '5 Días Antes' },
-    { value: '3_antes',     label: '3 Días Antes' },
-    { value: '2_antes',     label: '2 Días Antes' },
-    { value: '1_antes',     label: '1 Día Antes' },
-    { value: 'mismo_dia',   label: 'El mismo día' },
-    { value: '1_despues',   label: '1 Día Después' },
-    { value: '2_despues',   label: '2 Días Después' },
-    { value: '3_despues',   label: '3 Días Después' },
-  ];
+  function cargarPlantilla(id: string) {
+    const p = plantillas.find(x => x.id === id);
+    if (!p) return;
+    setFact({ ...DEF_FACT, ...p.facturacion });
+    setNotif({ ...DEF_NOTIF, ...p.notificaciones });
+  }
+  function updateF<K extends keyof FacturacionConfig>(k: K, v: FacturacionConfig[K]) {
+    setFact(prev => ({ ...prev, [k]: v }));
+  }
+  function updateN<K extends keyof NotificacionesConfig>(k: K, v: NotificacionesConfig[K]) {
+    setNotif(prev => ({ ...prev, [k]: v }));
+  }
+  function handleContinuar() {
+    onNext({ facturacion: { ...fact, bajarVelocidad: bajarVel, fechaFija: fechaFija || null, corteFijoProgramado: corteFijo || null } as any, notificaciones: notif });
+  }
 
   return (
-    <form onSubmit={handleSubmit(onNext)} className="space-y-4">
+    <form onSubmit={e => { e.preventDefault(); handleContinuar(); }} className="space-y-4">
       {/* Plantilla */}
       <div className="bg-card border border-border rounded-xl px-5 py-4 flex items-center gap-4">
-        <span className="text-sm font-medium text-foreground whitespace-nowrap">
-          Cargar desde plantilla
-        </span>
-        <select {...register('plantillaId')} className={cn(inputCls(), 'max-w-xs')}>
+        <span className="text-sm font-medium text-foreground whitespace-nowrap">Cargar desde plantilla</span>
+        <select className={cn(inputCls(), 'max-w-xs')} defaultValue=""
+          onChange={e => { if (e.target.value) cargarPlantilla(e.target.value); }}>
           <option value="">Seleccionar plantilla</option>
-          {MOCK_PLANTILLAS.map((p) => (
-            <option key={p.id} value={p.id}>{p.nombre}</option>
-          ))}
+          {plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
       </div>
 
@@ -627,58 +654,59 @@ function Step2Form({ initial, onBack, onNext }: {
         {/* Facturación */}
         <Section title="Facturación" icon={CreditCard}>
           <Field label="Tipo">
-            <select {...register('tipoFacturacion')} className={inputCls()}>
+            <select className={inputCls()} value={fact.tipo} onChange={e => updateF('tipo', e.target.value)}>
               <option value="prepago">Prepago (Adelantado)</option>
-              <option value="postpago">Postpago (Vencido)</option>
+              <option value="postpago">Postpago (Mes vencido)</option>
             </select>
           </Field>
           <Field label="Día pago">
-            <select {...register('diaPago')} className={inputCls()}>
-              {DIAS_MES.map((d) => <option key={d} value={d}>{d}</option>)}
+            <select className={inputCls()} value={fact.diaPago} onChange={e => updateF('diaPago', e.target.value)}>
+              {S2_DIAS_MES.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </Field>
           <Field label="Crear Factura">
-            <select {...register('crearFactura')} className={inputCls()}>
-              <option value="1_antes">1 Día antes</option>
-              <option value="2_antes">2 Días antes</option>
-              <option value="3_antes">3 Días antes</option>
-              <option value="5_antes">5 Días antes</option>
-              <option value="7_antes">7 Días antes</option>
-              <option value="10_antes">10 Días antes</option>
-              <option value="mismo_dia">El mismo día</option>
+            <select className={inputCls()} value={fact.crearFactura} onChange={e => updateF('crearFactura', e.target.value)}>
+              {S2_CREAR_FACTURA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
           <Field label="Tipo impuesto">
-            <select {...register('tipoImpuesto')} className={inputCls()}>
-              <option value="incluido">Impuestos incluido</option>
-              <option value="excluido">Impuestos excluido</option>
-              <option value="sin">Sin impuesto</option>
+            <select className={inputCls()} value={fact.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
+              <option value="ninguno">Ninguno</option>
+              <option value="incluido">Impuestos incluidos</option>
+              <option value="mas_impuestos">Más impuestos</option>
             </select>
           </Field>
-          <Field label="Días de gracia">
-            <select {...register('diasGracia')} className={inputCls()}>
-              <option value="1">1 Día</option>
-              <option value="2">2 Días</option>
-              <option value="3">3 Días</option>
-              <option value="5">5 Días</option>
-              <option value="7">7 Días</option>
-              <option value="10">10 Días</option>
-              <option value="15">15 Días</option>
+          <Field label="Días de gracia" hint="*días tolerancia para aplicar corte">
+            <select className={inputCls()} value={fact.diasGracia} onChange={e => updateF('diasGracia', e.target.value)}>
+              {S2_DIAS_GRACIA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
           <Field label="Aplicar Corte">
-            <select {...register('aplicarCorte')} className={inputCls()}>
-              <option value="desactivado">Desactivado</option>
-              <option value="1_mes">1 Mes vencido</option>
-              <option value="2_meses">2 Meses vencidos</option>
-              <option value="3_meses">3 Meses vencidos</option>
+            <select className={inputCls()} value={fact.aplicarCorte} onChange={e => updateF('aplicarCorte', e.target.value)}>
+              {S2_APLICAR_CORTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Bajar Velocidad">
+            <select className={inputCls()} value={bajarVel} onChange={e => setBajarVel(e.target.value)}>
+              {S2_BAJAR_VEL_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
           <Field label="Fecha Fija" hint="Dejar vacío para fecha automática">
             <div className="flex gap-2">
-              <input {...register('fechaFija')} type="date" className={inputCls()} />
+              <input type="date" className={inputCls()} value={fechaFija} onChange={e => setFechaFija(e.target.value)} />
               {fechaFija && (
-                <button type="button" onClick={() => setValue('fechaFija', '')}
+                <button type="button" onClick={() => setFechaFija('')}
+                  className="flex-shrink-0 p-2.5 rounded-lg border border-input bg-muted hover:bg-muted/70 transition-colors">
+                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+                </button>
+              )}
+            </div>
+          </Field>
+          <Field label="Corte Fijo Programado">
+            <div className="flex gap-2">
+              <input type="date" className={inputCls()} value={corteFijo} onChange={e => setCorteFijo(e.target.value)} />
+              {corteFijo && (
+                <button type="button" onClick={() => setCorteFijo('')}
                   className="flex-shrink-0 p-2.5 rounded-lg border border-input bg-muted hover:bg-muted/70 transition-colors">
                   <Trash2 className="w-4 h-4 text-muted-foreground" />
                 </button>
@@ -687,22 +715,36 @@ function Step2Form({ initial, onBack, onNext }: {
           </Field>
           <div className="flex items-center justify-between py-1">
             <span className="text-sm text-foreground">Aplicar Mora</span>
-            <ToggleSwitch checked={mora} onChange={(v) => setValue('aplicarMora', v)} />
+            <div className="flex items-center gap-3">
+              <ToggleSwitch checked={fact.aplicarMora} onChange={v => updateF('aplicarMora', v)} />
+              {fact.aplicarMora && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-muted-foreground">S/</span>
+                  <DecimalInput2 className={inputCls()} placeholder="Monto mora"
+                    value={fact.montoMora} onChange={v => updateF('montoMora', v)} />
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center justify-between py-1">
             <span className="text-sm text-foreground">Aplicar Reconexión</span>
-            <ToggleSwitch checked={reconexion} onChange={(v) => setValue('aplicarReconexion', v)} />
+            <div className="flex items-center gap-3">
+              <ToggleSwitch checked={fact.aplicarReconexion} onChange={v => updateF('aplicarReconexion', v)} />
+              {fact.aplicarReconexion && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-muted-foreground">S/</span>
+                  <DecimalInput2 className={inputCls()} placeholder="Monto reconexión"
+                    value={fact.montoReconexion} onChange={v => updateF('montoReconexion', v)} />
+                </div>
+              )}
+            </div>
           </div>
           <div className="pt-3 border-t border-border space-y-3">
             <p className="text-sm font-semibold text-foreground">Otros Impuestos</p>
-            <p className="text-xs text-muted-foreground -mt-2">
-              Estos impuestos serán agregados al total de la factura
-            </p>
-            {([1, 2, 3] as const).map((n) => (
-              <Field key={n} label={`Impuesto #${n} (%)`}
-                hint="* Dejar en 0 (cero) para quedar deshabilitado">
-                <input {...register(`impuesto${n}` as any)} type="number"
-                  min={0} max={100} placeholder="0" className={inputCls()} />
+            <p className="text-xs text-muted-foreground -mt-2">Estos impuestos serán agregados al total de la factura</p>
+            {(['impuesto1', 'impuesto2', 'impuesto3'] as const).map((key, i) => (
+              <Field key={key} label={`Impuesto #${i + 1} (%)`} hint="* Dejar en 0 (cero) para quedar deshabilitado">
+                <DecimalInput2 className={inputCls()} value={fact[key]} onChange={v => updateF(key, v)} />
               </Field>
             ))}
           </div>
@@ -711,45 +753,35 @@ function Step2Form({ initial, onBack, onNext }: {
         {/* Notificaciones */}
         <Section title="Notificaciones" icon={Bell}>
           <Field label="Aviso nueva factura">
-            <select {...register('avisosNuevaFactura')} className={inputCls()}>
+            <select className={inputCls()} value={notif.avisoNuevaFactura} onChange={e => updateN('avisoNuevaFactura', e.target.value)}>
               <option value="desactivado">Desactivado</option>
-              <option value="correo">Correo</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="sms">SMS</option>
-              <option value="todos">Todos</option>
+              <option value="ambos">WhatsApp + SMS</option>
             </select>
           </Field>
-          <Field label="Aviso en Pantalla" hint="* Aviso solo en páginas HTTP">
-            <select {...register('avisoPantalla')} className={inputCls()}>
+          <Field label="Aviso en Pantalla" hint="* Aviso sólo en páginas HTTP">
+            <select className={inputCls()} value={notif.avisoPantalla} onChange={e => updateN('avisoPantalla', e.target.value)}>
               <option value="desactivado">Desactivado</option>
               <option value="activado">Activado</option>
             </select>
           </Field>
           <Field label="Recordatorios de pago">
-            <select {...register('canalRecordatorio')} className={inputCls()}>
+            <select className={inputCls()} value={notif.recordatoriosPago} onChange={e => updateN('recordatoriosPago', e.target.value)}>
               <option value="desactivado">Desactivado</option>
-              <option value="correo">Correo</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="sms">SMS</option>
-              <option value="todos">Todos</option>
+              <option value="ambos">WhatsApp + SMS</option>
             </select>
           </Field>
-          <Field label="Recordatorio #1">
-            <select {...register('recordatorio1')} className={inputCls()}>
-              {RECORDATORIO_OPT.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Recordatorio #2">
-            <select {...register('recordatorio2')} className={inputCls()}>
-              {RECORDATORIO_OPT.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Recordatorio #3"
-            hint="* Días antes/después del vencimiento de una factura">
-            <select {...register('recordatorio3')} className={inputCls()}>
-              {RECORDATORIO_OPT.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
+          {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => (
+            <Field key={key} label={`Recordatorio #${i + 1}`}>
+              <select className={inputCls()} value={notif[key]} onChange={e => updateN(key, e.target.value)}>
+                {S2_RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+          ))}
+          <p className="text-xs text-orange-500 mt-1">* Días antes/después del vencimiento de una factura</p>
         </Section>
       </div>
 
