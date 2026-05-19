@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  HardDrive, Play, Trash2, Settings, Cloud, Mail,
-  CheckCircle, XCircle, Clock, RefreshCw, Eye, X,
-  ChevronDown, Database, FolderOpen, Upload, Router,
-  AlertTriangle, Shield,
+  HardDrive, Play, Trash2, Settings, Cloud,
+  CheckCircle, RefreshCw, Eye, X,
+  Database, FolderOpen, Upload, Router,
+  Shield,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useToast } from '@/components/ui/toaster';
@@ -24,10 +24,6 @@ interface BackupConfig {
     credencialesJson: string;
     carpetaId:        string;
   };
-  correo: {
-    habilitado:    boolean;
-    destinatarios: string[];
-  };
 }
 
 interface BackupRecord {
@@ -38,7 +34,6 @@ interface BackupRecord {
   tamanoBytes?: number;
   contenido:    string[];
   driveEstado:  string;
-  correoEstado: string;
   errorMensaje?: string;
   logs:         string[];
   createdAt:    string;
@@ -151,13 +146,12 @@ function ConfigPanel({
   onSave: (c: Partial<BackupConfig>) => void;
   saving: boolean;
 }) {
-  const [tab, setTab] = useState<'general' | 'drive' | 'correo'>('general');
+  const [tab, setTab] = useState<'general' | 'drive'>('general');
   const [form, setForm] = useState<BackupConfig>(cfg);
-  const [correoInput, setCorreoInput] = useState('');
 
   useEffect(() => { setForm(cfg); }, [cfg]);
 
-  const setNested = <K extends 'drive' | 'correo'>(
+  const setNested = <K extends 'drive'>(
     section: K, key: keyof BackupConfig[K], value: any,
   ) => {
     setForm(prev => ({ ...prev, [section]: { ...prev[section], [key]: value } }));
@@ -171,28 +165,9 @@ function ConfigPanel({
         : [...prev.contenido, key],
     }));
 
-  const addDestinatario = () => {
-    if (!correoInput.trim()) return;
-    setForm(prev => ({
-      ...prev,
-      correo: { ...prev.correo, destinatarios: [...prev.correo.destinatarios, correoInput.trim()] },
-    }));
-    setCorreoInput('');
-  };
-
-  const removeDestinatario = (i: number) =>
-    setForm(prev => ({
-      ...prev,
-      correo: {
-        ...prev.correo,
-        destinatarios: prev.correo.destinatarios.filter((_, idx) => idx !== i),
-      },
-    }));
-
   const tabs = [
     { key: 'general', label: 'General',      icon: Settings },
     { key: 'drive',   label: 'Google Drive', icon: Cloud },
-    { key: 'correo',  label: 'Correo',       icon: Mail },
   ] as const;
 
   return (
@@ -352,60 +327,6 @@ function ConfigPanel({
           </>
         )}
 
-        {/* ── CORREO ──────────────────────────────────────────── */}
-        {tab === 'correo' && (
-          <>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-700">Notificación por correo</p>
-                <p className="text-xs text-gray-400">Usa el SMTP configurado en Servidor de Correo</p>
-              </div>
-              <button
-                onClick={() => setNested('correo', 'habilitado', !form.correo.habilitado)}
-                className={`relative w-11 h-6 rounded-full transition-colors ${
-                  form.correo.habilitado ? 'bg-blue-600' : 'bg-gray-200'
-                }`}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                  form.correo.habilitado ? 'translate-x-5' : ''
-                }`} />
-              </button>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-gray-600 block mb-2">Destinatarios</label>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="email"
-                  placeholder="correo@ejemplo.com"
-                  value={correoInput}
-                  onChange={e => setCorreoInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDestinatario(); } }}
-                  className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={addDestinatario}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700"
-                >
-                  Agregar
-                </button>
-              </div>
-              <div className="space-y-1">
-                {form.correo.destinatarios.map((d, i) => (
-                  <div key={i} className="flex items-center justify-between bg-gray-50 px-3 py-1.5 rounded-md">
-                    <span className="text-sm text-gray-700">{d}</span>
-                    <button onClick={() => removeDestinatario(i)} className="text-gray-400 hover:text-red-500">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-                {form.correo.destinatarios.length === 0 && (
-                  <p className="text-xs text-gray-400 py-2">Sin destinatarios configurados</p>
-                )}
-              </div>
-            </div>
-          </>
-        )}
       </div>
 
       <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
@@ -517,7 +438,7 @@ export default function BackupPage() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">Copia de Seguridad</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Respaldos automáticos con subida a Google Drive y notificación por correo.
+              Respaldos automáticos con subida a Google Drive.
             </p>
           </div>
           <button
@@ -585,7 +506,6 @@ export default function BackupPage() {
                       <th className="px-4 py-2.5 text-left font-medium text-gray-500">Tamaño</th>
                       <th className="px-4 py-2.5 text-left font-medium text-gray-500">Estado</th>
                       <th className="px-4 py-2.5 text-center font-medium text-gray-500">Drive</th>
-                      <th className="px-4 py-2.5 text-center font-medium text-gray-500">Correo</th>
                       <th className="px-4 py-2.5" />
                     </tr>
                   </thead>
@@ -610,9 +530,6 @@ export default function BackupPage() {
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <SubidaBadge estado={b.driveEstado} />
-                        </td>
-                        <td className="px-4 py-2.5 text-center">
-                          <SubidaBadge estado={b.correoEstado} />
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1 justify-end">

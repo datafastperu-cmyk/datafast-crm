@@ -12,7 +12,6 @@ import { promisify } from 'util';
 import { createSign } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as nodemailer from 'nodemailer';
 import axios from 'axios';
 
 import { Backup, EstadoBackup, TipoBackup, EstadoSubida } from './backup.entity';
@@ -30,10 +29,6 @@ export interface BackupConfig {
     credencialesJson:  string;
     carpetaId:         string;
   };
-  correo: {
-    habilitado:    boolean;
-    destinatarios: string[];
-  };
 }
 
 const DEFAULT_CONFIG: BackupConfig = {
@@ -43,7 +38,6 @@ const DEFAULT_CONFIG: BackupConfig = {
   directorioLocal: '/opt/datafast/backups',
   contenido:       ['db', 'config', 'uploads'],
   drive:  { habilitado: false, credencialesJson: '', carpetaId: '' },
-  correo: { habilitado: false, destinatarios: [] },
 };
 
 @Injectable()
@@ -77,7 +71,6 @@ export class BackupService {
     const actual = await this.getConfig(empresaId);
     const nuevo: BackupConfig = { ...actual, ...partial };
     if (partial.drive)  nuevo.drive  = { ...actual.drive,  ...partial.drive  };
-    if (partial.correo) nuevo.correo = { ...actual.correo, ...partial.correo };
 
     await this.ds.query(
       `UPDATE empresas SET backup_config = $1 WHERE id = $2`,
@@ -130,7 +123,6 @@ export class BackupService {
       contenido:    cfg.contenido,
       creadoPor,
       driveEstado:  cfg.drive.habilitado  ? EstadoSubida.PENDIENTE : EstadoSubida.DESHABILITADO,
-      correoEstado: cfg.correo.habilitado ? EstadoSubida.PENDIENTE : EstadoSubida.DESHABILITADO,
       logs:         [`[${new Date().toISOString()}] Backup iniciado`],
     });
     await this.repo.save(backup);
@@ -236,11 +228,6 @@ export class BackupService {
         await this.subirDrive(backup, cfg, outFile, addLog);
       }
 
-      // ── Correo ──────────────────────────────────────────────
-      if (cfg.correo.habilitado && cfg.correo.destinatarios.length > 0) {
-        await this.enviarCorreo(backup, cfg, addLog);
-      }
-
       // ── Retención ───────────────────────────────────────────
       await this.aplicarRetencion(backup.empresaId, cfg.retencion);
       await addLog('Retención aplicada. Backup finalizado con éxito.');
@@ -343,88 +330,6 @@ export class BackupService {
     } catch (err: any) {
       await this.repo.update(backup.id, { driveEstado: EstadoSubida.ERROR });
       await addLog(`Error al subir a Drive: ${err.message}`);
-    }
-  }
-
-  // ─── Correo de notificación ───────────────────────────────────
-
-  private async enviarCorreo(
-    backup: Backup,
-    cfg: BackupConfig,
-    addLog: (msg: string) => Promise<void>,
-  ): Promise<void> {
-    await addLog('Enviando notificación por correo...');
-    try {
-      const [emp] = await this.ds.query(
-        `SELECT smtp_host, smtp_port, smtp_usuario, smtp_clave,
-                smtp_from_name, smtp_from_email
-         FROM empresas WHERE id = $1`,
-        [backup.empresaId],
-      );
-
-      if (!emp?.smtp_host || !emp?.smtp_usuario) {
-        await this.repo.update(backup.id, { correoEstado: EstadoSubida.DESHABILITADO });
-        await addLog('SMTP no configurado, omitiendo correo.');
-        return;
-      }
-
-      const transporter = nodemailer.createTransport({
-        host:   emp.smtp_host,
-        port:   emp.smtp_port || 587,
-        secure: Number(emp.smtp_port) === 465,
-        auth:   { user: emp.smtp_usuario, pass: emp.smtp_clave },
-      });
-
-      const esOk    = backup.estado === EstadoBackup.COMPLETADO;
-      const tamMB   = backup.tamanoBytes
-        ? (Number(backup.tamanoBytes) / 1024 / 1024).toFixed(2) + ' MB'
-        : 'N/D';
-      const archivo = path.basename(backup.archivoLocal || '');
-      const fecha   = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });
-
-      const html = `
-<div style="font-family:sans-serif;max-width:600px;margin:auto">
-  <h2 style="color:#1e293b;border-bottom:2px solid ${esOk ? '#16a34a' : '#dc2626'};padding-bottom:8px">
-    CRM DataFast — Backup ${esOk ? 'Exitoso ✓' : 'Fallido ✗'}
-  </h2>
-  <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:16px">
-    <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc">Estado</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;color:${esOk ? '#16a34a' : '#dc2626'};font-weight:600">${backup.estado.toUpperCase()}</td></tr>
-    <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc">Tipo</td>
-        <td style="padding:8px;border:1px solid #e2e8f0">${backup.tipo}</td></tr>
-    <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc">Tamaño</td>
-        <td style="padding:8px;border:1px solid #e2e8f0">${tamMB}</td></tr>
-    <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc">Archivo</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;font-family:monospace;font-size:12px">${archivo}</td></tr>
-    <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc">Google Drive</td>
-        <td style="padding:8px;border:1px solid #e2e8f0">${
-          backup.driveUrl
-            ? `<a href="${backup.driveUrl}" style="color:#2563eb">Ver en Drive</a>`
-            : backup.driveEstado
-        }</td></tr>
-    ${!esOk && backup.errorMensaje ? `
-    <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;background:#fef2f2;color:#dc2626">Error</td>
-        <td style="padding:8px;border:1px solid #e2e8f0;color:#dc2626;font-family:monospace;font-size:12px">${backup.errorMensaje}</td></tr>` : ''}
-    <tr><td style="padding:8px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc">Fecha</td>
-        <td style="padding:8px;border:1px solid #e2e8f0">${fecha}</td></tr>
-  </table>
-  <p style="margin-top:24px;font-size:12px;color:#94a3b8">
-    Generado automáticamente por CRM DataFast — No responder este mensaje.
-  </p>
-</div>`;
-
-      await transporter.sendMail({
-        from:    `"${emp.smtp_from_name || 'CRM DataFast'}" <${emp.smtp_from_email || emp.smtp_usuario}>`,
-        to:      cfg.correo.destinatarios.join(', '),
-        subject: `[CRM DataFast] Backup ${esOk ? 'exitoso' : 'FALLIDO'} — ${fecha}`,
-        html,
-      });
-
-      await this.repo.update(backup.id, { correoEstado: EstadoSubida.SUBIDO });
-      await addLog('Notificación enviada correctamente.');
-    } catch (err: any) {
-      await this.repo.update(backup.id, { correoEstado: EstadoSubida.ERROR });
-      await addLog(`Error al enviar correo: ${err.message}`);
     }
   }
 
