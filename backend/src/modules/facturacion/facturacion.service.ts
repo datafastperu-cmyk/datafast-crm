@@ -580,14 +580,16 @@ export class FacturacionService {
     if (dto.fechaVencimiento !== undefined) patch.fechaVencimiento = dto.fechaVencimiento;
 
     if (dto.items !== undefined || dto.aplicaIgv !== undefined) {
-      const items     = dto.items ?? factura.items ?? [];
+      const rawItems  = dto.items ?? factura.items ?? [];
       const aplicaIgv = dto.aplicaIgv ?? (Number(factura.igv) > 0);
-      const subtotal  = items.reduce((acc, it) => {
+      const mappedItems: ItemFactura[] = rawItems.map(it => {
         const base = it.cantidad * it.precioUnitario;
-        return acc + base - (base * ((it.descuento ?? 0) / 100));
-      }, 0);
-      const igv   = aplicaIgv ? subtotal * 0.18 : 0;
-      if (dto.items !== undefined) patch.items = items;
+        const desc = it.descuento ?? 0;
+        return { descripcion: it.descripcion, cantidad: it.cantidad, precioUnitario: it.precioUnitario, descuento: desc, subtotal: +(base - base * (desc / 100)).toFixed(2) };
+      });
+      const subtotal = mappedItems.reduce((acc, it) => acc + it.subtotal, 0);
+      const igv      = aplicaIgv ? subtotal * 0.18 : 0;
+      if (dto.items !== undefined) patch.items = mappedItems;
       patch.subtotal = +subtotal.toFixed(2);
       patch.igv      = +igv.toFixed(2);
       patch.total    = +(subtotal + igv).toFixed(2);
