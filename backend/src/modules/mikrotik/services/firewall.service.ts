@@ -9,11 +9,12 @@ export const ADDRESS_LIST_PRORROGA = 'prorroga';
 export const ADDRESS_LIST_PORTAL = 'portal-pago';
 
 export interface DhcpStaticBinding {
-  macAddress:  string;
-  ipAddress:   string;
-  hostname?:   string;
-  comment?:    string;
-  server?:     string;  // nombre del servidor DHCP
+  macAddress:    string;
+  ipAddress:     string;
+  hostname?:     string;
+  comment?:      string;
+  server?:       string;
+  addressLists?: string;  // e.g. 'NORMAL'
 }
 
 @Injectable()
@@ -275,42 +276,54 @@ export class FirewallService {
   // DHCP STATIC BINDINGS — Amarre IP-MAC
   // ────────────────────────────────────────────────────────────
 
-  // ── Crear binding estático ────────────────────────────────
+  // ── Crear/actualizar binding estático (upsert por MAC) ───────────────────
+  // No usa ?mac-address= como filtro en el print para evitar el bug UNKNOWNREPLY
+  // de RouterOS v7 con !empty en event-listener. Se obtienen todos los leases
+  // sin filtro y se busca por MAC en JS.
   async crearDhcpBinding(creds: RouterCredentials, binding: DhcpStaticBinding): Promise<string> {
-    return this.pool.execute(creds, async (api) => {
-      // Verificar si ya existe el binding para este MAC
-      const existing = await api.write('/ip/dhcp-server/lease/print', [
-        `?mac-address=${binding.macAddress}`,
-      ]);
+    const macFormatted = binding.macAddress.toUpperCase()
+      .replace(/[^A-F0-9]/g, '')
+      .match(/.{2}/g)!.join(':');
 
-      const macFormatted = binding.macAddress.toUpperCase()
-        .replace(/[^A-F0-9]/g, '')
-        .match(/.{2}/g)!.join(':');
+    // Conexión 1: leer todos los leases y buscar en JS
+    let existingId: string | null = null;
+    const checkApi = await this.pool.connectDirect(creds);
+    try {
+      const allLeases = await checkApi.write('/ip/dhcp-server/lease/print');
+      const match = allLeases.find(
+        (l: any) => (l['mac-address'] || '').toUpperCase() === macFormatted,
+      );
+      existingId = match ? match['.id'] : null;
+    } catch (err: any) {
+      if (err?.errno !== 'UNKNOWNREPLY') throw err;
+    } finally {
+      checkApi.close().catch(() => {});
+    }
 
-      if (existing.length > 0) {
-        // Actualizar el binding existente
-        await api.write('/ip/dhcp-server/lease/set', [
-          `=.id=${existing[0]['.id']}`,
-          `=address=${binding.ipAddress}`,
-          `=mac-address=${macFormatted}`,
-          ...(binding.hostname ? [`=host-name=${binding.hostname}`] : []),
-          ...(binding.comment  ? [`=comment=${binding.comment}`]    : []),
-        ]);
-        this.logger.log(`DHCP binding actualizado: ${macFormatted} → ${binding.ipAddress}`);
-        return existing[0]['.id'];
+    const leaseArgs = [
+      `=address=${binding.ipAddress}`,
+      `=mac-address=${macFormatted}`,
+      ...(binding.server       ? [`=server=${binding.server}`]            : []),
+      ...(binding.hostname     ? [`=host-name=${binding.hostname}`]       : []),
+      ...(binding.comment      ? [`=comment=${binding.comment}`]          : []),
+      ...(binding.addressLists ? [`=address-lists=${binding.addressLists}`] : []),
+    ];
+
+    // Conexión 2: upsert
+    const writeApi = await this.pool.connectDirect(creds);
+    try {
+      if (existingId) {
+        await writeApi.write('/ip/dhcp-server/lease/set', [`=.id=${existingId}`, ...leaseArgs]);
+        this.logger.log(`DHCP binding actualizado: ${macFormatted} → ${binding.ipAddress} en ${creds.ip}`);
+        return existingId;
+      } else {
+        const result = await writeApi.write('/ip/dhcp-server/lease/add', leaseArgs);
+        this.logger.log(`DHCP binding creado: ${macFormatted} → ${binding.ipAddress} en ${creds.ip}`);
+        return result?.[0]?.ret || '';
       }
-
-      const result = await api.write('/ip/dhcp-server/lease/add', [
-        `=address=${binding.ipAddress}`,
-        `=mac-address=${macFormatted}`,
-        ...(binding.server   ? [`=server=${binding.server}`]      : []),
-        ...(binding.hostname ? [`=host-name=${binding.hostname}`] : []),
-        ...(binding.comment  ? [`=comment=${binding.comment}`]    : []),
-      ]);
-
-      this.logger.log(`DHCP binding creado: ${macFormatted} → ${binding.ipAddress} en ${creds.ip}`);
-      return result?.[0]?.ret || '';
-    });
+    } finally {
+      writeApi.close().catch(() => {});
+    }
   }
 
   // ── Eliminar binding ──────────────────────────────────────

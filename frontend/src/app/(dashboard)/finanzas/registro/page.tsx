@@ -1,10 +1,645 @@
-import type { Metadata } from 'next';
-export const metadata: Metadata = { title: 'Registro de Pagos' };
-export default function RegistroPagosPage() {
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { clientesApi }                           from '@/lib/api/clientes';
+import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
+import { useToast }                              from '@/components/ui/toaster';
+import { cn }                                    from '@/lib/utils';
+import type { Cliente, Factura }                 from '@/types';
+import {
+  CreditCard, ShoppingCart, CalendarDays,
+  X, Printer, CheckCircle, Loader2,
+} from 'lucide-react';
+
+/* ── Helpers ──────────────────────────────────────────────────────── */
+const fmt = (n: number | string | null | undefined) => (+(n ?? 0)).toFixed(2);
+
+function initials(name: string) {
+  return name.split(' ').slice(0, 2).map(s => s[0] ?? '').join('').toUpperCase();
+}
+
+const ESTADO_LABEL: Record<string, string> = {
+  activo: 'ACTIVO', suspendido: 'SUSPENDIDO', moroso: 'MOROSO',
+  baja_temporal: 'BAJA TEMP.', baja_definitiva: 'BAJA', prospecto: 'PROSPECTO',
+};
+const ESTADO_COLOR: Record<string, string> = {
+  activo: 'bg-emerald-500', suspendido: 'bg-yellow-500', moroso: 'bg-red-500',
+  baja_temporal: 'bg-gray-400', baja_definitiva: 'bg-gray-600', prospecto: 'bg-blue-500',
+};
+
+const PAGO_BADGE: Record<string, string> = {
+  verificado:             'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  pendiente_verificacion: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+  rechazado:              'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  devuelto:               'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+};
+const PAGO_LABEL: Record<string, string> = {
+  verificado: 'VERIFICADO', pendiente_verificacion: 'PENDIENTE',
+  rechazado: 'RECHAZADO', devuelto: 'DEVUELTO',
+};
+
+const TIPOS_PAGO = [
+  { value: 'activar',   label: 'Registrar pago y Activar' },
+  { value: 'registrar', label: 'Solo registrar' },
+  { value: 'adelanto',  label: 'Registrar como adelanto' },
+];
+
+const DIAS_MES = Array.from({ length: 31 }, (_, i) => ({
+  value: String(i + 1),
+  label: `${i + 1} de cada mes`,
+}));
+
+const PENDIENTE_ESTADOS = new Set(['emitida', 'vencida', 'en_cobranza', 'pagada_parcial', 'borrador']);
+
+/* ── TabBtn ───────────────────────────────────────────────────────── */
+function TabBtn({
+  active, onClick, children,
+}: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <div className="p-8 flex flex-col items-center justify-center min-h-[400px] text-gray-400">
-      <p className="text-lg font-medium">Registro de Pagos</p>
-      <p className="text-sm mt-1">Próximamente disponible</p>
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-1.5 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+        active
+          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+          : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ── RadioDot ─────────────────────────────────────────────────────── */
+function RadioDot({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <div
+      onClick={onChange}
+      className={cn(
+        'w-4 h-4 rounded-full border-2 flex items-center justify-center cursor-pointer flex-shrink-0',
+        checked ? 'border-blue-500' : 'border-gray-300 dark:border-gray-600',
+      )}
+    >
+      {checked && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/*  Main Page                                                         */
+/* ══════════════════════════════════════════════════════════════════ */
+export default function RegistroPagosPage() {
+  const [tab, setTab] = useState<'registrar' | 'hoy' | 'promesas'>('registrar');
+
+  return (
+    <div className="flex flex-col h-full min-h-screen">
+      {/* Tab bar */}
+      <div className="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-x-auto">
+        <TabBtn active={tab === 'registrar'} onClick={() => setTab('registrar')}>
+          <CreditCard className="w-4 h-4" />
+          Registrar pago
+        </TabBtn>
+        <TabBtn active={tab === 'hoy'} onClick={() => setTab('hoy')}>
+          <ShoppingCart className="w-4 h-4" />
+          Pagos registrados
+          <span className="text-xs text-blue-500 dark:text-blue-400">(hoy)</span>
+        </TabBtn>
+        <TabBtn active={tab === 'promesas'} onClick={() => setTab('promesas')}>
+          <CalendarDays className="w-4 h-4" />
+          Promesas de pago
+          <span className="text-xs text-blue-500 dark:text-blue-400">(activos)</span>
+        </TabBtn>
+      </div>
+
+      <div className="flex-1 bg-gray-50 dark:bg-gray-950">
+        {tab === 'registrar' && <TabRegistrar />}
+        {tab === 'hoy'       && <TabPagosHoy />}
+        {tab === 'promesas'  && <TabPromesas />}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/*  Tab: Registrar Pago                                               */
+/* ══════════════════════════════════════════════════════════════════ */
+function TabRegistrar() {
+  const [searchMode, setSearchMode]     = useState<'cliente' | 'comprobante'>('cliente');
+  const [searchQuery, setSearchQuery]   = useState('');
+  const [debouncedQ, setDebouncedQ]     = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [cliente, setCliente]           = useState<Cliente | null>(null);
+  const [showAlert, setShowAlert]       = useState(true);
+  const searchRef                       = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const { data: searchResults, isFetching: searching } = useQuery({
+    queryKey: ['clientes-search-pago', debouncedQ],
+    queryFn:  () => clientesApi.list({ search: debouncedQ, limit: 8 }),
+    enabled:  debouncedQ.length >= 2 && searchMode === 'cliente',
+  });
+
+  const { data: facturas = [] } = useQuery({
+    queryKey: ['facturas-cliente-pago', cliente?.id],
+    queryFn:  () => facturacionApi.getByCliente(cliente!.id),
+    enabled:  !!cliente,
+  });
+
+  const pendientes     = facturas.filter(f => PENDIENTE_ESTADOS.has(f.estado));
+  const totalPendiente = pendientes.reduce((s, f) => s + (+(f.saldo ?? 0)), 0);
+
+  function handleSelectCliente(c: Cliente) {
+    setCliente(c);
+    setSearchQuery(c.nombreCompleto);
+    setShowDropdown(false);
+    setShowAlert(true);
+  }
+
+  function handleClear() {
+    setCliente(null);
+    setSearchQuery('');
+    setDebouncedQ('');
+  }
+
+  return (
+    <div>
+      {/* Search bar */}
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+        <div className="flex items-center gap-6 justify-center flex-wrap">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <RadioDot checked={searchMode === 'cliente'} onChange={() => setSearchMode('cliente')} />
+            <span className="text-sm text-gray-700 dark:text-gray-300">Buscar Cliente</span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <RadioDot checked={searchMode === 'comprobante'} onChange={() => setSearchMode('comprobante')} />
+            <span className="text-sm text-gray-700 dark:text-gray-300">Buscar N° comprobante</span>
+          </label>
+
+          <div ref={searchRef} className="relative w-96">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setShowDropdown(true);
+                if (!e.target.value) setCliente(null);
+              }}
+              onFocus={() => debouncedQ.length >= 2 && setShowDropdown(true)}
+              placeholder={
+                searchMode === 'cliente'
+                  ? 'Nombre ó N° cliente ó Cédula/NIT/RUC/DNI'
+                  : 'N° comprobante'
+              }
+              className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 dark:border-gray-600 rounded
+                         bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+                         focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {searching && (
+              <Loader2 className="absolute right-2 top-2.5 w-4 h-4 animate-spin text-gray-400" />
+            )}
+
+            {showDropdown && searchResults?.data && searchResults.data.length > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800
+                              border border-gray-200 dark:border-gray-600 rounded shadow-lg overflow-hidden">
+                {searchResults.data.map(c => (
+                  <button
+                    key={c.id}
+                    onMouseDown={() => handleSelectCliente(c)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left
+                               hover:bg-blue-500 hover:text-white transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-purple-500 text-white text-xs font-bold
+                                    flex items-center justify-center flex-shrink-0">
+                      {initials(c.nombreCompleto)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate">{c.nombreCompleto}</div>
+                      <div className="text-xs opacity-60 truncate">
+                        {c.distrito ?? c.direccion ?? c.telefono}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Client header + form */}
+      {cliente && (
+        <div>
+          <div className="bg-gray-900 text-white px-6 py-3 flex items-center gap-3">
+            <span className="text-sm font-bold tracking-wide uppercase">
+              {cliente.nombreCompleto}
+            </span>
+            <span className={cn(
+              'text-xs font-bold px-2 py-0.5 rounded text-white',
+              ESTADO_COLOR[cliente.estado] ?? 'bg-gray-500',
+            )}>
+              {ESTADO_LABEL[cliente.estado] ?? cliente.estado.toUpperCase()}
+            </span>
+            <button onClick={handleClear} className="ml-auto text-gray-400 hover:text-white transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {showAlert && pendientes.length > 0 && (
+            <div className="mx-6 mt-4 flex items-center justify-between px-4 py-2.5
+                            bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800
+                            rounded text-sm text-red-700 dark:text-red-400">
+              <span>
+                El cliente cuenta con <strong>{pendientes.length}</strong>{' '}
+                factura{pendientes.length !== 1 ? 's' : ''} por cobrar
+                {' '}(Total <strong>S/. {fmt(totalPendiente)}</strong>).
+              </span>
+              <button onClick={() => setShowAlert(false)} className="ml-4 hover:opacity-70">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          <FormPago
+            cliente={cliente}
+            facturas={facturas}
+            pendientes={pendientes}
+            onSuccess={handleClear}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/*  Payment Form                                                      */
+/* ══════════════════════════════════════════════════════════════════ */
+interface FormPagoProps {
+  cliente:    Cliente;
+  facturas:   Factura[];
+  pendientes: Factura[];
+  onSuccess:  () => void;
+}
+
+function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
+  const qc          = useQueryClient();
+  const { toast }   = useToast();
+
+  const [facturaId,  setFacturaId]  = useState<string>(pendientes[0]?.id ?? '');
+  const [metodoPago, setMetodoPago] = useState('efectivo');
+  const [numOp,      setNumOp]      = useState('');
+  const [notas,      setNotas]      = useState('');
+  const [tipoPago,   setTipoPago]   = useState('activar');
+  const [diaPago,    setDiaPago]    = useState('28');
+  const [impresion,  setImpresion]  = useState<'normal' | 'pos' | 'factura' | 'ninguna'>('normal');
+  const [monto,      setMonto]      = useState('');
+
+  // Auto-fill monto from selected factura
+  useEffect(() => {
+    const f = facturas.find(f => f.id === facturaId);
+    if (f) setMonto(fmt(f.saldo > 0 ? f.saldo : f.total));
+    else    setMonto('');
+  }, [facturaId, facturas]);
+
+  // Default to first pending on load
+  useEffect(() => {
+    if (pendientes[0] && !facturaId) setFacturaId(pendientes[0].id);
+  }, [pendientes]); // eslint-disable-line
+
+  const selectedFactura = facturas.find(f => f.id === facturaId);
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => pagosApi.registrar({
+      clienteId:       cliente.id,
+      facturaId:       facturaId   || undefined,
+      contratoId:      selectedFactura?.contratoId,
+      monto:           parseFloat(monto) || 0,
+      metodoPago,
+      numeroOperacion: numOp  || undefined,
+      notas:           notas  || undefined,
+      autoVerificar:   tipoPago === 'activar',
+    }),
+    onSuccess: () => {
+      toast('Pago registrado correctamente', { type: 'success' });
+      qc.invalidateQueries({ queryKey: ['facturas-cliente-pago', cliente.id] });
+      qc.invalidateQueries({ queryKey: ['pagos-hoy'] });
+      onSuccess();
+    },
+    onError: (e: any) => {
+      toast(e?.response?.data?.message ?? 'Error al registrar el pago', { type: 'error' });
+    },
+  });
+
+  const inputCls = `w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded
+                    bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+                    focus:outline-none focus:ring-1 focus:ring-blue-500`;
+
+  return (
+    <div className="p-6 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8 max-w-4xl">
+      {/* ── Left column ── */}
+      <div className="space-y-4">
+
+        {/* Comprobante */}
+        <div>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+            Comprobante a pagar
+          </label>
+          <select
+            value={facturaId}
+            onChange={e => setFacturaId(e.target.value)}
+            className={inputCls}
+          >
+            <option value="">— Sin comprobante (adelanto) —</option>
+            {facturas
+              .filter(f => f.estado !== 'anulada')
+              .map(f => (
+                <option key={f.id} value={f.id}>
+                  N° {f.numeroCompleto} — (S/. {fmt(f.saldo > 0 ? f.saldo : f.total)}{' '}
+                  {f.tipoComprobante} — {f.fechaVencimiento})
+                </option>
+              ))}
+          </select>
+        </div>
+
+        {/* Comisión + N° Transacción */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+              Comisión S/.
+            </label>
+            <input type="number" defaultValue="0" min="0" step="0.01" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+              N° Transacción
+            </label>
+            <input
+              type="text"
+              value={numOp}
+              onChange={e => setNumOp(e.target.value)}
+              placeholder="Número de operación"
+              className={inputCls}
+            />
+          </div>
+        </div>
+
+        {/* Forma de Pago + Tipo de pago */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+              Forma de Pago
+            </label>
+            <select
+              value={metodoPago}
+              onChange={e => setMetodoPago(e.target.value)}
+              className={inputCls}
+            >
+              {METODOS_PAGO.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+              Tipo de pago
+            </label>
+            <select
+              value={tipoPago}
+              onChange={e => setTipoPago(e.target.value)}
+              className={inputCls}
+            >
+              {TIPOS_PAGO.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Día pago */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+              Día pago
+            </label>
+            <select
+              value={diaPago}
+              onChange={e => setDiaPago(e.target.value)}
+              className={inputCls}
+            >
+              {DIAS_MES.map(d => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Total a pagar */}
+        <div className="pt-2">
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wide">
+            Total a pagar
+          </label>
+          <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded overflow-hidden w-48">
+            <span className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-sm font-semibold text-gray-500 border-r border-gray-300 dark:border-gray-600">
+              S/.
+            </span>
+            <input
+              type="number"
+              value={monto}
+              onChange={e => setMonto(e.target.value)}
+              step="0.01"
+              min="0"
+              className="flex-1 px-3 py-2 text-lg font-bold text-emerald-600 dark:text-emerald-400
+                         bg-white dark:bg-gray-800 focus:outline-none"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Right column ── */}
+      <div className="space-y-5">
+
+        {/* Notas */}
+        <div>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+            Notas
+          </label>
+          <textarea
+            value={notas}
+            onChange={e => setNotas(e.target.value)}
+            placeholder="Comentario del pago"
+            rows={5}
+            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+                       focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+          />
+        </div>
+
+        {/* Imprimir */}
+        <div>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium">
+            Imprimir
+          </label>
+          <div className="space-y-2">
+            {[
+              { value: 'normal',  label: 'Recibo normal', color: 'text-blue-500' },
+              { value: 'pos',     label: 'Recibo POS',    color: 'text-emerald-500' },
+              { value: 'factura', label: 'Factura',       color: 'text-emerald-500' },
+              { value: 'ninguna', label: 'No imprimir',   color: 'text-red-400' },
+            ].map(opt => (
+              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                <RadioDot
+                  checked={impresion === opt.value}
+                  onChange={() => setImpresion(opt.value as typeof impresion)}
+                />
+                <Printer className={cn('w-3.5 h-3.5', opt.color)} />
+                <span className={cn('text-sm', opt.color)}>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onSuccess}
+            className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded
+                       text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            × Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={isPending || !monto || parseFloat(monto) <= 0}
+            onClick={() => mutate()}
+            className="flex-1 px-4 py-2 text-sm font-semibold rounded text-white
+                       bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed
+                       flex items-center justify-center gap-2 transition-colors"
+          >
+            {isPending
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <CheckCircle className="w-4 h-4" />}
+            Registrar pago
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/*  Tab: Pagos Hoy                                                    */
+/* ══════════════════════════════════════════════════════════════════ */
+function TabPagosHoy() {
+  const { data, isLoading } = useQuery({
+    queryKey:       ['pagos-hoy'],
+    queryFn:        () => pagosApi.list({ soloHoy: true, limit: 200 }),
+    refetchInterval: 30_000,
+  });
+
+  const pagos     = data?.data ?? [];
+  const totalHoy  = pagos.reduce((s, p) => s + (+(p.monto ?? 0)), 0);
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+          Pagos registrados hoy
+        </h2>
+        <div className="text-sm text-gray-500">
+          Total:{' '}
+          <strong className="text-emerald-600 dark:text-emerald-400">
+            S/. {fmt(totalHoy)}
+          </strong>
+          {' · '}
+          {pagos.length} pago{pagos.length !== 1 ? 's' : ''}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        </div>
+      ) : pagos.length === 0 ? (
+        <div className="text-center py-16 text-gray-400 text-sm">
+          No hay pagos registrados hoy
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-800 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="px-4 py-2.5 text-left">Cliente</th>
+                <th className="px-4 py-2.5 text-left">Método</th>
+                <th className="px-4 py-2.5 text-left">N° Operación</th>
+                <th className="px-4 py-2.5 text-right">Monto</th>
+                <th className="px-4 py-2.5 text-center">Estado</th>
+                <th className="px-4 py-2.5 text-left">Hora</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {pagos.map(p => (
+                <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                  <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">
+                    {p.clienteNombre ?? p.cliente_nombre ?? '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">
+                    {METODOS_PAGO.find(m => m.value === p.metodoPago)?.label ?? p.metodoPago}
+                  </td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-400">
+                    {p.numeroOperacion ?? '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                    S/. {fmt(p.monto)}
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={cn(
+                      'text-[10px] font-bold px-1.5 py-0.5 rounded',
+                      PAGO_BADGE[p.estado] ?? 'bg-gray-100 text-gray-500',
+                    )}>
+                      {PAGO_LABEL[p.estado] ?? p.estado.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-gray-400">
+                    {new Date(p.fechaPago).toLocaleTimeString('es-PE', {
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/*  Tab: Promesas de Pago                                             */
+/* ══════════════════════════════════════════════════════════════════ */
+function TabPromesas() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[300px] text-gray-400">
+      <CalendarDays className="w-10 h-10 mb-3 opacity-30" />
+      <p className="text-sm font-medium">Promesas de pago</p>
+      <p className="text-xs mt-1 opacity-60">Próximamente disponible</p>
     </div>
   );
 }

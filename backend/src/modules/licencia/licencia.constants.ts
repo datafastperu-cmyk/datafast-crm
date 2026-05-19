@@ -21,8 +21,8 @@ export const MACHINE_ID_SALT = 'dft-2026-ls-salt';
 // ─── Días de gracia offline antes de bloquear ─────────────────────────────────
 export const GRACE_PERIOD_DAYS = 7;
 
-// ─── URL del servidor de validación online (revocación) ───────────────────────
-export const LICENCIA_VALIDATION_URL = 'https://licenses.datafast.pe/v1/validate';
+// ─── URL base del Licensing Server (usado por el SDK) ────────────────────────
+export const LICENCIA_SERVER_URL = 'https://licenses.datafast.pe';
 
 // ─── Definición de planes ─────────────────────────────────────────────────────
 export const PLANES_LICENCIA = {
