@@ -38,6 +38,7 @@ import { WorkersModule }          from './modules/workers/workers.module';
 import { OpenvpnModule }          from './modules/openvpn/openvpn.module';
 import { PlantillasModule }       from './modules/plantillas/plantillas.module';
 import { DashboardModule }        from './modules/dashboard/dashboard.module';
+import { BackupModule }           from './modules/backup/backup.module';
 
 @Module({
   imports: [
@@ -132,6 +133,7 @@ import { DashboardModule }        from './modules/dashboard/dashboard.module';
     OpenvpnModule,
     PlantillasModule,
     DashboardModule,
+    BackupModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
