@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+export PM2_HOME=/root/.pm2   # instancia única — nunca usar la de usuario datafast
+
 INSTALL_DIR="/opt/datafast"
 ECOSYSTEM="${INSTALL_DIR}/ecosystem.config.js"
 LOG_DIR="${INSTALL_DIR}/logs"
@@ -24,20 +26,30 @@ step() { echo -e "\n${W}━━━ $1${NC}" | tee -a "$LOG_FILE"; }
 
 mkdir -p "$LOG_DIR"
 
-# ── Función: esperar que un puerto quede libre ────────────────────────────────
-# Uso: wait_port_free <puerto> [timeout_segundos=20]
-# Espera hasta que `fuser` no detecte nada en <puerto>/tcp.
-# Si el timeout se cumple, fuerza kill con fuser -k y espera 2 s más.
+# ── Liberar puerto: mata cualquier proceso (de cualquier usuario) que lo ocupe ──
+# Usa ss para obtener PIDs directamente — funciona aunque el proceso sea de otro usuario.
+kill_port() {
+  local port="$1"
+  local pids
+  pids=$(ss -tlnp "sport = :${port}" 2>/dev/null \
+         | grep -oP 'pid=\K[0-9]+' | sort -u)
+  if [[ -n "$pids" ]]; then
+    warn "Puerto ${port} ocupado (PIDs: ${pids}) — matando..."
+    echo "$pids" | xargs -r kill -9 2>/dev/null || true
+    sleep 2
+  fi
+}
+
+# ── Esperar que el puerto quede libre (con kill forzado como fallback) ───────────
 wait_port_free() {
   local port="$1"
   local timeout="${2:-20}"
   local elapsed=0
 
-  while fuser "${port}/tcp" >/dev/null 2>&1; do
+  while ss -tlnp "sport = :${port}" 2>/dev/null | grep -q "LISTEN"; do
     if (( elapsed >= timeout )); then
-      warn "Puerto ${port} ocupado tras ${timeout}s — forzando liberación..."
-      fuser -k "${port}/tcp" 2>/dev/null || true
-      sleep 2
+      kill_port "${port}"
+      sleep 1
       return
     fi
     sleep 1
@@ -54,6 +66,15 @@ echo -e "${C}║  CRM ISP DATAFAST — Actualizando sistema         ║${NC}"
 echo -e "${C}║  Versión actual: ${W}v${CURRENT_VERSION}${C}                          ║${NC}"
 echo -e "${C}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
+
+# ── 0. Sanidad: asegurarse de que solo existe la instancia PM2 de root ───────────
+step "Verificando instancia PM2"
+if PM2_HOME=/home/datafast/.pm2 pm2 list 2>/dev/null | grep -q 'online'; then
+  warn "Detectada instancia PM2 del usuario datafast — eliminando..."
+  PM2_HOME=/home/datafast/.pm2 sudo -u datafast pm2 kill 2>/dev/null || true
+  sleep 2
+fi
+log "Instancia PM2 única (root) verificada"
 
 # ── 1. Backup previo ──────────────────────────────────────────────────────────
 step "Creando backup de seguridad"
@@ -93,9 +114,18 @@ log "Backend compilado"
 # ── 4. Frontend: dependencias + compilación ───────────────────────────────────
 step "Reconstruyendo frontend"
 cd "${INSTALL_DIR}/frontend"
-npm install                           >> "$LOG_FILE" 2>&1
-NODE_ENV=production npm run build     >> "$LOG_FILE" 2>&1
-log "Frontend compilado"
+npm install >> "$LOG_FILE" 2>&1
+
+# Build atómico: construir en .next.building → si tiene éxito → reemplazar .next
+# Esto evita que un build interrumpido deje .next en estado corrupto
+rm -rf .next.building 2>/dev/null || true
+NEXT_DIST_DIR=".next.building" NODE_ENV=production npm run build >> "$LOG_FILE" 2>&1
+# Build exitoso → swap atómico
+rm -rf .next.old 2>/dev/null || true
+[[ -d .next ]] && mv .next .next.old
+mv .next.building .next
+rm -rf .next.old 2>/dev/null || true
+log "Frontend compilado (build atómico)"
 
 # ── 5. Migraciones de base de datos ───────────────────────────────────────────
 step "Ejecutando migraciones"
@@ -112,39 +142,31 @@ done
 
 # ── 6. Reload backend (zero-downtime cluster) ─────────────────────────────────
 step "Reload backend"
-pm2 reload ecosystem.config.js --only datafast-backend >> "$LOG_FILE" 2>&1 \
-    || pm2 restart datafast-backend                     >> "$LOG_FILE" 2>&1 \
+pm2 reload "${ECOSYSTEM}" --only datafast-backend >> "$LOG_FILE" 2>&1 \
+    || pm2 restart datafast-backend               >> "$LOG_FILE" 2>&1 \
     || warn "PM2 backend no reiniciado"
 log "Backend recargado"
 
-# ── 7. Reload frontend SIN colisión de puertos ────────────────────────────────
-#
-# Secuencia segura:
-#   a) Detener proceso PM2 del frontend (señal SIGTERM → server.js cierra HTTP)
-#   b) Esperar a que el puerto 3000 quede realmente libre (poll + fuser -k fallback)
-#   c) Iniciar el proceso PM2 desde el ecosystem file
-#   d) PM2 espera 'ready' (wait_ready:true) antes de declararlo online
-#
+# ── 7. Restart frontend SIN colisión de puertos ───────────────────────────────
 step "Restart seguro del frontend"
 
 log "Deteniendo datafast-frontend..."
 pm2 stop datafast-frontend >> "$LOG_FILE" 2>&1 || true
 
-log "Esperando que el puerto 3000 quede libre..."
-wait_port_free 3000 20
+log "Liberando puerto 3000..."
+wait_port_free 3000 15
+# Segunda pasada: kill directo por si algo sobrevivió
+kill_port 3000
 
-# Verificar que el proceso está realmente en el ecosystem (puede que se haya creado
-# manualmente con 'npm start' en lugar del ecosystem → lo eliminamos y recreamos)
-if pm2 describe datafast-frontend 2>/dev/null | grep -q 'script.*npm'; then
-    warn "El proceso frontend usaba 'npm start' en lugar de server.js — recreando..."
+# Verificar que el proceso usa server.js (no npm) — si no, recrear
+if pm2 describe datafast-frontend 2>/dev/null | grep -q '"script".*"npm"'; then
+    warn "Proceso frontend usaba npm start — recreando desde ecosystem..."
     pm2 delete datafast-frontend >> "$LOG_FILE" 2>&1 || true
 fi
 
-# Arrancar desde el ecosystem file (aplica kill_timeout, wait_ready, etc.)
 pm2 start "${ECOSYSTEM}" --only datafast-frontend >> "$LOG_FILE" 2>&1
 log "Frontend arrancado con ecosystem.config.js"
 
-# Guardar estado PM2 para que sobreviva reboots
 pm2 save >> "$LOG_FILE" 2>&1
 log "Estado PM2 guardado"
 
