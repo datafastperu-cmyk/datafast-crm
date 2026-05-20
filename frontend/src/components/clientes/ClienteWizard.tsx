@@ -466,20 +466,6 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
     <form onSubmit={handleSubmit(onNext)}>
       <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border/50">
 
-        {/* Contraseña Portal */}
-        <FormRow label="Credenciales Portal" hint="Dejar en blanco para que sean automáticas.">
-          <div className="flex gap-3">
-            <div className="flex flex-col gap-1 flex-1">
-              <span className="text-xs text-muted-foreground">Usuario</span>
-              <input {...register('usuarioPortal')} placeholder="cliente123" maxLength={12} className={inputCls()} />
-            </div>
-            <div className="flex flex-col gap-1 flex-1">
-              <span className="text-xs text-muted-foreground">Contraseña</span>
-              <input {...register('passwordPortal')} placeholder="4243Tdp" maxLength={12} className={inputCls()} />
-            </div>
-          </div>
-        </FormRow>
-
         {/* Nº Identificación */}
         <FormRow label="Nº Identificación" hint="CEDULA, DNI, RUC, CUIT, NIT, SAT, RUT, RTN, ETC.">
           <div className="flex gap-2">
@@ -595,6 +581,20 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
               <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.email.message}
             </p>
           )}
+        </FormRow>
+
+        {/* Credenciales Portal */}
+        <FormRow label="Credenciales Portal" hint="Dejar en blanco para que sean automáticas.">
+          <div className="flex gap-3">
+            <div className="flex flex-col gap-1 flex-1">
+              <span className="text-xs text-muted-foreground">Usuario</span>
+              <input {...register('usuarioPortal')} placeholder="cliente123" maxLength={12} className={inputCls()} />
+            </div>
+            <div className="flex flex-col gap-1 flex-1">
+              <span className="text-xs text-muted-foreground">Contraseña</span>
+              <input {...register('passwordPortal')} placeholder="4243Tdp" maxLength={12} className={inputCls()} />
+            </div>
+          </div>
         </FormRow>
 
       </div>
