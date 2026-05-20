@@ -143,7 +143,7 @@ export class NetWatchService {
     estado:  'online' | 'offline',
     version: string,
   ): string {
-    const path = `/monitoreo/webhook/netwatch?token=${this.token}&nodoId=${nodoId}&estado=${estado}`;
+    const path = `/api/v1/monitoreo/webhook/netwatch?token=${this.token}&nodoId=${nodoId}&estado=${estado}`;
 
     if (version === 'v7') {
       return `:do { /tool/fetch url="http://${vpsIp}:${this.vpsPort}${path}" keep-result=no } on-error={}`;
