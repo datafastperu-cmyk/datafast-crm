@@ -437,10 +437,18 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
   const [reniecStatus, setReniecStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [reniecMsg,    setReniecMsg]    = useState('');
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<S1>({
+  const { register, handleSubmit, watch, setValue, getFieldState, formState: { errors } } = useForm<S1>({
     resolver:      zodResolver(step1Schema),
     defaultValues: initial ?? {},
   });
+
+  const numeroDocumento = watch('numeroDocumento');
+  useEffect(() => {
+    const doc = numeroDocumento?.trim();
+    if (!doc) return;
+    if (!getFieldState('usuarioPortal').isDirty)   setValue('usuarioPortal',  doc);
+    if (!getFieldState('passwordPortal').isDirty)  setValue('passwordPortal', doc);
+  }, [numeroDocumento]);
 
   const consultarReniec = async () => {
     const doc = watch('numeroDocumento')?.trim();
