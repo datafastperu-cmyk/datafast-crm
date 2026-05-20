@@ -264,6 +264,11 @@ export const redesApi = {
     const res = await api.post<ApiRespuesta<SegmentoIpv4>>('/contratos/segmentos', dto);
     return res.data.data;
   },
+  updateSegmento: async (id: string, dto: Partial<CreateSegmentoDto>): Promise<SegmentoIpv4> => {
+    const res = await api.put<ApiRespuesta<SegmentoIpv4>>(`/contratos/segmentos/${id}`, dto);
+    return res.data.data;
+  },
+
   deleteSegmento: async (id: string): Promise<void> => {
     await api.delete(`/contratos/segmentos/${id}`);
   },

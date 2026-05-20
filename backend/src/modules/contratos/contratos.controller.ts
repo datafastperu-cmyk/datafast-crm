@@ -88,8 +88,20 @@ export class ContratosController {
     return StdResponse.ok(await this.ipPool.getDisponibilidad(segId, user.empresaId));
   }
 
+  @Put('segmentos/:segId') @RequirePermission('contratos:edit')
+  @ApiOperation({ summary: 'Actualizar segmento IPv4 (bloqueado si hay IPs asignadas)' })
+  @ApiParam({ name: 'segId' })
+  async updateSegmento(
+    @Param('segId', ParseUUIDPipe) segId: string,
+    @Body() dto: CreateSegmentoDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const seg = await this.ipPool.updateSegmento(segId, user.empresaId, dto);
+    return StdResponse.ok(seg, 'Segmento actualizado correctamente');
+  }
+
   @Delete('segmentos/:segId') @RequirePermission('contratos:delete') @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Desactivar segmento IPv4' })
+  @ApiOperation({ summary: 'Desactivar segmento IPv4 (bloqueado si hay IPs asignadas)' })
   @ApiParam({ name: 'segId' })
   async removeSegmento(@Param('segId', ParseUUIDPipe) segId: string, @CurrentUser() user: JwtPayload): Promise<void> {
     await this.ipPool.desactivarSegmento(segId, user.empresaId);

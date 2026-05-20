@@ -235,8 +235,42 @@ export class IpPoolService {
     };
   }
 
+  async updateSegmento(
+    id: string,
+    empresaId: string,
+    data: Partial<SegmentoIpv4>,
+  ): Promise<SegmentoIpv4> {
+    const seg = await this.getSegmento(id, empresaId);
+
+    const ipsActivas = await this.ipRepo.count({ where: { segmentoId: id, activa: true } });
+    if (ipsActivas > 0) {
+      throw new ConflictException(
+        `No se puede editar: el segmento tiene ${ipsActivas} IP${ipsActivas > 1 ? 's' : ''} asignada${ipsActivas > 1 ? 's' : ''} a clientes. Libéralas antes de modificar el segmento.`,
+      );
+    }
+
+    const update: Partial<SegmentoIpv4> = { ...data };
+    if (data.redCidr && data.redCidr !== seg.redCidr) {
+      if (!isValidCidr(data.redCidr)) {
+        throw new BadRequestException(`CIDR inválido: ${data.redCidr}`);
+      }
+      update.totalIps = getCidrRange(data.redCidr).usableHosts;
+    }
+
+    await this.segRepo.update(id, update);
+    return this.getSegmento(id, empresaId);
+  }
+
   async desactivarSegmento(id: string, empresaId: string): Promise<void> {
     const seg = await this.getSegmento(id, empresaId);
+
+    const ipsActivas = await this.ipRepo.count({ where: { segmentoId: id, activa: true } });
+    if (ipsActivas > 0) {
+      throw new ConflictException(
+        `No se puede eliminar: el segmento tiene ${ipsActivas} IP${ipsActivas > 1 ? 's' : ''} asignada${ipsActivas > 1 ? 's' : ''} a clientes. Libéralas antes de eliminar el segmento.`,
+      );
+    }
+
     await this.segRepo.update(seg.id, { activo: false });
   }
 

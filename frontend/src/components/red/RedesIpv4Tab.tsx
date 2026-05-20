@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Wifi, ChevronDown, X, Network } from 'lucide-react';
+import { Plus, Trash2, Wifi, ChevronDown, X, Network, Pencil } from 'lucide-react';
 import { redesApi, type SegmentoIpv4, type CreateSegmentoDto, type DisponibilidadSegmento } from '@/lib/api/contratos';
 import type { Router } from '@/lib/api/mikrotik';
 import { useToast } from '@/components/ui/toaster';
@@ -12,8 +12,9 @@ import { parseApiError, cn } from '@/lib/utils';
 export function RedesIpv4Tab() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
-  const [detalle, setDetalle] = useState<string | null>(null);
+  const [showForm,  setShowForm]  = useState(false);
+  const [editando,  setEditando]  = useState<SegmentoIpv4 | null>(null);
+  const [detalle,   setDetalle]   = useState<string | null>(null);
 
   const { data: segmentos = [], isLoading } = useQuery({
     queryKey: ['segmentos-ipv4'],
@@ -28,11 +29,13 @@ export function RedesIpv4Tab() {
   const { mutate: eliminar } = useMutation({
     mutationFn: (id: string) => redesApi.deleteSegmento(id),
     onSuccess: () => {
-      toast('Segmento desactivado', { type: 'success' });
+      toast('Segmento eliminado', { type: 'success' });
       qc.invalidateQueries({ queryKey: ['segmentos-ipv4'] });
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['segmentos-ipv4'] });
 
   if (isLoading) return <div className="text-sm text-muted-foreground p-4">Cargando...</div>;
 
@@ -49,15 +52,22 @@ export function RedesIpv4Tab() {
         </button>
       </div>
 
-      {/* Form */}
+      {/* Modal crear */}
       {showForm && (
         <SegmentoForm
           routers={routers}
           onClose={() => setShowForm(false)}
-          onCreated={() => {
-            setShowForm(false);
-            qc.invalidateQueries({ queryKey: ['segmentos-ipv4'] });
-          }}
+          onSaved={() => { setShowForm(false); refresh(); }}
+        />
+      )}
+
+      {/* Modal editar */}
+      {editando && (
+        <SegmentoForm
+          routers={routers}
+          segmento={editando}
+          onClose={() => setEditando(null)}
+          onSaved={() => { setEditando(null); refresh(); }}
         />
       )}
 
@@ -86,6 +96,7 @@ export function RedesIpv4Tab() {
                 <SegmentoRow
                   key={seg.id}
                   seg={seg}
+                  onEditar={() => setEditando(seg)}
                   onEliminar={() => eliminar(seg.id)}
                   onDetalle={() => setDetalle(detalle === seg.id ? null : seg.id)}
                   showDetalle={detalle === seg.id}
@@ -101,9 +112,10 @@ export function RedesIpv4Tab() {
 
 // ─── Row component ────────────────────────────────────────────
 function SegmentoRow({
-  seg, onEliminar, onDetalle, showDetalle,
+  seg, onEditar, onEliminar, onDetalle, showDetalle,
 }: {
   seg: SegmentoIpv4;
+  onEditar: () => void;
   onEliminar: () => void;
   onDetalle: () => void;
   showDetalle: boolean;
@@ -158,8 +170,15 @@ function SegmentoRow({
               <ChevronDown className={cn('w-4 h-4 transition-transform', showDetalle && 'rotate-180')} />
             </button>
             <button
+              onClick={onEditar}
+              title="Editar segmento"
+              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors text-muted-foreground hover:text-blue-600"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
               onClick={onEliminar}
-              title="Desactivar"
+              title="Eliminar segmento"
               className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
             >
               <Trash2 className="w-4 h-4" />
@@ -254,50 +273,63 @@ const CIDR_GRUPOS = [
   },
 ];
 
-// ─── Form component (modal) ───────────────────────────────────
+// ─── Form component (modal — create & edit) ──────────────────
 function SegmentoForm({
-  routers, onClose, onCreated,
+  routers, segmento, onClose, onSaved,
 }: {
-  routers: Router[];
-  onClose: () => void;
-  onCreated: () => void;
+  routers:   Router[];
+  segmento?: SegmentoIpv4;   // undefined = crear | defined = editar
+  onClose:   () => void;
+  onSaved:   () => void;
 }) {
-  const { toast } = useToast();
-  const [red,    setRed]    = useState('');
-  const [prefix, setPrefix] = useState('24');
-  const [form, setForm] = useState({
-    nombre:   '',
-    gateway:  '',
-    routerId: '',
+  const { toast }   = useToast();
+  const esEdicion   = !!segmento;
+
+  // Descomponer redCidr existente en red + prefijo
+  const [redInicial, prefInicial] = segmento
+    ? (segmento.redCidr || '/24').split('/')
+    : ['', '24'];
+
+  const [red,    setRed]    = useState(redInicial);
+  const [prefix, setPrefix] = useState(prefInicial ?? '24');
+  const [form,   setForm]   = useState({
+    nombre:   segmento?.nombre   ?? '',
+    gateway:  segmento?.gateway  ?? '',
+    routerId: segmento?.routerId ?? '',
   });
 
-  // Auto-rellena la puerta de enlace: primera IP usable de la red (.1)
+  // Auto-rellena gateway solo en modo creación
   useEffect(() => {
+    if (esEdicion) return;
     const parts = red.trim().split('.');
     if (parts.length === 4 && parts.every((p) => p !== '' && !isNaN(Number(p)))) {
-      const gw = [...parts.slice(0, 3), '1'].join('.');
-      setForm((prev) => ({ ...prev, gateway: gw }));
+      setForm((prev) => ({ ...prev, gateway: [...parts.slice(0, 3), '1'].join('.') }));
     }
-  }, [red]);
+  }, [red, esEdicion]);
 
-  const { mutate: crear, isPending } = useMutation({
-    mutationFn: () => redesApi.createSegmento({
-      nombre:   form.nombre,
-      redCidr:  `${red}/${prefix}`,
-      gateway:  form.gateway,
-      routerId: form.routerId || undefined,
-    }),
-    onSuccess: () => {
-      toast('Segmento creado', { type: 'success' });
-      onCreated();
-    },
-    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  const dto = {
+    nombre:   form.nombre,
+    redCidr:  `${red}/${prefix}`,
+    gateway:  form.gateway,
+    routerId: form.routerId || undefined,
+  };
+
+  const { mutate: crear, isPending: creando } = useMutation({
+    mutationFn: () => redesApi.createSegmento(dto),
+    onSuccess: () => { toast('Segmento creado', { type: 'success' }); onSaved(); },
+    onError:   (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
-  const set = (k: keyof typeof form, v: string) =>
-    setForm((prev) => ({ ...prev, [k]: v }));
+  const { mutate: actualizar, isPending: actualizando } = useMutation({
+    mutationFn: () => redesApi.updateSegmento(segmento!.id, dto),
+    onSuccess: () => { toast('Segmento actualizado', { type: 'success' }); onSaved(); },
+    onError:   (e) => toast(parseApiError(e), { type: 'error' }),
+  });
 
-  const canSubmit = form.nombre.trim() && red.trim() && form.gateway.trim();
+  const isPending  = creando || actualizando;
+  const canSubmit  = form.nombre.trim() && red.trim() && form.gateway.trim();
+  const set        = (k: keyof typeof form, v: string) =>
+    setForm((prev) => ({ ...prev, [k]: v }));
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -305,7 +337,9 @@ function SegmentoForm({
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h3 className="font-semibold text-foreground">Nueva Red IPv4</h3>
+          <h3 className="font-semibold text-foreground">
+            {esEdicion ? 'Editar Red IPv4' : 'Nueva Red IPv4'}
+          </h3>
           <button type="button" onClick={onClose}
             className="p-1 rounded-lg hover:bg-muted transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -380,11 +414,11 @@ function SegmentoForm({
             Cerrar
           </button>
           <button
-            onClick={() => crear()}
+            onClick={() => esEdicion ? actualizar() : crear()}
             disabled={isPending || !canSubmit}
             className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
           >
-            {isPending ? 'Registrando...' : 'Registrar'}
+            {isPending ? 'Guardando...' : esEdicion ? 'Guardar cambios' : 'Registrar'}
           </button>
         </div>
       </div>
