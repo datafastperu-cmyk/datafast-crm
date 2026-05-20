@@ -213,18 +213,45 @@ function DisponibilidadView({ dispo }: { dispo: DisponibilidadSegmento }) {
   );
 }
 
-const CIDR_OPTIONS = [
-  { prefix: 20, mask: '255.255.240.0',   hosts: 4094,  total: 4096  },
-  { prefix: 21, mask: '255.255.248.0',   hosts: 2046,  total: 2048  },
-  { prefix: 22, mask: '255.255.252.0',   hosts: 1022,  total: 1024  },
-  { prefix: 23, mask: '255.255.254.0',   hosts: 510,   total: 512   },
-  { prefix: 24, mask: '255.255.255.0',   hosts: 254,   total: 256   },
-  { prefix: 25, mask: '255.255.255.128', hosts: 126,   total: 128   },
-  { prefix: 26, mask: '255.255.255.192', hosts: 62,    total: 64    },
-  { prefix: 27, mask: '255.255.255.224', hosts: 30,    total: 32    },
-  { prefix: 28, mask: '255.255.255.240', hosts: 14,    total: 16    },
-  { prefix: 29, mask: '255.255.255.248', hosts: 6,     total: 8     },
-  { prefix: 30, mask: '255.255.255.252', hosts: 2,     total: 4     },
+const CIDR_GRUPOS = [
+  {
+    label: 'Clase A',
+    opts: [
+      { prefix:  8, mask: '255.0.0.0',       hosts: 16777214, total: 16777216 },
+      { prefix:  9, mask: '255.128.0.0',      hosts: 8388606,  total: 8388608  },
+      { prefix: 10, mask: '255.192.0.0',      hosts: 4194302,  total: 4194304  },
+      { prefix: 11, mask: '255.224.0.0',      hosts: 2097150,  total: 2097152  },
+      { prefix: 12, mask: '255.240.0.0',      hosts: 1048574,  total: 1048576  },
+      { prefix: 13, mask: '255.248.0.0',      hosts: 524286,   total: 524288   },
+      { prefix: 14, mask: '255.252.0.0',      hosts: 262142,   total: 262144   },
+      { prefix: 15, mask: '255.254.0.0',      hosts: 131070,   total: 131072   },
+    ],
+  },
+  {
+    label: 'Clase B',
+    opts: [
+      { prefix: 16, mask: '255.255.0.0',      hosts: 65534,    total: 65536    },
+      { prefix: 17, mask: '255.255.128.0',    hosts: 32766,    total: 32768    },
+      { prefix: 18, mask: '255.255.192.0',    hosts: 16382,    total: 16384    },
+      { prefix: 19, mask: '255.255.224.0',    hosts: 8190,     total: 8192     },
+      { prefix: 20, mask: '255.255.240.0',    hosts: 4094,     total: 4096     },
+      { prefix: 21, mask: '255.255.248.0',    hosts: 2046,     total: 2048     },
+      { prefix: 22, mask: '255.255.252.0',    hosts: 1022,     total: 1024     },
+      { prefix: 23, mask: '255.255.254.0',    hosts: 510,      total: 512      },
+    ],
+  },
+  {
+    label: 'Clase C',
+    opts: [
+      { prefix: 24, mask: '255.255.255.0',    hosts: 254,      total: 256      },
+      { prefix: 25, mask: '255.255.255.128',  hosts: 126,      total: 128      },
+      { prefix: 26, mask: '255.255.255.192',  hosts: 62,       total: 64       },
+      { prefix: 27, mask: '255.255.255.224',  hosts: 30,       total: 32       },
+      { prefix: 28, mask: '255.255.255.240',  hosts: 14,       total: 16       },
+      { prefix: 29, mask: '255.255.255.248',  hosts: 6,        total: 8        },
+      { prefix: 30, mask: '255.255.255.252',  hosts: 2,        total: 4        },
+    ],
+  },
 ];
 
 // ─── Form component (modal) ───────────────────────────────────
@@ -314,10 +341,14 @@ function SegmentoForm({
 
           <FRow label="CIDR">
             <select value={prefix} onChange={(e) => setPrefix(e.target.value)} className={inputCls()}>
-              {CIDR_OPTIONS.map((o) => (
-                <option key={o.prefix} value={String(o.prefix)}>
-                  {o.prefix} ({o.mask} - {o.hosts} hosts, {o.total} IP)
-                </option>
+              {CIDR_GRUPOS.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.opts.map((o) => (
+                    <option key={o.prefix} value={String(o.prefix)}>
+                      {o.prefix} ({o.mask} - {o.hosts} hosts, {o.total} IP)
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </FRow>
