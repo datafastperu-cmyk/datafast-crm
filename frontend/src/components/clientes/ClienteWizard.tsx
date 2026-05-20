@@ -24,7 +24,7 @@ import { MOCK_PLANES, MOCK_ROUTERS }         from '@/data/clientes.mock';
 
 // ── Schemas ───────────────────────────────────────────────────
 const step1Schema = z.object({
-  idCliente:       z.string().optional(),
+  usuarioPortal:   z.string().optional(),
   passwordPortal:  z.string().optional(),
   tipoDocumento:   z.string().optional(),
   numeroDocumento: z.string().min(6, 'Identificación requerida'),
@@ -354,6 +354,8 @@ export function ClienteWizard() {
         email:           s1.email || undefined,
         direccion:       s1.direccion || undefined,
         tipoServicio:    'ftth',
+        usuarioPortal:   s1.usuarioPortal   || undefined,
+        passwordPortal:  s1.passwordPortal  || undefined,
       });
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Error al registrar cliente';
@@ -464,14 +466,18 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
     <form onSubmit={handleSubmit(onNext)}>
       <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border/50">
 
-        {/* ID cliente */}
-        <FormRow label="ID cliente" hint="Dejar en blanco para que sea automático.">
-          <input {...register('idCliente')} placeholder="100" className={inputCls()} />
-        </FormRow>
-
         {/* Contraseña Portal */}
-        <FormRow label="Contraseña Portal" hint="Dejar en blanco para que sea automático.">
-          <input {...register('passwordPortal')} placeholder="4243Tdp" className={inputCls()} />
+        <FormRow label="Credenciales Portal" hint="Dejar en blanco para que sean automáticas.">
+          <div className="flex gap-3">
+            <div className="flex flex-col gap-1 flex-1">
+              <span className="text-xs text-muted-foreground">Usuario</span>
+              <input {...register('usuarioPortal')} placeholder="cliente123" maxLength={12} className={inputCls()} />
+            </div>
+            <div className="flex flex-col gap-1 flex-1">
+              <span className="text-xs text-muted-foreground">Contraseña</span>
+              <input {...register('passwordPortal')} placeholder="4243Tdp" maxLength={12} className={inputCls()} />
+            </div>
+          </div>
         </FormRow>
 
         {/* Nº Identificación */}

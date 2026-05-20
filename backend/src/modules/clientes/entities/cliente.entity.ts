@@ -113,6 +113,12 @@ export class Cliente extends BaseModel {
   @Column({ name: 'codigo_cliente', length: 30, nullable: true })
   codigoCliente: string;
 
+  @Column({ name: 'usuario_portal', length: 50, nullable: true })
+  usuarioPortal: string;
+
+  @Column({ name: 'password_portal', length: 100, nullable: true })
+  passwordPortal: string;
+
   @Column({ name: 'notas_internas', type: 'text', nullable: true })
   notasInternas: string;
 
