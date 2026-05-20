@@ -509,7 +509,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
         </FormRow>
 
         {/* Nombres */}
-        <FormRow label="Nombres" required hintColor="gray">
+        <FormRow label="Nombres Completos" required hintColor="gray">
           <input
             {...register('nombres')}
             placeholder="Juan Carlos"
