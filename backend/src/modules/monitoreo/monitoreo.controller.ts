@@ -89,7 +89,7 @@ export class MonitoreoController {
   // ─── NODOS ────────────────────────────────────────────────
 
   @Post('nodos')
-  @RequirePermission('monitoreo:manage')
+  @RequirePermission('monitoring:manage')
   @ApiOperation({ summary: 'Registrar nodo/equipo para monitoreo' })
   async crearNodo(@Body() dto: CreateNodoDto, @CurrentUser() user: JwtPayload) {
     const { password, ...rest } = dto;
@@ -104,7 +104,7 @@ export class MonitoreoController {
   }
 
   @Get('nodos')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Listar nodos monitoreados con estado actual' })
   async listarNodos(@CurrentUser() user: JwtPayload) {
@@ -116,7 +116,7 @@ export class MonitoreoController {
   }
 
   @Get('nodos/:id')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiParam({ name: 'id' })
   async getNodo(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
@@ -126,7 +126,7 @@ export class MonitoreoController {
   }
 
   @Put('nodos/:id')
-  @RequirePermission('monitoreo:manage')
+  @RequirePermission('monitoring:manage')
   @ApiParam({ name: 'id' })
   async updateNodo(
     @Param('id', ParseUUIDPipe) id: string,
@@ -144,7 +144,7 @@ export class MonitoreoController {
   // ── Test de conexión al equipo ────────────────────────────
 
   @Post('nodos/:id/test-conexion')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @HttpCode(HttpStatus.OK)
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Probar conexión al equipo (RouterOS API, SNMP o ping)' })
@@ -160,7 +160,7 @@ export class MonitoreoController {
   }
 
   @Post('test-conexion')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @HttpCode(HttpStatus.OK)
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Probar conexión usando credenciales (sin necesidad de registrar el nodo)' })
@@ -183,7 +183,7 @@ export class MonitoreoController {
   }
 
   @Delete('nodos/:id')
-  @RequirePermission('monitoreo:manage')
+  @RequirePermission('monitoring:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiParam({ name: 'id' })
   async deleteNodo(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
@@ -193,7 +193,7 @@ export class MonitoreoController {
   // ─── PING MANUAL ─────────────────────────────────────────
 
   @Post('nodos/:id/ping')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @HttpCode(HttpStatus.OK)
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Ping manual inmediato a un nodo' })
@@ -207,7 +207,7 @@ export class MonitoreoController {
   }
 
   @Post('ping')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @HttpCode(HttpStatus.OK)
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Ping inmediato a una IP (sin necesidad de tener el nodo registrado)' })
@@ -219,7 +219,7 @@ export class MonitoreoController {
   // ─── HISTORIAL DE MEDICIONES ──────────────────────────────
 
   @Get('nodos/:id/mediciones')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Historial de mediciones de un nodo' })
   @ApiParam({ name: 'id' })
@@ -245,7 +245,7 @@ export class MonitoreoController {
   // ─── SNMP ─────────────────────────────────────────────────
 
   @Get('nodos/:id/snmp/interfaces')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Listar interfaces SNMP del nodo' })
   @ApiParam({ name: 'id' })
@@ -263,7 +263,7 @@ export class MonitoreoController {
   }
 
   @Get('nodos/:id/snmp/test')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiParam({ name: 'id' })
   async testSnmp(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
@@ -296,7 +296,7 @@ export class MonitoreoController {
   }
 
   @Get('dashboard')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Resumen del dashboard de monitoreo' })
   async getDashboard(@CurrentUser() user: JwtPayload) {
@@ -325,7 +325,7 @@ export class MonitoreoController {
   // ─── ALERTAS ──────────────────────────────────────────────
 
   @Get('alertas')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Alertas activas de la empresa' })
   async getAlertas(@CurrentUser() user: JwtPayload) {
@@ -333,7 +333,7 @@ export class MonitoreoController {
   }
 
   @Get('alertas/historial')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Historial de alertas' })
   @ApiQuery({ name: 'nodoId', required: false })
@@ -347,7 +347,7 @@ export class MonitoreoController {
   }
 
   @Patch('alertas/:id/resolver')
-  @RequirePermission('monitoreo:manage')
+  @RequirePermission('monitoring:manage')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Resolver alerta manualmente' })
@@ -363,7 +363,7 @@ export class MonitoreoController {
   // ─── CONFIGURACIÓN DE ALERTAS ─────────────────────────────
 
   @Post('alertas/configuracion')
-  @RequirePermission('monitoreo:manage')
+  @RequirePermission('monitoring:manage')
   @ApiOperation({ summary: 'Crear configuración de umbral de alerta' })
   async crearConfigAlerta(
     @Body() dto: CreateConfigAlertaDto,
@@ -376,7 +376,7 @@ export class MonitoreoController {
   }
 
   @Get('alertas/configuracion')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   async getConfigAlertas(@CurrentUser() user: JwtPayload) {
     const configs = await this.configRepo.find({
@@ -387,7 +387,7 @@ export class MonitoreoController {
   }
 
   @Delete('alertas/configuracion/:id')
-  @RequirePermission('monitoreo:manage')
+  @RequirePermission('monitoring:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiParam({ name: 'id' })
   async deleteConfigAlerta(
@@ -400,7 +400,7 @@ export class MonitoreoController {
   // ─── WEBSOCKET STATS ──────────────────────────────────────
 
   @Get('ws/stats')
-  @RequirePermission('monitoreo:view')
+  @RequirePermission('monitoring:view')
   @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Estadísticas del WebSocket Gateway de monitoreo' })
   async getWsStats(@CurrentUser() user: JwtPayload) {

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState }      from 'react';
-import { useMutation }   from '@tanstack/react-query';
+import { useState }          from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { X, Wifi, WifiOff, Loader2 } from 'lucide-react';
-import { monitoreoApi }  from '@/lib/api/monitoreo';
-import { useToast }      from '@/components/ui/toaster';
+import { monitoreoApi }      from '@/lib/api/monitoreo';
+import { mikrotikApi }       from '@/lib/api/mikrotik';
+import { useToast }          from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 import type { CreateNodoDto, TestConexionResult } from '@/lib/api/monitoreo';
 
@@ -33,9 +34,16 @@ interface Props {
 export function NodoFormModal({ onClose, onSuccess }: Props) {
   const { toast } = useToast();
 
+  const { data: routers = [] } = useQuery({
+    queryKey: ['routers-lista'],
+    queryFn:  () => mikrotikApi.listar(),
+    staleTime: 60_000,
+  });
+
   const [form, setForm] = useState({
     nombre:         '',
     ipMonitoreo:    '',
+    routerId:       '',
     tipo:           '',
     fabricante:     'MikroTik',
     modelo:         '',
@@ -105,6 +113,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
     const dto: CreateNodoDto = {
       nombre:         form.nombre.trim(),
       ipMonitoreo:    form.ipMonitoreo.trim(),
+      routerId:       form.routerId || undefined,
       tipo:           form.tipo    || undefined,
       fabricante:     form.fabricante,
       descripcion:    form.modelo  || undefined,
@@ -150,6 +159,17 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
               <input required type="text" placeholder="192.168.1.20"
                 value={form.ipMonitoreo} onChange={(e) => set('ipMonitoreo', e.target.value)}
                 className={INPUT} />
+            </Row>
+
+            <Row label="Router de acceso">
+              <select value={form.routerId} onChange={(e) => set('routerId', e.target.value)} className={INPUT}>
+                <option value="">Sin asignar</option>
+                {routers.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nombre} — {r.ipGestion}
+                  </option>
+                ))}
+              </select>
             </Row>
 
             <Row label="Tipo de equipo">
