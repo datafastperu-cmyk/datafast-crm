@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Wifi, ChevronDown, X, Network } from 'lucide-react';
 import { redesApi, type SegmentoIpv4, type CreateSegmentoDto, type DisponibilidadSegmento } from '@/lib/api/contratos';
@@ -270,6 +270,15 @@ function SegmentoForm({
     gateway:  '',
     routerId: '',
   });
+
+  // Auto-rellena la puerta de enlace: primera IP usable de la red (.1)
+  useEffect(() => {
+    const parts = red.trim().split('.');
+    if (parts.length === 4 && parts.every((p) => p !== '' && !isNaN(Number(p)))) {
+      const gw = [...parts.slice(0, 3), '1'].join('.');
+      setForm((prev) => ({ ...prev, gateway: gw }));
+    }
+  }, [red]);
 
   const { mutate: crear, isPending } = useMutation({
     mutationFn: () => redesApi.createSegmento({
