@@ -104,7 +104,7 @@ export class MonitoreoController {
         passwordCifrado: password ? encrypt(password) : undefined,
         empresaId: user.empresaId,
       }),
-    ) as Nodo;
+    ) as unknown as Nodo;
 
     // Configurar NetWatch en el router asociado (async — no bloquea la respuesta)
     if (nodo.routerId) {
