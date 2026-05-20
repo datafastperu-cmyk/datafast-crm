@@ -524,6 +524,11 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
           <input {...register('direccion')} placeholder="Av. Unios 4453" className={inputCls()} />
         </FormRow>
 
+        {/* WhatsApp */}
+        <FormRow label="WhatsApp" hintColor="gray">
+          <input {...register('whatsapp')} placeholder="987654321" className={inputCls()} />
+        </FormRow>
+
         {/* Teléfono Móvil */}
         <FormRow label="Teléfono Móvil" required hintColor="gray">
           <input
@@ -536,11 +541,6 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
               <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.telefono.message}
             </p>
           )}
-        </FormRow>
-
-        {/* WhatsApp */}
-        <FormRow label="WhatsApp" hintColor="gray">
-          <input {...register('whatsapp')} placeholder="987654321" className={inputCls()} />
         </FormRow>
 
         {/* E-mail */}
