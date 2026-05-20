@@ -54,57 +54,11 @@ export class ContratosController {
     return StdResponse.ok(await this.svc.getResumen(user.empresaId));
   }
 
-  @Get(':id') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
-  @ApiOperation({ summary: 'Obtener contrato con datos completos (JOINs: cliente, plan, router, ONU)' })
-  @ApiParam({ name:'id', description:'UUID del contrato' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    return StdResponse.ok(await this.svc.findOneCompleto(id, user.empresaId));
-  }
-
-  @Get('cliente/:clienteId') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
-  @ApiOperation({ summary: 'Listar todos los contratos de un cliente' })
-  @ApiParam({ name:'clienteId', description:'UUID del cliente' })
-  async findByCliente(@Param('clienteId', ParseUUIDPipe) clienteId: string, @CurrentUser() user: JwtPayload) {
-    return StdResponse.ok(await this.svc.findByCliente(clienteId, user.empresaId));
-  }
-
-  @Put(':id') @RequirePermission('contratos:edit')
-  @ApiOperation({ summary: 'Actualizar datos del contrato (no cambia IP ni PPPoE)' })
-  @ApiParam({ name:'id' })
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateContratoDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
-    return StdResponse.ok(await this.svc.update(id, dto, user, req), 'Contrato actualizado');
-  }
-
-  @Patch(':id/activar') @RequirePermission('contratos:edit')
-  @ApiOperation({ summary: 'Activar contrato (PENDIENTE_INSTALACION → ACTIVO) al finalizar la instalación' })
-  @ApiParam({ name:'id' })
-  async activar(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload, @Req() req: Request) {
-    return StdResponse.ok(await this.svc.activar(id, user, req), 'Contrato activado — servicio habilitado');
-  }
-
-  @Patch(':id/estado') @RequirePermission('contratos:edit')
-  @ApiOperation({ summary: 'Cambiar estado del contrato — respeta máquina de estados' })
-  @ApiParam({ name:'id' })
-  @ApiResponse({ status:400, description:'Transición no permitida' })
-  async cambiarEstado(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CambiarEstadoContratoDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
-    return StdResponse.ok(await this.svc.cambiarEstado(id, dto, user, false, req), `Estado → ${dto.estado}`);
-  }
-
-  @Patch(':id/prorroga') @RequirePermission('contratos:prorroga')
-  @ApiOperation({ summary: 'Otorgar prórroga al contrato' })
-  @ApiParam({ name:'id' })
-  async otorgarProrroga(@Param('id', ParseUUIDPipe) id: string, @Body() dto: OtorgarProrrogaDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
-    return StdResponse.ok(await this.svc.otorgarProrroga(id, dto, user, req), `Prórroga otorgada hasta ${dto.prorrogaHasta}`);
-  }
-
-  @Get(':id/historial') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
-  @ApiOperation({ summary: 'Historial de cambios de estado del contrato' })
-  @ApiParam({ name:'id' })
-  async getHistorial(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    return StdResponse.ok(await this.svc.getHistorial(id, user.empresaId));
-  }
-
-  // ── Segmentos IPv4 ──────────────────────────────────────────
+  // ── Segmentos IPv4 — rutas literales ANTES de `:id` ────────
+  // IMPORTANTE: en NestJS/Express las rutas se registran en orden de
+  // declaración. Cualquier ruta literal de 1 segmento (ej: 'segmentos')
+  // debe declararse ANTES de la ruta paramétrica ':id', de lo contrario
+  // ':id' la captura primero y lanza ParseUUIDPipe error.
 
   @Get('segmentos') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Listar segmentos IPv4 de la empresa' })
@@ -139,6 +93,58 @@ export class ContratosController {
   @ApiParam({ name: 'segId' })
   async removeSegmento(@Param('segId', ParseUUIDPipe) segId: string, @CurrentUser() user: JwtPayload): Promise<void> {
     await this.ipPool.desactivarSegmento(segId, user.empresaId);
+  }
+
+  // ── Contratos por ID — rutas paramétricas ──────────────────
+
+  @Get('cliente/:clienteId') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Listar todos los contratos de un cliente' })
+  @ApiParam({ name:'clienteId', description:'UUID del cliente' })
+  async findByCliente(@Param('clienteId', ParseUUIDPipe) clienteId: string, @CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.svc.findByCliente(clienteId, user.empresaId));
+  }
+
+  @Get(':id') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Obtener contrato con datos completos (JOINs: cliente, plan, router, ONU)' })
+  @ApiParam({ name:'id', description:'UUID del contrato' })
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.svc.findOneCompleto(id, user.empresaId));
+  }
+
+  @Get(':id/historial') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Historial de cambios de estado del contrato' })
+  @ApiParam({ name:'id' })
+  async getHistorial(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.svc.getHistorial(id, user.empresaId));
+  }
+
+  @Put(':id') @RequirePermission('contratos:edit')
+  @ApiOperation({ summary: 'Actualizar datos del contrato (no cambia IP ni PPPoE)' })
+  @ApiParam({ name:'id' })
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateContratoDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
+    return StdResponse.ok(await this.svc.update(id, dto, user, req), 'Contrato actualizado');
+  }
+
+  @Patch(':id/activar') @RequirePermission('contratos:edit')
+  @ApiOperation({ summary: 'Activar contrato (PENDIENTE_INSTALACION → ACTIVO) al finalizar la instalación' })
+  @ApiParam({ name:'id' })
+  async activar(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload, @Req() req: Request) {
+    return StdResponse.ok(await this.svc.activar(id, user, req), 'Contrato activado — servicio habilitado');
+  }
+
+  @Patch(':id/estado') @RequirePermission('contratos:edit')
+  @ApiOperation({ summary: 'Cambiar estado del contrato — respeta máquina de estados' })
+  @ApiParam({ name:'id' })
+  @ApiResponse({ status:400, description:'Transición no permitida' })
+  async cambiarEstado(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CambiarEstadoContratoDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
+    return StdResponse.ok(await this.svc.cambiarEstado(id, dto, user, false, req), `Estado → ${dto.estado}`);
+  }
+
+  @Patch(':id/prorroga') @RequirePermission('contratos:prorroga')
+  @ApiOperation({ summary: 'Otorgar prórroga al contrato' })
+  @ApiParam({ name:'id' })
+  async otorgarProrroga(@Param('id', ParseUUIDPipe) id: string, @Body() dto: OtorgarProrrogaDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
+    return StdResponse.ok(await this.svc.otorgarProrroga(id, dto, user, req), `Prórroga otorgada hasta ${dto.prorrogaHasta}`);
   }
 
   @Delete(':id') @RequirePermission('contratos:delete') @HttpCode(HttpStatus.NO_CONTENT)
