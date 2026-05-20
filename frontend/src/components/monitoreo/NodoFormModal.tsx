@@ -188,7 +188,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
                 </div>
               ) : sel ? (
                 <div className="col-span-2 ml-[176px] text-xs text-muted-foreground">
-                  Sin redes sincronizadas — usa "Sincronizar redes" en la sección Red
+                  Sin redes sincronizadas — usa &ldquo;Sincronizar redes&rdquo; en la sección Red
                 </div>
               ) : null;
             })()}
