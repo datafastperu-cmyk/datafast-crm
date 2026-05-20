@@ -299,25 +299,7 @@ function SegmentoForm({
                 className={cn(inputCls(), 'font-mono')}
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">DNS primario</label>
-              <input
-                value={form.dnsPrimario}
-                onChange={(e) => set('dnsPrimario', e.target.value)}
-                placeholder="8.8.8.8"
-                className={cn(inputCls(), 'font-mono')}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">DNS secundario</label>
-              <input
-                value={form.dnsSecundario}
-                onChange={(e) => set('dnsSecundario', e.target.value)}
-                placeholder="8.8.4.4"
-                className={cn(inputCls(), 'font-mono')}
-              />
-            </div>
-            <div className="space-y-1.5 col-span-2">
+<div className="space-y-1.5 col-span-2">
               <label className="text-xs font-medium text-foreground">Router MikroTik (opcional)</label>
               <select value={form.routerId} onChange={(e) => set('routerId', e.target.value)} className={inputCls()}>
                 <option value="">Sin asignar</option>
