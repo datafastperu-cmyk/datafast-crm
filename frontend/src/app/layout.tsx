@@ -4,6 +4,7 @@ import { ThemeProvider }  from '@/components/shared/ThemeProvider';
 import { Toaster }        from '@/components/ui/toaster';
 import { QueryProvider }     from '@/components/shared/QueryProvider';
 import { LicenciaProvider }  from '@/components/licencia/LicenciaProvider';
+import { ErrorBoundary }     from '@/components/ui/error-boundary';
 import '@/styles/globals.css';
 
 const inter = Inter({
@@ -37,7 +38,9 @@ export default function RootLayout({
         >
           <QueryProvider>
             <LicenciaProvider>
-              {children}
+              <ErrorBoundary>
+                {children}
+              </ErrorBoundary>
             </LicenciaProvider>
             <Toaster />
           </QueryProvider>

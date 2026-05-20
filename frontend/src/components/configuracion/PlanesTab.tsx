@@ -174,7 +174,7 @@ function DeleteDialog({
           <div>
             <p className="font-semibold text-foreground">Eliminar plan</p>
             <p className="text-sm text-muted-foreground mt-1">
-              ¿Eliminar <span className="font-medium text-foreground">"{plan.nombre}"</span>? Esta acción no se puede deshacer.
+              ¿Eliminar <span className="font-medium text-foreground">&ldquo;{plan.nombre}&rdquo;</span>? Esta acción no se puede deshacer.
             </p>
           </div>
         </div>

@@ -2,8 +2,8 @@
 
 import {
   ChevronUp, ChevronDown, ChevronsUpDown,
-  Phone, MessageCircle, Eye, Wifi, Radio, Cable, Shuffle,
-  MoreHorizontal, FilePlus,
+  Phone, MessageCircle, Wifi, Radio, Cable, Shuffle,
+  Pencil, Trash2, PauseCircle, UserMinus, Eye,
 } from 'lucide-react';
 
 import { ClienteEstadoBadge } from './ClienteEstadoBadge';
@@ -21,6 +21,9 @@ interface Props {
   selectedIds?: Set<string>;
   onToggleId?:  (id: string) => void;
   onToggleAll?: (ids: string[]) => void;
+  onSuspender?: (c: Cliente) => void;
+  onRetirar?:   (c: Cliente) => void;
+  onEliminar?:  (c: Cliente) => void;
 }
 
 // ── Servicio badge ────────────────────────────────────────────
@@ -111,7 +114,7 @@ const COLUMNAS = [
   { key: 'acciones',        label: '',            sortable: false },
 ];
 
-export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder, onSort, selectedIds, onToggleId, onToggleAll }: Props) {
+export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder, onSort, selectedIds, onToggleId, onToggleAll, onSuspender, onRetirar, onEliminar }: Props) {
   const allSelected = selectedIds != null && clientes.length > 0 && clientes.every(c => selectedIds.has((c as any).id));
   const someSelected = selectedIds != null && clientes.some(c => selectedIds.has((c as any).id));
   const handleSort = (col: string) => {
@@ -316,23 +319,35 @@ export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder
                   </td>
 
                   {/* Acciones */}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        onClick={(e) => { e.stopPropagation(); onRowClick(c); }}
-                        className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground
-                                   hover:text-primary transition-colors"
-                        title="Ver detalle"
+                        onClick={() => onRowClick(c)}
+                        title="Editar"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); }}
-                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground
-                                   hover:text-foreground transition-colors"
-                        title="Más acciones"
+                        onClick={() => onSuspender?.(c)}
+                        title="Suspender servicio"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-yellow-600 hover:bg-yellow-500/10 transition-colors"
                       >
-                        <MoreHorizontal className="w-4 h-4" />
+                        <PauseCircle className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onRetirar?.(c)}
+                        title="Retirar cliente (conserva datos)"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-orange-600 hover:bg-orange-500/10 transition-colors"
+                      >
+                        <UserMinus className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onEliminar?.(c)}
+                        title="Eliminar cliente"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </td>

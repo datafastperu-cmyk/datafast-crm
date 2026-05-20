@@ -10,21 +10,37 @@ export interface FiltrosAlerta {
 }
 
 export interface CreateNodoDto {
-  nombre:          string;
-  descripcion?:    string;
-  tipo?:           string;
-  ipMonitoreo:     string;
-  routerId?:       string;
-  oltId?:          string;
-  snmpHabilitado?: boolean;
-  snmpCommunity?:  string;
-  snmpVersion?:    number;
+  nombre:           string;
+  descripcion?:     string;
+  tipo?:            string;
+  ipMonitoreo:      string;
+  routerId?:        string;
+  oltId?:           string;
+  // Credenciales de acceso al equipo
+  usuario?:         string;
+  password?:        string;
+  fabricante?:      string;
+  puertoApi?:       number;
+  usarSsl?:         boolean;
+  metodoConexion?:  string;   // 'api' | 'snmp' | 'ssh'
+  // SNMP
+  snmpHabilitado?:  boolean;
+  snmpCommunity?:   string;
+  snmpVersion?:     number;
   snmpInterfaceIndex?: number;
-  pingHabilitado?: boolean;
+  pingHabilitado?:  boolean;
   pingIntervaloSeg?: number;
   alertasHabilitadas?: boolean;
-  latitud?:        number;
-  longitud?:       number;
+  latitud?:         number;
+  longitud?:        number;
+}
+
+export interface TestConexionResult {
+  conectado:   boolean;
+  metodo:      string;
+  latenciaMs?: number;
+  info?:       { hostname?: string; board?: string; version?: string; cpu?: string; uptime?: string };
+  error?:      string;
 }
 
 export interface CreateConfigAlertaDto {
@@ -77,6 +93,19 @@ export const monitoreoApi = {
 
   createNodo: async (dto: CreateNodoDto): Promise<Nodo> => {
     const res = await api.post<ApiRespuesta<Nodo>>('/monitoreo/nodos', dto);
+    return res.data.data;
+  },
+
+  testConexionRaw: async (params: {
+    ip: string; usuario: string; password: string;
+    fabricante: string; puertoApi?: number; usarSsl?: boolean;
+  }): Promise<TestConexionResult> => {
+    const res = await api.post<ApiRespuesta<TestConexionResult>>('/monitoreo/test-conexion', params);
+    return res.data.data;
+  },
+
+  testConexionNodo: async (id: string): Promise<TestConexionResult> => {
+    const res = await api.post<ApiRespuesta<TestConexionResult>>(`/monitoreo/nodos/${id}/test-conexion`);
     return res.data.data;
   },
 

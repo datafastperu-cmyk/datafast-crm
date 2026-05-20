@@ -8,10 +8,11 @@ import { Repository }             from 'typeorm';
 import { InjectDataSource }       from '@nestjs/typeorm';
 import { DataSource }             from 'typeorm';
 
-import { PingService }     from './services/ping.service';
-import { SnmpService }     from './services/snmp.service';
-import { AlertasService }  from './services/alertas.service';
-import { MonitoreoGateway } from './gateways/monitoreo.gateway';
+import { PingService }        from './services/ping.service';
+import { SnmpService }        from './services/snmp.service';
+import { AlertasService }     from './services/alertas.service';
+import { MonitoreoGateway }   from './gateways/monitoreo.gateway';
+import { NodoDeviceService }  from './services/nodo-device.service';
 
 import {
   Nodo, MedicionNodo, EstadoNodo, MetricaAlerta,
@@ -22,6 +23,7 @@ export const JOB_PING_NODO    = 'ping-nodo';
 export const JOB_SNMP_NODO    = 'snmp-nodo';
 export const JOB_PING_BATCH   = 'ping-batch';
 export const JOB_DASHBOARD    = 'broadcast-dashboard';
+export const JOB_API_NODO     = 'api-nodo';        // RouterOS API polling (MikroTik)
 
 // ─────────────────────────────────────────────────────────────
 // Scheduler: encola los jobs en el momento correcto
@@ -102,6 +104,30 @@ export class MonitoreoScheduler {
     }
   }
 
+  // ── RouterOS API polling cada 5 minutos (nodos MikroTik) ─
+  @Cron('0 */5 * * * *', { timeZone: 'America/Lima', name: 'api-ciclo' })
+  async scheduleApiNodos(): Promise<void> {
+    const nodos = await this.nodoRepo
+      .createQueryBuilder('n')
+      .where('n.activo = true')
+      .andWhere("n.metodo_conexion = 'api'")
+      .andWhere('n.usuario IS NOT NULL')
+      .andWhere('n.password_cifrado IS NOT NULL')
+      .getMany();
+
+    for (const nodo of nodos) {
+      await this.queue.add(JOB_API_NODO, {
+        nodoId:    nodo.id,
+        empresaId: nodo.empresaId,
+        nombre:    nodo.nombre,
+      }, {
+        removeOnComplete: true,
+        removeOnFail:     50,
+        delay: nodos.indexOf(nodo) * 800,
+      });
+    }
+  }
+
   // ── Broadcast dashboard cada 30 segundos ─────────────────
   @Cron('*/30 * * * * *', { timeZone: 'America/Lima' })
   async scheduleDashboard(): Promise<void> {
@@ -120,10 +146,11 @@ export class MonitoreoWorker {
   private readonly logger = new Logger(MonitoreoWorker.name);
 
   constructor(
-    private readonly pingSvc:   PingService,
-    private readonly snmpSvc:   SnmpService,
+    private readonly pingSvc:    PingService,
+    private readonly snmpSvc:    SnmpService,
     private readonly alertasSvc: AlertasService,
-    private readonly gateway:   MonitoreoGateway,
+    private readonly gateway:    MonitoreoGateway,
+    private readonly deviceSvc:  NodoDeviceService,
     @InjectRepository(Nodo)         private readonly nodoRepo: Repository<Nodo>,
     @InjectRepository(MedicionNodo) private readonly medicionRepo: Repository<MedicionNodo>,
     @InjectDataSource()             private readonly ds: DataSource,
@@ -385,6 +412,60 @@ export class MonitoreoWorker {
     } catch (err) {
       this.logger.error(`Dashboard broadcast: ${err.message}`);
     }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // JOB: ROUTEROS API POLLING (MikroTik — CPU, mem, sesiones)
+  // ────────────────────────────────────────────────────────────
+  @Process(JOB_API_NODO)
+  async processApiNodo(job: Job<{ nodoId: string; empresaId: string; nombre: string }>) {
+    const { nodoId, empresaId, nombre } = job.data;
+
+    const nodo = await this.nodoRepo.findOne({ where: { id: nodoId } });
+    if (!nodo) return;
+
+    const medicion = await this.deviceSvc.getMedicionMikrotik(nodo);
+    if (!medicion) return;
+
+    const ahora = new Date();
+
+    // Actualizar métricas en el nodo
+    const updateData: Partial<Nodo> = {};
+    if (medicion.cpuPct        !== undefined) updateData.cpuUsoPct     = medicion.cpuPct;
+    if (medicion.memoriaPct    !== undefined) updateData.memoriaUsoPct = medicion.memoriaPct;
+    if (medicion.temperatura   !== undefined) updateData.temperaturaC  = medicion.temperatura;
+    if (medicion.sesionesPppoe !== undefined) updateData.sesionesPppoe = medicion.sesionesPppoe;
+    await this.nodoRepo.update(nodoId, updateData);
+
+    // Evaluar alertas de CPU y memoria
+    const metricsAEvaluar = [
+      { metrica: MetricaAlerta.CPU,         valor: medicion.cpuPct },
+      { metrica: MetricaAlerta.MEMORIA,     valor: medicion.memoriaPct },
+      { metrica: MetricaAlerta.TEMPERATURA, valor: medicion.temperatura },
+    ];
+    for (const { metrica, valor } of metricsAEvaluar) {
+      if (valor !== undefined && nodo.alertasHabilitadas) {
+        await this.alertasSvc.evaluar({ nodoId, empresaId, nodoNombre: nombre, metrica, valorActual: valor });
+      }
+    }
+
+    // Broadcast WebSocket con métricas en tiempo real
+    this.gateway.broadcastMedicion(empresaId, {
+      nodoId,
+      nodoNombre:    nombre,
+      estado:        nodo.estado,
+      latenciaMs:    nodo.latenciaMs,
+      perdidaPct:    nodo.perdidaPct,
+      cpuPct:        medicion.cpuPct,
+      memoriaPct:    medicion.memoriaPct,
+      temperatura:   medicion.temperatura,
+      sesionesPppoe: medicion.sesionesPppoe,
+      timestamp:     ahora.toISOString(),
+    });
+
+    this.logger.debug(
+      `API ${nombre}: CPU=${medicion.cpuPct}% | MEM=${medicion.memoriaPct}% | PPPoE=${medicion.sesionesPppoe}`,
+    );
   }
 
   @OnQueueFailed()

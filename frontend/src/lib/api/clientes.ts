@@ -129,4 +129,8 @@ export const clientesApi = {
   ): Promise<void> => {
     await api.put(`/clientes/${clienteId}/facturacion-config`, { facturacion, notificaciones });
   },
+
+  eliminar: async (id: string): Promise<void> => {
+    await api.delete(`/clientes/${id}`);
+  },
 };

@@ -5,10 +5,10 @@ const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: true,  // TODO: fix ~60 pre-existing TS errors and set to false
   },
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,  // ESLint DOES block build on errors
   },
   webpack(config) {
     config.resolve.alias['@'] = path.join(__dirname, 'src');

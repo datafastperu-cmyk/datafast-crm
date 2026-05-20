@@ -9,7 +9,7 @@ import {
 } from '@nestjs/swagger';
 import {
   IsString, IsIP, IsOptional, IsEnum, IsBoolean,
-  IsNotEmpty, IsInt, Min, Max, MaxLength,
+  IsNotEmpty, IsInt, Min, Max, MaxLength, IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
@@ -21,6 +21,8 @@ import { Repository }       from 'typeorm';
 import { AlertasService }    from './services/alertas.service';
 import { PingService }       from './services/ping.service';
 import { SnmpService }       from './services/snmp.service';
+import { NodoDeviceService } from './services/nodo-device.service';
+import { encrypt }           from '../../common/utils/encryption.util';
 import { MonitoreoGateway }  from './gateways/monitoreo.gateway';
 import {
   Nodo, MedicionNodo, ConfiguracionAlerta,
@@ -35,10 +37,18 @@ import { MONITOREO_QUEUE, JOB_PING_BATCH } from './monitoreo.worker';
 class CreateNodoDto {
   @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(100) nombre: string;
   @ApiPropertyOptional() @IsOptional() @IsString() descripcion?: string;
-  @ApiPropertyOptional({ enum: TipoNodo }) @IsOptional() @IsEnum(TipoNodo) tipo?: TipoNodo;
+  @ApiPropertyOptional({ enum: TipoNodo }) @IsOptional() @IsString() tipo?: string;
   @ApiPropertyOptional() @IsOptional() routerId?: string;
   @ApiPropertyOptional() @IsOptional() oltId?: string;
   @ApiProperty({ example: '192.168.100.1' }) @IsIP() ipMonitoreo: string;
+  // ── Credenciales de equipo ────────────────────────────────
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) usuario?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() password?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) fabricante?: string;
+  @ApiPropertyOptional({ default: 8728 }) @IsOptional() @IsInt() @Min(1) @Max(65535) @Type(() => Number) puertoApi?: number;
+  @ApiPropertyOptional({ default: false }) @IsOptional() @IsBoolean() usarSsl?: boolean;
+  @ApiPropertyOptional({ default: 'snmp' }) @IsOptional() @IsString() @IsIn(['api', 'snmp', 'ssh']) metodoConexion?: string;
+  // ── SNMP ──────────────────────────────────────────────────
   @ApiPropertyOptional({ default: false }) @IsOptional() @IsBoolean() snmpHabilitado?: boolean;
   @ApiPropertyOptional({ default: 'public' }) @IsOptional() @IsString() snmpCommunity?: string;
   @ApiPropertyOptional({ default: 2 }) @IsOptional() @IsInt() @Type(() => Number) snmpVersion?: number;
@@ -73,6 +83,7 @@ export class MonitoreoController {
     private readonly pingSvc:      PingService,
     private readonly snmpSvc:      SnmpService,
     private readonly gateway:      MonitoreoGateway,
+    private readonly deviceSvc:    NodoDeviceService,
   ) {}
 
   // ─── NODOS ────────────────────────────────────────────────
@@ -81,7 +92,14 @@ export class MonitoreoController {
   @RequirePermission('monitoreo:manage')
   @ApiOperation({ summary: 'Registrar nodo/equipo para monitoreo' })
   async crearNodo(@Body() dto: CreateNodoDto, @CurrentUser() user: JwtPayload) {
-    const nodo = await this.nodoRepo.save(this.nodoRepo.create({ ...dto, empresaId: user.empresaId }));
+    const { password, ...rest } = dto;
+    const nodo = await this.nodoRepo.save(
+      this.nodoRepo.create({
+        ...rest,
+        passwordCifrado: password ? encrypt(password) : undefined,
+        empresaId: user.empresaId,
+      }),
+    );
     return StdResponse.ok(nodo, 'Nodo registrado para monitoreo');
   }
 
@@ -115,9 +133,53 @@ export class MonitoreoController {
     @Body() dto: Partial<CreateNodoDto>,
     @CurrentUser() user: JwtPayload,
   ) {
-    await this.nodoRepo.update({ id, empresaId: user.empresaId }, dto as any);
+    const { password, ...rest } = dto as CreateNodoDto;
+    const update: any = { ...rest };
+    if (password) update.passwordCifrado = encrypt(password);
+    await this.nodoRepo.update({ id, empresaId: user.empresaId }, update);
     const nodo = await this.nodoRepo.findOne({ where: { id } });
     return StdResponse.ok(nodo, 'Nodo actualizado');
+  }
+
+  // ── Test de conexión al equipo ────────────────────────────
+
+  @Post('nodos/:id/test-conexion')
+  @RequirePermission('monitoreo:view')
+  @HttpCode(HttpStatus.OK)
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Probar conexión al equipo (RouterOS API, SNMP o ping)' })
+  @ApiParam({ name: 'id' })
+  async testConexionNodo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const nodo = await this.nodoRepo.findOne({ where: { id, empresaId: user.empresaId } });
+    if (!nodo) return StdResponse.ok({ conectado: false }, 'Nodo no encontrado');
+    const result = await this.deviceSvc.testConexion(nodo);
+    return StdResponse.ok(result);
+  }
+
+  @Post('test-conexion')
+  @RequirePermission('monitoreo:view')
+  @HttpCode(HttpStatus.OK)
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Probar conexión usando credenciales (sin necesidad de registrar el nodo)' })
+  async testConexionRaw(
+    @Body() body: {
+      ip: string; usuario: string; password: string;
+      fabricante: string; puertoApi?: number; usarSsl?: boolean;
+    },
+    @CurrentUser() _user: JwtPayload,
+  ) {
+    const result = await this.deviceSvc.testConexionRaw({
+      ip:         body.ip,
+      usuario:    body.usuario,
+      password:   body.password,
+      fabricante: body.fabricante,
+      puertoApi:  body.puertoApi  || 8728,
+      usarSsl:    body.usarSsl    || false,
+    });
+    return StdResponse.ok(result);
   }
 
   @Delete('nodos/:id')

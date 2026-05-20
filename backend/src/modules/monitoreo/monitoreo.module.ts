@@ -9,9 +9,11 @@ import { MonitoreoController } from './monitoreo.controller';
 import { MonitoreoGateway }    from './gateways/monitoreo.gateway';
 import { MonitoreoWorker, MonitoreoScheduler, MONITOREO_QUEUE } from './monitoreo.worker';
 
-import { PingService }     from './services/ping.service';
-import { SnmpService }     from './services/snmp.service';
-import { AlertasService }  from './services/alertas.service';
+import { PingService }         from './services/ping.service';
+import { SnmpService }         from './services/snmp.service';
+import { AlertasService }      from './services/alertas.service';
+import { NodoDeviceService }   from './services/nodo-device.service';
+import { MikrotikModule }      from '../mikrotik/mikrotik.module';
 
 import {
   Nodo, MedicionNodo, Alerta, ConfiguracionAlerta,
@@ -50,6 +52,7 @@ import { HttpModule }   from '@nestjs/axios';
 
     HttpModule.register({ timeout: 10_000 }),
     AuthModule,
+    MikrotikModule,
   ],
   controllers: [MonitoreoController],
   providers: [
@@ -57,6 +60,7 @@ import { HttpModule }   from '@nestjs/axios';
     PingService,
     SnmpService,
     AlertasService,
+    NodoDeviceService,
 
     // WhatsApp para notificaciones de alertas
     WhatsAppService,
@@ -73,6 +77,7 @@ import { HttpModule }   from '@nestjs/axios';
     AlertasService,     // Para crear alertas desde otros módulos
     PingService,
     SnmpService,
+    NodoDeviceService,
   ],
 })
 export class MonitoreoModule {}

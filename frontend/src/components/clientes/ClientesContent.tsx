@@ -7,7 +7,10 @@ import {
   Search, Plus, Download, RefreshCw,
   Users, UserX, UserCheck, AlertTriangle, TrendingUp,
   Filter, X, ChevronDown, Ban, ShieldCheck, Clock, AlertOctagon,
+  Loader2,
 } from 'lucide-react';
+import type { Cliente } from '@/types';
+import { parseApiError } from '@/lib/utils';
 
 import { clientesApi, type FiltrosCliente } from '@/lib/api/clientes';
 import { ClientesTable }      from './ClientesTable';
@@ -43,6 +46,12 @@ export function ClientesContent() {
   const [filtersOpen, setFilters] = useState(false);
   const searchDebounced           = useDebounce(searchInput, 400);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Modal de confirmación para acciones individuales
+  const [accion, setAccion] = useState<{
+    tipo: 'suspender' | 'retirar' | 'eliminar';
+    cliente: Cliente;
+  } | null>(null);
 
   const updateFiltro = useCallback(<K extends keyof FiltrosCliente>(
     k: K, v: FiltrosCliente[K],
@@ -99,6 +108,71 @@ export function ClientesContent() {
     },
     onError: () => toast('Error al aplicar acción masiva', { type: 'error' }),
   });
+
+  const invalidarClientes = () => {
+    queryClient.invalidateQueries({ queryKey: ['clientes'] });
+    queryClient.invalidateQueries({ queryKey: ['clientes-stats'] });
+  };
+
+  const { mutate: suspenderUno, isPending: suspendiendo } = useMutation({
+    mutationFn: (c: Cliente) => clientesApi.cambiarEstado(c.id, 'suspendido'),
+    onSuccess: (_, c) => {
+      toast(`${c.nombreCompleto} suspendido`, { type: 'success' });
+      setAccion(null);
+      invalidarClientes();
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
+  const { mutate: retirarUno, isPending: retirando } = useMutation({
+    mutationFn: (c: Cliente) => clientesApi.cambiarEstado(c.id, 'baja_definitiva', 'Retirado del sistema'),
+    onSuccess: (_, c) => {
+      toast(`${c.nombreCompleto} retirado`, { type: 'success' });
+      setAccion(null);
+      invalidarClientes();
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
+  const { mutate: eliminarUno, isPending: eliminando } = useMutation({
+    mutationFn: (c: Cliente) => clientesApi.eliminar(c.id),
+    onSuccess: (_, c) => {
+      toast(`${c.nombreCompleto} eliminado`, { type: 'success' });
+      setAccion(null);
+      invalidarClientes();
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
+  const ejecutarAccion = () => {
+    if (!accion) return;
+    if (accion.tipo === 'suspender') suspenderUno(accion.cliente);
+    else if (accion.tipo === 'retirar') retirarUno(accion.cliente);
+    else eliminarUno(accion.cliente);
+  };
+
+  const confirmPending = suspendiendo || retirando || eliminando;
+
+  const CONFIRM_CFG = {
+    suspender: {
+      titulo: 'Suspender cliente',
+      desc: 'Se suspenderá el servicio de internet. El cliente quedará clasificado como suspendido.',
+      boton: 'Suspender',
+      color: 'bg-yellow-500 hover:bg-yellow-600',
+    },
+    retirar: {
+      titulo: 'Retirar cliente',
+      desc: 'Se retirará al cliente de los routers MikroTik. Se conservan facturas, estadísticas, logs, mensajes y todos sus datos históricos. El cliente no estará activo.',
+      boton: 'Retirar',
+      color: 'bg-orange-500 hover:bg-orange-600',
+    },
+    eliminar: {
+      titulo: 'Eliminar cliente',
+      desc: 'Se eliminará al cliente con todos sus registros. Esta acción puede deshacerse desde la Papelera.',
+      boton: 'Eliminar',
+      color: 'bg-destructive hover:bg-destructive/90',
+    },
+  };
 
   const { mutate: exportar, isPending: exportando } = useMutation({
     mutationFn: async () => {
@@ -424,6 +498,9 @@ export function ClientesContent() {
           selectedIds={selectedIds}
           onToggleId={toggleId}
           onToggleAll={toggleAll}
+          onSuspender={(c) => setAccion({ tipo: 'suspender', cliente: c as Cliente })}
+          onRetirar={(c)   => setAccion({ tipo: 'retirar',   cliente: c as Cliente })}
+          onEliminar={(c)  => setAccion({ tipo: 'eliminar',  cliente: c as Cliente })}
         />
 
         {/* Pagination */}
@@ -472,6 +549,38 @@ export function ClientesContent() {
           </div>
         )}
       </div>
+      {/* Modal confirmación acción individual */}
+      {accion && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div>
+              <p className="font-semibold text-foreground">{CONFIRM_CFG[accion.tipo].titulo}</p>
+              <p className="text-sm font-medium text-primary mt-0.5">{accion.cliente.nombreCompleto}</p>
+              <p className="text-sm text-muted-foreground mt-2">{CONFIRM_CFG[accion.tipo].desc}</p>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setAccion(null)}
+                disabled={confirmPending}
+                className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={ejecutarAccion}
+                disabled={confirmPending}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-2 py-2 text-sm rounded-lg text-white font-medium transition-colors disabled:opacity-60',
+                  CONFIRM_CFG[accion.tipo].color,
+                )}
+              >
+                {confirmPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {CONFIRM_CFG[accion.tipo].boton}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

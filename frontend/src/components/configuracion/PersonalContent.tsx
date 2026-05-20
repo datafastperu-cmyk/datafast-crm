@@ -83,6 +83,7 @@ function UsuariosTab() {
   const [resetId, setResetId]           = useState<string | null>(null);
   const [nuevaPw, setNuevaPw]           = useState('');
   const [resetting, setResetting]       = useState(false);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<UsuarioDetalle | null>(null);
 
   const { data: usuarios = [], isLoading } = useQuery({ queryKey: ['usuarios-admin'], queryFn: usuariosApi.list });
   const { data: roles    = [] }            = useQuery({ queryKey: ['roles-list'], queryFn: rolesApi.list });
@@ -198,7 +199,7 @@ function UsuariosTab() {
                     )}>
                     {u.estado === 'activo' ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                   </button>
-                  <button title="Eliminar" onClick={() => { if (confirm(`¿Eliminar a ${u.nombreCompleto}?`)) eliminar(u.id); }}
+                  <button title="Eliminar" onClick={() => setPendingDeleteUser(u)}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -276,6 +277,27 @@ function UsuariosTab() {
           </div>
         </Modal>
       )}
+
+      {pendingDeleteUser && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <p className="font-semibold text-foreground">Eliminar usuario</p>
+            <p className="text-sm text-muted-foreground">
+              ¿Eliminar a <strong>{pendingDeleteUser.nombreCompleto}</strong>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setPendingDeleteUser(null)}
+                className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
+                Cancelar
+              </button>
+              <button onClick={() => { eliminar(pendingDeleteUser.id); setPendingDeleteUser(null); }}
+                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors">
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -300,6 +322,8 @@ function RolesTab() {
   const allPermisos = useMemo(() => grupos.flatMap((g) => g.permisos), [grupos]);
 
   const [permisosSeleccionados, setPermSel] = useState<Set<string>>(new Set());
+  const [pendingDeleteRol, setPendingDeleteRol] = useState<RolDetalle | null>(null);
+  const [pendingClonar, setPendingClonar] = useState<{ id: string; nombre: string } | null>(null);
 
   const abrirEditar = (rol: RolDetalle) => {
     setEditando(rol);
@@ -397,12 +421,12 @@ function RolesTab() {
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
-                  <button title="Clonar" onClick={() => { const n = prompt('Nombre del nuevo rol:'); if (n) clonar({ id: rol.id, nombre: n }); }}
+                  <button title="Clonar" onClick={() => setPendingClonar({ id: rol.id, nombre: '' })}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                     <Copy className="w-3.5 h-3.5" />
                   </button>
                   {!rol.esSistema && (
-                    <button title="Eliminar" onClick={() => { if (confirm(`¿Eliminar rol "${rol.nombre}"?`)) eliminar(rol.id); }}
+                    <button title="Eliminar" onClick={() => setPendingDeleteRol(rol)}
                       className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -493,6 +517,55 @@ function RolesTab() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {pendingDeleteRol && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <p className="font-semibold text-foreground">Eliminar rol</p>
+            <p className="text-sm text-muted-foreground">
+              ¿Eliminar el rol <strong>&ldquo;{pendingDeleteRol.nombre}&rdquo;</strong>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setPendingDeleteRol(null)}
+                className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
+                Cancelar
+              </button>
+              <button onClick={() => { eliminar(pendingDeleteRol.id); setPendingDeleteRol(null); }}
+                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors">
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingClonar && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <p className="font-semibold text-foreground">Clonar rol</p>
+            <input
+              autoFocus
+              type="text"
+              placeholder="Nombre del nuevo rol"
+              value={pendingClonar.nombre}
+              onChange={(e) => setPendingClonar((prev) => prev ? { ...prev, nombre: e.target.value } : null)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setPendingClonar(null)}
+                className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={() => { clonar({ id: pendingClonar.id, nombre: pendingClonar.nombre }); setPendingClonar(null); }}
+                disabled={!pendingClonar.nombre.trim()}
+                className="flex-1 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60">
+                Clonar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

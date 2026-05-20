@@ -30,14 +30,14 @@ const URL_MODULES: Array<{ pattern: RegExp; modulo: string }> = [
   { pattern: /\/auth/,          modulo: 'auth'        },
 ];
 
-// Tablas rastreadas para undo/redo (path-prefix → tabla)
+// Tablas rastreadas para undo/redo (path contiene → tabla)
 const PATH_TABLA: Array<{ pattern: RegExp; tabla: string }> = [
-  { pattern: /^\/clientes/,     tabla: 'clientes'   },
-  { pattern: /^\/contratos/,    tabla: 'contratos'  },
-  { pattern: /^\/facturas/,     tabla: 'facturas'   },
-  { pattern: /^\/facturacion/,  tabla: 'facturas'   },
-  { pattern: /^\/pagos/,        tabla: 'pagos'      },
-  { pattern: /^\/planes/,       tabla: 'planes'     },
+  { pattern: /\/clientes/,     tabla: 'clientes'   },
+  { pattern: /\/contratos/,    tabla: 'contratos'  },
+  { pattern: /\/facturacion/,  tabla: 'facturas'   },
+  { pattern: /\/facturas/,     tabla: 'facturas'   },
+  { pattern: /\/pagos/,        tabla: 'pagos'      },
+  { pattern: /\/planes/,       tabla: 'planes'     },
 ];
 
 const METHOD_ACTION: Record<string, string> = {

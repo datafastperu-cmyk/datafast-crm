@@ -1,0 +1,28 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "no-restricted-globals": [
+      "error",
+      { "name": "confirm",  "message": "Use a React state modal instead of window.confirm" },
+      { "name": "alert",    "message": "Use toast/modal instead of window.alert" },
+      { "name": "prompt",   "message": "Use a React input instead of window.prompt" },
+      { "name": "history",  "message": "Use next/navigation useRouter instead" },
+      { "name": "location", "message": "Use next/navigation instead of window.location" },
+      { "name": "event",    "message": "Use explicit event parameter in handlers" },
+      { "name": "name",     "message": "Rename variable — conflicts with window.name" },
+      { "name": "status",   "message": "Rename variable — conflicts with window.status" },
+      { "name": "parent",   "message": "Rename variable — conflicts with window.parent" },
+      { "name": "top",      "message": "Rename variable — conflicts with window.top" },
+      { "name": "frames",   "message": "Rename variable — conflicts with window.frames" },
+      { "name": "screen",   "message": "Rename variable — conflicts with window.screen" },
+      { "name": "self",     "message": "Rename variable — conflicts with window.self" },
+      { "name": "origin",   "message": "Rename variable — conflicts with window.origin" }
+    ],
+    "no-shadow": "warn",
+    "no-var": "error",
+    "prefer-const": "error",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }]
+  }
+}

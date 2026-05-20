@@ -748,7 +748,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                   </div>
                 </div>
                 <p className="text-xs text-gray-600 mt-2">
-                  Si la versión es "Detectar automáticamente", el sistema la obtiene al conectar.
+                  Si la versión es &ldquo;Detectar automáticamente&rdquo;, el sistema la obtiene al conectar.
                 </p>
               </div>
 
@@ -920,6 +920,7 @@ export function RoutersContent() {
   const [testingId, setTestingId]     = useState<string | null>(null);
   const [scriptRouter, setScriptRouter]   = useState<RouterType | null>(null);
   const [morososRouter, setMorososRouter] = useState<RouterType | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<RouterType | null>(null);
 
   const { data: routers = [], isLoading } = useQuery<RouterType[]>({
     queryKey:        ['routers'],
@@ -950,10 +951,7 @@ export function RoutersContent() {
     }
   };
 
-  const handleDelete = (router: RouterType) => {
-    if (!confirm(`¿Eliminar el router "${router.nombre}"? Esta acción no se puede deshacer.`)) return;
-    deleteMut.mutate(router.id);
-  };
+  const handleDelete = (router: RouterType) => setPendingDelete(router);
 
   const onSaved = () => queryClient.invalidateQueries({ queryKey: ['routers'] });
 
@@ -1127,8 +1125,8 @@ export function RoutersContent() {
             <p className="text-blue-300/70 text-xs">
               Si el router no tiene IP pública, configúralo con una IP de la VPN del sistema
               (Panel → Red → OpenVPN → Certificados → Generar cliente). Luego usa esa IP en el campo
-              <strong className="text-blue-200"> "IP VPN"</strong> y selecciona el tipo de conexión
-              <strong className="text-blue-200"> "VPN Tunnel"</strong>.
+              <strong className="text-blue-200"> &ldquo;IP VPN&rdquo;</strong> y selecciona el tipo de conexión
+              <strong className="text-blue-200"> &ldquo;VPN Tunnel&rdquo;</strong>.
             </p>
           </div>
         </div>
@@ -1161,6 +1159,33 @@ export function RoutersContent() {
           router={morososRouter}
           onClose={() => setMorososRouter(null)}
         />
+      )}
+
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <p className="font-semibold text-foreground">Eliminar router</p>
+            <p className="text-sm text-muted-foreground">
+              ¿Eliminar <strong>{pendingDelete.nombre}</strong>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setPendingDelete(null)}
+                disabled={deleteMut.isPending}
+                className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { deleteMut.mutate(pendingDelete.id); setPendingDelete(null); }}
+                disabled={deleteMut.isPending}
+                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors disabled:opacity-60"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

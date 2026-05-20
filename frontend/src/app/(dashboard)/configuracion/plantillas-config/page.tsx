@@ -126,6 +126,7 @@ export default function PlantillasConfigPage() {
   });
 
   const [selId, setSelId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [nombreNueva, setNombreNueva] = useState('');
   const [facturacion, setFact] = useState<FacturacionConfig>({ ...DEFAULT_FACTURACION });
   const [notificaciones, setNotif] = useState<NotificacionesConfig>({ ...DEFAULT_NOTIFICACIONES });
@@ -249,7 +250,7 @@ export default function PlantillasConfigPage() {
           {selId && (
             <button
               type="button"
-              onClick={() => { if (confirm('¿Eliminar esta plantilla?')) mutDelete.mutate(selId); }}
+              onClick={() => setConfirmDelete(true)}
               disabled={mutDelete.isPending}
               className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
             >
@@ -418,6 +419,25 @@ export default function PlantillasConfigPage() {
           </div>
         </div>
       </div>
+
+      {confirmDelete && selId && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <p className="font-semibold text-foreground">Eliminar plantilla</p>
+            <p className="text-sm text-muted-foreground">Esta acción no se puede deshacer.</p>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setConfirmDelete(false)} disabled={mutDelete.isPending}
+                className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={() => { mutDelete.mutate(selId); setConfirmDelete(false); }} disabled={mutDelete.isPending}
+                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors disabled:opacity-60">
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

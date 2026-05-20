@@ -36,6 +36,7 @@ export function VpnContent() {
   const [showCerts, setShowCerts] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [showLogs, setShowLogs] = useState(false);
+  const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
 
   const { data: config, isLoading: loadingConfig } = useQuery({
     queryKey: ['openvpn-config'],
@@ -605,11 +606,7 @@ export function VpnContent() {
                         .ovpn
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`¿Revocar certificado de "${name}"?`)) {
-                            revokeMut.mutate(name);
-                          }
-                        }}
+                        onClick={() => setPendingRevoke(name)}
                         disabled={revokeMut.isPending}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors disabled:opacity-50"
                       >
@@ -655,6 +652,33 @@ export function VpnContent() {
               {logs}
             </pre>
           )}
+        </div>
+      )}
+
+      {pendingRevoke && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <p className="font-semibold text-foreground">Revocar certificado</p>
+            <p className="text-sm text-muted-foreground">
+              ¿Revocar el certificado de <strong>{pendingRevoke}</strong>? El cliente perderá acceso a la VPN.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setPendingRevoke(null)}
+                disabled={revokeMut.isPending}
+                className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { revokeMut.mutate(pendingRevoke); setPendingRevoke(null); }}
+                disabled={revokeMut.isPending}
+                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors disabled:opacity-60"
+              >
+                Revocar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

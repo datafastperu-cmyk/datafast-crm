@@ -10,6 +10,9 @@ export enum TipoNodo {
   SERVIDOR       = 'servidor',
   CLIENTE        = 'cliente',
   ENLACE_UPLINK  = 'enlace_uplink',
+  CAMARA         = 'camara',
+  ALARMA         = 'alarma',
+  OTRO           = 'otro',
 }
 
 export enum EstadoNodo {
@@ -75,6 +78,25 @@ export class Nodo extends BaseModel {
   // ── Conexión ──────────────────────────────────────────────
   @Column({ name: 'ip_monitoreo', type: 'inet' })
   ipMonitoreo: string;
+
+  // ── Credenciales de acceso al equipo ──────────────────────
+  @Column({ length: 100, nullable: true })
+  usuario: string;
+
+  @Column({ name: 'password_cifrado', length: 500, nullable: true })
+  passwordCifrado: string;        // AES-256-GCM, igual que routers
+
+  @Column({ length: 100, nullable: true })
+  fabricante: string;             // MikroTik, Ubiquiti, Cisco, etc.
+
+  @Column({ name: 'puerto_api', type: 'smallint', default: 8728 })
+  puertoApi: number;
+
+  @Column({ name: 'usar_ssl', default: false })
+  usarSsl: boolean;
+
+  @Column({ name: 'metodo_conexion', length: 20, default: 'snmp' })
+  metodoConexion: string;         // 'api' | 'snmp' | 'ssh'
 
   // ── SNMP ──────────────────────────────────────────────────
   @Column({ name: 'snmp_habilitado', default: false })

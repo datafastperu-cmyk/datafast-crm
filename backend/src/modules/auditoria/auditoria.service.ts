@@ -137,11 +137,7 @@ export class AuditoriaService {
 
       switch (version.accion) {
         case 'DELETE':
-          // Restaurar soft-delete
-          await this.ds.query(
-            `UPDATE ${version.tabla} SET deleted_at = NULL WHERE id = $1`,
-            [version.entidadId],
-          );
+          await this.undoDelete(version.tabla, version.entidadId, version.snapshotAnterior);
           break;
 
         case 'CREATE':
@@ -296,12 +292,53 @@ export class AuditoriaService {
   }
 
   // ── Helpers privados ──────────────────────────────────────────
+
+  private async undoDelete(tabla: string, entidadId: string, snapshot: Record<string, any> | null): Promise<void> {
+    const result = await this.ds.query(
+      `UPDATE ${tabla} SET deleted_at = NULL WHERE id = $1`,
+      [entidadId],
+    );
+    const rowsAffected = result[1] ?? result?.rowCount ?? 0;
+
+    if (rowsAffected === 0 && snapshot) {
+      // Columnas generadas (GENERATED ALWAYS) no se pueden insertar explícitamente
+      const generatedRows = await this.ds.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_name = $1 AND is_generated = 'ALWAYS'`,
+        [tabla],
+      );
+      const generated = new Set<string>(generatedRows.map((r: any) => r.column_name));
+
+      const fields = Object.keys(snapshot).filter(f => !generated.has(f));
+      const cols   = fields.map(f => `"${f}"`).join(', ');
+      const vals   = fields.map((_, i) => `$${i + 1}`).join(', ');
+      const values = fields.map(f => {
+        const v = snapshot[f];
+        return (v !== null && typeof v === 'object') ? JSON.stringify(v) : v;
+      });
+      await this.ds.query(
+        `INSERT INTO ${tabla} (${cols}) VALUES (${vals}) ON CONFLICT (id) DO NOTHING`,
+        values,
+      );
+    }
+  }
+
   private async restoreSnapshot(tabla: string, id: string, snapshot: Record<string, any>): Promise<void> {
-    const fields = Object.keys(snapshot).filter(k => !CAMPOS_EXCLUIDOS.has(k));
+    const generatedRows = await this.ds.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = $1 AND is_generated = 'ALWAYS'`,
+      [tabla],
+    );
+    const generated = new Set<string>(generatedRows.map((r: any) => r.column_name));
+
+    const fields = Object.keys(snapshot).filter(k => !CAMPOS_EXCLUIDOS.has(k) && !generated.has(k));
     if (!fields.length) return;
 
     const setClause = fields.map((f, i) => `"${f}" = $${i + 2}`).join(', ');
-    const values    = [id, ...fields.map(f => snapshot[f])];
+    const values    = [id, ...fields.map(f => {
+      const v = snapshot[f];
+      return (v !== null && typeof v === 'object') ? JSON.stringify(v) : v;
+    })];
 
     await this.ds.query(
       `UPDATE ${tabla} SET ${setClause}, updated_at = NOW() WHERE id = $1`,

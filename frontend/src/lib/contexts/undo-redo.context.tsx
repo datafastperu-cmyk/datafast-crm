@@ -39,13 +39,9 @@ export function UndoRedoProvider({ children }: { children: ReactNode }) {
     refetchIntervalInBackground: false,
   });
 
-  // Invalidar todas las queries críticas después de undo/redo
+  // Invalidar todo el cache después de undo/redo — la acción cambió datos desconocidos
   const invalidarTodo = useCallback(() => {
-    const claves = [
-      'clientes', 'contratos', 'planes', 'facturas',
-      'pagos', 'planes-admin', 'undo-redo-estado',
-    ];
-    claves.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+    queryClient.invalidateQueries();
   }, [queryClient]);
 
   const { mutate: doUndo, isPending: undoing } = useMutation({
@@ -77,12 +73,12 @@ export function UndoRedoProvider({ children }: { children: ReactNode }) {
   });
 
   const undo = useCallback(() => {
-    if (!undoing && estado?.canUndo) doUndo();
-  }, [undoing, estado?.canUndo, doUndo]);
+    if (!undoing) doUndo();
+  }, [undoing, doUndo]);
 
   const redo = useCallback(() => {
-    if (!redoing && estado?.canRedo) doRedo();
-  }, [redoing, estado?.canRedo, doRedo]);
+    if (!redoing) doRedo();
+  }, [redoing, doRedo]);
 
   // Atajos de teclado globales — Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z
   useEffect(() => {

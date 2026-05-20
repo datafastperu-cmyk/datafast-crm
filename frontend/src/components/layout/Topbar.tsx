@@ -169,15 +169,15 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         <div className="hidden sm:flex items-center gap-0.5 border border-border rounded-lg p-0.5 bg-muted/30">
           <button
             onClick={undo}
-            disabled={!canUndo || undoing}
+            disabled={undoing}
             title={canUndo && estado?.lastUndo
               ? `Deshacer: ${estado.lastUndo.descripcion} (Ctrl+Z)`
-              : 'Nada que deshacer (Ctrl+Z)'}
+              : 'Deshacer (Ctrl+Z)'}
             className={cn(
               'flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors',
               canUndo
-                ? 'text-foreground hover:bg-muted cursor-pointer'
-                : 'text-muted-foreground/40 cursor-not-allowed',
+                ? 'text-foreground hover:bg-muted'
+                : 'text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground',
             )}
           >
             {undoing
@@ -187,15 +187,15 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           </button>
           <button
             onClick={redo}
-            disabled={!canRedo || redoing}
+            disabled={redoing}
             title={canRedo && estado?.lastRedo
               ? `Rehacer: ${estado.lastRedo.descripcion} (Ctrl+Y)`
-              : 'Nada que rehacer (Ctrl+Y)'}
+              : 'Rehacer (Ctrl+Y)'}
             className={cn(
               'flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors',
               canRedo
-                ? 'text-foreground hover:bg-muted cursor-pointer'
-                : 'text-muted-foreground/40 cursor-not-allowed',
+                ? 'text-foreground hover:bg-muted'
+                : 'text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground',
             )}
           >
             {redoing
