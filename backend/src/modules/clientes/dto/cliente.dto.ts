@@ -28,12 +28,12 @@ export class CreateClienteDto {
   @Transform(({ value }) => value?.trim())
   nombres: string;
 
-  @ApiProperty({ example: 'Pérez' })
+  @ApiPropertyOptional({ example: 'Pérez' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(80)
   @Transform(({ value }) => value?.trim())
-  apellidoPaterno: string;
+  apellidoPaterno?: string;
 
   @ApiPropertyOptional({ example: 'García' })
   @IsOptional()

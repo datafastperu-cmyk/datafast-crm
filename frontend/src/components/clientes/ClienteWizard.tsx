@@ -29,8 +29,6 @@ const step1Schema = z.object({
   tipoDocumento:   z.string().optional(),
   numeroDocumento: z.string().min(6, 'Identificación requerida').max(13),
   nombres:         z.string().min(2, 'Nombres requeridos'),
-  apellidoPaterno: z.string().min(2, 'Apellido paterno requerido'),
-  apellidoMaterno: z.string().optional(),
   direccion:       z.string().optional(),
   ubicacionId:     z.string().optional(),
   departamento:    z.string().optional(),
@@ -347,8 +345,8 @@ export function ClienteWizard() {
         tipoDocumento:   (s1.tipoDocumento as any) || 'dni',
         numeroDocumento: s1.numeroDocumento,
         nombres:         s1.nombres,
-        apellidoPaterno: s1.apellidoPaterno,
-        apellidoMaterno: s1.apellidoMaterno || undefined,
+        apellidoPaterno: '',
+        apellidoMaterno: undefined,
         telefono:        s1.telefono,
         whatsapp:        (s1 as any).whatsapp || undefined,
         email:           s1.email || undefined,
@@ -451,11 +449,10 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
     try {
       const datos = await clientesApi.consultarReniec(doc);
       setValue('nombres',         datos.nombres         || '', { shouldDirty: true });
-      setValue('apellidoPaterno', datos.apellidoPaterno || '', { shouldDirty: true });
-      setValue('apellidoMaterno', datos.apellidoMaterno || '', { shouldDirty: true });
-      const nombre = [datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' ');
+      const nombreCompleto = [datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' ');
+      setValue('nombres', nombreCompleto, { shouldDirty: true });
       setReniecStatus('ok');
-      setReniecMsg(nombre);
+      setReniecMsg(nombreCompleto);
     } catch (err) {
       setReniecStatus('error');
       setReniecMsg(parseApiError(err));
@@ -520,29 +517,6 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
               <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.nombres.message}
             </p>
           )}
-        </FormRow>
-
-        {/* Apellido Paterno */}
-        <FormRow label="Apellido Paterno" required hintColor="gray">
-          <input
-            {...register('apellidoPaterno')}
-            placeholder="Pérez"
-            className={inputCls(!!errors.apellidoPaterno)}
-          />
-          {errors.apellidoPaterno && (
-            <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
-              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.apellidoPaterno.message}
-            </p>
-          )}
-        </FormRow>
-
-        {/* Apellido Materno */}
-        <FormRow label="Apellido Materno" hintColor="gray">
-          <input
-            {...register('apellidoMaterno')}
-            placeholder="García"
-            className={inputCls()}
-          />
         </FormRow>
 
         {/* Dirección principal */}
