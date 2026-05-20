@@ -213,6 +213,20 @@ function DisponibilidadView({ dispo }: { dispo: DisponibilidadSegmento }) {
   );
 }
 
+const CIDR_OPTIONS = [
+  { prefix: 20, mask: '255.255.240.0',   hosts: 4094,  total: 4096  },
+  { prefix: 21, mask: '255.255.248.0',   hosts: 2046,  total: 2048  },
+  { prefix: 22, mask: '255.255.252.0',   hosts: 1022,  total: 1024  },
+  { prefix: 23, mask: '255.255.254.0',   hosts: 510,   total: 512   },
+  { prefix: 24, mask: '255.255.255.0',   hosts: 254,   total: 256   },
+  { prefix: 25, mask: '255.255.255.128', hosts: 126,   total: 128   },
+  { prefix: 26, mask: '255.255.255.192', hosts: 62,    total: 64    },
+  { prefix: 27, mask: '255.255.255.224', hosts: 30,    total: 32    },
+  { prefix: 28, mask: '255.255.255.240', hosts: 14,    total: 16    },
+  { prefix: 29, mask: '255.255.255.248', hosts: 6,     total: 8     },
+  { prefix: 30, mask: '255.255.255.252', hosts: 2,     total: 4     },
+];
+
 // ─── Form component (modal) ───────────────────────────────────
 function SegmentoForm({
   routers, onClose, onCreated,
@@ -222,21 +236,20 @@ function SegmentoForm({
   onCreated: () => void;
 }) {
   const { toast } = useToast();
-  const [form, setForm] = useState<CreateSegmentoDto>({
-    nombre: '',
-    redCidr: '',
-    gateway: '',
-    dnsPrimario: '8.8.8.8',
-    dnsSecundario: '8.8.4.4',
-    tipoServicio: 'ftth',
+  const [red,    setRed]    = useState('');
+  const [prefix, setPrefix] = useState('24');
+  const [form, setForm] = useState({
+    nombre:   '',
+    gateway:  '',
     routerId: '',
   });
 
   const { mutate: crear, isPending } = useMutation({
     mutationFn: () => redesApi.createSegmento({
-      ...form,
+      nombre:   form.nombre,
+      redCidr:  `${red}/${prefix}`,
+      gateway:  form.gateway,
       routerId: form.routerId || undefined,
-      dnsSecundario: form.dnsSecundario || undefined,
     }),
     onSuccess: () => {
       toast('Segmento creado', { type: 'success' });
@@ -245,8 +258,10 @@ function SegmentoForm({
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
-  const set = (k: keyof CreateSegmentoDto, v: string) =>
+  const set = (k: keyof typeof form, v: string) =>
     setForm((prev) => ({ ...prev, [k]: v }));
+
+  const canSubmit = form.nombre.trim() && red.trim() && form.gateway.trim();
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -254,7 +269,7 @@ function SegmentoForm({
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h3 className="font-semibold text-foreground">Nuevo segmento IPv4</h3>
+          <h3 className="font-semibold text-foreground">Nueva Red IPv4</h3>
           <button type="button" onClick={onClose}
             className="p-1 rounded-lg hover:bg-muted transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -263,69 +278,85 @@ function SegmentoForm({
 
         {/* Body */}
         <div className="px-6 py-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Nombre *</label>
+
+          <FRow label="Nombre">
+            <input
+              value={form.nombre}
+              onChange={(e) => set('nombre', e.target.value)}
+              placeholder="RED NUEVA"
+              className={inputCls()}
+            />
+          </FRow>
+
+          <FRow label="Router">
+            <select value={form.routerId} onChange={(e) => set('routerId', e.target.value)} className={inputCls()}>
+              <option value="">Sin asignar</option>
+              {routers.map((r) => (
+                <option key={r.id} value={r.id}>{r.nombre}</option>
+              ))}
+            </select>
+          </FRow>
+
+          <FRow label="Red">
+            <div className="flex items-center gap-0 border border-input rounded-lg overflow-hidden bg-background focus-within:ring-2 focus-within:ring-primary">
+              <span className="px-3 py-2 bg-muted border-r border-input">
+                <Wifi className="w-4 h-4 text-muted-foreground" />
+              </span>
               <input
-                value={form.nombre}
-                onChange={(e) => set('nombre', e.target.value)}
-                placeholder="Red Clientes Piura"
-                className={inputCls()}
+                value={red}
+                onChange={(e) => setRed(e.target.value)}
+                placeholder="192.168.1.0"
+                className="flex-1 px-3 py-2 text-sm font-mono bg-transparent focus:outline-none"
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Tipo de servicio</label>
-              <select value={form.tipoServicio} onChange={(e) => set('tipoServicio', e.target.value)} className={inputCls()}>
-                <option value="ftth">FTTH</option>
-                <option value="wisp">WISP</option>
-                <option value="dedicado">Dedicado</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Red CIDR *</label>
-              <input
-                value={form.redCidr}
-                onChange={(e) => set('redCidr', e.target.value)}
-                placeholder="192.168.1.0/24"
-                className={cn(inputCls(), 'font-mono')}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Gateway *</label>
-              <input
-                value={form.gateway}
-                onChange={(e) => set('gateway', e.target.value)}
-                placeholder="192.168.1.1"
-                className={cn(inputCls(), 'font-mono')}
-              />
-            </div>
-<div className="space-y-1.5 col-span-2">
-              <label className="text-xs font-medium text-foreground">Router MikroTik (opcional)</label>
-              <select value={form.routerId} onChange={(e) => set('routerId', e.target.value)} className={inputCls()}>
-                <option value="">Sin asignar</option>
-                {routers.map((r) => (
-                  <option key={r.id} value={r.id}>{r.nombre} — {r.host}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Ejm: 192.168.1.0</p>
+          </FRow>
+
+          <FRow label="CIDR">
+            <select value={prefix} onChange={(e) => setPrefix(e.target.value)} className={inputCls()}>
+              {CIDR_OPTIONS.map((o) => (
+                <option key={o.prefix} value={String(o.prefix)}>
+                  {o.prefix} ({o.mask} - {o.hosts} hosts, {o.total} IP)
+                </option>
+              ))}
+            </select>
+          </FRow>
+
+          <FRow label="Puerta de enlace">
+            <input
+              value={form.gateway}
+              onChange={(e) => set('gateway', e.target.value)}
+              placeholder="192.168.1.1"
+              className={cn(inputCls(), 'font-mono')}
+            />
+          </FRow>
+
         </div>
 
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-border">
           <button onClick={onClose} disabled={isPending}
             className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50">
-            Cancelar
+            Cerrar
           </button>
           <button
             onClick={() => crear()}
-            disabled={isPending || !form.nombre || !form.redCidr || !form.gateway}
+            disabled={isPending || !canSubmit}
             className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
           >
-            {isPending ? 'Guardando...' : 'Crear segmento'}
+            {isPending ? 'Registrando...' : 'Registrar'}
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function FRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] items-start gap-4">
+      <span className="text-sm text-muted-foreground text-right pt-2">{label}</span>
+      <div>{children}</div>
     </div>
   );
 }
