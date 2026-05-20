@@ -40,6 +40,7 @@ import { PlantillasModule }       from './modules/plantillas/plantillas.module';
 import { DashboardModule }        from './modules/dashboard/dashboard.module';
 import { BackupModule }           from './modules/backup/backup.module';
 import { AuditoriaModule }        from './modules/auditoria/auditoria.module';
+import { ZonasModule }            from './modules/zonas/zonas.module';
 
 @Module({
   imports: [
@@ -136,6 +137,7 @@ import { AuditoriaModule }        from './modules/auditoria/auditoria.module';
     DashboardModule,
     BackupModule,
     AuditoriaModule,
+    ZonasModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
