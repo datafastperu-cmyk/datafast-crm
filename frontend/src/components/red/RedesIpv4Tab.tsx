@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Wifi, ChevronDown, X } from 'lucide-react';
+import { Plus, Trash2, Wifi, ChevronDown, X, Network } from 'lucide-react';
 import { redesApi, type SegmentoIpv4, type CreateSegmentoDto, type DisponibilidadSegmento } from '@/lib/api/contratos';
 import type { Router } from '@/lib/api/mikrotik';
 import { useToast } from '@/components/ui/toaster';
@@ -327,7 +327,7 @@ function SegmentoForm({
           <FRow label="Red">
             <div className="flex items-center gap-0 border border-input rounded-lg overflow-hidden bg-background focus-within:ring-2 focus-within:ring-primary">
               <span className="px-3 py-2 bg-muted border-r border-input">
-                <Wifi className="w-4 h-4 text-muted-foreground" />
+                <Network className="w-4 h-4 text-muted-foreground" />
               </span>
               <input
                 value={red}
