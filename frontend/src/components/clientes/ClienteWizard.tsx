@@ -27,7 +27,7 @@ const step1Schema = z.object({
   usuarioPortal:   z.string().optional(),
   passwordPortal:  z.string().optional(),
   tipoDocumento:   z.string().optional(),
-  numeroDocumento: z.string().min(6, 'Identificación requerida'),
+  numeroDocumento: z.string().min(6, 'Identificación requerida').max(13),
   nombres:         z.string().min(2, 'Nombres requeridos'),
   apellidoPaterno: z.string().min(2, 'Apellido paterno requerido'),
   apellidoMaterno: z.string().optional(),
@@ -472,6 +472,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
             <input
               {...register('numeroDocumento')}
               placeholder="223456634"
+              maxLength={13}
               className={inputCls(!!errors.numeroDocumento)}
             />
             <button
