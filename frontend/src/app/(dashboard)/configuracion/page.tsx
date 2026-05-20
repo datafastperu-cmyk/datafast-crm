@@ -21,7 +21,7 @@ const SECTIONS = [
   { href: '/configuracion/importar-clientes',      label: 'Importar Clientes',        icon: Upload },
   { href: '/configuracion/cambios-masivos',        label: 'Cambios Masivos',          icon: ArrowUpDown },
   { href: '/configuracion/plantillas-config',      label: 'Plantillas Abonados',      icon: Layout },
-  { href: '/configuracion/ubicaciones',            label: 'Ubicaciones',              icon: MapPin },
+  { href: '/configuracion/ubicaciones',            label: 'Zonas',                    icon: MapPin },
   { href: '/configuracion/campos-personalizados',  label: 'Campos Personalizados',    icon: SlidersHorizontal },
   { href: '/configuracion/mensajeria-config',      label: 'Mensajería',               icon: MessageSquare },
   { href: '/configuracion/backup',                 label: 'Copia de Seguridad',       icon: HardDrive },
