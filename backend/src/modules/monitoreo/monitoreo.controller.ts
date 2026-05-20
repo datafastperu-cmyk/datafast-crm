@@ -95,7 +95,7 @@ export class MonitoreoController {
     const { password, ...rest } = dto;
     const nodo = await this.nodoRepo.save(
       this.nodoRepo.create({
-        ...rest,
+        ...(rest as any),
         passwordCifrado: password ? encrypt(password) : undefined,
         empresaId: user.empresaId,
       }),
