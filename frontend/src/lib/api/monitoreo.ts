@@ -99,6 +99,7 @@ export const monitoreoApi = {
   testConexionRaw: async (params: {
     ip: string; usuario: string; password: string;
     fabricante: string; puertoApi?: number; usarSsl?: boolean;
+    routerId?: string;
   }): Promise<TestConexionResult> => {
     const res = await api.post<ApiRespuesta<TestConexionResult>>('/monitoreo/test-conexion', params);
     return res.data.data;

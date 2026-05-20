@@ -3,9 +3,11 @@ import {
   RouterConnectionPool,
   RouterCredentials,
 } from '../../mikrotik/services/connection-pool.service';
+import { SubnetRouteService } from '../../mikrotik/services/subnet-route.service';
 import { SnmpService }  from './snmp.service';
 import { PingService }  from './ping.service';
 import type { Nodo }    from '../entities/monitoreo.entity';
+import type { Router }  from '../../mikrotik/entities/router.entity';
 
 export interface TestConexionResult {
   conectado:   boolean;
@@ -33,9 +35,10 @@ export class NodoDeviceService {
   private readonly logger = new Logger(NodoDeviceService.name);
 
   constructor(
-    private readonly pool:    RouterConnectionPool,
-    private readonly snmpSvc: SnmpService,
-    private readonly pingSvc: PingService,
+    private readonly pool:       RouterConnectionPool,
+    private readonly snmpSvc:    SnmpService,
+    private readonly pingSvc:    PingService,
+    private readonly subnetSvc:  SubnetRouteService,
   ) {}
 
   // ── Test con nodo ya registrado ────────────────────────────
@@ -47,6 +50,26 @@ export class NodoDeviceService {
       return this.testSnmp(nodo.ipMonitoreo, nodo.snmpCommunity, nodo.snmpVersion);
     }
     return this.testPingIp(nodo.ipMonitoreo);
+  }
+
+  // ── Test via relay: el router hace ping al equipo target ─────
+  async testConexionViaRouter(router: Router, targetIp: string): Promise<TestConexionResult> {
+    const result = await this.subnetSvc.pingViaRouter(router, targetIp);
+    if (!result.alive) {
+      return {
+        conectado: false,
+        metodo:    'relay-ping',
+        error: result.error
+          ? `Relay (${router.nombre}): ${result.error}`
+          : `No responde desde ${router.nombre} (${router.vpnIp || router.ipGestion})`,
+      };
+    }
+    return {
+      conectado:  true,
+      metodo:     'relay-ping',
+      latenciaMs: result.latenciaMs ?? undefined,
+      info:       { hostname: `Accesible vía ${router.nombre}` } as any,
+    };
   }
 
   // ── Test sin nodo registrado (desde el formulario) ─────────

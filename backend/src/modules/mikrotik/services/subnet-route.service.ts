@@ -48,30 +48,53 @@ export class SubnetRouteService implements OnApplicationBootstrap {
     }
   }
 
+  // Pinga una IP desde el propio router (relay) via RouterOS /tool/ping
+  async pingViaRouter(router: Router, targetIp: string): Promise<{
+    alive: boolean;
+    latenciaMs: number | null;
+    error?: string;
+  }> {
+    const creds = this.buildCreds(router);
+    const api   = await this.pool.connectDirect(creds);
+    try {
+      const rows: any[] = await api.write('/tool/ping', [
+        `=address=${targetIp}`,
+        '=count=3',
+        '=interval=500ms',
+      ]);
+      // La última fila del resultado contiene el resumen (sent / received / avg-rtt)
+      const summary = [...rows].reverse().find(r => r.received !== undefined) ?? rows[rows.length - 1];
+      const received = parseInt(summary?.received ?? '0', 10);
+      const alive    = received > 0;
+      const avgRtt   = summary?.['avg-rtt'] ? parseFloat(summary['avg-rtt']) : null;
+      return { alive, latenciaMs: avgRtt };
+    } catch (e) {
+      return { alive: false, latenciaMs: null, error: e.message };
+    } finally {
+      try { await api.close(); } catch {}
+    }
+  }
+
   // Conecta al router vía RouterOS API y obtiene subnets LAN
   async fetchSubnets(router: Router): Promise<string[]> {
     const creds = this.buildCreds(router);
-    const api = await this.pool.connectDirect(creds);
+    const api   = await this.pool.connectDirect(creds);
     try {
       const addrs: any[] = await api.write('/ip/address/print');
       const subnets: string[] = [];
 
       for (const a of addrs) {
-        const iface: string = (a.interface ?? '').toLowerCase();
-        const address: string = a.address ?? '';
+        const ifaceLow: string = (a.interface ?? '').toLowerCase();
+        const address:  string = a.address ?? '';
         if (!address.includes('/')) continue;
 
-        // Omitir interfaces VPN/tunnel
-        if (VPN_PREFIXES.some(p => iface.startsWith(p))) continue;
+        if (VPN_PREFIXES.some(p => ifaceLow.startsWith(p))) continue;
 
         const [ip, prefix] = address.split('/');
         const prefixNum = parseInt(prefix, 10);
         if (isNaN(prefixNum)) continue;
 
-        // Solo subnets privadas
         if (!PRIVATE.some(r => r.test(ip))) continue;
-
-        // Omitir la propia IP VPN del router
         if (ip === router.vpnIp || ip === router.ipGestion) continue;
 
         const network = this.toNetworkAddr(ip, prefixNum);

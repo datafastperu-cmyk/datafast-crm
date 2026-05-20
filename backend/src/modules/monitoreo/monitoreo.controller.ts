@@ -22,8 +22,11 @@ import { AlertasService }    from './services/alertas.service';
 import { PingService }       from './services/ping.service';
 import { SnmpService }       from './services/snmp.service';
 import { NodoDeviceService } from './services/nodo-device.service';
+import { NetWatchService }   from './services/netwatch.service';
 import { encrypt }           from '../../common/utils/encryption.util';
 import { MonitoreoGateway }  from './gateways/monitoreo.gateway';
+import { MikrotikService }   from '../mikrotik/mikrotik.service';
+import { Public }            from '../../common/decorators/public.decorator';
 import {
   Nodo, MedicionNodo, ConfiguracionAlerta,
   TipoNodo, MetricaAlerta, EstadoAlerta,
@@ -84,6 +87,8 @@ export class MonitoreoController {
     private readonly snmpSvc:      SnmpService,
     private readonly gateway:      MonitoreoGateway,
     private readonly deviceSvc:    NodoDeviceService,
+    private readonly netWatchSvc:  NetWatchService,
+    private readonly mikrotikSvc:  MikrotikService,
   ) {}
 
   // ─── NODOS ────────────────────────────────────────────────
@@ -100,6 +105,14 @@ export class MonitoreoController {
         empresaId: user.empresaId,
       }),
     );
+
+    // Configurar NetWatch en el router asociado (async — no bloquea la respuesta)
+    if (nodo.routerId) {
+      this.mikrotikSvc.findOne(nodo.routerId, user.empresaId)
+        .then((router) => this.netWatchSvc.configure(nodo, router))
+        .catch((e) => this.logger.warn(`NetWatch setup: ${e.message}`));
+    }
+
     return StdResponse.ok(nodo, 'Nodo registrado para monitoreo');
   }
 
@@ -138,6 +151,14 @@ export class MonitoreoController {
     if (password) update.passwordCifrado = encrypt(password);
     await this.nodoRepo.update({ id, empresaId: user.empresaId }, update);
     const nodo = await this.nodoRepo.findOne({ where: { id } });
+
+    // Reconfigurar NetWatch si cambió la IP o el router asociado
+    if (nodo?.routerId && (dto.ipMonitoreo || dto.routerId)) {
+      this.mikrotikSvc.findOne(nodo.routerId, user.empresaId)
+        .then((router) => this.netWatchSvc.configure(nodo, router))
+        .catch((e) => this.logger.warn(`NetWatch reconfig: ${e.message}`));
+    }
+
     return StdResponse.ok(nodo, 'Nodo actualizado');
   }
 
@@ -168,9 +189,19 @@ export class MonitoreoController {
     @Body() body: {
       ip: string; usuario: string; password: string;
       fabricante: string; puertoApi?: number; usarSsl?: boolean;
+      routerId?: string;
     },
-    @CurrentUser() _user: JwtPayload,
+    @CurrentUser() user: JwtPayload,
   ) {
+    // Si hay router seleccionado: relay ping desde el router (sin necesidad de rutas directas)
+    if (body.routerId) {
+      const router = await this.mikrotikSvc.findOne(body.routerId, user.empresaId).catch(() => null);
+      if (router) {
+        const result = await this.deviceSvc.testConexionViaRouter(router, body.ip);
+        return StdResponse.ok(result);
+      }
+    }
+
     const result = await this.deviceSvc.testConexionRaw({
       ip:         body.ip,
       usuario:    body.usuario,
@@ -182,12 +213,73 @@ export class MonitoreoController {
     return StdResponse.ok(result);
   }
 
+  // ─── WEBHOOK NETWATCH ─────────────────────────────────────
+  // Endpoint público llamado por los routers MikroTik cuando un
+  // equipo LAN cambia de estado. Autenticado por token en query param.
+
+  @Get('webhook/netwatch')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Webhook NetWatch — llamado por MikroTik al cambiar estado de equipo' })
+  async webhookNetwatch(
+    @Query('token')   token:   string,
+    @Query('nodoId')  nodoId:  string,
+    @Query('estado')  estado:  string,
+  ) {
+    if (!this.netWatchSvc.verifyToken(token)) {
+      return { ok: false };
+    }
+
+    const nodo = await this.nodoRepo.findOne({ where: { id: nodoId } });
+    if (!nodo) return { ok: false };
+
+    const ahora      = new Date();
+    const nuevoEstado = estado === 'online' ? 'online' : 'offline';
+    const cambio     = nodo.estado !== nuevoEstado;
+
+    await this.nodoRepo.update(nodo.id, {
+      estado:     nuevoEstado as any,
+      ultimoPing: ahora,
+      ...(cambio ? { estadoDesde: ahora } : {}),
+    });
+
+    if (cambio) {
+      if (nuevoEstado === 'offline') {
+        this.logger.warn(`🔴 NetWatch OFFLINE: ${nodo.nombre} (${nodo.ipMonitoreo})`);
+        await this.alertasSvc.alertarNodoOffline(nodo.id, nodo.empresaId, nodo.nombre).catch(() => {});
+      } else {
+        this.logger.log(`🟢 NetWatch ONLINE: ${nodo.nombre} (${nodo.ipMonitoreo})`);
+        await this.alertasSvc.alertarNodoOnline(nodo.id, nodo.empresaId, nodo.nombre).catch(() => {});
+      }
+    }
+
+    this.gateway.broadcastMedicion(nodo.empresaId, {
+      nodoId:     nodo.id,
+      nodoNombre: nodo.nombre,
+      estado:     nuevoEstado as any,
+      latenciaMs: null,
+      perdidaPct: nuevoEstado === 'offline' ? 100 : 0,
+      timestamp:  ahora.toISOString(),
+    });
+
+    return { ok: true };
+  }
+
   @Delete('nodos/:id')
   @RequirePermission('monitoring:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiParam({ name: 'id' })
   async deleteNodo(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    const nodo = await this.nodoRepo.findOne({ where: { id, empresaId: user.empresaId } });
     await this.nodoRepo.update({ id, empresaId: user.empresaId }, { activo: false, deletedAt: new Date() });
+
+    // Eliminar entrada NetWatch del router asociado (async)
+    if (nodo?.routerId) {
+      this.mikrotikSvc.findOne(nodo.routerId, user.empresaId)
+        .then((router) => this.netWatchSvc.remove(nodo.id, router))
+        .catch((e) => this.logger.warn(`NetWatch cleanup: ${e.message}`));
+    }
   }
 
   // ─── PING MANUAL ─────────────────────────────────────────

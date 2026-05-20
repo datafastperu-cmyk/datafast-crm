@@ -38,11 +38,16 @@ export class MonitoreoScheduler {
   ) {}
 
   // ── Ping a todos los nodos cada 60 segundos ──────────────
+  // Nota: nodos con router_id son monitoreados por NetWatch desde el propio router
   @Cron('*/60 * * * * *', { timeZone: 'America/Lima', name: 'ping-ciclo' })
   async schedulePing(): Promise<void> {
-    const nodos = await this.nodoRepo.find({
-      where: { activo: true, pingHabilitado: true },
-    });
+    const nodos = await this.nodoRepo
+      .createQueryBuilder('n')
+      .where('n.activo = true')
+      .andWhere('n.ping_habilitado = true')
+      .andWhere('n.router_id IS NULL')
+      .andWhere('n.deleted_at IS NULL')
+      .getMany();
 
     if (!nodos.length) return;
 

@@ -97,6 +97,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
         fabricante: form.fabricante,
         puertoApi:  form.puertoApi,
         usarSsl:    form.usarSsl,
+        routerId:   form.routerId || undefined,
       });
       setTestResult(r);
     } catch (e) {

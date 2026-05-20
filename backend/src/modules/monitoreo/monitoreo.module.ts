@@ -13,6 +13,7 @@ import { PingService }         from './services/ping.service';
 import { SnmpService }         from './services/snmp.service';
 import { AlertasService }      from './services/alertas.service';
 import { NodoDeviceService }   from './services/nodo-device.service';
+import { NetWatchService }     from './services/netwatch.service';
 import { MikrotikModule }      from '../mikrotik/mikrotik.module';
 
 import {
@@ -61,6 +62,7 @@ import { HttpModule }   from '@nestjs/axios';
     SnmpService,
     AlertasService,
     NodoDeviceService,
+    NetWatchService,
 
     // WhatsApp para notificaciones de alertas
     WhatsAppService,
@@ -78,6 +80,7 @@ import { HttpModule }   from '@nestjs/axios';
     PingService,
     SnmpService,
     NodoDeviceService,
+    NetWatchService,
   ],
 })
 export class MonitoreoModule {}
