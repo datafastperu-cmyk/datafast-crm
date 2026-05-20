@@ -15,6 +15,7 @@ import { PppoeService, CreatePppoeParams }         from './services/pppoe.servic
 import { QueueService, QueueParams }               from './services/queue.service';
 import { FirewallService }                          from './services/firewall.service';
 import { InterfaceService }                        from './services/interface.service';
+import { SubnetRouteService }                      from './services/subnet-route.service';
 import { AuditoriaService }                        from '../auth/auditoria.service';
 import { VpnClienteService }                       from '../openvpn/services/vpn-cliente.service';
 import { JwtPayload }                              from '../../common/decorators/current-user.decorator';
@@ -42,6 +43,7 @@ export class MikrotikService {
     private readonly queueSvc:    QueueService,
     private readonly firewallSvc: FirewallService,
     private readonly ifaceSvc:    InterfaceService,
+    private readonly subnetSvc:   SubnetRouteService,
     private readonly auditoria:   AuditoriaService,
     private readonly events:      EventEmitter,
     @InjectDataSource() private readonly ds: DataSource,
@@ -136,6 +138,9 @@ export class MikrotikService {
       descripcion: `Router creado: ${dto.nombre} (${dto.ipGestion})`,
     });
 
+    // Sincronizar subnets LAN del router (async, no bloquea la respuesta)
+    this.syncSubnetsAsync(saved);
+
     // Esperar que detectarVersionAsync actualice estado antes de responder
     await new Promise(r => setTimeout(r, 3000));
     return this.findOne(saved.id, user.empresaId);
@@ -169,11 +174,19 @@ export class MikrotikService {
     if (dto.ipGestion || (dto as any).password) {
       await this.pool.invalidate(id);
     }
-    return this.findOne(id, user.empresaId);
+    const updated = await this.findOne(id, user.empresaId);
+    // Re-sincronizar subnets si cambió la IP de gestión/VPN
+    if (dto.ipGestion || dto.vpnIp) this.syncSubnetsAsync(updated);
+    return updated;
   }
 
   async removeRouter(id: string, user: JwtPayload): Promise<void> {
-    await this.findOne(id, user.empresaId);
+    const router = await this.findOne(id, user.empresaId);
+    // Eliminar rutas del VPS al borrar el router
+    if (router.subnetsLocales?.length) {
+      const gw = router.vpnIp || router.ipGestion;
+      await this.subnetSvc.removeVpsRoutes(gw, router.subnetsLocales);
+    }
     await this.routerRepo.update(id, { deletedAt: new Date(), activo: false });
     await this.pool.invalidate(id);
 
@@ -625,6 +638,29 @@ export class MikrotikService {
         resolve({ exitoso: false, mensaje: this._connectionErrorMsg(err.message) });
       });
     });
+  }
+
+  // ── Sincronizar subnets LAN y rutas VPS ───────────────────
+
+  async syncSubnets(routerId: string, empresaId: string): Promise<string[]> {
+    const router = await this.findOne(routerId, empresaId);
+    const subnets = await this.subnetSvc.fetchSubnets(router);
+    await this.routerRepo.update(routerId, { subnetsLocales: subnets });
+    const gw = router.vpnIp || router.ipGestion;
+    await this.subnetSvc.applyVpsRoutes(gw, subnets);
+    this.logger.log(`Subnets sincronizados: ${router.nombre} → [${subnets.join(', ')}]`);
+    return subnets;
+  }
+
+  private syncSubnetsAsync(router: Router): void {
+    this.subnetSvc.fetchSubnets(router)
+      .then(async (subnets) => {
+        await this.routerRepo.update(router.id, { subnetsLocales: subnets });
+        const gw = router.vpnIp || router.ipGestion;
+        await this.subnetSvc.applyVpsRoutes(gw, subnets);
+        this.logger.log(`Subnets auto-sync: ${router.nombre} → [${subnets.join(', ')}]`);
+      })
+      .catch(e => this.logger.warn(`Error auto-sync subnets ${router.nombre}: ${e.message}`));
   }
 
   // ── Inyectar regla morosos de forma asíncrona ─────────────

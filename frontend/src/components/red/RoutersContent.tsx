@@ -7,7 +7,7 @@ import {
   RefreshCw, CheckCircle2, XCircle, Loader2, AlertTriangle,
   Lock, Shield, ShieldOff, Network, Terminal, Radio,
   Key, Settings, ChevronRight, Activity, Cpu, MemoryStick,
-  Copy, Check, Users, FileCode,
+  Copy, Check, Users, FileCode, Globe,
 } from 'lucide-react';
 
 import { mikrotikApi } from '@/lib/api/mikrotik';
@@ -918,6 +918,7 @@ export function RoutersContent() {
   const [showModal, setShowModal]     = useState(false);
   const [editRouter, setEditRouter]   = useState<RouterType | null>(null);
   const [testingId, setTestingId]     = useState<string | null>(null);
+  const [syncingId, setSyncingId]     = useState<string | null>(null);
   const [scriptRouter, setScriptRouter]   = useState<RouterType | null>(null);
   const [morososRouter, setMorososRouter] = useState<RouterType | null>(null);
   const [pendingDelete, setPendingDelete] = useState<RouterType | null>(null);
@@ -933,6 +934,19 @@ export function RoutersContent() {
     onSuccess:  () => { queryClient.invalidateQueries({ queryKey: ['routers'] }); toast('Router eliminado', { type: 'success' }); },
     onError:    (err) => toast(parseApiError(err), { type: 'error' }),
   });
+
+  const handleSyncSubnets = async (router: RouterType) => {
+    setSyncingId(router.id);
+    try {
+      const { subnets } = await mikrotikApi.syncSubnets(router.id);
+      toast(`${subnets.length} subnet${subnets.length !== 1 ? 's' : ''} sincronizado${subnets.length !== 1 ? 's' : ''}: ${subnets.join(', ')}`, { type: 'success' });
+      queryClient.invalidateQueries({ queryKey: ['routers'] });
+    } catch (err) {
+      toast(parseApiError(err), { type: 'error' });
+    } finally {
+      setSyncingId(null);
+    }
+  };
 
   const testConexion = async (router: RouterType) => {
     setTestingId(router.id);
@@ -1014,6 +1028,7 @@ export function RoutersContent() {
                 const metodoCfg   = METODO_CONFIG[r.metodoConexion as MetodoConexion];
                 const MetodoIcon  = metodoCfg?.icon ?? Network;
                 const isTesting   = testingId === r.id;
+                const isSyncing   = syncingId === r.id;
 
                 return (
                   <tr key={r.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
@@ -1023,6 +1038,19 @@ export function RoutersContent() {
                       {r.modelo && <div className="text-xs text-gray-600">{r.modelo}</div>}
                       {r.identityRouteros && (
                         <div className="text-xs text-gray-600 font-mono">{r.identityRouteros}</div>
+                      )}
+                      {r.subnetsLocales?.length ? (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {r.subnetsLocales.map((s) => (
+                            <span key={s} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              <Globe className="w-2.5 h-2.5" />{s}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-gray-700 mt-0.5 flex items-center gap-1">
+                          <Globe className="w-2.5 h-2.5" />Sin redes sincronizadas
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 font-mono text-gray-300 text-xs">{r.ipGestion}</td>
@@ -1084,6 +1112,15 @@ export function RoutersContent() {
                           {isTesting
                             ? <Loader2 className="w-4 h-4 animate-spin" />
                             : <RefreshCw className="w-4 h-4" />
+                          }
+                        </button>
+                        <button onClick={() => handleSyncSubnets(r)} disabled={isSyncing}
+                          title="Sincronizar redes LAN"
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-50"
+                        >
+                          {isSyncing
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Globe className="w-4 h-4" />
                           }
                         </button>
                         <button onClick={() => setScriptRouter(r)} title="Script de conexión MikroTik"

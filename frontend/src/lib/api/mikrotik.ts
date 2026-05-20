@@ -37,6 +37,7 @@ export interface Router {
   autoConfigurarPppoe:    boolean;
   autoConfigurarFirewall: boolean;
   snmpCommunity:    string;
+  subnetsLocales?:  string[];
   activo:           boolean;
   createdAt:        string;
 }
@@ -126,6 +127,11 @@ export const mikrotikApi = {
 
   testConexion: async (id: string): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> => {
     const { data } = await api.post(`/mikrotik/routers/${id}/test`);
+    return data.data;
+  },
+
+  syncSubnets: async (id: string): Promise<{ subnets: string[] }> => {
+    const { data } = await api.post(`/mikrotik/routers/${id}/sync-subnets`);
     return data.data;
   },
 

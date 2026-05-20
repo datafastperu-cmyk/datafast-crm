@@ -166,11 +166,32 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
                 <option value="">Sin asignar</option>
                 {routers.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.nombre} — {r.ipGestion}
+                    {r.nombre} — {r.vpnIp || r.ipGestion}
                   </option>
                 ))}
               </select>
             </Row>
+
+            {/* Subnets del router seleccionado */}
+            {form.routerId && (() => {
+              const sel = routers.find(r => r.id === form.routerId);
+              return sel?.subnetsLocales?.length ? (
+                <div className="col-span-2 ml-[176px]">
+                  <div className="flex flex-wrap gap-1.5">
+                    {sel.subnetsLocales.map((s) => (
+                      <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Redes gestionadas por este router</p>
+                </div>
+              ) : sel ? (
+                <div className="col-span-2 ml-[176px] text-xs text-muted-foreground">
+                  Sin redes sincronizadas — usa "Sincronizar redes" en la sección Red
+                </div>
+              ) : null;
+            })()}
 
             <Row label="Tipo de equipo">
               <select value={form.tipo} onChange={(e) => set('tipo', e.target.value)} className={INPUT}>

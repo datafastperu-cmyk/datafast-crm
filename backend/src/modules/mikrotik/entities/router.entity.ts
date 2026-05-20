@@ -160,6 +160,10 @@ export class Router extends BaseModel {
   @Column({ name: 'vpn_ip', length: 50, nullable: true })
   vpnIp: string;
 
+  // ── Redes locales gestionadas por este router ─────────────
+  @Column({ name: 'subnets_locales', type: 'json', nullable: true })
+  subnetsLocales: string[];
+
   // ── Zona / Sector ─────────────────────────────────────────
   @Column({ length: 100, nullable: true })
   zona: string;

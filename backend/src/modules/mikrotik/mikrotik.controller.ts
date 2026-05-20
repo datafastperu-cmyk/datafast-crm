@@ -118,6 +118,19 @@ export class MikrotikController {
     return StdResponse.ok(await this.svc.getEstadoRouter(id, user.empresaId));
   }
 
+  @Post('routers/:id/sync-subnets')
+  @RequirePermission('mikrotik:manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sincronizar subnets LAN del router y aplicar rutas en el VPS' })
+  @ApiParam({ name: 'id' })
+  async syncSubnets(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const subnets = await this.svc.syncSubnets(id, user.empresaId);
+    return StdResponse.ok({ subnets }, `${subnets.length} subnet${subnets.length !== 1 ? 's' : ''} sincronizado${subnets.length !== 1 ? 's' : ''}`);
+  }
+
   @Post('routers/:id/test')
   @RequirePermission('mikrotik:view')
   @HttpCode(HttpStatus.OK)
