@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Eye, Wifi, Server, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Wifi, ChevronDown, X } from 'lucide-react';
 import { redesApi, type SegmentoIpv4, type CreateSegmentoDto, type DisponibilidadSegmento } from '@/lib/api/contratos';
 import type { Router } from '@/lib/api/mikrotik';
 import { useToast } from '@/components/ui/toaster';
@@ -213,7 +213,7 @@ function DisponibilidadView({ dispo }: { dispo: DisponibilidadSegmento }) {
   );
 }
 
-// ─── Form component ───────────────────────────────────────────
+// ─── Form component (modal) ───────────────────────────────────
 function SegmentoForm({
   routers, onClose, onCreated,
 }: {
@@ -249,83 +249,100 @@ function SegmentoForm({
     setForm((prev) => ({ ...prev, [k]: v }));
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-      <h3 className="text-sm font-semibold text-foreground">Nuevo segmento IPv4</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">Nombre *</label>
-          <input
-            value={form.nombre}
-            onChange={(e) => set('nombre', e.target.value)}
-            placeholder="Red Clientes Piura"
-            className={inputCls()}
-          />
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 className="font-semibold text-foreground">Nuevo segmento IPv4</h3>
+          <button type="button" onClick={onClose}
+            className="p-1 rounded-lg hover:bg-muted transition-colors">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
         </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">Tipo de servicio</label>
-          <select value={form.tipoServicio} onChange={(e) => set('tipoServicio', e.target.value)} className={inputCls()}>
-            <option value="ftth">FTTH</option>
-            <option value="wisp">WISP</option>
-            <option value="dedicado">Dedicado</option>
-          </select>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Nombre *</label>
+              <input
+                value={form.nombre}
+                onChange={(e) => set('nombre', e.target.value)}
+                placeholder="Red Clientes Piura"
+                className={inputCls()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Tipo de servicio</label>
+              <select value={form.tipoServicio} onChange={(e) => set('tipoServicio', e.target.value)} className={inputCls()}>
+                <option value="ftth">FTTH</option>
+                <option value="wisp">WISP</option>
+                <option value="dedicado">Dedicado</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Red CIDR *</label>
+              <input
+                value={form.redCidr}
+                onChange={(e) => set('redCidr', e.target.value)}
+                placeholder="192.168.1.0/24"
+                className={cn(inputCls(), 'font-mono')}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Gateway *</label>
+              <input
+                value={form.gateway}
+                onChange={(e) => set('gateway', e.target.value)}
+                placeholder="192.168.1.1"
+                className={cn(inputCls(), 'font-mono')}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">DNS primario</label>
+              <input
+                value={form.dnsPrimario}
+                onChange={(e) => set('dnsPrimario', e.target.value)}
+                placeholder="8.8.8.8"
+                className={cn(inputCls(), 'font-mono')}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">DNS secundario</label>
+              <input
+                value={form.dnsSecundario}
+                onChange={(e) => set('dnsSecundario', e.target.value)}
+                placeholder="8.8.4.4"
+                className={cn(inputCls(), 'font-mono')}
+              />
+            </div>
+            <div className="space-y-1.5 col-span-2">
+              <label className="text-xs font-medium text-foreground">Router MikroTik (opcional)</label>
+              <select value={form.routerId} onChange={(e) => set('routerId', e.target.value)} className={inputCls()}>
+                <option value="">Sin asignar</option>
+                {routers.map((r) => (
+                  <option key={r.id} value={r.id}>{r.nombre} — {r.host}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">Red CIDR *</label>
-          <input
-            value={form.redCidr}
-            onChange={(e) => set('redCidr', e.target.value)}
-            placeholder="192.168.1.0/24"
-            className={cn(inputCls(), 'font-mono')}
-          />
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-border">
+          <button onClick={onClose} disabled={isPending}
+            className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors disabled:opacity-50">
+            Cancelar
+          </button>
+          <button
+            onClick={() => crear()}
+            disabled={isPending || !form.nombre || !form.redCidr || !form.gateway}
+            className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+          >
+            {isPending ? 'Guardando...' : 'Crear segmento'}
+          </button>
         </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">Gateway *</label>
-          <input
-            value={form.gateway}
-            onChange={(e) => set('gateway', e.target.value)}
-            placeholder="192.168.1.1"
-            className={cn(inputCls(), 'font-mono')}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">DNS primario</label>
-          <input
-            value={form.dnsPrimario}
-            onChange={(e) => set('dnsPrimario', e.target.value)}
-            placeholder="8.8.8.8"
-            className={cn(inputCls(), 'font-mono')}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">DNS secundario</label>
-          <input
-            value={form.dnsSecundario}
-            onChange={(e) => set('dnsSecundario', e.target.value)}
-            placeholder="8.8.4.4"
-            className={cn(inputCls(), 'font-mono')}
-          />
-        </div>
-        <div className="space-y-1.5 col-span-2">
-          <label className="text-xs font-medium text-foreground">Router MikroTik (opcional)</label>
-          <select value={form.routerId} onChange={(e) => set('routerId', e.target.value)} className={inputCls()}>
-            <option value="">Sin asignar</option>
-            {routers.map((r) => (
-              <option key={r.id} value={r.id}>{r.nombre} — {r.host}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div className="flex justify-end gap-3 pt-2">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
-          Cancelar
-        </button>
-        <button
-          onClick={() => crear()}
-          disabled={isPending || !form.nombre || !form.redCidr || !form.gateway}
-          className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
-        >
-          {isPending ? 'Guardando...' : 'Crear segmento'}
-        </button>
       </div>
     </div>
   );
