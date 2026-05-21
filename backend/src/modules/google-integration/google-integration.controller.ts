@@ -44,7 +44,8 @@ export class GoogleIntegrationController {
   ) {}
 
   private checkConfigured(): void {
-    if (!this.config.get<string>('GOOGLE_CLIENT_ID')) {
+    // process.env refleja cambios en runtime (saveAppConfig); ConfigService solo lee al arranque
+    if (!process.env.GOOGLE_CLIENT_ID) {
       throw new ServiceUnavailableException(
         'La integración con Google no está configurada. El administrador del servidor debe agregar las credenciales de Google Cloud.',
       );

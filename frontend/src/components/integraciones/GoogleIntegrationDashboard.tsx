@@ -253,7 +253,9 @@ function ConnectWizard({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const needsSetup = initialStep === 'setup';
+  // needsSetup se recalcula con el step actual para que la barra refleje correctamente
+  // el caso en que el usuario retrocede a Credenciales desde Conocer
+  const needsSetup = initialStep === 'setup' || step === 'setup';
   const [step, setStep]       = useState<WizardStep>(initialStep);
   const [polling, setPolling] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -586,14 +588,12 @@ function ConnectWizard({
               }
               {connectError ? 'Reintentar autorización' : 'Iniciar sesión con Google'}
             </button>
-            {needsSetup && (
-              <button
-                onClick={resetWizard}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors"
-              >
-                Editar credenciales (Client ID / Secret)
-              </button>
-            )}
+            <button
+              onClick={() => setStep('setup')}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors"
+            >
+              Cambiar credenciales (Client ID / Secret)
+            </button>
           </div>
         </div>
       )}
