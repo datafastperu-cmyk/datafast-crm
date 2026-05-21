@@ -23,7 +23,14 @@ interface UseMonitoreoOptions {
   nodoIds?:      string[];
 }
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
+// Derive WS URL from current browser origin — works on any domain/IP.
+// Local dev only: set NEXT_PUBLIC_WS_URL=http://localhost:4000 in .env.local
+function getWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  if (typeof window === 'undefined') return 'http://localhost:4000';
+  return `${window.location.protocol}//${window.location.host}`;
+}
+const WS_URL = getWsUrl();
 
 export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
   const socketRef = useRef<Socket | null>(null);

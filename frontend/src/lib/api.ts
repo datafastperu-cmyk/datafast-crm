@@ -1,7 +1,9 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import Cookies from 'js-cookie';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+// Empty string = relative path — works on any server/domain via nginx proxy.
+// Local dev only: set NEXT_PUBLIC_API_URL=http://localhost:4000 in .env.local
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 // ─── Instancia principal ──────────────────────────────────────
 export const api = axios.create({
