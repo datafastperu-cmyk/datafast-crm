@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 
 import { clientesApi }                          from '@/lib/api/clientes';
+import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
 import { TabConfigFacturacion }                from './TabConfigFacturacion';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
@@ -90,6 +91,11 @@ export function ClienteDetalle({ id }: { id: string }) {
     enabled:  tab === 'servicios' || tab === 'resumen',
   });
 
+  const { data: zonas = [] } = useQuery({
+    queryKey: ['zonas'],
+    queryFn:  zonasApi.list,
+  });
+
   // Inicializar formulario una sola vez
   useEffect(() => {
     if (cliente && !initialized.current) {
@@ -108,6 +114,9 @@ export function ClienteDetalle({ id }: { id: string }) {
         departamento:    (cliente as any).departamento    ?? '',
         provincia:       (cliente as any).provincia       ?? '',
         distrito:        (cliente as any).distrito        ?? '',
+        zonaId:          (cliente as any).zonaId          ?? '',
+        usuarioPortal:   (cliente as any).usuarioPortal   ?? '',
+        passwordPortal:  (cliente as any).passwordPortal  ?? '',
       });
     }
   }, [cliente]);
@@ -299,11 +308,12 @@ export function ClienteDetalle({ id }: { id: string }) {
                 </div>
               </FormRow>
 
-              <FormRow label="Cliente">
+              <FormRow label="Nombres Completos">
                 <input
-                  value={cliente.nombreCompleto}
-                  readOnly
-                  className={cn(INPUT, 'bg-muted/50 cursor-default')}
+                  value={form.nombres ?? ''}
+                  onChange={(e) => set('nombres', e.target.value)}
+                  placeholder="Piero Escobar Bautista"
+                  className={INPUT}
                 />
               </FormRow>
 
@@ -315,15 +325,29 @@ export function ClienteDetalle({ id }: { id: string }) {
                 />
               </FormRow>
 
-              <FormRow label="Teléfono fijo">
+              <FormRow label="Zona">
+                <select
+                  value={form.zonaId ?? ''}
+                  onChange={(e) => set('zonaId', e.target.value)}
+                  className={INPUT}
+                >
+                  <option value="">— Sin zona —</option>
+                  {(zonas as any[]).filter((z: any) => z.activo).map((z: any) => (
+                    <option key={z.id} value={z.id}>{z.nombre}</option>
+                  ))}
+                </select>
+              </FormRow>
+
+              <FormRow label="WhatsApp">
                 <input
-                  value={form.telefonoAlt ?? ''}
-                  onChange={(e) => set('telefonoAlt', e.target.value)}
+                  value={form.whatsapp ?? ''}
+                  onChange={(e) => set('whatsapp', e.target.value)}
+                  placeholder="987654321"
                   className={INPUT}
                 />
               </FormRow>
 
-              <FormRow label="Teléfono Movil">
+              <FormRow label="Teléfono Móvil">
                 <input
                   value={form.telefono ?? ''}
                   onChange={(e) => set('telefono', e.target.value)}
@@ -340,21 +364,29 @@ export function ClienteDetalle({ id }: { id: string }) {
                 />
               </FormRow>
 
-              <FormRow label="Ubicación">
-                <input
-                  value={[form.departamento, form.provincia, form.distrito].filter(Boolean).join(', ')}
-                  onChange={(e) => set('distrito', e.target.value)}
-                  placeholder="Seleccionar..."
-                  className={INPUT}
-                />
-              </FormRow>
-
-              <FormRow label="Referencia">
-                <input
-                  value={form.referencia ?? ''}
-                  onChange={(e) => set('referencia', e.target.value)}
-                  className={INPUT}
-                />
+              <FormRow label="Credenciales Portal">
+                <div className="flex gap-3">
+                  <div className="flex flex-col gap-1 flex-1">
+                    <span className="text-xs text-muted-foreground">Usuario</span>
+                    <input
+                      value={form.usuarioPortal ?? ''}
+                      onChange={(e) => set('usuarioPortal', e.target.value)}
+                      placeholder="cliente123"
+                      maxLength={12}
+                      className={INPUT}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 flex-1">
+                    <span className="text-xs text-muted-foreground">Contraseña</span>
+                    <input
+                      value={form.passwordPortal ?? ''}
+                      onChange={(e) => set('passwordPortal', e.target.value)}
+                      placeholder="4243Tdp"
+                      maxLength={12}
+                      className={INPUT}
+                    />
+                  </div>
+                </div>
               </FormRow>
 
               <div className="pt-4">
