@@ -8,6 +8,7 @@ export const QUEUES = {
   FACTURACION:   'facturacion',    // Generación masiva de facturas
   NOTIFICACIONES:'notificaciones', // WhatsApp / email masivo
   MIKROTIK:      'mikrotik-jobs',  // Operaciones Mikrotik encoladas
+  GOOGLE_SYNC:   'google-sync',    // Sincronización Google Workspace
 } as const;
 
 // ─── Tipos de jobs por cola ────────────────────────────────
@@ -36,6 +37,13 @@ export const JOBS = {
   MK_SUSPENDER:              'mk-suspender',
   MK_REACTIVAR:              'mk-reactivar',
   MK_SYNC_VELOCIDADES:       'mk-sync-velocidades',
+
+  // ── Google Sync ───────────────────────────────────────────
+  GOOGLE_SYNC_CONTACT:       'google-sync-contact',
+  GOOGLE_SYNC_CONTACTS_BULK: 'google-sync-contacts-bulk',
+  GOOGLE_CALENDAR_EVENT:     'google-calendar-event',
+  GOOGLE_DRIVE_BACKUP:       'google-drive-backup',
+  GOOGLE_GEOCODE_ADDRESS:    'google-geocode-address',
 } as const;
 
 // ─── Payloads tipados ─────────────────────────────────────
