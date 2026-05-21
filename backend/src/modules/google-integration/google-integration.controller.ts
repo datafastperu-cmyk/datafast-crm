@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Delete, Body, Param, Query, Redirect,
-  HttpCode, HttpStatus, Logger, Res,
+  HttpCode, HttpStatus, Logger, Res, ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiTags, ApiOperation, ApiResponse, ApiBearerAuth,
   ApiParam, ApiQuery,
@@ -38,8 +39,17 @@ export class GoogleIntegrationController {
     private readonly calendarSvc:  GoogleCalendarService,
     private readonly driveSvc:     GoogleDriveService,
     private readonly mapsSvc:      GoogleMapsService,
+    private readonly config:       ConfigService,
     @InjectQueue(QUEUES.GOOGLE_SYNC) private readonly googleQueue: Queue,
   ) {}
+
+  private checkConfigured(): void {
+    if (!this.config.get<string>('GOOGLE_CLIENT_ID')) {
+      throw new ServiceUnavailableException(
+        'La integración con Google no está configurada. El administrador del servidor debe agregar las credenciales de Google Cloud.',
+      );
+    }
+  }
 
   // ── OAuth flow ────────────────────────────────────────────
 
@@ -47,6 +57,7 @@ export class GoogleIntegrationController {
   @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Obtener URL de autorización Google OAuth2' })
   getAuthUrl(@Param('empresaId') empresaId: string) {
+    this.checkConfigured();
     const url = this.oauthSvc.generateAuthUrl(empresaId);
     return StdResponse.ok({ url }, 'URL generada');
   }

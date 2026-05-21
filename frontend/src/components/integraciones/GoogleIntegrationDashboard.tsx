@@ -202,8 +202,18 @@ function ConnectWizard({
       setStep('authorizing');
       setPolling(true);
     },
-    onError: () => {
-      setConnectError('No se pudo iniciar la conexión. Verifica tu conexión a internet e inténtalo de nuevo.');
+    onError: (err: any) => {
+      const status = err?.response?.status;
+      if (status === 503) {
+        setConnectError(
+          'La integración con Google no está configurada en el servidor aún. ' +
+          'Debes agregar las credenciales de Google Cloud en el archivo .env.production del servidor y reiniciar el backend.',
+        );
+      } else if (status === 403) {
+        setConnectError('No tienes permisos para conectar Google. Contacta al administrador del sistema.');
+      } else {
+        setConnectError('No se pudo iniciar la conexión. Verifica tu conexión a internet e inténtalo de nuevo.');
+      }
       setStep('welcome');
     },
   });
