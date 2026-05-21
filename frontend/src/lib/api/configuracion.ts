@@ -24,6 +24,16 @@ export interface Empresa {
 
 export interface UpdateEmpresaDto extends Partial<Omit<Empresa, 'id' | 'estado'>> {}
 
+export interface SslStatus {
+  hasCert:    boolean;
+  expiresAt:  string | null;
+  domain:     string | null;
+  cloudflare: boolean;
+  serverIp:   string;
+  domainIp:   string | null;
+  dnsOk:      boolean;
+}
+
 // ─── Usuario ──────────────────────────────────────────────────
 export interface UsuarioAdmin {
   id:            string;

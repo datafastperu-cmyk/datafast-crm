@@ -5,9 +5,14 @@ import { useForm }             from 'react-hook-form';
 import { zodResolver }         from '@hookform/resolvers/zod';
 import { z }                   from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Upload, Building2, Globe, ExternalLink, Info } from 'lucide-react';
+import {
+  Loader2, Upload, Building2, Globe, ExternalLink, Info,
+  ShieldCheck, ShieldAlert, ShieldX, RefreshCw, AlertTriangle,
+} from 'lucide-react';
 
 import { configApi, type UpdateEmpresaDto } from '@/lib/api/configuracion';
+import api from '@/lib/api';
+import type { ApiRespuesta } from '@/types';
 import { useToast }  from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
@@ -154,51 +159,46 @@ export function EmpresaTab() {
         </div>
       </Section>
 
-      {/* Dominio */}
-      <Section title="Dominio del servidor">
+      {/* Dominio + SSL */}
+      <Section title="Dominio y certificado HTTPS">
         <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-4 mb-4">
           <div className="flex gap-2.5">
             <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-            <div className="space-y-2 text-xs text-blue-700 dark:text-blue-300">
-              <p className="font-medium">¿Para qué sirve el dominio?</p>
+            <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1.5">
+              <p className="font-medium">¿Cómo funciona?</p>
+              <p>Ingresa el dominio o subdominio que apunta a este servidor. El sistema obtiene el certificado HTTPS automáticamente.</p>
               <p>
-                Algunas integraciones (como Google OAuth) requieren una dirección web en lugar de una IP
-                para funcionar correctamente. Configura aquí el dominio que apunta a la IP de tu servidor.
+                Sin dominio propio, usa{' '}
+                <a href="https://www.duckdns.org" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 underline font-medium">
+                  DuckDNS <ExternalLink className="w-3 h-3" />
+                </a>
+                {' '}o{' '}
+                <a href="https://www.noip.com" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 underline font-medium">
+                  No-IP <ExternalLink className="w-3 h-3" />
+                </a>
+                {' '}(gratuitos). Crea una cuenta, registra un subdominio y apúntalo a la IP de este servidor. Luego ingresa ese subdominio aquí.
               </p>
-              <p className="font-medium mt-1">Opciones para obtener un dominio:</p>
-              <ul className="space-y-1 list-none">
-                <li>
-                  <a href="https://www.duckdns.org" target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 underline hover:text-blue-900">
-                    DuckDNS (gratis) <ExternalLink className="w-3 h-3" />
-                  </a>
-                  {' '}— regístrate, crea un subdominio (ej. <code className="font-mono">miempresa.duckdns.org</code>) y apúntalo a la IP de tu servidor.
-                </li>
-                <li>
-                  <a href="https://www.noip.com" target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 underline hover:text-blue-900">
-                    No-IP (gratis) <ExternalLink className="w-3 h-3" />
-                  </a>
-                  {' '}— similar a DuckDNS, permite usar tu propio dominio o uno gratuito.
-                </li>
-                <li>Si ya tienes un dominio propio, crea un registro DNS tipo <code className="font-mono">A</code> apuntando a la IP de tu servidor.</li>
-              </ul>
             </div>
           </div>
         </div>
-        <Field label="Dominio (sin https://)">
+
+        <Field label="Dominio o subdominio (sin https://)">
           <div className="relative">
             <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
               {...register('dominio')}
-              placeholder="miempresa.duckdns.org"
+              placeholder="erp.miisp.com  ó  miisp.duckdns.org"
               className={cn(inp(), 'pl-9')}
             />
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Al guardar, este dominio se usará como base para las integraciones (Google, callbacks OAuth, etc.)
+            Guarda los cambios primero, luego activa el HTTPS con el botón de abajo.
           </p>
         </Field>
+
+        <SslStatusCard />
       </Section>
 
       {/* Notificaciones */}
@@ -236,6 +236,121 @@ export function EmpresaTab() {
         </button>
       </div>
     </form>
+  );
+}
+
+// ─── SSL Status Card ──────────────────────────────────────────
+
+interface SslStatusData {
+  hasCert: boolean; expiresAt: string | null; domain: string | null;
+  cloudflare: boolean; serverIp: string; domainIp: string | null; dnsOk: boolean;
+}
+interface SslResult { success: boolean; message: string; hint?: string; cloudflare?: boolean; }
+
+function SslStatusCard() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data, isLoading, refetch } = useQuery<SslStatusData>({
+    queryKey: ['ssl-status'],
+    queryFn: async () => {
+      const res = await api.get<ApiRespuesta<SslStatusData>>('/config/ssl-status');
+      return res.data.data;
+    },
+    staleTime: 30_000,
+  });
+
+  const { mutate: provisionar, isPending } = useMutation<SslResult>({
+    mutationFn: async () => {
+      const res = await api.post<ApiRespuesta<SslResult>>('/config/provisionar-ssl');
+      return res.data.data;
+    },
+    onSuccess: (result) => {
+      if (result.success) {
+        toast('Certificado HTTPS activado correctamente', { type: 'success' });
+        qc.invalidateQueries({ queryKey: ['ssl-status'] });
+      } else {
+        toast(result.message, { type: 'error' });
+      }
+    },
+    onError: () => toast('Error al obtener el certificado SSL', { type: 'error' }),
+  });
+
+  if (!data && isLoading) {
+    return <div className="h-16 rounded-xl bg-muted animate-pulse mt-3" />;
+  }
+  if (!data?.domain) return null;
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-foreground">Estado del certificado HTTPS</p>
+        <button type="button" onClick={() => refetch()}
+          className="p-1 rounded hover:bg-muted transition-colors">
+          <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      </div>
+
+      {/* DNS status */}
+      {data.domainIp && !data.dnsOk && !data.cloudflare && (
+        <div className="flex gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive">
+          <ShieldX className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">El dominio no apunta a este servidor</p>
+            <p>El dominio resuelve a <code className="font-mono">{data.domainIp}</code> pero este servidor está en <code className="font-mono">{data.serverIp}</code>. Actualiza el registro DNS.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Cloudflare proxy detected */}
+      {data.cloudflare && !data.hasCert && (
+        <div className="flex gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-medium">Tu dominio usa Cloudflare Proxy</p>
+            <p>Para obtener el certificado HTTPS, necesitas desactivar temporalmente el proxy:</p>
+            <ol className="list-decimal list-inside space-y-0.5 ml-1">
+              <li>Ve a <strong>Cloudflare → DNS → Records</strong></li>
+              <li>Haz clic en el ícono naranja del registro de tu dominio → cambia a <strong>DNS only</strong> (nube gris)</li>
+              <li>Regresa aquí y haz clic en <strong>Activar HTTPS</strong></li>
+              <li>Una vez obtenido el certificado, vuelve a activar el proxy en Cloudflare (nube naranja)</li>
+            </ol>
+          </div>
+        </div>
+      )}
+
+      {/* Cert status */}
+      {data.hasCert ? (
+        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+          <ShieldCheck className="w-4 h-4 text-green-600 shrink-0" />
+          <div className="text-xs">
+            <p className="font-medium text-green-700 dark:text-green-400">HTTPS activo</p>
+            {data.expiresAt && (
+              <p className="text-green-600 dark:text-green-500">
+                Vence el {new Date(data.expiresAt).toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' })} · Se renueva automáticamente
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border border-border">
+          <ShieldAlert className="w-4 h-4 text-muted-foreground shrink-0" />
+          <p className="text-xs text-muted-foreground">Sin certificado HTTPS todavía</p>
+        </div>
+      )}
+
+      {!data.hasCert && (data.dnsOk || data.cloudflare) && (
+        <button
+          type="button"
+          onClick={() => provisionar()}
+          disabled={isPending}
+          className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+        >
+          {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+          {isPending ? 'Obteniendo certificado…' : 'Activar HTTPS'}
+        </button>
+      )}
+    </div>
   );
 }
 

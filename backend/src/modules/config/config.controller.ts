@@ -1,6 +1,7 @@
 import {
   Controller, Get, Put, Post,
   Body, UploadedFile, UseInterceptors,
+  HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -49,5 +50,27 @@ export class ConfigController {
   ) {
     const result = await this.svc.uploadLogo(user.empresaId, file);
     return ApiResponse.ok(result, 'Logo actualizado');
+  }
+
+  @Get('ssl-status')
+  @RequirePermission('configuracion:view')
+  @ApiOperation({ summary: 'Estado del certificado SSL del dominio configurado' })
+  async getSslStatus(@CurrentUser() user: JwtPayload) {
+    const empresa = await this.svc.getEmpresa(user.empresaId);
+    const status  = await this.svc.getSslStatus(empresa.dominio);
+    return ApiResponse.ok(status);
+  }
+
+  @Post('provisionar-ssl')
+  @RequirePermission('configuracion:manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Obtener certificado SSL automáticamente para el dominio configurado' })
+  async provisionarSsl(@CurrentUser() user: JwtPayload) {
+    const empresa = await this.svc.getEmpresa(user.empresaId);
+    if (!empresa.dominio) {
+      return ApiResponse.ok({ success: false, message: 'Configura primero el dominio de tu servidor.' });
+    }
+    const result = await this.svc.provisionSsl(empresa.dominio, empresa.email ?? '');
+    return ApiResponse.ok(result, result.message);
   }
 }
