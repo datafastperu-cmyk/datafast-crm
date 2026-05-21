@@ -7,7 +7,7 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
   typescript: {
-    ignoreBuildErrors: true,  // TODO: run `npm run type-check` to see ~60 pre-existing errors; set to false once fixed
+    ignoreBuildErrors: false,
   },
   eslint: {
     ignoreDuringBuilds: false,  // ESLint DOES block build on errors
