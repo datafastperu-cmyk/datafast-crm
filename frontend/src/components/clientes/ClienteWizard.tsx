@@ -468,7 +468,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
       <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border/50">
 
         {/* Nº Identificación */}
-        <FormRow label="Nº Identificación" hint="CEDULA, DNI, RUC, CUIT, NIT, SAT, RUT, RTN, ETC.">
+        <FormRow label="Nº Identificación" required hint="CEDULA, DNI, RUC, CUIT, NIT, SAT, RUT, RTN, ETC.">
           <div className="flex gap-2">
             <input
               {...register('numeroDocumento')}
