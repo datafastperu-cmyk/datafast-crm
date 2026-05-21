@@ -246,7 +246,7 @@ export function ClienteDetalle({ id }: { id: string }) {
             {/* Izquierda: Datos del cliente */}
             <div className="p-6 space-y-1">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-4">
-                <span className="text-primary font-bold">&raquo;</span> Datos del cliente
+                <span className="text-primary font-bold">&raquo;</span> Datos del Abonado
               </h3>
 
               <FormRow label="Estado">
