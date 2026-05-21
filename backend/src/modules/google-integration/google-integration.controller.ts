@@ -13,6 +13,7 @@ import { Queue } from 'bull';
 
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission }       from '../../common/decorators/roles.decorator';
+import { Public }                  from '../../common/decorators/public.decorator';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 
 import { GoogleOAuthService, SaveAppConfigDto } from './services/google-oauth.service';
@@ -77,6 +78,7 @@ export class GoogleIntegrationController {
   }
 
   @Get('auth/callback')
+  @Public()
   @ApiOperation({ summary: 'Callback OAuth2 de Google — redirige al frontend' })
   async handleCallback(
     @Query('code')  code:  string,
