@@ -176,7 +176,7 @@ export function UsuariosTab() {
 
             <form onSubmit={handleSubmit((v) => crear(v))} className="p-6 space-y-4">
               <Field label="Nombre completo *" error={errors.nombreCompleto?.message}>
-                <input {...register('nombreCompleto')} placeholder="Juan Pérez" className={inp(!!errors.nombreCompleto)} />
+                <input {...register('nombreCompleto')} placeholder="Piero Escobar Bautista" className={inp(!!errors.nombreCompleto)} />
               </Field>
               <Field label="Email *" error={errors.email?.message}>
                 <input {...register('email')} type="email" placeholder="juan@datafast.pe" className={inp(!!errors.email)} />

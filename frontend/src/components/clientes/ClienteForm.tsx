@@ -195,13 +195,13 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
 
         <div className="grid grid-cols-3 gap-4">
           <Field label="Nombres" error={errors.nombres?.message}>
-            <input {...register('nombres')} placeholder="Juan Carlos" className={inputCls(!!errors.nombres)} />
+            <input {...register('nombres')} placeholder="Piero" className={inputCls(!!errors.nombres)} />
           </Field>
           <Field label="Apellido paterno" error={errors.apellidoPaterno?.message}>
-            <input {...register('apellidoPaterno')} placeholder="Pérez" className={inputCls(!!errors.apellidoPaterno)} />
+            <input {...register('apellidoPaterno')} placeholder="Escobar" className={inputCls(!!errors.apellidoPaterno)} />
           </Field>
           <Field label="Apellido materno">
-            <input {...register('apellidoMaterno')} placeholder="García" className={inputCls()} />
+            <input {...register('apellidoMaterno')} placeholder="Bautista" className={inputCls()} />
           </Field>
         </div>
 
