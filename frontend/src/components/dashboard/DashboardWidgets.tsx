@@ -282,7 +282,7 @@ export function UltimosPagos() {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-sm font-semibold text-foreground">
-                    S/ {parseFloat(p.monto).toFixed(2)}
+                    S/ {parseFloat(String(p.monto)).toFixed(2)}
                   </p>
                   <span className={cn(
                     'text-[10px] font-medium px-1.5 py-0.5 rounded-full',

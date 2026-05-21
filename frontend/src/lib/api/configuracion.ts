@@ -1,5 +1,5 @@
 import api from '@/lib/api';
-import type { ApiRespuesta } from '@/types';
+import type { ApiRespuesta, Usuario } from '@/types';
 
 // ─── Empresa ──────────────────────────────────────────────────
 export interface Empresa {
@@ -130,13 +130,13 @@ export const configApi = {
     await api.patch('/auth/change-password', dto);
   },
 
-  getMe: async () => {
-    const res = await api.get<ApiRespuesta>('/auth/me');
+  getMe: async (): Promise<Usuario> => {
+    const res = await api.get<ApiRespuesta<Usuario>>('/auth/me');
     return res.data.data;
   },
 
   getRoles: async (): Promise<string[]> => {
-    const res = await api.get<ApiRespuesta>('/auth/roles');
+    const res = await api.get<ApiRespuesta<string[]>>('/auth/roles');
     return res.data.data ?? ['Administrador', 'Supervisor', 'Cajero', 'Técnico'];
   },
 };
@@ -145,7 +145,7 @@ export const configApi = {
 export const reportesApi = {
 
   getResumenGeneral: async (): Promise<Record<string, Record<string, number>>> => {
-    const res = await api.get<ApiRespuesta>('/reportes/resumen');
+    const res = await api.get<ApiRespuesta<Record<string, Record<string, number>>>>('/reportes/resumen');
     return res.data.data;
   },
 

@@ -59,19 +59,19 @@ export function ServidorTab() {
   const restartMutation = useMutation({
     mutationFn: sistemaApi.restart,
     onSuccess: () => {
-      toast({ title: 'Reinicio iniciado', description: 'El servidor se reiniciará en unos segundos.' });
+      toast('Reinicio iniciado — El servidor se reiniciará en unos segundos.', { type: 'success' });
       setConfirmRestart(false);
     },
-    onError: () => toast({ title: 'Error', description: 'No se pudo iniciar el reinicio.', variant: 'destructive' }),
+    onError: () => toast('No se pudo iniciar el reinicio.', { type: 'error' }),
   });
 
   const updateMutation = useMutation({
     mutationFn: sistemaApi.update,
     onSuccess: () => {
-      toast({ title: 'Actualización iniciada', description: 'El servidor se reiniciará al terminar. Puede tardar varios minutos.' });
+      toast('Actualización iniciada — El servidor se reiniciará al terminar. Puede tardar varios minutos.', { type: 'success' });
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ['sistema-info'] }), 5000);
     },
-    onError: () => toast({ title: 'Error', description: 'No se pudo iniciar la actualización.', variant: 'destructive' }),
+    onError: () => toast('No se pudo iniciar la actualización.', { type: 'error' }),
   });
 
   if (isLoading) {

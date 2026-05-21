@@ -46,7 +46,7 @@ export function PagosContent() {
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['pagos', params],
     queryFn:  () => pagosApi.list(params),
-    keepPreviousData: true,
+    placeholderData: (prevData) => prevData,
     refetchInterval: 30_000,
   });
 

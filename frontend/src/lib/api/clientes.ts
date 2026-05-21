@@ -1,5 +1,5 @@
 import api from '@/lib/api';
-import type { Cliente, Contrato, HistorialEntry, PaginaRespuesta, ApiRespuesta } from '@/types';
+import type { Cliente, Contrato, HistorialEntry, PaginaRespuesta, PaginaMeta, ApiRespuesta } from '@/types';
 
 export interface FiltrosCliente {
   search?:      string;
@@ -12,7 +12,7 @@ export interface FiltrosCliente {
 }
 
 export interface CreateClienteDto {
-  tipoDocumento:    string;
+  tipoDocumento?:   string;
   numeroDocumento:  string;
   nombres:          string;
   apellidoPaterno:  string;
@@ -33,6 +33,8 @@ export interface CreateClienteDto {
   rucEmpresa?:      string;
   razonSocial?:     string;
   notasInternas?:   string;
+  usuarioPortal?:   string;
+  passwordPortal?:  string;
 }
 
 export interface ReniecDatos {
@@ -54,8 +56,8 @@ export interface ReniecDatos {
 export const clientesApi = {
 
   list: async (filtros: FiltrosCliente = {}): Promise<PaginaRespuesta<Cliente>> => {
-    const res = await api.get<ApiRespuesta>('/clientes', { params: filtros });
-    return { data: res.data.data, meta: res.data.meta?.meta };
+    const res = await api.get<ApiRespuesta<Cliente[]>>('/clientes', { params: filtros });
+    return { data: res.data.data ?? [], meta: res.data.meta?.['meta'] as PaginaMeta };
   },
 
   getById: async (id: string): Promise<Cliente> => {
@@ -94,7 +96,7 @@ export const clientesApi = {
   },
 
   getStats: async (): Promise<Record<string, number>> => {
-    const res = await api.get<ApiRespuesta>('/clientes/resumen');
+    const res = await api.get<ApiRespuesta<Record<string, number>>>('/clientes/resumen');
     return res.data.data;
   },
 
@@ -113,12 +115,12 @@ export const clientesApi = {
     action: 'suspender' | 'reactivar' | 'baja_temporal' | 'marcar_moroso',
     motivo?: string,
   ): Promise<{ ok: number; errors: number; total: number }> => {
-    const res = await api.post<ApiRespuesta>('/clientes/bulk-action', { ids, action, motivo });
+    const res = await api.post<ApiRespuesta<{ ok: number; errors: number; total: number }>>('/clientes/bulk-action', { ids, action, motivo });
     return res.data.data;
   },
 
   getFacturacionConfig: async (clienteId: string): Promise<{ facturacion: Record<string, any> | null; notificaciones: Record<string, any> | null }> => {
-    const res = await api.get<ApiRespuesta>(`/clientes/${clienteId}/facturacion-config`);
+    const res = await api.get<ApiRespuesta<{ facturacion: Record<string, any> | null; notificaciones: Record<string, any> | null }>>(`/clientes/${clienteId}/facturacion-config`);
     return res.data.data;
   },
 

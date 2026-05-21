@@ -62,7 +62,7 @@ export function FacturacionContent() {
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['facturas', params],
     queryFn:  () => facturacionApi.list(params),
-    keepPreviousData: true,
+    placeholderData: (prevData) => prevData,
   });
 
   const { data: resumen } = useQuery({

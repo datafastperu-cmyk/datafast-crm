@@ -842,7 +842,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const cajaNap         = watch('cajaNapId');
 
   const { data: routersRaw = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
-  const routers = (routersRaw as typeof MOCK_ROUTERS).length ? (routersRaw as typeof MOCK_ROUTERS) : MOCK_ROUTERS;
+  const routers = (routersRaw as unknown as typeof MOCK_ROUTERS).length ? (routersRaw as unknown as typeof MOCK_ROUTERS) : MOCK_ROUTERS;
 
   const PUERTOS_NAP = cajaNap
     ? Array.from({ length: 8 }, (_, i) => ({ id: `p${i + 1}`, nombre: `Puerto ${i + 1}` }))

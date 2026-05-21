@@ -1,5 +1,5 @@
 import api from '@/lib/api';
-import type { Factura, Pago, PaginaRespuesta, ApiRespuesta } from '@/types';
+import type { Factura, Pago, PaginaRespuesta, PaginaMeta, ApiRespuesta } from '@/types';
 
 // ─── Filtros ──────────────────────────────────────────────────
 export interface FiltrosFactura {
@@ -116,8 +116,8 @@ export interface CuentaBancaria {
 export const facturacionApi = {
 
   list: async (filtros: FiltrosFactura = {}): Promise<PaginaRespuesta<Factura>> => {
-    const res = await api.get<ApiRespuesta>('/facturacion', { params: filtros });
-    return { data: res.data.data, meta: res.data.meta?.meta };
+    const res = await api.get<ApiRespuesta<Factura[]>>('/facturacion', { params: filtros });
+    return { data: res.data.data ?? [], meta: res.data.meta?.['meta'] as PaginaMeta };
   },
 
   create: async (dto: CreateFacturaDto): Promise<Factura> => {
@@ -163,19 +163,19 @@ export const facturacionApi = {
     totalEmitidas: number; totalPagadas: number;
     totalVencidas: number; montoTotal: number; montoPendiente: number;
   }> => {
-    const res = await api.get<ApiRespuesta>('/facturacion/resumen');
+    const res = await api.get<ApiRespuesta<{ totalEmitidas: number; totalPagadas: number; totalVencidas: number; montoTotal: number; montoPendiente: number }>>('/facturacion/resumen');
     return res.data.data;
   },
 
   getPagos: async (facturaId: string): Promise<Pago[]> => {
-    const res = await api.get<ApiRespuesta>(`/pagos/factura/${facturaId}`);
-    return res.data.data;
+    const res = await api.get<ApiRespuesta<Pago[]>>(`/pagos/factura/${facturaId}`);
+    return res.data.data ?? [];
   },
 
   crearPreferenciaMp: async (facturaId: string): Promise<{
     id: string; init_point: string; sandbox_init_point: string;
   }> => {
-    const res = await api.post<ApiRespuesta>(
+    const res = await api.post<ApiRespuesta<{ id: string; init_point: string; sandbox_init_point: string }>>(
       '/pagos/mercadopago/preferencia',
       { facturaId },
     );
@@ -187,8 +187,8 @@ export const facturacionApi = {
 export const pagosApi = {
 
   list: async (filtros: FiltrosPago = {}): Promise<PaginaRespuesta<Pago>> => {
-    const res = await api.get<ApiRespuesta>('/pagos', { params: filtros });
-    return { data: res.data.data, meta: res.data.meta?.meta };
+    const res = await api.get<ApiRespuesta<Pago[]>>('/pagos', { params: filtros });
+    return { data: res.data.data ?? [], meta: res.data.meta?.['meta'] as PaginaMeta };
   },
 
   getById: async (id: string): Promise<Pago> => {
@@ -216,8 +216,8 @@ export const pagosApi = {
   },
 
   getPendientes: async (): Promise<Pago[]> => {
-    const res = await api.get<ApiRespuesta>('/pagos/pendientes');
-    return res.data.data;
+    const res = await api.get<ApiRespuesta<Pago[]>>('/pagos/pendientes');
+    return res.data.data ?? [];
   },
 
   getResumen: async (): Promise<ResumenCobranza> => {
@@ -226,8 +226,8 @@ export const pagosApi = {
   },
 
   getPorCliente: async (clienteId: string): Promise<Pago[]> => {
-    const res = await api.get<ApiRespuesta>(`/pagos/cliente/${clienteId}`);
-    return res.data.data;
+    const res = await api.get<ApiRespuesta<Pago[]>>(`/pagos/cliente/${clienteId}`);
+    return res.data.data ?? [];
   },
 
   getCuentasBancarias: async (): Promise<CuentaBancaria[]> => {

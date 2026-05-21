@@ -10,7 +10,7 @@ import {
   ArrowLeft, Plus, Trash2, Bell, Loader2,
 } from 'lucide-react';
 
-import { monitoreoApi, METRICAS_ALERTA } from '@/lib/api/monitoreo';
+import { monitoreoApi, METRICAS_ALERTA, type CreateConfigAlertaDto } from '@/lib/api/monitoreo';
 import { useToast }    from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
@@ -76,7 +76,7 @@ export function ConfiguracionAlertas() {
   };
 
   const { mutate: crear, isPending: creando } = useMutation({
-    mutationFn: (values: FormValues) => monitoreoApi.createConfigAlerta(values),
+    mutationFn: (values: FormValues) => monitoreoApi.createConfigAlerta(values as CreateConfigAlertaDto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config-alertas'] });
       toast('Configuración de alerta creada', { type: 'success' });

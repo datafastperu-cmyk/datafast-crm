@@ -38,7 +38,7 @@ export function ContratosContent() {
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey:  ['contratos', params],
     queryFn:   () => contratosApi.list(params),
-    keepPreviousData: true,
+    placeholderData: (prevData) => prevData,
   });
 
   const { data: stats } = useQuery({

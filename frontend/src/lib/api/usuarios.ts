@@ -18,8 +18,8 @@ export interface UsuarioDetalle {
 }
 
 export interface CreateUsuarioPayload {
-  nombres:    string;
-  apellidos:  string;
+  nombres?:   string;
+  apellidos?:  string;
   email:      string;
   password:   string;
   telefono?:  string;

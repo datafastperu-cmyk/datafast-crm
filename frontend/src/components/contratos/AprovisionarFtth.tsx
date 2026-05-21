@@ -59,7 +59,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
   // ── Recursos de red ─────────────────────────────────────────
   const { data: olts = [] }         = useQuery({ queryKey: ['olts'],      queryFn: redesApi.listOlts });
   const { data: routers = [] }      = useQuery({ queryKey: ['routers'],   queryFn: redesApi.listRouters });
-  const { data: segmentos = [] }    = useQuery({ queryKey: ['segmentos'], queryFn: redesApi.listSegmentos });
+  const { data: segmentos = [] }    = useQuery({ queryKey: ['segmentos'], queryFn: () => redesApi.listSegmentos() });
   const { data: perfiles = [] }     = useQuery({ queryKey: ['perfiles-smartolt'], queryFn: redesApi.listPerfilesSmartolt });
 
   const {

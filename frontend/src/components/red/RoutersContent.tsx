@@ -1065,7 +1065,7 @@ export function RoutersContent() {
                       <span className="flex items-center gap-1.5 text-xs text-gray-400">
                         <MetodoIcon className="w-3.5 h-3.5" />
                         {metodoCfg?.label ?? r.metodoConexion}
-                        {r.usarSsl && <Lock className="w-3 h-3 text-yellow-400" title="SSL" />}
+                        {r.usarSsl && <Lock className="w-3 h-3 text-yellow-400" />}
                       </span>
                       {r.versionRos && r.versionRos !== 'desconocida' && (
                         <span className="text-[10px] text-gray-600 font-mono">{r.versionRos.toUpperCase()}</span>

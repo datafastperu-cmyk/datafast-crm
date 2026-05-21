@@ -1,5 +1,5 @@
 import api from '@/lib/api';
-import type { Contrato, Plan, Nodo, HistorialEntry, PaginaRespuesta, ApiRespuesta } from '@/types';
+import type { Contrato, Plan, Nodo, HistorialEntry, PaginaRespuesta, PaginaMeta, ApiRespuesta } from '@/types';
 import type { Router } from '@/lib/api/mikrotik';
 
 // ─── Filtros ──────────────────────────────────────────────────
@@ -87,8 +87,8 @@ export interface ResultadoAprovisionamiento {
 export const contratosApi = {
 
   list: async (filtros: FiltrosContrato = {}): Promise<PaginaRespuesta<Contrato>> => {
-    const res = await api.get<ApiRespuesta>('/contratos', { params: filtros });
-    return { data: res.data.data, meta: res.data.meta?.meta };
+    const res = await api.get<ApiRespuesta<Contrato[]>>('/contratos', { params: filtros });
+    return { data: res.data.data ?? [], meta: res.data.meta?.['meta'] as PaginaMeta };
   },
 
   getById: async (id: string): Promise<Contrato> => {
@@ -154,7 +154,7 @@ export const contratosApi = {
   },
 
   getStats: async (): Promise<Record<string, number>> => {
-    const res = await api.get<ApiRespuesta>('/contratos/stats');
+    const res = await api.get<ApiRespuesta<Record<string, number>>>('/contratos/stats');
     return res.data.data;
   },
 };
@@ -255,7 +255,7 @@ export const redesApi = {
     return res.data.data ?? [];
   },
   listSegmentos: async (routerId?: string): Promise<SegmentoIpv4[]> => {
-    const res = await api.get<ApiRespuesta>('/contratos/segmentos', {
+    const res = await api.get<ApiRespuesta<SegmentoIpv4[]>>('/contratos/segmentos', {
       params: routerId ? { routerId } : {},
     });
     return res.data.data ?? [];

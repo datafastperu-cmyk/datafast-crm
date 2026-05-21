@@ -91,7 +91,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
 
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos'],
-    queryFn:  redesApi.listSegmentos,
+    queryFn:  () => redesApi.listSegmentos(),
   });
 
   // Buscar cliente para mostrar el nombre

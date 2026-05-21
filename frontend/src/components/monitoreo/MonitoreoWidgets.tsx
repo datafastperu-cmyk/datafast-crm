@@ -13,7 +13,7 @@ import {
   AlertTriangle, CheckCircle2, X, Loader2, Wifi,
 } from 'lucide-react';
 
-import { monitoreoApi, TIPOS_NODO } from '@/lib/api/monitoreo';
+import { monitoreoApi, TIPOS_NODO, type CreateNodoDto } from '@/lib/api/monitoreo';
 import { useToast }   from '@/components/ui/toaster';
 import { parseApiError, formatBps, cn } from '@/lib/utils';
 import type { Nodo, Alerta, WsEventDashboard } from '@/types';
@@ -251,7 +251,7 @@ export function NodoFormModal({
   const snmpHab = watch('snmpHabilitado');
 
   const { mutate: crear, isPending } = useMutation({
-    mutationFn: (values: NodoForm) => monitoreoApi.createNodo(values),
+    mutationFn: (values: NodoForm) => monitoreoApi.createNodo(values as CreateNodoDto),
     onSuccess: () => {
       toast('Nodo registrado', { type: 'success' });
       onSuccess();

@@ -93,6 +93,8 @@ export interface Cliente {
   etiquetas?:       string[];
   notasInternas?:   string;
   reniecConsultado: boolean;
+  usuarioPortal?:   string;
+  passwordPortal?:  string;
   createdAt:        string;
 }
 
@@ -238,23 +240,34 @@ export type NivelAlerta  = 'info' | 'warning' | 'critical' | 'recovery';
 export type EstadoAlerta = 'activa' | 'resuelta' | 'ignorada';
 
 export interface Nodo {
-  id:            string;
-  nombre:        string;
-  tipo:          string;
-  ipMonitoreo:   string;
-  estado:        EstadoNodo;
-  latenciaMs?:   number;
-  perdidaPct?:   number;
-  cpuUsoPct?:    number;
-  memoriaUsoPct?: number;
-  traficoRxBps?: number;
-  traficoTxBps?: number;
-  temperaturaC?: number;
-  sesionesPppoe?: number;
-  ultimoPing?:   string;
-  estadoDesde?:  string;
-  latitud?:      number;
-  longitud?:     number;
+  id:                  string;
+  nombre:              string;
+  tipo:                string;
+  ipMonitoreo:         string;
+  estado:              EstadoNodo;
+  descripcion?:        string;
+  latenciaMs?:         number | null;
+  perdidaPct?:         number | null;
+  cpuUsoPct?:          number;
+  memoriaUsoPct?:      number;
+  traficoRxBps?:       number;
+  traficoTxBps?:       number;
+  temperaturaC?:       number;
+  sesionesPppoe?:      number;
+  ultimoPing?:         string;
+  estadoDesde?:        string;
+  latitud?:            number;
+  longitud?:           number;
+  // SNMP / ping config
+  snmpHabilitado?:     boolean;
+  snmpCommunity?:      string;
+  snmpVersion?:        number;
+  snmpInterfaceIndex?: number;
+  pingHabilitado?:     boolean;
+  pingIntervaloSeg?:   number;
+  alertasHabilitadas?: boolean;
+  // Métricas calculadas
+  uptimePct7d?:        number;
 }
 
 export interface Alerta {
