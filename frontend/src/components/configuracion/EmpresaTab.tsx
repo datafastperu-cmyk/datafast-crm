@@ -5,7 +5,7 @@ import { useForm }             from 'react-hook-form';
 import { zodResolver }         from '@hookform/resolvers/zod';
 import { z }                   from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Upload, Building2 } from 'lucide-react';
+import { Loader2, Upload, Building2, Globe, ExternalLink, Info } from 'lucide-react';
 
 import { configApi, type UpdateEmpresaDto } from '@/lib/api/configuracion';
 import { useToast }  from '@/components/ui/toaster';
@@ -25,6 +25,7 @@ const schema = z.object({
   diaFacturacion:    z.coerce.number().int().min(1).max(28),
   notifWhatsappVencimiento: z.boolean(),
   notifWhatsappCorte:       z.boolean(),
+  dominio: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -151,6 +152,53 @@ export function EmpresaTab() {
             <input type="number" min={0} max={30} {...register('diasGraciaCorte')} className={inp(!!errors.diasGraciaCorte)} />
           </Field>
         </div>
+      </Section>
+
+      {/* Dominio */}
+      <Section title="Dominio del servidor">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-4 mb-4">
+          <div className="flex gap-2.5">
+            <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+            <div className="space-y-2 text-xs text-blue-700 dark:text-blue-300">
+              <p className="font-medium">¿Para qué sirve el dominio?</p>
+              <p>
+                Algunas integraciones (como Google OAuth) requieren una dirección web en lugar de una IP
+                para funcionar correctamente. Configura aquí el dominio que apunta a la IP de tu servidor.
+              </p>
+              <p className="font-medium mt-1">Opciones para obtener un dominio:</p>
+              <ul className="space-y-1 list-none">
+                <li>
+                  <a href="https://www.duckdns.org" target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 underline hover:text-blue-900">
+                    DuckDNS (gratis) <ExternalLink className="w-3 h-3" />
+                  </a>
+                  {' '}— regístrate, crea un subdominio (ej. <code className="font-mono">miempresa.duckdns.org</code>) y apúntalo a la IP de tu servidor.
+                </li>
+                <li>
+                  <a href="https://www.noip.com" target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 underline hover:text-blue-900">
+                    No-IP (gratis) <ExternalLink className="w-3 h-3" />
+                  </a>
+                  {' '}— similar a DuckDNS, permite usar tu propio dominio o uno gratuito.
+                </li>
+                <li>Si ya tienes un dominio propio, crea un registro DNS tipo <code className="font-mono">A</code> apuntando a la IP de tu servidor.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <Field label="Dominio (sin https://)">
+          <div className="relative">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              {...register('dominio')}
+              placeholder="miempresa.duckdns.org"
+              className={cn(inp(), 'pl-9')}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Al guardar, este dominio se usará como base para las integraciones (Google, callbacks OAuth, etc.)
+          </p>
+        </Field>
       </Section>
 
       {/* Notificaciones */}

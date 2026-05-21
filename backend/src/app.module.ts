@@ -42,6 +42,7 @@ import { BackupModule }           from './modules/backup/backup.module';
 import { AuditoriaModule }        from './modules/auditoria/auditoria.module';
 import { ZonasModule }            from './modules/zonas/zonas.module';
 import { GoogleIntegrationModule } from './modules/google-integration/google-integration.module';
+import { ConfiguracionModule }    from './modules/config/config.module';
 
 @Module({
   imports: [
@@ -140,6 +141,7 @@ import { GoogleIntegrationModule } from './modules/google-integration/google-int
     AuditoriaModule,
     ZonasModule,
     GoogleIntegrationModule,
+    ConfiguracionModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia

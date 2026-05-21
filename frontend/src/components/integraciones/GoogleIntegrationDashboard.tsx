@@ -405,6 +405,23 @@ function ConnectWizard({
             ))}
           </div>
 
+          {/* Domain warning — Google rejects raw IPs */}
+          {/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(redirectUri) && (
+            <div className="flex gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+              <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                <p className="font-semibold">Google no acepta direcciones IP como URI de redirección</p>
+                <p>
+                  La URI de arriba contiene una IP. Antes de obtener las credenciales, configura un dominio en{' '}
+                  <a href="/configuracion/general" className="underline font-medium hover:text-amber-900">
+                    Configuración → General → Dominio del servidor
+                  </a>.
+                  Una vez guardado el dominio, la URI se actualizará automáticamente.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Credential inputs */}
           <div className="space-y-3 pt-1">
             <CredentialInput

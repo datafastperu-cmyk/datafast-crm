@@ -18,6 +18,7 @@ export interface Empresa {
   diaFacturacion:    number;
   notifWhatsappVencimiento: boolean;
   notifWhatsappCorte:       boolean;
+  dominio?:          string;
   estado:            string;
 }
 
