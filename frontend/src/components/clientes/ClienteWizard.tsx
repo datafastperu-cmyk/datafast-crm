@@ -441,7 +441,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
 
   const { data: zonas = [] } = useQuery({ queryKey: ['zonas'], queryFn: zonasApi.list });
 
-  const { register, handleSubmit, getValues, formState: { errors } } = useForm<S1>({
+  const { register, handleSubmit, getValues, setValue, formState: { errors } } = useForm<S1>({
     resolver:      zodResolver(step1Schema),
     defaultValues: initial ?? {},
   });
