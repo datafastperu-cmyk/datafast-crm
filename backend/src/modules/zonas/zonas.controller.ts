@@ -21,19 +21,19 @@ export class ZonasController {
     return ApiResponse.ok(await this.svc.list(user.empresaId, search));
   }
 
-  @Post() @RequirePermission('configuracion:edit')
+  @Post() @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Crear zona' })
   async create(@Body() dto: ZonaDto, @CurrentUser() user: JwtPayload) {
     return ApiResponse.ok(await this.svc.create(user.empresaId, dto.nombre), 'Zona creada');
   }
 
-  @Put(':id') @RequirePermission('configuracion:edit')
+  @Put(':id') @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Actualizar zona' })
   async update(@Param('id') id: string, @Body() dto: ZonaDto, @CurrentUser() user: JwtPayload) {
     return ApiResponse.ok(await this.svc.update(id, user.empresaId, dto.nombre), 'Zona actualizada');
   }
 
-  @Delete(':id') @RequirePermission('configuracion:edit') @HttpCode(HttpStatus.NO_CONTENT)
+  @Delete(':id') @RequirePermission('configuracion:manage') @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Eliminar zona' })
   async remove(@Param('id') id: string, @CurrentUser() user: JwtPayload): Promise<void> {
     await this.svc.remove(id, user.empresaId);
