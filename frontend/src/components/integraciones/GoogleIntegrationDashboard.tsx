@@ -264,6 +264,18 @@ function ConnectWizard({
   const [mapsApiKey,   setMapsApiKey]   = useState('');
   const [setupError,   setSetupError]   = useState<string | null>(null);
 
+  const resetWizard = () => {
+    popupRef.current?.close();
+    popupRef.current = null;
+    setPolling(false);
+    setConnectError(null);
+    setSetupError(null);
+    setClientId('');
+    setClientSecret('');
+    setMapsApiKey('');
+    setStep(initialStep);
+  };
+
   // Services selection
   const [services, setServices] = useState<Record<string, boolean>>({
     calendarEnabled: true,
@@ -565,7 +577,7 @@ function ConnectWizard({
             </button>
             {needsSetup && (
               <button
-                onClick={() => { setConnectError(null); setStep('setup'); }}
+                onClick={resetWizard}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors"
               >
                 Editar credenciales (Client ID / Secret)
@@ -623,7 +635,7 @@ function ConnectWizard({
                 Volver a abrir
               </button>
               <button
-                onClick={() => { setPolling(false); popupRef.current?.close(); setStep('welcome'); }}
+                onClick={resetWizard}
                 className="flex-1 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancelar
