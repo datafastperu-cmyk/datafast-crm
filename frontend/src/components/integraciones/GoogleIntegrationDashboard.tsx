@@ -314,19 +314,21 @@ function ConnectWizard({
   // Detectar cierre del popup sin haber conectado (el usuario lo cerró manualmente
   // o Google mostró un error y el usuario cerró la ventana)
   useEffect(() => {
-    if (!polling) return;
-    const timer = setInterval(() => {
-      if (popupRef.current?.closed && !pollStatus?.connected) {
-        clearInterval(timer);
-        setPolling(false);
-        setConnectError(
-          'La ventana de Google se cerró sin completar la autorización. ' +
-          'Verifica que la URI de redirección de abajo esté registrada en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
-        );
-        setStep(initialStep);
-      }
-    }, 1_000);
-    return () => clearInterval(timer);
+    let timer: ReturnType<typeof setInterval> | null = null;
+    if (polling) {
+      timer = setInterval(() => {
+        if (popupRef.current?.closed && !pollStatus?.connected) {
+          if (timer) clearInterval(timer);
+          setPolling(false);
+          setConnectError(
+            'La ventana de Google se cerró sin completar la autorización. ' +
+            'Verifica que la URI de redirección de abajo esté registrada en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
+          );
+          setStep(initialStep);
+        }
+      }, 1_000);
+    }
+    return () => { if (timer) clearInterval(timer); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polling]);
 
