@@ -253,10 +253,10 @@ function ConnectWizard({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  // needsSetup se recalcula con el step actual para que la barra refleje correctamente
-  // el caso en que el usuario retrocede a Credenciales desde Conocer
-  const needsSetup = initialStep === 'setup' || step === 'setup';
   const [step, setStep]       = useState<WizardStep>(initialStep);
+  // needsSetup: true si el wizard arrancó en Credenciales O si el usuario
+  // navegó de regreso a ese paso desde Conocer (para que la barra sea correcta)
+  const needsSetup = initialStep === 'setup' || step === 'setup';
   const [polling, setPolling] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const popupRef = useRef<Window | null>(null);
