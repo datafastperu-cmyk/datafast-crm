@@ -44,7 +44,7 @@ export class GoogleIntegrationController {
   // ── OAuth flow ────────────────────────────────────────────
 
   @Get(':empresaId/auth/url')
-  @RequirePermission('configuracion:edit')
+  @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Obtener URL de autorización Google OAuth2' })
   getAuthUrl(@Param('empresaId') empresaId: string) {
     const url = this.oauthSvc.generateAuthUrl(empresaId);
@@ -77,7 +77,7 @@ export class GoogleIntegrationController {
   }
 
   @Delete(':empresaId/disconnect')
-  @RequirePermission('configuracion:edit')
+  @RequirePermission('configuracion:manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Desconectar cuenta Google' })
   async disconnect(@Param('empresaId') empresaId: string) {
@@ -109,7 +109,7 @@ export class GoogleIntegrationController {
   // ── Services config ───────────────────────────────────────
 
   @Post(':empresaId/services')
-  @RequirePermission('configuracion:edit')
+  @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Actualizar servicios habilitados' })
   async updateServices(
     @Param('empresaId') empresaId: string,
@@ -122,7 +122,7 @@ export class GoogleIntegrationController {
   // ── Calendar ──────────────────────────────────────────────
 
   @Post(':empresaId/calendar/events')
-  @RequirePermission('configuracion:edit')
+  @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Crear evento en Google Calendar' })
   async createCalendarEvent(
     @Param('empresaId') empresaId: string,
@@ -156,7 +156,7 @@ export class GoogleIntegrationController {
   // ── Contacts ──────────────────────────────────────────────
 
   @Post(':empresaId/contacts/sync')
-  @RequirePermission('configuracion:edit')
+  @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Sincronizar un contacto (cliente) con Google Contacts' })
   async syncContact(
     @Param('empresaId') empresaId: string,
@@ -171,7 +171,7 @@ export class GoogleIntegrationController {
   }
 
   @Post(':empresaId/contacts/sync-bulk')
-  @RequirePermission('configuracion:edit')
+  @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Sincronización masiva de contactos' })
   async syncContactsBulk(@Param('empresaId') empresaId: string) {
     await this.googleQueue.add(JOBS.GOOGLE_SYNC_CONTACTS_BULK, {
@@ -214,7 +214,7 @@ export class GoogleIntegrationController {
   }
 
   @Post(':empresaId/maps/geocode-queue')
-  @RequirePermission('configuracion:edit')
+  @RequirePermission('configuracion:manage')
   @ApiOperation({ summary: 'Encolar geocodificación asíncrona para un cliente/contrato' })
   async geocodeQueue(
     @Param('empresaId') empresaId: string,
