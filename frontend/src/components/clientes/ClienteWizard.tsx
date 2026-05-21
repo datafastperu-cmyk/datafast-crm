@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter }         from 'next/navigation';
-import { useForm }           from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver }       from '@hookform/resolvers/zod';
 import { z }                 from 'zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -17,6 +17,7 @@ import { clientesApi }                       from '@/lib/api/clientes';
 import { contratosApi, redesApi, planesApi } from '@/lib/api/contratos';
 import { facturacionApi }                    from '@/lib/api/facturacion';
 import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
+import { zonasApi }                          from '@/lib/api/zonas';
 import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
 import { useToast }                          from '@/components/ui/toaster';
 import { parseApiError, cn }                 from '@/lib/utils';
@@ -29,6 +30,7 @@ const step1Schema = z.object({
   tipoDocumento:   z.string().optional(),
   numeroDocumento: z.string().min(6, 'Identificación requerida').max(13),
   nombres:         z.string().min(2, 'Nombres requeridos'),
+  zonaId:          z.string().optional(),
   direccion:       z.string().optional(),
   ubicacionId:     z.string().optional(),
   departamento:    z.string().optional(),
@@ -437,21 +439,15 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
   const [reniecStatus, setReniecStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [reniecMsg,    setReniecMsg]    = useState('');
 
-  const { register, handleSubmit, watch, setValue, getFieldState, formState: { errors } } = useForm<S1>({
+  const { data: zonas = [] } = useQuery({ queryKey: ['zonas'], queryFn: zonasApi.list });
+
+  const { register, handleSubmit, getValues, formState: { errors } } = useForm<S1>({
     resolver:      zodResolver(step1Schema),
     defaultValues: initial ?? {},
   });
 
-  const numeroDocumento = watch('numeroDocumento');
-  useEffect(() => {
-    const doc = numeroDocumento?.trim();
-    if (!doc) return;
-    if (!getFieldState('usuarioPortal').isDirty)   setValue('usuarioPortal',  doc);
-    if (!getFieldState('passwordPortal').isDirty)  setValue('passwordPortal', doc);
-  }, [numeroDocumento]);
-
   const consultarReniec = async () => {
-    const doc = watch('numeroDocumento')?.trim();
+    const doc = getValues('numeroDocumento')?.trim();
     if (!doc || doc.length < 6) { toast('Ingresa un número de identificación válido', { type: 'warning' }); return; }
     setReniecStatus('loading');
     try {
@@ -530,6 +526,16 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
         {/* Dirección principal */}
         <FormRow label="Dirección principal" hintColor="gray">
           <input {...register('direccion')} placeholder="Av. Unios 4453" className={inputCls()} />
+        </FormRow>
+
+        {/* Zona */}
+        <FormRow label="Zona" hintColor="gray">
+          <select {...register('zonaId')} className={inputCls()}>
+            <option value="">— Sin zona —</option>
+            {zonas.filter(z => z.activo).map(z => (
+              <option key={z.id} value={z.id}>{z.nombre}</option>
+            ))}
+          </select>
         </FormRow>
 
         {/* WhatsApp */}
