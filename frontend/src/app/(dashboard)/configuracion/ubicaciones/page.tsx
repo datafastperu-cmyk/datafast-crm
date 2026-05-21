@@ -23,6 +23,7 @@ export default function ZonasPage() {
   const [search,     setSearch]     = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [modal,      setModal]      = useState<{ open: boolean; zona?: Zona }>({ open: false });
+  const [deleteId,   setDeleteId]   = useState<string | null>(null);
   const [nombre,     setNombre]     = useState('');
   const [page,       setPage]       = useState(1);
   const PER_PAGE = 12;
@@ -59,9 +60,6 @@ export default function ZonasPage() {
   function openEdit(z: Zona) { setNombre(z.nombre); setModal({ open: true, zona: z }); }
   function closeModal() { setModal({ open: false }); setNombre(''); }
   function handleSubmit() { if (!nombre.trim()) return; modal.zona ? actualizar() : crear(); }
-  function confirmDelete(z: Zona) {
-    if (confirm(`¿Eliminar la zona "${z.nombre}"?`)) eliminar(z.id);
-  }
 
   const total    = zonas.length;
   const pages    = Math.max(1, Math.ceil(total / PER_PAGE));
@@ -135,7 +133,7 @@ export default function ZonasPage() {
                     <button onClick={() => openEdit(z)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => confirmDelete(z)} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+                    <button onClick={() => setDeleteId(z.id)} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -158,7 +156,30 @@ export default function ZonasPage() {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Modal confirmación eliminar */}
+      {deleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm mx-4">
+            <div className="px-5 py-4">
+              <p className="font-semibold text-foreground mb-1">¿Eliminar zona?</p>
+              <p className="text-sm text-muted-foreground">Esta acción no se puede deshacer.</p>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-border">
+              <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={() => { eliminar(deleteId); setDeleteId(null); }}
+                className="px-4 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal crear/editar */}
       {modal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm mx-4">
