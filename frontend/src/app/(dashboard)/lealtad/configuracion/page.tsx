@@ -93,7 +93,7 @@ export default function LealtadConfigPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Toggle
             label="Habilitar Sistema de Lealtad"
-            description='Si se desactiva, los clientes no verán sus puntos ni podrán canjear premios.'
+            description='Si se desactiva, los abonados no verán sus puntos ni podrán canjear premios.'
             checked={sistemaLealtad}
             onChange={setSistemaLealtad}
           />
@@ -131,7 +131,7 @@ export default function LealtadConfigPage() {
               type="number"
             />
             <p className="text-xs text-muted-foreground">
-              Ej: Si es {ratioPagos || '10'}, el cliente recibe 1 punto por cada {ratioPagos || '10'} soles pagados.
+              Ej: Si es {ratioPagos || '10'}, el abonado recibe 1 punto por cada {ratioPagos || '10'} soles pagados.
             </p>
           </div>
           <div className="space-y-1">
@@ -181,7 +181,7 @@ export default function LealtadConfigPage() {
         <div className="max-w-sm space-y-1">
           <label className="text-sm font-semibold text-foreground">Mínimo para Canjear</label>
           <InputAddon suffix="Puntos" value={minimoCanje} onChange={setMinimoCanje} type="number" />
-          <p className="text-xs text-muted-foreground">El cliente debe tener al menos esta cantidad de puntos para poder canjear.</p>
+          <p className="text-xs text-muted-foreground">El abonado debe tener al menos esta cantidad de puntos para poder canjear.</p>
         </div>
       </section>
 

@@ -83,7 +83,7 @@ export default function ColasPage() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <input value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nombre, IP, cliente..."
+          placeholder="Buscar por nombre, IP, abonado..."
           className="w-full pl-9 pr-3 py-2.5 text-sm bg-card border border-border rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
       </div>
 

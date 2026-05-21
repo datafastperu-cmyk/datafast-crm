@@ -145,11 +145,11 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
         <ArrowLeft className="w-4 h-4" /> Volver
       </button>
 
-      {/* ── SECCIÓN 1: Cliente y plan ─────────────────────── */}
-      <Section title="Cliente y Plan">
+      {/* ── SECCIÓN 1: Abonado y plan ─────────────────────── */}
+      <Section title="Abonado y Plan">
 
-        {/* Cliente */}
-        <Field label="Cliente *" error={errors.clienteId?.message}>
+        {/* Abonado */}
+        <Field label="Abonado *" error={errors.clienteId?.message}>
           {defClienteId ? (
             <div className="px-3 py-2 rounded-lg border border-input bg-muted text-sm text-foreground">
               {cliente?.nombreCompleto ?? defClienteId}
@@ -157,7 +157,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
           ) : (
             <input
               {...register('clienteId')}
-              placeholder="UUID del cliente (pega desde el listado)"
+              placeholder="UUID del abonado (pega desde el listado)"
               className={input(!!errors.clienteId)}
             />
           )}

@@ -94,7 +94,7 @@ const SERVICES = [
     color:       'text-green-500',
     bg:          'bg-green-500/10',
     name:        'Google Contacts',
-    desc:        'Sincroniza tus clientes con la libreta de contactos de Google.',
+    desc:        'Sincroniza tus abonados con la libreta de contactos de Google.',
     recommended: true,
   },
   {
@@ -114,7 +114,7 @@ const SERVICES = [
     color:       'text-orange-500',
     bg:          'bg-orange-500/10',
     name:        'Google Maps',
-    desc:        'Ubica automáticamente las direcciones de tus clientes.',
+    desc:        'Ubica automáticamente las direcciones de tus abonados.',
     recommended: false,
   },
 ] as const;
@@ -532,7 +532,7 @@ function ConnectWizard({
               Conecta Google Workspace
             </h2>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              Automatiza tu operación sincronizando clientes, eventos, documentos y ubicaciones con los servicios de Google.
+              Automatiza tu operación sincronizando abonados, eventos, documentos y ubicaciones con los servicios de Google.
             </p>
           </div>
 
@@ -1066,10 +1066,10 @@ export function GoogleIntegrationDashboard({ empresaId }: { empresaId: string })
             }
           </div>
           <div className="flex-1 min-w-0 text-left">
-            <p className="text-xs font-medium text-foreground">Sincronizar todos los clientes</p>
+            <p className="text-xs font-medium text-foreground">Sincronizar todos los abonados</p>
             <p className="text-xs text-muted-foreground">
               {status.services.contacts
-                ? 'Envía todos los clientes activos a Google Contacts'
+                ? 'Envía todos los abonados activos a Google Contacts'
                 : 'Activa Google Contacts para usar esta función'}
             </p>
           </div>

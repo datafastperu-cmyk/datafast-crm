@@ -358,7 +358,7 @@ export function ClienteWizard() {
         passwordPortal:  s1.passwordPortal  || undefined,
       });
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Error al registrar cliente';
+      const msg = err?.response?.data?.message || err?.message || 'Error al registrar abonado';
       toast(msg, { type: 'error' });
       throw err;
     }
@@ -407,7 +407,7 @@ export function ClienteWizard() {
         });
       } catch { /* no bloquea el flujo */ }
     }
-    toast('Cliente registrado correctamente', { type: 'success' });
+    toast('Abonado registrado correctamente', { type: 'success' });
     router.push(`/clientes/${cliente.id}`);
   };
 
@@ -1106,7 +1106,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         >
           {submitting
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>
-            : <><CheckCircle2 className="w-4 h-4" /> Registrar cliente</>
+            : <><CheckCircle2 className="w-4 h-4" /> Registrar Abonado</>
           }
         </button>
       </div>

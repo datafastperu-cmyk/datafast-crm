@@ -24,7 +24,7 @@ const PLANTILLAS = [
   { id:'p1', nombre:'Recordatorio de pago',  tipo:'recordatorio', variables:['nombre','monto','fecha'], activa:true },
   { id:'p2', nombre:'Aviso de corte',         tipo:'corte',        variables:['nombre','deuda'],          activa:true },
   { id:'p3', nombre:'Pago confirmado',        tipo:'factura',      variables:['nombre','monto'],          activa:true },
-  { id:'p4', nombre:'Bienvenida nuevo cliente',tipo:'bienvenida',  variables:['nombre','plan'],           activa:true },
+  { id:'p4', nombre:'Bienvenida nuevo abonado',tipo:'bienvenida',  variables:['nombre','plan'],           activa:true },
 ];
 
 export default function WhatsAppPage() {
@@ -41,7 +41,7 @@ export default function WhatsAppPage() {
     <div className="space-y-5">
       <PageHeader
         title="WhatsApp Bot"
-        description="Automatización de mensajes y notificaciones a clientes"
+        description="Automatización de mensajes y notificaciones a abonados"
         breadcrumbs={[{ label:'Mensajería' }, { label:'WhatsApp' }]}
         badge={{ label:'API conectada', color:'green' }}
         actions={

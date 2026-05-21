@@ -34,13 +34,13 @@ const METODO_CONFIG: Record<MetodoConexion, {
 
 const TIPO_CONTROL_OPTS = [
   { val: 'ninguna',            label: 'Sin control de seguridad',   icon: ShieldOff, color: 'text-gray-400',   desc: 'No aplica controles de seguridad IP-MAC' },
-  { val: 'amarre_ip_mac',      label: 'Amarre IP + MAC',            icon: Shield,    color: 'text-blue-400',   desc: 'Agrega entrada estática en IP > ARP al provisionar clientes' },
+  { val: 'amarre_ip_mac',      label: 'Amarre IP + MAC',            icon: Shield,    color: 'text-blue-400',   desc: 'Agrega entrada estática en IP > ARP al provisionar abonados' },
   { val: 'amarre_ip_mac_dhcp', label: 'IP + MAC + DHCP Lease',      icon: Lock,      color: 'text-violet-400', desc: 'Agrega ARP estático + lease en IP > DHCP Server > Leases' },
 ];
 
 const TIPO_VELOCIDAD_OPTS: { val: TipoControlVelocidad; label: string; desc: string }[] = [
   { val: 'ninguno',          label: 'Sin control de velocidad',      desc: 'No aplica límites de velocidad' },
-  { val: 'colas_simples',    label: 'Colas simples (estáticas)',      desc: 'Simple Queue por cliente — control estático' },
+  { val: 'colas_simples',    label: 'Colas simples (estáticas)',      desc: 'Simple Queue por abonado — control estático' },
   { val: 'pcq_addresslist',  label: 'PCQ + AddressList',              desc: 'Per Connection Queue con Address List — escalable' },
   { val: 'dhcp_lease_queues', label: 'DHCP Lease (colas dinámicas)', desc: 'Simple Queue dinámica vinculada al DHCP Lease' },
 ];
@@ -212,7 +212,7 @@ function MorososDialog({ router, onClose }: { router: RouterType; onClose: () =>
             <div className="flex flex-col items-center justify-center h-32 text-gray-500 text-center">
               <CheckCircle2 className="w-8 h-8 mb-2 text-emerald-400 opacity-60" />
               <p className="text-sm">Sin IPs en address-list morosos</p>
-              <p className="text-xs mt-1 opacity-60">Todos los clientes tienen acceso libre en este router</p>
+              <p className="text-xs mt-1 opacity-60">Todos los abonados tienen acceso libre en este router</p>
             </div>
           ) : (
             <div className="space-y-1">

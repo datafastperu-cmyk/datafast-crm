@@ -9,13 +9,13 @@ import { parseApiError, cn } from '@/lib/utils';
 
 // ─── Variables disponibles ─────────────────────────────────────
 const VARS_COMUNES = [
-  { key: '{{nombre_cliente}}',    label: 'Nombre del cliente' },
-  { key: '{{apellido_cliente}}',  label: 'Apellidos del cliente' },
+  { key: '{{nombre_cliente}}',    label: 'Nombre del abonado' },
+  { key: '{{apellido_cliente}}',  label: 'Apellidos del abonado' },
   { key: '{{nombre_completo}}',   label: 'Nombre completo' },
-  { key: '{{numero_documento}}',  label: 'DNI / RUC del cliente' },
-  { key: '{{telefono_cliente}}',  label: 'Teléfono del cliente' },
-  { key: '{{email_cliente}}',     label: 'Email del cliente' },
-  { key: '{{direccion_cliente}}', label: 'Dirección del cliente' },
+  { key: '{{numero_documento}}',  label: 'DNI / RUC del abonado' },
+  { key: '{{telefono_cliente}}',  label: 'Teléfono del abonado' },
+  { key: '{{email_cliente}}',     label: 'Email del abonado' },
+  { key: '{{direccion_cliente}}', label: 'Dirección del abonado' },
   { key: '{{plan_contratado}}',   label: 'Plan contratado' },
   { key: '{{fecha_pago}}',        label: 'Fecha límite de pago' },
   { key: '{{fecha_corte}}',       label: 'Fecha de corte del servicio' },
@@ -43,7 +43,7 @@ const VARS_DOCUMENTO = [
   { key: '{{velocidad_subida}}',   label: 'Velocidad de subida' },
   { key: '{{tecnico_nombre}}',     label: 'Nombre del técnico' },
   { key: '{{fecha_instalacion}}',  label: 'Fecha de instalación' },
-  { key: '{{equipo_entregado}}',   label: 'Equipo entregado al cliente' },
+  { key: '{{equipo_entregado}}',   label: 'Equipo entregado al abonado' },
   { key: '{{numero_serie}}',       label: 'N° de serie del equipo' },
 ];
 
@@ -130,8 +130,8 @@ function PlantillasTabContent({ tipo }: { tipo: TipoPlantilla }) {
     <div className="space-y-3">
       {/* Description */}
       <p className="text-sm text-muted-foreground">
-        {tipo === 'whatsapp' && 'Mensajes enviados por WhatsApp a los clientes. Usa variables para personalizar el contenido.'}
-        {tipo === 'email' && 'Correos electrónicos enviados a los clientes. Soportan HTML para un diseño enriquecido.'}
+        {tipo === 'whatsapp' && 'Mensajes enviados por WhatsApp a los abonados. Usa variables para personalizar el contenido.'}
+        {tipo === 'email' && 'Correos electrónicos enviados a los abonados. Soportan HTML para un diseño enriquecido.'}
         {tipo === 'documento' && 'Plantillas HTML para generar documentos: facturas, recibos, contratos, etc.'}
       </p>
 

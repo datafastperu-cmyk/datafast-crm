@@ -301,7 +301,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
         <Section title="Opciones">
           <div className="space-y-3">
             {[
-              { name: 'notificarWhatsApp', label: 'Notificar al cliente por WhatsApp al activar',
+              { name: 'notificarWhatsApp', label: 'Notificar al abonado por WhatsApp al activar',
                 desc: 'Envía el mensaje de bienvenida con usuario PPPoE y velocidades' },
               { name: 'rollbackEnError', label: 'Revertir automáticamente si hay error',
                 desc: 'Elimina PPPoE, provisión SmartOLT y libera IP si algún paso falla' },

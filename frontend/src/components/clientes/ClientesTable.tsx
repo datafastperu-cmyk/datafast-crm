@@ -104,7 +104,7 @@ function SortIcon({ col, sortBy, sortOrder }: {
 }
 
 const COLUMNAS = [
-  { key: 'nombreCompleto',  label: 'Cliente',     sortable: true  },
+  { key: 'nombreCompleto',  label: 'Abonado',     sortable: true  },
   { key: 'telefono',        label: 'Contacto',    sortable: false },
   { key: 'tipoServicio',    label: 'Servicio',    sortable: true  },
   { key: 'plan',            label: 'Plan / IP',   sortable: false },
@@ -149,9 +149,9 @@ export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder
         <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
           <Wifi className="w-7 h-7 text-muted-foreground" />
         </div>
-        <p className="text-sm font-semibold text-foreground">Sin clientes</p>
+        <p className="text-sm font-semibold text-foreground">Sin abonados</p>
         <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-          No se encontraron clientes con los filtros actuales. Intenta con otros términos.
+          No se encontraron abonados con los filtros actuales. Intenta con otros términos.
         </p>
       </div>
     );
@@ -337,14 +337,14 @@ export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder
                       </button>
                       <button
                         onClick={() => onRetirar?.(c)}
-                        title="Retirar cliente (conserva datos)"
+                        title="Retirar abonado (conserva datos)"
                         className="p-1.5 rounded-lg text-muted-foreground hover:text-orange-600 hover:bg-orange-500/10 transition-colors"
                       >
                         <UserMinus className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => onEliminar?.(c)}
-                        title="Eliminar cliente"
+                        title="Eliminar abonado"
                         className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

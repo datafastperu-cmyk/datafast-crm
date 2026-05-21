@@ -17,7 +17,7 @@ import { useUndoRedo }    from '@/lib/contexts/undo-redo.context';
 
 const LABELS: Record<string, string> = {
   dashboard:     'Dashboard',
-  clientes:      'Clientes',
+  clientes:      'Abonados',
   contratos:     'Contratos',
   facturacion:   'Facturación',
   pagos:         'Transacciones',
@@ -88,7 +88,7 @@ function ClienteSearch() {
           : <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
         <input
           className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none min-w-0"
-          placeholder="Buscar cliente..."
+          placeholder="Buscar abonado..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length > 0 && setIsOpen(true)}

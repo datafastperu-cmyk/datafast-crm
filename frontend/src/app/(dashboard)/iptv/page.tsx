@@ -20,13 +20,13 @@ export default function IPTVPage() {
     <div className="space-y-5">
       <PageHeader
         title="IPTV / Streaming"
-        description="Gestión de clientes y canales del servicio de IPTV"
+        description="Gestión de abonados y canales del servicio de IPTV"
         breadcrumbs={[{ label:'Servicios' }, { label:'IPTV' }]}
         badge={{ label:'TRAPEMN', color:'purple' }}
         actions={
           <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors">
             <Plus className="w-3.5 h-3.5" />
-            Nuevo cliente
+            Nuevo abonado
           </button>
         }
       />
@@ -34,7 +34,7 @@ export default function IPTVPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label:'Clientes activos', value:stats.clientesActivos, icon:Users,       color:'text-blue-400',   bg:'bg-blue-500/10' },
+          { label:'Abonados activos', value:stats.clientesActivos, icon:Users,       color:'text-blue-400',   bg:'bg-blue-500/10' },
           { label:'Canales activos',  value:stats.canalesActivos,  icon:Tv,          color:'text-emerald-400',bg:'bg-emerald-500/10' },
           { label:'Canales HD',       value:stats.canalesHD,       icon:PlayCircle,  color:'text-violet-400', bg:'bg-violet-500/10' },
           { label:'Categorías',       value:stats.categorias,      icon:Radio,       color:'text-amber-400',  bg:'bg-amber-500/10' },
@@ -57,7 +57,7 @@ export default function IPTVPage() {
           <button key={t} onClick={() => setTab(t)}
             className={cn('text-sm px-4 py-1.5 rounded-md capitalize transition-colors',
               tab === t ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-            )}>{t}</button>
+            )}>{t === 'clientes' ? 'Abonados' : 'Canales'}</button>
         ))}
       </div>
 
@@ -66,7 +66,7 @@ export default function IPTVPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Cliente</th>
+                <th>Abonado</th>
                 <th>Plan</th>
                 <th>Dispositivos</th>
                 <th>MAC STB</th>

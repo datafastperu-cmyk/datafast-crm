@@ -155,20 +155,20 @@ export function ClientesContent() {
 
   const CONFIRM_CFG = {
     suspender: {
-      titulo: 'Suspender cliente',
-      desc: 'Se suspenderá el servicio de internet. El cliente quedará clasificado como suspendido.',
+      titulo: 'Suspender abonado',
+      desc: 'Se suspenderá el servicio de internet. El abonado quedará clasificado como suspendido.',
       boton: 'Suspender',
       color: 'bg-yellow-500 hover:bg-yellow-600',
     },
     retirar: {
-      titulo: 'Retirar cliente',
-      desc: 'Se retirará al cliente de los routers MikroTik. Se conservan facturas, estadísticas, logs, mensajes y todos sus datos históricos. El cliente no estará activo.',
+      titulo: 'Retirar abonado',
+      desc: 'Se retirará al abonado de los routers MikroTik. Se conservan facturas, estadísticas, logs, mensajes y todos sus datos históricos. El abonado no estará activo.',
       boton: 'Retirar',
       color: 'bg-orange-500 hover:bg-orange-600',
     },
     eliminar: {
-      titulo: 'Eliminar cliente',
-      desc: 'Se eliminará al cliente con todos sus registros. Esta acción puede deshacerse desde la Papelera.',
+      titulo: 'Eliminar abonado',
+      desc: 'Se eliminará al abonado con todos sus registros. Esta acción puede deshacerse desde la Papelera.',
       boton: 'Eliminar',
       color: 'bg-destructive hover:bg-destructive/90',
     },
@@ -194,7 +194,7 @@ export function ClientesContent() {
 
   const STAT_CARDS = [
     {
-      label: 'Total clientes',
+      label: 'Total abonados',
       value: statsData.total ?? 0,
       icon: Users,
       iconBg: 'bg-blue-100 dark:bg-blue-950/40',
@@ -243,11 +243,11 @@ export function ClientesContent() {
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-foreground tracking-tight">Clientes</h2>
+          <h2 className="text-2xl font-bold text-foreground tracking-tight">Abonados</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             {meta?.total != null
-              ? `${meta.total.toLocaleString('es-PE')} clientes registrados`
-              : 'Gestión de clientes y contratos de servicio'}
+              ? `${meta.total.toLocaleString('es-PE')} abonados registrados`
+              : 'Gestión de abonados y contratos de servicio'}
           </p>
         </div>
 
@@ -269,7 +269,7 @@ export function ClientesContent() {
                        transition-all duration-150 shadow-sm hover:shadow-md"
           >
             <Plus className="w-4 h-4" />
-            Nuevo cliente
+            Nuevo abonado
           </button>
         </div>
       </div>
