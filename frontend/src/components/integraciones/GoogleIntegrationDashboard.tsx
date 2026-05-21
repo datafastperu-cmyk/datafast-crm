@@ -116,6 +116,7 @@ export function GoogleIntegrationDashboard({ empresaId }: GoogleIntegrationDashb
   const qc = useQueryClient();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'logs' | 'calendar' | 'drive'>('overview');
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const { data: status, isLoading: loadingStatus } = useQuery<GoogleStatus>({
     queryKey:    ['google-status', empresaId],
@@ -187,10 +188,7 @@ export function GoogleIntegrationDashboard({ empresaId }: GoogleIntegrationDashb
       <div className="space-y-6">
         <div className="rounded-xl border border-border bg-card p-8 text-center">
           <div className="w-16 h-16 rounded-2xl bg-blue-500/10 flex items-center justify-center mx-auto mb-4">
-            <img src="/google-logo.svg" alt="Google" className="w-8 h-8" onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }} />
-            <Plug className="w-8 h-8 text-blue-500 hidden" />
+            <Plug className="w-8 h-8 text-blue-500" />
           </div>
           <h3 className="text-base font-semibold text-foreground mb-1">Conectar Google Workspace</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
@@ -264,18 +262,33 @@ export function GoogleIntegrationDashboard({ empresaId }: GoogleIntegrationDashb
           >
             <RefreshCw className="w-4 h-4 text-muted-foreground" />
           </button>
-          <button
-            onClick={() => {
-              if (confirm('¿Desconectar cuenta de Google? Se revocarán los tokens.')) {
-                disconnectMutation.mutate();
-              }
-            }}
-            disabled={disconnectMutation.isPending}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors disabled:opacity-50"
-          >
-            <Unplug className="w-3.5 h-3.5" />
-            Desconectar
-          </button>
+          {confirmDisconnect ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-destructive">¿Confirmar?</span>
+              <button
+                onClick={() => { disconnectMutation.mutate(); setConfirmDisconnect(false); }}
+                disabled={disconnectMutation.isPending}
+                className="px-2 py-1 rounded text-xs bg-destructive text-destructive-foreground disabled:opacity-50"
+              >
+                Sí
+              </button>
+              <button
+                onClick={() => setConfirmDisconnect(false)}
+                className="px-2 py-1 rounded text-xs border border-border"
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDisconnect(true)}
+              disabled={disconnectMutation.isPending}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors disabled:opacity-50"
+            >
+              <Unplug className="w-3.5 h-3.5" />
+              Desconectar
+            </button>
+          )}
         </div>
       </div>
 
