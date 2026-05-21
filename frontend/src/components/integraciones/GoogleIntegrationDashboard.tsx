@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, AlertCircle, RefreshCw, Unplug,
@@ -256,6 +256,7 @@ function ConnectWizard({
   const [step, setStep]       = useState<WizardStep>(initialStep);
   const [polling, setPolling] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const popupRef = useRef<Window | null>(null);
 
   // Setup form state
   const [clientId,     setClientId]     = useState('');
@@ -285,6 +286,26 @@ function ConnectWizard({
     }
   }, [polling, pollStatus?.connected]);
 
+  // Detectar cierre del popup sin haber conectado
+  useEffect(() => {
+    if (!polling) return;
+    const timer = setInterval(() => {
+      if (popupRef.current?.closed) {
+        clearInterval(timer);
+        if (!pollStatus?.connected) {
+          setPolling(false);
+          setConnectError(
+            'La ventana de Google se cerró sin completar la autorización. ' +
+            'La causa más común es que la URI de redirección no está registrada. ' +
+            'Verifica que la URI de abajo esté exactamente en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
+          );
+          setStep('welcome');
+        }
+      }
+    }, 1_000);
+    return () => clearInterval(timer);
+  }, [polling, pollStatus?.connected]);
+
   const saveConfigMutation = useMutation({
     mutationFn: () => googleApi.saveAppConfig(empresaId, {
       clientId:    clientId.trim(),
@@ -306,14 +327,15 @@ function ConnectWizard({
     mutationFn: async () => {
       setConnectError(null);
       const url = await googleApi.getAuthUrl(empresaId);
-      window.open(url, 'google_oauth', 'width=600,height=700,noopener');
+      const popup = window.open(url, 'google_oauth', 'width=600,height=700,noopener');
+      popupRef.current = popup;
       setStep('authorizing');
       setPolling(true);
     },
     onError: (err: any) => {
       const status = err?.response?.status;
       if (status === 503) {
-        setConnectError('Las credenciales de Google no están configuradas. Vuelve al paso anterior.');
+        setConnectError('Las credenciales de Google no están configuradas. Vuelve al paso anterior y verifica el Client ID y Client Secret.');
       } else if (status === 403) {
         setConnectError('No tienes permisos para conectar Google. Contacta al administrador del sistema.');
       } else {
@@ -508,46 +530,102 @@ function ConnectWizard({
           </div>
 
           {connectError && (
-            <div className="flex items-start gap-2 p-3 rounded-xl bg-destructive/8 border border-destructive/20 mb-4">
-              <AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
-              <p className="text-xs text-destructive">{connectError}</p>
+            <div className="space-y-3 mb-4">
+              <div className="flex items-start gap-2 p-3.5 rounded-xl bg-destructive/8 border border-destructive/20">
+                <AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+                <p className="text-xs text-destructive leading-relaxed">{connectError}</p>
+              </div>
+              <CopyField value={redirectUri} label="URI de redirección — cópiala y agrégala en Google Cloud Console" />
+              <a
+                href="https://console.cloud.google.com/apis/credentials"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-primary underline underline-offset-2"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Abrir Google Cloud Console → Credenciales
+              </a>
             </div>
           )}
 
-          <button
-            onClick={() => connectMutation.mutate()}
-            disabled={connectMutation.isPending}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {connectMutation.isPending
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <ArrowRight className="w-4 h-4" />
-            }
-            Iniciar sesión con Google
-          </button>
+          <div className="space-y-2.5">
+            <button
+              onClick={() => connectMutation.mutate()}
+              disabled={connectMutation.isPending}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {connectMutation.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <ArrowRight className="w-4 h-4" />
+              }
+              {connectError ? 'Reintentar autorización' : 'Iniciar sesión con Google'}
+            </button>
+            {needsSetup && (
+              <button
+                onClick={() => { setConnectError(null); setStep('setup'); }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors"
+              >
+                Editar credenciales (Client ID / Secret)
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* ── Step: Authorizing ───────────────────────────────────── */}
       {step === 'authorizing' && (
-        <div className="rounded-2xl border border-border bg-card p-12 text-center">
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <div className="rounded-2xl border border-border bg-card p-6 space-y-6">
+          <div className="text-center py-4">
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <Loader2 className="w-7 h-7 text-primary animate-spin" />
+            </div>
+            <h3 className="text-base font-semibold text-foreground mb-1">
+              Esperando autorización de Google
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+              Inicia sesión en la ventana que se abrió y acepta los permisos solicitados.
+            </p>
           </div>
-          <h3 className="text-base font-semibold text-foreground mb-2">
-            Esperando que autorices el acceso
-          </h3>
-          <p className="text-sm text-muted-foreground mb-8 max-w-xs mx-auto">
-            Se abrió una ventana de Google. Inicia sesión y acepta los permisos para continuar.
-          </p>
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <p>¿No se abrió la ventana?</p>
-            <button
-              onClick={() => connectMutation.mutate()}
-              className="text-primary underline underline-offset-2 hover:no-underline"
+
+          {/* URI de redirección visible para que el usuario pueda verificar */}
+          <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/15 space-y-2.5">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <p className="text-xs font-semibold text-amber-600">
+                Si Google muestra un error de redirección
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Agrega exactamente esta URI en Google Cloud Console → Credenciales → tu app OAuth 2.0 → <strong>URIs de redirección autorizadas</strong>:
+            </p>
+            <CopyField value={redirectUri} label="URI de redirección" />
+            <a
+              href="https://console.cloud.google.com/apis/credentials"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-primary underline underline-offset-2"
             >
-              Volver a intentar
-            </button>
+              <ExternalLink className="w-3 h-3" />
+              Abrir Google Cloud Console
+            </a>
+          </div>
+
+          <div className="space-y-2 text-center">
+            <p className="text-xs text-muted-foreground">¿No se abrió la ventana?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => connectMutation.mutate()}
+                className="flex-1 py-2 rounded-xl border border-primary/30 text-xs text-primary font-medium hover:bg-primary/5 transition-colors"
+              >
+                Volver a abrir
+              </button>
+              <button
+                onClick={() => { setPolling(false); popupRef.current?.close(); setStep('welcome'); }}
+                className="flex-1 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}
