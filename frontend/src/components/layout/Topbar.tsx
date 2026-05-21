@@ -59,7 +59,7 @@ function ClienteSearch() {
   }, []);
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); setIsOpen(false); return; }
+    if (!query.trim()) { setResults([]); setIsOpen(false); return undefined; }
     const timer = setTimeout(async () => {
       setLoading(true);
       try {

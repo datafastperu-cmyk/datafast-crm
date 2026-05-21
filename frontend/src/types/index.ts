@@ -162,6 +162,7 @@ export interface Contrato {
   planNombre?:     string;
   velocidadBajada?: number;
   velocidadSubida?: number;
+  routerId?:       string;
   routerNombre?:   string;
 }
 

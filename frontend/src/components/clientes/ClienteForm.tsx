@@ -102,13 +102,13 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
   // ── Guardar ───────────────────────────────────────────────
   const { mutate: guardar, isPending } = useMutation({
     mutationFn: async (values: FormValues) => {
-      const dto: CreateClienteDto = {
+      const dto = {
         ...values,
         email:       values.email || undefined,
         telefonoAlt: values.telefonoAlt || undefined,
         whatsapp:    values.whatsapp || undefined,
         referencia:  values.referencia || undefined,
-      };
+      } as CreateClienteDto;
       return isEdit
         ? clientesApi.update(clienteId!, dto)
         : clientesApi.create(dto);

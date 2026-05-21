@@ -14,7 +14,7 @@ export function useInactivityLogout() {
   const timer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!isAuth) return;
+    if (!isAuth) return undefined;
 
     const reset = () => {
       if (timer.current) clearTimeout(timer.current);

@@ -15,7 +15,7 @@ import {
 
 import {
   usuariosApi, rolesApi, permisosApi, logsPersonalApi,
-  type UsuarioDetalle, type RolDetalle, type GrupoPermisos,
+  type UsuarioDetalle, type RolDetalle, type GrupoPermisos, type CreateUsuarioPayload,
 } from '@/lib/api/usuarios';
 import { useToast }       from '@/components/ui/toaster';
 import { parseApiError, formatDateTime, cn } from '@/lib/utils';
@@ -99,7 +99,7 @@ function UsuariosTab() {
   };
 
   const { mutate: crear, isPending: creando } = useMutation({
-    mutationFn: (v: CrearForm) => usuariosApi.create(v),
+    mutationFn: (v: CrearForm) => usuariosApi.create(v as CreateUsuarioPayload),
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['usuarios-admin'] }); toast('Usuario creado', { type: 'success' }); setModalCrear(false); resetForm(); },
     onError:    (e) => toast(parseApiError(e), { type: 'error' }),
   });

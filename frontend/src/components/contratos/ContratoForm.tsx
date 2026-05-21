@@ -111,12 +111,12 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
   // ── Guardar ───────────────────────────────────────────────
   const { mutate: crear, isPending } = useMutation({
     mutationFn: (values: FormValues) => {
-      const dto: CreateContratoDto = {
+      const dto = {
         ...values,
         routerId:    values.routerId    || undefined,
         oltId:       values.oltId       || undefined,
         segmentoId:  values.segmentoId  || undefined,
-      };
+      } as CreateContratoDto;
       return contratosApi.create(dto);
     },
     onSuccess: (contrato) => {

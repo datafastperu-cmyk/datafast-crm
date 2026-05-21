@@ -50,7 +50,7 @@ export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
   // ── Conectar WebSocket ─────────────────────────────────────
   useEffect(() => {
     const token = getAccessToken();
-    if (!token) return;
+    if (!token) return undefined;
 
     const socket = io(`${WS_URL}/monitoreo`, {
       auth:                  { token },

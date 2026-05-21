@@ -120,8 +120,8 @@ export const monitoreoApi = {
   },
 
   // ── Ping y SNMP ────────────────────────────────────────────
-  pingNodo: async (id: string) => {
-    const res = await api.post<ApiRespuesta>(`/monitoreo/nodos/${id}/ping`);
+  pingNodo: async (id: string): Promise<{ avg: number; min: number; max: number; loss: number }> => {
+    const res = await api.post<ApiRespuesta<{ avg: number; min: number; max: number; loss: number }>>(`/monitoreo/nodos/${id}/ping`);
     return res.data.data;
   },
 
