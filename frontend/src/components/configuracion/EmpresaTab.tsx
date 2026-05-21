@@ -22,7 +22,7 @@ const schema = z.object({
   direccion:         z.string().optional(),
   telefono:          z.string().optional(),
   email:             z.string().email('Email inválido').optional().or(z.literal('')),
-  websiteUrl:        z.string().optional(),
+  websiteUrl:        z.string().url('URL inválida (ej: https://miisp.com)').optional().or(z.literal('')),
   serieBoleta:       z.string().min(3),
   serieFactura:      z.string().min(3),
   igvRate:           z.coerce.number().min(0).max(1),
@@ -132,8 +132,8 @@ export function EmpresaTab() {
           <Field label="Dirección" span={2}>
             <input {...register('direccion')} placeholder="Av. Sánchez Cerro 1234, Piura" className={inp()} />
           </Field>
-          <Field label="Sitio web" span={2}>
-            <input {...register('websiteUrl')} placeholder="https://datafast.pe" className={inp()} />
+          <Field label="Sitio web" error={errors.websiteUrl?.message} span={2}>
+            <input {...register('websiteUrl')} placeholder="https://datafast.pe" className={inp(!!errors.websiteUrl)} />
           </Field>
         </div>
       </Section>
