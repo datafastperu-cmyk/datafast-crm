@@ -183,6 +183,32 @@ export class GoogleOAuthService {
     return account;
   }
 
+  // Limpia estado residual de un wizard abandonado sin cuenta conectada
+  async cancelarSetup(empresaId: string): Promise<void> {
+    const account = await this.accountRepo.findOne({ where: { empresaId } });
+    const estaConectado = account?.status === GoogleSyncStatus.CONNECTED && account.tokensEncrypted;
+
+    if (!estaConectado) {
+      // Eliminar fila huérfana (setup sin tokens)
+      if (account) await this.accountRepo.delete(account.id);
+
+      // Limpiar credenciales de memoria y disco solo si no hay cuenta activa
+      const ENV_KEYS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'GOOGLE_TOKEN_ENCRYPTION_KEY'];
+      ENV_KEYS.forEach(k => delete process.env[k]);
+
+      const envPath = path.resolve(process.cwd(), '.env.production');
+      try {
+        let content = await fs.readFile(envPath, 'utf-8');
+        ENV_KEYS.forEach(k => {
+          content = content.replace(new RegExp(`^${k}=.*\\n?`, 'm'), '');
+        });
+        await fs.writeFile(envPath, content.trimEnd() + '\n', 'utf-8');
+      } catch { /* archivo no existe, nada que limpiar */ }
+
+      this.logger.log(`[${empresaId}] Setup wizard cancelado — credenciales residuales eliminadas`);
+    }
+  }
+
   async disconnect(empresaId: string): Promise<void> {
     const account = await this.accountRepo.findOne({ where: { empresaId } });
     if (!account) return;

@@ -95,6 +95,10 @@ export interface CreateCalendarEventDto {
 
 export const googleApi = {
   // ── App config ─────────────────────────────────────────
+  cancelarSetup: async (empresaId: string): Promise<void> => {
+    await api.post(`/google/${empresaId}/cancelar-setup`).catch(() => { /* best-effort */ });
+  },
+
   saveAppConfig: async (empresaId: string, dto: SaveAppConfigDto): Promise<void> => {
     await api.post(`/google/${empresaId}/app-config`, dto);
   },

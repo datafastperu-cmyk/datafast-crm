@@ -100,6 +100,15 @@ export class GoogleIntegrationController {
     }
   }
 
+  @Post(':empresaId/cancelar-setup')
+  @RequirePermission('configuracion:manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancelar wizard — limpia credenciales residuales si OAuth nunca completó' })
+  async cancelarSetup(@Param('empresaId') empresaId: string) {
+    await this.oauthSvc.cancelarSetup(empresaId);
+    return StdResponse.ok(null, 'Setup cancelado');
+  }
+
   @Delete(':empresaId/disconnect')
   @RequirePermission('configuracion:manage')
   @HttpCode(HttpStatus.NO_CONTENT)

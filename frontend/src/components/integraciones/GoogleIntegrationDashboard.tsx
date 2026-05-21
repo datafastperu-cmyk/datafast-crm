@@ -274,6 +274,8 @@ function ConnectWizard({
     setClientSecret('');
     setMapsApiKey('');
     setStep(initialStep);
+    // Libera estado residual en el backend (credenciales a medio guardar, filas huérfanas)
+    googleApi.cancelarSetup(empresaId);
   };
 
   // Services selection
