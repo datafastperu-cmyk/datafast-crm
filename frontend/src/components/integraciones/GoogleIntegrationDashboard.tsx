@@ -253,8 +253,6 @@ function ConnectWizard({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const pathname = usePathname();
-  const prevPathRef = useRef<string | null>(null);
   const needsSetup = initialStep === 'setup';
   const [step, setStep]       = useState<WizardStep>(initialStep);
   const [polling, setPolling] = useState(false);
@@ -276,38 +274,20 @@ function ConnectWizard({
     setClientId('');
     setClientSecret('');
     setMapsApiKey('');
-    setStep('welcome');
-    // Libera estado residual en el backend (credenciales a medio guardar, filas huérfanas)
+    setStep(initialStep);
     googleApi.cancelarSetup(empresaId);
   };
 
-  // Cuando initialStep cambia (p.ej. cancelarSetup limpió credenciales y el status
-  // recargó con appConfigured=false), resetear el wizard al nuevo punto de entrada.
-  // Esto cubre el caso en que el componente está vivo en background sin navegar.
+  // Cerrar popup y limpiar fila huérfana de BD cuando el componente se desmonta
+  // (navegación, cambio de key por el padre, cierre de sesión, etc.)
   useEffect(() => {
-    popupRef.current?.close();
-    popupRef.current = null;
-    setPolling(false);
-    setConnectError(null);
-    setSetupError(null);
-    setStep(initialStep);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialStep]);
-
-  // Cuando el usuario navega fuera y regresa a esta página (layout de Next.js persiste
-  // el componente), detectamos el cambio de pathname para resetear el wizard.
-  useEffect(() => {
-    if (prevPathRef.current !== null && prevPathRef.current !== pathname) {
+    return () => {
       popupRef.current?.close();
       popupRef.current = null;
-      setPolling(false);
-      setConnectError(null);
-      setSetupError(null);
-      setStep(initialStep);
-    }
-    prevPathRef.current = pathname;
+      googleApi.cancelarSetup(empresaId);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, []);
 
   // Services selection
   const [services, setServices] = useState<Record<string, boolean>>({
@@ -331,50 +311,22 @@ function ConnectWizard({
     }
   }, [polling, pollStatus?.connected]);
 
-  // Detectar: (1) cierre del popup sin haber conectado, (2) error cross-origin de Google
-  // (redirect_uri_mismatch hace que el popup quede abierto en el dominio de Google
-  // mostrando un error — nunca lo cerramos nosotros, así que ponemos un timeout de 90s)
+  // Detectar cierre del popup sin haber conectado (el usuario lo cerró manualmente
+  // o Google mostró un error y el usuario cerró la ventana)
   useEffect(() => {
-    let timer:   ReturnType<typeof setInterval>  | null = null;
-    let timeout: ReturnType<typeof setTimeout>   | null = null;
-
-    if (polling) {
-      // Chequeo de cierre cada 1 s
-      timer = setInterval(() => {
-        if (popupRef.current?.closed && !pollStatus?.connected) {
-          if (timer) clearInterval(timer);
-          if (timeout) clearTimeout(timeout);
-          setPolling(false);
-          setConnectError(
-            'La ventana de Google se cerró sin completar la autorización. ' +
-            'La causa más común es que la URI de redirección no está registrada. ' +
-            'Verifica que la URI de abajo esté exactamente en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
-          );
-          setStep('welcome');
-        }
-      }, 1_000);
-
-      // Timeout: si en 90 s el popup sigue abierto y no hay conexión, es un error de Google
-      // (redirect_uri_mismatch, acceso bloqueado, etc.) — cerramos y mostramos el error
-      timeout = setTimeout(() => {
-        if (timer) clearInterval(timer);
-        if (!pollStatus?.connected) {
-          popupRef.current?.close();
-          popupRef.current = null;
-          setPolling(false);
-          setConnectError(
-            'Google bloqueó la conexión (posiblemente la URI de redirección no está registrada). ' +
-            'Copia la URI de abajo y agrégala en Google Cloud Console → Credenciales → tu app OAuth 2.0 → URIs de redirección autorizadas, luego vuelve a intentarlo.'
-          );
-          setStep('welcome');
-        }
-      }, 90_000);
-    }
-
-    return () => {
-      if (timer)   clearInterval(timer);
-      if (timeout) clearTimeout(timeout);
-    };
+    if (!polling) return;
+    const timer = setInterval(() => {
+      if (popupRef.current?.closed && !pollStatus?.connected) {
+        clearInterval(timer);
+        setPolling(false);
+        setConnectError(
+          'La ventana de Google se cerró sin completar la autorización. ' +
+          'Verifica que la URI de redirección de abajo esté registrada en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
+        );
+        setStep(initialStep);
+      }
+    }, 1_000);
+    return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polling]);
 
@@ -892,10 +844,26 @@ export function GoogleIntegrationDashboard({ empresaId }: { empresaId: string })
   const { toast } = useToast();
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
+  // ── Wizard reset via key ─────────────────────────────────────────────────
+  // El wizard se desmonta y remonta limpio cada vez que el usuario navega a
+  // una sección diferente y regresa (sin importar si el layout de Next.js
+  // mantiene el componente vivo en background).
+  const [wizardKey, setWizardKey] = useState(0);
+  const pathname = usePathname();
+  const wizardPrevPath = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (wizardPrevPath.current !== null && wizardPrevPath.current !== pathname) {
+      setWizardKey(k => k + 1);
+    }
+    wizardPrevPath.current = pathname;
+  }, [pathname]);
+
   const { data: status, isLoading } = useQuery<GoogleStatus>({
     queryKey:        ['google-status', empresaId],
     queryFn:         () => googleApi.getStatus(empresaId),
     refetchInterval: 30_000,
+    staleTime:       30_000,  // evita parpadeos por datos obsoletos en caché
   });
 
   const { data: logs } = useQuery<GoogleSyncLog[]>({
@@ -941,6 +909,7 @@ export function GoogleIntegrationDashboard({ empresaId }: { empresaId: string })
   if (!status?.connected) {
     return (
       <ConnectWizard
+        key={wizardKey}
         empresaId={empresaId}
         initialStep={status?.appConfigured ? 'welcome' : 'setup'}
         redirectUri={status?.redirectUri ?? ''}
