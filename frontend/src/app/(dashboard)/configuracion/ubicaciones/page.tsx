@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Search, MapPin } from 'lucide-react';
 import api from '@/lib/api';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/components/ui/toaster';
 import { parseApiError } from '@/lib/utils';
 
 interface Zona { id: string; nombre: string; activo: boolean; createdAt: string; }
