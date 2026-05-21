@@ -6,6 +6,7 @@ import {
   CheckCircle2, AlertCircle, RefreshCw, Unplug,
   Calendar, Users, HardDrive, MapPin, Clock,
   ArrowRight, Check, Loader2, Zap, Shield, ChevronRight,
+  Copy, Eye, EyeOff, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toaster';
@@ -14,6 +15,7 @@ import {
   type GoogleStatus,
   type GoogleSyncLog,
   type UpdateServicesDto,
+  type SaveAppConfigDto,
 } from '@/lib/api/google';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -118,18 +120,22 @@ const SERVICES = [
 
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
-const WIZARD_LABELS = ['Conocer', 'Autorizar', 'Configurar', 'Listo'] as const;
-type WizardStep = 'welcome' | 'authorizing' | 'services' | 'done';
+type WizardStep = 'setup' | 'welcome' | 'authorizing' | 'services' | 'done';
 
-function stepIndex(s: WizardStep): number {
-  return { welcome: 0, authorizing: 1, services: 2, done: 3 }[s];
-}
+function WizardStepBar({ step, needsSetup }: { step: WizardStep; needsSetup: boolean }) {
+  const labels = needsSetup
+    ? ['Credenciales', 'Conocer', 'Autorizar', 'Servicios', 'Listo'] as const
+    : ['Conocer', 'Autorizar', 'Servicios', 'Listo'] as const;
 
-function WizardStepBar({ step }: { step: WizardStep }) {
-  const current = stepIndex(step);
+  const indexMap: Record<WizardStep, number> = needsSetup
+    ? { setup: 0, welcome: 1, authorizing: 2, services: 3, done: 4 }
+    : { setup: -1, welcome: 0, authorizing: 1, services: 2, done: 3 };
+
+  const current = indexMap[step] ?? 0;
+
   return (
     <div className="flex items-center">
-      {WIZARD_LABELS.map((label, i) => {
+      {labels.map((label, i) => {
         const done   = i < current;
         const active = i === current;
         return (
@@ -148,7 +154,7 @@ function WizardStepBar({ step }: { step: WizardStep }) {
                 active ? 'text-foreground' : 'text-muted-foreground',
               )}>{label}</span>
             </div>
-            {i < WIZARD_LABELS.length - 1 && (
+            {i < labels.length - 1 && (
               <div className={cn(
                 'flex-1 h-px mx-2 mb-4 transition-colors',
                 i < current ? 'bg-emerald-500' : 'bg-border',
@@ -161,18 +167,103 @@ function WizardStepBar({ step }: { step: WizardStep }) {
   );
 }
 
+// ── CopyField: shows a value with a copy button ──────────────────────────────
+function CopyField({ value, label }: { value: string; label: string }) {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/40 border border-border">
+        <code className="flex-1 text-xs text-foreground font-mono truncate">{value}</code>
+        <button
+          onClick={copy}
+          className="shrink-0 p-1 rounded hover:bg-muted transition-colors"
+          title="Copiar"
+        >
+          {copied
+            ? <Check className="w-3.5 h-3.5 text-emerald-500" />
+            : <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+          }
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── CredentialInput ───────────────────────────────────────────────────────────
+function CredentialInput({
+  label, value, onChange, placeholder, secret = false, hint,
+}: {
+  label:       string;
+  value:       string;
+  onChange:    (v: string) => void;
+  placeholder: string;
+  secret?:     boolean;
+  hint?:       string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-semibold text-foreground">{label}</label>
+      <div className="relative">
+        <input
+          type={secret && !show ? 'password' : 'text'}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          spellCheck={false}
+          autoComplete="off"
+          className="w-full px-3 py-2.5 pr-10 rounded-xl border border-border bg-muted/20 text-sm font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
+        />
+        {secret && (
+          <button
+            type="button"
+            onClick={() => setShow(v => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        )}
+      </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
 function ConnectWizard({
   empresaId,
+  initialStep,
+  redirectUri,
   onConnected,
 }: {
   empresaId:   string;
+  initialStep: WizardStep;
+  redirectUri: string;
   onConnected: () => void;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [step, setStep] = useState<WizardStep>('welcome');
+  const needsSetup = initialStep === 'setup';
+  const [step, setStep]       = useState<WizardStep>(initialStep);
   const [polling, setPolling] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+
+  // Setup form state
+  const [clientId,     setClientId]     = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [mapsApiKey,   setMapsApiKey]   = useState('');
+  const [setupError,   setSetupError]   = useState<string | null>(null);
+
+  // Services selection
   const [services, setServices] = useState<Record<string, boolean>>({
     calendarEnabled: true,
     contactsEnabled: true,
@@ -194,6 +285,23 @@ function ConnectWizard({
     }
   }, [polling, pollStatus?.connected]);
 
+  const saveConfigMutation = useMutation({
+    mutationFn: () => googleApi.saveAppConfig(empresaId, {
+      clientId:    clientId.trim(),
+      clientSecret: clientSecret.trim(),
+      mapsApiKey:  mapsApiKey.trim() || undefined,
+    } as SaveAppConfigDto),
+    onSuccess: () => {
+      setSetupError(null);
+      setStep('welcome');
+      qc.invalidateQueries({ queryKey: ['google-status', empresaId] });
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message;
+      setSetupError(msg || 'No se pudo guardar la configuración. Verifica los datos e inténtalo de nuevo.');
+    },
+  });
+
   const connectMutation = useMutation({
     mutationFn: async () => {
       setConnectError(null);
@@ -205,10 +313,7 @@ function ConnectWizard({
     onError: (err: any) => {
       const status = err?.response?.status;
       if (status === 503) {
-        setConnectError(
-          'La integración con Google no está configurada en el servidor aún. ' +
-          'Debes agregar las credenciales de Google Cloud en el archivo .env.production del servidor y reiniciar el backend.',
-        );
+        setConnectError('Las credenciales de Google no están configuradas. Vuelve al paso anterior.');
       } else if (status === 403) {
         setConnectError('No tienes permisos para conectar Google. Contacta al administrador del sistema.');
       } else {
@@ -230,11 +335,124 @@ function ConnectWizard({
     onError: () => toast('Error al guardar configuración', { type: 'error' }),
   });
 
+  const canSaveConfig = clientId.trim().length > 10 && clientSecret.trim().length > 5;
+
   return (
     <div className="space-y-5">
-      <WizardStepBar step={step} />
+      <WizardStepBar step={step} needsSetup={needsSetup} />
 
-      {/* ── Step 1: Welcome ─────────────────────────────────────── */}
+      {/* ── Step: Credenciales (solo si no están configuradas) ── */}
+      {step === 'setup' && (
+        <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
+          <div>
+            <h3 className="text-base font-semibold text-foreground mb-1">
+              Configurar credenciales de Google
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Necesitas crear una aplicación en Google Cloud Console. Sigue estos pasos:
+            </p>
+          </div>
+
+          {/* Instructions */}
+          <div className="space-y-2.5">
+            {[
+              {
+                n: 1,
+                title: 'Crear un proyecto en Google Cloud',
+                body:  'Ve a Google Cloud Console → Nuevo proyecto → Nómbralo "DataFast CRM".',
+                link:  'https://console.cloud.google.com/projectcreate',
+              },
+              {
+                n: 2,
+                title: 'Habilitar APIs',
+                body:  'APIs y Servicios → Biblioteca → Busca y habilita: Google Calendar API, People API, Google Drive API.',
+                link:  'https://console.cloud.google.com/apis/library',
+              },
+              {
+                n: 3,
+                title: 'Crear credenciales OAuth 2.0',
+                body:  'Credenciales → Crear credenciales → ID de cliente OAuth 2.0 → Tipo: Aplicación web. Agrega exactamente esta URI de redirección:',
+                link:  null,
+              },
+            ].map(({ n, title, body, link }) => (
+              <div key={n} className="flex gap-3 p-3.5 rounded-xl bg-muted/30 border border-border/50">
+                <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                  {n}
+                </span>
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-foreground">{title}</p>
+                    {link && (
+                      <a
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0"
+                      >
+                        <ExternalLink className="w-3 h-3 text-primary" />
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
+                  {n === 3 && (
+                    <CopyField
+                      label="URI de redirección autorizada"
+                      value={redirectUri}
+                    />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Credential inputs */}
+          <div className="space-y-3 pt-1">
+            <CredentialInput
+              label="Client ID"
+              value={clientId}
+              onChange={setClientId}
+              placeholder="xxxxxxxxxxxx-xxxxxxxx.apps.googleusercontent.com"
+              hint="Lo encuentras en Credenciales → tu app OAuth 2.0 → Client ID"
+            />
+            <CredentialInput
+              label="Client Secret"
+              value={clientSecret}
+              onChange={setClientSecret}
+              placeholder="GOCSPX-..."
+              secret
+              hint="Está junto al Client ID en la misma pantalla"
+            />
+            <CredentialInput
+              label="Maps API Key (opcional — para geolocalizar direcciones)"
+              value={mapsApiKey}
+              onChange={setMapsApiKey}
+              placeholder="AIzaSy..."
+              hint="Credenciales → Crear credenciales → Clave de API → restringe a Geocoding API"
+            />
+          </div>
+
+          {setupError && (
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-destructive/8 border border-destructive/20">
+              <AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+              <p className="text-xs text-destructive">{setupError}</p>
+            </div>
+          )}
+
+          <button
+            onClick={() => saveConfigMutation.mutate()}
+            disabled={!canSaveConfig || saveConfigMutation.isPending}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {saveConfigMutation.isPending
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Check className="w-4 h-4" />
+            }
+            Guardar y continuar
+          </button>
+        </div>
+      )}
+
+      {/* ── Step: Welcome ───────────────────────────────────────── */}
       {step === 'welcome' && (
         <div className="rounded-2xl border border-border bg-card p-8">
           <div className="text-center mb-8">
@@ -288,12 +506,12 @@ function ConnectWizard({
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <ArrowRight className="w-4 h-4" />
             }
-            Conectar con Google
+            Iniciar sesión con Google
           </button>
         </div>
       )}
 
-      {/* ── Step 2: Authorizing ──────────────────────────────────── */}
+      {/* ── Step: Authorizing ───────────────────────────────────── */}
       {step === 'authorizing' && (
         <div className="rounded-2xl border border-border bg-card p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
@@ -317,7 +535,7 @@ function ConnectWizard({
         </div>
       )}
 
-      {/* ── Step 3: Service selection ────────────────────────────── */}
+      {/* ── Step: Services ──────────────────────────────────────── */}
       {step === 'services' && (
         <div className="rounded-2xl border border-border bg-card p-6">
           <div className="mb-6">
@@ -339,9 +557,7 @@ function ConnectWizard({
                   onClick={() => setServices(prev => ({ ...prev, [key]: !prev[key] }))}
                   className={cn(
                     'w-full flex items-center gap-3.5 p-4 rounded-xl border text-left transition-all',
-                    enabled
-                      ? 'border-primary/30 bg-primary/5'
-                      : 'border-border bg-muted/10 hover:border-border/80',
+                    enabled ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/10 hover:border-border/80',
                   )}
                 >
                   <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', bg)}>
@@ -383,7 +599,7 @@ function ConnectWizard({
         </div>
       )}
 
-      {/* ── Step 4: Done ─────────────────────────────────────────── */}
+      {/* ── Step: Done ──────────────────────────────────────────── */}
       {step === 'done' && (
         <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-14 text-center">
           <div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center mx-auto mb-5">
@@ -559,6 +775,8 @@ export function GoogleIntegrationDashboard({ empresaId }: { empresaId: string })
     return (
       <ConnectWizard
         empresaId={empresaId}
+        initialStep={status?.appConfigured ? 'welcome' : 'setup'}
+        redirectUri={status?.redirectUri ?? ''}
         onConnected={() => qc.invalidateQueries({ queryKey: ['google-status', empresaId] })}
       />
     );

@@ -15,10 +15,10 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { RequirePermission }       from '../../common/decorators/roles.decorator';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 
-import { GoogleOAuthService }    from './services/google-oauth.service';
-import { GoogleCalendarService } from './services/google-calendar.service';
-import { GoogleDriveService }    from './services/google-drive.service';
-import { GoogleMapsService }     from './services/google-maps.service';
+import { GoogleOAuthService, SaveAppConfigDto } from './services/google-oauth.service';
+import { GoogleCalendarService }                from './services/google-calendar.service';
+import { GoogleDriveService }                   from './services/google-drive.service';
+import { GoogleMapsService }                    from './services/google-maps.service';
 
 import {
   UpdateGoogleServicesDto,
@@ -49,6 +49,19 @@ export class GoogleIntegrationController {
         'La integración con Google no está configurada. El administrador del servidor debe agregar las credenciales de Google Cloud.',
       );
     }
+  }
+
+  // ── App configuration ─────────────────────────────────────
+
+  @Post(':empresaId/app-config')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Guardar credenciales de Google Cloud (Client ID / Secret)' })
+  async saveAppConfig(
+    @Param('empresaId') _empresaId: string,
+    @Body() dto: SaveAppConfigDto,
+  ) {
+    await this.oauthSvc.saveAppConfig(dto);
+    return StdResponse.ok(null, 'Credenciales guardadas correctamente');
   }
 
   // ── OAuth flow ────────────────────────────────────────────

@@ -4,6 +4,8 @@ import type { ApiRespuesta } from '@/types';
 // ─── Types ────────────────────────────────────────────────────
 
 export interface GoogleStatus {
+  appConfigured:     boolean;
+  redirectUri:       string;
   connected:         boolean;
   email:             string | null;
   name:              string | null;
@@ -20,6 +22,12 @@ export interface GoogleStatus {
   driveStorageTotal: string;
   errorCount:        number;
   lastError:         string | null;
+}
+
+export interface SaveAppConfigDto {
+  clientId:     string;
+  clientSecret: string;
+  mapsApiKey?:  string;
 }
 
 export interface GoogleSyncLog {
@@ -86,6 +94,11 @@ export interface CreateCalendarEventDto {
 // ─── API client ───────────────────────────────────────────────
 
 export const googleApi = {
+  // ── App config ─────────────────────────────────────────
+  saveAppConfig: async (empresaId: string, dto: SaveAppConfigDto): Promise<void> => {
+    await api.post(`/google/${empresaId}/app-config`, dto);
+  },
+
   // ── OAuth ──────────────────────────────────────────────
   getAuthUrl: async (empresaId: string): Promise<string> => {
     const res = await api.get<ApiRespuesta<{ url: string }>>(`/google/${empresaId}/auth/url`);

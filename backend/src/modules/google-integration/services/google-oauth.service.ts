@@ -6,8 +6,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { google, Auth } from 'googleapis';
 import * as crypto from 'crypto';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { GoogleAccount, GoogleSyncStatus } from '../entities/google-account.entity';
 import { GoogleSyncLog, GoogleSyncService, GoogleSyncResult } from '../entities/google-sync-log.entity';
+
+export interface SaveAppConfigDto {
+  clientId:     string;
+  clientSecret: string;
+  mapsApiKey?:  string;
+}
 
 const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
@@ -36,12 +44,65 @@ export class GoogleOAuthService {
     this.encryptionKey = crypto.createHash('sha256').update(key || 'default-insecure-key').digest();
   }
 
+  // ── App-level config helpers ──────────────────────────────
+
+  isAppConfigured(): boolean {
+    return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  }
+
+  getRedirectUri(): string {
+    if (process.env.GOOGLE_REDIRECT_URI) return process.env.GOOGLE_REDIRECT_URI;
+    const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    return `${base}/api/v1/google/auth/callback`;
+  }
+
+  async saveAppConfig(dto: SaveAppConfigDto): Promise<void> {
+    const redirectUri = this.getRedirectUri();
+    const encKey = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY
+      || crypto.randomBytes(32).toString('hex');
+
+    // Apply to running process immediately (no restart required)
+    process.env.GOOGLE_CLIENT_ID     = dto.clientId;
+    process.env.GOOGLE_CLIENT_SECRET = dto.clientSecret;
+    process.env.GOOGLE_REDIRECT_URI  = redirectUri;
+    process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = encKey;
+    if (dto.mapsApiKey) process.env.GOOGLE_MAPS_API_KEY = dto.mapsApiKey;
+
+    // Re-derive the encryption key with the potentially new value
+    const newKey = crypto.createHash('sha256').update(encKey).digest();
+    (this as any).encryptionKey = newKey;
+
+    // Persist to .env.production so the config survives a restart
+    const envPath = path.resolve(process.cwd(), '.env.production');
+    await this.upsertEnvFile(envPath, {
+      GOOGLE_CLIENT_ID:            dto.clientId,
+      GOOGLE_CLIENT_SECRET:        dto.clientSecret,
+      GOOGLE_REDIRECT_URI:         redirectUri,
+      GOOGLE_TOKEN_ENCRYPTION_KEY: encKey,
+      ...(dto.mapsApiKey ? { GOOGLE_MAPS_API_KEY: dto.mapsApiKey } : {}),
+    });
+
+    this.logger.log('Google app credentials saved and applied');
+  }
+
+  private async upsertEnvFile(filePath: string, updates: Record<string, string>): Promise<void> {
+    let content = '';
+    try { content = await fs.readFile(filePath, 'utf-8'); } catch { /* new file */ }
+    for (const [k, v] of Object.entries(updates)) {
+      const re = new RegExp(`^${k}=.*$`, 'm');
+      const line = `${k}=${v}`;
+      content = re.test(content) ? content.replace(re, line) : `${content.trimEnd()}\n${line}\n`;
+    }
+    await fs.writeFile(filePath, content, 'utf-8');
+  }
+
   // ── OAuth client factory ──────────────────────────────────
   createOAuth2Client(): Auth.OAuth2Client {
+    // Read directly from process.env so runtime updates via saveAppConfig take effect immediately
     return new google.auth.OAuth2(
-      this.config.get<string>('GOOGLE_CLIENT_ID'),
-      this.config.get<string>('GOOGLE_CLIENT_SECRET'),
-      this.config.get<string>('GOOGLE_REDIRECT_URI'),
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI || this.getRedirectUri(),
     );
   }
 
@@ -143,6 +204,8 @@ export class GoogleOAuthService {
   }
 
   async getStatus(empresaId: string): Promise<{
+    appConfigured: boolean;
+    redirectUri:   string;
     connected: boolean;
     email: string | null;
     name: string | null;
@@ -155,9 +218,12 @@ export class GoogleOAuthService {
     errorCount: number;
     lastError: string | null;
   }> {
+    const appConfigured = this.isAppConfigured();
+    const redirectUri   = this.getRedirectUri();
     const account = await this.accountRepo.findOne({ where: { empresaId } });
     if (!account || account.status !== GoogleSyncStatus.CONNECTED) {
       return {
+        appConfigured, redirectUri,
         connected: false, email: null, name: null, picture: null, scopes: [],
         services: { calendar: false, contacts: false, drive: false, maps: false },
         lastSyncAt: null, driveStorageUsed: '0', driveStorageTotal: '0',
@@ -165,6 +231,7 @@ export class GoogleOAuthService {
       };
     }
     return {
+      appConfigured, redirectUri,
       connected:         true,
       email:             account.googleEmail,
       name:              account.googleName,
