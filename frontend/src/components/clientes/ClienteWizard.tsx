@@ -25,20 +25,20 @@ import { MOCK_PLANES, MOCK_ROUTERS }         from '@/data/clientes.mock';
 
 // ── Schemas ───────────────────────────────────────────────────
 const step1Schema = z.object({
-  usuarioPortal:   z.string().optional(),
-  passwordPortal:  z.string().optional(),
+  usuarioPortal:   z.string().min(1, 'Usuario requerido'),
+  passwordPortal:  z.string().min(1, 'Contraseña requerida'),
   tipoDocumento:   z.string().optional(),
   numeroDocumento: z.string().min(6, 'Identificación requerida').max(13),
   nombres:         z.string().min(2, 'Nombres requeridos'),
   zonaId:          z.string().optional(),
-  direccion:       z.string().optional(),
+  direccion:       z.string().min(1, 'Dirección requerida'),
   ubicacionId:     z.string().optional(),
   departamento:    z.string().optional(),
   provincia:       z.string().optional(),
   distrito:        z.string().optional(),
   telefonoFijo:    z.string().optional(),
-  telefono:        z.string().min(7, 'Teléfono requerido'),
-  whatsapp:        z.string().optional(),
+  telefono:        z.string().optional(),
+  whatsapp:        z.string().min(7, 'WhatsApp requerido'),
   email:           z.string().email('Email inválido').optional().or(z.literal('')),
 });
 
@@ -349,7 +349,7 @@ export function ClienteWizard() {
         nombres:         s1.nombres,
         apellidoPaterno: '',
         apellidoMaterno: undefined,
-        telefono:        s1.telefono,
+        telefono:        s1.telefono ?? '',
         whatsapp:        (s1 as any).whatsapp || undefined,
         email:           s1.email || undefined,
         direccion:       s1.direccion || undefined,
@@ -524,8 +524,13 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
         </FormRow>
 
         {/* Dirección principal */}
-        <FormRow label="Dirección principal" hintColor="gray">
-          <input {...register('direccion')} placeholder="Av. Unios 4453" className={inputCls()} />
+        <FormRow label="Dirección principal" required hintColor="gray">
+          <input {...register('direccion')} placeholder="Av. Unios 4453" className={inputCls(!!errors.direccion)} />
+          {errors.direccion && (
+            <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.direccion.message}
+            </p>
+          )}
         </FormRow>
 
         {/* Zona */}
@@ -539,22 +544,18 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
         </FormRow>
 
         {/* WhatsApp */}
-        <FormRow label="WhatsApp" hintColor="gray">
-          <input {...register('whatsapp')} placeholder="987654321" className={inputCls()} />
+        <FormRow label="WhatsApp" required hintColor="gray">
+          <input {...register('whatsapp')} placeholder="987654321" className={inputCls(!!errors.whatsapp)} />
+          {errors.whatsapp && (
+            <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.whatsapp.message}
+            </p>
+          )}
         </FormRow>
 
         {/* Teléfono Móvil */}
-        <FormRow label="Teléfono Móvil" required hintColor="gray">
-          <input
-            {...register('telefono')}
-            placeholder="987654321"
-            className={inputCls(!!errors.telefono)}
-          />
-          {errors.telefono && (
-            <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
-              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.telefono.message}
-            </p>
-          )}
+        <FormRow label="Teléfono Móvil" hintColor="gray">
+          <input {...register('telefono')} placeholder="987654321" className={inputCls()} />
         </FormRow>
 
         {/* E-mail */}
@@ -573,15 +574,25 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
         </FormRow>
 
         {/* Credenciales Portal */}
-        <FormRow label="Credenciales Portal" hint="Dejar en blanco para que sean automáticas.">
+        <FormRow label="Credenciales Portal" required>
           <div className="flex gap-3">
             <div className="flex flex-col gap-1 flex-1">
               <span className="text-xs text-muted-foreground">Usuario</span>
-              <input {...register('usuarioPortal')} placeholder="cliente123" maxLength={12} className={inputCls()} />
+              <input {...register('usuarioPortal')} placeholder="cliente123" maxLength={12} className={inputCls(!!errors.usuarioPortal)} />
+              {errors.usuarioPortal && (
+                <p className="text-[11px] text-destructive flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.usuarioPortal.message}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1 flex-1">
               <span className="text-xs text-muted-foreground">Contraseña</span>
-              <input {...register('passwordPortal')} placeholder="4243Tdp" maxLength={12} className={inputCls()} />
+              <input {...register('passwordPortal')} placeholder="4243Tdp" maxLength={12} className={inputCls(!!errors.passwordPortal)} />
+              {errors.passwordPortal && (
+                <p className="text-[11px] text-destructive flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.passwordPortal.message}
+                </p>
+              )}
             </div>
           </div>
         </FormRow>
