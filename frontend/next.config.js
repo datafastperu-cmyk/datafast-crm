@@ -4,8 +4,10 @@ const path = require('path');
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
+  poweredByHeader: false,
+  compress: true,
   typescript: {
-    ignoreBuildErrors: true,  // TODO: fix ~60 pre-existing TS errors and set to false
+    ignoreBuildErrors: true,  // TODO: run `npm run type-check` to see ~60 pre-existing errors; set to false once fixed
   },
   eslint: {
     ignoreDuringBuilds: false,  // ESLint DOES block build on errors
@@ -13,6 +15,20 @@ const nextConfig = {
   webpack(config) {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
     return config;
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options',           value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options',     value: 'nosniff' },
+          { key: 'Referrer-Policy',            value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy',         value: 'camera=(), microphone=(), geolocation=()' },
+          { key: 'X-DNS-Prefetch-Control',     value: 'on' },
+        ],
+      },
+    ];
   },
   async rewrites() {
     return [
