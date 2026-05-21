@@ -24,8 +24,6 @@ async function bootstrap() {
 
   const port = config.get<number>('app.port') || 3000;
   const env = config.get<string>('app.env') || 'development';
-  const frontendUrl = config.get<string>('app.frontendUrl');
-  const allowedOrigins = config.get<string[]>('app.allowedOrigins') || [];
 
   // ── Prefijo global de la API ───────────────────────────────
   app.setGlobalPrefix('api', {
@@ -42,17 +40,10 @@ async function bootstrap() {
 
   // ── CORS ─────────────────────────────────────────────────────
   app.enableCors({
-    origin: env === 'development'
-      ? true  // Cualquier origen en desarrollo
-      : (origin, callback) => {
-          // En producción, verificar contra lista de orígenes permitidos
-          const origins = [frontendUrl, ...allowedOrigins].filter(Boolean);
-          if (!origin || origins.includes(origin)) {
-            callback(null, true);
-          } else {
-            callback(new Error(`Origen CORS no permitido: ${origin}`));
-          }
-        },
+    // JWT en Authorization header es la capa de seguridad real.
+    // Aceptamos cualquier origen para que funcione en cualquier dominio
+    // sin reconfigurar por cada cliente (multi-tenant).
+    origin: true,
     credentials: true,           // Permitir cookies
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
