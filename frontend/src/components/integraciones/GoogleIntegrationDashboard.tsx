@@ -281,9 +281,21 @@ function ConnectWizard({
     googleApi.cancelarSetup(empresaId);
   };
 
-  // Cuando el usuario navega fuera y regresa a esta página, el componente puede quedar
-  // vivo en el background (layout de Next.js). Detectamos el cambio de pathname para
-  // resetear el wizard al estado inicial y cerrar cualquier popup abierto.
+  // Cuando initialStep cambia (p.ej. cancelarSetup limpió credenciales y el status
+  // recargó con appConfigured=false), resetear el wizard al nuevo punto de entrada.
+  // Esto cubre el caso en que el componente está vivo en background sin navegar.
+  useEffect(() => {
+    popupRef.current?.close();
+    popupRef.current = null;
+    setPolling(false);
+    setConnectError(null);
+    setSetupError(null);
+    setStep(initialStep);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialStep]);
+
+  // Cuando el usuario navega fuera y regresa a esta página (layout de Next.js persiste
+  // el componente), detectamos el cambio de pathname para resetear el wizard.
   useEffect(() => {
     if (prevPathRef.current !== null && prevPathRef.current !== pathname) {
       popupRef.current?.close();
@@ -319,26 +331,50 @@ function ConnectWizard({
     }
   }, [polling, pollStatus?.connected]);
 
-  // Detectar cierre del popup sin haber conectado
+  // Detectar: (1) cierre del popup sin haber conectado, (2) error cross-origin de Google
+  // (redirect_uri_mismatch hace que el popup quede abierto en el dominio de Google
+  // mostrando un error — nunca lo cerramos nosotros, así que ponemos un timeout de 90s)
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
+    let timer:   ReturnType<typeof setInterval>  | null = null;
+    let timeout: ReturnType<typeof setTimeout>   | null = null;
+
     if (polling) {
+      // Chequeo de cierre cada 1 s
       timer = setInterval(() => {
-        if (popupRef.current?.closed) {
+        if (popupRef.current?.closed && !pollStatus?.connected) {
           if (timer) clearInterval(timer);
-          if (!pollStatus?.connected) {
-            setPolling(false);
-            setConnectError(
-              'La ventana de Google se cerró sin completar la autorización. ' +
-              'La causa más común es que la URI de redirección no está registrada. ' +
-              'Verifica que la URI de abajo esté exactamente en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
-            );
-            setStep('welcome');
-          }
+          if (timeout) clearTimeout(timeout);
+          setPolling(false);
+          setConnectError(
+            'La ventana de Google se cerró sin completar la autorización. ' +
+            'La causa más común es que la URI de redirección no está registrada. ' +
+            'Verifica que la URI de abajo esté exactamente en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
+          );
+          setStep('welcome');
         }
       }, 1_000);
+
+      // Timeout: si en 90 s el popup sigue abierto y no hay conexión, es un error de Google
+      // (redirect_uri_mismatch, acceso bloqueado, etc.) — cerramos y mostramos el error
+      timeout = setTimeout(() => {
+        if (timer) clearInterval(timer);
+        if (!pollStatus?.connected) {
+          popupRef.current?.close();
+          popupRef.current = null;
+          setPolling(false);
+          setConnectError(
+            'Google bloqueó la conexión (posiblemente la URI de redirección no está registrada). ' +
+            'Copia la URI de abajo y agrégala en Google Cloud Console → Credenciales → tu app OAuth 2.0 → URIs de redirección autorizadas, luego vuelve a intentarlo.'
+          );
+          setStep('welcome');
+        }
+      }, 90_000);
     }
-    return () => { if (timer) clearInterval(timer); };
+
+    return () => {
+      if (timer)   clearInterval(timer);
+      if (timeout) clearTimeout(timeout);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polling]);
 
