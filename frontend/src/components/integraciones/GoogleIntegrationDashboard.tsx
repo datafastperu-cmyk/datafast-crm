@@ -288,23 +288,26 @@ function ConnectWizard({
 
   // Detectar cierre del popup sin haber conectado
   useEffect(() => {
-    if (!polling) return;
-    const timer = setInterval(() => {
-      if (popupRef.current?.closed) {
-        clearInterval(timer);
-        if (!pollStatus?.connected) {
-          setPolling(false);
-          setConnectError(
-            'La ventana de Google se cerró sin completar la autorización. ' +
-            'La causa más común es que la URI de redirección no está registrada. ' +
-            'Verifica que la URI de abajo esté exactamente en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
-          );
-          setStep('welcome');
+    let timer: ReturnType<typeof setInterval> | null = null;
+    if (polling) {
+      timer = setInterval(() => {
+        if (popupRef.current?.closed) {
+          if (timer) clearInterval(timer);
+          if (!pollStatus?.connected) {
+            setPolling(false);
+            setConnectError(
+              'La ventana de Google se cerró sin completar la autorización. ' +
+              'La causa más común es que la URI de redirección no está registrada. ' +
+              'Verifica que la URI de abajo esté exactamente en Google Cloud Console → OAuth 2.0 → URIs de redirección autorizadas.'
+            );
+            setStep('welcome');
+          }
         }
-      }
-    }, 1_000);
-    return () => clearInterval(timer);
-  }, [polling, pollStatus?.connected]);
+      }, 1_000);
+    }
+    return () => { if (timer) clearInterval(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polling]);
 
   const saveConfigMutation = useMutation({
     mutationFn: () => googleApi.saveAppConfig(empresaId, {
