@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, AlertCircle, RefreshCw, Unplug,
@@ -252,6 +253,8 @@ function ConnectWizard({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const pathname = usePathname();
+  const prevPathRef = useRef<string | null>(null);
   const needsSetup = initialStep === 'setup';
   const [step, setStep]       = useState<WizardStep>(initialStep);
   const [polling, setPolling] = useState(false);
@@ -273,10 +276,26 @@ function ConnectWizard({
     setClientId('');
     setClientSecret('');
     setMapsApiKey('');
-    setStep(initialStep);
+    setStep('welcome');
     // Libera estado residual en el backend (credenciales a medio guardar, filas huérfanas)
     googleApi.cancelarSetup(empresaId);
   };
+
+  // Cuando el usuario navega fuera y regresa a esta página, el componente puede quedar
+  // vivo en el background (layout de Next.js). Detectamos el cambio de pathname para
+  // resetear el wizard al estado inicial y cerrar cualquier popup abierto.
+  useEffect(() => {
+    if (prevPathRef.current !== null && prevPathRef.current !== pathname) {
+      popupRef.current?.close();
+      popupRef.current = null;
+      setPolling(false);
+      setConnectError(null);
+      setSetupError(null);
+      setStep(initialStep);
+    }
+    prevPathRef.current = pathname;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   // Services selection
   const [services, setServices] = useState<Record<string, boolean>>({
