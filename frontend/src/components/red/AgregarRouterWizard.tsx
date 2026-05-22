@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   Router, X, ChevronRight, ChevronLeft, Network, Shield, CheckCircle2,
-  XCircle, Loader2, Copy, Check, RefreshCw, Wifi, Key, Gauge, Eye, EyeOff,
+  XCircle, Loader2, Copy, Check, RefreshCw, Wifi, Key, Gauge, Eye, EyeOff, Settings,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -32,7 +32,7 @@ const SPEED_OPTS = [
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type Step         = 1 | 2 | 3;
-type TipoConexion = 'api' | 'vpn_tunnel';
+type TipoConexion = 'api' | 'vpn_tunnel' | 'api_ssl' | 'ssh' | 'snmp';
 type VpnSubStep   = 'init' | 'generating' | 'script_ready';
 type TestStatus   = 'idle' | 'testing' | 'ok' | 'error';
 
@@ -82,6 +82,11 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const [copied,     setCopied]     = useState(false);
 
   const [showPassword, setShowPassword] = useState(false);
+
+  // Paso 2 — avanzado
+  const [puertoApiSsl, setPuertoApiSsl] = useState(8729);
+  const [puertoSsh,    setPuertoSsh]    = useState(22);
+  const [usarSsl,      setUsarSsl]      = useState(false);
 
   // Test de conexión
   const [testStatus, setTestStatus] = useState<TestStatus>('idle');
@@ -157,8 +162,9 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // ── Test de conexión — maneja API directa y Túnel VPN ─────────────────────
 
   const handleTest = async () => {
-    if (!usuario)  { toast('Ingresa el usuario del router',     { type: 'error' }); return; }
-    if (!password) { toast('Ingresa la contraseña del router',  { type: 'error' }); return; }
+    const necesitaCredenciales = tipoConexion !== 'snmp';
+    if (necesitaCredenciales && !usuario)  { toast('Ingresa el usuario del router',    { type: 'error' }); return; }
+    if (necesitaCredenciales && !password) { toast('Ingresa la contraseña del router', { type: 'error' }); return; }
 
     setTestStatus('testing');
     setTestResult(null);
@@ -213,15 +219,19 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
       return;
     }
 
-    // API directa
+    // API directa / Avanzado
     if (!ipGestion) { toast('Ingresa la IP de gestión del router', { type: 'error' }); setTestStatus('idle'); return; }
+    const testPort =
+      tipoConexion === 'api_ssl' ? puertoApiSsl :
+      tipoConexion === 'ssh'     ? puertoSsh    :
+      tipoConexion === 'snmp'    ? 161          : puertoApi;
     try {
       const result = await mikrotikApi.testConexionDirecta({
         ip:             ipGestion,
-        puerto:         puertoApi,
+        puerto:         testPort,
         usuario,
         password,
-        metodoConexion: 'api',
+        metodoConexion: tipoConexion,
         versionRos:     (versionRos as any) || 'desconocida',
       });
       setTestResult(result);
@@ -266,8 +276,11 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         vpnIp:                tipoConexion === 'vpn_tunnel' ? vpnIp : undefined,
         usuario,
         password,
-        puertoApi,
-        metodoConexion:       tipoConexion === 'vpn_tunnel' ? 'vpn_tunnel' : 'api',
+        puertoApi:            tipoConexion === 'api_ssl' ? puertoApiSsl : tipoConexion === 'ssh' ? puertoSsh : puertoApi,
+        puertoApiSsl,
+        puertoSsh,
+        usarSsl:              tipoConexion === 'api_ssl' ? usarSsl : false,
+        metodoConexion:       tipoConexion,
         tipoControl:          tipoControl          as any,
         tipoControlVelocidad: tipoControlVelocidad as any,
       });
@@ -407,34 +420,120 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
               </p>
 
               {/* Tipo de conexión */}
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { val: 'api'        as const, label: 'API directa',     sub: 'IP local o pública + puerto API',             icon: Network },
-                  { val: 'vpn_tunnel' as const, label: 'Túnel VPN + API', sub: 'Router sin IP pública — conecta via OpenVPN', icon: Shield  },
-                ].map((o) => {
-                  const Icon   = o.icon;
-                  const active = tipoConexion === o.val;
-                  return (
-                    <label key={o.val}
-                      className={cn(
-                        'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                        active ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
-                      )}
-                    >
-                      <input type="radio" name="tipoConexion" value={o.val}
-                        checked={active}
-                        onChange={() => { setTipoConexion(o.val); resetTest(); }}
-                        className="mt-0.5 accent-primary" />
-                      <div>
-                        <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-white' : 'text-gray-300')}>
-                          <Icon className="w-3.5 h-3.5" />
-                          {o.label}
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { val: 'api'        as TipoConexion, label: 'API directa',     sub: 'IP local o pública + puerto API',             icon: Network },
+                    { val: 'vpn_tunnel' as TipoConexion, label: 'Túnel VPN + API', sub: 'Router sin IP pública — conecta via OpenVPN', icon: Shield  },
+                  ]).map((o) => {
+                    const Icon   = o.icon;
+                    const active = tipoConexion === o.val;
+                    return (
+                      <label key={o.val}
+                        className={cn(
+                          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                          active ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                        )}
+                      >
+                        <input type="radio" name="tipoConexion" value={o.val}
+                          checked={active}
+                          onChange={() => { setTipoConexion(o.val); resetTest(); }}
+                          className="mt-0.5 accent-primary" />
+                        <div>
+                          <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-white' : 'text-gray-300')}>
+                            <Icon className="w-3.5 h-3.5" />
+                            {o.label}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
                         </div>
-                        <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {/* Card Avanzado: SSH / SNMP / API-SSL */}
+                {(() => {
+                  const isAvanzado = (['api_ssl', 'ssh', 'snmp'] as TipoConexion[]).includes(tipoConexion);
+                  return (
+                    <div className={cn(
+                      'rounded-lg border transition-colors',
+                      isAvanzado ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                    )}>
+                      <div className="flex items-center gap-3 p-3 cursor-pointer"
+                        onClick={() => { if (!isAvanzado) { setTipoConexion('api_ssl'); resetTest(); } }}>
+                        <div className={cn(
+                          'w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors',
+                          isAvanzado ? 'border-primary bg-primary' : 'border-white/30',
+                        )} />
+                        <div className="flex-1">
+                          <div className={cn('text-sm font-medium flex items-center gap-1.5', isAvanzado ? 'text-white' : 'text-gray-300')}>
+                            <Settings className="w-3.5 h-3.5" />
+                            Avanzado
+                          </div>
+                          <div className="text-xs text-gray-600 mt-0.5">SSH · SNMP · API-SSL</div>
+                        </div>
                       </div>
-                    </label>
+
+                      {isAvanzado && (
+                        <div className="px-3 pb-3 space-y-3">
+                          <div className="grid grid-cols-3 gap-2">
+                            {([
+                              { val: 'api_ssl' as TipoConexion, label: 'API-SSL', desc: 'Puerto 8729' },
+                              { val: 'ssh'     as TipoConexion, label: 'SSH',     desc: 'Puerto 22'   },
+                              { val: 'snmp'    as TipoConexion, label: 'SNMP',    desc: 'Puerto 161'  },
+                            ]).map((o) => (
+                              <label key={o.val}
+                                className={cn(
+                                  'flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors',
+                                  tipoConexion === o.val
+                                    ? 'border-primary/50 bg-primary/15 text-white'
+                                    : 'border-white/10 text-gray-400 hover:border-white/20 hover:text-white',
+                                )}
+                              >
+                                <input type="radio" name="tipoConexion" value={o.val}
+                                  checked={tipoConexion === o.val}
+                                  onChange={() => { setTipoConexion(o.val); resetTest(); }}
+                                  className="accent-primary" />
+                                <div>
+                                  <div className="font-medium">{o.label}</div>
+                                  <div className="text-gray-600 mt-0.5">{o.desc}</div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex items-end gap-3">
+                            <div>
+                              <label className={labelCls}>
+                                {tipoConexion === 'api_ssl' ? 'Puerto API-SSL' :
+                                 tipoConexion === 'ssh'     ? 'Puerto SSH'     : 'Puerto SNMP'}
+                              </label>
+                              <input type="number" min={1} max={65535}
+                                className={cn(inputCls, 'w-36')}
+                                value={
+                                  tipoConexion === 'api_ssl' ? puertoApiSsl :
+                                  tipoConexion === 'ssh'     ? puertoSsh    : 161
+                                }
+                                onChange={(e) => {
+                                  const v = parseInt(e.target.value);
+                                  if (tipoConexion === 'api_ssl') { setPuertoApiSsl(v || 8729); resetTest(); }
+                                  else if (tipoConexion === 'ssh') { setPuertoSsh(v || 22); resetTest(); }
+                                }}
+                              />
+                            </div>
+                            {tipoConexion === 'api_ssl' && (
+                              <label className="flex items-center gap-1.5 cursor-pointer select-none pb-2">
+                                <input type="checkbox" checked={usarSsl}
+                                  onChange={(e) => { setUsarSsl(e.target.checked); resetTest(); }}
+                                  className="accent-primary w-4 h-4" />
+                                <span className="text-sm text-gray-300">Usar TLS / SSL</span>
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
-                })}
+                })()}
               </div>
 
               {/* Panel VPN: generar y mostrar script */}
@@ -555,18 +654,20 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                   </div>
                 </div>
 
-                <div>
-                  <label className={labelCls}>Puerto API</label>
-                  <div className="flex items-center gap-3">
-                    <input type="number" min={1} max={65535}
-                      className={cn(inputCls, 'w-36')}
-                      value={puertoApi}
-                      onChange={(e) => { setPuertoApi(parseInt(e.target.value) || 8728); resetTest(); }} />
-                    <span className="text-xs text-gray-600">
-                      Por defecto: 8728. Si lo cambiaste en el router, actualízalo aquí también.
-                    </span>
+                {!(['api_ssl', 'ssh', 'snmp'] as TipoConexion[]).includes(tipoConexion) && (
+                  <div>
+                    <label className={labelCls}>Puerto API</label>
+                    <div className="flex items-center gap-3">
+                      <input type="number" min={1} max={65535}
+                        className={cn(inputCls, 'w-36')}
+                        value={puertoApi}
+                        onChange={(e) => { setPuertoApi(parseInt(e.target.value) || 8728); resetTest(); }} />
+                      <span className="text-xs text-gray-600">
+                        Por defecto: 8728. Si lo cambiaste en el router, actualízalo aquí también.
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Probar conexión */}
                 <div className="rounded-xl border border-white/10 p-4 bg-white/3 space-y-3">
@@ -577,6 +678,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                   <p className="text-xs text-gray-600">
                     {tipoConexion === 'vpn_tunnel'
                       ? 'Verifica el túnel VPN y la conexión API en un solo paso. Si el túnel conectó, la IP se rellena automáticamente.'
+                      : (['api_ssl', 'ssh', 'snmp'] as TipoConexion[]).includes(tipoConexion)
+                      ? 'Comprueba la conectividad con el método seleccionado antes de continuar.'
                       : 'Comprueba la conectividad antes de continuar. Detecta la versión RouterOS automáticamente.'}
                   </p>
 
