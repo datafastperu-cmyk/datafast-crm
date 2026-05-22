@@ -876,6 +876,9 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   });
   const segmentos = segmentosRaw as any[];
 
+  const { data: nodosRaw = [] } = useQuery({ queryKey: ['nodos-list'], queryFn: redesApi.listNodos });
+  const puntosAcceso = (nodosRaw as any[]).filter((n: any) => n.tipo === 'antena');
+
   useEffect(() => {
     if (planSeleccionado?.precio != null) {
       setValue('costo', Number(planSeleccionado.precio).toFixed(2) as any);
@@ -1083,8 +1086,8 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             <Field label="Conectado A">
               <select {...register('conectadoAId')} className={inputCls()}>
                 <option value="">Seleccionar...</option>
-                {(routers as any[]).map((r) => (
-                  <option key={r.id} value={r.id}>{r.nombre}</option>
+                {puntosAcceso.map((n: any) => (
+                  <option key={n.id} value={n.id}>{n.nombre}</option>
                 ))}
               </select>
             </Field>
