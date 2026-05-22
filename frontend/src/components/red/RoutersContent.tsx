@@ -696,6 +696,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+                    {router && <p className="text-xs text-gray-600 mt-1">Si cambiaste las credenciales en el router, escribe el nuevo usuario y contraseña.</p>}
                   </div>
                 </div>
 
