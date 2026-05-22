@@ -32,6 +32,19 @@ export class VpnClienteController {
     return StdResponse.ok({ cliente, script }, 'Cliente VPN creado');
   }
 
+  // ── Obtener script de configuración por router ───────────────
+
+  @Get('by-router/:routerId/script')
+  @RequirePermission('mikrotik:manage')
+  @ApiOperation({ summary: 'Obtener script RouterOS para el cliente VPN vinculado a un router' })
+  async getScriptByRouter(
+    @Param('routerId') routerId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const script = await this.svc.getScriptByRouterId(routerId, user.empresaId);
+    return StdResponse.ok({ script }, 'Script generado');
+  }
+
   // ── Validar túnel (polling del status.log) ────────────────────
 
   @Post(':id/validar')

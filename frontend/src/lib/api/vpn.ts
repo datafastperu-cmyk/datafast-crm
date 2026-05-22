@@ -62,4 +62,9 @@ export const vpnApi = {
   revocar: async (id: string): Promise<void> => {
     await api.delete(`/openvpn/mikrotik-clients/${id}`);
   },
+
+  getScriptByRouterId: async (routerId: string): Promise<string> => {
+    const { data } = await api.get(`/openvpn/mikrotik-clients/by-router/${routerId}/script`);
+    return data.data.script;
+  },
 };

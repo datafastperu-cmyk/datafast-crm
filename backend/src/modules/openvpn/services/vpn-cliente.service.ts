@@ -133,6 +133,23 @@ export class VpnClienteService {
     return { cliente, script };
   }
 
+  // ── Regenerar script para cliente existente ──────────────────
+
+  async regenerarScript(id: string, empresaId: string): Promise<string> {
+    const cliente = await this.repo.findOne({ where: { id, empresaId } });
+    if (!cliente) throw new NotFoundException('Cliente VPN no encontrado');
+    return this._generarScript(cliente);
+  }
+
+  async getScriptByRouterId(routerId: string, empresaId: string): Promise<string> {
+    const cliente = await this.repo.findOne({
+      where: { routerId, empresaId, activo: true },
+      order: { createdAt: 'DESC' },
+    });
+    if (!cliente) throw new NotFoundException('No hay cliente VPN asociado a este router');
+    return this._generarScript(cliente);
+  }
+
   // ── Listar por router (para revocación al eliminar router) ────
 
   async listarPorRouterId(routerId: string, empresaId: string): Promise<VpnCliente[]> {

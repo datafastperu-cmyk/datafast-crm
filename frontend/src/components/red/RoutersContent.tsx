@@ -18,6 +18,7 @@ import type {
   MetodoConexion, TestConexionResult,
 } from '@/lib/api/mikrotik';
 import { AgregarRouterWizard } from './AgregarRouterWizard';
+import { vpnApi } from '@/lib/api/vpn';
 
 // ─── Constantes de UI ─────────────────────────────────────────────
 
@@ -64,47 +65,27 @@ const inputCls = 'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 
 const labelCls = 'text-xs text-gray-400 mb-1 block';
 const sectionHdr = 'text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2';
 
-function genPassword(len = 16): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
-  return Array.from(crypto.getRandomValues(new Uint8Array(len)))
-    .map((b) => chars[b % chars.length]).join('');
-}
-
 // ─── Script de Conexión Dialog ────────────────────────────────────
 
 function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose: () => void }) {
-  const [apiPass] = useState(genPassword);
   const [copied, setCopied] = useState(false);
 
-  const apiUser = router.usuario || 'datafast-crm';
-  const apiPort = router.puertoApi ?? 8728;
-
-  const script = [
-    `# DATAFAST ISP Manager — Script de configuración`,
-    `# Pega esto en: WinBox → Nueva Terminal`,
-    ``,
-    `# 1. Habilitar servicio API`,
-    `/ip/service/set api disabled=no port=${apiPort}`,
-    ``,
-    `# 2. Crear grupo con permisos para el CRM`,
-    `/user/group/add name=datafast-crm policy=api,read,write,!local,!telnet,!ssh,!ftp,!reboot,!password,!web,!winbox,!sniff,!sensitive comment="DATAFAST ISP Manager"`,
-    ``,
-    `# 3. Crear usuario API`,
-    `/user/add name="${apiUser}" password="${apiPass}" group=datafast-crm comment="DATAFAST CRM User"`,
-    ``,
-    `# 4. (Recomendado) Regla firewall — solo el servidor CRM puede usar la API`,
-    `# Reemplaza IP-DEL-SERVIDOR con la IP pública/VPN de tu servidor DataFast:`,
-    `# /ip/firewall/filter/add chain=input src-address=IP-DEL-SERVIDOR/32 protocol=tcp dst-port=${apiPort} action=accept comment="DATAFAST: Allow CRM" place-before=0`,
-  ].join('\n');
+  const { data: script, isLoading, isError } = useQuery({
+    queryKey: ['vpn-script', router.id],
+    queryFn:  () => vpnApi.getScriptByRouterId(router.id),
+    retry: false,
+  });
 
   const doCopy = async () => {
-    await navigator.clipboard.writeText(script);
+    if (!script) return;
+    try { await navigator.clipboard.writeText(script); }
+    catch { const t = document.createElement('textarea'); t.value = script; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); }
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
           <div className="flex items-center gap-3">
@@ -112,8 +93,8 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
               <FileCode className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h2 className="font-semibold text-white text-base">Script de Conexión MikroTik</h2>
-              <p className="text-xs text-gray-500">{router.nombre} — {router.ipGestion}</p>
+              <h2 className="font-semibold text-white text-base">Script de configuración OpenVPN</h2>
+              <p className="text-xs text-gray-500">{router.nombre} — {router.vpnIp || router.ipGestion}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
@@ -122,46 +103,49 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
         </div>
 
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300 flex gap-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium mb-1">Instrucciones de uso</p>
-              <p className="text-amber-300/70">
-                1. Copia el script y pégalo en <strong>WinBox → Nueva Terminal</strong> del router.<br />
-                2. Guarda la contraseña generada — la necesitarás al registrar el router en el sistema.<br />
-                3. Usa el usuario <code className="bg-black/30 px-1 rounded">{apiUser}</code> y la contraseña mostrada al registrar.
-              </p>
+          {isLoading && (
+            <div className="flex items-center gap-2 text-gray-400 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Cargando script…
             </div>
-          </div>
+          )}
 
-          <div className="bg-black/40 border border-white/10 rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/3">
-              <span className="text-xs text-gray-400 font-mono">RouterOS Terminal</span>
-              <button onClick={doCopy}
-                className={cn(
-                  'flex items-center gap-1.5 text-xs px-3 py-1 rounded-md transition-colors',
-                  copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-gray-300 hover:bg-white/15'
-                )}
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? 'Copiado' : 'Copiar script'}
-              </button>
+          {isError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-300 flex items-center gap-2">
+              <XCircle className="w-4 h-4 flex-shrink-0" />
+              No se encontró el script VPN para este router. Es posible que el cliente VPN haya sido revocado.
             </div>
-            <pre className="text-xs text-green-400 font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed">
-              {script}
-            </pre>
-          </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="bg-white/3 border border-white/10 rounded-lg p-3">
-              <p className="text-gray-500 mb-1">Usuario API</p>
-              <p className="text-white font-mono font-medium">{apiUser}</p>
-            </div>
-            <div className="bg-white/3 border border-white/10 rounded-lg p-3">
-              <p className="text-gray-500 mb-1">Contraseña generada</p>
-              <p className="text-primary font-mono font-medium break-all">{apiPass}</p>
-            </div>
-          </div>
+          {script && (
+            <>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300 flex gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <p>
+                  Copia el script y pégalo en <strong>WinBox → New Terminal</strong> del router.
+                  Descargará los certificados y creará la interfaz <code className="bg-black/30 px-1 rounded">vpndatafast</code> automáticamente.
+                </p>
+              </div>
+
+              <div className="bg-black/40 border border-white/10 rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/3">
+                  <span className="text-xs text-gray-400 font-mono">RouterOS Terminal</span>
+                  <button onClick={doCopy}
+                    className={cn(
+                      'flex items-center gap-1.5 text-xs px-3 py-1 rounded-md transition-colors',
+                      copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-gray-300 hover:bg-white/15'
+                    )}
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? 'Copiado' : 'Copiar script'}
+                  </button>
+                </div>
+                <pre className="text-[10px] text-green-300 font-mono p-4 overflow-x-auto max-h-64 leading-relaxed whitespace-pre-wrap break-all">
+                  {script}
+                </pre>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-white/10 flex justify-end">
