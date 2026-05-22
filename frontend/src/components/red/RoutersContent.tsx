@@ -522,135 +522,83 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
           {/* ── TAB: Conexión ───────────────────────────────── */}
           {tab === 'conn' && (
             <div className="space-y-5">
+              <p className="text-xs text-gray-500">
+                Configura cómo el sistema se conectará al router MikroTik.
+              </p>
 
-              {/* Tipo de conexión */}
-              <div>
-                <p className={sectionHdr}>
-                  <Network className="w-3.5 h-3.5" />
-                  Tipo de conexión
-                </p>
-                <div className="grid grid-cols-1 gap-2">
-                  {(Object.entries(METODO_CONFIG) as Array<[MetodoConexion, typeof METODO_CONFIG['api']]>).map(([val, cfg]) => {
-                    const Icon = cfg.icon;
-                    const active = form.metodoConexion === val;
-                    return (
-                      <label
-                        key={val}
-                        className={cn(
-                          'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                          active ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
-                        )}
-                      >
-                        <input type="radio" name="metodo" value={val}
-                          checked={active} onChange={() => handleMetodoChange(val)}
-                          className="accent-primary" />
-                        <Icon className={cn('w-4 h-4 flex-shrink-0', active ? 'text-primary' : 'text-gray-400')} />
-                        <div className="min-w-0">
-                          <span className={cn('text-sm font-medium', active ? 'text-white' : 'text-gray-300')}>
-                            {cfg.label}
-                          </span>
-                          <span className="text-xs text-gray-500 ml-2">{cfg.desc}</span>
+              {/* Tipo de conexión — 2 opciones */}
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { val: 'api'        as MetodoConexion, label: 'API directa',     sub: 'IP local o pública + puerto API',             icon: Network },
+                  { val: 'vpn_tunnel' as MetodoConexion, label: 'Túnel VPN + API', sub: 'Router sin IP pública — conecta via OpenVPN', icon: Shield  },
+                ] as const).map((o) => {
+                  const Icon   = o.icon;
+                  const active = form.metodoConexion === o.val;
+                  return (
+                    <label key={o.val}
+                      className={cn(
+                        'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                        active ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                      )}
+                    >
+                      <input type="radio" name="metodo" value={o.val}
+                        checked={active} onChange={() => handleMetodoChange(o.val)}
+                        className="mt-0.5 accent-primary" />
+                      <div>
+                        <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-white' : 'text-gray-300')}>
+                          <Icon className="w-3.5 h-3.5" />
+                          {o.label}
                         </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* IPs */}
-              <div>
-                <p className={sectionHdr}>
-                  <Activity className="w-3.5 h-3.5" />
-                  Direcciones IP
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>IP de Gestión *</label>
-                    <input className={inputCls} value={form.ipGestion}
-                      onChange={(e) => set('ipGestion', e.target.value)}
-                      placeholder="192.168.100.1 o dominio" />
-                  </div>
-                  <div>
-                    <label className={cn(labelCls, form.metodoConexion === 'vpn_tunnel' && 'text-blue-400')}>
-                      IP VPN {form.metodoConexion === 'vpn_tunnel' && <span className="text-blue-400">*</span>}
+                        <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
+                      </div>
                     </label>
-                    <input className={cn(inputCls, form.metodoConexion === 'vpn_tunnel' && 'border-blue-400/30')}
-                      value={form.vpnIp ?? ''}
-                      onChange={(e) => set('vpnIp', e.target.value)}
-                      placeholder="10.8.0.2" />
-                  </div>
-                </div>
-                {form.metodoConexion === 'vpn_tunnel' && (
-                  <p className="text-xs text-blue-400/70 mt-1.5 flex items-center gap-1">
-                    <Shield className="w-3 h-3" />
-                    En modo VPN Tunnel se usa la IP VPN para conectar mediante API
-                  </p>
-                )}
+                  );
+                })}
               </div>
 
-              {/* Puertos */}
-              <div>
+              {/* Acceso al router */}
+              <div className="space-y-3">
                 <p className={sectionHdr}>
                   <Key className="w-3.5 h-3.5" />
-                  Puertos de conexión
+                  Acceso al router
                 </p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className={cn(labelCls, ['api', 'vpn_tunnel'].includes(form.metodoConexion) && 'text-primary/80')}>
-                      Puerto API
-                      {['api', 'vpn_tunnel'].includes(form.metodoConexion) && (
-                        <span className="ml-1 text-primary/60 text-[10px]">activo</span>
-                      )}
-                    </label>
-                    <input type="number" min={1} max={65535}
-                      className={cn(inputCls, ['api', 'vpn_tunnel'].includes(form.metodoConexion) && 'border-primary/30')}
-                      value={form.puertoApi ?? 8728}
-                      onChange={(e) => set('puertoApi', parseInt(e.target.value) || 8728)} />
-                  </div>
-                  <div>
-                    <label className={cn(labelCls, form.metodoConexion === 'api_ssl' && 'text-primary/80')}>
-                      Puerto API-SSL
-                      {form.metodoConexion === 'api_ssl' && (
-                        <span className="ml-1 text-primary/60 text-[10px]">activo</span>
-                      )}
-                    </label>
-                    <input type="number" min={1} max={65535}
-                      className={cn(inputCls, form.metodoConexion === 'api_ssl' && 'border-primary/30')}
-                      value={form.puertoApiSsl ?? 8729}
-                      onChange={(e) => set('puertoApiSsl', parseInt(e.target.value) || 8729)} />
-                  </div>
-                  <div>
-                    <label className={cn(labelCls, form.metodoConexion === 'ssh' && 'text-primary/80')}>
-                      Puerto SSH
-                      {form.metodoConexion === 'ssh' && (
-                        <span className="ml-1 text-primary/60 text-[10px]">activo</span>
-                      )}
-                    </label>
-                    <input type="number" min={1} max={65535}
-                      className={cn(inputCls, form.metodoConexion === 'ssh' && 'border-primary/30')}
-                      value={form.puertoSsh ?? 22}
-                      onChange={(e) => set('puertoSsh', parseInt(e.target.value) || 22)} />
-                  </div>
-                </div>
-              </div>
 
-              {/* Credenciales */}
-              <div>
-                <p className={sectionHdr}>
-                  <Key className="w-3.5 h-3.5" />
-                  Credenciales
-                </p>
+                <div>
+                  <label className={labelCls}>
+                    {form.metodoConexion === 'vpn_tunnel' ? 'IP de la interfaz OVPN Client' : 'IP de gestión *'}
+                  </label>
+                  <input
+                    className={cn(inputCls, form.metodoConexion === 'vpn_tunnel' && 'border-blue-400/30')}
+                    value={form.metodoConexion === 'vpn_tunnel' ? (form.vpnIp ?? '') : form.ipGestion}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (form.metodoConexion === 'vpn_tunnel') {
+                        setForm((f) => ({ ...f, vpnIp: val, ipGestion: val }));
+                        setTestStatus('idle'); setTestResult(null);
+                      } else {
+                        set('ipGestion', val);
+                      }
+                    }}
+                    placeholder={form.metodoConexion === 'vpn_tunnel' ? '10.8.0.X  (se rellena al probar)' : '192.168.100.1 o IP pública'}
+                  />
+                  {form.metodoConexion === 'vpn_tunnel' && (
+                    <p className="text-xs text-blue-400/70 mt-1 flex items-center gap-1">
+                      <Shield className="w-3 h-3" />
+                      En modo VPN Tunnel se usa la IP VPN para conectar mediante API
+                    </p>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Usuario *</label>
                     <input className={inputCls} value={form.usuario}
                       onChange={(e) => set('usuario', e.target.value)}
                       placeholder="admin" />
+                    <p className="text-xs text-gray-600 mt-1">Debe tener permisos completos (full).</p>
                   </div>
                   <div>
-                    <label className={labelCls}>
-                      Contraseña {router ? '(vacío = no cambiar)' : '*'}
-                    </label>
+                    <label className={labelCls}>Contraseña {router ? '(vacío = no cambiar)' : '*'}</label>
                     <div className="relative">
                       <input type={showPassword ? 'text' : 'password'}
                         className={cn(inputCls, 'pr-9')} value={form.password}
@@ -664,81 +612,75 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                     </div>
                   </div>
                 </div>
-                <div className="mt-3">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input type="checkbox" checked={form.usarSsl ?? false}
-                      onChange={(e) => set('usarSsl', e.target.checked)}
-                      className="accent-primary w-4 h-4 rounded" />
-                    <span className="text-sm text-gray-300">
-                      Usar TLS / SSL
-                      <span className="text-xs text-gray-500 ml-2">— certifica la conexión RouterOS API</span>
+
+                <div>
+                  <label className={labelCls}>Puerto API</label>
+                  <div className="flex items-center gap-3">
+                    <input type="number" min={1} max={65535}
+                      className={cn(inputCls, 'w-36')}
+                      value={form.puertoApi ?? 8728}
+                      onChange={(e) => set('puertoApi', parseInt(e.target.value) || 8728)} />
+                    <span className="text-xs text-gray-600">
+                      Por defecto: 8728. Si lo cambiaste en el router, actualízalo aquí también.
                     </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Test de conexión */}
-              <div className="rounded-xl border border-white/10 p-4 bg-white/3">
-                <p className={cn(sectionHdr, 'mb-2')}>
-                  <Activity className="w-3.5 h-3.5" />
-                  Verificar conexión
-                </p>
-                <p className="text-xs text-gray-500 mb-3">
-                  Prueba la conectividad antes de guardar. Detecta automáticamente la versión RouterOS.
-                </p>
-
-                <button
-                  onClick={handleTest}
-                  disabled={testStatus === 'testing'}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
-                    testStatus === 'ok'
-                      ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                      : testStatus === 'error'
-                      ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                      : 'bg-white/10 text-white hover:bg-white/15 border border-white/10',
-                    testStatus === 'testing' && 'opacity-70 cursor-not-allowed',
-                  )}
-                >
-                  {testStatus === 'testing' ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Probando…</>
-                  ) : testStatus === 'ok' ? (
-                    <><CheckCircle2 className="w-4 h-4" /> Conexión exitosa</>
-                  ) : testStatus === 'error' ? (
-                    <><XCircle className="w-4 h-4" /> Reintentar prueba</>
-                  ) : (
-                    <><RefreshCw className="w-4 h-4" /> Probar conexión</>
-                  )}
-                </button>
-
-                {testResult && (
-                  <div className={cn(
-                    'mt-3 rounded-lg px-4 py-3 text-sm border',
-                    testResult.exitoso
-                      ? 'bg-green-500/10 border-green-500/20 text-green-300'
-                      : 'bg-red-500/10 border-red-500/20 text-red-300',
-                  )}>
-                    <p className="font-medium">{testResult.mensaje}</p>
-                    {testResult.exitoso && (
-                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-green-400/70">
-                        {testResult.identityDetectada && (
-                          <span>Identity: <strong className="text-green-300">{testResult.identityDetectada}</strong></span>
-                        )}
-                        {testResult.versionDetectada && (
-                          <span>RouterOS: <strong className="text-green-300">{testResult.versionDetectada}</strong></span>
-                        )}
-                        {testResult.latenciaMs != null && (
-                          <span>Latencia: <strong className="text-green-300">{testResult.latenciaMs}ms</strong></span>
-                        )}
-                        {testResult.rosVersion && (
-                          <span className="bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full font-medium">
-                            {testResult.rosVersion.toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                    )}
                   </div>
-                )}
+                </div>
+
+                {/* Probar conexión */}
+                <div className="rounded-xl border border-white/10 p-4 bg-white/3 space-y-3">
+                  <p className={cn(sectionHdr, 'mb-0')}>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Probar conexión
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    {form.metodoConexion === 'vpn_tunnel'
+                      ? 'Verifica el túnel VPN y la conexión API en un solo paso. Si el túnel conectó, la IP se rellena automáticamente.'
+                      : 'Comprueba la conectividad antes de guardar. Detecta la versión RouterOS automáticamente.'}
+                  </p>
+                  <button onClick={handleTest} disabled={testStatus === 'testing'}
+                    className={cn(
+                      'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors border',
+                      testStatus === 'ok'    ? 'bg-green-500/20 text-green-400 border-green-500/30'  :
+                      testStatus === 'error' ? 'bg-red-500/20   text-red-400   border-red-500/30'    :
+                                               'bg-white/10 text-white hover:bg-white/15 border-white/10',
+                      testStatus === 'testing' && 'opacity-70 cursor-not-allowed',
+                    )}
+                  >
+                    {testStatus === 'testing' ? <><Loader2      className="w-4 h-4 animate-spin" /> Probando…</>        :
+                     testStatus === 'ok'       ? <><CheckCircle2 className="w-4 h-4" />             Conexión exitosa</> :
+                     testStatus === 'error'    ? <><XCircle      className="w-4 h-4" />             Reintentar</>       :
+                                                 <><RefreshCw    className="w-4 h-4" />             Probar conexión</>}
+                  </button>
+
+                  {testResult && (
+                    <div className={cn(
+                      'rounded-lg px-4 py-3 text-sm border',
+                      testResult.exitoso
+                        ? 'bg-green-500/10 border-green-500/20 text-green-300'
+                        : 'bg-red-500/10   border-red-500/20   text-red-300',
+                    )}>
+                      <p className="font-medium">{testResult.mensaje}</p>
+                      {testResult.exitoso && (
+                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-green-400/70">
+                          {testResult.identityDetectada && (
+                            <span>Identity: <strong className="text-green-300">{testResult.identityDetectada}</strong></span>
+                          )}
+                          {testResult.versionDetectada && (
+                            <span>RouterOS: <strong className="text-green-300">{testResult.versionDetectada}</strong></span>
+                          )}
+                          {testResult.latenciaMs != null && (
+                            <span>Latencia: <strong className="text-green-300">{testResult.latenciaMs}ms</strong></span>
+                          )}
+                          {testResult.rosVersion && (
+                            <span className="bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full font-medium">
+                              {testResult.rosVersion.toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
