@@ -5,9 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Router, Plus, Pencil, Trash2, Wifi, WifiOff,
   RefreshCw, CheckCircle2, XCircle, Loader2, AlertTriangle,
-  Lock, Shield, ShieldOff, Network, Terminal, Radio,
+  Lock, Shield, Network, Terminal, Radio,
   Key, Settings, ChevronRight, Activity, Cpu, MemoryStick,
-  Copy, Check, Users, FileCode, Globe,
+  Copy, Check, Users, FileCode, Globe, Eye, EyeOff,
 } from 'lucide-react';
 
 import { mikrotikApi } from '@/lib/api/mikrotik';
@@ -15,7 +15,7 @@ import { useToast }    from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 import type {
   Router as RouterType, CreateRouterDto,
-  MetodoConexion, TestConexionResult, TipoControlVelocidad,
+  MetodoConexion, TestConexionResult,
 } from '@/lib/api/mikrotik';
 import { AgregarRouterWizard } from './AgregarRouterWizard';
 
@@ -33,16 +33,16 @@ const METODO_CONFIG: Record<MetodoConexion, {
 };
 
 const TIPO_CONTROL_OPTS = [
-  { val: 'ninguna',            label: 'Sin control de seguridad',   icon: ShieldOff, color: 'text-gray-400',   desc: 'No aplica controles de seguridad IP-MAC' },
-  { val: 'amarre_ip_mac',      label: 'Amarre IP + MAC',            icon: Shield,    color: 'text-blue-400',   desc: 'Agrega entrada estática en IP > ARP al provisionar abonados' },
-  { val: 'amarre_ip_mac_dhcp', label: 'IP + MAC + DHCP Lease',      icon: Lock,      color: 'text-violet-400', desc: 'Agrega ARP estático + lease en IP > DHCP Server > Leases' },
+  { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
+  { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
+  { val: 'ninguna',            label: 'Ninguno'                     },
 ];
 
-const TIPO_VELOCIDAD_OPTS: { val: TipoControlVelocidad; label: string; desc: string }[] = [
-  { val: 'ninguno',          label: 'Sin control de velocidad',      desc: 'No aplica límites de velocidad' },
-  { val: 'colas_simples',    label: 'Colas simples (estáticas)',      desc: 'Simple Queue por abonado — control estático' },
-  { val: 'pcq_addresslist',  label: 'PCQ + AddressList',              desc: 'Per Connection Queue con Address List — escalable' },
-  { val: 'dhcp_lease_queues', label: 'DHCP Lease (colas dinámicas)', desc: 'Simple Queue dinámica vinculada al DHCP Lease' },
+const TIPO_VELOCIDAD_OPTS = [
+  { val: 'colas_simples',     label: 'Colas Simples'                         },
+  { val: 'pcq_addresslist',   label: 'PCQ + AddressList'                     },
+  { val: 'dhcp_lease_queues', label: 'DHCP Leases (Colas Simples Dinámicas)' },
+  { val: 'ninguno',           label: 'Ninguno'                               },
 ];
 
 const ESTADO_COLORS: Record<string, string> = {
@@ -53,10 +53,9 @@ const ESTADO_COLORS: Record<string, string> = {
   desconocido:   'text-gray-500',
 };
 
-const VERSION_OPTS = [
-  { val: 'desconocida', label: 'Detectar automáticamente' },
-  { val: 'v6',          label: 'RouterOS v6.x (legacy)' },
-  { val: 'v7',          label: 'RouterOS v7.x (moderno)' },
+const VERSION_ROS_OPTS = [
+  { val: 'v6', label: 'RouterOS v6.x', sub: 'Legacy — CCR, RB, hAP (pre-2021)' },
+  { val: 'v7', label: 'RouterOS v7.x', sub: 'Moderno — CHR, CCR2xxx, hEX S…'  },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -266,6 +265,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
   type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
   const [testStatus, setTestStatus] = useState<TestStatus>('idle');
   const [testResult, setTestResult] = useState<TestConexionResult | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // ─── Formulario ───────────────────────────────────────────
   const [form, setForm] = useState<CreateRouterDto & { password: string }>({
@@ -489,6 +489,32 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                     placeholder="Descripción, notas técnicas, observaciones…"
                   />
                 </div>
+                <div className="col-span-2">
+                  <label className={labelCls}>Versión RouterOS</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {VERSION_ROS_OPTS.map((o) => (
+                      <label key={o.val}
+                        className={cn(
+                          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                          form.versionRos === o.val
+                            ? 'border-primary/60 bg-primary/10'
+                            : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                        )}
+                      >
+                        <input type="radio" name="versionRos" value={o.val}
+                          checked={form.versionRos === o.val}
+                          onChange={() => set('versionRos', o.val)}
+                          className="mt-0.5 accent-primary" />
+                        <div>
+                          <div className={cn('text-sm font-medium', form.versionRos === o.val ? 'text-white' : 'text-gray-300')}>
+                            {o.label}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -625,9 +651,17 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                     <label className={labelCls}>
                       Contraseña {router ? '(vacío = no cambiar)' : '*'}
                     </label>
-                    <input type="password" className={inputCls} value={form.password}
-                      onChange={(e) => set('password', e.target.value)}
-                      placeholder={router ? '••••••••' : 'Contraseña del router'} />
+                    <div className="relative">
+                      <input type={showPassword ? 'text' : 'password'}
+                        className={cn(inputCls, 'pr-9')} value={form.password}
+                        onChange={(e) => set('password', e.target.value)}
+                        placeholder={router ? '••••••••' : 'Contraseña del router'} />
+                      <button type="button" onClick={() => setShowPassword((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                        tabIndex={-1}>
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="mt-3">
@@ -713,25 +747,13 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
           {tab === 'config' && (
             <div className="space-y-5">
 
-              {/* RouterOS */}
+              {/* Reconexión */}
               <div>
                 <p className={sectionHdr}>
                   <Settings className="w-3.5 h-3.5" />
-                  RouterOS y reconexión
+                  Reconexión
                 </p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-1">
-                    <label className={labelCls}>Versión RouterOS</label>
-                    <select
-                      className={cn(inputCls, 'cursor-pointer')}
-                      value={form.versionRos ?? 'desconocida'}
-                      onChange={(e) => set('versionRos', e.target.value)}
-                    >
-                      {VERSION_OPTS.map((o) => (
-                        <option key={o.val} value={o.val} className="bg-gray-900">{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Timeout (segundos)</label>
                     <input type="number" min={3} max={60}
@@ -747,9 +769,6 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                       onChange={(e) => set('reintentos', parseInt(e.target.value) || 3)} />
                   </div>
                 </div>
-                <p className="text-xs text-gray-600 mt-2">
-                  Si la versión es &ldquo;Detectar automáticamente&rdquo;, el sistema la obtiene al conectar.
-                </p>
               </div>
 
               {/* SNMP */}
@@ -774,31 +793,14 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                   <Shield className="w-3.5 h-3.5" />
                   Control de seguridad IP-MAC
                 </p>
-                <div className="space-y-2">
-                  {TIPO_CONTROL_OPTS.map((opt) => {
-                    const Icon = opt.icon;
-                    const active = form.tipoControl === opt.val;
-                    return (
-                      <label key={opt.val}
-                        className={cn(
-                          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                          active ? 'border-primary/50 bg-primary/10' : 'border-white/10 hover:border-white/20',
-                        )}
-                      >
-                        <input type="radio" name="tipoControl" value={opt.val}
-                          checked={active} onChange={() => set('tipoControl', opt.val)}
-                          className="mt-0.5 accent-primary" />
-                        <div>
-                          <div className={cn('text-sm font-medium flex items-center gap-1.5', opt.color)}>
-                            <Icon className="w-3.5 h-3.5" />
-                            {opt.label}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">{opt.desc}</div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
+                <select className={cn(inputCls, 'cursor-pointer')}
+                  value={form.tipoControl ?? 'ninguna'}
+                  onChange={(e) => set('tipoControl', e.target.value)}
+                >
+                  {TIPO_CONTROL_OPTS.map((o) => (
+                    <option key={o.val} value={o.val} className="bg-gray-900">{o.label}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Control de velocidad */}
@@ -807,29 +809,14 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                   <Network className="w-3.5 h-3.5" />
                   Control de velocidad
                 </p>
-                <div className="space-y-2">
-                  {TIPO_VELOCIDAD_OPTS.map((opt) => {
-                    const active = form.tipoControlVelocidad === opt.val;
-                    return (
-                      <label key={opt.val}
-                        className={cn(
-                          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                          active ? 'border-primary/50 bg-primary/10' : 'border-white/10 hover:border-white/20',
-                        )}
-                      >
-                        <input type="radio" name="tipoControlVelocidad" value={opt.val}
-                          checked={active} onChange={() => set('tipoControlVelocidad', opt.val)}
-                          className="mt-0.5 accent-primary" />
-                        <div>
-                          <div className={cn('text-sm font-medium', active ? 'text-white' : 'text-gray-300')}>
-                            {opt.label}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">{opt.desc}</div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
+                <select className={cn(inputCls, 'cursor-pointer')}
+                  value={form.tipoControlVelocidad ?? 'ninguno'}
+                  onChange={(e) => set('tipoControlVelocidad', e.target.value)}
+                >
+                  {TIPO_VELOCIDAD_OPTS.map((o) => (
+                    <option key={o.val} value={o.val} className="bg-gray-900">{o.label}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Auto-configuración */}
