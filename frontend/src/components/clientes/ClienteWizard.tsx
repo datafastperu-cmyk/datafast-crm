@@ -857,12 +857,15 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
   const excluirFirewall = watch('excluirFirewall') ?? false;
   const cajaNap         = watch('cajaNapId');
+  const perfilId        = watch('perfilId');
 
   const { data: routersRaw = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
   const routers = (routersRaw as unknown as typeof MOCK_ROUTERS).length ? (routersRaw as unknown as typeof MOCK_ROUTERS) : MOCK_ROUTERS;
 
   const { data: planesRaw = [] } = useQuery({ queryKey: ['planes-list'], queryFn: planesApi.list });
   const planes = (planesRaw as any[]).filter((p: any) => p.activo !== false);
+
+  const planSeleccionado = planes.find((p: any) => p.id === perfilId) as any | undefined;
 
   const PUERTOS_NAP = cajaNap
     ? Array.from({ length: 8 }, (_, i) => ({ id: `p${i + 1}`, nombre: `Puerto ${i + 1}` }))
@@ -914,9 +917,10 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           {/* Descripción */}
           <Field label="Descripción" hint="* Texto para facturación">
             <textarea
-              {...register('descripcion')}
+              value={planSeleccionado?.descripcion ?? ''}
+              readOnly
               rows={2}
-              className={cn(inputCls(), 'resize-none')}
+              className={cn(inputCls(), 'resize-none bg-muted/50 cursor-default')}
             />
           </Field>
 
