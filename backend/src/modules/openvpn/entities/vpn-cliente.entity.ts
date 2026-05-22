@@ -73,4 +73,7 @@ export class VpnCliente extends BaseModel {
 
   @Column({ default: true })
   activo: boolean;
+
+  @Column({ name: 'script_original', type: 'text', nullable: true })
+  scriptOriginal: string;
 }

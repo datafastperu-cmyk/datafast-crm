@@ -110,6 +110,7 @@ export class MonitoreoScheduler {
   }
 
   // ── RouterOS API polling cada 5 minutos (nodos MikroTik) ─
+  // Nota: nodos con router_id son LAN-only → inaccesibles directo desde VPS
   @Cron('0 */5 * * * *', { timeZone: 'America/Lima', name: 'api-ciclo' })
   async scheduleApiNodos(): Promise<void> {
     const nodos = await this.nodoRepo
@@ -118,6 +119,7 @@ export class MonitoreoScheduler {
       .andWhere("n.metodo_conexion = 'api'")
       .andWhere('n.usuario IS NOT NULL')
       .andWhere('n.password_cifrado IS NOT NULL')
+      .andWhere('n.router_id IS NULL')
       .getMany();
 
     for (const nodo of nodos) {

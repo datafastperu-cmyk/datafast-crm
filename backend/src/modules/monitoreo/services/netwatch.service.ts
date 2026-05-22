@@ -28,10 +28,9 @@ export class NetWatchService {
   async configure(nodo: Nodo, router: Router): Promise<void> {
     if (!this.ipInRouterSubnets(nodo.ipMonitoreo, router)) {
       this.logger.debug(
-        `NetWatch omitido: ${nodo.ipMonitoreo} no está en subnets de ${router.nombre} — ` +
-        `usa "Sincronizar redes" si las subnets no están cargadas`,
+        `NetWatch: ${nodo.ipMonitoreo} no encontrado en subnets de ${router.nombre} ` +
+        `(puede que aún no estén sincronizadas) — configurando de todas formas`,
       );
-      return;
     }
 
     const vpsIp    = this.vpsIpFrom(router);
@@ -42,7 +41,9 @@ export class NetWatchService {
 
     const api = await this.pool.connectDirect(this.toCreds(router));
     try {
-      const entries: any[] = await api.write('/tool/netwatch/print');
+      const entries: any[] = await api.write('/tool/netwatch/print').catch((e: any) =>
+        e?.errno === 'UNKNOWNREPLY' ? [] : Promise.reject(e),
+      );
       const existing = entries.find((e) => e.comment === comment);
 
       if (existing) {
@@ -76,7 +77,9 @@ export class NetWatchService {
     const comment = this.commentKey(nodoId);
     const api     = await this.pool.connectDirect(this.toCreds(router));
     try {
-      const entries: any[] = await api.write('/tool/netwatch/print');
+      const entries: any[] = await api.write('/tool/netwatch/print').catch((e: any) =>
+        e?.errno === 'UNKNOWNREPLY' ? [] : Promise.reject(e),
+      );
       const entry = entries.find((e) => e.comment === comment);
       if (entry) {
         await api.write('/tool/netwatch/remove', [`=.id=${entry['.id']}`]);
@@ -93,7 +96,9 @@ export class NetWatchService {
   async removeAll(router: Router): Promise<void> {
     const api = await this.pool.connectDirect(this.toCreds(router));
     try {
-      const entries: any[] = await api.write('/tool/netwatch/print');
+      const entries: any[] = await api.write('/tool/netwatch/print').catch((e: any) =>
+        e?.errno === 'UNKNOWNREPLY' ? [] : Promise.reject(e),
+      );
       const managed = entries.filter((e) => e.comment?.startsWith('mnt-'));
       for (const e of managed) {
         await api.write('/tool/netwatch/remove', [`=.id=${e['.id']}`]);

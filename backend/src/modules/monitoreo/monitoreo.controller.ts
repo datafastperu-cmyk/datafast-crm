@@ -176,6 +176,16 @@ export class MonitoreoController {
   ) {
     const nodo = await this.nodoRepo.findOne({ where: { id, empresaId: user.empresaId } });
     if (!nodo) return StdResponse.ok({ conectado: false }, 'Nodo no encontrado');
+
+    // Nodos detrás de un router: relay ping (el router hace el ping internamente)
+    if (nodo.routerId) {
+      const router = await this.mikrotikSvc.findOne(nodo.routerId, user.empresaId).catch(() => null);
+      if (router) {
+        const result = await this.deviceSvc.testConexionViaRouter(router, nodo.ipMonitoreo);
+        return StdResponse.ok(result);
+      }
+    }
+
     const result = await this.deviceSvc.testConexion(nodo);
     return StdResponse.ok(result);
   }
@@ -293,6 +303,20 @@ export class MonitoreoController {
   async pingNodo(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     const nodo = await this.nodoRepo.findOne({ where: { id, empresaId: user.empresaId } });
     if (!nodo) return StdResponse.ok(null, 'Nodo no encontrado');
+
+    // Nodos detrás de un router: relay ping
+    if (nodo.routerId) {
+      const router = await this.mikrotikSvc.findOne(nodo.routerId, user.empresaId).catch(() => null);
+      if (router) {
+        const relay = await this.deviceSvc.testConexionViaRouter(router, nodo.ipMonitoreo);
+        return StdResponse.ok({
+          alive:     relay.conectado,
+          latencyMs: relay.latenciaMs ?? null,
+          lossPerct: relay.conectado ? 0 : 100,
+          via:       router.nombre,
+        });
+      }
+    }
 
     const result = await this.pingSvc.ping(nodo.ipMonitoreo, 4, nodo.pingTimeoutMs || 3000);
     return StdResponse.ok(result);

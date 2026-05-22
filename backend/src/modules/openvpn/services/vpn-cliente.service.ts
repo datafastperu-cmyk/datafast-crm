@@ -130,15 +130,9 @@ export class VpnClienteService {
     this.logger.log(`VPN cliente creado: ${cliente.id} | cert: ${nombreCert}`);
 
     const script = await this._generarScript(cliente);
+    cliente.scriptOriginal = script;
+    await this.repo.save(cliente);
     return { cliente, script };
-  }
-
-  // ── Regenerar script para cliente existente ──────────────────
-
-  async regenerarScript(id: string, empresaId: string): Promise<string> {
-    const cliente = await this.repo.findOne({ where: { id, empresaId } });
-    if (!cliente) throw new NotFoundException('Cliente VPN no encontrado');
-    return this._generarScript(cliente);
   }
 
   async getScriptByRouterId(routerId: string, empresaId: string): Promise<string> {
@@ -147,7 +141,8 @@ export class VpnClienteService {
       order: { createdAt: 'DESC' },
     });
     if (!cliente) throw new NotFoundException('No hay cliente VPN asociado a este router');
-    return this._generarScript(cliente);
+    if (!cliente.scriptOriginal) throw new NotFoundException('Script no disponible — fue generado antes de esta versión');
+    return cliente.scriptOriginal;
   }
 
   // ── Listar por router (para revocación al eliminar router) ────
