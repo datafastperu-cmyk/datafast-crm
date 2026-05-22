@@ -861,6 +861,9 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const { data: routersRaw = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
   const routers = (routersRaw as unknown as typeof MOCK_ROUTERS).length ? (routersRaw as unknown as typeof MOCK_ROUTERS) : MOCK_ROUTERS;
 
+  const { data: planesRaw = [] } = useQuery({ queryKey: ['planes-list'], queryFn: planesApi.list });
+  const planes = (planesRaw as any[]).filter((p: any) => p.activo !== false);
+
   const PUERTOS_NAP = cajaNap
     ? Array.from({ length: 8 }, (_, i) => ({ id: `p${i + 1}`, nombre: `Puerto ${i + 1}` }))
     : [];
@@ -899,9 +902,11 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           {/* Perfil Internet */}
           <Field label="Perfil Internet">
             <select {...register('perfilId')} className={inputCls()}>
-              <option value="">Seleccionar perfil</option>
-              {MOCK_PERFILES.map((p) => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
+              <option value="">— Seleccionar plan —</option>
+              {planes.map((p: any) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
+                </option>
               ))}
             </select>
           </Field>
