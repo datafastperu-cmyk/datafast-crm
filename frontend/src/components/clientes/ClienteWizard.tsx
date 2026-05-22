@@ -867,6 +867,12 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
   const planSeleccionado = planes.find((p: any) => p.id === perfilId) as any | undefined;
 
+  useEffect(() => {
+    if (planSeleccionado?.precio != null) {
+      setValue('costo', Number(planSeleccionado.precio).toFixed(2) as any);
+    }
+  }, [perfilId]);
+
   const PUERTOS_NAP = cajaNap
     ? Array.from({ length: 8 }, (_, i) => ({ id: `p${i + 1}`, nombre: `Puerto ${i + 1}` }))
     : [];
