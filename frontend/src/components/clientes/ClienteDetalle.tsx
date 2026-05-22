@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Search, Calendar, Monitor, MessageSquare,
   CreditCard, Wifi, WifiOff, Loader2, Radio, Cable, Shuffle,
-  XCircle, ScrollText, FolderOpen, Wrench, Save,
+  XCircle, ScrollText, FolderOpen, Wrench, Save, AlertCircle,
   Receipt, BarChart2, Ticket, Plus, FileText, ChevronDown,
   Trash2, X, Pencil, Copy, Download, AlignJustify,
   LayoutGrid, RefreshCcw, Maximize2, Minus, Phone, Package,
@@ -75,10 +75,11 @@ export function ClienteDetalle({ id }: { id: string }) {
   const router      = useRouter();
   const queryClient = useQueryClient();
   const { toast }   = useToast();
-  const [tab, setTab]         = useState<TabKey>('resumen');
-  const [form, setForm]       = useState<Record<string, string>>({});
-  const [formDirty, setDirty] = useState(false);
-  const initialized           = useRef(false);
+  const [tab, setTab]           = useState<TabKey>('resumen');
+  const [form, setForm]         = useState<Record<string, string>>({});
+  const [formDirty, setDirty]   = useState(false);
+  const [formErrors, setErrors] = useState<Record<string, string>>({});
+  const initialized             = useRef(false);
 
   const { data: cliente, isLoading } = useQuery({
     queryKey: ['cliente', id],
@@ -145,6 +146,19 @@ export function ClienteDetalle({ id }: { id: string }) {
   const set = (key: string, val: string) => {
     setForm((f) => ({ ...f, [key]: val }));
     setDirty(true);
+    if (formErrors[key]) setErrors((e) => ({ ...e, [key]: '' }));
+  };
+
+  const validate = () => {
+    const e: Record<string, string> = {};
+    if (!form.numeroDocumento?.trim()) e.numeroDocumento = 'Requerido';
+    if (!form.nombres?.trim())         e.nombres         = 'Requerido';
+    if (!form.direccion?.trim())       e.direccion       = 'Requerido';
+    if (!form.whatsapp?.trim())        e.whatsapp        = 'Requerido';
+    if (!form.usuarioPortal?.trim())   e.usuarioPortal   = 'Requerido';
+    if (!form.passwordPortal?.trim())  e.passwordPortal  = 'Requerido';
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   // ── Loading ───────────────────────────────────────────────
@@ -288,13 +302,13 @@ export function ClienteDetalle({ id }: { id: string }) {
                 />
               </FormRow>
 
-              <FormRow label="Nº Identificación">
+              <FormRow label="Nº Identificación" required error={formErrors.numeroDocumento}>
                 <div className="space-y-1">
                   <div className="flex gap-2">
                     <input
                       value={form.numeroDocumento ?? ''}
                       onChange={(e) => set('numeroDocumento', e.target.value)}
-                      className={cn(INPUT, 'flex-1')}
+                      className={cn(INPUT, 'flex-1', formErrors.numeroDocumento && 'border-destructive')}
                     />
                     <button className="flex items-center gap-1 px-3 py-2 text-xs rounded-lg
                                        border border-input hover:bg-accent transition-colors
@@ -308,20 +322,20 @@ export function ClienteDetalle({ id }: { id: string }) {
                 </div>
               </FormRow>
 
-              <FormRow label="Nombres Completos">
+              <FormRow label="Nombres Completos" required error={formErrors.nombres}>
                 <input
                   value={form.nombres ?? ''}
                   onChange={(e) => set('nombres', e.target.value)}
                   placeholder="Piero Escobar Bautista"
-                  className={INPUT}
+                  className={cn(INPUT, formErrors.nombres && 'border-destructive')}
                 />
               </FormRow>
 
-              <FormRow label="Dirección Principal">
+              <FormRow label="Dirección Principal" required error={formErrors.direccion}>
                 <input
                   value={form.direccion ?? ''}
                   onChange={(e) => set('direccion', e.target.value)}
-                  className={INPUT}
+                  className={cn(INPUT, formErrors.direccion && 'border-destructive')}
                 />
               </FormRow>
 
@@ -338,12 +352,12 @@ export function ClienteDetalle({ id }: { id: string }) {
                 </select>
               </FormRow>
 
-              <FormRow label="WhatsApp">
+              <FormRow label="WhatsApp" required error={formErrors.whatsapp}>
                 <input
                   value={form.whatsapp ?? ''}
                   onChange={(e) => set('whatsapp', e.target.value)}
                   placeholder="987654321"
-                  className={INPUT}
+                  className={cn(INPUT, formErrors.whatsapp && 'border-destructive')}
                 />
               </FormRow>
 
@@ -364,34 +378,44 @@ export function ClienteDetalle({ id }: { id: string }) {
                 />
               </FormRow>
 
-              <FormRow label="Credenciales Portal">
+              <FormRow label="Credenciales Portal" required>
                 <div className="flex gap-3">
                   <div className="flex flex-col gap-1 flex-1">
-                    <span className="text-xs text-muted-foreground">Usuario</span>
+                    <span className="text-xs text-muted-foreground">Usuario<span className="text-destructive ml-0.5">*</span></span>
                     <input
                       value={form.usuarioPortal ?? ''}
                       onChange={(e) => set('usuarioPortal', e.target.value)}
                       placeholder="cliente123"
                       maxLength={12}
-                      className={INPUT}
+                      className={cn(INPUT, formErrors.usuarioPortal && 'border-destructive')}
                     />
+                    {formErrors.usuarioPortal && (
+                      <p className="text-[11px] text-destructive flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0" />{formErrors.usuarioPortal}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1 flex-1">
-                    <span className="text-xs text-muted-foreground">Contraseña</span>
+                    <span className="text-xs text-muted-foreground">Contraseña<span className="text-destructive ml-0.5">*</span></span>
                     <input
                       value={form.passwordPortal ?? ''}
                       onChange={(e) => set('passwordPortal', e.target.value)}
                       placeholder="4243Tdp"
                       maxLength={12}
-                      className={INPUT}
+                      className={cn(INPUT, formErrors.passwordPortal && 'border-destructive')}
                     />
+                    {formErrors.passwordPortal && (
+                      <p className="text-[11px] text-destructive flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0" />{formErrors.passwordPortal}
+                      </p>
+                    )}
                   </div>
                 </div>
               </FormRow>
 
               <div className="pt-4">
                 <button
-                  onClick={() => guardar()}
+                  onClick={() => { if (validate()) guardar(); }}
                   disabled={guardando || !formDirty}
                   className={cn(
                     'flex items-center gap-2 px-5 py-2.5 text-sm rounded-lg font-medium',
@@ -448,11 +472,22 @@ export function ClienteDetalle({ id }: { id: string }) {
 
 // ── Sub-components ────────────────────────────────────────────
 
-function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
+function FormRow({ label, required, error, children }: {
+  label: string; required?: boolean; error?: string; children: React.ReactNode;
+}) {
   return (
     <div className="grid grid-cols-[140px_1fr] items-start gap-3 py-2 border-b border-border/50 last:border-0">
-      <span className="text-xs text-muted-foreground pt-2.5 font-medium leading-none">{label}</span>
-      <div>{children}</div>
+      <span className="text-xs text-muted-foreground pt-2.5 font-medium leading-none">
+        {label}{required && <span className="text-destructive ml-0.5">*</span>}
+      </span>
+      <div>
+        {children}
+        {error && (
+          <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
+            <AlertCircle className="w-3 h-3 flex-shrink-0" />{error}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
