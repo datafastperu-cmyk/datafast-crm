@@ -52,6 +52,7 @@ const step3Schema = z.object({
   descripcion:      z.string().optional(),
   costo:            z.coerce.number().optional(),
   tipoIpv4:         z.string().optional(),
+  segmentoId:       z.string().optional(),
   mac:              z.string().optional(),
   userPppHs:        z.string().optional(),
   passwordPppHs:    z.string().optional(),
@@ -367,6 +368,7 @@ export function ClienteWizard() {
         clienteId:      cliente.id,
         planId:         data.perfilId        || undefined,
         routerId:       data.routerId        || undefined,
+        segmentoId:     data.segmentoId      || undefined,
         fechaInicio:    data.fechaInstalacion || new Date().toISOString().split('T')[0],
         diaFacturacion: s2?.facturacion?.diaPago ? parseInt(s2.facturacion.diaPago) : undefined,
         usuarioPppoe:   data.userPppHs       || undefined,
@@ -867,6 +869,13 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
   const planSeleccionado = planes.find((p: any) => p.id === perfilId) as any | undefined;
 
+  const routerId = watch('routerId');
+  const { data: segmentosRaw = [] } = useQuery({
+    queryKey: ['segmentos-list', routerId],
+    queryFn:  () => redesApi.listSegmentos(routerId || undefined),
+  });
+  const segmentos = segmentosRaw as any[];
+
   useEffect(() => {
     if (planSeleccionado?.precio != null) {
       setValue('costo', Number(planSeleccionado.precio).toFixed(2) as any);
@@ -956,13 +965,15 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             </div>
           </div>
 
-          {/* Tipo IPv4 */}
-          <Field label="Tipo IPv4">
-            <select {...register('tipoIpv4')} className={inputCls()}>
-              <option value="">Seleccionar tipo de IP</option>
-              <option value="dinamica">IP Dinámica (DHCP)</option>
-              <option value="estatica">IP Estática</option>
-              <option value="pool">IP Pool</option>
+          {/* Redes IPv4 */}
+          <Field label="Redes IPv4">
+            <select {...register('segmentoId')} className={inputCls()}>
+              <option value="">Seleccionar...</option>
+              {segmentos.map((s: any) => (
+                <option key={s.id} value={s.id}>
+                  {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} IPs libres)` : ''}
+                </option>
+              ))}
             </select>
           </Field>
 
