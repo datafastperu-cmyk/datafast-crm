@@ -499,7 +499,7 @@ export class VpnClienteService {
 # ── Configurar acceso API para DATAFAST CRM ────────────────────
 # GUARDA la contraseña generada — la necesitarás al guardar el router en el sistema
 /ip/service/set api disabled=no port=8728
-:do { /user/group/add name=datafast-crm policy=api,read,write,!local,!telnet,!ssh,!ftp,!reboot,!password,!web,!winbox,!sniff,!sensitive comment="DATAFAST ISP Manager" } on-error={}
+:do { /user/group/add name=datafast-crm policy=api,read,write,!local,!telnet,!ssh,!ftp,!reboot,!password,!web,!winbox,!sniff,!sensitive comment="DATAFAST ISP Manager" } on-error={ /user/group/set [find name=datafast-crm] policy=api,read,write,!local,!telnet,!ssh,!ftp,!reboot,!password,!web,!winbox,!sniff,!sensitive }
 :do { /user/remove [find name=datafast-crm] } on-error={}
 /user/add name=datafast-crm password="${pass}" group=datafast-crm comment="DATAFAST CRM User"
 # Contraseña API generada: ${pass}
