@@ -526,34 +526,120 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                 Configura cómo el sistema se conectará al router MikroTik.
               </p>
 
-              {/* Tipo de conexión — 2 opciones */}
-              <div className="grid grid-cols-2 gap-2">
-                {([
-                  { val: 'api'        as MetodoConexion, label: 'API directa',     sub: 'IP local o pública + puerto API',             icon: Network },
-                  { val: 'vpn_tunnel' as MetodoConexion, label: 'Túnel VPN + API', sub: 'Router sin IP pública — conecta via OpenVPN', icon: Shield  },
-                ] as const).map((o) => {
-                  const Icon   = o.icon;
-                  const active = form.metodoConexion === o.val;
-                  return (
-                    <label key={o.val}
-                      className={cn(
-                        'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                        active ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
-                      )}
-                    >
-                      <input type="radio" name="metodo" value={o.val}
-                        checked={active} onChange={() => handleMetodoChange(o.val)}
-                        className="mt-0.5 accent-primary" />
-                      <div>
-                        <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-white' : 'text-gray-300')}>
-                          <Icon className="w-3.5 h-3.5" />
-                          {o.label}
+              {/* Tipo de conexión */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { val: 'api'        as MetodoConexion, label: 'API directa',     sub: 'IP local o pública + puerto API',             icon: Network },
+                    { val: 'vpn_tunnel' as MetodoConexion, label: 'Túnel VPN + API', sub: 'Router sin IP pública — conecta via OpenVPN', icon: Shield  },
+                  ] as const).map((o) => {
+                    const Icon   = o.icon;
+                    const active = form.metodoConexion === o.val;
+                    return (
+                      <label key={o.val}
+                        className={cn(
+                          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                          active ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                        )}
+                      >
+                        <input type="radio" name="metodo" value={o.val}
+                          checked={active} onChange={() => handleMetodoChange(o.val)}
+                          className="mt-0.5 accent-primary" />
+                        <div>
+                          <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-white' : 'text-gray-300')}>
+                            <Icon className="w-3.5 h-3.5" />
+                            {o.label}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
                         </div>
-                        <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {/* Card Avanzado: SSH / SNMP / API-SSL */}
+                {(() => {
+                  const isAvanzado = (['ssh', 'snmp', 'api_ssl'] as string[]).includes(form.metodoConexion);
+                  return (
+                    <div className={cn(
+                      'rounded-lg border transition-colors',
+                      isAvanzado ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                    )}>
+                      <div className="flex items-center gap-3 p-3 cursor-pointer"
+                        onClick={() => { if (!isAvanzado) handleMetodoChange('api_ssl'); }}>
+                        <div className={cn(
+                          'w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors',
+                          isAvanzado ? 'border-primary bg-primary' : 'border-white/30',
+                        )} />
+                        <div className="flex-1">
+                          <div className={cn('text-sm font-medium flex items-center gap-1.5', isAvanzado ? 'text-white' : 'text-gray-300')}>
+                            <Settings className="w-3.5 h-3.5" />
+                            Avanzado
+                          </div>
+                          <div className="text-xs text-gray-600 mt-0.5">SSH · SNMP · API-SSL</div>
+                        </div>
                       </div>
-                    </label>
+
+                      {isAvanzado && (
+                        <div className="px-3 pb-3 space-y-3">
+                          <div className="grid grid-cols-3 gap-2">
+                            {([
+                              { val: 'api_ssl' as MetodoConexion, label: 'API-SSL', desc: 'Puerto 8729' },
+                              { val: 'ssh'     as MetodoConexion, label: 'SSH',     desc: 'Puerto 22'   },
+                              { val: 'snmp'    as MetodoConexion, label: 'SNMP',    desc: 'Puerto 161'  },
+                            ] as const).map((o) => (
+                              <label key={o.val}
+                                className={cn(
+                                  'flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors',
+                                  form.metodoConexion === o.val
+                                    ? 'border-primary/50 bg-primary/15 text-white'
+                                    : 'border-white/10 text-gray-400 hover:border-white/20 hover:text-white',
+                                )}
+                              >
+                                <input type="radio" name="metodo" value={o.val}
+                                  checked={form.metodoConexion === o.val}
+                                  onChange={() => handleMetodoChange(o.val)}
+                                  className="accent-primary" />
+                                <div>
+                                  <div className="font-medium">{o.label}</div>
+                                  <div className="text-gray-600 mt-0.5">{o.desc}</div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex items-end gap-3">
+                            <div>
+                              <label className={labelCls}>
+                                {form.metodoConexion === 'api_ssl' ? 'Puerto API-SSL' :
+                                 form.metodoConexion === 'ssh'     ? 'Puerto SSH'     : 'Puerto SNMP'}
+                              </label>
+                              <input type="number" min={1} max={65535}
+                                className={cn(inputCls, 'w-36')}
+                                value={
+                                  form.metodoConexion === 'api_ssl' ? (form.puertoApiSsl ?? 8729) :
+                                  form.metodoConexion === 'ssh'     ? (form.puertoSsh    ?? 22)   : 161
+                                }
+                                onChange={(e) => {
+                                  const v = parseInt(e.target.value);
+                                  if (form.metodoConexion === 'api_ssl') set('puertoApiSsl', v || 8729);
+                                  else if (form.metodoConexion === 'ssh') set('puertoSsh', v || 22);
+                                }}
+                              />
+                            </div>
+                            {form.metodoConexion === 'api_ssl' && (
+                              <label className="flex items-center gap-1.5 cursor-pointer select-none pb-2">
+                                <input type="checkbox" checked={form.usarSsl ?? false}
+                                  onChange={(e) => set('usarSsl', e.target.checked)}
+                                  className="accent-primary w-4 h-4" />
+                                <span className="text-sm text-gray-300">Usar TLS / SSL</span>
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
-                })}
+                })()}
               </div>
 
               {/* Acceso al router */}
@@ -613,18 +699,20 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                   </div>
                 </div>
 
-                <div>
-                  <label className={labelCls}>Puerto API</label>
-                  <div className="flex items-center gap-3">
-                    <input type="number" min={1} max={65535}
-                      className={cn(inputCls, 'w-36')}
-                      value={form.puertoApi ?? 8728}
-                      onChange={(e) => set('puertoApi', parseInt(e.target.value) || 8728)} />
-                    <span className="text-xs text-gray-600">
-                      Por defecto: 8728. Si lo cambiaste en el router, actualízalo aquí también.
-                    </span>
+                {!(['ssh', 'snmp', 'api_ssl'] as string[]).includes(form.metodoConexion) && (
+                  <div>
+                    <label className={labelCls}>Puerto API</label>
+                    <div className="flex items-center gap-3">
+                      <input type="number" min={1} max={65535}
+                        className={cn(inputCls, 'w-36')}
+                        value={form.puertoApi ?? 8728}
+                        onChange={(e) => set('puertoApi', parseInt(e.target.value) || 8728)} />
+                      <span className="text-xs text-gray-600">
+                        Por defecto: 8728. Si lo cambiaste en el router, actualízalo aquí también.
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Probar conexión */}
                 <div className="rounded-xl border border-white/10 p-4 bg-white/3 space-y-3">
