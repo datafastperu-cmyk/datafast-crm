@@ -12,7 +12,7 @@ import type { CreateNodoDto, TestConexionResult } from '@/lib/api/monitoreo';
 const FABRICANTES = ['MikroTik', 'Ubiquiti', 'Huawei', 'Cisco', 'TP-Link', 'Cambium', 'Otro'];
 
 const TIPOS_EQUIPO = [
-  { value: 'antena',   label: 'Antena'   },
+  { value: 'antena',   label: 'Punto de Acceso' },
   { value: 'router',   label: 'Router'   },
   { value: 'servidor', label: 'Servidor' },
   { value: 'camara',   label: 'Cámara'   },
