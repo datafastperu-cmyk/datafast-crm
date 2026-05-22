@@ -655,7 +655,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                   </label>
                   <input
                     className={cn(inputCls, form.metodoConexion === 'vpn_tunnel' && 'border-blue-400/30')}
-                    value={form.metodoConexion === 'vpn_tunnel' ? (form.vpnIp ?? '') : form.ipGestion}
+                    value={form.metodoConexion === 'vpn_tunnel' ? (form.vpnIp || form.ipGestion) : form.ipGestion}
                     onChange={(e) => {
                       const val = e.target.value;
                       if (form.metodoConexion === 'vpn_tunnel') {
