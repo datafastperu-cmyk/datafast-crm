@@ -266,6 +266,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
   const [testStatus, setTestStatus] = useState<TestStatus>('idle');
   const [testResult, setTestResult] = useState<TestConexionResult | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [showScript,   setShowScript]   = useState(false);
 
   // ─── Formulario ───────────────────────────────────────────
   const [form, setForm] = useState<CreateRouterDto & { password: string }>({
@@ -399,7 +400,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     { id: 'config', label: 'Configuración',  icon: Cpu      },
   ];
 
-  return (
+  return (<>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
@@ -641,6 +642,24 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                   );
                 })()}
               </div>
+
+              {/* Script de conexión — solo VPN Tunnel */}
+              {form.metodoConexion === 'vpn_tunnel' && router && (
+                <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-blue-300">Script de configuración MikroTik</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Genera el script para configurar el túnel OpenVPN en este router.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowScript(true)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 border border-blue-500/30 transition-colors whitespace-nowrap"
+                  >
+                    <Terminal className="w-4 h-4" />
+                    Ver script
+                  </button>
+                </div>
+              )}
 
               {/* Acceso al router */}
               <div className="space-y-3">
@@ -924,7 +943,11 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
         </div>
       </div>
     </div>
-  );
+
+    {showScript && router && (
+      <ScriptConexionDialog router={router} onClose={() => setShowScript(false)} />
+    )}
+  </>);
 }
 
 // ─── Componente principal ─────────────────────────────────────────
@@ -937,7 +960,6 @@ export function RoutersContent() {
   const [editRouter, setEditRouter]   = useState<RouterType | null>(null);
   const [testingId, setTestingId]     = useState<string | null>(null);
   const [syncingId, setSyncingId]     = useState<string | null>(null);
-  const [scriptRouter, setScriptRouter]   = useState<RouterType | null>(null);
   const [morososRouter, setMorososRouter] = useState<RouterType | null>(null);
   const [pendingDelete, setPendingDelete] = useState<RouterType | null>(null);
 
@@ -1141,11 +1163,6 @@ export function RoutersContent() {
                             : <Globe className="w-4 h-4" />
                           }
                         </button>
-                        <button onClick={() => setScriptRouter(r)} title="Script de conexión MikroTik"
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-cyan-400 transition-colors"
-                        >
-                          <Terminal className="w-4 h-4" />
-                        </button>
                         <button onClick={() => setMorososRouter(r)} title="Ver morosos en MikroTik"
                           className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-red-400 transition-colors"
                         >
@@ -1202,12 +1219,7 @@ export function RoutersContent() {
         />
       )}
 
-      {scriptRouter && (
-        <ScriptConexionDialog
-          router={scriptRouter}
-          onClose={() => setScriptRouter(null)}
-        />
-      )}
+
 
       {morososRouter && (
         <MorososDialog
