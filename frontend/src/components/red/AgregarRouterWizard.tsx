@@ -18,7 +18,7 @@ import type { VpnCliente, VersionRos } from '@/lib/api/vpn';
 // ─── Opciones ─────────────────────────────────────────────────────────────────
 
 const SECURITY_OPTS = [
-  { val: 'pppoe_addresslist',  label: 'PPPoE/AddressList'           },
+  { val: 'pppoe_addresslist',  label: 'PPPoE'                       },
   { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
   { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
   { val: 'ninguna',            label: 'Ninguno'                     },
@@ -95,7 +95,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const [testResult, setTestResult] = useState<TestConexionResult | null>(null);
 
   // Paso 3
-  const [tipoControl,          setTipoControl]          = useState('amarre_ip_mac');
+  const [tipoControl,          setTipoControl]          = useState('pppoe_addresslist');
   const [tipoControlVelocidad, setTipoControlVelocidad] = useState('colas_simples');
 
   const [saving,         setSaving]         = useState(false);
