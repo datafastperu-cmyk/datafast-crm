@@ -24,11 +24,10 @@ const SECURITY_OPTS = [
 ] as const;
 
 const SPEED_OPTS = [
-  { val: 'colas_simples',      label: 'Colas Simples'                          },
-  { val: 'pcq_addresslist',    label: 'PCQ + AddressList'                      },
-  { val: 'pppoe_addresslist',  label: 'PPPoE + AddressList'                    },
-  { val: 'dhcp_lease_queues',  label: 'DHCP Leases (Colas Simples Dinámicas)'  },
-  { val: 'ninguno',            label: 'Ninguno'                                },
+  { val: 'colas_simples',     label: 'Colas Simples'                          },
+  { val: 'pcq_addresslist',   label: 'PCQ + AddressList'                      },
+  { val: 'dhcp_lease_queues', label: 'DHCP Leases (Colas Simples Dinámicas)'  },
+  { val: 'ninguno',           label: 'Ninguno'                                },
 ] as const;
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -52,7 +51,7 @@ const sectionHdr = 'text-xs font-semibold text-gray-400 uppercase tracking-wider
 const STEPS = [
   { n: 1 as Step, label: 'Identificación' },
   { n: 2 as Step, label: 'Conexión'       },
-  { n: 3 as Step, label: 'Autenticación y Control Abonados' },
+  { n: 3 as Step, label: 'Control'        },
 ];
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -102,38 +101,21 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const [routerGuardado, setRouterGuardado] = useState(false);
 
   // Refs para cleanup en navegación / cierre de ventana
-  const vpnClienteRef     = useRef<VpnCliente | null>(null);
-  const tokenDescargaRef  = useRef<string | undefined>();
+  const vpnClienteRef    = useRef<VpnCliente | null>(null);
   const routerGuardadoRef = useRef(false);
-  const revokedRef        = useRef(false);
-  useEffect(() => {
-    vpnClienteRef.current    = vpnCliente;
-    tokenDescargaRef.current = vpnCliente?.tokenDescarga;
-  }, [vpnCliente]);
+  const revokedRef       = useRef(false);
+  useEffect(() => { vpnClienteRef.current = vpnCliente; }, [vpnCliente]);
   useEffect(() => { routerGuardadoRef.current = routerGuardado; }, [routerGuardado]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const resetTest = () => { setTestStatus('idle'); setTestResult(null); };
 
-  // Revocación confiable para cierre/actualización de página
+  // Revocación fire-and-forget compatible con cierre de pestaña (keepalive)
   const fireRevoke = (id: string) => {
     if (revokedRef.current) return;
     revokedRef.current = true;
-    const base = process.env.NEXT_PUBLIC_API_URL ?? '';
-
-    // Primario: sendBeacon — el navegador garantiza entrega incluso al cerrar/actualizar
-    const tokenDescarga = tokenDescargaRef.current;
-    if (tokenDescarga && typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      const blob = new Blob(
-        [JSON.stringify({ clienteId: id, tokenDescarga })],
-        { type: 'application/json' },
-      );
-      const sent = navigator.sendBeacon(`${base}/api/v1/openvpn/mikrotik-clients/revocar-beacon`, blob);
-      if (sent) return;
-    }
-
-    // Fallback: fetch con keepalive + JWT (cubre Cancel/X donde sendBeacon no es necesario)
+    const base  = process.env.NEXT_PUBLIC_API_URL ?? '';
     const token = getAccessToken();
     fetch(`${base}/api/v1/openvpn/mikrotik-clients/${id}`, {
       method:    'DELETE',
@@ -806,7 +788,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
               {/* Control de seguridad */}
               <div>
                 <label className={labelCls}>
-                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Control de seguridad IP-MAC</span>
+                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Autenticación y Control Abonado</span>
                 </label>
                 <select
                   value={tipoControl}
