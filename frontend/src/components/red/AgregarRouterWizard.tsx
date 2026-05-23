@@ -788,7 +788,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
               {/* Control de seguridad */}
               <div>
                 <label className={labelCls}>
-                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Control de seguridad IP-MAC</span>
+                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Control de Velocidad Abonado</span>
                 </label>
                 <select
                   value={tipoControl}
