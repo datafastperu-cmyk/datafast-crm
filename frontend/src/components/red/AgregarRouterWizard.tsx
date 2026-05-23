@@ -51,7 +51,7 @@ const sectionHdr = 'text-xs font-semibold text-gray-400 uppercase tracking-wider
 const STEPS = [
   { n: 1 as Step, label: 'Identificación' },
   { n: 2 as Step, label: 'Conexión'       },
-  { n: 3 as Step, label: 'Control'        },
+  { n: 3 as Step, label: 'Autenticación y Control Abonados' },
 ];
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -788,7 +788,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
               {/* Control de seguridad */}
               <div>
                 <label className={labelCls}>
-                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Control de Velocidad Abonado</span>
+                  <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Control de seguridad IP-MAC</span>
                 </label>
                 <select
                   value={tipoControl}
