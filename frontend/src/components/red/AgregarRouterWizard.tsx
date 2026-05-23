@@ -24,10 +24,11 @@ const SECURITY_OPTS = [
 ] as const;
 
 const SPEED_OPTS = [
-  { val: 'colas_simples',     label: 'Colas Simples'                          },
-  { val: 'pcq_addresslist',   label: 'PCQ + AddressList'                      },
-  { val: 'dhcp_lease_queues', label: 'DHCP Leases (Colas Simples Dinámicas)'  },
-  { val: 'ninguno',           label: 'Ninguno'                                },
+  { val: 'colas_simples',      label: 'Colas Simples'                          },
+  { val: 'pcq_addresslist',    label: 'PCQ + AddressList'                      },
+  { val: 'pppoe_addresslist',  label: 'PPPoE + AddressList'                    },
+  { val: 'dhcp_lease_queues',  label: 'DHCP Leases (Colas Simples Dinámicas)'  },
+  { val: 'ninguno',            label: 'Ninguno'                                },
 ] as const;
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────

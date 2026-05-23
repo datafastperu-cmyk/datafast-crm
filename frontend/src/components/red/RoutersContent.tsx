@@ -42,6 +42,7 @@ const TIPO_CONTROL_OPTS = [
 const TIPO_VELOCIDAD_OPTS = [
   { val: 'colas_simples',     label: 'Colas Simples'                         },
   { val: 'pcq_addresslist',   label: 'PCQ + AddressList'                     },
+  { val: 'pppoe_addresslist', label: 'PPPoE + AddressList'                   },
   { val: 'dhcp_lease_queues', label: 'DHCP Leases (Colas Simples Dinámicas)' },
   { val: 'ninguno',           label: 'Ninguno'                               },
 ];
