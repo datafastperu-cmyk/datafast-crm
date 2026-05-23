@@ -102,21 +102,38 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const [routerGuardado, setRouterGuardado] = useState(false);
 
   // Refs para cleanup en navegación / cierre de ventana
-  const vpnClienteRef    = useRef<VpnCliente | null>(null);
+  const vpnClienteRef     = useRef<VpnCliente | null>(null);
+  const tokenDescargaRef  = useRef<string | undefined>();
   const routerGuardadoRef = useRef(false);
-  const revokedRef       = useRef(false);
-  useEffect(() => { vpnClienteRef.current = vpnCliente; }, [vpnCliente]);
+  const revokedRef        = useRef(false);
+  useEffect(() => {
+    vpnClienteRef.current    = vpnCliente;
+    tokenDescargaRef.current = vpnCliente?.tokenDescarga;
+  }, [vpnCliente]);
   useEffect(() => { routerGuardadoRef.current = routerGuardado; }, [routerGuardado]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const resetTest = () => { setTestStatus('idle'); setTestResult(null); };
 
-  // Revocación fire-and-forget compatible con cierre de pestaña (keepalive)
+  // Revocación confiable para cierre/actualización de página
   const fireRevoke = (id: string) => {
     if (revokedRef.current) return;
     revokedRef.current = true;
-    const base  = process.env.NEXT_PUBLIC_API_URL ?? '';
+    const base = process.env.NEXT_PUBLIC_API_URL ?? '';
+
+    // Primario: sendBeacon — el navegador garantiza entrega incluso al cerrar/actualizar
+    const tokenDescarga = tokenDescargaRef.current;
+    if (tokenDescarga && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      const blob = new Blob(
+        [JSON.stringify({ clienteId: id, tokenDescarga })],
+        { type: 'application/json' },
+      );
+      const sent = navigator.sendBeacon(`${base}/api/v1/openvpn/mikrotik-clients/revocar-beacon`, blob);
+      if (sent) return;
+    }
+
+    // Fallback: fetch con keepalive + JWT (cubre Cancel/X donde sendBeacon no es necesario)
     const token = getAccessToken();
     fetch(`${base}/api/v1/openvpn/mikrotik-clients/${id}`, {
       method:    'DELETE',

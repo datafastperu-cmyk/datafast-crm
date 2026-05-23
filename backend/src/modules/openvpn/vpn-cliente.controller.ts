@@ -82,6 +82,16 @@ export class VpnClienteController {
     return StdResponse.ok(await this.svc.limpiarHuerfanos(user.empresaId), 'Limpieza completada');
   }
 
+  // ── Revocar vía beacon (sendBeacon en beforeunload — sin JWT, usa tokenDescarga) ──
+
+  @Post('revocar-beacon')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async revocarBeacon(@Body() body: { clienteId: string; tokenDescarga: string }) {
+    await this.svc.revocarByToken(body.clienteId ?? '', body.tokenDescarga ?? '');
+    return StdResponse.ok(null, 'Revocado');
+  }
+
   // ── Verificar credenciales VPN (llamado por vpn-auth.sh en el servidor) ─
   // Endpoint público — protegido solo por red interna (llamado solo desde localhost)
 

@@ -135,6 +135,15 @@ export class VpnClienteService {
     return { cliente, script };
   }
 
+  async revocarByToken(clienteId: string, tokenDescarga: string): Promise<void> {
+    if (!clienteId || !tokenDescarga) return;
+    const cliente = await this.repo.findOne({
+      where: { id: clienteId, tokenDescarga, activo: true },
+    });
+    if (!cliente || cliente.estado === 'revocado') return;
+    await this.revocar(cliente.id, cliente.empresaId);
+  }
+
   async getScriptByRouterId(routerId: string, empresaId: string): Promise<string> {
     const cliente = await this.repo.findOne({
       where: { routerId, empresaId, activo: true },
