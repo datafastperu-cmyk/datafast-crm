@@ -490,20 +490,6 @@ export class VpnClienteService {
       : this._scriptV7NoCert(cliente, pass);
   }
 
-  private _apiSetupBlock(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    const pass  = Array.from({ length: 16 }, (_, i) => chars[(Date.now() * (i + 1)) % chars.length]).join('');
-    return `
-# ── Configurar acceso API para DATAFAST CRM ────────────────────
-# GUARDA la contraseña generada — la necesitarás al guardar el router en el sistema
-/ip/service/set api disabled=no port=8728
-:do { /user/group/add name=datafast-crm policy=api,read,write,!local,!telnet,!ssh,!ftp,!reboot,!password,!web,!winbox,!sniff,!sensitive comment="DATAFAST ISP Manager" } on-error={ /user/group/set [find name=datafast-crm] policy=api,read,write,!local,!telnet,!ssh,!ftp,!reboot,!password,!web,!winbox,!sniff,!sensitive }
-:do { /user/remove [find name=datafast-crm] } on-error={}
-/user/add name=datafast-crm password="${pass}" group=datafast-crm comment="DATAFAST CRM User"
-# Contraseña API generada: ${pass}
-# /ip/firewall/filter/add chain=input src-address=${VPS_IP}/32 protocol=tcp dst-port=8728 action=accept comment="DATAFAST: Allow CRM" place-before=0`;
-  }
-
   private _bloqueComun(cliente: VpnCliente): { cn: string; prefix: string; fetchPath: string } {
     return {
       cn:        cliente.nombreCert,
@@ -542,7 +528,7 @@ export class VpnClienteService {
 :local certName [/certificate get $certEntry name]
 /interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha1 user=$certCN certificate=$certName
 /interface ovpn-client enable vpndatafast
-}${this._apiSetupBlock()}`;
+}`;
   }
 
   private _scriptV6NoCert(cliente: VpnCliente, pass: string): string {
@@ -555,7 +541,7 @@ export class VpnClienteService {
 /interface ovpn-client set vpndatafast user=${vpnUser}
 /interface ovpn-client set vpndatafast password=${pass}
 /interface ovpn-client set vpndatafast mac-address=${mac}
-/interface ovpn-client enable vpndatafast${this._apiSetupBlock()}`;
+/interface ovpn-client enable vpndatafast`;
   }
 
   private _scriptV7Cert(cliente: VpnCliente): string {
@@ -590,7 +576,7 @@ export class VpnClienteService {
 :local certEntry [/certificate find where common-name=$certCN]
 :local certName [/certificate get $certEntry name]
 /interface ovpn-client add certificate=$certName cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN${verifyLine}
-}${this._apiSetupBlock()}`;
+}`;
   }
 
   private _scriptV7NoCert(cliente: VpnCliente, pass: string): string {
@@ -603,6 +589,6 @@ export class VpnClienteService {
 :delay 1s
 :do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
 /interface ovpn-client
-add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac}${verifyLine}${this._apiSetupBlock()}`;
+add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac}${verifyLine}`;
   }
 }
