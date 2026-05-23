@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Router, X, ChevronRight, ChevronLeft, Network, Shield, CheckCircle2,
   XCircle, Loader2, Copy, Check, RefreshCw, Wifi, Key, Gauge, Eye, EyeOff, Settings,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { mikrotikApi }  from '@/lib/api/mikrotik';
-import { vpnApi }       from '@/lib/api/vpn';
+import { mikrotikApi }              from '@/lib/api/mikrotik';
+import { vpnApi }                   from '@/lib/api/vpn';
+import { getAccessToken }           from '@/lib/api';
 import { useToast }     from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 import type { TestConexionResult } from '@/lib/api/mikrotik';
@@ -99,13 +100,55 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const [saving,         setSaving]         = useState(false);
   const [routerGuardado, setRouterGuardado] = useState(false);
 
+  // Refs para cleanup en navegación / cierre de ventana
+  const vpnClienteRef    = useRef<VpnCliente | null>(null);
+  const routerGuardadoRef = useRef(false);
+  const revokedRef       = useRef(false);
+  useEffect(() => { vpnClienteRef.current = vpnCliente; }, [vpnCliente]);
+  useEffect(() => { routerGuardadoRef.current = routerGuardado; }, [routerGuardado]);
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const resetTest = () => { setTestStatus('idle'); setTestResult(null); };
 
-  const handleClose = async () => {
+  // Revocación fire-and-forget compatible con cierre de pestaña (keepalive)
+  const fireRevoke = (id: string) => {
+    if (revokedRef.current) return;
+    revokedRef.current = true;
+    const base  = process.env.NEXT_PUBLIC_API_URL ?? '';
+    const token = getAccessToken();
+    fetch(`${base}/api/v1/openvpn/mikrotik-clients/${id}`, {
+      method:    'DELETE',
+      headers:   { Authorization: `Bearer ${token ?? ''}` },
+      keepalive: true,
+    }).catch(() => {});
+  };
+
+  // Revocar al navegar a otra sección (unmount del componente)
+  useEffect(() => {
+    return () => {
+      if (vpnClienteRef.current && !routerGuardadoRef.current) {
+        fireRevoke(vpnClienteRef.current.id);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Revocar al cerrar la ventana / pestaña
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      if (vpnClienteRef.current && !routerGuardadoRef.current) {
+        fireRevoke(vpnClienteRef.current.id);
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleClose = () => {
     if (vpnCliente && !routerGuardado) {
-      try { await vpnApi.revocar(vpnCliente.id); } catch { /* silent */ }
+      fireRevoke(vpnCliente.id);
     }
     onClose();
   };
@@ -286,6 +329,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
       });
       toast('Router registrado correctamente', { type: 'success' });
       setRouterGuardado(true);
+      routerGuardadoRef.current = true;
       onSaved();
       onClose();
     } catch (err) {
