@@ -314,7 +314,10 @@ export class VpnClienteService {
     }
 
     try {
-      const content = await fs.readFile(filePath);
+      const raw = await fs.readFile(filePath, 'utf8');
+      // EasyRSA incluye dump de texto antes del bloque PEM — extraer solo PEM
+      const pemMatch = raw.match(/(-----BEGIN [\s\S]+-----END [^\-]+-----)/);
+      const content  = pemMatch ? pemMatch[1].trim() + '\n' : raw;
       res.setHeader('Content-Type', 'application/x-pem-file');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(content);
