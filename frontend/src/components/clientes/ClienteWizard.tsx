@@ -349,15 +349,15 @@ export function ClienteWizard() {
         tipoDocumento:   (s1.tipoDocumento as any) || 'dni',
         numeroDocumento: s1.numeroDocumento,
         nombres:         s1.nombres,
-        apellidoPaterno: '',
+        apellidoPaterno: undefined,
         apellidoMaterno: undefined,
-        telefono:        s1.telefono ?? '',
+        // telefono es requerido en backend — usar whatsapp como fallback (siempre presente)
+        telefono:        s1.telefono?.trim() || (s1 as any).whatsapp,
         whatsapp:        (s1 as any).whatsapp || undefined,
-        email:           s1.email || undefined,
-        direccion:       s1.direccion || undefined,
-        tipoServicio:    'ftth',
-        usuarioPortal:   s1.usuarioPortal   || undefined,
-        passwordPortal:  s1.passwordPortal  || undefined,
+        email:           s1.email            || undefined,
+        direccion:       s1.direccion        || undefined,
+        usuarioPortal:   s1.usuarioPortal    || undefined,
+        passwordPortal:  s1.passwordPortal   || undefined,
       });
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Error al registrar abonado';
@@ -367,10 +367,10 @@ export function ClienteWizard() {
     try {
       await crearContrato({
         clienteId:      cliente.id,
-        planId:         data.perfilId        || undefined,
-        routerId:       data.routerId        || undefined,
-        segmentoId:     data.segmentoId      || undefined,
-        ipManual:       data.ipv4            || undefined,
+        ...(data.perfilId   && { planId:     data.perfilId }),
+        ...(data.routerId   && { routerId:   data.routerId }),
+        ...(data.segmentoId && { segmentoId: data.segmentoId }),
+        ...(data.ipv4       && { ipManual:   data.ipv4 }),
         fechaInicio:    data.fechaInstalacion || new Date().toISOString().split('T')[0],
         diaFacturacion: s2?.facturacion?.diaPago ? parseInt(s2.facturacion.diaPago) : undefined,
         usuarioPppoe:   data.userPppHs       || undefined,

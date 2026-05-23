@@ -14,9 +14,9 @@ export class CreateContratoDto {
   @IsUUID() @IsNotEmpty()
   clienteId: string;
 
-  @ApiProperty({ description: 'UUID del plan de servicio' })
-  @IsUUID() @IsNotEmpty()
-  planId: string;
+  @ApiPropertyOptional({ description: 'UUID del plan de servicio' })
+  @IsOptional() @IsUUID()
+  planId?: string;
 
   @ApiPropertyOptional({ description: 'UUID del router Mikrotik' })
   @IsOptional() @IsUUID()

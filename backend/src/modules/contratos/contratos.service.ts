@@ -34,15 +34,18 @@ export class ContratosService {
   ) {}
 
   async create(dto: CreateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
-    const plan = await this.planesSvc.findOne(dto.planId, user.empresaId);
-    if (!plan.activo) throw new BadRequestException(`Plan "${plan.nombre}" inactivo`);
+    let plan: any = null;
+    if (dto.planId) {
+      plan = await this.planesSvc.findOne(dto.planId, user.empresaId);
+      if (!plan.activo) throw new BadRequestException(`Plan "${plan.nombre}" inactivo`);
 
-    const contratosCliente = await this.contratoRepo.findByClienteId(dto.clienteId, user.empresaId);
-    const duplicate = contratosCliente.find(c =>
-      c.planId === dto.planId &&
-      [EstadoContrato.ACTIVO, EstadoContrato.PENDIENTE_INSTALACION, EstadoContrato.PRORROGA].includes(c.estado)
-    );
-    if (duplicate) throw new ConflictException(`Cliente ya tiene contrato activo con plan "${plan.nombre}" (${duplicate.numeroContrato})`);
+      const contratosCliente = await this.contratoRepo.findByClienteId(dto.clienteId, user.empresaId);
+      const duplicate = contratosCliente.find(c =>
+        c.planId === dto.planId &&
+        [EstadoContrato.ACTIVO, EstadoContrato.PENDIENTE_INSTALACION, EstadoContrato.PRORROGA].includes(c.estado)
+      );
+      if (duplicate) throw new ConflictException(`Cliente ya tiene contrato activo con plan "${plan.nombre}" (${duplicate.numeroContrato})`);
+    }
 
     const numeroContrato = await this.contratoRepo.generarNumeroContrato(user.empresaId);
 
@@ -73,7 +76,7 @@ export class ContratosService {
       usuarioPppoe,
       passwordPppoe: passwordCifrado,
       ipAsignada,
-      precioMensual: dto.precioMensual ?? Number(plan.precio),
+      precioMensual: dto.precioMensual ?? (plan ? Number(plan.precio) : 0),
       diaFacturacion: dto.diaFacturacion ?? this.config.get('app.billing.day', 1),
       deudaTotal: 0, mesesDeuda: 0, aprovisionado: false,
       createdBy: user.sub, updatedBy: user.sub,
@@ -85,7 +88,7 @@ export class ContratosService {
       await this.contratoRepo.asignarIp({ empresaId:user.empresaId, segmentoId:dto.segmentoId, contratoId:saved.id, ipAddress:ipAsignada, tipo:'cliente', activa:true });
     }
 
-    await this.contratoRepo.guardarHistorial({ contratoId:saved.id, empresaId:user.empresaId, estadoNuevo:EstadoContrato.PENDIENTE_INSTALACION, motivo:`Plan: ${plan.nombre} | IP: ${ipAsignada||'sin asignar'}`, usuarioId:user.sub });
+    await this.contratoRepo.guardarHistorial({ contratoId:saved.id, empresaId:user.empresaId, estadoNuevo:EstadoContrato.PENDIENTE_INSTALACION, motivo:`Plan: ${plan?.nombre ?? 'sin plan'} | IP: ${ipAsignada||'sin asignar'}`, usuarioId:user.sub });
     await this.auditoria.logCreate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:saved.id, descripcion:`Contrato ${saved.numeroContrato}`, req });
     this.logger.log(`Contrato creado: ${saved.numeroContrato} | ip: ${ipAsignada}`);
 
