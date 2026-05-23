@@ -77,9 +77,7 @@ api.interceptors.response.use(
       if (!refreshToken) {
         // No hay refresh token → redirigir al login
         clearAuthCookies();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
+        redirectToLogin();
         return Promise.reject(error);
       }
 
@@ -98,9 +96,7 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         clearAuthCookies();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
+        redirectToLogin();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -137,6 +133,28 @@ export function clearAuthCookies(): void {
 
 export function getAccessToken(): string | undefined {
   return Cookies.get('access_token');
+}
+
+// Revoca VPN pendiente por tokenDescarga (sin JWT) antes de redirigir al login.
+// Usa keepalive=true para sobrevivir al cierre de página.
+function _revokeVpnIfPending(): void {
+  if (typeof window === 'undefined') return;
+  const token = sessionStorage.getItem('vpn_pending_token');
+  if (!token) return;
+  sessionStorage.removeItem('vpn_pending_token');
+  fetch(`${BASE_URL}/api/v1/openvpn/mikrotik-clients/revoke-by-token`, {
+    method:    'POST',
+    headers:   { 'Content-Type': 'application/json' },
+    body:      JSON.stringify({ tokenDescarga: token }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
+export function redirectToLogin(): void {
+  if (typeof window === 'undefined') return;
+  _revokeVpnIfPending();
+  (window as any).__authRedirecting = true;
+  window.location.href = '/login';
 }
 
 // ─── Helper para parsear errores de la API ────────────────────

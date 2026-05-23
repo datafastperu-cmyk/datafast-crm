@@ -103,6 +103,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
 
   // Refs para cleanup en navegación / cierre de ventana
   const vpnClienteRef    = useRef<VpnCliente | null>(null);
+  const tokenDescargaRef = useRef<string | null>(null);
   const routerGuardadoRef = useRef(false);
   const revokedRef       = useRef(false);
   useEffect(() => { vpnClienteRef.current = vpnCliente; }, [vpnCliente]);
@@ -112,17 +113,32 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
 
   const resetTest = () => { setTestStatus('idle'); setTestResult(null); };
 
-  // Revocación fire-and-forget compatible con cierre de pestaña (keepalive)
+  // Revocación fire-and-forget compatible con cierre de pestaña (keepalive).
+  // Si no hay JWT activo, usa tokenDescarga (endpoint público revoke-by-token).
   const fireRevoke = (id: string) => {
     if (revokedRef.current) return;
     revokedRef.current = true;
+    sessionStorage.removeItem('vpn_pending_token');
     const base  = process.env.NEXT_PUBLIC_API_URL ?? '';
-    const token = getAccessToken();
-    fetch(`${base}/api/v1/openvpn/mikrotik-clients/${id}`, {
-      method:    'DELETE',
-      headers:   { Authorization: `Bearer ${token ?? ''}` },
-      keepalive: true,
-    }).catch(() => {});
+    const jwt   = getAccessToken();
+    if (jwt) {
+      fetch(`${base}/api/v1/openvpn/mikrotik-clients/${id}`, {
+        method:    'DELETE',
+        headers:   { Authorization: `Bearer ${jwt}` },
+        keepalive: true,
+      }).catch(() => {});
+    } else {
+      // Sesión expirada — usar tokenDescarga sin JWT
+      const td = tokenDescargaRef.current;
+      if (td) {
+        fetch(`${base}/api/v1/openvpn/mikrotik-clients/revoke-by-token`, {
+          method:    'POST',
+          headers:   { 'Content-Type': 'application/json' },
+          body:      JSON.stringify({ tokenDescarga: td }),
+          keepalive: true,
+        }).catch(() => {});
+      }
+    }
   };
 
   // Revocar al navegar a otra sección (unmount del componente)
@@ -135,9 +151,11 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Advertir antes de cerrar/actualizar si hay VPN pendiente (no revocar aquí)
+  // Advertir antes de cerrar/actualizar si hay VPN pendiente (no revocar aquí).
+  // No bloqueamos si el interceptor de auth está redirigiendo al login.
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if ((window as any).__authRedirecting) return;
       if (vpnClienteRef.current && !routerGuardadoRef.current) {
         e.preventDefault();
         e.returnValue = '';
@@ -208,6 +226,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
       });
       setVpnCliente(result.cliente);
       setVpnScript(result.script);
+      tokenDescargaRef.current = result.cliente.tokenDescarga;
+      sessionStorage.setItem('vpn_pending_token', result.cliente.tokenDescarga);
       setVpnSubStep('script_ready');
     } catch (err) {
       toast(parseApiError(err), { type: 'error' });
@@ -341,6 +361,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         tipoControlVelocidad: tipoControlVelocidad as any,
       });
       toast('Router registrado correctamente', { type: 'success' });
+      sessionStorage.removeItem('vpn_pending_token');
       setRouterGuardado(true);
       routerGuardadoRef.current = true;
       onSaved();

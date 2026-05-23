@@ -3,7 +3,8 @@ import {
   ConflictException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository }       from 'typeorm';
+import { Repository, IsNull, Not, LessThan } from 'typeorm';
+import { Cron }             from '@nestjs/schedule';
 import { execFile }         from 'child_process';
 import { promisify }        from 'util';
 import * as fs              from 'fs/promises';
@@ -135,15 +136,6 @@ export class VpnClienteService {
     return { cliente, script };
   }
 
-  async revocarByToken(clienteId: string, tokenDescarga: string): Promise<void> {
-    if (!clienteId || !tokenDescarga) return;
-    const cliente = await this.repo.findOne({
-      where: { id: clienteId, tokenDescarga, activo: true },
-    });
-    if (!cliente || cliente.estado === 'revocado') return;
-    await this.revocar(cliente.id, cliente.empresaId);
-  }
-
   async getScriptByRouterId(routerId: string, empresaId: string): Promise<string> {
     const cliente = await this.repo.findOne({
       where: { routerId, empresaId, activo: true },
@@ -192,6 +184,36 @@ export class VpnClienteService {
 
     this.logger.log(`Limpieza VPN: ${ids.length}/${huerfanos.length} clientes huérfanos revocados para empresa ${empresaId}`);
     return { revocados: ids.length, ids };
+  }
+
+  // ── Revocar por tokenDescarga (sin JWT — útil cuando la sesión expiró) ──
+
+  async revocarPorToken(tokenDescarga: string): Promise<void> {
+    const cliente = await this.repo.findOne({
+      where: { tokenDescarga, activo: true },
+    });
+    if (!cliente || cliente.estado === 'revocado') return;
+    await this.revocar(cliente.id, cliente.empresaId);
+  }
+
+  // ── Cron: limpiar wizards abandonados (sin router, > 2h) ─────
+
+  @Cron('0 */30 * * * *', { name: 'vpn-cleanup-abandonados', timeZone: 'America/Lima' })
+  async limpiarWizardsAbandonados(): Promise<void> {
+    const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const abandonados = await this.repo.find({
+      where: {
+        routerId:  IsNull(),
+        activo:    true,
+        estado:    Not('revocado' as EstadoVpnCliente),
+        createdAt: LessThan(cutoff),
+      },
+    });
+    if (!abandonados.length) return;
+    this.logger.log(`VPN cron: ${abandonados.length} wizard(s) abandonado(s) — revocando`);
+    for (const c of abandonados) {
+      try { await this.revocar(c.id, c.empresaId); } catch {}
+    }
   }
 
   // ── Validar túnel (lee status.log) ────────────────────────────

@@ -82,13 +82,15 @@ export class VpnClienteController {
     return StdResponse.ok(await this.svc.limpiarHuerfanos(user.empresaId), 'Limpieza completada');
   }
 
-  // ── Revocar vía beacon (sendBeacon en beforeunload — sin JWT, usa tokenDescarga) ──
+  // ── Revocar por tokenDescarga (sin JWT — sesión expirada / crash del browser) ─
 
-  @Post('revocar-beacon')
+  @Post('revoke-by-token')
   @Public()
   @HttpCode(HttpStatus.OK)
-  async revocarBeacon(@Body() body: { clienteId: string; tokenDescarga: string }) {
-    await this.svc.revocarByToken(body.clienteId ?? '', body.tokenDescarga ?? '');
+  @ApiOperation({ summary: 'Revocar cliente VPN por tokenDescarga (sin autenticación JWT)' })
+  async revocarPorToken(@Body() body: { tokenDescarga: string }) {
+    if (!body?.tokenDescarga) return StdResponse.ok(null, 'Sin token');
+    await this.svc.revocarPorToken(body.tokenDescarga);
     return StdResponse.ok(null, 'Revocado');
   }
 
