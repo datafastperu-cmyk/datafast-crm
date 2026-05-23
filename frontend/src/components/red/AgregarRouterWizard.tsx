@@ -134,15 +134,27 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Revocar al cerrar la ventana / pestaña
+  // Advertir antes de cerrar/actualizar si hay VPN pendiente (no revocar aquí)
   useEffect(() => {
-    const onBeforeUnload = () => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (vpnClienteRef.current && !routerGuardadoRef.current) {
-        fireRevoke(vpnClienteRef.current.id);
+        e.preventDefault();
+        e.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
+  // Revocar cuando el usuario confirma que se va (pagehide ocurre después de la confirmación)
+  useEffect(() => {
+    const onPageHide = () => {
+      if (vpnClienteRef.current && !routerGuardadoRef.current) {
+        fireRevoke(vpnClienteRef.current.id);
+      }
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
