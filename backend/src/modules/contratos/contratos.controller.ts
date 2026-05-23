@@ -81,6 +81,14 @@ export class ContratosController {
     return StdResponse.ok(await this.ipPool.getSegmento(segId, user.empresaId));
   }
 
+  @Get('segmentos/:segId/next-ip') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Primera IP disponible en el segmento (sugerencia, no asigna)' })
+  @ApiParam({ name: 'segId' })
+  async getNextIp(@Param('segId', ParseUUIDPipe) segId: string, @CurrentUser() user: JwtPayload) {
+    const ip = await this.ipPool.getSiguienteIpSugerida(segId, user.empresaId);
+    return StdResponse.ok({ ip }, ip ? 'IP disponible' : 'Sin IPs disponibles');
+  }
+
   @Get('segmentos/:segId/disponibilidad') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
   @ApiOperation({ summary: 'Ver disponibilidad de IPs en un segmento' })
   @ApiParam({ name: 'segId' })

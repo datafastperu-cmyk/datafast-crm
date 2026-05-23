@@ -185,6 +185,27 @@ export class IpPoolService {
     }
   }
 
+  // ── Primera IP disponible (sugerencia sin asignar) ─────────
+  async getSiguienteIpSugerida(segmentoId: string, empresaId: string): Promise<string | null> {
+    const segmento = await this.getSegmento(segmentoId, empresaId);
+    const range    = getCidrRange(segmento.redCidr);
+
+    const asignadas = await this.ipRepo.find({
+      where: { segmentoId, activa: true },
+      select: ['ipAddress'],
+    });
+
+    const ipsEnUso = asignadas.map((a) => a.ipAddress);
+    const ipsReservadas = [
+      segmento.gateway,
+      range.network,
+      range.broadcast,
+      ...(segmento.ipsReservadas || []),
+    ];
+
+    return getNextAvailableIp(segmento.redCidr, ipsEnUso, ipsReservadas) ?? null;
+  }
+
   // ── Vista de disponibilidad del pool ──────────────────────
   async getDisponibilidad(segmentoId: string, empresaId: string) {
     const segmento = await this.getSegmento(segmentoId, empresaId);

@@ -10,7 +10,7 @@ import {
   Loader2, Search, CheckCircle2, AlertCircle, ChevronRight, ChevronLeft,
   User, Wifi, CreditCard, Bell, Trash2,
   MapPin, Lock, Calendar, Navigation, Server, Radio,
-  Check, Building2,
+  Check, Building2, Network,
 } from 'lucide-react';
 
 import { clientesApi }                       from '@/lib/api/clientes';
@@ -53,6 +53,7 @@ const step3Schema = z.object({
   costo:            z.coerce.number().optional(),
   tipoIpv4:         z.string().optional(),
   segmentoId:       z.string().optional(),
+  ipv4:             z.string().optional(),
   mac:              z.string().optional(),
   userPppHs:        z.string().optional(),
   passwordPppHs:    z.string().optional(),
@@ -369,6 +370,7 @@ export function ClienteWizard() {
         planId:         data.perfilId        || undefined,
         routerId:       data.routerId        || undefined,
         segmentoId:     data.segmentoId      || undefined,
+        ipManual:       data.ipv4            || undefined,
         fechaInicio:    data.fechaInstalacion || new Date().toISOString().split('T')[0],
         diaFacturacion: s2?.facturacion?.diaPago ? parseInt(s2.facturacion.diaPago) : undefined,
         usuarioPppoe:   data.userPppHs       || undefined,
@@ -869,12 +871,27 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
   const planSeleccionado = planes.find((p: any) => p.id === perfilId) as any | undefined;
 
-  const routerId = watch('routerId');
+  const routerId   = watch('routerId');
+  const segmentoId = watch('segmentoId');
+
   const { data: segmentosRaw = [] } = useQuery({
     queryKey: ['segmentos-list', routerId],
     queryFn:  () => redesApi.listSegmentos(routerId || undefined),
   });
   const segmentos = segmentosRaw as any[];
+
+  const { data: nextIpData, isFetching: fetchingIp } = useQuery({
+    queryKey:  ['next-ip', segmentoId],
+    queryFn:   () => redesApi.getNextIp(segmentoId!),
+    enabled:   !!segmentoId,
+    staleTime: 0,
+  });
+
+  // Auto-completar IPv4 cuando cambia el segmento
+  useEffect(() => {
+    if (!segmentoId) { setValue('ipv4', ''); return; }
+    if (nextIpData !== undefined) setValue('ipv4', nextIpData ?? '');
+  }, [segmentoId, nextIpData]);
 
   const { data: nodosRaw = [] } = useQuery({ queryKey: ['nodos-list'], queryFn: redesApi.listNodos });
   const puntosAcceso = (nodosRaw as any[]).filter((n: any) => n.tipo === 'antena');
@@ -979,6 +996,39 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               ))}
             </select>
           </Field>
+
+          {/* IPv4 — auto-sugerida al elegir segmento */}
+          {segmentoId && (
+            <Field label="IPv4">
+              <div className="relative">
+                <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  {...register('ipv4')}
+                  placeholder="—"
+                  className={cn(inputCls(), 'pl-9 pr-28')}
+                  readOnly={fetchingIp}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                  {fetchingIp ? (
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Buscando…
+                    </span>
+                  ) : nextIpData ? (
+                    <span className="flex items-center gap-1 text-[11px] text-emerald-500 font-medium">
+                      <CheckCircle2 className="w-3 h-3" /> Disponible
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[11px] text-amber-500 font-medium">
+                      <AlertCircle className="w-3 h-3" /> Pool lleno
+                    </span>
+                  )}
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Primera IP libre del segmento. Puedes editarla manualmente.
+              </p>
+            </Field>
+          )}
 
           {/* Mac */}
           <Field label="Mac" hint="Dirección MAC del equipo cliente">

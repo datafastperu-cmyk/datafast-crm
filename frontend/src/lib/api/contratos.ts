@@ -24,6 +24,7 @@ export interface CreateContratoDto {
   routerId?:       string;
   oltId?:          string;
   segmentoId?:     string;
+  ipManual?:       string;
   fechaInicio:     string;
   diaFacturacion?: number;
   descuentoPct?:   number;
@@ -275,6 +276,10 @@ export const redesApi = {
   getDisponibilidad: async (id: string): Promise<DisponibilidadSegmento> => {
     const res = await api.get<ApiRespuesta<DisponibilidadSegmento>>(`/contratos/segmentos/${id}/disponibilidad`);
     return res.data.data;
+  },
+  getNextIp: async (id: string): Promise<string | null> => {
+    const res = await api.get<ApiRespuesta<{ ip: string | null }>>(`/contratos/segmentos/${id}/next-ip`);
+    return res.data.data?.ip ?? null;
   },
   listPerfilesSmartolt: async (): Promise<SmartOltPerfil[]> => {
     const res = await api.get<ApiRespuesta<SmartOltPerfil[]>>('/smartolt/perfiles');
