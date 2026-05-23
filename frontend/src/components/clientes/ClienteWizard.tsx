@@ -875,10 +875,17 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const segmentoId = watch('segmentoId');
 
   const { data: segmentosRaw = [] } = useQuery({
-    queryKey: ['segmentos-list', routerId],
-    queryFn:  () => redesApi.listSegmentos(routerId || undefined),
+    queryKey: ['segmentos-router', routerId],
+    queryFn:  () => redesApi.listSegmentos(routerId!),
+    enabled:  !!routerId,
   });
   const segmentos = segmentosRaw as any[];
+
+  // Al cambiar de router: limpiar segmento e IP
+  useEffect(() => {
+    setValue('segmentoId', '');
+    setValue('ipv4', '');
+  }, [routerId]);
 
   const { data: nextIpData, isFetching: fetchingIp } = useQuery({
     queryKey:  ['next-ip', segmentoId],
@@ -887,7 +894,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     staleTime: 0,
   });
 
-  // Auto-completar IPv4 cuando cambia el segmento
+  // Auto-completar IPv4 cuando llega la sugerencia
   useEffect(() => {
     if (!segmentoId) { setValue('ipv4', ''); return; }
     if (nextIpData !== undefined) setValue('ipv4', nextIpData ?? '');
@@ -985,13 +992,20 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             </div>
           </div>
 
-          {/* Redes IPv4 */}
-          <Field label="Redes IPv4">
-            <select {...register('segmentoId')} className={inputCls()}>
-              <option value="">Seleccionar...</option>
+          {/* Redes IPv4 — solo las vinculadas al router seleccionado */}
+          <Field
+            label="Redes IPv4"
+            hint={!routerId ? '* Selecciona un router primero' : undefined}
+          >
+            <select
+              {...register('segmentoId')}
+              disabled={!routerId}
+              className={cn(inputCls(), !routerId && 'opacity-50 cursor-not-allowed')}
+            >
+              <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
               {segmentos.map((s: any) => (
                 <option key={s.id} value={s.id}>
-                  {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} IPs libres)` : ''}
+                  {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} disponibles)` : ''}
                 </option>
               ))}
             </select>
