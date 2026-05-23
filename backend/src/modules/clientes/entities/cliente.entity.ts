@@ -44,7 +44,7 @@ export class Cliente extends BaseModel {
   @Column({ length: 100 })
   nombres: string;
 
-  @Column({ name: 'apellido_paterno', length: 80 })
+  @Column({ name: 'apellido_paterno', length: 80, nullable: true, default: '' })
   apellidoPaterno: string;
 
   @Column({ name: 'apellido_materno', length: 80, nullable: true })

@@ -349,7 +349,7 @@ export function ClienteWizard() {
         tipoDocumento:   (s1.tipoDocumento as any) || 'dni',
         numeroDocumento: s1.numeroDocumento,
         nombres:         s1.nombres,
-        apellidoPaterno: undefined,
+        apellidoPaterno: '',
         apellidoMaterno: undefined,
         // telefono es requerido en backend — usar whatsapp como fallback (siempre presente)
         telefono:        s1.telefono?.trim() || (s1 as any).whatsapp,
