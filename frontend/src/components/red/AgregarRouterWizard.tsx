@@ -18,9 +18,10 @@ import type { VpnCliente, VersionRos } from '@/lib/api/vpn';
 // ─── Opciones ─────────────────────────────────────────────────────────────────
 
 const SECURITY_OPTS = [
-  { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'             },
+  { val: 'pppoe_addresslist',  label: 'PPPoE/AddressList'           },
+  { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
   { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
-  { val: 'ninguna',            label: 'Ninguno'                   },
+  { val: 'ninguna',            label: 'Ninguno'                     },
 ] as const;
 
 const SPEED_OPTS = [
