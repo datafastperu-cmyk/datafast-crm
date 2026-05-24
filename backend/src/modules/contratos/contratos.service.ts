@@ -54,9 +54,16 @@ export class ContratosService {
       if (!isValidIp(dto.ipManual)) throw new BadRequestException(`IP inválida: ${dto.ipManual}`);
       if (dto.segmentoId) {
         const ocupada = await this.contratoRepo.ipYaAsignada(dto.ipManual, dto.segmentoId);
-        if (ocupada) throw new ConflictException(`IP ${dto.ipManual} ya asignada`);
+        if (ocupada) {
+          // Race condition: la IP sugerida fue tomada por otro operador — asignar la siguiente disponible
+          this.logger.warn(`Race condition: IP ${dto.ipManual} ya ocupada, asignando siguiente disponible del pool ${dto.segmentoId}`);
+          ipAsignada = await this.asignarIpDesdePool(dto.segmentoId, user.empresaId);
+        } else {
+          ipAsignada = dto.ipManual;
+        }
+      } else {
+        ipAsignada = dto.ipManual;
       }
-      ipAsignada = dto.ipManual;
     } else if (dto.segmentoId) {
       ipAsignada = await this.asignarIpDesdePool(dto.segmentoId, user.empresaId);
     }

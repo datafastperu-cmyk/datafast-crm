@@ -11,11 +11,13 @@ import { ReniecService } from './reniec.service';
 
 import { Cliente, ClienteHistorialEstado } from './entities/cliente.entity';
 import { AuthModule } from '../auth/auth.module';
+import { ContratosModule } from '../contratos/contratos.module';
 
 @Module({
   imports: [
     // Entidades TypeORM
     TypeOrmModule.forFeature([Cliente, ClienteHistorialEstado]),
+    ContratosModule,
 
     // HTTP client para llamadas a RENIEC
     HttpModule.register({

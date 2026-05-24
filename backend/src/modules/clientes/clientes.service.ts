@@ -16,6 +16,8 @@ import {
   CreateClienteDto, UpdateClienteDto, FilterClienteDto,
   CambiarEstadoDto, ReniecResponseDto, ExportClientesDto, BulkActionClienteDto,
 } from './dto/cliente.dto';
+import { ContratosService } from '../contratos/contratos.service';
+import { EstadoContrato } from '../contratos/entities/contrato.entity';
 import { ApiResponse, PaginationDto } from '../../common/dto/response.dto';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 
@@ -41,6 +43,7 @@ export class ClientesService {
     private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService,
     private readonly licenciaSvc: LicenciaService,
+    private readonly contratosSvc: ContratosService,
   ) {}
 
   // ── Crear cliente ─────────────────────────────────────────
@@ -182,6 +185,11 @@ export class ClientesService {
 
     const estadoAnterior = cliente.estado;
 
+    // Cascada: al dar de baja definitiva, terminar y limpiar todos los contratos activos
+    if (dto.estado === EstadoCliente.BAJA_DEFINITIVA) {
+      await this.terminarContratosCliente(id, user, dto.motivo);
+    }
+
     await this.clienteRepo.update(id, {
       estado:      dto.estado,
       fechaEstado: new Date(),
@@ -238,6 +246,35 @@ export class ClientesService {
       descripcion:  `Eliminación de cliente: ${cliente.nombreCompleto}`,
       req,
     });
+  }
+
+  // ── Terminar contratos al dar de baja definitiva ──────────
+  private async terminarContratosCliente(clienteId: string, user: JwtPayload, motivo?: string): Promise<void> {
+    const contratos = await this.contratosSvc.findByCliente(clienteId, user.empresaId);
+    if (!contratos.length) return;
+
+    const estadosTerminales = new Set<EstadoContrato>([EstadoContrato.BAJA_DEFINITIVA, EstadoContrato.MIGRADO]);
+    const motivoBaja = `Baja definitiva de cliente${motivo ? `: ${motivo}` : ''}`;
+
+    for (const contrato of contratos) {
+      try {
+        if (!estadosTerminales.has(contrato.estado)) {
+          // Transición a BAJA_DEFINITIVA → libera IP automáticamente dentro del servicio
+          await this.contratosSvc.cambiarEstado(
+            contrato.id,
+            { estado: EstadoContrato.BAJA_DEFINITIVA, motivo: motivoBaja },
+            user,
+            true, // automatico = true, omite validación de transiciones
+          );
+        }
+        // Soft-delete para que desaparezca de la pestaña Servicios
+        await this.contratosSvc.remove(contrato.id, user);
+      } catch (err) {
+        this.logger.error(`Error terminando contrato ${contrato.id} en baja de cliente ${clienteId}: ${err.message}`);
+      }
+    }
+
+    this.logger.log(`Baja definitiva cliente ${clienteId}: ${contratos.length} contrato(s) terminado(s)`);
   }
 
   // ── Historial de estados ──────────────────────────────────
