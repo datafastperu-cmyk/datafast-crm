@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useForm }                     from 'react-hook-form';
+import { zodResolver }                 from '@hookform/resolvers/zod';
+import { z }                           from 'zod';
 import { useRouter }                   from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,12 +13,15 @@ import {
   Receipt, BarChart2, Ticket, Plus, FileText, ChevronDown,
   Trash2, X, Pencil, Copy, Download, AlignJustify,
   LayoutGrid, RefreshCcw, Maximize2, Minus, Phone, Package,
+  Network, Lock, Navigation, Server, MapPin, User, ChevronRight,
+  MoreVertical, CheckCircle2, Clock, AlertTriangle,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 
 import { clientesApi }                          from '@/lib/api/clientes';
+import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
 import { TabConfigFacturacion }                from './TabConfigFacturacion';
@@ -623,17 +629,24 @@ function SvcTh({ children, className }: { children: React.ReactNode; className?:
   );
 }
 
+const CONTRATO_ESTADO_CFG: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
+  pendiente_instalacion: { label: 'Pendiente',  icon: Clock,         cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  activo:               { label: 'Activo',     icon: Wifi,          cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  suspendido_mora:      { label: 'Mora',        icon: AlertTriangle, cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  suspendido_manual:    { label: 'Suspendido',  icon: WifiOff,       cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+  prorroga:             { label: 'Prórroga',    icon: CheckCircle2,  cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  baja_solicitada:      { label: 'Baja Sol.',   icon: XCircle,       cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
+  baja_definitiva:      { label: 'Baja Def.',   icon: XCircle,       cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
+  migrado:              { label: 'Migrado',     icon: Shuffle,       cls: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
+};
+
 function ContratoEstadoBadge({ estado }: { estado: string }) {
-  const on = estado === 'activo';
+  const cfg = CONTRATO_ESTADO_CFG[estado] ?? { label: estado, icon: Wifi, cls: 'bg-muted text-muted-foreground' };
+  const Icon = cfg.icon;
   return (
-    <span className={cn(
-      'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold',
-      on
-        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    )}>
-      {on ? <Wifi className="w-2.5 h-2.5" /> : <WifiOff className="w-2.5 h-2.5" />}
-      {on ? 'ONLINE' : 'OFFLINE'}
+    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold', cfg.cls)}>
+      <Icon className="w-2.5 h-2.5" />
+      {cfg.label.toUpperCase()}
     </span>
   );
 }
@@ -664,12 +677,30 @@ function SvcPagination({ total }: { total: number }) {
   );
 }
 
+// ── ServicioPanel schema ──────────────────────────────────────
+const servicioSchema = z.object({
+  planId:         z.string().min(1, 'Requerido'),
+  routerId:       z.string().optional(),
+  segmentoId:     z.string().optional(),
+  ipManual:       z.string().optional(),
+  usuarioPppoe:   z.string().optional(),
+  passwordPppoe:  z.string().optional(),
+  fechaInicio:    z.string().min(1, 'Requerido'),
+  diaFacturacion: z.coerce.number().int().min(1).max(31).optional().or(z.literal('')),
+  descuentoPct:   z.coerce.number().min(0).max(100).optional().or(z.literal('')),
+  notasInternas:  z.string().optional(),
+});
+type ServicioForm = z.infer<typeof servicioSchema>;
+
 function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: Contrato[] }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { toast }   = useToast();
   const [q1, setQ1] = useState('');
   const [q2, setQ2] = useState('');
   const [q3, setQ3] = useState('');
   const [q4, setQ4] = useState('');
+  const [showPanel,       setShowPanel]       = useState(false);
+  const [editingContrato, setEditingContrato] = useState<Contrato | null>(null);
 
   const filtered = contratos.filter(c =>
     !q1 ||
@@ -678,6 +709,32 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
     (c.routerNombre ?? '').toLowerCase().includes(q1.toLowerCase()) ||
     c.numeroContrato.toLowerCase().includes(q1.toLowerCase()),
   );
+
+  const { mutate: activar } = useMutation({
+    mutationFn: (id: string) => contratosApi.activar(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
+      toast('Servicio activado', { type: 'success' });
+    },
+    onError: () => toast('No se pudo activar el servicio', { type: 'error' }),
+  });
+
+  const { mutate: darBaja } = useMutation({
+    mutationFn: (id: string) => contratosApi.cambiarEstado(id, { estado: 'baja_definitiva' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
+      toast('Servicio dado de baja', { type: 'success' });
+    },
+    onError: () => toast('No se pudo dar de baja el servicio', { type: 'error' }),
+  });
+
+  const openCreate = () => { setEditingContrato(null); setShowPanel(true); };
+  const openEdit   = (c: Contrato) => { setEditingContrato(c); setShowPanel(true); };
+  const closePanel = () => { setShowPanel(false); setEditingContrato(null); };
+  const onSaved    = () => {
+    queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
+    closePanel();
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -689,7 +746,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
           count={filtered.length}
           search={q1}
           onSearch={setQ1}
-          onAdd={() => router.push(`/contratos/nuevo?clienteId=${clienteId}`)}
+          onAdd={openCreate}
         />
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -746,14 +803,26 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                         <Copy className="w-3 h-3" />
                       </button>
                       <button
-                        onClick={() => router.push(`/contratos/${c.id}`)}
+                        onClick={() => openEdit(c)}
                         title="Editar"
                         className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
+                      {c.estado === 'pendiente_instalacion' && (
+                        <button
+                          onClick={() => activar(c.id)}
+                          title="Activar servicio"
+                          className="p-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-muted-foreground hover:text-emerald-600 transition-colors"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                        </button>
+                      )}
                       <button
-                        title="Eliminar"
+                        onClick={() => {
+                          if (confirm('¿Confirmar baja definitiva de este servicio?')) darBaja(c.id);
+                        }}
+                        title="Dar de baja"
                         className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -847,7 +916,330 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
         <SvcPagination total={0} />
       </div>
 
+      {/* ── Slide-over panel ─────────────────────────────────── */}
+      {showPanel && (
+        <ServicioPanel
+          clienteId={clienteId}
+          editing={editingContrato}
+          onClose={closePanel}
+          onSaved={onSaved}
+        />
+      )}
     </div>
+  );
+}
+
+function ServicioPanel({
+  clienteId, editing, onClose, onSaved,
+}: {
+  clienteId: string;
+  editing:   Contrato | null;
+  onClose:   () => void;
+  onSaved:   () => void;
+}) {
+  const { toast } = useToast();
+  const {
+    register, handleSubmit, watch, setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<ServicioForm>({
+    resolver: zodResolver(servicioSchema),
+    defaultValues: {
+      planId:         editing?.planId             ?? '',
+      routerId:       editing?.routerId           ?? '',
+      segmentoId:     '',
+      ipManual:       editing?.ipAsignada         ?? '',
+      usuarioPppoe:   editing?.usuarioPppoe       ?? '',
+      passwordPppoe:  '',
+      fechaInicio:    editing?.fechaInicio
+        ? editing.fechaInicio.split('T')[0]
+        : new Date().toISOString().split('T')[0],
+      diaFacturacion: (editing as any)?.diaFacturacion ?? '',
+      descuentoPct:   (editing as any)?.descuentoPct   ?? '',
+      notasInternas:  (editing as any)?.notasInternas  ?? '',
+    },
+  });
+
+  const routerId   = watch('routerId');
+  const segmentoId = watch('segmentoId');
+  const planId     = watch('planId');
+
+  const { data: planes  = [] } = useQuery({ queryKey: ['planes'],        queryFn: planesApi.list });
+  const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
+  const { data: segmentos = [] } = useQuery({
+    queryKey: ['segmentos-router', routerId],
+    queryFn:  () => redesApi.listSegmentos(routerId!),
+    enabled:  !!routerId,
+  });
+  const { data: nextIp, isFetching: fetchingIp } = useQuery({
+    queryKey:  ['next-ip', segmentoId],
+    queryFn:   () => redesApi.getNextIp(segmentoId!),
+    enabled:   !!segmentoId && !editing,
+    staleTime: 0,
+  });
+
+  useEffect(() => { setValue('segmentoId', ''); setValue('ipManual', ''); }, [routerId]);
+  useEffect(() => {
+    if (!segmentoId || editing) return;
+    if (nextIp !== undefined) setValue('ipManual', nextIp ?? '');
+  }, [segmentoId, nextIp]);
+
+  const planSel = (planes as any[]).find((p: any) => p.id === planId);
+
+  const onSubmit = async (data: ServicioForm) => {
+    try {
+      if (editing) {
+        await contratosApi.update(editing.id, {
+          planId:         data.planId,
+          routerId:       data.routerId       || undefined,
+          notasInternas:  data.notasInternas  || undefined,
+          descuentoPct:   data.descuentoPct   ? Number(data.descuentoPct)   : undefined,
+          diaFacturacion: data.diaFacturacion ? Number(data.diaFacturacion) : undefined,
+        });
+        toast('Servicio actualizado', { type: 'success' });
+      } else {
+        await contratosApi.create({
+          clienteId,
+          planId:         data.planId,
+          routerId:       data.routerId       || undefined,
+          segmentoId:     data.segmentoId     || undefined,
+          ipManual:       data.ipManual       || undefined,
+          usuarioPppoe:   data.usuarioPppoe   || undefined,
+          passwordPppoe:  data.passwordPppoe  || undefined,
+          fechaInicio:    data.fechaInicio,
+          diaFacturacion: data.diaFacturacion ? Number(data.diaFacturacion) : undefined,
+          descuentoPct:   data.descuentoPct   ? Number(data.descuentoPct)   : undefined,
+          notasInternas:  data.notasInternas  || undefined,
+        });
+        toast('Servicio creado correctamente', { type: 'success' });
+      }
+      onSaved();
+    } catch (err: any) {
+      toast(err?.response?.data?.message ?? 'Error al guardar', { type: 'error' });
+    }
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-[520px] bg-background border-l border-border z-50 flex flex-col shadow-2xl">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">
+              {editing ? 'Editar Servicio' : 'Nuevo Servicio de Internet'}
+            </h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {editing
+                ? `Contrato ${editing.numeroContrato}`
+                : 'Configurar nuevo contrato de internet'}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-accent transition-colors">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+
+          {/* Plan */}
+          <div>
+            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+              Plan / Perfil *
+            </label>
+            <select {...register('planId')} className={INPUT}>
+              <option value="">— Seleccionar plan —</option>
+              {(planes as any[]).map((p: any) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre} — {p.velocidadBajada}/{p.velocidadSubida} Mbps — S/. {p.precio}
+                </option>
+              ))}
+            </select>
+            {errors.planId && (
+              <p className="text-[10px] text-destructive mt-1">{errors.planId.message}</p>
+            )}
+            {planSel && (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Precio base:{' '}
+                <span className="font-semibold text-foreground">S/. {planSel.precio?.toFixed(2)}</span>
+                {planSel.velocidadBajada && (
+                  <span className="ml-2 text-muted-foreground">
+                    {planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+
+          {/* Router + Segmento */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                Router
+              </label>
+              <select {...register('routerId')} className={INPUT}>
+                <option value="">— Sin router —</option>
+                {(routers as any[]).map((r: any) => (
+                  <option key={r.id} value={r.id}>{r.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                Red IPv4
+              </label>
+              <select
+                {...register('segmentoId')}
+                disabled={!routerId}
+                className={cn(INPUT, !routerId && 'opacity-50 cursor-not-allowed')}
+              >
+                <option value="">{routerId ? 'Seleccionar red…' : '— Elige router —'}</option>
+                {(segmentos as any[]).map((s: any) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre} ({s.redCidr}) — {s.ipsDisponibles} libres
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* IPv4 */}
+          {(segmentoId || editing?.ipAsignada) && (
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                IPv4 Asignada
+              </label>
+              <div className="relative">
+                <input
+                  {...register('ipManual')}
+                  placeholder={fetchingIp ? 'Obteniendo IP…' : '0.0.0.0'}
+                  readOnly={!!editing}
+                  className={cn(INPUT, editing && 'opacity-60 cursor-not-allowed')}
+                />
+                {fetchingIp && (
+                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {editing && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  La IP no puede modificarse tras la creación.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* PPPoE (solo creación) */}
+          {!editing && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  Usuario PPPoE
+                </label>
+                <input
+                  {...register('usuarioPppoe')}
+                  placeholder="Auto-generar si vacío"
+                  className={INPUT}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  Contraseña PPPoE
+                </label>
+                <input
+                  type="password"
+                  {...register('passwordPppoe')}
+                  placeholder="Auto-generar si vacío"
+                  className={INPUT}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Fechas */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                Fecha Instalación *
+              </label>
+              <input
+                type="date"
+                {...register('fechaInicio')}
+                readOnly={!!editing}
+                className={cn(INPUT, editing && 'opacity-60 cursor-not-allowed')}
+              />
+              {errors.fechaInicio && (
+                <p className="text-[10px] text-destructive mt-1">{errors.fechaInicio.message}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                Día Facturación
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                {...register('diaFacturacion')}
+                placeholder="1 – 31"
+                className={INPUT}
+              />
+            </div>
+          </div>
+
+          {/* Descuento */}
+          <div>
+            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+              Descuento (%)
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              {...register('descuentoPct')}
+              placeholder="0"
+              className={INPUT}
+            />
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+              Notas Internas
+            </label>
+            <textarea
+              {...register('notasInternas')}
+              rows={3}
+              placeholder="Observaciones del contrato…"
+              className={cn(INPUT, 'resize-none')}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit(onSubmit)}
+            disabled={isSubmitting}
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {isSubmitting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Save className="w-3.5 h-3.5" />
+            }
+            {editing ? 'Guardar Cambios' : 'Crear Servicio'}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
