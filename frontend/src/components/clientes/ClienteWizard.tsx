@@ -356,7 +356,6 @@ export function ClienteWizard() {
         whatsapp:        s1.whatsapp         || undefined,
         email:           s1.email            || undefined,
         direccion:       s1.direccion        || undefined,
-        zonaId:          s1.zonaId           || undefined,
         usuarioPortal:   s1.usuarioPortal    || undefined,
         passwordPortal:  s1.passwordPortal   || undefined,
       });
