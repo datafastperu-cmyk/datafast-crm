@@ -1018,7 +1018,7 @@ function ServicioPanel({
       planId:               e?.planId             ?? '',
       routerId:             e?.routerId            ?? '',
       excluirFirewall:      e?.excluirFirewall      ?? false,
-      segmentoId:           '',
+      segmentoId:           e?.segmentoId          ?? '',
       ipManual:             e?.ipAsignada           ?? '',
       usuarioPppoe:         e?.usuarioPppoe         ?? '',
       passwordPppoe:        '',
