@@ -132,7 +132,7 @@ export class CobranzaScheduler {
         co.en_prorroga,
         co.prorroga_hasta,
         co.estado,
-        em.dias_gracia_corte,
+        em.dias_gracia AS dias_gracia_corte,
         em.notif_whatsapp_corte,
         EXTRACT(DAY FROM (NOW() - COALESCE(co.fecha_ultimo_pago, co.fecha_inicio)::timestamptz))::int
           AS dias_sin_pago

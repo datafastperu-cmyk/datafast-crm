@@ -504,7 +504,7 @@ export class ClientesService {
       } catch (err: any) {
         this.logger.error(`onboarding: contrato fallido para ${cliente.id}: ${err.message}`);
         // Limpiar el cliente creado para no dejar estado inconsistente
-        await this.clienteRepo.softDelete(cliente.id).catch(() => {});
+        await this.clienteRepo.softDelete(cliente.id, user.empresaId).catch(() => {});
         throw err;
       }
     }
