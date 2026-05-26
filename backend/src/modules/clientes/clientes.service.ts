@@ -502,7 +502,10 @@ export class ClientesService {
           automatico: true,
         });
       } catch (err: any) {
-        this.logger.warn(`onboarding: contrato no creado para ${cliente.id}: ${err.message}`);
+        this.logger.error(`onboarding: contrato fallido para ${cliente.id}: ${err.message}`);
+        // Limpiar el cliente creado para no dejar estado inconsistente
+        await this.clienteRepo.softDelete(cliente.id).catch(() => {});
+        throw err;
       }
     }
 

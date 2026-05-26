@@ -106,14 +106,14 @@ export class ContratoRepository {
   }
 
   async generarNumeroContrato(empresaId: string): Promise<string> {
-    const year  = new Date().getFullYear();
+    const year   = new Date().getFullYear();
     const prefix = `CNT-${year}-`;
-    // MAX sobre SQL directo para incluir registros soft-deleted y evitar colisiones
+    const pos    = prefix.length + 1; // posición literal, no parámetro (pg envía números como text)
     const rows = await this.repo.manager.query<{ max_num: string }[]>(
-      `SELECT COALESCE(MAX(SUBSTRING(numero_contrato, $1)::INTEGER), 0) AS max_num
+      `SELECT COALESCE(MAX(CAST(SUBSTRING(numero_contrato, ${pos}) AS INTEGER)), 0) AS max_num
        FROM contratos
-       WHERE empresa_id = $2 AND numero_contrato LIKE $3`,
-      [prefix.length + 1, empresaId, `${prefix}%`],
+       WHERE empresa_id = $1 AND numero_contrato LIKE $2`,
+      [empresaId, `${prefix}%`],
     );
     const next = (parseInt(rows[0]?.max_num ?? '0') || 0) + 1;
     return `${prefix}${String(next).padStart(6, '0')}`;
