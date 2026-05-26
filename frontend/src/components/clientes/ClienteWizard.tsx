@@ -21,15 +21,16 @@ import { zonasApi }                          from '@/lib/api/zonas';
 import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
 import { useToast }                          from '@/components/ui/toaster';
 import { parseApiError, cn }                 from '@/lib/utils';
-import { MOCK_PLANES, MOCK_ROUTERS }         from '@/data/clientes.mock';
 
 // ── Schemas ───────────────────────────────────────────────────
 const step1Schema = z.object({
-  usuarioPortal:   z.string().min(1, 'Usuario requerido'),
-  passwordPortal:  z.string().min(1, 'Contraseña requerida'),
+  usuarioPortal:   z.string().optional(),
+  passwordPortal:  z.string().optional(),
   tipoDocumento:   z.string().optional(),
   numeroDocumento: z.string().min(6, 'Identificación requerida').max(13),
   nombres:         z.string().min(2, 'Nombres requeridos'),
+  apellidoPaterno: z.string().optional(),
+  apellidoMaterno: z.string().optional(),
   zonaId:          z.string().optional(),
   direccion:       z.string().min(1, 'Dirección requerida'),
   ubicacionId:     z.string().optional(),
@@ -346,16 +347,16 @@ export function ClienteWizard() {
     let cliente: any;
     try {
       cliente = await crearCliente({
-        tipoDocumento:   (s1.tipoDocumento as any) || 'dni',
+        tipoDocumento:   s1.tipoDocumento || 'dni',
         numeroDocumento: s1.numeroDocumento,
         nombres:         s1.nombres,
-        apellidoPaterno: '',
-        apellidoMaterno: undefined,
-        // telefono es requerido en backend — usar whatsapp como fallback (siempre presente)
-        telefono:        s1.telefono?.trim() || (s1 as any).whatsapp,
-        whatsapp:        (s1 as any).whatsapp || undefined,
+        apellidoPaterno: s1.apellidoPaterno || '',
+        apellidoMaterno: s1.apellidoMaterno || undefined,
+        telefono:        s1.telefono?.trim() || s1.whatsapp,
+        whatsapp:        s1.whatsapp         || undefined,
         email:           s1.email            || undefined,
         direccion:       s1.direccion        || undefined,
+        zonaId:          s1.zonaId           || undefined,
         usuarioPortal:   s1.usuarioPortal    || undefined,
         passwordPortal:  s1.passwordPortal   || undefined,
       });
@@ -373,21 +374,28 @@ export function ClienteWizard() {
         ...(data.ipv4       && { ipManual:   data.ipv4 }),
         fechaInicio:    data.fechaInstalacion || new Date().toISOString().split('T')[0],
         diaFacturacion: s2?.facturacion?.diaPago ? parseInt(s2.facturacion.diaPago) : undefined,
-        usuarioPppoe:   data.userPppHs       || undefined,
-        passwordPppoe:  data.passwordPppHs   || undefined,
+        usuarioPppoe:   data.userPppHs  || undefined,
+        passwordPppoe:  data.passwordPppHs || undefined,
       });
-    } catch { /* contrato falla silenciosamente, cliente ya creado */ }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Error al registrar el servicio';
+      toast(`Abonado creado. ${msg}`, { type: 'warning' });
+    }
     if (s2) {
       try {
         await clientesApi.saveFacturacionConfig(cliente.id, s2.facturacion, s2.notificaciones);
-      } catch { /* no bloquea el flujo */ }
+      } catch { /* no bloquea el flujo principal */ }
     }
-    // Facturas automáticas al registrar
-    const esPrepago = s2?.facturacion?.tipo === 'prepago';
+    // Factura inicial (prepago o costo de instalación)
+    const esPrepago      = s2?.facturacion?.tipo === 'prepago';
     const conInstalacion = data._costoInstalacion && (data._montoCostoInstalacion ?? 0) > 0;
     if (esPrepago || conInstalacion) {
       try {
-        const hoy = new Date().toISOString().split('T')[0];
+        const hoy    = new Date();
+        const fin    = new Date(hoy);
+        fin.setMonth(fin.getMonth() + 1);
+        const inicio = hoy.toISOString().split('T')[0];
+        const finStr = fin.toISOString().split('T')[0];
         const items: { descripcion: string; cantidad: number; precioUnitario: number }[] = [];
         if (esPrepago) {
           items.push({
@@ -405,11 +413,11 @@ export function ClienteWizard() {
         }
         await facturacionApi.create({
           clienteId:     cliente.id,
-          periodoInicio: hoy,
-          periodoFin:    hoy,
+          periodoInicio: inicio,
+          periodoFin:    finStr,
           items,
         });
-      } catch { /* no bloquea el flujo */ }
+      } catch { /* no bloquea el flujo principal */ }
     }
     toast('Abonado registrado correctamente', { type: 'success' });
     router.push(`/clientes/${cliente.id}`);
@@ -457,8 +465,9 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
     try {
       const datos = await clientesApi.consultarReniec(doc);
       setValue('nombres',         datos.nombres         || '', { shouldDirty: true });
+      setValue('apellidoPaterno', datos.apellidoPaterno || '', { shouldDirty: true });
+      setValue('apellidoMaterno', datos.apellidoMaterno || '', { shouldDirty: true });
       const nombreCompleto = [datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' ');
-      setValue('nombres', nombreCompleto, { shouldDirty: true });
       setReniecStatus('ok');
       setReniecMsg(nombreCompleto);
     } catch (err) {
@@ -471,12 +480,25 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
     <form onSubmit={handleSubmit(onNext)}>
       <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border/50">
 
+        {/* Tipo Documento */}
+        <FormRow label="Tipo Documento" hintColor="gray">
+          <select {...register('tipoDocumento')} className={inputCls()}>
+            <option value="dni">DNI</option>
+            <option value="ruc">RUC</option>
+            <option value="cedula">Cédula</option>
+            <option value="pasaporte">Pasaporte</option>
+            <option value="cuit">CUIT</option>
+            <option value="nit">NIT</option>
+            <option value="otro">Otro</option>
+          </select>
+        </FormRow>
+
         {/* Nº Identificación */}
-        <FormRow label="Nº Identificación" required hint="CEDULA, DNI, RUC, CUIT, NIT, SAT, RUT, RTN, ETC.">
+        <FormRow label="Nº Identificación" required>
           <div className="flex gap-2">
             <input
               {...register('numeroDocumento')}
-              placeholder="223456634"
+              placeholder="12345678"
               maxLength={13}
               className={inputCls(!!errors.numeroDocumento)}
             />
@@ -484,7 +506,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
               type="button"
               onClick={consultarReniec}
               disabled={reniecStatus === 'loading'}
-              title="Consultar RENIEC"
+              title="Consultar RENIEC / padrón"
               className="flex-shrink-0 px-3 rounded-lg border border-input bg-muted
                          hover:bg-muted/70 transition-colors disabled:opacity-50"
             >
@@ -514,10 +536,10 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
         </FormRow>
 
         {/* Nombres */}
-        <FormRow label="Nombres Completos" required hintColor="gray">
+        <FormRow label="Nombres" required hintColor="gray">
           <input
             {...register('nombres')}
-            placeholder="Piero Escobar Bautista"
+            placeholder="Piero"
             className={inputCls(!!errors.nombres)}
           />
           {errors.nombres && (
@@ -525,6 +547,14 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
               <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.nombres.message}
             </p>
           )}
+        </FormRow>
+
+        {/* Apellidos */}
+        <FormRow label="Apellido Paterno" hintColor="gray">
+          <input {...register('apellidoPaterno')} placeholder="Escobar" className={inputCls()} />
+        </FormRow>
+        <FormRow label="Apellido Materno" hintColor="gray">
+          <input {...register('apellidoMaterno')} placeholder="Bautista" className={inputCls()} />
         </FormRow>
 
         {/* Dirección principal */}
@@ -578,25 +608,15 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
         </FormRow>
 
         {/* Credenciales Portal */}
-        <FormRow label="Credenciales Portal" required>
+        <FormRow label="Credenciales Portal" hint="Dejar vacío para auto-generar" hintColor="gray">
           <div className="flex gap-3">
             <div className="flex flex-col gap-1 flex-1">
               <span className="text-xs text-muted-foreground">Usuario</span>
-              <input {...register('usuarioPortal')} placeholder="cliente123" maxLength={12} className={inputCls(!!errors.usuarioPortal)} />
-              {errors.usuarioPortal && (
-                <p className="text-[11px] text-destructive flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.usuarioPortal.message}
-                </p>
-              )}
+              <input {...register('usuarioPortal')} placeholder="Auto-generar" maxLength={12} className={inputCls()} />
             </div>
             <div className="flex flex-col gap-1 flex-1">
               <span className="text-xs text-muted-foreground">Contraseña</span>
-              <input {...register('passwordPortal')} placeholder="4243Tdp" maxLength={12} className={inputCls(!!errors.passwordPortal)} />
-              {errors.passwordPortal && (
-                <p className="text-[11px] text-destructive flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.passwordPortal.message}
-                </p>
-              )}
+              <input {...register('passwordPortal')} placeholder="Auto-generar" maxLength={12} className={inputCls()} />
             </div>
           </div>
         </FormRow>
@@ -863,8 +883,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const cajaNap         = watch('cajaNapId');
   const perfilId        = watch('perfilId');
 
-  const { data: routersRaw = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
-  const routers = (routersRaw as unknown as typeof MOCK_ROUTERS).length ? (routersRaw as unknown as typeof MOCK_ROUTERS) : MOCK_ROUTERS;
+  const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
 
   const { data: planesRaw = [] } = useQuery({ queryKey: ['planes-list'], queryFn: planesApi.list });
   const planes = (planesRaw as any[]).filter((p: any) => p.activo !== false);
@@ -929,7 +948,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           <Field label="Router">
             <select {...register('routerId')} className={inputCls()}>
               <option value="">— Seleccionar router —</option>
-              {(routers as any[]).map((r) => (
+              {(routers as any[]).map((r: any) => (
                 <option key={r.id} value={r.id}>{r.nombre}</option>
               ))}
             </select>
