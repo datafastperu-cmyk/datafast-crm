@@ -172,6 +172,21 @@ export class Contrato extends BaseModel {
   @Column({ name: 'tipo_antena', length: 50, nullable: true })
   tipoAntena: string;
 
+  @Column({ name: 'tipo_ipv4', length: 20, default: 'estatica', nullable: true })
+  tipoIpv4: string;
+
+  @Column({ name: 'descripcion_servicio', type: 'text', nullable: true })
+  descripcionServicio: string;
+
+  @Column({ name: 'comunidad_snmp', length: 100, nullable: true })
+  comunidadSnmp: string;
+
+  @Column({ name: 'usuario_antena', length: 100, nullable: true })
+  usuarioAntena: string;
+
+  @Column({ name: 'contrasena_antena', length: 500, nullable: true })
+  contrasenaAntena: string;
+
   @Column({ name: 'caja_nap', length: 100, nullable: true })
   cajaNap: string;
 

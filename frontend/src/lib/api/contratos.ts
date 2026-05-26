@@ -46,6 +46,13 @@ export interface CreateContratoDto {
   direccionInstalacion?:  string;
   latitudInstalacion?:    number;
   longitudInstalacion?:   number;
+  // Servicio / equipo
+  tipoIpv4?:              string;
+  descripcionServicio?:   string;
+  precioMensual?:         number;
+  comunidadSnmp?:         string;
+  usuarioAntena?:         string;
+  contrasenaAntena?:      string;
 }
 
 export interface CambiarEstadoDto {

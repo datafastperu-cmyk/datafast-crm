@@ -114,6 +114,26 @@ export class CreateContratoDto {
   @IsOptional() @IsString() @MaxLength(50)
   tipoAntena?: string;
 
+  @ApiPropertyOptional({ description: 'Tipo de asignación IPv4', enum: ['estatica','dhcp','pppoe'] })
+  @IsOptional() @IsString() @MaxLength(20)
+  tipoIpv4?: string;
+
+  @ApiPropertyOptional({ description: 'Descripción del servicio (texto para facturación)' })
+  @IsOptional() @IsString() @MaxLength(500)
+  descripcionServicio?: string;
+
+  @ApiPropertyOptional({ description: 'Comunidad SNMP para monitoreo del equipo' })
+  @IsOptional() @IsString() @MaxLength(100)
+  comunidadSnmp?: string;
+
+  @ApiPropertyOptional({ description: 'Usuario para gestión de la antena/equipo' })
+  @IsOptional() @IsString() @MaxLength(100)
+  usuarioAntena?: string;
+
+  @ApiPropertyOptional({ description: 'Contraseña para gestión de la antena/equipo' })
+  @IsOptional() @IsString() @MaxLength(500)
+  contrasenaAntena?: string;
+
   @ApiPropertyOptional({ description: 'Caja NAP de conexión' })
   @IsOptional() @IsString() @MaxLength(100)
   cajaNap?: string;

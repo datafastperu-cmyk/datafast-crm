@@ -691,6 +691,7 @@ const servicioSchema = z.object({
   planId:               z.string().min(1, 'Requerido'),
   routerId:             z.string().optional(),
   excluirFirewall:      z.boolean().optional(),
+  tipoIpv4:             z.string().optional(),
   segmentoId:           z.string().optional(),
   ipManual:             z.string().optional(),
   usuarioPppoe:         z.string().optional(),
@@ -700,9 +701,14 @@ const servicioSchema = z.object({
   cajaNap:              z.string().optional(),
   puertoNap:            z.string().optional(),
   fechaInicio:          z.string().min(1, 'Requerido'),
+  descripcionServicio:  z.string().optional(),
+  precioMensual:        z.string().optional(),
   nodoId:               z.string().optional(),
   ipAdministracion:     z.string().optional(),
   tipoAntena:           z.string().optional(),
+  comunidadSnmp:        z.string().optional(),
+  usuarioAntena:        z.string().optional(),
+  contrasenaAntena:     z.string().optional(),
   direccionInstalacion: z.string().optional(),
   coordenadas:          z.string().optional(),
 });
@@ -1006,32 +1012,37 @@ function ServicioPanel({
 }) {
   const e = editing as any;
   const { toast } = useToast();
-  const [costoDisplay, setCostoDisplay] = useState(
-    e ? Number(e?.precioMensual ?? 0).toFixed(2) : '',
-  );
+  const [showPass, setShowPass] = useState(false);
   const {
     register, handleSubmit, watch, setValue,
     formState: { errors, isSubmitting },
   } = useForm<ServicioForm>({
     resolver: zodResolver(servicioSchema),
     defaultValues: {
-      planId:               e?.planId             ?? '',
-      routerId:             e?.routerId            ?? '',
-      excluirFirewall:      e?.excluirFirewall      ?? false,
-      segmentoId:           e?.segmentoId          ?? '',
-      ipManual:             e?.ipAsignada           ?? '',
-      usuarioPppoe:         e?.usuarioPppoe         ?? '',
+      planId:               e?.planId                ?? '',
+      routerId:             e?.routerId              ?? '',
+      excluirFirewall:      e?.excluirFirewall        ?? false,
+      tipoIpv4:             e?.tipoIpv4              ?? 'estatica',
+      segmentoId:           e?.segmentoId            ?? '',
+      ipManual:             e?.ipAsignada            ?? '',
+      usuarioPppoe:         e?.usuarioPppoe          ?? '',
       passwordPppoe:        '',
-      macAddress:           e?.macAddress           ?? '',
+      macAddress:           e?.macAddress            ?? '',
       routes:               e?.routes               ?? '',
       cajaNap:              e?.cajaNap              ?? '',
       puertoNap:            e?.puertoNap            ?? '',
       fechaInicio:          e?.fechaInicio
         ? String(e.fechaInicio).split('T')[0]
         : new Date().toISOString().split('T')[0],
+      descripcionServicio:  e?.descripcionServicio  ?? '',
+      precioMensual:        e?.precioMensual
+        ? Number(e.precioMensual).toFixed(2) : '',
       nodoId:               e?.nodoId               ?? '',
       ipAdministracion:     e?.ipAdministracion     ?? '',
       tipoAntena:           e?.tipoAntena           ?? 'otro',
+      comunidadSnmp:        e?.comunidadSnmp        ?? '',
+      usuarioAntena:        e?.usuarioAntena        ?? '',
+      contrasenaAntena:     e?.contrasenaAntena     ?? '',
       direccionInstalacion: e?.direccionInstalacion ?? '',
       coordenadas:          (e?.latitudInstalacion && e?.longitudInstalacion)
         ? `${e.latitudInstalacion},${e.longitudInstalacion}`
@@ -1072,6 +1083,14 @@ function ServicioPanel({
 
   const planSel = (planes as any[]).find((p: any) => p.id === planId);
 
+  // Auto-fill precio y descripción al seleccionar plan (solo en creación)
+  useEffect(() => {
+    if (!editing && planSel) {
+      setValue('precioMensual', Number(planSel.precio ?? 0).toFixed(2));
+      if (!watch('descripcionServicio')) setValue('descripcionServicio', planSel.nombre ?? '');
+    }
+  }, [planId]);
+
   const PUERTOS_NAP = cajaNap
     ? Array.from({ length: 8 }, (_, i) => `Puerto ${i + 1}`)
     : [];
@@ -1088,14 +1107,20 @@ function ServicioPanel({
         planId:               data.planId,
         routerId:             data.routerId             || undefined,
         excluirFirewall:      data.excluirFirewall      ?? false,
+        tipoIpv4:             data.tipoIpv4             || 'estatica',
         macAddress:           data.macAddress           || undefined,
         routes:               data.routes               || undefined,
         cajaNap:              data.cajaNap              || undefined,
         puertoNap:            data.puertoNap            || undefined,
         fechaInicio:          data.fechaInicio,
+        descripcionServicio:  data.descripcionServicio  || undefined,
+        precioMensual:        data.precioMensual        ? Number(data.precioMensual) : undefined,
         nodoId:               data.nodoId               || undefined,
         ipAdministracion:     data.ipAdministracion     || undefined,
         tipoAntena:           data.tipoAntena           || undefined,
+        comunidadSnmp:        data.comunidadSnmp        || undefined,
+        usuarioAntena:        data.usuarioAntena        || undefined,
+        contrasenaAntena:     data.contrasenaAntena     || undefined,
         direccionInstalacion: data.direccionInstalacion || undefined,
         latitudInstalacion,
         longitudInstalacion,
@@ -1120,173 +1145,211 @@ function ServicioPanel({
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-4xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+  const ipVal = watch('ipManual');
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <div>
-            <h2 className="text-base font-bold text-foreground">
-              {editing ? 'Editar Servicio' : 'Nuevo Servicio de Internet'}
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {editing ? `Contrato ${editing.numeroContrato}` : 'Configurar nuevo contrato de internet'}
-            </p>
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+      <div className="w-full max-w-5xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[94vh]">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0 bg-muted/30 rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Wifi className="w-4.5 h-4.5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-foreground">
+                {editing ? 'Editar Servicio' : 'Nuevo Servicio de Internet'}
+              </h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {editing ? `Contrato ${editing.numeroContrato}` : 'Configurar nuevo contrato de internet'}
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent transition-colors">
-            <X className="w-4 h-4 text-muted-foreground" />
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Body: 2-column grid */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* ── Body: 2 columnas ── */}
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-            {/* ── Columna izquierda: Configuración del servicio ── */}
-            <SP_Section title="Configuración de servicio" icon={Wifi}>
+            {/* ─────────── Columna izquierda ─────────── */}
+            <div className="space-y-5">
+              <SP_Section title="Configuración del Servicio" icon={Wifi}>
 
-              {/* Router */}
-              <SP_Field label="Router">
-                <select {...register('routerId')} className={sp_input()}>
-                  <option value="">— Seleccionar router —</option>
-                  {(routers as any[]).map((r: any) => (
-                    <option key={r.id} value={r.id}>{r.nombre}</option>
-                  ))}
-                </select>
-              </SP_Field>
+                {/* Router */}
+                <SP_Field label="Router">
+                  <select {...register('routerId')} className={sp_input()}>
+                    <option value="">— Seleccionar router —</option>
+                    {(routers as any[]).map((r: any) => (
+                      <option key={r.id} value={r.id}>{r.nombre}</option>
+                    ))}
+                  </select>
+                </SP_Field>
 
-              {/* Excluir Firewall */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Excluir Firewall</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">No aplicar reglas de corte por mora</p>
+                {/* Excluir Firewall */}
+                <div className="flex items-center justify-between py-0.5">
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Excluir Firewall</p>
+                    <p className="text-[11px] text-muted-foreground">No aplicar reglas de corte por mora</p>
+                  </div>
+                  <SP_Toggle checked={excluirFirewall} onChange={(v) => setValue('excluirFirewall', v)} />
                 </div>
-                <SP_Toggle checked={excluirFirewall} onChange={(v) => setValue('excluirFirewall', v)} />
-              </div>
 
-              {/* Perfil Internet */}
-              <SP_Field label="Perfil Internet *" error={errors.planId?.message}>
-                <select {...register('planId')} className={sp_input(!!errors.planId)}>
-                  <option value="">— Seleccionar plan —</option>
-                  {(planes as any[]).map((p: any) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </SP_Field>
+                {/* Perfil Internet */}
+                <SP_Field label="Perfil Internet *" error={errors.planId?.message}>
+                  <select {...register('planId')} className={sp_input(!!errors.planId)}>
+                    <option value="">— Seleccionar plan —</option>
+                    {(planes as any[]).map((p: any) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </SP_Field>
 
-              {/* Descripción + Costo (readonly, auto-fill desde plan) */}
-              {planSel && (
+                {/* Descripción */}
+                <SP_Field label="Descripción" hint="Texto para facturación">
+                  <input
+                    {...register('descripcionServicio')}
+                    placeholder={planSel?.nombre ?? 'Descripción del servicio…'}
+                    className={sp_input()}
+                  />
+                </SP_Field>
+
+                {/* Costo */}
+                <SP_Field label="Costo (S/.)">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">S/.</span>
+                    <input
+                      {...register('precioMensual')}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder={planSel ? Number(planSel.precio ?? 0).toFixed(2) : '0.00'}
+                      className={cn(sp_input(), 'pl-9')}
+                    />
+                  </div>
+                  {planSel && <p className="text-[11px] text-muted-foreground mt-1">Precio base del plan: S/. {Number(planSel.precio ?? 0).toFixed(2)}{planSel.velocidadBajada ? ` · ${planSel.velocidadBajada}/${planSel.velocidadSubida} Mbps` : ''}</p>}
+                </SP_Field>
+
+                {/* Tipo IPv4 */}
+                <SP_Field label="Tipo IPv4">
+                  <select {...register('tipoIpv4')} className={sp_input()}>
+                    <option value="estatica">IP Fija (Estática)</option>
+                    <option value="dhcp">DHCP Dinámico</option>
+                    <option value="pppoe">PPPoE</option>
+                  </select>
+                </SP_Field>
+
+                {/* Redes IPv4 */}
+                <SP_Field label={`Redes IPv4${!routerId ? ' — elige router primero' : ''}`}>
+                  <select
+                    {...register('segmentoId')}
+                    disabled={!routerId}
+                    className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
+                  >
+                    <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
+                    {(segmentos as any[]).map((s: any) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} disp.)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </SP_Field>
+
+                {/* IPv4 — chip cuando editando, input cuando nuevo */}
+                {(segmentoId || e?.ipAsignada) && (
+                  <SP_Field label="IPv4 Asignada">
+                    {editing && ipVal ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm font-mono text-foreground">
+                          <Network className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                          <span>{ipVal}</span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">La IP no se puede modificar</span>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                        <input
+                          {...register('ipManual')}
+                          placeholder={fetchingIp ? 'Buscando…' : '0.0.0.0'}
+                          className={cn(sp_input(), 'pl-9')}
+                        />
+                        {fetchingIp && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                      </div>
+                    )}
+                    {!editing && nextIp && <p className="text-[11px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible</p>}
+                  </SP_Field>
+                )}
+
+                {/* MAC */}
+                <SP_Field label="Mac">
+                  <input {...register('macAddress')} placeholder="CC:2D:E0:FF:FA:55" className={sp_input()} />
+                </SP_Field>
+
+                {/* PPPoE en grid */}
                 <div className="grid grid-cols-2 gap-3">
-                  <SP_Field label="Descripción del plan">
-                    <input
-                      readOnly
-                      value={planSel.velocidadBajada ? `${planSel.velocidadBajada}/${planSel.velocidadSubida} Mbps` : planSel.nombre}
-                      className={cn(sp_input(), 'opacity-60 cursor-default')}
-                    />
+                  <SP_Field label="User PPP/HS">
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                      <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                    </div>
                   </SP_Field>
-                  <SP_Field label="Costo mensual (S/.)">
-                    <input
-                      readOnly
-                      value={costoDisplay || Number(planSel.precio ?? 0).toFixed(2)}
-                      className={cn(sp_input(), 'opacity-60 cursor-default')}
-                    />
+                  <SP_Field label="Password PPP/HS">
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                      <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                    </div>
                   </SP_Field>
                 </div>
-              )}
 
-              {/* Redes IPv4 */}
-              <SP_Field label={`Redes IPv4${!routerId ? ' (elige router primero)' : ''}`}>
-                <select
-                  {...register('segmentoId')}
-                  disabled={!routerId}
-                  className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
-                >
-                  <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
-                  {(segmentos as any[]).map((s: any) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} disp.)` : ''}
-                    </option>
-                  ))}
-                </select>
-              </SP_Field>
-
-              {/* IPv4 */}
-              {(segmentoId || e?.ipAsignada) && (
-                <SP_Field label="IPv4 Asignada">
-                  <div className="relative">
-                    <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input
-                      {...register('ipManual')}
-                      placeholder={fetchingIp ? 'Buscando…' : '0.0.0.0'}
-                      readOnly={!!editing}
-                      className={cn(sp_input(), 'pl-9', editing && 'opacity-60 cursor-not-allowed')}
-                    />
-                    {fetchingIp && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-                  </div>
-                  {editing && <p className="text-[11px] text-muted-foreground mt-1">La IP no puede modificarse tras la creación.</p>}
-                  {!editing && nextIp && <p className="text-[11px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible</p>}
-                </SP_Field>
-              )}
-
-              {/* MAC */}
-              <SP_Field label="MAC Address">
-                <input {...register('macAddress')} placeholder="AA:BB:CC:DD:EE:FF" className={sp_input()} />
-              </SP_Field>
-
-              {/* PPPoE */}
-              <div className="grid grid-cols-2 gap-3">
-                <SP_Field label="User PPP/HS">
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
-                  </div>
-                </SP_Field>
-                <SP_Field label="Password PPP/HS">
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
-                  </div>
-                </SP_Field>
-              </div>
-
-              {/* Routes */}
-              <SP_Field label="Routes" hint="Opcional — Ej: 192.168.10.0/24">
-                <input {...register('routes')} placeholder="192.168.10.0/24" className={sp_input()} />
-              </SP_Field>
-
-              {/* Caja + Puerto NAP */}
-              <div className="grid grid-cols-2 gap-3">
-                <SP_Field label="Caja NAP">
-                  <input {...register('cajaNap')} placeholder="Ej: NAP-01" className={sp_input()} />
-                </SP_Field>
-                <SP_Field label="Puerto NAP">
-                  {PUERTOS_NAP.length > 0 ? (
-                    <select {...register('puertoNap')} className={sp_input()}>
+                {/* Caja + Puerto NAP */}
+                <div className="grid grid-cols-2 gap-3">
+                  <SP_Field label="Caja Nap">
+                    <select {...register('cajaNap')} className={sp_input()}>
                       <option value="">Ninguno</option>
-                      {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
+                      {['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                      {cajaNap && !['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].includes(cajaNap) && (
+                        <option value={cajaNap}>{cajaNap}</option>
+                      )}
                     </select>
-                  ) : (
-                    <input {...register('puertoNap')} placeholder="Ej: Puerto 1" className={sp_input()} />
-                  )}
-                </SP_Field>
-              </div>
-            </SP_Section>
+                  </SP_Field>
+                  <SP_Field label="Puerto Nap">
+                    {PUERTOS_NAP.length > 0 ? (
+                      <select {...register('puertoNap')} className={sp_input()}>
+                        <option value="">Ninguno</option>
+                        {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    ) : (
+                      <select {...register('puertoNap')} className={sp_input()}>
+                        <option value="">Ninguno</option>
+                        {Array.from({length:8},(_,i)=>`Puerto ${i+1}`).map(p=><option key={p} value={p}>{p}</option>)}
+                      </select>
+                    )}
+                  </SP_Field>
+                </div>
 
-            {/* ── Columna derecha ── */}
-            <div className="space-y-4">
+              </SP_Section>
+            </div>
+
+            {/* ─────────── Columna derecha ─────────── */}
+            <div className="space-y-5">
 
               {/* Datos de instalación */}
-              <SP_Section title="Datos de instalación" icon={MapPin}>
-                <SP_Field label="Dirección de instalación">
+              <SP_Section title="Datos de Instalación" icon={MapPin}>
+                <SP_Field label="Dirección">
                   <div className="relative">
                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input {...register('direccionInstalacion')} placeholder="Av. Los Héroes 302" className={cn(sp_input(), 'pl-9')} />
+                    <input {...register('direccionInstalacion')} placeholder="Los Olivos 4ta etapa, mz D lte 17" className={cn(sp_input(), 'pl-9')} />
                   </div>
                 </SP_Field>
-                <SP_Field label="Coordenadas" hint="latitud,longitud">
+                <SP_Field label="Coordenadas" hint="* Latitud,longitud">
                   <div className="relative">
                     <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                     <input {...register('coordenadas')} placeholder="-5.1944,-80.6328" className={cn(sp_input(), 'pl-9')} />
@@ -1300,24 +1363,50 @@ function ServicioPanel({
                 </SP_Field>
               </SP_Section>
 
-              {/* Equipo receptor */}
-              <SP_Section title="Equipo receptor" icon={Radio}>
-                <SP_Field label="Conectado a (nodo/antena)">
+              {/* Equipo Receptor */}
+              <SP_Section title="Equipo Receptor" icon={Radio}>
+                <SP_Field label="Conectado A">
                   <select {...register('nodoId')} className={sp_input()}>
                     <option value="">— Seleccionar nodo/antena —</option>
                     {nodos.map((n: any) => <option key={n.id} value={n.id}>{n.nombre}</option>)}
                   </select>
                 </SP_Field>
-                <SP_Field label="IP Administración" hint="IP de la antena del cliente">
-                  <div className="relative">
-                    <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input {...register('ipAdministracion')} placeholder="192.168.1.1" className={cn(sp_input(), 'pl-9')} />
-                  </div>
+                <SP_Field label="IP administración" hint="* Ip antena/Equipo del cliente">
+                  <input {...register('ipAdministracion')} placeholder="172.16.2.115" className={sp_input()} />
                 </SP_Field>
-                <SP_Field label="Tipo de antena">
+                <SP_Field label="Tipo antena">
                   <select {...register('tipoAntena')} className={sp_input()}>
                     {TIPO_ANTENA_OPS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
+                </SP_Field>
+                <SP_Field label="Comunidad SNMP">
+                  <input {...register('comunidadSnmp')} placeholder="public" className={sp_input()} />
+                </SP_Field>
+                <SP_Field label="Usuario antena">
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input {...register('usuarioAntena')} placeholder="admin" className={cn(sp_input(), 'pl-9')} />
+                  </div>
+                </SP_Field>
+                <SP_Field label="Contraseña antena">
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input
+                      {...register('contrasenaAntena')}
+                      type={showPass ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      className={cn(sp_input(), 'pl-9 pr-9')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPass(v => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPass
+                        ? <Minus className="w-3.5 h-3.5" />
+                        : <Plus className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </SP_Field>
               </SP_Section>
 
@@ -1325,19 +1414,25 @@ function ServicioPanel({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-accent transition-colors">
-            Cancelar
-          </button>
-          <button
-            onClick={handleSubmit(onSubmit)}
-            disabled={isSubmitting}
-            className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            {editing ? 'Guardar Cambios' : 'Crear Servicio'}
-          </button>
+        {/* ── Footer ── */}
+        <div className="px-6 py-4 border-t border-border flex items-center justify-between flex-shrink-0 bg-muted/20 rounded-b-2xl">
+          <p className="text-[11px] text-muted-foreground">
+            {editing ? `Editando contrato ${editing.numeroContrato}` : 'Los campos marcados con * son informativos'}
+          </p>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-accent transition-colors text-foreground">
+              Cerrar
+            </button>
+            <button
+              onClick={handleSubmit(onSubmit)}
+              disabled={isSubmitting}
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {editing ? 'Guardar' : 'Crear Servicio'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
