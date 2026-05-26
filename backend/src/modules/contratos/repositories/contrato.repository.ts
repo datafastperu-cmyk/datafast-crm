@@ -106,12 +106,17 @@ export class ContratoRepository {
   }
 
   async generarNumeroContrato(empresaId: string): Promise<string> {
-    const year = new Date().getFullYear();
-    const count = await this.repo.createQueryBuilder('c')
-      .where('c.empresa_id = :empresaId', { empresaId })
-      .andWhere('EXTRACT(YEAR FROM c.created_at) = :year', { year })
-      .getCount();
-    return `CNT-${year}-${String(count + 1).padStart(6, '0')}`;
+    const year  = new Date().getFullYear();
+    const prefix = `CNT-${year}-`;
+    // MAX sobre SQL directo para incluir registros soft-deleted y evitar colisiones
+    const rows = await this.repo.manager.query<{ max_num: string }[]>(
+      `SELECT COALESCE(MAX(SUBSTRING(numero_contrato, $1)::INTEGER), 0) AS max_num
+       FROM contratos
+       WHERE empresa_id = $2 AND numero_contrato LIKE $3`,
+      [prefix.length + 1, empresaId, `${prefix}%`],
+    );
+    const next = (parseInt(rows[0]?.max_num ?? '0') || 0) + 1;
+    return `${prefix}${String(next).padStart(6, '0')}`;
   }
 
   async guardarHistorial(d: Partial<ContratoHistorial>): Promise<void> {
