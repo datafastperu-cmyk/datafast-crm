@@ -279,6 +279,11 @@ export class ClientesService {
   }
 
   // ── Historial de estados ──────────────────────────────────
+  async getContratos(id: string, empresaId: string) {
+    await this.findOne(id, empresaId);
+    return this.contratosSvc.findByClienteCompleto(id, empresaId);
+  }
+
   async getHistorial(id: string, empresaId: string) {
     await this.findOne(id, empresaId); // verifica existencia
     return this.clienteRepo.getHistorialEstados(id);

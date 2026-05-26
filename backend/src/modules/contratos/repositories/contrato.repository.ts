@@ -32,6 +32,33 @@ export class ContratoRepository {
     return this.repo.find({ where: { clienteId, empresaId, deletedAt: null as any }, order: { createdAt: 'DESC' } });
   }
 
+  async findByClienteCompleto(clienteId: string, empresaId: string): Promise<any[]> {
+    return this.ds.query(`
+      SELECT
+        co.id, co.numero_contrato AS "numeroContrato", co.estado, co.empresa_id AS "empresaId",
+        co.cliente_id AS "clienteId", co.plan_id AS "planId", co.router_id AS "routerId",
+        co.ip_asignada AS "ipAsignada", co.usuario_pppoe AS "usuarioPppoe",
+        co.precio_final AS "precioFinal", co.precio_mensual AS "precioMensual",
+        co.descuento_pct AS "descuentoPct", co.deuda_total AS "deudaTotal",
+        co.fecha_inicio AS "fechaInicio", co.fecha_instalacion AS "fechaInstalacion",
+        co.fecha_baja AS "fechaBaja", co.en_prorroga AS "enProrroga",
+        co.prorroga_hasta AS "prorrogaHasta", co.aprovisionado,
+        co.mac_address AS "macAddress", co.vlan_id AS "vlanId",
+        co.caja_nap AS "cajaNap", co.puerto_nap AS "puertoNap",
+        co.tipo_antena AS "tipoAntena", co.direccion_instalacion AS "direccionInstalacion",
+        co.notas_instalacion AS "notasInstalacion", co.created_at AS "createdAt",
+        pl.nombre AS "planNombre",
+        pl.velocidad_bajada AS "velocidadBajada",
+        pl.velocidad_subida AS "velocidadSubida",
+        ro.nombre AS "routerNombre"
+      FROM contratos co
+      LEFT JOIN planes pl ON pl.id = co.plan_id
+      LEFT JOIN routers ro ON ro.id = co.router_id
+      WHERE co.cliente_id = $1 AND co.empresa_id = $2 AND co.deleted_at IS NULL
+      ORDER BY co.created_at DESC
+    `, [clienteId, empresaId]);
+  }
+
   async softDelete(id: string, empresaId: string): Promise<void> {
     await this.repo.update({ id, empresaId }, { deletedAt: new Date() });
   }

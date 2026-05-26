@@ -255,6 +255,20 @@ export class ClientesController {
     return StdResponse.ok(data, 'Configuración guardada');
   }
 
+  // ── GET /clientes/:id/contratos — Servicios del cliente ──
+  @Get(':id/contratos')
+  @RequirePermission('clientes:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Contratos/servicios del cliente' })
+  @ApiParam({ name: 'id', description: 'UUID del cliente' })
+  async getContratos(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.clientesSvc.getContratos(id, user.empresaId);
+    return StdResponse.ok(data);
+  }
+
   // ── GET /clientes/:id/historial — Historial de estados ───
   @Get(':id/historial')
   @RequirePermission('clientes:view')

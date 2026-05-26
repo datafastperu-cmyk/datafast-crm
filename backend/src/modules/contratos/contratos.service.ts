@@ -143,6 +143,10 @@ export class ContratosService {
     return this.contratoRepo.findByClienteId(clienteId, empresaId);
   }
 
+  async findByClienteCompleto(clienteId: string, empresaId: string) {
+    return this.contratoRepo.findByClienteCompleto(clienteId, empresaId);
+  }
+
   async update(id: string, dto: UpdateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
     await this.findOne(id, user.empresaId);
     const upd: any = { ...dto, updatedBy:user.sub };
