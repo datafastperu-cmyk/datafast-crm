@@ -229,9 +229,9 @@ export class ClientesService {
   async remove(id: string, user: JwtPayload, req?: any): Promise<void> {
     const cliente = await this.findOne(id, user.empresaId);
 
-    if (cliente.estado === EstadoCliente.ACTIVO) {
+    if (cliente.estado !== EstadoCliente.BAJA_DEFINITIVA) {
       throw new BadRequestException(
-        'No se puede eliminar un cliente activo. Primero da de baja el servicio.',
+        'Solo se puede eliminar un abonado en estado Baja Definitiva.',
       );
     }
 

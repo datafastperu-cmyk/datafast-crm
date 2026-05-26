@@ -344,8 +344,9 @@ export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder
                       </button>
                       <button
                         onClick={() => onEliminar?.(c)}
-                        title="Eliminar abonado"
-                        className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        disabled={c.estado !== 'baja_definitiva'}
+                        title={c.estado === 'baja_definitiva' ? 'Eliminar abonado' : 'Solo se puede eliminar abonados en Baja Definitiva'}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
