@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import * as crypto from 'crypto';
 import { ContratoRepository } from './repositories/contrato.repository';
 import { PlanesService } from '../planes/planes.service';
@@ -31,6 +33,7 @@ export class ContratosService {
     private readonly planesSvc: PlanesService,
     private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async create(dto: CreateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
@@ -184,6 +187,12 @@ export class ContratosService {
       throw new BadRequestException(`Solo se activan contratos PENDIENTE_INSTALACION. Estado: ${c.estado}`);
     await this.contratoRepo.update(id, { estado:EstadoContrato.ACTIVO, fechaEstado:new Date(), fechaInstalacion:new Date(), updatedBy:user.sub });
     await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:EstadoContrato.PENDIENTE_INSTALACION, estadoNuevo:EstadoContrato.ACTIVO, motivo:'Instalación completada', usuarioId:user.sub });
+    // Promover cliente de PROSPECTO → ACTIVO automáticamente al activar su primer contrato
+    await this.dataSource.query(
+      `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
+       WHERE id = $1 AND empresa_id = $2 AND estado = 'prospecto'`,
+      [c.clienteId, user.empresaId, user.sub],
+    ).catch(() => {});
     return this.findOne(id, user.empresaId);
   }
 

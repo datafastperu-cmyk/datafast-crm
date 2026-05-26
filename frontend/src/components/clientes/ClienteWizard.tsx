@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 import { clientesApi }                       from '@/lib/api/clientes';
-import { contratosApi, redesApi, planesApi } from '@/lib/api/contratos';
+import { redesApi, planesApi } from '@/lib/api/contratos';
 import { facturacionApi }                    from '@/lib/api/facturacion';
 import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
 import { zonasApi }                          from '@/lib/api/zonas';
@@ -339,56 +339,77 @@ export function ClienteWizard() {
   const [s2, setS2] = useState<S2 | null>(null);
   const [s3, setS3] = useState<S3 | null>(null);
 
-  const { mutateAsync: crearCliente  } = useMutation({ mutationFn: clientesApi.create });
-  const { mutateAsync: crearContrato } = useMutation({ mutationFn: contratosApi.create });
+  const { mutateAsync: registrar } = useMutation({ mutationFn: clientesApi.onboarding });
 
   const handleRegistrar = async (data: S3 & { _costoInstalacion?: boolean; _montoCostoInstalacion?: number }) => {
     if (!s1) return;
-    let cliente: any;
+
+    // Parsear coordenadas de instalación "lat,lng"
+    let latitudInstalacion: number | undefined;
+    let longitudInstalacion: number | undefined;
+    if (data.coordenadas?.trim()) {
+      const [latStr, lngStr] = data.coordenadas.split(',');
+      const lat = parseFloat(latStr?.trim());
+      const lng = parseFloat(lngStr?.trim());
+      if (!isNaN(lat) && !isNaN(lng)) { latitudInstalacion = lat; longitudInstalacion = lng; }
+    }
+
+    let resultado: { cliente: any; contrato: any | null };
     try {
-      cliente = await crearCliente({
-        tipoDocumento:   s1.tipoDocumento || 'dni',
-        numeroDocumento: s1.numeroDocumento,
-        nombres:         s1.nombres,
-        apellidoPaterno: s1.apellidoPaterno || '',
-        apellidoMaterno: s1.apellidoMaterno || undefined,
-        telefono:        s1.telefono?.trim() || s1.whatsapp,
-        whatsapp:        s1.whatsapp         || undefined,
-        email:           s1.email            || undefined,
-        direccion:       s1.direccion        || undefined,
-        usuarioPortal:   s1.usuarioPortal    || undefined,
-        passwordPortal:  s1.passwordPortal   || undefined,
+      resultado = await registrar({
+        cliente: {
+          tipoDocumento:   s1.tipoDocumento || 'dni',
+          numeroDocumento: s1.numeroDocumento,
+          nombres:         s1.nombres,
+          apellidoPaterno: s1.apellidoPaterno || '',
+          apellidoMaterno: s1.apellidoMaterno || undefined,
+          telefono:        s1.telefono?.trim() || s1.whatsapp || '',
+          whatsapp:        s1.whatsapp         || undefined,
+          email:           s1.email            || undefined,
+          direccion:       s1.direccion        || undefined,
+          distrito:        s1.distrito         || undefined,
+          provincia:       s1.provincia        || undefined,
+          departamento:    s1.departamento     || undefined,
+          usuarioPortal:   s1.usuarioPortal    || undefined,
+          passwordPortal:  s1.passwordPortal   || undefined,
+        },
+        ...(data.perfilId && {
+          contrato: {
+            planId:              data.perfilId                || undefined,
+            routerId:            data.routerId                || undefined,
+            segmentoId:          data.segmentoId              || undefined,
+            nodoId:              data.conectadoAId            || undefined,
+            ipManual:            data.ipv4                    || undefined,
+            usuarioPppoe:        data.userPppHs               || undefined,
+            passwordPppoePlain:  data.passwordPppHs           || undefined,
+            fechaInicio:         data.fechaInstalacion        || new Date().toISOString().split('T')[0],
+            diaFacturacion:      s2?.facturacion?.diaPago ? parseInt(s2.facturacion.diaPago) : undefined,
+            macAddress:          data.mac                     || undefined,
+            excluirFirewall:     data.excluirFirewall         ?? false,
+            routes:              data.routes                  || undefined,
+            ipAdministracion:    data.ipAdministracion        || undefined,
+            tipoAntena:          data.tipoAntena              || undefined,
+            cajaNap:             data.cajaNapId               || undefined,
+            puertoNap:           data.puertoNapId             || undefined,
+            direccionInstalacion: data.direccion              || undefined,
+            latitudInstalacion,
+            longitudInstalacion,
+          },
+        }),
+        ...(s2 && { facturacion: s2.facturacion, notificaciones: s2.notificaciones }),
       });
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Error al registrar abonado';
       toast(msg, { type: 'error' });
       throw err;
     }
-    try {
-      await crearContrato({
-        clienteId:      cliente.id,
-        ...(data.perfilId   && { planId:     data.perfilId }),
-        ...(data.routerId   && { routerId:   data.routerId }),
-        ...(data.segmentoId && { segmentoId: data.segmentoId }),
-        ...(data.ipv4       && { ipManual:   data.ipv4 }),
-        fechaInicio:    data.fechaInstalacion || new Date().toISOString().split('T')[0],
-        diaFacturacion: s2?.facturacion?.diaPago ? parseInt(s2.facturacion.diaPago) : undefined,
-        usuarioPppoe:   data.userPppHs  || undefined,
-        passwordPppoe:  data.passwordPppHs || undefined,
-      });
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Error al registrar el servicio';
-      toast(`Abonado creado. ${msg}`, { type: 'warning' });
-    }
-    if (s2) {
-      try {
-        await clientesApi.saveFacturacionConfig(cliente.id, s2.facturacion, s2.notificaciones);
-      } catch { /* no bloquea el flujo principal */ }
-    }
+
+    const { cliente, contrato } = resultado;
+
     // Factura inicial (prepago o costo de instalación)
     const esPrepago      = s2?.facturacion?.tipo === 'prepago';
     const conInstalacion = data._costoInstalacion && (data._montoCostoInstalacion ?? 0) > 0;
-    if (esPrepago || conInstalacion) {
+    if (contrato && (esPrepago || conInstalacion)) {
       try {
         const hoy    = new Date();
         const fin    = new Date(hoy);

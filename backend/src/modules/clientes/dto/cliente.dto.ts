@@ -2,6 +2,7 @@ import {
   IsString, IsEmail, IsOptional, IsEnum, IsBoolean,
   IsNumber, MaxLength, IsArray, Min, Max,
   ValidateIf, Matches, IsNotEmpty, Length, ArrayMinSize,
+  IsUUID, IsDateString, IsInt, ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType, OmitType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
@@ -309,4 +310,47 @@ export class BulkActionClienteDto {
   @IsString()
   @MaxLength(500)
   motivo?: string;
+}
+
+// ─── Onboarding (wizard paso a paso) ─────────────────────────
+export class OnboardingContratoDto {
+  @IsOptional() @IsUUID() planId?: string;
+  @IsOptional() @IsUUID() routerId?: string;
+  @IsOptional() @IsUUID() segmentoId?: string;
+  @IsOptional() @IsUUID() nodoId?: string;
+  @IsOptional() @IsString() ipManual?: string;
+  @IsOptional() @IsString() usuarioPppoe?: string;
+  @IsOptional() @IsString() passwordPppoePlain?: string;
+  @IsOptional() @IsDateString() fechaInicio?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number) diaFacturacion?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) @Type(() => Number) descuentoPct?: number;
+  @IsOptional() @IsString() @MaxLength(17) macAddress?: string;
+  @IsOptional() @IsBoolean() excluirFirewall?: boolean;
+  @IsOptional() @IsString() @MaxLength(500) routes?: string;
+  @IsOptional() @IsString() @MaxLength(45) ipAdministracion?: string;
+  @IsOptional() @IsString() @MaxLength(50) tipoAntena?: string;
+  @IsOptional() @IsString() @MaxLength(100) cajaNap?: string;
+  @IsOptional() @IsString() @MaxLength(50) puertoNap?: string;
+  @IsOptional() @IsString() @MaxLength(500) direccionInstalacion?: string;
+  @IsOptional() @IsNumber() @Min(-90) @Max(90) @Type(() => Number) latitudInstalacion?: number;
+  @IsOptional() @IsNumber() @Min(-180) @Max(180) @Type(() => Number) longitudInstalacion?: number;
+  @IsOptional() @IsString() @MaxLength(2000) notasInstalacion?: string;
+  @IsOptional() @IsString() @MaxLength(2000) notasTecnicas?: string;
+}
+
+export class OnboardingDto {
+  @ValidateNested()
+  @Type(() => CreateClienteDto)
+  cliente: CreateClienteDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OnboardingContratoDto)
+  contrato?: OnboardingContratoDto;
+
+  @IsOptional()
+  facturacion?: Record<string, any>;
+
+  @IsOptional()
+  notificaciones?: Record<string, any>;
 }

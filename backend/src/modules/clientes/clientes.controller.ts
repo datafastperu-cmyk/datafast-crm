@@ -16,6 +16,7 @@ import { ClientesService } from './clientes.service';
 import {
   CreateClienteDto, UpdateClienteDto, FilterClienteDto,
   CambiarEstadoDto, ConsultarReniecDto, ExportClientesDto, BulkActionClienteDto,
+  OnboardingDto,
 } from './dto/cliente.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -29,6 +30,23 @@ export class ClientesController {
   private readonly logger = new Logger(ClientesController.name);
 
   constructor(private readonly clientesSvc: ClientesService) {}
+
+  // ── POST /clientes/onboarding — Wizard unificado ─────────
+  @Post('onboarding')
+  @RequirePermission('clientes:create')
+  @ApiOperation({
+    summary: 'Onboarding unificado: cliente + contrato + facturación',
+    description: 'Crea el cliente, su primer contrato y la configuración de facturación en una sola llamada. El cliente pasa a ACTIVO si se incluye un plan.',
+  })
+  @ApiResponse({ status: 201, description: '{ cliente, contrato }' })
+  async onboarding(
+    @Body() dto: OnboardingDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    const result = await this.clientesSvc.onboarding(dto, user, req);
+    return StdResponse.ok(result, 'Abonado registrado correctamente');
+  }
 
   // ── POST /clientes — Crear cliente ────────────────────────
   @Post()

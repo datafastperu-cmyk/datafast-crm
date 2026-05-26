@@ -94,6 +94,34 @@ export class CreateContratoDto {
   @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number)
   diaFacturacion?: number;
 
+  @ApiPropertyOptional({ description: 'Dirección MAC del equipo cliente (AA:BB:CC:DD:EE:FF)' })
+  @IsOptional() @IsString() @MaxLength(17)
+  macAddress?: string;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional() @IsBoolean()
+  excluirFirewall?: boolean;
+
+  @ApiPropertyOptional({ description: 'Rutas adicionales (ej: 192.168.10.0/24)' })
+  @IsOptional() @IsString() @MaxLength(500)
+  routes?: string;
+
+  @ApiPropertyOptional({ description: 'IP de administración del equipo' })
+  @IsOptional() @IsString() @MaxLength(45)
+  ipAdministracion?: string;
+
+  @ApiPropertyOptional({ description: 'Tipo de antena/equipo receptor' })
+  @IsOptional() @IsString() @MaxLength(50)
+  tipoAntena?: string;
+
+  @ApiPropertyOptional({ description: 'Caja NAP de conexión' })
+  @IsOptional() @IsString() @MaxLength(100)
+  cajaNap?: string;
+
+  @ApiPropertyOptional({ description: 'Puerto NAP de conexión' })
+  @IsOptional() @IsString() @MaxLength(50)
+  puertoNap?: string;
+
   @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(2000)
   notasInstalacion?: string;

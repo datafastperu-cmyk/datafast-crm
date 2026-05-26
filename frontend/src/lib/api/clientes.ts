@@ -135,4 +135,37 @@ export const clientesApi = {
   eliminar: async (id: string): Promise<void> => {
     await api.delete(`/clientes/${id}`);
   },
+
+  onboarding: async (dto: {
+    cliente: CreateClienteDto;
+    contrato?: {
+      planId?: string;
+      routerId?: string;
+      segmentoId?: string;
+      nodoId?: string;
+      ipManual?: string;
+      usuarioPppoe?: string;
+      passwordPppoePlain?: string;
+      fechaInicio?: string;
+      diaFacturacion?: number;
+      descuentoPct?: number;
+      macAddress?: string;
+      excluirFirewall?: boolean;
+      routes?: string;
+      ipAdministracion?: string;
+      tipoAntena?: string;
+      cajaNap?: string;
+      puertoNap?: string;
+      direccionInstalacion?: string;
+      latitudInstalacion?: number;
+      longitudInstalacion?: number;
+      notasInstalacion?: string;
+      notasTecnicas?: string;
+    };
+    facturacion?: Record<string, any>;
+    notificaciones?: Record<string, any>;
+  }): Promise<{ cliente: any; contrato: any | null }> => {
+    const res = await api.post<ApiRespuesta<{ cliente: any; contrato: any | null }>>('/clientes/onboarding', dto);
+    return res.data.data;
+  },
 };

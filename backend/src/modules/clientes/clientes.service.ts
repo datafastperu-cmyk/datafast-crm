@@ -15,6 +15,7 @@ import { Cliente, EstadoCliente, TipoDocumento } from './entities/cliente.entity
 import {
   CreateClienteDto, UpdateClienteDto, FilterClienteDto,
   CambiarEstadoDto, ReniecResponseDto, ExportClientesDto, BulkActionClienteDto,
+  OnboardingDto,
 } from './dto/cliente.dto';
 import { ContratosService } from '../contratos/contratos.service';
 import { EstadoContrato } from '../contratos/entities/contrato.entity';
@@ -468,6 +469,52 @@ export class ClientesService {
     if (!c) throw new NotFoundException('Cliente no encontrado');
     await this.clienteRepo.update(id, { facturacionConfig: facturacion, notificacionesConfig: notificaciones });
     return { facturacion, notificaciones };
+  }
+
+  // ── Onboarding unificado (wizard) ─────────────────────────
+  async onboarding(dto: OnboardingDto, user: JwtPayload, req?: any) {
+    const cliente = await this.create(dto.cliente, user, req);
+
+    let contrato: any = null;
+    if (dto.contrato?.planId) {
+      try {
+        contrato = await this.contratosSvc.create(
+          {
+            clienteId: cliente.id,
+            ...dto.contrato,
+            fechaInicio: dto.contrato.fechaInicio || new Date().toISOString().split('T')[0],
+          } as any,
+          user,
+          req,
+        );
+        // Promover cliente de PROSPECTO → ACTIVO
+        await this.clienteRepo.update(cliente.id, {
+          estado: EstadoCliente.ACTIVO,
+          fechaEstado: new Date(),
+        } as any);
+        await this.clienteRepo.guardarHistorial({
+          clienteId: cliente.id,
+          empresaId: user.empresaId,
+          estadoAnterior: EstadoCliente.PROSPECTO,
+          estadoNuevo: EstadoCliente.ACTIVO,
+          motivo: `Alta con plan: ${contrato.numeroContrato}`,
+          usuarioId: user.sub,
+          automatico: true,
+        });
+      } catch (err: any) {
+        this.logger.warn(`onboarding: contrato no creado para ${cliente.id}: ${err.message}`);
+      }
+    }
+
+    if (dto.facturacion || dto.notificaciones) {
+      await this.saveFacturacionConfig(
+        cliente.id, user.empresaId,
+        dto.facturacion ?? {}, dto.notificaciones ?? {},
+      ).catch(() => {});
+    }
+
+    const clienteFinal = await this.findOne(cliente.id, user.empresaId);
+    return { cliente: clienteFinal, contrato };
   }
 
   private async generarCodigoCliente(empresaId: string): Promise<string> {

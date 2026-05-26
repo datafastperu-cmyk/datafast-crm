@@ -159,6 +159,25 @@ export class Contrato extends BaseModel {
   @Column({ name: 'aprovisionado_en', type: 'timestamptz', nullable: true })
   aprovisionadoEn: Date;
 
+  // ── Red — campos adicionales ──────────────────────────────
+  @Column({ name: 'excluir_firewall', default: false })
+  excluirFirewall: boolean;
+
+  @Column({ name: 'routes', type: 'text', nullable: true })
+  routes: string;
+
+  @Column({ name: 'ip_administracion', length: 45, nullable: true })
+  ipAdministracion: string;
+
+  @Column({ name: 'tipo_antena', length: 50, nullable: true })
+  tipoAntena: string;
+
+  @Column({ name: 'caja_nap', length: 100, nullable: true })
+  cajaNap: string;
+
+  @Column({ name: 'puerto_nap', length: 50, nullable: true })
+  puertoNap: string;
+
   // ── Notas ─────────────────────────────────────────────────
   @Column({ name: 'notas_instalacion', type: 'text', nullable: true })
   notasInstalacion: string;
