@@ -700,15 +700,11 @@ const servicioSchema = z.object({
   cajaNap:              z.string().optional(),
   puertoNap:            z.string().optional(),
   fechaInicio:          z.string().min(1, 'Requerido'),
-  diaFacturacion:       z.coerce.number().int().min(1).max(31).optional().or(z.literal('')),
-  descuentoPct:         z.coerce.number().min(0).max(100).optional().or(z.literal('')),
   nodoId:               z.string().optional(),
   ipAdministracion:     z.string().optional(),
   tipoAntena:           z.string().optional(),
   direccionInstalacion: z.string().optional(),
   coordenadas:          z.string().optional(),
-  notasInstalacion:     z.string().optional(),
-  notasInternas:        z.string().optional(),
 });
 type ServicioForm = z.infer<typeof servicioSchema>;
 
@@ -947,14 +943,48 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
   );
 }
 
-function SvcLabel({ children }: { children: React.ReactNode }) {
+// ── ServicioPanel helpers (wizard style) ─────────────────────
+function SP_Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
-    <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-      {children}
-    </label>
+    <div className="bg-card border border-border rounded-xl overflow-hidden h-fit">
+      <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <Icon className="w-4 h-4 text-primary" />
+        </div>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      </div>
+      <div className="p-5 space-y-4">{children}</div>
+    </div>
   );
 }
-function SvcSection({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+function SP_Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</label>
+      {children}
+      {hint && !error && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      {error && <p className="text-[11px] text-destructive flex items-center gap-1"><AlertCircle className="w-3 h-3 flex-shrink-0" />{error}</p>}
+    </div>
+  );
+}
+function sp_input(err = false) {
+  return cn(
+    'w-full px-3 py-2.5 text-sm rounded-lg border bg-background transition-all duration-150',
+    'placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary',
+    err ? 'border-destructive bg-destructive/5' : 'border-input hover:border-muted-foreground/40',
+  );
+}
+function SP_Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
+      className={cn('relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none', checked ? 'bg-primary' : 'bg-border')}>
+      <span className={cn('inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200', checked ? 'translate-x-5' : 'translate-x-0')} />
+    </button>
+  );
+}
+
+// ── SvcSection (tabla servicios) ──────────────────────────────
+function _SvcSectionUnused({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border-b border-border">
@@ -976,6 +1006,9 @@ function ServicioPanel({
 }) {
   const e = editing as any;
   const { toast } = useToast();
+  const [costoDisplay, setCostoDisplay] = useState(
+    e ? Number(e?.precioMensual ?? 0).toFixed(2) : '',
+  );
   const {
     register, handleSubmit, watch, setValue,
     formState: { errors, isSubmitting },
@@ -996,8 +1029,6 @@ function ServicioPanel({
       fechaInicio:          e?.fechaInicio
         ? String(e.fechaInicio).split('T')[0]
         : new Date().toISOString().split('T')[0],
-      diaFacturacion:       e?.diaFacturacion       ?? '',
-      descuentoPct:         e?.descuentoPct         ?? '',
       nodoId:               e?.nodoId               ?? '',
       ipAdministracion:     e?.ipAdministracion     ?? '',
       tipoAntena:           e?.tipoAntena           ?? 'otro',
@@ -1005,8 +1036,6 @@ function ServicioPanel({
       coordenadas:          (e?.latitudInstalacion && e?.longitudInstalacion)
         ? `${e.latitudInstalacion},${e.longitudInstalacion}`
         : '',
-      notasInstalacion:     e?.notasInstalacion     ?? '',
-      notasInternas:        e?.notasInternas        ?? '',
     },
   });
 
@@ -1064,16 +1093,12 @@ function ServicioPanel({
         cajaNap:              data.cajaNap              || undefined,
         puertoNap:            data.puertoNap            || undefined,
         fechaInicio:          data.fechaInicio,
-        diaFacturacion:       data.diaFacturacion       ? Number(data.diaFacturacion)  : undefined,
-        descuentoPct:         data.descuentoPct         ? Number(data.descuentoPct)    : undefined,
         nodoId:               data.nodoId               || undefined,
         ipAdministracion:     data.ipAdministracion     || undefined,
         tipoAntena:           data.tipoAntena           || undefined,
         direccionInstalacion: data.direccionInstalacion || undefined,
         latitudInstalacion,
         longitudInstalacion,
-        notasInstalacion:     data.notasInstalacion     || undefined,
-        notasInternas:        data.notasInternas        || undefined,
       };
       if (editing) {
         if (data.usuarioPppoe)  payload.usuarioPppoe  = data.usuarioPppoe;
@@ -1096,250 +1121,226 @@ function ServicioPanel({
   };
 
   return (
-    <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full w-full max-w-[600px] bg-background border-l border-border z-50 flex flex-col shadow-2xl">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-4xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <div>
-            <h2 className="text-sm font-bold text-foreground">
+            <h2 className="text-base font-bold text-foreground">
               {editing ? 'Editar Servicio' : 'Nuevo Servicio de Internet'}
             </h2>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {editing ? `Contrato ${editing.numeroContrato}` : 'Configurar nuevo contrato de internet'}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-accent transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {/* Body: 2-column grid */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* ── Configuración del servicio ── */}
-          <SvcSection title="Configuración de servicio" icon={Wifi}>
+            {/* ── Columna izquierda: Configuración del servicio ── */}
+            <SP_Section title="Configuración de servicio" icon={Wifi}>
 
-            {/* Router */}
-            <div>
-              <SvcLabel>Router</SvcLabel>
-              <select {...register('routerId')} className={INPUT}>
-                <option value="">— Seleccionar router —</option>
-                {(routers as any[]).map((r: any) => (
-                  <option key={r.id} value={r.id}>{r.nombre}</option>
-                ))}
-              </select>
-            </div>
+              {/* Router */}
+              <SP_Field label="Router">
+                <select {...register('routerId')} className={sp_input()}>
+                  <option value="">— Seleccionar router —</option>
+                  {(routers as any[]).map((r: any) => (
+                    <option key={r.id} value={r.id}>{r.nombre}</option>
+                  ))}
+                </select>
+              </SP_Field>
 
-            {/* Excluir Firewall */}
-            <div className="flex items-center justify-between py-0.5">
-              <span className="text-sm text-foreground">Excluir Firewall</span>
-              <button
-                type="button"
-                onClick={() => setValue('excluirFirewall', !excluirFirewall)}
-                className={cn(
-                  'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-                  excluirFirewall ? 'bg-primary' : 'bg-muted'
-                )}
-              >
-                <span className={cn(
-                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform',
-                  excluirFirewall ? 'translate-x-4' : 'translate-x-0'
-                )} />
-              </button>
-            </div>
+              {/* Excluir Firewall */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Excluir Firewall</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">No aplicar reglas de corte por mora</p>
+                </div>
+                <SP_Toggle checked={excluirFirewall} onChange={(v) => setValue('excluirFirewall', v)} />
+              </div>
 
-            {/* Plan */}
-            <div>
-              <SvcLabel>Perfil Internet *</SvcLabel>
-              <select {...register('planId')} className={INPUT}>
-                <option value="">— Seleccionar plan —</option>
-                {(planes as any[]).map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
-                  </option>
-                ))}
-              </select>
-              {errors.planId && <p className="text-[10px] text-destructive mt-1">{errors.planId.message}</p>}
+              {/* Perfil Internet */}
+              <SP_Field label="Perfil Internet *" error={errors.planId?.message}>
+                <select {...register('planId')} className={sp_input(!!errors.planId)}>
+                  <option value="">— Seleccionar plan —</option>
+                  {(planes as any[]).map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </SP_Field>
+
+              {/* Descripción + Costo (readonly, auto-fill desde plan) */}
               {planSel && (
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Precio base: <span className="font-semibold text-foreground">S/. {Number(planSel.precio ?? 0).toFixed(2)}</span>
-                  {planSel.velocidadBajada && <span className="ml-2">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</span>}
-                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <SP_Field label="Descripción del plan">
+                    <input
+                      readOnly
+                      value={planSel.velocidadBajada ? `${planSel.velocidadBajada}/${planSel.velocidadSubida} Mbps` : planSel.nombre}
+                      className={cn(sp_input(), 'opacity-60 cursor-default')}
+                    />
+                  </SP_Field>
+                  <SP_Field label="Costo mensual (S/.)">
+                    <input
+                      readOnly
+                      value={costoDisplay || Number(planSel.precio ?? 0).toFixed(2)}
+                      className={cn(sp_input(), 'opacity-60 cursor-default')}
+                    />
+                  </SP_Field>
+                </div>
               )}
-            </div>
 
-            {/* Costo + Descuento en fila */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <SvcLabel>Descuento (%)</SvcLabel>
-                <input type="number" min={0} max={100} step={0.5} {...register('descuentoPct')} placeholder="0" className={INPUT} />
+              {/* Redes IPv4 */}
+              <SP_Field label={`Redes IPv4${!routerId ? ' (elige router primero)' : ''}`}>
+                <select
+                  {...register('segmentoId')}
+                  disabled={!routerId}
+                  className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
+                >
+                  <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
+                  {(segmentos as any[]).map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} disp.)` : ''}
+                    </option>
+                  ))}
+                </select>
+              </SP_Field>
+
+              {/* IPv4 */}
+              {(segmentoId || e?.ipAsignada) && (
+                <SP_Field label="IPv4 Asignada">
+                  <div className="relative">
+                    <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input
+                      {...register('ipManual')}
+                      placeholder={fetchingIp ? 'Buscando…' : '0.0.0.0'}
+                      readOnly={!!editing}
+                      className={cn(sp_input(), 'pl-9', editing && 'opacity-60 cursor-not-allowed')}
+                    />
+                    {fetchingIp && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                  </div>
+                  {editing && <p className="text-[11px] text-muted-foreground mt-1">La IP no puede modificarse tras la creación.</p>}
+                  {!editing && nextIp && <p className="text-[11px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible</p>}
+                </SP_Field>
+              )}
+
+              {/* MAC */}
+              <SP_Field label="MAC Address">
+                <input {...register('macAddress')} placeholder="AA:BB:CC:DD:EE:FF" className={sp_input()} />
+              </SP_Field>
+
+              {/* PPPoE */}
+              <div className="grid grid-cols-2 gap-3">
+                <SP_Field label="User PPP/HS">
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                  </div>
+                </SP_Field>
+                <SP_Field label="Password PPP/HS">
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                  </div>
+                </SP_Field>
               </div>
-              <div>
-                <SvcLabel>Día Facturación</SvcLabel>
-                <input type="number" min={1} max={31} {...register('diaFacturacion')} placeholder="1 – 31" className={INPUT} />
+
+              {/* Routes */}
+              <SP_Field label="Routes" hint="Opcional — Ej: 192.168.10.0/24">
+                <input {...register('routes')} placeholder="192.168.10.0/24" className={sp_input()} />
+              </SP_Field>
+
+              {/* Caja + Puerto NAP */}
+              <div className="grid grid-cols-2 gap-3">
+                <SP_Field label="Caja NAP">
+                  <input {...register('cajaNap')} placeholder="Ej: NAP-01" className={sp_input()} />
+                </SP_Field>
+                <SP_Field label="Puerto NAP">
+                  {PUERTOS_NAP.length > 0 ? (
+                    <select {...register('puertoNap')} className={sp_input()}>
+                      <option value="">Ninguno</option>
+                      {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  ) : (
+                    <input {...register('puertoNap')} placeholder="Ej: Puerto 1" className={sp_input()} />
+                  )}
+                </SP_Field>
               </div>
-            </div>
+            </SP_Section>
 
-            {/* Red IPv4 */}
-            <div>
-              <SvcLabel>Red IPv4{!routerId && <span className="ml-1 text-[10px] font-normal normal-case">(selecciona un router primero)</span>}</SvcLabel>
-              <select {...register('segmentoId')} disabled={!routerId} className={cn(INPUT, !routerId && 'opacity-50 cursor-not-allowed')}>
-                <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
-                {(segmentos as any[]).map((s: any) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} disp.)` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* ── Columna derecha ── */}
+            <div className="space-y-4">
 
-            {/* IPv4 */}
-            {(segmentoId || e?.ipAsignada) && (
-              <div>
-                <SvcLabel>IPv4 Asignada</SvcLabel>
-                <div className="relative">
-                  <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                  <input
-                    {...register('ipManual')}
-                    placeholder={fetchingIp ? 'Buscando…' : '0.0.0.0'}
-                    readOnly={!!editing}
-                    className={cn(INPUT, 'pl-9', editing && 'opacity-60 cursor-not-allowed')}
-                  />
-                  {fetchingIp && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-                </div>
-                {editing && <p className="text-[10px] text-muted-foreground mt-1">La IP no puede modificarse tras la creación.</p>}
-                {!editing && nextIp && <p className="text-[10px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible</p>}
-              </div>
-            )}
+              {/* Datos de instalación */}
+              <SP_Section title="Datos de instalación" icon={MapPin}>
+                <SP_Field label="Dirección de instalación">
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input {...register('direccionInstalacion')} placeholder="Av. Los Héroes 302" className={cn(sp_input(), 'pl-9')} />
+                  </div>
+                </SP_Field>
+                <SP_Field label="Coordenadas" hint="latitud,longitud">
+                  <div className="relative">
+                    <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input {...register('coordenadas')} placeholder="-5.1944,-80.6328" className={cn(sp_input(), 'pl-9')} />
+                  </div>
+                </SP_Field>
+                <SP_Field label="Fecha Instalación" error={errors.fechaInicio?.message}>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input type="date" {...register('fechaInicio')} className={cn(sp_input(!!errors.fechaInicio), 'pl-9')} />
+                  </div>
+                </SP_Field>
+              </SP_Section>
 
-            {/* MAC */}
-            <div>
-              <SvcLabel>MAC Address</SvcLabel>
-              <input {...register('macAddress')} placeholder="AA:BB:CC:DD:EE:FF" className={INPUT} />
-            </div>
-
-            {/* PPPoE */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <SvcLabel>User PPP/HS</SvcLabel>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(INPUT, 'pl-9')} />
-                </div>
-              </div>
-              <div>
-                <SvcLabel>Password PPP/HS</SvcLabel>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(INPUT, 'pl-9')} />
-                </div>
-              </div>
-            </div>
-
-            {/* Routes */}
-            <div>
-              <SvcLabel>Routes <span className="font-normal normal-case">(opcional)</span></SvcLabel>
-              <input {...register('routes')} placeholder="Ejm: 192.168.10.0/24" className={INPUT} />
-            </div>
-
-            {/* Caja + Puerto NAP */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <SvcLabel>Caja NAP</SvcLabel>
-                <input {...register('cajaNap')} placeholder="Ej: NAP-01" className={INPUT} />
-              </div>
-              <div>
-                <SvcLabel>Puerto NAP</SvcLabel>
-                {PUERTOS_NAP.length > 0 ? (
-                  <select {...register('puertoNap')} className={INPUT}>
-                    <option value="">Ninguno</option>
-                    {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
+              {/* Equipo receptor */}
+              <SP_Section title="Equipo receptor" icon={Radio}>
+                <SP_Field label="Conectado a (nodo/antena)">
+                  <select {...register('nodoId')} className={sp_input()}>
+                    <option value="">— Seleccionar nodo/antena —</option>
+                    {nodos.map((n: any) => <option key={n.id} value={n.id}>{n.nombre}</option>)}
                   </select>
-                ) : (
-                  <input {...register('puertoNap')} placeholder="Ej: Puerto 1" className={INPUT} />
-                )}
-              </div>
-            </div>
-          </SvcSection>
+                </SP_Field>
+                <SP_Field label="IP Administración" hint="IP de la antena del cliente">
+                  <div className="relative">
+                    <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input {...register('ipAdministracion')} placeholder="192.168.1.1" className={cn(sp_input(), 'pl-9')} />
+                  </div>
+                </SP_Field>
+                <SP_Field label="Tipo de antena">
+                  <select {...register('tipoAntena')} className={sp_input()}>
+                    {TIPO_ANTENA_OPS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </SP_Field>
+              </SP_Section>
 
-          {/* ── Datos de instalación ── */}
-          <SvcSection title="Datos de instalación" icon={MapPin}>
-            <div>
-              <SvcLabel>Dirección de instalación</SvcLabel>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input {...register('direccionInstalacion')} placeholder="Av. Los Héroes 302" className={cn(INPUT, 'pl-9')} />
-              </div>
             </div>
-            <div>
-              <SvcLabel>Coordenadas <span className="font-normal normal-case">(latitud,longitud)</span></SvcLabel>
-              <div className="relative">
-                <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input {...register('coordenadas')} placeholder="-5.1944,-80.6328" className={cn(INPUT, 'pl-9')} />
-              </div>
-            </div>
-            <div>
-              <SvcLabel>Fecha Instalación</SvcLabel>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                <input type="date" {...register('fechaInicio')} className={cn(INPUT, 'pl-9')} />
-              </div>
-              {errors.fechaInicio && <p className="text-[10px] text-destructive mt-1">{errors.fechaInicio.message}</p>}
-            </div>
-            <div>
-              <SvcLabel>Notas de instalación</SvcLabel>
-              <textarea {...register('notasInstalacion')} rows={2} placeholder="Observaciones de la instalación…" className={cn(INPUT, 'resize-none')} />
-            </div>
-          </SvcSection>
-
-          {/* ── Equipo receptor ── */}
-          <SvcSection title="Equipo receptor" icon={Radio}>
-            <div>
-              <SvcLabel>Conectado a</SvcLabel>
-              <select {...register('nodoId')} className={INPUT}>
-                <option value="">— Seleccionar nodo/antena —</option>
-                {nodos.map((n: any) => <option key={n.id} value={n.id}>{n.nombre}</option>)}
-              </select>
-            </div>
-            <div>
-              <SvcLabel>IP Administración <span className="font-normal normal-case">(IP antena cliente)</span></SvcLabel>
-              <div className="relative">
-                <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input {...register('ipAdministracion')} placeholder="192.168.1.1" className={cn(INPUT, 'pl-9')} />
-              </div>
-            </div>
-            <div>
-              <SvcLabel>Tipo de antena</SvcLabel>
-              <select {...register('tipoAntena')} className={INPUT}>
-                {TIPO_ANTENA_OPS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-          </SvcSection>
-
-          {/* ── Notas ── */}
-          <SvcSection title="Notas internas" icon={AlignJustify}>
-            <textarea {...register('notasInternas')} rows={3} placeholder="Observaciones del contrato…" className={cn(INPUT, 'resize-none')} />
-          </SvcSection>
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
+        <div className="px-6 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-accent transition-colors">
             Cancelar
           </button>
           <button
             onClick={handleSubmit(onSubmit)}
             disabled={isSubmitting}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {editing ? 'Guardar Cambios' : 'Crear Servicio'}
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
