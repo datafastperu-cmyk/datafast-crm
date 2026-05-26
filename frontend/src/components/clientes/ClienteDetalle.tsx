@@ -1113,8 +1113,6 @@ function ServicioPanel({
         cajaNap:              data.cajaNap              || undefined,
         puertoNap:            data.puertoNap            || undefined,
         fechaInicio:          data.fechaInicio,
-        descripcionServicio:  data.descripcionServicio  || undefined,
-        precioMensual:        data.precioMensual        ? Number(data.precioMensual) : undefined,
         nodoId:               data.nodoId               || undefined,
         ipAdministracion:     data.ipAdministracion     || undefined,
         tipoAntena:           data.tipoAntena           || undefined,
@@ -1210,29 +1208,28 @@ function ServicioPanel({
                   </select>
                 </SP_Field>
 
-                {/* Descripción */}
-                <SP_Field label="Descripción" hint="Texto para facturación">
+                {/* Descripción — solo lectura, viene del plan */}
+                <SP_Field label="Descripción">
                   <input
-                    {...register('descripcionServicio')}
-                    placeholder={planSel?.nombre ?? 'Descripción del servicio…'}
-                    className={sp_input()}
+                    readOnly
+                    value={planSel?.nombre ?? (e?.descripcionServicio ?? '')}
+                    placeholder="Selecciona un plan…"
+                    className={cn(sp_input(), 'opacity-60 cursor-default select-none')}
                   />
                 </SP_Field>
 
-                {/* Costo */}
+                {/* Costo — solo lectura, viene del plan */}
                 <SP_Field label="Costo (S/.)">
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">S/.</span>
                     <input
-                      {...register('precioMensual')}
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder={planSel ? Number(planSel.precio ?? 0).toFixed(2) : '0.00'}
-                      className={cn(sp_input(), 'pl-9')}
+                      readOnly
+                      value={planSel ? Number(planSel.precio ?? 0).toFixed(2) : (e?.precioMensual ? Number(e.precioMensual).toFixed(2) : '')}
+                      placeholder="0.00"
+                      className={cn(sp_input(), 'pl-9 opacity-60 cursor-default select-none')}
                     />
                   </div>
-                  {planSel && <p className="text-[11px] text-muted-foreground mt-1">Precio base del plan: S/. {Number(planSel.precio ?? 0).toFixed(2)}{planSel.velocidadBajada ? ` · ${planSel.velocidadBajada}/${planSel.velocidadSubida} Mbps` : ''}</p>}
+                  {planSel?.velocidadBajada && <p className="text-[11px] text-muted-foreground mt-1">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</p>}
                 </SP_Field>
 
                 {/* Tipo IPv4 */}
