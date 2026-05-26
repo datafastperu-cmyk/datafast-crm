@@ -678,17 +678,37 @@ function SvcPagination({ total }: { total: number }) {
 }
 
 // ── ServicioPanel schema ──────────────────────────────────────
+const TIPO_ANTENA_OPS = [
+  { value: 'otro',     label: 'Otro' },
+  { value: 'ubiquiti', label: 'Ubiquiti' },
+  { value: 'mikrotik', label: 'MikroTik' },
+  { value: 'tplink',   label: 'TP-Link' },
+  { value: 'cambium',  label: 'Cambium Networks' },
+  { value: 'mimosa',   label: 'Mimosa' },
+];
+
 const servicioSchema = z.object({
-  planId:         z.string().min(1, 'Requerido'),
-  routerId:       z.string().optional(),
-  segmentoId:     z.string().optional(),
-  ipManual:       z.string().optional(),
-  usuarioPppoe:   z.string().optional(),
-  passwordPppoe:  z.string().optional(),
-  fechaInicio:    z.string().min(1, 'Requerido'),
-  diaFacturacion: z.coerce.number().int().min(1).max(31).optional().or(z.literal('')),
-  descuentoPct:   z.coerce.number().min(0).max(100).optional().or(z.literal('')),
-  notasInternas:  z.string().optional(),
+  planId:               z.string().min(1, 'Requerido'),
+  routerId:             z.string().optional(),
+  excluirFirewall:      z.boolean().optional(),
+  segmentoId:           z.string().optional(),
+  ipManual:             z.string().optional(),
+  usuarioPppoe:         z.string().optional(),
+  passwordPppoe:        z.string().optional(),
+  macAddress:           z.string().optional(),
+  routes:               z.string().optional(),
+  cajaNap:              z.string().optional(),
+  puertoNap:            z.string().optional(),
+  fechaInicio:          z.string().min(1, 'Requerido'),
+  diaFacturacion:       z.coerce.number().int().min(1).max(31).optional().or(z.literal('')),
+  descuentoPct:         z.coerce.number().min(0).max(100).optional().or(z.literal('')),
+  nodoId:               z.string().optional(),
+  ipAdministracion:     z.string().optional(),
+  tipoAntena:           z.string().optional(),
+  direccionInstalacion: z.string().optional(),
+  coordenadas:          z.string().optional(),
+  notasInstalacion:     z.string().optional(),
+  notasInternas:        z.string().optional(),
 });
 type ServicioForm = z.infer<typeof servicioSchema>;
 
@@ -927,6 +947,25 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
   );
 }
 
+function SvcLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+      {children}
+    </label>
+  );
+}
+function SvcSection({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border-b border-border">
+        <Icon className="w-3.5 h-3.5 text-primary" />
+        <span className="text-xs font-semibold text-foreground">{title}</span>
+      </div>
+      <div className="px-4 py-3 space-y-3">{children}</div>
+    </div>
+  );
+}
+
 function ServicioPanel({
   clienteId, editing, onClose, onSaved,
 }: {
@@ -935,6 +974,7 @@ function ServicioPanel({
   onClose:   () => void;
   onSaved:   () => void;
 }) {
+  const e = editing as any;
   const { toast } = useToast();
   const {
     register, handleSubmit, watch, setValue,
@@ -942,27 +982,45 @@ function ServicioPanel({
   } = useForm<ServicioForm>({
     resolver: zodResolver(servicioSchema),
     defaultValues: {
-      planId:         editing?.planId             ?? '',
-      routerId:       editing?.routerId           ?? '',
-      segmentoId:     '',
-      ipManual:       editing?.ipAsignada         ?? '',
-      usuarioPppoe:   editing?.usuarioPppoe       ?? '',
-      passwordPppoe:  '',
-      fechaInicio:    editing?.fechaInicio
-        ? editing.fechaInicio.split('T')[0]
+      planId:               e?.planId             ?? '',
+      routerId:             e?.routerId            ?? '',
+      excluirFirewall:      e?.excluirFirewall      ?? false,
+      segmentoId:           '',
+      ipManual:             e?.ipAsignada           ?? '',
+      usuarioPppoe:         e?.usuarioPppoe         ?? '',
+      passwordPppoe:        '',
+      macAddress:           e?.macAddress           ?? '',
+      routes:               e?.routes               ?? '',
+      cajaNap:              e?.cajaNap              ?? '',
+      puertoNap:            e?.puertoNap            ?? '',
+      fechaInicio:          e?.fechaInicio
+        ? String(e.fechaInicio).split('T')[0]
         : new Date().toISOString().split('T')[0],
-      diaFacturacion: (editing as any)?.diaFacturacion ?? '',
-      descuentoPct:   (editing as any)?.descuentoPct   ?? '',
-      notasInternas:  (editing as any)?.notasInternas  ?? '',
+      diaFacturacion:       e?.diaFacturacion       ?? '',
+      descuentoPct:         e?.descuentoPct         ?? '',
+      nodoId:               e?.nodoId               ?? '',
+      ipAdministracion:     e?.ipAdministracion     ?? '',
+      tipoAntena:           e?.tipoAntena           ?? 'otro',
+      direccionInstalacion: e?.direccionInstalacion ?? '',
+      coordenadas:          (e?.latitudInstalacion && e?.longitudInstalacion)
+        ? `${e.latitudInstalacion},${e.longitudInstalacion}`
+        : '',
+      notasInstalacion:     e?.notasInstalacion     ?? '',
+      notasInternas:        e?.notasInternas        ?? '',
     },
   });
 
-  const routerId   = watch('routerId');
-  const segmentoId = watch('segmentoId');
-  const planId     = watch('planId');
+  const routerId        = watch('routerId');
+  const segmentoId      = watch('segmentoId');
+  const planId          = watch('planId');
+  const excluirFirewall = watch('excluirFirewall') ?? false;
+  const cajaNap         = watch('cajaNap');
 
   const { data: planes  = [] } = useQuery({ queryKey: ['planes'],        queryFn: planesApi.list });
   const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
+  const { data: nodosRaw = [] } = useQuery({ queryKey: ['nodos-list'],  queryFn: redesApi.listNodos });
+  const nodos = (nodosRaw as any[]).filter((n: any) => n.tipo === 'antena' || n.tipo === 'nodo');
+
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos-router', routerId],
     queryFn:  () => redesApi.listSegmentos(routerId!),
@@ -975,7 +1033,9 @@ function ServicioPanel({
     staleTime: 0,
   });
 
-  useEffect(() => { setValue('segmentoId', ''); setValue('ipManual', ''); }, [routerId]);
+  useEffect(() => {
+    if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); }
+  }, [routerId]);
   useEffect(() => {
     if (!segmentoId || editing) return;
     if (nextIp !== undefined) setValue('ipManual', nextIp ?? '');
@@ -983,31 +1043,50 @@ function ServicioPanel({
 
   const planSel = (planes as any[]).find((p: any) => p.id === planId);
 
+  const PUERTOS_NAP = cajaNap
+    ? Array.from({ length: 8 }, (_, i) => `Puerto ${i + 1}`)
+    : [];
+
   const onSubmit = async (data: ServicioForm) => {
+    let latitudInstalacion: number | undefined;
+    let longitudInstalacion: number | undefined;
+    if (data.coordenadas) {
+      const [lat, lng] = data.coordenadas.split(',').map(v => parseFloat(v.trim()));
+      if (!isNaN(lat) && !isNaN(lng)) { latitudInstalacion = lat; longitudInstalacion = lng; }
+    }
     try {
+      const payload: any = {
+        planId:               data.planId,
+        routerId:             data.routerId             || undefined,
+        excluirFirewall:      data.excluirFirewall      ?? false,
+        macAddress:           data.macAddress           || undefined,
+        routes:               data.routes               || undefined,
+        cajaNap:              data.cajaNap              || undefined,
+        puertoNap:            data.puertoNap            || undefined,
+        fechaInicio:          data.fechaInicio,
+        diaFacturacion:       data.diaFacturacion       ? Number(data.diaFacturacion)  : undefined,
+        descuentoPct:         data.descuentoPct         ? Number(data.descuentoPct)    : undefined,
+        nodoId:               data.nodoId               || undefined,
+        ipAdministracion:     data.ipAdministracion     || undefined,
+        tipoAntena:           data.tipoAntena           || undefined,
+        direccionInstalacion: data.direccionInstalacion || undefined,
+        latitudInstalacion,
+        longitudInstalacion,
+        notasInstalacion:     data.notasInstalacion     || undefined,
+        notasInternas:        data.notasInternas        || undefined,
+      };
       if (editing) {
-        await contratosApi.update(editing.id, {
-          planId:         data.planId,
-          routerId:       data.routerId       || undefined,
-          notasInternas:  data.notasInternas  || undefined,
-          descuentoPct:   data.descuentoPct   ? Number(data.descuentoPct)   : undefined,
-          diaFacturacion: data.diaFacturacion ? Number(data.diaFacturacion) : undefined,
-        });
+        if (data.usuarioPppoe)  payload.usuarioPppoe  = data.usuarioPppoe;
+        if (data.passwordPppoe) payload.passwordPppoe = data.passwordPppoe;
+        await contratosApi.update(editing.id, payload);
         toast('Servicio actualizado', { type: 'success' });
       } else {
-        await contratosApi.create({
-          clienteId,
-          planId:         data.planId,
-          routerId:       data.routerId       || undefined,
-          segmentoId:     data.segmentoId     || undefined,
-          ipManual:       data.ipManual       || undefined,
-          usuarioPppoe:   data.usuarioPppoe   || undefined,
-          passwordPppoe:  data.passwordPppoe  || undefined,
-          fechaInicio:    data.fechaInicio,
-          diaFacturacion: data.diaFacturacion ? Number(data.diaFacturacion) : undefined,
-          descuentoPct:   data.descuentoPct   ? Number(data.descuentoPct)   : undefined,
-          notasInternas:  data.notasInternas  || undefined,
-        });
+        payload.clienteId    = clienteId;
+        payload.segmentoId   = data.segmentoId   || undefined;
+        payload.ipManual     = data.ipManual      || undefined;
+        payload.usuarioPppoe = data.usuarioPppoe  || undefined;
+        payload.passwordPppoe = data.passwordPppoe || undefined;
+        await contratosApi.create(payload);
         toast('Servicio creado correctamente', { type: 'success' });
       }
       onSaved();
@@ -1019,7 +1098,7 @@ function ServicioPanel({
   return (
     <>
       <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full w-full max-w-[520px] bg-background border-l border-border z-50 flex flex-col shadow-2xl">
+      <div className="fixed right-0 top-0 h-full w-full max-w-[600px] bg-background border-l border-border z-50 flex flex-col shadow-2xl">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
@@ -1028,9 +1107,7 @@ function ServicioPanel({
               {editing ? 'Editar Servicio' : 'Nuevo Servicio de Internet'}
             </h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              {editing
-                ? `Contrato ${editing.numeroContrato}`
-                : 'Configurar nuevo contrato de internet'}
+              {editing ? `Contrato ${editing.numeroContrato}` : 'Configurar nuevo contrato de internet'}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-accent transition-colors">
@@ -1039,189 +1116,217 @@ function ServicioPanel({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
-          {/* Plan */}
-          <div>
-            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Plan / Perfil *
-            </label>
-            <select {...register('planId')} className={INPUT}>
-              <option value="">— Seleccionar plan —</option>
-              {(planes as any[]).map((p: any) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre} — {p.velocidadBajada}/{p.velocidadSubida} Mbps — S/. {p.precio}
-                </option>
-              ))}
-            </select>
-            {errors.planId && (
-              <p className="text-[10px] text-destructive mt-1">{errors.planId.message}</p>
-            )}
-            {planSel && (
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Precio base:{' '}
-                <span className="font-semibold text-foreground">S/. {Number(planSel.precio ?? 0).toFixed(2)}</span>
-                {planSel.velocidadBajada && (
-                  <span className="ml-2 text-muted-foreground">
-                    {planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
+          {/* ── Configuración del servicio ── */}
+          <SvcSection title="Configuración de servicio" icon={Wifi}>
 
-          {/* Router + Segmento */}
-          <div className="grid grid-cols-2 gap-3">
+            {/* Router */}
             <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                Router
-              </label>
+              <SvcLabel>Router</SvcLabel>
               <select {...register('routerId')} className={INPUT}>
-                <option value="">— Sin router —</option>
+                <option value="">— Seleccionar router —</option>
                 {(routers as any[]).map((r: any) => (
                   <option key={r.id} value={r.id}>{r.nombre}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                Red IPv4
-              </label>
-              <select
-                {...register('segmentoId')}
-                disabled={!routerId}
-                className={cn(INPUT, !routerId && 'opacity-50 cursor-not-allowed')}
+
+            {/* Excluir Firewall */}
+            <div className="flex items-center justify-between py-0.5">
+              <span className="text-sm text-foreground">Excluir Firewall</span>
+              <button
+                type="button"
+                onClick={() => setValue('excluirFirewall', !excluirFirewall)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                  excluirFirewall ? 'bg-primary' : 'bg-muted'
+                )}
               >
-                <option value="">{routerId ? 'Seleccionar red…' : '— Elige router —'}</option>
+                <span className={cn(
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform',
+                  excluirFirewall ? 'translate-x-4' : 'translate-x-0'
+                )} />
+              </button>
+            </div>
+
+            {/* Plan */}
+            <div>
+              <SvcLabel>Perfil Internet *</SvcLabel>
+              <select {...register('planId')} className={INPUT}>
+                <option value="">— Seleccionar plan —</option>
+                {(planes as any[]).map((p: any) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
+                  </option>
+                ))}
+              </select>
+              {errors.planId && <p className="text-[10px] text-destructive mt-1">{errors.planId.message}</p>}
+              {planSel && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Precio base: <span className="font-semibold text-foreground">S/. {Number(planSel.precio ?? 0).toFixed(2)}</span>
+                  {planSel.velocidadBajada && <span className="ml-2">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</span>}
+                </p>
+              )}
+            </div>
+
+            {/* Costo + Descuento en fila */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <SvcLabel>Descuento (%)</SvcLabel>
+                <input type="number" min={0} max={100} step={0.5} {...register('descuentoPct')} placeholder="0" className={INPUT} />
+              </div>
+              <div>
+                <SvcLabel>Día Facturación</SvcLabel>
+                <input type="number" min={1} max={31} {...register('diaFacturacion')} placeholder="1 – 31" className={INPUT} />
+              </div>
+            </div>
+
+            {/* Red IPv4 */}
+            <div>
+              <SvcLabel>Red IPv4{!routerId && <span className="ml-1 text-[10px] font-normal normal-case">(selecciona un router primero)</span>}</SvcLabel>
+              <select {...register('segmentoId')} disabled={!routerId} className={cn(INPUT, !routerId && 'opacity-50 cursor-not-allowed')}>
+                <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
                 {(segmentos as any[]).map((s: any) => (
                   <option key={s.id} value={s.id}>
-                    {s.nombre} ({s.redCidr}) — {s.ipsDisponibles} libres
+                    {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} disp.)` : ''}
                   </option>
                 ))}
               </select>
             </div>
-          </div>
 
-          {/* IPv4 */}
-          {(segmentoId || editing?.ipAsignada) && (
-            <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                IPv4 Asignada
-              </label>
-              <div className="relative">
-                <input
-                  {...register('ipManual')}
-                  placeholder={fetchingIp ? 'Obteniendo IP…' : '0.0.0.0'}
-                  readOnly={!!editing}
-                  className={cn(INPUT, editing && 'opacity-60 cursor-not-allowed')}
-                />
-                {fetchingIp && (
-                  <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                )}
+            {/* IPv4 */}
+            {(segmentoId || e?.ipAsignada) && (
+              <div>
+                <SvcLabel>IPv4 Asignada</SvcLabel>
+                <div className="relative">
+                  <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                  <input
+                    {...register('ipManual')}
+                    placeholder={fetchingIp ? 'Buscando…' : '0.0.0.0'}
+                    readOnly={!!editing}
+                    className={cn(INPUT, 'pl-9', editing && 'opacity-60 cursor-not-allowed')}
+                  />
+                  {fetchingIp && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                </div>
+                {editing && <p className="text-[10px] text-muted-foreground mt-1">La IP no puede modificarse tras la creación.</p>}
+                {!editing && nextIp && <p className="text-[10px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible</p>}
               </div>
-              {editing && (
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  La IP no puede modificarse tras la creación.
-                </p>
-              )}
-            </div>
-          )}
+            )}
 
-          {/* PPPoE (solo creación) */}
-          {!editing && (
+            {/* MAC */}
+            <div>
+              <SvcLabel>MAC Address</SvcLabel>
+              <input {...register('macAddress')} placeholder="AA:BB:CC:DD:EE:FF" className={INPUT} />
+            </div>
+
+            {/* PPPoE */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                  Usuario PPPoE
-                </label>
-                <input
-                  {...register('usuarioPppoe')}
-                  placeholder="Auto-generar si vacío"
-                  className={INPUT}
-                />
+                <SvcLabel>User PPP/HS</SvcLabel>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(INPUT, 'pl-9')} />
+                </div>
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                  Contraseña PPPoE
-                </label>
-                <input
-                  type="password"
-                  {...register('passwordPppoe')}
-                  placeholder="Auto-generar si vacío"
-                  className={INPUT}
-                />
+                <SvcLabel>Password PPP/HS</SvcLabel>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(INPUT, 'pl-9')} />
+                </div>
               </div>
             </div>
-          )}
 
-          {/* Fechas */}
-          <div className="grid grid-cols-2 gap-3">
+            {/* Routes */}
             <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                Fecha Instalación *
-              </label>
-              <input
-                type="date"
-                {...register('fechaInicio')}
-                readOnly={!!editing}
-                className={cn(INPUT, editing && 'opacity-60 cursor-not-allowed')}
-              />
-              {errors.fechaInicio && (
-                <p className="text-[10px] text-destructive mt-1">{errors.fechaInicio.message}</p>
-              )}
+              <SvcLabel>Routes <span className="font-normal normal-case">(opcional)</span></SvcLabel>
+              <input {...register('routes')} placeholder="Ejm: 192.168.10.0/24" className={INPUT} />
+            </div>
+
+            {/* Caja + Puerto NAP */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <SvcLabel>Caja NAP</SvcLabel>
+                <input {...register('cajaNap')} placeholder="Ej: NAP-01" className={INPUT} />
+              </div>
+              <div>
+                <SvcLabel>Puerto NAP</SvcLabel>
+                {PUERTOS_NAP.length > 0 ? (
+                  <select {...register('puertoNap')} className={INPUT}>
+                    <option value="">Ninguno</option>
+                    {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                ) : (
+                  <input {...register('puertoNap')} placeholder="Ej: Puerto 1" className={INPUT} />
+                )}
+              </div>
+            </div>
+          </SvcSection>
+
+          {/* ── Datos de instalación ── */}
+          <SvcSection title="Datos de instalación" icon={MapPin}>
+            <div>
+              <SvcLabel>Dirección de instalación</SvcLabel>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input {...register('direccionInstalacion')} placeholder="Av. Los Héroes 302" className={cn(INPUT, 'pl-9')} />
+              </div>
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                Día Facturación
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={31}
-                {...register('diaFacturacion')}
-                placeholder="1 – 31"
-                className={INPUT}
-              />
+              <SvcLabel>Coordenadas <span className="font-normal normal-case">(latitud,longitud)</span></SvcLabel>
+              <div className="relative">
+                <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input {...register('coordenadas')} placeholder="-5.1944,-80.6328" className={cn(INPUT, 'pl-9')} />
+              </div>
             </div>
-          </div>
+            <div>
+              <SvcLabel>Fecha Instalación</SvcLabel>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <input type="date" {...register('fechaInicio')} className={cn(INPUT, 'pl-9')} />
+              </div>
+              {errors.fechaInicio && <p className="text-[10px] text-destructive mt-1">{errors.fechaInicio.message}</p>}
+            </div>
+            <div>
+              <SvcLabel>Notas de instalación</SvcLabel>
+              <textarea {...register('notasInstalacion')} rows={2} placeholder="Observaciones de la instalación…" className={cn(INPUT, 'resize-none')} />
+            </div>
+          </SvcSection>
 
-          {/* Descuento */}
-          <div>
-            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Descuento (%)
-            </label>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              {...register('descuentoPct')}
-              placeholder="0"
-              className={INPUT}
-            />
-          </div>
+          {/* ── Equipo receptor ── */}
+          <SvcSection title="Equipo receptor" icon={Radio}>
+            <div>
+              <SvcLabel>Conectado a</SvcLabel>
+              <select {...register('nodoId')} className={INPUT}>
+                <option value="">— Seleccionar nodo/antena —</option>
+                {nodos.map((n: any) => <option key={n.id} value={n.id}>{n.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <SvcLabel>IP Administración <span className="font-normal normal-case">(IP antena cliente)</span></SvcLabel>
+              <div className="relative">
+                <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input {...register('ipAdministracion')} placeholder="192.168.1.1" className={cn(INPUT, 'pl-9')} />
+              </div>
+            </div>
+            <div>
+              <SvcLabel>Tipo de antena</SvcLabel>
+              <select {...register('tipoAntena')} className={INPUT}>
+                {TIPO_ANTENA_OPS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+          </SvcSection>
 
-          {/* Notas */}
-          <div>
-            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Notas Internas
-            </label>
-            <textarea
-              {...register('notasInternas')}
-              rows={3}
-              placeholder="Observaciones del contrato…"
-              className={cn(INPUT, 'resize-none')}
-            />
-          </div>
+          {/* ── Notas ── */}
+          <SvcSection title="Notas internas" icon={AlignJustify}>
+            <textarea {...register('notasInternas')} rows={3} placeholder="Observaciones del contrato…" className={cn(INPUT, 'resize-none')} />
+          </SvcSection>
         </div>
 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-accent transition-colors"
-          >
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-accent transition-colors">
             Cancelar
           </button>
           <button
@@ -1229,10 +1334,7 @@ function ServicioPanel({
             disabled={isSubmitting}
             className="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
-            {isSubmitting
-              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              : <Save className="w-3.5 h-3.5" />
-            }
+            {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {editing ? 'Guardar Cambios' : 'Crear Servicio'}
           </button>
         </div>

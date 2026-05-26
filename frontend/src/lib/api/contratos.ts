@@ -19,19 +19,33 @@ export interface FiltrosContrato {
 
 // ─── DTOs ─────────────────────────────────────────────────────
 export interface CreateContratoDto {
-  clienteId:       string;
-  planId:          string;
-  routerId?:       string;
-  oltId?:          string;
-  segmentoId?:     string;
-  ipManual?:       string;
-  fechaInicio:     string;
-  diaFacturacion?: number;
-  descuentoPct?:   number;
-  notasInternas?:  string;
+  clienteId:            string;
+  planId:               string;
+  routerId?:            string;
+  nodoId?:              string;
+  oltId?:               string;
+  segmentoId?:          string;
+  ipManual?:            string;
+  fechaInicio:          string;
+  diaFacturacion?:      number;
+  descuentoPct?:        number;
+  notasInternas?:       string;
+  notasInstalacion?:    string;
   // PPPoE (se genera si no se pasan)
-  usuarioPppoe?:   string;
-  passwordPppoe?:  string;
+  usuarioPppoe?:        string;
+  passwordPppoe?:       string;
+  // Red / equipo
+  macAddress?:          string;
+  excluirFirewall?:     boolean;
+  routes?:              string;
+  ipAdministracion?:    string;
+  tipoAntena?:          string;
+  cajaNap?:             string;
+  puertoNap?:           string;
+  // Instalación
+  direccionInstalacion?:  string;
+  latitudInstalacion?:    number;
+  longitudInstalacion?:   number;
 }
 
 export interface CambiarEstadoDto {
