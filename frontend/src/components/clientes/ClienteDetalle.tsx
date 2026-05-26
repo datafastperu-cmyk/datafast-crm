@@ -1060,7 +1060,7 @@ function ServicioPanel({
             {planSel && (
               <p className="text-[11px] text-muted-foreground mt-1">
                 Precio base:{' '}
-                <span className="font-semibold text-foreground">S/. {planSel.precio?.toFixed(2)}</span>
+                <span className="font-semibold text-foreground">S/. {Number(planSel.precio ?? 0).toFixed(2)}</span>
                 {planSel.velocidadBajada && (
                   <span className="ml-2 text-muted-foreground">
                     {planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps
@@ -1657,7 +1657,7 @@ function ModalEditarFactura({
     onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al actualizar', { type: 'error' }),
   });
 
-  const fmtS    = (n: number) => n.toFixed(2);
+  const fmtS    = (n: any) => Number(n ?? 0).toFixed(2);
   const inputCls = `w-full px-3 py-2 text-sm border border-input rounded-lg bg-background
                     text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
 
