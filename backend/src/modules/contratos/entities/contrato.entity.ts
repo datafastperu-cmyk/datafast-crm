@@ -112,6 +112,9 @@ export class Contrato extends BaseModel {
   @Column({ name: 'nombre_queue', length: 100, nullable: true })
   nombreQueue: string;
 
+  @Column({ name: 'tipo_auth', length: 20, nullable: true })
+  tipoAuth: string;
+
   // ── Precio ────────────────────────────────────────────────
   @Column({ name: 'precio_mensual', type: 'decimal', precision: 10, scale: 2 })
   precioMensual: number;

@@ -508,7 +508,15 @@ export class ClientesService {
         });
       } catch (err: any) {
         this.logger.error(`onboarding: contrato fallido para ${cliente.id}: ${err.message}`);
-        // Limpiar el cliente creado para no dejar estado inconsistente
+        // Si el contrato ya fue creado, terminarlo primero para que libere la IP
+        if (contrato?.id) {
+          await this.contratosSvc.cambiarEstado(
+            contrato.id,
+            { estado: EstadoContrato.BAJA_DEFINITIVA, motivo: 'Rollback de onboarding' },
+            user,
+            true,
+          ).catch(e => this.logger.error(`onboarding rollback ip: ${e?.message}`));
+        }
         await this.clienteRepo.softDelete(cliente.id, user.empresaId).catch(() => {});
         throw err;
       }
@@ -518,7 +526,7 @@ export class ClientesService {
       await this.saveFacturacionConfig(
         cliente.id, user.empresaId,
         dto.facturacion ?? {}, dto.notificaciones ?? {},
-      ).catch(() => {});
+      ).catch((err) => this.logger.error(`onboarding: facturacion config save failed for ${cliente.id}: ${err?.message}`));
     }
 
     const clienteFinal = await this.findOne(cliente.id, user.empresaId);

@@ -338,6 +338,7 @@ export function ClienteWizard() {
   const [s1, setS1] = useState<S1 | null>(null);
   const [s2, setS2] = useState<S2 | null>(null);
   const [s3, setS3] = useState<S3 | null>(null);
+  const [resultado, setResultado] = useState<{ clienteId: string; contratoId?: string; clienteNombre?: string } | null>(null);
 
   const { mutateAsync: registrar } = useMutation({ mutationFn: clientesApi.onboarding });
 
@@ -363,10 +364,11 @@ export function ClienteWizard() {
           nombres:         s1.nombres,
           apellidoPaterno: s1.apellidoPaterno || '',
           apellidoMaterno: s1.apellidoMaterno || undefined,
-          telefono:        s1.telefono?.trim() || s1.whatsapp || '',
+          telefono:        s1.telefono?.trim() || s1.whatsapp || undefined,
           whatsapp:        s1.whatsapp         || undefined,
           email:           s1.email            || undefined,
           direccion:       s1.direccion        || undefined,
+          zonaId:          s1.zonaId           || undefined,
           distrito:        s1.distrito         || undefined,
           provincia:       s1.provincia        || undefined,
           departamento:    s1.departamento     || undefined,
@@ -440,8 +442,48 @@ export function ClienteWizard() {
       } catch { /* no bloquea el flujo principal */ }
     }
     toast('Abonado registrado correctamente', { type: 'success' });
-    router.push(`/clientes/${cliente.id}`);
+    setResultado({ clienteId: cliente.id, contratoId: contrato?.id, clienteNombre: cliente.nombreCompleto });
   };
+
+  if (resultado) {
+    return (
+      <div className="w-full max-w-lg mx-auto space-y-6 py-8 text-center">
+        <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-950/30 flex items-center justify-center mx-auto">
+          <CheckCircle2 className="w-8 h-8 text-green-600" />
+        </div>
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">¡Abonado registrado!</h2>
+          {resultado.clienteNombre && (
+            <p className="text-muted-foreground mt-1">{resultado.clienteNombre}</p>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <button
+            onClick={() => router.push(`/clientes/${resultado.clienteId}`)}
+            className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm rounded-lg
+                       border border-input hover:bg-accent transition-all"
+          >
+            <User className="w-4 h-4" /> Ver perfil del abonado
+          </button>
+          {resultado.contratoId && (
+            <button
+              onClick={() => router.push(`/contratos/${resultado.contratoId}/aprovisionar`)}
+              className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm rounded-lg font-semibold
+                         bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
+            >
+              <Wifi className="w-4 h-4" /> Aprovisionar en MikroTik
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => { setResultado(null); setStep(0); setS1(null); setS2(null); setS3(null); }}
+          className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2"
+        >
+          Registrar otro abonado
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-5">
@@ -1126,8 +1168,9 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           {/* Caja Nap */}
           <Field label="Caja Nap">
             <select {...register('cajaNapId')} className={inputCls()}>
-              {MOCK_CAJAS_NAP.map((n) => (
-                <option key={n.id} value={n.id}>{n.nombre}</option>
+              <option value="">Ninguno</option>
+              {MOCK_CAJAS_NAP.filter(n => n.id).map((n) => (
+                <option key={n.id} value={n.nombre}>{n.nombre}</option>
               ))}
             </select>
           </Field>
@@ -1137,7 +1180,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             <select {...register('puertoNapId')} className={inputCls()} disabled={!cajaNap}>
               <option value="">Ninguno</option>
               {PUERTOS_NAP.map((p) => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
+                <option key={p.id} value={p.nombre}>{p.nombre}</option>
               ))}
             </select>
           </Field>
@@ -1218,6 +1261,14 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           </Section>
         </div>
       </div>
+
+      {/* Advertencia si no hay plan */}
+      {!perfilId && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-sm">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          Sin plan seleccionado, el abonado quedará como <strong>PROSPECTO</strong> sin contrato activo.
+        </div>
+      )}
 
       {/* ── Botones finales ── */}
       <div className="flex justify-between pt-2">

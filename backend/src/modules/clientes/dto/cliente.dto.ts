@@ -50,12 +50,12 @@ export class CreateClienteDto {
   @Transform(({ value }) => value?.toLowerCase().trim())
   email?: string;
 
-  @ApiProperty({ example: '987654321' })
+  @ApiPropertyOptional({ example: '987654321' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Matches(/^[\d\s\+\-\(\)]{7,20}$/, { message: 'Teléfono inválido' })
   @Transform(({ value }) => value?.trim())
-  telefono: string;
+  telefono?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -68,6 +68,11 @@ export class CreateClienteDto {
   @IsString()
   @MaxLength(20)
   whatsapp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  zonaId?: string;
 
   @ApiPropertyOptional({ example: 'Av. Sánchez Cerro 1234' })
   @IsOptional()

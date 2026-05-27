@@ -106,15 +106,21 @@ export class ContratosService {
   }
 
   private async asignarIpDesdePool(segmentoId: string, empresaId: string): Promise<string> {
-    const segmento = await this.contratoRepo.findSegmento(segmentoId, empresaId);
-    if (!segmento) throw new NotFoundException(`Segmento ${segmentoId} no encontrado`);
-    const [ipsUsadas, ipsReservadas] = await Promise.all([this.contratoRepo.getIpsUsadas(segmentoId), this.contratoRepo.getIpsReservadas(segmentoId)]);
-    const ip = getNextAvailableIp(segmento.redCidr, ipsUsadas, ipsReservadas);
-    if (!ip) {
-      const range = getCidrRange(segmento.redCidr);
-      throw new UnprocessableEntityException(`Pool "${segmento.nombre}" (${segmento.redCidr}) exhausto. Usadas: ${ipsUsadas.length}/${range.usableHosts}`);
+    // Advisory lock serializes concurrent IP assignments for the same pool
+    await this.dataSource.query('SELECT pg_advisory_lock(hashtext($1)::bigint)', [segmentoId]);
+    try {
+      const segmento = await this.contratoRepo.findSegmento(segmentoId, empresaId);
+      if (!segmento) throw new NotFoundException(`Segmento ${segmentoId} no encontrado`);
+      const [ipsUsadas, ipsReservadas] = await Promise.all([this.contratoRepo.getIpsUsadas(segmentoId), this.contratoRepo.getIpsReservadas(segmentoId)]);
+      const ip = getNextAvailableIp(segmento.redCidr, ipsUsadas, ipsReservadas);
+      if (!ip) {
+        const range = getCidrRange(segmento.redCidr);
+        throw new UnprocessableEntityException(`Pool "${segmento.nombre}" (${segmento.redCidr}) exhausto. Usadas: ${ipsUsadas.length}/${range.usableHosts}`);
+      }
+      return ip;
+    } finally {
+      await this.dataSource.query('SELECT pg_advisory_unlock(hashtext($1)::bigint)', [segmentoId]).catch(() => {});
     }
-    return ip;
   }
 
   private generarPassword(len: number): string {

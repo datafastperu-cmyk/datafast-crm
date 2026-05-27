@@ -137,6 +137,9 @@ export class Cliente extends BaseModel {
   @Column({ name: 'referido_por', nullable: true })
   referidoPorId: string;
 
+  @Column({ name: 'zona_id', nullable: true })
+  zonaId: string;
+
   @Column({ name: 'vendedor_id', nullable: true })
   vendedorId: string;
 

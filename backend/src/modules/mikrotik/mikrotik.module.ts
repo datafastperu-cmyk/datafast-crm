@@ -22,12 +22,15 @@ import { VelocidadController }       from './velocidad.controller';
 import { VelocidadWorker, VelocidadScheduler, VELOCIDAD_QUEUE } from './velocidad.worker';
 
 import { Router }                    from './entities/router.entity';
+import { Contrato }                  from '../contratos/entities/contrato.entity';
+import { Plan }                      from '../planes/entities/plan.entity';
+import { MikrotikUserService }       from './services/mikrotik-user.service';
 import { AuthModule }                from '../auth/auth.module';
 import { OpenvpnModule }             from '../openvpn/openvpn.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Router]),
+    TypeOrmModule.forFeature([Router, Contrato, Plan]),
 
     // Cola Bull para sincronización de velocidades
     BullModule.registerQueue({
@@ -62,6 +65,7 @@ import { OpenvpnModule }             from '../openvpn/openvpn.module';
   providers: [
     // Fase 3.1 — Core RouterOS
     MikrotikService,
+    MikrotikUserService,
     RouterConnectionPool,
     PppoeService,
     QueueService,
@@ -79,6 +83,7 @@ import { OpenvpnModule }             from '../openvpn/openvpn.module';
   ],
   exports: [
     MikrotikService,
+    MikrotikUserService,
     RouterConnectionPool,
     PppoeService,
     QueueService,

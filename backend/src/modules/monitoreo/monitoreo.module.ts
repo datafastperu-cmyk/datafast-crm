@@ -1,86 +1,41 @@
-import { EventEmitterModule } from '@nestjs/event-emitter';
-import { Module }          from '@nestjs/common';
-import { TypeOrmModule }   from '@nestjs/typeorm';
-import { BullModule }      from '@nestjs/bull';
-import { ScheduleModule }  from '@nestjs/schedule';
+// Ruta: /opt/datafast/backend/src/modules/monitoreo/monitoreo.module.ts
+//
+// Prerequisito en AppModule:
+//   import { ScheduleModule } from '@nestjs/schedule';
+//   imports: [ScheduleModule.forRoot(), ..., MonitoreoModule]
+//
+// Instalar dependencia:
+//   npm install @nestjs/schedule
 
+import { Module }        from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { MonitoreoController } from './monitoreo.controller';
-import { MonitoreoGateway }    from './gateways/monitoreo.gateway';
-import { MonitoreoWorker, MonitoreoScheduler, MONITOREO_QUEUE } from './monitoreo.worker';
+import { DispositivoMonitoreo }    from './entities/dispositivo-monitoreo.entity';
+import { MetricasMonitoreo }       from './entities/metricas-monitoreo.entity';
+import { AlertaSistema }           from './entities/alerta-sistema.entity';
+import { UmbralAlerta }            from './entities/umbral-alerta.entity';
+import { MonitoreoController }     from './monitoreo.controller';
+import { MonitoreoService }        from './monitoreo.service';
+import { MonitoreoWorkerService }  from './services/monitoreo-worker.service';
 
-import { PingService }         from './services/ping.service';
-import { SnmpService }         from './services/snmp.service';
-import { AlertasService }      from './services/alertas.service';
-import { NodoDeviceService }   from './services/nodo-device.service';
-import { NetWatchService }     from './services/netwatch.service';
-import { MikrotikModule }      from '../mikrotik/mikrotik.module';
-
-import {
-  Nodo, MedicionNodo, Alerta, ConfiguracionAlerta,
-} from './entities/monitoreo.entity';
-
-import { AuthModule }   from '../auth/auth.module';
-import { WhatsAppService } from '../notificaciones/services/whatsapp.service';
-import { HttpModule }   from '@nestjs/axios';
+// RouterConnectionPool vive en MikrotikModule y ya lo exporta
+import { MikrotikModule }          from '../mikrotik/mikrotik.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Nodo, MedicionNodo, Alerta, ConfiguracionAlerta]),
-
-    // Cola Bull para ping/SNMP/dashboard jobs
-    BullModule.registerQueue({
-      name: MONITOREO_QUEUE,
-      defaultJobOptions: {
-        attempts:         1,   // Monitoreo no reintenta — el siguiente ciclo ya lo hará
-        removeOnComplete: 200,
-        removeOnFail:     100,
-      },
-    }),
-
-    ScheduleModule,
-
-    // EventEmitter para comunicar alertas → gateway WebSocket
-    EventEmitterModule.forRoot({
-      wildcard:          false,
-      delimiter:         '.',
-      newListener:       false,
-      removeListener:    false,
-      maxListeners:      30,
-      verboseMemoryLeak: false,
-      ignoreErrors:      false,
-    }),
-
-    HttpModule.register({ timeout: 10_000 }),
-    AuthModule,
-    MikrotikModule,
+    TypeOrmModule.forFeature([
+      DispositivoMonitoreo,
+      MetricasMonitoreo,
+      AlertaSistema,
+      UmbralAlerta,
+    ]),
+    MikrotikModule, // importa RouterConnectionPool ya configurado
   ],
   controllers: [MonitoreoController],
   providers: [
-    // Services de monitoreo
-    PingService,
-    SnmpService,
-    AlertasService,
-    NodoDeviceService,
-    NetWatchService,
-
-    // WhatsApp para notificaciones de alertas
-    WhatsAppService,
-
-    // WebSocket Gateway
-    MonitoreoGateway,
-
-    // Bull Worker + Scheduler
-    MonitoreoWorker,
-    MonitoreoScheduler,
+    MonitoreoService,
+    MonitoreoWorkerService,
   ],
-  exports: [
-    MonitoreoGateway,   // Para que otros módulos puedan hacer broadcast
-    AlertasService,     // Para crear alertas desde otros módulos
-    PingService,
-    SnmpService,
-    NodoDeviceService,
-    NetWatchService,
-  ],
+  exports: [MonitoreoService],
 })
 export class MonitoreoModule {}

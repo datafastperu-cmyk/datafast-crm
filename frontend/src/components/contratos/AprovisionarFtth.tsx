@@ -1,6 +1,6 @@
 'use client';
 
-import { useState }    from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter }   from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useForm }     from 'react-hook-form';
@@ -63,7 +63,7 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
   const { data: perfiles = [] }     = useQuery({ queryKey: ['perfiles-smartolt'], queryFn: redesApi.listPerfilesSmartolt });
 
   const {
-    register, handleSubmit, watch,
+    register, handleSubmit, watch, setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver:      zodResolver(schema),
@@ -76,6 +76,11 @@ export function AprovisionarFtth({ contratoId }: { contratoId: string }) {
       routerId:          contrato?.routerId ?? '',
     },
   });
+
+  // Pre-fill router/segmento from contract data when it loads
+  useEffect(() => {
+    if (contrato?.routerId) setValue('routerId', contrato.routerId);
+  }, [contrato?.routerId]);
 
   const oltId = watch('oltId');
 

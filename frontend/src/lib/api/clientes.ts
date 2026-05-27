@@ -18,7 +18,8 @@ export interface CreateClienteDto {
   apellidoPaterno:  string;
   apellidoMaterno?: string;
   email?:           string;
-  telefono:         string;
+  telefono?:        string;
+  zonaId?:          string;
   telefonoAlt?:     string;
   whatsapp?:        string;
   direccion:        string;

@@ -190,6 +190,16 @@ export class MikrotikService {
     await this.routerRepo.update(id, { deletedAt: new Date(), activo: false });
     await this.pool.invalidate(id);
 
+    // Desactivar segmentos de red vinculados a este router
+    try {
+      await this.ds.query(
+        `UPDATE segmentos_ipv4 SET activo = false WHERE router_id = $1 AND deleted_at IS NULL`,
+        [id],
+      );
+    } catch (err: any) {
+      this.logger.warn(`Error desactivando segmentos del router ${id}: ${err.message}`);
+    }
+
     // Revocar certificados VPN vinculados a este router
     try {
       const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);

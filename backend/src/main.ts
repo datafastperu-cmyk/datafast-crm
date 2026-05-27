@@ -89,7 +89,7 @@ async function bootstrap() {
       transformOptions: {
         enableImplicitConversion: true, // Convertir tipos primitivos automáticamente
       },
-      disableErrorMessages: env === 'production', // En producción, no detallar errores de validación
+      disableErrorMessages: false, // Siempre mostrar detalles de validación
       stopAtFirstError: false,      // Mostrar todos los errores, no solo el primero
     }),
   );
