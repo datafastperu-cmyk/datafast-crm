@@ -82,9 +82,18 @@ import { MantenimientoModule }    from './modules/mantenimiento/mantenimiento.mo
     CacheModule.registerAsync({
       isGlobal:   true,
       imports:    [ConfigModule],
-      useFactory: (config: ConfigService) => ({
-        ttl: 300_000,
-      }),
+      useFactory: async (config: ConfigService) => {
+        const { redisStore } = await import('cache-manager-ioredis-yet');
+        return {
+          store: await redisStore({
+            host:     config.get<string>('redis.host') || 'localhost',
+            port:     config.get<number>('redis.port') || 6379,
+            password: config.get<string>('redis.password') || undefined,
+            db:       0,
+            ttl:      300,
+          }),
+        };
+      },
       inject: [ConfigService],
     }),
     BullModule.forRootAsync({

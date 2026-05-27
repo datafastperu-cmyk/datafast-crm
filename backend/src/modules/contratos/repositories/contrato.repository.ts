@@ -76,9 +76,109 @@ export class ContratoRepository {
     await this.repo.update({ id, empresaId }, { deletedAt: new Date() });
   }
 
-  async findAllPaginated(empresaId: string, filters: FilterContratoDto): Promise<PaginatedResult<Contrato>> {
-    return paginate(this.buildFilterQuery(empresaId, filters), filters,
-      ['createdAt','estado','fechaInicio','precioFinal','deudaTotal','numeroContrato']);
+  async findAllPaginated(empresaId: string, filters: FilterContratoDto): Promise<PaginatedResult<any>> {
+    const page   = filters.page  ?? 1;
+    const limit  = filters.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const allowedSort: Record<string, string> = {
+      createdAt:      'c.created_at',
+      estado:         'c.estado',
+      fechaInicio:    'c.fecha_inicio',
+      precioFinal:    'c.precio_final',
+      deudaTotal:     'c.deuda_total',
+      numeroContrato: 'c.numero_contrato',
+    };
+    const sortCol = allowedSort[filters.sortBy ?? ''] ?? 'c.created_at';
+    const sortDir = filters.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+
+    const conds: string[] = ['c.empresa_id = $1', 'c.deleted_at IS NULL'];
+    const params: any[]   = [empresaId];
+
+    if (filters.search) {
+      params.push(`%${filters.search}%`);
+      conds.push(`(c.numero_contrato ILIKE $${params.length} OR c.usuario_pppoe ILIKE $${params.length})`);
+    }
+    if (filters.estado) {
+      params.push(filters.estado);
+      conds.push(`c.estado = $${params.length}`);
+    }
+    if (filters.estados?.length) {
+      params.push(filters.estados);
+      conds.push(`c.estado = ANY($${params.length})`);
+    }
+    if (filters.clienteId) {
+      params.push(filters.clienteId);
+      conds.push(`c.cliente_id = $${params.length}`);
+    }
+    if (filters.planId) {
+      params.push(filters.planId);
+      conds.push(`c.plan_id = $${params.length}`);
+    }
+    if (filters.routerId) {
+      params.push(filters.routerId);
+      conds.push(`c.router_id = $${params.length}`);
+    }
+    if (filters.conMora)    conds.push('c.deuda_total > 0');
+    if (filters.enProrroga) conds.push('c.en_prorroga = true');
+    if (filters.aprovisionado !== undefined) {
+      params.push(filters.aprovisionado);
+      conds.push(`c.aprovisionado = $${params.length}`);
+    }
+    if (filters.fechaDesde) {
+      params.push(filters.fechaDesde);
+      conds.push(`c.fecha_inicio >= $${params.length}`);
+    }
+    if (filters.fechaHasta) {
+      params.push(filters.fechaHasta);
+      conds.push(`c.fecha_inicio <= $${params.length}`);
+    }
+
+    const where = conds.join(' AND ');
+
+    const [{ total }] = await this.ds.query(
+      `SELECT COUNT(*) AS total FROM contratos c WHERE ${where}`,
+      params,
+    );
+
+    const data = await this.ds.query(`
+      SELECT
+        c.id,
+        c.numero_contrato          AS "numeroContrato",
+        c.estado,
+        c.empresa_id               AS "empresaId",
+        c.cliente_id               AS "clienteId",
+        c.plan_id                  AS "planId",
+        c.router_id                AS "routerId",
+        c.usuario_pppoe            AS "usuarioPppoe",
+        c.ip_asignada              AS "ipAsignada",
+        c.mac_address              AS "macAddress",
+        c.aprovisionado,
+        c.en_prorroga              AS "enProrroga",
+        c.prorroga_hasta           AS "prorrogaHasta",
+        c.fecha_inicio             AS "fechaInicio",
+        c.fecha_baja               AS "fechaBaja",
+        c.dia_facturacion          AS "diaFacturacion",
+        CAST(c.precio_final   AS FLOAT) AS "precioFinal",
+        CAST(c.precio_mensual AS FLOAT) AS "precioMensual",
+        CAST(c.descuento_pct  AS FLOAT) AS "descuentoPct",
+        CAST(c.deuda_total    AS FLOAT) AS "deudaTotal",
+        c.created_at               AS "createdAt",
+        cl.nombre_completo         AS "clienteNombre",
+        cl.telefono                AS "clienteTelefono",
+        cl.numero_documento        AS "clienteDocumento",
+        pl.nombre                  AS "planNombre",
+        CAST(pl.velocidad_bajada AS FLOAT) AS "velocidadBajada",
+        CAST(pl.velocidad_subida AS FLOAT) AS "velocidadSubida"
+      FROM contratos c
+      LEFT JOIN clientes cl ON cl.id = c.cliente_id AND cl.deleted_at IS NULL
+      LEFT JOIN planes   pl ON pl.id = c.plan_id   AND pl.deleted_at IS NULL
+      WHERE ${where}
+      ORDER BY ${sortCol} ${sortDir}
+      LIMIT ${limit} OFFSET ${offset}
+    `, params);
+
+    return { data, total: parseInt(total, 10), page, limit };
   }
 
   buildFilterQuery(empresaId: string, f: FilterContratoDto): SelectQueryBuilder<Contrato> {
