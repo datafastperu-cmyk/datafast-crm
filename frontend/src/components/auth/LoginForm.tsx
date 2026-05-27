@@ -2,6 +2,7 @@
 
 import { useState }       from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useForm }        from 'react-hook-form';
 import { zodResolver }    from '@hookform/resolvers/zod';
 import { z }              from 'zod';
@@ -132,6 +133,16 @@ export function LoginForm() {
             <span>{error}</span>
           </div>
         )}
+
+        {/* Olvidé mi contraseña */}
+        <div className="flex justify-end">
+          <Link
+            href="/forgot-password"
+            className="text-xs text-muted-foreground hover:text-primary transition-colors"
+          >
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </div>
 
         {/* Submit */}
         <button

@@ -9,6 +9,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Request } from 'express';
 import * as bcrypt from 'bcryptjs';
+import * as nodemailer from 'nodemailer';
+import * as crypto from 'crypto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject } from '@nestjs/common';
 import { Cache } from 'cache-manager';
@@ -252,6 +254,83 @@ export class AuthService {
   // HELPERS PRIVADOS
   // ────────────────────────────────────────────────────────────
 
+  // ────────────────────────────────────────────────────────────
+  // FORGOT PASSWORD — genera token y envía email (o loggea si no hay SMTP)
+  // ────────────────────────────────────────────────────────────
+  async forgotPassword(email: string, req: Request): Promise<void> {
+    const usuario = await this.usuarioRepo.findOne({
+      where: { email: email.toLowerCase() },
+    });
+
+    // Respuesta siempre exitosa para no revelar si el email existe
+    if (!usuario || usuario.estado === EstadoUsuario.INACTIVO) return;
+
+    const token      = crypto.randomBytes(32).toString('hex');
+    const ttlMs      = 15 * 60 * 1000; // 15 minutos
+    const frontendUrl = this.config.get<string>('FRONTEND_URL') || this.config.get<string>('app.frontendUrl') || '';
+    const resetUrl   = `${frontendUrl}/reset-password?token=${token}`;
+
+    await this.cache.set(`pwd_reset:${token}`, usuario.id, ttlMs);
+
+    const mailEnviado = await this.enviarEmailRecuperacion(usuario, resetUrl);
+
+    if (!mailEnviado) {
+      // Fallback de emergencia: loggear en servidor cuando SMTP no está configurado
+      this.logger.warn(
+        `[RECOVERY] SMTP no configurado — enlace de recuperación para <${email}>: ${resetUrl}`,
+      );
+    }
+
+    await this.auditoria.log({
+      empresaId:    usuario.empresaId,
+      usuarioId:    usuario.id,
+      usuarioEmail: email,
+      accion:       'FORGOT_PASSWORD',
+      modulo:       'auth',
+      descripcion:  `Solicitud de recuperación${mailEnviado ? ' — email enviado' : ' — SMTP no configurado, token loggeado'}`,
+      req,
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // RESET PASSWORD — valida token Redis y establece nueva contraseña
+  // ────────────────────────────────────────────────────────────
+  async resetPasswordViaToken(token: string, passwordNuevo: string, req: Request): Promise<void> {
+    const usuarioId = await this.cache.get<string>(`pwd_reset:${token}`);
+
+    if (!usuarioId) {
+      throw new BadRequestException('El enlace de recuperación no es válido o ha expirado (15 min)');
+    }
+
+    const usuario = await this.usuarioRepo.findOne({ where: { id: usuarioId } });
+    if (!usuario) throw new NotFoundException('Usuario no encontrado');
+
+    const nuevoHash = await bcrypt.hash(passwordNuevo, 12);
+
+    await this.usuarioRepo.update(usuarioId, {
+      passwordHash:    nuevoHash,
+      refreshTokenHash: null,
+      intentosFallidos: 0,
+      bloqueadoHasta:   null,
+      estado:           EstadoUsuario.ACTIVO,
+    });
+
+    await this.cache.del(`pwd_reset:${token}`);
+    await this.cache.del(`user_session:${usuarioId}`);
+
+    await this.auditoria.log({
+      empresaId:    usuario.empresaId,
+      usuarioId:    usuario.id,
+      usuarioEmail: usuario.email,
+      accion:       'RESET_PASSWORD',
+      modulo:       'auth',
+      descripcion:  'Contraseña restablecida mediante enlace de recuperación',
+      req,
+    });
+
+    this.logger.log(`Contraseña restablecida via token: ${usuario.email}`);
+  }
+
   private async generarTokens(usuario: Usuario) {
     const jwtSecret = this.config.get<string>('jwt.secret');
     const jwtRefreshSecret = this.config.get<string>('jwt.refreshSecret');
@@ -357,6 +436,51 @@ export class AuthService {
   }
 
   // Parsear duración tipo '15m', '7d', '1h' a segundos
+  private async enviarEmailRecuperacion(usuario: Usuario, resetUrl: string): Promise<boolean> {
+    try {
+      const host = this.config.get<string>('MAIL_HOST') || this.config.get<string>('SMTP_HOST');
+      if (!host) return false;
+
+      const transport = nodemailer.createTransport({
+        host,
+        port:   this.config.get<number>('MAIL_PORT') || 587,
+        secure: this.config.get<boolean>('MAIL_SECURE') || false,
+        auth: {
+          user: this.config.get<string>('MAIL_USER') || this.config.get<string>('SMTP_USER'),
+          pass: this.config.get<string>('MAIL_PASS') || this.config.get<string>('SMTP_PASS'),
+        },
+      });
+
+      const from = this.config.get<string>('MAIL_FROM') || 'noreply@datafast.pe';
+      await transport.sendMail({
+        from,
+        to:      usuario.email,
+        subject: 'CRM DATAFAST — Recuperación de contraseña',
+        html: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+            <h2 style="color:#1d4ed8">Recuperación de contraseña</h2>
+            <p>Hola <strong>${usuario.nombres}</strong>,</p>
+            <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta.</p>
+            <p>Haz clic en el botón para crear una nueva contraseña. El enlace es válido por <strong>15 minutos</strong>.</p>
+            <p style="margin:24px 0">
+              <a href="${resetUrl}" style="background:#1d4ed8;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold">
+                Restablecer contraseña
+              </a>
+            </p>
+            <p style="font-size:12px;color:#6b7280">
+              Si no solicitaste este cambio, ignora este email. Tu contraseña no cambiará.<br>
+              Enlace directo: ${resetUrl}
+            </p>
+          </div>
+        `,
+      });
+      return true;
+    } catch (err) {
+      this.logger.error(`Error enviando email de recuperación: ${err}`);
+      return false;
+    }
+  }
+
   private parseDuration(duration: string): number {
     const match = duration.match(/^(\d+)([smhd])$/);
     if (!match) return 900; // 15 min default

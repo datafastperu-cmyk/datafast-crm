@@ -14,7 +14,7 @@ import { AuthService } from './auth.service';
 import { AuditoriaService } from './auditoria.service';
 import {
   LoginDto, RefreshTokenDto, ChangePasswordDto,
-  ForgotPasswordDto, AuthResponseDto,
+  ForgotPasswordDto, ResetPasswordDto, AuthResponseDto,
 } from './dto/auth.dto';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { Public } from '../../common/decorators/public.decorator';
@@ -143,5 +143,44 @@ export class AuthController {
   })
   async getAudit(@CurrentUser() user: JwtPayload) {
     return this.auditoria.getHistorialUsuario(user.sub, user.empresaId);
+  }
+
+  // ── POST /api/v1/auth/forgot-password ─────────────────────
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Solicitar recuperación de contraseña',
+    description: 'Envía un email con enlace de recuperación válido 15 minutos. ' +
+      'Siempre responde 204 para no revelar si el email existe.',
+  })
+  @ApiResponse({ status: 204, description: 'Solicitud procesada (email enviado si el usuario existe)' })
+  @ApiResponse({ status: 429, description: 'Demasiadas solicitudes — espera 1 minuto' })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+    @Req() req: Request,
+  ): Promise<void> {
+    return this.authService.forgotPassword(dto.email, req);
+  }
+
+  // ── POST /api/v1/auth/reset-password ──────────────────────
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Restablecer contraseña con token',
+    description: 'Valida el token del enlace de recuperación y establece la nueva contraseña. ' +
+      'El token expira a los 15 minutos y se invalida tras el primer uso. ' +
+      'Resetea intentos fallidos y desbloquea la cuenta.',
+  })
+  @ApiResponse({ status: 204, description: 'Contraseña restablecida exitosamente' })
+  @ApiResponse({ status: 400, description: 'Token inválido o expirado' })
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Req() req: Request,
+  ): Promise<void> {
+    return this.authService.resetPasswordViaToken(dto.token, dto.passwordNuevo, req);
   }
 }

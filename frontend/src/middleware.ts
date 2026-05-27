@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Rutas que no requieren sesión
-const PUBLIC_PATHS = ['/login', '/installl'];
+const PUBLIC_PATHS = ['/login', '/installl', '/forgot-password', '/reset-password'];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
