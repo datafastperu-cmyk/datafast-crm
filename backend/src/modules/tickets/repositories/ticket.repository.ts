@@ -26,7 +26,7 @@ export class TicketRepository {
         cl.nombre_completo   AS "clienteNombre",
         cl.telefono          AS "clienteTelefono",
         cl.email             AS "clienteEmail",
-        CONCAT(u.nombres, ' ', u.apellido_paterno) AS "tecnicoNombre",
+        CONCAT(u.nombres, ' ', u.apellidos) AS "tecnicoNombre",
         co.numero_contrato   AS "contratoNumero"
       FROM tickets t
       LEFT JOIN clientes  cl ON cl.id = t.cliente_id
@@ -126,7 +126,7 @@ export class TicketRepository {
         t.closed_at             AS "closedAt",
         cl.nombre_completo      AS "clienteNombre",
         cl.telefono             AS "clienteTelefono",
-        CONCAT(u.nombres, ' ', u.apellido_paterno) AS "tecnicoNombre"
+        CONCAT(u.nombres, ' ', u.apellidos) AS "tecnicoNombre"
       FROM tickets t
       LEFT JOIN clientes cl ON cl.id = t.cliente_id AND cl.deleted_at IS NULL
       LEFT JOIN usuarios u  ON u.id  = t.tecnico_id
@@ -197,7 +197,7 @@ export class TicketRepository {
         c.id, c.contenido, c.es_privado AS "esPrivado",
         c.es_nota_interna AS "esNotaInterna", c.imagenes_url AS "imagenesUrl",
         c.created_at AS "createdAt",
-        CONCAT(u.nombres, ' ', u.apellido_paterno) AS "autorNombre",
+        CONCAT(u.nombres, ' ', u.apellidos) AS "autorNombre",
         u.id AS "autorId"
       FROM tickets_comentarios c
       LEFT JOIN usuarios u ON u.id = c.usuario_id
