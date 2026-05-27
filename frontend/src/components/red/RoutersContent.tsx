@@ -15,7 +15,7 @@ import { useToast }    from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 import type {
   Router as RouterType, CreateRouterDto,
-  MetodoConexion, TestConexionResult,
+  MetodoConexion, TestConexionResult, TipoControl, TipoControlVelocidad,
 } from '@/lib/api/mikrotik';
 import { AgregarRouterWizard } from './AgregarRouterWizard';
 import { vpnApi } from '@/lib/api/vpn';
@@ -34,6 +34,7 @@ const METODO_CONFIG: Record<MetodoConexion, {
 };
 
 const TIPO_CONTROL_OPTS = [
+  { val: 'pppoe_addresslist',  label: 'PPPoE/AddressList'           },
   { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
   { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
   { val: 'ninguna',            label: 'Ninguno'                     },
@@ -825,7 +826,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
               <div>
                 <p className={sectionHdr}>
                   <Shield className="w-3.5 h-3.5" />
-                  Control de seguridad IP-MAC
+                  Autenticación y Control Abonado
                 </p>
                 <select className={cn(inputCls, 'cursor-pointer')}
                   value={form.tipoControl ?? 'ninguna'}
