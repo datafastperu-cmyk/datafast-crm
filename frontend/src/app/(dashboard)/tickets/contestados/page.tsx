@@ -1,10 +1,6 @@
 import type { Metadata } from 'next';
-export const metadata: Metadata = { title: 'Tickets Contestados' };
+import { TicketsContent } from '@/components/tickets/TicketsContent';
+export const metadata: Metadata = { title: 'Tickets en Progreso — DataFast' };
 export default function TicketsContestadosPage() {
-  return (
-    <div className="p-8 flex flex-col items-center justify-center min-h-[400px] text-gray-400">
-      <p className="text-lg font-medium">Tickets Contestados</p>
-      <p className="text-sm mt-1">Próximamente disponible</p>
-    </div>
-  );
+  return <TicketsContent defaultEstado="en_progreso" title="Tickets en Progreso" />;
 }

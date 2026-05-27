@@ -43,15 +43,118 @@ export class FacturaRepository {
   }
 
   // ── Listado paginado con filtros ───────────────────────────
+  // ── Listado paginado con filtros ───────────────────────────
   async findAllPaginated(
     empresaId: string,
     filters: FilterFacturaDto,
-  ): Promise<PaginatedResult<Factura>> {
-    const qb = this.buildFilterQuery(empresaId, filters);
-    return paginate(qb, filters, [
-      'createdAt', 'fechaEmision', 'fechaVencimiento',
-      'total', 'estado', 'serie', 'correlativo',
-    ]);
+  ): Promise<PaginatedResult<any>> {
+    const page   = filters.page  ?? 1;
+    const limit  = filters.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const allowedSort: Record<string, string> = {
+      createdAt:        'f.created_at',
+      fechaEmision:     'f.fecha_emision',
+      fechaVencimiento: 'f.fecha_vencimiento',
+      total:            'f.total',
+      estado:           'f.estado',
+      serie:            'f.serie',
+      correlativo:      'f.correlativo',
+    };
+    const sortCol = allowedSort[filters.sortBy ?? ''] ?? 'f.created_at';
+    const sortDir = filters.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+
+    const conds: string[] = ['f.empresa_id = $1', 'f.deleted_at IS NULL'];
+    const params: any[]   = [empresaId];
+
+    if (filters.search) {
+      params.push(`%${filters.search}%`);
+      conds.push(`(f.numero_completo ILIKE $${params.length} OR f.descripcion ILIKE $${params.length})`);
+    }
+    if (filters.estado) {
+      params.push(filters.estado);
+      conds.push(`f.estado = $${params.length}`);
+    }
+    if (filters.estados?.length) {
+      params.push(filters.estados);
+      conds.push(`f.estado = ANY($${params.length})`);
+    }
+    if (filters.clienteId) {
+      params.push(filters.clienteId);
+      conds.push(`f.cliente_id = $${params.length}`);
+    }
+    if (filters.contratoId) {
+      params.push(filters.contratoId);
+      conds.push(`f.contrato_id = $${params.length}`);
+    }
+    if (filters.tipoComprobante) {
+      params.push(filters.tipoComprobante);
+      conds.push(`f.tipo_comprobante = $${params.length}`);
+    }
+    if (filters.serie) {
+      params.push(filters.serie);
+      conds.push(`f.serie = $${params.length}`);
+    }
+    if (filters.fechaDesde) {
+      params.push(filters.fechaDesde);
+      conds.push(`f.fecha_emision >= $${params.length}`);
+    }
+    if (filters.fechaHasta) {
+      params.push(filters.fechaHasta);
+      conds.push(`f.fecha_emision <= $${params.length}`);
+    }
+    if (filters.vencidas)
+      conds.push("f.fecha_vencimiento < CURRENT_DATE AND f.estado NOT IN ('pagada','anulada')");
+    if (filters.automatica !== undefined) {
+      params.push(filters.automatica);
+      conds.push(`f.generada_automaticamente = $${params.length}`);
+    }
+
+    const where = conds.join(' AND ');
+
+    const [{ total }] = await this.ds.query(
+      `SELECT COUNT(*) AS total FROM facturas f WHERE ${where}`,
+      params,
+    );
+
+    const data = await this.ds.query(`
+      SELECT
+        f.id,
+        f.empresa_id               AS "empresaId",
+        f.cliente_id               AS "clienteId",
+        f.contrato_id              AS "contratoId",
+        f.tipo_comprobante         AS "tipoComprobante",
+        f.serie,
+        f.correlativo,
+        f.numero_completo          AS "numeroCompleto",
+        f.descripcion,
+        f.periodo_inicio           AS "periodoInicio",
+        f.periodo_fin              AS "periodoFin",
+        f.estado,
+        f.fecha_emision            AS "fechaEmision",
+        f.fecha_vencimiento        AS "fechaVencimiento",
+        f.fecha_pago               AS "fechaPago",
+        f.pdf_url                  AS "pdfUrl",
+        f.sunat_enviada            AS "sunatEnviada",
+        f.sunat_aceptada           AS "sunatAceptada",
+        f.generada_automaticamente AS "generadaAutomaticamente",
+        f.created_at               AS "createdAt",
+        CAST(f.subtotal     AS FLOAT) AS "subtotal",
+        CAST(f.descuento    AS FLOAT) AS "descuento",
+        CAST(f.igv          AS FLOAT) AS "igv",
+        CAST(f.total        AS FLOAT) AS "total",
+        CAST(f.monto_pagado AS FLOAT) AS "montoPagado",
+        CAST(f.saldo        AS FLOAT) AS "saldo",
+        cl.nombre_completo         AS "clienteNombre",
+        cl.numero_documento        AS "clienteDocumento"
+      FROM facturas f
+      LEFT JOIN clientes cl ON cl.id = f.cliente_id AND cl.deleted_at IS NULL
+      WHERE ${where}
+      ORDER BY ${sortCol} ${sortDir}
+      LIMIT ${limit} OFFSET ${offset}
+    `, params);
+
+    return { data, total: parseInt(total, 10), page, limit };
   }
 
   buildFilterQuery(empresaId: string, f: FilterFacturaDto): SelectQueryBuilder<Factura> {

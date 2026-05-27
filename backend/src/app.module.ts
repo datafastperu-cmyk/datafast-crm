@@ -44,6 +44,7 @@ import { ZonasModule }            from './modules/zonas/zonas.module';
 import { GoogleIntegrationModule } from './modules/google-integration/google-integration.module';
 import { ConfiguracionModule }    from './modules/config/config.module';
 import { MantenimientoModule }    from './modules/mantenimiento/mantenimiento.module';
+import { TicketsModule }          from './modules/tickets/tickets.module';
 
 @Module({
   imports: [
@@ -153,6 +154,7 @@ import { MantenimientoModule }    from './modules/mantenimiento/mantenimiento.mo
     GoogleIntegrationModule,
     ConfiguracionModule,
     MantenimientoModule,
+    TicketsModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
