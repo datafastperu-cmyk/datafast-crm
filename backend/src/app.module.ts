@@ -45,6 +45,7 @@ import { GoogleIntegrationModule } from './modules/google-integration/google-int
 import { ConfiguracionModule }    from './modules/config/config.module';
 import { MantenimientoModule }    from './modules/mantenimiento/mantenimiento.module';
 import { TicketsModule }          from './modules/tickets/tickets.module';
+import { ReportesModule }         from './modules/reportes/reportes.module';
 
 @Module({
   imports: [
@@ -155,6 +156,7 @@ import { TicketsModule }          from './modules/tickets/tickets.module';
     ConfiguracionModule,
     MantenimientoModule,
     TicketsModule,
+    ReportesModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
