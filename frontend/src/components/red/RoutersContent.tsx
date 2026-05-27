@@ -782,46 +782,6 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
           {tab === 'config' && (
             <div className="space-y-5">
 
-              {/* Reconexión */}
-              <div>
-                <p className={sectionHdr}>
-                  <Settings className="w-3.5 h-3.5" />
-                  Reconexión
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>Timeout (segundos)</label>
-                    <input type="number" min={3} max={60}
-                      className={inputCls}
-                      value={form.timeoutConexion ?? 10}
-                      onChange={(e) => set('timeoutConexion', parseInt(e.target.value) || 10)} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Reintentos auto</label>
-                    <input type="number" min={1} max={10}
-                      className={inputCls}
-                      value={form.reintentos ?? 3}
-                      onChange={(e) => set('reintentos', parseInt(e.target.value) || 3)} />
-                  </div>
-                </div>
-              </div>
-
-              {/* SNMP */}
-              <div>
-                <p className={sectionHdr}>
-                  <Radio className="w-3.5 h-3.5" />
-                  SNMP
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>Comunidad SNMP</label>
-                    <input className={inputCls} value={form.snmpCommunity ?? 'public'}
-                      onChange={(e) => set('snmpCommunity', e.target.value)}
-                      placeholder="public" />
-                  </div>
-                </div>
-              </div>
-
               {/* Control de Seguridad */}
               <div>
                 <p className={sectionHdr}>
