@@ -921,6 +921,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
           search={q1}
           onSearch={setQ1}
           onAdd={openCreate}
+          addLabel="+ Agregar Servicio"
         />
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -1196,7 +1197,7 @@ function ServicioPanel({
   const { toast } = useToast();
   const [showPass, setShowPass] = useState(false);
   const {
-    register, handleSubmit, watch, setValue,
+    register, handleSubmit, watch, setValue, setError,
     formState: { errors, isSubmitting },
   } = useForm<ServicioForm>({
     resolver: zodResolver(servicioSchema),
@@ -1302,6 +1303,14 @@ function ServicioPanel({
     : [];
 
   const onSubmit = async (data: ServicioForm) => {
+    if (mostrarPppoe && !editing && !data.usuarioPppoe?.trim()) {
+      setError('usuarioPppoe', { message: 'Usuario PPPoE requerido' });
+      return;
+    }
+    if (mostrarPppoe && !editing && !data.passwordPppoe?.trim()) {
+      setError('passwordPppoe', { message: 'Contraseña PPPoE requerida' });
+      return;
+    }
     let latitudInstalacion: number | undefined;
     let longitudInstalacion: number | undefined;
     if (data.coordenadas) {
@@ -1503,16 +1512,16 @@ function ServicioPanel({
                       Router configurado con PPPoE + Address List
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <SP_Field label="User PPP/HS">
+                      <SP_Field label={editing ? 'User PPP/HS' : 'User PPP/HS *'} error={errors.usuarioPppoe?.message}>
                         <div className="relative">
                           <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                          <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                          <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Requerido'} className={cn(sp_input(!!errors.usuarioPppoe), 'pl-9')} />
                         </div>
                       </SP_Field>
-                      <SP_Field label="Password PPP/HS">
+                      <SP_Field label={editing ? 'Password PPP/HS' : 'Password PPP/HS *'} error={errors.passwordPppoe?.message}>
                         <div className="relative">
                           <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                          <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                          <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Requerido'} className={cn(sp_input(!!errors.passwordPppoe), 'pl-9')} />
                         </div>
                       </SP_Field>
                     </div>

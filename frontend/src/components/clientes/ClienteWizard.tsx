@@ -928,7 +928,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const pppUser = String(Date.now()).slice(-10).padStart(10, '0');
   const pppPass = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 
-  const { register, handleSubmit, watch, setValue } = useForm<S3>({
+  const { register, handleSubmit, watch, setValue, setError, formState: { errors: s3Errors } } = useForm<S3>({
     resolver:      zodResolver(step3Schema),
     defaultValues: initial ?? {
       excluirFirewall:  false,
@@ -1006,6 +1006,14 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     : [];
 
   const onFormSubmit = async (data: S3) => {
+    if (mostrarPppoe && !data.userPppHs?.trim()) {
+      setError('userPppHs', { message: 'Usuario PPPoE requerido' });
+      return;
+    }
+    if (mostrarPppoe && !data.passwordPppHs?.trim()) {
+      setError('passwordPppHs', { message: 'Contraseña PPPoE requerida' });
+      return;
+    }
     setSubmitting(true);
     try   { await onSubmit({ ...data, _costoInstalacion: costoInstalacion, _montoCostoInstalacion: montoCostoInstalacion } as any); }
     catch { setSubmitting(false); }
@@ -1154,21 +1162,21 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
                   Router configurado con PPPoE + Address List
                 </div>
               </div>
-              <Field label="User PPP/HS">
+              <Field label="User PPP/HS *" error={s3Errors.userPppHs?.message}>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <input
                     {...register('userPppHs')}
-                    className={cn(inputCls(), 'pl-9')}
+                    className={cn(inputCls(!!s3Errors.userPppHs), 'pl-9')}
                   />
                 </div>
               </Field>
-              <Field label="Password PPP/HS">
+              <Field label="Password PPP/HS *" error={s3Errors.passwordPppHs?.message}>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <input
                     {...register('passwordPppHs')}
-                    className={cn(inputCls(), 'pl-9')}
+                    className={cn(inputCls(!!s3Errors.passwordPppHs), 'pl-9')}
                   />
                 </div>
               </Field>
