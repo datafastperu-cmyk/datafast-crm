@@ -101,6 +101,33 @@ export class CreateDispositivoDto {
 }
 
 
+export class UpdateDispositivoDto {
+  @IsOptional() @IsString()
+  nombreEmisor?:        string;
+  @IsOptional() @IsString()
+  ipAddress?:           string;
+  @IsOptional() @IsString()
+  routerAccesoId?:      string | null;
+  @IsOptional() @IsString()
+  tipoEquipo?:          TipoEquipo;
+  @IsOptional() @IsString()
+  fabricante?:          Fabricante;
+  @IsOptional() @IsString()
+  modeloNombre?:        string | null;
+  @IsOptional() @IsString()
+  usuario?:             string | null;
+  @IsOptional() @IsString()
+  contrasena?:          string;
+  @IsOptional() @IsNumber()
+  puertoApi?:           number;
+  @IsOptional() @IsBoolean()
+  useSsl?:              boolean;
+  @IsOptional() @IsBoolean()
+  monitoreoSnmp?:       boolean;
+  @IsOptional() @IsNumber()
+  intervaloChequeoSeg?: number;
+}
+
 export class FiltroAlertaQuery {
   @IsOptional() @IsString()
   status?: string;
@@ -368,6 +395,63 @@ export class MonitoreoService {
       order: { nombreEmisor: 'ASC' },
     });
     return StdResponse.ok(list);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // GET /monitoreo/dispositivos/:id
+  // ═══════════════════════════════════════════════════════════════
+  async findDispositivo(id: string, empresaId: string) {
+    const d = await this.dispoRepo.findOne({ where: { id, empresaId, deletedAt: IsNull() } });
+    if (!d) throw new NotFoundException(`Dispositivo ${id} no encontrado`);
+    return StdResponse.ok(d);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PATCH /monitoreo/dispositivos/:id
+  // ═══════════════════════════════════════════════════════════════
+  async updateDispositivo(id: string, empresaId: string, dto: UpdateDispositivoDto) {
+    const d = await this.dispoRepo.findOne({ where: { id, empresaId, deletedAt: IsNull() } });
+    if (!d) throw new NotFoundException(`Dispositivo ${id} no encontrado`);
+
+    const { contrasena, ...rest } = dto;
+
+    if (rest.nombreEmisor  !== undefined) d.nombreEmisor  = rest.nombreEmisor;
+    if (rest.ipAddress     !== undefined) d.ipAddress     = rest.ipAddress;
+    if ('routerAccesoId'   in  rest)      d.routerAccesoId = rest.routerAccesoId ?? null;
+    if (rest.tipoEquipo    !== undefined) d.tipoEquipo    = rest.tipoEquipo;
+    if (rest.fabricante    !== undefined) d.fabricante    = rest.fabricante;
+    if ('modeloNombre'     in  rest)      d.modeloNombre  = rest.modeloNombre ?? null;
+    if ('usuario'          in  rest)      d.usuario       = rest.usuario ?? null;
+    if (rest.puertoApi     !== undefined) d.puertoApi     = rest.puertoApi;
+    if (rest.useSsl        !== undefined) d.useSsl        = rest.useSsl;
+    if (rest.monitoreoSnmp !== undefined) d.monitoreoSnmp = rest.monitoreoSnmp;
+    if (rest.intervaloChequeoSeg !== undefined) d.intervaloChequeoSeg = rest.intervaloChequeoSeg;
+
+    if (contrasena && contrasena !== '***stored***') {
+      d.contrasenaCifrada = encrypt(contrasena);
+    }
+
+    await this.dispoRepo.save(d);
+    return StdResponse.ok(d);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // DELETE /monitoreo/dispositivos/:id
+  // ═══════════════════════════════════════════════════════════════
+  async deleteDispositivo(id: string, empresaId: string) {
+    const d = await this.dispoRepo.findOne({ where: { id, empresaId, deletedAt: IsNull() } });
+    if (!d) throw new NotFoundException(`Dispositivo ${id} no encontrado`);
+
+    const [{ count }] = await this.ds.query(
+      `SELECT COUNT(*) as count FROM contratos WHERE antena_ap_id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
+    if (Number(count) > 0) {
+      throw new BadRequestException('No es posible eliminar el dispositivo porque tiene contratos asociados.');
+    }
+
+    await this.dispoRepo.softDelete(id);
+    return StdResponse.ok({ deleted: true });
   }
 
   // ═══════════════════════════════════════════════════════════════

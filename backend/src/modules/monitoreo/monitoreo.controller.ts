@@ -7,7 +7,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import {
-  MonitoreoService, ProbarConexionDto, CreateDispositivoDto,
+  MonitoreoService, ProbarConexionDto, CreateDispositivoDto, UpdateDispositivoDto,
   FiltroAlertaQuery, ResolverAlertaDto, CreateUmbralDto,
 } from './monitoreo.service';
 import { RequirePermission }   from '../../common/decorators/roles.decorator';
@@ -64,6 +64,40 @@ export class MonitoreoController {
   @ApiOperation({ summary: 'Listar dispositivos de monitoreo' })
   getDispositivos(@CurrentUser() user: JwtPayload) {
     return this.monitoreoSvc.getDispositivos(user.empresaId);
+  }
+
+  // ── GET /monitoreo/dispositivos/:id ─────────────────────────
+  @Get('dispositivos/:id')
+  @RequirePermission('monitoring:view')
+  @ApiOperation({ summary: 'Obtener dispositivo por id' })
+  getDispositivo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.monitoreoSvc.findDispositivo(id, user.empresaId);
+  }
+
+  // ── PATCH /monitoreo/dispositivos/:id ────────────────────────
+  @Patch('dispositivos/:id')
+  @RequirePermission('monitoring:manage')
+  @ApiOperation({ summary: 'Actualizar dispositivo de monitoreo' })
+  updateDispositivo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateDispositivoDto,
+  ) {
+    return this.monitoreoSvc.updateDispositivo(id, user.empresaId, dto);
+  }
+
+  // ── DELETE /monitoreo/dispositivos/:id ───────────────────────
+  @Delete('dispositivos/:id')
+  @RequirePermission('monitoring:manage')
+  @ApiOperation({ summary: 'Eliminar dispositivo de monitoreo (soft delete)' })
+  deleteDispositivo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.monitoreoSvc.deleteDispositivo(id, user.empresaId);
   }
 
   // ── GET /monitoreo/alertas ───────────────────────────────────

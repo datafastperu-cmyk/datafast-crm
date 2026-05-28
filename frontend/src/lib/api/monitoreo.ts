@@ -330,6 +330,20 @@ export const dispositivosApi = {
     return res.data.data ?? [];
   },
 
+  getDispositivo: async (id: string): Promise<DispositivoItem> => {
+    const res = await api.get<{ data: DispositivoItem }>(`/monitoreo/dispositivos/${id}`);
+    return res.data.data;
+  },
+
+  updateDispositivo: async (id: string, dto: Partial<CreateDispositivoDto>): Promise<DispositivoItem> => {
+    const res = await api.patch<{ data: DispositivoItem }>(`/monitoreo/dispositivos/${id}`, dto);
+    return res.data.data;
+  },
+
+  deleteDispositivo: async (id: string): Promise<void> => {
+    await api.delete(`/monitoreo/dispositivos/${id}`);
+  },
+
 };
 export interface DispositivoItem {
   id:              string;
@@ -344,6 +358,9 @@ export interface DispositivoItem {
   intervaloChequeoSeg: number;
   lastSeenAt:      string | null;
   deletedAt:       string | null;
+  routerAccesoId?: string | null;
+  modeloNombre?:   string | null;
+  usuario?:        string | null;
 }
 
 export interface AlertaItem {

@@ -83,12 +83,14 @@ interface ProbarResult {
 }
 
 interface Props {
-  onClose:   () => void;
-  onSuccess: () => void;
+  onClose:        () => void;
+  onSuccess:      () => void;
+  dispositivoId?: string;
 }
 
 // ─── Componente principal ──────────────────────────────────────
-export function DispositivoFormModal({ onClose, onSuccess }: Props) {
+export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Props) {
+  const isEdit                      = !!dispositivoId;
   const { toast }                   = useToast();
   const [testResult, setTestResult] = useState<ProbarResult | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -99,12 +101,20 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
     staleTime: 60_000,
   });
 
+  const { data: existing, isLoading: loadingExisting } = useQuery({
+    queryKey:  ['dispositivo', dispositivoId],
+    queryFn:   () => monitoreoApi.getDispositivo(dispositivoId!),
+    enabled:   isEdit,
+    staleTime: 0,
+  });
+
   const {
     register,
     handleSubmit,
     watch,
     setValue,
     getValues,
+    reset,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -122,6 +132,25 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
       monitoreoSnmp:  false,
     },
   });
+
+  // Populate form when existing device loads
+  useEffect(() => {
+    if (existing) {
+      reset({
+        nombreEmisor:   existing.nombreEmisor,
+        ipAddress:      existing.ipAddress,
+        routerAccesoId: existing.routerAccesoId ?? '',
+        tipoEquipo:     existing.tipoEquipo as FormData['tipoEquipo'],
+        fabricante:     existing.fabricante as FormData['fabricante'],
+        modeloNombre:   existing.modeloNombre ?? '',
+        usuario:        existing.usuario ?? '',
+        contrasena:     '***stored***',
+        puertoApi:      existing.puertoApi,
+        useSsl:         existing.useSsl,
+        monitoreoSnmp:  existing.monitoreoSnmp,
+      });
+    }
+  }, [existing, reset]);
 
   const fabricante    = watch('fabricante');
   const useSsl        = watch('useSsl');
@@ -156,10 +185,10 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
     onError:   (e) => setTestResult({ conectado: false, error: parseApiError(e) }),
   });
 
-  // ── Mutación: registrar ─────────────────────────────────────
-  const { mutate: crear, isPending: guardando } = useMutation({
-    mutationFn: (data: FormData) =>
-      monitoreoApi.createDispositivo({
+  // ── Mutación: crear / actualizar ───────────────────────────
+  const { mutate: guardar, isPending: guardando } = useMutation({
+    mutationFn: (data: FormData) => {
+      const payload = {
         nombreEmisor:   data.nombreEmisor,
         ipAddress:      data.ipAddress,
         routerAccesoId: data.routerAccesoId || undefined,
@@ -171,15 +200,19 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
         puertoApi:      data.puertoApi,
         useSsl:         data.useSsl,
         monitoreoSnmp:  data.monitoreoSnmp,
-      }),
+      };
+      return isEdit
+        ? monitoreoApi.updateDispositivo(dispositivoId!, payload)
+        : monitoreoApi.createDispositivo(payload);
+    },
     onSuccess: () => {
-      toast('Dispositivo registrado correctamente', { type: 'success' });
+      toast(isEdit ? 'Dispositivo actualizado correctamente' : 'Dispositivo registrado correctamente', { type: 'success' });
       onSuccess();
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
-  const disabled = testando || guardando;
+  const disabled = testando || guardando || (isEdit && loadingExisting);
 
   return (
     <div
@@ -200,7 +233,7 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
               <Server className="w-4 h-4 text-blue-400" />
             </div>
             <div>
-              <h3 className="font-semibold text-white leading-none">Nuevo dispositivo</h3>
+              <h3 className="font-semibold text-white leading-none">{isEdit ? 'Editar dispositivo' : 'Nuevo dispositivo'}</h3>
               <p className="text-[11px] text-zinc-500 mt-0.5">Módulo de Monitoreo</p>
             </div>
           </div>
@@ -215,7 +248,7 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
         </div>
 
         {/* ── Cuerpo ─────────────────────────────────────────── */}
-        <form onSubmit={handleSubmit((d) => crear(d))}>
+        <form onSubmit={handleSubmit((d) => guardar(d))}>
           <div className="px-6 py-5 space-y-4 max-h-[66vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
 
             {/* Nombre Emisor */}
@@ -445,11 +478,11 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
 
           {/* ── Footer ─────────────────────────────────────────── */}
           <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-zinc-700/60 bg-zinc-900/80 rounded-b-2xl">
-            {/* Probar conexión */}
+            {/* Probar conexión (solo si no es sentinel) */}
             <button
               type="button"
               onClick={() => probar()}
-              disabled={disabled}
+              disabled={disabled || (isEdit && watch('contrasena') === '***stored***')}
               className={cn(
                 'flex items-center gap-2 px-4 py-2 text-sm rounded-lg border transition-all',
                 'border-zinc-600 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-500',
@@ -463,7 +496,7 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
                   : <><Wifi className="w-3.5 h-3.5" />Probar conexión</>}
             </button>
 
-            {/* Cerrar / Registrar */}
+            {/* Cerrar / Guardar */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -483,8 +516,8 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
                 )}
               >
                 {guardando
-                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Registrando…</>
-                  : 'Registrar'}
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />{isEdit ? 'Guardando…' : 'Registrando…'}</>
+                  : isEdit ? 'Guardar cambios' : 'Registrar'}
               </button>
             </div>
           </div>

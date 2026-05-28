@@ -1,14 +1,15 @@
 'use client';
 
 import { useState }          from 'react';
-import { useQuery }          from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, Wifi, WifiOff, AlertTriangle, ArrowDown,
-  ArrowUp, Plus, RefreshCw, Users, Zap,
+  ArrowUp, Plus, RefreshCw, Users, Zap, Pencil, Trash2,
 } from 'lucide-react';
 
 import { dispositivosApi }            from '@/lib/api/monitoreo';
-import { formatBps, formatDateTime, cn } from '@/lib/utils';
+import { formatBps, formatDateTime, cn, parseApiError } from '@/lib/utils';
+import { useToast }                   from '@/components/ui/toaster';
 import { ClientesSlideOver }          from './ClientesSlideOver';
 import { DispositivoFormModal }        from './DispositivoFormModal';
 
@@ -68,14 +69,31 @@ function PctBar({ value, warnAt = 70, critAt = 90 }: { value: number | null; war
 
 // ─── componente principal ─────────────────────────────────────
 export function TiempoRealContent() {
-  const [modalOpen, setModalOpen]   = useState(false);
-  const [slideOver, setSlideOver]   = useState<{ id: string; nombre: string } | null>(null);
+  const { toast }                     = useToast();
+  const queryClient                   = useQueryClient();
+  const [modalOpen, setModalOpen]     = useState(false);
+  const [editId, setEditId]           = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<DispositivoConMetrica | null>(null);
+  const [slideOver, setSlideOver]     = useState<{ id: string; nombre: string } | null>(null);
 
   const { data, isLoading, isFetching, refetch } = useQuery<TiempoRealData>({
     queryKey: ['monitoreo', 'tiempo-real'],
     queryFn:  () => dispositivosApi.getTiempoReal(),
     refetchInterval: 30_000,
     staleTime: 20_000,
+  });
+
+  const { mutate: eliminar, isPending: eliminando } = useMutation({
+    mutationFn: (id: string) => dispositivosApi.deleteDispositivo(id),
+    onSuccess: () => {
+      toast('Dispositivo eliminado', { type: 'success' });
+      setPendingDelete(null);
+      queryClient.invalidateQueries({ queryKey: ['monitoreo', 'tiempo-real'] });
+    },
+    onError: (e) => {
+      toast(parseApiError(e), { type: 'error' });
+      setPendingDelete(null);
+    },
   });
 
   const totales = data?.totales ?? { online: 0, offline: 0, reverificando: 0, degradado: 0, alertasActivas: 0 };
@@ -239,15 +257,31 @@ export function TiempoRealContent() {
                       {d.ultimaMetricaAt ? formatDateTime(d.ultimaMetricaAt) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      {d.tipoEquipo === 'ANTENA_AP' && (
+                      <div className="flex items-center gap-1.5">
+                        {d.tipoEquipo === 'ANTENA_AP' && (
+                          <button
+                            onClick={() => setSlideOver({ id: d.id, nombre: d.nombreEmisor })}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs transition-colors whitespace-nowrap"
+                          >
+                            <Users className="h-3 w-3" />
+                            Clientes
+                          </button>
+                        )}
                         <button
-                          onClick={() => setSlideOver({ id: d.id, nombre: d.nombreEmisor })}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs transition-colors whitespace-nowrap"
+                          onClick={() => setEditId(d.id)}
+                          title="Editar dispositivo"
+                          className="p-1.5 rounded-md text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
                         >
-                          <Users className="h-3 w-3" />
-                          Clientes
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
-                      )}
+                        <button
+                          onClick={() => setPendingDelete(d)}
+                          title="Eliminar dispositivo"
+                          className="p-1.5 rounded-md text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -263,6 +297,55 @@ export function TiempoRealContent() {
           onClose={() => setModalOpen(false)}
           onSuccess={() => { setModalOpen(false); refetch(); }}
         />
+      )}
+
+      {editId && (
+        <DispositivoFormModal
+          dispositivoId={editId}
+          onClose={() => setEditId(null)}
+          onSuccess={() => { setEditId(null); refetch(); }}
+        />
+      )}
+
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          onClick={() => setPendingDelete(null)}
+        >
+          <div
+            className="bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl shadow-black/70 w-full max-w-sm p-6 ring-1 ring-white/5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20">
+                <Trash2 className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white leading-none">Eliminar dispositivo</h3>
+                <p className="text-[11px] text-zinc-500 mt-0.5">Esta acción no se puede deshacer</p>
+              </div>
+            </div>
+            <p className="text-sm text-zinc-300 mb-6">
+              ¿Confirmas eliminar <span className="font-medium text-white">{pendingDelete.nombreEmisor}</span>?
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setPendingDelete(null)}
+                disabled={eliminando}
+                className="px-4 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => eliminar(pendingDelete.id)}
+                disabled={eliminando}
+                className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg font-medium bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-40"
+              >
+                {eliminando ? 'Eliminando…' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {slideOver && (
