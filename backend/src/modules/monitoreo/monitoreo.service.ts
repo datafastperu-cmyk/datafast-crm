@@ -10,7 +10,8 @@ import { DataSource, IsNull, Repository }     from 'typeorm';
 import { DispositivoMonitoreo }  from './entities/dispositivo-monitoreo.entity';
 import { MetricasMonitoreo }     from './entities/metricas-monitoreo.entity';
 import { AlertaSistema }         from './entities/alerta-sistema.entity';
-import { Fabricante, StatusDispositivo, TipoEquipo } from './enums/monitoreo.enums';
+import { UmbralAlerta }           from './entities/umbral-alerta.entity';
+import { Fabricante, NivelAlerta, StatusAlerta, StatusDispositivo, TipoEquipo } from './enums/monitoreo.enums';
 import {
   MonitoreoWorkerService,
   WirelessClient,
@@ -79,6 +80,32 @@ export class CreateDispositivoDto {
   intervaloChequeoSeg?: number;
 }
 
+
+export class FiltroAlertaQuery {
+  status?: string;
+  nivel?:  string;
+  page?:   number;
+  limit?:  number;
+}
+
+export class ResolverAlertaDto {
+  motivo?: string;
+}
+
+export class CreateUmbralDto {
+  dispositivoId?:           string;
+  tipoEquipo?:              TipoEquipo;
+  nombre?:                  string;
+  latenciaMaxMs?:           number;
+  lossMaxPct?:              number;
+  cpuMaxPct?:               number;
+  memoryMaxPct?:            number;
+  trafficDownMaxBps?:       string;
+  trafficUpMaxBps?:         string;
+  nivelAlerta?:             string;
+  confirmacionesRequeridas?: number;
+}
+
 @Injectable()
 export class MonitoreoService {
   private readonly logger = new Logger(MonitoreoService.name);
@@ -98,6 +125,9 @@ export class MonitoreoService {
 
     private readonly worker: MonitoreoWorkerService,
     private readonly pool: RouterConnectionPool,
+
+    @InjectRepository(UmbralAlerta)
+    private readonly umbralRepo: Repository<UmbralAlerta>,
   ) {}
 
   // ═══════════════════════════════════════════════════════════════
@@ -290,6 +320,94 @@ export class MonitoreoService {
     await this.dispoRepo.save(d);
     return StdResponse.ok(d);
   }
+  // ═══════════════════════════════════════════════════════════════
+  // GET /monitoreo/dispositivos
+  // ═══════════════════════════════════════════════════════════════
+  async getDispositivos(empresaId: string) {
+    const list = await this.dispoRepo.find({
+      where: { empresaId, deletedAt: IsNull() },
+      order: { nombreEmisor: 'ASC' },
+    });
+    return StdResponse.ok(list);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // GET /monitoreo/alertas
+  // ═══════════════════════════════════════════════════════════════
+  async getAlertas(empresaId: string, filtro: FiltroAlertaQuery) {
+    const qb = this.alertaRepo.createQueryBuilder('a')
+      .leftJoinAndSelect('a.dispositivo', 'd')
+      .where('a.empresa_id = :eid', { eid: empresaId });
+
+    if (filtro.status) qb.andWhere('a.status = :status', { status: filtro.status });
+    if (filtro.nivel)  qb.andWhere('a.nivel  = :nivel',  { nivel:  filtro.nivel  });
+
+    const page  = filtro.page  ?? 1;
+    const limit = filtro.limit ?? 50;
+    qb.orderBy('a.created_at', 'DESC').skip((page - 1) * limit).take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+    return StdResponse.ok({ items, total, page, limit });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PATCH /monitoreo/alertas/:id/resolver
+  // ═══════════════════════════════════════════════════════════════
+  async resolverAlerta(
+    id: string, empresaId: string, userId: string, dto: ResolverAlertaDto,
+  ) {
+    const alerta = await this.alertaRepo.findOne({ where: { id, empresaId } });
+    if (!alerta) throw new NotFoundException('Alerta no encontrada');
+    if (alerta.status === StatusAlerta.RESUELTA)
+      throw new BadRequestException('La alerta ya fue resuelta');
+    alerta.status        = StatusAlerta.RESUELTA;
+    alerta.resueltoAt    = new Date();
+    alerta.resueltoPorId = userId;
+    await this.alertaRepo.save(alerta);
+    return StdResponse.ok(alerta);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // GET /monitoreo/umbrales
+  // ═══════════════════════════════════════════════════════════════
+  async getUmbrales(empresaId: string, dispositivoId?: string) {
+    const where: any = { empresaId, deletedAt: IsNull() };
+    if (dispositivoId) where.dispositivoId = dispositivoId;
+    const list = await this.umbralRepo.find({ where, order: { createdAt: 'ASC' } });
+    return StdResponse.ok(list);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // POST /monitoreo/umbrales
+  // ═══════════════════════════════════════════════════════════════
+  async createUmbral(dto: CreateUmbralDto, empresaId: string) {
+    const u = this.umbralRepo.create({ ...dto, empresaId });
+    await this.umbralRepo.save(u);
+    return StdResponse.ok(u);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PATCH /monitoreo/umbrales/:id
+  // ═══════════════════════════════════════════════════════════════
+  async updateUmbral(id: string, empresaId: string, dto: Partial<CreateUmbralDto>) {
+    const u = await this.umbralRepo.findOne({ where: { id, empresaId, deletedAt: IsNull() } });
+    if (!u) throw new NotFoundException('Umbral no encontrado');
+    Object.assign(u, dto);
+    await this.umbralRepo.save(u);
+    return StdResponse.ok(u);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // DELETE /monitoreo/umbrales/:id
+  // ═══════════════════════════════════════════════════════════════
+  async deleteUmbral(id: string, empresaId: string) {
+    const u = await this.umbralRepo.findOne({ where: { id, empresaId, deletedAt: IsNull() } });
+    if (!u) throw new NotFoundException('Umbral no encontrado');
+    await this.umbralRepo.softDelete(id);
+    return StdResponse.ok({ deleted: true });
+  }
+
+
 }
 
 

@@ -1,4 +1,4 @@
 import type { Metadata } from 'next';
-import { MonitoreoContent } from '@/components/monitoreo/MonitoreoContent';
-export const metadata: Metadata = { title: 'Monitoreo en tiempo real' };
-export default function MonitoreoPage() { return <MonitoreoContent />; }
+import { TiempoRealContent } from '@/components/monitoreo/TiempoRealContent';
+export const metadata: Metadata = { title: 'Tiempo Real — Monitoreo' };
+export default function MonitoreoPage() { return <TiempoRealContent />; }

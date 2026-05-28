@@ -285,4 +285,127 @@ export const dispositivosApi = {
     const res = await api.get('/monitoreo/tiempo-real');
     return res.data.data;
   },
+  getDispositivos: async (): Promise<DispositivoItem[]> => {
+    const res = await api.get<{ data: DispositivoItem[] }>('/monitoreo/dispositivos');
+    return res.data.data ?? [];
+  },
+
+  getAlertas: async (filtro: FiltroAlerta = {}): Promise<{ items: AlertaItem[]; total: number }> => {
+    const res = await api.get<{ data: { items: AlertaItem[]; total: number } }>(
+      '/monitoreo/alertas', { params: filtro },
+    );
+    return res.data.data ?? { items: [], total: 0 };
+  },
+
+  resolverAlerta: async (id: string, dto: { motivo?: string } = {}): Promise<AlertaItem> => {
+    const res = await api.patch<{ data: AlertaItem }>(`/monitoreo/alertas/${id}/resolver`, dto);
+    return res.data.data;
+  },
+
+  getUmbrales: async (dispositivoId?: string): Promise<UmbralItem[]> => {
+    const res = await api.get<{ data: UmbralItem[] }>(
+      '/monitoreo/umbrales',
+      dispositivoId ? { params: { dispositivoId } } : undefined,
+    );
+    return res.data.data ?? [];
+  },
+
+  createUmbral: async (dto: CreateUmbralPayload): Promise<UmbralItem> => {
+    const res = await api.post<{ data: UmbralItem }>('/monitoreo/umbrales', dto);
+    return res.data.data;
+  },
+
+  updateUmbral: async (id: string, dto: Partial<CreateUmbralPayload>): Promise<UmbralItem> => {
+    const res = await api.patch<{ data: UmbralItem }>(`/monitoreo/umbrales/${id}`, dto);
+    return res.data.data;
+  },
+
+  deleteUmbral: async (id: string): Promise<void> => {
+    await api.delete(`/monitoreo/umbrales/${id}`);
+  },
+
+  getClientesConectados: async (id: string): Promise<WirelessClientItem[]> => {
+    const res = await api.get<{ data: WirelessClientItem[] }>(`/monitoreo/dispositivos/${id}/clientes`);
+    return res.data.data ?? [];
+  },
+
 };
+export interface DispositivoItem {
+  id:              string;
+  nombreEmisor:    string;
+  ipAddress:       string;
+  tipoEquipo:      string;
+  fabricante:      string;
+  status:          string;
+  puertoApi:       number;
+  useSsl:          boolean;
+  monitoreoSnmp:   boolean;
+  intervaloChequeoSeg: number;
+  lastSeenAt:      string | null;
+  deletedAt:       string | null;
+}
+
+export interface AlertaItem {
+  id:             string;
+  dispositivoId:  string;
+  dispositivo?:   { id: string; nombreEmisor: string; ipAddress: string; tipoEquipo: string } | null;
+  nivel:          string;
+  categoria:      string | null;
+  mensaje:        string;
+  valorDetectado: string | null;
+  valorUmbral:    string | null;
+  status:         string;
+  resueltoAt:     string | null;
+  resueltoPorId:  string | null;
+  createdAt:      string;
+}
+
+export interface UmbralItem {
+  id:                      string;
+  dispositivoId:           string | null;
+  tipoEquipo:              string | null;
+  nombre:                  string | null;
+  latenciaMaxMs:           number | null;
+  lossMaxPct:              number | null;
+  cpuMaxPct:               number | null;
+  memoryMaxPct:            number | null;
+  trafficDownMaxBps:       string | null;
+  trafficUpMaxBps:         string | null;
+  nivelAlerta:             string;
+  confirmacionesRequeridas: number;
+  dispositivo?:            { nombreEmisor: string; tipoEquipo: string } | null;
+  createdAt:               string;
+  updatedAt:               string;
+}
+
+export interface WirelessClientItem {
+  mac:          string;
+  interfaz:     string;
+  signalDbm:    number;
+  snr:          number;
+  txRate:       string;
+  rxRate:       string;
+  uptime:       string;
+  lastActivity: string;
+}
+
+export interface FiltroAlerta {
+  status?: string;
+  nivel?:  string;
+  page?:   number;
+  limit?:  number;
+}
+
+export interface CreateUmbralPayload {
+  dispositivoId?:           string | null;
+  tipoEquipo?:              string | null;
+  nombre?:                  string | null;
+  latenciaMaxMs?:           number | null;
+  lossMaxPct?:              number | null;
+  cpuMaxPct?:               number | null;
+  memoryMaxPct?:            number | null;
+  trafficDownMaxBps?:       string | null;
+  trafficUpMaxBps?:         string | null;
+  nivelAlerta?:             string;
+  confirmacionesRequeridas?: number;
+}

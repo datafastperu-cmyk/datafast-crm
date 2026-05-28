@@ -1,4 +1,4 @@
 import type { Metadata } from 'next';
-import { ConfiguracionAlertas } from '@/components/monitoreo/ConfiguracionAlertas';
-export const metadata: Metadata = { title: 'Configuración de Alertas' };
-export default function ConfiguracionAlertasPage() { return <ConfiguracionAlertas />; }
+import { UmbralesContent } from '@/components/monitoreo/UmbralesContent';
+export const metadata: Metadata = { title: 'Umbrales de Alerta' };
+export default function ConfiguracionAlertasPage() { return <UmbralesContent />; }

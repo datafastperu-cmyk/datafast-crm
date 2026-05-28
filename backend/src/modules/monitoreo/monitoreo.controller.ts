@@ -1,12 +1,15 @@
 // Ruta: /opt/datafast/backend/src/modules/monitoreo/monitoreo.controller.ts
 
 import {
-  Body, Controller, Get, Param,
-  ParseUUIDPipe, Post,
+  Body, Controller, Delete, Get, Param,
+  ParseUUIDPipe, Patch, Post, Query,
 }                            from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import { MonitoreoService, ProbarConexionDto, CreateDispositivoDto } from './monitoreo.service';
+import {
+  MonitoreoService, ProbarConexionDto, CreateDispositivoDto,
+  FiltroAlertaQuery, ResolverAlertaDto, CreateUmbralDto,
+} from './monitoreo.service';
 import { RequirePermission }   from '../../common/decorators/roles.decorator';
 import { CurrentUser }         from '../../common/decorators/current-user.decorator';
 import { JwtPayload }          from '../../common/decorators/current-user.decorator';
@@ -55,4 +58,84 @@ export class MonitoreoController {
   ) {
     return this.monitoreoSvc.createDispositivo(dto, user.empresaId);
   }
+  // ── GET /monitoreo/dispositivos ──────────────────────────────
+  @Get('dispositivos')
+  @RequirePermission('monitoreo:leer')
+  @ApiOperation({ summary: 'Listar dispositivos de monitoreo' })
+  getDispositivos(@CurrentUser() user: JwtPayload) {
+    return this.monitoreoSvc.getDispositivos(user.empresaId);
+  }
+
+  // ── GET /monitoreo/alertas ───────────────────────────────────
+  @Get('alertas')
+  @RequirePermission('monitoreo:leer')
+  @ApiOperation({ summary: 'Listar alertas con filtro' })
+  getAlertas(
+    @CurrentUser() user: JwtPayload,
+    @Query('status') status?: string,
+    @Query('nivel')  nivel?:  string,
+    @Query('page')   page?:   string,
+    @Query('limit')  limit?:  string,
+  ) {
+    return this.monitoreoSvc.getAlertas(user.empresaId, {
+      status, nivel,
+      page:  page  ? parseInt(page,  10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  // ── PATCH /monitoreo/alertas/:id/resolver ────────────────────
+  @Patch('alertas/:id/resolver')
+  @RequirePermission('monitoreo:escribir')
+  @ApiOperation({ summary: 'Resolver alerta' })
+  resolverAlerta(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ResolverAlertaDto,
+  ) {
+    return this.monitoreoSvc.resolverAlerta(id, user.empresaId, user.sub, dto);
+  }
+
+  // ── GET /monitoreo/umbrales ──────────────────────────────────
+  @Get('umbrales')
+  @RequirePermission('monitoreo:leer')
+  @ApiOperation({ summary: 'Listar umbrales de alerta' })
+  getUmbrales(
+    @CurrentUser() user: JwtPayload,
+    @Query('dispositivoId') dispositivoId?: string,
+  ) {
+    return this.monitoreoSvc.getUmbrales(user.empresaId, dispositivoId);
+  }
+
+  // ── POST /monitoreo/umbrales ─────────────────────────────────
+  @Post('umbrales')
+  @RequirePermission('monitoreo:escribir')
+  @ApiOperation({ summary: 'Crear umbral de alerta' })
+  createUmbral(@Body() dto: CreateUmbralDto, @CurrentUser() user: JwtPayload) {
+    return this.monitoreoSvc.createUmbral(dto, user.empresaId);
+  }
+
+  // ── PATCH /monitoreo/umbrales/:id ────────────────────────────
+  @Patch('umbrales/:id')
+  @RequirePermission('monitoreo:escribir')
+  @ApiOperation({ summary: 'Actualizar umbral de alerta' })
+  updateUmbral(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: Partial<CreateUmbralDto>,
+  ) {
+    return this.monitoreoSvc.updateUmbral(id, user.empresaId, dto);
+  }
+
+  // ── DELETE /monitoreo/umbrales/:id ───────────────────────────
+  @Delete('umbrales/:id')
+  @RequirePermission('monitoreo:escribir')
+  @ApiOperation({ summary: 'Eliminar umbral de alerta' })
+  deleteUmbral(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.monitoreoSvc.deleteUmbral(id, user.empresaId);
+  }
+
 }
