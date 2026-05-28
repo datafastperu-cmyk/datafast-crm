@@ -1079,7 +1079,7 @@ export function RoutersContent() {
                     <td className="px-4 py-3 text-xs">
                       {r.cpuUsoPct != null || r.memoriaUsoPct != null || r.totalSesionesPppoe != null ? (
                         <div className="space-y-0.5">
-                          {r.cpuUsoPct != null && (
+                          {r.cpuUsoPct != null && (() => { const cpu = Number(r.cpuUsoPct); return (
                             <div className="flex items-center gap-1 text-gray-400">
                               <Cpu className="w-3 h-3" />
                               <div className="flex items-center gap-1">
@@ -1087,16 +1087,16 @@ export function RoutersContent() {
                                   <div
                                     className="h-full rounded-full"
                                     style={{
-                                      width: `${Math.min(r.cpuUsoPct, 100)}%`,
-                                      background: r.cpuUsoPct > 80 ? '#ef4444' : r.cpuUsoPct > 50 ? '#f59e0b' : '#22c55e',
+                                      width: `${Math.min(cpu, 100)}%`,
+                                      background: cpu > 80 ? '#ef4444' : cpu > 50 ? '#f59e0b' : '#22c55e',
                                     }}
                                   />
                                 </div>
-                                <span>{r.cpuUsoPct.toFixed(0)}%</span>
+                                <span>{cpu.toFixed(0)}%</span>
                               </div>
                             </div>
-                          )}
-                          {r.memoriaUsoPct != null && (
+                          ); })()}
+                          {r.memoriaUsoPct != null && (() => { const ram = Number(r.memoriaUsoPct); return (
                             <div className="flex items-center gap-1 text-gray-400">
                               <MemoryStick className="w-3 h-3" />
                               <div className="flex items-center gap-1">
@@ -1104,15 +1104,15 @@ export function RoutersContent() {
                                   <div
                                     className="h-full rounded-full"
                                     style={{
-                                      width: `${Math.min(r.memoriaUsoPct, 100)}%`,
-                                      background: r.memoriaUsoPct > 85 ? '#ef4444' : r.memoriaUsoPct > 65 ? '#f59e0b' : '#22c55e',
+                                      width: `${Math.min(ram, 100)}%`,
+                                      background: ram > 85 ? '#ef4444' : ram > 65 ? '#f59e0b' : '#22c55e',
                                     }}
                                   />
                                 </div>
-                                <span>{r.memoriaUsoPct.toFixed(0)}%</span>
+                                <span>{ram.toFixed(0)}%</span>
                               </div>
                             </div>
-                          )}
+                          ); })()}
                           {r.totalSesionesPppoe != null && (
                             <div className="flex items-center gap-1 text-gray-400">
                               <Users className="w-3 h-3" />

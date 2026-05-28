@@ -169,30 +169,32 @@ export function RouterDetailPanel({ router, onClose }: Props) {
               </div>
 
               {/* CPU + RAM */}
-              <div className="grid grid-cols-2 gap-3">
-                <MetricCard
-                  label="CPU"
-                  icon={Cpu}
-                  value={router.cpuUsoPct != null ? router.cpuUsoPct.toFixed(0) : null}
-                  unit="%"
-                  color={router.cpuUsoPct == null ? 'text-gray-600' :
-                    router.cpuUsoPct > 80 ? 'text-red-400' :
-                    router.cpuUsoPct > 50 ? 'text-yellow-400' : 'text-green-400'}
-                  barPct={router.cpuUsoPct ?? undefined}
-                  barColor={router.cpuUsoPct != null ? pctColor(router.cpuUsoPct, 50, 80) : undefined}
-                />
-                <MetricCard
-                  label="RAM"
-                  icon={MemoryStick}
-                  value={router.memoriaUsoPct != null ? router.memoriaUsoPct.toFixed(0) : null}
-                  unit="%"
-                  color={router.memoriaUsoPct == null ? 'text-gray-600' :
-                    router.memoriaUsoPct > 85 ? 'text-red-400' :
-                    router.memoriaUsoPct > 65 ? 'text-yellow-400' : 'text-green-400'}
-                  barPct={router.memoriaUsoPct ?? undefined}
-                  barColor={router.memoriaUsoPct != null ? pctColor(router.memoriaUsoPct, 65, 85) : undefined}
-                />
-              </div>
+              {(() => {
+                const cpu = router.cpuUsoPct != null ? Number(router.cpuUsoPct) : null;
+                const ram = router.memoriaUsoPct != null ? Number(router.memoriaUsoPct) : null;
+                return (
+                  <div className="grid grid-cols-2 gap-3">
+                    <MetricCard
+                      label="CPU"
+                      icon={Cpu}
+                      value={cpu != null ? cpu.toFixed(0) : null}
+                      unit="%"
+                      color={cpu == null ? 'text-gray-600' : cpu > 80 ? 'text-red-400' : cpu > 50 ? 'text-yellow-400' : 'text-green-400'}
+                      barPct={cpu ?? undefined}
+                      barColor={cpu != null ? pctColor(cpu, 50, 80) : undefined}
+                    />
+                    <MetricCard
+                      label="RAM"
+                      icon={MemoryStick}
+                      value={ram != null ? ram.toFixed(0) : null}
+                      unit="%"
+                      color={ram == null ? 'text-gray-600' : ram > 85 ? 'text-red-400' : ram > 65 ? 'text-yellow-400' : 'text-green-400'}
+                      barPct={ram ?? undefined}
+                      barColor={ram != null ? pctColor(ram, 65, 85) : undefined}
+                    />
+                  </div>
+                );
+              })()}
 
               {/* Uptime + PPPoE */}
               <div className="grid grid-cols-2 gap-3">
