@@ -381,7 +381,7 @@ export function ClienteWizard() {
             planId:              data.perfilId                || undefined,
             routerId:            data.routerId                || undefined,
             segmentoId:          data.segmentoId              || undefined,
-            nodoId:              data.conectadoAId            || undefined,
+            nodoId:              undefined,
             ipManual:            data.ipv4                    || undefined,
             usuarioPppoe:        data.userPppHs               || undefined,
             passwordPppoePlain:  data.passwordPppHs           || undefined,
