@@ -144,6 +144,7 @@ export const clientesApi = {
       routerId?: string;
       segmentoId?: string;
       nodoId?: string;
+      antenaApId?: string;
       ipManual?: string;
       usuarioPppoe?: string;
       passwordPppoePlain?: string;
