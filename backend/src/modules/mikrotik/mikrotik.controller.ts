@@ -101,6 +101,27 @@ export class MikrotikController {
     await this.svc.removeRouter(id, user);
   }
 
+  // ─── REPARACIÓN AUTOMATIZADA ─────────────────────────────
+
+  @Post('routers/:id/reparar')
+  @Roles('Administrador')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reparar / Sincronizar router con los datos del sistema',
+    description:
+      'Inyecta y actualiza en el MikroTik físico todas las reglas de planes, ' +
+      'secretos PPPoE, colas de velocidad, amarres ARP/DHCP y lista de morosos. ' +
+      'Solo aplica reglas con firma "datafast" para no tocar reglas manuales.',
+  })
+  @ApiParam({ name: 'id' })
+  async repararRouter(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const result = await this.svc.repararRouter(id, user.empresaId);
+    return StdResponse.ok(result, result.mensaje);
+  }
+
   // ─── ESTADO EN TIEMPO REAL ────────────────────────────────
 
   @Get('routers/:id/estado')

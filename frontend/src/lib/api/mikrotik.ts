@@ -43,6 +43,7 @@ export interface Router {
   subnetsLocales?:  string[];
   activo:           boolean;
   createdAt:        string;
+  contratosCount?:  number;
 }
 
 export interface CreateRouterDto {
@@ -151,6 +152,11 @@ export const mikrotikApi = {
 
   getMorosos: async (id: string): Promise<Array<{ ip: string; comment: string; addedAt: string }>> => {
     const { data } = await api.get(`/mikrotik/routers/${id}/morosos`);
+    return data.data;
+  },
+
+  reparar: async (id: string): Promise<{ mensaje: string; procesados: number; morosos: number }> => {
+    const { data } = await api.post(`/mikrotik/routers/${id}/reparar`);
     return data.data;
   },
 };

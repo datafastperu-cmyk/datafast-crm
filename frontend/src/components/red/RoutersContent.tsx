@@ -7,7 +7,7 @@ import {
   RefreshCw, CheckCircle2, XCircle, Loader2, AlertTriangle,
   Lock, Shield, Network, Terminal, Radio,
   Key, Settings, ChevronRight, Activity, Cpu, MemoryStick,
-  Copy, Check, Users, FileCode, Globe, Eye, EyeOff,
+  Copy, Check, Users, FileCode, Globe, Eye, EyeOff, Wrench,
 } from 'lucide-react';
 
 import { mikrotikApi } from '@/lib/api/mikrotik';
@@ -908,8 +908,10 @@ export function RoutersContent() {
   const [editRouter, setEditRouter]   = useState<RouterType | null>(null);
   const [testingId, setTestingId]     = useState<string | null>(null);
   const [syncingId, setSyncingId]     = useState<string | null>(null);
+  const [repairingId, setRepairingId] = useState<string | null>(null);
   const [morososRouter, setMorososRouter]   = useState<RouterType | null>(null);
   const [pendingDelete, setPendingDelete]   = useState<RouterType | null>(null);
+  const [pendingRepair, setPendingRepair]   = useState<RouterType | null>(null);
   const [detailRouter, setDetailRouter]     = useState<RouterType | null>(null);
 
   const { data: routers = [], isLoading } = useQuery<RouterType[]>({
@@ -921,7 +923,14 @@ export function RoutersContent() {
   const deleteMut = useMutation({
     mutationFn: (id: string) => mikrotikApi.eliminar(id),
     onSuccess:  () => { queryClient.invalidateQueries({ queryKey: ['routers'] }); toast('Router eliminado', { type: 'success' }); },
-    onError:    (err) => toast(parseApiError(err), { type: 'error' }),
+    onError:    (err) => { setPendingDelete(null); toast(parseApiError(err), { type: 'error' }); },
+  });
+
+  const repararMut = useMutation({
+    mutationFn: (id: string) => mikrotikApi.reparar(id),
+    onMutate:   (id) => { setRepairingId(id); setPendingRepair(null); },
+    onSuccess:  (res) => { setRepairingId(null); toast(res.mensaje, { type: 'success' }); },
+    onError:    (err) => { setRepairingId(null); toast(parseApiError(err), { type: 'error' }); },
   });
 
   const handleSyncSubnets = async (router: RouterType) => {
@@ -1018,6 +1027,8 @@ export function RoutersContent() {
                 const MetodoIcon  = metodoCfg?.icon ?? Network;
                 const isTesting   = testingId === r.id;
                 const isSyncing   = syncingId === r.id;
+                const isRepairing = repairingId === r.id;
+                const hasContracts = (r.contratosCount ?? 0) > 0;
 
                 return (
                   <tr
@@ -1152,13 +1163,31 @@ export function RoutersContent() {
                         >
                           <Users className="w-4 h-4" />
                         </button>
+                        <button
+                          onClick={() => setPendingRepair(r)}
+                          disabled={isRepairing}
+                          title="Reparar / Sincronizar router"
+                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-amber-400 transition-colors disabled:opacity-50"
+                        >
+                          {isRepairing
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Wrench className="w-4 h-4" />}
+                        </button>
                         <button onClick={() => openEdit(r)} title="Editar"
                           className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-blue-400 transition-colors"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleDelete(r)} title="Eliminar"
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-red-400 transition-colors"
+                        <button
+                          onClick={() => !hasContracts && handleDelete(r)}
+                          disabled={hasContracts}
+                          title={hasContracts ? `No se puede eliminar: tiene ${r.contratosCount} contrato(s) activo(s)` : 'Eliminar'}
+                          className={cn(
+                            'p-1.5 rounded-lg transition-colors',
+                            hasContracts
+                              ? 'text-gray-700 cursor-not-allowed opacity-40'
+                              : 'hover:bg-white/10 text-gray-500 hover:text-red-400',
+                          )}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1240,6 +1269,51 @@ export function RoutersContent() {
                 className="flex-1 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors disabled:opacity-60"
               >
                 Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingRepair && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => setPendingRepair(null)}
+        >
+          <div
+            className="bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl w-full max-w-md p-6 ring-1 ring-white/5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <Wrench className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white leading-none">Reparar router</h3>
+                <p className="text-[11px] text-zinc-500 mt-0.5">{pendingRepair.nombre} — {pendingRepair.vpnIp || pendingRepair.ipGestion}</p>
+              </div>
+            </div>
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300 mb-5 space-y-1">
+              <p className="font-medium">¿Confirmas reparar este router?</p>
+              <p className="text-amber-400/70">
+                Esto inyectará y actualizará todas las reglas de planes, abonados, colas de velocidad
+                y listas de morosos de Datafast en el MikroTik físico.
+                Solo se tocan reglas con firma <code className="bg-black/30 px-1 rounded">datafast</code>.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setPendingRepair(null)}
+                className="px-4 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => repararMut.mutate(pendingRepair.id)}
+                className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg font-medium bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                Reparar router
               </button>
             </div>
           </div>

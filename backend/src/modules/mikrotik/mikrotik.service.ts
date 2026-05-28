@@ -147,11 +147,25 @@ export class MikrotikService {
     return this.findOne(saved.id, user.empresaId);
   }
 
-  async findAll(empresaId: string): Promise<Router[]> {
-    return this.routerRepo.find({
+  async findAll(empresaId: string): Promise<(Router & { contratosCount: number })[]> {
+    const routers = await this.routerRepo.find({
       where: { empresaId, activo: true, deletedAt: null as any },
       order: { nombre: 'ASC' },
     });
+    if (!routers.length) return [];
+
+    const rows: { router_id: string; count: string }[] = await this.ds.query(
+      `SELECT router_id, COUNT(*) AS count
+       FROM contratos
+       WHERE router_id = ANY($1)
+         AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+         AND deleted_at IS NULL
+       GROUP BY router_id`,
+      [routers.map((r) => r.id)],
+    );
+
+    const countMap = new Map(rows.map((r) => [r.router_id, Number(r.count)]));
+    return routers.map((r) => Object.assign(r, { contratosCount: countMap.get(r.id) ?? 0 }));
   }
 
   async findOne(id: string, empresaId: string): Promise<Router> {
@@ -184,6 +198,21 @@ export class MikrotikService {
 
   async removeRouter(id: string, user: JwtPayload): Promise<void> {
     const router = await this.findOne(id, user.empresaId);
+
+    // Protección: impedir borrado si existen contratos activos/suspendidos
+    const [{ count }] = await this.ds.query(
+      `SELECT COUNT(*) AS count FROM contratos
+       WHERE router_id = $1
+         AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+         AND deleted_at IS NULL`,
+      [id],
+    );
+    if (Number(count) > 0) {
+      throw new BadRequestException(
+        'No es posible eliminar el router porque tiene contratos de abonados activos asociados.',
+      );
+    }
+
     // Eliminar rutas del VPS al borrar el router
     if (router.subnetsLocales?.length) {
       const gw = router.vpnIp || router.ipGestion;
@@ -212,6 +241,242 @@ export class MikrotikService {
     } catch (err: any) {
       this.logger.warn(`Error revocando VPN clientes del router ${id}: ${err.message}`);
     }
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // REPARACIÓN AUTOMATIZADA — SIMULADO (listo para producción)
+  // POST /mikrotik/routers/:id/reparar
+  // ════════════════════════════════════════════════════════════
+  // FIRMA DATAFAST: toda regla inyectada lleva el sufijo/comment
+  //   con la palabra "datafast" para distinguirla de reglas manuales:
+  //   address-list: "morosos-datafast"
+  //   ppp/profile name: "Datafast-<plan>"
+  //   queue/simple name: "Datafast-<usuario>"
+  //   comment en cada regla: "Datafast - Contrato #<id>"
+  // ════════════════════════════════════════════════════════════
+  async repararRouter(
+    routerId:  string,
+    empresaId: string,
+  ): Promise<{ mensaje: string; procesados: number; morosos: number }> {
+    const router = await this.findOne(routerId, empresaId);
+    this.logger.log(
+      `[REPARAR] Iniciando reparación del router "${router.nombre}" ` +
+      `(${router.vpnIp || router.ipGestion}) — ROS ${router.versionRos}`,
+    );
+
+    // ── BLOQUE 0: Consulta masiva de contratos + planes ──────
+    // Una sola query extrae todo lo necesario para los 6 bucles:
+    // PPP profiles, PPPoE secrets, ARP, DHCP leases, queues, morosos
+    const contratos: any[] = await this.ds.query(
+      `SELECT
+         c.id,
+         c.usuario_pppoe,
+         c.ip_asignada,
+         c.mac_address,
+         c.estado,
+         p.nombre           AS plan_nombre,
+         p.velocidad_bajada AS bajada_kbps,
+         p.velocidad_subida AS subida_kbps,
+         p.burst_bajada     AS burst_bajada,
+         p.burst_subida     AS burst_subida,
+         p.burst_umbral     AS burst_umbral,
+         p.burst_tiempo     AS burst_tiempo,
+         COALESCE(p.rate_limit, p.velocidad_bajada::text || 'k/' || p.velocidad_subida::text || 'k') AS rate_limit,
+         COALESCE(p.ppp_profile, 'Datafast-' || p.nombre) AS ppp_profile_name
+       FROM contratos c
+       JOIN planes p ON p.id = c.plan_id AND p.deleted_at IS NULL
+       WHERE c.router_id   = $1
+         AND c.deleted_at  IS NULL
+         AND c.estado IN ('activo','suspendido_mora','suspendido_manual','prorroga','pendiente_instalacion')
+       ORDER BY c.usuario_pppoe ASC`,
+      [routerId],
+    );
+
+    const morososList = contratos.filter(
+      (c) => c.estado === 'suspendido_mora' || c.estado === 'suspendido_manual',
+    );
+
+    this.logger.log(
+      `[REPARAR] ${contratos.length} contratos cargados — ${morososList.length} morosos`,
+    );
+
+    // ── CONDICIONAL DE VERSIÓN ───────────────────────────────
+    if (router.versionRos === VersionRouterOS.V7) {
+      // ┌─ RouterOS v7 ─────────────────────────────────────────
+      // │  /queue/simple  →  target=<IP>/32  max-limit=<U>/<D>
+      // │  /ppp/profile   →  rate-limit="<D>k/<U>k" (sin burst-limit separado en v7 básico)
+      // └──────────────────────────────────────────────────────
+      this.logger.log('[REPARAR_V7] Modo RouterOS v7 activado');
+
+      // BLOQUE 1 – Perfiles PPP  (/ppp/profile)
+      // Lógica: Actualizar si existe (por name con firma) / Crear si no
+      // API v7: /ppp/profile/add name="Datafast-<plan>" rate-limit="<D>k/<U>k"
+      //         comment="Datafast - Plan <nombre>"
+      for (const plan of this.planesUnicos(contratos)) {
+        this.logger.log(
+          `[REPARAR_V7][PPP_PROFILE] /ppp/profile/add` +
+          ` name="Datafast-${plan.plan_nombre}"` +
+          ` rate-limit="${plan.bajada_kbps}k/${plan.subida_kbps}k"` +
+          ` comment="Datafast - Plan ${plan.plan_nombre}"`,
+        );
+      }
+
+      // BLOQUE 2 – Secretos PPPoE  (/ppp/secret)
+      // API v7: /ppp/secret/add name=<usuario> password=*** service=pppoe
+      //         profile="Datafast-<plan>" remote-address=<ip>
+      //         comment="Datafast - Contrato #<id>"
+      for (const c of contratos) {
+        if (!c.usuario_pppoe) continue;
+        this.logger.log(
+          `[REPARAR_V7][PPP_SECRET] usuario="${c.usuario_pppoe}"` +
+          ` profile="Datafast-${c.plan_nombre}"` +
+          ` ip="${c.ip_asignada}"` +
+          ` comment="Datafast - Contrato #${c.id}"`,
+        );
+      }
+
+      // BLOQUE 3 – Colas Simples  (/queue/simple)
+      // v7: target=<IP>/32  max-limit=<upload>/<download>
+      //     name="Datafast-<usuario>" comment="Datafast - Contrato #<id>"
+      for (const c of contratos) {
+        if (!c.ip_asignada) continue;
+        this.logger.log(
+          `[REPARAR_V7][QUEUE] /queue/simple/add` +
+          ` name="Datafast-${c.usuario_pppoe}"` +
+          ` target="${c.ip_asignada}/32"` +
+          ` max-limit="${c.subida_kbps}k/${c.bajada_kbps}k"` +
+          ` comment="Datafast - Contrato #${c.id}"`,
+        );
+      }
+
+      // BLOQUE 4 – Lista morosos  (/ip/firewall/address-list)
+      // address-list="morosos-datafast"  (firma Datafast)
+      // Solo contratos en estado suspendido_mora o suspendido_manual
+      for (const c of morososList) {
+        this.logger.log(
+          `[REPARAR_V7][MOROSOS] /ip/firewall/address-list/add` +
+          ` list="morosos-datafast"` +
+          ` address="${c.ip_asignada}"` +
+          ` comment="Datafast - Contrato #${c.id}"`,
+        );
+      }
+
+    } else {
+      // ┌─ RouterOS v6 (legacy) ────────────────────────────────
+      // │  /queue/simple  →  target-addresses=<IP>/32  dst-address=0.0.0.0/0
+      // │                     max-limit=<D>/<U>  (bajada/subida invertidos en v6)
+      // │  /ppp/profile   →  rate-limit="<D>k/<U>k" con burst separado
+      // └──────────────────────────────────────────────────────
+      this.logger.log('[REPARAR_V6] Modo RouterOS v6 activado');
+
+      // BLOQUE 1 – Perfiles PPP  (/ppp/profile)
+      // API v6: /ppp/profile/add name="Datafast-<plan>"
+      //         rate-limit="<D>k/<U>k" comment="Datafast - Plan <nombre>"
+      for (const plan of this.planesUnicos(contratos)) {
+        const burst = plan.burst_bajada
+          ? ` burst-limit="${plan.burst_bajada}k/${plan.burst_subida}k"` +
+            ` burst-threshold="${plan.burst_umbral}k/${plan.burst_umbral}k"` +
+            ` burst-time="${plan.burst_tiempo}/${plan.burst_tiempo}"`
+          : '';
+        this.logger.log(
+          `[REPARAR_V6][PPP_PROFILE] /ppp/profile/add` +
+          ` name="Datafast-${plan.plan_nombre}"` +
+          ` rate-limit="${plan.bajada_kbps}k/${plan.subida_kbps}k"` +
+          `${burst}` +
+          ` comment="Datafast - Plan ${plan.plan_nombre}"`,
+        );
+      }
+
+      // BLOQUE 2 – Secretos PPPoE  (/ppp/secret)
+      for (const c of contratos) {
+        if (!c.usuario_pppoe) continue;
+        this.logger.log(
+          `[REPARAR_V6][PPP_SECRET] /ppp/secret/add` +
+          ` name="${c.usuario_pppoe}"` +
+          ` service=pppoe` +
+          ` profile="Datafast-${c.plan_nombre}"` +
+          ` remote-address="${c.ip_asignada}"` +
+          ` comment="Datafast - Contrato #${c.id}"`,
+        );
+      }
+
+      // BLOQUE 3 – Amarres ARP  (/ip/arp)
+      // Solo cuando tipoControl != pppoe_addresslist y hay MAC asignada
+      // comment="Datafast - Contrato #<id>"
+      if (router.tipoControl !== TipoControl.PPPOE_ADDRESSLIST) {
+        for (const c of contratos) {
+          if (!c.ip_asignada || !c.mac_address) continue;
+          this.logger.log(
+            `[REPARAR_V6][ARP] /ip/arp/add` +
+            ` address="${c.ip_asignada}"` +
+            ` mac-address="${c.mac_address}"` +
+            ` comment="Datafast - Contrato #${c.id}"`,
+          );
+        }
+      }
+
+      // BLOQUE 4 – Arrendamientos DHCP  (/ip/dhcp-server/lease)
+      // Solo si tipoControl === amarre_ip_mac_dhcp
+      if (router.tipoControl === TipoControl.AMARRE_IP_MAC_DHCP) {
+        for (const c of contratos) {
+          if (!c.ip_asignada || !c.mac_address) continue;
+          this.logger.log(
+            `[REPARAR_V6][DHCP_LEASE] /ip/dhcp-server/lease/add` +
+            ` address="${c.ip_asignada}"` +
+            ` mac-address="${c.mac_address}"` +
+            ` comment="Datafast - Contrato #${c.id}"`,
+          );
+        }
+      }
+
+      // BLOQUE 5 – Colas Simples  (/queue/simple)
+      // v6: target-addresses=<IP>/32 dst-address=0.0.0.0/0 max-limit=<D>/<U>
+      for (const c of contratos) {
+        if (!c.ip_asignada) continue;
+        this.logger.log(
+          `[REPARAR_V6][QUEUE] /queue/simple/add` +
+          ` name="Datafast-${c.usuario_pppoe}"` +
+          ` target-addresses="${c.ip_asignada}/32"` +
+          ` dst-address=0.0.0.0/0` +
+          ` max-limit="${c.bajada_kbps}k/${c.subida_kbps}k"` +
+          ` comment="Datafast - Contrato #${c.id}"`,
+        );
+      }
+
+      // BLOQUE 6 – Lista morosos  (/ip/firewall/address-list)
+      for (const c of morososList) {
+        this.logger.log(
+          `[REPARAR_V6][MOROSOS] /ip/firewall/address-list/add` +
+          ` list="morosos-datafast"` +
+          ` address="${c.ip_asignada}"` +
+          ` comment="Datafast - Contrato #${c.id}"`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `[REPARAR] Reparación de "${router.nombre}" completada (modo simulado). ` +
+      `${contratos.length} contratos procesados, ${morososList.length} morosos.`,
+    );
+
+    return {
+      mensaje:
+        `Reparación completada (modo simulado) para "${router.nombre}". ` +
+        `${contratos.length} contratos procesados, ` +
+        `${morososList.length} IPs sincronizadas en morosos-datafast.`,
+      procesados: contratos.length,
+      morosos:    morososList.length,
+    };
+  }
+
+  // ── Planes únicos de un conjunto de contratos ─────────────
+  private planesUnicos(contratos: any[]): any[] {
+    const seen = new Set<string>();
+    return contratos.filter((c) => {
+      if (seen.has(c.plan_nombre)) return false;
+      seen.add(c.plan_nombre);
+      return true;
+    });
   }
 
   // ── Construir credenciales para el pool ───────────────────
