@@ -22,7 +22,7 @@ export class MonitoreoController {
   // ── GET /monitoreo/tiempo-real ───────────────────────────────
   // Resumen global + lista de dispositivos con última métrica
   @Get('tiempo-real')
-  @RequirePermission('monitoreo:leer')
+  @RequirePermission('monitoring:view')
   @ApiOperation({ summary: 'Estado en tiempo real de todos los dispositivos' })
   getTiempoReal(@CurrentUser() user: JwtPayload) {
     return this.monitoreoSvc.getTiempoReal(user.empresaId);
@@ -31,7 +31,7 @@ export class MonitoreoController {
   // ── GET /monitoreo/dispositivos/:id/clientes ─────────────────
   // MACs conectadas en vivo (solo ANTENA_AP MikroTik)
   @Get('dispositivos/:id/clientes')
-  @RequirePermission('monitoreo:leer')
+  @RequirePermission('monitoring:view')
   @ApiOperation({ summary: 'Clientes inalámbricos conectados a la antena (en vivo)' })
   getClientes(
     @Param('id', ParseUUIDPipe) id: string,
@@ -43,14 +43,14 @@ export class MonitoreoController {
   // ── POST /monitoreo/dispositivos/probar-conexion ─────────────
   // Valida credenciales antes de guardar un dispositivo
   @Post('dispositivos/probar-conexion')
-  @RequirePermission('monitoreo:leer')
+  @RequirePermission('monitoring:view')
   @ApiOperation({ summary: 'Prueba rápida de credenciales MikroTik (no guarda datos)' })
   probarConexion(@Body() dto: ProbarConexionDto) {
     return this.monitoreoSvc.probarConexion(dto);
   }
   // ── POST /monitoreo/dispositivos ────────────────────────────
   @Post('dispositivos')
-  @RequirePermission('monitoreo:escribir')
+  @RequirePermission('monitoring:manage')
   @ApiOperation({ summary: 'Registrar nuevo dispositivo de monitoreo' })
   createDispositivo(
     @Body() dto: CreateDispositivoDto,
@@ -60,7 +60,7 @@ export class MonitoreoController {
   }
   // ── GET /monitoreo/dispositivos ──────────────────────────────
   @Get('dispositivos')
-  @RequirePermission('monitoreo:leer')
+  @RequirePermission('monitoring:view')
   @ApiOperation({ summary: 'Listar dispositivos de monitoreo' })
   getDispositivos(@CurrentUser() user: JwtPayload) {
     return this.monitoreoSvc.getDispositivos(user.empresaId);
@@ -68,7 +68,7 @@ export class MonitoreoController {
 
   // ── GET /monitoreo/alertas ───────────────────────────────────
   @Get('alertas')
-  @RequirePermission('monitoreo:leer')
+  @RequirePermission('monitoring:view')
   @ApiOperation({ summary: 'Listar alertas con filtro' })
   getAlertas(
     @CurrentUser() user: JwtPayload,
@@ -86,7 +86,7 @@ export class MonitoreoController {
 
   // ── PATCH /monitoreo/alertas/:id/resolver ────────────────────
   @Patch('alertas/:id/resolver')
-  @RequirePermission('monitoreo:escribir')
+  @RequirePermission('monitoring:manage')
   @ApiOperation({ summary: 'Resolver alerta' })
   resolverAlerta(
     @Param('id', ParseUUIDPipe) id: string,
@@ -98,7 +98,7 @@ export class MonitoreoController {
 
   // ── GET /monitoreo/umbrales ──────────────────────────────────
   @Get('umbrales')
-  @RequirePermission('monitoreo:leer')
+  @RequirePermission('monitoring:view')
   @ApiOperation({ summary: 'Listar umbrales de alerta' })
   getUmbrales(
     @CurrentUser() user: JwtPayload,
@@ -109,7 +109,7 @@ export class MonitoreoController {
 
   // ── POST /monitoreo/umbrales ─────────────────────────────────
   @Post('umbrales')
-  @RequirePermission('monitoreo:escribir')
+  @RequirePermission('monitoring:manage')
   @ApiOperation({ summary: 'Crear umbral de alerta' })
   createUmbral(@Body() dto: CreateUmbralDto, @CurrentUser() user: JwtPayload) {
     return this.monitoreoSvc.createUmbral(dto, user.empresaId);
@@ -117,7 +117,7 @@ export class MonitoreoController {
 
   // ── PATCH /monitoreo/umbrales/:id ────────────────────────────
   @Patch('umbrales/:id')
-  @RequirePermission('monitoreo:escribir')
+  @RequirePermission('monitoring:manage')
   @ApiOperation({ summary: 'Actualizar umbral de alerta' })
   updateUmbral(
     @Param('id', ParseUUIDPipe) id: string,
@@ -129,7 +129,7 @@ export class MonitoreoController {
 
   // ── DELETE /monitoreo/umbrales/:id ───────────────────────────
   @Delete('umbrales/:id')
-  @RequirePermission('monitoreo:escribir')
+  @RequirePermission('monitoring:manage')
   @ApiOperation({ summary: 'Eliminar umbral de alerta' })
   deleteUmbral(
     @Param('id', ParseUUIDPipe) id: string,

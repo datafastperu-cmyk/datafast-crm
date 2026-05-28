@@ -7,7 +7,7 @@ import { z }                         from 'zod';
 import { useMutation, useQuery }     from '@tanstack/react-query';
 import {
   X, Wifi, WifiOff, Loader2,
-  CheckCircle2, AlertCircle, Server,
+  CheckCircle2, AlertCircle, Server, Eye, EyeOff,
 } from 'lucide-react';
 import { dispositivosApi as monitoreoApi } from '@/lib/api/monitoreo';
 import { mikrotikApi }               from '@/lib/api/mikrotik';
@@ -91,6 +91,7 @@ interface Props {
 export function DispositivoFormModal({ onClose, onSuccess }: Props) {
   const { toast }                   = useToast();
   const [testResult, setTestResult] = useState<ProbarResult | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { data: routers = [] } = useQuery({
     queryKey:  ['routers-lista'],
@@ -317,14 +318,26 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
               error={errors.contrasena?.message}
               required={esMikrotik}
             >
-              <input
-                {...register('contrasena')}
-                type="password"
-                placeholder="••••••••"
-                disabled={disabled}
-                autoComplete="new-password"
-                className={inputCx(!!errors.contrasena)}
-              />
+              <div className="relative">
+                <input
+                  {...register('contrasena')}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  disabled={disabled}
+                  autoComplete="new-password"
+                  className={inputCx(!!errors.contrasena) + ' pr-10'}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  {showPassword
+                    ? <EyeOff className="h-4 w-4" />
+                    : <Eye    className="h-4 w-4" />}
+                </button>
+              </div>
             </Field>
 
             {/* Puerto API + SSL toggle */}
