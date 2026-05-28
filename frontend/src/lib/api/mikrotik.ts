@@ -31,6 +31,8 @@ export interface Router {
   identityRouteros?: string;
   cpuUsoPct?:       number;
   memoriaUsoPct?:   number;
+  uptimeSegundos?:  number;
+  uptimeStr?:       string;
   totalSesionesPppoe?: number;
   tipoControl:             TipoControl;
   tipoControlVelocidad:   TipoControlVelocidad;

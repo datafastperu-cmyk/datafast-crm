@@ -18,6 +18,7 @@ import type {
   MetodoConexion, TestConexionResult, TipoControl, TipoControlVelocidad,
 } from '@/lib/api/mikrotik';
 import { AgregarRouterWizard } from './AgregarRouterWizard';
+import { RouterDetailPanel }  from './RouterDetailPanel';
 import { vpnApi } from '@/lib/api/vpn';
 
 // ─── Constantes de UI ─────────────────────────────────────────────
@@ -52,6 +53,7 @@ const ESTADO_COLORS: Record<string, string> = {
   offline:       'text-red-400',
   degradado:     'text-yellow-400',
   mantenimiento: 'text-orange-400',
+  reverificando: 'text-blue-400',
   desconocido:   'text-gray-500',
 };
 
@@ -906,8 +908,9 @@ export function RoutersContent() {
   const [editRouter, setEditRouter]   = useState<RouterType | null>(null);
   const [testingId, setTestingId]     = useState<string | null>(null);
   const [syncingId, setSyncingId]     = useState<string | null>(null);
-  const [morososRouter, setMorososRouter] = useState<RouterType | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<RouterType | null>(null);
+  const [morososRouter, setMorososRouter]   = useState<RouterType | null>(null);
+  const [pendingDelete, setPendingDelete]   = useState<RouterType | null>(null);
+  const [detailRouter, setDetailRouter]     = useState<RouterType | null>(null);
 
   const { data: routers = [], isLoading } = useQuery<RouterType[]>({
     queryKey:        ['routers'],
@@ -1017,7 +1020,14 @@ export function RoutersContent() {
                 const isSyncing   = syncingId === r.id;
 
                 return (
-                  <tr key={r.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
+                  <tr
+                    key={r.id}
+                    className={cn(
+                      'border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer',
+                      detailRouter?.id === r.id && 'bg-white/5 ring-1 ring-inset ring-primary/30',
+                    )}
+                    onClick={() => setDetailRouter(detailRouter?.id === r.id ? null : r)}
+                  >
                     <td className="px-4 py-3">
                       <div className="font-medium text-white">{r.nombre}</div>
                       {r.zona && <div className="text-xs text-gray-500">{r.zona}</div>}
@@ -1117,7 +1127,7 @@ export function RoutersContent() {
                     <td className="px-4 py-3 text-xs text-gray-400">
                       {r.latenciaMs != null ? `${r.latenciaMs}ms` : '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => testConexion(r)} disabled={isTesting}
                           title="Probar conexión"
@@ -1194,6 +1204,13 @@ export function RoutersContent() {
       )}
 
 
+
+      {detailRouter && (
+        <RouterDetailPanel
+          router={detailRouter}
+          onClose={() => setDetailRouter(null)}
+        />
+      )}
 
       {morososRouter && (
         <MorososDialog
