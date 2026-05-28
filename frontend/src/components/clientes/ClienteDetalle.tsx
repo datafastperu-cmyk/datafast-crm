@@ -22,6 +22,7 @@ import {
 
 import { clientesApi }                          from '@/lib/api/clientes';
 import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
+import type { Router as RouterType }            from '@/lib/api/mikrotik';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
 import { TabConfigFacturacion }                from './TabConfigFacturacion';
@@ -714,6 +715,152 @@ const servicioSchema = z.object({
 });
 type ServicioForm = z.infer<typeof servicioSchema>;
 
+// ── Mock ONUs disponibles para aprovisionamiento simulado ────────
+const ONUS_SIMULADAS = [
+  { sn: 'HWTC1A2B3C4D', pon: '0/1/0', olt: 'OLT-PRINCIPAL', modelo: 'HG8310M' },
+  { sn: 'HWTC5E6F7A8B', pon: '0/1/1', olt: 'OLT-PRINCIPAL', modelo: 'HG8310M' },
+  { sn: 'HWTC9C0D1E2F', pon: '0/1/2', olt: 'OLT-NORTE',     modelo: 'EG8141A5' },
+  { sn: 'HWTC3A4B5C6D', pon: '0/1/3', olt: 'OLT-NORTE',     modelo: 'EG8141A5' },
+  { sn: 'ALVN7E8F9A0B', pon: '0/2/0', olt: 'OLT-SUR',       modelo: 'AN5506-01-A' },
+];
+
+function ModalOnuSimulada({
+  contratoId, numeroContrato, onClose,
+}: { contratoId: string; numeroContrato: string; onClose: () => void }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [selectedSn, setSelectedSn] = useState('');
+  const { mutate: aprovisionar, isPending } = useMutation({
+    mutationFn: () => contratosApi.aprovisionarOnu(contratoId, selectedSn),
+    onSuccess: (r) => {
+      toast(r?.mensaje ?? 'ONU aprovisionada (simulado)', { type: 'success' });
+      queryClient.invalidateQueries({ queryKey: ['cliente-contratos'] });
+      onClose();
+    },
+    onError: () => toast('Error al aprovisionar ONU', { type: 'error' }),
+  });
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-xl bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-700">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-violet-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white">Aprovisionar ONU</h2>
+              <p className="text-[11px] text-zinc-400">Contrato {numeroContrato} — Simulado</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-zinc-400">Selecciona una ONU disponible para asociar al contrato:</p>
+          <div className="border border-zinc-700 rounded-lg overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-zinc-800/60 border-b border-zinc-700">
+                  {['', 'S/N', 'Puerto PON', 'OLT', 'Modelo'].map(h => (
+                    <th key={h} className="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-700/50">
+                {ONUS_SIMULADAS.map(onu => (
+                  <tr
+                    key={onu.sn}
+                    onClick={() => setSelectedSn(onu.sn)}
+                    className={cn(
+                      'cursor-pointer transition-colors',
+                      selectedSn === onu.sn
+                        ? 'bg-violet-500/10 border-l-2 border-violet-500'
+                        : 'hover:bg-zinc-800/40',
+                    )}
+                  >
+                    <td className="px-3 py-2.5">
+                      <div className={cn(
+                        'w-4 h-4 rounded-full border-2 flex items-center justify-center',
+                        selectedSn === onu.sn ? 'border-violet-500 bg-violet-500' : 'border-zinc-600',
+                      )}>
+                        {selectedSn === onu.sn && <div className="w-2 h-2 rounded-full bg-white" />}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-zinc-200">{onu.sn}</td>
+                    <td className="px-3 py-2.5 text-zinc-400">{onu.pon}</td>
+                    <td className="px-3 py-2.5 text-zinc-400">{onu.olt}</td>
+                    <td className="px-3 py-2.5 text-zinc-400">{onu.modelo}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t border-zinc-700 flex items-center justify-between">
+          <p className="text-[11px] text-zinc-500">Los comandos CLI de Huawei se ejecutarán en producción.</p>
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors text-zinc-300">
+              Cancelar
+            </button>
+            <button
+              onClick={() => aprovisionar()}
+              disabled={!selectedSn || isPending}
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+              Aprovisionar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalConfirmBaja({
+  contrato, onConfirm, onClose, isPending,
+}: { contrato: Contrato; onConfirm: () => void; onClose: () => void; isPending: boolean }) {
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-zinc-900 border border-red-900/40 rounded-2xl shadow-2xl">
+        <div className="px-5 py-4 border-b border-zinc-700 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-white">Confirmar Baja Definitiva</h2>
+            <p className="text-[11px] text-zinc-400">{contrato.numeroContrato}</p>
+          </div>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-sm text-zinc-300">
+            Esta acción <strong className="text-red-400">no se puede deshacer</strong>.
+          </p>
+          <ul className="text-xs text-zinc-400 space-y-1.5 list-none">
+            <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se liberará la IP asignada ({(contrato as any).ipAsignada ?? '—'}).</li>
+            <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se desvinculará la ONU si la hay.</li>
+            <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se enviará la señal de desaprovisionamiento MikroTik (simulado).</li>
+          </ul>
+        </div>
+        <div className="px-5 py-4 border-t border-zinc-700 flex items-center justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors text-zinc-300">
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isPending}
+            className="px-5 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            Dar de Baja
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: Contrato[] }) {
   const queryClient = useQueryClient();
   const { toast }   = useToast();
@@ -724,6 +871,8 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
   const [q4, setQ4] = useState('');
   const [showPanel,       setShowPanel]       = useState(false);
   const [editingContrato, setEditingContrato] = useState<Contrato | null>(null);
+  const [confirmBaja,     setConfirmBaja]     = useState<Contrato | null>(null);
+  const [onuContrato,     setOnuContrato]     = useState<Contrato | null>(null);
 
   const filtered = contratos.filter(c =>
     !q1 ||
@@ -742,11 +891,12 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
     onError: () => toast('No se pudo activar el servicio', { type: 'error' }),
   });
 
-  const { mutate: darBaja } = useMutation({
+  const { mutate: darBaja, isPending: bajaPending } = useMutation({
     mutationFn: (id: string) => contratosApi.cambiarEstado(id, { estado: 'baja_definitiva' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
       toast('Servicio dado de baja', { type: 'success' });
+      setConfirmBaja(null);
     },
     onError: () => toast('No se pudo dar de baja el servicio', { type: 'error' }),
   });
@@ -834,7 +984,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       </button>
                       {!c.aprovisionado && (
                         <button
-                          onClick={() => router.push(`/contratos/${c.id}/aprovisionar`)}
+                          onClick={() => setOnuContrato(c)}
                           title="Aprovisionar ONU"
                           className="p-1.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-muted-foreground hover:text-violet-600 transition-colors"
                         >
@@ -850,13 +1000,15 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                           <CheckCircle2 className="w-3 h-3" />
                         </button>
                       )}
-                      <button
-                        onClick={() => darBaja(c.id)}
-                        title="Dar de baja"
-                        className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      {c.estado !== 'baja_definitiva' && (
+                        <button
+                          onClick={() => setConfirmBaja(c)}
+                          title="Dar de baja definitiva"
+                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -953,6 +1105,25 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
           editing={editingContrato}
           onClose={closePanel}
           onSaved={onSaved}
+        />
+      )}
+
+      {/* ── Modal Confirmar Baja Definitiva ───────────────────── */}
+      {confirmBaja && (
+        <ModalConfirmBaja
+          contrato={confirmBaja}
+          onConfirm={() => darBaja(confirmBaja.id)}
+          onClose={() => setConfirmBaja(null)}
+          isPending={bajaPending}
+        />
+      )}
+
+      {/* ── Modal Aprovisionar ONU (simulado) ─────────────────── */}
+      {onuContrato && (
+        <ModalOnuSimulada
+          contratoId={onuContrato.id}
+          numeroContrato={onuContrato.numeroContrato}
+          onClose={() => setOnuContrato(null)}
         />
       )}
     </div>
@@ -1068,8 +1239,17 @@ function ServicioPanel({
 
   const { data: planes  = [] } = useQuery({ queryKey: ['planes'],        queryFn: planesApi.list });
   const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
-  const { data: nodosRaw = [] } = useQuery({ queryKey: ['nodos-list'],  queryFn: redesApi.listNodos });
-  const nodos = (nodosRaw as any[]).filter((n: any) => n.tipo === 'antena' || n.tipo === 'nodo');
+
+  // Router seleccionado — para derivar tipoControl sin fetch adicional
+  const routerSel = (routers as RouterType[]).find(r => r.id === routerId);
+  const mostrarPppoe = routerSel?.tipoControl === 'pppoe_addresslist';
+
+  // Antenas AP vinculadas al router seleccionado
+  const { data: antenasAP = [] } = useQuery({
+    queryKey: ['antenas-ap', routerId],
+    queryFn:  () => redesApi.listAntenasAP(routerId!),
+    enabled:  !!routerId,
+  });
 
   const { data: segmentos = [] } = useQuery({
     queryKey: ['segmentos-router', routerId],
@@ -1084,7 +1264,7 @@ function ServicioPanel({
   });
 
   useEffect(() => {
-    if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); }
+    if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); setValue('nodoId', ''); }
   }, [routerId]);
   useEffect(() => {
     if (!segmentoId || editing) return;
@@ -1298,21 +1478,29 @@ function ServicioPanel({
                   <input {...register('macAddress')} placeholder="CC:2D:E0:FF:FA:55" className={sp_input()} />
                 </SP_Field>
 
-                {/* PPPoE en grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <SP_Field label="User PPP/HS">
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                      <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                {/* PPPoE — solo cuando el router usa pppoe_addresslist */}
+                {mostrarPppoe && (
+                  <>
+                    <div className="flex items-center gap-2 text-[11px] text-primary font-semibold bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+                      <Lock className="w-3 h-3 flex-shrink-0" />
+                      Router configurado con PPPoE + Address List
                     </div>
-                  </SP_Field>
-                  <SP_Field label="Password PPP/HS">
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                      <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <SP_Field label="User PPP/HS">
+                        <div className="relative">
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                          <input {...register('usuarioPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                        </div>
+                      </SP_Field>
+                      <SP_Field label="Password PPP/HS">
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                          <input {...register('passwordPppoe')} placeholder={editing ? '(sin cambios)' : 'Auto-generar'} className={cn(sp_input(), 'pl-9')} />
+                        </div>
+                      </SP_Field>
                     </div>
-                  </SP_Field>
-                </div>
+                  </>
+                )}
 
                 {/* Caja + Puerto NAP */}
                 <div className="grid grid-cols-2 gap-3">
@@ -1372,11 +1560,25 @@ function ServicioPanel({
 
               {/* Equipo Receptor */}
               <SP_Section title="Equipo Receptor" icon={Radio}>
-                <SP_Field label="Conectado A">
-                  <select {...register('nodoId')} className={sp_input()}>
-                    <option value="">— Seleccionar nodo/antena —</option>
-                    {nodos.map((n: any) => <option key={n.id} value={n.id}>{n.nombre}</option>)}
+                <SP_Field
+                  label="Conectado A"
+                  hint={!routerId ? '* Selecciona un router primero' : undefined}
+                >
+                  <select
+                    {...register('nodoId')}
+                    disabled={!routerId}
+                    className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
+                  >
+                    <option value="">{routerId ? '— Seleccionar antena AP —' : '— Elige un router primero —'}</option>
+                    {(antenasAP as any[]).map((a: any) => (
+                      <option key={a.id} value={a.id}>
+                        {a.nombreEmisor}{a.ipAddress ? ` — ${a.ipAddress}` : ''}
+                      </option>
+                    ))}
                   </select>
+                  {routerId && (antenasAP as any[]).length === 0 && (
+                    <p className="text-[11px] text-amber-500 mt-1">Sin antenas AP registradas para este router.</p>
+                  )}
                 </SP_Field>
                 <SP_Field label="IP administración" hint="* Ip antena/Equipo del cliente">
                   <input {...register('ipAdministracion')} placeholder="172.16.2.115" className={sp_input()} />

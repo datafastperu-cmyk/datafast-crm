@@ -15,6 +15,7 @@ import {
 
 import { clientesApi }                       from '@/lib/api/clientes';
 import { redesApi, planesApi } from '@/lib/api/contratos';
+import type { Router as RouterType } from '@/lib/api/mikrotik';
 import { facturacionApi }                    from '@/lib/api/facturacion';
 import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
 import { zonasApi }                          from '@/lib/api/zonas';
@@ -955,6 +956,10 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const routerId   = watch('routerId');
   const segmentoId = watch('segmentoId');
 
+  // Router seleccionado — para derivar tipoControl sin fetch adicional
+  const routerSel = (routers as RouterType[]).find(r => r.id === routerId);
+  const mostrarPppoe = routerSel?.tipoControl === 'pppoe_addresslist';
+
   const { data: segmentosRaw = [] } = useQuery({
     queryKey: ['segmentos-router', routerId],
     queryFn:  () => redesApi.listSegmentos(routerId!),
@@ -962,10 +967,18 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   });
   const segmentos = segmentosRaw as any[];
 
-  // Al cambiar de router: limpiar segmento e IP
+  // Antenas AP vinculadas al router seleccionado
+  const { data: antenasAP = [] } = useQuery({
+    queryKey: ['antenas-ap', routerId],
+    queryFn:  () => redesApi.listAntenasAP(routerId!),
+    enabled:  !!routerId,
+  });
+
+  // Al cambiar de router: limpiar segmento, IP y antena
   useEffect(() => {
     setValue('segmentoId', '');
     setValue('ipv4', '');
+    setValue('conectadoAId', '');
   }, [routerId]);
 
   const { data: nextIpData, isFetching: fetchingIp } = useQuery({
@@ -980,9 +993,6 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     if (!segmentoId) { setValue('ipv4', ''); return; }
     if (nextIpData !== undefined) setValue('ipv4', nextIpData ?? '');
   }, [segmentoId, nextIpData]);
-
-  const { data: nodosRaw = [] } = useQuery({ queryKey: ['nodos-list'], queryFn: redesApi.listNodos });
-  const puntosAcceso = (nodosRaw as any[]).filter((n: any) => n.tipo === 'antena');
 
   useEffect(() => {
     if (planSeleccionado?.precio != null) {
@@ -1134,27 +1144,35 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             />
           </Field>
 
-          {/* User PPP/HS */}
-          <Field label="User PPP/HS">
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                {...register('userPppHs')}
-                className={cn(inputCls(), 'pl-9')}
-              />
-            </div>
-          </Field>
-
-          {/* Password PPP/HS */}
-          <Field label="Password PPP/HS">
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                {...register('passwordPppHs')}
-                className={cn(inputCls(), 'pl-9')}
-              />
-            </div>
-          </Field>
+          {/* PPPoE — solo cuando el router tiene tipoControl = pppoe_addresslist */}
+          {mostrarPppoe && (
+            <>
+              <div className="px-0 py-1">
+                <div className="flex items-center gap-2 text-[11px] text-primary font-semibold bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+                  <Lock className="w-3 h-3 flex-shrink-0" />
+                  Router configurado con PPPoE + Address List
+                </div>
+              </div>
+              <Field label="User PPP/HS">
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <input
+                    {...register('userPppHs')}
+                    className={cn(inputCls(), 'pl-9')}
+                  />
+                </div>
+              </Field>
+              <Field label="Password PPP/HS">
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <input
+                    {...register('passwordPppHs')}
+                    className={cn(inputCls(), 'pl-9')}
+                  />
+                </div>
+              </Field>
+            </>
+          )}
 
           {/* Routes */}
           <Field label="Routes" hint="* Dato Opcional">
@@ -1228,14 +1246,28 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
           {/* Equipo receptor */}
           <Section title="Equipo receptor" icon={Radio}>
-            {/* Conectado A */}
-            <Field label="Conectado A">
-              <select {...register('conectadoAId')} className={inputCls()}>
-                <option value="">Seleccionar...</option>
-                {puntosAcceso.map((n: any) => (
-                  <option key={n.id} value={n.id}>{n.nombre}</option>
+            {/* Conectado A — Antenas AP vinculadas al router seleccionado */}
+            <Field
+              label="Conectado A"
+              hint={!routerId ? '* Selecciona un router primero' : undefined}
+            >
+              <select
+                {...register('conectadoAId')}
+                disabled={!routerId}
+                className={cn(inputCls(), !routerId && 'opacity-50 cursor-not-allowed')}
+              >
+                <option value="">{routerId ? '— Seleccionar antena AP —' : '— Elige un router primero —'}</option>
+                {(antenasAP as any[]).map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nombreEmisor}{a.ipAddress ? ` — ${a.ipAddress}` : ''}
+                  </option>
                 ))}
               </select>
+              {routerId && (antenasAP as any[]).length === 0 && (
+                <p className="text-[11px] text-amber-500 mt-1">
+                  Sin antenas AP registradas para este router.
+                </p>
+              )}
             </Field>
 
             {/* IP administración */}

@@ -179,6 +179,14 @@ export const contratosApi = {
     const res = await api.get<ApiRespuesta<Record<string, number>>>('/contratos/stats');
     return res.data.data;
   },
+
+  aprovisionarOnu: async (id: string, onuSn: string): Promise<{ ok: boolean; mensaje: string }> => {
+    const res = await api.post<ApiRespuesta<{ ok: boolean; mensaje: string }>>(
+      `/contratos/${id}/aprovisionar-onu`,
+      { onuSn },
+    );
+    return res.data.data;
+  },
 };
 
 // ─── Planes API ───────────────────────────────────────────────
@@ -301,6 +309,12 @@ export const redesApi = {
   getNextIp: async (id: string): Promise<string | null> => {
     const res = await api.get<ApiRespuesta<{ ip: string | null }>>(`/contratos/segmentos/${id}/next-ip`);
     return res.data.data?.ip ?? null;
+  },
+  listAntenasAP: async (routerId: string): Promise<{ id: string; nombreEmisor: string; ipAddress: string; tipoEquipo: string; status: string }[]> => {
+    const res = await api.get<ApiRespuesta<{ id: string; nombreEmisor: string; ipAddress: string; tipoEquipo: string; status: string }[]>>(
+      `/contratos/routers/${routerId}/antenas-ap`,
+    );
+    return res.data.data ?? [];
   },
   listPerfilesSmartolt: async (): Promise<SmartOltPerfil[]> => {
     const res = await api.get<ApiRespuesta<SmartOltPerfil[]>>('/smartolt/perfiles');

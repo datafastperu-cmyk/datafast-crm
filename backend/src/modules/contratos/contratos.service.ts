@@ -171,9 +171,11 @@ export class ContratosService {
     }
     const upd: Partial<Contrato> = { estado:dto.estado, fechaEstado:new Date(), motivoEstado:dto.motivo, updatedBy:user.sub };
     if (dto.estado === EstadoContrato.BAJA_DEFINITIVA) {
-      upd.fechaBaja = new Date().toISOString().split('T')[0];
+      upd.fechaBaja  = new Date().toISOString().split('T')[0];
       upd.motivoBaja = dto.motivo;
+      upd.onuId      = null;   // Libera la ONU para que quede disponible
       if (contrato.segmentoId) await this.contratoRepo.liberarIp(id);
+      await this.executeMikrotikDesaprovisionamiento(id);
     }
     await this.contratoRepo.update(id, upd);
     await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:anterior, estadoNuevo:dto.estado, motivo:dto.motivo, usuarioId:user.sub, automatico });
@@ -233,4 +235,55 @@ export class ContratosService {
   async getMorososParaCorte(graceDays: number) { return this.contratoRepo.findMorososParaCorte(graceDays); }
   async getParaReactivar() { return this.contratoRepo.findParaReactivar(); }
   async getProrrogasVencidas() { return this.contratoRepo.findProrrogasVencidas(); }
+
+  // ── Métodos de red simulados ───────────────────────────────────
+  // Preparados para PPPoE, ARP y DHCP Leases en MikroTik.
+  async executeMikrotikAprovisionamiento(contratoId: string): Promise<boolean> {
+    this.logger.log(`[SIM] executeMikrotikAprovisionamiento → contratoId: ${contratoId}`);
+    return true;
+  }
+
+  // Preparado para remover secretos y colas en la Baja Definitiva.
+  async executeMikrotikDesaprovisionamiento(contratoId: string): Promise<boolean> {
+    this.logger.log(`[SIM] executeMikrotikDesaprovisionamiento → contratoId: ${contratoId}`);
+    return true;
+  }
+
+  // Preparado para los comandos CLI de Huawei OLT.
+  async executeHuaweiOltAprovisionamiento(contratoId: string, onuSn: string): Promise<boolean> {
+    this.logger.log(`[SIM] executeHuaweiOltAprovisionamiento → contratoId: ${contratoId}, onuSn: ${onuSn}`);
+    return true;
+  }
+
+  async getAntenasAP(routerId: string, empresaId: string): Promise<any[]> {
+    return this.dataSource.query(
+      `SELECT id,
+              nombre_emisor AS "nombreEmisor",
+              ip_address    AS "ipAddress",
+              tipo_equipo   AS "tipoEquipo",
+              status
+       FROM dispositivos_monitoreo
+       WHERE empresa_id        = $1
+         AND router_acceso_id  = $2
+         AND tipo_equipo       = 'ANTENA_AP'
+         AND deleted_at IS NULL
+       ORDER BY nombre_emisor ASC`,
+      [empresaId, routerId],
+    );
+  }
+
+  async aprovisionarOnuSimulado(id: string, onuSn: string, user: JwtPayload): Promise<{ ok: boolean; mensaje: string }> {
+    const contrato = await this.findOne(id, user.empresaId);
+    await this.executeHuaweiOltAprovisionamiento(id, onuSn);
+    await this.contratoRepo.update(id, { updatedBy: user.sub });
+    await this.auditoria.logUpdate({
+      empresaId:    user.empresaId,
+      usuarioId:    user.sub,
+      usuarioEmail: user.email,
+      modulo:       'contratos',
+      entidadId:    id,
+      descripcion:  `[SIM] ONU aprovisionada SN: ${onuSn} en contrato ${contrato.numeroContrato}`,
+    });
+    return { ok: true, mensaje: `ONU ${onuSn} aprovisionada correctamente (simulado)` };
+  }
 }

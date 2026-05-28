@@ -115,6 +115,14 @@ export class ContratosController {
     await this.ipPool.desactivarSegmento(segId, user.empresaId);
   }
 
+  // ── Antenas-AP filtradas por router ───────────────────────
+  @Get('routers/:routerId/antenas-ap') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Listar antenas AP vinculadas al router (para selector "Conectado a:")' })
+  @ApiParam({ name: 'routerId' })
+  async getAntenasAP(@Param('routerId', ParseUUIDPipe) routerId: string, @CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.svc.getAntenasAP(routerId, user.empresaId));
+  }
+
   // ── Contratos por ID — rutas paramétricas ──────────────────
 
   @Get('cliente/:clienteId') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
@@ -165,6 +173,18 @@ export class ContratosController {
   @ApiParam({ name:'id' })
   async otorgarProrroga(@Param('id', ParseUUIDPipe) id: string, @Body() dto: OtorgarProrrogaDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
     return StdResponse.ok(await this.svc.otorgarProrroga(id, dto, user, req), `Prórroga otorgada hasta ${dto.prorrogaHasta}`);
+  }
+
+  @Post(':id/aprovisionar-onu') @RequirePermission('contratos:edit')
+  @ApiOperation({ summary: 'Aprovisionar ONU simulada — asocia SN al contrato (sin comandos reales)' })
+  @ApiParam({ name:'id' })
+  async aprovisionarOnu(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { onuSn: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const result = await this.svc.aprovisionarOnuSimulado(id, body.onuSn, user);
+    return StdResponse.ok(result, result.mensaje);
   }
 
   @Delete(':id') @RequirePermission('contratos:delete') @HttpCode(HttpStatus.NO_CONTENT)
