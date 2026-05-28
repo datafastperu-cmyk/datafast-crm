@@ -35,7 +35,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Aplicar a todas las rutas excepto archivos estáticos e internos de Next.js
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)).*)',
+    // Excluir archivos estáticos, internos de Next.js y rutas /api/* (proxied al backend)
+    '/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)).*)',
   ],
 };
