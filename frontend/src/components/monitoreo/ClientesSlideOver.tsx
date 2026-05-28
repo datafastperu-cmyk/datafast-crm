@@ -111,7 +111,7 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-zinc-700/50">
-                    {['MAC', 'Comentario', 'Interfaz', 'Señal', 'TX/RX CCQ', 'TX/RX Rate', 'Uptime'].map(h => (
+                    {['MAC', 'Comentario', 'Señal', 'TX/RX CCQ', 'TX/RX Rate', 'Uptime'].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                         {h}
                       </th>
@@ -131,7 +131,6 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
                           <span className="text-zinc-600">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-zinc-400">{c.interfaz}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1.5">
                           <SignalDot dbm={c.signalDbm} />
