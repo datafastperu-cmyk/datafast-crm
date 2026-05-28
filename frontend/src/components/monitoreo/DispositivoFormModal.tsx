@@ -140,6 +140,9 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
   const { mutate: probar, isPending: testando } = useMutation({
     mutationFn: () => {
       const v = getValues();
+      if (!v.ipAddress?.match(/^(\d{1,3}\.){3}\d{1,3}$/)) {
+        return Promise.reject(new Error('Completa el campo Dirección IP antes de probar la conexión'));
+      }
       return monitoreoApi.probarConexion({
         ipAddress:      v.ipAddress,
         usuario:        v.usuario   ?? '',
