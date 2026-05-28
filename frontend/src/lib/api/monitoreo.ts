@@ -384,6 +384,8 @@ export interface WirelessClientItem {
   interfaz:     string;
   signalDbm:    number;
   snr:          number;
+  txCcq:        number;
+  rxCcq:        number;
   txRate:       string;
   rxRate:       string;
   uptime:       string;

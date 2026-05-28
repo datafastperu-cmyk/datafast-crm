@@ -11,7 +11,8 @@ interface WirelessClient {
   mac:          string;
   interfaz:     string;
   signalDbm:    number;
-  snr:          number;
+  txCcq:        number;
+  rxCcq:        number;
   txRate:       string;
   rxRate:       string;
   uptime:       string;
@@ -110,7 +111,7 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-zinc-700/50">
-                    {['MAC', 'Comentario', 'Interfaz', 'Señal', 'SNR', 'TX/RX Rate', 'Uptime'].map(h => (
+                    {['MAC', 'Comentario', 'Interfaz', 'Señal', 'TX CCQ', 'RX CCQ', 'TX/RX Rate', 'Uptime'].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                         {h}
                       </th>
@@ -142,7 +143,8 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-zinc-300">{c.snr} dB</td>
+                      <td className="px-4 py-2.5 text-xs text-zinc-300">{c.txCcq}%</td>
+                      <td className="px-4 py-2.5 text-xs text-zinc-300">{c.rxCcq}%</td>
                       <td className="px-4 py-2.5">
                         <div className="text-xs text-zinc-300">{c.txRate}</div>
                         <div className="text-xs text-zinc-500">{c.rxRate}</div>
