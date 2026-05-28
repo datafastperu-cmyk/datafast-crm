@@ -62,6 +62,23 @@ export class ProbarConexionDto {
   useSsl?:     boolean;
 }
 
+
+// ─── DTO crear dispositivo ────────────────────────────────────
+export class CreateDispositivoDto {
+  nombreEmisor:        string;
+  ipAddress:           string;
+  routerAccesoId?:     string;
+  tipoEquipo:          TipoEquipo;
+  fabricante:          Fabricante;
+  modeloNombre?:       string;
+  usuario?:            string;
+  contrasena?:         string;
+  puertoApi?:          number;
+  useSsl?:             boolean;
+  monitoreoSnmp?:      boolean;
+  intervaloChequeoSeg?: number;
+}
+
 @Injectable()
 export class MonitoreoService {
   private readonly logger = new Logger(MonitoreoService.name);
@@ -242,7 +259,40 @@ export class MonitoreoService {
       return 'Credenciales incorrectas. Verifica usuario y contraseña.';
     return `Error de conexión: ${msg}`;
   }
+  // POST /monitoreo/dispositivos
+  async createDispositivo(
+    dto:       CreateDispositivoDto,
+    empresaId: string,
+  ): Promise<StdResponse<DispositivoMonitoreo>> {
+    const existe = await this.dispoRepo.findOne({
+      where: { ipAddress: dto.ipAddress, empresaId, deletedAt: IsNull() },
+    });
+    if (existe)
+      throw new BadRequestException(
+        'Ya existe un dispositivo con la IP ' + dto.ipAddress + ' en esta empresa',
+      );
+    const d = this.dispoRepo.create({
+      empresaId,
+      nombreEmisor:        dto.nombreEmisor,
+      ipAddress:           dto.ipAddress,
+      routerAccesoId:      dto.routerAccesoId  || undefined,
+      tipoEquipo:          dto.tipoEquipo,
+      fabricante:          dto.fabricante,
+      modeloNombre:        dto.modeloNombre    || undefined,
+      usuario:             dto.usuario         || undefined,
+      contrasenaCifrada:   dto.contrasena ? encrypt(dto.contrasena) : undefined,
+      puertoApi:           dto.puertoApi       ?? 8728,
+      useSsl:              dto.useSsl          ?? false,
+      monitoreoSnmp:       dto.monitoreoSnmp   ?? false,
+      intervaloChequeoSeg: dto.intervaloChequeoSeg ?? 60,
+      status:              StatusDispositivo.ONLINE,
+    });
+    await this.dispoRepo.save(d);
+    return StdResponse.ok(d);
+  }
 }
+
+
 
 export interface ProbarConexionResult {
   conectado: boolean;

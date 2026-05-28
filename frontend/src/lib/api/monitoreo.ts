@@ -230,3 +230,59 @@ export const METRICAS_ALERTA = [
   { value: 'sesiones_pppoe',  label: 'Sesiones PPPoE activas',      unidad: '' },
   { value: 'senal_onu',       label: 'Señal ONU (dBm)',             unidad: 'dBm' },
 ] as const;
+
+// ─── DTOs nuevos módulo de monitoreo de dispositivos ──────────
+
+export interface CreateDispositivoDto {
+  nombreEmisor:     string;
+  ipAddress:        string;
+  routerAccesoId?:  string;
+  tipoEquipo:       string;
+  fabricante:       string;
+  modeloNombre?:    string;
+  usuario?:         string;
+  contrasena?:      string;
+  puertoApi?:       number;
+  useSsl?:          boolean;
+  monitoreoSnmp?:   boolean;
+  intervaloChequeoSeg?: number;
+}
+
+export interface ProbarConexionDto {
+  ipAddress:  string;
+  usuario:    string;
+  contrasena: string;
+  puertoApi?: number;
+  useSsl?:    boolean;
+}
+
+export interface ProbarConexionResult {
+  conectado: boolean;
+  info?: {
+    identidad:    string;
+    plataforma:   string;
+    version:      string;
+    arquitectura: string;
+    cpuLoad:      number;
+    uptime:       string;
+    totalMemMb:   number;
+  };
+  error?: string;
+}
+
+export const dispositivosApi = {
+  probarConexion: async (dto: ProbarConexionDto): Promise<ProbarConexionResult> => {
+    const res = await api.post<{ data: ProbarConexionResult }>('/monitoreo/dispositivos/probar-conexion', dto);
+    return res.data.data;
+  },
+
+  createDispositivo: async (dto: CreateDispositivoDto) => {
+    const res = await api.post('/monitoreo/dispositivos', dto);
+    return res.data;
+  },
+
+  getTiempoReal: async (empresaId?: string) => {
+    const res = await api.get('/monitoreo/tiempo-real');
+    return res.data.data;
+  },
+};

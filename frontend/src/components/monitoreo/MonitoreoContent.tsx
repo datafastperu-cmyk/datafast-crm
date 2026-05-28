@@ -14,7 +14,7 @@ import { useToast }      from '@/components/ui/toaster';
 import { NodoCard }      from './NodoCard';
 import { AlertasBanner } from './AlertasBanner';
 import { TraficoChart }  from './TraficoChart';
-import { NodoFormModal } from './NodoFormModal';
+import { DispositivoFormModal } from './DispositivoFormModal';
 import { parseApiError, formatBps, cn } from '@/lib/utils';
 import type { Nodo, WsEventDashboard } from '@/types';
 
@@ -276,7 +276,7 @@ export function MonitoreoContent() {
 
       {/* Modal agregar nodo */}
       {showAdd && (
-        <NodoFormModal
+        <DispositivoFormModal
           onClose={() => setShowAdd(false)}
           onSuccess={() => { setShowAdd(false); refetch(); }}
         />

@@ -6,7 +6,7 @@ import {
 }                            from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import { MonitoreoService, ProbarConexionDto } from './monitoreo.service';
+import { MonitoreoService, ProbarConexionDto, CreateDispositivoDto } from './monitoreo.service';
 import { RequirePermission }   from '../../common/decorators/roles.decorator';
 import { CurrentUser }         from '../../common/decorators/current-user.decorator';
 import { JwtPayload }          from '../../common/decorators/current-user.decorator';
@@ -44,5 +44,15 @@ export class MonitoreoController {
   @ApiOperation({ summary: 'Prueba rápida de credenciales MikroTik (no guarda datos)' })
   probarConexion(@Body() dto: ProbarConexionDto) {
     return this.monitoreoSvc.probarConexion(dto);
+  }
+  // ── POST /monitoreo/dispositivos ────────────────────────────
+  @Post('dispositivos')
+  @RequirePermission('monitoreo:escribir')
+  @ApiOperation({ summary: 'Registrar nuevo dispositivo de monitoreo' })
+  createDispositivo(
+    @Body() dto: CreateDispositivoDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.monitoreoSvc.createDispositivo(dto, user.empresaId);
   }
 }
