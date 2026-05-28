@@ -24,6 +24,7 @@ const execFileAsync = promisify(execFile);
 const EASYRSA_DIR = '/etc/openvpn/easy-rsa';
 const PKI_DIR     = '/etc/openvpn/easy-rsa/pki';
 const CA_CRT      = '/etc/openvpn/server/ca.crt';
+const CCD_DIR     = '/etc/openvpn/ccd';
 const STATUS_LOG  = '/var/log/openvpn/status-mikrotik.log';
 const VPS_IP      = '149.34.48.224';
 const VPN_PORT    = 1195;
@@ -303,6 +304,10 @@ export class VpnClienteService {
 
     await this.killClienteVpnManagement(cliente.nombreCert);
     await this.repo.update(cliente.id, { estado: 'revocado', activo: false });
+
+    // Eliminar archivo CCD del cliente revocado para limpiar rutas del servidor
+    const ccdPath = path.join(CCD_DIR, cliente.nombreCert);
+    await fs.unlink(ccdPath).catch(() => {});
     this.logger.log(`VPN cliente revocado: ${cliente.id}`);
   }
 
@@ -361,6 +366,97 @@ export class VpnClienteService {
       { vpnIp, empresaId, activo: true } as any,
       { routerId },
     );
+  }
+
+  // ── Generar/garantizar certificado ID-based y escribir CCD ───
+  // El CN siempre es "df_router_id_<uuid>" — inmune a renombrados del router.
+  // Se llama desde MikrotikService al crear o re-registrar un router VPN_TUNNEL.
+
+  async generarParaRouter(router: Router): Promise<string> {
+    const vpnCommonName = `df_router_id_${router.id}`;
+
+    // ── 1. Crear certificado en EasyRSA si no existe en disco ──
+    const certPath = path.join(PKI_DIR, 'issued', `${vpnCommonName}.crt`);
+    let certExists = false;
+    try { await fs.access(certPath); certExists = true; } catch { certExists = false; }
+
+    if (!certExists) {
+      this.logger.log(`[VPN-CCD] Generando certificado ID-based: ${vpnCommonName}`);
+      try {
+        await execFileAsync(
+          `${EASYRSA_DIR}/easyrsa`,
+          ['build-client-full', vpnCommonName, 'nopass'],
+          {
+            cwd: EASYRSA_DIR,
+            env: { ...process.env, EASYRSA_BATCH: 'yes', EASYRSA_VARS_FILE: `${EASYRSA_DIR}/vars-clients` },
+            timeout: 60_000,
+          },
+        );
+        await execFileAsync('chmod', ['o+r', `${PKI_DIR}/issued/${vpnCommonName}.crt`]);
+      } catch (err: any) {
+        if (!err.stderr?.includes('already exists') && !err.message?.includes('already exists')) {
+          this.logger.error(`easyrsa error para ${vpnCommonName}: ${err.stderr || err.message}`);
+          throw err;
+        }
+        this.logger.warn(`Cert ${vpnCommonName} ya existe en PKI — reutilizando`);
+      }
+    }
+
+    // ── 2. Upsert registro en vpn_clientes ─────────────────────
+    const porRouter = await this.repo.findOne({
+      where: { routerId: router.id, empresaId: router.empresaId, activo: true },
+    });
+    const porCert = await this.repo.findOne({ where: { nombreCert: vpnCommonName } });
+
+    if (!porRouter && !porCert) {
+      const tokenDescarga  = generateToken(32);
+      const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      const cliente = this.repo.create({
+        empresaId:        router.empresaId,
+        nombre:           router.nombre,
+        nombreCert:       vpnCommonName,
+        versionRos:       (router.versionRos as string) === 'v7' ? 'v7' : 'v6',
+        usarCertificados: true,
+        cipher:           'aes256',
+        authAlg:          'sha256',
+        verifyServerCert: false,
+        estado:           'pendiente',
+        routerId:         router.id,
+        tokenDescarga,
+        tokenExpiresAt,
+        activo:           true,
+      });
+      await this.repo.save(cliente);
+      this.logger.log(`[VPN-CCD] Registro creado: ${vpnCommonName} → router ${router.id}`);
+    } else {
+      const record = porRouter || porCert!;
+      const needs  = record.routerId !== router.id || record.nombreCert !== vpnCommonName;
+      if (needs) {
+        await this.repo.update(record.id, { routerId: router.id, nombreCert: vpnCommonName });
+      }
+    }
+
+    // ── 3. Escribir/actualizar archivo CCD con subnets actuales ─
+    await this.escribirArchivoCcd(vpnCommonName, router.subnetsLocales || []);
+
+    return vpnCommonName;
+  }
+
+  // ── Escribir archivo CCD en /etc/openvpn/ccd/<commonName> ────
+  // Formato: una línea "iroute <red> <máscara>" por cada subred.
+  // El archivo dicta al servidor OpenVPN cómo enrutar tráfico
+  // hacia las redes LAN del router, independientemente del nombre comercial.
+
+  async escribirArchivoCcd(commonName: string, subnets: string[]): Promise<void> {
+    const filePath = path.join(CCD_DIR, commonName);
+    const lines = (subnets || []).filter(Boolean).map(sn => {
+      const [ip, prefix] = sn.split('/');
+      const mask = this._prefixToMask(parseInt(prefix ?? '24', 10));
+      return `iroute ${ip} ${mask}`;
+    });
+    await fs.mkdir(CCD_DIR, { recursive: true });
+    await fs.writeFile(filePath, lines.join('\n') + (lines.length ? '\n' : ''), { encoding: 'utf8', mode: 0o644 });
+    this.logger.log(`[VPN-CCD] Escrito: ${filePath} → [${lines.join(', ') || 'vacío'}]`);
   }
 
   // ── Helpers privados ──────────────────────────────────────────
@@ -473,6 +569,12 @@ export class VpnClienteService {
       if (cipher === 'aes128-gcm') cipher = 'aes128';
     }
     return { cipher, authAlg };
+  }
+
+  private _prefixToMask(prefix: number): string {
+    const p = Math.min(32, Math.max(0, prefix || 24));
+    const mask = p === 0 ? 0 : (0xFFFFFFFF << (32 - p)) >>> 0;
+    return [(mask >>> 24) & 0xFF, (mask >>> 16) & 0xFF, (mask >>> 8) & 0xFF, mask & 0xFF].join('.');
   }
 
   private _generarMac(): string {

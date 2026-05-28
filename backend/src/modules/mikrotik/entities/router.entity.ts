@@ -169,6 +169,11 @@ export class Router extends BaseModel {
   @Column({ name: 'vpn_ip', length: 50, nullable: true })
   vpnIp: string;
 
+  // Identificador canónico del túnel — construido con el ID de BD (df_router_id_<uuid>).
+  // Se asigna una sola vez al crear el router; NUNCA se modifica en ediciones posteriores.
+  @Column({ name: 'vpn_common_name', length: 100, nullable: true, unique: true })
+  vpnCommonName: string;
+
   // ── Redes locales gestionadas por este router ─────────────
   @Column({ name: 'subnets_locales', type: 'json', nullable: true })
   subnetsLocales: string[];

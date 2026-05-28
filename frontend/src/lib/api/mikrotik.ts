@@ -14,6 +14,7 @@ export interface Router {
   modelo?:          string;
   ipGestion:        string;
   vpnIp?:           string;
+  vpnCommonName?:   string;
   zona?:            string;
   puertoApi:        number;
   puertoApiSsl:     number;

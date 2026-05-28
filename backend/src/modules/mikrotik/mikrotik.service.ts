@@ -85,11 +85,14 @@ export class MikrotikService {
 
     if (existePorIp) {
       if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
-        await this.routerRepo.update(existePorIp.id, updateFields);
+        const vpnCn = `df_router_id_${existePorIp.id}`;
+        await this.routerRepo.update(existePorIp.id, { ...updateFields, vpnCommonName: vpnCn } as any);
         const updated = await this.findOne(existePorIp.id, user.empresaId);
         this.detectarVersionAsync(updated);
         this.inyectarReglasMorososAsync(updated);
-        await this.vpnSvc.vincularARouter(dto.ipGestion, user.empresaId, existePorIp.id);
+        this.vpnSvc.generarParaRouter(updated).catch(e =>
+          this.logger.error(`[VPN-CCD] router ${existePorIp.id}: ${e.message}`)
+        );
         await this.auditoria.logCreate({
           empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
           modulo: 'mikrotik', entidadId: existePorIp.id,
@@ -105,11 +108,14 @@ export class MikrotikService {
         where: { vpnIp: dto.vpnIp, empresaId: user.empresaId, deletedAt: null as any },
       });
       if (existePorVpnIp) {
-        await this.routerRepo.update(existePorVpnIp.id, updateFields);
+        const vpnCn = `df_router_id_${existePorVpnIp.id}`;
+        await this.routerRepo.update(existePorVpnIp.id, { ...updateFields, vpnCommonName: vpnCn } as any);
         const updated = await this.findOne(existePorVpnIp.id, user.empresaId);
         this.detectarVersionAsync(updated);
         this.inyectarReglasMorososAsync(updated);
-        await this.vpnSvc.vincularARouter(dto.vpnIp, user.empresaId, existePorVpnIp.id);
+        this.vpnSvc.generarParaRouter(updated).catch(e =>
+          this.logger.error(`[VPN-CCD] router ${existePorVpnIp.id}: ${e.message}`)
+        );
         await this.auditoria.logCreate({
           empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
           modulo: 'mikrotik', entidadId: existePorVpnIp.id,
@@ -130,7 +136,11 @@ export class MikrotikService {
     this.inyectarReglasMorososAsync(saved);
 
     if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
-      await this.vpnSvc.vincularARouter(dto.vpnIp ?? dto.ipGestion, user.empresaId, saved.id);
+      const vpnCn = `df_router_id_${saved.id}`;
+      await this.routerRepo.update(saved.id, { vpnCommonName: vpnCn } as any);
+      this.vpnSvc.generarParaRouter(await this.findOne(saved.id, user.empresaId)).catch(e =>
+        this.logger.error(`[VPN-CCD] router ${saved.id}: ${e.message}`)
+      );
     }
 
     await this.auditoria.logCreate({
@@ -184,6 +194,9 @@ export class MikrotikService {
       catch { updates.passwordCifrado = rawPass; }
     }
     delete (updates as any).password;
+    // vpn_common_name es inmutable — identifica el túnel en el servidor OpenVPN.
+    // Cambiar el nombre comercial del router no debe alterar ni el CCD ni el certificado.
+    delete (updates as any).vpnCommonName;
 
     await this.routerRepo.update(id, updates);
     // Invalidar conexiones existentes si cambió la IP o contraseña
@@ -932,6 +945,14 @@ export class MikrotikService {
     await this.routerRepo.update(routerId, { subnetsLocales: subnets });
     const gw = router.vpnIp || router.ipGestion;
     await this.subnetSvc.applyVpsRoutes(gw, subnets);
+
+    // Actualizar CCD si el router usa túnel VPN — las subnets cambian las rutas inyectadas
+    if (router.metodoConexion === MetodoConexion.VPN_TUNNEL && router.vpnCommonName) {
+      await this.vpnSvc.escribirArchivoCcd(router.vpnCommonName, subnets).catch(e =>
+        this.logger.warn(`[VPN-CCD] sync error ${router.vpnCommonName}: ${e.message}`)
+      );
+    }
+
     this.logger.log(`Subnets sincronizados: ${router.nombre} → [${subnets.join(', ')}]`);
     return subnets;
   }
