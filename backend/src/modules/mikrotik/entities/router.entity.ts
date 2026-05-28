@@ -1,4 +1,4 @@
-import { Entity, Column, Index } from 'typeorm';
+import { Entity, Column, Index, OneToMany } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
 
 export enum VersionRouterOS {
@@ -16,11 +16,12 @@ export enum MetodoConexion {
 }
 
 export enum EstadoEquipo {
-  ONLINE        = 'online',
-  OFFLINE       = 'offline',
-  DEGRADADO     = 'degradado',
-  MANTENIMIENTO = 'mantenimiento',
-  DESCONOCIDO   = 'desconocido',
+  ONLINE         = 'online',
+  OFFLINE        = 'offline',
+  REVERIFICANDO  = 'reverificando',
+  DEGRADADO      = 'degradado',
+  MANTENIMIENTO  = 'mantenimiento',
+  DESCONOCIDO    = 'desconocido',
 }
 
 export enum TipoControl {
@@ -117,6 +118,10 @@ export class Router extends BaseModel {
   @Column({ name: 'uptime_segundos', type: 'bigint', nullable: true })
   uptimeSegundos: number;
 
+  // Formato legible del uptime (ej: "3d 14h 22m") — cacheado del último barrido
+  @Column({ name: 'uptime_str', length: 100, nullable: true })
+  uptimeStr: string;
+
   @Column({ name: 'version_firmware', length: 50, nullable: true })
   versionFirmware: string;
 
@@ -133,7 +138,7 @@ export class Router extends BaseModel {
   @Column({ name: 'temperatura_c', type: 'decimal', precision: 5, scale: 1, nullable: true })
   temperaturaC: number;
 
-  @Column({ name: 'total_sesiones_pppoe', type: 'smallint', nullable: true })
+  @Column({ name: 'total_sesiones_pppoe', type: 'int', default: 0, nullable: false })
   totalSesionesPppoe: number;
 
   // ── GPS ───────────────────────────────────────────────────
@@ -167,6 +172,10 @@ export class Router extends BaseModel {
   // ── Redes locales gestionadas por este router ─────────────
   @Column({ name: 'subnets_locales', type: 'json', nullable: true })
   subnetsLocales: string[];
+
+  // ── Relación inversa con segmentos IPv4 ───────────────────
+  @OneToMany('SegmentoIpv4', 'router', { lazy: true })
+  segmentos: any[];
 
   // ── Zona / Sector ─────────────────────────────────────────
   @Column({ length: 100, nullable: true })

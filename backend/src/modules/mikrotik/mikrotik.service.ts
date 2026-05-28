@@ -738,12 +738,19 @@ export class MikrotikService {
           ? Math.round((1 - recursos.freeMemory / recursos.totalMemory) * 100)
           : null;
 
+        const uptimeSec = recursos.uptimeSeconds ?? 0;
+        const d = Math.floor(uptimeSec / 86400);
+        const h = Math.floor((uptimeSec % 86400) / 3600);
+        const m = Math.floor((uptimeSec % 3600) / 60);
+        const uptimeStr = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+
         await this.routerRepo.update(router.id, {
           estado:             EstadoEquipo.ONLINE,
           ultimoPing:         new Date(),
           cpuUsoPct:          recursos.cpuLoad ?? null,
           memoriaUsoPct,
-          uptimeSegundos:     recursos.uptimeSeconds ?? null,
+          uptimeSegundos:     uptimeSec || null,
+          uptimeStr:          uptimeSec ? uptimeStr : null,
           versionFirmware:    recursos.version ?? router.versionFirmware,
           totalSesionesPppoe: sesiones.length,
         });
@@ -752,7 +759,7 @@ export class MikrotikService {
           estado:             EstadoEquipo.OFFLINE,
           cpuUsoPct:          null,
           memoriaUsoPct:      null,
-          totalSesionesPppoe: null,
+          totalSesionesPppoe: 0,
         });
       }
     }

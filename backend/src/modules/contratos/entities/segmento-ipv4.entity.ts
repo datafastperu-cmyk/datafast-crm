@@ -1,14 +1,26 @@
-import { Entity, Column, Index } from 'typeorm';
+import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
+import { Router } from '../../mikrotik/entities/router.entity';
 
 @Entity('segmentos_ipv4')
 @Index(['empresaId', 'activo'])
+@Index(['routerId'])
 export class SegmentoIpv4 extends BaseModel {
   @Column({ name: 'empresa_id' })
   empresaId: string;
 
   @Column({ name: 'router_id', nullable: true })
   routerId: string;
+
+  @ManyToOne(() => Router, (r) => r.segmentos, {
+    nullable:   true,
+    onDelete:   'SET NULL',
+    eager:      false,
+    lazy:       false,
+    createForeignKeyConstraints: true,
+  })
+  @JoinColumn({ name: 'router_id' })
+  router?: Router;
 
   @Column({ name: 'nodo_id', nullable: true })
   nodoId: string;
