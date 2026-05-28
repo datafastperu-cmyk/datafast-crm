@@ -16,6 +16,7 @@ interface WirelessClient {
   rxRate:       string;
   uptime:       string;
   lastActivity: string;
+  comment:      string;
 }
 
 interface Props {
@@ -109,7 +110,7 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-zinc-700/50">
-                    {['MAC', 'Interfaz', 'Señal', 'SNR', 'TX/RX Rate', 'Uptime'].map(h => (
+                    {['MAC', 'Comentario', 'Interfaz', 'Señal', 'SNR', 'TX/RX Rate', 'Uptime'].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider whitespace-nowrap">
                         {h}
                       </th>
@@ -121,6 +122,13 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
                     <tr key={c.mac} className="hover:bg-zinc-800/40">
                       <td className="px-4 py-2.5">
                         <span className="font-mono text-xs text-zinc-200">{c.mac}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-zinc-300 max-w-[160px]">
+                        {c.comment ? (
+                          <span className="truncate block" title={c.comment}>{c.comment}</span>
+                        ) : (
+                          <span className="text-zinc-600">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-zinc-400">{c.interfaz}</td>
                       <td className="px-4 py-2.5">

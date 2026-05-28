@@ -388,6 +388,7 @@ export interface WirelessClientItem {
   rxRate:       string;
   uptime:       string;
   lastActivity: string;
+  comment:      string;
 }
 
 export interface FiltroAlerta {

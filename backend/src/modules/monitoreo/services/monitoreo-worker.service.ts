@@ -328,6 +328,7 @@ export class MonitoreoWorkerService {
           lastActivity:   e['last-activity'] ?? '',
           txCcq:          parseInt(e['tx-ccq'] ?? '0', 10),
           pThroughput:    parseInt(e['p-throughput'] ?? '0', 10),
+          comment:        e['comment'] ?? '',
         } satisfies WirelessClient;
       });
     });
@@ -513,4 +514,5 @@ export interface WirelessClient {
   lastActivity: string;
   txCcq:        number;
   pThroughput:  number;
+  comment:      string;
 }
