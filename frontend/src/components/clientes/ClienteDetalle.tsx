@@ -1263,6 +1263,17 @@ function ServicioPanel({
     staleTime: 0,
   });
 
+  // Re-apply planId/routerId/segmentoId once async options load (select needs options to show selected value)
+  useEffect(() => {
+    if (editing && planes.length > 0 && e?.planId) setValue('planId', e.planId);
+  }, [planes]);
+  useEffect(() => {
+    if (editing && routers.length > 0 && e?.routerId) setValue('routerId', e.routerId);
+  }, [routers]);
+  useEffect(() => {
+    if (editing && segmentos.length > 0 && e?.segmentoId) setValue('segmentoId', e.segmentoId);
+  }, [segmentos]);
+
   useEffect(() => {
     if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); setValue('nodoId', ''); }
   }, [routerId]);
