@@ -14,7 +14,7 @@ import {
   Trash2, X, Pencil, Copy, Download, AlignJustify,
   LayoutGrid, RefreshCcw, Maximize2, Minus, Phone, Package,
   Network, Lock, Navigation, Server, MapPin, User, ChevronRight,
-  MoreVertical, CheckCircle2, Clock, AlertTriangle,
+  MoreVertical, CheckCircle2, Clock, AlertTriangle, Zap,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -717,6 +717,7 @@ type ServicioForm = z.infer<typeof servicioSchema>;
 function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: Contrato[] }) {
   const queryClient = useQueryClient();
   const { toast }   = useToast();
+  const router      = useRouter();
   const [q1, setQ1] = useState('');
   const [q2, setQ2] = useState('');
   const [q3, setQ3] = useState('');
@@ -831,6 +832,15 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
+                      {!c.aprovisionado && (
+                        <button
+                          onClick={() => router.push(`/contratos/${c.id}/aprovisionar`)}
+                          title="Aprovisionar ONU"
+                          className="p-1.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-muted-foreground hover:text-violet-600 transition-colors"
+                        >
+                          <Zap className="w-3 h-3" />
+                        </button>
+                      )}
                       {c.estado === 'pendiente_instalacion' && (
                         <button
                           onClick={() => activar(c.id)}
