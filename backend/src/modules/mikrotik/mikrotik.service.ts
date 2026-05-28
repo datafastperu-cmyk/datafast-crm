@@ -7,6 +7,7 @@ import { Repository }       from 'typeorm';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
+import { Cron } from '@nestjs/schedule';
 import * as net from 'net';
 
 import { Router, VersionRouterOS, EstadoEquipo, TipoControl, TipoControlVelocidad, MetodoConexion } from './entities/router.entity';
@@ -566,6 +567,13 @@ export class MikrotikService {
     identityDetectada?: string;
     rosVersion?: string;
   }> {
+    // ── Resolver contraseña: sentinel '***stored***' → leer de BD ─
+    let resolvedPassword = dto.password ?? '';
+    if ((!resolvedPassword || resolvedPassword === '***stored***') && dto.routerId) {
+      const stored = await this.routerRepo.findOne({ where: { id: dto.routerId } });
+      if (stored) resolvedPassword = stored.passwordCifrado;
+    }
+
     const inicio  = Date.now();
     const metodo  = dto.metodoConexion || MetodoConexion.API;
 
@@ -581,7 +589,7 @@ export class MikrotikService {
       ip:              dto.ip,
       port:            dto.puerto,
       user:            dto.usuario,
-      passwordCifrado: dto.password,   // el pool hace fallback a texto plano si no está cifrado
+      passwordCifrado: resolvedPassword,
       useSsl,
       timeoutSec:      dto.timeoutConexion ?? 10,
       version:         dto.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
@@ -691,6 +699,63 @@ export class MikrotikService {
     this.firewallSvc.inyectarReglaBloqueoMorosos(creds)
       .then(() => this.logger.log(`Regla morosos aplicada: ${ip}`))
       .catch((err) => this.logger.warn(`No se pudo aplicar regla morosos en ${ip}: ${err.message}`));
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // POLLING DE MÉTRICAS (CPU/RAM/sesiones) — cada 5 minutos
+  // Solo se ejecuta en la instancia 0 del clúster PM2
+  // ────────────────────────────────────────────────────────────
+  @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
+  async pollRouterMetrics(): Promise<void> {
+    if (process.env.NODE_APP_INSTANCE !== '0') return;
+
+    let routers: Router[];
+    try {
+      routers = await this.routerRepo.find({
+        where: { activo: true, deletedAt: null as any },
+      });
+    } catch { return; }
+
+    for (const router of routers) {
+      try {
+        const creds: RouterCredentials = {
+          id:              router.id,
+          ip:              router.vpnIp || router.ipGestion,
+          port:            router.usarSsl ? router.puertoApiSsl : router.puertoApi,
+          user:            router.usuario,
+          passwordCifrado: router.passwordCifrado,
+          useSsl:          router.usarSsl,
+          timeoutSec:      Math.min(router.timeoutConexion || 10, 8),
+          version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+        };
+
+        const [recursos, sesiones] = await Promise.all([
+          this.ifaceSvc.getRecursos(creds),
+          this.pppoeSvc.listarSesionesActivas(creds).catch(() => []),
+        ]);
+
+        const memoriaUsoPct = recursos.freeMemory && recursos.totalMemory
+          ? Math.round((1 - recursos.freeMemory / recursos.totalMemory) * 100)
+          : null;
+
+        await this.routerRepo.update(router.id, {
+          estado:             EstadoEquipo.ONLINE,
+          ultimoPing:         new Date(),
+          cpuUsoPct:          recursos.cpuLoad ?? null,
+          memoriaUsoPct,
+          uptimeSegundos:     recursos.uptimeSeconds ?? null,
+          versionFirmware:    recursos.version ?? router.versionFirmware,
+          totalSesionesPppoe: sesiones.length,
+        });
+      } catch {
+        await this.routerRepo.update(router.id, {
+          estado:             EstadoEquipo.OFFLINE,
+          cpuUsoPct:          null,
+          memoriaUsoPct:      null,
+          totalSesionesPppoe: null,
+        });
+      }
+    }
   }
 
   // ── Detectar versión RouterOS de forma asíncrona ──────────

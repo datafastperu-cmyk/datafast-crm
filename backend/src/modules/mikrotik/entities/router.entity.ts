@@ -133,6 +133,9 @@ export class Router extends BaseModel {
   @Column({ name: 'temperatura_c', type: 'decimal', precision: 5, scale: 1, nullable: true })
   temperaturaC: number;
 
+  @Column({ name: 'total_sesiones_pppoe', type: 'smallint', nullable: true })
+  totalSesionesPppoe: number;
+
   // ── GPS ───────────────────────────────────────────────────
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
   latitud: number;

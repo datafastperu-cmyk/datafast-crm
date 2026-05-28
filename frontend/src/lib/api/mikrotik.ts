@@ -31,6 +31,7 @@ export interface Router {
   identityRouteros?: string;
   cpuUsoPct?:       number;
   memoriaUsoPct?:   number;
+  totalSesionesPppoe?: number;
   tipoControl:             TipoControl;
   tipoControlVelocidad:   TipoControlVelocidad;
   autoConfigurarQueues:   boolean;
@@ -84,7 +85,8 @@ export interface TestConexionDto {
   ip:              string;
   puerto:          number;
   usuario:         string;
-  password:        string;
+  password?:       string;
+  routerId?:       string;
   usarSsl?:        boolean;
   timeoutConexion?: number;
   metodoConexion?: MetodoConexion;

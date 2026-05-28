@@ -274,9 +274,13 @@ export class TestConexionDirectaDto {
   @IsString() @IsNotEmpty() @MaxLength(100)
   usuario: string;
 
-  @ApiProperty({ example: 'P@ssw0rd' })
-  @IsString() @IsNotEmpty() @MaxLength(200)
-  password: string;
+  @ApiPropertyOptional({ example: 'P@ssw0rd', description: 'Contraseña en claro. Omitir o enviar "***stored***" junto con routerId para usar la contraseña guardada en BD.' })
+  @IsOptional() @IsString() @MaxLength(200)
+  password?: string;
+
+  @ApiPropertyOptional({ description: 'UUID del router existente. Cuando se provee y password es "***stored***"/vacío, el backend recupera las credenciales cifradas de la BD.' })
+  @IsOptional() @IsString()
+  routerId?: string;
 
   @ApiPropertyOptional({ default: false })
   @IsOptional() @IsBoolean()

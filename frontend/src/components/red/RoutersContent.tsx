@@ -333,6 +333,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
         puerto:          testPort,
         usuario:         form.usuario,
         password:        form.password || '***stored***',
+        routerId:        router?.id,
         usarSsl:         form.usarSsl ?? false,
         timeoutConexion: form.timeoutConexion ?? 10,
         metodoConexion:  form.metodoConexion,
@@ -1066,18 +1067,46 @@ export function RoutersContent() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs">
-                      {r.cpuUsoPct != null || r.memoriaUsoPct != null ? (
+                      {r.cpuUsoPct != null || r.memoriaUsoPct != null || r.totalSesionesPppoe != null ? (
                         <div className="space-y-0.5">
                           {r.cpuUsoPct != null && (
                             <div className="flex items-center gap-1 text-gray-400">
                               <Cpu className="w-3 h-3" />
-                              <span>{r.cpuUsoPct.toFixed(0)}%</span>
+                              <div className="flex items-center gap-1">
+                                <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full"
+                                    style={{
+                                      width: `${Math.min(r.cpuUsoPct, 100)}%`,
+                                      background: r.cpuUsoPct > 80 ? '#ef4444' : r.cpuUsoPct > 50 ? '#f59e0b' : '#22c55e',
+                                    }}
+                                  />
+                                </div>
+                                <span>{r.cpuUsoPct.toFixed(0)}%</span>
+                              </div>
                             </div>
                           )}
                           {r.memoriaUsoPct != null && (
                             <div className="flex items-center gap-1 text-gray-400">
                               <MemoryStick className="w-3 h-3" />
-                              <span>{r.memoriaUsoPct.toFixed(0)}%</span>
+                              <div className="flex items-center gap-1">
+                                <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full"
+                                    style={{
+                                      width: `${Math.min(r.memoriaUsoPct, 100)}%`,
+                                      background: r.memoriaUsoPct > 85 ? '#ef4444' : r.memoriaUsoPct > 65 ? '#f59e0b' : '#22c55e',
+                                    }}
+                                  />
+                                </div>
+                                <span>{r.memoriaUsoPct.toFixed(0)}%</span>
+                              </div>
+                            </div>
+                          )}
+                          {r.totalSesionesPppoe != null && (
+                            <div className="flex items-center gap-1 text-gray-400">
+                              <Users className="w-3 h-3" />
+                              <span>{r.totalSesionesPppoe} PPPoE</span>
                             </div>
                           )}
                         </div>

@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 const PKI_DIR    = '/etc/openvpn/server';
 const PKI_META   = '/etc/openvpn/server/pki-meta.json';
 const CLIENTS_DIR = '/etc/openvpn/server/clients';
-const STATUS_LOG  = '/var/log/openvpn/status.log';
+const STATUS_LOG  = '/var/log/openvpn/openvpn-status.log';
 const OPENVPN_LOG = '/var/log/openvpn/openvpn.log';
 const CLIENT_SCRIPT = '/opt/datafast/scripts/openvpn-client.sh';
 

@@ -1,9 +1,11 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import Cookies from 'js-cookie';
 
-// Empty string = relative path — works on any server/domain via nginx proxy.
-// Local dev only: set NEXT_PUBLIC_API_URL=http://localhost:4000 in .env.local
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
+// Relative path works in browser via Next.js proxy rewrite.
+// Server-side context (Server Actions, API routes) needs an absolute URL.
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (typeof window === 'undefined' ? 'http://localhost:4000' : '');
 
 // ─── Instancia principal ──────────────────────────────────────
 export const api = axios.create({
