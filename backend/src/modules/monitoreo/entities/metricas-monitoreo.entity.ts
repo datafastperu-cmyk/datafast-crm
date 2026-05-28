@@ -8,7 +8,7 @@
 // Ver el bloque de SQL al final del fichero de migración.
 
 import {
-  Column, Entity, Index, ManyToOne,
+  Column, Entity, Index, JoinColumn, ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
@@ -29,6 +29,7 @@ export class MetricasMonitoreo {
   dispositivoId: string;
 
   @ManyToOne(() => DispositivoMonitoreo, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'dispositivo_id' })
   dispositivo: DispositivoMonitoreo;
 
   // ── Red ───────────────────────────────────────────────────────

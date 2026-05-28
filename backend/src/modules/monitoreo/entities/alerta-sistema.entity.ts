@@ -2,7 +2,7 @@
 
 import {
   Column, CreateDateColumn, Entity, Index,
-  ManyToOne, PrimaryGeneratedColumn,
+  JoinColumn, ManyToOne, PrimaryGeneratedColumn,
 } from 'typeorm';
 import { NivelAlerta, StatusAlerta } from '../enums/monitoreo.enums';
 import { DispositivoMonitoreo }       from './dispositivo-monitoreo.entity';
@@ -24,6 +24,7 @@ export class AlertaSistema {
   dispositivoId: string;
 
   @ManyToOne(() => DispositivoMonitoreo, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'dispositivo_id' })
   dispositivo: DispositivoMonitoreo;
 
   // ── Clasificación ─────────────────────────────────────────────

@@ -10,7 +10,7 @@
 
 import {
   Column, CreateDateColumn, DeleteDateColumn,
-  Entity, Index, ManyToOne,
+  Entity, Index, JoinColumn, ManyToOne,
   PrimaryGeneratedColumn, UpdateDateColumn,
 } from 'typeorm';
 import { TipoEquipo } from '../enums/monitoreo.enums';
@@ -32,6 +32,7 @@ export class UmbralAlerta {
   dispositivoId: string | null;
 
   @ManyToOne(() => DispositivoMonitoreo, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'dispositivo_id' })
   dispositivo: DispositivoMonitoreo | null;
 
   // Si dispositivo_id es NULL, aplica a todos los dispositivos de este tipo
