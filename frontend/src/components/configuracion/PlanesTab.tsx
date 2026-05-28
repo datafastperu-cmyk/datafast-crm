@@ -330,10 +330,25 @@ export function PlanesTab() {
                   className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                   <Pencil className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={() => setDeletePlan(p)}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => (p.contratosCount ?? 0) === 0 ? setDeletePlan(p) : undefined}
+                    disabled={(p.contratosCount ?? 0) > 0}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      (p.contratosCount ?? 0) > 0
+                        ? 'text-muted-foreground opacity-40 cursor-not-allowed'
+                        : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
+                    }`}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                  {(p.contratosCount ?? 0) > 0 && (
+                    <div className="absolute bottom-full right-0 mb-1 hidden group-hover:block z-50 pointer-events-none">
+                      <div className="bg-popover text-popover-foreground text-xs rounded-md px-2 py-1 shadow-md whitespace-nowrap border">
+                        No se puede eliminar: Este plan tiene clientes activos vinculados
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}

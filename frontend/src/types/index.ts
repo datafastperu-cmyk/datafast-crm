@@ -127,6 +127,7 @@ export interface Plan {
   activo:               boolean;
   visibleEnPortal:      boolean;
   ordenDisplay:         number;
+  contratosCount?:      number;
 }
 
 // ─── Contratos ────────────────────────────────────────────────

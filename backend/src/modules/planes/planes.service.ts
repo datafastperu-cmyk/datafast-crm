@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Plan } from './entities/plan.entity';
 import { CreatePlanDto, UpdatePlanDto, FilterPlanDto } from './dto/plan.dto';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -8,7 +8,10 @@ import { JwtPayload } from '../../common/decorators/current-user.decorator';
 @Injectable()
 export class PlanesService {
   private readonly logger = new Logger(PlanesService.name);
-  constructor(@InjectRepository(Plan) private readonly repo: Repository<Plan>) {}
+  constructor(
+    @InjectRepository(Plan) private readonly repo: Repository<Plan>,
+    @InjectDataSource()     private readonly ds:   DataSource,
+  ) {}
 
   async create(dto: CreatePlanDto, user: JwtPayload): Promise<Plan> {
     const existe = await this.repo.findOne({ where:{ nombre:dto.nombre, empresaId:user.empresaId, deletedAt:null as any } });
@@ -25,7 +28,20 @@ export class PlanesService {
     if (filters.tipoServicio) qb.andWhere('p.tipo_servicio = :ts', { ts:filters.tipoServicio });
     if (filters.activo !== undefined) qb.andWhere('p.activo = :activo', { activo:filters.activo });
     qb.orderBy('p.orden_display','ASC').addOrderBy('p.precio','ASC');
-    const [data, total] = await qb.getManyAndCount();
+    const [planes, total] = await qb.getManyAndCount();
+
+    if (planes.length === 0) return { data: [], total: 0 };
+
+    const ids = planes.map(p => p.id);
+    const counts: { plan_id: string; cnt: string }[] = await this.ds.query(
+      `SELECT plan_id, COUNT(*) AS cnt FROM contratos
+       WHERE plan_id = ANY($1) AND deleted_at IS NULL
+       AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+       GROUP BY plan_id`,
+      [ids],
+    );
+    const countMap = new Map(counts.map(r => [r.plan_id, Number(r.cnt)]));
+    const data = planes.map(p => ({ ...p, contratosCount: countMap.get(p.id) ?? 0 }));
     return { data, total };
   }
 
@@ -43,6 +59,14 @@ export class PlanesService {
 
   async remove(id: string, user: JwtPayload): Promise<void> {
     await this.findOne(id, user.empresaId);
+    const [{ cnt }] = await this.ds.query(
+      `SELECT COUNT(*) AS cnt FROM contratos
+       WHERE plan_id = $1 AND deleted_at IS NULL
+       AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')`,
+      [id],
+    );
+    if (Number(cnt) > 0)
+      throw new BadRequestException('No es posible eliminar el plan porque hay contratos de abonados activos que lo están utilizando.');
     await this.repo.update(id, { deletedAt:new Date() });
   }
 }
