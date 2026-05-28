@@ -169,6 +169,15 @@ export class PppoeService {
     });
   }
 
+  // ── Contar sesiones activas (count-only) ────────────────────
+  async contarSesionesActivas(creds: RouterCredentials): Promise<number> {
+    return this.pool.execute(creds, async (api) => {
+      const result = await api.write('/ppp/active/print', ['=count-only=']);
+      const n = parseInt(result?.[0]?.ret ?? '0', 10);
+      return isNaN(n) ? 0 : n;
+    });
+  }
+
   // ── Sesión de un usuario específico ────────────────────────
   async getSesion(creds: RouterCredentials, name: string): Promise<any | null> {
     const sessions = await this.pool.execute(creds, (api) =>

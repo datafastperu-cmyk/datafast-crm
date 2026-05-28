@@ -164,11 +164,12 @@ export class MikrotikService {
     const router = await this.findOne(id, user.empresaId);
     const updates: Partial<Router> = { ...dto } as any;
 
-    if ((dto as any).password) {
-      try { updates.passwordCifrado = encrypt((dto as any).password); }
-      catch { updates.passwordCifrado = (dto as any).password; }
-      delete (updates as any).password;
+    const rawPass = (dto as any).password;
+    if (rawPass && rawPass !== '***stored***') {
+      try { updates.passwordCifrado = encrypt(rawPass); }
+      catch { updates.passwordCifrado = rawPass; }
     }
+    delete (updates as any).password;
 
     await this.routerRepo.update(id, updates);
     // Invalidar conexiones existentes si cambió la IP o contraseña
@@ -729,9 +730,12 @@ export class MikrotikService {
           version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
         };
 
-        const [recursos, sesiones] = await Promise.all([
+        const esPppoe = router.tipoControl === TipoControl.PPPOE_ADDRESSLIST;
+        const [recursos, sesionesCount] = await Promise.all([
           this.ifaceSvc.getRecursos(creds),
-          this.pppoeSvc.listarSesionesActivas(creds).catch(() => []),
+          esPppoe
+            ? this.pppoeSvc.contarSesionesActivas(creds).catch(() => 0)
+            : Promise.resolve(0),
         ]);
 
         const memoriaUsoPct = recursos.freeMemory && recursos.totalMemory
@@ -752,7 +756,7 @@ export class MikrotikService {
           uptimeSegundos:     uptimeSec || null,
           uptimeStr:          uptimeSec ? uptimeStr : null,
           versionFirmware:    recursos.version ?? router.versionFirmware,
-          totalSesionesPppoe: sesiones.length,
+          totalSesionesPppoe: sesionesCount,
         });
       } catch {
         await this.routerRepo.update(router.id, {
