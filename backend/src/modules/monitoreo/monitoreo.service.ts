@@ -18,6 +18,7 @@ import {
 }                                from './services/monitoreo-worker.service';
 import { RouterConnectionPool }  from '../mikrotik/services/connection-pool.service';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { encrypt }               from '../../common/utils/encryption.util';
 
 // ─── DTOs / respuestas ────────────────────────────────────────────
@@ -56,11 +57,17 @@ export interface DispositivoConMetrica {
 }
 
 export class ProbarConexionDto {
+  @IsString() @IsNotEmpty()
   ipAddress:       string;
+  @IsString() @IsNotEmpty()
   usuario:         string;
+  @IsString() @IsNotEmpty()
   contrasena:      string;
+  @IsOptional() @IsNumber()
   puertoApi?:      number;
+  @IsOptional() @IsBoolean()
   useSsl?:         boolean;
+  @IsOptional() @IsString()
   routerAccesoId?: string;
 }
 
