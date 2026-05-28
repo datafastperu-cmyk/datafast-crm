@@ -134,7 +134,7 @@ export const contratosApi = {
   },
 
   activar: async (id: string): Promise<Contrato> => {
-    const res = await api.post<ApiRespuesta<Contrato>>(`/contratos/${id}/activar`);
+    const res = await api.patch<ApiRespuesta<Contrato>>(`/contratos/${id}/activar`);
     return res.data.data;
   },
 
