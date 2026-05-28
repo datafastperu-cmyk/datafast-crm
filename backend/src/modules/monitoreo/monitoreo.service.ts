@@ -234,6 +234,9 @@ export class MonitoreoService {
   async probarConexion(
     dto: ProbarConexionDto,
   ): Promise<StdResponse<ProbarConexionResult>> {
+    if (!dto.ipAddress?.trim()) {
+      return StdResponse.ok({ conectado: false, error: 'La dirección IP es requerida. Completa el campo antes de probar.' });
+    }
     const port = dto.useSsl ? 8729 : (dto.puertoApi ?? 8728);
 
     // Construimos creds temporales: encrypt la contraseña en caliente
