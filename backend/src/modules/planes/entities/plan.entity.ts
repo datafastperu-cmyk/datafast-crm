@@ -29,6 +29,10 @@ export class Plan extends BaseModel {
   @Column({ name:'tipo_queue', type:'enum', enum:TipoQueue, default:TipoQueue.SIMPLE_QUEUE }) tipoQueue: TipoQueue;
   @Column({ name:'ppp_profile', length:100, nullable:true }) pppProfile: string;
   @Column({ name:'ppp_service', length:50, default:'pppoe' }) pppService: string;
+  // Si true el ERP crea/actualiza el perfil en MikroTik; si false usa el perfil ya existente (modo heredado)
+  @Column({ name:'crear_reglas_en_router', default:false }) crearReglasEnRouter: boolean;
+  // Override explícito del rate limit (ej: '10M/10M'); si null se calcula de velocidadSubida/Bajada
+  @Column({ name:'rate_limit', length:50, nullable:true }) rateLimit: string;
   @Column({ name:'pool_ip', length:100, nullable:true }) poolIp: string;
   @Column({ name:'vlan_id', type:'smallint', nullable:true }) vlanId: number;
   @Column({ name:'tipo_servicio', length:20, default:'ftth' }) tipoServicio: string;

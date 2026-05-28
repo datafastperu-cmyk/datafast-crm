@@ -2,6 +2,11 @@ import { Entity, Column, Index, ManyToOne, OneToMany, JoinColumn } from 'typeorm
 import { BaseModel } from '../../../common/entities/base.entity';
 
 // ─── Enums ────────────────────────────────────────────────────
+export enum TipoPago {
+  PREPAGO  = 'prepago',
+  POSTPAGO = 'postpago',
+}
+
 export enum EstadoContrato {
   PENDIENTE_INSTALACION = 'pendiente_instalacion',
   ACTIVO                = 'activo',
@@ -132,6 +137,20 @@ export class Contrato extends BaseModel {
   @Column({ name: 'precio_final', type: 'decimal', precision: 10, scale: 2, insert: false, update: false, nullable: true })
   precioFinal: number;
 
+  // Días de gracia antes del corte automático por mora
+  @Column({ name: 'dias_prorroga', type: 'smallint', default: 3 })
+  diasProrroga: number;
+
+  // Días antes del vencimiento para enviar recordatorios (override de plantilla)
+  @Column({ name: 'dias_recordatorio_1', type: 'smallint', nullable: true })
+  diasRecordatorio1: number;
+
+  @Column({ name: 'dias_recordatorio_2', type: 'smallint', nullable: true })
+  diasRecordatorio2: number;
+
+  @Column({ name: 'dias_recordatorio_3', type: 'smallint', nullable: true })
+  diasRecordatorio3: number;
+
   // ── Prórrogas ─────────────────────────────────────────────
   @Column({ name: 'en_prorroga', default: false })
   enProrroga: boolean;
@@ -146,6 +165,17 @@ export class Contrato extends BaseModel {
   prorrogaOtorgadaPor: string;
 
   // ── Facturación ───────────────────────────────────────────
+  @Column({ name: 'tipo_pago', type: 'enum', enum: TipoPago, nullable: true })
+  tipoPago: TipoPago;
+
+  // 'mensual' | 'bimestral' | 'trimestral' | 'semestral' | 'anual'
+  @Column({ name: 'ciclo_facturacion', length: 20, nullable: true })
+  cicloFacturacion: string;
+
+  // 'fijo' | 'variable' — cómo se determina la fecha de cobro dentro del ciclo
+  @Column({ name: 'ciclo_pago', length: 20, nullable: true })
+  cicloPago: string;
+
   @Column({ name: 'dia_facturacion', type: 'smallint', nullable: true })
   diaFacturacion: number;
 

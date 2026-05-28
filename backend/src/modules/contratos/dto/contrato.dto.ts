@@ -5,7 +5,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { EstadoContrato } from '../entities/contrato.entity';
+import { EstadoContrato, TipoPago } from '../entities/contrato.entity';
 import { PaginationDto } from '../../../common/dto/response.dto';
 
 // ─── Crear Contrato ───────────────────────────────────────────
@@ -97,6 +97,34 @@ export class CreateContratoDto {
   @ApiPropertyOptional({ description: 'Día 1-28 para facturar este contrato' })
   @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number)
   diaFacturacion?: number;
+
+  @ApiPropertyOptional({ enum: TipoPago, description: 'Modalidad de cobro: prepago o postpago' })
+  @IsOptional() @IsEnum(TipoPago)
+  tipoPago?: TipoPago;
+
+  @ApiPropertyOptional({ example: 'mensual', description: 'mensual | bimestral | trimestral | semestral | anual' })
+  @IsOptional() @IsString() @MaxLength(20)
+  cicloFacturacion?: string;
+
+  @ApiPropertyOptional({ example: 'fijo', description: 'fijo | variable — determina cómo se calcula la fecha de cobro' })
+  @IsOptional() @IsString() @MaxLength(20)
+  cicloPago?: string;
+
+  @ApiPropertyOptional({ example: 3, description: 'Días de gracia antes del corte automático por mora' })
+  @IsOptional() @IsInt() @Min(0) @Max(60) @Type(() => Number)
+  diasProrroga?: number;
+
+  @ApiPropertyOptional({ example: 7, description: 'Días antes del vencimiento para 1er recordatorio' })
+  @IsOptional() @IsInt() @Min(1) @Max(30) @Type(() => Number)
+  diasRecordatorio1?: number;
+
+  @ApiPropertyOptional({ example: 3, description: 'Días antes del vencimiento para 2do recordatorio' })
+  @IsOptional() @IsInt() @Min(1) @Max(30) @Type(() => Number)
+  diasRecordatorio2?: number;
+
+  @ApiPropertyOptional({ example: 1, description: 'Días antes del vencimiento para 3er recordatorio' })
+  @IsOptional() @IsInt() @Min(1) @Max(30) @Type(() => Number)
+  diasRecordatorio3?: number;
 
   @ApiPropertyOptional({ description: 'Dirección MAC del equipo cliente (AA:BB:CC:DD:EE:FF)' })
   @IsOptional() @IsString() @MaxLength(17)
