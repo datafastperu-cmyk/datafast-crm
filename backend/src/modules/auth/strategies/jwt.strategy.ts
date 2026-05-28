@@ -38,7 +38,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // ── 1. Verificar blacklist de tokens (logout) ──────────────
     // Extraer el token del header para generar su clave en Redis
     const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
-    const blacklistKey = `jwt_bl:${token?.substring(0, 32)}`;
+    const sig = token?.split('.')[2] ?? token;
+    const blacklistKey = `jwt_bl:${sig?.substring(0, 40)}`;
     const isBlacklisted = await this.cache.get(blacklistKey);
     if (isBlacklisted) {
       throw new UnauthorizedException('Token invalidado — inicia sesión nuevamente');

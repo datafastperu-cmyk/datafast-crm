@@ -168,7 +168,7 @@ export class AuthService {
       const ttlMs = (payload.exp * 1000) - Date.now();
       if (ttlMs > 0) {
         await this.cache.set(
-          `jwt_bl:${token.substring(0, 32)}`,
+          `jwt_bl:${(token.split('.')[2] ?? token).substring(0, 40)}`,
           true,
           ttlMs,
         );
