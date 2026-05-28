@@ -141,11 +141,12 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
     mutationFn: () => {
       const v = getValues();
       return monitoreoApi.probarConexion({
-        ipAddress:  v.ipAddress,
-        usuario:    v.usuario   ?? '',
-        contrasena: v.contrasena ?? '',
-        puertoApi:  v.puertoApi,
-        useSsl:     v.useSsl,
+        ipAddress:      v.ipAddress,
+        usuario:        v.usuario   ?? '',
+        contrasena:     v.contrasena ?? '',
+        puertoApi:      v.puertoApi,
+        useSsl:         v.useSsl,
+        routerAccesoId: v.routerAccesoId ? Number(v.routerAccesoId) : undefined,
       });
     },
     onSuccess: (r) => setTestResult(r as ProbarResult),

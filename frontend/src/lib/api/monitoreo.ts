@@ -249,11 +249,12 @@ export interface CreateDispositivoDto {
 }
 
 export interface ProbarConexionDto {
-  ipAddress:  string;
-  usuario:    string;
-  contrasena: string;
-  puertoApi?: number;
-  useSsl?:    boolean;
+  ipAddress:       string;
+  usuario:         string;
+  contrasena:      string;
+  puertoApi?:      number;
+  useSsl?:         boolean;
+  routerAccesoId?: number;
 }
 
 export interface ProbarConexionResult {

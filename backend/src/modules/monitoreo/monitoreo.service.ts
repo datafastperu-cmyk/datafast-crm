@@ -56,11 +56,12 @@ export interface DispositivoConMetrica {
 }
 
 export class ProbarConexionDto {
-  ipAddress:   string;
-  usuario:     string;
-  contrasena:  string;
-  puertoApi?:  number;
-  useSsl?:     boolean;
+  ipAddress:       string;
+  usuario:         string;
+  contrasena:      string;
+  puertoApi?:      number;
+  useSsl?:         boolean;
+  routerAccesoId?: string;
 }
 
 
