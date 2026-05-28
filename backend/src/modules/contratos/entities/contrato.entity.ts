@@ -37,6 +37,9 @@ export class Contrato extends BaseModel {
   @Column({ name: 'nodo_id', nullable: true })
   nodoId: string;
 
+  @Column({ name: 'antena_ap_id', nullable: true })
+  antenaApId: string;
+
   @Column({ name: 'onu_id', nullable: true })
   onuId: string;
 

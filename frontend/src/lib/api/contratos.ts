@@ -23,6 +23,7 @@ export interface CreateContratoDto {
   planId:               string;
   routerId?:            string;
   nodoId?:              string;
+  antenaApId?:          string;
   oltId?:               string;
   segmentoId?:          string;
   ipManual?:            string;

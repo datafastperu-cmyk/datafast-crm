@@ -26,6 +26,10 @@ export class CreateContratoDto {
   @IsOptional() @IsUUID()
   nodoId?: string;
 
+  @ApiPropertyOptional({ description: 'UUID de la antena AP (dispositivo_monitoreo) a la que se conecta el cliente' })
+  @IsOptional() @IsUUID()
+  antenaApId?: string;
+
   @ApiPropertyOptional({ description: 'UUID del segmento IPv4 para asignar IP automáticamente' })
   @IsOptional() @IsUUID()
   segmentoId?: string;

@@ -164,6 +164,25 @@ export interface Contrato {
   velocidadSubida?: number;
   routerId?:       string;
   routerNombre?:   string;
+  antenaApId?:     string;
+  segmentoId?:     string;
+  tipoAntena?:     string;
+  ipAdministracion?: string;
+  cajaNap?:        string;
+  puertoNap?:      string;
+  macAddress?:     string;
+  excluirFirewall?: boolean;
+  routes?:         string;
+  tipoIpv4?:       string;
+  descripcionServicio?: string;
+  comunidadSnmp?:  string;
+  usuarioAntena?:  string;
+  contrasenaAntena?: string;
+  direccionInstalacion?: string;
+  latitudInstalacion?:  number;
+  longitudInstalacion?: number;
+  notasInstalacion?: string;
+  fechaBaja?:      string;
 }
 
 // ─── Facturas ─────────────────────────────────────────────────

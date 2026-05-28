@@ -382,6 +382,7 @@ export function ClienteWizard() {
             routerId:            data.routerId                || undefined,
             segmentoId:          data.segmentoId              || undefined,
             nodoId:              undefined,
+            antenaApId:          data.conectadoAId            || undefined,
             ipManual:            data.ipv4                    || undefined,
             usuarioPppoe:        data.userPppHs               || undefined,
             passwordPppoePlain:  data.passwordPppHs           || undefined,

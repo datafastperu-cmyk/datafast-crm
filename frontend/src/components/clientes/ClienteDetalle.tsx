@@ -705,6 +705,7 @@ const servicioSchema = z.object({
   descripcionServicio:  z.string().optional(),
   precioMensual:        z.string().optional(),
   nodoId:               z.string().optional(),
+  antenaApId:           z.string().optional(),
   ipAdministracion:     z.string().optional(),
   tipoAntena:           z.string().optional(),
   comunidadSnmp:        z.string().optional(),
@@ -1219,6 +1220,7 @@ function ServicioPanel({
       precioMensual:        e?.precioMensual
         ? Number(e.precioMensual).toFixed(2) : '',
       nodoId:               e?.nodoId               ?? '',
+      antenaApId:           e?.antenaApId           ?? '',
       ipAdministracion:     e?.ipAdministracion     ?? '',
       tipoAntena:           e?.tipoAntena           ?? 'otro',
       comunidadSnmp:        e?.comunidadSnmp        ?? '',
@@ -1263,7 +1265,7 @@ function ServicioPanel({
     staleTime: 0,
   });
 
-  // Re-apply planId/routerId/segmentoId once async options load (select needs options to show selected value)
+  // Re-apply planId/routerId/segmentoId/antenaApId once async options load
   useEffect(() => {
     if (editing && planes.length > 0 && e?.planId) setValue('planId', e.planId);
   }, [planes]);
@@ -1273,6 +1275,9 @@ function ServicioPanel({
   useEffect(() => {
     if (editing && segmentos.length > 0 && e?.segmentoId) setValue('segmentoId', e.segmentoId);
   }, [segmentos]);
+  useEffect(() => {
+    if (editing && antenasAP.length > 0 && e?.antenaApId) setValue('antenaApId', e.antenaApId);
+  }, [antenasAP]);
 
   useEffect(() => {
     if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); setValue('nodoId', ''); }
@@ -1314,7 +1319,8 @@ function ServicioPanel({
         cajaNap:              data.cajaNap              || undefined,
         puertoNap:            data.puertoNap            || undefined,
         fechaInicio:          data.fechaInicio,
-        nodoId:               data.nodoId               || undefined,
+        nodoId:               undefined,
+        antenaApId:           (data as any).antenaApId  || undefined,
         ipAdministracion:     data.ipAdministracion     || undefined,
         tipoAntena:           data.tipoAntena           || undefined,
         comunidadSnmp:        data.comunidadSnmp        || undefined,
@@ -1576,7 +1582,7 @@ function ServicioPanel({
                   hint={!routerId ? '* Selecciona un router primero' : undefined}
                 >
                   <select
-                    {...register('nodoId')}
+                    {...register('antenaApId')}
                     disabled={!routerId}
                     className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
                   >
