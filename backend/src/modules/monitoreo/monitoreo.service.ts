@@ -74,43 +74,71 @@ export class ProbarConexionDto {
 
 // ─── DTO crear dispositivo ────────────────────────────────────
 export class CreateDispositivoDto {
+  @IsString() @IsNotEmpty()
   nombreEmisor:        string;
+  @IsString() @IsNotEmpty()
   ipAddress:           string;
+  @IsOptional() @IsString()
   routerAccesoId?:     string;
+  @IsString() @IsNotEmpty()
   tipoEquipo:          TipoEquipo;
+  @IsString() @IsNotEmpty()
   fabricante:          Fabricante;
+  @IsOptional() @IsString()
   modeloNombre?:       string;
+  @IsOptional() @IsString()
   usuario?:            string;
+  @IsOptional() @IsString()
   contrasena?:         string;
+  @IsOptional() @IsNumber()
   puertoApi?:          number;
+  @IsOptional() @IsBoolean()
   useSsl?:             boolean;
+  @IsOptional() @IsBoolean()
   monitoreoSnmp?:      boolean;
+  @IsOptional() @IsNumber()
   intervaloChequeoSeg?: number;
 }
 
 
 export class FiltroAlertaQuery {
+  @IsOptional() @IsString()
   status?: string;
+  @IsOptional() @IsString()
   nivel?:  string;
+  @IsOptional() @IsNumber()
   page?:   number;
+  @IsOptional() @IsNumber()
   limit?:  number;
 }
 
 export class ResolverAlertaDto {
+  @IsOptional() @IsString()
   motivo?: string;
 }
 
 export class CreateUmbralDto {
+  @IsOptional() @IsString()
   dispositivoId?:           string;
+  @IsOptional() @IsString()
   tipoEquipo?:              TipoEquipo;
+  @IsOptional() @IsString()
   nombre?:                  string;
+  @IsOptional() @IsNumber()
   latenciaMaxMs?:           number;
+  @IsOptional() @IsNumber()
   lossMaxPct?:              number;
+  @IsOptional() @IsNumber()
   cpuMaxPct?:               number;
+  @IsOptional() @IsNumber()
   memoryMaxPct?:            number;
+  @IsOptional() @IsString()
   trafficDownMaxBps?:       string;
+  @IsOptional() @IsString()
   trafficUpMaxBps?:         string;
+  @IsOptional() @IsString()
   nivelAlerta?:             string;
+  @IsOptional() @IsNumber()
   confirmacionesRequeridas?: number;
 }
 
