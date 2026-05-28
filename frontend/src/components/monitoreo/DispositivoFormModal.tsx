@@ -142,6 +142,7 @@ export function DispositivoFormModal({ onClose, onSuccess }: Props) {
       const v = getValues();
       return monitoreoApi.probarConexion({
         ipAddress:  v.ipAddress,
+        routerAccesoId: v.routerAccesoId ? Number(v.routerAccesoId) : undefined,
         usuario:    v.usuario   ?? '',
         contrasena: v.contrasena ?? '',
         puertoApi:  v.puertoApi,
