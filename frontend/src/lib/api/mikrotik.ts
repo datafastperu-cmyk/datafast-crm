@@ -73,6 +73,7 @@ export interface CreateRouterDto {
   snmpCommunity?:  string;
   latitud?:        number;
   longitud?:       number;
+  vpnClienteId?:   string;
 }
 
 export interface UpdateRouterDto extends Partial<CreateRouterDto> {}

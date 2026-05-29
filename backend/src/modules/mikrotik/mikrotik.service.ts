@@ -136,11 +136,17 @@ export class MikrotikService {
     this.inyectarReglasMorososAsync(saved);
 
     if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
-      const vpnCn = `df_router_id_${saved.id}`;
-      await this.routerRepo.update(saved.id, { vpnCommonName: vpnCn } as any);
-      this.vpnSvc.generarParaRouter(await this.findOne(saved.id, user.empresaId)).catch(e =>
-        this.logger.error(`[VPN-CCD] router ${saved.id}: ${e.message}`)
-      );
+      if (dto.vpnClienteId) {
+        // Vincular cert del wizard directamente — evita generar un cert UUID huérfano
+        await this.vpnSvc.vincularCertWizardARouter(dto.vpnClienteId, saved.id, user.empresaId)
+          .catch(e => this.logger.error(`[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`));
+      } else {
+        const vpnCn = `df_router_id_${saved.id}`;
+        await this.routerRepo.update(saved.id, { vpnCommonName: vpnCn } as any);
+        this.vpnSvc.generarParaRouter(await this.findOne(saved.id, user.empresaId)).catch(e =>
+          this.logger.error(`[VPN-CCD] router ${saved.id}: ${e.message}`)
+        );
+      }
     }
 
     await this.auditoria.logCreate({

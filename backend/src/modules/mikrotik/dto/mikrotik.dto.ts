@@ -110,6 +110,10 @@ export class CreateRouterDto {
   @ApiPropertyOptional({ enum: VersionRouterOS, default: VersionRouterOS.DESCONOCIDA })
   @IsOptional() @IsEnum(VersionRouterOS)
   versionRos?: VersionRouterOS;
+
+  @ApiPropertyOptional({ description: 'ID del vpn_cliente generado en el wizard — vincula el cert real sin crear uno UUID huérfano' })
+  @IsOptional() @IsString() @MaxLength(100)
+  vpnClienteId?: string;
 }
 
 export class UpdateRouterDto extends PartialType(CreateRouterDto) {}

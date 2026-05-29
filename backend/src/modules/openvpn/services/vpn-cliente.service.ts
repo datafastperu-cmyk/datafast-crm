@@ -326,6 +326,8 @@ export class VpnClienteService {
           `${PKI_DIR}/crl.pem`,
           '/etc/openvpn/server/crl.pem',
         );
+        // EasyRSA genera crl.pem con 600 root:root; OpenVPN corre como 'nobody' → necesita o+r
+        await execFileAsync('chmod', ['644', '/etc/openvpn/server/crl.pem']).catch(() => {});
         this.logger.log(`CRL actualizado en /etc/openvpn/server/crl.pem`);
       } catch (err: any) {
         this.logger.warn(`Error revocando ${cliente.nombreCert}: ${err.message}`);
@@ -396,6 +398,37 @@ export class VpnClienteService {
       { vpnIp, empresaId, activo: true } as any,
       { routerId },
     );
+  }
+
+  // ── Vincular cert del wizard al router recién creado ─────────
+  // Usa el cert real (mt-<slug>-<hex>) como vpnCommonName del router,
+  // evitando el flujo df_router_id_<uuid> que genera un cert nunca instalado.
+
+  async vincularCertWizardARouter(
+    vpnClienteId: string,
+    routerId:     string,
+    empresaId:    string,
+  ): Promise<void> {
+    const cliente = await this.repo.findOne({ where: { id: vpnClienteId, empresaId, activo: true } });
+    if (!cliente || cliente.estado === 'revocado') {
+      this.logger.warn(`[VPN-LINK] vpn_cliente ${vpnClienteId} no encontrado o revocado — fallback a generarParaRouter`);
+      const router = await this.routerRepo.findOne({ where: { id: routerId, empresaId } });
+      if (router) await this.generarParaRouter(router);
+      return;
+    }
+
+    // Actualizar router con el CN real
+    await this.routerRepo.update(routerId, { vpnCommonName: cliente.nombreCert } as any);
+    // Vincular el registro vpn_clientes al router
+    await this.repo.update(cliente.id, { routerId });
+
+    // Escribir/actualizar CCD
+    const router = await this.routerRepo.findOne({ where: { id: routerId } });
+    if (router) {
+      await this.escribirArchivoCcd(cliente.nombreCert, router.subnetsLocales || []);
+    }
+
+    this.logger.log(`[VPN-LINK] Cert wizard vinculado: "${cliente.nombreCert}" → router ${routerId}`);
   }
 
   // ── Generar/garantizar certificado ID-based y escribir CCD ───

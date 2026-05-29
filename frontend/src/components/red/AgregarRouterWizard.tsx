@@ -106,6 +106,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const tokenDescargaRef = useRef<string | null>(null);
   const routerGuardadoRef = useRef(false);
   const revokedRef       = useRef(false);
+  const vpnConnectedRef  = useRef(false);  // true una vez que el túnel está activo — no revocar en cleanup
   useEffect(() => { vpnClienteRef.current = vpnCliente; }, [vpnCliente]);
   useEffect(() => { routerGuardadoRef.current = routerGuardado; }, [routerGuardado]);
 
@@ -117,6 +118,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // Si no hay JWT activo, usa tokenDescarga (endpoint público revoke-by-token).
   const fireRevoke = (id: string) => {
     if (revokedRef.current) return;
+    if (vpnConnectedRef.current) return;  // túnel activo — el cron de cleanup lo gestionará si el wizard se abandona
     revokedRef.current = true;
     sessionStorage.removeItem('vpn_pending_token');
     const base  = process.env.NEXT_PUBLIC_API_URL ?? '';
@@ -265,6 +267,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         }
 
         // 2. Auto-rellenar IP VPN desde el túnel
+        vpnConnectedRef.current = true;
         const ip = vpnRes.vpnIp || ipGestion;
         if (vpnRes.vpnIp) {
           setVpnIp(vpnRes.vpnIp);
@@ -359,6 +362,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         metodoConexion:       tipoConexion,
         tipoControl:          tipoControl          as any,
         tipoControlVelocidad: tipoControlVelocidad as any,
+        vpnClienteId:         tipoConexion === 'vpn_tunnel' ? vpnCliente?.id : undefined,
       });
       toast('Router registrado correctamente', { type: 'success' });
       sessionStorage.removeItem('vpn_pending_token');
