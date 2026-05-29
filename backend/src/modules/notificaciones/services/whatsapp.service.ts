@@ -1,9 +1,14 @@
 import {
-  Injectable, Logger,
+  Injectable, Logger, Inject,
 } from '@nestjs/common';
 import { HttpService }    from '@nestjs/axios';
 import { ConfigService }  from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource }       from 'typeorm';
+import { CACHE_MANAGER }    from '@nestjs/cache-manager';
+import { Cache }            from 'cache-manager';
+import { decrypt }          from '../../../common/utils/encryption.util';
 
 // ─── Tipos de notificación ────────────────────────────────────
 export enum TipoNotificacion {
@@ -21,20 +26,23 @@ export enum TipoNotificacion {
 }
 
 export interface WhatsAppParams {
-  telefono:     string;    // +51987654321
-  tipo:         TipoNotificacion;
-  variables:    Record<string, string>; // variables del template
-  empresaId?:   string;
-  clienteId?:   string;
+  telefono:    string;
+  tipo:        TipoNotificacion;
+  variables:   Record<string, string>;
+  empresaId?:  string;
+  clienteId?:  string;
 }
 
-// ─── Templates para cada tipo de notificación ─────────────────
-// Los templates deben estar aprobados en Meta Business Manager.
-// Formato: nombre_template → { templateName, languageCode, components }
+// ─── Configuración resuelta por empresa ───────────────────────
+interface WaConfig {
+  token:   string;
+  phoneId: string;
+  apiUrl:  string;
+}
+
 const TEMPLATES: Record<TipoNotificacion, {
-  name:     string;
-  language: string;
-  // Orden de variables {{1}}, {{2}}, ... según el template aprobado
+  name:      string;
+  language:  string;
   paramKeys: string[];
 }> = {
   [TipoNotificacion.BIENVENIDA]: {
@@ -98,26 +106,26 @@ const TEMPLATES: Record<TipoNotificacion, {
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
 
-  private readonly apiUrl:   string;
-  private readonly token:    string;
-  private readonly phoneId:  string;    // ID del número en Meta
-  private readonly enabled:  boolean;
+  // Fallback de env vars para empresas sin config en BD
+  private readonly envToken:   string;
+  private readonly envPhoneId: string;
 
   constructor(
-    private readonly http:   HttpService,
-    private readonly config: ConfigService,
+    private readonly http:    HttpService,
+    private readonly config:  ConfigService,
+    @InjectDataSource() private readonly ds:    DataSource,
+    @Inject(CACHE_MANAGER)  private readonly cache: Cache,
   ) {
-    this.token    = config.get<string>('app.whatsapp.token', '');
-    this.phoneId  = config.get<string>('app.whatsapp.phoneId', '');
-    this.apiUrl   = `https://graph.facebook.com/v18.0/${this.phoneId}/messages`;
-    this.enabled  = !!this.token && !!this.phoneId;
+    this.envToken   = config.get<string>('app.whatsapp.token',   '');
+    this.envPhoneId = config.get<string>('app.whatsapp.phoneId', '');
   }
 
   // ────────────────────────────────────────────────────────────
   // ENVIAR NOTIFICACIÓN POR TEMPLATE
   // ────────────────────────────────────────────────────────────
   async enviar(params: WhatsAppParams): Promise<{ enviado: boolean; messageId?: string; error?: string }> {
-    if (!this.enabled) {
+    const waConf = await this.resolveConfig(params.empresaId);
+    if (!waConf) {
       this.logger.warn('WhatsApp no configurado — notificación omitida');
       return { enviado: false, error: 'WhatsApp no configurado' };
     }
@@ -128,31 +136,27 @@ export class WhatsAppService {
       return { enviado: false, error: `Template desconocido: ${params.tipo}` };
     }
 
-    // Normalizar teléfono: quitar espacios, guiones, agregar código de país
     const telefono = this.normalizarTelefono(params.telefono);
     if (!telefono) {
       return { enviado: false, error: `Teléfono inválido: ${params.telefono}` };
     }
-
-    // Construir parámetros del template en orden
-    const components = this.buildComponents(template.paramKeys, params.variables);
 
     const body = {
       messaging_product: 'whatsapp',
       to:                telefono,
       type:              'template',
       template: {
-        name:     template.name,
-        language: { code: template.language },
-        components,
+        name:       template.name,
+        language:   { code: template.language },
+        components: this.buildComponents(template.paramKeys, params.variables),
       },
     };
 
     try {
       const res = await firstValueFrom(
-        this.http.post(this.apiUrl, body, {
+        this.http.post(waConf.apiUrl, body, {
           headers: {
-            Authorization:  `Bearer ${this.token}`,
+            Authorization:  `Bearer ${waConf.token}`,
             'Content-Type': 'application/json',
           },
           timeout: 15_000,
@@ -160,16 +164,12 @@ export class WhatsAppService {
       );
 
       const messageId = res.data?.messages?.[0]?.id;
-      this.logger.log(
-        `WhatsApp enviado: ${params.tipo} → ${telefono} | msgId: ${messageId}`,
-      );
-
+      this.logger.log(`WhatsApp enviado: ${params.tipo} → ${telefono} | msgId: ${messageId}`);
       return { enviado: true, messageId };
 
     } catch (error) {
       const errMsg = error?.response?.data?.error?.message || error.message;
       this.logger.error(`WhatsApp error → ${telefono} | ${params.tipo}: ${errMsg}`);
-      // No lanzar excepción — las notificaciones no deben interrumpir el flujo
       return { enviado: false, error: errMsg };
     }
   }
@@ -179,129 +179,85 @@ export class WhatsAppService {
   // ────────────────────────────────────────────────────────────
 
   async notificarServicioActivado(params: {
-    telefono:       string;
-    clienteNombre:  string;
-    planNombre:     string;
-    ipAsignada:     string;
-    usuarioPppoe:   string;
-    empresaId?:     string;
-    clienteId?:     string;
+    telefono: string; clienteNombre: string; planNombre: string;
+    ipAsignada: string; usuarioPppoe: string; empresaId?: string; clienteId?: string;
   }) {
     return this.enviar({
-      telefono:  params.telefono,
-      tipo:      TipoNotificacion.SERVICIO_ACTIVADO,
+      telefono: params.telefono, tipo: TipoNotificacion.SERVICIO_ACTIVADO,
       variables: {
-        clienteNombre: params.clienteNombre,
-        planNombre:    params.planNombre,
-        ipAsignada:    params.ipAsignada,
-        usuarioPppoe:  params.usuarioPppoe,
+        clienteNombre: params.clienteNombre, planNombre: params.planNombre,
+        ipAsignada: params.ipAsignada, usuarioPppoe: params.usuarioPppoe,
       },
-      empresaId: params.empresaId,
-      clienteId: params.clienteId,
+      empresaId: params.empresaId, clienteId: params.clienteId,
     });
   }
 
   async notificarServicioSuspendido(params: {
-    telefono:      string;
-    clienteNombre: string;
-    deudaTotal:    number;
-    numeroCuenta?: string;
-    nombreEmpresa?: string;
-    empresaId?:    string;
-    clienteId?:    string;
+    telefono: string; clienteNombre: string; deudaTotal: number;
+    numeroCuenta?: string; nombreEmpresa?: string; empresaId?: string; clienteId?: string;
   }) {
     return this.enviar({
-      telefono:  params.telefono,
-      tipo:      TipoNotificacion.SERVICIO_SUSPENDIDO,
+      telefono: params.telefono, tipo: TipoNotificacion.SERVICIO_SUSPENDIDO,
       variables: {
         clienteNombre: params.clienteNombre,
         deudaTotal:    `S/ ${params.deudaTotal.toFixed(2)}`,
         numeroCuenta:  params.numeroCuenta || 'ver al asesor',
         nombreEmpresa: params.nombreEmpresa || 'CRM ISP DATAFAST',
       },
-      empresaId: params.empresaId,
-      clienteId: params.clienteId,
+      empresaId: params.empresaId, clienteId: params.clienteId,
     });
   }
 
   async notificarServicioReactivado(params: {
-    telefono:      string;
-    clienteNombre: string;
-    planNombre:    string;
-    empresaId?:    string;
-    clienteId?:    string;
+    telefono: string; clienteNombre: string; planNombre: string;
+    empresaId?: string; clienteId?: string;
   }) {
     return this.enviar({
-      telefono:  params.telefono,
-      tipo:      TipoNotificacion.SERVICIO_REACTIVADO,
-      variables: {
-        clienteNombre: params.clienteNombre,
-        planNombre:    params.planNombre,
-      },
-      empresaId: params.empresaId,
-      clienteId: params.clienteId,
+      telefono: params.telefono, tipo: TipoNotificacion.SERVICIO_REACTIVADO,
+      variables: { clienteNombre: params.clienteNombre, planNombre: params.planNombre },
+      empresaId: params.empresaId, clienteId: params.clienteId,
     });
   }
 
   async notificarFacturaEmitida(params: {
-    telefono:        string;
-    clienteNombre:   string;
-    numeroFactura:   string;
-    montoTotal:      number;
-    fechaVencimiento: string;
-    empresaId?:      string;
-    clienteId?:      string;
+    telefono: string; clienteNombre: string; numeroFactura: string;
+    montoTotal: number; fechaVencimiento: string; empresaId?: string; clienteId?: string;
   }) {
     return this.enviar({
-      telefono:  params.telefono,
-      tipo:      TipoNotificacion.FACTURA_EMITIDA,
+      telefono: params.telefono, tipo: TipoNotificacion.FACTURA_EMITIDA,
       variables: {
         clienteNombre:    params.clienteNombre,
         numeroFactura:    params.numeroFactura,
         montoTotal:       `S/ ${params.montoTotal.toFixed(2)}`,
         fechaVencimiento: params.fechaVencimiento,
       },
-      empresaId: params.empresaId,
-      clienteId: params.clienteId,
+      empresaId: params.empresaId, clienteId: params.clienteId,
     });
   }
 
   async notificarPagoRecibido(params: {
-    telefono:       string;
-    clienteNombre:  string;
-    montoPago:      number;
-    metodoPago:     string;
-    saldoPendiente: number;
-    empresaId?:     string;
-    clienteId?:     string;
+    telefono: string; clienteNombre: string; montoPago: number;
+    metodoPago: string; saldoPendiente: number; empresaId?: string; clienteId?: string;
   }) {
     return this.enviar({
-      telefono:  params.telefono,
-      tipo:      TipoNotificacion.PAGO_RECIBIDO,
+      telefono: params.telefono, tipo: TipoNotificacion.PAGO_RECIBIDO,
       variables: {
         clienteNombre:  params.clienteNombre,
         montoPago:      `S/ ${params.montoPago.toFixed(2)}`,
         metodoPago:     params.metodoPago,
         saldoPendiente: `S/ ${params.saldoPendiente.toFixed(2)}`,
       },
-      empresaId: params.empresaId,
-      clienteId: params.clienteId,
+      empresaId: params.empresaId, clienteId: params.clienteId,
     });
   }
 
   async notificarBienvenida(params: {
-    telefono:       string;
-    clienteNombre:  string;
-    planNombre:     string;
-    velocidadBajada: number;
-    velocidadSubida: number;
-    usuarioPppoe:   string;
-    empresaId?:     string;
-    clienteId?:     string;
+    telefono: string; clienteNombre: string; planNombre: string;
+    velocidadBajada: number; velocidadSubida: number; usuarioPppoe: string;
+    empresaId?: string; clienteId?: string;
   }) {
     return this.enviar({
-      telefono:  params.telefono,
-      tipo:      TipoNotificacion.BIENVENIDA,
+      telefono: params.telefono, tipo: TipoNotificacion.BIENVENIDA,
       variables: {
         clienteNombre:   params.clienteNombre,
         planNombre:      params.planNombre,
@@ -309,21 +265,19 @@ export class WhatsAppService {
         velocidadSubida: `${params.velocidadSubida} Mbps`,
         usuarioPppoe:    params.usuarioPppoe,
       },
-      empresaId: params.empresaId,
-      clienteId: params.clienteId,
+      empresaId: params.empresaId, clienteId: params.clienteId,
     });
   }
 
   // ────────────────────────────────────────────────────────────
-  // ENVÍO MASIVO (para cobranza mensual)
+  // ENVÍO MASIVO
   // ────────────────────────────────────────────────────────────
   async enviarMasivo(
     mensajes: WhatsAppParams[],
-    delayMs = 200,  // Meta limita ~80 msg/seg
+    delayMs = 200,
   ): Promise<{ exitosos: number; fallidos: number }> {
     let exitosos = 0;
     let fallidos = 0;
-
     for (const msg of mensajes) {
       const r = await this.enviar(msg);
       r.enviado ? exitosos++ : fallidos++;
@@ -331,55 +285,83 @@ export class WhatsAppService {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
-
     this.logger.log(`WhatsApp masivo: ${exitosos} enviados, ${fallidos} fallidos`);
     return { exitosos, fallidos };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // RESOLUCIÓN DINÁMICA DE CONFIG POR EMPRESA
+  // Prioridad: BD (por empresaId) → env vars (fallback global)
+  // El token cifrado se descifra en memoria justo antes del envío.
+  // ────────────────────────────────────────────────────────────
+  private async resolveConfig(empresaId?: string): Promise<WaConfig | null> {
+    // Intentar config de la empresa en BD
+    if (empresaId) {
+      const cacheKey = `wa:config:${empresaId}`;
+      let cached = await this.cache.get<{ encryptedToken: string; phoneId: string } | null>(cacheKey);
+
+      if (cached === undefined) {
+        const [row] = await this.ds.query(
+          `SELECT whatsapp_token AS encrypted_token, whatsapp_phone_id AS phone_id
+           FROM empresas WHERE id = $1`,
+          [empresaId],
+        ).catch(() => [null]);
+
+        if (row?.phone_id && row?.encrypted_token) {
+          cached = { encryptedToken: row.encrypted_token, phoneId: row.phone_id };
+        } else {
+          cached = null;
+        }
+        // Cache 5 min — null también se cachea para evitar queries repetidas
+        await this.cache.set(cacheKey, cached, 5 * 60 * 1000);
+      }
+
+      if (cached) {
+        try {
+          const token = decrypt(cached.encryptedToken);
+          return {
+            token,
+            phoneId: cached.phoneId,
+            apiUrl:  `https://graph.facebook.com/v18.0/${cached.phoneId}/messages`,
+          };
+        } catch (err) {
+          this.logger.error(`[WA] Error descifrando token de empresa ${empresaId}: ${err.message}`);
+        }
+      }
+    }
+
+    // Fallback: env vars
+    if (this.envToken && this.envPhoneId) {
+      return {
+        token:   this.envToken,
+        phoneId: this.envPhoneId,
+        apiUrl:  `https://graph.facebook.com/v18.0/${this.envPhoneId}/messages`,
+      };
+    }
+
+    return null;
   }
 
   // ────────────────────────────────────────────────────────────
   // HELPERS PRIVADOS
   // ────────────────────────────────────────────────────────────
 
-  // Construir array de components para la API de Meta
-  private buildComponents(
-    paramKeys: string[],
-    variables: Record<string, string>,
-  ): any[] {
+  private buildComponents(paramKeys: string[], variables: Record<string, string>): any[] {
     if (!paramKeys.length) return [];
-
-    const parameters = paramKeys.map((key) => ({
-      type: 'text',
-      text: variables[key] || '',
-    }));
-
     return [{
       type:       'body',
-      parameters,
+      parameters: paramKeys.map((key) => ({ type: 'text', text: variables[key] || '' })),
     }];
   }
 
-  // Normalizar teléfono peruano: '987654321' → '51987654321'
   private normalizarTelefono(tel: string): string | null {
     if (!tel) return null;
-
-    // Quitar todo excepto dígitos y '+'
     const clean = tel.replace(/[^\d+]/g, '');
-
-    // Si ya tiene código de país
     if (clean.startsWith('+')) return clean.replace('+', '');
     if (clean.startsWith('51')) return clean;
-
-    // Agregar código Perú si empieza con 9 (celular)
-    if (clean.startsWith('9') && clean.length === 9) {
-      return `51${clean}`;
-    }
-
-    // Si tiene 8 dígitos (fijo), agregar código Perú
+    if (clean.startsWith('9') && clean.length === 9) return `51${clean}`;
     if (clean.length === 9) return `51${clean}`;
-
-    // Número ya con código internacional sin +
     if (clean.length >= 11) return clean;
-
     return null;
   }
 }

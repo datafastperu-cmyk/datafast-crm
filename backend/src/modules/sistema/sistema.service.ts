@@ -1,13 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
+import { encrypt } from '../../common/utils/encryption.util';
 
 export interface CronHorarios {
   facturacion:   string;
@@ -32,6 +35,7 @@ export class SistemaService {
   constructor(
     private readonly config: ConfigService,
     @InjectDataSource() private readonly ds: DataSource,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {
     this.appDir       = this.config.get('UPDATE_DIR')            || '/opt/datafast';
     this.sourceType   = this.config.get('UPDATE_SOURCE_TYPE')    || 'git';
@@ -284,6 +288,67 @@ export class SistemaService {
     );
 
     return nuevo;
+  }
+
+  // ─── WhatsApp config — leer ───────────────────────────────────
+
+  async getWhatsAppConfig(empresaId: string): Promise<{
+    phoneId:     string | null;
+    businessId:  string | null;
+    tokenExists: boolean;
+  }> {
+    const [row] = await this.ds.query(
+      `SELECT whatsapp_phone_id    AS phone_id,
+              whatsapp_business_id AS business_id,
+              whatsapp_token       AS token
+       FROM empresas WHERE id = $1`,
+      [empresaId],
+    );
+    return {
+      phoneId:     row?.phone_id    ?? null,
+      businessId:  row?.business_id ?? null,
+      tokenExists: !!row?.token,
+    };
+  }
+
+  // ─── WhatsApp config — actualizar ─────────────────────────────
+  // Regla del sentinel: si token llega vacío o como '***stored***'
+  // no se toca el valor cifrado existente en BD.
+
+  async updateWhatsAppConfig(
+    empresaId: string,
+    dto: { token?: string; phoneId?: string; businessId?: string },
+  ): Promise<{ phoneId: string | null; businessId: string | null; tokenExists: boolean }> {
+    const SENTINEL = '***stored***';
+
+    const setClauses: string[] = [];
+    const params: any[]        = [empresaId];
+
+    if (dto.phoneId !== undefined) {
+      params.push(dto.phoneId || null);
+      setClauses.push(`whatsapp_phone_id = $${params.length}`);
+    }
+
+    if (dto.businessId !== undefined) {
+      params.push(dto.businessId || null);
+      setClauses.push(`whatsapp_business_id = $${params.length}`);
+    }
+
+    if (dto.token && dto.token !== SENTINEL) {
+      params.push(encrypt(dto.token));
+      setClauses.push(`whatsapp_token = $${params.length}`);
+    }
+
+    if (setClauses.length > 0) {
+      await this.ds.query(
+        `UPDATE empresas SET ${setClauses.join(', ')} WHERE id = $1`,
+        params,
+      );
+      // Invalidar caché del WhatsAppService para forzar re-lectura
+      await this.cache.del(`wa:config:${empresaId}`).catch(() => {});
+    }
+
+    return this.getWhatsAppConfig(empresaId);
   }
 
   // ─── Log de actualización ────────────────────────────────────

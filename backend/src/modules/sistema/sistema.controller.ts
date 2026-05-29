@@ -74,4 +74,34 @@ export class SistemaController {
     const horarios = await this.sistema.updateCronHorarios(user.empresaId, body);
     return ApiResponse.ok(horarios, 'Horarios actualizados');
   }
+
+  // ── GET /admin/sistema/whatsapp-config ───────────────────────
+  @Get('whatsapp-config')
+  @ApiOperation({ summary: 'Obtener configuración de WhatsApp Business' })
+  async getWhatsAppConfig(@CurrentUser() user: JwtPayload) {
+    const cfg = await this.sistema.getWhatsAppConfig(user.empresaId);
+    return ApiResponse.ok({
+      phoneId:    cfg.phoneId,
+      businessId: cfg.businessId,
+      token:      cfg.tokenExists ? '***stored***' : null,
+    });
+  }
+
+  // ── PATCH /admin/sistema/whatsapp-config ─────────────────────
+  @Patch('whatsapp-config')
+  @ApiOperation({ summary: 'Actualizar token y Phone ID de WhatsApp Business' })
+  async updateWhatsAppConfig(
+    @Body() body: { token?: string; phoneId?: string; businessId?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const cfg = await this.sistema.updateWhatsAppConfig(user.empresaId, body);
+    return ApiResponse.ok(
+      {
+        phoneId:    cfg.phoneId,
+        businessId: cfg.businessId,
+        token:      cfg.tokenExists ? '***stored***' : null,
+      },
+      'Configuración de WhatsApp actualizada',
+    );
+  }
 }
