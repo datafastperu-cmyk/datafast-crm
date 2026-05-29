@@ -1,10 +1,14 @@
 #!/bin/bash
 # ==============================================================
-# CRM ISP DATAFAST — Script de instalación en servidor
-# Probado en: Ubuntu 22.04 / 24.04 LTS
+# CRM ISP DATAFAST — Script de instalación base del servidor
+# Compatible: Ubuntu 22.04 / 24.04 LTS
+#
 # Uso:
-#   sudo bash scripts/setup.sh                    # modo desarrollo (default)
-#   sudo INSTALL_MODE=production bash scripts/setup.sh
+#   sudo bash scripts/setup.sh
+#
+# Control de seguridad: leer NODE_ENV desde /opt/datafast/.env
+#   NODE_ENV=production  → UFW + Fail2Ban activos (modo cliente final)
+#   NODE_ENV=development → Sin firewall, sin Fail2Ban (modo pruebas)
 # ==============================================================
 
 set -euo pipefail
@@ -16,18 +20,31 @@ info() { echo -e "${CYAN}[i]${NC} $1"; }
 
 [[ $EUID -ne 0 ]] && err "Ejecutar como root: sudo bash setup.sh"
 
-# ── Modo de instalación ───────────────────────────────────────
-INSTALL_MODE="${INSTALL_MODE:-development}"
+# ── Leer NODE_ENV desde .env ─────────────────────────────────
+# Busca el .env en el directorio de instalación estándar.
+# Si no existe, por seguridad asume development (no bloquea nada).
+ENV_FILE="${ENV_FILE:-/opt/datafast/.env}"
+NODE_ENV="development"
+
+if [[ -f "$ENV_FILE" ]]; then
+    _node_env=$(grep -E '^NODE_ENV=' "$ENV_FILE" 2>/dev/null \
+        | head -1 | cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
+    [[ -n "$_node_env" ]] && NODE_ENV="$_node_env"
+    info ".env encontrado: NODE_ENV=$NODE_ENV"
+else
+    warn ".env no encontrado en $ENV_FILE — asumiendo NODE_ENV=development"
+    warn "Copia .env.example a .env y configura NODE_ENV=production antes del deploy."
+fi
 
 echo ""
 echo "╔════════════════════════════════════════════╗"
 echo "║      CRM ISP DATAFAST — Setup Servidor     ║"
 echo "╚════════════════════════════════════════════╝"
 echo ""
-if [[ "$INSTALL_MODE" == "production" ]]; then
-    warn "Modo: PRODUCCIÓN — UFW + Fail2Ban activos"
+if [[ "$NODE_ENV" == "production" ]]; then
+    warn "Modo PRODUCCIÓN: UFW y Fail2Ban se activarán al final."
 else
-    info "Modo: DESARROLLO — UFW desactivado, Fail2Ban apagado"
+    info "Modo DESARROLLO: UFW desactivado, Fail2Ban apagado."
 fi
 echo ""
 
@@ -45,19 +62,20 @@ apt-get install -y -qq \
     lsb-release apt-transport-https
 
 # ── 3. Instalar Docker ────────────────────────────────────────
-if ! command -v docker &> /dev/null; then
+if ! command -v docker &>/dev/null; then
     log "Instalando Docker..."
     curl -fsSL https://get.docker.com | sh
-    usermod -aG docker $SUDO_USER
+    usermod -aG docker "${SUDO_USER:-root}"
     systemctl enable --now docker
 else
     log "Docker ya instalado: $(docker --version)"
 fi
 
 # ── 4. Instalar Docker Compose v2 ────────────────────────────
-if ! docker compose version &> /dev/null; then
+if ! docker compose version &>/dev/null; then
     log "Instalando Docker Compose v2..."
-    COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d '"' -f 4)
+    COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest \
+        | grep tag_name | cut -d '"' -f 4)
     curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
         -o /usr/local/lib/docker/cli-plugins/docker-compose
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
@@ -65,44 +83,44 @@ else
     log "Docker Compose ya instalado: $(docker compose version)"
 fi
 
-# ── 5. Red: ip_forward + NAT (siempre activo — necesario para VPN) ──
+# ── 5. ip_forward + NAT (siempre activo — requerido por VPN) ─
 log "Configurando ip_forward y NAT para OpenVPN..."
+
 sed -i '/# CRM ISP DATAFAST red/,/^net\.ipv4\.ip_forward/d' /etc/sysctl.conf
-cat >> /etc/sysctl.conf << 'EOF'
+cat >> /etc/sysctl.conf <<'EOF'
 # CRM ISP DATAFAST red
 net.ipv4.ip_forward = 1
 EOF
 sysctl -w net.ipv4.ip_forward=1 -q
 
-# Habilitar forwarding en UFW (aunque esté desactivado, prepara la config)
+# Preparar UFW before.rules y forward policy (aunque UFW esté apagado)
 sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
 
-# Bloque NAT en before.rules para cuando UFW esté activo
 BEFORE_RULES="/etc/ufw/before.rules"
-if ! grep -q "DATAFAST-NAT" "$BEFORE_RULES"; then
+if ! grep -q "DATAFAST-NAT" "$BEFORE_RULES" 2>/dev/null; then
     python3 - <<'PYEOF'
 content = open('/etc/ufw/before.rules').read()
-nat_block = """# DATAFAST-NAT: VPN masquerade — no modificar
-*nat
-:POSTROUTING ACCEPT [0:0]
--A POSTROUTING -s 10.8.0.0/16 -j MASQUERADE
-COMMIT
-
-"""
+nat_block = (
+    "# DATAFAST-NAT: VPN masquerade — no modificar\n"
+    "*nat\n"
+    ":POSTROUTING ACCEPT [0:0]\n"
+    "-A POSTROUTING -s 10.8.0.0/16 -j MASQUERADE\n"
+    "COMMIT\n\n"
+)
 open('/etc/ufw/before.rules', 'w').write(nat_block + content)
 PYEOF
 fi
 
-# NAT directo en iptables (persiste independientemente de UFW)
+# NAT en iptables directo (persiste aunque UFW esté inactivo)
 iptables -t nat -C POSTROUTING -s 10.8.0.0/16 -j MASQUERADE 2>/dev/null || \
     iptables -t nat -A POSTROUTING -s 10.8.0.0/16 -j MASQUERADE
-iptables-save > /etc/iptables/rules.v4
+iptables-save  > /etc/iptables/rules.v4
 ip6tables-save > /etc/iptables/rules.v6 2>/dev/null || true
-log "NAT y ip_forward configurados"
+log "NAT e ip_forward configurados"
 
 # ── 6. Firewall UFW ───────────────────────────────────────────
-if [[ "$INSTALL_MODE" == "production" ]]; then
-    log "Configurando UFW (modo producción)..."
+if [ "$NODE_ENV" = "production" ]; then
+    log "Activando UFW (modo producción)..."
     ufw --force reset
     ufw default deny incoming
     ufw default allow outgoing
@@ -116,16 +134,17 @@ if [[ "$INSTALL_MODE" == "production" ]]; then
     ufw deny  5432/tcp  comment 'PostgreSQL-internal-only'
     ufw deny  6379/tcp  comment 'Redis-internal-only'
     echo "y" | ufw enable
-    log "UFW activado"
+    log "UFW activo: 22/80/443/1194-1195 abiertos; 3000/4000/5432/6379 bloqueados"
 else
     ufw disable 2>/dev/null || true
-    warn "UFW desactivado (modo desarrollo)"
+    warn "UFW desactivado — NODE_ENV != production"
 fi
 
 # ── 7. Fail2Ban ───────────────────────────────────────────────
-if [[ "$INSTALL_MODE" == "production" ]]; then
-    log "Configurando Fail2Ban (política corporativa: 3 intentos / 24h)..."
-    cat > /etc/fail2ban/jail.local << 'EOF'
+if [ "$NODE_ENV" = "production" ]; then
+    log "Activando Fail2Ban (política corporativa: 3 intentos / 24h)..."
+
+    cat > /etc/fail2ban/jail.local <<'EOF'
 [DEFAULT]
 bantime  = 86400
 findtime = 600
@@ -157,28 +176,27 @@ filter   = nestjs-auth
 maxretry = 3
 EOF
 
-    cat > /etc/fail2ban/filter.d/nestjs-auth.conf << 'EOF'
+    cat > /etc/fail2ban/filter.d/nestjs-auth.conf <<'EOF'
 [Definition]
 failregex = ^<HOST> .* "POST /api/v1/auth/login HTTP/\d.?\d?" (401|403) .*$
 ignoreregex =
 EOF
 
     systemctl enable --now fail2ban
-    log "Fail2Ban activado"
+    log "Fail2Ban activo: 4 jails (sshd, nginx-auth, nginx-limit, nestjs-auth)"
 else
-    systemctl stop fail2ban 2>/dev/null || true
+    systemctl stop    fail2ban 2>/dev/null || true
     systemctl disable fail2ban 2>/dev/null || true
-    warn "Fail2Ban desactivado (modo desarrollo)"
+    warn "Fail2Ban apagado — NODE_ENV != production"
 fi
 
 # ── 8. Crear directorio del proyecto ──────────────────────────
 log "Creando directorio del proyecto..."
-PROJECT_DIR="/opt/datafast"
-mkdir -p $PROJECT_DIR
-chown $SUDO_USER:$SUDO_USER $PROJECT_DIR
+mkdir -p /opt/datafast
+[[ -n "${SUDO_USER:-}" ]] && chown "$SUDO_USER:$SUDO_USER" /opt/datafast
 
-# ── 9. Configurar swap ────────────────────────────────────────
-if [ ! -f /swapfile ]; then
+# ── 9. Swap ───────────────────────────────────────────────────
+if [[ ! -f /swapfile ]]; then
     warn "Creando swap de 2GB..."
     fallocate -l 2G /swapfile
     chmod 600 /swapfile
@@ -191,7 +209,7 @@ fi
 # ── 10. Optimizaciones del kernel ─────────────────────────────
 log "Aplicando optimizaciones del kernel..."
 sed -i '/# CRM ISP DATAFAST optimizaciones/,/^vm\.swappiness/d' /etc/sysctl.conf
-cat >> /etc/sysctl.conf << 'EOF'
+cat >> /etc/sysctl.conf <<'EOF'
 # CRM ISP DATAFAST optimizaciones
 net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 65535
@@ -201,15 +219,12 @@ vm.swappiness = 10
 EOF
 sysctl -p -q
 
-# ── 11. Configurar rotación de logs Docker ───────────────────
+# ── 11. Rotación de logs Docker ───────────────────────────────
 log "Configurando rotación de logs Docker..."
-cat > /etc/docker/daemon.json << 'EOF'
+cat > /etc/docker/daemon.json <<'EOF'
 {
     "log-driver": "json-file",
-    "log-opts": {
-        "max-size": "10m",
-        "max-file": "3"
-    },
+    "log-opts": { "max-size": "10m", "max-file": "3" },
     "live-restore": true
 }
 EOF
@@ -221,18 +236,17 @@ echo "╔═══════════════════════�
 echo "║         Setup completado exitosamente          ║"
 echo "╚════════════════════════════════════════════════╝"
 echo ""
-if [[ "$INSTALL_MODE" == "production" ]]; then
-    echo "  Seguridad: UFW activo + Fail2Ban activo"
+if [ "$NODE_ENV" = "production" ]; then
+    log "Seguridad PRODUCCIÓN: UFW activo + Fail2Ban activo"
 else
-    echo "  Seguridad: UFW desactivado + Fail2Ban apagado (desarrollo)"
-    echo "  Para producción: sudo INSTALL_MODE=production bash scripts/setup.sh"
+    warn "Seguridad DESARROLLO: UFW inactivo + Fail2Ban apagado"
+    warn "Para producción: configura NODE_ENV=production en /opt/datafast/.env"
 fi
 echo ""
 echo "  Próximos pasos:"
-echo "  1. Clonar el repositorio en /opt/datafast"
-echo "  2. Copiar .env.example a .env y configurar variables"
-echo "  3. Ejecutar: bash scripts/openvpn-setup.sh"
-echo "  4. Ejecutar: bash scripts/ssl-setup.sh"
+echo "  1. cp .env.example /opt/datafast/.env  (ajustar NODE_ENV)"
+echo "  2. bash scripts/openvpn-setup.sh"
+echo "  3. bash scripts/ssl-setup.sh"
 echo ""
-warn "REINICIAR la sesión para que los cambios de grupo Docker surtan efecto"
+warn "REINICIAR sesión para que los cambios de grupo Docker surtan efecto"
 echo ""

@@ -48,7 +48,15 @@ MIKROTIK_NETMASK="${MIKROTIK_NETMASK:-255.255.255.0}"
 
 FLAG_REINSTALL=false
 FLAG_STATUS_ONLY=false
-INSTALL_MODE="${INSTALL_MODE:-development}"
+
+# Leer NODE_ENV desde .env — controla si se activa UFW/Fail2Ban
+ENV_FILE="${ENV_FILE:-/opt/datafast/.env}"
+NODE_ENV="development"
+if [[ -f "$ENV_FILE" ]]; then
+    _ne=$(grep -E '^NODE_ENV=' "$ENV_FILE" 2>/dev/null | head -1 \
+        | cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
+    [[ -n "$_ne" ]] && NODE_ENV="$_ne"
+fi
 
 # ── Colores ────────────────────────────────────────────────────
 R='\033[0;31m'; G='\033[0;32m'; Y='\033[1;33m'
@@ -399,7 +407,7 @@ PYEOF
     fi
     sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw 2>/dev/null || true
 
-    if [[ "$INSTALL_MODE" == "production" ]]; then
+    if [ "$NODE_ENV" = "production" ]; then
         # Reglas de acceso
         ufw --force reset >> "${LOG_FILE}" 2>&1
         ufw default deny incoming >> "${LOG_FILE}" 2>&1
@@ -418,8 +426,8 @@ PYEOF
         ok "UFW bloqueado: 3000, 4000, 5432, 6379"
     else
         ufw disable >> "${LOG_FILE}" 2>&1 || true
-        warn "UFW desactivado (INSTALL_MODE=development)"
-        warn "Para activar en producción: INSTALL_MODE=production bash $0"
+        warn "UFW desactivado — NODE_ENV != production"
+        warn "Para producción: configura NODE_ENV=production en $ENV_FILE"
     fi
 }
 
@@ -427,10 +435,10 @@ configure_fail2ban() {
     step "Configurando Fail2Ban"
     command -v fail2ban-client &>/dev/null || { warn "Fail2Ban no instalado — omitiendo"; return 0; }
 
-    if [[ "$INSTALL_MODE" != "production" ]]; then
+    if [ "$NODE_ENV" != "production" ]; then
         systemctl stop fail2ban >> "${LOG_FILE}" 2>&1 || true
         systemctl disable fail2ban >> "${LOG_FILE}" 2>&1 || true
-        warn "Fail2Ban desactivado (INSTALL_MODE=development)"
+        warn "Fail2Ban desactivado — NODE_ENV != production"
         return 0
     fi
 
