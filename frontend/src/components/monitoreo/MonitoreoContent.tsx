@@ -2,13 +2,13 @@
 
 import { useState, useEffect }   from 'react';
 import { useRouter }             from 'next/navigation';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   Activity, Wifi, WifiOff, AlertTriangle, CheckCircle2,
   Plus, Settings, RefreshCw, Zap, Users,
 } from 'lucide-react';
 
-import { monitoreoApi }  from '@/lib/api/monitoreo';
+import { monitoreoApi, dispositivosApi } from '@/lib/api/monitoreo';
 import { useMonitoreo }  from '@/hooks/useMonitoreo';
 import { useToast }      from '@/components/ui/toaster';
 import { NodoCard }      from './NodoCard';
@@ -25,12 +25,35 @@ export function MonitoreoContent() {
   const [wsDash, setWsDash]     = useState<WsEventDashboard | null>(null);
   const [filtroTipo, setFiltro] = useState<string>('');
 
-  // ── REST: lista de nodos ───────────────────────────────────
-  const { data: nodos = [], isLoading, refetch } = useQuery<Nodo[]>({
-    queryKey:        ['nodos'],
-    queryFn:         monitoreoApi.listNodos,
+  // ── REST: dispositivos desde /monitoreo/tiempo-real ───────
+  const TIPO_MAP: Record<string, string> = {
+    ANTENA_AP: 'antena', ROUTER_BORDE: 'router', ROUTER_ACCESO: 'router',
+    CAMARA_IP: 'camara', DISPOSITIVO_CRITICO: 'servidor',
+  };
+  const STATUS_MAP: Record<string, string> = {
+    ONLINE: 'online', OFFLINE: 'offline', DEGRADADO: 'degradado', REVERIFICANDO: 'degradado',
+  };
+
+  const { data: tiempoReal, isLoading, refetch } = useQuery({
+    queryKey:        ['dispositivos-tiempo-real'],
+    queryFn:         () => dispositivosApi.getTiempoReal(),
     refetchInterval: 60_000,
   });
+
+  const nodos: Nodo[] = (tiempoReal?.dispositivos ?? [] as any[]).map((d: any) => ({
+    id:            d.id,
+    nombre:        d.nombreEmisor,
+    tipo:          TIPO_MAP[d.tipoEquipo] ?? d.tipoEquipo.toLowerCase(),
+    ipMonitoreo:   d.ipAddress,
+    estado:        (STATUS_MAP[d.status] ?? 'desconocido') as any,
+    latenciaMs:    d.pingLatenciaMs,
+    perdidaPct:    d.pingLossPct,
+    cpuUsoPct:     d.cpuUsagePct     ?? undefined,
+    memoriaUsoPct: d.memoryUsagePct  ?? undefined,
+    traficoRxBps:  d.trafficDownBps  ? parseInt(d.trafficDownBps, 10) : undefined,
+    traficoTxBps:  d.trafficUpBps    ? parseInt(d.trafficUpBps,  10) : undefined,
+    ultimoPing:    d.lastSeenAt      ? String(d.lastSeenAt) : undefined,
+  }));
 
   // ── REST: alertas activas ──────────────────────────────────
   const { data: alertas = [] } = useQuery({
@@ -58,15 +81,13 @@ export function MonitoreoContent() {
     },
   });
 
-  // ── Scan manual ────────────────────────────────────────────
-  const { mutate: forzarScan, isPending: escaneando } = useMutation({
-    mutationFn: monitoreoApi.forzarScan,
-    onSuccess: (r) => {
-      toast(`Scan encolado: ${r.encolados} nodos`, { type: 'success' });
-      setTimeout(() => refetch(), 5000);
-    },
-    onError: (e) => toast(parseApiError(e), { type: 'error' }),
-  });
+  // ── Actualización manual ────────────────────────────────────
+  const [escaneando, setEscaneando] = useState(false);
+  const forzarScan = async () => {
+    setEscaneando(true);
+    await refetch();
+    setEscaneando(false);
+  };
 
   // Combinar estado del WS con el de la BD para los nodos
   const nodosConEstadoLive = nodos.map((n) => {

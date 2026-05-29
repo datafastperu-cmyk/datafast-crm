@@ -10,7 +10,7 @@ import {
   ArrowLeft, Plus, Trash2, Bell, Loader2,
 } from 'lucide-react';
 
-import { monitoreoApi, METRICAS_ALERTA, type CreateConfigAlertaDto } from '@/lib/api/monitoreo';
+import { monitoreoApi, dispositivosApi, METRICAS_ALERTA, type CreateConfigAlertaDto } from '@/lib/api/monitoreo';
 import { useToast }    from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
@@ -49,10 +49,11 @@ export function ConfiguracionAlertas() {
     queryFn:  monitoreoApi.getConfigAlertas,
   });
 
-  const { data: nodos = [] } = useQuery({
-    queryKey: ['nodos'],
-    queryFn:  monitoreoApi.listNodos,
+  const { data: rawDispositivos = [] } = useQuery({
+    queryKey: ['dispositivos'],
+    queryFn:  dispositivosApi.getDispositivos,
   });
+  const nodos = rawDispositivos.map((d) => ({ id: d.id, nombre: d.nombreEmisor }));
 
   const {
     register, handleSubmit, watch, setValue,

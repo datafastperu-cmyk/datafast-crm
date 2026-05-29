@@ -254,7 +254,7 @@ export interface ProbarConexionDto {
   contrasena:      string;
   puertoApi?:      number;
   useSsl?:         boolean;
-  routerAccesoId?: number;
+  routerAccesoId?: string;
 }
 
 export interface ProbarConexionResult {

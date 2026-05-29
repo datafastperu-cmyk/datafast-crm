@@ -178,7 +178,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
         contrasena:     v.contrasena ?? '',
         puertoApi:      v.puertoApi,
         useSsl:         v.useSsl,
-        routerAccesoId: v.routerAccesoId ? Number(v.routerAccesoId) : undefined,
+        routerAccesoId: v.routerAccesoId || undefined,
       });
     },
     onSuccess: (r) => setTestResult(r as ProbarResult),

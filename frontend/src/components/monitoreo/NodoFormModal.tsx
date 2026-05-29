@@ -3,11 +3,11 @@
 import { useState }          from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { X, Wifi, WifiOff, Loader2 } from 'lucide-react';
-import { monitoreoApi }      from '@/lib/api/monitoreo';
+import { dispositivosApi as monitoreoApi } from '@/lib/api/monitoreo';
 import { mikrotikApi }       from '@/lib/api/mikrotik';
 import { useToast }          from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
-import type { CreateNodoDto, TestConexionResult } from '@/lib/api/monitoreo';
+import type { CreateDispositivoDto, ProbarConexionResult } from '@/lib/api/monitoreo';
 
 const FABRICANTES = ['MikroTik', 'Ubiquiti', 'Huawei', 'Cisco', 'TP-Link', 'Cambium', 'Otro'];
 
@@ -57,7 +57,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
     snmpVersion:    1,
   });
 
-  const [testResult, setTestResult] = useState<TestConexionResult | null>(null);
+  const [testResult, setTestResult] = useState<ProbarConexionResult | null>(null);
   const [testando, setTestando]     = useState(false);
 
   const set = (field: string, value: unknown) => {
@@ -74,9 +74,9 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
   };
 
   const { mutate: crear, isPending } = useMutation({
-    mutationFn: (dto: CreateNodoDto) => monitoreoApi.createNodo(dto),
+    mutationFn: (dto: CreateDispositivoDto) => monitoreoApi.createDispositivo(dto),
     onSuccess: () => {
-      toast('Nodo registrado correctamente', { type: 'success' });
+      toast('Dispositivo registrado correctamente', { type: 'success' });
       onSuccess();
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
@@ -90,18 +90,17 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
     setTestando(true);
     setTestResult(null);
     try {
-      const r = await monitoreoApi.testConexionRaw({
-        ip:         form.ipMonitoreo,
+      const r = await monitoreoApi.probarConexion({
+        ipAddress:  form.ipMonitoreo,
         usuario:    form.usuario,
-        password:   form.contrasena,
-        fabricante: form.fabricante,
+        contrasena: form.contrasena,
         puertoApi:  form.puertoApi,
-        usarSsl:    form.usarSsl,
-        routerId:   form.routerId || undefined,
+        useSsl:     form.usarSsl,
+        routerAccesoId: form.routerId || undefined,
       });
       setTestResult(r);
     } catch (e) {
-      setTestResult({ conectado: false, metodo: 'api', error: parseApiError(e) });
+      setTestResult({ conectado: false, error: parseApiError(e) });
     } finally {
       setTestando(false);
     }
@@ -111,21 +110,18 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
     e.preventDefault();
     if (!form.nombre.trim() || !form.ipMonitoreo.trim()) return;
 
-    const dto: CreateNodoDto = {
-      nombre:         form.nombre.trim(),
-      ipMonitoreo:    form.ipMonitoreo.trim(),
-      routerId:       form.routerId || undefined,
-      tipo:           form.tipo    || undefined,
-      fabricante:     form.fabricante,
-      descripcion:    form.modelo  || undefined,
+    const dto: CreateDispositivoDto = {
+      nombreEmisor:   form.nombre.trim(),
+      ipAddress:      form.ipMonitoreo.trim(),
+      routerAccesoId: form.routerId || undefined,
+      tipoEquipo:     (form.tipo?.toUpperCase() || 'ANTENA_AP') as any,
+      fabricante:     (form.fabricante?.toUpperCase() || 'GENERICO') as any,
+      modeloNombre:   form.modelo  || undefined,
       usuario:        form.usuario || undefined,
-      password:       form.contrasena || undefined,
+      contrasena:     form.contrasena || undefined,
       puertoApi:      form.puertoApi,
-      usarSsl:        form.usarSsl,
-      metodoConexion: form.metodoConexion,
-      snmpHabilitado: form.snmpHabilitado,
-      snmpCommunity:  form.snmpHabilitado ? form.snmpCommunity : undefined,
-      snmpVersion:    form.snmpHabilitado ? form.snmpVersion   : undefined,
+      useSsl:         form.usarSsl,
+      monitoreoSnmp:  form.snmpHabilitado,
     };
 
     crear(dto);
@@ -261,13 +257,13 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
                 <div>
                   {testResult.conectado ? (
                     <>
-                      <p className="font-medium">Conectado ({testResult.metodo.toUpperCase()})</p>
-                      {testResult.info?.hostname && (
+                      <p className="font-medium">Conectado correctamente</p>
+                      {testResult.info?.identidad && (
                         <p className="text-xs mt-0.5 opacity-80">
-                          {testResult.info.board ?? testResult.info.hostname}
+                          {testResult.info.identidad}
                           {testResult.info.version && ` · ROS ${testResult.info.version}`}
-                          {testResult.info.cpu && ` · CPU ${testResult.info.cpu}`}
-                          {testResult.latenciaMs && ` · ${testResult.latenciaMs}ms`}
+                          {testResult.info.cpuLoad !== undefined && ` · CPU ${testResult.info.cpuLoad}%`}
+
                         </p>
                       )}
                     </>
