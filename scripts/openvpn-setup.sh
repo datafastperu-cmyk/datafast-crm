@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ================================================================
 #  DATAFAST ISP CRM — OpenVPN Server Setup
-#  Versión: 2.0.0
+#  Versión: 3.0.0
 #  Compatible: Ubuntu 22.04 / 24.04 LTS
 #  Propósito: Infraestructura VPN para gestión de equipos ISP
 #             (MikroTik, Huawei, ZTE, VSOL, Ubiquiti, TP-Link)
@@ -16,7 +16,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Configuración ──────────────────────────────────────────────
-readonly SCRIPT_VERSION="2.0.0"
+readonly SCRIPT_VERSION="3.0.0"
 readonly INSTALL_DIR="/opt/datafast"
 readonly LOG_DIR="/var/log/datafast"
 readonly VPN_LOG_DIR="/var/log/openvpn"
@@ -25,20 +25,26 @@ readonly SERVER_DIR="${OPENVPN_DIR}/server"
 readonly EASYRSA_DIR="${OPENVPN_DIR}/easy-rsa"
 readonly PKI_DIR="${EASYRSA_DIR}/pki"
 readonly CLIENTS_DIR="${SERVER_DIR}/clients"
+readonly CCD_DIR="${OPENVPN_DIR}/ccd"           # Directivas por cliente (iroute)
 readonly PKI_META_FILE="${SERVER_DIR}/pki-meta.json"
 
-# Parámetros configurables (pueden sobreescribirse con variables de entorno)
+# Parámetros configurables
 VPN_PORT="${VPN_PORT:-1194}"
-VPN_PROTO="${VPN_PROTO:-tcp}"          # tcp = compatible con RouterOS 6.x y 7.x
+VPN_PROTO="${VPN_PROTO:-tcp}"
 VPN_NETWORK="${VPN_NETWORK:-10.8.0.0}"
 VPN_NETMASK="${VPN_NETMASK:-255.255.255.0}"
 VPN_DNS1="${VPN_DNS1:-1.1.1.1}"
 VPN_DNS2="${VPN_DNS2:-8.8.8.8}"
 VPN_MAX_CLIENTS="${VPN_MAX_CLIENTS:-100}"
 VPN_KEEPALIVE="${VPN_KEEPALIVE:-10 60}"
-CA_EXPIRE="${CA_EXPIRE:-3650}"         # 10 años
-CERT_EXPIRE="${CERT_EXPIRE:-3650}"     # 10 años
+CA_EXPIRE="${CA_EXPIRE:-3650}"
+CERT_EXPIRE="${CERT_EXPIRE:-3650}"
 EASYRSA_VERSION="${EASYRSA_VERSION:-3.1.7}"
+
+# MikroTik VPN (segundo servidor — puerto 1195)
+MIKROTIK_PORT="${MIKROTIK_PORT:-1195}"
+MIKROTIK_NETWORK="${MIKROTIK_NETWORK:-10.8.1.0}"
+MIKROTIK_NETMASK="${MIKROTIK_NETMASK:-255.255.255.0}"
 
 FLAG_REINSTALL=false
 FLAG_STATUS_ONLY=false
@@ -58,7 +64,6 @@ error()  { echo -e "${R}[✗] ERROR: $*${NC}" >&2; _log "ERR " "$*"; exit 1; }
 step()   { echo -e "\n${W}━━━ $*${NC}"; _log "STEP" "$*"; }
 detail() { echo -e "    ${C}$*${NC}"; _log "    " "$*"; }
 
-# ── Argumentos ─────────────────────────────────────────────────
 parse_args() {
     for arg in "$@"; do
         case "$arg" in
@@ -68,29 +73,22 @@ parse_args() {
     done
 }
 
-# ── Verificaciones previas ─────────────────────────────────────
 check_requirements() {
     [[ $EUID -eq 0 ]] || error "Ejecutar como root: sudo bash $0"
-
-    # Sistema operativo
     local os_id; os_id=$(. /etc/os-release 2>/dev/null && echo "${ID:-unknown}")
     [[ "$os_id" == "ubuntu" || "$os_id" == "debian" ]] || \
         warn "Sistema detectado: ${os_id}. Optimizado para Ubuntu/Debian."
-
-    # Verificar módulo TUN del kernel
     if ! lsmod | grep -q "^tun " 2>/dev/null; then
-        modprobe tun 2>/dev/null || warn "Módulo TUN no disponible — OpenVPN puede no funcionar"
+        modprobe tun 2>/dev/null || warn "Módulo TUN no disponible"
     fi
-
-    mkdir -p "${LOG_DIR}" "${VPN_LOG_DIR}"
+    mkdir -p "${LOG_DIR}" "${VPN_LOG_DIR}" "${CCD_DIR}"
     chmod 750 "${VPN_LOG_DIR}"
+    chmod 755 "${CCD_DIR}"
     ok "Verificaciones previas pasadas"
 }
 
-# ── Detectar IP pública ────────────────────────────────────────
 detect_public_ip() {
     local ip=""
-    # Intentar múltiples servicios en orden de preferencia
     for service in \
         "https://api.ipify.org" \
         "https://checkip.amazonaws.com" \
@@ -100,33 +98,21 @@ detect_public_ip() {
         ip=$(curl -4 -fsSL --connect-timeout 5 --max-time 10 "$service" 2>/dev/null | tr -d '[:space:]') && \
         [[ -n "$ip" ]] && break
     done
-
-    # Fallback a IP local
     if [[ -z "$ip" ]]; then
         ip=$(hostname -I | awk '{print $1}')
         warn "No se pudo detectar IP pública. Usando IP local: ${ip}"
     fi
-
     echo "$ip"
 }
 
-# ── Instalar dependencias ──────────────────────────────────────
 install_dependencies() {
-    step "Instalando dependencias de OpenVPN"
-
+    step "Instalando dependencias"
     apt-get update -qq >> "${LOG_FILE}" 2>&1
-
     local pkgs=(
-        openvpn
-        openssl
-        curl
-        wget
-        ca-certificates
-        net-tools
-        iptables
-        iptables-persistent
+        openvpn openssl curl wget ca-certificates
+        net-tools iptables iptables-persistent
+        ufw fail2ban
     )
-
     for pkg in "${pkgs[@]}"; do
         if dpkg -l "$pkg" &>/dev/null; then
             detail "Ya instalado: $pkg"
@@ -136,53 +122,39 @@ install_dependencies() {
                 warn "No se pudo instalar $pkg"
         fi
     done
-
-    # Versión de OpenVPN
     local ovpn_ver; ovpn_ver=$(openvpn --version 2>/dev/null | head -1 | awk '{print $2}')
-    ok "OpenVPN ${ovpn_ver} instalado"
+    ok "OpenVPN ${ovpn_ver}"
 }
 
-# ── Instalar EasyRSA ───────────────────────────────────────────
 install_easyrsa() {
     step "Instalando EasyRSA ${EASYRSA_VERSION}"
-
     local easyrsa_url="https://github.com/OpenVPN/easy-rsa/releases/download/v${EASYRSA_VERSION}/EasyRSA-${EASYRSA_VERSION}.tgz"
     local tmp_dir; tmp_dir=$(mktemp -d)
-
-    # Descargar EasyRSA
-    info "Descargando EasyRSA ${EASYRSA_VERSION}..."
+    info "Descargando EasyRSA..."
     if ! curl -fsSL --retry 3 --retry-delay 2 \
         "${easyrsa_url}" -o "${tmp_dir}/easyrsa.tgz" >> "${LOG_FILE}" 2>&1; then
-        # Fallback: usar EasyRSA del paquete del sistema si está disponible
         if command -v make-cadir &>/dev/null; then
             warn "Descarga fallida. Usando EasyRSA del sistema..."
             mkdir -p "${EASYRSA_DIR}"
             make-cadir "${EASYRSA_DIR}" >> "${LOG_FILE}" 2>&1
             rm -rf "${tmp_dir}"
-            ok "EasyRSA instalado (sistema)"
+            ok "EasyRSA (sistema)"
             return 0
         fi
         error "No se pudo instalar EasyRSA"
     fi
-
     tar -xzf "${tmp_dir}/easyrsa.tgz" -C "${tmp_dir}" >> "${LOG_FILE}" 2>&1
     rm -rf "${EASYRSA_DIR}"
     mv "${tmp_dir}/EasyRSA-${EASYRSA_VERSION}" "${EASYRSA_DIR}"
     chmod +x "${EASYRSA_DIR}/easyrsa"
     rm -rf "${tmp_dir}"
-
-    ok "EasyRSA ${EASYRSA_VERSION} instalado en ${EASYRSA_DIR}"
+    ok "EasyRSA ${EASYRSA_VERSION} en ${EASYRSA_DIR}"
 }
 
-# ── Generar PKI completa ───────────────────────────────────────
 generate_pki() {
-    step "Generando infraestructura de clave pública (PKI)"
-
+    step "Generando PKI"
     cd "${EASYRSA_DIR}"
-
-    # Configurar variables de EasyRSA
     cat > "${EASYRSA_DIR}/vars" << EOF
-# EasyRSA 3 — DATAFAST ISP CRM
 set_var EASYRSA_ALGO        rsa
 set_var EASYRSA_KEY_SIZE    2048
 set_var EASYRSA_DIGEST      sha256
@@ -200,285 +172,327 @@ set_var EASYRSA_REQ_OU      "IT Operations"
 set_var EASYRSA_BATCH       "yes"
 EOF
 
-    # Inicializar PKI
-    info "Inicializando PKI..."
+    # vars-clients para certificados de routers MikroTik (ID-based CN)
+    cp "${EASYRSA_DIR}/vars" "${EASYRSA_DIR}/vars-clients"
+
     ./easyrsa --batch init-pki >> "${LOG_FILE}" 2>&1
     ok "PKI inicializada"
-
-    # Construir CA
-    info "Generando Certificate Authority (CA)..."
     ./easyrsa --batch build-ca nopass >> "${LOG_FILE}" 2>&1
     ok "CA generada"
-
-    # Generar certificado y clave del servidor
-    info "Generando certificado del servidor..."
     ./easyrsa --batch gen-req server nopass >> "${LOG_FILE}" 2>&1
     ./easyrsa --batch sign-req server server >> "${LOG_FILE}" 2>&1
-    ok "Certificado del servidor generado y firmado"
-
-    # Generar DH params 2048-bit
-    info "Generando parámetros Diffie-Hellman 2048-bit (puede tomar 1-3 min)..."
-    # Usar dsaparam para aceleración — matemáticamente equivalente para TLS
+    ok "Certificado servidor"
     openssl dhparam -dsaparam -out "${PKI_DIR}/dh.pem" 2048 >> "${LOG_FILE}" 2>&1
-    ok "DH params generados"
-
-    # Generar TLS-Crypt key (protección adicional contra ataques DDoS/scanning)
-    info "Generando clave TLS-Crypt..."
+    ok "DH params"
     openvpn --genkey secret "${SERVER_DIR}/ta.key" >> "${LOG_FILE}" 2>&1
-    ok "Clave TLS-Crypt generada"
-
-    # Generar CRL (Certificate Revocation List)
-    info "Generando CRL..."
+    ok "TLS-Crypt key"
     ./easyrsa --batch gen-crl >> "${LOG_FILE}" 2>&1
-    ok "CRL generada"
-
-    ok "PKI completa generada"
+    ok "CRL"
 }
 
-# ── Copiar certificados al directorio del servidor ─────────────
 deploy_server_certs() {
-    step "Desplegando certificados en el servidor"
-
-    mkdir -p "${SERVER_DIR}"
-    mkdir -p "${CLIENTS_DIR}"
-
-    # Certificados del servidor
-    cp "${PKI_DIR}/ca.crt"                    "${SERVER_DIR}/ca.crt"
-    cp "${PKI_DIR}/issued/server.crt"         "${SERVER_DIR}/server.crt"
-    cp "${PKI_DIR}/private/server.key"        "${SERVER_DIR}/server.key"
-    cp "${PKI_DIR}/dh.pem"                    "${SERVER_DIR}/dh.pem"
-    cp "${PKI_DIR}/crl.pem"                   "${SERVER_DIR}/crl.pem"
-    # ta.key ya está en SERVER_DIR
-
-    # Permisos seguros
+    step "Desplegando certificados"
+    mkdir -p "${SERVER_DIR}" "${CLIENTS_DIR}"
+    cp "${PKI_DIR}/ca.crt"            "${SERVER_DIR}/ca.crt"
+    cp "${PKI_DIR}/issued/server.crt" "${SERVER_DIR}/server.crt"
+    cp "${PKI_DIR}/private/server.key" "${SERVER_DIR}/server.key"
+    cp "${PKI_DIR}/dh.pem"            "${SERVER_DIR}/dh.pem"
+    cp "${PKI_DIR}/crl.pem"           "${SERVER_DIR}/crl.pem"
     chmod 750 "${SERVER_DIR}"
-    chmod 644 "${SERVER_DIR}/ca.crt"
-    chmod 644 "${SERVER_DIR}/server.crt"
-    chmod 600 "${SERVER_DIR}/server.key"
-    chmod 644 "${SERVER_DIR}/dh.pem"
-    chmod 644 "${SERVER_DIR}/crl.pem"
-    chmod 600 "${SERVER_DIR}/ta.key"
+    chmod 644 "${SERVER_DIR}/ca.crt" "${SERVER_DIR}/server.crt" \
+              "${SERVER_DIR}/dh.pem"  "${SERVER_DIR}/crl.pem"
+    chmod 600 "${SERVER_DIR}/server.key" "${SERVER_DIR}/ta.key"
     chmod 750 "${CLIENTS_DIR}"
-
-    ok "Certificados desplegados con permisos correctos"
+    ok "Certificados con permisos correctos"
 }
 
-# ── Generar server.conf ────────────────────────────────────────
+# ── Genera el servidor principal (clientes finales) ──────────────
 generate_server_conf() {
-    step "Generando configuración del servidor OpenVPN"
-
+    step "Generando server.conf (clientes finales)"
     cat > "${SERVER_DIR}/server.conf" << EOF
 # ================================================================
-#  DATAFAST ISP CRM — OpenVPN Server Configuration
-#  Generado automáticamente por openvpn-setup.sh v${SCRIPT_VERSION}
-#  Fecha: $(date)
+#  DATAFAST ISP — OpenVPN Server (clientes finales)
+#  Puerto ${VPN_PORT}/${VPN_PROTO} | Generado v${SCRIPT_VERSION}
 # ================================================================
-#
-#  Diseñado para gestión de equipos ISP:
-#  MikroTik (RouterOS 6.x y 7.x), Huawei OLT, ZTE, VSOL, Ubiquiti
-#
-#  Compatibilidad MikroTik:
-#  - RouterOS 6.x: TCP obligatorio, AES-256-CBC
-#  - RouterOS 7.x: UDP soportado, AES-256-GCM
-# ================================================================
-
-# ── Red y protocolo ───────────────────────────────────────────
 port ${VPN_PORT}
 proto ${VPN_PROTO}
 dev tun
 
-# ── Certificados y llaves ─────────────────────────────────────
 ca   ${SERVER_DIR}/ca.crt
 cert ${SERVER_DIR}/server.crt
 key  ${SERVER_DIR}/server.key
 dh   ${SERVER_DIR}/dh.pem
-
-# CRL — revocar certificados comprometidos
 crl-verify ${SERVER_DIR}/crl.pem
-
-# TLS-Crypt — protección contra port scanning y ataques DDoS
-# Autenticación bidireccional del canal de control TLS
 tls-crypt ${SERVER_DIR}/ta.key 0
 
-# ── Topología de red ──────────────────────────────────────────
 server ${VPN_NETWORK} ${VPN_NETMASK}
 topology subnet
 ifconfig-pool-persist ${VPN_LOG_DIR}/ipp.txt
 
-# ── Rutas para gestión ISP ────────────────────────────────────
-# Los equipos ISP obtienen una IP VPN y pueden alcanzar el servidor
-# NO redirigir todo el tráfico de los routers por el VPN (rompería internet)
 push "route ${VPN_NETWORK} ${VPN_NETMASK}"
-
-# DNS de respaldo para los clientes VPN
 push "dhcp-option DNS ${VPN_DNS1}"
 push "dhcp-option DNS ${VPN_DNS2}"
 
-# ── Seguridad de transporte ────────────────────────────────────
-# Cipher principal: AES-256-GCM (moderno)
-# Fallback: AES-256-CBC (compatibilidad con RouterOS 6.x)
 cipher AES-256-CBC
 ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
 auth SHA256
 tls-version-min 1.2
-
-# Curvas ECDH modernas
 ecdh-curve prime256v1
 
-# ── Opciones de cliente ───────────────────────────────────────
 max-clients ${VPN_MAX_CLIENTS}
-
-# Permitir comunicación entre clientes VPN (routers entre sí)
-# Útil para monitoreo SNMP cross-router y gestión distribuida
 client-to-client
 
-# Mantener configuración de routing del cliente sin modificarla
-#push "redirect-gateway def1 bypass-dhcp"
-
-# ── Persistencia y reconexión ─────────────────────────────────
 keepalive ${VPN_KEEPALIVE}
 persist-key
 persist-tun
 
-# ── Seguridad del proceso ─────────────────────────────────────
 user nobody
 group nogroup
 
-# ── Compresión — DESHABILITADA (vulnerabilidad VORACLE) ───────
-# comp-lzo    # NO usar — vulnerable a VORACLE attack
-
-# ── Logs ─────────────────────────────────────────────────────
 status ${VPN_LOG_DIR}/status.log 30
 log-append ${VPN_LOG_DIR}/openvpn.log
 verb 3
 mute 20
 status-version 2
-
-# ── Opciones adicionales ──────────────────────────────────────
-# Notificar a clientes cuando el servidor se cierra normalmente
 explicit-exit-notify 1
-
-# Script de eventos de conexión/desconexión (opcional)
-# script-security 2
-# client-connect    /opt/datafast/scripts/vpn-client-connect.sh
-# client-disconnect /opt/datafast/scripts/vpn-client-disconnect.sh
 EOF
-
     chmod 640 "${SERVER_DIR}/server.conf"
     ok "server.conf generado"
 }
 
-# ── Configurar IP forwarding y NAT ─────────────────────────────
+# ── Genera el servidor dedicado para routers MikroTik ──────────
+generate_mikrotik_conf() {
+    step "Generando mikrotik.conf (routers MikroTik)"
+
+    # Asegurar que el directorio CCD existe con permisos correctos
+    mkdir -p "${CCD_DIR}"
+    chown nobody:nogroup "${CCD_DIR}" 2>/dev/null || true
+    chmod 755 "${CCD_DIR}"
+
+    cat > "${SERVER_DIR}/mikrotik.conf" << EOF
+# ================================================================
+#  DATAFAST ISP — OpenVPN MikroTik Server
+#  Puerto ${MIKROTIK_PORT}/tcp — Compatible RouterOS v6.x y v7.x
+#  Arquitectura: Enrutamiento dinámico por ID indestructible
+#
+#  Principio de operación:
+#  1. Este archivo es permanente — no cambia al agregar routers
+#  2. El ERP escribe CCD en ${CCD_DIR}/df_router_id_<uuid>
+#  3. Cada CCD contiene: iroute <subred> <máscara>
+#  4. Las rutas globales RFC1918 abajo aseguran que cualquier
+#     subred futura sea resuelta por el túnel automáticamente
+# ================================================================
+port ${MIKROTIK_PORT}
+proto tcp
+dev tun
+
+# ── PKI ─────────────────────────────────────────────────────────
+ca   ${SERVER_DIR}/ca.crt
+cert ${SERVER_DIR}/server.crt
+key  ${SERVER_DIR}/server.key
+dh   ${SERVER_DIR}/dh.pem
+crl-verify ${SERVER_DIR}/crl.pem
+
+# ── Pool de IPs para routers MikroTik ───────────────────────────
+server ${MIKROTIK_NETWORK} ${MIKROTIK_NETMASK}
+topology subnet
+ifconfig-pool-persist ${VPN_LOG_DIR}/ipp-mikrotik.txt
+
+# ── Directivas individuales por router (CCD) ────────────────────
+# ERP escribe: ${CCD_DIR}/df_router_id_<uuid>
+# Contenido:   iroute <subred-LAN> <máscara>
+# NUNCA cambiar esta ruta — es la arquitectura de enrutamiento.
+client-config-dir ${CCD_DIR}
+
+# ── Rutas globales RFC1918 (enrutamiento masivo indestructible) ──
+# Le enseñamos al kernel Linux que TODOS los rangos privados de
+# telecomunicaciones viajan por el túnel. Los CCD individuales
+# con iroute delegan la entrega al MikroTik correcto.
+# Agregar un nuevo router NO requiere tocar este archivo.
+route 10.0.0.0 255.0.0.0
+route 172.16.0.0 255.240.0.0
+route 192.168.0.0 255.255.0.0
+
+# ── Push mínimo (no redirigir el default gateway del router) ────
+push "route ${MIKROTIK_NETWORK} ${MIKROTIK_NETMASK}"
+push "dhcp-option DNS ${VPN_DNS1}"
+push "dhcp-option DNS ${VPN_DNS2}"
+
+# ── Seguridad ────────────────────────────────────────────────────
+cipher AES-256-CBC
+ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
+auth SHA256
+tls-version-min 1.2
+ecdh-curve prime256v1
+
+# ── Comunicación entre routers VPN ───────────────────────────────
+client-to-client
+
+# ── Rendimiento ──────────────────────────────────────────────────
+max-clients 500
+keepalive 10 60
+persist-key
+persist-tun
+
+# ── Seguridad del proceso ────────────────────────────────────────
+user nobody
+group nogroup
+
+# ── Logs y monitoreo ─────────────────────────────────────────────
+status ${VPN_LOG_DIR}/status-mikrotik.log 10
+status-version 2
+log-append ${VPN_LOG_DIR}/mikrotik.log
+verb 3
+mute 20
+
+# ── Gestión remota (usada por el backend para kill sessions) ─────
+management 127.0.0.1 7505
+
+# ── Scripts de conexión/desconexión ──────────────────────────────
+script-security 2
+client-connect    ${INSTALL_DIR}/scripts/vpn-client-connect.sh
+client-disconnect ${INSTALL_DIR}/scripts/vpn-client-disconnect.sh
+
+# TCP mode: sin explicit-exit-notify
+explicit-exit-notify 0
+EOF
+    chmod 640 "${SERVER_DIR}/mikrotik.conf"
+    ok "mikrotik.conf generado (puerto ${MIKROTIK_PORT})"
+}
+
 configure_network() {
-    step "Configurando forwarding de red y NAT"
-
-    # Detectar interfaz de red principal
+    step "Configurando IP forwarding y NAT"
     local main_iface; main_iface=$(ip route get 8.8.8.8 2>/dev/null | awk 'NR==1{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')
-    if [[ -z "$main_iface" ]]; then
-        main_iface=$(ip link show | awk -F': ' '/^[0-9]+: / && !/lo|tun/ {print $2; exit}')
-    fi
-    info "Interfaz principal detectada: ${main_iface}"
+    [[ -z "$main_iface" ]] && main_iface=$(ip link show | awk -F': ' '/^[0-9]+: / && !/lo|tun/ {print $2; exit}')
+    info "Interfaz principal: ${main_iface}"
 
-    # Habilitar IP forwarding permanentemente
-    if ! grep -q "^net.ipv4.ip_forward=1" /etc/sysctl.conf 2>/dev/null; then
-        echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-    fi
-    # IPv6 forwarding también (para futuras implementaciones)
-    if ! grep -q "^net.ipv6.conf.all.forwarding=1" /etc/sysctl.conf 2>/dev/null; then
-        echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
-    fi
+    # IP forwarding permanente (sin duplicados)
+    for param in "net.ipv4.ip_forward=1" "net.ipv6.conf.all.forwarding=1"; do
+        grep -qxF "$param" /etc/sysctl.conf || echo "$param" >> /etc/sysctl.conf
+    done
     sysctl -p >> "${LOG_FILE}" 2>&1
-    ok "IP forwarding habilitado"
+    ok "IP forwarding: $(cat /proc/sys/net/ipv4/ip_forward)"
 
-    # Configurar iptables NAT (MASQUERADE para clientes VPN)
-    # Permite que los clientes VPN salgan a internet a través del VPS
-    iptables -t nat -C POSTROUTING -s "${VPN_NETWORK}/24" -o "${main_iface}" -j MASQUERADE 2>/dev/null || \
-    iptables -t nat -A POSTROUTING -s "${VPN_NETWORK}/24" -o "${main_iface}" -j MASQUERADE
-
-    # Permitir tráfico de reenvío entre tun0 y la interfaz principal
-    iptables -C FORWARD -i tun0 -o "${main_iface}" -j ACCEPT 2>/dev/null || \
-    iptables -A FORWARD -i tun0 -o "${main_iface}" -j ACCEPT
-
-    iptables -C FORWARD -i "${main_iface}" -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
-    iptables -A FORWARD -i "${main_iface}" -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-
-    # Permitir tráfico en la interfaz VPN
-    iptables -C INPUT  -i tun0 -j ACCEPT 2>/dev/null || iptables -A INPUT  -i tun0 -j ACCEPT
-    iptables -C OUTPUT -o tun0 -j ACCEPT 2>/dev/null || iptables -A OUTPUT -o tun0 -j ACCEPT
-
-    # Persistir reglas iptables entre reinicios
-    if command -v netfilter-persistent &>/dev/null; then
-        netfilter-persistent save >> "${LOG_FILE}" 2>&1 || true
-    elif command -v iptables-save &>/dev/null; then
-        mkdir -p /etc/iptables
-        iptables-save > /etc/iptables/rules.v4
-        # Asegurar que se carguen al inicio
-        if [[ ! -f /etc/network/if-pre-up.d/iptables ]]; then
-            cat > /etc/network/if-pre-up.d/iptables << 'IPEOF'
-#!/bin/sh
-iptables-restore < /etc/iptables/rules.v4
-exit 0
-IPEOF
-            chmod +x /etc/network/if-pre-up.d/iptables
-        fi
-    fi
-
-    ok "NAT e iptables configurados (interfaz: ${main_iface})"
+    ok "NAT gestionado por UFW before.rules"
 }
 
-# ── Configurar UFW para OpenVPN ────────────────────────────────
 configure_ufw() {
-    if ! command -v ufw &>/dev/null; then return 0; fi
-    if ! ufw status | grep -q "Status: active"; then return 0; fi
+    step "Configurando UFW (firewall corporativo)"
+    command -v ufw &>/dev/null || { warn "UFW no instalado — omitiendo"; return 0; }
 
-    step "Configurando UFW para OpenVPN"
+    # Bloque NAT en before.rules (OpenVPN masquerade)
+    local before=/etc/ufw/before.rules
+    if ! grep -q "DATAFAST-NAT" "$before" 2>/dev/null; then
+        python3 - << PYEOF
+with open('${before}', 'r') as f: c = f.read()
+nat = """# DATAFAST-NAT: VPN masquerade — no modificar
+*nat
+:POSTROUTING ACCEPT [0:0]
+-A POSTROUTING -s 10.8.0.0/16 -j MASQUERADE
+COMMIT
 
-    ufw allow "${VPN_PORT}/${VPN_PROTO}" comment "OpenVPN DATAFAST" >> "${LOG_FILE}" 2>&1
-    # Tráfico de la interfaz TUN
-    if ! grep -q "DEFAULT_FORWARD_POLICY=\"ACCEPT\"" /etc/default/ufw 2>/dev/null; then
-        sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+"""
+with open('${before}', 'w') as f: f.write(nat + c)
+PYEOF
+        ok "Bloque NAT añadido a before.rules"
     fi
-    ufw reload >> "${LOG_FILE}" 2>&1 || true
-    ok "UFW: puerto ${VPN_PORT}/${VPN_PROTO} abierto"
+
+    # Habilitar forwarding en UFW
+    sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw 2>/dev/null || true
+
+    # Reglas de acceso
+    ufw --force reset >> "${LOG_FILE}" 2>&1
+    ufw default deny incoming >> "${LOG_FILE}" 2>&1
+    ufw default allow outgoing >> "${LOG_FILE}" 2>&1
+    ufw allow 22/tcp   comment 'SSH'           >> "${LOG_FILE}" 2>&1
+    ufw allow 80/tcp   comment 'HTTP-nginx'    >> "${LOG_FILE}" 2>&1
+    ufw allow 443/tcp  comment 'HTTPS-nginx'   >> "${LOG_FILE}" 2>&1
+    ufw allow "${VPN_PORT}/tcp"       comment 'OpenVPN-clientes'  >> "${LOG_FILE}" 2>&1
+    ufw allow "${MIKROTIK_PORT}/tcp"  comment 'OpenVPN-mikrotik'  >> "${LOG_FILE}" 2>&1
+
+    # Bloquear puertos internos de la app
+    ufw deny from any to any port 3000 proto tcp comment 'NextJS-internal'  >> "${LOG_FILE}" 2>&1
+    ufw deny from any to any port 4000 proto tcp comment 'NestJS-internal'  >> "${LOG_FILE}" 2>&1
+    ufw deny from any to any port 5432 proto tcp comment 'Postgres-block'   >> "${LOG_FILE}" 2>&1
+    ufw deny from any to any port 6379 proto tcp comment 'Redis-block'      >> "${LOG_FILE}" 2>&1
+
+    echo "y" | ufw enable >> "${LOG_FILE}" 2>&1
+    ok "UFW activo — puertos permitidos: 22, 80, 443, ${VPN_PORT}, ${MIKROTIK_PORT}"
+    ok "UFW bloqueado: 3000, 4000, 5432, 6379"
 }
 
-# ── Configurar systemd ─────────────────────────────────────────
+configure_fail2ban() {
+    step "Configurando Fail2Ban (seguridad corporativa)"
+    command -v fail2ban-client &>/dev/null || { warn "Fail2Ban no instalado — omitiendo"; return 0; }
+
+    cat > /etc/fail2ban/jail.local << 'F2B'
+[DEFAULT]
+# Seguridad corporativa DATAFAST ISP
+bantime  = 86400    ; 24 horas de baneo
+findtime = 600      ; ventana de análisis: 10 minutos
+maxretry = 3        ; 3 intentos fallidos → baneo inmediato
+backend  = systemd
+
+[sshd]
+enabled  = true
+port     = ssh
+logpath  = %(sshd_log)s
+maxretry = 3
+bantime  = 86400
+
+[nginx-http-auth]
+enabled  = true
+port     = http,https
+logpath  = /var/log/nginx/error.log
+maxretry = 5
+
+[nginx-limit-req]
+enabled  = true
+port     = http,https
+logpath  = /var/log/nginx/error.log
+maxretry = 10
+findtime = 60
+bantime  = 3600
+
+[nestjs-auth]
+enabled  = true
+port     = http,https
+logpath  = /var/log/nginx/access.log
+maxretry = 5
+findtime = 300
+bantime  = 86400
+filter   = nestjs-auth
+F2B
+
+    mkdir -p /etc/fail2ban/filter.d
+    cat > /etc/fail2ban/filter.d/nestjs-auth.conf << 'FILTER'
+[Definition]
+# Detecta POST /api/v1/auth/login con respuesta 401/403
+failregex = ^<HOST> .* "POST /api/v1/auth/login HTTP/\d.?\d?" (401|403) .*$
+ignoreregex =
+FILTER
+
+    systemctl enable --now fail2ban >> "${LOG_FILE}" 2>&1
+    systemctl restart fail2ban >> "${LOG_FILE}" 2>&1
+    ok "Fail2Ban: 4 jails activos (sshd, nginx-auth, nginx-limit, nestjs-auth)"
+    ok "Política: 3 intentos / 10min → baneo 24h"
+}
+
 configure_systemd() {
-    step "Configurando servicio systemd"
-
-    # OpenVPN usa openvpn-server@<nombre_conf>.service
-    # El archivo server.conf debe estar en /etc/openvpn/server/
+    step "Configurando servicios systemd"
     systemctl daemon-reload >> "${LOG_FILE}" 2>&1
-
-    # Habilitar inicio automático
-    systemctl enable openvpn-server@server >> "${LOG_FILE}" 2>&1
-    ok "Servicio openvpn-server@server habilitado en el arranque"
-
-    # Arrancar el servicio
-    info "Iniciando OpenVPN..."
-    if systemctl start openvpn-server@server >> "${LOG_FILE}" 2>&1; then
-        sleep 2  # Esperar a que la interfaz tun0 aparezca
-        ok "OpenVPN iniciado"
-    else
-        # Intentar ver qué falló
-        journalctl -u openvpn-server@server --no-pager -n 20 >> "${LOG_FILE}" 2>&1
-        error "OpenVPN no pudo iniciar. Revisar: journalctl -u openvpn-server@server"
-    fi
+    systemctl enable openvpn-server@server   >> "${LOG_FILE}" 2>&1 || true
+    systemctl enable openvpn-server@mikrotik >> "${LOG_FILE}" 2>&1 || true
+    systemctl start openvpn-server@server    >> "${LOG_FILE}" 2>&1 || warn "server.conf no pudo iniciar"
+    systemctl start openvpn-server@mikrotik  >> "${LOG_FILE}" 2>&1 || warn "mikrotik.conf no pudo iniciar"
+    sleep 2
+    systemctl is-active openvpn-server@server   && ok "openvpn@server activo" || warn "openvpn@server inactivo"
+    systemctl is-active openvpn-server@mikrotik && ok "openvpn@mikrotik activo" || warn "openvpn@mikrotik inactivo"
 }
 
-# ── Guardar metadata PKI (para el backend) ─────────────────────
 save_pki_metadata() {
-    step "Guardando metadata de PKI"
-
+    step "Guardando metadata PKI"
     local public_ip; public_ip=$(detect_public_ip)
-    local ca_expiry; ca_expiry=$(openssl x509 -enddate -noout -in "${SERVER_DIR}/ca.crt" | cut -d= -f2)
-    local server_expiry; server_expiry=$(openssl x509 -enddate -noout -in "${SERVER_DIR}/server.crt" | cut -d= -f2)
-
-    # Leer contenido de certificados para el backend
-    local ca_cert; ca_cert=$(cat "${SERVER_DIR}/ca.crt")
-    local server_cert; server_cert=$(cat "${SERVER_DIR}/server.crt")
-    local ta_key; ta_key=$(cat "${SERVER_DIR}/ta.key")
-
     cat > "${PKI_META_FILE}" << EOF
 {
   "version": "${SCRIPT_VERSION}",
@@ -487,174 +501,100 @@ save_pki_metadata() {
   "vpnPort": ${VPN_PORT},
   "vpnProtocol": "${VPN_PROTO}",
   "vpnNetwork": "${VPN_NETWORK}",
-  "vpnNetmask": "${VPN_NETMASK}",
+  "mikrotikPort": ${MIKROTIK_PORT},
+  "mikrotikNetwork": "${MIKROTIK_NETWORK}",
+  "ccdDir": "${CCD_DIR}",
   "pkiDir": "${EASYRSA_DIR}",
   "serverDir": "${SERVER_DIR}",
-  "clientsDir": "${CLIENTS_DIR}",
-  "statusLog": "${VPN_LOG_DIR}/status.log",
-  "caExpiry": "${ca_expiry}",
-  "serverExpiry": "${server_expiry}",
-  "cipher": "AES-256-CBC",
-  "ncpCiphers": "AES-256-GCM:AES-128-GCM:AES-256-CBC",
+  "cipher": "AES-256-CBC/GCM",
   "auth": "SHA256",
   "tlsVersion": "1.2"
 }
 EOF
     chmod 640 "${PKI_META_FILE}"
-    ok "Metadata guardada en ${PKI_META_FILE}"
+    ok "Metadata en ${PKI_META_FILE}"
 }
 
-# ── Validaciones finales ───────────────────────────────────────
 validate_installation() {
     step "Validando instalación"
-
     local errors=0
 
-    # Verificar servicio activo
-    if systemctl is-active --quiet openvpn-server@server; then
-        ok "Servicio OpenVPN: ACTIVO"
-    else
-        warn "Servicio OpenVPN: INACTIVO"
-        ((errors++)) || true
-    fi
+    systemctl is-active --quiet openvpn-server@server   && ok "openvpn@server: ACTIVO"  || { warn "openvpn@server: INACTIVO"; ((errors++)) || true; }
+    systemctl is-active --quiet openvpn-server@mikrotik && ok "openvpn@mikrotik: ACTIVO" || { warn "openvpn@mikrotik: INACTIVO"; ((errors++)) || true; }
 
-    # Verificar interfaz tun0
-    if ip link show tun0 &>/dev/null; then
-        local tun_ip; tun_ip=$(ip addr show tun0 | grep 'inet ' | awk '{print $2}' | head -1)
-        ok "Interfaz tun0: ${tun_ip:-UP}"
-    else
-        warn "Interfaz tun0 no encontrada"
-        ((errors++)) || true
-    fi
+    ip link show tun0 &>/dev/null && ok "tun0 UP" || { warn "tun0 no encontrada"; ((errors++)) || true; }
+    ip link show tun1 &>/dev/null && ok "tun1 UP" || warn "tun1 no encontrada (mikrotik puede estar sin clientes)"
 
-    # Verificar puerto escuchando
-    if ss -lnp "sport = :${VPN_PORT}" 2>/dev/null | grep -q "${VPN_PORT}"; then
-        ok "Puerto ${VPN_PORT}/${VPN_PROTO}: ESCUCHANDO"
-    elif netstat -lnp 2>/dev/null | grep ":${VPN_PORT} " | grep -q "openvpn"; then
-        ok "Puerto ${VPN_PORT}/${VPN_PROTO}: ESCUCHANDO"
-    else
-        warn "Puerto ${VPN_PORT}/${VPN_PROTO} no encontrado en listeners"
-    fi
+    [[ "$(cat /proc/sys/net/ipv4/ip_forward)" == "1" ]] && ok "IP forwarding: ON" || { warn "IP forwarding: OFF"; ((errors++)) || true; }
 
-    # Verificar certificados
-    for cert in ca.crt server.crt server.key dh.pem ta.key; do
-        if [[ -f "${SERVER_DIR}/${cert}" ]]; then
-            ok "Certificado: ${cert}"
-        else
-            warn "Falta: ${cert}"
-            ((errors++)) || true
-        fi
-    done
+    ufw status 2>/dev/null | grep -q "Status: active" && ok "UFW: activo" || warn "UFW: inactivo"
 
-    # Verificar IP forwarding
-    if [[ "$(cat /proc/sys/net/ipv4/ip_forward)" == "1" ]]; then
-        ok "IP forwarding: HABILITADO"
-    else
-        warn "IP forwarding: DESHABILITADO"
-        ((errors++)) || true
-    fi
+    systemctl is-active --quiet fail2ban && ok "Fail2Ban: activo" || warn "Fail2Ban: inactivo"
 
-    # Verificar metadata PKI
-    if [[ -f "${PKI_META_FILE}" ]]; then
-        ok "Metadata PKI: guardada"
-    fi
+    [[ -d "${CCD_DIR}" ]] && ok "CCD dir: ${CCD_DIR}" || { warn "CCD dir no existe"; ((errors++)) || true; }
 
-    if [[ $errors -eq 0 ]]; then
-        ok "Todas las validaciones pasadas"
-    else
-        warn "${errors} advertencia(s) encontrada(s) — revisar log: ${LOG_FILE}"
-    fi
-
+    [[ $errors -eq 0 ]] && ok "Todas las validaciones OK" || warn "${errors} advertencia(s) — ver ${LOG_FILE}"
     return $errors
 }
 
-# ── Mostrar estado ─────────────────────────────────────────────
 show_status() {
     echo ""
     echo -e "${W}━━━ Estado OpenVPN ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    for svc in server mikrotik; do
+        local active; active=$(systemctl is-active "openvpn-server@${svc}" 2>/dev/null || echo "desconocido")
+        echo -e "  openvpn@${svc}: $([ "$active" = "active" ] && echo "${G}${active}${NC}" || echo "${R}${active}${NC}")"
+    done
+    ip link show tun0 &>/dev/null && echo -e "  tun0: ${G}UP${NC}" || echo -e "  tun0: ${R}DOWN${NC}"
+    ip link show tun1 &>/dev/null && echo -e "  tun1: ${G}UP${NC}" || echo -e "  tun1: ${Y}no hay clientes MikroTik${NC}"
     echo ""
-
-    local active; active=$(systemctl is-active openvpn-server@server 2>/dev/null || echo "desconocido")
-    local enabled; enabled=$(systemctl is-enabled openvpn-server@server 2>/dev/null || echo "desconocido")
-
-    echo -e "  Servicio: $([ "$active" = "active" ] && echo "${G}${active}${NC}" || echo "${R}${active}${NC}")"
-    echo -e "  Inicio:   $([ "$enabled" = "enabled" ] && echo "${G}${enabled}${NC}" || echo "${Y}${enabled}${NC}")"
-
-    if ip link show tun0 &>/dev/null; then
-        local tun_ip; tun_ip=$(ip addr show tun0 | grep 'inet ' | awk '{print $2}' | head -1)
-        echo -e "  tun0:     ${G}${tun_ip:-UP}${NC}"
-    else
-        echo -e "  tun0:     ${R}no encontrada${NC}"
-    fi
-
-    if [[ -f "${VPN_LOG_DIR}/status.log" ]]; then
-        local clients; clients=$(grep -c "^CLIENT_LIST" "${VPN_LOG_DIR}/status.log" 2>/dev/null || echo 0)
-        echo -e "  Clientes conectados: ${C}${clients}${NC}"
-    fi
-
+    ufw status verbose 2>/dev/null | head -20 || true
     echo ""
-    systemctl status openvpn-server@server --no-pager -l 2>/dev/null | tail -n 15 || true
+    fail2ban-client status 2>/dev/null || true
     echo ""
 }
 
-# ── Mostrar resumen final ──────────────────────────────────────
 show_summary() {
     local public_ip; public_ip=$(detect_public_ip)
-
     echo ""
     echo -e "${G}"
-    echo "  ╔════════════════════════════════════════════════════════╗"
-    echo "  ║  ✅  OpenVPN instalado y operativo                     ║"
-    echo "  ╚════════════════════════════════════════════════════════╝"
+    echo "  ╔══════════════════════════════════════════════════════════╗"
+    echo "  ║  ✅  DATAFAST VPN Infrastructure — Instalación completa  ║"
+    echo "  ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
-    echo -e "  ${W}Servidor:${NC}  ${public_ip}:${VPN_PORT}/${VPN_PROTO}"
-    echo -e "  ${W}Red VPN:${NC}   ${VPN_NETWORK}/24  (servidor: ${VPN_NETWORK%.*}.1)"
-    echo -e "  ${W}Cifrado:${NC}   AES-256-GCM | SHA-256 | TLS 1.2+"
-    echo -e "  ${W}PKI:${NC}       ${EASYRSA_DIR}"
-    echo -e "  ${W}Certs:${NC}     ${SERVER_DIR}"
-    echo -e "  ${W}Logs:${NC}      ${VPN_LOG_DIR}/openvpn.log"
-    echo -e "  ${W}Estado:${NC}    ${VPN_LOG_DIR}/status.log"
+    echo -e "  ${W}VPN clientes:${NC}  ${public_ip}:${VPN_PORT}/tcp"
+    echo -e "  ${W}VPN MikroTik:${NC}  ${public_ip}:${MIKROTIK_PORT}/tcp"
+    echo -e "  ${W}Red VPN:${NC}       ${VPN_NETWORK}/24 | ${MIKROTIK_NETWORK}/24"
+    echo -e "  ${W}Cifrado:${NC}       AES-256-GCM/CBC | SHA-256 | TLS 1.2+"
+    echo -e "  ${W}CCD dir:${NC}       ${CCD_DIR}/ (gestionado por el ERP)"
+    echo -e "  ${W}Firewall:${NC}      UFW activo | Fail2Ban activo (4 jails)"
+    echo -e "  ${W}NAT:${NC}           10.8.0.0/16 → MASQUERADE (persistente)"
     echo ""
-    echo -e "  ${Y}Próximos pasos:${NC}"
-    echo -e "    1. Panel CRM → Red → OpenVPN → configurar IP del servidor"
-    echo -e "    2. Para cada router MikroTik:"
-    echo -e "       ${C}bash scripts/openvpn-client.sh <nombre-router>${NC}"
-    echo -e "    3. Importar .ovpn en WinBox → PPP → OpenVPN Client"
-    echo -e "    4. Panel CRM → Red → Routers → agregar router con IP VPN"
+    echo -e "  ${Y}Rutas globales configuradas:${NC}"
+    echo -e "    10.0.0.0/8 → túnel MikroTik (RFC1918 full)"
+    echo -e "    172.16.0.0/12 → túnel MikroTik (RFC1918 full)"
+    echo -e "    192.168.0.0/16 → túnel MikroTik (RFC1918 full)"
     echo ""
-    echo -e "  ${B}Compatibilidad MikroTik:${NC}"
-    echo -e "    RouterOS 6.x: TCP + AES-256-CBC (configurado)"
-    echo -e "    RouterOS 7.x: UDP + AES-256-GCM (cambiar proto a udp si aplica)"
-    echo ""
-    echo -e "  Log completo: ${LOG_FILE}"
+    echo -e "  ${B}Para agregar un router MikroTik:${NC}"
+    echo -e "    Panel CRM → Red → Routers → Nuevo router VPN"
+    echo -e "    El ERP genera automáticamente el CCD en ${CCD_DIR}/"
     echo ""
 }
 
-# ── Main ───────────────────────────────────────────────────────
 main() {
     parse_args "$@"
-
     echo ""
-    echo -e "${C}  ╔═══════════════════════════════════════════════╗${NC}"
-    echo -e "${C}  ║  DATAFAST ISP — OpenVPN Setup v${SCRIPT_VERSION}        ║${NC}"
-    echo -e "${C}  ╚═══════════════════════════════════════════════╝${NC}"
+    echo -e "${C}  ╔════════════════════════════════════════════════════╗${NC}"
+    echo -e "${C}  ║  DATAFAST ISP — OpenVPN Setup v${SCRIPT_VERSION}             ║${NC}"
+    echo -e "${C}  ╚════════════════════════════════════════════════════╝${NC}"
     echo ""
-
     mkdir -p "${LOG_DIR}"
     touch "${LOG_FILE}"
     _log "INFO" "openvpn-setup.sh v${SCRIPT_VERSION} iniciado"
 
-    # Solo mostrar estado
-    if ${FLAG_STATUS_ONLY}; then
-        show_status
-        exit 0
-    fi
+    if ${FLAG_STATUS_ONLY}; then show_status; exit 0; fi
 
-    # Verificar si ya está instalado
     if systemctl is-active --quiet openvpn-server@server 2>/dev/null && ! ${FLAG_REINSTALL}; then
-        echo -e "${Y}[!] OpenVPN ya está instalado y activo.${NC}"
-        echo -e "    Usa --reinstall para forzar la reinstalación."
-        echo -e "    Usa --status para ver el estado actual."
+        echo -e "${Y}[!] OpenVPN ya está instalado. Usa --reinstall para forzar.${NC}"
         show_status
         exit 0
     fi
@@ -665,14 +605,15 @@ main() {
     generate_pki
     deploy_server_certs
     generate_server_conf
+    generate_mikrotik_conf
     configure_network
     configure_ufw
+    configure_fail2ban
     configure_systemd
     save_pki_metadata
     validate_installation || true
     show_summary
-
-    _log "INFO" "openvpn-setup.sh completado exitosamente"
+    _log "INFO" "openvpn-setup.sh v${SCRIPT_VERSION} completado"
 }
 
 main "$@"
