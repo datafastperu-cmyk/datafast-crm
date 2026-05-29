@@ -272,6 +272,45 @@ export class ContratosService {
     await this.contratoRepo.update(id, { fechaUltimoPago:fechaPago });
   }
 
+  async reactivarPorPago(contratoId: string, empresaId: string, operadorId: string): Promise<Contrato> {
+    const c = await this.findOne(contratoId, empresaId);
+    if (![EstadoContrato.SUSPENDIDO_MORA, EstadoContrato.PRORROGA].includes(c.estado))
+      throw new BadRequestException(`Solo se reactivan contratos en SUSPENDIDO_MORA o PRORROGA. Estado: ${c.estado}`);
+
+    const CICLO_MESES: Record<string, number> = {
+      mensual: 1, bimestral: 2, trimestral: 3, semestral: 6, anual: 12,
+    };
+    const meses = CICLO_MESES[(c as any).cicloFacturacion ?? 'mensual'] ?? 1;
+    const nuevaFechaVenc = new Date();
+    nuevaFechaVenc.setMonth(nuevaFechaVenc.getMonth() + meses);
+    const nuevaFechaStr = nuevaFechaVenc.toISOString().split('T')[0];
+
+    await this.dataSource.query(`
+      UPDATE contratos SET
+        estado = 'activo',
+        fecha_estado = NOW(),
+        motivo_estado = 'Reactivación manual por pago',
+        en_prorroga = false,
+        prorroga_hasta = NULL,
+        fecha_vencimiento = $2,
+        deuda_total = 0,
+        meses_deuda = 0,
+        updated_at = NOW(),
+        updated_by = $3
+      WHERE id = $1
+    `, [contratoId, nuevaFechaStr, operadorId]);
+
+    await this.contratoRepo.guardarHistorial({
+      contratoId, empresaId,
+      estadoAnterior: c.estado,
+      estadoNuevo: EstadoContrato.ACTIVO,
+      motivo: `Reactivación por pago | Nuevo vencimiento: ${nuevaFechaStr}`,
+      usuarioId: operadorId,
+    });
+
+    return this.findOne(contratoId, empresaId);
+  }
+
   async getHistorial(id: string, empresaId: string) {
     await this.findOne(id, empresaId);
     return this.contratoRepo.getHistorial(id);
