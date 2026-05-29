@@ -48,6 +48,7 @@ MIKROTIK_NETMASK="${MIKROTIK_NETMASK:-255.255.255.0}"
 
 FLAG_REINSTALL=false
 FLAG_STATUS_ONLY=false
+INSTALL_MODE="${INSTALL_MODE:-development}"
 
 # ── Colores ────────────────────────────────────────────────────
 R='\033[0;31m'; G='\033[0;32m'; Y='\033[1;33m'
@@ -377,10 +378,10 @@ configure_network() {
 }
 
 configure_ufw() {
-    step "Configurando UFW (firewall corporativo)"
+    step "Configurando UFW"
     command -v ufw &>/dev/null || { warn "UFW no instalado — omitiendo"; return 0; }
 
-    # Bloque NAT en before.rules (OpenVPN masquerade)
+    # Preparar before.rules y forward policy (siempre — necesario para VPN)
     local before=/etc/ufw/before.rules
     if ! grep -q "DATAFAST-NAT" "$before" 2>/dev/null; then
         python3 - << PYEOF
@@ -396,34 +397,42 @@ with open('${before}', 'w') as f: f.write(nat + c)
 PYEOF
         ok "Bloque NAT añadido a before.rules"
     fi
-
-    # Habilitar forwarding en UFW
     sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw 2>/dev/null || true
 
-    # Reglas de acceso
-    ufw --force reset >> "${LOG_FILE}" 2>&1
-    ufw default deny incoming >> "${LOG_FILE}" 2>&1
-    ufw default allow outgoing >> "${LOG_FILE}" 2>&1
-    ufw allow 22/tcp   comment 'SSH'           >> "${LOG_FILE}" 2>&1
-    ufw allow 80/tcp   comment 'HTTP-nginx'    >> "${LOG_FILE}" 2>&1
-    ufw allow 443/tcp  comment 'HTTPS-nginx'   >> "${LOG_FILE}" 2>&1
-    ufw allow "${VPN_PORT}/tcp"       comment 'OpenVPN-clientes'  >> "${LOG_FILE}" 2>&1
-    ufw allow "${MIKROTIK_PORT}/tcp"  comment 'OpenVPN-mikrotik'  >> "${LOG_FILE}" 2>&1
-
-    # Bloquear puertos internos de la app
-    ufw deny from any to any port 3000 proto tcp comment 'NextJS-internal'  >> "${LOG_FILE}" 2>&1
-    ufw deny from any to any port 4000 proto tcp comment 'NestJS-internal'  >> "${LOG_FILE}" 2>&1
-    ufw deny from any to any port 5432 proto tcp comment 'Postgres-block'   >> "${LOG_FILE}" 2>&1
-    ufw deny from any to any port 6379 proto tcp comment 'Redis-block'      >> "${LOG_FILE}" 2>&1
-
-    echo "y" | ufw enable >> "${LOG_FILE}" 2>&1
-    ok "UFW activo — puertos permitidos: 22, 80, 443, ${VPN_PORT}, ${MIKROTIK_PORT}"
-    ok "UFW bloqueado: 3000, 4000, 5432, 6379"
+    if [[ "$INSTALL_MODE" == "production" ]]; then
+        # Reglas de acceso
+        ufw --force reset >> "${LOG_FILE}" 2>&1
+        ufw default deny incoming >> "${LOG_FILE}" 2>&1
+        ufw default allow outgoing >> "${LOG_FILE}" 2>&1
+        ufw allow 22/tcp   comment 'SSH'           >> "${LOG_FILE}" 2>&1
+        ufw allow 80/tcp   comment 'HTTP-nginx'    >> "${LOG_FILE}" 2>&1
+        ufw allow 443/tcp  comment 'HTTPS-nginx'   >> "${LOG_FILE}" 2>&1
+        ufw allow "${VPN_PORT}/udp"       comment 'OpenVPN-clientes'  >> "${LOG_FILE}" 2>&1
+        ufw allow "${MIKROTIK_PORT}/udp"  comment 'OpenVPN-mikrotik'  >> "${LOG_FILE}" 2>&1
+        ufw deny from any to any port 3000 proto tcp comment 'NextJS-internal'  >> "${LOG_FILE}" 2>&1
+        ufw deny from any to any port 4000 proto tcp comment 'NestJS-internal'  >> "${LOG_FILE}" 2>&1
+        ufw deny from any to any port 5432 proto tcp comment 'Postgres-block'   >> "${LOG_FILE}" 2>&1
+        ufw deny from any to any port 6379 proto tcp comment 'Redis-block'      >> "${LOG_FILE}" 2>&1
+        echo "y" | ufw enable >> "${LOG_FILE}" 2>&1
+        ok "UFW activo — puertos permitidos: 22, 80, 443, ${VPN_PORT}/udp, ${MIKROTIK_PORT}/udp"
+        ok "UFW bloqueado: 3000, 4000, 5432, 6379"
+    else
+        ufw disable >> "${LOG_FILE}" 2>&1 || true
+        warn "UFW desactivado (INSTALL_MODE=development)"
+        warn "Para activar en producción: INSTALL_MODE=production bash $0"
+    fi
 }
 
 configure_fail2ban() {
-    step "Configurando Fail2Ban (seguridad corporativa)"
+    step "Configurando Fail2Ban"
     command -v fail2ban-client &>/dev/null || { warn "Fail2Ban no instalado — omitiendo"; return 0; }
+
+    if [[ "$INSTALL_MODE" != "production" ]]; then
+        systemctl stop fail2ban >> "${LOG_FILE}" 2>&1 || true
+        systemctl disable fail2ban >> "${LOG_FILE}" 2>&1 || true
+        warn "Fail2Ban desactivado (INSTALL_MODE=development)"
+        return 0
+    fi
 
     cat > /etc/fail2ban/jail.local << 'F2B'
 [DEFAULT]
