@@ -15,7 +15,8 @@ import { MikrotikModule }      from '../mikrotik/mikrotik.module';
 import { FacturacionModule }   from '../facturacion/facturacion.module';
 
 // Servicios de notificaciones (usados por los workers)
-import { WhatsAppService }     from '../notificaciones/services/whatsapp.service';
+import { WhatsAppService }            from '../notificaciones/services/whatsapp.service';
+import { GatewayMensajeriaService }   from '../notificaciones/services/gateway-mensajeria.service';
 
 import { QUEUES } from './workers.constants';
 
@@ -70,6 +71,7 @@ import { QUEUES } from './workers.constants';
   providers: [
     // Servicios de notificaciones
     WhatsAppService,
+    GatewayMensajeriaService,
 
     // Cobranza
     CobranzaScheduler,

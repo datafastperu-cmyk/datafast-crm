@@ -32,6 +32,15 @@ export interface ServerInfo {
   processes: Proceso[];
 }
 
+export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API';
+
+export interface GatewayConfig {
+  proveedorActivo: ProveedorActivo;
+  apiKey:          string | null;   // '***stored***' si tiene valor
+  apiSecret:       string | null;   // '***stored***' si tiene valor
+  clientId:        string | null;
+}
+
 export interface WhatsAppConfig {
   phoneId:    string | null;
   businessId: string | null;
@@ -67,4 +76,15 @@ export const sistemaApi = {
   getNotifLogs: (params: { page?: number; limit?: number; estado?: string; tipo?: string }) =>
     api.get<{ data: { items: NotifLog[]; total: number } }>('/admin/sistema/notif-logs', { params })
        .then(r => r.data.data),
+
+  getGatewayConfig: () =>
+    api.get<{ data: GatewayConfig }>('/admin/sistema/gateway-config').then(r => r.data.data),
+
+  updateGatewayConfig: (dto: {
+    proveedorActivo?: ProveedorActivo;
+    apiKey?:          string;
+    apiSecret?:       string;
+    clientId?:        string;
+  }) =>
+    api.patch<{ data: GatewayConfig }>('/admin/sistema/gateway-config', dto).then(r => r.data.data),
 };

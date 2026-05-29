@@ -6,7 +6,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Roles }       from '../../common/decorators/roles.decorator';
 import { ApiResponse } from '../../common/dto/response.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
-import { SistemaService, CronHorarios } from './sistema.service';
+import { SistemaService, CronHorarios, ProveedorActivo } from './sistema.service';
 
 @ApiTags('Sistema — Admin')
 @ApiBearerAuth('JWT')
@@ -123,6 +123,38 @@ export class SistemaController {
         token:      cfg.tokenExists ? '***stored***' : null,
       },
       'Configuración de WhatsApp actualizada',
+    );
+  }
+
+  // ── GET /admin/sistema/gateway-config ────────────────────────
+  @Get('gateway-config')
+  @ApiOperation({ summary: 'Obtener proveedor de mensajería activo y credenciales' })
+  async getGatewayConfig(@CurrentUser() user: JwtPayload) {
+    const cfg = await this.sistema.getGatewayConfig(user.empresaId);
+    return ApiResponse.ok({
+      proveedorActivo: cfg.proveedorActivo,
+      apiKey:          cfg.apiKeyStored    ? '***stored***' : null,
+      apiSecret:       cfg.apiSecretStored ? '***stored***' : null,
+      clientId:        cfg.clientId,
+    });
+  }
+
+  // ── PATCH /admin/sistema/gateway-config ──────────────────────
+  @Patch('gateway-config')
+  @ApiOperation({ summary: 'Actualizar proveedor de mensajería y credenciales' })
+  async updateGatewayConfig(
+    @Body() body: { proveedorActivo?: ProveedorActivo; apiKey?: string; apiSecret?: string; clientId?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const cfg = await this.sistema.updateGatewayConfig(user.empresaId, body);
+    return ApiResponse.ok(
+      {
+        proveedorActivo: cfg.proveedorActivo,
+        apiKey:          cfg.apiKeyStored    ? '***stored***' : null,
+        apiSecret:       cfg.apiSecretStored ? '***stored***' : null,
+        clientId:        cfg.clientId,
+      },
+      'Configuración de gateway actualizada',
     );
   }
 }

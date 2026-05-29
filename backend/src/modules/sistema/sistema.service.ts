@@ -12,6 +12,8 @@ import * as https from 'https';
 import * as http from 'http';
 import { encrypt } from '../../common/utils/encryption.util';
 
+export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API';
+
 export interface CronHorarios {
   facturacion:   string;
   corte:         string;
@@ -394,6 +396,67 @@ export class SistemaService {
     );
 
     return { items, total: countRow?.total ?? 0 };
+  }
+
+  // ─── Gateway multi-proveedor — leer ─────────────────────────
+
+  async getGatewayConfig(empresaId: string): Promise<{
+    proveedorActivo: ProveedorActivo;
+    apiKeyStored:    boolean;
+    apiSecretStored: boolean;
+    clientId:        string | null;
+  }> {
+    const [row] = await this.ds.query(
+      `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id
+       FROM empresas WHERE id = $1`,
+      [empresaId],
+    );
+    return {
+      proveedorActivo: (row?.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
+      apiKeyStored:    !!row?.gateway_api_key,
+      apiSecretStored: !!row?.gateway_api_secret,
+      clientId:        row?.gateway_client_id ?? null,
+    };
+  }
+
+  // ─── Gateway multi-proveedor — actualizar ────────────────────
+  async updateGatewayConfig(
+    empresaId: string,
+    dto: { proveedorActivo?: string; apiKey?: string; apiSecret?: string; clientId?: string },
+  ): Promise<{ proveedorActivo: ProveedorActivo; apiKeyStored: boolean; apiSecretStored: boolean; clientId: string | null }> {
+    const SENTINEL    = '***stored***';
+    const setClauses: string[] = [];
+    const params:     any[]    = [empresaId];
+
+    if (dto.proveedorActivo) {
+      params.push(dto.proveedorActivo);
+      setClauses.push(`proveedor_activo = $${params.length}`);
+    }
+
+    if (dto.apiKey !== undefined && dto.apiKey !== SENTINEL) {
+      params.push(dto.apiKey ? encrypt(dto.apiKey) : null);
+      setClauses.push(`gateway_api_key = $${params.length}`);
+    }
+
+    if (dto.apiSecret !== undefined && dto.apiSecret !== SENTINEL) {
+      params.push(dto.apiSecret ? encrypt(dto.apiSecret) : null);
+      setClauses.push(`gateway_api_secret = $${params.length}`);
+    }
+
+    if (dto.clientId !== undefined) {
+      params.push(dto.clientId || null);
+      setClauses.push(`gateway_client_id = $${params.length}`);
+    }
+
+    if (setClauses.length > 0) {
+      await this.ds.query(
+        `UPDATE empresas SET ${setClauses.join(', ')} WHERE id = $1`,
+        params,
+      );
+      await this.cache.del(`gw:config:${empresaId}`).catch(() => {});
+    }
+
+    return this.getGatewayConfig(empresaId);
   }
 
   // ─── Log de actualización ────────────────────────────────────

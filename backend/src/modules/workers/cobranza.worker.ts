@@ -12,10 +12,11 @@ import { CACHE_MANAGER }       from '@nestjs/cache-manager';
 import { Cache }               from 'cache-manager';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
-import { FirewallService }     from '../mikrotik/services/firewall.service';
-import { PppoeService }        from '../mikrotik/services/pppoe.service';
-import { WhatsAppService }     from '../notificaciones/services/whatsapp.service';
-import { FacturacionService }  from '../facturacion/facturacion.service';
+import { FirewallService }           from '../mikrotik/services/firewall.service';
+import { PppoeService }              from '../mikrotik/services/pppoe.service';
+import { GatewayMensajeriaService }  from '../notificaciones/services/gateway-mensajeria.service';
+import { TipoNotificacion }          from '../notificaciones/services/whatsapp.service';
+import { FacturacionService }        from '../facturacion/facturacion.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
 
 import {
@@ -460,7 +461,7 @@ export class CobranzaWorker {
   constructor(
     private readonly firewallSvc:    FirewallService,
     private readonly pppoeSvc:       PppoeService,
-    private readonly whatsappSvc:    WhatsAppService,
+    private readonly gatewaySvc:     GatewayMensajeriaService,
     private readonly facturacionSvc: FacturacionService,
     private readonly auditoria:      AuditoriaService,
     private readonly events:         EventEmitter,
@@ -554,13 +555,18 @@ export class CobranzaWorker {
       if (cliente) {
         const tel = cliente.whatsapp || cliente.telefono;
         if (tel) {
-          await this.whatsappSvc.notificarServicioSuspendido({
-            telefono:      tel,
-            clienteNombre: cliente.nombre_completo,
-            deudaTotal,
-            nombreEmpresa: cliente.empresa_nombre,
+          await this.gatewaySvc.despachar({
+            telefono:  tel,
+            tipo:      TipoNotificacion.SERVICIO_SUSPENDIDO,
+            variables: {
+              clienteNombre: cliente.nombre_completo,
+              deudaTotal:    `S/ ${deudaTotal.toFixed(2)}`,
+              numeroCuenta:  'ver al asesor',
+              nombreEmpresa: cliente.empresa_nombre || 'DataFast',
+            },
+            empresaId,
           }).catch((err) =>
-            this.logger.warn(`WhatsApp suspensión falló: ${err.message}`),
+            this.logger.warn(`Gateway suspensión falló: ${err.message}`),
           );
         }
       }
@@ -678,12 +684,16 @@ export class CobranzaWorker {
       if (cliente) {
         const tel = cliente.whatsapp || cliente.telefono;
         if (tel) {
-          await this.whatsappSvc.notificarServicioReactivado({
-            telefono:      tel,
-            clienteNombre: cliente.nombre_completo,
-            planNombre:    planNombre || 'tu plan',
+          await this.gatewaySvc.despachar({
+            telefono:  tel,
+            tipo:      TipoNotificacion.SERVICIO_REACTIVADO,
+            variables: {
+              clienteNombre: cliente.nombre_completo,
+              planNombre:    planNombre || 'tu plan',
+            },
+            empresaId,
           }).catch((err) =>
-            this.logger.warn(`WhatsApp reactivación fallido: ${err.message}`),
+            this.logger.warn(`Gateway reactivación fallido: ${err.message}`),
           );
         }
       }
@@ -845,8 +855,6 @@ export class CobranzaWorker {
 
     if (!telefono || !montoDeuda) return { omitido: true };
 
-    // Determinar template según si el vencimiento está pendiente o ya pasó
-    const { TipoNotificacion } = await import('../notificaciones/services/whatsapp.service');
     const tipo = diasAntes > 0
       ? TipoNotificacion.PAGO_VENCE_HOY
       : TipoNotificacion.PAGO_VENCIDO;
@@ -866,7 +874,7 @@ export class CobranzaWorker {
     }
 
     try {
-      const result = await this.whatsappSvc.enviar({
+      const result = await this.gatewaySvc.despachar({
         telefono,
         tipo,
         variables: {
@@ -876,6 +884,7 @@ export class CobranzaWorker {
           diasVencido:   diasAntes < 0 ? String(Math.abs(diasAntes)) : '0',
           numeroCuenta:  '',
         },
+        empresaId: job.data.empresaId,
       });
 
       if (logId) {
