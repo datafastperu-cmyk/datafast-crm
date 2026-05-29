@@ -889,7 +889,9 @@ export class VpnClienteService {
 :delay 5
 :local certEntry [/certificate find where common-name=$certCN]
 :local certName [/certificate get $certEntry name]
-/interface ovpn-client add certificate=$certName cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN${verifyLine}
+/interface ovpn-client add certificate=$certName cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN disabled=yes${verifyLine}
+:delay 1s
+/interface ovpn-client enable vpndatafast
 }`;
   }
 
@@ -902,7 +904,8 @@ export class VpnClienteService {
     return `:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
 :delay 1s
 :do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
-/interface ovpn-client
-add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac}${verifyLine}`;
+/interface ovpn-client add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
+:delay 1s
+/interface ovpn-client enable vpndatafast`;
   }
 }
