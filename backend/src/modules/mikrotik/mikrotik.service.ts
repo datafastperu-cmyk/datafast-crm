@@ -493,7 +493,7 @@ export class MikrotikService {
   }
 
   // ── Construir credenciales para el pool ───────────────────
-  private async getCredentials(routerId: string, empresaId: string): Promise<RouterCredentials> {
+  private async getCredentials(routerId: string, empresaId: string, timeoutOverrideSec?: number): Promise<RouterCredentials> {
     const router = await this.findOne(routerId, empresaId);
     const port   = router.usarSsl ? router.puertoApiSsl : router.puertoApi;
     // Si el router tiene VPN configurada, conectar por esa IP
@@ -505,7 +505,7 @@ export class MikrotikService {
       user:            router.usuario,
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
-      timeoutSec:      router.timeoutConexion || 10,
+      timeoutSec:      timeoutOverrideSec ?? router.timeoutConexion ?? 10,
       version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
     };
   }
@@ -732,10 +732,10 @@ export class MikrotikService {
     const router = await this.findOne(routerId, empresaId);
     const creds  = await this.getCredentials(routerId, empresaId);
 
-    const [recursos, interfaces, sesiones] = await Promise.all([
+    const [recursos, interfaces, sesionesActivas] = await Promise.all([
       this.ifaceSvc.getRecursos(creds),
       this.ifaceSvc.listarInterfaces(creds),
-      this.pppoeSvc.listarSesionesActivas(creds),
+      this.pppoeSvc.contarSesionesActivas(creds).catch(() => 0),
     ]);
 
     // Actualizar estado en BD
@@ -758,13 +758,13 @@ export class MikrotikService {
       router:          await this.findOne(routerId, empresaId),
       recursos,
       interfaces,
-      sesionesActivas: sesiones.length,
+      sesionesActivas,
       version:         recursos.version,
     };
   }
 
   async getSesionesPppoe(routerId: string, empresaId: string): Promise<any[]> {
-    const creds = await this.getCredentials(routerId, empresaId);
+    const creds = await this.getCredentials(routerId, empresaId, 25);
     return this.pppoeSvc.listarSesionesActivas(creds);
   }
 
@@ -1003,7 +1003,7 @@ export class MikrotikService {
       });
     } catch { return; }
 
-    for (const router of routers) {
+    const pollOne = async (router: Router): Promise<void> => {
       try {
         const creds: RouterCredentials = {
           id:              router.id,
@@ -1052,6 +1052,11 @@ export class MikrotikService {
           totalSesionesPppoe: 0,
         });
       }
+    };
+
+    const CHUNK = 4;
+    for (let i = 0; i < routers.length; i += CHUNK) {
+      await Promise.allSettled(routers.slice(i, i + CHUNK).map(pollOne));
     }
   }
 
