@@ -2,8 +2,10 @@ import {
   Process, Processor,
   OnQueueFailed, OnQueueCompleted,
 } from '@nestjs/bull';
-import { Injectable, Logger }  from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { InjectQueue }         from '@nestjs/bull';
+import { CACHE_MANAGER }       from '@nestjs/cache-manager';
+import { Cache }               from 'cache-manager';
 import { Job, Queue }          from 'bull';
 import { Cron }                from '@nestjs/schedule';
 import { InjectDataSource }    from '@nestjs/typeorm';
@@ -44,30 +46,62 @@ export class FacturacionScheduler {
   constructor(
     @InjectQueue(QUEUES.FACTURACION) private readonly queue: Queue,
     @InjectDataSource()              private readonly ds: DataSource,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
-  // ─── GENERACIÓN DIARIA a las 00:05 AM ─────────────────────
-  // Cada día, verifica qué empresas tienen dia_facturacion == hoy
-  // y genera sus facturas para ese mes.
-  @Cron('5 0 * * *', { timeZone: 'America/Lima', name: 'facturacion-diaria' })
+  // Lee el horario configurado para un job desde empresas.cron_horarios
+  private async getHoraConf(key: string, defaultHora = '05:00'): Promise<[number, number]> {
+    const cacheKey = `cron:horario:${key}`;
+    let valor = await this.cache.get<string>(cacheKey);
+    if (!valor) {
+      const [emp] = await this.ds.query(
+        `SELECT cron_horarios->>'${key}' AS hora FROM empresas LIMIT 1`,
+      ).catch(() => [null]);
+      valor = emp?.hora ?? defaultHora;
+      await this.cache.set(cacheKey, valor, 5 * 60 * 1000);
+    }
+    const [h, m] = (valor as string).split(':').map(Number);
+    return [h || 0, m || 0];
+  }
+
+  // Adquiere lock diario — retorna false si ya corrió hoy a esta hora
+  private async debeEjecutar(jobKey: string, hora: number, minuto: number): Promise<boolean> {
+    const now = new Date();
+    if (now.getHours() !== hora || now.getMinutes() !== minuto) return false;
+    const lockKey = `cron:ran:${jobKey}:${now.toISOString().split('T')[0]}`;
+    const yaCorrio = await this.cache.get(lockKey);
+    if (yaCorrio) return false;
+    await this.cache.set(lockKey, '1', 23 * 60 * 60 * 1000);
+    return true;
+  }
+
+  // ─── GENERACIÓN DIARIA — hora dinámica desde cron_horarios ───
+  // Corre cada minuto; ejecuta solo cuando la hora coincide con
+  // empresas.cron_horarios.facturacion (default: 05:00 Lima)
+  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'facturacion-diaria' })
   async scheduleFacturacionDiaria(): Promise<void> {
+    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    const [hora, min] = await this.getHoraConf('facturacion', '05:00');
+    if (!await this.debeEjecutar('facturacion-worker', hora, min)) return;
+
     const hoy     = new Date();
     const diaHoy  = hoy.getDate();
     const mes     = hoy.getMonth() + 1;
     const anio    = hoy.getFullYear();
 
     this.logger.log(
-      `[FACTURACION-CRON] Día ${diaHoy}/${mes}/${anio} — verificando empresas a facturar`,
+      `[FACTURACION-CRON] ${String(hora).padStart(2,'0')}:${String(min).padStart(2,'0')} | ` +
+      `Día ${diaHoy}/${mes}/${anio} — verificando empresas`,
     );
 
-    // ── 1. Primero marcar facturas vencidas ────────────────
+    // ── 1. Marcar facturas vencidas ────────────────────────
     await this.queue.add(
       JOBS.MARCAR_FACTURAS_VENCIDAS,
       { fecha: hoy.toISOString().split('T')[0] },
       { ...JOB_OPTIONS.CRITICO, priority: 1 },
     );
 
-    // ── 2. Generar facturas para empresas que facturan hoy ──
+    // ── 2. Encolar facturas para empresas que facturan hoy ──
     const empresas = await this.ds.query(`
       SELECT id, razon_social, dia_facturacion, serie_boleta, igv_rate
       FROM empresas
@@ -76,27 +110,22 @@ export class FacturacionScheduler {
         AND deleted_at IS NULL
     `, [diaHoy]);
 
-    for (const emp of empresas) {
+    for (let i = 0; i < empresas.length; i++) {
       await this.queue.add(
         JOBS.GENERAR_FACTURAS_EMPRESA,
         {
-          empresaId:     emp.id,
+          empresaId:      empresas[i].id,
           mes,
           anio,
           diaFacturacion: diaHoy,
-          forzar:        false,
+          forzar:         false,
         } as PayloadGenerarFacturasEmpresa,
-        {
-          ...JOB_OPTIONS.MASIVO,
-          // Delay de 5s entre empresas para no saturar BD
-          delay: empresas.indexOf(emp) * 5000,
-        },
+        { ...JOB_OPTIONS.MASIVO, delay: i * 5000 },
       );
     }
 
     this.logger.log(
-      `[FACTURACION-CRON] ${empresas.length} empresas encoladas para facturar ` +
-      `(día ${diaHoy} del mes ${mes}/${anio})`,
+      `[FACTURACION-CRON] ${empresas.length} empresas encoladas (día ${diaHoy}/${mes}/${anio})`,
     );
   }
 
@@ -167,17 +196,18 @@ export class FacturacionWorker {
     // Obtener contratos activos a facturar en este mes
     const contratos = await this.ds.query(`
       SELECT
-        co.id              AS contrato_id,
+        co.id                AS contrato_id,
         co.numero_contrato,
         co.cliente_id,
-        co.precio_final    AS precio,
+        co.precio_final      AS precio,
         co.dia_facturacion,
-        cl.nombre_completo AS cliente_nombre,
+        co.fecha_instalacion,
+        cl.nombre_completo   AS cliente_nombre,
         cl.whatsapp,
         cl.telefono,
         cl.email,
         pl.aplica_igv,
-        pl.nombre          AS plan_nombre
+        pl.nombre            AS plan_nombre
       FROM contratos co
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN planes   pl ON pl.id = co.plan_id
@@ -234,8 +264,28 @@ export class FacturacionWorker {
           }
         }
 
-        // ── Calcular montos ──────────────────────────────────
-        const precioBase = parseFloat(contrato.precio || '0');
+        // ── Calcular montos con prorrateo si aplica ──────────
+        let precioBase = parseFloat(contrato.precio || '0');
+        let descripcionExtra = '';
+
+        // Prorrateo: si el contrato fue instalado en este mes y no es día 1
+        if (contrato.fecha_instalacion) {
+          const instFecha = new Date(contrato.fecha_instalacion);
+          if (instFecha.getFullYear() === anio && instFecha.getMonth() + 1 === mes) {
+            const diaInst    = instFecha.getDate();
+            const diasMes    = new Date(anio, mes, 0).getDate();
+            const diasFact   = diasMes - diaInst + 1;
+            if (diaInst > 1) {
+              precioBase = Math.round((precioBase / diasMes * diasFact) * 100) / 100;
+              descripcionExtra = ` (prorrateo ${diasFact}/${diasMes} días)`;
+              this.logger.debug(
+                `[PRORROGA] Contrato ${contrato.contrato_id}: día inst=${diaInst}, ` +
+                `días=${diasFact}/${diasMes}, precio ajustado=S/${precioBase}`,
+              );
+            }
+          }
+        }
+
         const aplicaIgv  = contrato.aplica_igv === true || contrato.aplica_igv === 'true';
         const subtotal   = aplicaIgv
           ? Math.round((precioBase / (1 + igvRate)) * 100) / 100
@@ -279,11 +329,11 @@ export class FacturacionWorker {
           empresaId, contrato.cliente_id, contrato.contrato_id,
           serie, correlativo,
           periodoInicio, periodoFin,
-          `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
+          `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}${descripcionExtra}`,
           subtotal, igv, total,
           fechaVencimiento,
           JSON.stringify([{
-            descripcion:    `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
+            descripcion:    `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}${descripcionExtra}`,
             cantidad:       1,
             precioUnitario: subtotal,
             subtotal,

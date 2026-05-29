@@ -37,7 +37,6 @@ export class CobranzaScheduler {
   constructor(
     @InjectQueue(QUEUES.COBRANZA) private readonly queue: Queue,
     @InjectDataSource()           private readonly ds: DataSource,
-    private readonly facturacionSvc: FacturacionService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
@@ -69,45 +68,6 @@ export class CobranzaScheduler {
 
     await this.cache.set(lockKey, '1', 23 * 60 * 60 * 1000); // lock 23h
     return true;
-  }
-
-  // ─── GENERACIÓN AUTOMÁTICA DE FACTURAS ───────────────────
-  // Corre cada minuto; ejecuta cuando la hora coincide con la
-  // hora configurada en empresas.cron_horarios.facturacion
-  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'auto-facturacion-diaria' })
-  async generarFacturasDiarias(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
-    const [hora, min] = await this.getHoraConf('facturacion', '05:00');
-    if (!await this.debeEjecutar('facturacion', hora, min)) return;
-
-    const hoy  = new Date();
-    const dia  = hoy.getDate();
-    const mes  = hoy.getMonth() + 1;
-    const anio = hoy.getFullYear();
-
-    this.logger.log(`[CRON] Auto-facturación día ${dia}/${mes}/${anio}`);
-
-    const empresas: { id: string }[] = await this.ds.query(
-      `SELECT id FROM empresas WHERE deleted_at IS NULL`,
-    );
-
-    let totalExitosas = 0;
-    let totalErrores  = 0;
-
-    for (const emp of empresas) {
-      try {
-        const r = await this.facturacionSvc.generarFacturasDelDia(emp.id, dia, mes, anio);
-        totalExitosas += r.exitosas;
-        totalErrores  += r.errores;
-      } catch (err) {
-        totalErrores++;
-        this.logger.error(`[CRON] Error auto-facturación empresa ${emp.id}: ${err.message}`);
-      }
-    }
-
-    this.logger.log(
-      `[CRON] Auto-facturación completada: ${totalExitosas} facturas | ${totalErrores} errores | ${empresas.length} empresas`,
-    );
   }
 
   // ─── DETECCIÓN DIARIA DE MOROSOS ──────────────────────────
