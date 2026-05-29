@@ -1,5 +1,6 @@
 import {
-  Controller, Get, Post, Patch, Body, HttpCode, HttpStatus, Logger,
+  Controller, Get, Post, Patch, Body, Query,
+  HttpCode, HttpStatus, Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Roles }       from '../../common/decorators/roles.decorator';
@@ -85,6 +86,26 @@ export class SistemaController {
       businessId: cfg.businessId,
       token:      cfg.tokenExists ? '***stored***' : null,
     });
+  }
+
+  // ── GET /admin/sistema/notif-logs ────────────────────────────
+  @Get('notif-logs')
+  @ApiOperation({ summary: 'Historial de notificaciones enviadas' })
+  async getNotifLogs(
+    @CurrentUser() user: JwtPayload,
+    @Query('page')   page?:   string,
+    @Query('limit')  limit?:  string,
+    @Query('estado') estado?: string,
+    @Query('tipo')   tipo?:   string,
+  ) {
+    const result = await this.sistema.getNotifLogs(
+      user.empresaId,
+      page  ? parseInt(page,  10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+      estado || undefined,
+      tipo   || undefined,
+    );
+    return ApiResponse.ok(result);
   }
 
   // ── PATCH /admin/sistema/whatsapp-config ─────────────────────

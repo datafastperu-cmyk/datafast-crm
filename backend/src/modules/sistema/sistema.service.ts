@@ -351,6 +351,51 @@ export class SistemaService {
     return this.getWhatsAppConfig(empresaId);
   }
 
+  // ─── Historial de notificaciones ─────────────────────────────
+
+  async getNotifLogs(
+    empresaId: string,
+    page    = 1,
+    limit   = 20,
+    estado?: string,
+    tipo?:   string,
+  ): Promise<{ items: any[]; total: number }> {
+    const offset = (page - 1) * limit;
+    const conds: string[] = [`co.empresa_id = $1`, `co.deleted_at IS NULL`];
+    const params: any[]   = [empresaId];
+
+    if (estado) { params.push(estado);  conds.push(`nl.estado_entrega = $${params.length}`); }
+    if (tipo)   { params.push(tipo);    conds.push(`nl.tipo_template   = $${params.length}`); }
+
+    const where = conds.join(' AND ');
+
+    const [countRow] = await this.ds.query(
+      `SELECT COUNT(*)::int AS total
+       FROM notificaciones_logs nl
+       INNER JOIN contratos co ON co.id = nl.contrato_id
+       WHERE ${where}`,
+      params,
+    );
+
+    params.push(limit, offset);
+    const items = await this.ds.query(
+      `SELECT nl.id, nl.contrato_id, nl.telefono, nl.canal,
+              nl.tipo_template, nl.estado_entrega,
+              nl.meta_message_id, nl.error_detalle, nl.created_at,
+              co.numero_contrato,
+              cl.nombre_completo AS cliente_nombre
+       FROM notificaciones_logs nl
+       INNER JOIN contratos co ON co.id = nl.contrato_id
+       LEFT  JOIN clientes  cl ON cl.id = co.cliente_id AND cl.deleted_at IS NULL
+       WHERE ${where}
+       ORDER BY nl.created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    return { items, total: countRow?.total ?? 0 };
+  }
+
   // ─── Log de actualización ────────────────────────────────────
   async getUpdateLog(): Promise<string> {
     try {
