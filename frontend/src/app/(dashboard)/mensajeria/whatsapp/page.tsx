@@ -1,194 +1,435 @@
 'use client';
 
-import { useState }   from 'react';
-import { MessageSquare, Send, CheckCheck, Clock, AlertCircle, Plus } from 'lucide-react';
-import { PageHeader } from '@/components/shared/PageHeader';
-import { cn }         from '@/lib/utils';
-import { mockMensajesWhatsapp } from '@/mock-data';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { io, Socket } from 'socket.io-client';
+import {
+  MessageSquare, Search, Send, Loader2,
+  Wifi, WifiOff, RefreshCw, CheckCheck, User,
+} from 'lucide-react';
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/store/auth.store';
+import { cn } from '@/lib/utils';
 
-const ESTADO_STYLE = {
-  leido:     { icon: CheckCheck, class: 'text-blue-400',    label: 'Leído' },
-  entregado: { icon: CheckCheck, class: 'text-muted-foreground', label: 'Entregado' },
-  pendiente: { icon: Clock,      class: 'text-amber-400',   label: 'Pendiente' },
-  error:     { icon: AlertCircle,class: 'text-red-400',     label: 'Error' },
-};
+// ── Tipos ────────────────────────────────────────────────────────
+type WaEstado = 'INICIANDO' | 'REQUERIDO_QR' | 'CONECTADO' | 'DESCONECTADO';
 
-const TIPO_BADGE: Record<string, string> = {
-  factura:      'bg-blue-500/10 text-blue-400',
-  corte:        'bg-red-500/10 text-red-400',
-  recordatorio: 'bg-amber-500/10 text-amber-400',
-  bienvenida:   'bg-emerald-500/10 text-emerald-400',
-};
+interface WaStatus {
+  estado: WaEstado;
+  qr?:    string | null;
+}
 
-const PLANTILLAS = [
-  { id:'p1', nombre:'Recordatorio de pago',  tipo:'recordatorio', variables:['nombre','monto','fecha'], activa:true },
-  { id:'p2', nombre:'Aviso de corte',         tipo:'corte',        variables:['nombre','deuda'],          activa:true },
-  { id:'p3', nombre:'Pago confirmado',        tipo:'factura',      variables:['nombre','monto'],          activa:true },
-  { id:'p4', nombre:'Bienvenida nuevo abonado',tipo:'bienvenida',  variables:['nombre','plan'],           activa:true },
-];
+interface Chat {
+  id:             string;
+  waChatId:       string;
+  telefono:       string;
+  nombreContacto: string | null;
+  ultimoMensaje:  string | null;
+  ultimoMsgAt:    string | null;
+  noLeidos:       number;
+}
 
-export default function WhatsAppPage() {
-  const [tab, setTab] = useState<'mensajes' | 'plantillas' | 'config'>('mensajes');
+interface Mensaje {
+  id:        string;
+  direction: 'INBOUND' | 'OUTBOUND';
+  agente:    string | null;
+  body:      string;
+  createdAt: string;
+}
 
-  const stats = {
-    enviados:  mockMensajesWhatsapp.length,
-    leidos:    mockMensajesWhatsapp.filter(m => m.estado === 'leido').length,
-    errores:   mockMensajesWhatsapp.filter(m => m.estado === 'error').length,
-    entregados:mockMensajesWhatsapp.filter(m => m.estado === 'entregado').length,
+// ── URL del WebSocket (backend directo, no proxy Next.js) ────────
+const WS_URL = (() => {
+  if (typeof window === 'undefined') return 'http://localhost:4000';
+  const api = process.env.NEXT_PUBLIC_API_URL;
+  if (api) return api;
+  return `${window.location.protocol}//${window.location.hostname}:4000`;
+})();
+
+// ── Input estilo app ─────────────────────────────────────────────
+const INPUT_CLS = [
+  'w-full px-3 py-2 text-sm rounded-lg border border-[hsl(var(--sidebar-border))]',
+  'bg-[hsl(var(--sidebar-bg))] text-foreground placeholder:text-muted-foreground',
+  'focus:outline-none focus:ring-1 focus:ring-primary/50',
+].join(' ');
+
+// ── Helpers ──────────────────────────────────────────────────────
+function formatHora(iso: string) {
+  return new Date(iso).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+}
+function formatFechaRelativa(iso: string | null) {
+  if (!iso) return '';
+  const d   = new Date(iso);
+  const now = new Date();
+  const mismo = d.toDateString() === now.toDateString();
+  if (mismo) return formatHora(iso);
+  return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
+}
+
+// ─────────────────────────────────────────────────────────────────
+export default function WhatsAppWebPage() {
+  const usuario = useAuthStore(s => s.usuario);
+
+  const [socket,    setSocket]    = useState<Socket | null>(null);
+  const [status,    setStatus]    = useState<WaStatus>({ estado: 'INICIANDO' });
+  const [chats,     setChats]     = useState<Chat[]>([]);
+  const [chatActivo, setChatActivo] = useState<Chat | null>(null);
+  const [mensajes,  setMensajes]  = useState<Mensaje[]>([]);
+  const [busqueda,  setBusqueda]  = useState('');
+  const [texto,     setTexto]     = useState('');
+  const [enviando,  setEnviando]  = useState(false);
+  const [cargando,  setCargando]  = useState(true);
+
+  const mensajesRef = useRef<HTMLDivElement>(null);
+  const inputRef    = useRef<HTMLInputElement>(null);
+
+  // ── Scroll al fondo de mensajes ──────────────────────────────
+  const scrollFondo = useCallback(() => {
+    setTimeout(() => {
+      mensajesRef.current?.scrollTo({ top: mensajesRef.current.scrollHeight, behavior: 'smooth' });
+    }, 50);
+  }, []);
+
+  // ── Cargar mensajes del chat activo ──────────────────────────
+  const cargarMensajes = useCallback(async (chat: Chat) => {
+    setCargando(true);
+    try {
+      const { data } = await api.get<{ data: Mensaje[] }>(`/crm-nativo/mensajes/${chat.id}`);
+      setMensajes(data.data ?? []);
+      scrollFondo();
+    } finally {
+      setCargando(false);
+    }
+  }, [scrollFondo]);
+
+  // ── Seleccionar chat ─────────────────────────────────────────
+  const seleccionarChat = useCallback((chat: Chat) => {
+    setChatActivo(chat);
+    socket?.emit('crm:leer_chat', { chatId: chat.id });
+    setChats(prev => prev.map(c => c.id === chat.id ? { ...c, noLeidos: 0 } : c));
+    cargarMensajes(chat);
+    inputRef.current?.focus();
+  }, [socket, cargarMensajes]);
+
+  // ── Conectar socket.io ────────────────────────────────────────
+  useEffect(() => {
+    const sock = io(`${WS_URL}/crm-nativo`, {
+      transports:         ['websocket', 'polling'],
+      reconnectionDelay:  3000,
+      reconnectionAttempts: 20,
+    });
+
+    sock.on('connect',    () => console.log('[CRM-WS] conectado'));
+    sock.on('disconnect', () => console.log('[CRM-WS] desconectado'));
+
+    sock.on('wa:status', (payload: WaStatus) => {
+      setStatus(payload);
+      if (payload.estado === 'CONECTADO') {
+        api.get<{ data: Chat[] }>('/crm-nativo/chats')
+          .then(r => setChats(r.data.data ?? []));
+      }
+    });
+
+    sock.on('wa:chats', (lista: Chat[]) => {
+      setChats(lista);
+    });
+
+    sock.on('wa:chat_update', (chat: Chat) => {
+      setChats(prev => {
+        const idx = prev.findIndex(c => c.id === chat.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx]  = chat;
+          return next.sort((a, b) =>
+            (b.ultimoMsgAt ?? '').localeCompare(a.ultimoMsgAt ?? ''));
+        }
+        return [chat, ...prev];
+      });
+    });
+
+    sock.on('wa:mensaje', (evt: { chatId: string; mensaje: Mensaje }) => {
+      setChatActivo(prev => {
+        if (prev?.id === evt.chatId) {
+          setMensajes(m => [...m, evt.mensaje]);
+          scrollFondo();
+        }
+        return prev;
+      });
+    });
+
+    setSocket(sock);
+
+    // Obtener estado inicial vía REST
+    api.get<{ data: WaStatus }>('/crm-nativo/estado')
+      .then(r => setStatus(r.data.data))
+      .catch(() => {});
+
+    return () => { sock.disconnect(); };
+  }, [scrollFondo]);
+
+  // ── Enviar mensaje ────────────────────────────────────────────
+  const enviar = async () => {
+    if (!texto.trim() || !chatActivo || enviando) return;
+    const textoLocal = texto.trim();
+    setTexto('');
+    setEnviando(true);
+    try {
+      await api.post('/crm-nativo/enviar', {
+        telefono: chatActivo.telefono,
+        texto:    textoLocal,
+      });
+    } catch {
+      setTexto(textoLocal);
+    } finally {
+      setEnviando(false);
+      inputRef.current?.focus();
+    }
   };
 
-  return (
-    <div className="space-y-5">
-      <PageHeader
-        title="WhatsApp Bot"
-        description="Automatización de mensajes y notificaciones a abonados"
-        breadcrumbs={[{ label:'Mensajería' }, { label:'WhatsApp' }]}
-        badge={{ label:'API conectada', color:'green' }}
-        actions={
-          <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors">
-            <Send className="w-3.5 h-3.5" />
-            Envío masivo
-          </button>
-        }
-      />
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); }
+  };
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label:'Enviados hoy',   value:stats.enviados,   color:'text-foreground' },
-          { label:'Leídos',         value:stats.leidos,     color:'text-blue-400' },
-          { label:'Entregados',     value:stats.entregados, color:'text-emerald-400' },
-          { label:'Con error',      value:stats.errores,    color:'text-red-400' },
-        ].map((s) => (
-          <div key={s.label} className="bg-card border border-border rounded-xl p-4">
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{s.label}</p>
-            <p className={cn('text-2xl font-bold mt-1', s.color)}>{s.value}</p>
-          </div>
-        ))}
-      </div>
+  // ── Filtrar chats por búsqueda ────────────────────────────────
+  const chatsFiltrados = chats.filter(c => {
+    const q = busqueda.toLowerCase();
+    return !q ||
+      (c.nombreContacto ?? '').toLowerCase().includes(q) ||
+      c.telefono.includes(q);
+  });
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-card border border-border rounded-lg p-0.5 w-fit">
-        {(['mensajes','plantillas','config'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={cn('text-sm px-4 py-1.5 rounded-md capitalize transition-colors',
-              tab === t ? 'bg-muted text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-            )}>{t}</button>
-        ))}
-      </div>
-
-      {tab === 'mensajes' && (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Contacto</th>
-                <th>Teléfono</th>
-                <th>Tipo</th>
-                <th>Mensaje</th>
-                <th>Enviado</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mockMensajesWhatsapp.map((m) => {
-                const es = ESTADO_STYLE[m.estado];
-                return (
-                  <tr key={m.id}>
-                    <td className="font-medium text-foreground">{m.nombre}</td>
-                    <td className="font-mono text-xs text-muted-foreground">+51 {m.telefono}</td>
-                    <td>
-                      <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full capitalize', TIPO_BADGE[m.tipo])}>
-                        {m.tipo}
-                      </span>
-                    </td>
-                    <td className="max-w-[260px]">
-                      <p className="text-xs text-muted-foreground line-clamp-2">{m.mensaje}</p>
-                    </td>
-                    <td className="text-xs text-muted-foreground font-mono">
-                      {new Date(m.enviado).toLocaleTimeString('es-PE', { hour:'2-digit', minute:'2-digit' })}
-                    </td>
-                    <td>
-                      <span className={cn('flex items-center gap-1 text-[11px] font-medium', es.class)}>
-                        <es.icon className="w-3.5 h-3.5" />
-                        {es.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+  // ── Estado "INICIANDO" ────────────────────────────────────────
+  if (status.estado === 'INICIANDO') {
+    return (
+      <div className="flex items-center justify-center h-[calc(100dvh-120px)]">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="w-7 h-7 animate-spin text-primary" />
+          <p className="text-sm">Iniciando cliente WhatsApp Web…</p>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {tab === 'plantillas' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {PLANTILLAS.map((p) => (
-            <div key={p.id} className="bg-card border border-border rounded-xl p-5">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{p.nombre}</p>
-                  <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full capitalize mt-1 inline-block', TIPO_BADGE[p.tipo])}>
-                    {p.tipo}
+  // ── Estado "REQUERIDO_QR" ─────────────────────────────────────
+  if (status.estado === 'REQUERIDO_QR') {
+    return (
+      <div className="flex items-center justify-center h-[calc(100dvh-120px)]">
+        <div className="bg-card border border-border rounded-2xl p-8 flex flex-col items-center gap-5 max-w-sm w-full shadow-xl">
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+            <MessageSquare className="w-6 h-6 text-emerald-400" />
+          </div>
+          <div className="text-center">
+            <h2 className="text-base font-semibold text-foreground">Vincular WhatsApp Web</h2>
+            <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+              Abre WhatsApp en tu celular → Dispositivos vinculados → Vincular dispositivo → Escanea el QR
+            </p>
+          </div>
+          {status.qr ? (
+            <div className="rounded-xl overflow-hidden border-4 border-white shadow-md">
+              <img src={status.qr} alt="QR WhatsApp" className="w-56 h-56 object-cover" />
+            </div>
+          ) : (
+            <div className="w-56 h-56 bg-muted rounded-xl flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          <p className="text-[10px] text-muted-foreground text-center">
+            El QR se renueva automáticamente cada 60 segundos
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Estado "DESCONECTADO" ─────────────────────────────────────
+  if (status.estado === 'DESCONECTADO') {
+    return (
+      <div className="flex items-center justify-center h-[calc(100dvh-120px)]">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <WifiOff className="w-8 h-8 text-rose-400" />
+          <p className="text-sm font-medium text-foreground">WhatsApp desconectado</p>
+          <p className="text-xs">El servidor reconectará automáticamente…</p>
+          <Loader2 className="w-4 h-4 animate-spin mt-1" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Estado "CONECTADO" — interfaz completa ────────────────────
+  return (
+    <div className="flex h-[calc(100dvh-112px)] rounded-xl overflow-hidden border border-border bg-card">
+
+      {/* ── Panel izquierdo: lista de chats ──────────────── */}
+      <div className="w-72 flex-shrink-0 flex flex-col border-r border-border">
+
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+            <Wifi className="w-3 h-3 text-emerald-400" />
+          </div>
+          <span className="text-xs font-semibold text-foreground flex-1">WhatsApp Web</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium">
+            Conectado
+          </span>
+        </div>
+
+        {/* Buscador */}
+        <div className="px-3 py-2 border-b border-border">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar chat…"
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              className={cn(INPUT_CLS, 'pl-8 py-1.5 text-xs')}
+            />
+          </div>
+        </div>
+
+        {/* Lista */}
+        <div className="flex-1 overflow-y-auto">
+          {chatsFiltrados.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-32 gap-2 text-muted-foreground">
+              <MessageSquare className="w-6 h-6 opacity-30" />
+              <p className="text-xs">Sin chats</p>
+            </div>
+          )}
+          {chatsFiltrados.map(chat => (
+            <button
+              key={chat.id}
+              onClick={() => seleccionarChat(chat)}
+              className={cn(
+                'w-full flex items-start gap-2.5 px-4 py-3 text-left transition-colors hover:bg-muted/40',
+                chatActivo?.id === chat.id && 'bg-primary/8 border-l-2 border-primary',
+              )}
+            >
+              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
+                <User className="w-4 h-4 text-muted-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-1">
+                  <p className="text-xs font-medium text-foreground truncate">
+                    {chat.nombreContacto || `+${chat.telefono}`}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                    {formatFechaRelativa(chat.ultimoMsgAt)}
                   </span>
                 </div>
-                <span className={p.activa ? 'pill-online' : 'pill-offline'}>
-                  {p.activa ? 'Activa' : 'Inactiva'}
-                </span>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <p className="text-[11px] text-muted-foreground truncate flex-1">
+                    {chat.ultimoMensaje || ''}
+                  </p>
+                  {chat.noLeidos > 0 && (
+                    <span className="flex-shrink-0 w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center">
+                      {chat.noLeidos > 9 ? '9+' : chat.noLeidos}
+                    </span>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mb-3">Variables: {p.variables.map(v => `{{${v}}}`).join(', ')}</p>
-              <div className="flex gap-2">
-                <button className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium">
-                  Editar plantilla
-                </button>
-                <button className="text-xs px-3 py-1.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors">
-                  Probar
-                </button>
-              </div>
-            </div>
+            </button>
           ))}
-          <div className="bg-card border border-dashed border-border rounded-xl p-5 flex flex-col items-center justify-center gap-2 hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer group">
-            <Plus className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-            <p className="text-sm text-muted-foreground group-hover:text-primary transition-colors">Nueva plantilla</p>
-          </div>
         </div>
-      )}
+      </div>
 
-      {tab === 'config' && (
-        <div className="max-w-xl bg-card border border-border rounded-xl p-6 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">Configuración de la API</h3>
-          {[
-            { label:'Proveedor',         value:'Waboxapp',       type:'select', options:['Waboxapp','WATI','UltraMsg','Meta Cloud API'] },
-            { label:'API Key',           value:'wab_••••••••••••', type:'password' },
-            { label:'Número de envío',   value:'+51 999 000 111', type:'text' },
-            { label:'Delay entre envíos',value:'1500',           type:'number', suffix:'ms' },
-          ].map((f) => (
-            <div key={f.label}>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{f.label}</label>
-              <div className="mt-1.5 flex gap-2">
-                {f.type === 'select' ? (
-                  <select className="flex-1 px-3 py-2 text-sm bg-muted border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                    {f.options?.map(o => <option key={o}>{o}</option>)}
-                  </select>
-                ) : (
-                  <input type={f.type} defaultValue={f.value}
-                    className="flex-1 px-3 py-2 text-sm bg-muted border border-border rounded-lg text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
-                )}
-                {f.suffix && <span className="flex items-center text-xs text-muted-foreground px-2">{f.suffix}</span>}
-              </div>
+      {/* ── Panel derecho: visor de conversación ──────────── */}
+      <div className="flex-1 flex flex-col min-w-0">
+
+        {/* Header del chat activo */}
+        {chatActivo ? (
+          <div className="px-5 py-3 border-b border-border flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+              <User className="w-4 h-4 text-muted-foreground" />
             </div>
-          ))}
-          <div className="flex gap-2 pt-2">
-            <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors">
-              Guardar configuración
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Probar conexión
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {chatActivo.nombreContacto || `+${chatActivo.telefono}`}
+              </p>
+              <p className="text-[11px] text-muted-foreground font-mono">+{chatActivo.telefono}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="px-5 py-3 border-b border-border">
+            <p className="text-xs text-muted-foreground">Selecciona un chat para comenzar</p>
+          </div>
+        )}
+
+        {/* Mensajes */}
+        <div
+          ref={mensajesRef}
+          className="flex-1 overflow-y-auto px-5 py-4 space-y-2"
+          style={{ backgroundImage: 'radial-gradient(hsl(var(--border)/0.4) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
+        >
+          {!chatActivo && (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+              <MessageSquare className="w-12 h-12 opacity-10" />
+              <p className="text-sm">Selecciona una conversación</p>
+            </div>
+          )}
+
+          {chatActivo && cargando && (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {chatActivo && !cargando && mensajes.length === 0 && (
+            <div className="flex justify-center py-8">
+              <p className="text-xs text-muted-foreground">Sin mensajes aún</p>
+            </div>
+          )}
+
+          {mensajes.map((msg) => {
+            const esOutbound = msg.direction === 'OUTBOUND';
+            return (
+              <div key={msg.id} className={cn('flex', esOutbound ? 'justify-end' : 'justify-start')}>
+                <div className={cn(
+                  'max-w-[75%] px-3 py-2 rounded-2xl text-sm shadow-sm',
+                  esOutbound
+                    ? 'bg-primary text-primary-foreground rounded-br-sm'
+                    : 'bg-card border border-border text-foreground rounded-bl-sm',
+                )}>
+                  {esOutbound && msg.agente && (
+                    <p className="text-[10px] opacity-70 font-medium mb-0.5">{msg.agente}</p>
+                  )}
+                  <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
+                  <div className={cn('flex items-center gap-1 mt-0.5', esOutbound ? 'justify-end' : 'justify-start')}>
+                    <span className="text-[10px] opacity-60">{formatHora(msg.createdAt)}</span>
+                    {esOutbound && <CheckCheck className="w-3 h-3 opacity-60" />}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Caja de texto */}
+        {chatActivo && (
+          <div className="px-4 py-3 border-t border-border flex items-center gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={texto}
+              onChange={e => setTexto(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={`Mensaje como ${usuario?.nombreCompleto ?? 'agente'}…`}
+              className={cn(INPUT_CLS, 'flex-1')}
+              disabled={enviando}
+            />
+            <button
+              onClick={enviar}
+              disabled={!texto.trim() || enviando}
+              className={cn(
+                'flex items-center justify-center w-9 h-9 rounded-lg transition-colors flex-shrink-0',
+                'bg-primary text-primary-foreground hover:bg-primary/90',
+                'disabled:opacity-40 disabled:cursor-not-allowed',
+              )}
+            >
+              {enviando
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Send    className="w-4 h-4" />}
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

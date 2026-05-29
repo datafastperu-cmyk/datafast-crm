@@ -47,6 +47,7 @@ import { MantenimientoModule }    from './modules/mantenimiento/mantenimiento.mo
 import { TicketsModule }          from './modules/tickets/tickets.module';
 import { ReportesModule }         from './modules/reportes/reportes.module';
 import { WebhooksModule }         from './modules/webhooks/webhooks.module';
+import { CrmNativoModule }        from './modules/crm-nativo/crm-nativo.module';
 
 @Module({
   imports: [
@@ -159,6 +160,7 @@ import { WebhooksModule }         from './modules/webhooks/webhooks.module';
     TicketsModule,
     ReportesModule,
     WebhooksModule,
+    CrmNativoModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
