@@ -494,7 +494,10 @@ export class VpnClienteService {
       this.logger.log(`[VPN-CCD] BD sincronizada: vpn_common_name → "${actualCn}"`);
     }
 
-    // 3. Matar sesión: usar el CN real si disponible, sino el stored
+    // 3. Delay: garantizar que el CCD ya está en disco y PG commitó antes de
+    //    expulsar el túnel. El kill del management NO toca la CRL ni revoca certs.
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
     const cnToKill = actualCn || storedCn;
     if (cnToKill) {
       await this.killClienteVpnManagement(cnToKill);
