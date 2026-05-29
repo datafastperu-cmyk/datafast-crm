@@ -823,24 +823,30 @@ export class VpnClienteService {
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
-:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
-:delay 1s
-:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
+:foreach i in=[/interface ovpn-client find] do={
+  :do { /interface ovpn-client disable $i } on-error={}
+  :do { /interface ovpn-client remove  $i } on-error={}
+}
+:delay 2s
+:foreach c in=[/certificate find where name~$certPrefix] do={
+  :do { /certificate remove $c } on-error={}
+}
 /tool fetch url="${urlCa}" dst-path=$fCa
-:delay 3
+:delay 3s
 /tool fetch url="${urlCert}" dst-path=$fCert
-:delay 3
+:delay 3s
 /tool fetch url="${urlKey}" dst-path=$fKey
-:delay 3
+:delay 3s
 /certificate import file-name=$fCa passphrase=""
-:delay 3
+:delay 3s
 /certificate import file-name=$fCert passphrase=""
-:delay 3
+:delay 3s
 /certificate import file-name=$fKey passphrase=""
-:delay 5
-:local certEntry [/certificate find where common-name=$certCN]
+:delay 5s
+:local certEntry [/certificate find where name~($certPrefix . "-client")]
 :local certName [/certificate get $certEntry name]
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha1 user=$certCN certificate=$certName
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha1 user=$certCN certificate=$certName disabled=yes
+:delay 1s
 /interface ovpn-client enable vpndatafast
 }`;
   }
@@ -848,13 +854,13 @@ export class VpnClienteService {
   private _scriptV6NoCert(cliente: VpnCliente, pass: string): string {
     const vpnUser = cliente.vpnUsuario || '';
     const mac     = this._generarMac();
-    return `:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
+    return `:foreach i in=[/interface ovpn-client find] do={
+  :do { /interface ovpn-client disable $i } on-error={}
+  :do { /interface ovpn-client remove  $i } on-error={}
+}
+:delay 2s
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
 :delay 1s
-:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 disabled=yes
-/interface ovpn-client set vpndatafast user=${vpnUser}
-/interface ovpn-client set vpndatafast password=${pass}
-/interface ovpn-client set vpndatafast mac-address=${mac}
 /interface ovpn-client enable vpndatafast`;
   }
 
@@ -872,22 +878,27 @@ export class VpnClienteService {
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
-:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
-:delay 1s
-:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
+:foreach i in=[/interface ovpn-client find] do={
+  :do { /interface ovpn-client disable $i } on-error={}
+  :do { /interface ovpn-client remove  $i } on-error={}
+}
+:delay 2s
+:foreach c in=[/certificate find where name~$certPrefix] do={
+  :do { /certificate remove $c } on-error={}
+}
 /tool fetch url="${urlCa}" dst-path=$fCa
-:delay 3
+:delay 3s
 /tool fetch url="${urlCert}" dst-path=$fCert
-:delay 3
+:delay 3s
 /tool fetch url="${urlKey}" dst-path=$fKey
-:delay 3
+:delay 3s
 /certificate import file-name=$fCa passphrase=""
-:delay 3
+:delay 3s
 /certificate import file-name=$fCert passphrase=""
-:delay 3
+:delay 3s
 /certificate import file-name=$fKey passphrase=""
-:delay 5
-:local certEntry [/certificate find where common-name=$certCN]
+:delay 5s
+:local certEntry [/certificate find where name~($certPrefix . "-client")]
 :local certName [/certificate get $certEntry name]
 /interface ovpn-client add certificate=$certName cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN disabled=yes${verifyLine}
 :delay 1s
@@ -901,9 +912,11 @@ export class VpnClienteService {
     const verifyLine = cliente.verifyServerCert
       ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
       : '';
-    return `:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
-:delay 1s
-:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
+    return `:foreach i in=[/interface ovpn-client find] do={
+  :do { /interface ovpn-client disable $i } on-error={}
+  :do { /interface ovpn-client remove  $i } on-error={}
+}
+:delay 2s
 /interface ovpn-client add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
 :delay 1s
 /interface ovpn-client enable vpndatafast`;
