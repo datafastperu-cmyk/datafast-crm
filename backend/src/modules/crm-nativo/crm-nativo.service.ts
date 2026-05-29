@@ -18,7 +18,7 @@ export interface MensajeDto {
   direction: 'INBOUND' | 'OUTBOUND';
   agente:    string | null;
   body:      string;
-  createdAt: Date;
+  createdAt?: Date;
 }
 
 @Injectable()
