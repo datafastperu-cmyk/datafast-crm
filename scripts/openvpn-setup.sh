@@ -244,7 +244,7 @@ push "dhcp-option DNS ${VPN_DNS2}"
 
 cipher AES-256-CBC
 ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
-auth SHA256
+auth SHA1
 tls-version-min 1.2
 ecdh-curve prime256v1
 
@@ -330,7 +330,7 @@ push "dhcp-option DNS ${VPN_DNS2}"
 # ── Seguridad ────────────────────────────────────────────────────
 cipher AES-256-CBC
 ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
-auth SHA256
+auth SHA1
 tls-version-min 1.2
 ecdh-curve prime256v1
 
