@@ -132,10 +132,14 @@ export class SistemaController {
   async getGatewayConfig(@CurrentUser() user: JwtPayload) {
     const cfg = await this.sistema.getGatewayConfig(user.empresaId);
     return ApiResponse.ok({
-      proveedorActivo: cfg.proveedorActivo,
-      apiKey:          cfg.apiKeyStored    ? '***stored***' : null,
-      apiSecret:       cfg.apiSecretStored ? '***stored***' : null,
-      clientId:        cfg.clientId,
+      proveedorActivo:  cfg.proveedorActivo,
+      apiKey:           cfg.apiKeyStored    ? '***stored***' : null,
+      apiSecret:        cfg.apiSecretStored ? '***stored***' : null,
+      clientId:         cfg.clientId,
+      pausa:            cfg.pausa,
+      limiteCaracteres: cfg.limiteCaracteres,
+      codigoPais:       cfg.codigoPais,
+      activo:           cfg.activo,
     });
   }
 
@@ -143,16 +147,29 @@ export class SistemaController {
   @Patch('gateway-config')
   @ApiOperation({ summary: 'Actualizar proveedor de mensajería y credenciales' })
   async updateGatewayConfig(
-    @Body() body: { proveedorActivo?: ProveedorActivo; apiKey?: string; apiSecret?: string; clientId?: string },
+    @Body() body: {
+      proveedorActivo?:  ProveedorActivo;
+      apiKey?:           string;
+      apiSecret?:        string;
+      clientId?:         string;
+      pausa?:            number;
+      limiteCaracteres?: number;
+      codigoPais?:       string;
+      activo?:           boolean;
+    },
     @CurrentUser() user: JwtPayload,
   ) {
     const cfg = await this.sistema.updateGatewayConfig(user.empresaId, body);
     return ApiResponse.ok(
       {
-        proveedorActivo: cfg.proveedorActivo,
-        apiKey:          cfg.apiKeyStored    ? '***stored***' : null,
-        apiSecret:       cfg.apiSecretStored ? '***stored***' : null,
-        clientId:        cfg.clientId,
+        proveedorActivo:  cfg.proveedorActivo,
+        apiKey:           cfg.apiKeyStored    ? '***stored***' : null,
+        apiSecret:        cfg.apiSecretStored ? '***stored***' : null,
+        clientId:         cfg.clientId,
+        pausa:            cfg.pausa,
+        limiteCaracteres: cfg.limiteCaracteres,
+        codigoPais:       cfg.codigoPais,
+        activo:           cfg.activo,
       },
       'Configuración de gateway actualizada',
     );

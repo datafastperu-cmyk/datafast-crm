@@ -113,16 +113,34 @@ const PROVIDER_META: Record<ProveedorActivo, ProviderMeta> = {
   },
 };
 
+const CODIGOS_PAIS = [
+  { label: 'Perú (+51)',      value: '+51'  },
+  { label: 'Colombia (+57)',  value: '+57'  },
+  { label: 'México (+52)',    value: '+52'  },
+  { label: 'Argentina (+54)', value: '+54'  },
+  { label: 'Chile (+56)',     value: '+56'  },
+  { label: 'Ecuador (+593)',  value: '+593' },
+  { label: 'Bolivia (+591)',  value: '+591' },
+  { label: 'Venezuela (+58)', value: '+58'  },
+  { label: 'Uruguay (+598)',  value: '+598' },
+  { label: 'Paraguay (+595)', value: '+595' },
+];
+
 interface FormValues {
-  proveedor:  ProveedorActivo;
+  proveedor:        ProveedorActivo;
   // META_GRAPH (whatsapp-config endpoint)
-  phoneId:    string;
-  businessId: string;
-  token:      string;
+  phoneId:          string;
+  businessId:       string;
+  token:            string;
   // Non-META_GRAPH (gateway-config endpoint)
-  apiKey:     string;
-  apiSecret:  string;
-  clientId:   string;
+  apiKey:           string;
+  apiSecret:        string;
+  clientId:         string;
+  // Control de tráfico
+  pausa:            number;
+  limiteCaracteres: number;
+  codigoPais:       string;
+  activo:           boolean;
 }
 
 // ─── Sección A: Configuración de gateway de mensajería ───────
@@ -147,11 +165,12 @@ function GatewayConfigForm() {
 
   const isLoading = gwLoading || waLoading;
 
-  const { register, watch, reset, handleSubmit } = useForm<FormValues>({
+  const { register, watch, reset, setValue, handleSubmit } = useForm<FormValues>({
     defaultValues: {
       proveedor: 'META_GRAPH',
       phoneId: '', businessId: '', token: '',
       apiKey: '', apiSecret: '', clientId: '',
+      pausa: 2, limiteCaracteres: 1000, codigoPais: '+51', activo: true,
     },
   });
 
@@ -159,18 +178,23 @@ function GatewayConfigForm() {
   useEffect(() => {
     if (gwData) {
       reset({
-        proveedor:  gwData.proveedorActivo,
-        apiKey:     gwData.apiKey    ?? '',
-        apiSecret:  gwData.apiSecret ?? '',
-        clientId:   gwData.clientId  ?? '',
-        phoneId:    waData?.phoneId    ?? '',
-        businessId: waData?.businessId ?? '',
-        token:      waData?.token      ?? '',
+        proveedor:        gwData.proveedorActivo,
+        apiKey:           gwData.apiKey    ?? '',
+        apiSecret:        gwData.apiSecret ?? '',
+        clientId:         gwData.clientId  ?? '',
+        pausa:            gwData.pausa            ?? 2,
+        limiteCaracteres: gwData.limiteCaracteres  ?? 1000,
+        codigoPais:       gwData.codigoPais        ?? '+51',
+        activo:           gwData.activo            ?? true,
+        phoneId:          waData?.phoneId    ?? '',
+        businessId:       waData?.businessId ?? '',
+        token:            waData?.token      ?? '',
       });
     }
   }, [gwData, waData, reset]);
 
   const proveedor = watch('proveedor');
+  const activo    = watch('activo');
   const meta      = PROVIDER_META[proveedor];
   const isMeta    = proveedor === 'META_GRAPH';
 
@@ -181,8 +205,15 @@ function GatewayConfigForm() {
   const onSave = handleSubmit(async (values) => {
     setIsSaving(true);
     try {
+      const trafico = {
+        pausa:            Number(values.pausa)            || 2,
+        limiteCaracteres: Number(values.limiteCaracteres) || 1000,
+        codigoPais:       values.codigoPais  || '+51',
+        activo:           values.activo,
+      };
+
       if (values.proveedor === 'META_GRAPH') {
-        await sistemaApi.updateGatewayConfig({ proveedorActivo: 'META_GRAPH' });
+        await sistemaApi.updateGatewayConfig({ proveedorActivo: 'META_GRAPH', ...trafico });
         await sistemaApi.updateWhatsAppConfig({
           phoneId:    values.phoneId    || undefined,
           businessId: values.businessId || undefined,
@@ -194,6 +225,7 @@ function GatewayConfigForm() {
           apiKey:    values.apiKey    !== SENTINEL ? values.apiKey    : SENTINEL,
           apiSecret: values.apiSecret !== SENTINEL ? values.apiSecret : SENTINEL,
           clientId:  values.clientId  || undefined,
+          ...trafico,
         });
       }
       qc.invalidateQueries({ queryKey: ['gw-config'] });
@@ -232,15 +264,21 @@ function GatewayConfigForm() {
             ? <MessageSquare className={cn('w-4 h-4', iconCls)} />
             : <Zap           className={cn('w-4 h-4', iconCls)} />}
         </div>
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">{meta.display}</h2>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-sm font-semibold text-foreground">{meta.display}</h2>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/20">
+              <Zap className="w-2.5 h-2.5" />
+              automatizado.vip
+            </span>
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Credenciales para el envío de notificaciones automáticas
           </p>
         </div>
         {isConfigured && (
           <span className={cn(
-            'ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full',
+            'ml-auto flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full',
             'text-xs font-medium border', cardColor,
           )}>
             <span className={cn('w-1.5 h-1.5 rounded-full animate-pulse',
@@ -392,6 +430,84 @@ function GatewayConfigForm() {
                 </div>
               </>
             )}
+
+            {/* ─── Control de tráfico ───────────────────────── */}
+            <div className="border border-border rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                  Control de tráfico
+                </p>
+                {/* Activar Gateway toggle */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {activo ? 'Gateway activo' : 'Gateway inactivo'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setValue('activo', !activo, { shouldDirty: true })}
+                    className={cn(
+                      'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full',
+                      'transition-colors duration-200 focus:outline-none',
+                      activo ? 'bg-emerald-500' : 'bg-muted',
+                    )}
+                    aria-label="Activar Gateway"
+                  >
+                    <span className={cn(
+                      'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200',
+                      activo ? 'translate-x-4' : 'translate-x-0.5',
+                    )} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Pausa entre mensajes */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">
+                    Pausa entre mensajes (seg)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={60}
+                    {...register('pausa', { valueAsNumber: true })}
+                    className={INPUT}
+                  />
+                  <p className="text-[10px] text-muted-foreground">0–60 segundos entre envíos</p>
+                </div>
+
+                {/* Límite de caracteres */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">
+                    Límite de caracteres
+                  </label>
+                  <input
+                    type="number"
+                    min={50}
+                    max={5000}
+                    {...register('limiteCaracteres', { valueAsNumber: true })}
+                    className={INPUT}
+                  />
+                  <p className="text-[10px] text-muted-foreground">Mensajes más largos se rechazan</p>
+                </div>
+
+                {/* Código de país */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">
+                    Código de país
+                  </label>
+                  <select
+                    {...register('codigoPais')}
+                    className={cn(INPUT, 'cursor-pointer')}
+                  >
+                    {CODIGOS_PAIS.map(c => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground">Se antepone a números sin código</p>
+                </div>
+              </div>
+            </div>
 
             {/* Nota sentinel */}
             {isConfigured && (

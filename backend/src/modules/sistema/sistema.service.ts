@@ -401,29 +401,50 @@ export class SistemaService {
   // ─── Gateway multi-proveedor — leer ─────────────────────────
 
   async getGatewayConfig(empresaId: string): Promise<{
-    proveedorActivo: ProveedorActivo;
-    apiKeyStored:    boolean;
-    apiSecretStored: boolean;
-    clientId:        string | null;
+    proveedorActivo:  ProveedorActivo;
+    apiKeyStored:     boolean;
+    apiSecretStored:  boolean;
+    clientId:         string | null;
+    pausa:            number;
+    limiteCaracteres: number;
+    codigoPais:       string;
+    activo:           boolean;
   }> {
     const [row] = await this.ds.query(
-      `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id
+      `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
+              gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo
        FROM empresas WHERE id = $1`,
       [empresaId],
     );
     return {
-      proveedorActivo: (row?.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
-      apiKeyStored:    !!row?.gateway_api_key,
-      apiSecretStored: !!row?.gateway_api_secret,
-      clientId:        row?.gateway_client_id ?? null,
+      proveedorActivo:  (row?.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
+      apiKeyStored:     !!row?.gateway_api_key,
+      apiSecretStored:  !!row?.gateway_api_secret,
+      clientId:         row?.gateway_client_id         ?? null,
+      pausa:            row?.gateway_pausa              ?? 2,
+      limiteCaracteres: row?.gateway_limite_caracteres  ?? 1000,
+      codigoPais:       row?.gateway_codigo_pais        ?? '+51',
+      activo:           row?.gateway_activo             ?? true,
     };
   }
 
   // ─── Gateway multi-proveedor — actualizar ────────────────────
   async updateGatewayConfig(
     empresaId: string,
-    dto: { proveedorActivo?: string; apiKey?: string; apiSecret?: string; clientId?: string },
-  ): Promise<{ proveedorActivo: ProveedorActivo; apiKeyStored: boolean; apiSecretStored: boolean; clientId: string | null }> {
+    dto: {
+      proveedorActivo?:  string;
+      apiKey?:           string;
+      apiSecret?:        string;
+      clientId?:         string;
+      pausa?:            number;
+      limiteCaracteres?: number;
+      codigoPais?:       string;
+      activo?:           boolean;
+    },
+  ): Promise<{
+    proveedorActivo: ProveedorActivo; apiKeyStored: boolean; apiSecretStored: boolean;
+    clientId: string | null; pausa: number; limiteCaracteres: number; codigoPais: string; activo: boolean;
+  }> {
     const SENTINEL    = '***stored***';
     const setClauses: string[] = [];
     const params:     any[]    = [empresaId];
@@ -446,6 +467,26 @@ export class SistemaService {
     if (dto.clientId !== undefined) {
       params.push(dto.clientId || null);
       setClauses.push(`gateway_client_id = $${params.length}`);
+    }
+
+    if (dto.pausa !== undefined) {
+      params.push(Math.max(0, Math.min(60, dto.pausa)));
+      setClauses.push(`gateway_pausa = $${params.length}`);
+    }
+
+    if (dto.limiteCaracteres !== undefined) {
+      params.push(Math.max(50, Math.min(5000, dto.limiteCaracteres)));
+      setClauses.push(`gateway_limite_caracteres = $${params.length}`);
+    }
+
+    if (dto.codigoPais !== undefined) {
+      params.push(dto.codigoPais || '+51');
+      setClauses.push(`gateway_codigo_pais = $${params.length}`);
+    }
+
+    if (dto.activo !== undefined) {
+      params.push(dto.activo);
+      setClauses.push(`gateway_activo = $${params.length}`);
     }
 
     if (setClauses.length > 0) {

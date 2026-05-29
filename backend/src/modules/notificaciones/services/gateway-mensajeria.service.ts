@@ -163,10 +163,14 @@ class CustomApiStrategy implements IMensajeriaStrategy {
 
 // ─── Config interna del gateway ───────────────────────────
 interface GwConfig {
-  proveedor: ProveedorActivo;
-  apiKey:    string;
-  apiSecret: string;
-  clientId:  string;
+  proveedor:        ProveedorActivo;
+  apiKey:           string;
+  apiSecret:        string;
+  clientId:         string;
+  pausa:            number;
+  limiteCaracteres: number;
+  codigoPais:       string;
+  activo:           boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -192,7 +196,18 @@ export class GatewayMensajeriaService {
       return this.whatsapp.enviar(params);
     }
 
-    const texto    = TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
+    if (!config.activo) {
+      this.logger.warn(`[GW] Gateway desactivado para empresa ${params.empresaId}`);
+      return { enviado: false, error: 'Gateway desactivado' };
+    }
+
+    const texto = TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
+
+    if (texto.length > config.limiteCaracteres) {
+      this.logger.warn(`[GW] Texto excede límite (${texto.length} > ${config.limiteCaracteres})`);
+      return { enviado: false, error: `Texto excede límite de ${config.limiteCaracteres} caracteres` };
+    }
+
     const strategy = this.buildStrategy(config);
 
     if (!strategy) {
@@ -200,9 +215,13 @@ export class GatewayMensajeriaService {
       return { enviado: false, error: `${config.proveedor} sin credenciales configuradas` };
     }
 
-    const telefono = this.normalizarTelefono(params.telefono);
+    const telefono  = this.normalizarTelefono(params.telefono, config.codigoPais);
     this.logger.log(`[GW] ${config.proveedor} → ${telefono} | ${params.tipo}`);
-    return strategy.enviarMensaje(telefono, texto, params.tipo as string);
+    const resultado = await strategy.enviarMensaje(telefono, texto, params.tipo as string);
+
+    if (config.pausa > 0) await this.sleep(config.pausa);
+
+    return resultado;
   }
 
   // ── Leer config de BD con caché 5 min ─────────────────────
@@ -213,16 +232,21 @@ export class GatewayMensajeriaService {
 
     if (cached === undefined) {
       const [row] = await this.ds.query(
-        `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id
+        `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
+                gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo
          FROM empresas WHERE id = $1`,
         [empresaId],
       ).catch(() => [null]);
 
       cached = row ? {
-        proveedor: (row.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
-        apiKey:    row.gateway_api_key    ?? '',
-        apiSecret: row.gateway_api_secret ?? '',
-        clientId:  row.gateway_client_id  ?? '',
+        proveedor:        (row.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
+        apiKey:           row.gateway_api_key            ?? '',
+        apiSecret:        row.gateway_api_secret         ?? '',
+        clientId:         row.gateway_client_id          ?? '',
+        pausa:            row.gateway_pausa              ?? 2,
+        limiteCaracteres: row.gateway_limite_caracteres  ?? 1000,
+        codigoPais:       row.gateway_codigo_pais        ?? '+51',
+        activo:           row.gateway_activo             ?? true,
       } : null;
 
       await this.cache.set(cacheKey, cached, 5 * 60 * 1000);
@@ -249,12 +273,16 @@ export class GatewayMensajeriaService {
     await this.cache.del(`gw:config:${empresaId}`).catch(() => {});
   }
 
-  private normalizarTelefono(tel: string): string {
-    const clean = tel.replace(/[^\d+]/g, '');
-    if (clean.startsWith('+'))                              return clean.replace('+', '');
-    if (clean.startsWith('51'))                             return clean;
-    if ((clean.startsWith('9') && clean.length === 9) ||
-        clean.length === 9)                                  return `51${clean}`;
+  private normalizarTelefono(tel: string, codigoPais = '+51'): string {
+    const clean    = tel.replace(/[^\d+]/g, '');
+    const dialCode = codigoPais.replace('+', '');
+    if (clean.startsWith('+'))        return clean.replace('+', '');
+    if (clean.startsWith(dialCode))   return clean;
+    if (clean.length <= 10)           return `${dialCode}${clean}`;
     return clean;
+  }
+
+  private sleep(seconds: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, seconds * 1000));
   }
 }

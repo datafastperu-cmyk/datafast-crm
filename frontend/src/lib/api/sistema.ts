@@ -35,10 +35,14 @@ export interface ServerInfo {
 export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API';
 
 export interface GatewayConfig {
-  proveedorActivo: ProveedorActivo;
-  apiKey:          string | null;   // '***stored***' si tiene valor
-  apiSecret:       string | null;   // '***stored***' si tiene valor
-  clientId:        string | null;
+  proveedorActivo:  ProveedorActivo;
+  apiKey:           string | null;
+  apiSecret:        string | null;
+  clientId:         string | null;
+  pausa:            number;
+  limiteCaracteres: number;
+  codigoPais:       string;
+  activo:           boolean;
 }
 
 export interface WhatsAppConfig {
@@ -81,10 +85,14 @@ export const sistemaApi = {
     api.get<{ data: GatewayConfig }>('/admin/sistema/gateway-config').then(r => r.data.data),
 
   updateGatewayConfig: (dto: {
-    proveedorActivo?: ProveedorActivo;
-    apiKey?:          string;
-    apiSecret?:       string;
-    clientId?:        string;
+    proveedorActivo?:  ProveedorActivo;
+    apiKey?:           string;
+    apiSecret?:        string;
+    clientId?:         string;
+    pausa?:            number;
+    limiteCaracteres?: number;
+    codigoPais?:       string;
+    activo?:           boolean;
   }) =>
     api.patch<{ data: GatewayConfig }>('/admin/sistema/gateway-config', dto).then(r => r.data.data),
 };
