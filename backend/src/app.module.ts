@@ -46,6 +46,7 @@ import { ConfiguracionModule }    from './modules/config/config.module';
 import { MantenimientoModule }    from './modules/mantenimiento/mantenimiento.module';
 import { TicketsModule }          from './modules/tickets/tickets.module';
 import { ReportesModule }         from './modules/reportes/reportes.module';
+import { WebhooksModule }         from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -157,6 +158,7 @@ import { ReportesModule }         from './modules/reportes/reportes.module';
     MantenimientoModule,
     TicketsModule,
     ReportesModule,
+    WebhooksModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia

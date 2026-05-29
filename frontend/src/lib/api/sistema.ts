@@ -57,7 +57,7 @@ export interface NotifLog {
   telefono:       string;
   canal:          string;
   tipo_template:  string;
-  estado_entrega: 'ENCOLADO' | 'ENVIADO_META' | 'FALLIDO';
+  estado_entrega: 'ENCOLADO' | 'ENVIADO_META' | 'FALLIDO' | 'ENTREGADO' | 'LEIDO';
   meta_message_id: string | null;
   error_detalle:  string | null;
   created_at:     string;

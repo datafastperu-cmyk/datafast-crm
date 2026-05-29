@@ -7,12 +7,15 @@ export enum EstadoEntrega {
   ENCOLADO     = 'ENCOLADO',
   ENVIADO_META = 'ENVIADO_META',
   FALLIDO      = 'FALLIDO',
+  ENTREGADO    = 'ENTREGADO',
+  LEIDO        = 'LEIDO',
 }
 
 @Entity('notificaciones_logs')
-@Index('idx_notif_logs_contrato',   ['contratoId'])
-@Index('idx_notif_logs_created_at', ['createdAt'])
-@Index('idx_notif_logs_estado',     ['estadoEntrega'])
+@Index('idx_notif_logs_contrato',    ['contratoId'])
+@Index('idx_notif_logs_created_at',  ['createdAt'])
+@Index('idx_notif_logs_estado',      ['estadoEntrega'])
+@Index('idx_notif_logs_meta_msg_id', ['metaMessageId'])
 export class NotificacionLog {
 
   @PrimaryGeneratedColumn('uuid')

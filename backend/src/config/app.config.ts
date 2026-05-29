@@ -83,6 +83,9 @@ export const validationSchema = Joi.object({
   LICENSE_KEY:       Joi.string().allow('').optional(),
   HEARTBEAT_SECRET:  Joi.string().min(16).allow('').optional(),
 
+  // Webhooks
+  PROCESS_WH_SECRET: Joi.string().min(8).allow('').optional(),
+
   // Logging
   LOG_LEVEL: Joi.string()
     .valid('error', 'warn', 'info', 'debug', 'verbose')

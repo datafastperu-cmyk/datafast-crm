@@ -55,5 +55,6 @@ export const BYPASS_LICENSE_PATHS = [
   '/api/v1/health',
   '/api/v1/admin/licencia',          // toda la gestión de licencia
   '/api/v1/install',
+  '/api/v1/webhooks',                // webhooks externos (AutomatizadoVIP, etc.)
   '/status',
 ];

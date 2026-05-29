@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   MessageSquare, Loader2, RefreshCw,
   ChevronLeft, ChevronRight,
-  CheckCircle2, AlertCircle, Clock,
+  CheckCircle2, AlertCircle, Clock, CheckCheck, Truck,
 } from 'lucide-react';
 import { sistemaApi, type NotifLog } from '@/lib/api/sistema';
 import { cn } from '@/lib/utils';
@@ -26,13 +26,15 @@ const INPUT = [
 ].join(' ');
 
 function EstadoBadge({ estado, error }: { estado: NotifLog['estado_entrega']; error?: string | null }) {
-  const map = {
-    ENCOLADO:     { cls: 'bg-amber-500/10 text-amber-500',     icon: <Clock        className="w-3 h-3" />, label: 'Encolado' },
-    ENVIADO_META: { cls: 'bg-emerald-500/10 text-emerald-500', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Enviado'  },
-    FALLIDO:      { cls: 'bg-rose-500/10 text-rose-500',       icon: <AlertCircle  className="w-3 h-3" />, label: 'Fallido'  },
-  } as const;
+  const map: Record<NotifLog['estado_entrega'], { cls: string; icon: React.ReactNode; label: string }> = {
+    ENCOLADO:     { cls: 'bg-amber-500/10 text-amber-500',     icon: <Clock        className="w-3 h-3" />, label: 'Encolado'  },
+    ENVIADO_META: { cls: 'bg-emerald-500/10 text-emerald-500', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Enviado'   },
+    FALLIDO:      { cls: 'bg-rose-500/10 text-rose-500',       icon: <AlertCircle  className="w-3 h-3" />, label: 'Fallido'   },
+    ENTREGADO:    { cls: 'bg-blue-500/10 text-blue-400',       icon: <Truck        className="w-3 h-3" />, label: 'Entregado' },
+    LEIDO:        { cls: 'bg-cyan-500/10 text-cyan-400',       icon: <CheckCheck   className="w-3 h-3" />, label: 'Leído'     },
+  };
 
-  const cfg = map[estado];
+  const cfg = map[estado] ?? map['ENVIADO_META'];
 
   if (estado === 'FALLIDO' && error) {
     return (
@@ -117,6 +119,8 @@ export default function MensajesEnviadosPage() {
               <option value="">Todos los estados</option>
               <option value="ENCOLADO">Encolado</option>
               <option value="ENVIADO_META">Enviado</option>
+              <option value="ENTREGADO">Entregado</option>
+              <option value="LEIDO">Leído</option>
               <option value="FALLIDO">Fallido</option>
             </select>
             <select
