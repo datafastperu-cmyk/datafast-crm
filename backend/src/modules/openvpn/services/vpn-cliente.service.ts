@@ -3,7 +3,7 @@ import {
   ConflictException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not, LessThan } from 'typeorm';
+import { Repository, IsNull, Not, LessThan, In } from 'typeorm';
 import { Cron }             from '@nestjs/schedule';
 import { execFile }         from 'child_process';
 import { promisify }        from 'util';
@@ -56,6 +56,25 @@ export class VpnClienteService {
     cliente: VpnCliente;
     script:  string;
   }> {
+    // Si ya existe un cert conectado sin router asignado, retornarlo evita
+    // generar un nuevo cert huérfano en cada intento del wizard
+    const existingConnected = await this.repo.findOne({
+      where: {
+        empresaId: user.empresaId,
+        activo:    true,
+        routerId:  IsNull(),
+        estado:    In(['conectado', 'pendiente']),
+      },
+      order: { ultimoHandshake: 'DESC' },
+    });
+    if (existingConnected?.vpnIp) {
+      this.logger.log(`[VPN] Reutilizando cert ya conectado: ${existingConnected.nombreCert} @ ${existingConnected.vpnIp}`);
+      return {
+        cliente: existingConnected,
+        script:  `# Certificado ya instalado en el MikroTik — el túnel está activo en ${existingConnected.vpnIp}.\n# No es necesario re-inyectar el script.`,
+      };
+    }
+
     const usarCerts  = dto.usarCertificados !== false;
     const versionRos = dto.versionRos ?? 'v7';
     const { cipher, authAlg } = this._resolveParams(
@@ -228,6 +247,17 @@ export class VpnClienteService {
 
     if (cliente.estado === 'revocado') {
       return { conectado: false, mensaje: 'Cliente VPN revocado' };
+    }
+
+    // Fast-path: si el DB ya confirmó la conexión activa, no re-validar status.log
+    if (cliente.estado === 'conectado' && cliente.vpnIp) {
+      return {
+        conectado: true,
+        vpnIp:     cliente.vpnIp,
+        ipReal:    cliente.ipReal || undefined,
+        routerId:  cliente.routerId ?? undefined,
+        mensaje:   `Túnel activo | IP VPN: ${cliente.vpnIp}`,
+      };
     }
 
     // Para modo sin certificados, el CN en status.log es el vpnUsuario
