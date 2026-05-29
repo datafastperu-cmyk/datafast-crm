@@ -459,7 +459,125 @@ export class VpnClienteService {
     this.logger.log(`[VPN-CCD] Escrito: ${filePath} → [${lines.join(', ') || 'vacío'}]`);
   }
 
+  // ── Sincronizar CCD y forzar reconexión del túnel ───────────
+  // Escribe el CCD para el CN guardado en BD Y para el CN real conectado
+  // (si difieren), sincroniza la BD y mata la sesión para que al
+  // reconectar OpenVPN cargue las nuevas rutas al instante.
+  async sincronizarCcdYReconectar(router: Router): Promise<void> {
+    const subnets  = router.subnetsLocales || [];
+    const storedCn = router.vpnCommonName;
+
+    // 1. Escribir CCD para el CN almacenado en BD
+    if (storedCn) {
+      await this.escribirArchivoCcd(storedCn, subnets);
+    }
+
+    // 2. Detectar CN real via management (el que OpenVPN usa para buscar CCD)
+    const vpnIp   = router.vpnIp || router.ipGestion;
+    const actualCn = vpnIp ? await this._getActualCnByVpnIp(vpnIp) : null;
+
+    if (actualCn && actualCn !== storedCn) {
+      this.logger.warn(
+        `[VPN-CCD] Mismatch: stored="${storedCn}" actual="${actualCn}" | ` +
+        `router="${router.nombre}" | Sincronizando CCD y BD`,
+      );
+      // Escribir CCD para el CN real (es el que OpenVPN efectivamente lee)
+      await this.escribirArchivoCcd(actualCn, subnets);
+
+      // Actualizar routers.vpn_common_name al CN real
+      await this.routerRepo.update(router.id, { vpnCommonName: actualCn });
+
+      // Actualizar vpn_clientes: vincular el registro del cert real al router
+      // e inactivar el registro huérfano UUID-based si existe
+      await this._sincronizarRegistroVpn(router.id, router.empresaId, actualCn, storedCn);
+
+      this.logger.log(`[VPN-CCD] BD sincronizada: vpn_common_name → "${actualCn}"`);
+    }
+
+    // 3. Matar sesión: usar el CN real si disponible, sino el stored
+    const cnToKill = actualCn || storedCn;
+    if (cnToKill) {
+      await this.killClienteVpnManagement(cnToKill);
+      this.logger.log(`[VPN-CCD] Reconexión forzada: kill "${cnToKill}" → CCD recargará en el próximo handshake`);
+    }
+  }
+
   // ── Helpers privados ──────────────────────────────────────────
+
+  // Consulta el management interface y retorna los clientes conectados
+  private _leerManagement(): Promise<VpnConnectedClient[]> {
+    return new Promise<VpnConnectedClient[]>((resolve) => {
+      const clients: VpnConnectedClient[] = [];
+      const socket  = new net.Socket();
+      let   buffer  = '';
+      let   asked   = false;
+
+      const done = () => { socket.destroy(); resolve(clients); };
+      socket.setTimeout(4000);
+      socket.on('timeout', done);
+      socket.on('error',   done);
+
+      socket.connect(7505, '127.0.0.1', () => {
+        socket.on('data', (buf) => {
+          buffer += buf.toString();
+          if (!asked && buffer.includes('>INFO:')) {
+            asked = true;
+            socket.write('status 2\r\n');
+          }
+          if (asked && (buffer.includes('\nEND\r\n') || buffer.includes('\nEND\n'))) {
+            for (const line of buffer.split('\n')) {
+              if (!line.startsWith('CLIENT_LIST,')) continue;
+              const p = line.split(',');
+              if (p.length >= 7) {
+                clients.push({
+                  commonName:     p[1],
+                  realAddress:    p[2],
+                  vpnAddress:     p[3],
+                  bytesReceived:  parseInt(p[5], 10) || 0,
+                  bytesSent:      parseInt(p[6], 10) || 0,
+                  connectedSince: p[7] || '',
+                });
+              }
+            }
+            done();
+          }
+        });
+      });
+    });
+  }
+
+  // Retorna el CN real conectado para una VPN IP dada
+  private async _getActualCnByVpnIp(vpnIp: string): Promise<string | null> {
+    try {
+      const clients = await this._leerManagement();
+      const found   = clients.find(c => c.vpnAddress === vpnIp);
+      return found?.commonName ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Vincula el registro del cert real al router y desactiva el huérfano UUID
+  private async _sincronizarRegistroVpn(
+    routerId:   string,
+    empresaId:  string,
+    actualCn:   string,
+    orphanCn:   string | undefined,
+  ): Promise<void> {
+    // Vincular registro del cert real al router
+    const realRecord = await this.repo.findOne({ where: { nombreCert: actualCn } });
+    if (realRecord) {
+      await this.repo.update(realRecord.id, { routerId, empresaId });
+    }
+    // Desactivar el registro UUID huérfano si existe y está sin router conectado
+    if (orphanCn && orphanCn !== actualCn) {
+      const orphan = await this.repo.findOne({ where: { nombreCert: orphanCn } });
+      if (orphan && !orphan.vpnIp) {
+        await this.repo.update(orphan.id, { activo: false, estado: 'revocado' as EstadoVpnCliente });
+        this.logger.log(`[VPN-CCD] Registro huérfano inactivado: ${orphanCn}`);
+      }
+    }
+  }
 
   private killClienteVpnManagement(nombreCert: string): Promise<void> {
     return new Promise<void>((resolve) => {

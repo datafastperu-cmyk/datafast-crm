@@ -946,10 +946,12 @@ export class MikrotikService {
     const gw = router.vpnIp || router.ipGestion;
     await this.subnetSvc.applyVpsRoutes(gw, subnets);
 
-    // Actualizar CCD si el router usa túnel VPN — las subnets cambian las rutas inyectadas
-    if (router.metodoConexion === MetodoConexion.VPN_TUNNEL && router.vpnCommonName) {
-      await this.vpnSvc.escribirArchivoCcd(router.vpnCommonName, subnets).catch(e =>
-        this.logger.warn(`[VPN-CCD] sync error ${router.vpnCommonName}: ${e.message}`)
+    // Actualizar CCD + forzar reconexión: detecta CN real y sincroniza BD si hay mismatch
+    if (router.metodoConexion === MetodoConexion.VPN_TUNNEL) {
+      const routerFresh = await this.findOne(routerId, router.empresaId);
+      routerFresh.subnetsLocales = subnets;
+      await this.vpnSvc.sincronizarCcdYReconectar(routerFresh).catch(e =>
+        this.logger.warn(`[VPN-CCD] sync error ${router.nombre}: ${e.message}`)
       );
     }
 
@@ -963,6 +965,13 @@ export class MikrotikService {
         await this.routerRepo.update(router.id, { subnetsLocales: subnets });
         const gw = router.vpnIp || router.ipGestion;
         await this.subnetSvc.applyVpsRoutes(gw, subnets);
+        // CCD + reconexión también en el auto-sync (creación/actualización de router)
+        if (router.metodoConexion === MetodoConexion.VPN_TUNNEL) {
+          const routerFresh = { ...router, subnetsLocales: subnets } as Router;
+          this.vpnSvc.sincronizarCcdYReconectar(routerFresh).catch(
+            e => this.logger.warn(`[VPN-CCD] auto-sync CCD ${router.nombre}: ${e.message}`)
+          );
+        }
         this.logger.log(`Subnets auto-sync: ${router.nombre} → [${subnets.join(', ')}]`);
       })
       .catch(e => this.logger.warn(`Error auto-sync subnets ${router.nombre}: ${e.message}`));
