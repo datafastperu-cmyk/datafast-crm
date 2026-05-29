@@ -24,6 +24,7 @@ import {
   PayloadReactivarContrato,
   PayloadEvaluarProrroga,
   PayloadProcesarPago,
+  PayloadNotificacionCobro,
 } from './workers.constants';
 import { decrypt } from '../../common/utils/encryption.util';
 
@@ -357,8 +358,9 @@ export class CobranzaScheduler {
   }
 
   // ─── NOTIFICACIONES PREVENTIVAS ───────────────────────────
-  // Avisa a clientes que vencen en 3 días y en el día.
-  // Corre cada minuto; ejecuta en hora configurada (recordatorio1).
+  // Corre cada minuto; ejecuta en la hora configurada para cada recordatorio.
+  // Usa dias_recordatorio_N del contrato para determinar qué contratos aplican
+  // en cada franja horaria, eliminando el hardcode anterior de [3, 1] días.
   @Cron('* * * * *', { timeZone: 'America/Lima', name: 'notif-preventivas' })
   async notificacionesPreventivas(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== '0') return;
@@ -369,56 +371,69 @@ export class CobranzaScheduler {
     const now = new Date();
     const h   = now.getHours();
     const m   = now.getMinutes();
+    const hoy = now.toISOString().split('T')[0];
 
-    const esR1 = h === hora1 && m === min1;
-    const esR2 = h === hora2 && m === min2;
-    const esR3 = h === hora3 && m === min3;
+    // Determinar qué franja disparó y qué campo de recordatorio aplica
+    let lockKey:  string | null = null;
+    let campoRec: string | null = null;
 
-    // Ejecutar en el primer recordatorio que coincida y no haya corrido
-    let lockKey: string | null = null;
-    if      (esR1 && !await this.cache.get(`cron:ran:rec1:${now.toISOString().split('T')[0]}`)) lockKey = 'rec1';
-    else if (esR2 && !await this.cache.get(`cron:ran:rec2:${now.toISOString().split('T')[0]}`)) lockKey = 'rec2';
-    else if (esR3 && !await this.cache.get(`cron:ran:rec3:${now.toISOString().split('T')[0]}`)) lockKey = 'rec3';
-
-    if (!lockKey) return;
-    await this.cache.set(`cron:ran:${lockKey}:${now.toISOString().split('T')[0]}`, '1', 23 * 60 * 60 * 1000);
-
-    for (const diasAntes of [3, 1]) {
-      const fecha = new Date();
-      fecha.setDate(fecha.getDate() + diasAntes);
-      const fechaStr = fecha.toISOString().split('T')[0];
-
-      const porVencer = await this.ds.query(`
-        SELECT co.id, co.empresa_id, co.cliente_id,
-               cl.nombre_completo, cl.whatsapp, cl.telefono,
-               co.deuda_total
-        FROM contratos co
-        JOIN clientes cl ON cl.id = co.cliente_id
-        JOIN empresas em ON em.id = co.empresa_id
-        WHERE co.estado = 'activo'
-          AND co.deuda_total > 0
-          AND co.deleted_at IS NULL
-          AND em.notif_whatsapp_vencimiento = true
-          AND (cl.whatsapp IS NOT NULL OR cl.telefono IS NOT NULL)
-        LIMIT 1000
-      `);
-
-      for (const c of porVencer) {
-        await this.queue.add(
-          JOBS.NOTIF_COBRO_PREVIO,
-          {
-            clienteId: c.cliente_id,
-            empresaId: c.empresa_id,
-            telefono:  c.whatsapp || c.telefono,
-            nombre:    c.nombre_completo,
-            montoDeuda: parseFloat(c.deuda_total),
-            diasAntes,
-            facturaIds: [],
-          },
-          JOB_OPTIONS.NOTIFICACION,
-        );
-      }
+    if      (h === hora1 && m === min1 && !await this.cache.get(`cron:ran:rec1:${hoy}`)) {
+      lockKey = 'rec1'; campoRec = 'dias_recordatorio_1';
+    } else if (h === hora2 && m === min2 && !await this.cache.get(`cron:ran:rec2:${hoy}`)) {
+      lockKey = 'rec2'; campoRec = 'dias_recordatorio_2';
+    } else if (h === hora3 && m === min3 && !await this.cache.get(`cron:ran:rec3:${hoy}`)) {
+      lockKey = 'rec3'; campoRec = 'dias_recordatorio_3';
     }
+
+    if (!lockKey || !campoRec) return;
+    await this.cache.set(`cron:ran:${lockKey}:${hoy}`, '1', 23 * 60 * 60 * 1000);
+
+    // Busca contratos donde HOY coincide exactamente con la fecha calculada
+    // por el campo dias_recordatorio_N específico de ese contrato.
+    // Safe: campoRec proviene de un switch interno, no de input externo.
+    const porVencer = await this.ds.query(`
+      SELECT co.id              AS contrato_id,
+             co.empresa_id,
+             co.cliente_id,
+             co.fecha_vencimiento,
+             co.deuda_total,
+             cl.nombre_completo,
+             cl.whatsapp,
+             cl.telefono,
+             (co.fecha_vencimiento - CURRENT_DATE)::int AS dias_restantes
+      FROM contratos co
+      JOIN clientes cl  ON cl.id  = co.cliente_id AND cl.deleted_at IS NULL
+      JOIN empresas em  ON em.id  = co.empresa_id
+      WHERE co.estado = 'activo'
+        AND co.deuda_total > 0
+        AND co.deleted_at IS NULL
+        AND em.notif_whatsapp_vencimiento = true
+        AND (cl.whatsapp IS NOT NULL OR cl.telefono IS NOT NULL)
+        AND co.${campoRec} IS NOT NULL
+        AND (co.fecha_vencimiento - co.${campoRec}) = CURRENT_DATE
+      LIMIT 1000
+    `);
+
+    for (const c of porVencer) {
+      await this.queue.add(
+        JOBS.NOTIF_COBRO_PREVIO,
+        {
+          clienteId:  c.cliente_id,
+          empresaId:  c.empresa_id,
+          contratoId: c.contrato_id,
+          telefono:   c.whatsapp || c.telefono,
+          nombre:     c.nombre_completo,
+          montoDeuda: parseFloat(c.deuda_total),
+          diasAntes:  parseInt(c.dias_restantes, 10),
+          facturaIds: [],
+        } as PayloadNotificacionCobro,
+        JOB_OPTIONS.NOTIFICACION,
+      );
+    }
+
+    this.logger.log(
+      `[NOTIF-PREV] ${lockKey.toUpperCase()} | campo: ${campoRec} | ${porVencer.length} contratos encolados`,
+    );
   }
 
   // ─── Método público para encolar reactivación desde PagosService ─
@@ -825,20 +840,73 @@ export class CobranzaWorker {
 
   // ── Notificaciones preventivas ────────────────────────────
   @Process({ name: JOBS.NOTIF_COBRO_PREVIO, concurrency: 20 })
-  async processNotifCobro(job: Job): Promise<any> {
-    const { telefono, nombre, montoDeuda, diasAntes } = job.data;
+  async processNotifCobro(job: Job<PayloadNotificacionCobro>): Promise<any> {
+    const { telefono, nombre, montoDeuda, diasAntes, contratoId } = job.data;
 
     if (!telefono || !montoDeuda) return { omitido: true };
 
-    await this.whatsappSvc.notificarPagoRecibido({
-      telefono,
-      clienteNombre:  nombre,
-      montoPago:      0,
-      metodoPago:     'pendiente',
-      saldoPendiente: montoDeuda,
-    }).catch((err) => this.logger.warn(`WhatsApp previo: ${err.message}`));
+    // Determinar template según si el vencimiento está pendiente o ya pasó
+    const { TipoNotificacion } = await import('../notificaciones/services/whatsapp.service');
+    const tipo = diasAntes > 0
+      ? TipoNotificacion.PAGO_VENCE_HOY
+      : TipoNotificacion.PAGO_VENCIDO;
 
-    return { enviado: true };
+    // Insertar log como ENCOLADO antes de intentar el envío
+    let logId: string | null = null;
+    try {
+      const [row] = await this.ds.query(`
+        INSERT INTO notificaciones_logs
+          (contrato_id, telefono, tipo_template, estado_entrega)
+        VALUES ($1, $2, $3, 'ENCOLADO')
+        RETURNING id
+      `, [contratoId ?? null, telefono, tipo]);
+      logId = row?.id ?? null;
+    } catch (logErr) {
+      this.logger.warn(`[NOTIF-LOG] No se pudo crear log: ${logErr.message}`);
+    }
+
+    try {
+      const result = await this.whatsappSvc.enviar({
+        telefono,
+        tipo,
+        variables: {
+          clienteNombre: nombre || '',
+          montoDeuda:    `S/ ${montoDeuda.toFixed(2)}`,
+          linkPago:      '',
+          diasVencido:   diasAntes < 0 ? String(Math.abs(diasAntes)) : '0',
+          numeroCuenta:  '',
+        },
+      });
+
+      if (logId) {
+        if (result.enviado) {
+          await this.ds.query(`
+            UPDATE notificaciones_logs
+            SET estado_entrega = 'ENVIADO_META', meta_message_id = $1
+            WHERE id = $2
+          `, [result.messageId ?? null, logId]);
+        } else {
+          await this.ds.query(`
+            UPDATE notificaciones_logs
+            SET estado_entrega = 'FALLIDO', error_detalle = $1
+            WHERE id = $2
+          `, [result.error ?? 'Error desconocido', logId]);
+        }
+      }
+
+      return { enviado: result.enviado, logId };
+
+    } catch (err) {
+      this.logger.warn(`WhatsApp previo: ${err.message}`);
+      if (logId) {
+        await this.ds.query(`
+          UPDATE notificaciones_logs
+          SET estado_entrega = 'FALLIDO', error_detalle = $1
+          WHERE id = $2
+        `, [err.message, logId]).catch(() => {});
+      }
+      return { enviado: false, error: err.message };
+    }
   }
 
   // ────────────────────────────────────────────────────────────

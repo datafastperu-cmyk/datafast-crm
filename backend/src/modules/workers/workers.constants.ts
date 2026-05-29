@@ -103,6 +103,7 @@ export interface PayloadGenerarFacturaContrato {
 export interface PayloadNotificacionCobro {
   clienteId:     string;
   empresaId:     string;
+  contratoId?:   string;   // para logs de trazabilidad
   telefono:      string;
   nombre:        string;
   montoDeuda:    number;
