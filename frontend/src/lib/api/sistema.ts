@@ -32,7 +32,7 @@ export interface ServerInfo {
   processes: Proceso[];
 }
 
-export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API';
+export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP';
 
 export interface GatewayConfig {
   proveedorActivo:  ProveedorActivo;

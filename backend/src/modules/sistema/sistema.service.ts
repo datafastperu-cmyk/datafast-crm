@@ -12,7 +12,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { encrypt } from '../../common/utils/encryption.util';
 
-export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API';
+export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP';
 
 export interface CronHorarios {
   facturacion:   string;

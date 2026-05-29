@@ -111,6 +111,13 @@ const PROVIDER_META: Record<ProveedorActivo, ProviderMeta> = {
     f2Label: 'X-API-Secret Header',      f2Ph: SENTINEL,                         f2Hint: 'Secreto enviado como X-API-Secret — cifrado AES-256',
     f3Label: 'Endpoint URL (Client ID)', f3Ph: 'https://api.proveedor.com/send', f3Hint: 'URL del endpoint POST que recibe el payload de mensajería',
   },
+  AUTOMATIZADO_VIP: {
+    display: 'AUTOMATIZADO.VIP',
+    color:   'violet',
+    f1Label: 'API Key / Bearer Token',   f1Ph: 'ak_live_...',  f1Hint: 'Token de autenticación para api.automatizado.vip — cifrado AES-256',
+    f2Label: 'API Secret (opcional)',    f2Ph: SENTINEL,        f2Hint: 'Secreto adicional si tu cuenta lo requiere — cifrado AES-256',
+    f3Label: 'Instance ID / Sender ID',  f3Ph: 'inst_abc123',  f3Hint: 'ID de instancia o número remitente asignado en automatizado.vip',
+  },
 };
 
 const CODIGOS_PAIS = [
@@ -309,6 +316,7 @@ function GatewayConfigForm() {
                 className={cn(INPUT, 'cursor-pointer')}
               >
                 <option value="META_GRAPH">Meta Graph API (WhatsApp Business)</option>
+                <option value="AUTOMATIZADO_VIP">AUTOMATIZADO.VIP</option>
                 <option value="TWILIO">Twilio</option>
                 <option value="VONAGE">Vonage (Nexmo)</option>
                 <option value="CUSTOM_API">API Personalizada</option>

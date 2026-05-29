@@ -8,7 +8,7 @@ import { Cache }            from 'cache-manager';
 import { decrypt }          from '../../../common/utils/encryption.util';
 import { WhatsAppService, TipoNotificacion, WhatsAppParams } from './whatsapp.service';
 
-export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API';
+export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP';
 
 export interface EnvioResult {
   enviado:    boolean;
@@ -117,6 +117,41 @@ class VonageStrategy implements IMensajeriaStrategy {
     } catch (err) {
       const msg = err?.response?.data?.['error-text'] || err.message;
       this.logger.error(`Vonage: ${msg}`);
+      return { enviado: false, error: msg };
+    }
+  }
+}
+
+// ─── Estrategia AutomatizadoVIP ──────────────────────────
+// apiKey = Bearer token, clientId = instance/sender ID
+class AutomatizadoVipStrategy implements IMensajeriaStrategy {
+  private readonly logger = new Logger('AutomatizadoVipStrategy');
+  private readonly BASE   = 'https://api.automatizado.vip/v1/send';
+  constructor(
+    private readonly http:       HttpService,
+    private readonly apiKey:     string,
+    private readonly instanceId: string,
+  ) {}
+
+  async enviarMensaje(telefono: string, texto: string, template: string): Promise<EnvioResult> {
+    try {
+      const res = await firstValueFrom(
+        this.http.post(
+          this.BASE,
+          { to: telefono, text: texto, template, instanceId: this.instanceId || undefined },
+          {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type':  'application/json',
+            },
+            timeout: 15_000,
+          },
+        ),
+      );
+      return { enviado: true, messageId: res.data?.messageId || res.data?.id };
+    } catch (err) {
+      const msg = err?.response?.data?.message || err.message;
+      this.logger.error(`AutomatizadoVIP: ${msg}`);
       return { enviado: false, error: msg };
     }
   }
@@ -262,10 +297,11 @@ export class GatewayMensajeriaService {
     try { s = config.apiSecret ? decrypt(config.apiSecret) : ''; } catch {}
 
     switch (config.proveedor) {
-      case 'TWILIO':     return (k && s) ? new TwilioStrategy(this.http, k, s, config.clientId)    : null;
-      case 'VONAGE':     return (k && s) ? new VonageStrategy(this.http, k, s, config.clientId)    : null;
-      case 'CUSTOM_API': return k        ? new CustomApiStrategy(this.http, k, s, config.clientId) : null;
-      default:           return null;
+      case 'TWILIO':           return (k && s) ? new TwilioStrategy(this.http, k, s, config.clientId)          : null;
+      case 'VONAGE':           return (k && s) ? new VonageStrategy(this.http, k, s, config.clientId)          : null;
+      case 'CUSTOM_API':       return k        ? new CustomApiStrategy(this.http, k, s, config.clientId)        : null;
+      case 'AUTOMATIZADO_VIP': return k        ? new AutomatizadoVipStrategy(this.http, k, config.clientId)    : null;
+      default:                 return null;
     }
   }
 
