@@ -36,12 +36,14 @@ interface Mensaje {
   createdAt: string;
 }
 
-// ── URL del WebSocket (backend directo, no proxy Next.js) ────────
+// ── URL del WebSocket ────────────────────────────────────────────
+// Usa window.location.origin para que nginx proxee /socket.io/ → :4000
+// Sin NEXT_PUBLIC_API_URL, conectar a :4000 directo rompe el proxy SSL.
 const WS_URL = (() => {
   if (typeof window === 'undefined') return 'http://localhost:4000';
   const api = process.env.NEXT_PUBLIC_API_URL;
-  if (api) return api;
-  return `${window.location.protocol}//${window.location.hostname}:4000`;
+  if (api) return api.replace(/\/api\/v1\/?$/, '');
+  return window.location.origin;
 })();
 
 // ── Input estilo app ─────────────────────────────────────────────

@@ -17,17 +17,16 @@ const QRCode = require('qrcode');
 const SESSION_PATH = process.env.WA_SESSION_PATH || '/opt/datafast/.wwebjs_auth';
 const CLIENT_ID    = 'datafast-crm';
 
-// PM2 embeds NODE_APP_INSTANCE as a number inside the pm2_env JSON string.
-// Fallback: if not in pm2_env, treat as standalone (undefined → primary).
+// Cluster guard: only PM2 instance 0 manages the WA client.
+// Reads from env var first, falls back to pm2_env JSON (PM2 v7 embeds it as number).
 const IS_PRIMARY = (() => {
+  const raw = process.env.NODE_APP_INSTANCE;
+  if (raw !== undefined) return raw === '0';
   try {
-    const pm2Env = JSON.parse(process.env.pm2_env || '{}');
-    const inst   = pm2Env.NODE_APP_INSTANCE;
-    if (inst === undefined) return true;   // not running under PM2 cluster
-    return inst === 0;                     // only instance 0 owns the WA client
-  } catch {
-    return true;
-  }
+    const inst = JSON.parse(process.env.pm2_env || '{}').NODE_APP_INSTANCE;
+    if (inst !== undefined) return inst === 0;
+  } catch {}
+  return true; // not under PM2 cluster → always primary
 })();
 
 // Prefer the real Google Chrome binary over the snap wrapper
@@ -121,6 +120,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
           dataPath: SESSION_PATH,
           clientId: CLIENT_ID,
         }),
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         puppeteer: {
           headless: true,
           executablePath: CHROME_PATH,
@@ -128,17 +128,10 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-extensions',
-            '--renderer-process-limit=1',
-            '--disable-background-networking',
-            '--disable-default-apps',
-            '--disable-sync',
-            '--disable-translate',
-            '--metrics-recording-only',
-            '--mute-audio',
+            '--disable-accelerated-2d-canvas',
             '--no-first-run',
-            '--safebrowsing-disable-auto-update',
+            '--no-zygote',
+            '--single-process',
           ],
         },
       });
