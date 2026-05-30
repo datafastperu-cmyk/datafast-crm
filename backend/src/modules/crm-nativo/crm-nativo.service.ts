@@ -85,6 +85,14 @@ export class CrmNativoService {
     });
   }
 
+  // Single-tenant: devuelve todos los chats sin filtrar por empresa
+  async listarChatsActivos(): Promise<CrmChat[]> {
+    return this.chatRepo.find({
+      order: { ultimoMsgAt: 'DESC' },
+      take:  100,
+    });
+  }
+
   // ── Listar mensajes de un chat ────────────────────────────────
   async listarMensajes(chatId: string, limit = 50): Promise<CrmMensaje[]> {
     return this.mensajeRepo.find({

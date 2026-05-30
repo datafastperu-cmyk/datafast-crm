@@ -19,7 +19,10 @@ export interface WaMensajeEvento {
 
 @WebSocketGateway({
   namespace: '/crm-nativo',
-  cors: { origin: '*', credentials: false },
+  cors: {
+    origin: ['https://erp.datafastperu.com', 'http://localhost:3000', 'http://localhost:4000'],
+    credentials: true,
+  },
 })
 export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
@@ -33,18 +36,29 @@ export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnec
   handleConnection(client: Socket) {
     this.logger.debug(`WS conectado: ${client.id}`);
     const snap = this.state.snapshot();
-    // Si en memoria aún dice INICIANDO pero la sesión ya existe en disco,
-    // es que Chrome ya autenticó pero este proceso no recibió el evento
-    // (puede pasar al reconectar el frontend). Emitir CONECTADO directamente.
+
+    // Fallback: si memoria dice INICIANDO pero sesión existe en disco → CONECTADO
     if (snap.estado === 'INICIANDO') {
       const sessionPath = process.env.WA_SESSION_PATH || '/opt/datafast/.wwebjs_auth';
       const sessionDir  = path.join(sessionPath, 'session-datafast-crm');
       if (fs.existsSync(sessionDir)) {
         client.emit('wa:status', { estado: 'CONECTADO' });
+        // Enviar lista de chats actuales para no dejar la pantalla vacía
+        this.crmSvc.listarChatsActivos()
+          .then(chats => { if (chats.length) client.emit('wa:chats', chats); })
+          .catch(() => {});
         return;
       }
     }
+
     client.emit('wa:status', snap);
+
+    // Si ya está conectado, enviar chats al nuevo cliente inmediatamente
+    if (snap.estado === 'CONECTADO') {
+      this.crmSvc.listarChatsActivos()
+        .then(chats => { if (chats.length) client.emit('wa:chats', chats); })
+        .catch(() => {});
+    }
   }
 
   handleDisconnect(client: Socket) {
