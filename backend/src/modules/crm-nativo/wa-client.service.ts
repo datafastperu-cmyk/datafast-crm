@@ -182,7 +182,13 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       });
 
       this.client.on('message', async (msg: any) => {
-        if (msg.from === 'status@broadcast' || msg.isGroup) return;
+        // Descartar grupos (@g.us), broadcast y mensajes propios
+        if (
+          msg.from === 'status@broadcast' ||
+          msg.from?.endsWith('@g.us') ||
+          msg.isGroup ||
+          msg.fromMe
+        ) return;
         await this.procesarMensajeEntrante(msg);
       });
 
@@ -241,7 +247,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const empresaId = await this.resolverEmpresaId();
       if (!empresaId) return;
 
-      const chats = waChats.filter((c: any) => !c.isGroup).slice(0, 20);
+      const chats = waChats.filter((c: any) => !c.isGroup && !c.id?._serialized?.endsWith('@g.us')).slice(0, 20);
 
       for (const c of chats) {
         await this.crmSvc.upsertChat(empresaId, {
