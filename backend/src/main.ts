@@ -184,6 +184,14 @@ async function bootstrap() {
   if (process.send) process.send('ready');
 }
 
+// Winston's exception transport throws "write after end" when a RouterOS socket
+// times out during/after shutdown. Swallow that specific error to prevent crash loops.
+process.on('uncaughtException', (err) => {
+  if ((err as any).message === 'write after end') return;
+  console.error('Uncaught exception:', err.message);
+  process.exit(1);
+});
+
 bootstrap().catch((error) => {
   console.error('Error fatal al arrancar la aplicación:', error);
   process.exit(1);
