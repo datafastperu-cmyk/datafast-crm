@@ -83,6 +83,9 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     const chatId        = `${telefono.replace(/\D/g, '')}@c.us`;
     const textoConFirma = `*${agente}:* ${texto}`;
 
+    // Populate recipient LID cache (lost after session purge) to avoid "No LID for user"
+    await this.client.getNumberId(chatId).catch(() => {});
+
     const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
     const msgId   = sentMsg?.id?._serialized ?? null;
 
