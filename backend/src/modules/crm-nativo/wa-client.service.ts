@@ -83,7 +83,22 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     const chatId        = `${telefono.replace(/\D/g, '')}@c.us`;
     const textoConFirma = `*${agente}:* ${texto}`;
 
-    // Populate recipient LID cache (lost after session purge) to avoid "No LID for user"
+    // Diagnóstico LID — se puede quitar luego
+    const lidDebug = await this.client.pupPage.evaluate(() => {
+      try {
+        const m = (window as any).require('WAWebUserPrefsMeUser');
+        const me = (window as any).require('WAWebModelStorage').Me.get();
+        return {
+          lidUser: String(m.getMaybeMeLidUser()),
+          pnUser:  String(m.getMaybeMePnUser()),
+          meLid:   me ? String(me.lid)  : 'NO_ME',
+          meWid:   me ? String(me.wid)  : 'NO_ME',
+        };
+      } catch (e: any) { return { err: String(e) }; }
+    }).catch((e: any) => ({ err: e?.message }));
+    this.logger.log(`LID debug: ${JSON.stringify(lidDebug)}`);
+
+    // Populate recipient LID cache to avoid "No LID for user"
     await this.client.getNumberId(chatId).catch(() => {});
 
     const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
@@ -155,6 +170,8 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
             '--disable-web-security',
             '--allow-running-insecure-content',
             '--disable-blink-features=AutomationControlled',
+            '--disable-gpu',
+            '--disable-webgl',
           ],
         },
       });
@@ -178,22 +195,42 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       this.client.on('ready', () => {
         this.logger.log('WhatsApp Web listo!');
         this.gateway.emitStatus({ estado: 'CONECTADO' });
-        // Patch sendMessage to auto-resolve LID on first "No LID" failure
+        // Patch 1: getMaybeMeLidUser fallback → Me.lid (sender LID fix)
+        // Patch 2: sendMessage retry with queryWidExists on "No LID" error
         this.client.pupPage.evaluate(() => {
           const w = window as any;
-          const orig = w.WWebJS.sendMessage;
+
+          // Fallback: if getMaybeMeLidUser() returns null, use Me.lid from storage
+          const prefsMod = w.require('WAWebUserPrefsMeUser');
+          if (!prefsMod._lidPatched) {
+            const origGetLid = prefsMod.getMaybeMeLidUser.bind(prefsMod);
+            prefsMod.getMaybeMeLidUser = function() {
+              const lid = origGetLid();
+              if (lid) return lid;
+              try {
+                return w.require('WAWebModelStorage').Me.get()?.lid ?? null;
+              } catch { return null; }
+            };
+            prefsMod._lidPatched = true;
+          }
+
+          // Retry sendMessage after resolving LIDs on failure
+          const origSend = w.WWebJS.sendMessage;
           w.WWebJS.sendMessage = async (chat: any, content: any, options: any) => {
             try {
-              return await orig(chat, content, options);
+              return await origSend(chat, content, options);
             } catch (e: any) {
               if (!String(e?.message).includes('No LID')) throw e;
-              await w.require('WAWebQueryExistsJob')
-                .queryWidExists(chat.id).catch(() => {});
-              return orig(chat, content, options);
+              const meUser = prefsMod.getMaybeMePnUser();
+              await Promise.all([
+                meUser ? w.require('WAWebQueryExistsJob').queryWidExists(meUser).catch(() => {}) : Promise.resolve(),
+                w.require('WAWebQueryExistsJob').queryWidExists(chat.id).catch(() => {}),
+              ]);
+              return origSend(chat, content, options);
             }
           };
-        }).then(() => this.logger.log('sendMessage LID patch OK'))
-          .catch((err: any) => this.logger.warn(`sendMessage LID patch falló: ${err?.message}`));
+        }).then(() => this.logger.log('LID patches aplicados'))
+          .catch((err: any) => this.logger.warn(`LID patch falló: ${err?.message}`));
         // Carga de chats históricos en background — no bloquea el spinner
         setImmediate(() => this.cargarChatsIniciales().catch((err) =>
           this.logger.error(`Error cargando chats iniciales: ${err}`),
