@@ -192,7 +192,8 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
               return orig(chat, content, options);
             }
           };
-        }).catch(() => {});
+        }).then(() => this.logger.log('sendMessage LID patch OK'))
+          .catch((err: any) => this.logger.warn(`sendMessage LID patch falló: ${err?.message}`));
         // Carga de chats históricos en background — no bloquea el spinner
         setImmediate(() => this.cargarChatsIniciales().catch((err) =>
           this.logger.error(`Error cargando chats iniciales: ${err}`),
