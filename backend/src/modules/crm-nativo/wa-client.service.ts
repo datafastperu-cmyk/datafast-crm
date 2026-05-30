@@ -111,6 +111,14 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
   // ── Inicializar cliente WA ──────────────────────────────────────
   private async iniciarCliente(): Promise<void> {
+    // Kill any Chrome processes still holding the session directory (e.g. from a Node crash)
+    try {
+      require('child_process').execSync(
+        `pkill -f "session-${CLIENT_ID}" 2>/dev/null || true`, { stdio: 'ignore' },
+      );
+      await new Promise(r => setTimeout(r, 1500));
+    } catch {}
+
     // Remove Chrome's SingletonLock if left by a previous crashed process
     try {
       const lock = path.join(SESSION_PATH, `session-${CLIENT_ID}`, 'SingletonLock');
