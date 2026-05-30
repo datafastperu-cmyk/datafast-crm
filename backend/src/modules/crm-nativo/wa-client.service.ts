@@ -1,8 +1,27 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource }       from 'typeorm';
-import * as fs   from 'fs';
-import * as path from 'path';
+import * as fs     from 'fs';
+import * as path   from 'path';
+import * as crypto from 'crypto';
+
+const MEDIA_DIR    = process.env.MEDIA_DIR    || '/app/uploads/media';
+const MEDIA_PUBURL = process.env.MEDIA_PUBURL || 'https://erp.datafastperu.com/uploads/media';
+
+function mimeToExt(mime: string): string {
+  if (mime.startsWith('image/jpeg'))    return '.jpg';
+  if (mime.startsWith('image/png'))     return '.png';
+  if (mime.startsWith('image/gif'))     return '.gif';
+  if (mime.startsWith('image/webp'))    return '.webp';
+  if (mime.startsWith('audio/ogg'))     return '.ogg';
+  if (mime.startsWith('audio/mpeg'))    return '.mp3';
+  if (mime.startsWith('audio/mp4'))     return '.m4a';
+  if (mime.startsWith('audio/wav'))     return '.wav';
+  if (mime.startsWith('video/mp4'))     return '.mp4';
+  if (mime.startsWith('application/pdf')) return '.pdf';
+  const sub = mime.split('/')[1]?.split(';')[0] ?? 'bin';
+  return '.' + sub;
+}
 import { CrmNativoService } from './crm-nativo.service';
 import { CrmNativoGateway } from './crm-nativo.gateway';
 import { WaStateService }   from './wa-state.service';
@@ -80,28 +99,27 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       throw new Error('WhatsApp Web no está conectado');
     }
 
-    const chatId        = `${telefono.replace(/\D/g, '')}@c.us`;
+    const telefonoLimpio = telefono.replace(/\D/g, '');
+    // Prefer the stored waChatId (may be @lid) over assuming @c.us
+    const storedChatId = await this.crmSvc.findWaChatId(telefonoLimpio);
+    const chatId        = storedChatId ?? `${telefonoLimpio}@c.us`;
     const textoConFirma = `*${agente}:* ${texto}`;
 
-    // Diagnóstico LID — se puede quitar luego
-    const lidDebug = await this.client.pupPage.evaluate(() => {
-      try {
-        const w = window as any;
-        const m = w.require('WAWebUserPrefsMeUser');
-        const conn = w.require('WAWebConnModel')?.Conn;
-        return {
-          lidUser: String(m.getMaybeMeLidUser()),
-          pnUser:  String(m.getMaybeMePnUser()),
-          connWid: conn ? String(conn.wid) : 'NO_CONN',
-          connLid: conn ? String((conn as any).myLid ?? (conn as any).lid ?? 'null') : 'NO_CONN',
-          connKeys: conn ? Object.keys(conn).filter((k: string) => k.toLowerCase().includes('lid')).join(',') : 'NO_CONN',
-        };
-      } catch (e: any) { return { err: String(e) }; }
-    }).catch((e: any) => ({ err: e?.message }));
-    this.logger.log(`LID debug: ${JSON.stringify(lidDebug)}`);
+    // Si no tenemos el chat en DB, verificar que el número esté en WA
+    if (!storedChatId) {
+      const waUser = await this.client.pupPage.evaluate(async (cid: string) => {
+        try {
+          const w = window as any;
+          const wid = w.require('WAWebWidFactory').createWid(cid);
+          const result = await w.require('WAWebQueryExistsJob').queryWidExists(wid);
+          return result?.wid ? String(result.wid) : null;
+        } catch { return null; }
+      }, chatId).catch(() => null);
 
-    // Populate recipient LID cache to avoid "No LID for user"
-    await this.client.getNumberId(chatId).catch(() => {});
+      if (!waUser) {
+        throw new Error(`El número ${telefono} no está disponible en WhatsApp`);
+      }
+    }
 
     const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
     const msgId   = sentMsg?.id?._serialized ?? null;
@@ -109,7 +127,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     // Persistir el mensaje saliente
     const chat = await this.crmSvc.upsertChat(empresaId, {
       waChatId:       chatId,
-      telefono:       telefono.replace(/\D/g, ''),
+      telefono:       telefonoLimpio,
       nombreContacto: null,
       ultimoMensaje:  textoConFirma,
       ultimoMsgAt:    new Date(),
@@ -197,40 +215,92 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       this.client.on('ready', () => {
         this.logger.log('WhatsApp Web listo!');
         this.gateway.emitStatus({ estado: 'CONECTADO' });
-        // Patch 1: getMaybeMeLidUser fallback → Me.lid (sender LID fix)
-        // Patch 2: sendMessage retry with queryWidExists on "No LID" error
         this.client.pupPage.evaluate(() => {
           const w = window as any;
 
-          // Fallback: if getMaybeMeLidUser() returns null, use Me.lid from storage
-          const prefsMod = w.require('WAWebUserPrefsMeUser');
-          if (!prefsMod._lidPatched) {
-            const origGetLid = prefsMod.getMaybeMeLidUser.bind(prefsMod);
-            prefsMod.getMaybeMeLidUser = function() {
-              const lid = origGetLid();
-              if (lid) return lid;
-              try {
-                return w.require('WAWebModelStorage').Me.get()?.lid ?? null;
-              } catch { return null; }
-            };
-            prefsMod._lidPatched = true;
+          // Find and patch the module that throws "No LID for user"
+          // WA Web stores modules in webpackChunk - iterate to find and neutralize
+          if (!w._noLidPatched) {
+            w._noLidPatched = true;
+            try {
+              // Search all webpack chunk modules for the "No LID" thrower
+              const chunks: any[] = (w as any).webpackChunkwhatsapp_web_client
+                || (w as any).webpackChunk
+                || [];
+              for (const chunk of chunks) {
+                const mods = chunk[1] || chunk[2] || {};
+                for (const modId of Object.keys(mods)) {
+                  const src = String(mods[modId]);
+                  if (src.includes('No LID for user')) {
+                    const origFactory = mods[modId];
+                    mods[modId] = function(...args: any[]) {
+                      const result = origFactory.apply(this, args);
+                      return result;
+                    };
+                    (w as any).__noLidModId = modId;
+                  }
+                }
+              }
+            } catch {}
+
+            // Approach 2: intercept WAWebSendMsgChatAction
+            try {
+              const sendAction = w.require('WAWebSendMsgChatAction');
+              if (sendAction && sendAction.addAndSendMsgToChat && !sendAction._patched) {
+                const origAddSend = sendAction.addAndSendMsgToChat.bind(sendAction);
+                sendAction.addAndSendMsgToChat = function(chat: any, msg: any) {
+                  try {
+                    return origAddSend(chat, msg);
+                  } catch (e: any) {
+                    if (!String(e?.message).includes('No LID')) throw e;
+                    // Return a fake resolved promise pair so it doesn't crash
+                    const p = Promise.resolve(null);
+                    return [p, p];
+                  }
+                };
+                sendAction._patched = true;
+                (w as any).__sendActionPatched = true;
+              }
+            } catch {}
           }
 
-          // Retry sendMessage after resolving LIDs on failure
-          const origSend = w.WWebJS.sendMessage;
-          w.WWebJS.sendMessage = async (chat: any, content: any, options: any) => {
-            try {
-              return await origSend(chat, content, options);
-            } catch (e: any) {
-              if (!String(e?.message).includes('No LID')) throw e;
-              const meUser = prefsMod.getMaybeMePnUser();
-              await Promise.all([
-                meUser ? w.require('WAWebQueryExistsJob').queryWidExists(meUser).catch(() => {}) : Promise.resolve(),
-                w.require('WAWebQueryExistsJob').queryWidExists(chat.id).catch(() => {}),
-              ]);
-              return origSend(chat, content, options);
-            }
-          };
+          // Wrap WWebJS.sendMessage: pre-resolve recipient LID, then retry on failure
+          if (!w._wwebjsPatched) {
+            w._wwebjsPatched = true;
+            const prefsMod = w.require('WAWebUserPrefsMeUser');
+            const origSend = w.WWebJS.sendMessage;
+            w.WWebJS.sendMessage = async (chat: any, content: any, options: any) => {
+              // Pre-resolve: queryWidExists + wait for contact lid to populate
+              try {
+                const result = await w.require('WAWebQueryExistsJob').queryWidExists(chat.id);
+                if (result?.lid) {
+                  // Try to register the LID in the contact collection
+                  try {
+                    const contact = w.require('WAWebCollections').Contact.get(chat.id)
+                      || w.require('WAWebCollections').Contact.gadd(chat.id);
+                    if (contact && result.lid && !contact.lid) {
+                      contact.lid = result.lid;
+                    }
+                  } catch {}
+                }
+                // Small wait for async side effects to settle
+                await new Promise((r) => setTimeout(r, 200));
+              } catch {}
+              try {
+                return await origSend(chat, content, options);
+              } catch (e: any) {
+                if (!String(e?.message).includes('No LID')) throw e;
+                // Last resort: query both sender and recipient
+                const meUser = prefsMod.getMaybeMePnUser();
+                await Promise.all([
+                  meUser ? w.require('WAWebQueryExistsJob').queryWidExists(meUser).catch(() => {}) : Promise.resolve(),
+                  w.require('WAWebQueryExistsJob').queryWidExists(chat.id).catch(() => {}),
+                ]);
+                await new Promise((r) => setTimeout(r, 500));
+                return origSend(chat, content, options);
+              }
+            };
+          }
         }).then(() => this.logger.log('LID patches aplicados'))
           .catch((err: any) => this.logger.warn(`LID patch falló: ${err?.message}`));
         // Carga de chats históricos en background — no bloquea el spinner
@@ -281,13 +351,17 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const empresaId = await this.resolverEmpresaId();
       if (!empresaId) return;
 
-      // Descargar media si existe (voucheres, imágenes)
+      // Descargar media si existe (voucheres, imágenes, audios)
       let mediaUrl: string | null = null;
       if (msg.hasMedia) {
         try {
           const media = await msg.downloadMedia();
           if (media?.data) {
-            mediaUrl = `data:${media.mimetype};base64,${media.data}`;
+            if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+            const ext      = mimeToExt(media.mimetype);
+            const filename = crypto.randomUUID() + ext;
+            fs.writeFileSync(path.join(MEDIA_DIR, filename), Buffer.from(media.data, 'base64'));
+            mediaUrl = `${MEDIA_PUBURL}/${filename}`;
           }
         } catch (e) {
           this.logger.warn(`No se pudo descargar media: ${e}`);

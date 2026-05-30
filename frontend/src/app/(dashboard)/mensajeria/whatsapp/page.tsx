@@ -33,6 +33,7 @@ interface Mensaje {
   direction: 'INBOUND' | 'OUTBOUND';
   agente:    string | null;
   body:      string;
+  mediaUrl?: string | null;
   createdAt: string;
 }
 
@@ -392,7 +393,20 @@ export default function WhatsAppWebPage() {
                   {esOutbound && msg.agente && (
                     <p className="text-[10px] opacity-70 font-medium mb-0.5">{msg.agente}</p>
                   )}
-                  <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
+                  {msg.mediaUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(msg.mediaUrl) && (
+                    <img
+                      src={msg.mediaUrl}
+                      alt="imagen"
+                      className="max-w-[240px] rounded-lg mb-1 cursor-pointer"
+                      onClick={() => window.open(msg.mediaUrl!, '_blank')}
+                    />
+                  )}
+                  {msg.mediaUrl && /\.(ogg|mp3|m4a|wav)$/i.test(msg.mediaUrl) && (
+                    <audio controls src={msg.mediaUrl} className="w-full max-w-[240px] mb-1" />
+                  )}
+                  {msg.body && msg.body !== '[media]' && (
+                    <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
+                  )}
                   <div className={cn('flex items-center gap-1 mt-0.5', esOutbound ? 'justify-end' : 'justify-start')}>
                     <span className="text-[10px] opacity-60">{formatHora(msg.createdAt)}</span>
                     {esOutbound && <CheckCheck className="w-3 h-3 opacity-60" />}
