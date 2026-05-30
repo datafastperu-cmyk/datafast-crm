@@ -134,16 +134,15 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       noLeidos:       0,
     });
 
-    const msg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
+    await this.crmSvc.guardarMensaje(empresaId, chat.id, {
       waMsgId:   msgId,
       direction: 'OUTBOUND',
       agente,
       body:      textoConFirma,
     });
 
-    this.gateway.emitMensaje({ chatId: chat.id, mensaje: msg });
-    this.gateway.emitChatUpdate(chat);
-
+    // No emitimos WS aquí: message_create lo hará como único emisor.
+    // procesarMensajeEntrante detectará el waMsgId ya guardado y solo emite.
     return { messageId: msgId };
   }
 
@@ -341,12 +340,27 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   private async procesarMensajeEntrante(msg: any): Promise<void> {
     try {
       const isOutbound = !!msg.fromMe;
-      // Para OUTBOUND: el chat es con msg.to; para INBOUND: con msg.from
-      const peerWid  = isOutbound ? (msg.to as string) : (msg.from as string);
-      const telefono = peerWid.replace('@c.us', '').replace(/\D/g, '');
+      const peerWid    = isOutbound ? (msg.to as string) : (msg.from as string);
 
-      const contact  = await msg.getContact().catch(() => null);
+      // Para outbound: msg.getContact() devuelve NUESTRO contacto (= "Datafast").
+      // Usar getContactById(peerWid) garantiza siempre obtener el contacto del OTRO extremo.
+      const contact = await this.client.getContactById(peerWid).catch(() => null)
+                   ?? await msg.getContact().catch(() => null);
       const nombre   = contact?.pushname || contact?.name || null;
+      // contact.number trae el E.164 limpio (sin @lid ni @c.us)
+      const telefono = contact?.number || peerWid.replace(/@\w+$/, '').replace(/\D/g, '');
+
+      // Deduplicación: si enviarMensaje ya guardó este waMsgId, solo emitimos WS y salimos
+      const waMsgId = msg.id?._serialized ?? null;
+      if (isOutbound && waMsgId) {
+        const existing = await this.crmSvc.findMensajePorWaMsgId(waMsgId);
+        if (existing) {
+          const existingChat = await this.crmSvc.findChat(existing.chatId);
+          this.gateway.emitMensaje({ chatId: existing.chatId, mensaje: existing });
+          if (existingChat) this.gateway.emitChatUpdate(existingChat);
+          return;
+        }
+      }
 
       const empresaId = await this.resolverEmpresaId();
       if (!empresaId) return;
@@ -380,7 +394,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       });
 
       const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
-        waMsgId:   msg.id?._serialized ?? null,
+        waMsgId,
         direction: isOutbound ? 'OUTBOUND' : 'INBOUND',
         agente:    isOutbound ? 'Desde Celular' : null,
         body:      bodyText,

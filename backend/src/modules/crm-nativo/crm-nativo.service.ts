@@ -109,4 +109,15 @@ export class CrmNativoService {
   async findChat(chatId: string): Promise<CrmChat | null> {
     return this.chatRepo.findOne({ where: { id: chatId } });
   }
+
+  // ── Buscar waChatId real por número de teléfono ───────────────
+  async findWaChatId(telefono: string): Promise<string | null> {
+    const chat = await this.chatRepo.findOne({ where: { telefono } });
+    return chat?.waChatId ?? null;
+  }
+
+  // ── Buscar mensaje por waMsgId (deduplicación) ────────────────
+  async findMensajePorWaMsgId(waMsgId: string): Promise<CrmMensaje | null> {
+    return this.mensajeRepo.findOne({ where: { waMsgId } });
+  }
 }
