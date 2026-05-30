@@ -69,12 +69,11 @@ export const winstonConfig = WinstonModule.createLogger({
         ]
       : []),
   ],
-  // No crashear en errores de logging
-  exceptionHandlers: isProduction
-    ? [new winston.transports.File({ filename: path.join(logDir, 'exceptions.log') })]
-    : [],
-  rejectionHandlers: isProduction
-    ? [new winston.transports.File({ filename: path.join(logDir, 'rejections.log') })]
-    : [],
+  // Winston file transports in exceptionHandlers can throw "write after end"
+  // when two exceptions fire simultaneously (e.g. two RouterOS timeouts).
+  // Errors thrown during uncaughtException handlers are unrecoverable — we
+  // handle exceptions in main.ts process.on('uncaughtException') instead.
+  exceptionHandlers: [],
+  rejectionHandlers: [],
   exitOnError: false,
 });
