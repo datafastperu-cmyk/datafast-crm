@@ -111,6 +111,12 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
   // ── Inicializar cliente WA ──────────────────────────────────────
   private async iniciarCliente(): Promise<void> {
+    // Remove Chrome's SingletonLock if left by a previous crashed process
+    try {
+      const lock = path.join(SESSION_PATH, `session-${CLIENT_ID}`, 'SingletonLock');
+      if (fs.existsSync(lock)) { fs.unlinkSync(lock); this.logger.log('SingletonLock eliminado'); }
+    } catch {}
+
     this.gateway.emitStatus({ estado: 'INICIANDO' });
     this.logger.log('Iniciando cliente WhatsApp Web (whatsapp-web.js)...');
 
