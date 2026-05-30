@@ -16,8 +16,33 @@ const QRCode = require('qrcode');
 
 const SESSION_PATH = process.env.WA_SESSION_PATH || '/opt/datafast/.wwebjs_auth';
 const CLIENT_ID    = 'datafast-crm';
-// Solo la instancia 0 de PM2 gestiona el cliente WA
-const IS_PRIMARY   = process.env.NODE_APP_INSTANCE === '0' || process.env.NODE_APP_INSTANCE === undefined;
+
+// PM2 embeds NODE_APP_INSTANCE as a number inside the pm2_env JSON string.
+// Fallback: if not in pm2_env, treat as standalone (undefined → primary).
+const IS_PRIMARY = (() => {
+  try {
+    const pm2Env = JSON.parse(process.env.pm2_env || '{}');
+    const inst   = pm2Env.NODE_APP_INSTANCE;
+    if (inst === undefined) return true;   // not running under PM2 cluster
+    return inst === 0;                     // only instance 0 owns the WA client
+  } catch {
+    return true;
+  }
+})();
+
+// Chromium executable: system-installed path on Ubuntu/Debian
+const CHROME_PATH = process.env.WA_CHROME_PATH
+  || (() => {
+    for (const p of [
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+    ]) {
+      try { if (require('fs').existsSync(p)) return p; } catch { /* skip */ }
+    }
+    return undefined;
+  })();
 
 @Injectable()
 export class WaClientService implements OnModuleInit, OnModuleDestroy {
@@ -98,13 +123,13 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         }),
         puppeteer: {
           headless: true,
+          executablePath: CHROME_PATH,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--disable-extensions',
-            '--single-process',
           ],
         },
       });
