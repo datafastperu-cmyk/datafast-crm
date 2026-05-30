@@ -256,7 +256,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
           nombreContacto: c.name || null,
           ultimoMensaje:  c.lastMessage?.body?.substring(0, 200) ?? null,
           ultimoMsgAt:    c.lastMessage?.timestamp ? new Date(c.lastMessage.timestamp * 1000) : null,
-          noLeidos:       c.unreadCount || 0,
+          noLeidos:       (Number.isFinite(c.unreadCount) && c.unreadCount > 0) ? c.unreadCount : 0,
         });
       }
 

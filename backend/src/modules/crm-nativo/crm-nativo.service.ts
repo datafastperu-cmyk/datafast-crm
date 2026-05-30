@@ -42,13 +42,15 @@ export class CrmNativoService {
         waChatId:       dto.waChatId,
         telefono:       dto.telefono,
         nombreContacto: dto.nombreContacto,
+        noLeidos:       0,
       });
     }
 
     chat.ultimoMensaje  = dto.ultimoMensaje  ?? chat.ultimoMensaje;
     chat.ultimoMsgAt    = dto.ultimoMsgAt    ?? chat.ultimoMsgAt;
     chat.nombreContacto = dto.nombreContacto ?? chat.nombreContacto;
-    if (dto.noLeidos > 0) chat.noLeidos = (chat.noLeidos ?? 0) + dto.noLeidos;
+    const addLeidos = Number.isFinite(dto.noLeidos) && dto.noLeidos > 0 ? dto.noLeidos : 0;
+    if (addLeidos > 0) chat.noLeidos = (Number.isFinite(chat.noLeidos) ? chat.noLeidos : 0) + addLeidos;
 
     return this.chatRepo.save(chat);
   }
