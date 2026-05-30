@@ -14,8 +14,8 @@ module.exports = {
       name:      'datafast-backend',
       script:    './dist/main.js',
       cwd:       '/opt/datafast/backend',
-      instances: 2,
-      exec_mode: 'cluster',
+      instances: 1,
+      exec_mode: 'fork',
 
       env_file: '/opt/datafast/backend/.env.production',
       env: {

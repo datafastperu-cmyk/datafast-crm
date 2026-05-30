@@ -5,6 +5,8 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
+import * as fs   from 'fs';
+import * as path from 'path';
 import { WaStateService, WaStatusPayload } from './wa-state.service';
 import { CrmNativoService } from './crm-nativo.service';
 import { CrmChat }    from './entities/crm-chat.entity';
@@ -30,8 +32,19 @@ export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   handleConnection(client: Socket) {
     this.logger.debug(`WS conectado: ${client.id}`);
-    // Enviar estado actual al nuevo cliente
-    client.emit('wa:status', this.state.snapshot());
+    const snap = this.state.snapshot();
+    // Si en memoria aún dice INICIANDO pero la sesión ya existe en disco,
+    // es que Chrome ya autenticó pero este proceso no recibió el evento
+    // (puede pasar al reconectar el frontend). Emitir CONECTADO directamente.
+    if (snap.estado === 'INICIANDO') {
+      const sessionPath = process.env.WA_SESSION_PATH || '/opt/datafast/.wwebjs_auth';
+      const sessionDir  = path.join(sessionPath, 'session-datafast-crm');
+      if (fs.existsSync(sessionDir)) {
+        client.emit('wa:status', { estado: 'CONECTADO' });
+        return;
+      }
+    }
+    client.emit('wa:status', snap);
   }
 
   handleDisconnect(client: Socket) {
