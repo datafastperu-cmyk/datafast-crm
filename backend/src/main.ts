@@ -179,6 +179,9 @@ async function bootstrap() {
     logger.log(`  Swagger:   http://localhost:${port}/api/docs`);
   }
   logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+  // Señal requerida por PM2 wait_ready: true
+  if (process.send) process.send('ready');
 }
 
 bootstrap().catch((error) => {
