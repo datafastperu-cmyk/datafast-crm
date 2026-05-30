@@ -184,11 +184,14 @@ async function bootstrap() {
   if (process.send) process.send('ready');
 }
 
-// Winston's exception transport throws "write after end" when a RouterOS socket
-// times out during/after shutdown. Swallow that specific error to prevent crash loops.
+// Prevent crash loops from:
+// 1. Winston transport "write after end" race during shutdown
+// 2. RouterOS socket timeouts that escape MonitoreoWorker error handling
 process.on('uncaughtException', (err) => {
-  if ((err as any).message === 'write after end') return;
-  console.error('Uncaught exception:', err.message);
+  const msg = (err as any).message ?? '';
+  if (msg === 'write after end') return;
+  if (msg.includes('Timed out after') || (err as any).constructor?.name === 'RosException') return;
+  console.error('Uncaught exception:', msg);
   process.exit(1);
 });
 
