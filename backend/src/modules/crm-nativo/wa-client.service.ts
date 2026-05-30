@@ -167,13 +167,18 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       });
 
       this.client.on('authenticated', () => {
-        this.logger.log('WhatsApp: autenticado');
+        this.logger.log('WhatsApp: autenticado — sesión válida');
+        // Desbloquear spinner inmediatamente sin esperar ready
+        this.gateway.emitStatus({ estado: 'CONECTADO' });
       });
 
-      this.client.on('ready', async () => {
-        this.gateway.emitStatus({ estado: 'CONECTADO' });
+      this.client.on('ready', () => {
         this.logger.log('WhatsApp Web listo!');
-        await this.cargarChatsIniciales();
+        this.gateway.emitStatus({ estado: 'CONECTADO' });
+        // Carga de chats históricos en background — no bloquea el spinner
+        setImmediate(() => this.cargarChatsIniciales().catch((err) =>
+          this.logger.error(`Error cargando chats iniciales: ${err}`),
+        ));
       });
 
       this.client.on('message', async (msg: any) => {
@@ -236,7 +241,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const empresaId = await this.resolverEmpresaId();
       if (!empresaId) return;
 
-      const chats = waChats.filter((c: any) => !c.isGroup).slice(0, 50);
+      const chats = waChats.filter((c: any) => !c.isGroup).slice(0, 20);
 
       for (const c of chats) {
         await this.crmSvc.upsertChat(empresaId, {
