@@ -86,13 +86,15 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     // Diagnóstico LID — se puede quitar luego
     const lidDebug = await this.client.pupPage.evaluate(() => {
       try {
-        const m = (window as any).require('WAWebUserPrefsMeUser');
-        const me = (window as any).require('WAWebModelStorage').Me.get();
+        const w = window as any;
+        const m = w.require('WAWebUserPrefsMeUser');
+        const conn = w.require('WAWebConnModel')?.Conn;
         return {
           lidUser: String(m.getMaybeMeLidUser()),
           pnUser:  String(m.getMaybeMePnUser()),
-          meLid:   me ? String(me.lid)  : 'NO_ME',
-          meWid:   me ? String(me.wid)  : 'NO_ME',
+          connWid: conn ? String(conn.wid) : 'NO_CONN',
+          connLid: conn ? String((conn as any).myLid ?? (conn as any).lid ?? 'null') : 'NO_CONN',
+          connKeys: conn ? Object.keys(conn).filter((k: string) => k.toLowerCase().includes('lid')).join(',') : 'NO_CONN',
         };
       } catch (e: any) { return { err: String(e) }; }
     }).catch((e: any) => ({ err: e?.message }));
@@ -237,13 +239,13 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         ));
       });
 
-      this.client.on('message', async (msg: any) => {
-        // Descartar grupos (@g.us), broadcast y mensajes propios
+      // message_create captura INBOUND + mensajes enviados desde el celular físico (fromMe)
+      this.client.on('message_create', async (msg: any) => {
         if (
           msg.from === 'status@broadcast' ||
           msg.from?.endsWith('@g.us') ||
-          msg.isGroup ||
-          msg.fromMe
+          msg.to?.endsWith('@g.us') ||
+          msg.isGroup
         ) return;
         await this.procesarMensajeEntrante(msg);
       });
@@ -268,32 +270,53 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
   private async procesarMensajeEntrante(msg: any): Promise<void> {
     try {
-      const contact  = await msg.getContact();
+      const isOutbound = !!msg.fromMe;
+      // Para OUTBOUND: el chat es con msg.to; para INBOUND: con msg.from
+      const peerWid  = isOutbound ? (msg.to as string) : (msg.from as string);
+      const telefono = peerWid.replace('@c.us', '').replace(/\D/g, '');
+
+      const contact  = await msg.getContact().catch(() => null);
       const nombre   = contact?.pushname || contact?.name || null;
-      const telefono = (msg.from as string).replace('@c.us', '');
+
       const empresaId = await this.resolverEmpresaId();
       if (!empresaId) return;
 
+      // Descargar media si existe (voucheres, imágenes)
+      let mediaUrl: string | null = null;
+      if (msg.hasMedia) {
+        try {
+          const media = await msg.downloadMedia();
+          if (media?.data) {
+            mediaUrl = `data:${media.mimetype};base64,${media.data}`;
+          }
+        } catch (e) {
+          this.logger.warn(`No se pudo descargar media: ${e}`);
+        }
+      }
+
+      const bodyText = msg.body || (mediaUrl ? '[media]' : '');
+
       const chat = await this.crmSvc.upsertChat(empresaId, {
-        waChatId:       msg.from,
+        waChatId:       peerWid,
         telefono,
         nombreContacto: nombre,
-        ultimoMensaje:  msg.body,
+        ultimoMensaje:  bodyText,
         ultimoMsgAt:    new Date(msg.timestamp * 1000),
-        noLeidos:       1,
+        noLeidos:       isOutbound ? 0 : 1,
       });
 
       const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
         waMsgId:   msg.id?._serialized ?? null,
-        direction: 'INBOUND',
-        agente:    null,
-        body:      msg.body,
+        direction: isOutbound ? 'OUTBOUND' : 'INBOUND',
+        agente:    isOutbound ? 'Desde Celular' : null,
+        body:      bodyText,
+        mediaUrl,
       });
 
       this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
       this.gateway.emitChatUpdate(chat);
     } catch (err) {
-      this.logger.error(`Error procesando mensaje entrante: ${err}`);
+      this.logger.error(`Error procesando mensaje: ${err}`);
     }
   }
 

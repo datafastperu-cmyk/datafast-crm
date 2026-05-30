@@ -18,6 +18,7 @@ export interface MensajeDto {
   direction: 'INBOUND' | 'OUTBOUND';
   agente:    string | null;
   body:      string;
+  mediaUrl?: string | null;
   createdAt?: Date;
 }
 
@@ -68,7 +69,7 @@ export class CrmNativoService {
       direction: dto.direction,
       agente:    dto.agente,
       body:      dto.body,
-      mediaUrl:  null,
+      mediaUrl:  dto.mediaUrl ?? null,
     });
     return this.mensajeRepo.save(msg);
   }
