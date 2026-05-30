@@ -178,6 +178,21 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       this.client.on('ready', () => {
         this.logger.log('WhatsApp Web listo!');
         this.gateway.emitStatus({ estado: 'CONECTADO' });
+        // Patch sendMessage to auto-resolve LID on first "No LID" failure
+        this.client.pupPage.evaluate(() => {
+          const w = window as any;
+          const orig = w.WWebJS.sendMessage;
+          w.WWebJS.sendMessage = async (chat: any, content: any, options: any) => {
+            try {
+              return await orig(chat, content, options);
+            } catch (e: any) {
+              if (!String(e?.message).includes('No LID')) throw e;
+              await w.require('WAWebQueryExistsJob')
+                .queryWidExists(chat.id).catch(() => {});
+              return orig(chat, content, options);
+            }
+          };
+        }).catch(() => {});
         // Carga de chats históricos en background — no bloquea el spinner
         setImmediate(() => this.cargarChatsIniciales().catch((err) =>
           this.logger.error(`Error cargando chats iniciales: ${err}`),
