@@ -149,6 +149,9 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
+            '--disable-web-security',
+            '--allow-running-insecure-content',
+            '--disable-blink-features=AutomationControlled',
           ],
         },
       });
