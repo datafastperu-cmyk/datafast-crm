@@ -30,14 +30,13 @@ const IS_PRIMARY = (() => {
   }
 })();
 
-// Chromium executable: system-installed path on Ubuntu/Debian
+// Prefer the real Google Chrome binary over the snap wrapper
 const CHROME_PATH = process.env.WA_CHROME_PATH
   || (() => {
     for (const p of [
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/usr/bin/google-chrome',
       '/usr/bin/google-chrome-stable',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium',
     ]) {
       try { if (require('fs').existsSync(p)) return p; } catch { /* skip */ }
     }
@@ -57,12 +56,13 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
     if (!IS_PRIMARY) {
       this.logger.log('Instancia secundaria — WaClient delegado a instancia 0');
       return;
     }
-    await this.iniciarCliente();
+    // Non-blocking: let NestJS finish booting before Chrome starts
+    setImmediate(() => this.iniciarCliente().catch((err) => this.logger.error(`WA init fatal: ${err?.message}`)));
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -130,6 +130,15 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--disable-extensions',
+            '--renderer-process-limit=1',
+            '--disable-background-networking',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--disable-translate',
+            '--metrics-recording-only',
+            '--mute-audio',
+            '--no-first-run',
+            '--safebrowsing-disable-auto-update',
           ],
         },
       });
