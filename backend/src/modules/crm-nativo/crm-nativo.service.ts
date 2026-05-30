@@ -48,7 +48,7 @@ export class CrmNativoService {
     chat.ultimoMensaje  = dto.ultimoMensaje  ?? chat.ultimoMensaje;
     chat.ultimoMsgAt    = dto.ultimoMsgAt    ?? chat.ultimoMsgAt;
     chat.nombreContacto = dto.nombreContacto ?? chat.nombreContacto;
-    if (dto.noLeidos > 0) chat.noLeidos += dto.noLeidos;
+    if (dto.noLeidos > 0) chat.noLeidos = (chat.noLeidos ?? 0) + dto.noLeidos;
 
     return this.chatRepo.save(chat);
   }
