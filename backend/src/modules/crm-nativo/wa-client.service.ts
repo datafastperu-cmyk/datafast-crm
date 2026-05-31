@@ -343,13 +343,24 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const isOutbound = !!msg.fromMe;
       const peerWid    = isOutbound ? (msg.to as string) : (msg.from as string);
 
-      // Para outbound: msg.getContact() devuelve NUESTRO contacto (= "Datafast").
-      // Usar getContactById(peerWid) garantiza siempre obtener el contacto del OTRO extremo.
+      // Extraer número real: primero desde from/to, luego resolver LID si aplica
+      const rawId = isOutbound ? (msg.to as string) : (msg.from as string);
+      let telefonoReal = rawId.split('@')[0];
+
+      // Para cuentas Meta migradas a LID: getContactById puede devolver contact.number real
+      if (rawId.endsWith('@lid')) {
+        try {
+          const contactInfo = await this.client.getContactById(rawId);
+          if (contactInfo?.number && contactInfo.number !== telefonoReal) {
+            telefonoReal = contactInfo.number;
+          }
+        } catch {}
+      }
+
       const contact = await this.client.getContactById(peerWid).catch(() => null)
                    ?? await msg.getContact().catch(() => null);
       const nombre   = contact?.pushname || contact?.name || null;
-      // contact.number trae el E.164 limpio (sin @lid ni @c.us)
-      const telefono = contact?.number || peerWid.replace(/@\w+$/, '').replace(/\D/g, '');
+      const telefono = telefonoReal.replace(/\D/g, '');
 
       // Deduplicación: si enviarMensaje ya guardó este waMsgId, solo emitimos WS y salimos
       const waMsgId = msg.id?._serialized ?? null;

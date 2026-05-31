@@ -78,7 +78,8 @@ async function bootstrap() {
   });
 
   // ── Media CRM WhatsApp (/media/uuid.jpg, /media/uuid.ogg) ────
-  app.useStaticAssets(path.join(process.cwd(), 'public'), {
+  // __dirname en dist/ → join('..', 'public', 'media') apunta a /opt/datafast/backend/public/media
+  app.useStaticAssets(path.join(__dirname, '..', 'public', 'media'), {
     prefix: '/media/',
     dotfiles: 'deny',
   });
