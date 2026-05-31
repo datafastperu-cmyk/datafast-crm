@@ -5,10 +5,216 @@ import { io, Socket } from 'socket.io-client';
 import {
   MessageSquare, Search, Send, Loader2,
   Wifi, WifiOff, RefreshCw, CheckCheck, User,
+  Download, X, ZoomIn, ZoomOut, Maximize2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { cn } from '@/lib/utils';
+
+const MEDIA_EXT_RE = /\.(jpg|jpeg|png|gif|webp|ogg|mp3|m4a|wav|mp4)(\?.*)?$/i;
+const AUDIO_EXT_RE = /\.(ogg|mp3|m4a|wav)(\?.*)?$/i;
+
+function extractFilename(raw: string): string | null {
+  const name = raw.includes('://') ? raw.split('/').pop()!.split('?')[0] : raw;
+  return MEDIA_EXT_RE.test(name) ? name : null;
+}
+
+function AuthedMedia({ raw }: { raw: string }) {
+  const filename = extractFilename(raw);
+  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+  const [failed,  setFailed]  = React.useState(false);
+  const [open,       setOpen]      = React.useState(false);
+  const [zoom,       setZoom]      = React.useState(1);
+  const [offset,     setOffset]    = React.useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = React.useState(false);
+  const dragRef  = React.useRef(false);
+  const startRef = React.useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
+
+  const zoomIn    = () => setZoom(z => Math.min(z + 0.25, 4));
+  const zoomOut   = () => setZoom(z => Math.max(z - 0.25, 0.25));
+  const zoomReset = () => { setZoom(1); setOffset({ x: 0, y: 0 }); };
+  const closeModal = () => { setOpen(false); setZoom(1); setOffset({ x: 0, y: 0 }); };
+
+  // ── Drag: mouse ─────────────────────────────────────────
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    dragRef.current  = true;
+    setIsDragging(true);
+    startRef.current = { mx: e.clientX, my: e.clientY, ox: offset.x, oy: offset.y };
+  };
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!dragRef.current) return;
+    setOffset({
+      x: startRef.current.ox + (e.clientX - startRef.current.mx),
+      y: startRef.current.oy + (e.clientY - startRef.current.my),
+    });
+  };
+  const onMouseUp = () => { dragRef.current = false; setIsDragging(false); };
+
+  // ── Drag: touch ──────────────────────────────────────────
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (zoom <= 1) return;
+    dragRef.current  = true;
+    startRef.current = { mx: e.touches[0].clientX, my: e.touches[0].clientY, ox: offset.x, oy: offset.y };
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!dragRef.current) return;
+    e.preventDefault();
+    setOffset({
+      x: startRef.current.ox + (e.touches[0].clientX - startRef.current.mx),
+      y: startRef.current.oy + (e.touches[0].clientY - startRef.current.my),
+    });
+  };
+  const onTouchEnd = () => { dragRef.current = false; };
+
+  React.useEffect(() => {
+    if (!filename) { setFailed(true); return undefined; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get(`/crm-nativo/media/${encodeURIComponent(filename)}`, { responseType: 'blob' });
+        if (!cancelled) setBlobUrl(URL.createObjectURL(res.data as Blob));
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [filename]);
+
+  const handleDownload = React.useCallback(() => {
+    if (!blobUrl || !filename) return;
+    const a = document.createElement('a');
+    a.href    = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, [blobUrl, filename]);
+
+  if (failed || !filename) return null;
+  if (!blobUrl) return <div className="w-32 h-20 bg-muted rounded-lg animate-pulse" />;
+
+  const isAudio = AUDIO_EXT_RE.test(filename);
+  if (isAudio) return <audio controls src={blobUrl} className="max-w-xs w-full" />;
+
+  return (
+    <>
+      {/* Miniatura clicable */}
+      <div className="relative group cursor-pointer" onClick={() => setOpen(true)}>
+        <img
+          src={blobUrl}
+          alt="Imagen"
+          className="max-w-[200px] max-h-[160px] w-auto h-auto object-cover rounded-xl shadow-md border border-white/10"
+        />
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-xl">
+          <ZoomIn className="w-6 h-6 text-white drop-shadow-lg" />
+        </div>
+      </div>
+
+      {/* Modal flotante */}
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/90 backdrop-blur-sm p-4"
+          onClick={closeModal}
+        >
+          <div
+            className="relative bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden max-w-[92vw] max-h-[92vh]"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Barra superior */}
+            <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-zinc-800 shrink-0">
+              <span className="text-xs text-zinc-400 font-mono truncate max-w-[160px]">{filename}</span>
+              <div className="flex items-center gap-1">
+                {/* Controles de zoom */}
+                <button
+                  onClick={zoomOut}
+                  disabled={zoom <= 0.25}
+                  className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition disabled:opacity-30"
+                  title="Alejar"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={zoomReset}
+                  className="px-2 py-1 text-xs font-mono text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition min-w-[44px] text-center"
+                  title="Restablecer zoom"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  onClick={zoomIn}
+                  disabled={zoom >= 4}
+                  className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition disabled:opacity-30"
+                  title="Acercar"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={zoomReset}
+                  className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition"
+                  title="Ajustar a pantalla"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+
+                <div className="w-px h-5 bg-zinc-700 mx-1" />
+
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 active:scale-95 transition"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Descargar
+                </button>
+                <button
+                  onClick={closeModal}
+                  className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition"
+                  aria-label="Cerrar"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Imagen con zoom + drag */}
+            <div
+              className="flex items-center justify-center p-4"
+              style={{
+                minWidth:  '340px',
+                minHeight: '200px',
+                overflow:  zoom > 1 ? 'hidden' : 'auto',
+                cursor:    zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+              }}
+              onMouseDown={onMouseDown}
+              onMouseMove={onMouseMove}
+              onMouseUp={onMouseUp}
+              onMouseLeave={onMouseUp}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+            >
+              <img
+                src={blobUrl}
+                alt="Vista completa"
+                className="object-contain rounded-lg select-none"
+                style={{
+                  transform:       `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+                  transformOrigin: 'center center',
+                  transition:      isDragging ? 'none' : 'transform 0.15s ease',
+                  maxWidth:        zoom <= 1 ? '100%'  : 'none',
+                  maxHeight:       zoom <= 1 ? '78vh'  : 'none',
+                  userSelect:      'none',
+                }}
+                draggable={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 // ── Tipos ────────────────────────────────────────────────────────
 type WaEstado = 'INICIANDO' | 'REQUERIDO_QR' | 'CONECTADO' | 'DESCONECTADO';
@@ -397,20 +603,8 @@ export default function WhatsAppWebPage() {
                     <p className="text-[10px] opacity-70 font-medium mb-0.5">{msg.agente}</p>
                   )}
                   {(() => {
-                    const src = msg.mediaUrl || msg.body || '';
-                    if (/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(src)) {
-                      return (
-                        <img
-                          src={src}
-                          alt="Vácher de Pago"
-                          className="max-w-xs rounded-lg cursor-pointer hover:scale-105 transition-transform"
-                          onClick={() => window.open(src, '_blank')}
-                        />
-                      );
-                    }
-                    if (/^https?:\/\/.+\.(ogg|mp3|m4a|wav)(\?.*)?$/i.test(src)) {
-                      return <audio controls src={src} className="max-w-xs w-full" />;
-                    }
+                    const raw = msg.mediaUrl || msg.body || '';
+                    if (extractFilename(raw)) return <AuthedMedia raw={raw} />;
                     if (msg.body && msg.body !== '[media]') {
                       return (
                         <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
