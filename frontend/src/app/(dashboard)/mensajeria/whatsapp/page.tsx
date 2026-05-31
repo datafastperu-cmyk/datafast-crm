@@ -346,7 +346,10 @@ export default function WhatsAppWebPage() {
               <p className="text-sm font-medium text-foreground">
                 {chatActivo.nombreContacto || `+${chatActivo.telefono}`}
               </p>
-              <p className="text-[11px] text-muted-foreground font-mono">+{chatActivo.telefono}</p>
+              {/* Solo mostrar teléfono si parece un número real (≤13 dígitos) */}
+              {chatActivo.telefono && chatActivo.telefono.length <= 13 && (
+                <p className="text-[11px] text-muted-foreground font-mono">+{chatActivo.telefono}</p>
+              )}
             </div>
           </div>
         ) : (
@@ -393,20 +396,30 @@ export default function WhatsAppWebPage() {
                   {esOutbound && msg.agente && (
                     <p className="text-[10px] opacity-70 font-medium mb-0.5">{msg.agente}</p>
                   )}
-                  {msg.mediaUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(msg.mediaUrl) && (
-                    <img
-                      src={msg.mediaUrl}
-                      alt="imagen"
-                      className="max-w-[240px] rounded-lg mb-1 cursor-pointer"
-                      onClick={() => window.open(msg.mediaUrl!, '_blank')}
-                    />
-                  )}
-                  {msg.mediaUrl && /\.(ogg|mp3|m4a|wav)$/i.test(msg.mediaUrl) && (
-                    <audio controls src={msg.mediaUrl} className="w-full max-w-[240px] mb-1" />
-                  )}
-                  {msg.body && msg.body !== '[media]' && (
-                    <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
-                  )}
+                  {(() => {
+                    const src = msg.mediaUrl || msg.body || '';
+                    if (/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(src)) {
+                      return (
+                        <img
+                          src={src}
+                          alt="Vácher de Pago"
+                          className="max-w-xs rounded-lg cursor-pointer hover:scale-105 transition-transform"
+                          onClick={() => window.open(src, '_blank')}
+                        />
+                      );
+                    }
+                    if (/^https?:\/\/.+\.(ogg|mp3|m4a|wav)(\?.*)?$/i.test(src)) {
+                      return <audio controls src={src} className="max-w-xs w-full" />;
+                    }
+                    if (msg.body && msg.body !== '[media]') {
+                      return (
+                        <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                          {msg.body}
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className={cn('flex items-center gap-1 mt-0.5', esOutbound ? 'justify-end' : 'justify-start')}>
                     <span className="text-[10px] opacity-60">{formatHora(msg.createdAt)}</span>
                     {esOutbound && <CheckCheck className="w-3 h-3 opacity-60" />}

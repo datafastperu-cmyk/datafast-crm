@@ -77,6 +77,12 @@ async function bootstrap() {
     dotfiles: 'deny',
   });
 
+  // ── Media CRM WhatsApp (/media/uuid.jpg, /media/uuid.ogg) ────
+  app.useStaticAssets(path.join(process.cwd(), 'public'), {
+    prefix: '/media/',
+    dotfiles: 'deny',
+  });
+
   // ── WebSocket con Socket.IO ───────────────────────────────────
   app.useWebSocketAdapter(new IoAdapter(app));
 

@@ -5,8 +5,9 @@ import * as fs     from 'fs';
 import * as path   from 'path';
 import * as crypto from 'crypto';
 
-const MEDIA_DIR    = process.env.MEDIA_DIR    || '/app/uploads/media';
-const MEDIA_PUBURL = process.env.MEDIA_PUBURL || 'https://erp.datafastperu.com/uploads/media';
+// Ruta física donde se guardan los archivos de media (dentro del public del backend)
+const MEDIA_DIR    = process.env.MEDIA_DIR    || '/opt/datafast/backend/public/media';
+const MEDIA_PUBURL = process.env.MEDIA_PUBURL || 'https://erp.datafastperu.com/media';
 
 function mimeToExt(mime: string): string {
   if (mime.startsWith('image/jpeg'))    return '.jpg';
@@ -382,7 +383,8 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      const bodyText = msg.body || (mediaUrl ? '[media]' : '');
+      // Si hay media, el body lleva la URL pública para que el frontend la renderice directamente
+      const bodyText = mediaUrl ?? msg.body ?? '';
 
       const chat = await this.crmSvc.upsertChat(empresaId, {
         waChatId:       peerWid,

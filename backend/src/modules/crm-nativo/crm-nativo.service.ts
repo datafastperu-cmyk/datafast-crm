@@ -50,6 +50,9 @@ export class CrmNativoService {
     chat.ultimoMensaje  = dto.ultimoMensaje  ?? chat.ultimoMensaje;
     chat.ultimoMsgAt    = dto.ultimoMsgAt    ?? chat.ultimoMsgAt;
     chat.nombreContacto = dto.nombreContacto ?? chat.nombreContacto;
+    // Actualizar teléfono solo si el nuevo valor parece un número real (≤13 dígitos).
+    // Valores de 15+ dígitos son LIDs de Meta y no deben sobrescribir un número legítimo.
+    if (dto.telefono && dto.telefono.length <= 13) chat.telefono = dto.telefono;
     const addLeidos = Number.isFinite(dto.noLeidos) && dto.noLeidos > 0 ? dto.noLeidos : 0;
     if (addLeidos > 0) chat.noLeidos = (Number.isFinite(chat.noLeidos) ? chat.noLeidos : 0) + addLeidos;
 
