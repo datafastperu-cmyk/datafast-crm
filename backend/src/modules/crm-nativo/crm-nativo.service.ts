@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository }   from '@nestjs/typeorm';
-import { Repository }          from 'typeorm';
+import { Repository, In }     from 'typeorm';
 import { CrmChat }    from './entities/crm-chat.entity';
 import { CrmMensaje } from './entities/crm-mensaje.entity';
 
@@ -100,9 +100,31 @@ export class CrmNativoService {
   }
 
   // ── Listar mensajes de un chat ────────────────────────────────
-  async listarMensajes(chatId: string, limit = 50): Promise<CrmMensaje[]> {
+  // Acepta UUID de chat o número telefónico limpio.
+  // Fusiona mensajes de todos los chats con el mismo telefono para resolver
+  // el caso donde el mismo contacto tiene chats @lid y @c.us separados.
+  async listarMensajes(chatIdOrPhone: string, limit = 50): Promise<CrmMensaje[]> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chatIdOrPhone);
+
+    let chatIds: string[];
+    if (isUuid) {
+      const mainChat = await this.chatRepo.findOne({ where: { id: chatIdOrPhone } });
+      if (mainChat?.telefono) {
+        const related = await this.chatRepo.find({ where: { telefono: mainChat.telefono } });
+        chatIds = related.map(c => c.id);
+      } else {
+        chatIds = [chatIdOrPhone];
+      }
+    } else {
+      const cleaned = chatIdOrPhone.replace(/\D/g, '');
+      const chats = await this.chatRepo.find({ where: { telefono: cleaned } });
+      chatIds = chats.map(c => c.id);
+    }
+
+    if (chatIds.length === 0) return [];
+
     return this.mensajeRepo.find({
-      where: { chatId },
+      where: { chatId: In(chatIds) },
       order: { createdAt: 'ASC' },
       take:  limit,
     });

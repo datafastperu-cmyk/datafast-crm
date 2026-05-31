@@ -103,12 +103,12 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     const telefonoLimpio = telefono.replace(/\D/g, '');
     // Prefer the stored waChatId (may be @lid) over assuming @c.us
     const storedChatId = await this.crmSvc.findWaChatId(telefonoLimpio);
-    const chatId        = storedChatId ?? `${telefonoLimpio}@c.us`;
+    let chatId         = storedChatId ?? `${telefonoLimpio}@c.us`;
     const textoConFirma = `*${agente}:* ${texto}`;
 
-    // Si no tenemos el chat en DB, verificar que el número esté en WA
+    // Resolver el WID canónico vía WA API (puede devolver @lid en lugar de @c.us)
     if (!storedChatId) {
-      const waUser = await this.client.pupPage.evaluate(async (cid: string) => {
+      const resolvedWid = await this.client.pupPage.evaluate(async (cid: string) => {
         try {
           const w = window as any;
           const wid = w.require('WAWebWidFactory').createWid(cid);
@@ -117,9 +117,11 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         } catch { return null; }
       }, chatId).catch(() => null);
 
-      if (!waUser) {
+      if (!resolvedWid) {
         throw new Error(`El número ${telefono} no está disponible en WhatsApp`);
       }
+      // Usar el WID canónico (@lid si corresponde) para evitar duplicar chats @c.us vs @lid
+      chatId = resolvedWid;
     }
 
     const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
