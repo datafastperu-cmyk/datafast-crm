@@ -128,27 +128,33 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
     const msgId   = sentMsg?.id?._serialized ?? null;
 
-    // Registrar antes de await para que message_create lo vea de inmediato
+    // Registrar ANTES de cualquier await; se borra en el finally tras el DB save
     if (msgId) this.crmSentIds.add(msgId);
 
-    const chat = await this.crmSvc.upsertChat(empresaId, {
-      waChatId:       chatId,
-      telefono:       telefonoLimpio,
-      nombreContacto: null,
-      ultimoMensaje:  textoConFirma,
-      ultimoMsgAt:    new Date(),
-      noLeidos:       0,
-    });
+    try {
+      const chat = await this.crmSvc.upsertChat(empresaId, {
+        waChatId:       chatId,
+        telefono:       telefonoLimpio,
+        nombreContacto: null,
+        ultimoMensaje:  textoConFirma,
+        ultimoMsgAt:    new Date(),
+        noLeidos:       0,
+      });
 
-    const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
-      waMsgId:   msgId,
-      direction: 'OUTBOUND',
-      agente,
-      body:      textoConFirma,
-    });
+      const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
+        waMsgId:   msgId,
+        direction: 'OUTBOUND',
+        agente,
+        body:      textoConFirma,
+      });
 
-    this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
-    this.gateway.emitChatUpdate(chat);
+      this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
+      this.gateway.emitChatUpdate(chat);
+    } finally {
+      // Remover del Set solo después de que el DB save completó (o falló)
+      // Así cualquier disparo adicional de message_create sigue siendo ignorado
+      if (msgId) this.crmSentIds.delete(msgId);
+    }
 
     return { messageId: msgId };
   }
@@ -192,25 +198,29 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
     const tipoLabel = filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'Imagen';
 
-    const chat = await this.crmSvc.upsertChat(empresaId, {
-      waChatId:       chatId,
-      telefono:       telefonoLimpio,
-      nombreContacto: null,
-      ultimoMensaje:  `[${tipoLabel}] ${captionTexto || ''}`.trim(),
-      ultimoMsgAt:    new Date(),
-      noLeidos:       0,
-    });
+    try {
+      const chat = await this.crmSvc.upsertChat(empresaId, {
+        waChatId:       chatId,
+        telefono:       telefonoLimpio,
+        nombreContacto: null,
+        ultimoMensaje:  `[${tipoLabel}] ${captionTexto || ''}`.trim(),
+        ultimoMsgAt:    new Date(),
+        noLeidos:       0,
+      });
 
-    const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
-      waMsgId:   msgId,
-      direction: 'OUTBOUND',
-      agente,
-      body:      caption,
-      mediaUrl:  filename,
-    });
+      const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
+        waMsgId:   msgId,
+        direction: 'OUTBOUND',
+        agente,
+        body:      caption,
+        mediaUrl:  filename,
+      });
 
-    this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
-    this.gateway.emitChatUpdate(chat);
+      this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
+      this.gateway.emitChatUpdate(chat);
+    } finally {
+      if (msgId) this.crmSentIds.delete(msgId);
+    }
 
     return { messageId: msgId, filename };
   }
@@ -433,9 +443,10 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const waMsgId = msg.id?._serialized ?? null;
 
       if (isOutbound) {
-        // Camino rápido: el CRM registró el ID antes de cualquier await
+        // Camino rápido: el CRM registró el ID antes de cualquier await.
+        // NO borrar del Set aquí — el finally de enviarMensaje lo borra después del DB save.
+        // Así el segundo disparo de message_create también encuentra el ID en el Set.
         if (waMsgId && this.crmSentIds.has(waMsgId)) {
-          this.crmSentIds.delete(waMsgId);
           return;
         }
         // Fallback: si el mensaje ya existe en BD (enviado por el CRM), ignorar
