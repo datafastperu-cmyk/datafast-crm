@@ -374,11 +374,12 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
 
   // Vista previa en vivo
   React.useEffect(() => {
-    if (!cliente || !contrato || !plantillaId) { setPreview(''); return undefined; }
+    if (!cliente || !plantillaId) { setPreview(''); return undefined; }
     const tpl = plantillas.find(p => p.id === plantillaId);
     if (!tpl) { setPreview(''); return undefined; }
-    const planNombre = planes.find(p => p.id === contrato.planId)?.nombre ?? '';
-    setPreview(resolverVariables(tpl.contenido, cliente, contrato, planNombre));
+    const contratoData: ContratoItem = contrato ?? { planId: '', precioFinal: 0, precioMensual: 0 };
+    const planNombre = contrato ? (planes.find(p => p.id === contrato.planId)?.nombre ?? '') : '';
+    setPreview(resolverVariables(tpl.contenido, cliente, contratoData, planNombre));
   }, [cliente, contrato, plantillaId, plantillas, planes]);
 
   const seleccionarCliente = (c: ClienteItem) => {
@@ -484,7 +485,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
             <select
               value={plantillaId}
               onChange={e => setPlantillaId(e.target.value)}
-              disabled={plantillas.length === 0}
+              disabled={!cliente || plantillas.length === 0}
               className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-700 bg-zinc-800 text-white focus:outline-none focus:ring-1 focus:ring-primary/60 disabled:opacity-40"
             >
               <option value="">— Seleccionar plantilla —</option>
