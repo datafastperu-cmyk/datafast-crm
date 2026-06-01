@@ -340,7 +340,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
 
   // Búsqueda de clientes con debounce 300 ms
   React.useEffect(() => {
-    if (busq.trim().length < 2) { setSugerencias([]); setShowSug(false); return; }
+    if (busq.trim().length < 2) { setSugerencias([]); setShowSug(false); return undefined; }
     setBuscando(true);
     const t = setTimeout(async () => {
       try {
@@ -357,7 +357,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
 
   // Contrato activo cuando cambia el cliente
   React.useEffect(() => {
-    if (!cliente) { setContrato(null); return; }
+    if (!cliente) { setContrato(null); return undefined; }
     let cancelled = false;
     setCargandoCtr(true);
     api.get<{ data: ContratoItem[] }>(`/contratos/cliente/${cliente.id}`)
@@ -374,9 +374,9 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
 
   // Vista previa en vivo
   React.useEffect(() => {
-    if (!cliente || !contrato || !plantillaId) { setPreview(''); return; }
+    if (!cliente || !contrato || !plantillaId) { setPreview(''); return undefined; }
     const tpl = plantillas.find(p => p.id === plantillaId);
-    if (!tpl) { setPreview(''); return; }
+    if (!tpl) { setPreview(''); return undefined; }
     const planNombre = planes.find(p => p.id === contrato.planId)?.nombre ?? '';
     setPreview(resolverVariables(tpl.contenido, cliente, contrato, planNombre));
   }, [cliente, contrato, plantillaId, plantillas, planes]);
