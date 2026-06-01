@@ -67,7 +67,10 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   private client: any = null;
   private restarting  = false;
   // waMsgIds de mensajes enviados por el CRM — para ignorarlos en message_create
-  private readonly crmSentIds = new Set<string>();
+  private readonly crmSentIds    = new Set<string>();
+  // chatIds con envío CRM en vuelo — registrado ANTES de sendMessage para cubrir
+  // el caso en que message_create dispara antes de que sendMessage resuelva
+  private readonly sendingByChatId = new Set<string>();
 
   constructor(
     private readonly crmSvc:  CrmNativoService,
@@ -125,10 +128,11 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       chatId = resolvedWid;
     }
 
+    // Registrar chatId en lock ANTES de sendMessage — message_create puede disparar
+    // mientras sendMessage aún no resolvió, antes de que tengamos el msgId
+    this.sendingByChatId.add(chatId);
     const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
     const msgId   = sentMsg?.id?._serialized ?? null;
-
-    // Registrar ANTES de cualquier await; se borra en el finally tras el DB save
     if (msgId) this.crmSentIds.add(msgId);
 
     try {
@@ -151,8 +155,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
       this.gateway.emitChatUpdate(chat);
     } finally {
-      // Remover del Set solo después de que el DB save completó (o falló)
-      // Así cualquier disparo adicional de message_create sigue siendo ignorado
+      this.sendingByChatId.delete(chatId);
       if (msgId) this.crmSentIds.delete(msgId);
     }
 
@@ -192,6 +195,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
     const media   = MessageMedia.fromFilePath(rutaFisica);
     const caption = `*${agente}:* ${captionTexto || ''}`.trimEnd();
+    this.sendingByChatId.add(chatId);
     const sentMsg = await this.client.sendMessage(chatId, media, { caption });
     const msgId   = sentMsg?.id?._serialized ?? null;
     if (msgId) this.crmSentIds.add(msgId);
@@ -219,6 +223,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
       this.gateway.emitChatUpdate(chat);
     } finally {
+      this.sendingByChatId.delete(chatId);
       if (msgId) this.crmSentIds.delete(msgId);
     }
 
@@ -420,9 +425,18 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     try {
       const isOutbound = !!msg.fromMe;
       const peerWid    = isOutbound ? (msg.to as string) : (msg.from as string);
+      const waMsgId    = msg.id?._serialized ?? null;
+
+      // Filtro CRM ANTES de cualquier await:
+      // sendingByChatId cubre el caso en que message_create dispara ANTES de que sendMessage resuelva
+      // crmSentIds cubre el caso en que ya tenemos el msgId pero el DB save aún no terminó
+      if (isOutbound) {
+        if (this.sendingByChatId.has(peerWid)) return;
+        if (waMsgId && this.crmSentIds.has(waMsgId)) return;
+      }
 
       // Extraer número real: primero desde from/to, luego resolver LID si aplica
-      const rawId = isOutbound ? (msg.to as string) : (msg.from as string);
+      const rawId = peerWid;
       let telefonoReal = rawId.split('@')[0];
 
       // Para cuentas Meta migradas a LID: getContactById puede devolver contact.number real
@@ -440,16 +454,8 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const nombre   = contact?.pushname || contact?.name || null;
       const telefono = telefonoReal.replace(/\D/g, '');
 
-      const waMsgId = msg.id?._serialized ?? null;
-
       if (isOutbound) {
-        // Camino rápido: el CRM registró el ID antes de cualquier await.
-        // NO borrar del Set aquí — el finally de enviarMensaje lo borra después del DB save.
-        // Así el segundo disparo de message_create también encuentra el ID en el Set.
-        if (waMsgId && this.crmSentIds.has(waMsgId)) {
-          return;
-        }
-        // Fallback: si el mensaje ya existe en BD (enviado por el CRM), ignorar
+        // Fallback DB: cubre el caso extremo donde llegó tras liberar ambos locks
         if (waMsgId) {
           const existing = await this.crmSvc.findMensajePorWaMsgId(waMsgId);
           if (existing) return;
