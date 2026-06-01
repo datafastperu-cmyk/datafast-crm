@@ -66,6 +66,8 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WaClientService.name);
   private client: any = null;
   private restarting  = false;
+  // waMsgIds de mensajes enviados por el CRM — para ignorarlos en message_create
+  private readonly crmSentIds = new Set<string>();
 
   constructor(
     private readonly crmSvc:  CrmNativoService,
@@ -126,7 +128,9 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
     const msgId   = sentMsg?.id?._serialized ?? null;
 
-    // Persistir el mensaje saliente
+    // Registrar antes de await para que message_create lo vea de inmediato
+    if (msgId) this.crmSentIds.add(msgId);
+
     const chat = await this.crmSvc.upsertChat(empresaId, {
       waChatId:       chatId,
       telefono:       telefonoLimpio,
@@ -136,15 +140,16 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       noLeidos:       0,
     });
 
-    await this.crmSvc.guardarMensaje(empresaId, chat.id, {
+    const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
       waMsgId:   msgId,
       direction: 'OUTBOUND',
       agente,
       body:      textoConFirma,
     });
 
-    // No emitimos WS aquí: message_create lo hará como único emisor.
-    // procesarMensajeEntrante detectará el waMsgId ya guardado y solo emite.
+    this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
+    this.gateway.emitChatUpdate(chat);
+
     return { messageId: msgId };
   }
 
@@ -183,6 +188,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     const caption = `*${agente}:* ${captionTexto || ''}`.trimEnd();
     const sentMsg = await this.client.sendMessage(chatId, media, { caption });
     const msgId   = sentMsg?.id?._serialized ?? null;
+    if (msgId) this.crmSentIds.add(msgId);
 
     const tipoLabel = filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'Imagen';
 
@@ -424,16 +430,12 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const nombre   = contact?.pushname || contact?.name || null;
       const telefono = telefonoReal.replace(/\D/g, '');
 
-      // Deduplicación: si enviarMensaje ya guardó este waMsgId, solo emitimos WS y salimos
       const waMsgId = msg.id?._serialized ?? null;
-      if (isOutbound && waMsgId) {
-        const existing = await this.crmSvc.findMensajePorWaMsgId(waMsgId);
-        if (existing) {
-          const existingChat = await this.crmSvc.findChat(existing.chatId);
-          this.gateway.emitMensaje({ chatId: existing.chatId, mensaje: existing });
-          if (existingChat) this.gateway.emitChatUpdate(existingChat);
-          return;
-        }
+
+      // Si fue enviado por el CRM (enviarMensaje/enviarMedia), ya se emitió — ignorar
+      if (isOutbound && waMsgId && this.crmSentIds.has(waMsgId)) {
+        this.crmSentIds.delete(waMsgId);
+        return;
       }
 
       const empresaId = await this.resolverEmpresaId();
