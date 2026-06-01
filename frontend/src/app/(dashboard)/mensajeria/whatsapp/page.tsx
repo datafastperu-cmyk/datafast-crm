@@ -306,10 +306,10 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
   const [contrato,    setContrato]    = React.useState<ContratoItem | null>(null);
   const [plantillas,  setPlantillas]  = React.useState<PlantillaItem[]>([]);
   const [planes,      setPlanes]      = React.useState<PlanItem[]>([]);
-  const [plantillaId, setPlantillaId] = React.useState('');
-  const [preview,     setPreview]     = React.useState('');
-  const [buscando,    setBuscando]    = React.useState(false);
-  const [cargandoCtr, setCargandoCtr] = React.useState(false);
+  const [plantillaId,   setPlantillaId]   = React.useState('');
+  const [previewEdit,   setPreviewEdit]   = React.useState('');
+  const [buscando,      setBuscando]      = React.useState(false);
+  const [cargandoCtr,   setCargandoCtr]   = React.useState(false);
   const busqRef = React.useRef<HTMLInputElement>(null);
 
   // Carga plantillas + planes al abrir
@@ -332,7 +332,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
     if (!open) {
       setBusq(''); setSugerencias([]); setShowSug(false);
       setCliente(null); setContrato(null);
-      setPlantillaId(''); setPreview('');
+      setPlantillaId(''); setPreviewEdit('');
     } else {
       setTimeout(() => busqRef.current?.focus(), 60);
     }
@@ -340,6 +340,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
 
   // Búsqueda de clientes con debounce 300 ms
   React.useEffect(() => {
+    if (cliente) return undefined;           // ya seleccionado — no re-buscar
     if (busq.trim().length < 2) { setSugerencias([]); setShowSug(false); return undefined; }
     setBuscando(true);
     const t = setTimeout(async () => {
@@ -353,7 +354,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
       finally   { setBuscando(false); }
     }, 300);
     return () => clearTimeout(t);
-  }, [busq]);
+  }, [busq, cliente]);
 
   // Contrato activo cuando cambia el cliente
   React.useEffect(() => {
@@ -372,15 +373,20 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
     return () => { cancelled = true; };
   }, [cliente]);
 
-  // Vista previa en vivo
-  React.useEffect(() => {
-    if (!cliente || !plantillaId) { setPreview(''); return undefined; }
+  // Preview computado de forma sincrónica
+  const previewComputado = React.useMemo(() => {
+    if (!cliente || !plantillaId) return '';
     const tpl = plantillas.find(p => p.id === plantillaId);
-    if (!tpl) { setPreview(''); return undefined; }
+    if (!tpl) return '';
     const contratoData: ContratoItem = contrato ?? { planId: '', precioFinal: 0, precioMensual: 0 };
     const planNombre = contrato ? (planes.find(p => p.id === contrato.planId)?.nombre ?? '') : '';
-    setPreview(resolverVariables(tpl.contenido, cliente, contratoData, planNombre));
+    return resolverVariables(tpl.contenido, cliente, contratoData, planNombre);
   }, [cliente, contrato, plantillaId, plantillas, planes]);
+
+  // Sincroniza el edit state cuando cambia el preview computado
+  React.useEffect(() => {
+    setPreviewEdit(previewComputado);
+  }, [previewComputado]);
 
   const seleccionarCliente = (c: ClienteItem) => {
     setCliente(c);
@@ -389,8 +395,8 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
     setShowSug(false);
   };
 
-  const planActivo    = contrato ? planes.find(p => p.id === contrato.planId) : null;
-  const previewTexto  = preview || (plantillaId ? (plantillas.find(p => p.id === plantillaId)?.contenido ?? '') : '');
+  const planActivo   = contrato ? planes.find(p => p.id === contrato.planId) : null;
+  const previewTexto = previewEdit;
 
   if (!open) return null;
 
@@ -430,7 +436,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
                   setBusq(e.target.value);
                   if (cliente) { setCliente(null); setContrato(null); }
                 }}
-                onBlur={() => setTimeout(() => setShowSug(false), 150)}
+                onBlur={() => setShowSug(false)}
                 onFocus={() => { if (sugerencias.length > 0) setShowSug(true); }}
                 placeholder="Nombre, número de documento o teléfono…"
                 className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-primary/60"
@@ -501,13 +507,13 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
               <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">
                 3 · Vista previa en vivo
               </label>
-              {preview && (
+              {previewComputado && (
                 <span className="text-[10px] text-emerald-400 font-medium">Variables resueltas ✓</span>
               )}
             </div>
             <textarea
               value={previewTexto}
-              onChange={e => setPreview(e.target.value)}
+              onChange={e => setPreviewEdit(e.target.value)}
               rows={6}
               className="w-full px-3 py-2.5 text-xs rounded-lg border border-zinc-700 bg-zinc-800/60 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-primary/60 resize-none leading-relaxed"
               placeholder="La plantilla renderizada aparecerá aquí al seleccionar un cliente y una plantilla…"
