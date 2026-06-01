@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Plus, FileText, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toaster';
@@ -138,35 +138,51 @@ export default function PlantillasConfigPage() {
   const [nombreNueva, setNombreNueva] = useState('');
   const [facturacion, setFact] = useState<FacturacionConfig>({ ...DEFAULT_FACTURACION });
   const [notificaciones, setNotif] = useState<NotificacionesConfig>({ ...DEFAULT_NOTIFICACIONES });
+  const initializedRef = useRef(false);
 
-  // Auto-preselect "Nueva Factura Generada" when templates load and no value is set
-  useEffect(() => {
-    if (!plantillasMsg.length) return;
-    const dflt = plantillasMsg.find(p => p.nombre === 'Nueva Factura Generada');
-    if (!dflt) return;
-    setFact(prev => ({
-      ...prev,
-      plantillaAvisoFactura: prev.plantillaAvisoFactura || dflt.id,
-    }));
-  }, [plantillasMsg]);
+  // Helper: resolves a template ID by exact name from the messaging list
+  function findMsgId(nombre: string): string {
+    return plantillasMsg.find(p => p.nombre === nombre)?.id ?? '';
+  }
 
-  // Cuando cargan las plantillas, selecciona la primera
+  // Merge saved config with smart defaults for unset template fields
+  function buildFact(saved: FacturacionConfig): FacturacionConfig {
+    return {
+      ...DEFAULT_FACTURACION,
+      ...saved,
+      plantillaAvisoFactura: saved.plantillaAvisoFactura || findMsgId('Nueva Factura Generada'),
+    };
+  }
+  function buildNotif(saved: NotificacionesConfig): NotificacionesConfig {
+    return {
+      ...DEFAULT_NOTIFICACIONES,
+      ...saved,
+      plantillaRecordatorio1: saved.plantillaRecordatorio1 || findMsgId('Aviso de Pago #1'),
+      plantillaRecordatorio2: saved.plantillaRecordatorio2 || findMsgId('Aviso de Pago #2'),
+      plantillaRecordatorio3: saved.plantillaRecordatorio3 || findMsgId('Aviso de Pago #3 (Último aviso)'),
+    };
+  }
+
+  // Wait for BOTH datasets before initializing — avoids the async race condition
   useEffect(() => {
-    if (plantillas.length > 0 && selId === null) {
-      const primera = plantillas[0];
-      setSelId(primera.id);
-      setFact({ ...DEFAULT_FACTURACION, ...primera.facturacion });
-      setNotif({ ...DEFAULT_NOTIFICACIONES, ...primera.notificaciones });
-    }
-  }, [plantillas, selId]);
+    if (!plantillas.length || !plantillasMsg.length) return;
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    const primera = plantillas[0];
+    setSelId(primera.id);
+    setFact(buildFact(primera.facturacion));
+    setNotif(buildNotif(primera.notificaciones));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plantillas, plantillasMsg]);
 
   // Cuando cambia la selección, carga sus datos
   function seleccionarPlantilla(id: string) {
     const p = plantillas.find(x => x.id === id);
     if (!p) return;
     setSelId(id);
-    setFact({ ...DEFAULT_FACTURACION, ...p.facturacion });
-    setNotif({ ...DEFAULT_NOTIFICACIONES, ...p.notificaciones });
+    setFact(buildFact(p.facturacion));
+    setNotif(buildNotif(p.notificaciones));
   }
 
   const mutUpdate = useMutation({
