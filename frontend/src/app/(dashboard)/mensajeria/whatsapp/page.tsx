@@ -306,10 +306,10 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
   const [contrato,    setContrato]    = React.useState<ContratoItem | null>(null);
   const [plantillas,  setPlantillas]  = React.useState<PlantillaItem[]>([]);
   const [planes,      setPlanes]      = React.useState<PlanItem[]>([]);
-  const [plantillaId,   setPlantillaId]   = React.useState('');
-  const [previewEdit,   setPreviewEdit]   = React.useState('');
-  const [buscando,      setBuscando]      = React.useState(false);
-  const [cargandoCtr,   setCargandoCtr]   = React.useState(false);
+  const [plantillaId,     setPlantillaId]     = React.useState('');
+  const [previewOverride, setPreviewOverride] = React.useState<string | null>(null);
+  const [buscando,        setBuscando]        = React.useState(false);
+  const [cargandoCtr,     setCargandoCtr]     = React.useState(false);
   const busqRef = React.useRef<HTMLInputElement>(null);
 
   // Carga plantillas + planes al abrir
@@ -332,7 +332,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
     if (!open) {
       setBusq(''); setSugerencias([]); setShowSug(false);
       setCliente(null); setContrato(null);
-      setPlantillaId(''); setPreviewEdit('');
+      setPlantillaId(''); setPreviewOverride(null);
     } else {
       setTimeout(() => busqRef.current?.focus(), 60);
     }
@@ -383,9 +383,9 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
     return resolverVariables(tpl.contenido, cliente, contratoData, planNombre);
   }, [cliente, contrato, plantillaId, plantillas, planes]);
 
-  // Sincroniza el edit state cuando cambia el preview computado
+  // Cuando el preview computado cambia (nuevo cliente/plantilla), descarta edición manual
   React.useEffect(() => {
-    setPreviewEdit(previewComputado);
+    setPreviewOverride(null);
   }, [previewComputado]);
 
   const seleccionarCliente = (c: ClienteItem) => {
@@ -396,7 +396,8 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
   };
 
   const planActivo   = contrato ? planes.find(p => p.id === contrato.planId) : null;
-  const previewTexto = previewEdit;
+  // previewOverride ?? previewComputado: el computado está disponible en el mismo render
+  const previewTexto = previewOverride ?? previewComputado;
 
   if (!open) return null;
 
@@ -513,7 +514,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
             </div>
             <textarea
               value={previewTexto}
-              onChange={e => setPreviewEdit(e.target.value)}
+              onChange={e => setPreviewOverride(e.target.value)}
               rows={6}
               className="w-full px-3 py-2.5 text-xs rounded-lg border border-zinc-700 bg-zinc-800/60 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-primary/60 resize-none leading-relaxed"
               placeholder="La plantilla renderizada aparecerá aquí al seleccionar un cliente y una plantilla…"
