@@ -6,6 +6,7 @@ import { Save, Plus, FileText, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toaster';
 import { plantillasAbonadosApi } from '@/lib/api/plantillas-abonados';
 import type { PlantillaAbonado, FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
+import { plantillasApi } from '@/lib/api/plantillas';
 import { parseApiError } from '@/lib/utils';
 
 // ─── Defaults ────────────────────────────────────────────────────
@@ -19,6 +20,7 @@ const DEFAULT_NOTIFICACIONES: NotificacionesConfig = {
   avisoNuevaFactura: 'desactivado', avisoPantalla: 'desactivado',
   recordatoriosPago: 'desactivado', recordatorio1: 'desactivado',
   recordatorio2: 'desactivado', recordatorio3: 'desactivado',
+  plantillaRecordatorio1: '', plantillaRecordatorio2: '', plantillaRecordatorio3: '',
 };
 
 // ─── Opciones ─────────────────────────────────────────────────────
@@ -123,6 +125,11 @@ export default function PlantillasConfigPage() {
   const { data: plantillas = [], isLoading } = useQuery<PlantillaAbonado[]>({
     queryKey: ['plantillas-abonados'],
     queryFn: plantillasAbonadosApi.list,
+  });
+
+  const { data: plantillasMsg = [] } = useQuery({
+    queryKey: ['plantillas', 'whatsapp'],
+    queryFn: () => plantillasApi.listar('whatsapp'),
   });
 
   const [selId, setSelId] = useState<string | null>(null);
@@ -383,13 +390,26 @@ export default function PlantillasConfigPage() {
                   <option value="ambos">WhatsApp + SMS</option>
                 </select>
               </Field>
-              {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => (
-                <Field key={key} label={`Recordatorio #${i + 1}`}>
-                  <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
-                    {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </Field>
-              ))}
+              {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => {
+                const plantillaKey = `plantillaRecordatorio${i + 1}` as keyof NotificacionesConfig;
+                return (
+                  <Field key={key} label={`Recordatorio #${i + 1}`}>
+                    <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
+                      {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    <select
+                      className={selectCls}
+                      value={(notificaciones[plantillaKey] as string) ?? ''}
+                      onChange={e => updateN(plantillaKey, e.target.value)}
+                    >
+                      <option value="">— Sin plantilla específica —</option>
+                      {plantillasMsg.map(p => (
+                        <option key={p.id} value={p.id}>{p.nombre}</option>
+                      ))}
+                    </select>
+                  </Field>
+                );
+              })}
               <p className="text-xs text-orange-500 pl-[172px] pt-1">
                 * Días antes/después del vencimiento de una factura
               </p>

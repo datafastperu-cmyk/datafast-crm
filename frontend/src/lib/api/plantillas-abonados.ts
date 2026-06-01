@@ -18,12 +18,15 @@ export interface FacturacionConfig {
 }
 
 export interface NotificacionesConfig {
-  avisoNuevaFactura: string;
-  avisoPantalla:     string;
-  recordatoriosPago: string;
-  recordatorio1:     string;
-  recordatorio2:     string;
-  recordatorio3:     string;
+  avisoNuevaFactura:      string;
+  avisoPantalla:          string;
+  recordatoriosPago:      string;
+  recordatorio1:          string;
+  recordatorio2:          string;
+  recordatorio3:          string;
+  plantillaRecordatorio1?: string;
+  plantillaRecordatorio2?: string;
+  plantillaRecordatorio3?: string;
 }
 
 export interface PlantillaAbonado {
