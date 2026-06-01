@@ -6,13 +6,15 @@ import {
   MessageSquare, Search, Send, Loader2,
   Wifi, WifiOff, RefreshCw, CheckCheck, User,
   Download, X, ZoomIn, ZoomOut, Maximize2,
+  Paperclip, FileText,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { cn } from '@/lib/utils';
 
-const MEDIA_EXT_RE = /\.(jpg|jpeg|png|gif|webp|ogg|mp3|m4a|wav|mp4)(\?.*)?$/i;
+const MEDIA_EXT_RE = /\.(jpg|jpeg|png|gif|webp|ogg|mp3|m4a|wav|mp4|pdf)(\?.*)?$/i;
 const AUDIO_EXT_RE = /\.(ogg|mp3|m4a|wav)(\?.*)?$/i;
+const PDF_EXT_RE   = /\.pdf(\?.*)?$/i;
 
 function extractFilename(raw: string): string | null {
   const name = raw.includes('://') ? raw.split('/').pop()!.split('?')[0] : raw;
@@ -97,6 +99,26 @@ function AuthedMedia({ raw }: { raw: string }) {
 
   const isAudio = AUDIO_EXT_RE.test(filename);
   if (isAudio) return <audio controls src={blobUrl} className="max-w-xs w-full" />;
+
+  const isPdf = PDF_EXT_RE.test(filename);
+  if (isPdf) {
+    return (
+      <div className="flex items-center gap-2 bg-zinc-800/80 rounded-xl px-3 py-2.5 min-w-[180px] max-w-[240px] border border-zinc-700/50">
+        <FileText className="w-8 h-8 text-rose-400 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-zinc-200 truncate">{filename}</p>
+          <p className="text-[10px] text-zinc-500 mt-0.5">Documento PDF</p>
+        </div>
+        <button
+          onClick={handleDownload}
+          className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded-lg transition flex-shrink-0"
+          title="Descargar PDF"
+        >
+          <Download className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -286,9 +308,56 @@ export default function WhatsAppWebPage() {
   const [texto,     setTexto]     = useState('');
   const [enviando,  setEnviando]  = useState(false);
   const [cargando,  setCargando]  = useState(true);
+  const [archivo,        setArchivo]        = useState<File | null>(null);
+  const [archivoPreview, setArchivoPreview] = useState<string | null>(null);
+  const [uploadError,    setUploadError]    = useState<string | null>(null);
 
-  const mensajesRef = useRef<HTMLDivElement>(null);
-  const inputRef    = useRef<HTMLInputElement>(null);
+  const mensajesRef  = useRef<HTMLDivElement>(null);
+  const inputRef     = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Handlers de archivo adjunto ─────────────────────────────
+  const limpiarArchivo = useCallback(() => {
+    setArchivoPreview(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setArchivo(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('El archivo supera el límite de 10 MB permitido por el sistema');
+      e.target.value = '';
+      return;
+    }
+    setUploadError(null);
+    setArchivoPreview(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setArchivo(file);
+    if (file.type.startsWith('image/')) {
+      setArchivoPreview(URL.createObjectURL(file));
+    }
+  }, []);
+
+  // enviarArchivo se define con texto/chatActivo pasados por parámetro para evitar stale closure
+  const enviarArchivoFn = useCallback(async (chat: { telefono: string }, caption: string) => {
+    if (!archivo) return;
+    setEnviando(true);
+    try {
+      const fd = new FormData();
+      fd.append('file',     archivo);
+      fd.append('telefono', chat.telefono);
+      if (caption) fd.append('caption', caption);
+      await api.post('/crm-nativo/enviar-media', fd);
+      limpiarArchivo();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? 'Error al enviar el archivo. Inténtalo de nuevo.';
+      setUploadError(msg);
+    } finally {
+      setEnviando(false);
+      inputRef.current?.focus();
+    }
+  }, [archivo, limpiarArchivo]);
 
   // ── Scroll al fondo de mensajes ──────────────────────────────
   const scrollFondo = useCallback(() => {
@@ -376,7 +445,14 @@ export default function WhatsAppWebPage() {
 
   // ── Enviar mensaje ────────────────────────────────────────────
   const enviar = async () => {
-    if (!texto.trim() || !chatActivo || enviando) return;
+    if (!chatActivo || enviando) return;
+    if (archivo) {
+      const caption = texto.trim();
+      setTexto('');
+      await enviarArchivoFn(chatActivo, caption);
+      return;
+    }
+    if (!texto.trim()) return;
     const textoLocal = texto.trim();
     setTexto('');
     setEnviando(true);
@@ -624,32 +700,82 @@ export default function WhatsAppWebPage() {
           })}
         </div>
 
-        {/* Caja de texto */}
+        {/* Caja de texto + adjuntos */}
         {chatActivo && (
-          <div className="px-4 py-3 border-t border-border flex items-center gap-2">
-            <input
-              ref={inputRef}
-              type="text"
-              value={texto}
-              onChange={e => setTexto(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={`Mensaje como ${usuario?.nombreCompleto ?? 'agente'}…`}
-              className={cn(INPUT_CLS, 'flex-1')}
-              disabled={enviando}
-            />
-            <button
-              onClick={enviar}
-              disabled={!texto.trim() || enviando}
-              className={cn(
-                'flex items-center justify-center w-9 h-9 rounded-lg transition-colors flex-shrink-0',
-                'bg-primary text-primary-foreground hover:bg-primary/90',
-                'disabled:opacity-40 disabled:cursor-not-allowed',
-              )}
-            >
-              {enviando
-                ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <Send    className="w-4 h-4" />}
-            </button>
+          <div className="border-t border-border flex flex-col">
+
+            {/* Banner de error */}
+            {uploadError && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-rose-500/15 border-b border-rose-500/20 text-rose-400 text-xs">
+                <span className="flex-1">{uploadError}</span>
+                <button onClick={() => setUploadError(null)} className="p-0.5 hover:text-rose-300 transition">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Preview del archivo seleccionado */}
+            {archivo && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-muted/30 border-b border-border">
+                {archivoPreview ? (
+                  <img src={archivoPreview} alt="preview" className="w-10 h-10 object-cover rounded-lg flex-shrink-0" />
+                ) : (
+                  <div className="flex items-center gap-1.5 bg-zinc-800 rounded-lg px-2 py-1.5 min-w-0">
+                    <FileText className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                    <span className="text-xs text-zinc-300 truncate max-w-[180px]">{archivo.name}</span>
+                  </div>
+                )}
+                <button
+                  onClick={limpiarArchivo}
+                  className="ml-auto p-1 text-muted-foreground hover:text-foreground transition"
+                  title="Quitar archivo"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Fila de input */}
+            <div className="px-4 py-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/40 rounded-lg transition flex-shrink-0"
+                title="Adjuntar imagen o PDF (máx. 10 MB)"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <input
+                ref={inputRef}
+                type="text"
+                value={texto}
+                onChange={e => setTexto(e.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder={archivo ? 'Descripción (opcional)…' : `Mensaje como ${usuario?.nombreCompleto ?? 'agente'}…`}
+                className={cn(INPUT_CLS, 'flex-1')}
+                disabled={enviando}
+              />
+              <button
+                onClick={enviar}
+                disabled={(!texto.trim() && !archivo) || enviando}
+                className={cn(
+                  'flex items-center justify-center w-9 h-9 rounded-lg transition-colors flex-shrink-0',
+                  'bg-primary text-primary-foreground hover:bg-primary/90',
+                  'disabled:opacity-40 disabled:cursor-not-allowed',
+                )}
+              >
+                {enviando
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Send    className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
         )}
       </div>

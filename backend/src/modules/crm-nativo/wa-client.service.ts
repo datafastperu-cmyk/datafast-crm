@@ -6,8 +6,7 @@ import * as path   from 'path';
 import * as crypto from 'crypto';
 
 // Ruta física donde se guardan los archivos de media (dentro del public del backend)
-const MEDIA_DIR    = process.env.MEDIA_DIR    || '/opt/datafast/backend/public/media';
-const MEDIA_PUBURL = process.env.MEDIA_PUBURL || 'https://erp.datafastperu.com/media';
+const MEDIA_DIR = process.env.MEDIA_DIR || '/opt/datafast/backend/public/crm_whatsapp';
 
 function mimeToExt(mime: string): string {
   if (mime.startsWith('image/jpeg'))    return '.jpg';
@@ -30,7 +29,7 @@ import { WaStateService }   from './wa-state.service';
 // whatsapp-web.js + qrcode importados dinámicamente para evitar
 // errores de arranque si la librería aún no está instalada.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const QRCode = require('qrcode');
 
@@ -147,6 +146,67 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     // No emitimos WS aquí: message_create lo hará como único emisor.
     // procesarMensajeEntrante detectará el waMsgId ya guardado y solo emite.
     return { messageId: msgId };
+  }
+
+  // ── Enviar media (imagen / PDF) desde el CRM ──────────────────
+  async enviarMedia(
+    rutaFisica:   string,
+    filename:     string,
+    telefono:     string,
+    captionTexto: string,
+    agente:       string,
+    empresaId:    string,
+  ) {
+    if (!this.client || this.state.estado !== 'CONECTADO') {
+      throw new Error('WhatsApp Web no está conectado');
+    }
+
+    const telefonoLimpio = telefono.replace(/\D/g, '');
+    const storedChatId   = await this.crmSvc.findWaChatId(telefonoLimpio);
+    let chatId           = storedChatId ?? `${telefonoLimpio}@c.us`;
+
+    if (!storedChatId) {
+      const resolvedWid = await this.client.pupPage.evaluate(async (cid: string) => {
+        try {
+          const w = window as any;
+          const wid = w.require('WAWebWidFactory').createWid(cid);
+          const result = await w.require('WAWebQueryExistsJob').queryWidExists(wid);
+          return result?.wid ? String(result.wid) : null;
+        } catch { return null; }
+      }, chatId).catch(() => null);
+
+      if (!resolvedWid) throw new Error(`El número ${telefono} no está disponible en WhatsApp`);
+      chatId = resolvedWid;
+    }
+
+    const media   = MessageMedia.fromFilePath(rutaFisica);
+    const caption = `*${agente}:* ${captionTexto || ''}`.trimEnd();
+    const sentMsg = await this.client.sendMessage(chatId, media, { caption });
+    const msgId   = sentMsg?.id?._serialized ?? null;
+
+    const tipoLabel = filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'Imagen';
+
+    const chat = await this.crmSvc.upsertChat(empresaId, {
+      waChatId:       chatId,
+      telefono:       telefonoLimpio,
+      nombreContacto: null,
+      ultimoMensaje:  `[${tipoLabel}] ${captionTexto || ''}`.trim(),
+      ultimoMsgAt:    new Date(),
+      noLeidos:       0,
+    });
+
+    const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
+      waMsgId:   msgId,
+      direction: 'OUTBOUND',
+      agente,
+      body:      caption,
+      mediaUrl:  filename,
+    });
+
+    this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
+    this.gateway.emitChatUpdate(chat);
+
+    return { messageId: msgId, filename };
   }
 
   // ── Inicializar cliente WA ──────────────────────────────────────
@@ -389,7 +449,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
             const ext      = mimeToExt(media.mimetype);
             const filename = crypto.randomUUID() + ext;
             fs.writeFileSync(path.join(MEDIA_DIR, filename), Buffer.from(media.data, 'base64'));
-            mediaUrl = `${MEDIA_PUBURL}/${filename}`;
+            mediaUrl = filename;   // solo el nombre; URL construida en frontend con token
           }
         } catch (e) {
           this.logger.warn(`No se pudo descargar media: ${e}`);
@@ -429,13 +489,15 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const empresaId = await this.resolverEmpresaId();
       if (!empresaId) return;
 
-      const chats = waChats.filter((c: any) => !c.isGroup && !c.id?._serialized?.endsWith('@g.us')).slice(0, 20);
+      const chats = waChats.filter((c: any) => !c.isGroup && !c.id?._serialized?.endsWith('@g.us')).slice(0, 50);
 
       for (const c of chats) {
+        const contact = await this.client.getContactById(c.id._serialized).catch(() => null);
+        const nombre  = (contact as any)?.pushname || (contact as any)?.name || c.name || null;
         await this.crmSvc.upsertChat(empresaId, {
           waChatId:       c.id._serialized,
           telefono:       c.id.user,
-          nombreContacto: c.name || null,
+          nombreContacto: nombre,
           ultimoMensaje:  c.lastMessage?.body?.substring(0, 200) ?? null,
           ultimoMsgAt:    c.lastMessage?.timestamp ? new Date(c.lastMessage.timestamp * 1000) : null,
           noLeidos:       (Number.isFinite(c.unreadCount) && c.unreadCount > 0) ? c.unreadCount : 0,
