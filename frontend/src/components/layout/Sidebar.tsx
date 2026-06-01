@@ -11,7 +11,7 @@ import {
   UserCheck, Zap,
   List, Tv, Scissors, Layers,
   ChevronRight, Gift, Trophy, Settings2,
-  Megaphone, FileText,
+  Megaphone,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -103,7 +103,6 @@ const NAV: NavEntry[] = [
       { href: '/mensajeria/enviados',   label: 'Mensajes Enviados', icon: Send,          permiso: null },
       { href: '/mensajeria/whatsapp',   label: 'WhatsApp Web',      icon: MessageSquare, permiso: null },
       { href: '/mensajeria/campanas',   label: 'Campañas',          icon: Megaphone,     permiso: null },
-      { href: '/mensajeria/plantillas', label: 'Plantillas',        icon: FileText,      permiso: null },
     ],
   },
 
