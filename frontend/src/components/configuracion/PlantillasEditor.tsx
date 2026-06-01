@@ -2,7 +2,10 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Mail, FileText, Edit2, RotateCcw, Save, X, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  MessageSquare, Mail, FileText, Edit2, RotateCcw, Save, X,
+  Eye, ChevronDown, ChevronUp, Plus, Trash2,
+} from 'lucide-react';
 import { plantillasApi, type PlantillaDto, type TipoPlantilla } from '@/lib/api/plantillas';
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
@@ -47,11 +50,10 @@ const VARS_DOCUMENTO = [
   { key: '{{numero_serie}}',       label: 'N° de serie del equipo' },
 ];
 
-// ─── Tabs config ───────────────────────────────────────────────
 const TABS = [
-  { key: 'whatsapp' as TipoPlantilla, label: 'Mensajería',  icon: MessageSquare, color: 'text-green-600' },
-  { key: 'documento' as TipoPlantilla, label: 'Documentos', icon: FileText,       color: 'text-blue-600'  },
-  { key: 'email' as TipoPlantilla,    label: 'Correos',     icon: Mail,           color: 'text-violet-600' },
+  { key: 'whatsapp'  as TipoPlantilla, label: 'Mensajería',  icon: MessageSquare, color: 'text-green-500' },
+  { key: 'documento' as TipoPlantilla, label: 'Documentos',  icon: FileText,       color: 'text-blue-500'  },
+  { key: 'email'     as TipoPlantilla, label: 'Correos',     icon: Mail,           color: 'text-violet-500' },
 ];
 
 // ─── Main ──────────────────────────────────────────────────────
@@ -60,7 +62,6 @@ export function PlantillasEditor() {
 
   return (
     <div className="space-y-5">
-      {/* Tab bar */}
       <div className="flex gap-1 border-b border-border">
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -81,8 +82,6 @@ export function PlantillasEditor() {
           );
         })}
       </div>
-
-      {/* Tab content */}
       <PlantillasTabContent tipo={activeTab} />
     </div>
   );
@@ -92,9 +91,14 @@ export function PlantillasEditor() {
 function PlantillasTabContent({ tipo }: { tipo: TipoPlantilla }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [editing, setEditing] = useState<string | null>(null);
-  const [previewing, setPreviewing] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const [editing,      setEditing]      = useState<string | null>(null);
+  const [previewing,   setPreviewing]   = useState<string | null>(null);
+  const [drafts,       setDrafts]       = useState<Record<string, string>>({});
+  const [draftTitles,  setDraftTitles]  = useState<Record<string, string>>({});
+  const [creating,     setCreating]     = useState(false);
+  const [newTitle,     setNewTitle]     = useState('');
+  const [newContent,   setNewContent]   = useState('');
 
   const { data: plantillas = [], isLoading } = useQuery({
     queryKey: ['plantillas', tipo],
@@ -102,12 +106,13 @@ function PlantillasTabContent({ tipo }: { tipo: TipoPlantilla }) {
   });
 
   const { mutate: guardar, isPending: saving } = useMutation({
-    mutationFn: ({ codigo, contenido }: { codigo: string; contenido: string }) =>
-      plantillasApi.guardar(tipo, codigo, contenido),
+    mutationFn: ({ codigo, contenido, nombre }: { codigo: string; contenido: string; nombre: string }) =>
+      plantillasApi.guardar(tipo, codigo, contenido, nombre),
     onSuccess: (_, { codigo }) => {
       toast('Plantilla guardada', { type: 'success' });
       setEditing(null);
-      setDrafts((d) => { const n = { ...d }; delete n[codigo]; return n; });
+      setDrafts((d)       => { const n = { ...d }; delete n[codigo]; return n; });
+      setDraftTitles((d)  => { const n = { ...d }; delete n[codigo]; return n; });
       qc.invalidateQueries({ queryKey: ['plantillas', tipo] });
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
@@ -122,18 +127,79 @@ function PlantillasTabContent({ tipo }: { tipo: TipoPlantilla }) {
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
+  const { mutate: crear, isPending: creando } = useMutation({
+    mutationFn: ({ nombre, contenido }: { nombre: string; contenido: string }) =>
+      plantillasApi.crear(tipo, nombre, contenido),
+    onSuccess: () => {
+      toast('Plantilla creada', { type: 'success' });
+      setCreating(false);
+      setNewTitle('');
+      setNewContent('');
+      qc.invalidateQueries({ queryKey: ['plantillas', tipo] });
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
+  const { mutate: eliminar } = useMutation({
+    mutationFn: (codigo: string) => plantillasApi.eliminar(tipo, codigo),
+    onSuccess: () => {
+      toast('Plantilla eliminada', { type: 'success' });
+      qc.invalidateQueries({ queryKey: ['plantillas', tipo] });
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
   const vars = tipo === 'documento' ? VARS_DOCUMENTO : VARS_COMUNES;
+
+  const startEdit = (p: PlantillaDto) => {
+    setEditing(p.codigo);
+    setPreviewing(null);
+    setDrafts((d)      => ({ ...d, [p.codigo]: p.contenido }));
+    setDraftTitles((d) => ({ ...d, [p.codigo]: p.nombre }));
+  };
+
+  const cancelEdit = (codigo: string) => {
+    setEditing(null);
+    setDrafts((d)      => { const n = { ...d }; delete n[codigo]; return n; });
+    setDraftTitles((d) => { const n = { ...d }; delete n[codigo]; return n; });
+  };
 
   if (isLoading) return <div className="text-sm text-muted-foreground p-4">Cargando plantillas...</div>;
 
   return (
     <div className="space-y-3">
-      {/* Description */}
-      <p className="text-sm text-muted-foreground">
-        {tipo === 'whatsapp' && 'Mensajes enviados por WhatsApp a los abonados. Usa variables para personalizar el contenido.'}
-        {tipo === 'email' && 'Correos electrónicos enviados a los abonados. Soportan HTML para un diseño enriquecido.'}
-        {tipo === 'documento' && 'Plantillas HTML para generar documentos: facturas, recibos, contratos, etc.'}
-      </p>
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {tipo === 'whatsapp'  && 'Mensajes enviados por WhatsApp a los abonados.'}
+          {tipo === 'email'     && 'Correos electrónicos enviados a los abonados. Soportan HTML.'}
+          {tipo === 'documento' && 'Plantillas HTML para generar documentos: facturas, recibos, contratos.'}
+        </p>
+        {!creating && (
+          <button
+            onClick={() => { setCreating(true); setEditing(null); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Nueva Plantilla
+          </button>
+        )}
+      </div>
+
+      {/* Create form */}
+      {creating && (
+        <CrearPlantillaCard
+          tipo={tipo}
+          vars={vars}
+          saving={creando}
+          title={newTitle}
+          content={newContent}
+          onTitleChange={setNewTitle}
+          onContentChange={setNewContent}
+          onSave={() => crear({ nombre: newTitle.trim(), contenido: newContent.trim() })}
+          onCancel={() => { setCreating(false); setNewTitle(''); setNewContent(''); }}
+        />
+      )}
 
       {/* Template cards */}
       <div className="space-y-2">
@@ -145,65 +211,178 @@ function PlantillasTabContent({ tipo }: { tipo: TipoPlantilla }) {
             isEditing={editing === p.codigo}
             isPreviewing={previewing === p.codigo}
             draft={drafts[p.codigo] ?? p.contenido}
+            draftTitle={draftTitles[p.codigo] ?? p.nombre}
             saving={saving && editing === p.codigo}
-            onEdit={() => {
-              setEditing(p.codigo);
-              setPreviewing(null);
-              setDrafts((d) => ({ ...d, [p.codigo]: p.contenido }));
-            }}
-            onCancel={() => {
-              setEditing(null);
-              setDrafts((d) => { const n = { ...d }; delete n[p.codigo]; return n; });
-            }}
-            onSave={() => guardar({ codigo: p.codigo, contenido: drafts[p.codigo] ?? p.contenido })}
-            onDraftChange={(v) => setDrafts((d) => ({ ...d, [p.codigo]: v }))}
+            onEdit={() => startEdit(p)}
+            onCancel={() => cancelEdit(p.codigo)}
+            onSave={() => guardar({
+              codigo:   p.codigo,
+              contenido: drafts[p.codigo] ?? p.contenido,
+              nombre:    draftTitles[p.codigo] ?? p.nombre,
+            })}
+            onDraftChange={(v) => setDrafts((d)      => ({ ...d, [p.codigo]: v }))}
+            onTitleChange={(v) => setDraftTitles((d) => ({ ...d, [p.codigo]: v }))}
             onRestore={() => restaurar(p.codigo)}
             onPreview={() => setPreviewing(previewing === p.codigo ? null : p.codigo)}
+            onDelete={() => eliminar(p.codigo)}
             vars={vars}
             showPreview={tipo !== 'whatsapp'}
           />
         ))}
       </div>
 
-      {/* Variables reference */}
       <VariablesReference vars={vars} tipo={tipo} />
     </div>
   );
 }
 
-// ─── Plantilla card ────────────────────────────────────────────
-function PlantillaCard({
-  plantilla, tipo, isEditing, isPreviewing, draft, saving,
-  onEdit, onCancel, onSave, onDraftChange, onRestore, onPreview, vars, showPreview,
+// ─── Crear plantilla card ──────────────────────────────────────
+function CrearPlantillaCard({
+  tipo, vars, saving, title, content,
+  onTitleChange, onContentChange, onSave, onCancel,
 }: {
-  plantilla: PlantillaDto;
   tipo: TipoPlantilla;
-  isEditing: boolean;
-  isPreviewing: boolean;
-  draft: string;
-  saving: boolean;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSave: () => void;
-  onDraftChange: (v: string) => void;
-  onRestore: () => void;
-  onPreview: () => void;
   vars: typeof VARS_COMUNES;
-  showPreview: boolean;
+  saving: boolean;
+  title: string;
+  content: string;
+  onTitleChange: (v: string) => void;
+  onContentChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const insertVar = useCallback((variable: string) => {
     const el = textareaRef.current;
     if (!el) return;
+    const start = el.selectionStart ?? content.length;
+    const end   = el.selectionEnd   ?? content.length;
+    const next  = content.slice(0, start) + variable + content.slice(end);
+    onContentChange(next);
+    setTimeout(() => { el.selectionStart = el.selectionEnd = start + variable.length; el.focus(); }, 0);
+  }, [content, onContentChange]);
+
+  return (
+    <div className="rounded-xl border border-primary/50 bg-card">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Nueva plantilla</span>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => onTitleChange(e.target.value)}
+            placeholder="Nombre de la plantilla..."
+            className="text-sm font-medium bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground w-64"
+            autoFocus
+          />
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={onCancel} className="px-3 py-1.5 text-xs rounded-lg border border-input hover:bg-muted transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving || !title.trim() || !content.trim()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save className="w-3.5 h-3.5" />
+            {saving ? 'Creando...' : 'Crear Plantilla'}
+          </button>
+        </div>
+      </div>
+      <div className="p-4">
+        <EditorLayout
+          textareaRef={textareaRef}
+          content={content}
+          onContentChange={onContentChange}
+          vars={vars}
+          onInsertVar={insertVar}
+          rows={tipo === 'documento' ? 12 : 6}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Layout compartido textarea + variables panel ──────────────
+function EditorLayout({
+  textareaRef, content, onContentChange, vars, onInsertVar, rows,
+}: {
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  content: string;
+  onContentChange: (v: string) => void;
+  vars: typeof VARS_COMUNES;
+  onInsertVar: (v: string) => void;
+  rows: number;
+}) {
+  return (
+    <div className="flex gap-3">
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={(e) => onContentChange(e.target.value)}
+        rows={rows}
+        className="flex-1 px-3 py-2 text-sm rounded-lg border border-input bg-background font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors resize-y"
+        placeholder="Escribe el contenido de la plantilla..."
+      />
+      <div className="w-52 flex-shrink-0">
+        <p className="text-xs font-medium text-muted-foreground mb-2">Variables disponibles</p>
+        <p className="text-[10px] text-muted-foreground mb-1.5">Clic para insertar en el cursor</p>
+        <div className="space-y-0.5 max-h-[260px] overflow-y-auto pr-1 scrollbar-thin">
+          {vars.map((v) => (
+            <button
+              key={v.key}
+              onClick={() => onInsertVar(v.key)}
+              title={`Insertar ${v.key}`}
+              className="w-full text-left px-2 py-1 rounded-md text-[10px] hover:bg-primary/10 hover:text-primary transition-colors group flex items-start gap-1.5"
+            >
+              <code className="font-mono shrink-0 bg-muted px-1 py-0.5 rounded group-hover:bg-primary/10 leading-tight">
+                {v.key}
+              </code>
+              <span className="text-muted-foreground mt-0.5 leading-tight">{v.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Plantilla card ────────────────────────────────────────────
+function PlantillaCard({
+  plantilla, tipo, isEditing, isPreviewing, draft, draftTitle, saving,
+  onEdit, onCancel, onSave, onDraftChange, onTitleChange, onRestore, onPreview, onDelete, vars, showPreview,
+}: {
+  plantilla:      PlantillaDto;
+  tipo:           TipoPlantilla;
+  isEditing:      boolean;
+  isPreviewing:   boolean;
+  draft:          string;
+  draftTitle:     string;
+  saving:         boolean;
+  onEdit:         () => void;
+  onCancel:       () => void;
+  onSave:         () => void;
+  onDraftChange:  (v: string) => void;
+  onTitleChange:  (v: string) => void;
+  onRestore:      () => void;
+  onPreview:      () => void;
+  onDelete:       () => void;
+  vars:           typeof VARS_COMUNES;
+  showPreview:    boolean;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const insertVar = useCallback((variable: string) => {
+    const el = textareaRef.current;
+    if (!el) return;
     const start = el.selectionStart ?? draft.length;
-    const end = el.selectionEnd ?? draft.length;
-    const next = draft.slice(0, start) + variable + draft.slice(end);
+    const end   = el.selectionEnd   ?? draft.length;
+    const next  = draft.slice(0, start) + variable + draft.slice(end);
     onDraftChange(next);
-    setTimeout(() => {
-      el.selectionStart = el.selectionEnd = start + variable.length;
-      el.focus();
-    }, 0);
+    setTimeout(() => { el.selectionStart = el.selectionEnd = start + variable.length; el.focus(); }, 0);
   }, [draft, onDraftChange]);
 
   return (
@@ -213,14 +392,29 @@ function PlantillaCard({
     )}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-foreground">{plantilla.nombre}</span>
+        <div className="flex items-center gap-2 min-w-0 flex-1 mr-3">
+          {isEditing ? (
+            <input
+              type="text"
+              value={draftTitle}
+              onChange={(e) => onTitleChange(e.target.value)}
+              className="text-sm font-medium bg-transparent border-b border-border focus:border-primary outline-none text-foreground flex-1 min-w-0"
+            />
+          ) : (
+            <span className="text-sm font-medium text-foreground truncate">{plantilla.nombre}</span>
+          )}
+          {/* Badges */}
           {plantilla.esDefault && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Por defecto</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">Por defecto</span>
+          )}
+          {!plantilla.isSystem && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">Personalizada</span>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          {!plantilla.esDefault && (
+
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Restore — solo si fue editada */}
+          {!isEditing && !plantilla.esDefault && plantilla.isSystem && (
             <button
               onClick={onRestore}
               title="Restaurar al valor por defecto"
@@ -229,6 +423,7 @@ function PlantillaCard({
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
           )}
+          {/* Preview — documentos/correos */}
           {showPreview && !isEditing && (
             <button
               onClick={onPreview}
@@ -238,6 +433,35 @@ function PlantillaCard({
               Vista previa
             </button>
           )}
+          {/* Delete — solo para plantillas personalizadas */}
+          {!plantilla.isSystem && !isEditing && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-muted-foreground">¿Eliminar?</span>
+                <button
+                  onClick={() => { onDelete(); setConfirmDelete(false); }}
+                  className="px-2 py-1 text-xs rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                >
+                  Sí
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2 py-1 text-xs rounded-lg border border-input hover:bg-muted transition-colors"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                title="Eliminar plantilla"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )
+          )}
+          {/* Edit / Save+Cancel */}
           {!isEditing ? (
             <button
               onClick={onEdit}
@@ -266,34 +490,19 @@ function PlantillaCard({
 
       {/* Editor */}
       {isEditing && (
-        <div className="px-4 pb-4 space-y-3">
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => onDraftChange(e.target.value)}
+        <div className="px-4 pb-4">
+          <EditorLayout
+            textareaRef={textareaRef}
+            content={draft}
+            onContentChange={onDraftChange}
+            vars={vars}
+            onInsertVar={insertVar}
             rows={tipo === 'documento' ? 12 : 5}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors resize-y"
-            placeholder="Escribe el contenido de la plantilla..."
           />
-          <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground">Clic en una variable para insertarla en el cursor:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {vars.map((v) => (
-                <button
-                  key={v.key}
-                  onClick={() => insertVar(v.key)}
-                  title={v.label}
-                  className="px-2 py-1 text-xs rounded-md bg-muted hover:bg-primary/10 hover:text-primary border border-border transition-colors font-mono"
-                >
-                  {v.key}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
-      {/* Preview (documentos/correos) */}
+      {/* Preview iframe (documentos/correos) */}
       {isPreviewing && !isEditing && (
         <div className="border-t border-border">
           <div className="flex items-center justify-between px-4 py-2 bg-muted/30">
@@ -313,7 +522,7 @@ function PlantillaCard({
         </div>
       )}
 
-      {/* Collapsed preview (when not editing) */}
+      {/* Collapsed content preview */}
       {!isEditing && !isPreviewing && (
         <div className="px-4 pb-3">
           <p className="text-xs text-muted-foreground line-clamp-2 font-mono leading-relaxed">
@@ -325,7 +534,7 @@ function PlantillaCard({
   );
 }
 
-// ─── Variables reference ───────────────────────────────────────
+// ─── Variables reference (collapsible, pie de página) ──────────
 function VariablesReference({ vars, tipo }: { vars: typeof VARS_COMUNES; tipo: TipoPlantilla }) {
   const [open, setOpen] = useState(false);
 
@@ -335,16 +544,16 @@ function VariablesReference({ vars, tipo }: { vars: typeof VARS_COMUNES; tipo: T
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-4 py-3 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
-        <span className="font-medium">Variables disponibles para {tipo === 'whatsapp' ? 'mensajería' : tipo === 'email' ? 'correos' : 'documentos'}</span>
+        <span className="font-medium">
+          Referencia de variables para {tipo === 'whatsapp' ? 'mensajería' : tipo === 'email' ? 'correos' : 'documentos'}
+        </span>
         {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
       </button>
       {open && (
         <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {vars.map((v) => (
             <div key={v.key} className="flex items-start gap-2 py-1">
-              <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono text-primary shrink-0">
-                {v.key}
-              </code>
+              <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono text-primary shrink-0">{v.key}</code>
               <span className="text-xs text-muted-foreground">{v.label}</span>
             </div>
           ))}

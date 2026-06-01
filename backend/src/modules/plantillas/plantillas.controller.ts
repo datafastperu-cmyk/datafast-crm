@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, Query, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsObject, IsOptional } from 'class-validator';
 import { PlantillasService } from './plantillas.service';
@@ -9,6 +9,12 @@ import { RequirePermission } from '../../common/decorators/roles.decorator';
 import { ApiResponse } from '../../common/dto/response.dto';
 
 class GuardarPlantillaDto {
+  @IsString() @IsNotEmpty() contenido: string;
+  @IsString() @IsOptional() nombre?: string;
+}
+
+class CrearPlantillaDto {
+  @IsString() @IsNotEmpty() nombre: string;
   @IsString() @IsNotEmpty() contenido: string;
 }
 
@@ -42,7 +48,7 @@ export class PlantillasController {
     @Body() dto: GuardarPlantillaDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    const data = await this.svc.guardar(user.empresaId, tipo, codigo, dto.contenido);
+    const data = await this.svc.guardar(user.empresaId, tipo, codigo, dto.contenido, dto.nombre);
     return ApiResponse.ok(data, 'Plantilla guardada');
   }
 
@@ -56,6 +62,36 @@ export class PlantillasController {
   ) {
     const data = await this.svc.restaurar(user.empresaId, tipo, codigo);
     return ApiResponse.ok(data, 'Plantilla restaurada al valor por defecto');
+  }
+
+  @Post(':tipo')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Crear plantilla personalizada' })
+  async crear(
+    @Param('tipo') tipo: TipoPlantilla,
+    @Body() dto: CrearPlantillaDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.svc.crear(user.empresaId, tipo, dto.nombre, dto.contenido);
+    return ApiResponse.ok(data, 'Plantilla creada');
+  }
+
+  @Delete(':tipo/:codigo')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Eliminar plantilla personalizada (no del sistema)' })
+  async eliminar(
+    @Param('tipo') tipo: TipoPlantilla,
+    @Param('codigo') codigo: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    try {
+      await this.svc.eliminar(user.empresaId, tipo, codigo);
+      return ApiResponse.ok(null, 'Plantilla eliminada');
+    } catch (e: any) {
+      if (e.message === 'No se pueden eliminar plantillas del sistema') throw new BadRequestException(e.message);
+      if (e.message === 'Plantilla no encontrada') throw new NotFoundException(e.message);
+      throw e;
+    }
   }
 
   // ─── Plantillas Abonados ─────────────────────────────────────

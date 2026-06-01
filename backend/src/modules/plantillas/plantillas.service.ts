@@ -159,6 +159,7 @@ export interface PlantillaDto {
   contenido: string;
   activo: boolean;
   esDefault: boolean;
+  isSystem: boolean;  // true = viene de DEFAULTS, no se puede eliminar
 }
 
 @Injectable()
@@ -175,7 +176,8 @@ export class PlantillasService {
     const savedMap = new Map(saved.map((p) => [p.codigo, p]));
     const defaults = DEFAULTS[tipo] ?? {};
 
-    return Object.entries(defaults).map(([codigo, def]) => {
+    // Plantillas del sistema (de DEFAULTS) — no se pueden eliminar
+    const systemList: PlantillaDto[] = Object.entries(defaults).map(([codigo, def]) => {
       const db = savedMap.get(codigo);
       return {
         id: db?.id,
@@ -185,8 +187,25 @@ export class PlantillasService {
         contenido: db?.contenido ?? def.contenido,
         activo: db?.activo ?? true,
         esDefault: !db,
+        isSystem: true,
       };
     });
+
+    // Plantillas personalizadas creadas por el usuario (no están en DEFAULTS)
+    const customList: PlantillaDto[] = saved
+      .filter((p) => !defaults[p.codigo])
+      .map((p) => ({
+        id: p.id,
+        tipo,
+        codigo: p.codigo,
+        nombre: p.nombre,
+        contenido: p.contenido,
+        activo: p.activo,
+        esDefault: false,
+        isSystem: false,
+      }));
+
+    return [...systemList, ...customList];
   }
 
   async guardar(
@@ -194,22 +213,44 @@ export class PlantillasService {
     tipo: TipoPlantilla,
     codigo: string,
     contenido: string,
+    nombre?: string,
   ): Promise<PlantillaDto> {
-    const defaults = DEFAULTS[tipo] ?? {};
-    const def = defaults[codigo];
-    const nombre = def?.nombre ?? codigo;
+    const def = DEFAULTS[tipo]?.[codigo];
+    const isSystem = !!def;
+    const nombreFinal = nombre ?? def?.nombre ?? codigo;
 
     const existing = await this.repo.findOne({ where: { empresaId, tipo, codigo } });
-
     if (existing) {
       existing.contenido = contenido;
+      if (nombre) existing.nombre = nombre;
       await this.repo.save(existing);
-      return { id: existing.id, tipo, codigo, nombre, contenido, activo: existing.activo, esDefault: false };
+      return { id: existing.id, tipo, codigo, nombre: existing.nombre, contenido, activo: existing.activo, esDefault: false, isSystem };
     }
 
+    const nueva = this.repo.create({ empresaId, tipo, codigo, nombre: nombreFinal, contenido, activo: true });
+    await this.repo.save(nueva);
+    return { id: nueva.id, tipo, codigo, nombre: nombreFinal, contenido, activo: true, esDefault: false, isSystem };
+  }
+
+  async crear(
+    empresaId: string,
+    tipo: TipoPlantilla,
+    nombre: string,
+    contenido: string,
+  ): Promise<PlantillaDto> {
+    const codigo = `custom_${Date.now().toString(36)}`;
     const nueva = this.repo.create({ empresaId, tipo, codigo, nombre, contenido, activo: true });
     await this.repo.save(nueva);
-    return { id: nueva.id, tipo, codigo, nombre, contenido, activo: true, esDefault: false };
+    return { id: nueva.id, tipo, codigo, nombre, contenido, activo: true, esDefault: false, isSystem: false };
+  }
+
+  async eliminar(empresaId: string, tipo: TipoPlantilla, codigo: string): Promise<void> {
+    if (DEFAULTS[tipo]?.[codigo]) {
+      throw new Error('No se pueden eliminar plantillas del sistema');
+    }
+    const existing = await this.repo.findOne({ where: { empresaId, tipo, codigo } });
+    if (!existing) throw new Error('Plantilla no encontrada');
+    await this.repo.softDelete(existing.id);
   }
 
   async restaurar(empresaId: string, tipo: TipoPlantilla, codigo: string): Promise<PlantillaDto> {
@@ -224,6 +265,7 @@ export class PlantillasService {
       contenido: def?.contenido ?? '',
       activo: true,
       esDefault: true,
+      isSystem: true,
     };
   }
 
