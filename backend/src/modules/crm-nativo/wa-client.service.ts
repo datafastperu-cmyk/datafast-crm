@@ -451,7 +451,8 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
       const contact = await this.client.getContactById(peerWid).catch(() => null)
                    ?? await msg.getContact().catch(() => null);
-      const nombre   = contact?.pushname || contact?.name || null;
+      // name = guardado en agenda del celular; pushname = perfil WA del contacto
+      const nombre   = contact?.name || contact?.pushname || null;
       const telefono = telefonoReal.replace(/\D/g, '');
 
       if (isOutbound) {
@@ -520,7 +521,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
       for (const c of chats) {
         const contact = await this.client.getContactById(c.id._serialized).catch(() => null);
-        const nombre  = (contact as any)?.pushname || (contact as any)?.name || c.name || null;
+        const nombre  = (contact as any)?.name || (contact as any)?.pushname || c.name || null;
         await this.crmSvc.upsertChat(empresaId, {
           waChatId:       c.id._serialized,
           telefono:       c.id.user,
