@@ -314,7 +314,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
 
   // Carga plantillas + planes al abrir
   React.useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     let cancelled = false;
     Promise.all([
       api.get<{ data: PlantillaItem[] }>('/plantillas?tipo=whatsapp'),
