@@ -14,6 +14,7 @@ import { parseApiError } from '@/lib/utils';
 
 import { clientesApi, type FiltrosCliente } from '@/lib/api/clientes';
 import { ClientesTable }      from './ClientesTable';
+import { NuevoAbonadoModal }  from './NuevoAbonadoModal';
 import { useToast }           from '@/components/ui/toaster';
 import { useDebounce }        from '@/hooks/useDebounce';
 import { cn }                 from '@/lib/utils';
@@ -46,6 +47,7 @@ export function ClientesContent() {
   const [filtersOpen, setFilters] = useState(false);
   const searchDebounced           = useDebounce(searchInput, 400);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showNuevo, setShowNuevo] = useState(false);
 
   // Modal de confirmación para acciones individuales
   const [accion, setAccion] = useState<{
@@ -263,7 +265,7 @@ export function ClientesContent() {
             {exportando ? 'Exportando…' : 'Exportar CSV'}
           </button>
           <button
-            onClick={() => router.push('/clientes/nuevo')}
+            onClick={() => setShowNuevo(true)}
             className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium
                        bg-primary text-primary-foreground hover:bg-primary/90
                        transition-all duration-150 shadow-sm hover:shadow-md"
@@ -581,6 +583,14 @@ export function ClientesContent() {
           </div>
         </div>
       )}
+
+      <NuevoAbonadoModal
+        open={showNuevo}
+        onClose={() => {
+          setShowNuevo(false);
+          invalidarClientes();
+        }}
+      />
     </div>
   );
 }

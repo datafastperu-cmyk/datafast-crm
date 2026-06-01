@@ -332,7 +332,7 @@ function NavButtons({ onBack, submitLabel = 'Siguiente', isFirst }: {
 }
 
 // ── Main Wizard ───────────────────────────────────────────────
-export function ClienteWizard() {
+export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
   const router    = useRouter();
   const { toast } = useToast();
   const [step, setStep] = useState(0);
@@ -461,7 +461,7 @@ export function ClienteWizard() {
         </div>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
-            onClick={() => router.push(`/clientes/${resultado.clienteId}`)}
+            onClick={() => { onClose?.(); router.push(`/clientes/${resultado.clienteId}`); }}
             className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm rounded-lg
                        border border-input hover:bg-accent transition-all"
           >
@@ -469,7 +469,7 @@ export function ClienteWizard() {
           </button>
           {resultado.contratoId && (
             <button
-              onClick={() => router.push(`/contratos/${resultado.contratoId}/aprovisionar`)}
+              onClick={() => { onClose?.(); router.push(`/contratos/${resultado.contratoId}/aprovisionar`); }}
               className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm rounded-lg font-semibold
                          bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
             >
@@ -483,6 +483,14 @@ export function ClienteWizard() {
         >
           Registrar otro abonado
         </button>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2"
+          >
+            Cerrar
+          </button>
+        )}
       </div>
     );
   }
