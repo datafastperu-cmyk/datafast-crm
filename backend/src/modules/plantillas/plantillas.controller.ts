@@ -30,6 +30,44 @@ class SavePlantillaAbonadoDto {
 export class PlantillasController {
   constructor(private readonly svc: PlantillasService) {}
 
+  // ─── Plantillas Abonados (static routes first) ───────────────
+  @Get('abonados')
+  @RequirePermission('configuracion:view')
+  @ApiOperation({ summary: 'Listar plantillas de configuración de abonados' })
+  async listarAbonados(@CurrentUser() user: JwtPayload) {
+    const data = await this.svc.listarAbonados(user.empresaId);
+    return ApiResponse.ok(data);
+  }
+
+  @Post('abonados')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Crear nueva plantilla de abonado' })
+  async crearAbonado(@Body() dto: SavePlantillaAbonadoDto, @CurrentUser() user: JwtPayload) {
+    const data = await this.svc.crearAbonado(user.empresaId, dto.nombre, dto.facturacion, dto.notificaciones);
+    return ApiResponse.ok(data, 'Plantilla creada');
+  }
+
+  @Put('abonados/:id')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Actualizar plantilla de abonado' })
+  async actualizarAbonado(
+    @Param('id') id: string,
+    @Body() dto: SavePlantillaAbonadoDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.svc.actualizarAbonado(id, user.empresaId, dto.nombre, dto.facturacion, dto.notificaciones);
+    return ApiResponse.ok(data, 'Plantilla actualizada');
+  }
+
+  @Delete('abonados/:id')
+  @RequirePermission('configuracion:manage')
+  @ApiOperation({ summary: 'Eliminar plantilla de abonado' })
+  async eliminarAbonado(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    await this.svc.eliminarAbonado(id, user.empresaId);
+    return ApiResponse.ok(null, 'Plantilla eliminada');
+  }
+
+  // ─── Plantillas de Mensajes (dynamic routes after static) ────
   @Get()
   @RequirePermission('configuracion:view')
   @ApiOperation({ summary: 'Listar plantillas por tipo' })
@@ -92,42 +130,5 @@ export class PlantillasController {
       if (e.message === 'Plantilla no encontrada') throw new NotFoundException(e.message);
       throw e;
     }
-  }
-
-  // ─── Plantillas Abonados ─────────────────────────────────────
-  @Get('abonados')
-  @RequirePermission('configuracion:view')
-  @ApiOperation({ summary: 'Listar plantillas de configuración de abonados' })
-  async listarAbonados(@CurrentUser() user: JwtPayload) {
-    const data = await this.svc.listarAbonados(user.empresaId);
-    return ApiResponse.ok(data);
-  }
-
-  @Post('abonados')
-  @RequirePermission('configuracion:manage')
-  @ApiOperation({ summary: 'Crear nueva plantilla de abonado' })
-  async crearAbonado(@Body() dto: SavePlantillaAbonadoDto, @CurrentUser() user: JwtPayload) {
-    const data = await this.svc.crearAbonado(user.empresaId, dto.nombre, dto.facturacion, dto.notificaciones);
-    return ApiResponse.ok(data, 'Plantilla creada');
-  }
-
-  @Put('abonados/:id')
-  @RequirePermission('configuracion:manage')
-  @ApiOperation({ summary: 'Actualizar plantilla de abonado' })
-  async actualizarAbonado(
-    @Param('id') id: string,
-    @Body() dto: SavePlantillaAbonadoDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    const data = await this.svc.actualizarAbonado(id, user.empresaId, dto.nombre, dto.facturacion, dto.notificaciones);
-    return ApiResponse.ok(data, 'Plantilla actualizada');
-  }
-
-  @Delete('abonados/:id')
-  @RequirePermission('configuracion:manage')
-  @ApiOperation({ summary: 'Eliminar plantilla de abonado' })
-  async eliminarAbonado(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
-    await this.svc.eliminarAbonado(id, user.empresaId);
-    return ApiResponse.ok(null, 'Plantilla eliminada');
   }
 }
