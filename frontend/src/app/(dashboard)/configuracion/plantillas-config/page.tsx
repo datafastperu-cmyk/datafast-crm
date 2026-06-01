@@ -51,17 +51,14 @@ const APLICAR_CORTE_OPTS = [
   })),
 ];
 
-const RECORDATORIO_OPTS = [
-  { value: 'desactivado', label: 'Desactivado' },
-  ...Array.from({ length: 10 }, (_, i) => ({
-    value: String(-(i + 1)),
-    label: i === 0 ? '1 día antes' : `${i + 1} días antes`,
-  })),
-  ...Array.from({ length: 25 }, (_, i) => ({
-    value: String(i + 1),
-    label: i === 0 ? '1 día después' : `${i + 1} días después`,
-  })),
-];
+const RECORDATORIO_ANTES = Array.from({ length: 10 }, (_, i) => ({
+  value: String(-(i + 1)),
+  label: i === 0 ? '1 Día Antes' : `${i + 1} Días Antes`,
+}));
+const RECORDATORIO_DESPUES = Array.from({ length: 25 }, (_, i) => ({
+  value: String(i + 1),
+  label: i === 0 ? '1 Día Después' : `${i + 1} Días Después`,
+}));
 
 // ─── Sub-components ───────────────────────────────────────────────
 function DecimalInput({ value, onChange, className, placeholder }: {
@@ -404,7 +401,13 @@ export default function PlantillasConfigPage() {
                 return (
                   <Field key={key} label={`Recordatorio #${i + 1}`}>
                     <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
-                      {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      <option value="desactivado">Desactivado</option>
+                      <optgroup label="Antes del vencimiento">
+                        {RECORDATORIO_ANTES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </optgroup>
+                      <optgroup label="Después del vencimiento">
+                        {RECORDATORIO_DESPUES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </optgroup>
                     </select>
                     <select
                       className={selectCls}
