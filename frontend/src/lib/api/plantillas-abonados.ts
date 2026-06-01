@@ -14,8 +14,6 @@ export interface FacturacionConfig {
   aplicarReconexion: boolean;
   montoReconexion:   number;
   impuesto1:         number;
-  impuesto2:         number;
-  impuesto3:         number;
 }
 
 export interface NotificacionesConfig {

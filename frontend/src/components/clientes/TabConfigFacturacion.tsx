@@ -14,7 +14,7 @@ const DEF_FACT: FacturacionConfig = {
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
   aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
-  impuesto1: 0, impuesto2: 0, impuesto3: 0,
+  impuesto1: 0,
 };
 const DEF_NOTIF: NotificacionesConfig = {
   avisoNuevaFactura: 'desactivado', avisoPantalla: 'desactivado',
@@ -309,13 +309,11 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
             <div className="pt-4 pb-1">
               <h4 className="text-center text-sm font-semibold text-gray-700 dark:text-gray-200 mb-0.5">Otros Impuestos</h4>
               <p className="text-center text-xs text-gray-500 mb-3">Estos Impuestos serán Agregados al total de la factura</p>
-              {(['impuesto1', 'impuesto2', 'impuesto3'] as const).map((key, i) => (
-                <div key={key} className="mb-2">
-                  <Field label={`Impuesto #${i + 1} (%)`} note="* Dejar en 0 (cero) para quedar deshabilitado">
-                    <DecimalInput className={inputCls} value={facturacion[key]} onChange={v => updateF(key, v)} />
-                  </Field>
-                </div>
-              ))}
+              <div className="mb-2">
+                <Field label="Impuesto #1 (%)" note="* Dejar en 0 (cero) para quedar deshabilitado">
+                  <DecimalInput className={inputCls} value={facturacion.impuesto1} onChange={v => updateF('impuesto1', v)} />
+                </Field>
+              </div>
             </div>
 
           </div>

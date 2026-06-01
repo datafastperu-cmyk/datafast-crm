@@ -731,7 +731,7 @@ const DEF_FACT: FacturacionConfig = {
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
   aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
-  impuesto1: 0, impuesto2: 0, impuesto3: 0,
+  impuesto1: 0,
 };
 const DEF_NOTIF: NotificacionesConfig = {
   avisoNuevaFactura: 'desactivado', avisoPantalla: 'desactivado',
@@ -874,11 +874,9 @@ function Step2Form({ initial, onBack, onNext }: {
           <div className="pt-3 border-t border-border space-y-3">
             <p className="text-sm font-semibold text-foreground">Otros Impuestos</p>
             <p className="text-xs text-muted-foreground -mt-2">Estos impuestos serán agregados al total de la factura</p>
-            {(['impuesto1', 'impuesto2', 'impuesto3'] as const).map((key, i) => (
-              <Field key={key} label={`Impuesto #${i + 1} (%)`} hint="* Dejar en 0 (cero) para quedar deshabilitado">
-                <DecimalInput2 className={inputCls()} value={fact[key]} onChange={v => updateF(key, v)} />
-              </Field>
-            ))}
+            <Field label="Impuesto #1 (%)" hint="* Dejar en 0 (cero) para quedar deshabilitado">
+              <DecimalInput2 className={inputCls()} value={fact.impuesto1} onChange={v => updateF('impuesto1', v)} />
+            </Field>
           </div>
         </Section>
 
