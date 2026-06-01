@@ -432,10 +432,18 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
       const waMsgId = msg.id?._serialized ?? null;
 
-      // Si fue enviado por el CRM (enviarMensaje/enviarMedia), ya se emitió — ignorar
-      if (isOutbound && waMsgId && this.crmSentIds.has(waMsgId)) {
-        this.crmSentIds.delete(waMsgId);
-        return;
+      if (isOutbound) {
+        // Camino rápido: el CRM registró el ID antes de cualquier await
+        if (waMsgId && this.crmSentIds.has(waMsgId)) {
+          this.crmSentIds.delete(waMsgId);
+          return;
+        }
+        // Fallback: si el mensaje ya existe en BD (enviado por el CRM), ignorar
+        if (waMsgId) {
+          const existing = await this.crmSvc.findMensajePorWaMsgId(waMsgId);
+          if (existing) return;
+        }
+        // Continúa: mensaje enviado desde el celular físico — procesar como "Desde Celular"
       }
 
       const empresaId = await this.resolverEmpresaId();

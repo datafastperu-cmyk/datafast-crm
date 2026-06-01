@@ -306,11 +306,27 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
   const [contrato,    setContrato]    = React.useState<ContratoItem | null>(null);
   const [plantillas,  setPlantillas]  = React.useState<PlantillaItem[]>([]);
   const [planes,      setPlanes]      = React.useState<PlanItem[]>([]);
-  const [plantillaId,     setPlantillaId]     = React.useState('');
-  const [previewOverride, setPreviewOverride] = React.useState<string | null>(null);
-  const [buscando,        setBuscando]        = React.useState(false);
-  const [cargandoCtr,     setCargandoCtr]     = React.useState(false);
+  const [plantillaId,  setPlantillaId]  = React.useState('');
+  const [previewTexto, setPreviewTexto] = React.useState('');
+  const [buscando,     setBuscando]     = React.useState(false);
+  const [cargandoCtr,  setCargandoCtr]  = React.useState(false);
   const busqRef = React.useRef<HTMLInputElement>(null);
+
+  // Helper: calcula y fija el preview dado el estado actual
+  const recalcPreview = React.useCallback((
+    c:    ClienteItem | null,
+    ctr:  ContratoItem | null,
+    pid:  string,
+    tpls: PlantillaItem[],
+    pls:  PlanItem[],
+  ) => {
+    if (!c || !pid) { setPreviewTexto(''); return; }
+    const tpl = tpls.find(p => p.id === pid);
+    if (!tpl) { setPreviewTexto(''); return; }
+    const contratoData = ctr ?? { planId: '', precioFinal: 0, precioMensual: 0 };
+    const planNombre   = ctr ? (pls.find(p => p.id === ctr.planId)?.nombre ?? '') : '';
+    setPreviewTexto(resolverVariables(tpl.contenido, c, contratoData, planNombre));
+  }, []);
 
   // Carga plantillas + planes al abrir
   React.useEffect(() => {
@@ -332,7 +348,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
     if (!open) {
       setBusq(''); setSugerencias([]); setShowSug(false);
       setCliente(null); setContrato(null);
-      setPlantillaId(''); setPreviewOverride(null);
+      setPlantillaId(''); setPreviewTexto('');
     } else {
       setTimeout(() => busqRef.current?.focus(), 60);
     }
@@ -340,7 +356,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
 
   // Búsqueda de clientes con debounce 300 ms
   React.useEffect(() => {
-    if (cliente) return undefined;           // ya seleccionado — no re-buscar
+    if (cliente) return undefined;
     if (busq.trim().length < 2) { setSugerencias([]); setShowSug(false); return undefined; }
     setBuscando(true);
     const t = setTimeout(async () => {
@@ -367,37 +383,24 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
         const lista  = r.data.data ?? [];
         const activo = lista.find((c: ContratoItem) => c.estado === 'activo') ?? lista[0] ?? null;
         setContrato(activo);
+        // Recalcular preview con el contrato recién cargado (si ya hay plantilla seleccionada)
+        recalcPreview(cliente, activo, plantillaId, plantillas, planes);
       })
       .catch(() => { if (!cancelled) setContrato(null); })
       .finally(() => { if (!cancelled) setCargandoCtr(false); });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cliente]);
-
-  // Preview computado de forma sincrónica
-  const previewComputado = React.useMemo(() => {
-    if (!cliente || !plantillaId) return '';
-    const tpl = plantillas.find(p => p.id === plantillaId);
-    if (!tpl) return '';
-    const contratoData: ContratoItem = contrato ?? { planId: '', precioFinal: 0, precioMensual: 0 };
-    const planNombre = contrato ? (planes.find(p => p.id === contrato.planId)?.nombre ?? '') : '';
-    return resolverVariables(tpl.contenido, cliente, contratoData, planNombre);
-  }, [cliente, contrato, plantillaId, plantillas, planes]);
-
-  // Cuando el preview computado cambia (nuevo cliente/plantilla), descarta edición manual
-  React.useEffect(() => {
-    setPreviewOverride(null);
-  }, [previewComputado]);
 
   const seleccionarCliente = (c: ClienteItem) => {
     setCliente(c);
     setBusq(c.nombreCompleto);
     setSugerencias([]);
     setShowSug(false);
+    setPreviewTexto(''); // reset hasta que cargue contrato
   };
 
-  const planActivo   = contrato ? planes.find(p => p.id === contrato.planId) : null;
-  // previewOverride ?? previewComputado: el computado está disponible en el mismo render
-  const previewTexto = previewOverride ?? previewComputado;
+  const planActivo = contrato ? planes.find(p => p.id === contrato.planId) : null;
 
   if (!open) return null;
 
@@ -491,7 +494,11 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
             </label>
             <select
               value={plantillaId}
-              onChange={e => setPlantillaId(e.target.value)}
+              onChange={e => {
+                const id = e.target.value;
+                setPlantillaId(id);
+                recalcPreview(cliente, contrato, id, plantillas, planes);
+              }}
               disabled={!cliente || plantillas.length === 0}
               className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-700 bg-zinc-800 text-white focus:outline-none focus:ring-1 focus:ring-primary/60 disabled:opacity-40"
             >
@@ -508,7 +515,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
               <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">
                 3 · Vista previa en vivo
               </label>
-              {previewComputado && (
+              {previewTexto && (
                 <span className="text-[10px] text-emerald-400 font-medium">Variables resueltas ✓</span>
               )}
             </div>
