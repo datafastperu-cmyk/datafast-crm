@@ -521,7 +521,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
             </div>
             <textarea
               value={previewTexto}
-              onChange={e => setPreviewOverride(e.target.value)}
+              onChange={e => setPreviewTexto(e.target.value)}
               rows={6}
               className="w-full px-3 py-2.5 text-xs rounded-lg border border-zinc-700 bg-zinc-800/60 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-primary/60 resize-none leading-relaxed"
               placeholder="La plantilla renderizada aparecerá aquí al seleccionar un cliente y una plantilla…"
