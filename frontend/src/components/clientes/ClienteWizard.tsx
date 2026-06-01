@@ -18,6 +18,7 @@ import { redesApi, planesApi } from '@/lib/api/contratos';
 import type { Router as RouterType } from '@/lib/api/mikrotik';
 import { facturacionApi }                    from '@/lib/api/facturacion';
 import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
+import { plantillasApi }                     from '@/lib/api/plantillas';
 import { zonasApi }                          from '@/lib/api/zonas';
 import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
 import { useToast }                          from '@/components/ui/toaster';
@@ -722,13 +723,15 @@ const S2_BAJAR_VEL_OPTS = [
   { value: '1m',   label: '1 Mbps'   },
   { value: '2m',   label: '2 Mbps'   },
 ];
-const S2_RECORDATORIO_OPTS = [
-  { value: 'desactivado', label: 'Desactivado' },
-  ...Array.from({ length: 10 }, (_, i) => ({ value: String(-(i + 1)), label: i === 0 ? '1 día antes' : `${i + 1} días antes` })),
-  ...Array.from({ length: 25 }, (_, i) => ({ value: String(i + 1), label: i === 0 ? '1 día después' : `${i + 1} días después` })),
-];
+const S2_RECORDATORIO_ANTES = Array.from({ length: 10 }, (_, i) => ({
+  value: String(-(i + 1)), label: i === 0 ? '1 Día Antes' : `${i + 1} Días Antes`,
+}));
+const S2_RECORDATORIO_DESPUES = Array.from({ length: 25 }, (_, i) => ({
+  value: String(i + 1), label: i === 0 ? '1 Día Después' : `${i + 1} Días Después`,
+}));
 const DEF_FACT: FacturacionConfig = {
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
+  plantillaAvisoFactura: '',
   tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
   aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
   impuesto1: 0,
@@ -737,6 +740,7 @@ const DEF_NOTIF: NotificacionesConfig = {
   avisoNuevaFactura: 'desactivado', avisoPantalla: 'desactivado',
   recordatoriosPago: 'desactivado', recordatorio1: 'desactivado',
   recordatorio2: 'desactivado', recordatorio3: 'desactivado',
+  plantillaRecordatorio1: '', plantillaRecordatorio2: '', plantillaRecordatorio3: '',
 };
 
 // ── Step 2: Facturación y Recordatorios ───────────────────────
@@ -752,6 +756,10 @@ function Step2Form({ initial, onBack, onNext }: {
   const { data: plantillas = [] } = useQuery({
     queryKey: ['plantillas-abonados'],
     queryFn: plantillasAbonadosApi.list,
+  });
+  const { data: plantillasMsg = [] } = useQuery({
+    queryKey: ['plantillas', 'whatsapp'],
+    queryFn: () => plantillasApi.listar('whatsapp'),
   });
 
   function cargarPlantilla(id: string) {
@@ -799,6 +807,12 @@ function Step2Form({ initial, onBack, onNext }: {
           <Field label="Crear Factura">
             <select className={inputCls()} value={fact.crearFactura} onChange={e => updateF('crearFactura', e.target.value)}>
               {S2_CREAR_FACTURA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Aviso de factura disponible">
+            <select className={inputCls()} value={fact.plantillaAvisoFactura ?? ''} onChange={e => updateF('plantillaAvisoFactura', e.target.value)}>
+              <option value="">— Sin plantilla específica —</option>
+              {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
             </select>
           </Field>
           <Field label="Tipo impuesto">
@@ -904,13 +918,26 @@ function Step2Form({ initial, onBack, onNext }: {
               <option value="ambos">WhatsApp + SMS</option>
             </select>
           </Field>
-          {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => (
-            <Field key={key} label={`Recordatorio #${i + 1}`}>
-              <select className={inputCls()} value={notif[key]} onChange={e => updateN(key, e.target.value)}>
-                {S2_RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-          ))}
+          {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => {
+            const plantillaKey = `plantillaRecordatorio${i + 1}` as keyof NotificacionesConfig;
+            return (
+              <Field key={key} label={`Recordatorio #${i + 1}`}>
+                <select className={inputCls()} value={notif[key]} onChange={e => updateN(key, e.target.value)}>
+                  <option value="desactivado">Desactivado</option>
+                  <optgroup label="Antes del vencimiento">
+                    {S2_RECORDATORIO_ANTES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </optgroup>
+                  <optgroup label="Después del vencimiento">
+                    {S2_RECORDATORIO_DESPUES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </optgroup>
+                </select>
+                <select className={inputCls()} value={(notif[plantillaKey] as string) ?? ''} onChange={e => updateN(plantillaKey, e.target.value)}>
+                  <option value="">— Sin plantilla específica —</option>
+                  {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
+                </select>
+              </Field>
+            );
+          })}
           <p className="text-xs text-orange-500 mt-1">* Días antes/después del vencimiento de una factura</p>
         </Section>
       </div>

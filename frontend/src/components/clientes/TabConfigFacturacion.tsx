@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Loader2, FileText } from 'lucide-react';
 import { clientesApi } from '@/lib/api/clientes';
 import { plantillasAbonadosApi } from '@/lib/api/plantillas-abonados';
+import { plantillasApi } from '@/lib/api/plantillas';
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError } from '@/lib/utils';
 import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
@@ -12,6 +13,7 @@ import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantill
 // ── Defaults ──────────────────────────────────────────────────────
 const DEF_FACT: FacturacionConfig = {
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
+  plantillaAvisoFactura: '',
   tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
   aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
   impuesto1: 0,
@@ -20,6 +22,7 @@ const DEF_NOTIF: NotificacionesConfig = {
   avisoNuevaFactura: 'desactivado', avisoPantalla: 'desactivado',
   recordatoriosPago: 'desactivado', recordatorio1: 'desactivado',
   recordatorio2: 'desactivado', recordatorio3: 'desactivado',
+  plantillaRecordatorio1: '', plantillaRecordatorio2: '', plantillaRecordatorio3: '',
 };
 
 // ── Opciones ──────────────────────────────────────────────────────
@@ -49,15 +52,12 @@ const BAJAR_VEL_OPTS = [
   { value: '1m', label: '1 Mbps' },
   { value: '2m', label: '2 Mbps' },
 ];
-const RECORDATORIO_OPTS = [
-  { value: 'desactivado', label: 'Desactivado' },
-  ...Array.from({ length: 10 }, (_, i) => ({
-    value: String(-(i + 1)), label: i === 0 ? '1 día antes' : `${i + 1} días antes`,
-  })),
-  ...Array.from({ length: 25 }, (_, i) => ({
-    value: String(i + 1), label: i === 0 ? '1 día después' : `${i + 1} días después`,
-  })),
-];
+const RECORDATORIO_ANTES = Array.from({ length: 10 }, (_, i) => ({
+  value: String(-(i + 1)), label: i === 0 ? '1 Día Antes' : `${i + 1} Días Antes`,
+}));
+const RECORDATORIO_DESPUES = Array.from({ length: 25 }, (_, i) => ({
+  value: String(i + 1), label: i === 0 ? '1 Día Después' : `${i + 1} Días Después`,
+}));
 
 // ── Helpers ───────────────────────────────────────────────────────
 const selectCls = 'w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500';
@@ -159,6 +159,10 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
     queryKey: ['plantillas-abonados'],
     queryFn: plantillasAbonadosApi.list,
   });
+  const { data: plantillasMsg = [] } = useQuery({
+    queryKey: ['plantillas', 'whatsapp'],
+    queryFn: () => plantillasApi.listar('whatsapp'),
+  });
 
   const [facturacion, setFact] = useState<FacturacionConfig>({ ...DEF_FACT });
   const [notificaciones, setNotif] = useState<NotificacionesConfig>({ ...DEF_NOTIF });
@@ -184,6 +188,8 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
     }, notificaciones),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cliente-facturacion-config', clienteId] });
+      qc.invalidateQueries({ queryKey: ['cliente', clienteId] });
+      qc.invalidateQueries({ queryKey: ['plantillas-abonados'] });
       toast('Configuración guardada', { type: 'success' });
     },
     onError: (e) => toast('Error', { description: parseApiError(e), type: 'error' }),
@@ -249,6 +255,12 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
             <Field label="Crear Factura">
               <select className={selectCls} value={facturacion.crearFactura} onChange={e => updateF('crearFactura', e.target.value)}>
                 {CREAR_FACTURA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Aviso de factura disponible">
+              <select className={selectCls} value={facturacion.plantillaAvisoFactura ?? ''} onChange={e => updateF('plantillaAvisoFactura', e.target.value)}>
+                <option value="">— Sin plantilla específica —</option>
+                {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
               </select>
             </Field>
             <Field label="Tipo impuesto">
@@ -350,13 +362,26 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 <option value="ambos">WhatsApp + SMS</option>
               </select>
             </Field>
-            {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => (
-              <Field key={key} label={`Recordatorio #${i + 1}`}>
-                <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
-                  {RECORDATORIO_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </Field>
-            ))}
+            {(['recordatorio1', 'recordatorio2', 'recordatorio3'] as const).map((key, i) => {
+              const plantillaKey = `plantillaRecordatorio${i + 1}` as keyof NotificacionesConfig;
+              return (
+                <Field key={key} label={`Recordatorio #${i + 1}`}>
+                  <select className={selectCls} value={notificaciones[key]} onChange={e => updateN(key, e.target.value)}>
+                    <option value="desactivado">Desactivado</option>
+                    <optgroup label="Antes del vencimiento">
+                      {RECORDATORIO_ANTES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </optgroup>
+                    <optgroup label="Después del vencimiento">
+                      {RECORDATORIO_DESPUES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </optgroup>
+                  </select>
+                  <select className={selectCls} value={(notificaciones[plantillaKey] as string) ?? ''} onChange={e => updateN(plantillaKey, e.target.value)}>
+                    <option value="">— Sin plantilla específica —</option>
+                    {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
+                  </select>
+                </Field>
+              );
+            })}
             <p className="text-xs text-orange-500 pl-[192px] pt-1">
               * Días antes/después del vencimiento de una factura
             </p>
