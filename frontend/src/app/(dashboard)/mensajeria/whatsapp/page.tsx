@@ -273,7 +273,7 @@ function resolverVariables(
 ): string {
   const nombre = cliente.nombreCompleto;
   const plan   = planNombre || 'N/A';
-  const precio = ((contrato.precioFinal ?? contrato.precioMensual) || 0).toFixed(2);
+  const precio = (Number(contrato.precioFinal ?? contrato.precioMensual) || 0).toFixed(2);
   let fecha = 'N/A';
   if (contrato.fechaVencimiento) {
     const parts = String(contrato.fechaVencimiento).split('-');
@@ -465,7 +465,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
             )}
             {cliente && contrato && !cargandoCtr && (
               <p className="text-[10px] text-emerald-400 mt-0.5">
-                ✓ {planActivo?.nombre ?? 'Plan N/A'} · S/ {((contrato.precioFinal ?? contrato.precioMensual) || 0).toFixed(2)}
+                ✓ {planActivo?.nombre ?? 'Plan N/A'} · S/ {(Number(contrato.precioFinal ?? contrato.precioMensual) || 0).toFixed(2)}
                 {contrato.fechaVencimiento
                   ? ` · Vence: ${String(contrato.fechaVencimiento).split('-').reverse().join('/')}`
                   : ''}
