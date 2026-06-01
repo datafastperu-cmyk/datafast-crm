@@ -12,6 +12,7 @@ import { parseApiError } from '@/lib/utils';
 // ─── Defaults ────────────────────────────────────────────────────
 const DEFAULT_FACTURACION: FacturacionConfig = {
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
+  plantillaAvisoFactura: '',
   tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
   aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
   impuesto1: 0, impuesto2: 0, impuesto3: 0,
@@ -137,6 +138,17 @@ export default function PlantillasConfigPage() {
   const [nombreNueva, setNombreNueva] = useState('');
   const [facturacion, setFact] = useState<FacturacionConfig>({ ...DEFAULT_FACTURACION });
   const [notificaciones, setNotif] = useState<NotificacionesConfig>({ ...DEFAULT_NOTIFICACIONES });
+
+  // Auto-preselect "Nueva Factura Generada" when templates load and no value is set
+  useEffect(() => {
+    if (!plantillasMsg.length) return;
+    const dflt = plantillasMsg.find(p => p.nombre === 'Nueva Factura Generada');
+    if (!dflt) return;
+    setFact(prev => ({
+      ...prev,
+      plantillaAvisoFactura: prev.plantillaAvisoFactura || dflt.id,
+    }));
+  }, [plantillasMsg]);
 
   // Cuando cargan las plantillas, selecciona la primera
   useEffect(() => {
@@ -289,6 +301,18 @@ export default function PlantillasConfigPage() {
               <Field label="Crear Factura">
                 <select className={selectCls} value={facturacion.crearFactura} onChange={e => updateF('crearFactura', e.target.value)}>
                   {CREAR_FACTURA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <Field label="Aviso de factura disponible">
+                <select
+                  className={selectCls}
+                  value={facturacion.plantillaAvisoFactura ?? ''}
+                  onChange={e => updateF('plantillaAvisoFactura', e.target.value)}
+                >
+                  <option value="">— Sin plantilla específica —</option>
+                  {plantillasMsg.map(p => (
+                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                  ))}
                 </select>
               </Field>
               <Field label="Tipo impuesto">

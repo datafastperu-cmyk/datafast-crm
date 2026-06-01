@@ -5,6 +5,7 @@ export interface FacturacionConfig {
   tipo:             string;
   diaPago:          string;
   crearFactura:     string;
+  plantillaAvisoFactura?: string;
   tipoImpuesto:     string;
   diasGracia:       string;
   aplicarCorte:     string;
