@@ -77,12 +77,7 @@ async function bootstrap() {
     dotfiles: 'deny',
   });
 
-  // ── Media CRM WhatsApp (/media/uuid.jpg, /media/uuid.ogg) ────
-  // __dirname en dist/ → join('..', 'public', 'media') apunta a /opt/datafast/backend/public/media
-  app.useStaticAssets(path.join(__dirname, '..', 'public', 'media'), {
-    prefix: '/media/',
-    dotfiles: 'deny',
-  });
+  // Media CRM WhatsApp — servido vía endpoint privado /api/v1/crm-nativo/media/:filename (JWT requerido)
 
   // ── WebSocket con Socket.IO ───────────────────────────────────
   app.useWebSocketAdapter(new IoAdapter(app));

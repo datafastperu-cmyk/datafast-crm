@@ -6,7 +6,7 @@ import {
   MessageSquare, Search, Send, Loader2,
   Wifi, WifiOff, RefreshCw, CheckCheck, User,
   Download, X, ZoomIn, ZoomOut, Maximize2,
-  Paperclip, FileText,
+  Paperclip, FileText, BookOpen,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
@@ -238,6 +238,307 @@ function AuthedMedia({ raw }: { raw: string }) {
   );
 }
 
+// ─── Interfaces del modal de plantillas ─────────────────────────
+interface ClienteItem {
+  id:              string;
+  nombreCompleto:  string;
+  numeroDocumento: string;
+  telefono?:       string;
+}
+interface ContratoItem {
+  planId:           string;
+  precioFinal?:     number;
+  precioMensual?:   number;
+  fechaVencimiento?: string;
+  estado?:          string;
+}
+interface PlantillaItem {
+  id:        string;
+  codigo:    string;
+  nombre:    string;
+  contenido: string;
+  activo:    boolean;
+}
+interface PlanItem {
+  id:     string;
+  nombre: string;
+  precio: number;
+}
+
+function resolverVariables(
+  contenido: string,
+  cliente:   ClienteItem,
+  contrato:  ContratoItem,
+  planNombre: string,
+): string {
+  const nombre = cliente.nombreCompleto;
+  const plan   = planNombre || 'N/A';
+  const precio = ((contrato.precioFinal ?? contrato.precioMensual) || 0).toFixed(2);
+  let fecha = 'N/A';
+  if (contrato.fechaVencimiento) {
+    const parts = String(contrato.fechaVencimiento).split('-');
+    if (parts.length === 3) fecha = `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return contenido
+    .replace(/\{\{nombre_completo\}\}/g, nombre)
+    .replace(/\{\{plan_contratado\}\}/g, plan)
+    .replace(/\{\{monto_factura\}\}/g, precio)
+    .replace(/\{\{fecha_pago\}\}/g, fecha)
+    .replace(/\{nombre\}/g, nombre)
+    .replace(/\{plan\}/g, plan)
+    .replace(/\{precio\}/g, precio)
+    .replace(/\{fecha\}/g, fecha)
+    .replace(/\{\{[^}]+\}\}/g, m => `[${m.slice(2, -2).toUpperCase()}]`);
+}
+
+// ─── Modal: Insertar Plantilla ───────────────────────────────────
+interface ModalPlantillaProps {
+  open:       boolean;
+  onClose:    () => void;
+  onInsertar: (texto: string) => void;
+}
+
+function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
+  const [busq,        setBusq]        = React.useState('');
+  const [sugerencias, setSugerencias] = React.useState<ClienteItem[]>([]);
+  const [showSug,     setShowSug]     = React.useState(false);
+  const [cliente,     setCliente]     = React.useState<ClienteItem | null>(null);
+  const [contrato,    setContrato]    = React.useState<ContratoItem | null>(null);
+  const [plantillas,  setPlantillas]  = React.useState<PlantillaItem[]>([]);
+  const [planes,      setPlanes]      = React.useState<PlanItem[]>([]);
+  const [plantillaId, setPlantillaId] = React.useState('');
+  const [preview,     setPreview]     = React.useState('');
+  const [buscando,    setBuscando]    = React.useState(false);
+  const [cargandoCtr, setCargandoCtr] = React.useState(false);
+  const busqRef = React.useRef<HTMLInputElement>(null);
+
+  // Carga plantillas + planes al abrir
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    Promise.all([
+      api.get<{ data: PlantillaItem[] }>('/plantillas?tipo=whatsapp'),
+      api.get<{ data: PlanItem[]      }>('/planes?limit=100'),
+    ]).then(([tRes, pRes]) => {
+      if (cancelled) return;
+      setPlantillas(tRes.data.data ?? []);
+      setPlanes(pRes.data.data ?? []);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Reset al cerrar / focus al abrir
+  React.useEffect(() => {
+    if (!open) {
+      setBusq(''); setSugerencias([]); setShowSug(false);
+      setCliente(null); setContrato(null);
+      setPlantillaId(''); setPreview('');
+    } else {
+      setTimeout(() => busqRef.current?.focus(), 60);
+    }
+  }, [open]);
+
+  // Búsqueda de clientes con debounce 300 ms
+  React.useEffect(() => {
+    if (busq.trim().length < 2) { setSugerencias([]); setShowSug(false); return; }
+    setBuscando(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.get<{ data: ClienteItem[] }>(
+          `/clientes?search=${encodeURIComponent(busq.trim())}&limit=8`,
+        );
+        setSugerencias(r.data.data ?? []);
+        setShowSug(true);
+      } catch { setSugerencias([]); }
+      finally   { setBuscando(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [busq]);
+
+  // Contrato activo cuando cambia el cliente
+  React.useEffect(() => {
+    if (!cliente) { setContrato(null); return; }
+    let cancelled = false;
+    setCargandoCtr(true);
+    api.get<{ data: ContratoItem[] }>(`/contratos/cliente/${cliente.id}`)
+      .then(r => {
+        if (cancelled) return;
+        const lista  = r.data.data ?? [];
+        const activo = lista.find((c: ContratoItem) => c.estado === 'activo') ?? lista[0] ?? null;
+        setContrato(activo);
+      })
+      .catch(() => { if (!cancelled) setContrato(null); })
+      .finally(() => { if (!cancelled) setCargandoCtr(false); });
+    return () => { cancelled = true; };
+  }, [cliente]);
+
+  // Vista previa en vivo
+  React.useEffect(() => {
+    if (!cliente || !contrato || !plantillaId) { setPreview(''); return; }
+    const tpl = plantillas.find(p => p.id === plantillaId);
+    if (!tpl) { setPreview(''); return; }
+    const planNombre = planes.find(p => p.id === contrato.planId)?.nombre ?? '';
+    setPreview(resolverVariables(tpl.contenido, cliente, contrato, planNombre));
+  }, [cliente, contrato, plantillaId, plantillas, planes]);
+
+  const seleccionarCliente = (c: ClienteItem) => {
+    setCliente(c);
+    setBusq(c.nombreCompleto);
+    setSugerencias([]);
+    setShowSug(false);
+  };
+
+  const planActivo    = contrato ? planes.find(p => p.id === contrato.planId) : null;
+  const previewTexto  = preview || (plantillaId ? (plantillas.find(p => p.id === plantillaId)?.contenido ?? '') : '');
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-primary" />
+            <span className="text-sm font-semibold text-white">Insertar Plantilla</span>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 flex flex-col gap-4 overflow-y-auto" style={{ maxHeight: '72vh' }}>
+
+          {/* Bloque 1: Buscador de cliente */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">
+              1 · Cliente / Abonado
+            </label>
+            <div className="relative">
+              <input
+                ref={busqRef}
+                type="text"
+                value={busq}
+                onChange={e => {
+                  setBusq(e.target.value);
+                  if (cliente) { setCliente(null); setContrato(null); }
+                }}
+                onBlur={() => setTimeout(() => setShowSug(false), 150)}
+                onFocus={() => { if (sugerencias.length > 0) setShowSug(true); }}
+                placeholder="Nombre, número de documento o teléfono…"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-700 bg-zinc-800 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-primary/60"
+              />
+              {buscando && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 animate-spin" />
+              )}
+              {showSug && sugerencias.length > 0 && (
+                <div className="absolute z-20 top-full mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden">
+                  {sugerencias.map(c => (
+                    <button
+                      key={c.id}
+                      onMouseDown={() => seleccionarCliente(c)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-zinc-700 transition text-left"
+                    >
+                      <User className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-white truncate">{c.nombreCompleto}</p>
+                        <p className="text-[10px] text-zinc-400">
+                          {c.numeroDocumento}{c.telefono ? ` · ${c.telefono}` : ''}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Info del contrato activo */}
+            {cliente && cargandoCtr && (
+              <p className="text-[10px] text-zinc-500 flex items-center gap-1 mt-0.5">
+                <Loader2 className="w-3 h-3 animate-spin" /> Cargando contrato…
+              </p>
+            )}
+            {cliente && contrato && !cargandoCtr && (
+              <p className="text-[10px] text-emerald-400 mt-0.5">
+                ✓ {planActivo?.nombre ?? 'Plan N/A'} · S/ {((contrato.precioFinal ?? contrato.precioMensual) || 0).toFixed(2)}
+                {contrato.fechaVencimiento
+                  ? ` · Vence: ${String(contrato.fechaVencimiento).split('-').reverse().join('/')}`
+                  : ''}
+              </p>
+            )}
+            {cliente && !contrato && !cargandoCtr && (
+              <p className="text-[10px] text-amber-400 mt-0.5">Sin contrato activo registrado</p>
+            )}
+          </div>
+
+          {/* Bloque 2: Selector de plantilla */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">
+              2 · Plantilla
+            </label>
+            <select
+              value={plantillaId}
+              onChange={e => setPlantillaId(e.target.value)}
+              disabled={plantillas.length === 0}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-700 bg-zinc-800 text-white focus:outline-none focus:ring-1 focus:ring-primary/60 disabled:opacity-40"
+            >
+              <option value="">— Seleccionar plantilla —</option>
+              {plantillas.filter(p => p.activo).map(p => (
+                <option key={p.id} value={p.id}>{p.nombre}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Bloque 3: Vista previa en vivo */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">
+                3 · Vista previa en vivo
+              </label>
+              {preview && (
+                <span className="text-[10px] text-emerald-400 font-medium">Variables resueltas ✓</span>
+              )}
+            </div>
+            <textarea
+              value={previewTexto}
+              onChange={e => setPreview(e.target.value)}
+              rows={6}
+              className="w-full px-3 py-2.5 text-xs rounded-lg border border-zinc-700 bg-zinc-800/60 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-primary/60 resize-none leading-relaxed"
+              placeholder="La plantilla renderizada aparecerá aquí al seleccionar un cliente y una plantilla…"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-zinc-800 shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => {
+              if (!previewTexto.trim()) return;
+              onInsertar(previewTexto);
+              onClose();
+            }}
+            disabled={!previewTexto.trim()}
+            className="px-4 py-2 text-xs font-semibold bg-primary text-primary-foreground rounded-lg hover:opacity-90 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Insertar en chat
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Tipos ────────────────────────────────────────────────────────
 type WaEstado = 'INICIANDO' | 'REQUERIDO_QR' | 'CONECTADO' | 'DESCONECTADO';
 
@@ -311,6 +612,7 @@ export default function WhatsAppWebPage() {
   const [archivo,        setArchivo]        = useState<File | null>(null);
   const [archivoPreview, setArchivoPreview] = useState<string | null>(null);
   const [uploadError,    setUploadError]    = useState<string | null>(null);
+  const [modalPlantilla, setModalPlantilla] = useState(false);
 
   const mensajesRef  = useRef<HTMLDivElement>(null);
   const inputRef     = useRef<HTMLInputElement>(null);
@@ -745,6 +1047,14 @@ export default function WhatsAppWebPage() {
               >
                 <Paperclip className="w-4 h-4" />
               </button>
+              <button
+                type="button"
+                onClick={() => setModalPlantilla(true)}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/40 rounded-lg transition flex-shrink-0"
+                title="Insertar plantilla"
+              >
+                <BookOpen className="w-4 h-4" />
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -779,6 +1089,12 @@ export default function WhatsAppWebPage() {
           </div>
         )}
       </div>
+
+      <ModalPlantilla
+        open={modalPlantilla}
+        onClose={() => setModalPlantilla(false)}
+        onInsertar={(t) => { setTexto(t); inputRef.current?.focus(); }}
+      />
     </div>
   );
 }

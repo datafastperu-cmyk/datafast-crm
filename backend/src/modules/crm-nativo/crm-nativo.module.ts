@@ -7,6 +7,7 @@ import { WaClientService }    from './wa-client.service';
 import { CrmNativoService }   from './crm-nativo.service';
 import { CrmNativoGateway }   from './crm-nativo.gateway';
 import { CrmNativoController } from './crm-nativo.controller';
+import { PurgaMediaCron }     from './purga-media.cron';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CrmNativoController } from './crm-nativo.controller';
     CrmNativoService,
     CrmNativoGateway,
     WaClientService,
+    PurgaMediaCron,
   ],
   exports: [WaClientService, CrmNativoService],
 })

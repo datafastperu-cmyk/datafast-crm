@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository }   from '@nestjs/typeorm';
-import { Repository, In }     from 'typeorm';
+import { Repository, In, MoreThan, LessThan } from 'typeorm';
 import { CrmChat }    from './entities/crm-chat.entity';
 import { CrmMensaje } from './entities/crm-mensaje.entity';
 
@@ -87,7 +87,7 @@ export class CrmNativoService {
     return this.chatRepo.find({
       where:  { empresaId },
       order:  { ultimoMsgAt: 'DESC' },
-      take:   100,
+      take:   500,
     });
   }
 
@@ -95,7 +95,7 @@ export class CrmNativoService {
   async listarChatsActivos(): Promise<CrmChat[]> {
     return this.chatRepo.find({
       order: { ultimoMsgAt: 'DESC' },
-      take:  100,
+      take:  500,
     });
   }
 
@@ -123,8 +123,9 @@ export class CrmNativoService {
 
     if (chatIds.length === 0) return [];
 
+    const tresAtras = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     return this.mensajeRepo.find({
-      where: { chatId: In(chatIds) },
+      where: { chatId: In(chatIds), createdAt: MoreThan(tresAtras) },
       order: { createdAt: 'ASC' },
       take:  limit,
     });
@@ -144,5 +145,12 @@ export class CrmNativoService {
   // ── Buscar mensaje por waMsgId (deduplicación) ────────────────
   async findMensajePorWaMsgId(waMsgId: string): Promise<CrmMensaje | null> {
     return this.mensajeRepo.findOne({ where: { waMsgId } });
+  }
+
+  // ── Purgar mensajes de más de N días (cron nocturno) ─────────
+  async purgarMensajesAntiguos(diasRetención: number): Promise<number> {
+    const limite = new Date(Date.now() - diasRetención * 24 * 60 * 60 * 1000);
+    const result = await this.mensajeRepo.delete({ createdAt: LessThan(limite) });
+    return result.affected ?? 0;
   }
 }
