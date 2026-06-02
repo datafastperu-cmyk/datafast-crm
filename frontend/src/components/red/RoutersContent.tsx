@@ -49,12 +49,12 @@ const TIPO_VELOCIDAD_OPTS = [
 ];
 
 const ESTADO_COLORS: Record<string, string> = {
-  online:        'text-green-400',
-  offline:       'text-red-400',
-  degradado:     'text-yellow-400',
-  mantenimiento: 'text-orange-400',
-  reverificando: 'text-blue-400',
-  desconocido:   'text-gray-500',
+  online:        'text-green-600 dark:text-green-400',
+  offline:       'text-red-600 dark:text-red-400',
+  degradado:     'text-amber-600 dark:text-yellow-400',
+  mantenimiento: 'text-orange-600 dark:text-orange-400',
+  reverificando: 'text-blue-600 dark:text-blue-400',
+  desconocido:   'text-muted-foreground',
 };
 
 const VERSION_ROS_OPTS = [
@@ -975,11 +975,11 @@ export function RoutersContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
             <Router className="w-5 h-5 text-primary" />
             Routers MikroTik
           </h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             {routers.length} router{routers.length !== 1 ? 's' : ''} registrado{routers.length !== 1 ? 's' : ''}
           </p>
         </div>
@@ -998,7 +998,7 @@ export function RoutersContent() {
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       ) : routers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-48 text-gray-500">
+        <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
           <Router className="w-12 h-12 mb-3 opacity-20" />
           <p className="text-sm">No hay routers registrados</p>
           <button onClick={openAdd} className="mt-3 text-primary text-sm hover:underline">
@@ -1006,10 +1006,10 @@ export function RoutersContent() {
           </button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-white/10">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-xs text-gray-500 uppercase tracking-wider">
+              <tr className="border-b border-border text-xs text-muted-foreground/70 uppercase tracking-wider">
                 <th className="text-left px-4 py-3">Router</th>
                 <th className="text-left px-4 py-3">IP Gestión</th>
                 <th className="text-left px-4 py-3">IP VPN</th>
@@ -1034,48 +1034,48 @@ export function RoutersContent() {
                   <tr
                     key={r.id}
                     className={cn(
-                      'border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer',
-                      detailRouter?.id === r.id && 'bg-white/5 ring-1 ring-inset ring-primary/30',
+                      'border-b border-border/40 hover:bg-muted/30 transition-colors cursor-pointer',
+                      detailRouter?.id === r.id && 'bg-primary/5 ring-1 ring-inset ring-primary/30',
                     )}
                     onClick={() => setDetailRouter(detailRouter?.id === r.id ? null : r)}
                   >
                     <td className="px-4 py-3">
-                      <div className="font-medium text-white">{r.nombre}</div>
-                      {r.zona && <div className="text-xs text-gray-500">{r.zona}</div>}
-                      {r.modelo && <div className="text-xs text-gray-600">{r.modelo}</div>}
+                      <div className="font-medium text-foreground">{r.nombre}</div>
+                      {r.zona && <div className="text-xs text-muted-foreground/70">{r.zona}</div>}
+                      {r.modelo && <div className="text-xs text-muted-foreground/60">{r.modelo}</div>}
                       {r.identityRouteros && (
-                        <div className="text-xs text-gray-600 font-mono">{r.identityRouteros}</div>
+                        <div className="text-xs text-muted-foreground/60 font-mono">{r.identityRouteros}</div>
                       )}
                       {r.subnetsLocales?.length ? (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {r.subnetsLocales.map((s) => (
-                            <span key={s} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                            <span key={s} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-sky-100 text-sky-700 border border-sky-300 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20">
                               <Globe className="w-2.5 h-2.5" />{s}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <div className="text-[10px] text-gray-700 mt-0.5 flex items-center gap-1">
+                        <div className="text-[10px] text-muted-foreground/50 mt-0.5 flex items-center gap-1">
                           <Globe className="w-2.5 h-2.5" />Sin redes sincronizadas
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-gray-300 text-xs">{r.ipGestion}</td>
+                    <td className="px-4 py-3 font-mono text-foreground text-xs">{r.ipGestion}</td>
                     <td className="px-4 py-3 font-mono text-xs">
                       {r.vpnIp ? (
-                        <span className="text-blue-400">{r.vpnIp}</span>
+                        <span className="text-blue-700 dark:text-blue-400">{r.vpnIp}</span>
                       ) : (
-                        <span className="text-gray-700">—</span>
+                        <span className="text-muted-foreground/40">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <MetodoIcon className="w-3.5 h-3.5" />
                         {metodoCfg?.label ?? r.metodoConexion}
-                        {r.usarSsl && <Lock className="w-3 h-3 text-yellow-400" />}
+                        {r.usarSsl && <Lock className="w-3 h-3 text-yellow-500 dark:text-yellow-400" />}
                       </span>
                       {r.versionRos && r.versionRos !== 'desconocida' && (
-                        <span className="text-[10px] text-gray-600 font-mono">{r.versionRos.toUpperCase()}</span>
+                        <span className="text-[10px] text-muted-foreground/60 font-mono">{r.versionRos.toUpperCase()}</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -1091,10 +1091,10 @@ export function RoutersContent() {
                       {r.cpuUsoPct != null || r.memoriaUsoPct != null || r.totalSesionesPppoe != null ? (
                         <div className="space-y-0.5">
                           {r.cpuUsoPct != null && (() => { const cpu = Number(r.cpuUsoPct); return (
-                            <div className="flex items-center gap-1 text-gray-400">
+                            <div className="flex items-center gap-1 text-muted-foreground">
                               <Cpu className="w-3 h-3" />
                               <div className="flex items-center gap-1">
-                                <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                                <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
                                   <div
                                     className="h-full rounded-full"
                                     style={{
@@ -1108,10 +1108,10 @@ export function RoutersContent() {
                             </div>
                           ); })()}
                           {r.memoriaUsoPct != null && (() => { const ram = Number(r.memoriaUsoPct); return (
-                            <div className="flex items-center gap-1 text-gray-400">
+                            <div className="flex items-center gap-1 text-muted-foreground">
                               <MemoryStick className="w-3 h-3" />
                               <div className="flex items-center gap-1">
-                                <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                                <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
                                   <div
                                     className="h-full rounded-full"
                                     style={{
@@ -1125,24 +1125,24 @@ export function RoutersContent() {
                             </div>
                           ); })()}
                           {r.totalSesionesPppoe != null && (
-                            <div className="flex items-center gap-1 text-gray-400">
+                            <div className="flex items-center gap-1 text-muted-foreground">
                               <Users className="w-3 h-3" />
                               <span>{r.totalSesionesPppoe} PPPoE</span>
                             </div>
                           )}
                         </div>
                       ) : (
-                        <span className="text-gray-700">—</span>
+                        <span className="text-muted-foreground/40">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
                       {r.latenciaMs != null ? `${r.latenciaMs}ms` : '—'}
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => testConexion(r)} disabled={isTesting}
                           title="Probar conexión"
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-green-400 transition-colors disabled:opacity-50"
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-green-600 dark:hover:text-green-400 transition-colors disabled:opacity-50"
                         >
                           {isTesting
                             ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -1151,7 +1151,7 @@ export function RoutersContent() {
                         </button>
                         <button onClick={() => handleSyncSubnets(r)} disabled={isSyncing}
                           title="Sincronizar redes LAN"
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-50"
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50"
                         >
                           {isSyncing
                             ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -1159,7 +1159,7 @@ export function RoutersContent() {
                           }
                         </button>
                         <button onClick={() => setMorososRouter(r)} title="Ver morosos en MikroTik"
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-red-400 transition-colors"
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                         >
                           <Users className="w-4 h-4" />
                         </button>
@@ -1167,14 +1167,14 @@ export function RoutersContent() {
                           onClick={() => setPendingRepair(r)}
                           disabled={isRepairing}
                           title="Reparar / Sincronizar router"
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-amber-400 transition-colors disabled:opacity-50"
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-50"
                         >
                           {isRepairing
                             ? <Loader2 className="w-4 h-4 animate-spin" />
                             : <Wrench className="w-4 h-4" />}
                         </button>
                         <button onClick={() => openEdit(r)} title="Editar"
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-gray-500 hover:text-blue-400 transition-colors"
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
@@ -1185,8 +1185,8 @@ export function RoutersContent() {
                           className={cn(
                             'p-1.5 rounded-lg transition-colors',
                             hasContracts
-                              ? 'text-gray-700 cursor-not-allowed opacity-40'
-                              : 'hover:bg-white/10 text-gray-500 hover:text-red-400',
+                              ? 'text-muted-foreground/30 cursor-not-allowed opacity-40'
+                              : 'hover:bg-muted text-muted-foreground/60 hover:text-red-600 dark:hover:text-red-400',
                           )}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1202,16 +1202,16 @@ export function RoutersContent() {
       )}
 
       {/* Info VPN */}
-      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 text-sm">
-        <div className="flex items-start gap-2.5 text-blue-300">
+      <div className="bg-blue-50 border border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/20 rounded-xl p-4 text-sm">
+        <div className="flex items-start gap-2.5 text-blue-800 dark:text-blue-300">
           <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
             <p className="font-medium mb-1">Routers con IP privada o detrás de NAT</p>
-            <p className="text-blue-300/70 text-xs">
+            <p className="text-blue-700/80 dark:text-blue-300/70 text-xs">
               Si el router no tiene IP pública, configúralo con una IP de la VPN del sistema
               (Panel → Red → OpenVPN → Certificados → Generar cliente). Luego usa esa IP en el campo
-              <strong className="text-blue-200"> &ldquo;IP VPN&rdquo;</strong> y selecciona el tipo de conexión
-              <strong className="text-blue-200"> &ldquo;VPN Tunnel&rdquo;</strong>.
+              <strong className="text-blue-900 dark:text-blue-200"> &ldquo;IP VPN&rdquo;</strong> y selecciona el tipo de conexión
+              <strong className="text-blue-900 dark:text-blue-200"> &ldquo;VPN Tunnel&rdquo;</strong>.
             </p>
           </div>
         </div>
@@ -1281,30 +1281,30 @@ export function RoutersContent() {
           onClick={() => setPendingRepair(null)}
         >
           <div
-            className="bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl w-full max-w-md p-6 ring-1 ring-white/5"
+            className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                <Wrench className="w-5 h-5 text-amber-400" />
+                <Wrench className="w-5 h-5 text-amber-500 dark:text-amber-400" />
               </div>
               <div>
-                <h3 className="font-semibold text-white leading-none">Reparar router</h3>
-                <p className="text-[11px] text-zinc-500 mt-0.5">{pendingRepair.nombre} — {pendingRepair.vpnIp || pendingRepair.ipGestion}</p>
+                <h3 className="font-semibold text-foreground leading-none">Reparar router</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{pendingRepair.nombre} — {pendingRepair.vpnIp || pendingRepair.ipGestion}</p>
               </div>
             </div>
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300 mb-5 space-y-1">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-300 mb-5 space-y-1">
               <p className="font-medium">¿Confirmas reparar este router?</p>
-              <p className="text-amber-400/70">
+              <p className="text-amber-600/80 dark:text-amber-400/70">
                 Esto inyectará y actualizará todas las reglas de planes, abonados, colas de velocidad
                 y listas de morosos de Datafast en el MikroTik físico.
-                Solo se tocan reglas con firma <code className="bg-black/30 px-1 rounded">datafast</code>.
+                Solo se tocan reglas con firma <code className="bg-black/10 dark:bg-black/30 px-1 rounded">datafast</code>.
               </p>
             </div>
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => setPendingRepair(null)}
-                className="px-4 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                className="px-4 py-2 text-sm rounded-lg border border-input text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               >
                 Cancelar
               </button>
