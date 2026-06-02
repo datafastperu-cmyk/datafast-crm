@@ -67,14 +67,14 @@ export const PALETTES: PaletteOption[] = [
     primaryColor: '#7d9435', secondaryColor: '#111b38',
     css: `
       :root {
-        --primary: 82 38% 38%; --ring: 82 38% 38%;
-        --sidebar-bg: 226 58% 11%; --sidebar-active: 82 38% 56%;
-        --sidebar-hover: 226 50% 16%; --sidebar-border: 226 46% 16%;
+        --primary: 82 42% 36%; --ring: 82 42% 36%;
+        --sidebar-bg: 226 60% 11%; --sidebar-active: 82 42% 58%;
+        --sidebar-hover: 226 52% 17%; --sidebar-border: 226 48% 17%;
       }
       .dark {
-        --primary: 82 34% 50%; --ring: 82 34% 50%;
-        --sidebar-bg: 226 68% 4%; --sidebar-active: 82 34% 50%;
-        --sidebar-hover: 224 55% 9%; --sidebar-border: 224 55% 9%;
+        --primary: 82 36% 52%; --ring: 82 36% 52%;
+        --sidebar-bg: 226 58% 7%; --sidebar-active: 82 36% 52%;
+        --sidebar-hover: 224 52% 12%; --sidebar-border: 224 52% 12%;
       }
     `,
   },
