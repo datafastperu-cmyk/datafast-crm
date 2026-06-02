@@ -141,7 +141,7 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
       {/* ── SECCIÓN 1: Identificación ─────────────────────── */}
       <Section title="Identificación">
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Tipo de documento" error={errors.tipoDocumento?.message}>
             <select {...register('tipoDocumento')} className={inputCls()}>
               <option value="dni">DNI</option>
@@ -193,7 +193,7 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
           </Field>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Field label="Nombres" error={errors.nombres?.message}>
             <input {...register('nombres')} placeholder="Piero" className={inputCls(!!errors.nombres)} />
           </Field>
@@ -211,7 +211,7 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
         </label>
 
         {esEmpresa && (
-          <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg border border-border">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg border border-border">
             <Field label="RUC">
               <input {...register('rucEmpresa')} placeholder="20123456789" className={inputCls()} />
             </Field>
@@ -224,7 +224,7 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
 
       {/* ── SECCIÓN 2: Contacto ───────────────────────────── */}
       <Section title="Datos de contacto">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Teléfono principal *" error={errors.telefono?.message}>
             <input {...register('telefono')} placeholder="987654321" className={inputCls(!!errors.telefono)} />
           </Field>
@@ -252,7 +252,7 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
         <Field label="Referencia">
           <input {...register('referencia')} placeholder="A media cuadra del parque" className={inputCls()} />
         </Field>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Field label="Departamento">
             <input {...register('departamento')} placeholder="Piura" className={inputCls()} />
           </Field>
@@ -267,7 +267,7 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
 
       {/* ── SECCIÓN 4: Servicio y notas ───────────────────── */}
       <Section title="Servicio">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Tipo de servicio">
             <select {...register('tipoServicio')} className={inputCls()}>
               <option value="ftth">FTTH (fibra hasta el hogar)</option>
@@ -316,7 +316,7 @@ export function ClienteForm({ clienteId, initialValues, onSuccess }: Props) {
 // ─── Helpers de UI ────────────────────────────────────────────
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+    <div className="bg-card border border-border rounded-xl p-4 sm:p-5 space-y-4">
       <h3 className="text-sm font-semibold text-foreground pb-2 border-b border-border">
         {title}
       </h3>
@@ -341,7 +341,7 @@ function Field({
 
 function inputCls(hasError = false): string {
   return cn(
-    'w-full px-3 py-2 text-sm rounded-lg border bg-background',
+    'w-full px-3 py-2 text-sm rounded-lg border bg-background text-foreground',
     'placeholder:text-muted-foreground transition-colors',
     'focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent',
     hasError ? 'border-destructive' : 'border-input',

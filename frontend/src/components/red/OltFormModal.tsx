@@ -307,7 +307,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
             {/* SNMP */}
             <section>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">SNMP</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Community" error={undefined}>
                   <input value={form.snmpCommunity} onChange={set('snmpCommunity')} placeholder="public"
                     className={inputCls()} />
@@ -370,7 +370,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
 
 function inputCls(err?: string) {
   return cn(
-    'w-full px-3 py-2 text-sm rounded-lg border bg-background transition-colors outline-none',
+    'w-full px-3 py-2 text-sm rounded-lg border bg-background text-foreground transition-colors outline-none',
     'focus:ring-2 focus:ring-primary/30 focus:border-primary',
     err ? 'border-red-500' : 'border-border hover:border-muted-foreground/50',
   );

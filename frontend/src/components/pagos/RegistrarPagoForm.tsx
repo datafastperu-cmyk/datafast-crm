@@ -168,7 +168,7 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
 
       {/* ── SECCIÓN 1: Importe ────────────────────────── */}
       <Section title="Importe">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Monto (S/) *" error={errors.monto?.message}>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">S/</span>
@@ -238,7 +238,7 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
 
         {/* Banco */}
         {requiresBanco && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Banco">
               <select {...register('banco')} className={input()}>
                 <option value="">— Seleccionar —</option>
@@ -359,7 +359,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 
 function input(hasError = false) {
   return cn(
-    'w-full px-3 py-2 text-sm rounded-lg border bg-background',
+    'w-full px-3 py-2 text-sm rounded-lg border bg-background text-foreground',
     'placeholder:text-muted-foreground transition-colors',
     'focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent',
     hasError ? 'border-destructive' : 'border-input',

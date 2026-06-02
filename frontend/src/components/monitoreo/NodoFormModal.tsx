@@ -134,7 +134,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
       <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-border">
           <h3 className="font-semibold text-foreground">Agregar nodo</h3>
           <button type="button" onClick={onClose}
             className="p-1 rounded-lg hover:bg-muted transition-colors">
@@ -144,7 +144,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
 
         {/* Body */}
         <form onSubmit={handleSubmit}>
-          <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-4 max-h-[70vh] overflow-y-auto">
 
             <Row label="Nombre Emisor">
               <input required type="text" placeholder="Emisor principal"
@@ -173,7 +173,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
             {form.routerId && (() => {
               const sel = routers.find(r => r.id === form.routerId);
               return sel?.subnetsLocales?.length ? (
-                <div className="col-span-2 ml-[176px]">
+                <div className="col-span-2 sm:ml-[176px]">
                   <div className="flex flex-wrap gap-1.5">
                     {sel.subnetsLocales.map((s) => (
                       <span key={s} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">
@@ -184,7 +184,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
                   <p className="text-[10px] text-muted-foreground mt-1">Redes gestionadas por este router</p>
                 </div>
               ) : sel ? (
-                <div className="col-span-2 ml-[176px] text-xs text-muted-foreground">
+                <div className="col-span-2 sm:ml-[176px] text-xs text-muted-foreground">
                   Sin redes sincronizadas — usa &ldquo;Sincronizar redes&rdquo; en la sección Red
                 </div>
               ) : null;
@@ -309,7 +309,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-border">
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-t border-border">
             <button type="button" onClick={handleProbar} disabled={testando || isPending}
               className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg border border-input
                          hover:bg-muted transition-colors disabled:opacity-50">
@@ -342,8 +342,8 @@ const INPUT = 'w-full px-3 py-2 text-sm rounded-lg border border-input bg-backgr
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[160px_1fr] items-center gap-4">
-      <span className="text-sm text-muted-foreground text-right">{label}</span>
+    <div className="flex flex-col gap-1 sm:grid sm:grid-cols-[160px_1fr] sm:items-center sm:gap-4">
+      <span className="text-xs font-medium text-muted-foreground sm:text-sm sm:text-right">{label}</span>
       {children}
     </div>
   );

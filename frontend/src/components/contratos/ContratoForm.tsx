@@ -200,7 +200,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
 
       {/* ── SECCIÓN 2: Fechas y facturación ──────────────── */}
       <Section title="Facturación">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Field label="Fecha de inicio *" error={errors.fechaInicio?.message}>
             <input type="date" {...register('fechaInicio')} className={input(!!errors.fechaInicio)} />
           </Field>
@@ -225,7 +225,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
 
       {/* ── SECCIÓN 3: Red y aprovisionamiento ───────────── */}
       <Section title="Configuración de red">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Router Mikrotik">
             <select {...register('routerId')} className={input()}>
               <option value="">— Sin asignar —</option>
@@ -264,7 +264,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
         <p className="text-xs text-muted-foreground -mt-2">
           Se generan automáticamente. Puedes regenerarlas o modificarlas.
         </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Usuario PPPoE">
             <input
               {...register('usuarioPppoe')}
@@ -328,7 +328,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+    <div className="bg-card border border-border rounded-xl p-4 sm:p-5 space-y-4">
       <h3 className="text-sm font-semibold text-foreground pb-2 border-b border-border">{title}</h3>
       {children}
     </div>
@@ -349,7 +349,7 @@ function Field({ label, error, children }: {
 
 function input(hasError = false) {
   return cn(
-    'w-full px-3 py-2 text-sm rounded-lg border bg-background',
+    'w-full px-3 py-2 text-sm rounded-lg border bg-background text-foreground',
     'placeholder:text-muted-foreground transition-colors',
     'focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent',
     hasError ? 'border-destructive' : 'border-input',

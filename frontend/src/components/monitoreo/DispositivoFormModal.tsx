@@ -221,27 +221,27 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
     >
       <div
         className={cn(
-          'relative bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl shadow-black/70',
-          'w-full max-w-lg ring-1 ring-white/5',
+          'relative bg-background border border-border rounded-2xl shadow-2xl',
+          'w-full max-w-lg',
         )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ─────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700/60">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/20 ring-1 ring-blue-500/10">
-              <Server className="w-4 h-4 text-blue-400" />
+            <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+              <Server className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-white leading-none">{isEdit ? 'Editar dispositivo' : 'Nuevo dispositivo'}</h3>
-              <p className="text-[11px] text-zinc-500 mt-0.5">Módulo de Monitoreo</p>
+              <h3 className="font-semibold text-foreground leading-none">{isEdit ? 'Editar dispositivo' : 'Nuevo dispositivo'}</h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Módulo de Monitoreo</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             disabled={disabled}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-40"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
           >
             <X className="w-4 h-4" />
           </button>
@@ -249,7 +249,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
 
         {/* ── Cuerpo ─────────────────────────────────────────── */}
         <form onSubmit={handleSubmit((d) => guardar(d))}>
-          <div className="px-6 py-5 space-y-4 max-h-[66vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+          <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-4 max-h-[66vh] overflow-y-auto">
 
             {/* Nombre Emisor */}
             <Field label="Nombre emisor" error={errors.nombreEmisor?.message} required>
@@ -328,9 +328,9 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
 
             {/* Separador credenciales */}
             <div className="flex items-center gap-3 py-1">
-              <div className="h-px flex-1 bg-zinc-800" />
-              <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Credenciales</span>
-              <div className="h-px flex-1 bg-zinc-800" />
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Credenciales</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
 
             {/* Usuario */}
@@ -368,7 +368,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
                   type="button"
                   tabIndex={-1}
                   onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showPassword
                     ? <EyeOff className="h-4 w-4" />
@@ -397,10 +397,10 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
                       className="sr-only peer"
                       disabled={disabled}
                     />
-                    <div className="w-9 h-5 rounded-full bg-zinc-700 peer-checked:bg-blue-600 transition-colors group-hover:bg-zinc-600 peer-checked:group-hover:bg-blue-500" />
+                    <div className="w-9 h-5 rounded-full bg-muted peer-checked:bg-primary transition-colors group-hover:bg-muted/70 peer-checked:group-hover:bg-primary/90" />
                     <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
                   </div>
-                  <span className="text-xs text-zinc-400 whitespace-nowrap">SSL</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">SSL</span>
                 </label>
               </div>
             </Field>
@@ -417,7 +417,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
                   className={cn(
                     'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 disabled:opacity-40',
-                    monitoreoSnmp ? 'bg-blue-600' : 'bg-zinc-600',
+                    monitoreoSnmp ? 'bg-primary' : 'bg-muted-foreground/30',
                   )}
                 >
                   <span
@@ -427,7 +427,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
                     )}
                   />
                 </button>
-                <span className={cn('text-xs', monitoreoSnmp ? 'text-blue-400' : 'text-zinc-500')}>
+                <span className={cn('text-xs', monitoreoSnmp ? 'text-primary' : 'text-muted-foreground')}>
                   {monitoreoSnmp ? 'Activo' : 'Inactivo'}
                 </span>
               </div>
@@ -477,7 +477,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
           </div>
 
           {/* ── Footer ─────────────────────────────────────────── */}
-          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-zinc-700/60 bg-zinc-900/80 rounded-b-2xl">
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-t border-border bg-background/80 rounded-b-2xl">
             {/* Probar conexión (solo si no es sentinel) */}
             <button
               type="button"
@@ -485,7 +485,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
               disabled={disabled || (isEdit && watch('contrasena') === '***stored***')}
               className={cn(
                 'flex items-center gap-2 px-4 py-2 text-sm rounded-lg border transition-all',
-                'border-zinc-600 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-500',
+                'border-border text-foreground hover:bg-muted hover:border-muted-foreground/50',
                 'disabled:opacity-40 disabled:cursor-not-allowed',
               )}
             >
@@ -502,7 +502,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
                 type="button"
                 onClick={onClose}
                 disabled={disabled}
-                className="px-4 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-40"
+                className="px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40"
               >
                 Cerrar
               </button>
@@ -530,12 +530,12 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
 // ─── Helpers ───────────────────────────────────────────────────
 function inputCx(hasError: boolean) {
   return cn(
-    'w-full px-3 py-2 text-sm rounded-lg border bg-zinc-800/80 text-white',
-    'placeholder:text-zinc-600 transition-colors',
+    'w-full px-3 py-2 text-sm rounded-lg border bg-background text-foreground',
+    'placeholder:text-muted-foreground transition-colors',
     'focus:outline-none focus:ring-2',
     hasError
-      ? 'border-red-500/60 focus:ring-red-500/30 focus:border-red-500/60'
-      : 'border-zinc-700 hover:border-zinc-600 focus:ring-blue-500/30 focus:border-blue-500/50',
+      ? 'border-destructive/60 focus:ring-destructive/30 focus:border-destructive/60'
+      : 'border-border hover:border-muted-foreground/50 focus:ring-primary/30 focus:border-primary/50',
   );
 }
 
@@ -551,15 +551,15 @@ function Field({
   children:  React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[148px_1fr] items-start gap-4">
-      <span className="text-sm text-zinc-400 text-right pt-2 leading-tight">
+    <div className="flex flex-col gap-1.5 sm:grid sm:grid-cols-[148px_1fr] sm:items-start sm:gap-4">
+      <span className="text-xs font-medium text-muted-foreground leading-tight sm:text-sm sm:text-right sm:pt-2">
         {label}
-        {required && <span className="text-blue-400 ml-0.5">*</span>}
+        {required && <span className="text-primary ml-0.5">*</span>}
       </span>
       <div>
         {children}
         {error && (
-          <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+          <p className="mt-1 text-xs text-destructive flex items-center gap-1">
             <AlertCircle className="w-3 h-3 inline shrink-0" />{error}
           </p>
         )}
