@@ -403,7 +403,7 @@ export function FirmwareUpgradeTab({ olt }: Props) {
           {/* Progreso por ONU */}
           <div className="divide-y divide-border">
             {(jobStatus.resultado ?? jobStatus.onuIds.map(id => ({
-              onu_id: id, status: 'pending' as const, message: null,
+              onu_id: id, status: 'pending' as const, message: null as string | null,
             }))).map((p: FirmwareJobProgress) => (
               <div key={p.onu_id} className="flex items-center gap-3 px-4 py-2.5">
                 {ONU_STATUS_ICON[p.status] ?? ONU_STATUS_ICON.pending}
