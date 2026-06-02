@@ -10,9 +10,10 @@ import { CobranzaWorker, CobranzaScheduler }       from './cobranza.worker';
 import { FacturacionWorker, FacturacionScheduler }  from './facturacion.worker';
 
 // Módulos de dependencias
-import { AuthModule }          from '../auth/auth.module';
-import { MikrotikModule }      from '../mikrotik/mikrotik.module';
-import { FacturacionModule }   from '../facturacion/facturacion.module';
+import { AuthModule }                from '../auth/auth.module';
+import { MikrotikModule }            from '../mikrotik/mikrotik.module';
+import { FacturacionModule }         from '../facturacion/facturacion.module';
+import { AprovisionamientoModule }   from '../aprovisionamiento/aprovisionamiento.module';
 
 // Servicios de notificaciones (usados por los workers)
 import { WhatsAppService }            from '../notificaciones/services/whatsapp.service';
@@ -67,6 +68,7 @@ import { QUEUES } from './workers.constants';
     AuthModule,
     MikrotikModule,
     FacturacionModule,
+    AprovisionamientoModule,
   ],
   providers: [
     // Servicios de notificaciones

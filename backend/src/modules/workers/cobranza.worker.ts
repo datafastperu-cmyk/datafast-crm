@@ -18,6 +18,7 @@ import { GatewayMensajeriaService }  from '../notificaciones/services/gateway-me
 import { TipoNotificacion }          from '../notificaciones/services/whatsapp.service';
 import { FacturacionService }        from '../facturacion/facturacion.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
+import { IProvisionamientoProvider } from '../aprovisionamiento/interfaces/provisionamiento-provider.interface';
 
 import {
   QUEUES, JOBS, JOB_OPTIONS,
@@ -466,6 +467,7 @@ export class CobranzaWorker {
     private readonly auditoria:      AuditoriaService,
     private readonly events:         EventEmitter,
     @InjectDataSource() private readonly ds: DataSource,
+    @Inject('PROVISIONAMIENTO_PROVIDER') private readonly provisionamientoSvc: IProvisionamientoProvider,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -603,10 +605,21 @@ export class CobranzaWorker {
   // 4. Notifica al cliente
   // ────────────────────────────────────────────────────────────
   @Process({ name: JOBS.REACTIVAR_CONTRATO, concurrency: 5 })
-  async processReactivarContrato(job: Job<PayloadReactivarContrato>): Promise<any> {
+  async handleReactivarContrato(job: Job<PayloadReactivarContrato>): Promise<any> {
     const { contratoId, empresaId, clienteId, routerId, ipAsignada, planNombre, notificar } = job.data;
 
     this.logger.log(`[REACTIVAR] Contrato ${contratoId} | IP: ${ipAsignada}`);
+
+    // ── 0. Estrategia de aprovisionamiento (Patrón Estrategia) ─
+    try {
+      const ok = await this.provisionamientoSvc.reactivarServicio(contratoId, job.data);
+      if (!ok) throw new Error('El proveedor de red rechazó la activación');
+      this.logger.log(`[REACTIVAR] Proveedor confirmó activación para contrato ${contratoId}`);
+    } catch (err) {
+      this.logger.error(`[REACTIVAR] Proveedor rechazó activación para contrato ${contratoId}: ${err.message}`);
+      throw new Error('El proveedor de red rechazó la activación');
+    }
+
     const errores: string[] = [];
 
     // ── 1. Credenciales del router ─────────────────────────
