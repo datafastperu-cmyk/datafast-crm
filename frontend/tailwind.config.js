@@ -9,6 +9,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        /* ── Tokens semánticos (CSS vars) ───────────────────────────────── */
         border:     'hsl(var(--border))',
         input:      'hsl(var(--input))',
         ring:       'hsl(var(--ring))',
@@ -27,16 +28,12 @@ module.exports = {
         warning: { DEFAULT: 'hsl(var(--warning))', foreground: 'hsl(var(--warning-fg))' },
         info:    { DEFAULT: 'hsl(var(--info))',    foreground: 'hsl(var(--info-fg))' },
 
-        online:   { DEFAULT: '#22c55e', dark: '#16a34a' },
-        offline:  { DEFAULT: '#ef4444', dark: '#dc2626' },
-        degraded: { DEFAULT: '#f97316', dark: '#ea580c' },
+        /* Estado operativo (alias de los tokens semánticos) */
+        online:   { DEFAULT: 'hsl(var(--success))', dark: 'hsl(var(--success))' },
+        offline:  { DEFAULT: 'hsl(var(--destructive))', dark: 'hsl(var(--destructive))' },
+        degraded: { DEFAULT: 'hsl(var(--warning))',  dark: 'hsl(var(--warning))'  },
 
-        brand: {
-          50:  '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe',
-          300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6',
-          600: '#2563eb', 700: '#1d4ed8', 800: '#1e3a8a', 900: '#1e3a5f',
-        },
-
+        /* Sidebar */
         sidebar: {
           bg:     'hsl(var(--sidebar-bg))',
           fg:     'hsl(var(--sidebar-fg))',
@@ -44,13 +41,44 @@ module.exports = {
           hover:  'hsl(var(--sidebar-hover))',
           border: 'hsl(var(--sidebar-border))',
         },
+
+        /* ── Paleta Olive Green — color primario de marca ───────────────── */
+        olive: {
+          50:  '#f5f8ee',
+          100: '#e8f0d4',
+          200: '#d2e0aa',
+          300: '#b5c977',
+          400: '#99b24d',
+          500: '#7d9435',   /* olive base */
+          600: '#62762a',
+          700: '#4c5c21',
+          800: '#3c481b',
+          900: '#303b16',
+          950: '#191f0b',
+        },
+
+        /* ── Paleta Navy Blue — estructural / fondos / sidebar ──────────── */
+        navy: {
+          50:  '#f0f3fa',
+          100: '#dce5f4',
+          200: '#b9cbe9',
+          300: '#8aaad8',
+          400: '#5e86c2',
+          500: '#3c65a8',
+          600: '#2e4e8d',
+          700: '#253d72',
+          800: '#1c2e58',   /* navy medio */
+          900: '#111b38',   /* navy profundo */
+          925: '#0a1123',   /* deep navy */
+          950: '#060c18',   /* ultra dark navy */
+        },
       },
 
       borderRadius: {
-        lg:  'var(--radius)',
-        md:  'calc(var(--radius) - 2px)',
-        sm:  'calc(var(--radius) - 4px)',
-        xl:  'calc(var(--radius) + 4px)',
+        lg:    'var(--radius)',
+        md:    'calc(var(--radius) - 2px)',
+        sm:    'calc(var(--radius) - 4px)',
+        xl:    'calc(var(--radius) + 4px)',
         '2xl': 'calc(var(--radius) + 8px)',
       },
 
@@ -66,9 +94,10 @@ module.exports = {
       boxShadow: {
         'card':         '0 1px 3px 0 rgba(0,0,0,0.3), 0 1px 2px -1px rgba(0,0,0,0.3)',
         'card-hover':   '0 4px 16px -4px rgba(0,0,0,0.4)',
-        'glow-primary': '0 0 24px -4px hsl(213 94% 58% / 0.4)',
-        'glow-success': '0 0 24px -4px hsl(142 76% 38% / 0.4)',
-        'glow-danger':  '0 0 24px -4px hsl(0 70% 52% / 0.4)',
+        /* glow shadows usan las vars del tema actual */
+        'glow-primary': '0 0 24px -4px hsl(var(--primary) / 0.4)',
+        'glow-success': '0 0 24px -4px hsl(var(--success) / 0.4)',
+        'glow-danger':  '0 0 24px -4px hsl(var(--destructive) / 0.4)',
         'inner-glow':   'inset 0 1px 0 0 rgba(255,255,255,0.05)',
       },
 
@@ -80,8 +109,11 @@ module.exports = {
         'slide-up':       { from: { opacity: '0', transform: 'translateY(12px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
         'fade-in':        { from: { opacity: '0', transform: 'translateY(4px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
         'zoom-in':        { from: { opacity: '0', transform: 'scale(0.95)' }, to: { opacity: '1', transform: 'scale(1)' } },
-        'glow-pulse':     { '0%, 100%': { boxShadow: '0 0 8px 2px hsl(213 94% 58% / 0.3)' }, '50%': { boxShadow: '0 0 20px 6px hsl(213 94% 58% / 0.6)' } },
-        shimmer:          { '0%': { backgroundPosition: '-400px 0' }, '100%': { backgroundPosition: '400px 0' } },
+        'glow-pulse': {
+          '0%, 100%': { boxShadow: '0 0 8px 2px hsl(var(--primary) / 0.30)' },
+          '50%':       { boxShadow: '0 0 20px 6px hsl(var(--primary) / 0.55)' },
+        },
+        shimmer: { '0%': { backgroundPosition: '-400px 0' }, '100%': { backgroundPosition: '400px 0' } },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',

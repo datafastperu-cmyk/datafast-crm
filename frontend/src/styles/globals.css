@@ -2,103 +2,108 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Select options — fondo oscuro para que sean legibles en tema dark ─── */
+/* ── Select options ─────────────────────────────────────────────────────── */
 select option {
-  background-color: #0f1117;
-  color: #ffffff;
+  background-color: hsl(223 52% 8%);
+  color: #e8edf2;
 }
 
-/* ── Variables de tema ─────────────────────────────────────────────── */
+/* ── Variables de tema ─────────────────────────────────────────────────── */
 @layer base {
+
+  /* ── Tema claro ──────────────────────────────────────────────────────── */
   :root {
-    --background:   210 20% 98%;
-    --foreground:   220 20% 12%;
+    --background:             210 28% 97%;
+    --foreground:             226 48% 12%;
 
-    --card:         0 0% 100%;
-    --card-foreground: 220 20% 12%;
+    --card:                   0 0% 100%;
+    --card-foreground:        226 48% 12%;
 
-    --popover:      0 0% 100%;
-    --popover-foreground: 220 20% 12%;
+    --popover:                0 0% 100%;
+    --popover-foreground:     226 48% 12%;
 
-    --primary:      213 90% 52%;
-    --primary-foreground: 0 0% 100%;
+    --primary:                82 38% 38%;
+    --primary-foreground:     0 0% 98%;
 
-    --secondary:    218 18% 92%;
-    --secondary-foreground: 220 15% 30%;
+    --secondary:              215 22% 90%;
+    --secondary-foreground:   220 18% 30%;
 
-    --muted:        218 18% 93%;
-    --muted-foreground: 218 10% 52%;
+    --muted:                  215 22% 92%;
+    --muted-foreground:       218 14% 46%;
 
-    --accent:       218 18% 92%;
-    --accent-foreground: 220 20% 12%;
+    --accent:                 215 22% 90%;
+    --accent-foreground:      226 48% 12%;
 
-    --destructive:  0 84% 58%;
+    --destructive:            10 62% 48%;
     --destructive-foreground: 0 0% 100%;
 
-    --border:       218 20% 86%;
-    --input:        218 20% 88%;
-    --ring:         213 90% 52%;
+    --border:                 215 20% 84%;
+    --input:                  215 20% 86%;
+    --ring:                   82 38% 38%;
 
-    --success:      142 72% 36%;
-    --success-fg:   0 0% 100%;
-    --warning:      38 92% 48%;
-    --warning-fg:   24 9% 10%;
-    --info:         200 88% 46%;
-    --info-fg:      0 0% 100%;
+    --success:                150 42% 34%;
+    --success-fg:             0 0% 100%;
+    --warning:                36 82% 46%;
+    --warning-fg:             24 9% 10%;
+    --info:                   210 50% 46%;
+    --info-fg:                0 0% 100%;
 
-    --radius:       0.5rem;
+    --radius:                 0.5rem;
 
-    --sidebar-bg:       222 35% 14%;
-    --sidebar-fg:       218 12% 80%;
-    --sidebar-active:   213 90% 56%;
-    --sidebar-hover:    222 35% 19%;
-    --sidebar-border:   222 35% 20%;
-    --sidebar-width:    248px;
-    --sidebar-collapsed: 64px;
-    --topbar-height:    58px;
+    /* Sidebar mantiene navy incluso en tema claro */
+    --sidebar-bg:             226 58% 11%;
+    --sidebar-fg:             215 18% 68%;
+    --sidebar-active:         82 38% 56%;
+    --sidebar-hover:          226 50% 16%;
+    --sidebar-border:         226 46% 16%;
+    --sidebar-width:          248px;
+    --sidebar-collapsed:      64px;
+    --topbar-height:          58px;
   }
 
+  /* ── Tema oscuro (default) ───────────────────────────────────────────── */
   .dark {
-    --background:   222 47% 4%;
-    --foreground:   210 18% 90%;
+    --background:             225 55% 5%;
+    --foreground:             210 20% 88%;
 
-    --card:         222 42% 7%;
-    --card-foreground: 210 18% 90%;
+    --card:                   223 52% 8%;
+    --card-foreground:        210 20% 88%;
 
-    --popover:      222 42% 8%;
-    --popover-foreground: 210 18% 90%;
+    --popover:                223 50% 9%;
+    --popover-foreground:     210 20% 88%;
 
-    --primary:      213 94% 58%;
-    --primary-foreground: 0 0% 100%;
+    --primary:                82 34% 50%;
+    --primary-foreground:     0 0% 98%;
 
-    --secondary:    222 38% 12%;
-    --secondary-foreground: 210 14% 76%;
+    --secondary:              224 44% 13%;
+    --secondary-foreground:   210 16% 72%;
 
-    --muted:        222 38% 12%;
-    --muted-foreground: 218 10% 46%;
+    --muted:                  224 44% 13%;
+    --muted-foreground:       215 14% 48%;
 
-    --accent:       222 38% 14%;
-    --accent-foreground: 210 18% 90%;
+    --accent:                 224 44% 15%;
+    --accent-foreground:      210 20% 88%;
 
-    --destructive:  0 70% 52%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive:            10 58% 50%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border:       222 35% 14%;
-    --input:        222 35% 12%;
-    --ring:         213 94% 58%;
+    --border:                 224 44% 13%;
+    --input:                  224 44% 12%;
+    --ring:                   82 34% 50%;
 
-    --success:      142 76% 38%;
-    --success-fg:   0 0% 100%;
-    --warning:      38 90% 50%;
-    --warning-fg:   24 9% 10%;
-    --info:         200 90% 50%;
-    --info-fg:      0 0% 100%;
+    --success:                150 40% 42%;
+    --success-fg:             0 0% 98%;
+    --warning:                36 70% 52%;
+    --warning-fg:             24 9% 10%;
+    --info:                   210 48% 52%;
+    --info-fg:                0 0% 98%;
 
-    --sidebar-bg:       222 55% 3%;
-    --sidebar-fg:       213 14% 65%;
-    --sidebar-active:   213 94% 58%;
-    --sidebar-hover:    222 42% 8%;
-    --sidebar-border:   222 42% 8%;
+    /* Sidebar — ultra navy profundo */
+    --sidebar-bg:             226 68% 4%;
+    --sidebar-fg:             218 16% 60%;
+    --sidebar-active:         82 34% 50%;
+    --sidebar-hover:          224 55% 9%;
+    --sidebar-border:         224 55% 9%;
   }
 }
 
@@ -121,10 +126,10 @@ select option {
   }
 }
 
-/* ── Animaciones premium ───────────────────────────────────────────── */
+/* ── Animaciones ───────────────────────────────────────────────────────── */
 @keyframes shimmer {
   0%   { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+  100% { background-position:  400px 0; }
 }
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
@@ -163,104 +168,168 @@ select option {
   to   { height: 0; }
 }
 
-/* ── Utilidades core ───────────────────────────────────────────────── */
+/* ── Utilidades core ───────────────────────────────────────────────────── */
 @layer utilities {
 
-  /* Puntos de estado */
-  .status-dot-online   { @apply w-2 h-2 rounded-full bg-green-500; animation: pulse-dot 2s ease-in-out infinite; }
-  .status-dot-offline  { @apply w-2 h-2 rounded-full bg-red-500; }
-  .status-dot-warning  { @apply w-2 h-2 rounded-full bg-amber-500; animation: pulse-dot 1.5s ease-in-out infinite; }
-  .status-dot-info     { @apply w-2 h-2 rounded-full bg-sky-500; }
+  /* ── Puntos de estado ────────────────────────────────────────────────── */
+  .status-dot-online {
+    @apply w-2 h-2 rounded-full;
+    background-color: hsl(var(--success));
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  .status-dot-offline {
+    @apply w-2 h-2 rounded-full;
+    background-color: hsl(var(--destructive));
+  }
+  .status-dot-warning {
+    @apply w-2 h-2 rounded-full;
+    background-color: hsl(var(--warning));
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+  .status-dot-info {
+    @apply w-2 h-2 rounded-full;
+    background-color: hsl(var(--info));
+  }
 
-  /* Skeleton con shimmer premium */
+  /* ── Skeleton shimmer ────────────────────────────────────────────────── */
   .skeleton {
     background: linear-gradient(
       90deg,
-      hsl(var(--muted)) 25%,
-      hsl(var(--muted-foreground) / 0.08) 37%,
-      hsl(var(--muted)) 63%
+      hsl(var(--muted))                       25%,
+      hsl(var(--muted-foreground) / 0.08)     37%,
+      hsl(var(--muted))                       63%
     );
     background-size: 400px 100%;
     animation: shimmer 1.6s ease-in-out infinite;
     @apply rounded;
   }
 
-  /* Glassmorphism */
-  .glass {
-    @apply bg-card/60 backdrop-blur-md border border-white/5;
-  }
-  .glass-strong {
-    @apply bg-card/80 backdrop-blur-xl border border-white/8;
-  }
-  .glass-card {
-    @apply bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl;
-  }
+  /* ── Glassmorphism ───────────────────────────────────────────────────── */
+  .glass        { @apply bg-card/60 backdrop-blur-md border border-white/5; }
+  .glass-strong { @apply bg-card/80 backdrop-blur-xl border border-white/8; }
+  .glass-card   { @apply bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl; }
 
-  /* Gradientes */
+  /* ── Gradientes de marca ─────────────────────────────────────────────── */
   .gradient-primary {
-    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(213, 80%, 40%) 100%);
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(82 28% 32%) 100%);
   }
   .gradient-success {
-    background: linear-gradient(135deg, hsl(var(--success)) 0%, hsl(160, 70%, 28%) 100%);
+    background: linear-gradient(135deg, hsl(var(--success)) 0%, hsl(150 35% 28%) 100%);
   }
   .gradient-danger {
-    background: linear-gradient(135deg, hsl(var(--destructive)) 0%, hsl(0, 60%, 38%) 100%);
+    background: linear-gradient(135deg, hsl(var(--destructive)) 0%, hsl(10 50% 36%) 100%);
+  }
+  .gradient-navy {
+    background: linear-gradient(135deg, hsl(226 68% 4%) 0%, hsl(225 55% 10%) 100%);
   }
   .gradient-mesh {
     background:
       radial-gradient(at 40% 20%, hsl(var(--primary) / 0.08) 0%, transparent 50%),
-      radial-gradient(at 80% 0%, hsl(var(--success) / 0.05) 0%, transparent 50%),
-      radial-gradient(at 0% 50%, hsl(var(--info) / 0.05) 0%, transparent 50%);
+      radial-gradient(at 80%  0%, hsl(var(--success) / 0.05) 0%, transparent 50%),
+      radial-gradient(at  0% 50%, hsl(var(--info)    / 0.05) 0%, transparent 50%);
   }
 
-  /* Glow effects */
-  .glow-primary { box-shadow: 0 0 24px -4px hsl(var(--primary) / 0.4); }
-  .glow-success { box-shadow: 0 0 24px -4px hsl(var(--success) / 0.4); }
-  .glow-danger  { box-shadow: 0 0 24px -4px hsl(var(--destructive) / 0.4); }
-  .glow-warning { box-shadow: 0 0 24px -4px hsl(var(--warning) / 0.4); }
+  /* ── Glow effects ────────────────────────────────────────────────────── */
+  .glow-primary { box-shadow: 0 0 24px -4px hsl(var(--primary)     / 0.35); }
+  .glow-success { box-shadow: 0 0 24px -4px hsl(var(--success)     / 0.35); }
+  .glow-danger  { box-shadow: 0 0 24px -4px hsl(var(--destructive) / 0.35); }
+  .glow-warning { box-shadow: 0 0 24px -4px hsl(var(--warning)     / 0.35); }
 
-  /* Dot grid background */
+  /* ── Dot grid background ─────────────────────────────────────────────── */
   .dot-grid {
     background-image: radial-gradient(circle, hsl(var(--muted-foreground) / 0.12) 1px, transparent 1px);
     background-size: 20px 20px;
   }
 
-  /* Animaciones de página */
+  /* ── Transiciones de página ──────────────────────────────────────────── */
   .page-transition { animation: fade-in 0.2s ease-out; }
   .slide-up        { animation: slide-up 0.25s ease-out; }
   .slide-in-left   { animation: slide-in-left 0.25s ease-out; }
   .zoom-in         { animation: zoom-in 0.2s ease-out; }
 
-  /* Tabla premium */
+  /* ── Tabla premium ───────────────────────────────────────────────────── */
   .data-table { @apply w-full border-collapse; }
   .data-table th {
     @apply text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-widest
            px-4 py-3 bg-muted/40 border-b border-border first:rounded-tl-lg last:rounded-tr-lg;
   }
-  .data-table td { @apply px-4 py-3 border-b border-border/60 text-sm; }
+  .data-table td  { @apply px-4 py-3 border-b border-border/60 text-sm; }
   .data-table tr:hover td { @apply bg-muted/25; }
   .data-table tr:last-child td { @apply border-b-0; }
   .data-table tr { @apply transition-colors duration-150; }
 
-  /* Truncar texto */
   .truncate-cell { @apply max-w-[200px] truncate; }
 
-  /* Badges de estado de contrato */
-  .badge-activo        { @apply bg-emerald-100 text-emerald-800 dark:bg-emerald-900/25 dark:text-emerald-400; }
-  .badge-suspendido    { @apply bg-red-100 text-red-800 dark:bg-red-900/25 dark:text-red-400; }
-  .badge-moroso        { @apply bg-orange-100 text-orange-800 dark:bg-orange-900/25 dark:text-orange-400; }
-  .badge-prorroga      { @apply bg-blue-100 text-blue-800 dark:bg-blue-900/25 dark:text-blue-400; }
-  .badge-pendiente     { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900/25 dark:text-yellow-400; }
-  .badge-baja          { @apply bg-gray-100 text-gray-600 dark:bg-gray-800/60 dark:text-gray-400; }
-  .badge-instalacion   { @apply bg-violet-100 text-violet-800 dark:bg-violet-900/25 dark:text-violet-400; }
+  /* ── Badges de estado de contrato (semánticos) ───────────────────────── */
+  /* usan CSS vars directamente para respetar light/dark automáticamente */
+  .badge-activo {
+    background: hsl(var(--success) / 0.12);
+    color: hsl(var(--success));
+    border: 1px solid hsl(var(--success) / 0.22);
+    @apply text-xs font-medium px-2 py-0.5 rounded-md;
+  }
+  .badge-suspendido {
+    background: hsl(var(--destructive) / 0.12);
+    color: hsl(var(--destructive));
+    border: 1px solid hsl(var(--destructive) / 0.22);
+    @apply text-xs font-medium px-2 py-0.5 rounded-md;
+  }
+  .badge-moroso {
+    background: hsl(var(--warning) / 0.12);
+    color: hsl(var(--warning));
+    border: 1px solid hsl(var(--warning) / 0.22);
+    @apply text-xs font-medium px-2 py-0.5 rounded-md;
+  }
+  .badge-prorroga {
+    background: hsl(var(--info) / 0.12);
+    color: hsl(var(--info));
+    border: 1px solid hsl(var(--info) / 0.22);
+    @apply text-xs font-medium px-2 py-0.5 rounded-md;
+  }
+  .badge-pendiente {
+    background: hsl(var(--warning) / 0.10);
+    color: hsl(var(--warning));
+    border: 1px solid hsl(var(--warning) / 0.20);
+    @apply text-xs font-medium px-2 py-0.5 rounded-md;
+  }
+  .badge-baja {
+    @apply bg-muted text-muted-foreground text-xs font-medium px-2 py-0.5 rounded-md;
+    border: 1px solid hsl(var(--border));
+  }
+  .badge-instalacion {
+    background: hsl(var(--primary) / 0.12);
+    color: hsl(var(--primary));
+    border: 1px solid hsl(var(--primary) / 0.22);
+    @apply text-xs font-medium px-2 py-0.5 rounded-md;
+  }
 
-  /* Status pills generales */
-  .pill-online         { @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-500 ring-1 ring-emerald-500/20; }
-  .pill-offline        { @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-red-500/10 text-red-500 ring-1 ring-red-500/20; }
-  .pill-warning        { @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-500 ring-1 ring-amber-500/20; }
-  .pill-info           { @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-500 ring-1 ring-sky-500/20; }
+  /* ── Status pills (semánticos) ───────────────────────────────────────── */
+  .pill-online {
+    @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full;
+    background: hsl(var(--success)     / 0.10);
+    color:      hsl(var(--success));
+    box-shadow: 0 0 0 1px hsl(var(--success) / 0.22);
+  }
+  .pill-offline {
+    @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full;
+    background: hsl(var(--destructive) / 0.10);
+    color:      hsl(var(--destructive));
+    box-shadow: 0 0 0 1px hsl(var(--destructive) / 0.22);
+  }
+  .pill-warning {
+    @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full;
+    background: hsl(var(--warning)     / 0.10);
+    color:      hsl(var(--warning));
+    box-shadow: 0 0 0 1px hsl(var(--warning) / 0.22);
+  }
+  .pill-info {
+    @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full;
+    background: hsl(var(--info)        / 0.10);
+    color:      hsl(var(--info));
+    box-shadow: 0 0 0 1px hsl(var(--info) / 0.22);
+  }
 
-  /* Sidebar nav item */
+  /* ── Sidebar nav item ────────────────────────────────────────────────── */
   .sidebar-nav-item {
     @apply flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium
            transition-all duration-150 cursor-pointer select-none;
@@ -271,7 +340,7 @@ select option {
     color: white;
   }
   .sidebar-nav-item.active {
-    background: hsl(var(--sidebar-active) / 0.12);
+    background: hsl(var(--sidebar-active) / 0.15);
     color: hsl(var(--sidebar-active));
     @apply border-l-2;
     border-left-color: hsl(var(--sidebar-active));
@@ -279,7 +348,7 @@ select option {
   }
 }
 
-/* ── Sidebar ───────────────────────────────────────────────────────── */
+/* ── Sidebar (fuera de @layer para especificidad CSS) ──────────────────── */
 .sidebar {
   width: var(--sidebar-width);
   background: hsl(var(--sidebar-bg));
@@ -304,7 +373,7 @@ select option {
   .mobile-toggle { display: flex; align-items: center; justify-content: center; }
 }
 
-/* ── Recharts custom ───────────────────────────────────────────────── */
+/* ── Recharts custom ───────────────────────────────────────────────────── */
 .recharts-tooltip-wrapper .recharts-default-tooltip {
   @apply bg-popover border border-border rounded-xl shadow-xl text-foreground !important;
   padding: 10px 14px !important;
@@ -315,7 +384,7 @@ select option {
   stroke: hsl(var(--border) / 0.5) !important;
 }
 
-/* ── Animations (tailwind plugin compat) ──────────────────────────── */
+/* ── Animations (tailwind plugin compat) ──────────────────────────────── */
 .animate-accordion-down { animation: accordion-down 0.2s ease-out; }
 .animate-accordion-up   { animation: accordion-up   0.2s ease-out; }
 .animate-pulse-dot      { animation: pulse-dot 2s ease-in-out infinite; }
