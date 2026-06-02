@@ -724,28 +724,28 @@ function ModalConfirmBaja({
 }: { contrato: Contrato; onConfirm: () => void; onClose: () => void; isPending: boolean }) {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-zinc-900 border border-red-900/40 rounded-2xl shadow-2xl">
-        <div className="px-5 py-4 border-b border-zinc-700 flex items-center gap-3">
+      <div className="w-full max-w-md bg-card border border-red-900/40 rounded-2xl shadow-2xl">
+        <div className="px-5 py-4 border-b border-border flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
             <Trash2 className="w-4 h-4 text-red-400" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-white">Confirmar Baja Definitiva</h2>
-            <p className="text-[11px] text-zinc-400">{contrato.numeroContrato}</p>
+            <h2 className="text-sm font-bold text-foreground">Confirmar Baja Definitiva</h2>
+            <p className="text-[11px] text-muted-foreground">{contrato.numeroContrato}</p>
           </div>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-sm text-zinc-300">
+          <p className="text-sm text-foreground">
             Esta acción <strong className="text-red-400">no se puede deshacer</strong>.
           </p>
-          <ul className="text-xs text-zinc-400 space-y-1.5 list-none">
+          <ul className="text-xs text-muted-foreground space-y-1.5 list-none">
             <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se liberará la IP asignada ({(contrato as any).ipAsignada ?? '—'}).</li>
             <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se desvinculará la ONU si la hay.</li>
             <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se enviará la señal de desaprovisionamiento MikroTik (simulado).</li>
           </ul>
         </div>
-        <div className="px-5 py-4 border-t border-zinc-700 flex items-center justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors text-zinc-300">
+        <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors text-foreground">
             Cancelar
           </button>
           <button

@@ -64,9 +64,9 @@ const VERSION_ROS_OPTS = [
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-const inputCls = 'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary/50 transition-colors';
-const labelCls = 'text-xs text-gray-400 mb-1 block';
-const sectionHdr = 'text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2';
+const inputCls = 'w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50 transition-colors';
+const labelCls = 'text-xs font-medium text-muted-foreground block mb-1';
+const sectionHdr = 'text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2';
 
 // ─── Script de Conexión Dialog ────────────────────────────────────
 
@@ -89,25 +89,25 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+      <div className="bg-card border border-border rounded-xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
               <FileCode className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h2 className="font-semibold text-white text-base">Script de configuración OpenVPN</h2>
-              <p className="text-xs text-gray-500">{router.nombre} — {router.vpnIp || router.ipGestion}</p>
+              <h2 className="font-semibold text-foreground text-base">Script de configuración OpenVPN</h2>
+              <p className="text-xs text-muted-foreground">{router.nombre} — {router.vpnIp || router.ipGestion}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <XCircle className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {isLoading && (
-            <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="w-4 h-4 animate-spin" />
               Cargando script…
             </div>
@@ -130,13 +130,13 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
                 </p>
               </div>
 
-              <div className="bg-black/40 border border-white/10 rounded-lg overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/3">
-                  <span className="text-xs text-gray-400 font-mono">RouterOS Terminal</span>
+              <div className="bg-black/40 border border-border rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white/3">
+                  <span className="text-xs text-muted-foreground font-mono">RouterOS Terminal</span>
                   <button onClick={doCopy}
                     className={cn(
                       'flex items-center gap-1.5 text-xs px-3 py-1 rounded-md transition-colors',
-                      copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-gray-300 hover:bg-white/15'
+                      copied ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-foreground hover:bg-white/15'
                     )}
                   >
                     {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -151,9 +151,9 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-white/10 flex justify-end">
+        <div className="px-6 py-4 border-t border-border flex justify-end">
           <button onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
             Cerrar
           </button>
         </div>
@@ -173,18 +173,18 @@ function MorososDialog({ router, onClose }: { router: RouterType; onClose: () =>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl w-full max-w-lg flex flex-col shadow-2xl max-h-[80vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+      <div className="bg-card border border-border rounded-xl w-full max-w-lg flex flex-col shadow-2xl max-h-[80vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center">
               <Users className="w-4 h-4 text-red-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-white text-base">Morosos en MikroTik</h2>
-              <p className="text-xs text-gray-500">{router.nombre} — address-list <code className="text-gray-400">morosos_datafast</code></p>
+              <h2 className="font-semibold text-foreground text-base">Morosos en MikroTik</h2>
+              <p className="text-xs text-muted-foreground">{router.nombre} — address-list <code className="text-muted-foreground">morosos_datafast</code></p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <XCircle className="w-5 h-5" />
           </button>
         </div>
@@ -195,26 +195,26 @@ function MorososDialog({ router, onClose }: { router: RouterType; onClose: () =>
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
           ) : morosos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-gray-500 text-center">
+            <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-center">
               <CheckCircle2 className="w-8 h-8 mb-2 text-emerald-400 opacity-60" />
               <p className="text-sm">Sin IPs en address-list morosos</p>
               <p className="text-xs mt-1 opacity-60">Todos los abonados tienen acceso libre en este router</p>
             </div>
           ) : (
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-xs text-gray-500 px-2 mb-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground px-2 mb-2">
                 <span>{morosos.length} IP{morosos.length !== 1 ? 's' : ''} bloqueada{morosos.length !== 1 ? 's' : ''}</span>
                 <span className="text-red-400 font-medium">morosos_datafast</span>
               </div>
               {morosos.map((m, i) => (
-                <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/3 border border-white/8 hover:bg-white/5 transition-colors">
+                <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-muted/20border border-border/60 hover:bg-muted/30 transition-colors">
                   <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-mono text-white">{m.ip}</p>
-                    {m.comment && <p className="text-xs text-gray-500 truncate">{m.comment}</p>}
+                    {m.comment && <p className="text-xs text-muted-foreground truncate">{m.comment}</p>}
                   </div>
                   {m.addedAt && (
-                    <p className="text-xs text-gray-600 flex-shrink-0">{m.addedAt}</p>
+                    <p className="text-xs text-muted-foreground flex-shrink-0">{m.addedAt}</p>
                   )}
                 </div>
               ))}
@@ -222,9 +222,9 @@ function MorososDialog({ router, onClose }: { router: RouterType; onClose: () =>
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-white/10 flex justify-end">
+        <div className="px-6 py-4 border-t border-border flex justify-end">
           <button onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
             Cerrar
           </button>
         </div>
@@ -390,24 +390,24 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
 
   return (<>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
+      <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
               <Router className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h2 className="font-semibold text-white text-base">
+              <h2 className="font-semibold text-foreground text-base">
                 {router ? 'Editar Router' : 'Agregar Router MikroTik'}
               </h2>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 {router ? router.nombre : 'Configura la conexión al equipo'}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors p-1">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1">
             <XCircle className="w-5 h-5" />
           </button>
         </div>
@@ -424,7 +424,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                   'flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg transition-colors',
                   tab === t.id
                     ? 'bg-primary/15 text-primary'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5',
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/30',
                 )}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -487,7 +487,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                           'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
                           form.versionRos === o.val
                             ? 'border-primary/60 bg-primary/10'
-                            : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                            : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30',
                         )}
                       >
                         <input type="radio" name="versionRos" value={o.val}
@@ -495,10 +495,10 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                           onChange={() => set('versionRos', o.val)}
                           className="mt-0.5 accent-primary" />
                         <div>
-                          <div className={cn('text-sm font-medium', form.versionRos === o.val ? 'text-white' : 'text-gray-300')}>
+                          <div className={cn('text-sm font-medium', form.versionRos === o.val ? 'text-white' : 'text-foreground')}>
                             {o.label}
                           </div>
-                          <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{o.sub}</div>
                         </div>
                       </label>
                     ))}
@@ -511,7 +511,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
           {/* ── TAB: Conexión ───────────────────────────────── */}
           {tab === 'conn' && (
             <div className="space-y-5">
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Configura cómo el sistema se conectará al router MikroTik.
               </p>
 
@@ -528,18 +528,18 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                       <label key={o.val}
                         className={cn(
                           'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                          active ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                          active ? 'border-primary/60 bg-primary/10' : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30',
                         )}
                       >
                         <input type="radio" name="metodo" value={o.val}
                           checked={active} onChange={() => handleMetodoChange(o.val)}
                           className="mt-0.5 accent-primary" />
                         <div>
-                          <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-white' : 'text-gray-300')}>
+                          <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-foreground' : 'text-foreground')}>
                             <Icon className="w-3.5 h-3.5" />
                             {o.label}
                           </div>
-                          <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{o.sub}</div>
                         </div>
                       </label>
                     );
@@ -552,20 +552,20 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                   return (
                     <div className={cn(
                       'rounded-lg border transition-colors',
-                      isAvanzado ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                      isAvanzado ? 'border-primary/60 bg-primary/10' : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30',
                     )}>
                       <div className="flex items-center gap-3 p-3 cursor-pointer"
                         onClick={() => { if (!isAvanzado) handleMetodoChange('api_ssl'); }}>
                         <div className={cn(
                           'w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors',
-                          isAvanzado ? 'border-primary bg-primary' : 'border-white/30',
+                          isAvanzado ? 'border-primary bg-primary' : 'border-muted-foreground/30',
                         )} />
                         <div className="flex-1">
-                          <div className={cn('text-sm font-medium flex items-center gap-1.5', isAvanzado ? 'text-white' : 'text-gray-300')}>
+                          <div className={cn('text-sm font-medium flex items-center gap-1.5', isAvanzado ? 'text-foreground' : 'text-foreground')}>
                             <Settings className="w-3.5 h-3.5" />
                             Avanzado
                           </div>
-                          <div className="text-xs text-gray-600 mt-0.5">SSH · SNMP · API-SSL</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">SSH · SNMP · API-SSL</div>
                         </div>
                       </div>
 
@@ -582,7 +582,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                                   'flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors',
                                   form.metodoConexion === o.val
                                     ? 'border-primary/50 bg-primary/15 text-white'
-                                    : 'border-white/10 text-gray-400 hover:border-white/20 hover:text-white',
+                                    : 'border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground',
                                 )}
                               >
                                 <input type="radio" name="metodo" value={o.val}
@@ -591,7 +591,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                                   className="accent-primary" />
                                 <div>
                                   <div className="font-medium">{o.label}</div>
-                                  <div className="text-gray-600 mt-0.5">{o.desc}</div>
+                                  <div className="text-muted-foreground mt-0.5">{o.desc}</div>
                                 </div>
                               </label>
                             ))}
@@ -620,7 +620,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                                 <input type="checkbox" checked={form.usarSsl ?? false}
                                   onChange={(e) => set('usarSsl', e.target.checked)}
                                   className="accent-primary w-4 h-4" />
-                                <span className="text-sm text-gray-300">Usar TLS / SSL</span>
+                                <span className="text-sm text-foreground">Usar TLS / SSL</span>
                               </label>
                             )}
                           </div>
@@ -636,7 +636,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                 <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-blue-300">Script de configuración MikroTik</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Genera el script para configurar el túnel OpenVPN en este router.</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Genera el script para configurar el túnel OpenVPN en este router.</p>
                   </div>
                   <button
                     type="button"
@@ -688,7 +688,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                     <input className={inputCls} value={form.usuario}
                       onChange={(e) => set('usuario', e.target.value)}
                       placeholder="admin" />
-                    <p className="text-xs text-gray-600 mt-1">Debe tener permisos completos (full).</p>
+                    <p className="text-xs text-muted-foreground mt-1">Debe tener permisos completos (full).</p>
                   </div>
                   <div>
                     <label className={labelCls}>Contraseña {router ? '(vacío = no cambiar)' : '*'}</label>
@@ -698,12 +698,12 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                         onChange={(e) => set('password', e.target.value)}
                         placeholder={router ? '••••••••' : 'Contraseña del router'} />
                       <button type="button" onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                         tabIndex={-1}>
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
-                    {router && <p className="text-xs text-gray-600 mt-1">Si cambiaste las credenciales en el router, escribe el nuevo usuario y contraseña.</p>}
+                    {router && <p className="text-xs text-muted-foreground mt-1">Si cambiaste las credenciales en el router, escribe el nuevo usuario y contraseña.</p>}
                   </div>
                 </div>
 
@@ -715,7 +715,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                         className={cn(inputCls, 'w-36')}
                         value={form.puertoApi ?? 8728}
                         onChange={(e) => set('puertoApi', parseInt(e.target.value) || 8728)} />
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-muted-foreground">
                         Por defecto: 8728. Si lo cambiaste en el router, actualízalo aquí también.
                       </span>
                     </div>
@@ -723,12 +723,12 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                 )}
 
                 {/* Probar conexión */}
-                <div className="rounded-xl border border-white/10 p-4 bg-white/3 space-y-3">
+                <div className="rounded-xl border border-border p-4 bg-muted/20space-y-3">
                   <p className={cn(sectionHdr, 'mb-0')}>
                     <RefreshCw className="w-3.5 h-3.5" />
                     Probar conexión
                   </p>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-muted-foreground">
                     {form.metodoConexion === 'vpn_tunnel'
                       ? 'Verifica el túnel VPN y la conexión API en un solo paso. Si el túnel conectó, la IP se rellena automáticamente.'
                       : 'Comprueba la conectividad antes de guardar. Detecta la versión RouterOS automáticamente.'}
@@ -738,7 +738,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                       'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors border',
                       testStatus === 'ok'    ? 'bg-green-500/20 text-green-400 border-green-500/30'  :
                       testStatus === 'error' ? 'bg-red-500/20   text-red-400   border-red-500/30'    :
-                                               'bg-white/10 text-white hover:bg-white/15 border-white/10',
+                                               'bg-muted text-foreground hover:bg-muted/70 border-border',
                       testStatus === 'testing' && 'opacity-70 cursor-not-allowed',
                     )}
                   >
@@ -834,7 +834,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                         checked={!!(form as any)[opt.key]}
                         onChange={(e) => set(opt.key as any, e.target.checked)}
                         className="accent-primary w-4 h-4 rounded" />
-                      <span className="text-sm text-gray-300">{opt.label}</span>
+                      <span className="text-sm text-foreground">{opt.label}</span>
                     </label>
                   ))}
                 </div>
@@ -844,14 +844,14 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-border flex-shrink-0">
           {/* Navegación entre tabs */}
           <div className="flex gap-1">
             {tabs.map((t, i) => (
               <div key={t.id}
                 className={cn(
                   'w-2 h-2 rounded-full transition-colors',
-                  tab === t.id ? 'bg-primary' : 'bg-white/20',
+                  tab === t.id ? 'bg-primary' : 'bg-muted/50',
                 )}
               />
             ))}
@@ -860,7 +860,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
             {tab !== 'ident' && (
               <button
                 onClick={() => setTab(tab === 'config' ? 'conn' : 'ident')}
-                className="px-3 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 ← Anterior
               </button>
@@ -868,14 +868,14 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
             {tab !== 'config' ? (
               <button
                 onClick={() => setTab(tab === 'ident' ? 'conn' : 'config')}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-white/10 text-white rounded-lg hover:bg-white/15 transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-muted text-foreground rounded-lg hover:bg-muted/70 transition-colors"
               >
                 Siguiente <ChevronRight className="w-4 h-4" />
               </button>
             ) : null}
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancelar
             </button>
@@ -1022,7 +1022,7 @@ export function RoutersContent() {
             </thead>
             <tbody>
               {routers.map((r) => {
-                const estadoColor = ESTADO_COLORS[r.estado] ?? 'text-gray-500';
+                const estadoColor = ESTADO_COLORS[r.estado] ?? 'text-muted-foreground';
                 const metodoCfg   = METODO_CONFIG[r.metodoConexion as MetodoConexion];
                 const MetodoIcon  = metodoCfg?.icon ?? Network;
                 const isTesting   = testingId === r.id;

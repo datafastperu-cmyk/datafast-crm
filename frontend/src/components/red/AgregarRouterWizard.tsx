@@ -45,9 +45,9 @@ interface Props {
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
-const inputCls   = 'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-primary/50 transition-colors';
-const labelCls   = 'text-xs text-gray-400 mb-1 block';
-const sectionHdr = 'text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5 mb-3';
+const inputCls   = 'w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50 transition-colors';
+const labelCls   = 'text-xs font-medium text-muted-foreground block mb-1';
+const sectionHdr = 'text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3';
 
 const STEPS = [
   { n: 1 as Step, label: 'Identificación' },
@@ -381,20 +381,20 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
+      <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
               <Router className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h2 className="font-semibold text-white text-base">Agregar Router MikroTik</h2>
-              <p className="text-xs text-gray-500">Paso {step} de 3 — {STEPS[step - 1].label}</p>
+              <h2 className="font-semibold text-foreground text-base">Agregar Router MikroTik</h2>
+              <p className="text-xs text-muted-foreground">Paso {step} de 3 — {STEPS[step - 1].label}</p>
             </div>
           </div>
-          <button onClick={handleClose} className="text-gray-500 hover:text-white transition-colors p-1">
+          <button onClick={handleClose} className="text-muted-foreground hover:text-foreground transition-colors p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -407,20 +407,20 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                 'flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold border-2 transition-colors flex-shrink-0',
                 step > s.n   ? 'bg-primary border-primary text-white'      :
                 step === s.n ? 'border-primary text-primary bg-primary/10' :
-                               'border-white/20 text-gray-600',
+                               'border-muted-foreground/30 text-muted-foreground',
               )}>
                 {step > s.n ? <Check className="w-3.5 h-3.5" /> : s.n}
               </div>
               <span className={cn(
                 'text-xs ml-1.5 hidden sm:block flex-shrink-0',
-                step === s.n ? 'text-white' : 'text-gray-600',
+                step === s.n ? 'text-foreground' : 'text-muted-foreground',
               )}>
                 {s.label}
               </span>
               {i < STEPS.length - 1 && (
                 <div className={cn(
                   'flex-1 h-px mx-3 transition-colors',
-                  step > s.n ? 'bg-primary/50' : 'bg-white/10',
+                  step > s.n ? 'bg-primary/50' : 'bg-muted',
                 )} />
               )}
             </div>
@@ -433,7 +433,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
           {/* ── Paso 1: Identificación ───────────────────────────────── */}
           {step === 1 && (
             <div className="space-y-4">
-              <p className="text-xs text-gray-500 mb-2">
+              <p className="text-xs text-muted-foreground mb-2">
                 Información básica del equipo y versión de RouterOS instalada.
               </p>
 
@@ -461,7 +461,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
 
               <div>
                 <label className={labelCls}>Versión de RouterOS *</label>
-                <p className="text-xs text-gray-600 mb-2">
+                <p className="text-xs text-muted-foreground mb-2">
                   Necesaria para generar el script de configuración VPN correcto.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -474,7 +474,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                         'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
                         versionRos === o.val
                           ? 'border-primary/60 bg-primary/10'
-                          : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                          : 'border-border hover:border-muted-foreground/30 hover:bg-muted/20',
                       )}
                     >
                       <input type="radio" name="versionRos" value={o.val}
@@ -482,10 +482,10 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                         onChange={() => setVersionRos(o.val)}
                         className="mt-0.5 accent-primary" />
                       <div>
-                        <div className={cn('text-sm font-medium', versionRos === o.val ? 'text-white' : 'text-gray-300')}>
+                        <div className={cn('text-sm font-medium', versionRos === o.val ? 'text-foreground' : 'text-foreground')}>
                           {o.label}
                         </div>
-                        <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{o.sub}</div>
                       </div>
                     </label>
                   ))}
@@ -497,7 +497,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
           {/* ── Paso 2: Conexión ─────────────────────────────────────── */}
           {step === 2 && (
             <div className="space-y-5">
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Configura cómo el sistema se conectará al router MikroTik.
               </p>
 
@@ -514,7 +514,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                       <label key={o.val}
                         className={cn(
                           'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                          active ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                          active ? 'border-primary/60 bg-primary/10' : 'border-border hover:border-muted-foreground/30 hover:bg-muted/20',
                         )}
                       >
                         <input type="radio" name="tipoConexion" value={o.val}
@@ -522,11 +522,11 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                           onChange={() => { setTipoConexion(o.val); resetTest(); }}
                           className="mt-0.5 accent-primary" />
                         <div>
-                          <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-white' : 'text-gray-300')}>
+                          <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-foreground' : 'text-foreground')}>
                             <Icon className="w-3.5 h-3.5" />
                             {o.label}
                           </div>
-                          <div className="text-xs text-gray-600 mt-0.5">{o.sub}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{o.sub}</div>
                         </div>
                       </label>
                     );
@@ -539,20 +539,20 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                   return (
                     <div className={cn(
                       'rounded-lg border transition-colors',
-                      isAvanzado ? 'border-primary/60 bg-primary/10' : 'border-white/10 hover:border-white/20 hover:bg-white/3',
+                      isAvanzado ? 'border-primary/60 bg-primary/10' : 'border-border hover:border-muted-foreground/30 hover:bg-muted/20',
                     )}>
                       <div className="flex items-center gap-3 p-3 cursor-pointer"
                         onClick={() => { if (!isAvanzado) { setTipoConexion('api_ssl'); resetTest(); } }}>
                         <div className={cn(
                           'w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors',
-                          isAvanzado ? 'border-primary bg-primary' : 'border-white/30',
+                          isAvanzado ? 'border-primary bg-primary' : 'border-muted-foreground/30',
                         )} />
                         <div className="flex-1">
-                          <div className={cn('text-sm font-medium flex items-center gap-1.5', isAvanzado ? 'text-white' : 'text-gray-300')}>
+                          <div className={cn('text-sm font-medium flex items-center gap-1.5', isAvanzado ? 'text-foreground' : 'text-foreground')}>
                             <Settings className="w-3.5 h-3.5" />
                             Avanzado
                           </div>
-                          <div className="text-xs text-gray-600 mt-0.5">SSH · SNMP · API-SSL</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">SSH · SNMP · API-SSL</div>
                         </div>
                       </div>
 
@@ -568,8 +568,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                                 className={cn(
                                   'flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors',
                                   tipoConexion === o.val
-                                    ? 'border-primary/50 bg-primary/15 text-white'
-                                    : 'border-white/10 text-gray-400 hover:border-white/20 hover:text-white',
+                                    ? 'border-primary/50 bg-primary/15 text-foreground'
+                                    : 'border-border text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground',
                                 )}
                               >
                                 <input type="radio" name="tipoConexion" value={o.val}
@@ -578,7 +578,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                                   className="accent-primary" />
                                 <div>
                                   <div className="font-medium">{o.label}</div>
-                                  <div className="text-gray-600 mt-0.5">{o.desc}</div>
+                                  <div className="text-muted-foreground mt-0.5">{o.desc}</div>
                                 </div>
                               </label>
                             ))}
@@ -607,7 +607,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                                 <input type="checkbox" checked={usarSsl}
                                   onChange={(e) => { setUsarSsl(e.target.checked); resetTest(); }}
                                   className="accent-primary w-4 h-4" />
-                                <span className="text-sm text-gray-300">Usar TLS / SSL</span>
+                                <span className="text-sm text-foreground">Usar TLS / SSL</span>
                               </label>
                             )}
                           </div>
@@ -655,11 +655,11 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                         Descargará los certificados y creará la interfaz <code className="text-blue-100">vpndatafast</code> automáticamente.
                       </p>
                       <div className="relative">
-                        <pre className="text-[10px] font-mono text-green-300 bg-black/40 rounded-lg p-3 overflow-x-auto max-h-40 leading-relaxed whitespace-pre-wrap break-all">
+                        <pre className="text-[10px] font-mono text-green-700 dark:text-green-300 bg-muted/50 dark:bg-black/40 rounded-lg p-3 overflow-x-auto max-h-40 leading-relaxed whitespace-pre-wrap break-all">
                           {vpnScript}
                         </pre>
                         <button onClick={copyScript}
-                          className="absolute top-2 right-2 p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white transition-colors"
+                          className="absolute top-2 right-2 p-1.5 rounded-md bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors"
                           title="Copiar script"
                         >
                           {copied
@@ -697,8 +697,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                     placeholder={tipoConexion === 'vpn_tunnel' ? '10.8.1.X  (se rellena al probar)' : '192.168.100.1 o IP pública'}
                   />
                   {tipoConexion === 'vpn_tunnel' && (
-                    <p className="text-xs text-gray-600 mt-1">
-                      Encuéntrala en tu router: <strong className="text-gray-500">IP › Addresses</strong> o en el status de la interfaz <strong className="text-gray-500">ovpn-client</strong>.
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Encuéntrala en tu router: <strong className="text-muted-foreground">IP › Addresses</strong> o en el status de la interfaz <strong className="text-muted-foreground">ovpn-client</strong>.
                       Si no la conoces, déjala en blanco — se rellenará automáticamente al probar la conexión.
                     </p>
                   )}
@@ -710,7 +710,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                     <input className={inputCls} value={usuario}
                       onChange={(e) => { setUsuario(e.target.value); resetTest(); }}
                       placeholder="admin" />
-                    <p className="text-xs text-gray-600 mt-1">Debe tener permisos completos (full).</p>
+                    <p className="text-xs text-muted-foreground mt-1">Debe tener permisos completos (full).</p>
                   </div>
                   <div>
                     <label className={labelCls}>Contraseña *</label>
@@ -725,7 +725,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                       <button
                         type="button"
                         onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                         tabIndex={-1}
                       >
                         {showPassword
@@ -744,7 +744,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                         className={cn(inputCls, 'w-36')}
                         value={puertoApi}
                         onChange={(e) => { setPuertoApi(parseInt(e.target.value) || 8728); resetTest(); }} />
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-muted-foreground">
                         Por defecto: 8728. Si lo cambiaste en el router, actualízalo aquí también.
                       </span>
                     </div>
@@ -752,12 +752,12 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                 )}
 
                 {/* Probar conexión */}
-                <div className="rounded-xl border border-white/10 p-4 bg-white/3 space-y-3">
+                <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-3">
                   <p className={sectionHdr}>
                     <RefreshCw className="w-3.5 h-3.5" />
                     Probar conexión
                   </p>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-muted-foreground">
                     {tipoConexion === 'vpn_tunnel'
                       ? 'Verifica el túnel VPN y la conexión API en un solo paso. Si el túnel conectó, la IP se rellena automáticamente.'
                       : (['api_ssl', 'ssh', 'snmp'] as TipoConexion[]).includes(tipoConexion)
@@ -771,7 +771,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                       'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors border',
                       testStatus === 'ok'    ? 'bg-green-500/20 text-green-400 border-green-500/30'  :
                       testStatus === 'error' ? 'bg-red-500/20   text-red-400   border-red-500/30'    :
-                                               'bg-white/10 text-white hover:bg-white/15 border-white/10',
+                                               'bg-muted text-foreground hover:bg-muted/70 border-border',
                       testStatus === 'testing' && 'opacity-60 cursor-not-allowed',
                     )}
                   >
@@ -818,7 +818,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
           {/* ── Paso 3: Control ──────────────────────────────────────── */}
           {step === 3 && (
             <div className="space-y-6">
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Define qué controles se aplicarán al provisionar clientes en este router.
                 No tienen efecto inmediato — se activan al agregar un cliente nuevo.
               </p>
@@ -856,12 +856,12 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
               </div>
 
               {/* Resumen */}
-              <div className="bg-white/3 rounded-xl border border-white/10 p-4 space-y-1.5 text-xs text-gray-400">
-                <p className="text-white font-medium text-sm mb-2">{nombre}</p>
-                {ubicacion && <p><span className="text-gray-600">Ubicación: </span>{ubicacion}</p>}
-                <p><span className="text-gray-600">RouterOS: </span>{versionRos.toUpperCase()}</p>
+              <div className="bg-muted/20 rounded-xl border border-border p-4 space-y-1.5 text-xs text-muted-foreground">
+                <p className="text-foreground font-medium text-sm mb-2">{nombre}</p>
+                {ubicacion && <p><span className="text-muted-foreground">Ubicación: </span>{ubicacion}</p>}
+                <p><span className="text-muted-foreground">RouterOS: </span>{versionRos.toUpperCase()}</p>
                 <p>
-                  <span className="text-gray-600">Conexión: </span>
+                  <span className="text-muted-foreground">Conexión: </span>
                   {tipoConexion === 'vpn_tunnel'
                     ? <span>Túnel VPN — <span className="font-mono text-blue-300">{vpnIp || ipGestion}</span></span>
                     : <span>API directa — <span className="font-mono">{ipGestion}</span></span>
@@ -873,19 +873,19 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-border flex-shrink-0">
           <div>
             {step > 1 && (
               <button
                 onClick={() => setStep((s) => (s - 1) as Step)}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" /> Anterior
               </button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
+            <button onClick={handleClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               Cancelar
             </button>
             {step === 1 && (

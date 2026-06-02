@@ -4,110 +4,117 @@
 
 /* ── Select options ─────────────────────────────────────────────────────── */
 select option {
-  background-color: hsl(220 28% 16%);
-  color: hsl(210 20% 88%);
+  background-color: #ffffff;
+  color: #050D51;
+}
+.dark select option {
+  background-color: hsl(234 45% 13%);
+  color: hsl(0 0% 92%);
 }
 
 /* ── Variables de tema ─────────────────────────────────────────────────── */
 @layer base {
 
-  /* ── Tema claro (default) ───────────────────────────────────────────── */
+  /* ── Tema claro (default) — Paleta Corporativa Datafast ────────────── */
   :root {
-    /* Fondo azul-gris suave — tarjetas blancas se destacan claramente */
-    --background:             218 28% 94%;
-    --foreground:             222 47% 10%;
+    /* #F8FAFC fondo ultra-limpio; tarjetas blancas flotan sobre él */
+    --background:             210 40% 98%;
+    /* #050D51 Azul Marino Corporativo — máximo contraste en texto */
+    --foreground:             234 89% 17%;
 
     --card:                   0 0% 100%;
-    --card-foreground:        222 47% 10%;
+    --card-foreground:        234 89% 17%;
 
     --popover:                0 0% 100%;
-    --popover-foreground:     222 47% 10%;
+    --popover-foreground:     234 89% 17%;
 
-    --primary:                82 42% 36%;
-    --primary-foreground:     0 0% 98%;
+    /* #0F6F45 Verde Oliva de marca */
+    --primary:                154 77% 25%;
+    --primary-foreground:     0 0% 100%;
 
-    --secondary:              216 20% 88%;
-    --secondary-foreground:   220 26% 26%;
+    --secondary:              216 20% 90%;
+    --secondary-foreground:   234 50% 30%;
 
-    --muted:                  216 20% 91%;
-    --muted-foreground:       216 12% 46%;
+    --muted:                  210 28% 94%;
+    --muted-foreground:       220 18% 44%;
 
-    --accent:                 216 20% 88%;
-    --accent-foreground:      222 47% 10%;
+    --accent:                 216 20% 90%;
+    --accent-foreground:      234 89% 17%;
 
     --destructive:            4 68% 48%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Bordes visibles — 78 % de luminosidad sobre fondo 94 % y tarjetas blancas */
-    --border:                 216 22% 78%;
-    --input:                  216 22% 80%;
-    --ring:                   82 42% 36%;
+    /* Bordes bien visibles sobre fondo 98 % y tarjetas blancas */
+    --border:                 218 22% 76%;
+    --input:                  218 22% 78%;
+    --ring:                   154 77% 25%;
 
-    --success:                150 44% 32%;
+    --success:                154 60% 30%;
     --success-fg:             0 0% 100%;
     --warning:                36 82% 44%;
     --warning-fg:             24 9% 10%;
-    --info:                   210 52% 44%;
+    --info:                   218 72% 44%;
     --info-fg:                0 0% 100%;
 
     --radius:                 0.5rem;
 
-    /* Sidebar navy oscuro incluso en modo claro */
-    --sidebar-bg:             226 60% 11%;
-    --sidebar-fg:             215 18% 66%;
-    --sidebar-active:         82 42% 58%;
-    --sidebar-hover:          226 52% 17%;
-    --sidebar-border:         226 48% 17%;
+    /* Sidebar: navy profundo derivado de #050D51, imponente en cualquier modo */
+    --sidebar-bg:             234 89% 11%;
+    --sidebar-fg:             218 18% 60%;
+    --sidebar-active:         154 55% 46%;
+    --sidebar-hover:          234 60% 19%;
+    --sidebar-border:         234 55% 17%;
     --sidebar-width:          248px;
     --sidebar-collapsed:      64px;
     --topbar-height:          58px;
   }
 
-  /* ── Tema oscuro ─────────────────────────────────────────────────────── */
+  /* ── Tema oscuro — Capas navy derivadas de #050D51 ─────────────────── */
   .dark {
-    /* Charcoal-navy — oscuro pero legible, no negro absoluto */
-    --background:             222 28% 12%;
-    --foreground:             210 20% 88%;
+    /* Navy profundo azulado — refinado, no negro absoluto */
+    --background:             234 55% 8%;
+    --foreground:             0 0% 96%;
 
-    --card:                   220 28% 16%;
-    --card-foreground:        210 20% 88%;
+    --card:                   234 45% 13%;
+    --card-foreground:        0 0% 96%;
 
-    --popover:                220 28% 14%;
-    --popover-foreground:     210 20% 88%;
+    --popover:                234 45% 11%;
+    --popover-foreground:     0 0% 96%;
 
-    --primary:                82 36% 52%;
-    --primary-foreground:     0 0% 98%;
+    /* Verde Oliva más claro para legibilidad sobre fondos oscuros */
+    --primary:                154 60% 42%;
+    --primary-foreground:     0 0% 100%;
 
-    --secondary:              220 26% 19%;
-    --secondary-foreground:   210 16% 72%;
+    --secondary:              234 30% 18%;
+    --secondary-foreground:   218 16% 72%;
 
-    --muted:                  220 26% 19%;
-    --muted-foreground:       215 14% 54%;
+    --muted:                  234 35% 16%;
+    --muted-foreground:       218 16% 56%;
 
-    --accent:                 220 26% 22%;
-    --accent-foreground:      210 20% 88%;
+    --accent:                 234 30% 20%;
+    --accent-foreground:      0 0% 96%;
 
     --destructive:            10 60% 52%;
     --destructive-foreground: 0 0% 98%;
 
-    /* Bordes visibles — 22 % de luminosidad sobre fondo 16 % */
-    --border:                 220 26% 22%;
-    --input:                  220 26% 20%;
-    --ring:                   82 36% 52%;
+    /* Bordes con matiz navy */
+    --border:                 234 30% 22%;
+    --input:                  234 30% 20%;
+    --ring:                   154 60% 42%;
 
-    --success:                150 42% 44%;
+    --success:                154 55% 44%;
     --success-fg:             0 0% 98%;
     --warning:                36 72% 54%;
     --warning-fg:             24 9% 10%;
-    --info:                   210 50% 54%;
+    --info:                   218 60% 54%;
     --info-fg:                0 0% 98%;
 
-    /* Sidebar — navy profundo pero no black */
-    --sidebar-bg:             226 58% 7%;
-    --sidebar-fg:             218 16% 62%;
-    --sidebar-active:         82 36% 52%;
-    --sidebar-hover:          224 52% 12%;
-    --sidebar-border:         224 52% 12%;
+    /* Sidebar ultra-profundo — máxima identidad corporativa */
+    --sidebar-bg:             234 89% 6%;
+    --sidebar-fg:             218 16% 58%;
+    --sidebar-active:         154 55% 46%;
+    --sidebar-hover:          234 60% 14%;
+    --sidebar-border:         234 60% 14%;
   }
 }
 

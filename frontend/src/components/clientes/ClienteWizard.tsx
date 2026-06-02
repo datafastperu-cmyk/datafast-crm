@@ -151,7 +151,7 @@ function Field({ label, error, hint, children }: {
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+      <label className="text-xs font-medium text-foreground block">
         {label}
       </label>
       {children}

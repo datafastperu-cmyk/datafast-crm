@@ -60,13 +60,13 @@ const RECORDATORIO_DESPUES = Array.from({ length: 25 }, (_, i) => ({
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────
-const selectCls = 'w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500';
-const inputCls  = 'w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500';
+const selectCls = 'w-full rounded border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
+const inputCls  = 'w-full rounded border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
 
 function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[180px_1fr] items-start gap-3 py-1.5">
-      <label className="text-sm text-gray-600 dark:text-gray-400 text-right pt-1.5 leading-tight">{label}</label>
+    <div className="space-y-1.5 py-1.5">
+      <label className="text-xs font-medium text-foreground block">{label}</label>
       <div className="space-y-0.5">
         {children}
         {note && <p className="text-xs text-orange-500">{note}</p>}
@@ -78,8 +78,8 @@ function Field({ label, note, children }: { label: string; note?: string; childr
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button type="button" onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${checked ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
+      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${checked ? 'bg-blue-500' : 'bg-muted'}`}>
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
     </button>
   );
 }
@@ -235,10 +235,10 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* ── Facturación ── */}
-        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-200 dark:border-gray-700">
-            <FileText className="h-4 w-4 text-gray-500" />
-            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Facturación</span>
+        <div className="bg-card rounded-lg border border-border">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold text-foreground">Facturación</span>
           </div>
           <div className="px-4 py-3 space-y-0.5">
             <Field label="Tipo">
@@ -298,7 +298,7 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 <Toggle checked={facturacion.aplicarMora} onChange={v => updateF('aplicarMora', v)} />
                 {facturacion.aplicarMora && (
                   <div className="flex items-center gap-1.5 flex-1">
-                    <span className="text-sm text-gray-500">S/</span>
+                    <span className="text-sm text-muted-foreground">S/</span>
                     <DecimalInput className={inputCls} placeholder="Monto mora"
                       value={facturacion.montoMora} onChange={v => updateF('montoMora', v)} />
                   </div>
@@ -310,7 +310,7 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 <Toggle checked={facturacion.aplicarReconexion} onChange={v => updateF('aplicarReconexion', v)} />
                 {facturacion.aplicarReconexion && (
                   <div className="flex items-center gap-1.5 flex-1">
-                    <span className="text-sm text-gray-500">S/</span>
+                    <span className="text-sm text-muted-foreground">S/</span>
                     <DecimalInput className={inputCls} placeholder="Monto reconexión"
                       value={facturacion.montoReconexion} onChange={v => updateF('montoReconexion', v)} />
                   </div>
@@ -319,8 +319,8 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
             </Field>
 
             <div className="pt-4 pb-1">
-              <h4 className="text-center text-sm font-semibold text-gray-700 dark:text-gray-200 mb-0.5">Otros Impuestos</h4>
-              <p className="text-center text-xs text-gray-500 mb-3">Estos Impuestos serán Agregados al total de la factura</p>
+              <h4 className="text-center text-sm font-semibold text-foreground mb-0.5">Otros Impuestos</h4>
+              <p className="text-center text-xs text-muted-foreground mb-3">Estos Impuestos serán Agregados al total de la factura</p>
               <div className="mb-2">
                 <Field label="Impuesto #1 (%)" note="* Dejar en 0 (cero) para quedar deshabilitado">
                   <DecimalInput className={inputCls} value={facturacion.impuesto1} onChange={v => updateF('impuesto1', v)} />
@@ -332,12 +332,12 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
         </div>
 
         {/* ── Notificaciones ── */}
-        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-200 dark:border-gray-700">
-            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="bg-card rounded-lg border border-border">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+            <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V4a2 2 0 10-4 0v1.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
-            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Notificaciones</span>
+            <span className="text-sm font-semibold text-foreground">Notificaciones</span>
           </div>
           <div className="px-4 py-3 space-y-0.5">
             <Field label="Aviso nueva factura">
@@ -382,7 +382,7 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 </Field>
               );
             })}
-            <p className="text-xs text-orange-500 pl-[192px] pt-1">
+            <p className="text-xs text-orange-500 pt-1">
               * Días antes/después del vencimiento de una factura
             </p>
 
