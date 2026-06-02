@@ -6,7 +6,7 @@ import {
   MessageSquare, Search, Send, Loader2,
   Wifi, WifiOff, RefreshCw, CheckCheck, User,
   Download, X, ZoomIn, ZoomOut, Maximize2,
-  Paperclip, FileText, BookOpen,
+  Paperclip, FileText, BookOpen, ArrowLeft,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
@@ -593,9 +593,9 @@ const WS_URL = (() => {
 
 // ── Input estilo app ─────────────────────────────────────────────
 const INPUT_CLS = [
-  'w-full px-3 py-2 text-sm rounded-lg border border-[hsl(var(--sidebar-border))]',
-  'bg-[hsl(var(--sidebar-bg))] text-foreground placeholder:text-muted-foreground',
-  'focus:outline-none focus:ring-1 focus:ring-primary/50',
+  'w-full px-3 py-2 text-sm rounded-xl border border-input',
+  'bg-white dark:bg-muted text-[#050D51] dark:text-foreground placeholder:text-muted-foreground/60',
+  'focus:outline-none focus:ring-2 focus:ring-primary/40',
 ].join(' ');
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -628,6 +628,7 @@ export default function WhatsAppWebPage() {
   const [archivoPreview, setArchivoPreview] = useState<string | null>(null);
   const [uploadError,    setUploadError]    = useState<string | null>(null);
   const [modalPlantilla, setModalPlantilla] = useState(false);
+  const [isChatOpen,    setIsChatOpen]    = useState(false);
 
   const mensajesRef  = useRef<HTMLDivElement>(null);
   const inputRef     = useRef<HTMLInputElement>(null);
@@ -860,7 +861,10 @@ export default function WhatsAppWebPage() {
     <div className="flex h-[calc(100dvh-112px)] rounded-xl overflow-hidden border border-border bg-card">
 
       {/* ── Panel izquierdo: lista de chats ──────────────── */}
-      <div className="w-72 flex-shrink-0 flex flex-col border-r border-border">
+      <div className={cn(
+        'flex-shrink-0 flex flex-col border-r border-border',
+        isChatOpen ? 'hidden md:flex md:w-[340px]' : 'flex w-full md:w-[340px]',
+      )}>
 
         {/* Header */}
         <div className="px-4 py-3 border-b border-border flex items-center gap-2">
@@ -898,7 +902,7 @@ export default function WhatsAppWebPage() {
           {chatsFiltrados.map(chat => (
             <button
               key={chat.id}
-              onClick={() => seleccionarChat(chat)}
+              onClick={() => { seleccionarChat(chat); setIsChatOpen(true); }}
               className={cn(
                 'w-full flex items-start gap-2.5 px-4 py-3 text-left transition-colors hover:bg-muted/40',
                 chatActivo?.id === chat.id && 'bg-primary/8 border-l-2 border-primary',
@@ -933,12 +937,23 @@ export default function WhatsAppWebPage() {
       </div>
 
       {/* ── Panel derecho: visor de conversación ──────────── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className={cn(
+        'flex flex-col min-w-0',
+        isChatOpen ? 'flex-1' : 'hidden md:flex md:flex-1',
+      )}>
 
         {/* Header del chat activo */}
         {chatActivo ? (
-          <div className="px-5 py-3 border-b border-border flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2 sm:gap-3">
+            {/* Botón retorno — sólo móvil */}
+            <button
+              onClick={() => setIsChatOpen(false)}
+              className="md:hidden flex-shrink-0 p-1.5 -ml-1 text-[#050D51] hover:bg-muted/50 rounded-lg transition"
+              aria-label="Volver a chats"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
               <User className="w-4 h-4 text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
@@ -987,10 +1002,10 @@ export default function WhatsAppWebPage() {
             return (
               <div key={msg.id} className={cn('flex', esOutbound ? 'justify-end' : 'justify-start')}>
                 <div className={cn(
-                  'max-w-[75%] px-3 py-2 rounded-2xl text-sm shadow-sm',
+                  'max-w-[85%] sm:max-w-[75%] px-3.5 py-2.5 rounded-2xl shadow-sm',
                   esOutbound
                     ? 'bg-primary text-primary-foreground rounded-br-sm'
-                    : 'bg-card border border-border text-foreground rounded-bl-sm',
+                    : 'bg-white dark:bg-card border border-border text-slate-700 dark:text-foreground rounded-bl-sm',
                 )}>
                   {esOutbound && msg.agente && (
                     <p className="text-[10px] opacity-70 font-medium mb-0.5">{msg.agente}</p>
@@ -1000,7 +1015,7 @@ export default function WhatsAppWebPage() {
                     if (extractFilename(raw)) return <AuthedMedia raw={raw} />;
                     if (msg.body && msg.body !== '[media]') {
                       return (
-                        <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                           {msg.body}
                         </p>
                       );
@@ -1019,7 +1034,7 @@ export default function WhatsAppWebPage() {
 
         {/* Caja de texto + adjuntos */}
         {chatActivo && (
-          <div className="border-t border-border flex flex-col">
+          <div className="flex flex-col">
 
             {/* Banner de error */}
             {uploadError && (
@@ -1053,11 +1068,11 @@ export default function WhatsAppWebPage() {
             )}
 
             {/* Fila de input */}
-            <div className="px-4 py-3 flex items-center gap-2">
+            <div className="px-3 py-2.5 flex items-center gap-2 bg-[#F8FAFC] dark:bg-card border-t border-border">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/40 rounded-lg transition flex-shrink-0"
+                className="p-2 text-[#0F6F45] hover:text-[#0F6F45]/80 hover:bg-[#0F6F45]/10 rounded-lg transition flex-shrink-0"
                 title="Adjuntar imagen o PDF (máx. 10 MB)"
               >
                 <Paperclip className="w-4 h-4" />
@@ -1065,7 +1080,7 @@ export default function WhatsAppWebPage() {
               <button
                 type="button"
                 onClick={() => setModalPlantilla(true)}
-                className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted/40 rounded-lg transition flex-shrink-0"
+                className="p-2 text-[#050D51] hover:text-[#050D51]/70 hover:bg-[#050D51]/8 rounded-lg transition flex-shrink-0"
                 title="Insertar plantilla"
               >
                 <BookOpen className="w-4 h-4" />
