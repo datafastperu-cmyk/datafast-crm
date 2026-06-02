@@ -21,6 +21,7 @@ import {
   FilterPagoDto, CrearPreferenciaDto, CreateCuentaBancariaDto,
 } from './dto/pago.dto';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto';
+import { EstadoPago } from './entities/pago.entity';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission, Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -52,7 +53,7 @@ export class PagosController {
     @Req() req: Request,
   ) {
     const pago = await this.svc.registrar(dto, user, req);
-    const mensaje = pago.estado === 'VERIFICADO'
+    const mensaje = pago.estado === EstadoPago.VERIFICADO
       ? 'Pago procesado y verificado con éxito.'
       : 'Pago registrado. Pendiente de verificación manual.';
     return StdResponse.ok(pago, mensaje);

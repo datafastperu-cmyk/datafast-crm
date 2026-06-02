@@ -7,7 +7,7 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
 import { MetodoPago, EstadoPago } from '../entities/pago.entity';
 import { PaginationDto } from '../../../common/dto/response.dto';
-
+export { RegistrarPagoDto } from './registrar-pago.dto';
 
 // ─── Verificar / Aprobar pago ─────────────────────────────────
 export class VerificarPagoDto {
