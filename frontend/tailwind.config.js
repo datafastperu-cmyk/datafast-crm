@@ -57,6 +57,9 @@ module.exports = {
           950: '#191f0b',
         },
 
+        /* Token base unificado — #272757 (HSL 240 38% 25%) */
+        'navy-base': '#272757',
+
         /* ── Paleta Navy Blue — estructural / fondos / sidebar ──────────── */
         navy: {
           50:  '#f0f3fa',
