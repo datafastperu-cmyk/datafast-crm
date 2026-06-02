@@ -187,12 +187,12 @@ function FormRow({ label, required, hint, hintColor = 'amber', children }: {
   hintColor?: 'amber' | 'gray'; children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-6 px-8 py-3">
-      <span className="w-44 text-right text-sm text-foreground pt-2.5 flex-shrink-0 leading-tight">
+    <div className="space-y-1.5 px-4 sm:px-6 py-2">
+      <label className="text-xs font-medium text-foreground block">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
-      </span>
-      <div className="flex-1 min-w-0">
+      </label>
+      <div className="min-w-0">
         {children}
         {hint && (
           <p className={cn('text-xs mt-1', hintColor === 'amber' ? 'text-amber-500' : 'text-muted-foreground')}>
