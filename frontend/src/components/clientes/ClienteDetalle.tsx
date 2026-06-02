@@ -600,10 +600,10 @@ function SvcToolbar({
       {onAdd && (
         <button
           onClick={onAdd}
-          className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded
-                     bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="flex items-center justify-center gap-1.5 h-9 px-3 text-xs font-semibold rounded-lg whitespace-nowrap
+                     bg-primary text-white hover:bg-primary/90 transition-colors"
         >
-          <Plus className="w-3 h-3" /> {addLabel}
+          <Plus className="w-3.5 h-3.5" /> {addLabel}
         </button>
       )}
       <div className="ml-auto relative">

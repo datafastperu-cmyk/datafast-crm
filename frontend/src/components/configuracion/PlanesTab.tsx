@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Pencil, Trash2, ToggleRight, ToggleLeft,
-  Loader2, Wifi, X, AlertTriangle,
+  Loader2, Wifi, X, AlertTriangle, ArrowDown, ArrowUp,
 } from 'lucide-react';
 import { planesApi } from '@/lib/api/contratos';
 import api from '@/lib/api';
@@ -272,8 +272,8 @@ export function PlanesTab() {
           {planes.length} plan{planes.length !== 1 ? 'es' : ''}
         </p>
         <button onClick={abrirNuevo}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors">
-          <Plus className="w-3.5 h-3.5" /> Nuevo plan
+          className="flex items-center justify-center gap-2 h-10 px-4 text-sm rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-colors">
+          <Plus className="w-4 h-4" /> Nuevo plan
         </button>
       </div>
 
@@ -294,60 +294,95 @@ export function PlanesTab() {
         <div className="space-y-2">
           {planes.map((p) => (
             <div key={p.id}
-              className="flex items-center gap-4 px-4 py-3 rounded-xl border border-border hover:bg-muted/30 transition-colors">
-              <div className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.colorUi || '#3b82f6' }} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-foreground">{p.nombre}</span>
-                  <span className="text-[10px] px-1.5 py-px rounded-full bg-muted text-muted-foreground capitalize">{p.tipo}</span>
-                  {p.tipoQueue === 'sin_limite' && (
-                    <span className="text-[10px] px-1.5 py-px rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                      Sin reglas
+              className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-4 py-3 rounded-xl border border-border hover:bg-muted/30 transition-colors">
+
+              {/* Bloque izquierdo: color + nombre + tipo + velocidades (móvil) */}
+              <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                <div className="w-3 h-3 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: p.colorUi || '#3b82f6' }} />
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <p className="text-sm font-bold text-[#050D51] dark:text-foreground leading-snug truncate">{p.nombre}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] px-1.5 py-px rounded-full bg-muted text-muted-foreground capitalize">{p.tipo}</span>
+                    {p.tipoQueue === 'sin_limite' && (
+                      <span className="text-[10px] px-1.5 py-px rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        Sin reglas
+                      </span>
+                    )}
+                  </div>
+                  {/* Velocidades solo en móvil */}
+                  <div className="flex items-center gap-3 sm:hidden pt-0.5">
+                    <span className="text-xs text-slate-600 dark:text-muted-foreground flex items-center gap-0.5">
+                      <ArrowDown className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                      {(p.velocidadBajada / 1024).toFixed(1)} Mbps
                     </span>
-                  )}
+                    <span className="text-xs text-slate-600 dark:text-muted-foreground flex items-center gap-0.5">
+                      <ArrowUp className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                      {(p.velocidadSubida / 1024).toFixed(1)} Mbps
+                    </span>
+                    {p.burstBajada ? (
+                      <span className="text-[10px] text-slate-500 dark:text-muted-foreground">
+                        Burst: {(p.burstBajada / 1024).toFixed(0)} Mbps
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  ↓{p.velocidadBajada.toLocaleString()} / ↑{p.velocidadSubida.toLocaleString()} Kbps
-                  {p.burstBajada ? ` · Burst: ${p.burstBajada.toLocaleString()} Kbps` : ''}
-                </p>
               </div>
-              <div className="text-right flex-shrink-0">
-                <p className="text-sm font-bold text-foreground">{formatPEN(p.precio)}</p>
-                <p className="text-[10px] text-muted-foreground">/mes {p.aplicaIgv ? '+ IGV' : ''}</p>
+
+              {/* Velocidades desktop */}
+              <div className="hidden sm:flex flex-col gap-0.5 flex-shrink-0 text-xs text-slate-600 dark:text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <ArrowDown className="w-3 h-3 text-blue-500" />{p.velocidadBajada.toLocaleString()} Kbps
+                </span>
+                <span className="flex items-center gap-1">
+                  <ArrowUp className="w-3 h-3 text-emerald-500" />{p.velocidadSubida.toLocaleString()} Kbps
+                </span>
+                {p.burstBajada ? (
+                  <span className="text-[10px] text-slate-400 dark:text-muted-foreground/70">
+                    Burst: {p.burstBajada.toLocaleString()} Kbps
+                  </span>
+                ) : null}
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <button onClick={() => toggleActivo({ id: p.id, activo: !p.activo })}
-                  className={cn(
-                    'flex items-center gap-1 px-2 py-1 text-xs rounded-lg font-medium transition-colors',
-                    p.activo
-                      ? 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400'
-                      : 'text-muted-foreground bg-muted hover:bg-muted/70',
-                  )}>
-                  {p.activo ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
-                  {p.activo ? 'Activo' : 'Inactivo'}
-                </button>
-                <button onClick={() => abrirEditar(p)}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <div className="relative group">
-                  <button
-                    onClick={() => (p.contratosCount ?? 0) === 0 ? setDeletePlan(p) : undefined}
-                    disabled={(p.contratosCount ?? 0) > 0}
-                    className={`p-1.5 rounded-lg transition-colors ${
-                      (p.contratosCount ?? 0) > 0
-                        ? 'text-muted-foreground opacity-40 cursor-not-allowed'
-                        : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
-                    }`}>
-                    <Trash2 className="w-3.5 h-3.5" />
+
+              {/* Precio + Acciones */}
+              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
+                <div className="sm:text-right flex-shrink-0">
+                  <p className="text-sm font-bold text-[#050D51] dark:text-foreground">{formatPEN(p.precio)}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-muted-foreground">/mes {p.aplicaIgv ? '+ IGV' : ''}</p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => toggleActivo({ id: p.id, activo: !p.activo })}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-1 text-xs rounded-lg font-medium transition-colors',
+                      p.activo
+                        ? 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400'
+                        : 'text-muted-foreground bg-muted hover:bg-muted/70',
+                    )}>
+                    {p.activo ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
+                    {p.activo ? 'Activo' : 'Inactivo'}
                   </button>
-                  {(p.contratosCount ?? 0) > 0 && (
-                    <div className="absolute bottom-full right-0 mb-1 hidden group-hover:block z-50 pointer-events-none">
-                      <div className="bg-popover text-popover-foreground text-xs rounded-md px-2 py-1 shadow-md whitespace-nowrap border">
-                        No se puede eliminar: Este plan tiene clientes activos vinculados
+                  <button onClick={() => abrirEditar(p)}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="relative group">
+                    <button
+                      onClick={() => (p.contratosCount ?? 0) === 0 ? setDeletePlan(p) : undefined}
+                      disabled={(p.contratosCount ?? 0) > 0}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        (p.contratosCount ?? 0) > 0
+                          ? 'text-muted-foreground opacity-40 cursor-not-allowed'
+                          : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'
+                      }`}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                    {(p.contratosCount ?? 0) > 0 && (
+                      <div className="absolute bottom-full right-0 mb-1 hidden group-hover:block z-50 pointer-events-none">
+                        <div className="bg-popover text-popover-foreground text-xs rounded-md px-2 py-1 shadow-md whitespace-nowrap border">
+                          No se puede eliminar: Este plan tiene clientes activos vinculados
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
