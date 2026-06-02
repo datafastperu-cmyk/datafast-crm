@@ -17,9 +17,10 @@ import { memoryStorage } from 'multer';
 
 import { PagosService }   from './pagos.service';
 import {
-  RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
+  VerificarPagoDto, ConciliarPagoDto,
   FilterPagoDto, CrearPreferenciaDto, CreateCuentaBancariaDto,
 } from './dto/pago.dto';
+import { RegistrarPagoDto } from './dto/registrar-pago.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission, Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -51,11 +52,10 @@ export class PagosController {
     @Req() req: Request,
   ) {
     const pago = await this.svc.registrar(dto, user, req);
-    return StdResponse.ok(pago,
-      pago.estado === 'verificado'
-        ? 'Pago registrado y aplicado correctamente'
-        : 'Pago registrado — pendiente de verificación',
-    );
+    const mensaje = pago.estado === 'VERIFICADO'
+      ? 'Pago procesado y verificado con éxito.'
+      : 'Pago registrado. Pendiente de verificación manual.';
+    return StdResponse.ok(pago, mensaje);
   }
 
   // ── GET /pagos — Listar con filtros ───────────────────────

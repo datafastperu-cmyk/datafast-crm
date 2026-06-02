@@ -8,63 +8,6 @@ import { Type, Transform } from 'class-transformer';
 import { MetodoPago, EstadoPago } from '../entities/pago.entity';
 import { PaginationDto } from '../../../common/dto/response.dto';
 
-// ─── Registrar Pago ───────────────────────────────────────────
-export class RegistrarPagoDto {
-  @ApiProperty({ description: 'UUID del cliente' })
-  @IsUUID() @IsNotEmpty()
-  clienteId: string;
-
-  @ApiPropertyOptional({ description: 'UUID de la factura a pagar (puede aplicar a deuda general si omitido)' })
-  @IsOptional() @IsUUID()
-  facturaId?: string;
-
-  @ApiPropertyOptional({ description: 'UUID del contrato (requerido si no se especifica factura)' })
-  @IsOptional() @IsUUID()
-  contratoId?: string;
-
-  @ApiProperty({ example: 85.00, description: 'Monto pagado' })
-  @IsNumber() @IsPositive() @Type(() => Number)
-  monto: number;
-
-  @ApiProperty({ enum: MetodoPago })
-  @IsEnum(MetodoPago)
-  metodoPago: MetodoPago;
-
-  @ApiPropertyOptional({ example: 'BCP', description: 'Banco origen/destino' })
-  @IsOptional() @IsString() @MaxLength(100)
-  banco?: string;
-
-  @ApiPropertyOptional({
-    example: '12345678',
-    description: 'Número de operación del banco/Yape/Plin — previene duplicados',
-  })
-  @IsOptional() @IsString() @MaxLength(100)
-  @Transform(({ value }) => value?.trim())
-  numeroOperacion?: string;
-
-  @ApiPropertyOptional({ example: '6411', description: 'Últimos 4 dígitos de la cuenta destino' })
-  @IsOptional() @IsString() @MaxLength(50)
-  numeroCuenta?: string;
-
-  @ApiPropertyOptional({ example: '2024-01-20' })
-  @IsOptional() @IsDateString()
-  fechaPago?: string;
-
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000)
-  notas?: string;
-
-  @ApiPropertyOptional({ description: 'URL de la foto del voucher (subido previamente)' })
-  @IsOptional() @IsString() @MaxLength(500)
-  comprobanteUrl?: string;
-
-  @ApiPropertyOptional({ description: 'Si true, verificar automáticamente sin revisión manual', default: false })
-  @IsOptional() @IsBoolean()
-  autoVerificar?: boolean;
-
-  @ApiPropertyOptional({ default: 'PEN' })
-  @IsOptional() @IsString()
-  moneda?: string;
-}
 
 // ─── Verificar / Aprobar pago ─────────────────────────────────
 export class VerificarPagoDto {
