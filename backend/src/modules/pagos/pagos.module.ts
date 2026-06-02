@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
 import { HttpModule } from '@nestjs/axios';
 import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { QUEUES } from '../workers/workers.constants';
 
 import { PagosController }     from './pagos.controller';
 import { PagosService }        from './pagos.service';
@@ -19,6 +21,7 @@ import { AuthModule }         from '../auth/auth.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Pago, CuentaBancaria]),
+    BullModule.registerQueue({ name: QUEUES.COBRANZA }),
 
     // HTTP client para llamadas a la API de MercadoPago
     HttpModule.register({

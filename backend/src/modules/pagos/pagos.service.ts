@@ -6,6 +6,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
 
 import { PagoRepository }       from './repositories/pago.repository';
 import { MercadoPagoService }   from './mercadopago.service';
@@ -15,27 +17,23 @@ import { AuditoriaService }     from '../auth/auditoria.service';
 import { JwtPayload }           from '../../common/decorators/current-user.decorator';
 
 import { Pago, EstadoPago, MetodoPago, CuentaBancaria } from './entities/pago.entity';
-import { EstadoContrato }       from '../contratos/entities/contrato.entity';
-import { EstadoFactura }        from '../facturacion/entities/factura.entity';
+import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
+import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
+import { RegistrarPagoDto, MetodoPago as DtoMetodoPago } from './dto/registrar-pago.dto';
 import {
-  RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
+  VerificarPagoDto, ConciliarPagoDto,
   FilterPagoDto, CrearPreferenciaDto,
   CreateCuentaBancariaDto, ResumenCobranzaDto,
 } from './dto/pago.dto';
+import { QUEUES, JOBS, PayloadReactivarContrato } from '../workers/workers.constants';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 
-// ─── Métodos que se auto-verifican sin revisión manual ───────
-const METODOS_AUTO_VERIFICAR: MetodoPago[] = [
-  MetodoPago.MERCADOPAGO, // Verificado por webhook
-];
-
-// ─── Métodos que SIEMPRE requieren verificación manual ───────
-const METODOS_REQUIEREN_NUMERO_OP: MetodoPago[] = [
-  MetodoPago.YAPE,
-  MetodoPago.PLIN,
-  MetodoPago.TRANSFERENCIA_BANCARIA,
-  MetodoPago.DEPOSITO_BANCARIO,
-];
+// ─── Mapa de normalización: DTO uppercase → entity lowercase ──
+const METODO_PAGO_MAP: Record<DtoMetodoPago, MetodoPago> = {
+  [DtoMetodoPago.MERCADOPAGO]:          MetodoPago.MERCADOPAGO,
+  [DtoMetodoPago.YAPE]:                 MetodoPago.YAPE,
+  [DtoMetodoPago.TRANSFERENCIA_MANUAL]: MetodoPago.TRANSFERENCIA_BANCARIA,
+};
 
 @Injectable()
 export class PagosService {
@@ -49,94 +47,152 @@ export class PagosService {
     private readonly auditoria:    AuditoriaService,
     private readonly config:       ConfigService,
     @InjectDataSource() private readonly ds: DataSource,
+    @InjectQueue(QUEUES.COBRANZA) private readonly cobranzaQueue: Queue,
   ) {}
 
   // ────────────────────────────────────────────────────────────
-  // REGISTRAR PAGO
-  // Flujo:
-  // 1. Validar campos requeridos según método
-  // 2. Detectar duplicados por número de operación
-  // 3. Guardar pago
-  // 4. Si se auto-verifica: aplicar a factura + trigger reactivación
+  // REGISTRAR PAGO — Fase 2: Transacción ACID completa
+  // 1. Idempotencia por (empresaId, metodoPago, numeroOperacion)
+  // 2. Validar factura + cargar contrato asociado
+  // 3. Normalizar casing DTO→entity + determinar auto-verificación
+  // 4. Persistir pago, actualizar factura y contrato dentro de la TX
+  // 5. Encolar job de reactivación fuera de la TX (post-commit)
   // ────────────────────────────────────────────────────────────
   async registrar(
-    dto:    RegistrarPagoDto,
-    user:   JwtPayload,
-    req?:   any,
+    dto:  RegistrarPagoDto,
+    user: JwtPayload,
+    req?: any,
   ): Promise<Pago> {
+    const metodoPagoEntity = METODO_PAGO_MAP[dto.metodoPago];
+    let contratoParaReactivar: Contrato | null = null;
 
-    // ── 1. Validaciones de negocio ─────────────────────────
-    await this.validarPago(dto, user.empresaId);
+    // ── TRANSACCIÓN ACID ──────────────────────────────────────
+    const savedPago = await this.ds.transaction(async (manager) => {
 
-    // ── 2. Detectar duplicado por número de operación ──────
-    if (dto.numeroOperacion) {
-      const { existe, pagoExistente } = await this.pagoRepo.existeDuplicado(
-        user.empresaId,
-        dto.metodoPago,
-        dto.numeroOperacion,
-      );
-      if (existe) {
+      // PASO 1 — Idempotencia
+      const duplicado = await manager.findOne(Pago, {
+        where: { empresaId: dto.empresaId, metodoPago: metodoPagoEntity, numeroOperacion: dto.numeroOperacion },
+      });
+      if (duplicado) {
         throw new ConflictException(
-          `Ya existe un pago registrado con el número de operación ${dto.numeroOperacion} ` +
-          `(${dto.metodoPago}). Pago existente ID: ${pagoExistente.id} · ` +
-          `Registrado: ${pagoExistente.registradoEn.toLocaleString('es-PE')}`,
+          `Ya existe un pago con el número de operación '${dto.numeroOperacion}' ` +
+          `(${metodoPagoEntity}). ID existente: ${duplicado.id}`,
         );
       }
-    }
 
-    // ── 3. Determinar estado inicial ───────────────────────
-    const autoVerificar = dto.autoVerificar ||
-      METODOS_AUTO_VERIFICAR.includes(dto.metodoPago);
+      // PASO 2 — Validar factura y cargar contrato
+      const factura = await manager.findOne(Factura, {
+        where: { id: dto.facturaId, empresaId: dto.empresaId },
+      });
+      if (!factura) {
+        throw new NotFoundException(`Factura ${dto.facturaId} no encontrada`);
+      }
+      if (factura.estado === EstadoFactura.PAGADA) {
+        throw new BadRequestException('La factura ya está completamente pagada');
+      }
 
-    const estadoInicial = autoVerificar
-      ? EstadoPago.VERIFICADO
-      : EstadoPago.PENDIENTE_VERIFICACION;
+      let contrato: Contrato | null = null;
+      if (factura.contratoId) {
+        contrato = await manager.findOne(Contrato, {
+          where: { id: factura.contratoId },
+        });
+      }
 
-    // ── 4. Crear el pago ───────────────────────────────────
-    const pago = this.pagoRepo.create({
-      empresaId:       user.empresaId,
-      clienteId:       dto.clienteId,
-      facturaId:       dto.facturaId,
-      contratoId:      dto.contratoId,
-      monto:           dto.monto,
-      moneda:          dto.moneda || 'PEN',
-      metodoPago:      dto.metodoPago,
-      banco:           dto.banco,
-      numeroOperacion: dto.numeroOperacion,
-      numeroCuenta:    dto.numeroCuenta,
-      fechaPago:       dto.fechaPago || new Date().toISOString().split('T')[0],
-      comprobanteUrl:  dto.comprobanteUrl,
-      notas:           dto.notas,
-      estado:          estadoInicial,
-      cajeroId:        user.sub,
-      verificadoPor:   autoVerificar ? user.sub : null,
-      verificadoEn:    autoVerificar ? new Date() : null,
+      // PASO 3 — Determinar estado: auto-verificar MercadoPago o Yape con OTP
+      const esYapeConOtp = dto.metodoPago === DtoMetodoPago.YAPE && !!dto.otpYape;
+      const autoVerificado = dto.metodoPago === DtoMetodoPago.MERCADOPAGO || esYapeConOtp;
+      const estadoInicial  = autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION;
+
+      const pago = manager.create(Pago, {
+        empresaId:       dto.empresaId,
+        clienteId:       factura.clienteId,
+        facturaId:       dto.facturaId,
+        contratoId:      factura.contratoId ?? null,
+        monto:           dto.monto,
+        moneda:          'PEN',
+        metodoPago:      metodoPagoEntity,
+        numeroOperacion: dto.numeroOperacion,
+        estado:          estadoInicial,
+        cajeroId:        user.sub,
+        verificadoPor:   autoVerificado ? user.sub : null,
+        verificadoEn:    autoVerificado ? new Date() : null,
+        // Metadatos Yape en mpDetail hasta que se añadan columnas dedicadas
+        mpDetail: (dto.celularYape || dto.otpYape)
+          ? { celularYape: dto.celularYape ?? null, otpYape: dto.otpYape ?? null }
+          : null,
+      });
+
+      const saved = await manager.save(Pago, pago);
+
+      // PASO 4 — Si auto-verificado: actualizar factura y contrato dentro de la TX
+      if (autoVerificado) {
+        const nuevaMontoPagado = Number(factura.montoPagado) + Number(dto.monto);
+        const nuevoEstadoFactura = nuevaMontoPagado >= Number(factura.total)
+          ? EstadoFactura.PAGADA
+          : EstadoFactura.PAGADA_PARCIAL;
+
+        await manager.update(Factura, factura.id, {
+          montoPagado: nuevaMontoPagado,
+          estado:      nuevoEstadoFactura,
+          ...(nuevoEstadoFactura === EstadoFactura.PAGADA && {
+            fechaPago: new Date().toISOString().split('T')[0],
+          }),
+        });
+
+        // Reactivación automática si contrato suspendido por mora o manual
+        if (
+          contrato &&
+          [EstadoContrato.SUSPENDIDO_MORA, EstadoContrato.SUSPENDIDO_MANUAL].includes(contrato.estado)
+        ) {
+          await manager.update(Contrato, contrato.id, {
+            estado:       EstadoContrato.ACTIVO,
+            fechaEstado:  new Date(),
+            motivoEstado: `Reactivación automática — pago S/ ${dto.monto} verificado`,
+          });
+          contratoParaReactivar = contrato;
+        }
+      }
+
+      return saved;
     });
+    // ── FIN TRANSACCIÓN ───────────────────────────────────────
 
-    const saved = await this.pagoRepo.save(pago);
-
-    this.logger.log(
-      `Pago registrado: ${saved.id} | ${dto.metodoPago} | S/ ${dto.monto} | ` +
-      `cliente: ${dto.clienteId} | estado: ${estadoInicial}`,
-    );
-
-    // ── 5. Si auto-verificado: aplicar a factura ───────────
-    if (autoVerificar) {
-      await this.aplicarPagoAFacturaYContrato(saved, user);
+    // PASO 5 — Encolar job de Mikrotik fuera de la TX (solo si commit fue exitoso)
+    if (contratoParaReactivar) {
+      const payload: PayloadReactivarContrato = {
+        contratoId: contratoParaReactivar.id,
+        empresaId:  contratoParaReactivar.empresaId,
+        clienteId:  contratoParaReactivar.clienteId,
+        routerId:   contratoParaReactivar.routerId,
+        ipAsignada: contratoParaReactivar.ipAsignada,
+        planNombre: contratoParaReactivar.planId, // resuelto en el worker
+        notificar:  true,
+      };
+      await this.cobranzaQueue.add(JOBS.REACTIVAR_CONTRATO, payload, {
+        attempts: 3,
+        backoff:  { type: 'exponential', delay: 10_000 },
+        removeOnComplete: 200,
+        removeOnFail:     500,
+      });
+      this.logger.log(`Job reactivar-contrato encolado para contrato ${contratoParaReactivar.id}`);
     }
 
-    // ── 6. Auditoría ───────────────────────────────────────
+    // Auditoría
     await this.auditoria.logCreate({
-      empresaId:    user.empresaId,
+      empresaId:    dto.empresaId,
       usuarioId:    user.sub,
       usuarioEmail: user.email,
       modulo:       'pagos',
-      entidadId:    saved.id,
-      descripcion:  `Pago ${dto.metodoPago} S/ ${dto.monto} | cliente: ${dto.clienteId} | ${estadoInicial}`,
+      entidadId:    savedPago.id,
+      descripcion:  `Pago ${dto.metodoPago} S/ ${dto.monto} | factura: ${dto.facturaId} | ${savedPago.estado}`,
       req,
     });
 
-    return saved;
+    this.logger.log(
+      `Pago registrado: ${savedPago.id} | ${metodoPagoEntity} | S/ ${dto.monto} | ${savedPago.estado}`,
+    );
+
+    return savedPago;
   }
 
   // ────────────────────────────────────────────────────────────
@@ -509,53 +565,6 @@ export class PagosService {
     }
   }
 
-  // ────────────────────────────────────────────────────────────
-  // VALIDACIONES DE NEGOCIO
-  // ────────────────────────────────────────────────────────────
-  private async validarPago(dto: RegistrarPagoDto, empresaId: string): Promise<void> {
-    // Número de operación requerido para métodos bancarios/digitales
-    if (
-      METODOS_REQUIEREN_NUMERO_OP.includes(dto.metodoPago) &&
-      !dto.numeroOperacion?.trim()
-    ) {
-      throw new BadRequestException(
-        `El número de operación es obligatorio para pagos con ${dto.metodoPago}`,
-      );
-    }
-
-    // Si se especifica una factura, verificar que pertenezca a la empresa
-    if (dto.facturaId) {
-      const [row] = await this.ds.query(
-        'SELECT id, estado, empresa_id FROM facturas WHERE id = $1',
-        [dto.facturaId],
-      );
-      if (!row || row.empresa_id !== empresaId) {
-        throw new NotFoundException('Factura no encontrada');
-      }
-      if (row.estado === EstadoFactura.PAGADA) {
-        throw new BadRequestException('La factura ya está completamente pagada');
-      }
-      if (row.estado === EstadoFactura.ANULADA) {
-        throw new BadRequestException('La factura está anulada');
-      }
-    }
-
-    // Si se especifica contrato, verificar existencia
-    if (dto.contratoId && !dto.facturaId) {
-      const [row] = await this.ds.query(
-        'SELECT id, empresa_id FROM contratos WHERE id = $1',
-        [dto.contratoId],
-      );
-      if (!row || row.empresa_id !== empresaId) {
-        throw new NotFoundException('Contrato no encontrado');
-      }
-    }
-
-    // Monto mínimo razonable
-    if (Number(dto.monto) < 0.01) {
-      throw new BadRequestException('El monto debe ser mayor a S/ 0.01');
-    }
-  }
 
   // ────────────────────────────────────────────────────────────
   // LISTAR / OBTENER
