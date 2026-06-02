@@ -4,7 +4,7 @@ import {
   Settings, Users, Mail, Receipt, FileCheck, CreditCard,
   FileEdit, Globe, Upload, ArrowUpDown, Layout, MapPin,
   SlidersHorizontal, MessageSquare, HardDrive, Clock,
-  Terminal, Monitor, Server, Key, Plug,
+  Terminal, Monitor, Server, Key, Plug, Cpu,
 } from 'lucide-react';
 
 export const metadata: Metadata = { title: 'Ajustes' };
@@ -31,6 +31,7 @@ const SECTIONS = [
   { href: '/configuracion/servidor',               label: 'Servidor',                 icon: Server },
   { href: '/configuracion/licencia',               label: 'Licencia',                 icon: Key },
   { href: '/configuracion/integraciones',          label: 'Integraciones',            icon: Plug },
+  { href: '/configuracion/olts',                   label: 'Configuración OLT',        icon: Cpu  },
 ];
 
 export default function ConfiguracionPage() {

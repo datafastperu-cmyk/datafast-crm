@@ -11,7 +11,7 @@ import {
   UserCheck, Zap,
   List, Tv, Scissors, Layers,
   ChevronRight, Gift, Trophy, Settings2,
-  Megaphone,
+  Megaphone, Cpu,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -114,7 +114,13 @@ const NAV: NavEntry[] = [
     ],
   },
 
-  { id: 'ajustes', href: '/configuracion',  label: 'Configuración',    icon: Settings, permiso: 'sistema:config' },
+  {
+    id: 'ajustes', label: 'Configuración', icon: Settings,
+    items: [
+      { href: '/configuracion',       label: 'Ajustes',           icon: Settings, permiso: 'sistema:config' },
+      { href: '/configuracion/olts',  label: 'Configuración OLT', icon: Cpu,      permiso: 'sistema:config' },
+    ],
+  },
 ];
 
 interface SidebarProps {

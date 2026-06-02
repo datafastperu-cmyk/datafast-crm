@@ -1,0 +1,15 @@
+{# ZTE ZXA10 C300/C320 — Aprovisionamiento ONU GPON (modo Internet/Routing) #}
+configure terminal
+interface gpon-olt_{{ rack }}/{{ slot }}/{{ port }}
+onu {{ onu_id }} type {{ onu_type }} sn {{ sn }}
+exit
+interface gpon-onu_{{ rack }}/{{ slot }}/{{ port }}:{{ onu_id }}
+tcont 1 name INTERNET profile {{ tcont_profile }}
+gemport 1 name INTERNET tcont 1
+switchport mode hybrid vport 1
+switchport vlan {{ vlan }} tag vport 1
+exit
+pon-onu-mng gpon-onu_{{ rack }}/{{ slot }}/{{ port }}:{{ onu_id }}
+service INTERNET gemport 1 vlan {{ vlan }}
+wan-connection 1 mode route profile {{ wan_profile }} vlan {{ vlan }}
+exit

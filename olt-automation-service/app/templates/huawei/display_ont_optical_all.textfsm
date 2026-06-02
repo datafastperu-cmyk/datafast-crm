@@ -1,0 +1,7 @@
+Value OnuId (\d+)
+Value TxPower (-?[0-9]+\.[0-9]+|-)
+Value RxPower (-?[0-9]+\.[0-9]+|-)
+Value TempC (\d+|--)
+
+Start
+  ^\s+\d+/\s*\d+/\s*\d+\s+${OnuId}\s+${TxPower}\s+${RxPower}\s+\S+\s+${TempC} -> Record

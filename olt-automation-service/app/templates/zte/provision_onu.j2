@@ -1,0 +1,15 @@
+{# ZTE ZXA10 C300/C320 — Aprovisionamiento de ONU GPON #}
+configure terminal
+interface gpon-olt_{{ frame }}/{{ slot }}/{{ port }}
+  onu {{ onu_id }} type auto sn {{ sn }}
+  exit
+interface gpon-onu_{{ frame }}/{{ slot }}/{{ port }}:{{ onu_id }}
+  tcont 1 profile {{ profile_speed }}
+  gemport 1 unicast tcont 1
+  vport-mode manual
+  vport 1 map-type vlan
+  vport-mode manual
+  switchport mode access vport 1
+  switchport access vlan {{ vlan }} ethernet 0/1
+  exit
+end

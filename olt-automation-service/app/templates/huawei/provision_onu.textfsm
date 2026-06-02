@@ -1,0 +1,8 @@
+Value ONT_ID (\d+)
+Value SN ([0-9A-F]+)
+Value STATUS (\S+)
+
+Start
+  ^.*ont\s+add\s+${ONT_ID}\s+sn-auth\s+${SN} -> Record
+  ^.*GPON\s+\S+\s+ont\s+${ONT_ID}\s+\S+\s+${STATUS} -> Record
+  ^. -> Continue

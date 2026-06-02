@@ -49,6 +49,8 @@ export const validationSchema = Joi.object({
   GOOGLE_MAPS_API_KEY: Joi.string().allow('').optional(),
   SMARTOLT_URL: Joi.string().uri().allow('').optional(),
   SMARTOLT_TOKEN: Joi.string().allow('').optional(),
+  OLT_AUTOMATION_SERVICE_URL: Joi.string().uri().default('http://127.0.0.1:8001').optional(),
+  OLT_AUTOMATION_INTERNAL_KEY: Joi.string().allow('').optional(),
   MP_ACCESS_TOKEN: Joi.string().allow('').optional(),
   MP_WEBHOOK_SECRET: Joi.string().allow('').optional(),
   MP_SANDBOX: Joi.boolean().default(true),
@@ -141,6 +143,12 @@ export const appConfig = registerAs('app', () => ({
   smartolt: {
     url: process.env.SMARTOLT_URL,
     token: process.env.SMARTOLT_TOKEN,
+  },
+
+  // Microservicio Python de automatización OLT (SSH nativo vía VPN)
+  oltAutomation: {
+    url:            process.env.OLT_AUTOMATION_SERVICE_URL || 'http://127.0.0.1:8001',
+    internalApiKey: process.env.OLT_AUTOMATION_INTERNAL_KEY || '',
   },
 }));
 

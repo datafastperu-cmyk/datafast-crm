@@ -1,0 +1,9 @@
+Value ONU_ID (\d+)
+Value SN ([0-9A-F]+)
+Value VLAN (\d+)
+Value STATUS (\S+)
+
+Start
+  ^.*onu\s+${ONU_ID}\s+type\s+\S+\s+sn\s+${SN} -> Record
+  ^.*switchport\s+access\s+vlan\s+${VLAN} -> Record
+  ^. -> Continue

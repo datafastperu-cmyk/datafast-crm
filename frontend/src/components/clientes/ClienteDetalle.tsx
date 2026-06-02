@@ -25,6 +25,7 @@ import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
 import type { Router as RouterType }            from '@/lib/api/mikrotik';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
+import { ModalProvisionOnu }                  from './ModalProvisionOnu';
 import { TabConfigFacturacion }                from './TabConfigFacturacion';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
@@ -717,107 +718,6 @@ const servicioSchema = z.object({
 type ServicioForm = z.infer<typeof servicioSchema>;
 
 // ── Mock ONUs disponibles para aprovisionamiento simulado ────────
-const ONUS_SIMULADAS = [
-  { sn: 'HWTC1A2B3C4D', pon: '0/1/0', olt: 'OLT-PRINCIPAL', modelo: 'HG8310M' },
-  { sn: 'HWTC5E6F7A8B', pon: '0/1/1', olt: 'OLT-PRINCIPAL', modelo: 'HG8310M' },
-  { sn: 'HWTC9C0D1E2F', pon: '0/1/2', olt: 'OLT-NORTE',     modelo: 'EG8141A5' },
-  { sn: 'HWTC3A4B5C6D', pon: '0/1/3', olt: 'OLT-NORTE',     modelo: 'EG8141A5' },
-  { sn: 'ALVN7E8F9A0B', pon: '0/2/0', olt: 'OLT-SUR',       modelo: 'AN5506-01-A' },
-];
-
-function ModalOnuSimulada({
-  contratoId, numeroContrato, onClose,
-}: { contratoId: string; numeroContrato: string; onClose: () => void }) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [selectedSn, setSelectedSn] = useState('');
-  const { mutate: aprovisionar, isPending } = useMutation({
-    mutationFn: () => contratosApi.aprovisionarOnu(contratoId, selectedSn),
-    onSuccess: (r) => {
-      toast(r?.mensaje ?? 'ONU aprovisionada (simulado)', { type: 'success' });
-      queryClient.invalidateQueries({ queryKey: ['cliente-contratos'] });
-      onClose();
-    },
-    onError: () => toast('Error al aprovisionar ONU', { type: 'error' }),
-  });
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-700">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-violet-400" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white">Aprovisionar ONU</h2>
-              <p className="text-[11px] text-zinc-400">Contrato {numeroContrato} — Simulado</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="p-5 space-y-3">
-          <p className="text-xs text-zinc-400">Selecciona una ONU disponible para asociar al contrato:</p>
-          <div className="border border-zinc-700 rounded-lg overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-zinc-800/60 border-b border-zinc-700">
-                  {['', 'S/N', 'Puerto PON', 'OLT', 'Modelo'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] font-bold text-zinc-500 uppercase">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-700/50">
-                {ONUS_SIMULADAS.map(onu => (
-                  <tr
-                    key={onu.sn}
-                    onClick={() => setSelectedSn(onu.sn)}
-                    className={cn(
-                      'cursor-pointer transition-colors',
-                      selectedSn === onu.sn
-                        ? 'bg-violet-500/10 border-l-2 border-violet-500'
-                        : 'hover:bg-zinc-800/40',
-                    )}
-                  >
-                    <td className="px-3 py-2.5">
-                      <div className={cn(
-                        'w-4 h-4 rounded-full border-2 flex items-center justify-center',
-                        selectedSn === onu.sn ? 'border-violet-500 bg-violet-500' : 'border-zinc-600',
-                      )}>
-                        {selectedSn === onu.sn && <div className="w-2 h-2 rounded-full bg-white" />}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-zinc-200">{onu.sn}</td>
-                    <td className="px-3 py-2.5 text-zinc-400">{onu.pon}</td>
-                    <td className="px-3 py-2.5 text-zinc-400">{onu.olt}</td>
-                    <td className="px-3 py-2.5 text-zinc-400">{onu.modelo}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div className="px-5 py-4 border-t border-zinc-700 flex items-center justify-between">
-          <p className="text-[11px] text-zinc-500">Los comandos CLI de Huawei se ejecutarán en producción.</p>
-          <div className="flex items-center gap-3">
-            <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors text-zinc-300">
-              Cancelar
-            </button>
-            <button
-              onClick={() => aprovisionar()}
-              disabled={!selectedSn || isPending}
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-              Aprovisionar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ModalConfirmBaja({
   contrato, onConfirm, onClose, isPending,
@@ -1120,11 +1020,9 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
         />
       )}
 
-      {/* ── Modal Aprovisionar ONU (simulado) ─────────────────── */}
       {onuContrato && (
-        <ModalOnuSimulada
-          contratoId={onuContrato.id}
-          numeroContrato={onuContrato.numeroContrato}
+        <ModalProvisionOnu
+          contrato={onuContrato}
           onClose={() => setOnuContrato(null)}
         />
       )}

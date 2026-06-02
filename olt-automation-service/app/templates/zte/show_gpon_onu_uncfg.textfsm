@@ -1,0 +1,6 @@
+Value Slot (\d+)
+Value Port (\d+)
+Value OnuSn ([A-Z0-9]{12,16})
+
+Start
+  ^.*gpon-olt_\d+/${Slot}/${Port}\s+${OnuSn} -> Record

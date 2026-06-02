@@ -1,0 +1,5 @@
+Value OnuId (\d+)
+Value RunState (Working|Not\s+working|Ranging|Dyingasp|Fail)
+
+Start
+  ^${OnuId}\s+${RunState} -> Record

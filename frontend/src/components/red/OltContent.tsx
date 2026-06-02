@@ -3,11 +3,13 @@
 import { useState }   from 'react';
 import { useQuery }   from '@tanstack/react-query';
 import {
-  Radio, Activity, AlertTriangle, Wifi, WifiOff,
-  RefreshCw, Server, Signal, ChevronRight,
+  Radio, RefreshCw, Server, Signal,
+  Wifi, WifiOff, Upload,
 } from 'lucide-react';
 
 import { smartoltApi, type EstadoOnu } from '@/lib/api/smartolt';
+import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
+import { FirmwarePanel } from './FirmwareUpgradeTab';
 import { cn } from '@/lib/utils';
 
 const oltEstadoColors = {
@@ -35,12 +37,20 @@ const onuEstadoLabels: Record<EstadoOnu, string> = {
   reemplazada:      'Reemplazada',
 };
 
-type TabKey = 'olts' | 'onus';
+type TabKey = 'olts' | 'onus' | 'firmware';
 
 export function OltContent() {
-  const [tab, setTab]         = useState<TabKey>('olts');
-  const [selectedOlt, setOlt] = useState<string>('');
+  const [tab, setTab]               = useState<TabKey>('olts');
+  const [selectedOlt, setOlt]       = useState<string>('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoOnu | ''>('');
+  const [firmwareOlt, setFirmwareOlt] = useState<OltDispositivo | null>(null);
+
+  const { data: oltNativas = [] } = useQuery({
+    queryKey:  ['olt-nativas'],
+    queryFn:   oltNativoApi.listar,
+    staleTime: 60_000,
+    enabled:   tab === 'firmware',
+  });
 
   const { data: olts = [], isLoading: loadingOlts, refetch: refetchOlts } = useQuery({
     queryKey:  ['smartolt-olts'],
@@ -100,7 +110,11 @@ export function OltContent() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border pb-0">
-        {([['olts', 'OLTs', Server], ['onus', 'ONUs', Signal]] as const).map(([key, label, Icon]) => (
+        {([
+          ['olts',     'OLTs',     Server],
+          ['onus',     'ONUs',     Signal],
+          ['firmware', 'Firmware', Upload],
+        ] as const).map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => setTab(key as TabKey)}
@@ -271,6 +285,71 @@ export function OltContent() {
               </div>
             )}
           </div>
+        </div>
+      )}
+      {/* Firmware Tab */}
+      {tab === 'firmware' && (
+        <div className="space-y-4">
+          {!firmwareOlt ? (
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-border bg-muted/20">
+                <p className="text-sm font-medium">Selecciona una OLT para actualizar firmware</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Solo OLTs con conexión NATIVO_SSH soportan actualización OMCI</p>
+              </div>
+              {oltNativas.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                  <Upload className="w-8 h-8 opacity-30" />
+                  <p className="text-sm">No hay OLTs nativas configuradas</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {oltNativas.map((o: OltDispositivo) => (
+                    <button
+                      key={o.id}
+                      onClick={() => setFirmwareOlt(o)}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent/40 transition-colors"
+                    >
+                      <div className={cn(
+                        'w-2 h-2 rounded-full shrink-0',
+                        o.estado === 'online' ? 'bg-emerald-400' : 'bg-muted-foreground',
+                      )} />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{o.nombre}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {o.marca.toUpperCase()} · {o.ipGestion} · {o.metodoConexion}
+                        </p>
+                      </div>
+                      {o.metodoConexion === 'nativo_ssh' && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary">
+                          OMCI compatible
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setFirmwareOlt(null)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  ← Cambiar OLT
+                </button>
+                <span className="text-sm font-medium">{firmwareOlt.nombre}</span>
+                <span className="text-xs text-muted-foreground">{firmwareOlt.ipGestion}</span>
+              </div>
+              <div className="bg-card border border-border rounded-xl p-5">
+                <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-primary" />
+                  Actualización de Firmware
+                </h3>
+                <FirmwarePanel olt={firmwareOlt} />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

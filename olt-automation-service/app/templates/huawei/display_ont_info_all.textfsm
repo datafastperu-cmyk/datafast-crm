@@ -1,0 +1,6 @@
+Value OnuId (\d+)
+Value Sn ([A-Z0-9]{12,16})
+Value RunState (online|offline|los|lcdg|dyinggasp|config-mismatch|deactivated|failed|auth-failed)
+
+Start
+  ^\s+\d+/\s*\d+/\s*\d+\s+${OnuId}\s+${Sn}\s+\S+\s+${RunState} -> Record

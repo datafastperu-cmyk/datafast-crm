@@ -1,0 +1,7 @@
+Value Slot (\d+)
+Value Port (\d+)
+Value OnuSn ([A-Z0-9]{12,16})
+
+Start
+  ^.*F/S/P\s+:\s+0/${Slot}/${Port} -> Continue
+  ^.*Ont SN\s+:\s+${OnuSn} -> Record

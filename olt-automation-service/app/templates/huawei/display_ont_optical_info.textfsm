@@ -1,0 +1,8 @@
+Value RxPower (\-[0-9\.]+)
+Value TxPower ([0-9\.]+)
+Value Temp ([0-9]+)
+
+Start
+  ^.*Rx optical power\(dBm\)\s+:\s+${RxPower} -> Continue
+  ^.*Tx optical power\(dBm\)\s+:\s+${TxPower} -> Continue
+  ^.*Laser temperature.*:\s+${Temp} -> Record

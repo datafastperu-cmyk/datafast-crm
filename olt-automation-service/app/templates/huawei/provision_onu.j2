@@ -1,0 +1,8 @@
+{# Huawei MA5800/MA5600 — Aprovisionamiento de ONU GPON #}
+config
+interface gpon {{ frame }}/{{ slot }}/{{ port }}
+  ont add {{ onu_id }} sn-auth {{ sn }} omci ont-lineprofile-id 10 ont-srvprofile-id 10 desc "CRM-AUTO"
+  ont port native-vlan {{ onu_id }} eth 1 vlan {{ vlan }}
+quit
+service-port vlan {{ vlan }} gpon {{ frame }}/{{ slot }}/{{ port }} ont {{ onu_id }} gemport 1 multi-service user-vlan {{ vlan }} tag-transform default
+quit

@@ -1,0 +1,6 @@
+Value RxPower (\-[0-9\.]+)
+Value TxPower ([0-9\.]+)
+
+Start
+  ^.*Rx power\s+:\s+${RxPower} -> Continue
+  ^.*Tx power\s+:\s+${TxPower} -> Record
