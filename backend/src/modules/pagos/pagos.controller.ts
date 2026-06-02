@@ -17,10 +17,9 @@ import { memoryStorage } from 'multer';
 
 import { PagosService }   from './pagos.service';
 import {
-  VerificarPagoDto, ConciliarPagoDto,
+  RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
   FilterPagoDto, CrearPreferenciaDto, CreateCuentaBancariaDto,
 } from './dto/pago.dto';
-import { RegistrarPagoDto } from './dto/registrar-pago.dto';
 import { EstadoPago } from './entities/pago.entity';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission, Roles } from '../../common/decorators/roles.decorator';
