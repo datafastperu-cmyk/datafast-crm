@@ -291,7 +291,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
 
   // Auto-dismiss "no results" tooltip after 3 s
   useEffect(() => {
-    if (!scanNoResults) return;
+    if (!scanNoResults) return undefined;
     const t = setTimeout(() => setScanNoResults(false), 3000);
     return () => clearTimeout(t);
   }, [scanNoResults]);
