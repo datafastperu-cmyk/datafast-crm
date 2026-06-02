@@ -581,7 +581,7 @@ function SvcSectionHeader({ title, icon: Icon }: { title: string; icon: React.El
 }
 
 function SvcToolbar({
-  count, onAdd, addLabel = '+ Nuevo', search, onSearch,
+  count, onAdd, addLabel = 'Nuevo', search, onSearch,
 }: {
   count: number; onAdd?: () => void; addLabel?: string;
   search: string; onSearch: (v: string) => void;
@@ -821,7 +821,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
           search={q1}
           onSearch={setQ1}
           onAdd={openCreate}
-          addLabel="+ Agregar Servicio"
+          addLabel="Agregar Servicio"
         />
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -927,7 +927,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
           title="Productos y otros Servicios Recurrentes (CUOTAS Y MENSUAL)"
           icon={Package}
         />
-        <SvcToolbar count={0} search={q4} onSearch={setQ4} onAdd={() => {}} addLabel="+ Nuevo" />
+        <SvcToolbar count={0} search={q4} onSearch={setQ4} onAdd={() => {}} addLabel="Nuevo" />
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -976,7 +976,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
       {/* ── Servicios Voip ────────────────────────────────────── */}
       <div className="border border-border rounded-xl overflow-hidden">
         <SvcSectionHeader title="Servicios Voip" icon={Phone} />
-        <SvcToolbar count={0} search={q3} onSearch={setQ3} onAdd={() => {}} addLabel="+ Nuevo" />
+        <SvcToolbar count={0} search={q3} onSearch={setQ3} onAdd={() => {}} addLabel="Nuevo" />
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
