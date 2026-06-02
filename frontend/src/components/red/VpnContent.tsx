@@ -160,11 +160,11 @@ export function VpnContent() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
             <Shield className="w-5 h-5 text-primary" />
             Servidor OpenVPN
           </h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             VPN de gestión para routers MikroTik, Huawei OLT, ZTE, VSOL, Ubiquiti.
           </p>
         </div>
@@ -172,8 +172,8 @@ export function VpnContent() {
           <div className={cn(
             'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
             status.serviceActive
-              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-              : 'bg-red-500/10 text-red-400 border border-red-500/20',
+              ? 'bg-green-100 text-green-700 border border-green-300 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20'
+              : 'bg-red-100 text-red-700 border border-red-300 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20',
           )}>
             {status.serviceActive
               ? <><Wifi className="w-3.5 h-3.5" /> Activo</>
@@ -183,7 +183,7 @@ export function VpnContent() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-muted rounded-xl p-1 w-fit">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -192,7 +192,7 @@ export function VpnContent() {
               'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors',
               tab === t.id
                 ? 'bg-primary text-white'
-                : 'text-gray-400 hover:text-white',
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {t.icon}
@@ -205,7 +205,7 @@ export function VpnContent() {
       {tab === 'status' && (
         <div className="space-y-4">
           {loadingStatus ? (
-            <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="w-4 h-4 animate-spin" /> Consultando estado...
             </div>
           ) : !status?.installed ? (
@@ -340,7 +340,7 @@ export function VpnContent() {
       {tab === 'config' && (
         <div className="space-y-4">
           {loadingConfig ? (
-            <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="w-4 h-4 animate-spin" /> Cargando...
             </div>
           ) : (
@@ -573,17 +573,17 @@ export function VpnContent() {
               </button>
             </div>
 
-            <p className="text-xs text-gray-500 mb-4">
-              El nombre debe tener 2-64 caracteres alfanuméricos, guión o guión bajo. Ejemplo: <code className="bg-white/5 px-1 rounded">mikrotik-ccb-norte</code>
+            <p className="text-xs text-muted-foreground/70 mb-4">
+              El nombre debe tener 2-64 caracteres alfanuméricos, guión o guión bajo. Ejemplo: <code className="bg-muted px-1 rounded">mikrotik-ccb-norte</code>
             </p>
 
             {/* Lista */}
             {loadingClients ? (
-              <div className="flex items-center gap-2 text-gray-400 text-sm">
+              <div className="flex items-center gap-2 text-muted-foreground text-sm">
                 <Loader2 className="w-4 h-4 animate-spin" /> Cargando...
               </div>
             ) : clients.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-6">
+              <p className="text-sm text-muted-foreground text-center py-6">
                 No hay certificados generados todavía.
               </p>
             ) : (
@@ -591,11 +591,11 @@ export function VpnContent() {
                 {clients.map((name) => (
                   <div
                     key={name}
-                    className="flex items-center justify-between p-3 rounded-lg border border-white/10 hover:border-white/20 transition-colors"
+                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:border-muted-foreground/40 transition-colors"
                   >
                     <div className="flex items-center gap-2">
-                      <Key className="w-3.5 h-3.5 text-green-400" />
-                      <span className="text-sm font-mono text-white">{name}</span>
+                      <Key className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                      <span className="text-sm font-mono text-foreground">{name}</span>
                     </div>
                     <div className="flex gap-2">
                       <button
