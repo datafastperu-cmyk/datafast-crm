@@ -60,7 +60,7 @@ select option {
 
     /* Sidebar: navy profundo derivado de #050D51, imponente en cualquier modo */
     --sidebar-bg:             240 38% 25%;
-    --sidebar-fg:             218 18% 60%;
+    --sidebar-fg:             218 18% 75%;
     --sidebar-active:         154 55% 46%;
     --sidebar-hover:          240 38% 32%;
     --sidebar-border:         240 38% 20%;
@@ -111,7 +111,7 @@ select option {
 
     /* Sidebar ultra-profundo — máxima identidad corporativa */
     --sidebar-bg:             240 38% 16%;
-    --sidebar-fg:             218 16% 58%;
+    --sidebar-fg:             218 16% 72%;
     --sidebar-active:         154 55% 46%;
     --sidebar-hover:          240 38% 22%;
     --sidebar-border:         240 38% 22%;
