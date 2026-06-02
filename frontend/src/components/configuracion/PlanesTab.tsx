@@ -272,7 +272,7 @@ export function PlanesTab() {
           {planes.length} plan{planes.length !== 1 ? 'es' : ''}
         </p>
         <button onClick={abrirNuevo}
-          className="flex items-center justify-center gap-2 h-10 px-4 text-sm rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-colors">
+          className="btn-primary">
           <Plus className="w-4 h-4" /> Nuevo plan
         </button>
       </div>
@@ -593,11 +593,11 @@ export function PlanesTab() {
               {/* Footer */}
               <div className="flex gap-3 pt-2 border-t border-border">
                 <button type="button" onClick={cerrar}
-                  className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
+                  className="btn-secondary flex-1 justify-center">
                   Cerrar
                 </button>
                 <button type="submit" disabled={guardando}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60 transition-colors">
+                  className="btn-primary flex-1 justify-center">
                   {guardando && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {editando ? 'Guardar cambios' : 'Registrar'}
                 </button>

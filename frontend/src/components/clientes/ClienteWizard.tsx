@@ -312,19 +312,13 @@ function NavButtons({ onBack, submitLabel = 'Siguiente', isFirst }: {
         type="button"
         onClick={onBack}
         disabled={isFirst}
-        className={cn(
-          'flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border border-input',
-          'text-muted-foreground hover:text-foreground hover:bg-accent',
-          'transition-all duration-150 disabled:opacity-0 disabled:pointer-events-none',
-        )}
+        className="btn-secondary disabled:opacity-0 disabled:pointer-events-none"
       >
         <ChevronLeft className="w-4 h-4" /> Atrás
       </button>
       <button
         type="submit"
-        className="flex items-center gap-2 px-6 py-2.5 text-sm rounded-lg font-medium
-                   bg-primary text-primary-foreground hover:bg-primary/90
-                   transition-all duration-150 shadow-sm"
+        className="btn-primary"
       >
         {submitLabel} <ChevronRight className="w-4 h-4" />
       </button>
@@ -471,8 +465,7 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
           {resultado.contratoId && (
             <button
               onClick={() => { onClose?.(); router.push(`/contratos/${resultado.contratoId}/aprovisionar`); }}
-              className="flex items-center justify-center gap-2 px-6 py-2.5 text-sm rounded-lg font-semibold
-                         bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm"
+              className="btn-primary"
             >
               <Wifi className="w-4 h-4" /> Aprovisionar en MikroTik
             </button>
@@ -1349,17 +1342,14 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-lg border border-input
-                     text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+          className="btn-secondary"
         >
           <ChevronLeft className="w-4 h-4" /> Atrás
         </button>
         <button
           type="submit"
           disabled={submitting}
-          className="flex items-center gap-2 px-8 py-2.5 text-sm rounded-lg font-semibold
-                     bg-green-600 hover:bg-green-700 text-white shadow-sm
-                     transition-all duration-150 disabled:opacity-60"
+          className="btn-primary"
         >
           {submitting
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Guardando…</>

@@ -470,7 +470,7 @@ export function VpnContent() {
                   <button
                     onClick={handleSave}
                     disabled={saveMut.isPending}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-50"
+                    className="btn-primary"
                   >
                     {saveMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Guardar configuración
@@ -564,7 +564,7 @@ export function VpnContent() {
               <button
                 onClick={() => newClientName && generateMut.mutate(newClientName)}
                 disabled={!newClientName || generateMut.isPending}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-50"
+                className="btn-primary"
               >
                 {generateMut.isPending
                   ? <Loader2 className="w-4 h-4 animate-spin" />

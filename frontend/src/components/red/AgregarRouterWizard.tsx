@@ -878,33 +878,33 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
             {step > 1 && (
               <button
                 onClick={() => setStep((s) => (s - 1) as Step)}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="btn-ghost"
               >
                 <ChevronLeft className="w-4 h-4" /> Anterior
               </button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={handleClose} className="btn-ghost">
               Cancelar
             </button>
             {step === 1 && (
               <button onClick={goStep2} disabled={!canProceedStep1}
-                className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-40 transition-colors"
+                className="btn-primary"
               >
                 Siguiente <ChevronRight className="w-4 h-4" />
               </button>
             )}
             {step === 2 && (
               <button onClick={goStep3} disabled={!canProceedStep2}
-                className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-40 transition-colors"
+                className="btn-primary"
               >
                 Siguiente <ChevronRight className="w-4 h-4" />
               </button>
             )}
             {step === 3 && (
               <button onClick={handleSave} disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-50 transition-colors"
+                className="btn-primary"
               >
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                 Registrar router

@@ -875,14 +875,14 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
             ) : null}
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="btn-ghost"
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 disabled:opacity-50 transition-colors"
+              className="btn-primary"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               {router ? 'Guardar cambios' : 'Registrar router'}
@@ -985,7 +985,7 @@ export function RoutersContent() {
         </div>
         <button
           onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors"
+          className="btn-primary"
         >
           <Plus className="w-4 h-4" />
           Agregar router

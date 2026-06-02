@@ -745,13 +745,13 @@ function ModalConfirmBaja({
           </ul>
         </div>
         <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors text-foreground">
+          <button onClick={onClose} className="btn-secondary">
             Cancelar
           </button>
           <button
             onClick={onConfirm}
             disabled={isPending}
-            className="px-5 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="btn-danger"
           >
             {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
             Dar de Baja
