@@ -135,11 +135,22 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
   const tienePermiso = useAuthStore((s) => s.tienePermiso);
   const usuario      = useAuthStore((s) => s.usuario);
   const [open, setOpen] = useState<string[]>([]);
+  const [isMd, setIsMd] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
+    setIsMd(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMd(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const effectiveCollapsed = isMd || collapsed;
 
   useEffect(() => { onClose(); }, [pathname]); // eslint-disable-line
 
   useEffect(() => {
-    if (collapsed) return;
+    if (effectiveCollapsed) return;
     NAV.forEach((entry) => {
       if (!isGroup(entry)) return;
       const hasActive = entry.items.some((item) =>
@@ -147,7 +158,7 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
       );
       if (hasActive) setOpen([entry.id]);
     });
-  }, [pathname, collapsed]);
+  }, [pathname, effectiveCollapsed]);
 
   const toggle = (id: string) =>
     setOpen((prev) => prev.includes(id) ? [] : [id]);
@@ -155,7 +166,7 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
   const isActive = (href: string) =>
     href === '/dashboard' ? pathname === href : pathname.startsWith(href);
 
-  const w = collapsed ? 64 : 248;
+  const w = effectiveCollapsed ? 64 : 248;
 
   return (
     <aside
@@ -165,19 +176,19 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
         'bg-[hsl(var(--sidebar-bg))] text-[hsl(var(--sidebar-fg))]',
         'border-r border-[hsl(var(--sidebar-border))]',
         'fixed inset-y-0 left-0 z-50',
-        'lg:static lg:translate-x-0',
+        'md:static md:translate-x-0',
         isOpen ? 'translate-x-0' : '-translate-x-full',
       )}
     >
       {/* Logo */}
       <div className={cn(
         'flex items-center border-b border-[hsl(var(--sidebar-border))]',
-        collapsed ? 'justify-center px-0 py-4' : 'gap-3 px-4 py-4',
+        effectiveCollapsed ? 'justify-center px-0 py-4' : 'gap-3 px-4 py-4',
       )}>
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/20 flex-shrink-0">
           <Wifi className="w-4.5 h-4.5 text-primary" />
         </div>
-        {!collapsed && (
+        {!effectiveCollapsed && (
           <div className="min-w-0">
             <p className="font-bold text-white text-sm leading-tight tracking-wide">DATAFAST</p>
             <p className="text-[10px] text-[hsl(var(--sidebar-fg)/0.4)] tracking-widest uppercase">ISP Manager</p>
@@ -194,10 +205,10 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
             const nav = entry as NavSingle;
             if (nav.permiso && !tienePermiso(nav.permiso)) return null;
             return (
-              <Link key={nav.id} href={nav.href} title={collapsed ? nav.label : undefined}>
-                <div className={cn('sidebar-nav-item', isActive(nav.href) && 'active', collapsed && 'justify-center px-0')}>
+              <Link key={nav.id} href={nav.href} title={effectiveCollapsed ? nav.label : undefined}>
+                <div className={cn('sidebar-nav-item', isActive(nav.href) && 'active', effectiveCollapsed && 'justify-center px-0')}>
                   <nav.icon className="w-4 h-4 flex-shrink-0" />
-                  {!collapsed && <span className="flex-1 truncate">{nav.label}</span>}
+                  {!effectiveCollapsed && <span className="flex-1 truncate">{nav.label}</span>}
                 </div>
               </Link>
             );
@@ -209,7 +220,7 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
           const groupActive = visibles.some((item) => isActive(item.href));
           const isExpanded  = open.includes(entry.id);
 
-          if (collapsed) {
+          if (effectiveCollapsed) {
             return (
               <div key={entry.id} className="relative group">
                 <div className={cn(
@@ -266,7 +277,7 @@ export function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }
       </nav>
 
       {/* Footer */}
-      {usuario && !collapsed && (
+      {usuario && !effectiveCollapsed && (
         <div className="px-3 py-3 border-t border-[hsl(var(--sidebar-border))]">
           <Link href="/configuracion">
             <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-[hsl(var(--sidebar-hover))] transition-colors cursor-pointer">

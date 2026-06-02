@@ -5,7 +5,7 @@ import { useTheme }               from 'next-themes';
 import {
   Sun, Moon, Bell, LogOut, User,
   ChevronDown, Settings, DollarSign,
-  Search, Loader2, Menu, Undo2, Redo2,
+  Search, Loader2, Menu, Undo2, Redo2, X,
 } from 'lucide-react';
 import { useAuthStore }   from '@/store/auth.store';
 import api                from '@/lib/api';
@@ -124,6 +124,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { theme, setTheme }  = useTheme();
   const { usuario, logout }  = useAuthStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const { canUndo, canRedo, undoing, redoing, undo, redo, estado } = useUndoRedo();
 
   const handleLogout = async () => {
@@ -142,7 +143,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleSidebar}
-          className="lg:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           aria-label="Abrir menú"
         >
           <Menu className="w-5 h-5" />
@@ -161,6 +162,16 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
 
       {/* Acciones */}
       <div className="flex items-center gap-1">
+
+        {/* Búsqueda móvil */}
+        {mobileSearchOpen && <MobileSearch onClose={() => setMobileSearchOpen(false)} router={router} />}
+        <button
+          onClick={() => setMobileSearchOpen(true)}
+          className="sm:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          aria-label="Buscar"
+        >
+          <Search className="w-4 h-4" />
+        </button>
 
         {/* Búsqueda de clientes */}
         <ClienteSearch />
@@ -286,6 +297,78 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         </div>
       </div>
     </header>
+  );
+}
+
+function MobileSearch({ onClose, router }: { onClose: () => void; router: ReturnType<typeof useRouter> }) {
+  const [query,   setQuery]   = useState('');
+  const [results, setResults] = useState<Cliente[]>([]);
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); return undefined; }
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const { data } = await api.get('/clientes', { params: { search: query.trim(), limit: 8 } });
+        setResults(data?.data ?? []);
+      } catch { /* ignore */ } finally { setLoading(false); }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const handleSelect = (id: string) => { onClose(); router.push(`/clientes/${id}`); };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-background flex flex-col sm:hidden">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-border flex-shrink-0">
+        {loading
+          ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground flex-shrink-0" />
+          : <Search className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
+        <input
+          ref={inputRef}
+          className="flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground outline-none"
+          placeholder="Buscar abonado..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground flex-shrink-0">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {results.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => handleSelect(c.id)}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted transition-colors text-left border-b border-border/50"
+          >
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 text-xs font-bold text-primary">
+              {c.nombres[0]?.toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">{c.nombreCompleto}</p>
+              <p className="text-xs text-muted-foreground">{c.tipoDocumento}: {c.numeroDocumento}</p>
+            </div>
+          </button>
+        ))}
+        {query && !loading && results.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+            <Search className="w-10 h-10 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground">Sin resultados para &ldquo;{query}&rdquo;</p>
+          </div>
+        )}
+        {!query && (
+          <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+            <Search className="w-10 h-10 text-muted-foreground/20 mb-3" />
+            <p className="text-sm text-muted-foreground">Escribe para buscar abonados</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

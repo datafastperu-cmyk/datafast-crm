@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { ThemeProvider }  from '@/components/shared/ThemeProvider';
-import { Toaster }        from '@/components/ui/toaster';
+import { ThemeProvider }     from '@/components/shared/ThemeProvider';
+import { Toaster }           from '@/components/ui/toaster';
 import { QueryProvider }     from '@/components/shared/QueryProvider';
 import { LicenciaProvider }  from '@/components/licencia/LicenciaProvider';
 import { ErrorBoundary }     from '@/components/ui/error-boundary';
+import { ThemeCustomizer }   from '@/components/layout/ThemeCustomizer';
 import '@/styles/globals.css';
 
 const inter = Inter({
@@ -41,6 +42,7 @@ export default function RootLayout({
               <ErrorBoundary>
                 {children}
               </ErrorBoundary>
+              <ThemeCustomizer />
             </LicenciaProvider>
             <Toaster />
           </QueryProvider>

@@ -393,3 +393,61 @@ select option {
 .animate-glow-pulse     { animation: glow-pulse 2s ease-in-out infinite; }
 
 select:focus { outline: none; }
+
+/* ── ThemeCustomizer layout overrides ─────────────────────────────────── */
+
+/* Barra oscura: topbar usa el color de fondo del sidebar */
+html.tc-topbar-dark header {
+  background-color: hsl(var(--sidebar-bg)) !important;
+  border-bottom-color: hsl(var(--sidebar-border)) !important;
+  backdrop-filter: none !important;
+}
+html.tc-topbar-dark header h1 { color: hsl(210 20% 90%) !important; }
+html.tc-topbar-dark header p  { color: hsl(var(--sidebar-fg)) !important; }
+
+/* Barra transparente / sin borde (fixedTopbar = false) */
+html.tc-topbar-borderless header {
+  background-color: transparent !important;
+  border-bottom-color: transparent !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+/* Menú degradado: sidebar y active items con gradiente */
+html.tc-menu-gradient aside {
+  background-image: linear-gradient(
+    165deg,
+    hsl(var(--sidebar-bg)) 0%,
+    hsl(var(--sidebar-bg)) 60%,
+    hsl(var(--primary) / 0.10) 100%
+  ) !important;
+  background-color: transparent !important;
+}
+html.tc-menu-gradient .sidebar-nav-item.active {
+  background: linear-gradient(90deg, hsl(var(--primary) / 0.22) 0%, transparent 100%) !important;
+  border-color: hsl(var(--primary)) !important;
+}
+
+/* Menú enmarcado: área de contenido en caja centrada */
+html.tc-menu-boxed main > div {
+  max-width: 1280px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+
+/* ── Tipografía mínima en móvil (12px floor) ───────────────────────────── */
+@media (max-width: 767px) {
+  .text-\[10px\] { font-size: 0.75rem !important; }
+  .text-\[11px\] { font-size: 0.75rem !important; }
+}
+
+/* ── Tablas responsivas en móvil ───────────────────────────────────────── */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 767px) {
+  .data-table { min-width: 640px; }
+}
