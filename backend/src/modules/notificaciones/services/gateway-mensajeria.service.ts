@@ -7,9 +7,17 @@ import { CACHE_MANAGER }    from '@nestjs/cache-manager';
 import { Cache }            from 'cache-manager';
 import { decrypt }          from '../../../common/utils/encryption.util';
 import { WhatsAppService, TipoNotificacion, WhatsAppParams } from './whatsapp.service';
-import { DatafastNativeStrategy } from './datafast-native.strategy';
+import { DatafastNativeStrategy }          from './datafast-native.strategy';
+import { DatafastMensajeriaMasivaStrategy } from './datafast-mensajeria-masiva.strategy';
 
-export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP' | 'DATAFAST_NATIVE';
+export type ProveedorActivo =
+  | 'META_GRAPH'
+  | 'TWILIO'
+  | 'VONAGE'
+  | 'CUSTOM_API'
+  | 'AUTOMATIZADO_VIP'
+  | 'DATAFAST_NATIVE'
+  | 'DATAFAST_MENSAJERIA_MASIVA';
 
 export interface EnvioResult {
   enviado:    boolean;
@@ -201,14 +209,15 @@ class CustomApiStrategy implements IMensajeriaStrategy {
 
 // ─── Config interna del gateway ───────────────────────────
 interface GwConfig {
-  proveedor:        ProveedorActivo;
-  apiKey:           string;
-  apiSecret:        string;
-  clientId:         string;
-  pausa:            number;
-  limiteCaracteres: number;
-  codigoPais:       string;
-  activo:           boolean;
+  proveedor:            ProveedorActivo;
+  apiKey:               string;
+  apiSecret:            string;
+  clientId:             string;
+  pausa:                number;
+  limiteCaracteres:     number;
+  codigoPais:           string;
+  activo:               boolean;
+  whatsappNumeroOrigen: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -325,20 +334,22 @@ export class GatewayMensajeriaService {
     if (cached === undefined) {
       const [row] = await this.ds.query(
         `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
-                gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo
+                gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
+                whatsapp_numero_origen
          FROM empresas WHERE id = $1`,
         [empresaId],
       ).catch(() => [null]);
 
       cached = row ? {
-        proveedor:        (row.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
-        apiKey:           row.gateway_api_key            ?? '',
-        apiSecret:        row.gateway_api_secret         ?? '',
-        clientId:         row.gateway_client_id          ?? '',
-        pausa:            row.gateway_pausa              ?? 2,
-        limiteCaracteres: row.gateway_limite_caracteres  ?? 1000,
-        codigoPais:       row.gateway_codigo_pais        ?? '+51',
-        activo:           row.gateway_activo             ?? true,
+        proveedor:            (row.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
+        apiKey:               row.gateway_api_key           ?? '',
+        apiSecret:            row.gateway_api_secret        ?? '',
+        clientId:             row.gateway_client_id         ?? '',
+        pausa:                row.gateway_pausa             ?? 2,
+        limiteCaracteres:     row.gateway_limite_caracteres ?? 1000,
+        codigoPais:           row.gateway_codigo_pais       ?? '+51',
+        activo:               row.gateway_activo            ?? true,
+        whatsappNumeroOrigen: row.whatsapp_numero_origen    ?? '',
       } : null;
 
       await this.cache.set(cacheKey, cached, 5 * 60 * 1000);
@@ -357,9 +368,13 @@ export class GatewayMensajeriaService {
       case 'TWILIO':           return (k && s) ? new TwilioStrategy(this.http, k, s, config.clientId)          : null;
       case 'VONAGE':           return (k && s) ? new VonageStrategy(this.http, k, s, config.clientId)          : null;
       case 'CUSTOM_API':       return k        ? new CustomApiStrategy(this.http, k, s, config.clientId)        : null;
-      case 'AUTOMATIZADO_VIP':  return k        ? new AutomatizadoVipStrategy(this.http, k, config.clientId)    : null;
-      case 'DATAFAST_NATIVE':   return this.datafastNative ?? null;
-      default:                  return null;
+      case 'AUTOMATIZADO_VIP':         return k               ? new AutomatizadoVipStrategy(this.http, k, config.clientId) : null;
+      case 'DATAFAST_NATIVE':          return this.datafastNative ?? null;
+      case 'DATAFAST_MENSAJERIA_MASIVA':
+        return config.clientId
+          ? new DatafastMensajeriaMasivaStrategy(this.http, k, config.clientId, config.whatsappNumeroOrigen, config.codigoPais)
+          : null;
+      default:                         return null;
     }
   }
 
