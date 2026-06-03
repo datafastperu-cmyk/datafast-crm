@@ -1,9 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { FinanzasOpexService } from './finanzas-opex.service';
+import { EgresoIngreso } from './egreso-ingreso.entity';
 import { GatewayMensajeriaService } from '../notificaciones/services/gateway-mensajeria.service';
 import { TipoNotificacion } from '../notificaciones/services/whatsapp.service';
 
@@ -15,7 +14,6 @@ export class FinanzasOpexScheduler {
     private readonly svc:     FinanzasOpexService,
     private readonly events:  EventEmitter2,
     private readonly gateway: GatewayMensajeriaService,
-    @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
   // Corre cada día a las 07:00 hora Lima.
@@ -30,19 +28,23 @@ export class FinanzasOpexScheduler {
     );
 
     try {
-      const { generados } = await this.svc.generarPendientesDelDia(hoy);
+      const { generados, recordatorios } = await this.svc.generarPendientesDelDia(hoy);
 
-      if (generados > 0) {
-        this.logger.warn(
-          `[OPEX-CRON] ${generados} obligación(es) generada(s) como PENDIENTE_PAGO`,
-        );
-        // Emite evento para que otros módulos (notificaciones, dashboard) puedan reaccionar
+      if (generados.length > 0) {
+        this.logger.warn(`[OPEX-CRON] ${generados.length} obligación(es) generada(s) como PENDIENTE_PAGO`);
         this.events.emit('finanzas.opex.pendientes_generados', {
-          cantidad: generados,
+          cantidad: generados.length,
           fecha:    hoy.toISOString().split('T')[0],
         });
-        await this.notificarEgresos(generados, hoy.toISOString().split('T')[0]);
-      } else {
+        await this.notificarEgresos(generados, hoy);
+      }
+
+      if (recordatorios.length > 0) {
+        this.logger.warn(`[OPEX-CRON] ${recordatorios.length} recordatorio(s) de obligaciones pendientes`);
+        await this.notificarEgresos(recordatorios, hoy);
+      }
+
+      if (generados.length === 0 && recordatorios.length === 0) {
         this.logger.debug('[OPEX-CRON] Sin obligaciones para hoy');
       }
     } catch (err: any) {
@@ -50,21 +52,26 @@ export class FinanzasOpexScheduler {
     }
   }
 
-  private async notificarEgresos(cantidad: number, fecha: string): Promise<void> {
-    try {
-      const empresas: { id: string; razon_social: string }[] = await this.ds.query(
-        `SELECT id, razon_social FROM empresas WHERE estado = 'activo'`,
-      );
-      for (const e of empresas) {
+  // Envía una alerta por cada egreso individual usando las variables del template.
+  // dias_restantes negativo = vencido hace N días.
+  private async notificarEgresos(egresos: EgresoIngreso[], hoy: Date): Promise<void> {
+    for (const egreso of egresos) {
+      try {
+        const diasRestantes = (egreso.diaVencimiento ?? hoy.getDate()) - hoy.getDate();
         await this.gateway.despachar({
           telefono:  '',
           tipo:      TipoNotificacion.ALERTA_EGRESO,
-          variables: { nombreEmpresa: e.razon_social, cantidad: String(cantidad), fecha },
-          empresaId: e.id,
+          variables: {
+            nombre_gasto:   egreso.descripcion ?? 'Egreso recurrente',
+            categoria:      egreso.categoria,
+            monto:          parseFloat(String(egreso.monto)).toFixed(2),
+            dias_restantes: String(diasRestantes),
+          },
+          empresaId: egreso.empresaId,
         });
+      } catch (err: any) {
+        this.logger.error(`[OPEX-CRON] Error notificando egreso ${egreso.id}: ${err.message}`);
       }
-    } catch (err: any) {
-      this.logger.error(`[OPEX-CRON] Error notificando egresos: ${err.message}`);
     }
   }
 }

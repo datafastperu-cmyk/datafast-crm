@@ -130,38 +130,53 @@ export class FinanzasOpexService {
   }
 
   // ─── Llamado por el scheduler diario ────────────────────────
-  async generarPendientesDelDia(hoy: Date): Promise<{ generados: number }> {
+  // Lógica 3 estados por plantilla recurrente con vencimiento <= hoy:
+  //   · Sin registro este mes  → crea PENDIENTE_PAGO + incluye en generados
+  //   · Registro PENDIENTE_PAGO → no crea nada, incluye en recordatorios
+  //   · Registro PAGADO         → ignora silenciosamente
+  async generarPendientesDelDia(hoy: Date): Promise<{
+    generados:     EgresoIngreso[];
+    recordatorios: EgresoIngreso[];
+  }> {
     const diaHoy  = hoy.getDate();
-    const anioMes = hoy.toISOString().slice(0, 7); // 'YYYY-MM'
+    const anioMes = hoy.toISOString().slice(0, 7);
 
-    const plantillas = await this.repo.find({
-      where: { esRecurrente: true, diaVencimiento: diaHoy },
-    });
+    const plantillas = await this.repo.find({ where: { esRecurrente: true } });
 
-    let generados = 0;
+    const generados:     EgresoIngreso[] = [];
+    const recordatorios: EgresoIngreso[] = [];
+
     for (const p of plantillas) {
-      // Evita duplicar si ya se generó un registro este mes para esta plantilla
+      if (!p.diaVencimiento || p.diaVencimiento > diaHoy) continue;
+
       const yaExiste = await this.repo
         .createQueryBuilder('e')
-        .where('e.plantilla_id = :pid',              { pid: p.id })
+        .where('e.plantilla_id = :pid', { pid: p.id })
         .andWhere("TO_CHAR(e.created_at, 'YYYY-MM') = :ym", { ym: anioMes })
         .getOne();
 
-      if (yaExiste) continue;
+      if (yaExiste?.estado === EstadoMovimiento.PAGADO) continue;
 
-      await this.repo.save(this.repo.create({
-        empresaId:    p.empresaId,
-        tipo:         p.tipo,
-        categoria:    p.categoria,
-        monto:        p.monto,
-        fechaRegistro: hoy.toISOString().split('T')[0],
-        descripcion:  p.descripcion,
-        esRecurrente: false,
-        estado:       EstadoMovimiento.PENDIENTE_PAGO,
-        plantillaId:  p.id,
+      if (yaExiste) {
+        recordatorios.push(yaExiste);
+        continue;
+      }
+
+      const nuevo = await this.repo.save(this.repo.create({
+        empresaId:      p.empresaId,
+        tipo:           p.tipo,
+        categoria:      p.categoria,
+        monto:          p.monto,
+        fechaRegistro:  hoy.toISOString().split('T')[0],
+        descripcion:    p.descripcion,
+        esRecurrente:   false,
+        diaVencimiento: p.diaVencimiento,
+        estado:         EstadoMovimiento.PENDIENTE_PAGO,
+        plantillaId:    p.id,
       }));
-      generados++;
+      generados.push(nuevo);
     }
-    return { generados };
+
+    return { generados, recordatorios };
   }
 }

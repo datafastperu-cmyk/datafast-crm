@@ -50,7 +50,7 @@ const TEXTOS: Record<string, (v: Record<string, string>) => string> = {
   [TipoNotificacion.MANTENIMIENTO]:       (v) =>
     `Hola ${v.clienteNombre}, mantenimiento el ${v.fechaInicio} (~${v.duracionEstimada}). Motivo: ${v.motivo}`,
   [TipoNotificacion.ALERTA_EGRESO]:       (v) =>
-    `[DATAFAST] Se generaron ${v.cantidad} egreso(s) pendiente(s) para ${v.nombreEmpresa} el día ${v.fecha}.`,
+    `Estimado Administrador, le recordamos que la obligación fija *${v.nombre_gasto}* de categoría *${v.categoria}* por un monto de *S/. ${v.monto}* está próxima a vencer. Días restantes: *${v.dias_restantes}*. Por favor, procese el pago desde el ERP.`,
 };
 
 // ─── Estrategia Twilio ────────────────────────────────────

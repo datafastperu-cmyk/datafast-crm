@@ -62,6 +62,11 @@ const DEFAULTS: Record<TipoPlantilla, Record<string, { nombre: string; contenido
       contenido:
         '✅ {{nombre_completo}}, hemos recibido su pago de S/ {{monto_factura}} para la factura N° {{numero_factura}}. ¡Gracias por su puntualidad! Su servicio {{plan_contratado}} continúa activo. {{empresa}}.',
     },
+    datafast_alerta_egreso: {
+      nombre: 'Alerta Egreso Recurrente (Interno)',
+      contenido:
+        'Estimado Administrador, le recordamos que la obligación fija *{{nombre_gasto}}* de categoría *{{categoria}}* por un monto de *S/. {{monto}}* está próxima a vencer. Días restantes: *{{dias_restantes}}*. Por favor, procese el pago desde el ERP.',
+    },
   },
 
   email: {

@@ -105,7 +105,7 @@ const TEMPLATES: Record<TipoNotificacion, {
   [TipoNotificacion.ALERTA_EGRESO]: {
     name:      'datafast_alerta_egreso',
     language:  'es',
-    paramKeys: ['nombreEmpresa', 'cantidad', 'fecha'],
+    paramKeys: ['nombre_gasto', 'categoria', 'monto', 'dias_restantes'],
   },
 };
 

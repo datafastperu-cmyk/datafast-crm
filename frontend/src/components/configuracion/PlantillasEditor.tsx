@@ -12,6 +12,12 @@ import { parseApiError, cn } from '@/lib/utils';
 
 // ─── Variables disponibles por tipo ───────────────────────────
 const VARS_COMUNES = [
+  // ── Variables de egresos recurrentes (admin interno) ──────────
+  { key: '{{nombre_gasto}}',    label: 'Nombre del gasto recurrente' },
+  { key: '{{categoria}}',       label: 'Categoría del egreso' },
+  { key: '{{monto}}',           label: 'Monto del egreso (S/.)' },
+  { key: '{{dias_restantes}}',  label: 'Días para vencer (negativo = vencido)' },
+  // ── Variables de abonados ──────────────────────────────────────
   { key: '{{nombre_cliente}}',    label: 'Nombre del abonado' },
   { key: '{{apellido_cliente}}',  label: 'Apellidos del abonado' },
   { key: '{{nombre_completo}}',   label: 'Nombre completo' },
