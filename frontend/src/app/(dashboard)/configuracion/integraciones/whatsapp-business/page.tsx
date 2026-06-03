@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   MessageSquare, Save, Loader2, Eye, EyeOff, Zap, ChevronLeft,
   Wifi, WifiOff, AlertTriangle, CheckCircle2, XCircle, Clock,
-  Send, Users, ChevronDown, Ban, Megaphone,
+  Send, Users, ChevronDown, Ban, Megaphone, RotateCcw, Shield,
 } from 'lucide-react';
 import { sistemaApi, type ProveedorActivo } from '@/lib/api/sistema';
 import { mensajeriaApi }  from '@/lib/api/mensajeria';
@@ -17,7 +17,7 @@ import { mikrotikApi }    from '@/lib/api/mikrotik';
 import { useToast }       from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
-// ─── Constantes ─────────────────────────────────────────────────
+// ─── Constantes ─────────────────────────────────────────────────────────────
 const SENTINEL = '***stored***';
 
 const INPUT = [
@@ -39,6 +39,20 @@ const CODIGOS_PAIS = [
   { label: 'Paraguay (+595)', value: '+595' },
 ];
 
+// Códigos sin '+' para DATAFAST_MENSAJERIA_MASIVA (motor HTTP nativo)
+const CODIGOS_PAIS_MASIVA = [
+  { label: 'Perú (+51)',      value: '51'  },
+  { label: 'Colombia (+57)',  value: '57'  },
+  { label: 'México (+52)',    value: '52'  },
+  { label: 'Argentina (+54)', value: '54'  },
+  { label: 'Chile (+56)',     value: '56'  },
+  { label: 'Ecuador (+593)',  value: '593' },
+  { label: 'Bolivia (+591)',  value: '591' },
+  { label: 'Venezuela (+58)', value: '58'  },
+  { label: 'Uruguay (+598)',  value: '598' },
+  { label: 'Paraguay (+595)', value: '595' },
+];
+
 type ProviderMeta = {
   display: string; color: string;
   f1Label: string; f1Ph: string; f1Hint: string;
@@ -57,30 +71,36 @@ const PROVIDER_META: Record<ProveedorActivo, ProviderMeta> = {
   },
   AUTOMATIZADO_VIP: {
     display: 'AUTOMATIZADO.VIP', color: 'violet', hideSecret: true,
-    f1Label: 'API Key / Token',       f1Ph: 'ak_live_...',   f1Hint: 'Token de autenticación',
+    f1Label: 'API Key / Token',  f1Ph: 'ak_live_...',   f1Hint: 'Token de autenticación',
     f2Label: '', f2Ph: '', f2Hint: '',
-    f3Label: 'Instance ID',          f3Ph: 'inst_abc123',   f3Hint: 'ID de instancia en automatizado.vip',
+    f3Label: 'Instance ID',      f3Ph: 'inst_abc123',   f3Hint: 'ID de instancia en automatizado.vip',
   },
   TWILIO: {
     display: 'Twilio', color: 'red',
-    f1Label: 'Account SID',          f1Ph: 'ACxxxxxxxxx',   f1Hint: 'Account SID — cifrado AES-256',
-    f2Label: 'Auth Token',           f2Ph: SENTINEL,         f2Hint: 'Auth Token — cifrado AES-256',
-    f3Label: 'From Number',          f3Ph: '+14155238886',   f3Hint: 'Número de origen',
+    f1Label: 'Account SID',   f1Ph: 'ACxxxxxxxxx',    f1Hint: 'Account SID — cifrado AES-256',
+    f2Label: 'Auth Token',    f2Ph: SENTINEL,          f2Hint: 'Auth Token — cifrado AES-256',
+    f3Label: 'From Number',   f3Ph: '+14155238886',    f3Hint: 'Número de origen',
   },
   VONAGE: {
     display: 'Vonage (Nexmo)', color: 'violet',
-    f1Label: 'API Key',              f1Ph: 'a1b2c3d4',      f1Hint: 'API Key — cifrado AES-256',
-    f2Label: 'API Secret',           f2Ph: SENTINEL,         f2Hint: 'API Secret — cifrado AES-256',
-    f3Label: 'Sender Name',          f3Ph: 'DataFast',       f3Hint: 'Nombre alfanumérico remitente',
+    f1Label: 'API Key',        f1Ph: 'a1b2c3d4',       f1Hint: 'API Key — cifrado AES-256',
+    f2Label: 'API Secret',     f2Ph: SENTINEL,          f2Hint: 'API Secret — cifrado AES-256',
+    f3Label: 'Sender Name',    f3Ph: 'DataFast',        f3Hint: 'Nombre alfanumérico remitente',
   },
   CUSTOM_API: {
     display: 'API Personalizada', color: 'amber',
-    f1Label: 'X-API-Key',            f1Ph: 'sk_live_...',                    f1Hint: 'Llave principal — cifrado AES-256',
-    f2Label: 'X-API-Secret',         f2Ph: SENTINEL,                          f2Hint: 'Secreto — cifrado AES-256',
-    f3Label: 'Endpoint URL',         f3Ph: 'https://api.proveedor.com/send',  f3Hint: 'URL del endpoint POST',
+    f1Label: 'X-API-Key',          f1Ph: 'sk_live_...',                    f1Hint: 'Llave principal — cifrado AES-256',
+    f2Label: 'X-API-Secret',       f2Ph: SENTINEL,                          f2Hint: 'Secreto — cifrado AES-256',
+    f3Label: 'Endpoint URL',       f3Ph: 'https://api.proveedor.com/send',  f3Hint: 'URL del endpoint POST',
   },
   DATAFAST_NATIVE: {
     display: 'DATAFAST Native (CRM)', color: 'green', noCredentials: true,
+    f1Label: '', f1Ph: '', f1Hint: '',
+    f2Label: '', f2Ph: '', f2Hint: '',
+    f3Label: '', f3Ph: '', f3Hint: '',
+  },
+  DATAFAST_MENSAJERIA_MASIVA: {
+    display: 'DATAFAST Mensajería Masiva', color: 'teal', noCredentials: true,
     f1Label: '', f1Ph: '', f1Hint: '',
     f2Label: '', f2Ph: '', f2Hint: '',
     f3Label: '', f3Ph: '', f3Hint: '',
@@ -93,25 +113,37 @@ const COLOR_BADGE: Record<string, string> = {
   violet:  'bg-violet-500/10 text-violet-400 border-violet-500/20',
   amber:   'bg-amber-500/10 text-amber-500 border-amber-500/20',
   green:   'bg-green-500/10 text-green-400 border-green-500/20',
+  teal:    'bg-teal-500/10 text-teal-400 border-teal-500/20',
 };
 const COLOR_ICON: Record<string, string> = {
   emerald: 'text-emerald-500', red: 'text-red-400',
-  violet:  'text-violet-400',  amber: 'text-amber-500', green: 'text-green-400',
+  violet:  'text-violet-400',  amber: 'text-amber-500',
+  green:   'text-green-400',   teal: 'text-teal-400',
 };
 const COLOR_PULSE: Record<string, string> = {
   emerald: 'bg-emerald-500', red: 'bg-red-400',
-  violet:  'bg-violet-400',  amber: 'bg-amber-500', green: 'bg-green-400',
+  violet:  'bg-violet-400',  amber: 'bg-amber-500',
+  green:   'bg-green-400',   teal: 'bg-teal-400',
 };
 
 interface FormValues {
-  proveedor: ProveedorActivo;
-  phoneId: string; businessId: string; token: string;
-  apiKey: string; apiSecret: string; clientId: string;
-  pausa: number; limiteCaracteres: number; codigoPais: string;
-  activo: boolean; limiteDiarioMasivo: number;
+  proveedor:             ProveedorActivo;
+  phoneId:               string;
+  businessId:            string;
+  token:                 string;
+  apiKey:                string;
+  apiSecret:             string;
+  clientId:              string;
+  pausa:                 number;
+  limiteCaracteres:      number;
+  codigoPais:            string;
+  activo:                boolean;
+  limiteDiarioMasivo:    number;
+  whatsappNumeroOrigen:  string;
+  agregarNombreOperador: boolean;
 }
 
-// ─── Sub-componentes del Lanzador ────────────────────────────────
+// ─── Sub-componentes del Lanzador ────────────────────────────────────────────
 function CuotaMeter() {
   const { data, isLoading } = useQuery({
     queryKey: ['mensajeria', 'cuota'],
@@ -156,17 +188,15 @@ function MonitorStats({ onPausar, pausando }: { onPausar: () => void; pausando: 
   });
 
   const stats = [
-    { label: 'Encolados',  value: data?.encolados  ?? 0, cls: 'text-muted-foreground', icon: Clock },
-    { label: 'Enviados',   value: data?.enviados    ?? 0, cls: 'text-emerald-600 dark:text-emerald-400', icon: CheckCircle2 },
-    { label: 'Fallidos',   value: data?.fallidos    ?? 0, cls: 'text-destructive', icon: XCircle },
+    { label: 'Encolados', value: data?.encolados ?? 0, cls: 'text-muted-foreground',                     icon: Clock         },
+    { label: 'Enviados',  value: data?.enviados   ?? 0, cls: 'text-emerald-600 dark:text-emerald-400',   icon: CheckCircle2  },
+    { label: 'Fallidos',  value: data?.fallidos   ?? 0, cls: 'text-destructive',                          icon: XCircle       },
   ];
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-3">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-          Monitor — Hoy
-        </span>
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Monitor — Hoy</span>
         {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
       </div>
       <div className="flex gap-3 mb-2">
@@ -194,17 +224,17 @@ function extractVariables(contenido: string): string[] {
   return [...new Set([...contenido.matchAll(/\{(\w+)\}/g)].map(m => m[1]))];
 }
 
-// ─── Lanzador de Campañas Nativo ─────────────────────────────────
+// ─── Lanzador de Campañas Nativo (DATAFAST_NATIVE) ───────────────────────────
 function DatafastNativeLauncher() {
-  const qc          = useQueryClient();
-  const { toast }   = useToast();
+  const qc        = useQueryClient();
+  const { toast } = useToast();
   const [sectorId,   setSectorId]   = useState('');
   const [routerId,   setRouterId]   = useState('');
   const [templateId, setTemplateId] = useState('');
   const [variables,  setVariables]  = useState<Record<string, string>>({});
 
-  const { data: zonas     = [] } = useQuery({ queryKey: ['zonas'],              queryFn: zonasApi.list });
-  const { data: routers   = [] } = useQuery({ queryKey: ['routers'],            queryFn: mikrotikApi.listar });
+  const { data: zonas     = [] } = useQuery({ queryKey: ['zonas'],           queryFn: zonasApi.list });
+  const { data: routers   = [] } = useQuery({ queryKey: ['routers'],         queryFn: mikrotikApi.listar });
   const { data: plantillas = [] } = useQuery({
     queryKey: ['plantillas', 'whatsapp'],
     queryFn:  () => plantillasApi.listar('whatsapp'),
@@ -243,24 +273,19 @@ function DatafastNativeLauncher() {
 
   return (
     <div className="border border-border rounded-xl overflow-hidden">
-      {/* Header */}
       <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-[#1a3a8f]/80">
         <Megaphone className="w-4 h-4 text-white" />
         <span className="text-sm font-bold text-white">Lanzador de Campañas Nativo</span>
       </div>
 
       <div className="p-5 space-y-4">
-        {/* Cuota + Monitor en paralelo */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <CuotaMeter />
           <MonitorStats onPausar={() => pausarMut.mutate()} pausando={pausarMut.isPending} />
         </div>
 
-        {/* Segmentación */}
         <div>
-          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Segmentación de destinatarios
-          </p>
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Segmentación de destinatarios</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] text-muted-foreground mb-1 block">
@@ -269,9 +294,7 @@ function DatafastNativeLauncher() {
               <div className="relative">
                 <select value={sectorId} onChange={e => setSectorId(e.target.value)} className={SELECT_CLS}>
                   <option value="">Todas las zonas</option>
-                  {zonas.filter(z => z.activo).map(z => (
-                    <option key={z.id} value={z.id}>{z.nombre}</option>
-                  ))}
+                  {zonas.filter(z => z.activo).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
                 </select>
                 <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               </div>
@@ -281,9 +304,7 @@ function DatafastNativeLauncher() {
               <div className="relative">
                 <select value={routerId} onChange={e => setRouterId(e.target.value)} className={SELECT_CLS}>
                   <option value="">Todos los routers</option>
-                  {routers.map(r => (
-                    <option key={r.id} value={r.id}>{r.nombre}</option>
-                  ))}
+                  {routers.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
                 </select>
                 <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               </div>
@@ -291,17 +312,10 @@ function DatafastNativeLauncher() {
           </div>
         </div>
 
-        {/* Plantilla */}
         <div>
-          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
-            Plantilla de mensaje
-          </label>
+          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">Plantilla de mensaje</label>
           <div className="relative">
-            <select
-              value={templateId}
-              onChange={e => { setTemplateId(e.target.value); setVariables({}); }}
-              className={SELECT_CLS}
-            >
+            <select value={templateId} onChange={e => { setTemplateId(e.target.value); setVariables({}); }} className={SELECT_CLS}>
               <option value="">Seleccionar plantilla...</option>
               {plantillas.filter(p => p.activo).map(p => (
                 <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>
@@ -316,7 +330,6 @@ function DatafastNativeLauncher() {
           )}
         </div>
 
-        {/* Variables */}
         {varNames.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {varNames.map(v => (
@@ -334,7 +347,6 @@ function DatafastNativeLauncher() {
           </div>
         )}
 
-        {/* Botón */}
         <button
           onClick={() => {
             if (!templateId) { toast('Selecciona una plantilla', { type: 'warning' }); return; }
@@ -358,13 +370,33 @@ function DatafastNativeLauncher() {
   );
 }
 
-// ─── Formulario principal ─────────────────────────────────────────
+// ─── Toggle helper ────────────────────────────────────────────────────────────
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={cn(
+        'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none',
+        on ? 'bg-emerald-500' : 'bg-muted border border-border',
+      )}
+    >
+      <span className={cn(
+        'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200',
+        on ? 'translate-x-4' : 'translate-x-0.5',
+      )} />
+    </button>
+  );
+}
+
+// ─── Formulario principal ─────────────────────────────────────────────────────
 function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: ProveedorActivo) => void }) {
   const qc        = useQueryClient();
   const { toast } = useToast();
-  const [showF1,   setShowF1]   = useState(false);
-  const [showF2,   setShowF2]   = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [showF1,       setShowF1]       = useState(false);
+  const [showF2,       setShowF2]       = useState(false);
+  const [isSaving,     setIsSaving]     = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
 
   const { data: gwData, isLoading: gwLoading } = useQuery({
     queryKey: ['gw-config'],
@@ -378,7 +410,6 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
     staleTime: 60_000,
   });
 
-  // Estado de sesión WA (para DATAFAST_NATIVE)
   const { data: waEstado } = useQuery({
     queryKey: ['crm-nativo', 'estado'],
     queryFn:  () => fetch('/api/v1/crm-nativo/estado', {
@@ -392,59 +423,82 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
 
   const { register, watch, reset, setValue, handleSubmit } = useForm<FormValues>({
     defaultValues: {
-      proveedor: 'META_GRAPH',
+      proveedor:             'META_GRAPH',
       phoneId: '', businessId: '', token: '',
       apiKey: '', apiSecret: '', clientId: '',
       pausa: 2, limiteCaracteres: 1000, codigoPais: '+51',
       activo: true, limiteDiarioMasivo: 500,
+      whatsappNumeroOrigen:  '',
+      agregarNombreOperador: false,
     },
   });
 
   useEffect(() => {
     if (gwData) {
+      const isMasivaP = gwData.proveedorActivo === 'DATAFAST_MENSAJERIA_MASIVA';
       reset({
-        proveedor:          gwData.proveedorActivo,
-        apiKey:             gwData.apiKey    ?? '',
-        apiSecret:          gwData.apiSecret ?? '',
-        clientId:           gwData.clientId  ?? '',
-        pausa:              gwData.pausa            ?? 2,
-        limiteCaracteres:   gwData.limiteCaracteres  ?? 1000,
-        codigoPais:         gwData.codigoPais        ?? '+51',
-        activo:             gwData.activo            ?? true,
-        limiteDiarioMasivo: gwData.limiteDiarioMasivo ?? 500,
-        phoneId:            waData?.phoneId    ?? '',
-        businessId:         waData?.businessId ?? '',
-        token:              waData?.token      ?? '',
+        proveedor:             gwData.proveedorActivo,
+        apiKey:                '',
+        apiSecret:             '',
+        clientId:              gwData.clientId  ?? '',
+        pausa:                 gwData.pausa             ?? (isMasivaP ? 12 : 2),
+        limiteCaracteres:      gwData.limiteCaracteres   ?? 1000,
+        codigoPais:            isMasivaP
+          ? (gwData.codigoPais ?? '51').replace(/^\+/, '')
+          : (gwData.codigoPais ?? '+51'),
+        activo:                gwData.activo             ?? true,
+        limiteDiarioMasivo:    gwData.limiteDiarioMasivo ?? 500,
+        phoneId:               waData?.phoneId    ?? '',
+        businessId:            waData?.businessId ?? '',
+        token:                 '',
+        whatsappNumeroOrigen:  gwData.whatsappNumeroOrigen  ?? '',
+        agregarNombreOperador: gwData.agregarNombreOperador ?? false,
       });
       onProveedorChange(gwData.proveedorActivo);
     }
   }, [gwData, waData, reset]); // eslint-disable-line
 
-  const proveedor  = watch('proveedor');
-  const activo     = watch('activo');
-  const meta       = PROVIDER_META[proveedor];
-  const isMeta     = proveedor === 'META_GRAPH';
-  const isNative   = proveedor === 'DATAFAST_NATIVE';
+  const proveedor           = watch('proveedor');
+  const activo              = watch('activo');
+  const agregarNombreOp     = watch('agregarNombreOperador');
+  const meta                = PROVIDER_META[proveedor];
+  const isMeta              = proveedor === 'META_GRAPH';
+  const isNative            = proveedor === 'DATAFAST_NATIVE';
+  const isMasiva            = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
 
   useEffect(() => { onProveedorChange(proveedor); }, [proveedor]); // eslint-disable-line
 
   const isConfigured = isMeta
-    ? waData?.token  === SENTINEL
+    ? !!(waData?.token)
     : isNative
     ? waEstado?.estado === 'CONECTADO'
-    : gwData?.apiKey === SENTINEL;
+    : isMasiva
+    ? !!(gwData?.clientId)
+    : gwData?.apiKeyStored;
 
   const cardColor = COLOR_BADGE[meta.color] ?? COLOR_BADGE.emerald;
   const iconCls   = COLOR_ICON[meta.color]  ?? COLOR_ICON.emerald;
   const iconBgCls = `bg-${meta.color}-500/10`;
 
+  const handleRestart = async () => {
+    setIsRestarting(true);
+    try {
+      await sistemaApi.restart();
+      toast('Servicios reiniciados. El backend estará disponible en ~10 segundos.', { type: 'success' });
+    } catch (e) {
+      toast(parseApiError(e) || 'Error al reiniciar servicios', { type: 'error' });
+    } finally {
+      setTimeout(() => setIsRestarting(false), 12_000);
+    }
+  };
+
   const onSave = handleSubmit(async (values) => {
     setIsSaving(true);
     try {
       const trafico = {
-        pausa:              Number(values.pausa)              || 2,
-        limiteCaracteres:   Number(values.limiteCaracteres)   || 1000,
-        codigoPais:         values.codigoPais || '+51',
+        pausa:              Number(values.pausa)             || 2,
+        limiteCaracteres:   Number(values.limiteCaracteres)  || 1000,
+        codigoPais:         values.codigoPais || (isMasiva ? '51' : '+51'),
         activo:             values.activo,
         limiteDiarioMasivo: Number(values.limiteDiarioMasivo) || 500,
       };
@@ -454,19 +508,29 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
         await sistemaApi.updateWhatsAppConfig({
           phoneId:    values.phoneId    || undefined,
           businessId: values.businessId || undefined,
-          token:      values.token !== SENTINEL ? values.token : SENTINEL,
+          token:      values.token ? values.token : undefined,
         });
       } else if (values.proveedor === 'DATAFAST_NATIVE') {
         await sistemaApi.updateGatewayConfig({ proveedorActivo: 'DATAFAST_NATIVE', ...trafico });
+      } else if (values.proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
+        await sistemaApi.updateGatewayConfig({
+          proveedorActivo:       'DATAFAST_MENSAJERIA_MASIVA',
+          apiKey:                values.apiKey && values.apiKey !== SENTINEL ? values.apiKey : undefined,
+          clientId:              values.clientId || undefined,
+          whatsappNumeroOrigen:  values.whatsappNumeroOrigen || undefined,
+          agregarNombreOperador: values.agregarNombreOperador,
+          ...trafico,
+        });
       } else {
         await sistemaApi.updateGatewayConfig({
           proveedorActivo: values.proveedor,
-          apiKey:    values.apiKey    !== SENTINEL ? values.apiKey    : SENTINEL,
-          apiSecret: (!meta.hideSecret && values.apiSecret !== SENTINEL) ? values.apiSecret : SENTINEL,
+          apiKey:    values.apiKey    && values.apiKey    !== SENTINEL ? values.apiKey    : undefined,
+          apiSecret: !meta.hideSecret && values.apiSecret && values.apiSecret !== SENTINEL ? values.apiSecret : undefined,
           clientId:  values.clientId || undefined,
           ...trafico,
         });
       }
+
       qc.invalidateQueries({ queryKey: ['gw-config'] });
       qc.invalidateQueries({ queryKey: ['wa-config'] });
       toast('Configuración guardada correctamente', { type: 'success' });
@@ -482,13 +546,12 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
       {/* Cabecera */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
         <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', iconBgCls)}>
-          {isNative
-            ? <MessageSquare className={cn('w-4 h-4', iconCls)} />
-            : isMeta
+          {isMasiva
+            ? <Shield       className={cn('w-4 h-4', iconCls)} />
+            : isNative || isMeta
             ? <MessageSquare className={cn('w-4 h-4', iconCls)} />
             : <Zap           className={cn('w-4 h-4', iconCls)} />}
         </div>
-
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-sm font-semibold text-foreground">WhatsApp Business</h2>
@@ -500,11 +563,10 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
             Credenciales para el envío de notificaciones automáticas
           </p>
         </div>
-
         {isConfigured && (
           <span className={cn('ml-auto flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border', cardColor)}>
             <span className={cn('w-1.5 h-1.5 rounded-full animate-pulse', COLOR_PULSE[meta.color] ?? 'bg-emerald-500')} />
-            {isNative ? 'Sesión activa' : 'Configurado'}
+            {isNative ? 'Sesión activa' : isMasiva ? 'Endpoint configurado' : 'Configurado'}
           </span>
         )}
       </div>
@@ -527,13 +589,14 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
                 <option value="VONAGE">Vonage (Nexmo)</option>
                 <option value="CUSTOM_API">API Personalizada</option>
                 <option value="DATAFAST_NATIVE">DATAFAST Native (sesión CRM WhatsApp Web)</option>
+                <option value="DATAFAST_MENSAJERIA_MASIVA">DATAFAST Mensajería Masiva (HTTP nativo)</option>
               </select>
               <p className="text-[10px] text-muted-foreground">
                 Las notificaciones automáticas usarán este proveedor para todos los envíos.
               </p>
             </div>
 
-            {/* DATAFAST_NATIVE: indicador de sesión WA */}
+            {/* ── DATAFAST_NATIVE: indicador de sesión ────────────────── */}
             {isNative && (
               <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
                 <p className="text-xs font-semibold text-foreground">Sesión WhatsApp Web (CRM Nativo)</p>
@@ -554,7 +617,7 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
               </div>
             )}
 
-            {/* Campos META_GRAPH */}
+            {/* ── META_GRAPH: credenciales ──────────────────────────────── */}
             {isMeta && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -582,8 +645,8 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
               </>
             )}
 
-            {/* Campos otros proveedores */}
-            {!isMeta && !isNative && (
+            {/* ── Otros proveedores (Twilio, Vonage, etc.) ─────────────── */}
+            {!isMeta && !isNative && !isMasiva && (
               <>
                 <div className={cn('grid grid-cols-1 gap-4', !meta.hideSecret && 'sm:grid-cols-2')}>
                   <div className="space-y-1.5">
@@ -617,68 +680,238 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
               </>
             )}
 
-            {/* Control de tráfico */}
-            <div className="border border-border rounded-lg p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-foreground uppercase tracking-wide">Control de tráfico</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">{activo ? 'Gateway activo' : 'Gateway inactivo'}</span>
+            {/* ── Control de tráfico (no-masiva) ───────────────────────── */}
+            {!isMasiva && (
+              <div className="border border-border rounded-lg p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-foreground uppercase tracking-wide">Control de tráfico</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{activo ? 'Gateway activo' : 'Gateway inactivo'}</span>
+                    <Toggle on={activo} onToggle={() => setValue('activo', !activo, { shouldDirty: true })} />
+                  </div>
+                </div>
+                <div className={cn('grid grid-cols-1 gap-4', isNative ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground">Pausa entre mensajes (seg)</label>
+                    <input type="number" min={0} max={60} {...register('pausa', { valueAsNumber: true })} className={INPUT} />
+                    <p className="text-[10px] text-muted-foreground">0–60 seg entre envíos</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground">Límite de caracteres</label>
+                    <input type="number" min={50} max={5000} {...register('limiteCaracteres', { valueAsNumber: true })} className={INPUT} />
+                    <p className="text-[10px] text-muted-foreground">Mensajes más largos se rechazan</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground">Código de país</label>
+                    <select {...register('codigoPais')} className={cn(INPUT, 'cursor-pointer')}>
+                      {CODIGOS_PAIS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground">Se antepone a números sin código</p>
+                  </div>
+                  {isNative && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Cuota diaria máxima</label>
+                      <input type="number" min={1} max={10000} {...register('limiteDiarioMasivo', { valueAsNumber: true })} className={INPUT} />
+                      <p className="text-[10px] text-muted-foreground">Mensajes masivos / día (anti-ban)</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════
+                DATAFAST_MENSAJERIA_MASIVA — Card dedicada
+            ══════════════════════════════════════════════════════════ */}
+            {isMasiva && (
+              <div className="rounded-xl border border-teal-500/30 overflow-hidden">
+
+                {/* Header */}
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-teal-500/20 bg-gradient-to-r from-[#0d2b45] to-[#0d3d35]">
+                  <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
+                    <MessageSquare className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-bold text-white tracking-wide">
+                      WHATSAPP MENSAJERÍA MASIVA DATAFAST
+                    </h3>
+                    <p className="text-[10px] text-white/50">Motor HTTP nativo — independiente del CRM Nativo</p>
+                  </div>
+                  <span className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30 text-[10px] font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                    HTTP Puro
+                  </span>
+                </div>
+
+                {/* Body */}
+                <div className="p-5 space-y-4 bg-card">
+
+                  {/* Número origen */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground">
+                      Número de WhatsApp del Aplicativo
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="51999888777"
+                      {...register('whatsappNumeroOrigen')}
+                      className={INPUT}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Número emisor registrado en el gateway HTTP (campo <code className="font-mono">whatsapp_numero_origen</code>)
+                    </p>
+                  </div>
+
+                  {/* Endpoint + Bearer Token */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">
+                        URL del Gateway HTTP <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://gateway.tudominio.com/api/send"
+                        {...register('clientId')}
+                        className={INPUT}
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        POST <code className="font-mono text-[9px]">&#123; to, message, sender &#125;</code>
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Bearer Token (API Key)</label>
+                      <div className="relative">
+                        <input
+                          type={showF1 ? 'text' : 'password'}
+                          placeholder="sk_live_..."
+                          {...register('apiKey')}
+                          className={cn(INPUT, 'pr-10 font-mono text-xs')}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowF1(v => !v)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {showF1 ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">Cifrado AES-256 en BD</p>
+                    </div>
+                  </div>
+
+                  {/* Parámetros de envío */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Límite caracteres</label>
+                      <input
+                        type="number" min={50} max={5000}
+                        defaultValue={1000}
+                        {...register('limiteCaracteres', { valueAsNumber: true })}
+                        className={INPUT}
+                      />
+                      <p className="text-[10px] text-muted-foreground">Truncado de seguridad</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Pausa Entre mensaje (Segundos)</label>
+                      <input
+                        type="number" min={0} max={60}
+                        defaultValue={12}
+                        {...register('pausa', { valueAsNumber: true })}
+                        className={INPUT}
+                      />
+                      <p className="text-[10px] text-muted-foreground">Delay anti-ban (BullMQ)</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Código país</label>
+                      <div className="relative">
+                        <select
+                          {...register('codigoPais')}
+                          className={cn(INPUT, 'cursor-pointer appearance-none')}
+                        >
+                          {CODIGOS_PAIS_MASIVA.map(c => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">Se antepone a números sin prefijo</p>
+                    </div>
+                  </div>
+
+                  {/* Switch: Agregar nombre operador */}
+                  <div className="pt-3 border-t border-border">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="text-xs font-medium text-foreground mb-0.5">Agregar nombre operador</p>
+                        <p className="text-[10px] text-amber-500">
+                          * Agrega el nombre del operador cuando responde un chat.
+                        </p>
+                      </div>
+                      <Toggle
+                        on={agregarNombreOp}
+                        onToggle={() => setValue('agregarNombreOperador', !agregarNombreOp, { shouldDirty: true })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Switch: Activar Gateway */}
+                  <div className="pt-3 border-t border-border">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-foreground">Activar Gateway</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {activo
+                            ? 'Notificaciones activas via DATAFAST_MENSAJERIA_MASIVA'
+                            : 'Gateway desactivado — los envíos serán bloqueados'}
+                        </p>
+                      </div>
+                      <Toggle
+                        on={activo}
+                        onToggle={() => setValue('activo', !activo, { shouldDirty: true })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer: Reiniciar | Guardar */}
+                <div className="flex items-center justify-between px-5 py-4 border-t border-border bg-muted/20">
                   <button
                     type="button"
-                    onClick={() => setValue('activo', !activo, { shouldDirty: true })}
-                    className={cn('relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none', activo ? 'bg-emerald-500' : 'bg-muted')}
+                    onClick={handleRestart}
+                    disabled={isRestarting || isSaving}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive hover:text-destructive-foreground disabled:opacity-50"
                   >
-                    <span className={cn('inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200', activo ? 'translate-x-4' : 'translate-x-0.5')} />
+                    {isRestarting
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Reiniciando…</>
+                      : <><RotateCcw className="w-3.5 h-3.5" /> Reiniciar servicios</>}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving || isRestarting}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isSaving
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</>
+                      : <><Save className="w-3.5 h-3.5" /> Guardar cambios</>}
                   </button>
                 </div>
               </div>
-
-              <div className={cn('grid grid-cols-1 gap-4', isNative ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">Pausa entre mensajes (seg)</label>
-                  <input type="number" min={0} max={60} {...register('pausa', { valueAsNumber: true })} className={INPUT} />
-                  <p className="text-[10px] text-muted-foreground">0–60 seg entre envíos</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">Límite de caracteres</label>
-                  <input type="number" min={50} max={5000} {...register('limiteCaracteres', { valueAsNumber: true })} className={INPUT} />
-                  <p className="text-[10px] text-muted-foreground">Mensajes más largos se rechazan</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">Código de país</label>
-                  <select {...register('codigoPais')} className={cn(INPUT, 'cursor-pointer')}>
-                    {CODIGOS_PAIS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                  </select>
-                  <p className="text-[10px] text-muted-foreground">Se antepone a números sin código</p>
-                </div>
-                {isNative && (
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">Cuota diaria máxima</label>
-                    <input type="number" min={1} max={10000} {...register('limiteDiarioMasivo', { valueAsNumber: true })} className={INPUT} />
-                    <p className="text-[10px] text-muted-foreground">Mensajes masivos / día (anti-ban)</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {isConfigured && !isNative && (
-              <p className="text-[10px] text-muted-foreground bg-muted/40 border border-border rounded-lg px-3 py-2">
-                Las llaves cifradas muestran <code className="font-mono">{SENTINEL}</code>.
-                Déjalas así para conservarlas, o escribe valores nuevos para reemplazarlas.
-              </p>
             )}
+            {/* ══════════════════════════════════════════════════════════ */}
 
-            <div className="flex justify-end pt-1">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {isSaving
-                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</>
-                  : <><Save    className="w-3.5 h-3.5" /> Guardar configuración</>}
-              </button>
-            </div>
+            {/* Botón guardar genérico (no-masiva) */}
+            {!isMasiva && (
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {isSaving
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</>
+                    : <><Save    className="w-3.5 h-3.5" /> Guardar configuración</>}
+                </button>
+              </div>
+            )}
           </form>
         )}
       </div>
@@ -686,7 +919,7 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
   );
 }
 
-// ─── Página ──────────────────────────────────────────────────────
+// ─── Página ───────────────────────────────────────────────────────────────────
 export default function WhatsAppBusinessPage() {
   const [proveedor, setProveedor] = useState<ProveedorActivo>('META_GRAPH');
 

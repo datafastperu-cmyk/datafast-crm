@@ -42,16 +42,17 @@ export type ProveedorActivo =
   | 'DATAFAST_MENSAJERIA_MASIVA';
 
 export interface GatewayConfig {
-  proveedorActivo:      ProveedorActivo;
-  apiKey:               string | null;
-  apiSecret:            string | null;
-  clientId:             string | null;
-  pausa:                number;
-  limiteCaracteres:     number;
-  codigoPais:           string;
-  activo:               boolean;
-  limiteDiarioMasivo:   number;
-  whatsappNumeroOrigen: string | null;
+  proveedorActivo:       ProveedorActivo;
+  apiKeyStored:          boolean;
+  apiSecretStored:       boolean;
+  clientId:              string | null;
+  pausa:                 number;
+  limiteCaracteres:      number;
+  codigoPais:            string;
+  activo:                boolean;
+  limiteDiarioMasivo:    number;
+  whatsappNumeroOrigen:  string | null;
+  agregarNombreOperador: boolean;
 }
 
 export interface WhatsAppConfig {
@@ -94,16 +95,17 @@ export const sistemaApi = {
     api.get<{ data: GatewayConfig }>('/admin/sistema/gateway-config').then(r => r.data.data),
 
   updateGatewayConfig: (dto: {
-    proveedorActivo?:      ProveedorActivo;
-    apiKey?:               string;
-    apiSecret?:            string;
-    clientId?:             string;
-    pausa?:                number;
-    limiteCaracteres?:     number;
-    codigoPais?:           string;
-    activo?:               boolean;
-    limiteDiarioMasivo?:   number;
-    whatsappNumeroOrigen?: string;
+    proveedorActivo?:       ProveedorActivo;
+    apiKey?:                string;
+    apiSecret?:             string;
+    clientId?:              string;
+    pausa?:                 number;
+    limiteCaracteres?:      number;
+    codigoPais?:            string;
+    activo?:                boolean;
+    limiteDiarioMasivo?:    number;
+    whatsappNumeroOrigen?:  string;
+    agregarNombreOperador?: boolean;
   }) =>
     api.patch<{ data: GatewayConfig }>('/admin/sistema/gateway-config', dto).then(r => r.data.data),
 };
