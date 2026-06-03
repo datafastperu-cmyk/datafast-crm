@@ -228,6 +228,14 @@ export class GatewayMensajeriaService {
   // ── Punto de entrada único para el worker ─────────────────
   async despachar(params: WhatsAppParams): Promise<EnvioResult> {
     const destino = await this.resolveDestino(params);
+
+    if (!destino) {
+      this.logger.warn(
+        `[GW] Sin destino para ${params.tipo} (empresa=${params.empresaId}) — whatsapp_corporativo no configurado`,
+      );
+      return { enviado: false, error: 'Sin número destino configurado' };
+    }
+
     const config  = await this.resolveConfig(params.empresaId);
 
     if (!config || config.proveedor === 'META_GRAPH') {
