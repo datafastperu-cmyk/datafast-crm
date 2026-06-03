@@ -366,21 +366,23 @@ export function GastosContent() {
               </div>
 
               {/* Recurrente — solo egresos */}
-              {form.tipo === 'EGRESO' && <label className="flex items-center gap-3 cursor-pointer select-none">
-                <div
-                  onClick={() => setForm((f) => ({ ...f, esRecurrente: !f.esRecurrente, diaVencimiento: !f.esRecurrente ? 1 : undefined }))}
-                  className={cn(
-                    'relative w-10 h-5 rounded-full transition-colors',
-                    form.esRecurrente ? 'bg-primary' : 'bg-muted',
-                  )}
-                >
-                  <div className={cn(
-                    'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
-                    form.esRecurrente ? 'translate-x-5' : 'translate-x-0',
-                  )} />
-                </div>
-                <span className="text-sm text-foreground">Gasto Recurrente</span>
-              </label>
+              {form.tipo === 'EGRESO' && (
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <div
+                    onClick={() => setForm((f) => ({ ...f, esRecurrente: !f.esRecurrente, diaVencimiento: !f.esRecurrente ? 1 : undefined }))}
+                    className={cn(
+                      'relative w-10 h-5 rounded-full transition-colors',
+                      form.esRecurrente ? 'bg-primary' : 'bg-muted',
+                    )}
+                  >
+                    <div className={cn(
+                      'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                      form.esRecurrente ? 'translate-x-5' : 'translate-x-0',
+                    )} />
+                  </div>
+                  <span className="text-sm text-foreground">Gasto Recurrente</span>
+                </label>
+              )}
 
               {form.esRecurrente && (
                 <div>
