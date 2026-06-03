@@ -1,4 +1,5 @@
-import { Client } from 'ssh2';
+﻿import { Client } from 'ssh2';
+import { VPS } from './vps.config.mjs';
 
 const BACKEND_CHECK  = 'cd /opt/datafast/backend  && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc --noEmit 2>&1 | tail -30';
 const FRONTEND_CHECK = 'cd /opt/datafast/frontend && NODE_OPTIONS="--max-old-space-size=1400" npx tsc --noEmit 2>&1 | tail -30';
@@ -38,11 +39,5 @@ conn.on('ready', () => {
       });
     }
   );
-}).connect({
-  host:     '149.34.48.224',
-  port:     22,
-  username: 'root',
-  password: '10471687648',
-  readyTimeout: 20000,
-});
+}).connect(VPS);
 conn.on('error', e => { console.error('SSH error:', e.message); process.exit(1); });

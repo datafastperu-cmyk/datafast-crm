@@ -1,4 +1,5 @@
-import { Client } from 'ssh2';
+﻿import { Client } from 'ssh2';
+import { VPS } from './vps.config.mjs';
 
 // Lee .env del VPS para obtener credenciales, luego ejecuta SQL via psql
 const GET_ENV = `cat /opt/datafast/backend/.env.production 2>/dev/null || cat /opt/datafast/backend/.env 2>/dev/null | head -30`;
@@ -98,11 +99,5 @@ ON CONFLICT DO NOTHING;
       });
     });
   });
-}).connect({
-  host:     '149.34.48.224',
-  port:     22,
-  username: 'root',
-  password: '10471687648',
-  readyTimeout: 20000,
-});
+}).connect(VPS);
 conn.on('error', e => { console.error('SSH error:', e.message); process.exit(1); });

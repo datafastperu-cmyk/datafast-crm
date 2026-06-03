@@ -1,4 +1,5 @@
-import { Client } from 'ssh2';
+﻿import { Client } from 'ssh2';
+import { VPS } from './vps.config.mjs';
 
 const conn = new Client();
 conn.on('ready', () => {
@@ -18,6 +19,6 @@ conn.on('ready', () => {
     s.stderr.on('data', d => process.stderr.write(d.toString()));
     s.on('close', () => conn.end());
   });
-}).connect({ host: '149.34.48.224', port: 22, username: 'root', password: '10471687648', readyTimeout: 15000 });
+}).connect(VPS);
 
 conn.on('error', e => { console.error('SSH error:', e.message); process.exit(1); });
