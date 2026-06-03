@@ -63,6 +63,10 @@ export class EgresoIngreso {
   @Column({ name: 'sector_id', nullable: true })
   sectorId?: string;
 
+  // Proyecto CapEx al que se imputa directamente este egreso (flujos VAN/TIR).
+  @Column({ name: 'proyecto_inversion_id', nullable: true })
+  proyectoInversionId?: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

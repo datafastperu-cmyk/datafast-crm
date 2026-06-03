@@ -92,17 +92,20 @@ export class ProyectosInversionService {
       .orderBy('mes', 'ASC')
       .getRawMany<{ mes: string; total: string }>();
 
-    // ── 2. Egresos mensuales imputados al sector usando QueryBuilder
+    // ── 2. Egresos mensuales: sector_id match O imputados directamente al proyecto
     const egRows = await this.ds.createQueryBuilder()
       .select("TO_CHAR(DATE_TRUNC('month', ei.fecha_registro::date), 'YYYY-MM')", 'mes')
       .addSelect('SUM(ei.monto::numeric(12,2))', 'total')
       .from('egresos_ingresos', 'ei')
-      .where('ei.empresa_id      = :eid',    { eid:    empresaId         })
-      .andWhere('ei.sector_id    = :sid',    { sid:    proyecto.sectorId })
-      .andWhere('ei.tipo         = :tipo',   { tipo:   'EGRESO'          })
-      .andWhere('ei.estado       = :estado', { estado: 'PAGADO'          })
-      .andWhere('ei.fecha_registro >= :fd',  { fd:     desde             })
-      .andWhere('ei.fecha_registro <= :fh',  { fh:     hasta             })
+      .where('ei.empresa_id = :eid',         { eid:    empresaId         })
+      .andWhere('ei.tipo    = :tipo',         { tipo:   'EGRESO'          })
+      .andWhere('ei.estado  = :estado',       { estado: 'PAGADO'          })
+      .andWhere('ei.fecha_registro >= :fd',   { fd:     desde             })
+      .andWhere('ei.fecha_registro <= :fh',   { fh:     hasta             })
+      .andWhere(
+        '(ei.sector_id = :sid OR ei.proyecto_inversion_id = :pid)',
+        { sid: proyecto.sectorId, pid: proyectoId },
+      )
       .groupBy("DATE_TRUNC('month', ei.fecha_registro::date)")
       .orderBy('mes', 'ASC')
       .getRawMany<{ mes: string; total: string }>();

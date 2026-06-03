@@ -39,6 +39,10 @@ export class CreateEgresoIngresoDto {
   @ApiPropertyOptional({ description: 'UUID de la zona geográfica a la que se asigna este egreso' })
   @IsOptional() @IsUUID()
   sectorId?: string;
+
+  @ApiPropertyOptional({ description: 'UUID del proyecto de inversión CapEx al que se imputa este egreso' })
+  @IsOptional() @IsUUID()
+  proyectoInversionId?: string;
 }
 
 export class UpdateEgresoIngresoDto {
