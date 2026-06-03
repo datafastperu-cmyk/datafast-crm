@@ -1,3 +1,6 @@
+import * as fs   from 'fs';
+import * as path from 'path';
+
 import {
   Process, Processor,
   OnQueueFailed, OnQueueCompleted, OnQueueStalled,
@@ -435,6 +438,64 @@ export class CobranzaScheduler {
 
     this.logger.log(
       `[NOTIF-PREV] ${lockKey.toUpperCase()} | campo: ${campoRec} | ${porVencer.length} contratos encolados`,
+    );
+  }
+
+  // ─── PURGA DIARIA DE VOUCHERS EXPIRADOS (00:15 AM) ──────────
+  // Política: vouchers con más de 90 días se borran del disco y
+  // la columna comprobante_url se pone a NULL en la BD.
+  // Compatible con la política de retención del módulo WhatsApp.
+  @Cron('15 0 * * *', { timeZone: 'America/Lima', name: 'purgar-vouchers' })
+  async purgarVouchersExpirados(): Promise<void> {
+    if (process.env.NODE_APP_INSTANCE !== '0') return;
+
+    const uploadDir = process.env.APP_UPLOAD_DIR || '/app/uploads';
+    const corte = new Date();
+    corte.setDate(corte.getDate() - 90);
+    const fechaCorte = corte.toISOString().split('T')[0];
+
+    const rows: Array<{ id: string; comprobante_url: string }> = await this.ds.query(`
+      SELECT id, comprobante_url
+      FROM pagos
+      WHERE comprobante_url IS NOT NULL
+        AND created_at <= $1::date
+    `, [fechaCorte]);
+
+    if (!rows.length) return;
+
+    let borrados  = 0;
+    let fallidos  = 0;
+    const ids: string[] = [];
+
+    for (const row of rows) {
+      try {
+        // Construir ruta física a partir de la URL relativa (/uploads/...)
+        const relativo = row.comprobante_url.replace(/^\/uploads\//, '');
+        const filePath = path.join(uploadDir, relativo);
+
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        ids.push(row.id);
+        borrados++;
+      } catch (err) {
+        fallidos++;
+        this.logger.warn(
+          `[PURGA-VOUCHERS] No se pudo borrar ${row.comprobante_url}: ${err.message}`,
+        );
+      }
+    }
+
+    if (ids.length) {
+      // Batch update: poner comprobante_url = NULL en los procesados
+      await this.ds.query(
+        `UPDATE pagos SET comprobante_url = NULL WHERE id = ANY($1)`,
+        [ids],
+      );
+    }
+
+    this.logger.log(
+      `[PURGA-VOUCHERS] Vouchers ≥ 90 días — borrados: ${borrados} | fallidos: ${fallidos}`,
     );
   }
 

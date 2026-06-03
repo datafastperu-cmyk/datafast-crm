@@ -160,6 +160,26 @@ export class PagosController {
     return { received: true };
   }
 
+  // ── GET /pagos/cliente-deuda/:clienteId — Verificar deuda ─
+  @Get('cliente-deuda/:clienteId')
+  @RequirePermission('pagos:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({
+    summary: 'Verificar si un cliente tiene deudas pendientes',
+    description:
+      'Devuelve { tieneDeuda, count, totalPendiente }. ' +
+      'Usado por el frontend para habilitar/bloquear el formulario de pago.',
+  })
+  @ApiParam({ name: 'clienteId' })
+  async verificarDeudaCliente(
+    @Param('clienteId', ParseUUIDPipe) clienteId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return StdResponse.ok(
+      await this.svc.verificarDeudaCliente(clienteId, user.empresaId),
+    );
+  }
+
   // ── GET /pagos/factura/:id — Pagos de una factura ────────
   @Get('factura/:facturaId')
   @RequirePermission('pagos:view')

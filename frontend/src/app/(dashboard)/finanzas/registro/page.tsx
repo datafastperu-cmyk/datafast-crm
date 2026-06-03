@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientesApi }                           from '@/lib/api/clientes';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
@@ -10,6 +10,7 @@ import type { Cliente, Factura }                 from '@/types';
 import {
   CreditCard, ShoppingCart, CalendarDays,
   X, Printer, CheckCircle, Loader2,
+  UploadCloud, AlertCircle, FileText,
 } from 'lucide-react';
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
@@ -154,7 +155,7 @@ function TabRegistrar() {
     enabled:  debouncedQ.length >= 2 && searchMode === 'cliente',
   });
 
-  const { data: facturas = [] } = useQuery({
+  const { data: facturas = [], isLoading: loadingFacturas } = useQuery({
     queryKey: ['facturas-cliente-pago', cliente?.id],
     queryFn:  () => facturacionApi.getByCliente(cliente!.id),
     enabled:  !!cliente,
@@ -260,27 +261,41 @@ function TabRegistrar() {
             </button>
           </div>
 
-          {showAlert && pendientes.length > 0 && (
-            <div className="mx-6 mt-4 flex items-center justify-between px-4 py-2.5
+          {loadingFacturas ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : pendientes.length === 0 ? (
+            <div className="mx-6 mt-6 flex items-center gap-3 px-4 py-3
                             bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800
                             rounded text-sm text-red-700 dark:text-red-400">
-              <span>
-                El cliente cuenta con <strong>{pendientes.length}</strong>{' '}
-                factura{pendientes.length !== 1 ? 's' : ''} por cobrar
-                {' '}(Total <strong>S/. {fmt(totalPendiente)}</strong>).
-              </span>
-              <button onClick={() => setShowAlert(false)} className="ml-4 hover:opacity-70">
-                <X className="w-4 h-4" />
-              </button>
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>El cliente <strong>{cliente.nombreCompleto}</strong> no tiene deudas pendientes.</span>
             </div>
+          ) : (
+            <>
+              {showAlert && (
+                <div className="mx-6 mt-4 flex items-center justify-between px-4 py-2.5
+                                bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800
+                                rounded text-sm text-red-700 dark:text-red-400">
+                  <span>
+                    El cliente cuenta con <strong>{pendientes.length}</strong>{' '}
+                    factura{pendientes.length !== 1 ? 's' : ''} por cobrar
+                    {' '}(Total <strong>S/. {fmt(totalPendiente)}</strong>).
+                  </span>
+                  <button onClick={() => setShowAlert(false)} className="ml-4 hover:opacity-70">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              <FormPago
+                cliente={cliente}
+                facturas={facturas}
+                pendientes={pendientes}
+                onSuccess={handleClear}
+              />
+            </>
           )}
-
-          <FormPago
-            cliente={cliente}
-            facturas={facturas}
-            pendientes={pendientes}
-            onSuccess={handleClear}
-          />
         </div>
       )}
     </div>
@@ -301,14 +316,18 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   const qc          = useQueryClient();
   const { toast }   = useToast();
 
-  const [facturaId,  setFacturaId]  = useState<string>(pendientes[0]?.id ?? '');
-  const [metodoPago, setMetodoPago] = useState('efectivo');
-  const [numOp,      setNumOp]      = useState('');
-  const [notas,      setNotas]      = useState('');
-  const [tipoPago,   setTipoPago]   = useState('activar');
-  const [diaPago,    setDiaPago]    = useState('28');
-  const [impresion,  setImpresion]  = useState<'normal' | 'pos' | 'factura' | 'ninguna'>('normal');
-  const [monto,      setMonto]      = useState('');
+  const today = new Date().toISOString().split('T')[0];
+
+  const [facturaId,   setFacturaId]   = useState<string>(pendientes[0]?.id ?? '');
+  const [metodoPago,  setMetodoPago]  = useState('efectivo');
+  const [numOp,       setNumOp]       = useState('');
+  const [notas,       setNotas]       = useState('');
+  const [tipoPago,    setTipoPago]    = useState('activar');
+  const [diaPago,     setDiaPago]     = useState('28');
+  const [impresion,   setImpresion]   = useState<'normal' | 'pos' | 'factura' | 'ninguna'>('normal');
+  const [monto,       setMonto]       = useState('');
+  const [fechaPago,   setFechaPago]   = useState(today);
+  const [voucherFile, setVoucherFile] = useState<File | null>(null);
 
   // Auto-fill monto from selected factura
   useEffect(() => {
@@ -325,16 +344,27 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   const selectedFactura = facturas.find(f => f.id === facturaId);
 
   const { mutate, isPending } = useMutation({
-    mutationFn: () => pagosApi.registrar({
-      clienteId:       cliente.id,
-      facturaId:       facturaId   || undefined,
-      contratoId:      selectedFactura?.contratoId,
-      monto:           parseFloat(monto) || 0,
-      metodoPago,
-      numeroOperacion: numOp  || undefined,
-      notas:           notas  || undefined,
-      autoVerificar:   tipoPago === 'activar',
-    }),
+    mutationFn: async () => {
+      const pago = await pagosApi.registrar({
+        clienteId:       cliente.id,
+        facturaId:       facturaId   || undefined,
+        contratoId:      selectedFactura?.contratoId,
+        monto:           parseFloat(monto) || 0,
+        metodoPago,
+        numeroOperacion: numOp  || undefined,
+        notas:           notas  || undefined,
+        autoVerificar:   tipoPago === 'activar',
+        fechaPago,
+      });
+      if (voucherFile) {
+        try {
+          await pagosApi.uploadComprobante(pago.id, voucherFile);
+        } catch {
+          // upload falla silenciosamente — el pago ya fue registrado
+        }
+      }
+      return pago;
+    },
     onSuccess: () => {
       toast('Pago registrado correctamente', { type: 'success' });
       qc.invalidateQueries({ queryKey: ['facturas-cliente-pago', cliente.id] });
@@ -431,7 +461,7 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           </div>
         </div>
 
-        {/* Día pago */}
+        {/* Día pago + Fecha pago */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
@@ -446,6 +476,18 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                 <option key={d.value} value={d.value}>{d.label}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+              Fecha de pago
+            </label>
+            <input
+              type="date"
+              value={fechaPago}
+              max={today}
+              onChange={e => setFechaPago(e.target.value)}
+              className={inputCls}
+            />
           </div>
         </div>
 
@@ -488,6 +530,14 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
                        focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
           />
+        </div>
+
+        {/* Voucher */}
+        <div>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-medium">
+            Comprobante / Voucher
+          </label>
+          <VoucherDropzone file={voucherFile} onChange={setVoucherFile} />
         </div>
 
         {/* Imprimir */}
@@ -539,6 +589,119 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/*  Voucher Dropzone                                                   */
+/* ══════════════════════════════════════════════════════════════════ */
+const VOUCHER_ACCEPT = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const VOUCHER_MAX_MB = 5;
+
+interface VoucherDropzoneProps {
+  file:     File | null;
+  onChange: (f: File | null) => void;
+}
+
+function VoucherDropzone({ file, onChange }: VoucherDropzoneProps) {
+  const inputRef                    = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging]     = useState(false);
+  const [error,    setError]        = useState<string>('');
+
+  const validate = useCallback((f: File): string | null => {
+    if (!VOUCHER_ACCEPT.includes(f.type))
+      return 'Solo JPG, PNG o PDF';
+    if (f.size > VOUCHER_MAX_MB * 1024 * 1024)
+      return `El archivo supera ${VOUCHER_MAX_MB} MB`;
+    return null;
+  }, []);
+
+  const handleFile = useCallback((f: File) => {
+    const err = validate(f);
+    if (err) { setError(err); return; }
+    setError('');
+    onChange(f);
+  }, [validate, onChange]);
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  };
+
+  const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) handleFile(f);
+    e.target.value = '';
+  };
+
+  if (file) {
+    const isPdf = file.type === 'application/pdf';
+    return (
+      <div className="flex items-center gap-2.5 p-3 border border-gray-200 dark:border-gray-700
+                      rounded-lg bg-gray-50 dark:bg-gray-800/50">
+        <div className="w-8 h-8 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center
+                        justify-center flex-shrink-0">
+          {isPdf
+            ? <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            : <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{file.name}</p>
+          <p className="text-[11px] text-gray-400">{(file.size / 1024).toFixed(0)} KB</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50
+                     dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        className={cn(
+          'border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition-colors select-none',
+          dragging
+            ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
+            : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500',
+        )}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={VOUCHER_ACCEPT.join(',')}
+          className="hidden"
+          onChange={onInputChange}
+        />
+        <UploadCloud className={cn(
+          'w-7 h-7 mx-auto mb-2 transition-colors',
+          dragging ? 'text-blue-500' : 'text-gray-400',
+        )} />
+        <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+          Subir foto del voucher
+        </p>
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+          JPG, PNG o PDF · máx. {VOUCHER_MAX_MB}MB
+        </p>
+      </div>
+      {error && (
+        <p className="mt-1 text-[11px] text-red-500 flex items-center gap-1">
+          <AlertCircle className="w-3 h-3 flex-shrink-0" />
+          {error}
+        </p>
+      )}
     </div>
   );
 }

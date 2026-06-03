@@ -112,10 +112,12 @@ export class PagosService {
         moneda:          'PEN',
         metodoPago:      metodoPagoEntity,
         numeroOperacion: dto.numeroOperacion,
+        fechaPago:       dto.fechaPago ?? new Date().toISOString().split('T')[0],
         estado:          estadoInicial,
         cajeroId:        user.sub,
         verificadoPor:   autoVerificado ? user.sub : null,
         verificadoEn:    autoVerificado ? new Date() : null,
+        comprobanteUrl: dto.voucherUrl ?? null,
         // Metadatos Yape en mpDetail hasta que se añadan columnas dedicadas
         mpDetail: (dto.celularYape || dto.otpYape)
           ? { celularYape: dto.celularYape ?? null, otpYape: dto.otpYape ?? null }
@@ -646,5 +648,33 @@ export class PagosService {
       );
     }
     return this.pagoRepo.createCuenta({ ...dto, empresaId: user.empresaId });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // VERIFICAR DEUDA PENDIENTE DE CLIENTE
+  // Usado por el frontend antes de mostrar el formulario de pago.
+  // Cuenta facturas en estados cobrables para el cliente dado.
+  // ────────────────────────────────────────────────────────────
+  async verificarDeudaCliente(
+    clienteId: string,
+    empresaId: string,
+  ): Promise<{ tieneDeuda: boolean; count: number; totalPendiente: number }> {
+    const [row] = await this.ds.query(`
+      SELECT
+        COUNT(*)::int                                                     AS count,
+        COALESCE(SUM(CASE WHEN saldo > 0 THEN saldo ELSE total END), 0)  AS total
+      FROM facturas
+      WHERE cliente_id  = $1
+        AND empresa_id  = $2
+        AND estado      IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
+        AND deleted_at IS NULL
+    `, [clienteId, empresaId]);
+
+    const count = parseInt(row?.count ?? '0', 10);
+    return {
+      tieneDeuda:      count > 0,
+      count,
+      totalPendiente:  parseFloat(row?.total ?? '0'),
+    };
   }
 }

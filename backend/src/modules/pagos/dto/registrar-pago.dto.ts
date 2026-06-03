@@ -1,4 +1,5 @@
 import {
+  IsDateString,
   IsEnum,
   IsNotEmpty,
   IsNumber,
@@ -47,4 +48,13 @@ export class RegistrarPagoDto {
   @IsString()
   @Matches(/^\d{6}$/, { message: 'otpYape debe tener exactamente 6 dígitos numéricos' })
   otpYape?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaPago?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 500)
+  voucherUrl?: string;
 }

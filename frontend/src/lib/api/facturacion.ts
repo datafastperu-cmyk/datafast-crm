@@ -234,6 +234,17 @@ export const pagosApi = {
     const res = await api.get<ApiRespuesta<CuentaBancaria[]>>('/pagos/cuentas');
     return res.data.data ?? [];
   },
+
+  uploadComprobante: async (pagoId: string, file: File): Promise<string> => {
+    const fd = new FormData();
+    fd.append('comprobante', file);
+    const res = await api.post<ApiRespuesta<{ comprobanteUrl: string }>>(
+      `/pagos/${pagoId}/comprobante`,
+      fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return res.data.data.comprobanteUrl;
+  },
 };
 
 // ─── Utilidades ───────────────────────────────────────────────
