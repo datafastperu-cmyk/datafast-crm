@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect }     from 'react';
+import { usePathname }   from 'next/navigation';
 import * as RSwitch      from '@radix-ui/react-switch';
 import {
   Settings2, X, RefreshCw,
@@ -13,6 +14,7 @@ import {
   type PaletteId,
   type MenuStyle,
 } from '@/store/theme-customizer.store';
+import { useAuthStore }  from '@/store/auth.store';
 
 // ── Menu style radio options ───────────────────────────────────────────────
 const MENU_OPTIONS = [
@@ -20,6 +22,8 @@ const MENU_OPTIONS = [
   { value: 'gradient', label: 'Degradado', Icon: Sparkles   },
   { value: 'boxed',    label: 'Enmarcado', Icon: Square     },
 ] as const;
+
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password'];
 
 // ── Main component ─────────────────────────────────────────────────────────
 export function ThemeCustomizer() {
@@ -48,12 +52,18 @@ export function ThemeCustomizer() {
     h.classList.toggle('tc-menu-boxed',        menuStyle === 'boxed');
   }, [darkTopbar, fixedTopbar, menuStyle]);
 
+  const isAuth   = useAuthStore((s) => s.isAuth);
+  const pathname = usePathname() ?? '';
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
+
   const handleReset = () => {
     setPalette('olive-navy');
     setFixedTopbar(true);
     setDarkTopbar(false);
     setMenuStyle('default');
   };
+
+  if (!isAuth || isPublic) return null;
 
   return (
     /*
