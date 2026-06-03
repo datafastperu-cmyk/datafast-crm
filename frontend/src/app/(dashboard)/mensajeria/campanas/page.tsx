@@ -9,7 +9,7 @@ import {
   XCircle, Clock, Loader2, Ban,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+import { useToast } from '@/components/ui/toaster';
 
 import { mensajeriaApi }      from '@/lib/api/mensajeria';
 import { plantillasApi }      from '@/lib/api/plantillas';
@@ -119,7 +119,8 @@ function MonitorPanel({ onPausar, pausando }: { onPausar: () => void; pausando: 
 
 // ── Página principal ──────────────────────────────────────────
 export default function CampanasPage() {
-  const qc = useQueryClient();
+  const qc              = useQueryClient();
+  const { toast }       = useToast();
 
   const [sectorId,   setSectorId]   = useState('');
   const [routerId,   setRouterId]   = useState('');
@@ -154,28 +155,26 @@ export default function CampanasPage() {
   const iniciarMut = useMutation({
     mutationFn: mensajeriaApi.iniciarCampana,
     onSuccess: (res) => {
-      toast.success(`${res.encolados} mensajes encolados`, {
-        description: `Cuota restante hoy: ${res.cuotaRestante}`,
-      });
+      toast(`${res.encolados} mensajes encolados — cuota restante: ${res.cuotaRestante}`, { type: 'success' });
       qc.invalidateQueries({ queryKey: ['mensajeria'] });
     },
     onError: (err: Error) => {
       const msg = (err as { response?: { data?: { message?: string } } })
         .response?.data?.message ?? err.message;
-      toast.error('Error al iniciar campaña', { description: msg });
+      toast(msg || 'Error al iniciar campaña', { type: 'error' });
     },
   });
 
   const pausarMut = useMutation({
     mutationFn: mensajeriaApi.vaciarCola,
     onSuccess: (res) => {
-      toast.success(`Campaña pausada — ${res.eliminados} jobs eliminados`);
+      toast(`Campaña pausada — ${res.eliminados} jobs eliminados`, { type: 'success' });
       qc.invalidateQueries({ queryKey: ['mensajeria'] });
     },
   });
 
   const handleEnviar = () => {
-    if (!templateId) { toast.warning('Selecciona una plantilla'); return; }
+    if (!templateId) { toast('Selecciona una plantilla', { type: 'warning' }); return; }
     iniciarMut.mutate({
       tipo:       'CAMPANA_MASIVA',
       templateId: templateId || undefined,
