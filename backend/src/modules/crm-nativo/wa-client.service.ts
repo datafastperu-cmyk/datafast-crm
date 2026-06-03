@@ -231,6 +231,41 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     return { messageId: msgId, filename };
   }
 
+  // ── Carga historial bajo demanda (primer acceso al chat) ─────────
+  // Descarga hasta 100 msgs de los últimos 3 meses desde WA y los
+  // persiste + emite vía WebSocket.  Solo se llama cuando el chat
+  // estaba vacío en el ERP.  Devuelve el nº de mensajes insertados.
+  async cargarHistorialEnDB(
+    waChatId:  string,
+    chatDbId:  string,
+    empresaId: string,
+  ): Promise<number> {
+    if (!this.client || this.state.estado !== 'CONECTADO') return 0;
+    try {
+      const chatWa     = await this.client.getChatById(waChatId);
+      const raw: any[] = await chatWa.fetchMessages({ limit: 100 });
+      const limite3m   = Date.now() - 90 * 24 * 60 * 60 * 1000;
+      const filtrados  = raw.filter((m: any) => (m.timestamp as number) * 1000 >= limite3m);
+
+      for (const m of filtrados) {
+        const saved = await this.crmSvc.guardarMensaje(empresaId, chatDbId, {
+          waMsgId:   m.id?._serialized ?? null,
+          direction: m.fromMe ? 'OUTBOUND' : 'INBOUND',
+          agente:    null,
+          body:      m.body || `[${(m.type as string) ?? 'media'}]`,
+          mediaUrl:  null,
+        }).catch(() => null);
+        if (saved) this.gateway.emitMensaje({ chatId: chatDbId, mensaje: saved });
+      }
+
+      this.logger.log(`[CRM] historial cargado — ${filtrados.length} msgs para ${waChatId}`);
+      return filtrados.length;
+    } catch (err: any) {
+      this.logger.warn(`[CRM] cargarHistorial(${waChatId}) error: ${err?.message}`);
+      return 0;
+    }
+  }
+
   // ── Inicializar cliente WA ──────────────────────────────────────
   private async iniciarCliente(): Promise<void> {
     // Kill any Chrome processes still holding the session directory (e.g. from a Node crash)

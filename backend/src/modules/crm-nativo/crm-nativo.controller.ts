@@ -109,9 +109,27 @@ export class CrmNativoController {
 
   // ── GET /api/v1/crm-nativo/mensajes/:chatId ──────────────────
   @Get('mensajes/:chatId')
-  @ApiOperation({ summary: 'Mensajes de un chat (últimos 50)' })
-  async getMensajes(@Param('chatId') chatId: string) {
+  @ApiOperation({ summary: 'Mensajes de un chat; carga historial WA si el chat está vacío' })
+  async getMensajes(
+    @Param('chatId') chatId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
     const mensajes = await this.crmSvc.listarMensajes(chatId);
+
+    if (mensajes.length === 0) {
+      const chat = await this.crmSvc.findChat(chatId);
+      if (chat?.waChatId) {
+        const cargados = await this.waClient.cargarHistorialEnDB(
+          chat.waChatId,
+          chatId,
+          user.empresaId,
+        );
+        if (cargados > 0) {
+          return ApiResponse.ok(await this.crmSvc.listarMensajes(chatId));
+        }
+      }
+    }
+
     return ApiResponse.ok(mensajes);
   }
 
