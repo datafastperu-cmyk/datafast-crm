@@ -12,7 +12,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { encrypt } from '../../common/utils/encryption.util';
 
-export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP';
+export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP' | 'DATAFAST_NATIVE';
 
 export interface CronHorarios {
   facturacion:   string;
@@ -401,30 +401,33 @@ export class SistemaService {
   // ─── Gateway multi-proveedor — leer ─────────────────────────
 
   async getGatewayConfig(empresaId: string): Promise<{
-    proveedorActivo:  ProveedorActivo;
-    apiKeyStored:     boolean;
-    apiSecretStored:  boolean;
-    clientId:         string | null;
-    pausa:            number;
-    limiteCaracteres: number;
-    codigoPais:       string;
-    activo:           boolean;
+    proveedorActivo:   ProveedorActivo;
+    apiKeyStored:      boolean;
+    apiSecretStored:   boolean;
+    clientId:          string | null;
+    pausa:             number;
+    limiteCaracteres:  number;
+    codigoPais:        string;
+    activo:            boolean;
+    limiteDiarioMasivo: number;
   }> {
     const [row] = await this.ds.query(
       `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
-              gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo
+              gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
+              gateway_masivo_limite_diario
        FROM empresas WHERE id = $1`,
       [empresaId],
     );
     return {
-      proveedorActivo:  (row?.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
-      apiKeyStored:     !!row?.gateway_api_key,
-      apiSecretStored:  !!row?.gateway_api_secret,
-      clientId:         row?.gateway_client_id         ?? null,
-      pausa:            row?.gateway_pausa              ?? 2,
-      limiteCaracteres: row?.gateway_limite_caracteres  ?? 1000,
-      codigoPais:       row?.gateway_codigo_pais        ?? '+51',
-      activo:           row?.gateway_activo             ?? true,
+      proveedorActivo:   (row?.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
+      apiKeyStored:      !!row?.gateway_api_key,
+      apiSecretStored:   !!row?.gateway_api_secret,
+      clientId:          row?.gateway_client_id          ?? null,
+      pausa:             row?.gateway_pausa               ?? 2,
+      limiteCaracteres:  row?.gateway_limite_caracteres   ?? 1000,
+      codigoPais:        row?.gateway_codigo_pais         ?? '+51',
+      activo:            row?.gateway_activo              ?? true,
+      limiteDiarioMasivo: row?.gateway_masivo_limite_diario ?? 500,
     };
   }
 
@@ -432,18 +435,20 @@ export class SistemaService {
   async updateGatewayConfig(
     empresaId: string,
     dto: {
-      proveedorActivo?:  string;
-      apiKey?:           string;
-      apiSecret?:        string;
-      clientId?:         string;
-      pausa?:            number;
-      limiteCaracteres?: number;
-      codigoPais?:       string;
-      activo?:           boolean;
+      proveedorActivo?:    string;
+      apiKey?:             string;
+      apiSecret?:          string;
+      clientId?:           string;
+      pausa?:              number;
+      limiteCaracteres?:   number;
+      codigoPais?:         string;
+      activo?:             boolean;
+      limiteDiarioMasivo?: number;
     },
   ): Promise<{
     proveedorActivo: ProveedorActivo; apiKeyStored: boolean; apiSecretStored: boolean;
     clientId: string | null; pausa: number; limiteCaracteres: number; codigoPais: string; activo: boolean;
+    limiteDiarioMasivo: number;
   }> {
     const SENTINEL    = '***stored***';
     const setClauses: string[] = [];
@@ -487,6 +492,11 @@ export class SistemaService {
     if (dto.activo !== undefined) {
       params.push(dto.activo);
       setClauses.push(`gateway_activo = $${params.length}`);
+    }
+
+    if (dto.limiteDiarioMasivo !== undefined) {
+      params.push(Math.max(1, Math.min(10000, dto.limiteDiarioMasivo)));
+      setClauses.push(`gateway_masivo_limite_diario = $${params.length}`);
     }
 
     if (setClauses.length > 0) {

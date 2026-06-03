@@ -32,17 +32,18 @@ export interface ServerInfo {
   processes: Proceso[];
 }
 
-export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP';
+export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP' | 'DATAFAST_NATIVE';
 
 export interface GatewayConfig {
-  proveedorActivo:  ProveedorActivo;
-  apiKey:           string | null;
-  apiSecret:        string | null;
-  clientId:         string | null;
-  pausa:            number;
-  limiteCaracteres: number;
-  codigoPais:       string;
-  activo:           boolean;
+  proveedorActivo:    ProveedorActivo;
+  apiKey:             string | null;
+  apiSecret:          string | null;
+  clientId:           string | null;
+  pausa:              number;
+  limiteCaracteres:   number;
+  codigoPais:         string;
+  activo:             boolean;
+  limiteDiarioMasivo: number;
 }
 
 export interface WhatsAppConfig {
@@ -85,14 +86,15 @@ export const sistemaApi = {
     api.get<{ data: GatewayConfig }>('/admin/sistema/gateway-config').then(r => r.data.data),
 
   updateGatewayConfig: (dto: {
-    proveedorActivo?:  ProveedorActivo;
-    apiKey?:           string;
-    apiSecret?:        string;
-    clientId?:         string;
-    pausa?:            number;
-    limiteCaracteres?: number;
-    codigoPais?:       string;
-    activo?:           boolean;
+    proveedorActivo?:    ProveedorActivo;
+    apiKey?:             string;
+    apiSecret?:          string;
+    clientId?:           string;
+    pausa?:              number;
+    limiteCaracteres?:   number;
+    codigoPais?:         string;
+    activo?:             boolean;
+    limiteDiarioMasivo?: number;
   }) =>
     api.patch<{ data: GatewayConfig }>('/admin/sistema/gateway-config', dto).then(r => r.data.data),
 };

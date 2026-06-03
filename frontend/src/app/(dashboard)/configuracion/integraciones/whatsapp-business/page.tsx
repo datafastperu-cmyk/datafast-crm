@@ -1,15 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
-  MessageSquare, Save, Loader2,
-  Eye, EyeOff, Zap, ChevronLeft,
+  MessageSquare, Save, Loader2, Eye, EyeOff, Zap, ChevronLeft,
+  Wifi, WifiOff, AlertTriangle, CheckCircle2, XCircle, Clock,
+  Send, Users, ChevronDown, Ban, Megaphone,
 } from 'lucide-react';
 import { sistemaApi, type ProveedorActivo } from '@/lib/api/sistema';
-import { useToast }  from '@/components/ui/toaster';
+import { mensajeriaApi }  from '@/lib/api/mensajeria';
+import { plantillasApi }  from '@/lib/api/plantillas';
+import { zonasApi }       from '@/lib/api/zonas';
+import { mikrotikApi }    from '@/lib/api/mikrotik';
+import { useToast }       from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
 // ─── Constantes ─────────────────────────────────────────────────
@@ -34,87 +39,327 @@ const CODIGOS_PAIS = [
   { label: 'Paraguay (+595)', value: '+595' },
 ];
 
-// ─── Metadatos por proveedor ─────────────────────────────────────
 type ProviderMeta = {
-  display:     string;
-  color:       string;
-  f1Label:     string; f1Ph: string; f1Hint: string;
-  f2Label:     string; f2Ph: string; f2Hint: string;
-  f3Label:     string; f3Ph: string; f3Hint: string;
+  display: string; color: string;
+  f1Label: string; f1Ph: string; f1Hint: string;
+  f2Label: string; f2Ph: string; f2Hint: string;
+  f3Label: string; f3Ph: string; f3Hint: string;
   hideSecret?: boolean;
+  noCredentials?: boolean;
 };
 
 const PROVIDER_META: Record<ProveedorActivo, ProviderMeta> = {
   META_GRAPH: {
-    display: 'Meta Graph API',
-    color:   'emerald',
-    f1Label: 'Phone ID',            f1Ph: '123456789012345',   f1Hint: 'ID del número en Meta Business',
-    f2Label: 'Business Account ID', f2Ph: '987654321098765',   f2Hint: 'ID de la cuenta WhatsApp Business (opcional)',
-    f3Label: 'Access Token',        f3Ph: 'EAABwzLixnjY...',  f3Hint: 'Token permanente — se cifra con AES-256 antes de guardarse',
+    display: 'Meta Graph API', color: 'emerald',
+    f1Label: 'Phone ID',             f1Ph: '123456789012345',   f1Hint: 'ID del número en Meta Business',
+    f2Label: 'Business Account ID',  f2Ph: '987654321098765',   f2Hint: 'ID de la cuenta (opcional)',
+    f3Label: 'Access Token',         f3Ph: 'EAABwzLixnjY...',   f3Hint: 'Token permanente — cifrado AES-256',
   },
   AUTOMATIZADO_VIP: {
-    display:    'AUTOMATIZADO.VIP',
-    color:      'violet',
-    hideSecret: true,
-    f1Label:    'API Key / Token (AutomatizadoVIP)',  f1Ph: 'ak_live_...', f1Hint: 'Token de autenticación — cifrado con AES-256 (centinela ***stored***)',
-    f2Label:    '',                                   f2Ph: '',             f2Hint: '',
-    f3Label:    'Instance ID / Canal (Client ID)',    f3Ph: 'inst_abc123',  f3Hint: 'ID de instancia o canal asignado en automatizado.vip — guardado en gateway_client_id',
+    display: 'AUTOMATIZADO.VIP', color: 'violet', hideSecret: true,
+    f1Label: 'API Key / Token',       f1Ph: 'ak_live_...',   f1Hint: 'Token de autenticación',
+    f2Label: '', f2Ph: '', f2Hint: '',
+    f3Label: 'Instance ID',          f3Ph: 'inst_abc123',   f3Hint: 'ID de instancia en automatizado.vip',
   },
   TWILIO: {
-    display: 'Twilio',
-    color:   'red',
-    f1Label: 'Account SID (API Key)',   f1Ph: 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', f1Hint: 'Account SID de tu consola Twilio — cifrado AES-256',
-    f2Label: 'Auth Token (API Secret)', f2Ph: SENTINEL,                            f2Hint: 'Auth Token de Twilio — cifrado AES-256',
-    f3Label: 'From Number (Client ID)', f3Ph: '+14155238886',                      f3Hint: 'Número de origen habilitado en Twilio',
+    display: 'Twilio', color: 'red',
+    f1Label: 'Account SID',          f1Ph: 'ACxxxxxxxxx',   f1Hint: 'Account SID — cifrado AES-256',
+    f2Label: 'Auth Token',           f2Ph: SENTINEL,         f2Hint: 'Auth Token — cifrado AES-256',
+    f3Label: 'From Number',          f3Ph: '+14155238886',   f3Hint: 'Número de origen',
   },
   VONAGE: {
-    display: 'Vonage (Nexmo)',
-    color:   'violet',
-    f1Label: 'API Key',                 f1Ph: 'a1b2c3d4',  f1Hint: 'API Key de tu cuenta Vonage — cifrado AES-256',
-    f2Label: 'API Secret',              f2Ph: SENTINEL,     f2Hint: 'API Secret de Vonage — cifrado AES-256',
-    f3Label: 'Sender Name (Client ID)', f3Ph: 'DataFast',   f3Hint: 'Nombre alfanumérico o número de remitente',
+    display: 'Vonage (Nexmo)', color: 'violet',
+    f1Label: 'API Key',              f1Ph: 'a1b2c3d4',      f1Hint: 'API Key — cifrado AES-256',
+    f2Label: 'API Secret',           f2Ph: SENTINEL,         f2Hint: 'API Secret — cifrado AES-256',
+    f3Label: 'Sender Name',          f3Ph: 'DataFast',       f3Hint: 'Nombre alfanumérico remitente',
   },
   CUSTOM_API: {
-    display: 'API Personalizada',
-    color:   'amber',
-    f1Label: 'X-API-Key Header',         f1Ph: 'sk_live_...',                    f1Hint: 'Llave principal enviada como X-API-Key — cifrado AES-256',
-    f2Label: 'X-API-Secret Header',      f2Ph: SENTINEL,                         f2Hint: 'Secreto enviado como X-API-Secret — cifrado AES-256',
-    f3Label: 'Endpoint URL (Client ID)', f3Ph: 'https://api.proveedor.com/send', f3Hint: 'URL del endpoint POST que recibe el payload de mensajería',
+    display: 'API Personalizada', color: 'amber',
+    f1Label: 'X-API-Key',            f1Ph: 'sk_live_...',                    f1Hint: 'Llave principal — cifrado AES-256',
+    f2Label: 'X-API-Secret',         f2Ph: SENTINEL,                          f2Hint: 'Secreto — cifrado AES-256',
+    f3Label: 'Endpoint URL',         f3Ph: 'https://api.proveedor.com/send',  f3Hint: 'URL del endpoint POST',
+  },
+  DATAFAST_NATIVE: {
+    display: 'DATAFAST Native (CRM)', color: 'green', noCredentials: true,
+    f1Label: '', f1Ph: '', f1Hint: '',
+    f2Label: '', f2Ph: '', f2Hint: '',
+    f3Label: '', f3Ph: '', f3Hint: '',
   },
 };
 
-interface FormValues {
-  proveedor:        ProveedorActivo;
-  phoneId:          string;
-  businessId:       string;
-  token:            string;
-  apiKey:           string;
-  apiSecret:        string;
-  clientId:         string;
-  pausa:            number;
-  limiteCaracteres: number;
-  codigoPais:       string;
-  activo:           boolean;
-}
-
-// ─── Color maps ─────────────────────────────────────────────────
 const COLOR_BADGE: Record<string, string> = {
   emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
   red:     'bg-red-500/10 text-red-400 border-red-500/20',
   violet:  'bg-violet-500/10 text-violet-400 border-violet-500/20',
   amber:   'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  green:   'bg-green-500/10 text-green-400 border-green-500/20',
 };
 const COLOR_ICON: Record<string, string> = {
   emerald: 'text-emerald-500', red: 'text-red-400',
-  violet:  'text-violet-400',  amber: 'text-amber-500',
+  violet:  'text-violet-400',  amber: 'text-amber-500', green: 'text-green-400',
 };
 const COLOR_PULSE: Record<string, string> = {
   emerald: 'bg-emerald-500', red: 'bg-red-400',
-  violet:  'bg-violet-400',  amber: 'bg-amber-500',
+  violet:  'bg-violet-400',  amber: 'bg-amber-500', green: 'bg-green-400',
 };
 
-// ─── Formulario ─────────────────────────────────────────────────
-function GatewayConfigForm() {
+interface FormValues {
+  proveedor: ProveedorActivo;
+  phoneId: string; businessId: string; token: string;
+  apiKey: string; apiSecret: string; clientId: string;
+  pausa: number; limiteCaracteres: number; codigoPais: string;
+  activo: boolean; limiteDiarioMasivo: number;
+}
+
+// ─── Sub-componentes del Lanzador ────────────────────────────────
+function CuotaMeter() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['mensajeria', 'cuota'],
+    queryFn:  mensajeriaApi.cuota,
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading || !data) {
+    return (
+      <div className="rounded-lg border border-border bg-muted/30 p-3 flex items-center justify-center h-[72px]">
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const pct   = data.limiteDiario > 0 ? Math.min((data.usado / data.limiteDiario) * 100, 100) : 0;
+  const color = pct >= 100 ? 'bg-destructive' : pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
+  const text  = pct >= 100 ? 'text-destructive' : pct >= 80 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400';
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Cuota Hoy</span>
+        <span className={cn('text-xs font-bold', text)}>{data.usado} / {data.limiteDiario}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div className={cn('h-full rounded-full transition-all duration-500', color)} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className="text-[10px] text-muted-foreground">{pct.toFixed(1)}% usado</span>
+        <span className="text-[10px] text-muted-foreground">{data.restante} restantes</span>
+      </div>
+    </div>
+  );
+}
+
+function MonitorStats({ onPausar, pausando }: { onPausar: () => void; pausando: boolean }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['mensajeria', 'monitor'],
+    queryFn:  mensajeriaApi.monitor,
+    refetchInterval: 10_000,
+  });
+
+  const stats = [
+    { label: 'Encolados',  value: data?.encolados  ?? 0, cls: 'text-muted-foreground', icon: Clock },
+    { label: 'Enviados',   value: data?.enviados    ?? 0, cls: 'text-emerald-600 dark:text-emerald-400', icon: CheckCircle2 },
+    { label: 'Fallidos',   value: data?.fallidos    ?? 0, cls: 'text-destructive', icon: XCircle },
+  ];
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+          Monitor — Hoy
+        </span>
+        {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+      </div>
+      <div className="flex gap-3 mb-2">
+        {stats.map(({ label, value, cls, icon: Icon }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <Icon className={cn('w-3.5 h-3.5', cls)} />
+            <span className="text-xs font-semibold text-foreground">{value}</span>
+            <span className="text-[10px] text-muted-foreground">{label}</span>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={onPausar}
+        disabled={pausando}
+        className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-destructive/50 text-destructive text-xs font-semibold hover:bg-destructive hover:text-destructive-foreground transition-colors disabled:opacity-50"
+      >
+        {pausando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Ban className="w-3 h-3" />}
+        Pausar campaña activa
+      </button>
+    </div>
+  );
+}
+
+function extractVariables(contenido: string): string[] {
+  return [...new Set([...contenido.matchAll(/\{(\w+)\}/g)].map(m => m[1]))];
+}
+
+// ─── Lanzador de Campañas Nativo ─────────────────────────────────
+function DatafastNativeLauncher() {
+  const qc          = useQueryClient();
+  const { toast }   = useToast();
+  const [sectorId,   setSectorId]   = useState('');
+  const [routerId,   setRouterId]   = useState('');
+  const [templateId, setTemplateId] = useState('');
+  const [variables,  setVariables]  = useState<Record<string, string>>({});
+
+  const { data: zonas     = [] } = useQuery({ queryKey: ['zonas'],              queryFn: zonasApi.list });
+  const { data: routers   = [] } = useQuery({ queryKey: ['routers'],            queryFn: mikrotikApi.listar });
+  const { data: plantillas = [] } = useQuery({
+    queryKey: ['plantillas', 'whatsapp'],
+    queryFn:  () => plantillasApi.listar('whatsapp'),
+  });
+
+  const plantillaActiva = useMemo(
+    () => plantillas.find(p => p.id === templateId || p.codigo === templateId),
+    [plantillas, templateId],
+  );
+  const varNames = useMemo(
+    () => plantillaActiva ? extractVariables(plantillaActiva.contenido) : [],
+    [plantillaActiva],
+  );
+
+  const iniciarMut = useMutation({
+    mutationFn: mensajeriaApi.iniciarCampana,
+    onSuccess: (res) => {
+      toast(`${res.encolados} mensajes encolados — cuota restante: ${res.cuotaRestante}`, { type: 'success' });
+      qc.invalidateQueries({ queryKey: ['mensajeria'] });
+    },
+    onError: (err: Error) => {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message ?? err.message;
+      toast(msg || 'Error al iniciar campaña', { type: 'error' });
+    },
+  });
+
+  const pausarMut = useMutation({
+    mutationFn: mensajeriaApi.vaciarCola,
+    onSuccess: (res) => {
+      toast(`Campaña pausada — ${res.eliminados} jobs eliminados`, { type: 'success' });
+      qc.invalidateQueries({ queryKey: ['mensajeria'] });
+    },
+  });
+
+  const SELECT_CLS = cn(INPUT, 'cursor-pointer appearance-none');
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-[#1a3a8f]/80">
+        <Megaphone className="w-4 h-4 text-white" />
+        <span className="text-sm font-bold text-white">Lanzador de Campañas Nativo</span>
+      </div>
+
+      <div className="p-5 space-y-4">
+        {/* Cuota + Monitor en paralelo */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <CuotaMeter />
+          <MonitorStats onPausar={() => pausarMut.mutate()} pausando={pausarMut.isPending} />
+        </div>
+
+        {/* Segmentación */}
+        <div>
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Segmentación de destinatarios
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] text-muted-foreground mb-1 block">
+                <Users className="w-3 h-3 inline mr-1" />Sector / Zona
+              </label>
+              <div className="relative">
+                <select value={sectorId} onChange={e => setSectorId(e.target.value)} className={SELECT_CLS}>
+                  <option value="">Todas las zonas</option>
+                  {zonas.filter(z => z.activo).map(z => (
+                    <option key={z.id} value={z.id}>{z.nombre}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] text-muted-foreground mb-1 block">Router</label>
+              <div className="relative">
+                <select value={routerId} onChange={e => setRouterId(e.target.value)} className={SELECT_CLS}>
+                  <option value="">Todos los routers</option>
+                  {routers.map(r => (
+                    <option key={r.id} value={r.id}>{r.nombre}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Plantilla */}
+        <div>
+          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2 block">
+            Plantilla de mensaje
+          </label>
+          <div className="relative">
+            <select
+              value={templateId}
+              onChange={e => { setTemplateId(e.target.value); setVariables({}); }}
+              className={SELECT_CLS}
+            >
+              <option value="">Seleccionar plantilla...</option>
+              {plantillas.filter(p => p.activo).map(p => (
+                <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          </div>
+          {plantillaActiva && (
+            <div className="mt-2 px-3 py-2 rounded-lg bg-muted/40 border border-border text-xs text-foreground whitespace-pre-wrap max-h-28 overflow-y-auto leading-relaxed">
+              {plantillaActiva.contenido}
+            </div>
+          )}
+        </div>
+
+        {/* Variables */}
+        {varNames.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {varNames.map(v => (
+              <div key={v}>
+                <label className="text-[11px] text-muted-foreground mb-1 block">{'{' + v + '}'}</label>
+                <input
+                  type="text"
+                  placeholder={`Valor para ${v}`}
+                  value={variables[v] ?? ''}
+                  onChange={e => setVariables(prev => ({ ...prev, [v]: e.target.value }))}
+                  className={INPUT}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Botón */}
+        <button
+          onClick={() => {
+            if (!templateId) { toast('Selecciona una plantilla', { type: 'warning' }); return; }
+            iniciarMut.mutate({
+              tipo:       'CAMPANA_MASIVA',
+              templateId: templateId || undefined,
+              sectorId:   sectorId   || undefined,
+              routerId:   routerId   || undefined,
+              variables:  Object.keys(variables).length > 0 ? variables : undefined,
+            });
+          }}
+          disabled={iniciarMut.isPending || !templateId}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1ebe5d] text-white font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {iniciarMut.isPending
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> Encolando mensajes...</>
+            : <><Send className="w-4 h-4" /> Iniciar Campaña Masiva</>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Formulario principal ─────────────────────────────────────────
+function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: ProveedorActivo) => void }) {
   const qc        = useQueryClient();
   const { toast } = useToast();
   const [showF1,   setShowF1]   = useState(false);
@@ -133,6 +378,16 @@ function GatewayConfigForm() {
     staleTime: 60_000,
   });
 
+  // Estado de sesión WA (para DATAFAST_NATIVE)
+  const { data: waEstado } = useQuery({
+    queryKey: ['crm-nativo', 'estado'],
+    queryFn:  () => fetch('/api/v1/crm-nativo/estado', {
+      headers: { Authorization: `Bearer ${document.cookie.match(/access_token=([^;]+)/)?.[1] ?? ''}` },
+    }).then(r => r.json()).then(r => r.data),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+
   const isLoading = gwLoading || waLoading;
 
   const { register, watch, reset, setValue, handleSubmit } = useForm<FormValues>({
@@ -140,35 +395,43 @@ function GatewayConfigForm() {
       proveedor: 'META_GRAPH',
       phoneId: '', businessId: '', token: '',
       apiKey: '', apiSecret: '', clientId: '',
-      pausa: 2, limiteCaracteres: 1000, codigoPais: '+51', activo: true,
+      pausa: 2, limiteCaracteres: 1000, codigoPais: '+51',
+      activo: true, limiteDiarioMasivo: 500,
     },
   });
 
   useEffect(() => {
     if (gwData) {
       reset({
-        proveedor:        gwData.proveedorActivo,
-        apiKey:           gwData.apiKey    ?? '',
-        apiSecret:        gwData.apiSecret ?? '',
-        clientId:         gwData.clientId  ?? '',
-        pausa:            gwData.pausa            ?? 2,
-        limiteCaracteres: gwData.limiteCaracteres  ?? 1000,
-        codigoPais:       gwData.codigoPais        ?? '+51',
-        activo:           gwData.activo            ?? true,
-        phoneId:          waData?.phoneId    ?? '',
-        businessId:       waData?.businessId ?? '',
-        token:            waData?.token      ?? '',
+        proveedor:          gwData.proveedorActivo,
+        apiKey:             gwData.apiKey    ?? '',
+        apiSecret:          gwData.apiSecret ?? '',
+        clientId:           gwData.clientId  ?? '',
+        pausa:              gwData.pausa            ?? 2,
+        limiteCaracteres:   gwData.limiteCaracteres  ?? 1000,
+        codigoPais:         gwData.codigoPais        ?? '+51',
+        activo:             gwData.activo            ?? true,
+        limiteDiarioMasivo: gwData.limiteDiarioMasivo ?? 500,
+        phoneId:            waData?.phoneId    ?? '',
+        businessId:         waData?.businessId ?? '',
+        token:              waData?.token      ?? '',
       });
+      onProveedorChange(gwData.proveedorActivo);
     }
-  }, [gwData, waData, reset]);
+  }, [gwData, waData, reset]); // eslint-disable-line
 
-  const proveedor = watch('proveedor');
-  const activo    = watch('activo');
-  const meta      = PROVIDER_META[proveedor];
-  const isMeta    = proveedor === 'META_GRAPH';
+  const proveedor  = watch('proveedor');
+  const activo     = watch('activo');
+  const meta       = PROVIDER_META[proveedor];
+  const isMeta     = proveedor === 'META_GRAPH';
+  const isNative   = proveedor === 'DATAFAST_NATIVE';
+
+  useEffect(() => { onProveedorChange(proveedor); }, [proveedor]); // eslint-disable-line
 
   const isConfigured = isMeta
     ? waData?.token  === SENTINEL
+    : isNative
+    ? waEstado?.estado === 'CONECTADO'
     : gwData?.apiKey === SENTINEL;
 
   const cardColor = COLOR_BADGE[meta.color] ?? COLOR_BADGE.emerald;
@@ -179,10 +442,11 @@ function GatewayConfigForm() {
     setIsSaving(true);
     try {
       const trafico = {
-        pausa:            Number(values.pausa)            || 2,
-        limiteCaracteres: Number(values.limiteCaracteres) || 1000,
-        codigoPais:       values.codigoPais || '+51',
-        activo:           values.activo,
+        pausa:              Number(values.pausa)              || 2,
+        limiteCaracteres:   Number(values.limiteCaracteres)   || 1000,
+        codigoPais:         values.codigoPais || '+51',
+        activo:             values.activo,
+        limiteDiarioMasivo: Number(values.limiteDiarioMasivo) || 500,
       };
 
       if (values.proveedor === 'META_GRAPH') {
@@ -192,6 +456,8 @@ function GatewayConfigForm() {
           businessId: values.businessId || undefined,
           token:      values.token !== SENTINEL ? values.token : SENTINEL,
         });
+      } else if (values.proveedor === 'DATAFAST_NATIVE') {
+        await sistemaApi.updateGatewayConfig({ proveedorActivo: 'DATAFAST_NATIVE', ...trafico });
       } else {
         await sistemaApi.updateGatewayConfig({
           proveedorActivo: values.proveedor,
@@ -213,22 +479,21 @@ function GatewayConfigForm() {
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
-      {/* ── Cabecera de la tarjeta ── */}
+      {/* Cabecera */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
         <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', iconBgCls)}>
-          {isMeta
+          {isNative
+            ? <MessageSquare className={cn('w-4 h-4', iconCls)} />
+            : isMeta
             ? <MessageSquare className={cn('w-4 h-4', iconCls)} />
             : <Zap           className={cn('w-4 h-4', iconCls)} />}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Título estático corporativo */}
             <h2 className="text-sm font-semibold text-foreground">WhatsApp Business</h2>
-            {/* Badge dinámico — proveedor activo en BD */}
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/20">
-              <Zap className="w-2.5 h-2.5" />
-              {meta.display}
+            <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border', COLOR_BADGE[meta.color] ?? COLOR_BADGE.emerald)}>
+              <Zap className="w-2.5 h-2.5" />{meta.display}
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -239,7 +504,7 @@ function GatewayConfigForm() {
         {isConfigured && (
           <span className={cn('ml-auto flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border', cardColor)}>
             <span className={cn('w-1.5 h-1.5 rounded-full animate-pulse', COLOR_PULSE[meta.color] ?? 'bg-emerald-500')} />
-            Configurado
+            {isNative ? 'Sesión activa' : 'Configurado'}
           </span>
         )}
       </div>
@@ -252,7 +517,7 @@ function GatewayConfigForm() {
         ) : (
           <form onSubmit={onSave} className="space-y-5">
 
-            {/* ── Selector de proveedor ── */}
+            {/* Selector de proveedor */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-foreground">Proveedor de mensajería</label>
               <select {...register('proveedor')} className={cn(INPUT, 'cursor-pointer')}>
@@ -261,28 +526,45 @@ function GatewayConfigForm() {
                 <option value="TWILIO">Twilio</option>
                 <option value="VONAGE">Vonage (Nexmo)</option>
                 <option value="CUSTOM_API">API Personalizada</option>
+                <option value="DATAFAST_NATIVE">DATAFAST Native (sesión CRM WhatsApp Web)</option>
               </select>
               <p className="text-[10px] text-muted-foreground">
                 Las notificaciones automáticas usarán este proveedor para todos los envíos.
               </p>
             </div>
 
-            {/* ── Campos META_GRAPH ── */}
+            {/* DATAFAST_NATIVE: indicador de sesión WA */}
+            {isNative && (
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                <p className="text-xs font-semibold text-foreground">Sesión WhatsApp Web (CRM Nativo)</p>
+                <div className="flex items-center gap-2">
+                  {waEstado?.estado === 'CONECTADO'
+                    ? <><Wifi    className="w-4 h-4 text-emerald-500" /><span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Sesión activa y conectada</span></>
+                    : waEstado?.estado === 'INICIANDO'
+                    ? <><Loader2 className="w-4 h-4 animate-spin text-amber-500" /><span className="text-xs text-amber-600 dark:text-amber-400">Iniciando cliente...</span></>
+                    : <><WifiOff className="w-4 h-4 text-destructive" /><span className="text-xs text-destructive">Sin sesión activa — ve a CRM {'>'} WhatsApp para escanear QR</span></>
+                  }
+                </div>
+                {waEstado?.estado !== 'CONECTADO' && (
+                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 text-amber-500" />
+                    Las campañas masivas no podrán enviarse sin sesión activa.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Campos META_GRAPH */}
             {isMeta && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">
-                      {meta.f1Label} <span className="text-rose-500">*</span>
-                    </label>
+                    <label className="text-xs font-medium text-foreground">{meta.f1Label} <span className="text-rose-500">*</span></label>
                     <input type="text" placeholder={meta.f1Ph} {...register('phoneId')} className={INPUT} />
                     <p className="text-[10px] text-muted-foreground">{meta.f1Hint}</p>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">
-                      {meta.f2Label}{' '}
-                      <span className="text-muted-foreground font-normal">(opcional)</span>
-                    </label>
+                    <label className="text-xs font-medium text-foreground">{meta.f2Label} <span className="text-muted-foreground font-normal">(opcional)</span></label>
                     <input type="text" placeholder={meta.f2Ph} {...register('businessId')} className={INPUT} />
                     <p className="text-[10px] text-muted-foreground">{meta.f2Hint}</p>
                   </div>
@@ -290,14 +572,8 @@ function GatewayConfigForm() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">{meta.f3Label}</label>
                   <div className="relative">
-                    <input
-                      type={showF1 ? 'text' : 'password'}
-                      placeholder={meta.f3Ph}
-                      {...register('token')}
-                      className={cn(INPUT, 'pr-10 font-mono text-xs')}
-                    />
-                    <button type="button" onClick={() => setShowF1(v => !v)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                    <input type={showF1 ? 'text' : 'password'} placeholder={meta.f3Ph} {...register('token')} className={cn(INPUT, 'pr-10 font-mono text-xs')} />
+                    <button type="button" onClick={() => setShowF1(v => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
                       {showF1 ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
@@ -306,45 +582,26 @@ function GatewayConfigForm() {
               </>
             )}
 
-            {/* ── Campos no-META_GRAPH (AUTOMATIZADO_VIP, TWILIO, VONAGE, CUSTOM_API) ── */}
-            {!isMeta && (
+            {/* Campos otros proveedores */}
+            {!isMeta && !isNative && (
               <>
                 <div className={cn('grid grid-cols-1 gap-4', !meta.hideSecret && 'sm:grid-cols-2')}>
-                  {/* f1: apiKey con eye toggle */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">
-                      {meta.f1Label} <span className="text-rose-500">*</span>
-                    </label>
+                    <label className="text-xs font-medium text-foreground">{meta.f1Label} <span className="text-rose-500">*</span></label>
                     <div className="relative">
-                      <input
-                        type={showF1 ? 'text' : 'password'}
-                        placeholder={meta.f1Ph}
-                        {...register('apiKey')}
-                        className={cn(INPUT, 'pr-10 font-mono text-xs')}
-                      />
-                      <button type="button" onClick={() => setShowF1(v => !v)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                      <input type={showF1 ? 'text' : 'password'} placeholder={meta.f1Ph} {...register('apiKey')} className={cn(INPUT, 'pr-10 font-mono text-xs')} />
+                      <button type="button" onClick={() => setShowF1(v => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
                         {showF1 ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                     <p className="text-[10px] text-muted-foreground">{meta.f1Hint}</p>
                   </div>
-
-                  {/* f2: apiSecret — oculto para AUTOMATIZADO_VIP */}
                   {!meta.hideSecret && (
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-foreground">
-                        {meta.f2Label} <span className="text-rose-500">*</span>
-                      </label>
+                      <label className="text-xs font-medium text-foreground">{meta.f2Label} <span className="text-rose-500">*</span></label>
                       <div className="relative">
-                        <input
-                          type={showF2 ? 'text' : 'password'}
-                          placeholder={meta.f2Ph}
-                          {...register('apiSecret')}
-                          className={cn(INPUT, 'pr-10 font-mono text-xs')}
-                        />
-                        <button type="button" onClick={() => setShowF2(v => !v)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        <input type={showF2 ? 'text' : 'password'} placeholder={meta.f2Ph} {...register('apiSecret')} className={cn(INPUT, 'pr-10 font-mono text-xs')} />
+                        <button type="button" onClick={() => setShowF2(v => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
                           {showF2 ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
@@ -352,8 +609,6 @@ function GatewayConfigForm() {
                     </div>
                   )}
                 </div>
-
-                {/* f3: Instance ID / clientId (texto plano) */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">{meta.f3Label}</label>
                   <input type="text" placeholder={meta.f3Ph} {...register('clientId')} className={INPUT} />
@@ -362,67 +617,51 @@ function GatewayConfigForm() {
               </>
             )}
 
-            {/* ── Control de tráfico ── */}
+            {/* Control de tráfico */}
             <div className="border border-border rounded-lg p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                  Control de tráfico
-                </p>
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wide">Control de tráfico</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    {activo ? 'Gateway activo' : 'Gateway inactivo'}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{activo ? 'Gateway activo' : 'Gateway inactivo'}</span>
                   <button
                     type="button"
                     onClick={() => setValue('activo', !activo, { shouldDirty: true })}
-                    className={cn(
-                      'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full',
-                      'transition-colors duration-200 focus:outline-none',
-                      activo ? 'bg-emerald-500' : 'bg-muted',
-                    )}
-                    aria-label="Activar Gateway"
+                    className={cn('relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none', activo ? 'bg-emerald-500' : 'bg-muted')}
                   >
-                    <span className={cn(
-                      'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200',
-                      activo ? 'translate-x-4' : 'translate-x-0.5',
-                    )} />
+                    <span className={cn('inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform duration-200', activo ? 'translate-x-4' : 'translate-x-0.5')} />
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className={cn('grid grid-cols-1 gap-4', isNative ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">Pausa entre mensajes (seg)</label>
-                  <input
-                    type="number" min={0} max={60}
-                    {...register('pausa', { valueAsNumber: true })}
-                    className={INPUT}
-                  />
-                  <p className="text-[10px] text-muted-foreground">0–60 segundos entre envíos</p>
+                  <input type="number" min={0} max={60} {...register('pausa', { valueAsNumber: true })} className={INPUT} />
+                  <p className="text-[10px] text-muted-foreground">0–60 seg entre envíos</p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">Límite de caracteres</label>
-                  <input
-                    type="number" min={50} max={5000}
-                    {...register('limiteCaracteres', { valueAsNumber: true })}
-                    className={INPUT}
-                  />
+                  <input type="number" min={50} max={5000} {...register('limiteCaracteres', { valueAsNumber: true })} className={INPUT} />
                   <p className="text-[10px] text-muted-foreground">Mensajes más largos se rechazan</p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">Código de país</label>
                   <select {...register('codigoPais')} className={cn(INPUT, 'cursor-pointer')}>
-                    {CODIGOS_PAIS.map(c => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
+                    {CODIGOS_PAIS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                   <p className="text-[10px] text-muted-foreground">Se antepone a números sin código</p>
                 </div>
+                {isNative && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground">Cuota diaria máxima</label>
+                    <input type="number" min={1} max={10000} {...register('limiteDiarioMasivo', { valueAsNumber: true })} className={INPUT} />
+                    <p className="text-[10px] text-muted-foreground">Mensajes masivos / día (anti-ban)</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Nota sentinel */}
-            {isConfigured && (
+            {isConfigured && !isNative && (
               <p className="text-[10px] text-muted-foreground bg-muted/40 border border-border rounded-lg px-3 py-2">
                 Las llaves cifradas muestran <code className="font-mono">{SENTINEL}</code>.
                 Déjalas así para conservarlas, o escribe valores nuevos para reemplazarlas.
@@ -433,10 +672,7 @@ function GatewayConfigForm() {
               <button
                 type="submit"
                 disabled={isSaving}
-                className={cn(
-                  'flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium transition-colors',
-                  'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50',
-                )}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 {isSaving
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando…</>
@@ -452,22 +688,21 @@ function GatewayConfigForm() {
 
 // ─── Página ──────────────────────────────────────────────────────
 export default function WhatsAppBusinessPage() {
+  const [proveedor, setProveedor] = useState<ProveedorActivo>('META_GRAPH');
+
   return (
     <div className="p-6 max-w-3xl space-y-5">
-      {/* Breadcrumb */}
       <div className="flex items-center gap-2">
-        <Link
-          href="/configuracion/integraciones"
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-          Integraciones
+        <Link href="/configuracion/integraciones" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <ChevronLeft className="w-3.5 h-3.5" />Integraciones
         </Link>
         <span className="text-xs text-muted-foreground">/</span>
         <span className="text-xs text-foreground font-medium">WhatsApp Business</span>
       </div>
 
-      <GatewayConfigForm />
+      <GatewayConfigForm onProveedorChange={setProveedor} />
+
+      {proveedor === 'DATAFAST_NATIVE' && <DatafastNativeLauncher />}
     </div>
   );
 }
