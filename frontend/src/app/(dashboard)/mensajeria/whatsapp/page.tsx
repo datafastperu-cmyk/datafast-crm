@@ -611,6 +611,26 @@ function formatFechaRelativa(iso: string | null) {
   return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
 }
 
+function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function formatSeparadorFecha(iso: string): string {
+  const d    = new Date(iso);
+  const hoy  = new Date();
+  const ayer = new Date(); ayer.setDate(hoy.getDate() - 1);
+  const mismodia = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth()    === b.getMonth()    &&
+    a.getDate()     === b.getDate();
+  if (mismodia(d, hoy))  return 'Hoy';
+  if (mismodia(d, ayer)) return 'Ayer';
+  return new Intl.DateTimeFormat('es-PE', {
+    weekday: 'long', day: 'numeric', month: 'long',
+  }).format(d);
+}
+
 // ─────────────────────────────────────────────────────────────────
 export default function WhatsAppWebPage() {
   const usuario = useAuthStore(s => s.usuario);
@@ -997,9 +1017,28 @@ export default function WhatsAppWebPage() {
             </div>
           )}
 
-          {mensajes.map((msg) => {
+          {mensajes.flatMap((msg, idx) => {
+            const nodes: React.ReactNode[] = [];
+
+            // ── Separador de fecha ─────────────────────────────
+            const diaActual = localDateKey(msg.createdAt);
+            const diaPrev   = idx > 0 ? localDateKey(mensajes[idx - 1].createdAt) : null;
+            if (diaActual !== diaPrev) {
+              nodes.push(
+                <div
+                  key={`sep-${diaActual}`}
+                  className="flex justify-center my-3 pointer-events-none select-none"
+                >
+                  <span className="px-3.5 py-1 rounded-full text-[11px] font-medium capitalize text-muted-foreground bg-muted/70 border border-border/50 shadow-sm backdrop-blur-sm">
+                    {formatSeparadorFecha(msg.createdAt)}
+                  </span>
+                </div>,
+              );
+            }
+
+            // ── Burbuja del mensaje ────────────────────────────
             const esOutbound = msg.direction === 'OUTBOUND';
-            return (
+            nodes.push(
               <div key={msg.id} className={cn('flex', esOutbound ? 'justify-end' : 'justify-start')}>
                 <div className={cn(
                   'max-w-[85%] sm:max-w-[75%] px-3.5 py-2.5 rounded-2xl shadow-sm',
@@ -1027,8 +1066,10 @@ export default function WhatsAppWebPage() {
                     {esOutbound && <CheckCheck className="w-3 h-3 opacity-60" />}
                   </div>
                 </div>
-              </div>
+              </div>,
             );
+
+            return nodes;
           })}
         </div>
 
