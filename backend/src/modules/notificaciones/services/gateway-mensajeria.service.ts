@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { HttpService }    from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -7,8 +7,9 @@ import { CACHE_MANAGER }    from '@nestjs/cache-manager';
 import { Cache }            from 'cache-manager';
 import { decrypt }          from '../../../common/utils/encryption.util';
 import { WhatsAppService, TipoNotificacion, WhatsAppParams } from './whatsapp.service';
+import { DatafastNativeStrategy } from './datafast-native.strategy';
 
-export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP';
+export type ProveedorActivo = 'META_GRAPH' | 'TWILIO' | 'VONAGE' | 'CUSTOM_API' | 'AUTOMATIZADO_VIP' | 'DATAFAST_NATIVE';
 
 export interface EnvioResult {
   enviado:    boolean;
@@ -223,6 +224,7 @@ export class GatewayMensajeriaService {
     private readonly http:     HttpService,
     @InjectDataSource() private readonly ds:    DataSource,
     @Inject(CACHE_MANAGER)  private readonly cache: Cache,
+    @Optional() private readonly datafastNative: DatafastNativeStrategy,
   ) {}
 
   // ── Punto de entrada único para el worker ─────────────────
@@ -355,8 +357,9 @@ export class GatewayMensajeriaService {
       case 'TWILIO':           return (k && s) ? new TwilioStrategy(this.http, k, s, config.clientId)          : null;
       case 'VONAGE':           return (k && s) ? new VonageStrategy(this.http, k, s, config.clientId)          : null;
       case 'CUSTOM_API':       return k        ? new CustomApiStrategy(this.http, k, s, config.clientId)        : null;
-      case 'AUTOMATIZADO_VIP': return k        ? new AutomatizadoVipStrategy(this.http, k, config.clientId)    : null;
-      default:                 return null;
+      case 'AUTOMATIZADO_VIP':  return k        ? new AutomatizadoVipStrategy(this.http, k, config.clientId)    : null;
+      case 'DATAFAST_NATIVE':   return this.datafastNative ?? null;
+      default:                  return null;
     }
   }
 

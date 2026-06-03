@@ -33,6 +33,9 @@ export const JOBS = {
   NOTIF_REACTIVACION:        'notif-reactivacion',
   NOTIF_FACTURA:             'notif-factura',
 
+  // ── Mensajería Masiva Nativa (DATAFAST_NATIVE) ───────────
+  CAMPANA_MASIVA:            'campana-masiva',
+
   // ── Mikrotik ──────────────────────────────────────────────
   MK_SUSPENDER:              'mk-suspender',
   MK_REACTIVAR:              'mk-reactivar',
@@ -119,6 +122,13 @@ export interface PayloadMkSuspender {
   usuarioPppoe:  string;
 }
 
+export interface PayloadCampanaMasiva {
+  empresaId:   string;
+  tipo:        string;
+  contactos:   Array<{ telefono: string; variables: Record<string, string> }>;
+  plantillaId?: string;
+}
+
 export interface PayloadMkReactivar {
   contratoId:    string;
   routerId:      string;
@@ -126,8 +136,31 @@ export interface PayloadMkReactivar {
   ipAsignada:    string;
 }
 
+// ─── Matriz de prioridades por tipo de notificación ───────
+// Menor número = mayor prioridad en Bull
+export const JOB_PRIORITIES = {
+  ONU_OFFLINE:     1,   // Alerta interna crítica
+  ALERTA_EGRESO:   1,   // Alerta interna crítica
+  FACTURA_EMITIDA: 2,   // Transaccional
+  PAGO_RECIBIDO:   2,   // Transaccional
+  CAMPANA_MASIVA:  3,   // Masivo / baja prioridad
+} as const;
+
+// Delay de goteo para lotes CAMPANA_MASIVA (ms por índice)
+export function calcularDelayGoteo(index: number): number {
+  return (index * 12_000) + Math.floor(Math.random() * 4_000);
+}
+
 // ─── Opciones de job por defecto ──────────────────────────
 export const JOB_OPTIONS = {
+  // Alertas internas (ONU_OFFLINE, ALERTA_EGRESO): prioridad máxima
+  ALERTA: {
+    priority: 1,
+    attempts: 3,
+    backoff:  { type: 'exponential' as const, delay: 15_000 },
+    removeOnComplete: 200,
+    removeOnFail:     500,
+  },
   // Jobs críticos (suspensión, reactivación): 3 reintentos con backoff exponencial
   CRITICO: {
     attempts:  3,
