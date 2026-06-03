@@ -292,10 +292,16 @@ export function GastosContent() {
                           : 'border-border text-muted-foreground hover:border-foreground/30',
                       )}
                     >
-                      {t === 'EGRESO' ? 'Egreso' : 'Ingreso'}
+                      {t === 'EGRESO' ? 'Egreso' : 'Otro Ingreso (Fuera del giro del negocio)'}
                     </button>
                   ))}
                 </div>
+                {form.tipo === 'INGRESO_OTRO' && (
+                  <p className="text-[11px] text-muted-foreground leading-snug mt-1.5">
+                    Nota: La recaudación por servicios de internet de abonados se procesa automáticamente.
+                    Use esta opción solo para ingresos excepcionales (ej. venta de equipos, penalidades, reparaciones externas).
+                  </p>
+                )}
               </div>
 
               {/* Categoría */}
