@@ -72,6 +72,22 @@ export class FilterPagoDto extends PaginationDto {
   @ApiPropertyOptional() @IsOptional() @IsString()
   fechaHasta?: string;
 
+  @ApiPropertyOptional({ description: 'Alias de fechaDesde (rango inicio)' })
+  @IsOptional() @IsString()
+  fechaInicio?: string;
+
+  @ApiPropertyOptional({ description: 'Alias de fechaHasta (rango fin)' })
+  @IsOptional() @IsString()
+  fechaFin?: string;
+
+  @ApiPropertyOptional({ description: 'UUID de la zona/sector geográfico del cliente' })
+  @IsOptional() @IsUUID()
+  sectorId?: string;
+
+  @ApiPropertyOptional({ description: 'UUID del router MikroTik del contrato' })
+  @IsOptional() @IsUUID()
+  routerId?: string;
+
   @ApiPropertyOptional() @IsOptional()
   @Transform(({ value }) => value === 'true')
   @IsBoolean()

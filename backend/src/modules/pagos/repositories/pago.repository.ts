@@ -66,6 +66,13 @@ export class PagoRepository {
     const qb = this.repo.createQueryBuilder('p')
       .where('p.empresa_id = :empresaId', { empresaId });
 
+    // JOINs opcionales — sólo se añaden si algún filtro los requiere
+    const needsContrato = !!(f.routerId);
+    const needsCliente  = !!(f.sectorId);
+
+    if (needsContrato) qb.leftJoin('contratos', 'co', 'co.id = p.contrato_id');
+    if (needsCliente)  qb.leftJoin('clientes',  'cl', 'cl.id = p.cliente_id');
+
     if (f.search)          qb.andWhere('(p.numero_operacion ILIKE :s OR p.banco ILIKE :s)', { s: `%${f.search}%` });
     if (f.estado)          qb.andWhere('p.estado = :estado', { estado: f.estado });
     if (f.metodoPago)      qb.andWhere('p.metodo_pago = :mp', { mp: f.metodoPago });
@@ -74,11 +81,16 @@ export class PagoRepository {
     if (f.contratoId)      qb.andWhere('p.contrato_id = :contratoId', { contratoId: f.contratoId });
     if (f.cajeroId)        qb.andWhere('p.cajero_id = :cajeroId', { cajeroId: f.cajeroId });
     if (f.banco)           qb.andWhere('p.banco ILIKE :banco', { banco: `%${f.banco}%` });
-    if (f.numeroOperacion) qb.andWhere('p.numero_operacion = :no', { no: f.numeroOperacion });
+    if (f.numeroOperacion) qb.andWhere('p.numero_operacion ILIKE :no', { no: `%${f.numeroOperacion}%` });
+    if (f.sectorId)        qb.andWhere('cl.zona_id = :sectorId', { sectorId: f.sectorId });
+    if (f.routerId)        qb.andWhere('co.router_id = :routerId', { routerId: f.routerId });
     if (f.conciliado !== undefined) qb.andWhere('p.conciliado = :c', { c: f.conciliado });
     if (f.soloHoy)         qb.andWhere("p.fecha_pago = CURRENT_DATE");
-    if (f.fechaDesde)      qb.andWhere('p.fecha_pago >= :fd', { fd: f.fechaDesde });
-    if (f.fechaHasta)      qb.andWhere('p.fecha_pago <= :fh', { fh: f.fechaHasta });
+
+    const desde = f.fechaDesde || f.fechaInicio;
+    const hasta = f.fechaHasta || f.fechaFin;
+    if (desde) qb.andWhere('p.fecha_pago >= :fd', { fd: desde });
+    if (hasta) qb.andWhere('p.fecha_pago <= :fh', { fh: hasta });
 
     return qb;
   }
