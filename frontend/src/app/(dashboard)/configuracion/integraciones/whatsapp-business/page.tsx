@@ -755,22 +755,20 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
                   </div>
 
                   {/* Parámetros de envío */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-foreground">Límite caracteres</label>
                       <input
                         type="number" min={50} max={5000}
-                        defaultValue={1000}
                         {...register('limiteCaracteres', { valueAsNumber: true })}
                         className={INPUT}
                       />
-                      <p className="text-[10px] text-muted-foreground">Truncado de seguridad</p>
+                      <p className="text-[10px] text-muted-foreground">Mensajes más largos se rechazan</p>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-foreground">Pausa Entre mensaje (Segundos)</label>
                       <input
                         type="number" min={0} max={60}
-                        defaultValue={12}
                         {...register('pausa', { valueAsNumber: true })}
                         className={INPUT}
                       />
@@ -790,6 +788,15 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
                         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                       </div>
                       <p className="text-[10px] text-muted-foreground">Se antepone a números sin prefijo</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Cuota diaria máxima</label>
+                      <input
+                        type="number" min={1} max={10000}
+                        {...register('limiteDiarioMasivo', { valueAsNumber: true })}
+                        className={INPUT}
+                      />
+                      <p className="text-[10px] text-muted-foreground">Mensajes masivos / día (anti-ban)</p>
                     </div>
                   </div>
 
