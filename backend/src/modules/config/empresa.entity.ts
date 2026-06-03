@@ -20,6 +20,9 @@ export class Empresa {
   @Column({ length: 20, nullable: true })
   telefono: string | null;
 
+  @Column({ name: 'telefono_informativo', length: 30, nullable: true })
+  telefonoInformativo: string | null;
+
   @Column({ length: 150, nullable: true })
   email: string | null;
 

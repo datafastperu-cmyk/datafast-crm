@@ -15,6 +15,7 @@ export interface UpdateEmpresaDto {
   ruc?:                      string;
   direccion?:                string;
   telefono?:                 string;
+  telefonoInformativo?:      string;
   email?:                    string;
   websiteUrl?:               string;
   dominio?:                  string;

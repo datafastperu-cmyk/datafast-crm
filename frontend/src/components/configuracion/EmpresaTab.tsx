@@ -20,8 +20,9 @@ const schema = z.object({
   razonSocial:       z.string().min(3, 'Mínimo 3 caracteres'),
   ruc:               z.string().length(11, 'El RUC debe tener 11 dígitos'),
   direccion:         z.string().optional(),
-  telefono:          z.string().optional(),
-  email:             z.string().email('Email inválido').optional().or(z.literal('')),
+  telefono:               z.string().min(7, 'Ingresa el número de WhatsApp'),
+  telefonoInformativo:    z.string().optional(),
+  email:                  z.string().email('Email inválido').optional().or(z.literal('')),
   websiteUrl:        z.string().url('URL inválida (ej: https://miisp.com)').optional().or(z.literal('')),
   serieBoleta:       z.string().min(3),
   serieFactura:      z.string().min(3),
@@ -123,8 +124,25 @@ export function EmpresaTab() {
           <Field label="RUC *" error={errors.ruc?.message}>
             <input {...register('ruc')} placeholder="20123456789" className={cn(inp(!!errors.ruc), 'font-mono')} maxLength={11} />
           </Field>
-          <Field label="Teléfono">
-            <input {...register('telefono')} placeholder="+51 073 123456" className={inp()} />
+          <Field label="WhatsApp *" error={errors.telefono?.message}>
+            <input
+              {...register('telefono')}
+              placeholder="+51 900 000 000"
+              className={inp(!!errors.telefono)}
+            />
+            <p className="text-[11px] text-muted-foreground leading-snug mt-1">
+              Número que recibirá alertas internas de egresos y ONUs
+            </p>
+          </Field>
+          <Field label="Teléfono Informativo">
+            <input
+              {...register('telefonoInformativo')}
+              placeholder="+51 073 123456"
+              className={inp()}
+            />
+            <p className="text-[11px] text-muted-foreground leading-snug mt-1">
+              Uso netamente informativo para contacto comercial de la empresa
+            </p>
           </Field>
           <Field label="Email" error={errors.email?.message} span={2}>
             <input {...register('email')} type="email" placeholder="contacto@datafast.pe" className={inp(!!errors.email)} />
