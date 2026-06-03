@@ -14,10 +14,7 @@ import { AuthModule }                from '../auth/auth.module';
 import { MikrotikModule }            from '../mikrotik/mikrotik.module';
 import { FacturacionModule }         from '../facturacion/facturacion.module';
 import { AprovisionamientoModule }   from '../aprovisionamiento/aprovisionamiento.module';
-
-// Servicios de notificaciones (usados por los workers)
-import { WhatsAppService }            from '../notificaciones/services/whatsapp.service';
-import { GatewayMensajeriaService }   from '../notificaciones/services/gateway-mensajeria.service';
+import { NotificacionesModule }      from '../notificaciones/notificaciones.module';
 
 import { QUEUES } from './workers.constants';
 
@@ -69,12 +66,9 @@ import { QUEUES } from './workers.constants';
     MikrotikModule,
     FacturacionModule,
     AprovisionamientoModule,
+    NotificacionesModule,
   ],
   providers: [
-    // Servicios de notificaciones
-    WhatsAppService,
-    GatewayMensajeriaService,
-
     // Cobranza
     CobranzaScheduler,
     CobranzaWorker,

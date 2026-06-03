@@ -8,8 +8,8 @@ import { AprovisionamientoController }        from './aprovisionamiento.controll
 import { OrquestadorAprovisionamientoService } from './aprovisionamiento.service';
 import { MockProvisionamientoProvider }        from './providers/mock-provisionamiento.provider';
 
-import { WhatsAppService }  from '../notificaciones/services/whatsapp.service';
-import { AuthModule }       from '../auth/auth.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { AuthModule }            from '../auth/auth.module';
 import { MikrotikModule }   from '../mikrotik/mikrotik.module';
 import { SmartoltModule }   from '../smartolt/smartolt.module';
 
@@ -20,16 +20,15 @@ import { SmartoltModule }   from '../smartolt/smartolt.module';
     AuthModule,
     MikrotikModule,
     SmartoltModule,
+    NotificacionesModule,
   ],
   controllers: [AprovisionamientoController],
   providers: [
     OrquestadorAprovisionamientoService,
-    WhatsAppService,
     { provide: 'PROVISIONAMIENTO_PROVIDER', useClass: MockProvisionamientoProvider },
   ],
   exports: [
     OrquestadorAprovisionamientoService,
-    WhatsAppService,
     'PROVISIONAMIENTO_PROVIDER',
   ],
 })
