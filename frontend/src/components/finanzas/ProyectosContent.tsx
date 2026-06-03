@@ -55,7 +55,7 @@ function RatiosCard({ proyectoId }: { proyectoId: string }) {
 }
 
 function RatiosBody({ r }: { r: RatiosFinancieros }) {
-  const chartData = r.flujosMensuales.map((v, i) => ({ mes: i + 1, flujo: v }));
+  const chartData = (r.flujosMensuales ?? []).map((v, i) => ({ mes: i + 1, flujo: v }));
 
   const vanPositivo = r.van > 0;
   const tirSuperaTasa = r.tir > r.tasaDescuento * 100;

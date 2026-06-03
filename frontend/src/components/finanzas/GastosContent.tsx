@@ -179,7 +179,7 @@ export function GastosContent() {
         {isLoading ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Cargando...</div>
         ) : rows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Sin registros</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">No se encontraron registros en esta sección</div>
         ) : (
           <table className="w-full text-sm">
             <thead>

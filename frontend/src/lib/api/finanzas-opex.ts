@@ -66,8 +66,21 @@ export const CATEGORIAS_LABELS: Record<CategoriaMovimiento, string> = {
 export const finanzasOpexApi = {
 
   list: async (filtros: FiltrosOpex = {}): Promise<PaginaRespuesta<EgresoIngreso>> => {
-    const res = await api.get<ApiRespuesta<EgresoIngreso[]>>('/finanzas/opex', { params: filtros });
-    return { data: res.data.data ?? [], meta: res.data.meta?.['meta'] as PaginaMeta };
+    const res  = await api.get('/finanzas/opex', { params: filtros });
+    // backend: ApiResponse.ok(PaginatedResult) → res.data.data = { data:[], total, page, limit }
+    const pag  = res.data?.data;
+    const items: EgresoIngreso[] = Array.isArray(pag) ? pag : (pag?.data ?? []);
+    return {
+      data: items,
+      meta: {
+        total:      pag?.total ?? 0,
+        page:       pag?.page  ?? 1,
+        limit:      pag?.limit ?? 50,
+        totalPages: Math.ceil((pag?.total ?? 0) / (pag?.limit ?? 50)),
+        hasNext:    (pag?.page ?? 1) * (pag?.limit ?? 50) < (pag?.total ?? 0),
+        hasPrev:    (pag?.page ?? 1) > 1,
+      },
+    };
   },
 
   getResumen: async (): Promise<ResumenOpex> => {

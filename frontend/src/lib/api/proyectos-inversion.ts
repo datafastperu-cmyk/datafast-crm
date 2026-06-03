@@ -62,8 +62,21 @@ export interface RatiosFinancieros {
 export const proyectosInversionApi = {
 
   list: async (filtros: FilterProyectoDto = {}): Promise<PaginaRespuesta<ProyectoInversion>> => {
-    const res = await api.get<ApiRespuesta<ProyectoInversion[]>>('/proyectos-inversion', { params: filtros });
-    return { data: res.data.data ?? [], meta: res.data.meta?.['meta'] as PaginaMeta };
+    const res = await api.get('/proyectos-inversion', { params: filtros });
+    // backend: ApiResponse.ok(PaginatedResult) → res.data.data = { data:[], total, page, limit }
+    const pag  = res.data?.data;
+    const items: ProyectoInversion[] = Array.isArray(pag) ? pag : (pag?.data ?? []);
+    return {
+      data: items,
+      meta: {
+        total:      pag?.total ?? 0,
+        page:       pag?.page  ?? 1,
+        limit:      pag?.limit ?? 50,
+        totalPages: Math.ceil((pag?.total ?? 0) / (pag?.limit ?? 50)),
+        hasNext:    (pag?.page ?? 1) * (pag?.limit ?? 50) < (pag?.total ?? 0),
+        hasPrev:    (pag?.page ?? 1) > 1,
+      },
+    };
   },
 
   getById: async (id: string): Promise<ProyectoInversion> => {
