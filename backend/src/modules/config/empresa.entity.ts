@@ -17,8 +17,8 @@ export class Empresa {
   @Column({ name: 'direccion_fiscal', type: 'text', nullable: true })
   direccion: string | null;
 
-  @Column({ length: 20, nullable: true })
-  telefono: string | null;
+  @Column({ name: 'whatsapp_corporativo', length: 20, nullable: true })
+  whatsappCorporativo: string | null;
 
   @Column({ name: 'telefono_informativo', length: 30, nullable: true })
   telefonoInformativo: string | null;

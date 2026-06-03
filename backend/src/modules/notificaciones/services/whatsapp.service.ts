@@ -23,6 +23,7 @@ export enum TipoNotificacion {
   BIENVENIDA           = 'bienvenida',
   ONU_OFFLINE          = 'onu_offline',
   MANTENIMIENTO        = 'mantenimiento',
+  ALERTA_EGRESO        = 'alerta_egreso',
 }
 
 export interface WhatsAppParams {
@@ -99,6 +100,11 @@ const TEMPLATES: Record<TipoNotificacion, {
     name:      'datafast_mantenimiento',
     language:  'es',
     paramKeys: ['clienteNombre', 'fechaInicio', 'duracionEstimada', 'motivo'],
+  },
+  [TipoNotificacion.ALERTA_EGRESO]: {
+    name:      'datafast_alerta_egreso',
+    language:  'es',
+    paramKeys: ['nombreEmpresa', 'cantidad', 'fecha'],
   },
 };
 

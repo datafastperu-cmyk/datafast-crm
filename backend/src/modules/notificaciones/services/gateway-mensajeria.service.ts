@@ -49,6 +49,8 @@ const TEXTOS: Record<string, (v: Record<string, string>) => string> = {
     `Hola ${v.clienteNombre}, su ONU se desconectó el ${v.fechaHora}.`,
   [TipoNotificacion.MANTENIMIENTO]:       (v) =>
     `Hola ${v.clienteNombre}, mantenimiento el ${v.fechaInicio} (~${v.duracionEstimada}). Motivo: ${v.motivo}`,
+  [TipoNotificacion.ALERTA_EGRESO]:       (v) =>
+    `[DATAFAST] Se generaron ${v.cantidad} egreso(s) pendiente(s) para ${v.nombreEmpresa} el día ${v.fecha}.`,
 };
 
 // ─── Estrategia Twilio ────────────────────────────────────
@@ -225,10 +227,11 @@ export class GatewayMensajeriaService {
 
   // ── Punto de entrada único para el worker ─────────────────
   async despachar(params: WhatsAppParams): Promise<EnvioResult> {
-    const config = await this.resolveConfig(params.empresaId);
+    const destino = await this.resolveDestino(params);
+    const config  = await this.resolveConfig(params.empresaId);
 
     if (!config || config.proveedor === 'META_GRAPH') {
-      return this.whatsapp.enviar(params);
+      return this.whatsapp.enviar({ ...params, telefono: destino });
     }
 
     if (!config.activo) {
@@ -250,13 +253,29 @@ export class GatewayMensajeriaService {
       return { enviado: false, error: `${config.proveedor} sin credenciales configuradas` };
     }
 
-    const telefono  = this.normalizarTelefono(params.telefono, config.codigoPais);
+    const telefono  = this.normalizarTelefono(destino, config.codigoPais);
     this.logger.log(`[GW] ${config.proveedor} → ${telefono} | ${params.tipo}`);
     const resultado = await strategy.enviarMensaje(telefono, texto, params.tipo as string);
 
     if (config.pausa > 0) await this.sleep(config.pausa);
 
     return resultado;
+  }
+
+  // ── Enrutamiento dual: interno usa whatsapp_corporativo ───
+  private async resolveDestino(params: WhatsAppParams): Promise<string> {
+    const tiposInternos: TipoNotificacion[] = [
+      TipoNotificacion.ONU_OFFLINE,
+      TipoNotificacion.ALERTA_EGRESO,
+    ];
+    if (tiposInternos.includes(params.tipo) && params.empresaId) {
+      const [row] = await this.ds.query(
+        `SELECT whatsapp_corporativo FROM empresas WHERE id = $1`,
+        [params.empresaId],
+      ).catch(() => [null]);
+      if (row?.whatsapp_corporativo) return row.whatsapp_corporativo;
+    }
+    return params.telefono;
   }
 
   // ── Leer config de BD con caché 5 min ─────────────────────

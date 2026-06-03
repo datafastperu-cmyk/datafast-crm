@@ -14,7 +14,7 @@ export interface UpdateEmpresaDto {
   razonSocial?:              string;
   ruc?:                      string;
   direccion?:                string;
-  telefono?:                 string;
+  whatsappCorporativo?:      string;
   telefonoInformativo?:      string;
   email?:                    string;
   websiteUrl?:               string;

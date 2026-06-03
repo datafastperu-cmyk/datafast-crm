@@ -20,7 +20,7 @@ const schema = z.object({
   razonSocial:       z.string().min(3, 'Mínimo 3 caracteres'),
   ruc:               z.string().length(11, 'El RUC debe tener 11 dígitos'),
   direccion:         z.string().optional(),
-  telefono:               z.string().min(7, 'Ingresa el número de WhatsApp'),
+  whatsappCorporativo:    z.string().min(7, 'Ingresa el número de WhatsApp'),
   telefonoInformativo:    z.string().optional(),
   email:                  z.string().email('Email inválido').optional().or(z.literal('')),
   websiteUrl:        z.string().url('URL inválida (ej: https://miisp.com)').optional().or(z.literal('')),
@@ -124,11 +124,11 @@ export function EmpresaTab() {
           <Field label="RUC *" error={errors.ruc?.message}>
             <input {...register('ruc')} placeholder="20123456789" className={cn(inp(!!errors.ruc), 'font-mono')} maxLength={11} />
           </Field>
-          <Field label="WhatsApp *" error={errors.telefono?.message}>
+          <Field label="WhatsApp *" error={errors.whatsappCorporativo?.message}>
             <input
-              {...register('telefono')}
+              {...register('whatsappCorporativo')}
               placeholder="+51 900 000 000"
-              className={inp(!!errors.telefono)}
+              className={inp(!!errors.whatsappCorporativo)}
             />
             <p className="text-[11px] text-muted-foreground leading-snug mt-1">
               Número que recibirá alertas internas de egresos y ONUs

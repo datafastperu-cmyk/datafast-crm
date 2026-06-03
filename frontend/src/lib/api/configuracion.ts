@@ -7,7 +7,7 @@ export interface Empresa {
   razonSocial:       string;
   ruc:               string;
   direccion?:        string;
-  telefono?:              string;
+  whatsappCorporativo?:   string;
   telefonoInformativo?:   string;
   email?:                 string;
   logoUrl?:          string;
