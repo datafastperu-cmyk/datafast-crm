@@ -108,7 +108,7 @@ export class CampanasService {
       routerFilter = `AND co.router_id = $${params.length}`;
     }
 
-    return this.ds.query<Destinatario>(`
+    return this.ds.query<Destinatario[]>(`
       SELECT DISTINCT ON (cl.id)
         cl.id,
         cl.whatsapp,
