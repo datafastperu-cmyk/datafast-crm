@@ -12,7 +12,7 @@ interface Props {
 export function NuevoAbonadoModal({ open, onClose }: Props) {
   useEffect(() => {
     if (!open) return () => {};
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') e.preventDefault(); };
     document.addEventListener('keydown', handler);
     document.body.style.overflow = 'hidden';
     return () => {
@@ -26,7 +26,7 @@ export function NuevoAbonadoModal({ open, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) e.preventDefault(); }}
     >
       <div className="relative w-full sm:max-w-4xl sm:mx-4 bg-background flex flex-col
                       h-[96dvh] sm:h-auto sm:max-h-[92vh]

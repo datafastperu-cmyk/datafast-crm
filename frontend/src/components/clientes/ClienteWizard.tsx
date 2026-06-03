@@ -165,14 +165,8 @@ function Field({ label, error, hint, children }: {
   );
 }
 
-function inputCls(err = false) {
-  return cn(
-    'w-full px-3 py-2.5 text-sm rounded-lg border bg-background transition-all duration-150',
-    'placeholder:text-muted-foreground/60',
-    'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary',
-    err ? 'border-destructive bg-destructive/5' : 'border-input hover:border-muted-foreground/40',
-  );
-}
+const INPUT_CLS = 'w-full px-3 py-2.5 text-sm rounded-lg border bg-background transition-all duration-150 placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary border-primary/25 hover:border-primary/50';
+const INPUT_ERR = 'border-destructive bg-destructive/5 focus:ring-destructive/30 focus:border-destructive';
 
 function Grid({ cols = 2, children }: { cols?: 2 | 3; children: React.ReactNode }) {
   return (
@@ -548,7 +542,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
 
         {/* Tipo Documento */}
         <FormRow label="Tipo Documento" hintColor="gray">
-          <select {...register('tipoDocumento')} className={inputCls()}>
+          <select {...register('tipoDocumento')} className={INPUT_CLS}>
             <option value="dni">DNI</option>
             <option value="ruc">RUC</option>
             <option value="cedula">Cédula</option>
@@ -566,7 +560,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
               {...register('numeroDocumento')}
               placeholder="12345678"
               maxLength={13}
-              className={inputCls(!!errors.numeroDocumento)}
+              className={cn(INPUT_CLS, !!errors.numeroDocumento && INPUT_ERR)}
             />
             <button
               type="button"
@@ -606,7 +600,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
           <input
             {...register('nombres')}
             placeholder="Piero"
-            className={inputCls(!!errors.nombres)}
+            className={cn(INPUT_CLS, !!errors.nombres && INPUT_ERR)}
           />
           {errors.nombres && (
             <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
@@ -617,15 +611,15 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
 
         {/* Apellidos */}
         <FormRow label="Apellido Paterno" hintColor="gray">
-          <input {...register('apellidoPaterno')} placeholder="Escobar" className={inputCls()} />
+          <input {...register('apellidoPaterno')} placeholder="Escobar" className={INPUT_CLS} />
         </FormRow>
         <FormRow label="Apellido Materno" hintColor="gray">
-          <input {...register('apellidoMaterno')} placeholder="Bautista" className={inputCls()} />
+          <input {...register('apellidoMaterno')} placeholder="Bautista" className={INPUT_CLS} />
         </FormRow>
 
         {/* Dirección principal */}
         <FormRow label="Dirección principal" required hintColor="gray">
-          <input {...register('direccion')} placeholder="Av. Unios 4453" className={inputCls(!!errors.direccion)} />
+          <input {...register('direccion')} placeholder="Av. Unios 4453" className={cn(INPUT_CLS, !!errors.direccion && INPUT_ERR)} />
           {errors.direccion && (
             <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
               <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.direccion.message}
@@ -635,7 +629,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
 
         {/* Zona */}
         <FormRow label="Zona" hintColor="gray">
-          <select {...register('zonaId')} className={inputCls()}>
+          <select {...register('zonaId')} className={INPUT_CLS}>
             <option value="">— Sin zona —</option>
             {zonas.filter(z => z.activo).map(z => (
               <option key={z.id} value={z.id}>{z.nombre}</option>
@@ -645,7 +639,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
 
         {/* WhatsApp */}
         <FormRow label="WhatsApp" required hintColor="gray">
-          <input {...register('whatsapp')} placeholder="987654321" className={inputCls(!!errors.whatsapp)} />
+          <input {...register('whatsapp')} placeholder="987654321" className={cn(INPUT_CLS, !!errors.whatsapp && INPUT_ERR)} />
           {errors.whatsapp && (
             <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
               <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.whatsapp.message}
@@ -655,7 +649,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
 
         {/* Teléfono Móvil */}
         <FormRow label="Teléfono Móvil" hintColor="gray">
-          <input {...register('telefono')} placeholder="987654321" className={inputCls()} />
+          <input {...register('telefono')} placeholder="987654321" className={INPUT_CLS} />
         </FormRow>
 
         {/* E-mail */}
@@ -664,7 +658,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
             {...register('email')}
             type="email"
             placeholder="jorge@correo.com"
-            className={inputCls(!!errors.email)}
+            className={cn(INPUT_CLS, !!errors.email && INPUT_ERR)}
           />
           {errors.email && (
             <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
@@ -675,14 +669,14 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
 
         {/* Credenciales Portal */}
         <FormRow label="Credenciales Portal" hint="Dejar vacío para auto-generar" hintColor="gray">
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex flex-col gap-1 flex-1">
               <span className="text-xs text-muted-foreground">Usuario</span>
-              <input {...register('usuarioPortal')} placeholder="Auto-generar" maxLength={12} className={inputCls()} />
+              <input {...register('usuarioPortal')} placeholder="Auto-generar" maxLength={12} className={INPUT_CLS} />
             </div>
             <div className="flex flex-col gap-1 flex-1">
               <span className="text-xs text-muted-foreground">Contraseña</span>
-              <input {...register('passwordPortal')} placeholder="Auto-generar" maxLength={12} className={inputCls()} />
+              <input {...register('passwordPortal')} placeholder="Auto-generar" maxLength={12} className={INPUT_CLS} />
             </div>
           </div>
         </FormRow>
@@ -776,7 +770,7 @@ function Step2Form({ initial, onBack, onNext }: {
       {/* Plantilla */}
       <div className="bg-card border border-border rounded-xl px-5 py-4 flex items-center gap-4">
         <span className="text-sm font-medium text-foreground whitespace-nowrap">Cargar desde plantilla</span>
-        <select className={cn(inputCls(), 'max-w-xs')} defaultValue=""
+        <select className={cn(INPUT_CLS, 'max-w-xs')} defaultValue=""
           onChange={e => { if (e.target.value) cargarPlantilla(e.target.value); }}>
           <option value="">Seleccionar plantilla</option>
           {plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
@@ -787,52 +781,52 @@ function Step2Form({ initial, onBack, onNext }: {
         {/* Facturación */}
         <Section title="Facturación" icon={CreditCard}>
           <Field label="Tipo">
-            <select className={inputCls()} value={fact.tipo} onChange={e => updateF('tipo', e.target.value)}>
+            <select className={INPUT_CLS} value={fact.tipo} onChange={e => updateF('tipo', e.target.value)}>
               <option value="prepago">Prepago (Adelantado)</option>
               <option value="postpago">Postpago (Mes vencido)</option>
             </select>
           </Field>
           <Field label="Día pago">
-            <select className={inputCls()} value={fact.diaPago} onChange={e => updateF('diaPago', e.target.value)}>
+            <select className={INPUT_CLS} value={fact.diaPago} onChange={e => updateF('diaPago', e.target.value)}>
               {S2_DIAS_MES.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </Field>
           <Field label="Crear Factura">
-            <select className={inputCls()} value={fact.crearFactura} onChange={e => updateF('crearFactura', e.target.value)}>
+            <select className={INPUT_CLS} value={fact.crearFactura} onChange={e => updateF('crearFactura', e.target.value)}>
               {S2_CREAR_FACTURA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
           <Field label="Aviso de factura disponible">
-            <select className={inputCls()} value={fact.plantillaAvisoFactura ?? ''} onChange={e => updateF('plantillaAvisoFactura', e.target.value)}>
+            <select className={INPUT_CLS} value={fact.plantillaAvisoFactura ?? ''} onChange={e => updateF('plantillaAvisoFactura', e.target.value)}>
               <option value="">— Sin plantilla específica —</option>
               {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
             </select>
           </Field>
           <Field label="Tipo impuesto">
-            <select className={inputCls()} value={fact.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
+            <select className={INPUT_CLS} value={fact.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
               <option value="ninguno">Ninguno</option>
               <option value="incluido">Impuestos incluidos</option>
               <option value="mas_impuestos">Más impuestos</option>
             </select>
           </Field>
           <Field label="Días de gracia" hint="*días tolerancia para aplicar corte">
-            <select className={inputCls()} value={fact.diasGracia} onChange={e => updateF('diasGracia', e.target.value)}>
+            <select className={INPUT_CLS} value={fact.diasGracia} onChange={e => updateF('diasGracia', e.target.value)}>
               {S2_DIAS_GRACIA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
           <Field label="Aplicar Corte">
-            <select className={inputCls()} value={fact.aplicarCorte} onChange={e => updateF('aplicarCorte', e.target.value)}>
+            <select className={INPUT_CLS} value={fact.aplicarCorte} onChange={e => updateF('aplicarCorte', e.target.value)}>
               {S2_APLICAR_CORTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
           <Field label="Bajar Velocidad">
-            <select className={inputCls()} value={bajarVel} onChange={e => setBajarVel(e.target.value)}>
+            <select className={INPUT_CLS} value={bajarVel} onChange={e => setBajarVel(e.target.value)}>
               {S2_BAJAR_VEL_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
           <Field label="Fecha Fija" hint="Dejar vacío para fecha automática">
             <div className="flex gap-2">
-              <input type="date" className={inputCls()} value={fechaFija} onChange={e => setFechaFija(e.target.value)} />
+              <input type="date" className={INPUT_CLS} value={fechaFija} onChange={e => setFechaFija(e.target.value)} />
               {fechaFija && (
                 <button type="button" onClick={() => setFechaFija('')}
                   className="flex-shrink-0 p-2.5 rounded-lg border border-input bg-muted hover:bg-muted/70 transition-colors">
@@ -843,7 +837,7 @@ function Step2Form({ initial, onBack, onNext }: {
           </Field>
           <Field label="Corte Fijo Programado">
             <div className="flex gap-2">
-              <input type="date" className={inputCls()} value={corteFijo} onChange={e => setCorteFijo(e.target.value)} />
+              <input type="date" className={INPUT_CLS} value={corteFijo} onChange={e => setCorteFijo(e.target.value)} />
               {corteFijo && (
                 <button type="button" onClick={() => setCorteFijo('')}
                   className="flex-shrink-0 p-2.5 rounded-lg border border-input bg-muted hover:bg-muted/70 transition-colors">
@@ -859,7 +853,7 @@ function Step2Form({ initial, onBack, onNext }: {
               {fact.aplicarMora && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm text-muted-foreground">S/</span>
-                  <DecimalInput2 className={inputCls()} placeholder="Monto mora"
+                  <DecimalInput2 className={INPUT_CLS} placeholder="Monto mora"
                     value={fact.montoMora} onChange={v => updateF('montoMora', v)} />
                 </div>
               )}
@@ -872,7 +866,7 @@ function Step2Form({ initial, onBack, onNext }: {
               {fact.aplicarReconexion && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm text-muted-foreground">S/</span>
-                  <DecimalInput2 className={inputCls()} placeholder="Monto reconexión"
+                  <DecimalInput2 className={INPUT_CLS} placeholder="Monto reconexión"
                     value={fact.montoReconexion} onChange={v => updateF('montoReconexion', v)} />
                 </div>
               )}
@@ -882,7 +876,7 @@ function Step2Form({ initial, onBack, onNext }: {
             <p className="text-sm font-semibold text-foreground">Otros Impuestos</p>
             <p className="text-xs text-muted-foreground -mt-2">Estos impuestos serán agregados al total de la factura</p>
             <Field label="Impuesto #1 (%)" hint="* Dejar en 0 (cero) para quedar deshabilitado">
-              <DecimalInput2 className={inputCls()} value={fact.impuesto1} onChange={v => updateF('impuesto1', v)} />
+              <DecimalInput2 className={INPUT_CLS} value={fact.impuesto1} onChange={v => updateF('impuesto1', v)} />
             </Field>
           </div>
         </Section>
@@ -890,7 +884,7 @@ function Step2Form({ initial, onBack, onNext }: {
         {/* Notificaciones */}
         <Section title="Notificaciones" icon={Bell}>
           <Field label="Aviso nueva factura">
-            <select className={inputCls()} value={notif.avisoNuevaFactura} onChange={e => updateN('avisoNuevaFactura', e.target.value)}>
+            <select className={INPUT_CLS} value={notif.avisoNuevaFactura} onChange={e => updateN('avisoNuevaFactura', e.target.value)}>
               <option value="desactivado">Desactivado</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="sms">SMS</option>
@@ -898,13 +892,13 @@ function Step2Form({ initial, onBack, onNext }: {
             </select>
           </Field>
           <Field label="Aviso en Pantalla" hint="* Aviso sólo en páginas HTTP">
-            <select className={inputCls()} value={notif.avisoPantalla} onChange={e => updateN('avisoPantalla', e.target.value)}>
+            <select className={INPUT_CLS} value={notif.avisoPantalla} onChange={e => updateN('avisoPantalla', e.target.value)}>
               <option value="desactivado">Desactivado</option>
               <option value="activado">Activado</option>
             </select>
           </Field>
           <Field label="Recordatorios de pago">
-            <select className={inputCls()} value={notif.recordatoriosPago} onChange={e => updateN('recordatoriosPago', e.target.value)}>
+            <select className={INPUT_CLS} value={notif.recordatoriosPago} onChange={e => updateN('recordatoriosPago', e.target.value)}>
               <option value="desactivado">Desactivado</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="sms">SMS</option>
@@ -915,7 +909,7 @@ function Step2Form({ initial, onBack, onNext }: {
             const plantillaKey = `plantillaRecordatorio${i + 1}` as keyof NotificacionesConfig;
             return (
               <Field key={key} label={`Recordatorio #${i + 1}`}>
-                <select className={inputCls()} value={notif[key]} onChange={e => updateN(key, e.target.value)}>
+                <select className={INPUT_CLS} value={notif[key]} onChange={e => updateN(key, e.target.value)}>
                   <option value="desactivado">Desactivado</option>
                   <optgroup label="Antes del vencimiento">
                     {S2_RECORDATORIO_ANTES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -924,7 +918,7 @@ function Step2Form({ initial, onBack, onNext }: {
                     {S2_RECORDATORIO_DESPUES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </optgroup>
                 </select>
-                <select className={inputCls()} value={(notif[plantillaKey] as string) ?? ''} onChange={e => updateN(plantillaKey, e.target.value)}>
+                <select className={INPUT_CLS} value={(notif[plantillaKey] as string) ?? ''} onChange={e => updateN(plantillaKey, e.target.value)}>
                   <option value="">— Sin plantilla específica —</option>
                   {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
                 </select>
@@ -1053,7 +1047,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         <Section title="Configuración de servicio" icon={Wifi}>
           {/* Router */}
           <Field label="Router">
-            <select {...register('routerId')} className={inputCls()}>
+            <select {...register('routerId')} className={INPUT_CLS}>
               <option value="">— Seleccionar router —</option>
               {(routers as any[]).map((r: any) => (
                 <option key={r.id} value={r.id}>{r.nombre}</option>
@@ -1072,7 +1066,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
           {/* Perfil Internet */}
           <Field label="Perfil Internet">
-            <select {...register('perfilId')} className={inputCls()}>
+            <select {...register('perfilId')} className={INPUT_CLS}>
               <option value="">— Seleccionar plan —</option>
               {planes.map((p: any) => (
                 <option key={p.id} value={p.id}>
@@ -1088,7 +1082,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               value={planSeleccionado?.descripcion ?? ''}
               readOnly
               rows={2}
-              className={cn(inputCls(), 'resize-none bg-muted/50 cursor-default')}
+              className={cn(INPUT_CLS, 'resize-none bg-muted/50 cursor-default')}
             />
           </Field>
 
@@ -1100,7 +1094,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               min={0}
               step="0.01"
               placeholder="0.00"
-              className={inputCls()}
+              className={INPUT_CLS}
             />
           </Field>
 
@@ -1111,7 +1105,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               {costoInstalacion && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm text-muted-foreground">S/</span>
-                  <DecimalInput2 className={inputCls()} placeholder="Monto instalación"
+                  <DecimalInput2 className={INPUT_CLS} placeholder="Monto instalación"
                     value={montoCostoInstalacion} onChange={v => setMontoCostoInstalacion(v)} />
                 </div>
               )}
@@ -1126,7 +1120,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             <select
               {...register('segmentoId')}
               disabled={!routerId}
-              className={cn(inputCls(), !routerId && 'opacity-50 cursor-not-allowed')}
+              className={cn(INPUT_CLS, !routerId && 'opacity-50 cursor-not-allowed')}
             >
               <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
               {segmentos.map((s: any) => (
@@ -1145,7 +1139,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
                 <input
                   {...register('ipv4')}
                   placeholder="—"
-                  className={cn(inputCls(), 'pl-9 pr-28')}
+                  className={cn(INPUT_CLS, 'pl-9 pr-28')}
                   readOnly={fetchingIp}
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
@@ -1175,7 +1169,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             <input
               {...register('mac')}
               placeholder="AA:BB:CC:DD:EE:FF"
-              className={inputCls()}
+              className={INPUT_CLS}
             />
           </Field>
 
@@ -1193,7 +1187,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <input
                     {...register('userPppHs')}
-                    className={cn(inputCls(!!s3Errors.userPppHs), 'pl-9')}
+                    className={cn(INPUT_CLS, !!s3Errors.userPppHs && INPUT_ERR, 'pl-9')}
                   />
                 </div>
               </Field>
@@ -1202,7 +1196,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   <input
                     {...register('passwordPppHs')}
-                    className={cn(inputCls(!!s3Errors.passwordPppHs), 'pl-9')}
+                    className={cn(INPUT_CLS, !!s3Errors.passwordPppHs && INPUT_ERR, 'pl-9')}
                   />
                 </div>
               </Field>
@@ -1214,13 +1208,13 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             <input
               {...register('routes')}
               placeholder="Ejm: 192.168.10.0/24"
-              className={inputCls()}
+              className={INPUT_CLS}
             />
           </Field>
 
           {/* Caja Nap */}
           <Field label="Caja Nap">
-            <select {...register('cajaNapId')} className={inputCls()}>
+            <select {...register('cajaNapId')} className={INPUT_CLS}>
               <option value="">Ninguno</option>
               {MOCK_CAJAS_NAP.filter(n => n.id).map((n) => (
                 <option key={n.id} value={n.nombre}>{n.nombre}</option>
@@ -1230,7 +1224,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
           {/* Puerto Nap */}
           <Field label="Puerto Nap">
-            <select {...register('puertoNapId')} className={inputCls()} disabled={!cajaNap}>
+            <select {...register('puertoNapId')} className={INPUT_CLS} disabled={!cajaNap}>
               <option value="">Ninguno</option>
               {PUERTOS_NAP.map((p) => (
                 <option key={p.id} value={p.nombre}>{p.nombre}</option>
@@ -1249,7 +1243,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
                 <input
                   {...register('direccion')}
                   placeholder="Av. Los Héroes 302"
-                  className={cn(inputCls(), 'pl-9')}
+                  className={cn(INPUT_CLS, 'pl-9')}
                 />
               </div>
             </Field>
@@ -1261,7 +1255,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
                 <input
                   {...register('coordenadas')}
                   placeholder="-5.1944, -80.6328"
-                  className={cn(inputCls(), 'pl-9')}
+                  className={cn(INPUT_CLS, 'pl-9')}
                 />
               </div>
             </Field>
@@ -1273,7 +1267,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
                 <input
                   {...register('fechaInstalacion')}
                   type="date"
-                  className={cn(inputCls(), 'pl-9')}
+                  className={cn(INPUT_CLS, 'pl-9')}
                 />
               </div>
             </Field>
@@ -1289,7 +1283,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               <select
                 {...register('conectadoAId')}
                 disabled={!routerId}
-                className={cn(inputCls(), !routerId && 'opacity-50 cursor-not-allowed')}
+                className={cn(INPUT_CLS, !routerId && 'opacity-50 cursor-not-allowed')}
               >
                 <option value="">{routerId ? '— Seleccionar antena AP —' : '— Elige un router primero —'}</option>
                 {(antenasAP as any[]).map((a: any) => (
@@ -1312,14 +1306,14 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
                 <input
                   {...register('ipAdministracion')}
                   placeholder="192.168.1.1"
-                  className={cn(inputCls(), 'pl-9')}
+                  className={cn(INPUT_CLS, 'pl-9')}
                 />
               </div>
             </Field>
 
             {/* Tipo antena */}
             <Field label="Tipo antena">
-              <select {...register('tipoAntena')} className={inputCls()}>
+              <select {...register('tipoAntena')} className={INPUT_CLS}>
                 {MOCK_TIPO_ANTENA.map((t) => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
