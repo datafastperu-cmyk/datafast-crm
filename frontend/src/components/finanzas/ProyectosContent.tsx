@@ -89,6 +89,14 @@ function RatiosBody({ r }: { r: RatiosFinancieros }) {
           )}>
             {formatPEN(r.van)}
           </p>
+          <span className={cn(
+            'inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
+            vanPositivo
+              ? 'bg-emerald-500/20 text-emerald-300'
+              : 'bg-rose-500/20    text-rose-300',
+          )}>
+            {vanPositivo ? 'Proyecto Viable' : 'Inversión en Riesgo'}
+          </span>
         </div>
 
         {/* TIR */}
