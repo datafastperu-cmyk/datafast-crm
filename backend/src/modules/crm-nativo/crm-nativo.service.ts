@@ -93,12 +93,19 @@ export class CrmNativoService {
     });
   }
 
-  // Single-tenant: devuelve todos los chats sin filtrar por empresa
-  async listarChatsActivos(): Promise<CrmChat[]> {
-    return this.chatRepo.find({
-      order: { ultimoMsgAt: 'DESC' },
-      take:  500,
-    });
+  // Resuelve el empresaId de la empresa activa.
+  // Prioridad: env var WA_EMPRESA_ID → primera empresa en BD (single-tenant).
+  // Se cachea en memoria; usar env var para override explícito en producción.
+  private cachedEmpresaId: string | null = null;
+  async resolverEmpresaId(): Promise<string | null> {
+    if (process.env.WA_EMPRESA_ID) return process.env.WA_EMPRESA_ID;
+    if (!this.cachedEmpresaId) {
+      const rows = await this.chatRepo.manager
+        .query('SELECT id FROM empresas ORDER BY created_at ASC LIMIT 1')
+        .catch(() => []);
+      this.cachedEmpresaId = rows[0]?.id ?? null;
+    }
+    return this.cachedEmpresaId;
   }
 
   // ── Listar mensajes de un chat ────────────────────────────────

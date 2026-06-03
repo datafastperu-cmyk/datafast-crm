@@ -1,6 +1,4 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource }       from 'typeorm';
 import * as fs     from 'fs';
 import * as path   from 'path';
 import * as crypto from 'crypto';
@@ -80,7 +78,6 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     private readonly crmSvc:  CrmNativoService,
     private readonly gateway: CrmNativoGateway,
     private readonly state:   WaStateService,
-    @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
   onModuleInit(): void {
@@ -378,7 +375,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         // Continúa: mensaje enviado desde el celular físico — procesar como "Desde Celular"
       }
 
-      const empresaId = await this.resolverEmpresaId();
+      const empresaId = await this.crmSvc.resolverEmpresaId();
       if (!empresaId) return;
 
       // Descargar media si existe (voucheres, imágenes, audios)
@@ -428,7 +425,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   private async cargarChatsIniciales(): Promise<void> {
     try {
       const todosLosChats = await this.client.getChats();
-      const empresaId     = await this.resolverEmpresaId();
+      const empresaId     = await this.crmSvc.resolverEmpresaId();
       if (!empresaId) return;
 
       const chatsIndividuales = todosLosChats.filter(
@@ -538,14 +535,4 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     .catch((err: any) => this.logger.warn(`[WA] LID patch falló: ${err?.message}`));
   }
 
-  private cachedEmpresaId: string | null = null;
-  private async resolverEmpresaId(): Promise<string | null> {
-    if (!this.cachedEmpresaId) {
-      const rows = await this.ds
-        .query('SELECT id FROM empresas ORDER BY created_at ASC LIMIT 1')
-        .catch(() => []);
-      this.cachedEmpresaId = rows[0]?.id ?? null;
-    }
-    return this.cachedEmpresaId;
-  }
 }

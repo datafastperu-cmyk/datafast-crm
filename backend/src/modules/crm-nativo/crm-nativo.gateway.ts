@@ -37,16 +37,19 @@ export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnec
     this.logger.debug(`WS conectado: ${client.id}`);
     const snap = this.state.snapshot();
 
+    const enviarChats = () =>
+      this.crmSvc.resolverEmpresaId()
+        .then(eid => eid ? this.crmSvc.listarChats(eid) : [])
+        .then(chats => { if (chats.length) client.emit('wa:chats', chats); })
+        .catch(() => {});
+
     // Fallback: si memoria dice INICIANDO pero sesión existe en disco → CONECTADO
     if (snap.estado === 'INICIANDO') {
       const sessionPath = process.env.WA_SESSION_PATH || '/opt/datafast/.wwebjs_auth';
       const sessionDir  = path.join(sessionPath, 'session-datafast-crm');
       if (fs.existsSync(sessionDir)) {
         client.emit('wa:status', { estado: 'CONECTADO' });
-        // Enviar lista de chats actuales para no dejar la pantalla vacía
-        this.crmSvc.listarChatsActivos()
-          .then(chats => { if (chats.length) client.emit('wa:chats', chats); })
-          .catch(() => {});
+        enviarChats();
         return;
       }
     }
@@ -55,9 +58,7 @@ export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     // Si ya está conectado, enviar chats al nuevo cliente inmediatamente
     if (snap.estado === 'CONECTADO') {
-      this.crmSvc.listarChatsActivos()
-        .then(chats => { if (chats.length) client.emit('wa:chats', chats); })
-        .catch(() => {});
+      enviarChats();
     }
   }
 
