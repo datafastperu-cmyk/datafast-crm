@@ -418,12 +418,11 @@ export class SistemaService {
     activo:                 boolean;
     limiteDiarioMasivo:     number;
     whatsappNumeroOrigen:   string | null;
-    agregarNombreOperador:  boolean;
   }> {
     const [row] = await this.ds.query(
       `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
               gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
-              gateway_masivo_limite_diario, whatsapp_numero_origen, gateway_masiva_nombre_operador
+              gateway_masivo_limite_diario, whatsapp_numero_origen
        FROM empresas WHERE id = $1`,
       [empresaId],
     );
@@ -435,10 +434,9 @@ export class SistemaService {
       pausa:                 row?.gateway_pausa                    ?? 2,
       limiteCaracteres:      row?.gateway_limite_caracteres        ?? 1000,
       codigoPais:            row?.gateway_codigo_pais              ?? '+51',
-      activo:                row?.gateway_activo                   ?? true,
-      limiteDiarioMasivo:    row?.gateway_masivo_limite_diario     ?? 500,
-      whatsappNumeroOrigen:  row?.whatsapp_numero_origen            ?? null,
-      agregarNombreOperador: row?.gateway_masiva_nombre_operador    ?? false,
+      activo:               row?.gateway_activo               ?? true,
+      limiteDiarioMasivo:   row?.gateway_masivo_limite_diario ?? 500,
+      whatsappNumeroOrigen: row?.whatsapp_numero_origen        ?? null,
     };
   }
 
@@ -456,12 +454,11 @@ export class SistemaService {
       activo?:                boolean;
       limiteDiarioMasivo?:    number;
       whatsappNumeroOrigen?:  string;
-      agregarNombreOperador?: boolean;
     },
   ): Promise<{
     proveedorActivo: ProveedorActivo; apiKeyStored: boolean; apiSecretStored: boolean;
     clientId: string | null; pausa: number; limiteCaracteres: number; codigoPais: string; activo: boolean;
-    limiteDiarioMasivo: number; whatsappNumeroOrigen: string | null; agregarNombreOperador: boolean;
+    limiteDiarioMasivo: number; whatsappNumeroOrigen: string | null;
   }> {
     const SENTINEL    = '***stored***';
     const setClauses: string[] = [];
@@ -515,11 +512,6 @@ export class SistemaService {
     if (dto.whatsappNumeroOrigen !== undefined) {
       params.push(dto.whatsappNumeroOrigen?.replace(/[^\d+]/g, '') || null);
       setClauses.push(`whatsapp_numero_origen = $${params.length}`);
-    }
-
-    if (dto.agregarNombreOperador !== undefined) {
-      params.push(dto.agregarNombreOperador);
-      setClauses.push(`gateway_masiva_nombre_operador = $${params.length}`);
     }
 
     if (setClauses.length > 0) {

@@ -139,8 +139,7 @@ interface FormValues {
   codigoPais:            string;
   activo:                boolean;
   limiteDiarioMasivo:    number;
-  whatsappNumeroOrigen:  string;
-  agregarNombreOperador: boolean;
+  whatsappNumeroOrigen: string;
 }
 
 // ─── Sub-componentes del Lanzador ────────────────────────────────────────────
@@ -428,8 +427,7 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
       apiKey: '', apiSecret: '', clientId: '',
       pausa: 2, limiteCaracteres: 1000, codigoPais: '+51',
       activo: true, limiteDiarioMasivo: 500,
-      whatsappNumeroOrigen:  '',
-      agregarNombreOperador: false,
+      whatsappNumeroOrigen: '',
     },
   });
 
@@ -451,17 +449,15 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
         phoneId:               waData?.phoneId    ?? '',
         businessId:            waData?.businessId ?? '',
         token:                 '',
-        whatsappNumeroOrigen:  gwData.whatsappNumeroOrigen  ?? '',
-        agregarNombreOperador: gwData.agregarNombreOperador ?? false,
+        whatsappNumeroOrigen: gwData.whatsappNumeroOrigen ?? '',
       });
       onProveedorChange(gwData.proveedorActivo);
     }
   }, [gwData, waData, reset]); // eslint-disable-line
 
-  const proveedor           = watch('proveedor');
-  const activo              = watch('activo');
-  const agregarNombreOp     = watch('agregarNombreOperador');
-  const meta                = PROVIDER_META[proveedor];
+  const proveedor = watch('proveedor');
+  const activo    = watch('activo');
+  const meta      = PROVIDER_META[proveedor];
   const isMeta              = proveedor === 'META_GRAPH';
   const isNative            = proveedor === 'DATAFAST_NATIVE';
   const isMasiva            = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
@@ -473,7 +469,7 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
     : isNative
     ? waEstado?.estado === 'CONECTADO'
     : isMasiva
-    ? !!(gwData?.clientId)
+    ? !!(gwData?.whatsappNumeroOrigen)
     : gwData?.apiKeyStored;
 
   const cardColor = COLOR_BADGE[meta.color] ?? COLOR_BADGE.emerald;
@@ -514,11 +510,8 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
         await sistemaApi.updateGatewayConfig({ proveedorActivo: 'DATAFAST_NATIVE', ...trafico });
       } else if (values.proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
         await sistemaApi.updateGatewayConfig({
-          proveedorActivo:       'DATAFAST_MENSAJERIA_MASIVA',
-          apiKey:                values.apiKey && values.apiKey !== SENTINEL ? values.apiKey : undefined,
-          clientId:              values.clientId || undefined,
-          whatsappNumeroOrigen:  values.whatsappNumeroOrigen || undefined,
-          agregarNombreOperador: values.agregarNombreOperador,
+          proveedorActivo:      'DATAFAST_MENSAJERIA_MASIVA',
+          whatsappNumeroOrigen: values.whatsappNumeroOrigen || undefined,
           ...trafico,
         });
       } else {
@@ -566,7 +559,7 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
         {isConfigured && (
           <span className={cn('ml-auto flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border', cardColor)}>
             <span className={cn('w-1.5 h-1.5 rounded-full animate-pulse', COLOR_PULSE[meta.color] ?? 'bg-emerald-500')} />
-            {isNative ? 'Sesión activa' : isMasiva ? 'Endpoint configurado' : 'Configurado'}
+            {isNative ? 'Sesión activa' : isMasiva ? 'Número configurado' : 'Configurado'}
           </span>
         )}
       </div>
@@ -734,11 +727,11 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
                     <h3 className="text-sm font-bold text-white tracking-wide">
                       WHATSAPP MENSAJERÍA MASIVA DATAFAST
                     </h3>
-                    <p className="text-[10px] text-white/50">Motor HTTP nativo — independiente del CRM Nativo</p>
+                    <p className="text-[10px] text-white/50">Motor nativo — independiente del CRM interactivo</p>
                   </div>
                   <span className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30 text-[10px] font-semibold">
                     <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
-                    HTTP Puro
+                    Motor Nativo
                   </span>
                 </div>
 
@@ -757,45 +750,8 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
                       className={INPUT}
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      Número emisor registrado en el gateway HTTP (campo <code className="font-mono">whatsapp_numero_origen</code>)
+                      Número emisor del motor nativo (campo <code className="font-mono">whatsapp_numero_origen</code>)
                     </p>
-                  </div>
-
-                  {/* Endpoint + Bearer Token */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-foreground">
-                        URL del Gateway HTTP <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="https://gateway.tudominio.com/api/send"
-                        {...register('clientId')}
-                        className={INPUT}
-                      />
-                      <p className="text-[10px] text-muted-foreground">
-                        POST <code className="font-mono text-[9px]">&#123; to, message, sender &#125;</code>
-                      </p>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-foreground">Bearer Token (API Key)</label>
-                      <div className="relative">
-                        <input
-                          type={showF1 ? 'text' : 'password'}
-                          placeholder="sk_live_..."
-                          {...register('apiKey')}
-                          className={cn(INPUT, 'pr-10 font-mono text-xs')}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowF1(v => !v)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {showF1 ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">Cifrado AES-256 en BD</p>
-                    </div>
                   </div>
 
                   {/* Parámetros de envío */}
@@ -834,22 +790,6 @@ function GatewayConfigForm({ onProveedorChange }: { onProveedorChange: (p: Prove
                         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                       </div>
                       <p className="text-[10px] text-muted-foreground">Se antepone a números sin prefijo</p>
-                    </div>
-                  </div>
-
-                  {/* Switch: Agregar nombre operador */}
-                  <div className="pt-3 border-t border-border">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <p className="text-xs font-medium text-foreground mb-0.5">Agregar nombre operador</p>
-                        <p className="text-[10px] text-amber-500">
-                          * Agrega el nombre del operador cuando responde un chat.
-                        </p>
-                      </div>
-                      <Toggle
-                        on={agregarNombreOp}
-                        onToggle={() => setValue('agregarNombreOperador', !agregarNombreOp, { shouldDirty: true })}
-                      />
                     </div>
                   </div>
 

@@ -50,9 +50,8 @@ export interface GatewayConfig {
   limiteCaracteres:      number;
   codigoPais:            string;
   activo:                boolean;
-  limiteDiarioMasivo:    number;
-  whatsappNumeroOrigen:  string | null;
-  agregarNombreOperador: boolean;
+  limiteDiarioMasivo:   number;
+  whatsappNumeroOrigen: string | null;
 }
 
 export interface WhatsAppConfig {
@@ -102,10 +101,9 @@ export const sistemaApi = {
     pausa?:                 number;
     limiteCaracteres?:      number;
     codigoPais?:            string;
-    activo?:                boolean;
-    limiteDiarioMasivo?:    number;
-    whatsappNumeroOrigen?:  string;
-    agregarNombreOperador?: boolean;
+    activo?:               boolean;
+    limiteDiarioMasivo?:   number;
+    whatsappNumeroOrigen?: string;
   }) =>
     api.patch<{ data: GatewayConfig }>('/admin/sistema/gateway-config', dto).then(r => r.data.data),
 };
