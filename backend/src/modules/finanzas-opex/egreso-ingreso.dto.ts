@@ -1,6 +1,6 @@
 import {
   IsBoolean, IsDateString, IsEnum, IsNotEmpty, IsNumber,
-  IsOptional, IsPositive, IsString, Max, MaxLength, Min,
+  IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -35,6 +35,10 @@ export class CreateEgresoIngresoDto {
   @ApiPropertyOptional({ minimum: 1, maximum: 31, description: 'Requerido si esRecurrente = true' })
   @IsOptional() @IsNumber() @Min(1) @Max(31)
   diaVencimiento?: number;
+
+  @ApiPropertyOptional({ description: 'UUID de la zona geográfica a la que se asigna este egreso' })
+  @IsOptional() @IsUUID()
+  sectorId?: string;
 }
 
 export class UpdateEgresoIngresoDto {

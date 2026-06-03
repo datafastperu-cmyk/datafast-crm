@@ -49,7 +49,8 @@ import { ReportesModule }         from './modules/reportes/reportes.module';
 import { WebhooksModule }         from './modules/webhooks/webhooks.module';
 import { CrmNativoModule }        from './modules/crm-nativo/crm-nativo.module';
 import { OltNativoModule }        from './modules/olt-nativo/olt-nativo.module';
-import { FinanzasOpexModule }     from './modules/finanzas-opex/finanzas-opex.module';
+import { FinanzasOpexModule }          from './modules/finanzas-opex/finanzas-opex.module';
+import { ProyectosInversionModule }    from './modules/proyectos-inversion/proyectos-inversion.module';
 
 @Module({
   imports: [
@@ -165,6 +166,7 @@ import { FinanzasOpexModule }     from './modules/finanzas-opex/finanzas-opex.mo
     CrmNativoModule,
     OltNativoModule,
     FinanzasOpexModule,
+    ProyectosInversionModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia

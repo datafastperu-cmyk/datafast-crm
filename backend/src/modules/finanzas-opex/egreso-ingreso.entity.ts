@@ -59,6 +59,10 @@ export class EgresoIngreso {
   @Column({ name: 'plantilla_id', nullable: true })
   plantillaId?: string;
 
+  // Zona geográfica a la que se asigna este egreso (para cálculo de flujos por sector).
+  @Column({ name: 'sector_id', nullable: true })
+  sectorId?: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
