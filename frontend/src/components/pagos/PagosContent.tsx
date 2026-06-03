@@ -4,11 +4,13 @@ import { useState, useCallback } from 'react';
 import { useRouter }             from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, Plus, RefreshCw, CheckCircle2,
+  Search, RefreshCw, CheckCircle2,
   Clock, AlertCircle, CreditCard, TrendingUp,
 } from 'lucide-react';
 
 import { pagosApi, type FiltrosPago } from '@/lib/api/facturacion';
+import { zonasApi }                   from '@/lib/api/zonas';
+import { mikrotikApi }                from '@/lib/api/mikrotik';
 import { useToast }    from '@/components/ui/toaster';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn, formatPEN, formatDate, parseApiError } from '@/lib/utils';
@@ -37,6 +39,9 @@ export function PagosContent() {
   const searchDebounced          = useDebounce(searchInput, 400);
   const [rechazandoId, setRechazando] = useState<string | null>(null);
   const [motivoRechazo, setMotivo]    = useState('');
+
+  const { data: zonas    = [] } = useQuery({ queryKey: ['zonas-list'],    queryFn: zonasApi.list,          staleTime: 5 * 60_000 });
+  const { data: routers  = [] } = useQuery({ queryKey: ['routers-list'],  queryFn: mikrotikApi.listar,     staleTime: 5 * 60_000 });
 
   const upd = useCallback(<K extends keyof FiltrosPago>(k: K, v: FiltrosPago[K]) =>
     setFiltros((f) => ({ ...f, [k]: v, page: 1 })), []);
@@ -85,11 +90,11 @@ export function PagosContent() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Pagos</h2>
+          <h2 className="text-lg font-semibold text-foreground">Transacciones</h2>
           <p className="text-sm text-muted-foreground">
             {resumen?.pendientesVerificar
               ? <span className="text-orange-600 font-medium">{resumen.pendientesVerificar} pagos pendientes de verificar</span>
-              : 'Registro y verificación de pagos'}
+              : 'Historial y Auditoría de Movimientos Financieros'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -107,13 +112,6 @@ export function PagosContent() {
             {(resumen?.pendientesVerificar ?? 0) > 0 && (
               <span className="font-bold ml-1">{resumen!.pendientesVerificar}</span>
             )}
-          </button>
-          <button
-            onClick={() => router.push('/pagos/nuevo')}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg
-                       bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> Registrar pago
           </button>
         </div>
       </div>
@@ -168,40 +166,99 @@ export function PagosContent() {
       <div className="bg-card border border-border rounded-xl overflow-hidden">
 
         {/* Toolbar */}
-        <div className="flex items-center gap-3 p-4 border-b border-border flex-wrap">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Buscar por N° operación, banco…"
-              value={searchInput}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-input
-                         bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+        <div className="p-4 border-b border-border space-y-3">
+          {/* Fila 1: búsqueda + método + refresh */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Buscar por N° operación, banco…"
+                value={searchInput}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-input
+                           bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <select
+              value={filtros.metodoPago ?? ''}
+              onChange={(e) => upd('metodoPago', e.target.value || undefined)}
+              className="px-3 py-2 text-sm rounded-lg border border-input bg-background
+                         focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Todos los métodos</option>
+              <option value="efectivo">💵 Efectivo</option>
+              <option value="yape">🟣 Yape</option>
+              <option value="plin">🔵 Plin</option>
+              <option value="transferencia_bancaria">🏦 Transferencia</option>
+              <option value="deposito_bancario">🏦 Depósito</option>
+              <option value="mercadopago">💳 MercadoPago</option>
+              <option value="tarjeta_credito">💳 Tarjeta crédito</option>
+              <option value="tarjeta_debito">💳 Tarjeta débito</option>
+            </select>
+            <button onClick={() => refetch()} disabled={isFetching}
+              className="p-2 rounded-lg border border-input text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
+            </button>
           </div>
-          <select
-            value={filtros.metodoPago ?? ''}
-            onChange={(e) => upd('metodoPago', e.target.value || undefined)}
-            className="px-3 py-2 text-sm rounded-lg border border-input bg-background
-                       focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="">Todos los métodos</option>
-            <option value="efectivo">💵 Efectivo</option>
-            <option value="yape">🟣 Yape</option>
-            <option value="plin">🔵 Plin</option>
-            <option value="transferencia_bancaria">🏦 Transferencia</option>
-            <option value="mercadopago">💳 MercadoPago</option>
-          </select>
-          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
-            <input type="checkbox" checked={filtros.soloHoy ?? false}
-              onChange={(e) => upd('soloHoy', e.target.checked || undefined)} className="rounded" />
-            Solo hoy
-          </label>
-          <button onClick={() => refetch()} disabled={isFetching}
-            className="p-2 rounded-lg border border-input text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-            <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
-          </button>
+
+          {/* Fila 2: rango fechas + sector + router */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">Desde</label>
+              <input
+                type="date"
+                value={filtros.fechaDesde ?? ''}
+                onChange={(e) => upd('fechaDesde', e.target.value || undefined)}
+                className="px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background
+                           focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-muted-foreground whitespace-nowrap">Hasta</label>
+              <input
+                type="date"
+                value={filtros.fechaHasta ?? ''}
+                min={filtros.fechaDesde}
+                onChange={(e) => upd('fechaHasta', e.target.value || undefined)}
+                className="px-2.5 py-1.5 text-sm rounded-lg border border-input bg-background
+                           focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <select
+              value={filtros.sectorId ?? ''}
+              onChange={(e) => upd('sectorId', e.target.value || undefined)}
+              className="px-3 py-2 text-sm rounded-lg border border-input bg-background
+                         focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Todos los sectores</option>
+              {zonas.map((z) => (
+                <option key={z.id} value={z.id}>{z.nombre}</option>
+              ))}
+            </select>
+            <select
+              value={filtros.routerId ?? ''}
+              onChange={(e) => upd('routerId', e.target.value || undefined)}
+              className="px-3 py-2 text-sm rounded-lg border border-input bg-background
+                         focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">Todos los routers</option>
+              {routers.map((r) => (
+                <option key={r.id} value={r.id}>{r.nombre}</option>
+              ))}
+            </select>
+            {(filtros.fechaDesde || filtros.fechaHasta || filtros.sectorId || filtros.routerId) && (
+              <button
+                onClick={() => setFiltros((f) => ({
+                  ...f, fechaDesde: undefined, fechaHasta: undefined,
+                  sectorId: undefined, routerId: undefined, page: 1,
+                }))}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tabs de estado */}

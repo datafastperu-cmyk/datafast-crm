@@ -27,6 +27,8 @@ export interface FiltrosPago {
   conciliado?:    boolean;
   fechaDesde?:    string;
   fechaHasta?:    string;
+  sectorId?:      string;
+  routerId?:      string;
   page?:          number;
   limit?:         number;
 }
