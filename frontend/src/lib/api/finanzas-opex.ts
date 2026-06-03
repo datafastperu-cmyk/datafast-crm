@@ -30,9 +30,10 @@ export interface CreateEgresoIngresoDto {
   monto:           number;
   fechaRegistro:   string;
   descripcion?:    string;
-  esRecurrente?:   boolean;
-  diaVencimiento?: number;
-  sectorId?:       string;
+  esRecurrente?:        boolean;
+  diaVencimiento?:      number;
+  sectorId?:            string;
+  proyectoInversionId?: string;
 }
 
 export interface FiltrosOpex {

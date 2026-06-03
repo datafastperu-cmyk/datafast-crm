@@ -13,6 +13,7 @@ import {
   type EstadoMovimiento,
 } from '@/lib/api/finanzas-opex';
 import { zonasApi } from '@/lib/api/zonas';
+import { proyectosInversionApi } from '@/lib/api/proyectos-inversion';
 import { useToast } from '@/components/ui/toaster';
 import { cn, formatPEN, formatDate, parseApiError } from '@/lib/utils';
 
@@ -35,12 +36,13 @@ const TIPO_BADGE: Record<TipoMovimiento, string> = {
 };
 
 const FORM_EMPTY: CreateEgresoIngresoDto = {
-  tipo:          'EGRESO',
-  categoria:     'OTROS',
-  monto:         0,
-  fechaRegistro: new Date().toISOString().split('T')[0],
-  descripcion:   '',
-  esRecurrente:  false,
+  tipo:               'EGRESO',
+  categoria:          'OTROS',
+  monto:              0,
+  fechaRegistro:      new Date().toISOString().split('T')[0],
+  descripcion:        '',
+  esRecurrente:       false,
+  proyectoInversionId: undefined,
 };
 
 // ─── Componente ───────────────────────────────────────────────
@@ -73,6 +75,13 @@ export function GastosContent() {
     queryFn:  zonasApi.list,
     staleTime: 5 * 60_000,
   });
+
+  const { data: proyectosActivos } = useQuery({
+    queryKey: ['proyectos-activos'],
+    queryFn:  () => proyectosInversionApi.list({ estado: 'activo', limit: 100 }),
+    staleTime: 5 * 60_000,
+  });
+  const proyectoOpts = proyectosActivos?.data ?? [];
 
   // ── Mutations ──────────────────────────────────────────────
   const crearMut = useMutation({
@@ -281,7 +290,11 @@ export function GastosContent() {
                       onClick={() => setForm((f) => ({
                         ...f,
                         tipo: t,
-                        ...(t === 'INGRESO_OTRO' && { esRecurrente: false, diaVencimiento: undefined }),
+                        ...(t === 'INGRESO_OTRO' && {
+                          esRecurrente:        false,
+                          diaVencimiento:      undefined,
+                          proyectoInversionId: undefined,
+                        }),
                       }))}
                       className={cn(
                         'flex-1 py-2 rounded-lg border text-sm font-medium transition-colors',
@@ -371,6 +384,25 @@ export function GastosContent() {
                 </select>
               </div>
 
+              {/* Proyecto de Expansión — solo egresos */}
+              {form.tipo === 'EGRESO' && (
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    Proyecto de Expansión <span className="text-muted-foreground/60">(opcional)</span>
+                  </label>
+                  <select
+                    value={form.proyectoInversionId ?? ''}
+                    onChange={(e) => setForm((f) => ({ ...f, proyectoInversionId: e.target.value || undefined }))}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">— Sin imputar a proyecto —</option>
+                    {proyectoOpts.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nombreProyecto}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Recurrente — solo egresos */}
               {form.tipo === 'EGRESO' && (
                 <label className="flex items-center gap-3 cursor-pointer select-none">
@@ -415,8 +447,9 @@ export function GastosContent() {
               <button
                 onClick={() => crearMut.mutate({
                   ...form,
-                  esRecurrente:   form.tipo === 'EGRESO' ? form.esRecurrente : false,
-                  diaVencimiento: form.tipo === 'EGRESO' ? form.diaVencimiento : undefined,
+                  esRecurrente:        form.tipo === 'EGRESO' ? form.esRecurrente        : false,
+                  diaVencimiento:      form.tipo === 'EGRESO' ? form.diaVencimiento      : undefined,
+                  proyectoInversionId: form.tipo === 'EGRESO' ? form.proyectoInversionId : undefined,
                 })}
                 disabled={crearMut.isPending || form.monto <= 0}
                 className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
