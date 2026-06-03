@@ -59,6 +59,9 @@ export enum Permission {
   REPORTS_VIEW    = 'reports:view',
   REPORTS_EXPORT  = 'reports:export',
 
+  // Mensajería Masiva
+  MENSAJERIA_MASIVA = 'mensajeria:masiva',
+
   // Administración
   USERS_MANAGE    = 'users:manage',
   ROLES_MANAGE    = 'roles:manage',

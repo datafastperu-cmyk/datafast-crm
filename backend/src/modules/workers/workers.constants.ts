@@ -129,6 +129,15 @@ export interface PayloadCampanaMasiva {
   plantillaId?: string;
 }
 
+// Job individual por destinatario (inyectado por CampanasService con delay de goteo)
+export interface PayloadCampanaItem {
+  empresaId:    string;
+  tipo:         string;
+  telefono:     string;
+  variables:    Record<string, string>;
+  plantillaId?: string;
+}
+
 export interface PayloadMkReactivar {
   contratoId:    string;
   routerId:      string;
