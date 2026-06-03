@@ -34,7 +34,13 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 
 const SESSION_PATH = process.env.WA_SESSION_PATH || '/opt/datafast/.wwebjs_auth';
+const WA_CACHE_PATH = process.env.WA_CACHE_PATH  || '/opt/datafast/.wwebjs_cache';
 const CLIENT_ID    = 'datafast-crm';
+
+// Circuit breaker: máximo reinicios antes de pedir intervención manual.
+// Delays exponenciales: 8s → 16s → 32s → 64s → 120s
+const MAX_RESTARTS   = 5;
+const RESTART_DELAYS = [8_000, 16_000, 32_000, 64_000, 120_000];
 
 // Cluster guard: only PM2 instance 0 manages the WA client.
 // Reads from env var first, falls back to pm2_env JSON (PM2 v7 embeds it as number).
@@ -65,11 +71,9 @@ const CHROME_PATH = process.env.WA_CHROME_PATH
 export class WaClientService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WaClientService.name);
   private client: any = null;
-  private restarting  = false;
-  // waMsgIds de mensajes enviados por el CRM — para ignorarlos en message_create
-  private readonly crmSentIds    = new Set<string>();
-  // chatIds con envío CRM en vuelo — registrado ANTES de sendMessage para cubrir
-  // el caso en que message_create dispara antes de que sendMessage resuelva
+  private restarting   = false;
+  private restartCount = 0;
+  private readonly crmSentIds      = new Set<string>();
   private readonly sendingByChatId = new Set<string>();
 
   constructor(
@@ -255,10 +259,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
           dataPath: SESSION_PATH,
           clientId: CLIENT_ID,
         }),
-        webVersionCache: {
-          type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1040472990-alpha.html',
-        },
+        webVersionCache: { type: 'local', path: WA_CACHE_PATH },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         puppeteer: {
           headless: true,
@@ -290,103 +291,16 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       });
 
       this.client.on('authenticated', () => {
+        this.restartCount = 0;
         this.logger.log('WhatsApp: autenticado — sesión válida');
-        // Desbloquear spinner inmediatamente sin esperar ready
         this.gateway.emitStatus({ estado: 'CONECTADO' });
       });
 
       this.client.on('ready', () => {
+        this.restartCount = 0;
         this.logger.log('WhatsApp Web listo!');
         this.gateway.emitStatus({ estado: 'CONECTADO' });
-        this.client.pupPage.evaluate(() => {
-          const w = window as any;
-
-          // Find and patch the module that throws "No LID for user"
-          // WA Web stores modules in webpackChunk - iterate to find and neutralize
-          if (!w._noLidPatched) {
-            w._noLidPatched = true;
-            try {
-              // Search all webpack chunk modules for the "No LID" thrower
-              const chunks: any[] = (w as any).webpackChunkwhatsapp_web_client
-                || (w as any).webpackChunk
-                || [];
-              for (const chunk of chunks) {
-                const mods = chunk[1] || chunk[2] || {};
-                for (const modId of Object.keys(mods)) {
-                  const src = String(mods[modId]);
-                  if (src.includes('No LID for user')) {
-                    const origFactory = mods[modId];
-                    mods[modId] = function(...args: any[]) {
-                      const result = origFactory.apply(this, args);
-                      return result;
-                    };
-                    (w as any).__noLidModId = modId;
-                  }
-                }
-              }
-            } catch {}
-
-            // Approach 2: intercept WAWebSendMsgChatAction
-            try {
-              const sendAction = w.require('WAWebSendMsgChatAction');
-              if (sendAction && sendAction.addAndSendMsgToChat && !sendAction._patched) {
-                const origAddSend = sendAction.addAndSendMsgToChat.bind(sendAction);
-                sendAction.addAndSendMsgToChat = function(chat: any, msg: any) {
-                  try {
-                    return origAddSend(chat, msg);
-                  } catch (e: any) {
-                    if (!String(e?.message).includes('No LID')) throw e;
-                    // Return a fake resolved promise pair so it doesn't crash
-                    const p = Promise.resolve(null);
-                    return [p, p];
-                  }
-                };
-                sendAction._patched = true;
-                (w as any).__sendActionPatched = true;
-              }
-            } catch {}
-          }
-
-          // Wrap WWebJS.sendMessage: pre-resolve recipient LID, then retry on failure
-          if (!w._wwebjsPatched) {
-            w._wwebjsPatched = true;
-            const prefsMod = w.require('WAWebUserPrefsMeUser');
-            const origSend = w.WWebJS.sendMessage;
-            w.WWebJS.sendMessage = async (chat: any, content: any, options: any) => {
-              // Pre-resolve: queryWidExists + wait for contact lid to populate
-              try {
-                const result = await w.require('WAWebQueryExistsJob').queryWidExists(chat.id);
-                if (result?.lid) {
-                  // Try to register the LID in the contact collection
-                  try {
-                    const contact = w.require('WAWebCollections').Contact.get(chat.id)
-                      || w.require('WAWebCollections').Contact.gadd(chat.id);
-                    if (contact && result.lid && !contact.lid) {
-                      contact.lid = result.lid;
-                    }
-                  } catch {}
-                }
-                // Small wait for async side effects to settle
-                await new Promise((r) => setTimeout(r, 200));
-              } catch {}
-              try {
-                return await origSend(chat, content, options);
-              } catch (e: any) {
-                if (!String(e?.message).includes('No LID')) throw e;
-                // Last resort: query both sender and recipient
-                const meUser = prefsMod.getMaybeMePnUser();
-                await Promise.all([
-                  meUser ? w.require('WAWebQueryExistsJob').queryWidExists(meUser).catch(() => {}) : Promise.resolve(),
-                  w.require('WAWebQueryExistsJob').queryWidExists(chat.id).catch(() => {}),
-                ]);
-                await new Promise((r) => setTimeout(r, 500));
-                return origSend(chat, content, options);
-              }
-            };
-          }
-        }).then(() => this.logger.log('LID patches aplicados'))
-          .catch((err: any) => this.logger.warn(`LID patch falló: ${err?.message}`));
-        // Carga de chats históricos en background — no bloquea el spinner
+        this.aplicarLidPatches();
         setImmediate(() => this.cargarChatsIniciales().catch((err) =>
           this.logger.error(`Error cargando chats iniciales: ${err}`),
         ));
@@ -543,9 +457,18 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
   private async reiniciarConRetraso(ms: number): Promise<void> {
     if (this.restarting) return;
+    if (this.restartCount >= MAX_RESTARTS) {
+      this.logger.error(
+        `[WA] Máximo de reinicios (${MAX_RESTARTS}) alcanzado — se requiere intervención manual`,
+      );
+      this.gateway.emitStatus({ estado: 'DESCONECTADO' });
+      return;
+    }
     this.restarting = true;
-    this.logger.log(`Reiniciando cliente WA en ${ms / 1000}s...`);
-    await new Promise(r => setTimeout(r, ms));
+    this.restartCount++;
+    const delay = RESTART_DELAYS[this.restartCount - 1] ?? ms;
+    this.logger.log(`[WA] Reinicio ${this.restartCount}/${MAX_RESTARTS} en ${delay / 1000}s…`);
+    await new Promise(r => setTimeout(r, delay));
     this.restarting = false;
     await this.iniciarCliente();
   }
@@ -560,11 +483,61 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       fs.rmSync(sessionDir, { recursive: true, force: true });
       this.logger.log('Sesión corrupta eliminada');
     }
+    this.restartCount = 0;
     await this.reiniciarConRetraso(3_000);
   }
 
   // Resuelve el empresaId de la primera empresa activa en la BD
   // (single-tenant: siempre hay una sola empresa)
+  // Meta migró cuentas WhatsApp Business al esquema LID (Linked Identity Device).
+  // WID @c.us legacy falla con "No LID for user" si el LID no está en el Contact store de WA Web.
+  // Este patch pre-resuelve el LID vía queryWidExists y reintenta si falla.
+  // Aplica a whatsapp-web.js 1.34.x — parches 1 (webpack scan) y 2 (WAWebSendMsgChatAction)
+  // eliminados: Patch1 era no-op, Patch2 silenciaba mensajes sin enviarlos (data loss).
+  private aplicarLidPatches(): void {
+    this.client.pupPage.evaluate(() => {
+      if ((window as any)._wwebjsPatched) return;
+      (window as any)._wwebjsPatched = true;
+
+      const w        = window as any;
+      const prefsMod = w.require?.('WAWebUserPrefsMeUser');
+      const origSend = w.WWebJS?.sendMessage;
+      if (!origSend) return;
+
+      w.WWebJS.sendMessage = async (chat: any, content: any, options: any) => {
+        try {
+          const result = await w.require('WAWebQueryExistsJob').queryWidExists(chat.id);
+          if (result?.lid) {
+            try {
+              const contacts = w.require('WAWebCollections').Contact;
+              const contact  = contacts.get(chat.id) || contacts.gadd(chat.id);
+              if (contact && !contact.lid) contact.lid = result.lid;
+            } catch {}
+          }
+          await new Promise(r => setTimeout(r, 200));
+        } catch {}
+
+        try {
+          return await origSend(chat, content, options);
+        } catch (e: any) {
+          if (!String(e?.message).includes('No LID')) throw e;
+
+          const meUser = prefsMod?.getMaybeMePnUser?.();
+          await Promise.all([
+            meUser
+              ? w.require('WAWebQueryExistsJob').queryWidExists(meUser).catch(() => {})
+              : Promise.resolve(),
+            w.require('WAWebQueryExistsJob').queryWidExists(chat.id).catch(() => {}),
+          ]);
+          await new Promise(r => setTimeout(r, 500));
+          return origSend(chat, content, options);
+        }
+      };
+    })
+    .then(() => this.logger.log('[WA] LID patch aplicado correctamente'))
+    .catch((err: any) => this.logger.warn(`[WA] LID patch falló: ${err?.message}`));
+  }
+
   private cachedEmpresaId: string | null = null;
   private async resolverEmpresaId(): Promise<string | null> {
     if (!this.cachedEmpresaId) {
