@@ -89,6 +89,50 @@ export class CampanasService {
     return { total: destinatarios.length, encolados, cuotaRestante };
   }
 
+  // ── Cuota diaria actual ─────────────────────────────────────
+  async consultarCuota(empresaId: string) {
+    const hoy          = new Date().toISOString().split('T')[0];
+    const cuotaKey     = `cuota:whatsapp:nativo:${empresaId}:${hoy}`;
+    const limiteDiario = await this.obtenerLimiteDiario(empresaId);
+    const usado        = (await this.cache.get<number>(cuotaKey)) ?? 0;
+    return { limiteDiario, usado, restante: limiteDiario - usado };
+  }
+
+  // ── Monitor: stats de logs de hoy ───────────────────────────
+  async consultarMonitor(empresaId: string) {
+    const hoy = new Date().toISOString().split('T')[0];
+    const rows = await this.ds.query<{ estado: string; total: string }[]>(`
+      SELECT estado_entrega AS estado, COUNT(*) AS total
+      FROM notificaciones_logs
+      WHERE created_at::date = $1::date
+        AND canal = 'WHATSAPP'
+      GROUP BY estado_entrega
+    `, [hoy]);
+
+    const stats: Record<string, number> = {};
+    for (const r of rows) stats[r.estado] = parseInt(r.total, 10);
+
+    return {
+      encolados: stats['ENCOLADO']     ?? 0,
+      enviados:  stats['ENVIADO_META'] ?? 0,
+      fallidos:  stats['FALLIDO']      ?? 0,
+      entregados: stats['ENTREGADO']   ?? 0,
+    };
+  }
+
+  // ── Vaciar cola BullMQ ───────────────────────────────────────
+  async vaciarCola(_empresaId: string) {
+    const [waiting, delayed] = await Promise.all([
+      this.queue.getWaiting(),
+      this.queue.getDelayed(),
+    ]);
+    const jobs = [...waiting, ...delayed].filter(
+      j => j.name === JOBS.CAMPANA_MASIVA,
+    );
+    await Promise.all(jobs.map(j => j.remove()));
+    return { eliminados: jobs.length };
+  }
+
   // ── QueryBuilder: abonados activos con WhatsApp, filtrados ──
   private async segmentar(
     empresaId: string,
