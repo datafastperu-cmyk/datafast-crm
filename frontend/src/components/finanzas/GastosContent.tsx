@@ -278,7 +278,11 @@ export function GastosContent() {
                   {(['EGRESO', 'INGRESO_OTRO'] as TipoMovimiento[]).map((t) => (
                     <button
                       key={t}
-                      onClick={() => setForm((f) => ({ ...f, tipo: t }))}
+                      onClick={() => setForm((f) => ({
+                        ...f,
+                        tipo: t,
+                        ...(t === 'INGRESO_OTRO' && { esRecurrente: false, diaVencimiento: undefined }),
+                      }))}
                       className={cn(
                         'flex-1 py-2 rounded-lg border text-sm font-medium transition-colors',
                         form.tipo === t
@@ -361,8 +365,8 @@ export function GastosContent() {
                 </select>
               </div>
 
-              {/* Recurrente */}
-              <label className="flex items-center gap-3 cursor-pointer select-none">
+              {/* Recurrente — solo egresos */}
+              {form.tipo === 'EGRESO' && <label className="flex items-center gap-3 cursor-pointer select-none">
                 <div
                   onClick={() => setForm((f) => ({ ...f, esRecurrente: !f.esRecurrente, diaVencimiento: !f.esRecurrente ? 1 : undefined }))}
                   className={cn(
@@ -401,7 +405,11 @@ export function GastosContent() {
                 Cancelar
               </button>
               <button
-                onClick={() => crearMut.mutate(form)}
+                onClick={() => crearMut.mutate({
+                  ...form,
+                  esRecurrente:   form.tipo === 'EGRESO' ? form.esRecurrente : false,
+                  diaVencimiento: form.tipo === 'EGRESO' ? form.diaVencimiento : undefined,
+                })}
                 disabled={crearMut.isPending || form.monto <= 0}
                 className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
