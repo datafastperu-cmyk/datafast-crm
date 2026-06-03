@@ -513,13 +513,15 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
   private async cargarChatsIniciales(): Promise<void> {
     try {
-      const waChats  = await this.client.getChats();
-      const empresaId = await this.resolverEmpresaId();
+      const todosLosChats = await this.client.getChats();
+      const empresaId     = await this.resolverEmpresaId();
       if (!empresaId) return;
 
-      const chats = waChats.filter((c: any) => !c.isGroup && !c.id?._serialized?.endsWith('@g.us')).slice(0, 50);
+      const chatsIndividuales = todosLosChats.filter(
+        (c: any) => !c.isGroup && !c.id?._serialized?.endsWith('@g.us'),
+      );
 
-      for (const c of chats) {
+      for (const c of chatsIndividuales.slice(0, 50)) {
         const contact = await this.client.getContactById(c.id._serialized).catch(() => null);
         const nombre  = (contact as any)?.name || (contact as any)?.pushname || c.name || null;
         await this.crmSvc.upsertChat(empresaId, {

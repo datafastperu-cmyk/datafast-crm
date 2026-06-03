@@ -33,6 +33,8 @@ export class CrmNativoService {
 
   // ── Upsert chat ──────────────────────────────────────────────
   async upsertChat(empresaId: string, dto: ChatDto): Promise<CrmChat> {
+    if (dto.waChatId?.endsWith('@g.us')) return null!;
+
     let chat = await this.chatRepo.findOne({
       where: { empresaId, waChatId: dto.waChatId },
     });
