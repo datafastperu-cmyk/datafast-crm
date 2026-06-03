@@ -1,6 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { InjectDataSource }  from '@nestjs/typeorm';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ProyectoInversion } from './proyecto-inversion.entity';
 import {
@@ -13,6 +12,8 @@ import { paginate, PaginatedResult } from '../../common/utils/pagination.util';
 
 @Injectable()
 export class ProyectosInversionService {
+  private readonly logger = new Logger(ProyectosInversionService.name);
+
   constructor(
     @InjectRepository(ProyectoInversion)
     private readonly repo: Repository<ProyectoInversion>,
@@ -53,59 +54,70 @@ export class ProyectosInversionService {
 
   // ─── Lógica financiera ────────────────────────────────────────
 
+  /**
+   * Retorna VAN, TIR, Payback y esViable a partir de los flujos reales del sector.
+   *
+   * Flujos = pagos verificados de clientes (zona_id = sectorId)
+   *        - egresos imputados al sector (sector_id = sectorId, tipo = EGRESO, estado = PAGADO)
+   *
+   * Períodos: mensuales desde fechaInicio hasta el mes actual inclusive.
+   * Tasa:     tasaDescuento es anual → se convierte a mensual equivalente
+   *           r_m = (1 + r_a)^(1/12) - 1   antes de iterar el VAN.
+   */
   async calcularRatiosFinancieros(
     proyectoId: string,
     empresaId:  string,
   ): Promise<RatiosFinancierosResult> {
     const proyecto = await this.getById(proyectoId, empresaId);
-    const desde    = proyecto.fechaInicio;         // 'YYYY-MM-DD'
-    const hasta    = new Date().toISOString().split('T')[0];
 
-    // ── 1. Ingresos mensuales: pagos verificados de clientes de la zona ──
-    const ingRows: Array<{ mes: string; total: string }> = await this.ds.query(`
-      SELECT
-        TO_CHAR(DATE_TRUNC('month', p.fecha_pago::date), 'YYYY-MM') AS mes,
-        SUM(p.monto)::float                                         AS total
-      FROM pagos p
-      JOIN clientes cl ON cl.id = p.cliente_id
-      WHERE p.empresa_id = $1
-        AND cl.zona_id   = $2
-        AND p.estado     = 'verificado'
-        AND p.fecha_pago >= $3
-        AND p.fecha_pago <= $4
-      GROUP BY DATE_TRUNC('month', p.fecha_pago::date)
-      ORDER BY mes ASC
-    `, [empresaId, proyecto.sectorId, desde, hasta]);
+    // Los transformers de columna garantizan que estos ya son number, no string.
+    const inversion: number = proyecto.inversionInicial;
+    const tasaAnual: number = proyecto.tasaDescuento;
+    const desde             = proyecto.fechaInicio;
+    const hasta             = new Date().toISOString().split('T')[0];
 
-    // ── 2. Egresos mensuales asignados explícitamente a este sector ──
-    const egRows: Array<{ mes: string; total: string }> = await this.ds.query(`
-      SELECT
-        TO_CHAR(DATE_TRUNC('month', fecha_registro::date), 'YYYY-MM') AS mes,
-        SUM(monto)::float                                              AS total
-      FROM egresos_ingresos
-      WHERE empresa_id       = $1
-        AND sector_id        = $2
-        AND tipo             = 'EGRESO'
-        AND estado           = 'PAGADO'
-        AND fecha_registro  >= $3
-        AND fecha_registro  <= $4
-      GROUP BY DATE_TRUNC('month', fecha_registro::date)
-      ORDER BY mes ASC
-    `, [empresaId, proyecto.sectorId, desde, hasta]);
+    // ── 1. Ingresos mensuales por zona usando QueryBuilder ───────
+    //    pagos verificados de clientes cuya zona_id = sectorId del proyecto
+    const ingRows = await this.ds.createQueryBuilder()
+      .select("TO_CHAR(DATE_TRUNC('month', p.fecha_pago::date), 'YYYY-MM')", 'mes')
+      .addSelect('SUM(p.monto::numeric(12,2))', 'total')
+      .from('pagos', 'p')
+      .innerJoin('clientes', 'cl', 'cl.id = p.cliente_id')
+      .where('p.empresa_id  = :eid',    { eid:    empresaId          })
+      .andWhere('cl.zona_id = :sid',    { sid:    proyecto.sectorId  })
+      .andWhere('p.estado   = :estado', { estado: 'verificado'       })
+      .andWhere('p.fecha_pago >= :fd',  { fd:     desde              })
+      .andWhere('p.fecha_pago <= :fh',  { fh:     hasta              })
+      .groupBy("DATE_TRUNC('month', p.fecha_pago::date)")
+      .orderBy('mes', 'ASC')
+      .getRawMany<{ mes: string; total: string }>();
 
-    // ── 3. Combinar en serie mensual completa ────────────────────
-    const meses = this.generarMeses(desde, hasta);
-    const ingMap = new Map(ingRows.map(r => [r.mes, r.total]));
-    const egMap  = new Map(egRows.map(r => [r.mes, r.total]));
+    // ── 2. Egresos mensuales imputados al sector usando QueryBuilder
+    const egRows = await this.ds.createQueryBuilder()
+      .select("TO_CHAR(DATE_TRUNC('month', ei.fecha_registro::date), 'YYYY-MM')", 'mes')
+      .addSelect('SUM(ei.monto::numeric(12,2))', 'total')
+      .from('egresos_ingresos', 'ei')
+      .where('ei.empresa_id      = :eid',    { eid:    empresaId         })
+      .andWhere('ei.sector_id    = :sid',    { sid:    proyecto.sectorId })
+      .andWhere('ei.tipo         = :tipo',   { tipo:   'EGRESO'          })
+      .andWhere('ei.estado       = :estado', { estado: 'PAGADO'          })
+      .andWhere('ei.fecha_registro >= :fd',  { fd:     desde             })
+      .andWhere('ei.fecha_registro <= :fh',  { fh:     hasta             })
+      .groupBy("DATE_TRUNC('month', ei.fecha_registro::date)")
+      .orderBy('mes', 'ASC')
+      .getRawMany<{ mes: string; total: string }>();
 
-    const flujosMensuales = meses.map(
-      mes => (Number(ingMap.get(mes) ?? 0)) - (Number(egMap.get(mes) ?? 0)),
+    // ── 3. Serie mensual completa desde fechaInicio hasta hoy ───
+    const meses  = this.generarMeses(desde, hasta);
+    const ingMap = new Map(ingRows.map(r => [r.mes, parseFloat(r.total)]));
+    const egMap  = new Map(egRows.map(r => [r.mes, parseFloat(r.total)]));
+
+    // Flujo neto mensual redondeado a 2 decimales (precisión monetaria)
+    const flujosMensuales: number[] = meses.map(mes =>
+      r2((ingMap.get(mes) ?? 0) - (egMap.get(mes) ?? 0)),
     );
 
-    const inversion  = Number(proyecto.inversionInicial);
-    const tasaAnual  = Number(proyecto.tasaDescuento);
-
-    // ── 4. VAN y TIR ─────────────────────────────────────────────
+    // ── 4. Cálculo contable ──────────────────────────────────────
     const van         = this.calcVAN(flujosMensuales, inversion, tasaAnual);
     const tir         = this.calcTIR(flujosMensuales, inversion);
     const paybackMeses = this.calcPayback(flujosMensuales, inversion);
@@ -114,7 +126,7 @@ export class ProyectosInversionService {
       proyectoId:       proyecto.id,
       nombreProyecto:   proyecto.nombreProyecto,
       sectorId:         proyecto.sectorId,
-      inversionInicial: inversion,
+      inversionInicial: r2(inversion),
       tasaDescuento:    tasaAnual,
       fechaInicio:      proyecto.fechaInicio,
       mesesEvaluados:   meses.length,
@@ -122,72 +134,121 @@ export class ProyectosInversionService {
       van,
       tir,
       paybackMeses,
+      esViable: van > 0,
     };
   }
 
   // ─── Helpers matemáticos ─────────────────────────────────────
 
+  /** Genera el array ['YYYY-MM', ...] desde el primer mes del proyecto hasta el mes actual. */
   private generarMeses(desde: string, hasta: string): string[] {
     const meses: string[] = [];
-    const [ay, am] = desde.split('-').map(Number);
+    let [y, m] = desde.split('-').map(Number);
     const [by, bm] = hasta.split('-').map(Number);
-    let y = ay, m = am;
     while (y < by || (y === by && m <= bm)) {
       meses.push(`${y}-${String(m).padStart(2, '0')}`);
-      m++;
-      if (m > 12) { m = 1; y++; }
+      if (++m > 12) { m = 1; y++; }
     }
     return meses;
   }
 
   /**
-   * VAN = -I₀ + Σ [ Fₜ / (1 + r_m)^t ]
-   * donde r_m = tasa mensual equivalente = (1 + tasaAnual)^(1/12) - 1
+   * VAN = -I₀ + Σ[ Fₜ / (1 + r_m)^t ]   para t = 1..N
+   *
+   * r_m = tasa mensual equivalente = (1 + tasaAnual)^(1/12) - 1
+   * Usando la tasa mensual equivalente se descuenta correctamente
+   * cada flujo según su distancia en meses desde la inversión inicial.
    */
   private calcVAN(flujos: number[], inversion: number, tasaAnual: number): number {
-    const rm = Math.pow(1 + tasaAnual, 1 / 12) - 1;
-    const van = flujos.reduce((acc, f, i) => acc + f / Math.pow(1 + rm, i + 1), -inversion);
-    return Math.round(van * 100) / 100;
+    const rm  = Math.pow(1 + tasaAnual, 1 / 12) - 1;
+    const van = flujos.reduce(
+      (acc, flujo, i) => acc + flujo / Math.pow(1 + rm, i + 1),
+      -inversion,
+    );
+    return r2(van);
   }
 
   /**
-   * TIR mensual: busca r tal que VAN(r) = 0 usando Newton-Raphson.
-   * Devuelve la TIR anualizada: (1 + r_mensual)^12 - 1
-   * Devuelve null si no converge o si la serie no tiene cambio de signo.
+   * TIR mensual por Newton-Raphson (máximo 100 iteraciones).
+   *
+   * Resuelve: 0 = -I₀ + Σ[ Fₜ / (1 + r)^t ]
+   *
+   * Condiciones de retorno 0 (no viable / indeterminada):
+   *   - Flujos sin cambio de signo (todos negativos → sin recuperación)
+   *   - Derivada nula o denominador inestable
+   *   - No convergencia en 100 iteraciones
+   *   - r ≤ -1 (tasa inválida: activo sin valor)
+   *
+   * Retorna la TIR anualizada: (1 + r_mensual)^12 - 1
    */
-  private calcTIR(flujos: number[], inversion: number): number | null {
-    const cf = [-inversion, ...flujos];
-
-    // Función VPN y su derivada respecto a r
-    const vpn  = (r: number) => cf.reduce((s, c, t) => s + c / Math.pow(1 + r, t), 0);
-    const dvpn = (r: number) => cf.reduce((s, c, t) => t === 0 ? s : s - (t * c) / Math.pow(1 + r, t + 1), 0);
-
-    let r = 0.01; // semilla: 1% mensual
-    for (let i = 0; i < 300; i++) {
-      const f  = vpn(r);
-      const df = dvpn(r);
-      if (Math.abs(df) < 1e-14) return null;
-      const rNew = r - f / df;
-      if (!isFinite(rNew) || rNew <= -1) return null;
-      if (Math.abs(rNew - r) < 1e-10) { r = rNew; break; }
-      r = rNew;
+  private calcTIR(flujos: number[], inversion: number): number {
+    // Precondición: debe haber al menos un flujo positivo para que exista TIR > 0
+    const hayPositivo = flujos.some(f => f > 0);
+    if (!hayPositivo) {
+      this.logger.warn('[TIR] Sin flujos positivos — retorna 0');
+      return 0;
     }
 
-    if (!isFinite(r) || r <= -1) return null;
+    // CF completo: CF[0] = −inversión, CF[t] = flujo del mes t
+    const cf = [-inversion, ...flujos];
+
+    const vpn  = (r: number): number =>
+      cf.reduce((s, c, t) => s + c / Math.pow(1 + r, t), 0);
+
+    const dvpn = (r: number): number =>
+      cf.reduce((s, c, t) => (t === 0 ? s : s - (t * c) / Math.pow(1 + r, t + 1)), 0);
+
+    let r = 0.01; // semilla: 1 % mensual ≈ 12.68 % anual
+
+    for (let i = 0; i < 100; i++) {
+      const fn  = vpn(r);
+      const dfn = dvpn(r);
+
+      if (Math.abs(dfn) < 1e-12) {
+        this.logger.warn(`[TIR] Derivada nula en iter ${i} — retorna 0`);
+        return 0;
+      }
+
+      const rNew = r - fn / dfn;
+
+      if (!isFinite(rNew) || rNew <= -1) {
+        this.logger.warn(`[TIR] Tasa inválida (${rNew}) en iter ${i} — retorna 0`);
+        return 0;
+      }
+
+      if (Math.abs(rNew - r) < 1e-10) {
+        r = rNew;
+        break; // convergió
+      }
+
+      r = rNew;
+
+      if (i === 99) {
+        this.logger.warn('[TIR] No convergió en 100 iteraciones — retorna 0');
+        return 0;
+      }
+    }
+
+    // Anualizar r_mensual → r_anual = (1 + r_m)^12 - 1
     const tirAnual = Math.pow(1 + r, 12) - 1;
-    return Math.round(tirAnual * 10000) / 10000; // 4 decimales, ej. 0.1823 = 18.23%
+    return r2(tirAnual * 100); // Devuelve el porcentaje anual, ej. 18.23
   }
 
   /**
-   * Payback simple: número de meses para recuperar la inversión acumulando flujos.
-   * Devuelve null si nunca se recupera dentro de los datos disponibles.
+   * Payback simple: número de meses hasta recuperar la inversión acumulando flujos netos.
+   * Devuelve null si la inversión no se recupera dentro del histórico disponible.
    */
   private calcPayback(flujos: number[], inversion: number): number | null {
     let acumulado = 0;
     for (let i = 0; i < flujos.length; i++) {
-      acumulado += flujos[i];
+      acumulado = r2(acumulado + flujos[i]);
       if (acumulado >= inversion) return i + 1;
     }
     return null;
   }
+}
+
+/** Redondea a 2 decimales (precisión monetaria). */
+function r2(n: number): number {
+  return Math.round(n * 100) / 100;
 }

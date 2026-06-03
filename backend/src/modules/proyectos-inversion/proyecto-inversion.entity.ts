@@ -25,12 +25,24 @@ export class ProyectoInversion {
   @Column({ name: 'sector_id' })
   sectorId: string;
 
-  // CapEx total del proyecto (materiales, OLT, mano de obra, fusiones, etc.)
-  @Column({ name: 'inversion_inicial', type: 'decimal', precision: 14, scale: 2 })
+  // node-postgres devuelve NUMERIC como string; el transformer garantiza número JS en runtime.
+  @Column({
+    name: 'inversion_inicial',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    transformer: { to: (v: number) => v, from: (v: string) => parseFloat(v) },
+  })
   inversionInicial: number;
 
-  // Tasa de descuento anual expresada como fracción: 0.10 = 10 %. Usada para VAN.
-  @Column({ name: 'tasa_descuento', type: 'decimal', precision: 6, scale: 4 })
+  // Tasa de descuento anual como fracción: 0.10 = 10 %. Convertida a tasa mensual en el servicio.
+  @Column({
+    name: 'tasa_descuento',
+    type: 'numeric',
+    precision: 6,
+    scale: 4,
+    transformer: { to: (v: number) => v, from: (v: string) => parseFloat(v) },
+  })
   tasaDescuento: number;
 
   @Column({ name: 'fecha_inicio', type: 'date' })

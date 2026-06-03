@@ -80,6 +80,7 @@ export interface RatiosFinancierosResult {
   mesesEvaluados:   number;
   flujosMensuales:  number[];
   van:              number;
-  tir:              number | null;
+  tir:              number;     // 0 si no converge o flujos sin cambio de signo
   paybackMeses:     number | null;
+  esViable:         boolean;   // true si VAN > 0
 }
