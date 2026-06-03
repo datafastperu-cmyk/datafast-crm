@@ -217,7 +217,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         </div>
 
         {/* Registro de pago rápido */}
-        <Link href="/pagos/nuevo">
+        <Link href="/finanzas/registro">
           <button
             className="p-2 rounded-lg text-muted-foreground hover:text-foreground
                        hover:bg-muted transition-colors"
