@@ -239,7 +239,7 @@ export function GastosContent() {
                       )}
                       <button
                         onClick={() => {
-                          if (confirm('¿Eliminar este registro?')) borrarMut.mutate(r.id);
+                          if (window.confirm('¿Eliminar este registro?')) borrarMut.mutate(r.id);
                         }}
                         disabled={borrarMut.isPending}
                         title="Eliminar"
