@@ -236,36 +236,64 @@ export class GatewayMensajeriaService {
       return { enviado: false, error: 'Sin número destino configurado' };
     }
 
-    const config  = await this.resolveConfig(params.empresaId);
+    // Registrar intento ANTES del envío — actualizado a ENVIADO_META | FALLIDO al terminar
+    let logId: string | null = null;
+    try {
+      const [row] = await this.ds.query(`
+        INSERT INTO notificaciones_logs (contrato_id, telefono, tipo_template, estado_entrega)
+        VALUES ($1, $2, $3, 'ENCOLADO') RETURNING id
+      `, [params.contratoId ?? null, destino.substring(0, 30), params.tipo]);
+      logId = row?.id ?? null;
+    } catch (logErr: any) {
+      this.logger.warn(`[GW] No se pudo crear log: ${logErr.message}`);
+    }
+
+    const config = await this.resolveConfig(params.empresaId);
+    let resultado: EnvioResult;
 
     if (!config || config.proveedor === 'META_GRAPH') {
-      return this.whatsapp.enviar({ ...params, telefono: destino });
-    }
-
-    if (!config.activo) {
+      resultado = await this.whatsapp.enviar({ ...params, telefono: destino });
+    } else if (!config.activo) {
       this.logger.warn(`[GW] Gateway desactivado para empresa ${params.empresaId}`);
-      return { enviado: false, error: 'Gateway desactivado' };
+      resultado = { enviado: false, error: 'Gateway desactivado' };
+    } else {
+      const texto = TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
+
+      if (texto.length > config.limiteCaracteres) {
+        this.logger.warn(`[GW] Texto excede límite (${texto.length} > ${config.limiteCaracteres})`);
+        resultado = { enviado: false, error: `Texto excede límite de ${config.limiteCaracteres} caracteres` };
+      } else {
+        const strategy = this.buildStrategy(config);
+        if (!strategy) {
+          this.logger.warn(`[GW] ${config.proveedor} sin credenciales — notificación omitida`);
+          resultado = { enviado: false, error: `${config.proveedor} sin credenciales configuradas` };
+        } else {
+          const telefono = this.normalizarTelefono(destino, config.codigoPais);
+          this.logger.log(`[GW] ${config.proveedor} → ${telefono} | ${params.tipo}`);
+          resultado = await strategy.enviarMensaje(telefono, texto, params.tipo as string);
+          if (config.pausa > 0) await this.sleep(config.pausa);
+        }
+      }
     }
 
-    const texto = TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
-
-    if (texto.length > config.limiteCaracteres) {
-      this.logger.warn(`[GW] Texto excede límite (${texto.length} > ${config.limiteCaracteres})`);
-      return { enviado: false, error: `Texto excede límite de ${config.limiteCaracteres} caracteres` };
+    // Actualizar log con resultado final
+    if (logId) {
+      try {
+        if (resultado.enviado) {
+          await this.ds.query(
+            `UPDATE notificaciones_logs SET estado_entrega = 'ENVIADO_META', meta_message_id = $1 WHERE id = $2`,
+            [resultado.messageId ?? null, logId],
+          );
+        } else {
+          await this.ds.query(
+            `UPDATE notificaciones_logs SET estado_entrega = 'FALLIDO', error_detalle = $1 WHERE id = $2`,
+            [(resultado.error ?? 'Error desconocido').substring(0, 500), logId],
+          );
+        }
+      } catch (logErr: any) {
+        this.logger.warn(`[GW] No se pudo actualizar log ${logId}: ${logErr.message}`);
+      }
     }
-
-    const strategy = this.buildStrategy(config);
-
-    if (!strategy) {
-      this.logger.warn(`[GW] ${config.proveedor} sin credenciales — notificación omitida`);
-      return { enviado: false, error: `${config.proveedor} sin credenciales configuradas` };
-    }
-
-    const telefono  = this.normalizarTelefono(destino, config.codigoPais);
-    this.logger.log(`[GW] ${config.proveedor} → ${telefono} | ${params.tipo}`);
-    const resultado = await strategy.enviarMensaje(telefono, texto, params.tipo as string);
-
-    if (config.pausa > 0) await this.sleep(config.pausa);
 
     return resultado;
   }

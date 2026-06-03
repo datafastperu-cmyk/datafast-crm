@@ -32,6 +32,7 @@ export interface WhatsAppParams {
   variables:   Record<string, string>;
   empresaId?:  string;
   clienteId?:  string;
+  contratoId?: string;
 }
 
 // ─── Configuración resuelta por empresa ───────────────────────

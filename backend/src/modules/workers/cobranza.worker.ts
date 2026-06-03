@@ -933,20 +933,6 @@ export class CobranzaWorker {
       ? TipoNotificacion.PAGO_VENCE_HOY
       : TipoNotificacion.PAGO_VENCIDO;
 
-    // Insertar log como ENCOLADO antes de intentar el envío
-    let logId: string | null = null;
-    try {
-      const [row] = await this.ds.query(`
-        INSERT INTO notificaciones_logs
-          (contrato_id, telefono, tipo_template, estado_entrega)
-        VALUES ($1, $2, $3, 'ENCOLADO')
-        RETURNING id
-      `, [contratoId ?? null, telefono, tipo]);
-      logId = row?.id ?? null;
-    } catch (logErr) {
-      this.logger.warn(`[NOTIF-LOG] No se pudo crear log: ${logErr.message}`);
-    }
-
     try {
       const result = await this.gatewaySvc.despachar({
         telefono,
@@ -958,36 +944,12 @@ export class CobranzaWorker {
           diasVencido:   diasAntes < 0 ? String(Math.abs(diasAntes)) : '0',
           numeroCuenta:  '',
         },
-        empresaId: job.data.empresaId,
+        empresaId:  job.data.empresaId,
+        contratoId: contratoId ?? undefined,
       });
-
-      if (logId) {
-        if (result.enviado) {
-          await this.ds.query(`
-            UPDATE notificaciones_logs
-            SET estado_entrega = 'ENVIADO_META', meta_message_id = $1
-            WHERE id = $2
-          `, [result.messageId ?? null, logId]);
-        } else {
-          await this.ds.query(`
-            UPDATE notificaciones_logs
-            SET estado_entrega = 'FALLIDO', error_detalle = $1
-            WHERE id = $2
-          `, [result.error ?? 'Error desconocido', logId]);
-        }
-      }
-
-      return { enviado: result.enviado, logId };
-
+      return { enviado: result.enviado };
     } catch (err) {
       this.logger.warn(`WhatsApp previo: ${err.message}`);
-      if (logId) {
-        await this.ds.query(`
-          UPDATE notificaciones_logs
-          SET estado_entrega = 'FALLIDO', error_detalle = $1
-          WHERE id = $2
-        `, [err.message, logId]).catch(() => {});
-      }
       return { enviado: false, error: err.message };
     }
   }
