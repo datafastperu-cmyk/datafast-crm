@@ -219,16 +219,32 @@ export class MikrotikService {
     const router = await this.findOne(id, user.empresaId);
 
     // Protección: impedir borrado si existen contratos activos/suspendidos
-    const [{ count }] = await this.ds.query(
+    const [{ count: countContratos }] = await this.ds.query(
       `SELECT COUNT(*) AS count FROM contratos
        WHERE router_id = $1
          AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
          AND deleted_at IS NULL`,
       [id],
     );
-    if (Number(count) > 0) {
+
+    // Protección: impedir borrado si hay dispositivos monitoreados dependiendo de este router
+    const [{ count: countDispositivos }] = await this.ds.query(
+      `SELECT COUNT(*) AS count FROM dispositivos_monitoreo
+       WHERE router_acceso_id = $1
+         AND deleted_at IS NULL`,
+      [id],
+    );
+
+    const bloqueadores: string[] = [];
+    if (Number(countContratos) > 0)
+      bloqueadores.push(`${countContratos} abonado(s) con servicio activo`);
+    if (Number(countDispositivos) > 0)
+      bloqueadores.push(`${countDispositivos} equipo(s) monitoreado(s) (antenas, cámaras u otros)`);
+
+    if (bloqueadores.length > 0) {
       throw new BadRequestException(
-        'No es posible eliminar el router porque tiene contratos de abonados activos asociados.',
+        `No es posible eliminar este router porque tiene: ${bloqueadores.join(' y ')}. ` +
+        `Reasigna o elimina estos elementos antes de continuar.`,
       );
     }
 
