@@ -101,13 +101,18 @@ export class FacturacionScheduler {
       { ...JOB_OPTIONS.CRITICO, priority: 1 },
     );
 
-    // ── 2. Encolar facturas para empresas que facturan hoy ──
+    // ── 2. Encolar facturas por dia_facturacion del contrato ──
+    // Cada contrato puede tener su propio día de facturación.
+    // Se agrupan por empresa para evitar jobs duplicados.
     const empresas = await this.ds.query(`
-      SELECT id, razon_social, dia_facturacion, serie_boleta, igv_rate
-      FROM empresas
-      WHERE estado = 'activo'
-        AND dia_facturacion = $1
-        AND deleted_at IS NULL
+      SELECT DISTINCT em.id, em.razon_social, em.serie_boleta, em.igv_rate
+      FROM contratos co
+      JOIN empresas em ON em.id = co.empresa_id
+      WHERE co.dia_facturacion = $1
+        AND co.estado IN ('activo', 'prorroga')
+        AND co.deleted_at IS NULL
+        AND em.estado = 'activo'
+        AND em.deleted_at IS NULL
     `, [diaHoy]);
 
     for (let i = 0; i < empresas.length; i++) {
@@ -125,7 +130,7 @@ export class FacturacionScheduler {
     }
 
     this.logger.log(
-      `[FACTURACION-CRON] ${empresas.length} empresas encoladas (día ${diaHoy}/${mes}/${anio})`,
+      `[FACTURACION-CRON] ${empresas.length} empresa(s) encoladas por día ${diaHoy}/${mes}/${anio}`,
     );
   }
 
@@ -175,10 +180,11 @@ export class FacturacionWorker {
   async processGenerarFacturasEmpresa(
     job: Job<PayloadGenerarFacturasEmpresa>,
   ): Promise<ResultadoGeneracion> {
-    const { empresaId, mes, anio, forzar } = job.data;
+    const { empresaId, mes, anio, diaFacturacion, forzar } = job.data;
 
     this.logger.log(
-      `[FACTURACION] 🏢 Empresa ${empresaId} | ${mes}/${anio} | forzar: ${forzar}`,
+      `[FACTURACION] 🏢 Empresa ${empresaId} | ${mes}/${anio}` +
+      `${diaFacturacion ? ` | día ${diaFacturacion}` : ''} | forzar: ${forzar}`,
     );
 
     await job.progress(5);
@@ -213,9 +219,10 @@ export class FacturacionWorker {
       JOIN planes   pl ON pl.id = co.plan_id
       WHERE co.empresa_id = $1
         AND co.estado IN ('activo', 'prorroga')
+        AND ($2::int IS NULL OR co.dia_facturacion = $2)
         AND co.deleted_at IS NULL
       ORDER BY co.dia_facturacion, cl.nombre_completo
-    `, [empresaId]);
+    `, [empresaId, diaFacturacion ?? null]);
 
     const resultado: ResultadoGeneracion = {
       empresaId,

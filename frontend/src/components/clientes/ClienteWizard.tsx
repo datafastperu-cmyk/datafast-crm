@@ -376,7 +376,12 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
             usuarioPppoe:        data.userPppHs               || undefined,
             passwordPppoePlain:  data.passwordPppHs           || undefined,
             fechaInicio:         data.fechaInstalacion        || new Date().toISOString().split('T')[0],
-            diaFacturacion:      s2?.facturacion?.diaPago ? parseInt(s2.facturacion.diaPago) : undefined,
+            diaFacturacion:      (() => {
+              const dp = parseInt(s2?.facturacion?.diaPago ?? '0', 10);
+              if (!dp) return undefined;
+              const cf = parseInt(s2?.facturacion?.crearFactura ?? '0', 10);
+              return isNaN(cf) || cf <= 0 ? dp : Math.max(1, dp - cf);
+            })(),
             macAddress:          data.mac                     || undefined,
             excluirFirewall:     data.excluirFirewall         ?? false,
             routes:              data.routes                  || undefined,
