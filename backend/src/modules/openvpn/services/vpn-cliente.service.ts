@@ -425,7 +425,7 @@ export class VpnClienteService {
     // Escribir/actualizar CCD
     const router = await this.routerRepo.findOne({ where: { id: routerId } });
     if (router) {
-      await this.escribirArchivoCcd(cliente.nombreCert, router.subnetsLocales || []);
+      await this.escribirArchivoCcd(cliente.nombreCert, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
     }
 
     this.logger.log(`[VPN-LINK] Cert wizard vinculado: "${cliente.nombreCert}" → router ${routerId}`);
@@ -500,7 +500,7 @@ export class VpnClienteService {
     }
 
     // ── 3. Escribir/actualizar archivo CCD con subnets actuales ─
-    await this.escribirArchivoCcd(vpnCommonName, router.subnetsLocales || []);
+    await this.escribirArchivoCcd(vpnCommonName, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
 
     return vpnCommonName;
   }
@@ -510,16 +510,18 @@ export class VpnClienteService {
   // El archivo dicta al servidor OpenVPN cómo enrutar tráfico
   // hacia las redes LAN del router, independientemente del nombre comercial.
 
-  async escribirArchivoCcd(commonName: string, subnets: string[]): Promise<void> {
+  async escribirArchivoCcd(commonName: string, subnets: string[], vpnIp?: string): Promise<void> {
     const filePath = path.join(CCD_DIR, commonName);
-    const lines = (subnets || []).filter(Boolean).map(sn => {
+    const lines: string[] = [];
+    if (vpnIp) lines.push(`ifconfig-push ${vpnIp} 255.255.255.0`);
+    for (const sn of (subnets || []).filter(Boolean)) {
       const [ip, prefix] = sn.split('/');
       const mask = this._prefixToMask(parseInt(prefix ?? '24', 10));
-      return `iroute ${ip} ${mask}`;
-    });
+      lines.push(`iroute ${ip} ${mask}`);
+    }
     await fs.mkdir(CCD_DIR, { recursive: true });
     await fs.writeFile(filePath, lines.join('\n') + (lines.length ? '\n' : ''), { encoding: 'utf8', mode: 0o644 });
-    this.logger.log(`[VPN-CCD] Escrito: ${filePath} → [${lines.join(', ') || 'vacío'}]`);
+    this.logger.log(`[VPN-CCD] Escrito: ${filePath} vpnIp=${vpnIp ?? 'N/A'} → [${lines.join(', ') || 'vacío'}]`);
   }
 
   // ── Sincronizar CCD y forzar reconexión del túnel ───────────
@@ -529,14 +531,14 @@ export class VpnClienteService {
   async sincronizarCcdYReconectar(router: Router): Promise<void> {
     const subnets  = router.subnetsLocales || [];
     const storedCn = router.vpnCommonName;
+    const vpnIp    = router.vpnIp || router.ipGestion;
 
     // 1. Escribir CCD para el CN almacenado en BD
     if (storedCn) {
-      await this.escribirArchivoCcd(storedCn, subnets);
+      await this.escribirArchivoCcd(storedCn, subnets, vpnIp);
     }
 
     // 2. Detectar CN real via management (el que OpenVPN usa para buscar CCD)
-    const vpnIp   = router.vpnIp || router.ipGestion;
     const actualCn = vpnIp ? await this._getActualCnByVpnIp(vpnIp) : null;
 
     if (actualCn && actualCn !== storedCn) {
@@ -545,7 +547,7 @@ export class VpnClienteService {
         `router="${router.nombre}" | Sincronizando CCD y BD`,
       );
       // Escribir CCD para el CN real (es el que OpenVPN efectivamente lee)
-      await this.escribirArchivoCcd(actualCn, subnets);
+      await this.escribirArchivoCcd(actualCn, subnets, vpnIp);
 
       // Actualizar routers.vpn_common_name al CN real
       await this.routerRepo.update(router.id, { vpnCommonName: actualCn });
