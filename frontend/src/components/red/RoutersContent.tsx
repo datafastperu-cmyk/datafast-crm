@@ -1186,15 +1186,9 @@ export function RoutersContent() {
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => !hasContracts && handleDelete(r)}
-                          disabled={hasContracts}
-                          title={hasContracts ? `No se puede eliminar: tiene ${r.contratosCount} contrato(s) activo(s)` : 'Eliminar'}
-                          className={cn(
-                            'p-1.5 rounded-lg transition-colors',
-                            hasContracts
-                              ? 'text-muted-foreground/30 cursor-not-allowed opacity-40'
-                              : 'hover:bg-muted text-muted-foreground/60 hover:text-red-600 dark:hover:text-red-400',
-                          )}
+                          onClick={() => handleDelete(r)}
+                          title="Eliminar"
+                          className="p-1.5 rounded-lg transition-colors hover:bg-muted text-muted-foreground/60 hover:text-red-600 dark:hover:text-red-400"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
