@@ -12,9 +12,10 @@ import { InjectDataSource }    from '@nestjs/typeorm';
 import { DataSource }          from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
-import { FacturacionService }  from '../facturacion/facturacion.service';
-import { WhatsAppService }     from '../notificaciones/services/whatsapp.service';
-import { AuditoriaService }    from '../auth/auditoria.service';
+import { FacturacionService }        from '../facturacion/facturacion.service';
+import { GatewayMensajeriaService }  from '../notificaciones/services/gateway-mensajeria.service';
+import { TipoNotificacion }          from '../notificaciones/services/whatsapp.service';
+import { AuditoriaService }          from '../auth/auditoria.service';
 
 import {
   QUEUES, JOBS, JOB_OPTIONS,
@@ -167,7 +168,7 @@ export class FacturacionWorker {
 
   constructor(
     private readonly facturacionSvc: FacturacionService,
-    private readonly whatsappSvc:    WhatsAppService,
+    private readonly gatewaySvc:     GatewayMensajeriaService,
     private readonly auditoria:      AuditoriaService,
     private readonly events:         EventEmitter,
     @InjectDataSource() private readonly ds: DataSource,
@@ -362,16 +363,21 @@ export class FacturacionWorker {
           resultado:  `${serie}-${String(correlativo).padStart(8, '0')} | S/ ${total.toFixed(2)}`,
         });
 
-        // ── Notificar al cliente por WhatsApp ────────────────
+        // ── Notificar al cliente por WhatsApp via gateway ────
         const tel = contrato.whatsapp || contrato.telefono;
         if (tel) {
-          this.whatsappSvc.notificarFacturaEmitida({
-            telefono:        tel,
-            clienteNombre:   contrato.cliente_nombre,
-            numeroFactura:   `${serie}-${String(correlativo).padStart(8, '0')}`,
-            montoTotal:      total,
-            fechaVencimiento,
-          }).catch((err) => this.logger.debug(`WhatsApp factura: ${err.message}`));
+          this.gatewaySvc.despachar({
+            telefono:   tel,
+            tipo:       TipoNotificacion.FACTURA_EMITIDA,
+            variables: {
+              clienteNombre:    contrato.cliente_nombre,
+              numeroFactura:    `${serie}-${String(correlativo).padStart(8, '0')}`,
+              montoTotal:       `S/ ${total.toFixed(2)}`,
+              fechaVencimiento,
+            },
+            empresaId,
+            contratoId: contrato.contrato_id,
+          }).catch((err) => this.logger.debug(`Gateway factura: ${err.message}`));
         }
 
       } catch (err) {
