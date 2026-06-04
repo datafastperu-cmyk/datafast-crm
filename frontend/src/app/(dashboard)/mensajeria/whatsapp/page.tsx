@@ -321,7 +321,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
     pls:  PlanItem[],
   ) => {
     if (!c || !pid) { setPreviewTexto(''); return; }
-    const tpl = tpls.find(p => p.id === pid);
+    const tpl = tpls.find(p => (p.id ?? p.codigo) === pid);
     if (!tpl) { setPreviewTexto(''); return; }
     const contratoData = ctr ?? { planId: '', precioFinal: 0, precioMensual: 0 };
     const planNombre   = ctr ? (pls.find(p => p.id === ctr.planId)?.nombre ?? '') : '';
@@ -503,7 +503,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
             >
               <option value="">— Seleccionar plantilla —</option>
               {plantillas.filter(p => p.activo).map(p => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
+                <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>
               ))}
             </select>
           </div>

@@ -293,7 +293,7 @@ export default function PlantillasConfigPage() {
                 >
                   <option value="">— Sin plantilla específica —</option>
                   {plantillasMsg.map(p => (
-                    <option key={p.id} value={p.id}>{p.nombre}</option>
+                    <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>
                   ))}
                 </select>
               </Field>
@@ -414,7 +414,7 @@ export default function PlantillasConfigPage() {
                     >
                       <option value="">— Sin plantilla específica —</option>
                       {plantillasMsg.map(p => (
-                        <option key={p.id} value={p.id}>{p.nombre}</option>
+                        <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>
                       ))}
                     </select>
                   </Field>

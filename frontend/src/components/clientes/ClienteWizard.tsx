@@ -799,7 +799,7 @@ function Step2Form({ initial, onBack, onNext }: {
           <Field label="Aviso de factura disponible">
             <select className={INPUT_CLS} value={fact.plantillaAvisoFactura ?? ''} onChange={e => updateF('plantillaAvisoFactura', e.target.value)}>
               <option value="">— Sin plantilla específica —</option>
-              {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
+              {plantillasMsg.map(p => <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>)}
             </select>
           </Field>
           <Field label="Tipo impuesto">
@@ -920,7 +920,7 @@ function Step2Form({ initial, onBack, onNext }: {
                 </select>
                 <select className={INPUT_CLS} value={(notif[plantillaKey] as string) ?? ''} onChange={e => updateN(plantillaKey, e.target.value)}>
                   <option value="">— Sin plantilla específica —</option>
-                  {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
+                  {plantillasMsg.map(p => <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>)}
                 </select>
               </Field>
             );
