@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -11,6 +11,8 @@ import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
 import { encrypt } from '../../common/utils/encryption.util';
+import { GatewayMensajeriaService } from '../notificaciones/services/gateway-mensajeria.service';
+import { TipoNotificacion }         from '../notificaciones/services/whatsapp.service';
 
 export type ProveedorActivo =
   | 'META_GRAPH'
@@ -45,6 +47,7 @@ export class SistemaService {
     private readonly config: ConfigService,
     @InjectDataSource() private readonly ds: DataSource,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    private readonly gateway: GatewayMensajeriaService,
   ) {
     this.appDir       = this.config.get('UPDATE_DIR')            || '/opt/datafast';
     this.sourceType   = this.config.get('UPDATE_SOURCE_TYPE')    || 'git';
@@ -533,5 +536,92 @@ export class SistemaService {
     } catch {
       return '(sin logs disponibles)';
     }
+  }
+
+  // ─── Reenviar notificación fallida/encolada ───────────────────
+  async reenviarNotifLog(logId: string, empresaId: string): Promise<{ enviado: boolean; error?: string }> {
+    const [log] = await this.ds.query(`
+      SELECT nl.id, nl.telefono, nl.tipo_template, nl.contrato_id
+      FROM notificaciones_logs nl
+      INNER JOIN contratos co ON co.id = nl.contrato_id
+      WHERE nl.id = $1 AND co.empresa_id = $2
+    `, [logId, empresaId]);
+
+    if (!log) throw new NotFoundException('Log no encontrado');
+
+    const [row] = await this.ds.query(`
+      SELECT co.id AS contrato_id, co.empresa_id, co.deuda_total, co.meses_deuda,
+             co.usuario_pppoe, co.ip_asignada,
+             cl.nombre_completo,
+             em.razon_social AS empresa_nombre,
+             pl.nombre       AS plan_nombre,
+             f.total              AS factura_total,
+             f.numero_completo    AS factura_numero,
+             f.fecha_vencimiento  AS factura_vencimiento
+      FROM contratos co
+      JOIN clientes cl ON cl.id = co.cliente_id AND cl.deleted_at IS NULL
+      JOIN empresas em ON em.id = co.empresa_id
+      JOIN planes   pl ON pl.id = co.plan_id
+      LEFT JOIN LATERAL (
+        SELECT total, numero_completo, fecha_vencimiento
+        FROM facturas
+        WHERE contrato_id = co.id
+          AND estado IN ('emitida', 'pagada_parcial', 'vencida')
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC LIMIT 1
+      ) f ON true
+      WHERE co.id = $1
+    `, [log.contrato_id]);
+
+    const resultado = await this.gateway.despachar({
+      telefono:   log.telefono,
+      tipo:       log.tipo_template as TipoNotificacion,
+      variables:  this.buildNotifVariables(log.tipo_template, row),
+      empresaId,
+      contratoId: log.contrato_id,
+    });
+
+    return { enviado: resultado.enviado, error: resultado.error };
+  }
+
+  private buildNotifVariables(tipo: string, row: any): Record<string, string> {
+    const nombre = row?.nombre_completo ?? '';
+    const deuda  = `S/ ${parseFloat(row?.deuda_total || '0').toFixed(2)}`;
+
+    switch (tipo) {
+      case TipoNotificacion.FACTURA_EMITIDA:
+        return {
+          clienteNombre:    nombre,
+          numeroFactura:    row?.factura_numero    ?? '—',
+          montoTotal:       `S/ ${parseFloat(row?.factura_total || '0').toFixed(2)}`,
+          fechaVencimiento: row?.factura_vencimiento ?? '—',
+        };
+      case TipoNotificacion.PAGO_VENCE_HOY:
+        return { clienteNombre: nombre, montoDeuda: deuda, linkPago: '' };
+      case TipoNotificacion.PAGO_VENCIDO:
+        return { clienteNombre: nombre, montoDeuda: deuda, diasVencido: String(row?.meses_deuda ?? 0), numeroCuenta: '' };
+      case TipoNotificacion.SERVICIO_SUSPENDIDO:
+        return { clienteNombre: nombre, deudaTotal: deuda, nombreEmpresa: row?.empresa_nombre ?? '' };
+      case TipoNotificacion.SERVICIO_REACTIVADO:
+      case TipoNotificacion.SERVICIO_ACTIVADO:
+      case TipoNotificacion.BIENVENIDA:
+        return { clienteNombre: nombre, planNombre: row?.plan_nombre ?? '', ipAsignada: row?.ip_asignada ?? '', usuarioPppoe: row?.usuario_pppoe ?? '', velocidadBajada: '', velocidadSubida: '' };
+      default:
+        return { clienteNombre: nombre };
+    }
+  }
+
+  // ─── Eliminar log de notificación ────────────────────────────
+  async eliminarNotifLog(logId: string, empresaId: string): Promise<void> {
+    const [log] = await this.ds.query(`
+      SELECT nl.id
+      FROM notificaciones_logs nl
+      INNER JOIN contratos co ON co.id = nl.contrato_id
+      WHERE nl.id = $1 AND co.empresa_id = $2
+    `, [logId, empresaId]);
+
+    if (!log) throw new NotFoundException('Log no encontrado');
+
+    await this.ds.query(`DELETE FROM notificaciones_logs WHERE id = $1`, [logId]);
   }
 }

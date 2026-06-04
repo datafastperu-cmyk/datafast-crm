@@ -90,6 +90,13 @@ export const sistemaApi = {
     api.get<{ data: { items: NotifLog[]; total: number } }>('/admin/sistema/notif-logs', { params })
        .then(r => r.data.data),
 
+  reenviarNotifLog: (id: string) =>
+    api.post<{ data: { enviado: boolean; error?: string } }>(`/admin/sistema/notif-logs/${id}/reenviar`)
+       .then(r => r.data.data),
+
+  eliminarNotifLog: (id: string) =>
+    api.delete(`/admin/sistema/notif-logs/${id}`),
+
   getGatewayConfig: () =>
     api.get<{ data: GatewayConfig }>('/admin/sistema/gateway-config').then(r => r.data.data),
 

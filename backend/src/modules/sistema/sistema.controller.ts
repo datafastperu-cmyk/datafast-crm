@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Body, Query,
+  Controller, Get, Post, Patch, Delete, Body, Query, Param,
   HttpCode, HttpStatus, Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -106,6 +106,29 @@ export class SistemaController {
       tipo   || undefined,
     );
     return ApiResponse.ok(result);
+  }
+
+  // ── POST /admin/sistema/notif-logs/:id/reenviar ──────────────
+  @Post('notif-logs/:id/reenviar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reenviar una notificación fallida o encolada' })
+  async reenviarNotifLog(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const result = await this.sistema.reenviarNotifLog(id, user.empresaId);
+    return ApiResponse.ok(result, result.enviado ? 'Notificación reenviada' : 'Falló el reenvío');
+  }
+
+  // ── DELETE /admin/sistema/notif-logs/:id ─────────────────────
+  @Delete('notif-logs/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar un registro de notificación' })
+  async eliminarNotifLog(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.sistema.eliminarNotifLog(id, user.empresaId);
   }
 
   // ── PATCH /admin/sistema/whatsapp-config ─────────────────────
