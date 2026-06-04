@@ -20,7 +20,7 @@ export class FinanzasOpexScheduler {
   // Solo la instancia PM2 id=0 ejecuta para evitar duplicados en cluster.
   @Cron('0 7 * * *', { timeZone: 'America/Lima', name: 'generar-pendientes-opex' })
   async generarPendientesRecurrentes(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 
     const hoy = new Date();
     this.logger.log(

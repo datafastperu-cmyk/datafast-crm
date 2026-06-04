@@ -17,7 +17,7 @@ export class PurgaMediaCron {
   @Cron('0 2 * * *', { name: 'purga-media-crm', timeZone: 'America/Lima' })
   async ejecutar(): Promise<void> {
     // Solo instancia principal del clúster PM2
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 
     this.logger.log('━━━ Purga CRM media — inicio ━━━');
     const inicio = Date.now();

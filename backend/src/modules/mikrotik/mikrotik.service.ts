@@ -1025,7 +1025,7 @@ export class MikrotikService {
   // ────────────────────────────────────────────────────────────
   @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
   async pollRouterMetrics(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 
     let routers: Router[];
     try {

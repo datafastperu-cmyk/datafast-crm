@@ -81,7 +81,7 @@ export class FacturacionScheduler {
   // empresas.cron_horarios.facturacion (default: 05:00 Lima)
   @Cron('* * * * *', { timeZone: 'America/Lima', name: 'facturacion-diaria' })
   async scheduleFacturacionDiaria(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
     const [hora, min] = await this.getHoraConf('facturacion', '05:00');
     if (!await this.debeEjecutar('facturacion-worker', hora, min)) return;
 

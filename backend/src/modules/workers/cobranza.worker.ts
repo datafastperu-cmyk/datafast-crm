@@ -81,7 +81,7 @@ export class CobranzaScheduler {
   // los días de gracia configurados por la empresa.
   @Cron('* * * * *', { timeZone: 'America/Lima', name: 'deteccion-morosos' })
   async detectarMorosos(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
     const [hora, min] = await this.getHoraConf('corte', '06:00');
     if (!await this.debeEjecutar('corte', hora, min)) return;
 
@@ -171,7 +171,7 @@ export class CobranzaScheduler {
   // ─── PRÓRROGAS VENCIDAS (verificar cada 2h) ───────────────
   @Cron('0 */2 * * *', { timeZone: 'America/Lima', name: 'prorrogas-vencidas' })
   async verificarProrrogasVencidas(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
     const hoy = new Date().toISOString().split('T')[0];
 
     const prorrogasVencidas = await this.ds.query(`
@@ -208,7 +208,7 @@ export class CobranzaScheduler {
   // Solo instancia 0 del clúster PM2 ejecuta este barrido.
   @Cron('5 0 * * *', { timeZone: 'America/Lima', name: 'barrido-nocturno-cobranza' })
   async barridoNocturno(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 
     const inicio = Date.now();
     this.logger.log('═══ BARRIDO NOCTURNO cobranza iniciado ═══');
@@ -368,7 +368,7 @@ export class CobranzaScheduler {
   // en cada franja horaria, eliminando el hardcode anterior de [3, 1] días.
   @Cron('* * * * *', { timeZone: 'America/Lima', name: 'notif-preventivas' })
   async notificacionesPreventivas(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
     const [hora1, min1] = await this.getHoraConf('recordatorio1', '09:00');
     const [hora2, min2] = await this.getHoraConf('recordatorio2', '12:00');
     const [hora3, min3] = await this.getHoraConf('recordatorio3', '19:00');
@@ -447,7 +447,7 @@ export class CobranzaScheduler {
   // Compatible con la política de retención del módulo WhatsApp.
   @Cron('15 0 * * *', { timeZone: 'America/Lima', name: 'purgar-vouchers' })
   async purgarVouchersExpirados(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== '0') return;
+    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 
     const uploadDir = process.env.APP_UPLOAD_DIR || '/app/uploads';
     const corte = new Date();
