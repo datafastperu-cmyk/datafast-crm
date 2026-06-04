@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { Router as RouterType } from '@/lib/api/mikrotik';
 import { redesApi } from '@/lib/api/contratos';
+import { Portal }   from '@/components/ui/portal';
 
 type PanelTab = 'hardware' | 'equipos' | 'segmentos';
 
@@ -97,6 +98,7 @@ export function RouterDetailPanel({ router, onClose }: Props) {
   ];
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[100] flex justify-end">
       <div className="absolute inset-0 bg-black/40" />
 
@@ -407,5 +409,6 @@ export function RouterDetailPanel({ router, onClose }: Props) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

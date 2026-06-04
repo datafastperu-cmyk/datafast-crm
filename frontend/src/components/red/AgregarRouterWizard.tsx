@@ -11,6 +11,7 @@ import { mikrotikApi }              from '@/lib/api/mikrotik';
 import { vpnApi }                   from '@/lib/api/vpn';
 import { getAccessToken }           from '@/lib/api';
 import { useToast }     from '@/components/ui/toaster';
+import { Portal }       from '@/components/ui/portal';
 import { parseApiError, cn } from '@/lib/utils';
 import type { TestConexionResult } from '@/lib/api/mikrotik';
 import type { VpnCliente, VersionRos } from '@/lib/api/vpn';
@@ -380,6 +381,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
@@ -914,5 +916,6 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

@@ -13,6 +13,7 @@ import { dispositivosApi as monitoreoApi } from '@/lib/api/monitoreo';
 import { mikrotikApi }               from '@/lib/api/mikrotik';
 import { useToast }                  from '@/components/ui/toaster';
 import { cn, parseApiError }         from '@/lib/utils';
+import { Portal }                    from '@/components/ui/portal';
 
 // ─── Constantes ────────────────────────────────────────────────
 const TIPOS_EQUIPO = [
@@ -215,6 +216,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
   const disabled = testando || guardando || (isEdit && loadingExisting);
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
     >
@@ -523,6 +525,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
         </form>
       </div>
     </div>
+    </Portal>
   );
 }
 

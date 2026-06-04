@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { X, UserPlus } from 'lucide-react';
 import { ClienteWizard } from './ClienteWizard';
+import { Portal }        from '@/components/ui/portal';
 
 interface Props {
   open:    boolean;
@@ -24,6 +25,7 @@ export function NuevoAbonadoModal({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) e.preventDefault(); }}
@@ -60,5 +62,6 @@ export function NuevoAbonadoModal({ open, onClose }: Props) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

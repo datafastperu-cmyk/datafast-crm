@@ -7,6 +7,7 @@ import { redesApi, type SegmentoIpv4, type CreateSegmentoDto, type Disponibilida
 import type { Router } from '@/lib/api/mikrotik';
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/portal';
 
 // ─── Main component ───────────────────────────────────────────
 export function RedesIpv4Tab() {
@@ -332,6 +333,7 @@ function SegmentoForm({
     setForm((prev) => ({ ...prev, [k]: v }));
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg">
 
@@ -423,6 +425,7 @@ function SegmentoForm({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

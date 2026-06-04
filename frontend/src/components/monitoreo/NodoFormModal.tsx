@@ -8,6 +8,7 @@ import { mikrotikApi }       from '@/lib/api/mikrotik';
 import { useToast }          from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 import type { CreateDispositivoDto, ProbarConexionResult } from '@/lib/api/monitoreo';
+import { Portal } from '@/components/ui/portal';
 
 const FABRICANTES = ['MikroTik', 'Ubiquiti', 'Huawei', 'Cisco', 'TP-Link', 'Cambium', 'Otro'];
 
@@ -130,6 +131,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
   const esMikrotik = form.fabricante === 'MikroTik';
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg">
 
@@ -335,6 +337,7 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
 
       </div>
     </div>
+    </Portal>
   );
 }
 

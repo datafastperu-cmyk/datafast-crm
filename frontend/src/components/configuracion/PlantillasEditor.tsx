@@ -9,6 +9,7 @@ import {
 import { plantillasApi, type PlantillaDto, type TipoPlantilla } from '@/lib/api/plantillas';
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/portal';
 
 // ─── Variables disponibles por tipo ───────────────────────────
 const VARS_COMUNES = [
@@ -274,7 +275,7 @@ function PlantillaModal({
   const rows        = tipo === 'documento' ? 14 : 8;
 
   return (
-    // Overlay
+    <Portal>
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
     >
@@ -380,6 +381,7 @@ function PlantillaModal({
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

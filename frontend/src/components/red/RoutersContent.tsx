@@ -13,6 +13,7 @@ import {
 import { mikrotikApi } from '@/lib/api/mikrotik';
 import { useToast }    from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/portal';
 import type {
   Router as RouterType, CreateRouterDto,
   MetodoConexion, TestConexionResult, TipoControl, TipoControlVelocidad,
@@ -88,6 +89,7 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
   };
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -159,6 +161,7 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -172,6 +175,7 @@ function MorososDialog({ router, onClose }: { router: RouterType; onClose: () =>
   });
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-lg flex flex-col shadow-2xl max-h-[80vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -230,6 +234,7 @@ function MorososDialog({ router, onClose }: { router: RouterType; onClose: () =>
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -388,7 +393,8 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     { id: 'config', label: 'Configuración',  icon: Cpu      },
   ];
 
-  return (<>
+  return (<Portal>
+    <>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
@@ -895,7 +901,8 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     {showScript && router && (
       <ScriptConexionDialog router={router} onClose={() => setShowScript(false)} />
     )}
-  </>);
+  </>
+    </Portal>);
 }
 
 // ─── Componente principal ─────────────────────────────────────────
@@ -1249,6 +1256,7 @@ export function RoutersContent() {
       )}
 
       {pendingDelete && (
+        <Portal>
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <p className="font-semibold text-foreground">Eliminar router</p>
@@ -1273,9 +1281,11 @@ export function RoutersContent() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {pendingRepair && (
+        <Portal>
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
           onClick={() => setPendingRepair(null)}
@@ -1318,6 +1328,7 @@ export function RoutersContent() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
     </div>

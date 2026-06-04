@@ -16,6 +16,7 @@ import {
   type AlarmInfo,
 } from '@/lib/api/olt-nativo';
 import type { Contrato } from '@/types';
+import { Portal } from '@/components/ui/portal';
 
 // ─── Helpers ──────────────────────────────────────────────────
 
@@ -358,6 +359,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
   const snHint = selectedOlt ? snPrefixHint(selectedOlt.marca, sn) : null;
 
   return (
+    <Portal>
     <>
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
         <div className="w-full max-w-2xl bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
@@ -621,5 +623,6 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
         />
       )}
     </>
+    </Portal>
   );
 }

@@ -6,6 +6,7 @@ import { X, Wifi, RefreshCw, Users } from 'lucide-react';
 
 import { dispositivosApi } from '@/lib/api/monitoreo';
 import { cn }              from '@/lib/utils';
+import { Portal }          from '@/components/ui/portal';
 
 interface WirelessClient {
   mac:          string;
@@ -53,6 +54,7 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
   if (!isOpen) return null;
 
   return (
+    <Portal>
     <>
       {/* Backdrop */}
       <div
@@ -156,5 +158,6 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
         </div>
       </div>
     </>
+    </Portal>
   );
 }

@@ -17,6 +17,7 @@ import { monitoreoApi, TIPOS_NODO, type CreateNodoDto } from '@/lib/api/monitore
 import { useToast }   from '@/components/ui/toaster';
 import { parseApiError, formatBps, cn } from '@/lib/utils';
 import type { Nodo, Alerta, WsEventDashboard } from '@/types';
+import { Portal } from '@/components/ui/portal';
 
 // ─────────────────────────────────────────────────────────────
 // TraficoChart — Gráfico de tráfico total de la red en tiempo real
@@ -260,6 +261,7 @@ export function NodoFormModal({
   });
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg
                       max-h-[90vh] overflow-y-auto">
@@ -352,6 +354,7 @@ export function NodoFormModal({
         </form>
       </div>
     </div>
+    </Portal>
   );
 }
 

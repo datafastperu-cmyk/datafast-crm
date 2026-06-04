@@ -15,6 +15,7 @@ import { openvpnApi }   from '@/lib/api/openvpn';
 import { mikrotikApi }  from '@/lib/api/mikrotik';
 import { useToast }     from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/portal';
 import type { UpsertOpenvpnDto } from '@/lib/api/openvpn';
 
 const DEFAULTS: UpsertOpenvpnDto = {
@@ -656,6 +657,7 @@ export function VpnContent() {
       )}
 
       {pendingRevoke && (
+        <Portal>
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <p className="font-semibold text-foreground">Revocar certificado</p>
@@ -680,6 +682,7 @@ export function VpnContent() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </div>
   );

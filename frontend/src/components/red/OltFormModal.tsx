@@ -6,6 +6,7 @@ import { X, Cpu, Eye, EyeOff } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo, type CreateOltDto, type UpdateOltDto } from '@/lib/api/olt-nativo';
 import { mikrotikApi } from '@/lib/api/mikrotik';
 import { cn } from '@/lib/utils';
+import { Portal } from '@/components/ui/portal';
 
 interface Props {
   open:     boolean;
@@ -175,6 +176,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
   const isEdit = !!editing;
 
   return (
+    <Portal>
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
     >
@@ -359,6 +361,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
         </form>
       </div>
     </div>
+    </Portal>
   );
 }
 
