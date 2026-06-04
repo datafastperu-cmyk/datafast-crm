@@ -108,6 +108,17 @@ export class SistemaController {
     return ApiResponse.ok(result);
   }
 
+  // ── GET /admin/sistema/notif-logs/:id/preview ───────────────
+  @Get('notif-logs/:id/preview')
+  @ApiOperation({ summary: 'Vista previa del contenido del mensaje enviado' })
+  async previewNotifLog(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const result = await this.sistema.previewNotifLog(id, user.empresaId);
+    return ApiResponse.ok(result);
+  }
+
   // ── POST /admin/sistema/notif-logs/:id/reenviar ──────────────
   @Post('notif-logs/:id/reenviar')
   @HttpCode(HttpStatus.OK)

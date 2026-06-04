@@ -90,6 +90,11 @@ export const sistemaApi = {
     api.get<{ data: { items: NotifLog[]; total: number } }>('/admin/sistema/notif-logs', { params })
        .then(r => r.data.data),
 
+  previewNotifLog: (id: string) =>
+    api.get<{ data: { tipo: string; telefono: string; cliente: string; texto: string } }>(
+      `/admin/sistema/notif-logs/${id}/preview`,
+    ).then(r => r.data.data),
+
   reenviarNotifLog: (id: string) =>
     api.post<{ data: { enviado: boolean; error?: string } }>(`/admin/sistema/notif-logs/${id}/reenviar`)
        .then(r => r.data.data),

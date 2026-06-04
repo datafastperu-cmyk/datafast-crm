@@ -309,6 +309,11 @@ export class GatewayMensajeriaService {
     return resultado;
   }
 
+  // ── Renderiza el texto de un tipo de notificación con variables ──
+  renderTexto(tipo: string, variables: Record<string, string>): string {
+    return TEXTOS[tipo]?.(variables) ?? tipo;
+  }
+
   // ── Enrutamiento dual: interno usa whatsapp_corporativo ───
   private async resolveDestino(params: WhatsAppParams): Promise<string> {
     const tiposInternos: TipoNotificacion[] = [

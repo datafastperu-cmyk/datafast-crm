@@ -6,7 +6,7 @@ import {
   MessageSquare, Loader2, RefreshCw,
   ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, Clock, CheckCheck, Truck,
-  RotateCcw, Trash2,
+  RotateCcw, Trash2, Eye, X,
 } from 'lucide-react';
 import { sistemaApi, type NotifLog } from '@/lib/api/sistema';
 import { cn } from '@/lib/utils';
@@ -64,10 +64,14 @@ function EstadoBadge({ estado, error }: { estado: NotifLog['estado_entrega']; er
   );
 }
 
+type PreviewData = { tipo: string; telefono: string; cliente: string; texto: string };
+
 export default function MensajesEnviadosPage() {
-  const [page,   setPage]   = useState(1);
-  const [estado, setEstado] = useState('');
-  const [tipo,   setTipo]   = useState('');
+  const [page,    setPage]    = useState(1);
+  const [estado,  setEstado]  = useState('');
+  const [tipo,    setTipo]    = useState('');
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const qc = useQueryClient();
 
   const { data, isLoading, isFetching, refetch } = useQuery({
@@ -116,6 +120,18 @@ export default function MensajesEnviadosPage() {
 
   const canRetry = (log: NotifLog) =>
     (log.estado_entrega === 'FALLIDO' || log.estado_entrega === 'ENCOLADO') && !!log.contratoId;
+
+  const handlePreview = async (id: string) => {
+    setPreviewLoading(true);
+    try {
+      const data = await sistemaApi.previewNotifLog(id);
+      setPreview(data);
+    } catch {
+      toast.error('No se pudo cargar la vista previa');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   return (
     <div className="p-6 max-w-5xl space-y-6">
@@ -185,7 +201,7 @@ export default function MensajesEnviadosPage() {
           </div>
         ) : (
           <>
-            <div className="hidden md:grid grid-cols-[1fr_120px_150px_130px_110px_auto] gap-3 px-6 py-2.5 border-b border-border text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="hidden md:grid grid-cols-[1fr_120px_150px_130px_110px_96px] gap-3 px-6 py-2.5 border-b border-border text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
               <span>Cliente / Contrato</span>
               <span>Teléfono</span>
               <span>Tipo de alerta</span>
@@ -201,7 +217,7 @@ export default function MensajesEnviadosPage() {
                 return (
                   <div
                     key={log.id}
-                    className="grid grid-cols-1 md:grid-cols-[1fr_120px_150px_130px_110px_auto] gap-x-3 gap-y-1 px-6 py-3 hover:bg-muted/30 transition-colors items-center"
+                    className="grid grid-cols-1 md:grid-cols-[1fr_120px_150px_130px_110px_96px] gap-x-3 gap-y-1 px-6 py-3 hover:bg-muted/30 transition-colors items-center"
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">
@@ -220,8 +236,18 @@ export default function MensajesEnviadosPage() {
                       <EstadoBadge estado={log.estado_entrega} error={log.error_detalle} />
                     </div>
 
-                    {/* Botones Reenviar / Eliminar */}
+                    {/* Botones Ver / Reenviar / Eliminar */}
                     <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handlePreview(log.id)}
+                        disabled={previewLoading}
+                        title="Ver contenido del mensaje"
+                        className="p-1.5 rounded-lg transition-colors hover:bg-muted text-muted-foreground/60 hover:text-primary disabled:opacity-40"
+                      >
+                        {previewLoading
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Eye className="w-3.5 h-3.5" />}
+                      </button>
                       {canRetry(log) && (
                         <button
                           onClick={() => reenviarMut.mutate(log.id)}
@@ -276,5 +302,40 @@ export default function MensajesEnviadosPage() {
         )}
       </div>
     </div>
+
+    {/* Modal de vista previa */}
+    {preview && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        onClick={() => setPreview(null)}
+      >
+        <div
+          className="w-full max-w-md mx-4 bg-card border border-border rounded-xl shadow-xl"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Vista previa del mensaje</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{preview.cliente} · {preview.telefono}</p>
+            </div>
+            <button
+              onClick={() => setPreview(null)}
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-2">
+              {preview.tipo}
+            </p>
+            <div className="rounded-lg bg-muted/50 border border-border p-3.5">
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{preview.texto}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
   );
 }

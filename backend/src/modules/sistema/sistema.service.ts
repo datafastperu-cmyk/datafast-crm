@@ -611,6 +611,54 @@ export class SistemaService {
     }
   }
 
+  // ─── Preview del mensaje enviado ────────────────────────────
+  async previewNotifLog(logId: string, empresaId: string): Promise<{
+    tipo: string; telefono: string; cliente: string; texto: string;
+  }> {
+    const [log] = await this.ds.query(`
+      SELECT nl.id, nl.telefono, nl.tipo_template, nl.contrato_id
+      FROM notificaciones_logs nl
+      INNER JOIN contratos co ON co.id = nl.contrato_id
+      WHERE nl.id = $1 AND co.empresa_id = $2
+    `, [logId, empresaId]);
+
+    if (!log) throw new NotFoundException('Log no encontrado');
+
+    const [row] = await this.ds.query(`
+      SELECT co.id AS contrato_id, co.empresa_id, co.deuda_total, co.meses_deuda,
+             co.usuario_pppoe, co.ip_asignada,
+             cl.nombre_completo,
+             em.razon_social AS empresa_nombre,
+             pl.nombre       AS plan_nombre,
+             f.total              AS factura_total,
+             f.numero_completo    AS factura_numero,
+             f.fecha_vencimiento  AS factura_vencimiento
+      FROM contratos co
+      JOIN clientes cl ON cl.id = co.cliente_id AND cl.deleted_at IS NULL
+      JOIN empresas em ON em.id = co.empresa_id
+      JOIN planes   pl ON pl.id = co.plan_id
+      LEFT JOIN LATERAL (
+        SELECT total, numero_completo, fecha_vencimiento
+        FROM facturas
+        WHERE contrato_id = co.id
+          AND estado IN ('emitida', 'pagada_parcial', 'vencida')
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC LIMIT 1
+      ) f ON true
+      WHERE co.id = $1
+    `, [log.contrato_id]);
+
+    const variables = this.buildNotifVariables(log.tipo_template, row);
+    const texto     = this.gateway.renderTexto(log.tipo_template, variables);
+
+    return {
+      tipo:     log.tipo_template,
+      telefono: log.telefono,
+      cliente:  row?.nombre_completo ?? '—',
+      texto,
+    };
+  }
+
   // ─── Eliminar log de notificación ────────────────────────────
   async eliminarNotifLog(logId: string, empresaId: string): Promise<void> {
     const [log] = await this.ds.query(`
