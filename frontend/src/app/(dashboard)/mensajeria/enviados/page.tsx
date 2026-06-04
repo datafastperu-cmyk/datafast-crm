@@ -134,6 +134,7 @@ export default function MensajesEnviadosPage() {
   };
 
   return (
+    <>
     <div className="p-6 max-w-5xl space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -336,6 +337,6 @@ export default function MensajesEnviadosPage() {
         </div>
       </div>
     )}
-  </div>
+    </>
   );
 }
