@@ -178,7 +178,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         <ClienteSearch />
 
         {/* Undo / Redo */}
-        <div className="hidden sm:flex items-center gap-0.5 border border-border rounded-lg p-0.5 bg-muted/30">
+        <div className="flex items-center gap-0.5 border border-border rounded-lg p-0.5 bg-muted/30">
           <button
             onClick={undo}
             disabled={undoing}
@@ -186,7 +186,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
               ? `Deshacer: ${estado.lastUndo.descripcion} (Ctrl+Z)`
               : 'Deshacer (Ctrl+Z)'}
             className={cn(
-              'flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors',
+              'w-8 h-8 flex items-center justify-center rounded-md transition-colors',
               canUndo
                 ? 'text-foreground hover:bg-muted'
                 : 'text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground',
@@ -195,7 +195,6 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             {undoing
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
               : <Undo2 className="w-3.5 h-3.5" />}
-            <span className="hidden md:inline">Deshacer</span>
           </button>
           <button
             onClick={redo}
@@ -204,7 +203,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
               ? `Rehacer: ${estado.lastRedo.descripcion} (Ctrl+Y)`
               : 'Rehacer (Ctrl+Y)'}
             className={cn(
-              'flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors',
+              'w-8 h-8 flex items-center justify-center rounded-md transition-colors',
               canRedo
                 ? 'text-foreground hover:bg-muted'
                 : 'text-muted-foreground/50 hover:bg-muted hover:text-muted-foreground',
@@ -213,7 +212,6 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             {redoing
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
               : <Redo2 className="w-3.5 h-3.5" />}
-            <span className="hidden md:inline">Rehacer</span>
           </button>
         </div>
 
