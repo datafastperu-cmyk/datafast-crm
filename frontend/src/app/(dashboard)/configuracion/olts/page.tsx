@@ -185,7 +185,7 @@ export default function OltsConfigPage() {
       {/* Delete Confirm */}
       {deleteId && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setDeleteId(null); }}
         >
           <div className="bg-background rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4

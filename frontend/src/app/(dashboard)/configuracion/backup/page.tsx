@@ -116,7 +116,7 @@ function LogsModal({ id, onClose }: { id: string; onClose: () => void }) {
   });
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <h3 className="font-semibold text-sm text-gray-900">Logs del backup</h3>

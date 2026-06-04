@@ -154,7 +154,7 @@ function ConfirmDeleteOnu({
   sn, oltNombre, isPending, onConfirm, onClose,
 }: { sn: string; oltNombre: string; isPending: boolean; onConfirm: () => void; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-zinc-900 border border-amber-700/40 rounded-2xl shadow-2xl">
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
@@ -359,7 +359,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
         <div className="w-full max-w-2xl bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
 
           {/* Header */}

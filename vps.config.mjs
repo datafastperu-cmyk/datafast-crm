@@ -2,6 +2,7 @@
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import os from 'os';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -18,18 +19,22 @@ function loadEnv(file) {
 
 const cfg = loadEnv('.vps.env');
 
-const host = cfg.VPS_HOST || process.env.VPS_HOST;
-const pass = cfg.VPS_PASS || process.env.VPS_PASS;
+const host    = cfg.VPS_HOST     || process.env.VPS_HOST;
+const keyPath = cfg.VPS_KEY_PATH || process.env.VPS_KEY_PATH;
 
-if (!host || !pass) {
-  console.error('Error: crea .vps.env con VPS_HOST y VPS_PASS (ver .vps.env.example)');
+if (!host) {
+  console.error('Error: crea .vps.env con VPS_HOST (ver .vps.env.example)');
   process.exit(1);
 }
+
+const auth = keyPath
+  ? { privateKey: readFileSync(keyPath.replace('~', os.homedir())) }
+  : { password: cfg.VPS_PASS || process.env.VPS_PASS };
 
 export const VPS = {
   host,
   port:         Number(cfg.VPS_PORT || process.env.VPS_PORT || 22),
   username:     cfg.VPS_USER || process.env.VPS_USER || 'root',
-  password:     pass,
+  ...auth,
   readyTimeout: 20000,
 };

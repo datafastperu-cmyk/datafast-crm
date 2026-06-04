@@ -137,7 +137,7 @@ function AuthedMedia({ raw }: { raw: string }) {
       {/* Modal flotante */}
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/90 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/90 backdrop-blur-sm p-4"
           onClick={closeModal}
         >
           <div
@@ -406,7 +406,7 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm"
     >
       <div
         className="w-full max-w-md bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 flex flex-col overflow-hidden"

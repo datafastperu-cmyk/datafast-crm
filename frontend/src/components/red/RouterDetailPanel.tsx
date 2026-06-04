@@ -97,7 +97,7 @@ export function RouterDetailPanel({ router, onClose }: Props) {
   ];
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
+    <div className="fixed inset-0 z-[100] flex justify-end">
       <div className="absolute inset-0 bg-black/40" />
 
       <div

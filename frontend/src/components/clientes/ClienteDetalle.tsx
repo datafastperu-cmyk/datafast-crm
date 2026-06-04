@@ -723,7 +723,7 @@ function ModalConfirmBaja({
   contrato, onConfirm, onClose, isPending,
 }: { contrato: Contrato; onConfirm: () => void; onClose: () => void; isPending: boolean }) {
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-card border border-red-900/40 rounded-2xl shadow-2xl">
         <div className="px-5 py-4 border-b border-border flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
@@ -1260,7 +1260,7 @@ function ServicioPanel({
   const ipVal = watch('ipManual');
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
       <div className="w-full max-w-5xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[94vh]">
 
         {/* ── Header ── */}
@@ -1993,7 +1993,7 @@ function ModalEditarFactura({
                     text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-3xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
 
         {/* Header */}
@@ -2270,7 +2270,7 @@ function ModalFacturaServicio({
                     text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-3xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
 
         {/* Header */}

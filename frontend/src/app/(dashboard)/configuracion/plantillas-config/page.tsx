@@ -451,7 +451,7 @@ export default function PlantillasConfigPage() {
       </div>
 
       {confirmDelete && selId && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <p className="font-semibold text-foreground">Eliminar plantilla</p>
             <p className="text-sm text-muted-foreground">Esta acción no se puede deshacer.</p>

@@ -88,7 +88,7 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
@@ -172,7 +172,7 @@ function MorososDialog({ router, onClose }: { router: RouterType; onClose: () =>
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-lg flex flex-col shadow-2xl max-h-[80vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
@@ -389,7 +389,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
   ];
 
   return (<>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
         {/* Header */}
@@ -1249,7 +1249,7 @@ export function RoutersContent() {
       )}
 
       {pendingDelete && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <p className="font-semibold text-foreground">Eliminar router</p>
             <p className="text-sm text-muted-foreground">
@@ -1277,7 +1277,7 @@ export function RoutersContent() {
 
       {pendingRepair && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
           onClick={() => setPendingRepair(null)}
         >
           <div

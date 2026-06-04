@@ -56,11 +56,11 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 z-40"
+        className="fixed inset-0 bg-black/50 z-[100]"
       />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-xl bg-zinc-900 border-l border-zinc-700 z-50 flex flex-col shadow-2xl">
+      <div className="fixed right-0 top-0 h-full w-full max-w-xl bg-zinc-900 border-l border-zinc-700 z-[101] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-700">
           <div className="flex items-center gap-2">

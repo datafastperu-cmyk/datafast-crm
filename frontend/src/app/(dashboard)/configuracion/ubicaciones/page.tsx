@@ -158,7 +158,7 @@ export default function ZonasPage() {
 
       {/* Modal confirmación eliminar */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
           <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm mx-4">
             <div className="px-5 py-4">
               <p className="font-semibold text-foreground mb-1">¿Eliminar zona?</p>
@@ -181,7 +181,7 @@ export default function ZonasPage() {
 
       {/* Modal crear/editar */}
       {modal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
           <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm mx-4">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <h3 className="font-semibold text-foreground">{modal.zona ? 'Editar Zona' : 'Nueva Zona'}</h3>

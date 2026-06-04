@@ -279,7 +279,7 @@ function UsuariosTab() {
       )}
 
       {pendingDeleteUser && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <p className="font-semibold text-foreground">Eliminar usuario</p>
             <p className="text-sm text-muted-foreground">
@@ -520,7 +520,7 @@ function RolesTab() {
       )}
 
       {pendingDeleteRol && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <p className="font-semibold text-foreground">Eliminar rol</p>
             <p className="text-sm text-muted-foreground">
@@ -541,7 +541,7 @@ function RolesTab() {
       )}
 
       {pendingClonar && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <p className="font-semibold text-foreground">Clonar rol</p>
             <input
@@ -641,7 +641,7 @@ function LogsTab() {
 // ════════════════════════════════════════════════════════════
 function Modal({ title, onClose, wide, children }: { title: string; onClose: () => void; wide?: boolean; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className={cn('bg-card border border-border rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-y-auto', wide ? 'max-w-2xl' : 'max-w-md')}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
           <h3 className="text-base font-semibold text-foreground">{title}</h3>
