@@ -115,7 +115,7 @@ export default function MensajesEnviadosPage() {
     });
 
   const canRetry = (log: NotifLog) =>
-    (log.estado_entrega === 'FALLIDO' || log.estado_entrega === 'ENCOLADO') && !!log.contrato_id;
+    (log.estado_entrega === 'FALLIDO' || log.estado_entrega === 'ENCOLADO') && !!log.contratoId;
 
   return (
     <div className="p-6 max-w-5xl space-y-6">
