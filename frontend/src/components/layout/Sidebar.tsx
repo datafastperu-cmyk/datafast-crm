@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Wifi, Activity, Settings, BarChart2,
   ChevronDown, Router, Shield, Network, Server, Globe, Box,
   Package, MapPin, Wrench, DollarSign, Receipt, TrendingUp,
-  Ticket, MessageSquare, Send, HardDrive, Wallet, Target,
+  Ticket, MessageSquare, Send, HardDrive, Wallet, Target, Megaphone,
   UserCheck, Zap,
   List, Tv, Scissors, Layers,
   ChevronRight, Gift, Trophy, Settings2,
@@ -101,8 +101,9 @@ const NAV: NavEntry[] = [
   {
     id: 'mensajeria', label: 'Mensajería', icon: MessageSquare,
     items: [
-      { href: '/mensajeria/enviados',   label: 'Mensajes Enviados', icon: Send,          permiso: null },
-      { href: '/mensajeria/whatsapp',   label: 'WhatsApp Web',      icon: MessageSquare, permiso: null },
+      { href: '/mensajeria/campanas',   label: 'Campañas Masivas',  icon: Megaphone,     permiso: 'mensajeria:masiva' },
+      { href: '/mensajeria/enviados',   label: 'Mensajes Enviados', icon: Send,          permiso: null                },
+      { href: '/mensajeria/whatsapp',   label: 'WhatsApp Web',      icon: MessageSquare, permiso: null                },
     ],
   },
 
