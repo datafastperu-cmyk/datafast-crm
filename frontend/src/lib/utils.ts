@@ -16,10 +16,17 @@ export function formatPEN(amount: number): string {
   }).format(amount);
 }
 
+/** Parsea un string de fecha sin perder un día por UTC midnight.
+ *  "YYYY-MM-DD" lo trata como hora local; ISO con zona lo deja tal cual. */
+function parseDate(dateStr: string): Date {
+  // Date-only strings (10 chars) son UTC midnight en JS → agregar T00:00:00 para hora local
+  return new Date(dateStr.length === 10 ? dateStr + 'T00:00:00' : dateStr);
+}
+
 /** Formatear fecha en español */
 export function formatDate(dateStr: string, opts?: Intl.DateTimeFormatOptions): string {
   try {
-    return new Date(dateStr).toLocaleDateString('es-PE', {
+    return parseDate(dateStr).toLocaleDateString('es-PE', {
       day:   '2-digit',
       month: '2-digit',
       year:  'numeric',
@@ -33,7 +40,7 @@ export function formatDate(dateStr: string, opts?: Intl.DateTimeFormatOptions): 
 /** Formatear fecha y hora */
 export function formatDateTime(dateStr: string): string {
   try {
-    return new Date(dateStr).toLocaleString('es-PE', {
+    return parseDate(dateStr).toLocaleString('es-PE', {
       day:    '2-digit',
       month:  '2-digit',
       year:   'numeric',
