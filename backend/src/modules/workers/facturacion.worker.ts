@@ -303,7 +303,7 @@ export class FacturacionWorker {
 
         // ── Obtener correlativo ─────────────────────────────
         const serie = empresa.serie_boleta || 'B001';
-        const [[{ siguiente }]] = await this.ds.query(`
+        const [{ siguiente }] = await this.ds.query(`
           SELECT COALESCE(MAX(correlativo), 0) + 1 AS siguiente
           FROM facturas
           WHERE empresa_id = $1 AND serie = $2 AND deleted_at IS NULL
