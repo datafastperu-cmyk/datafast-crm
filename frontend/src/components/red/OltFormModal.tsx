@@ -129,7 +129,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
   }, [open, editing]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return () => {};
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = '';
