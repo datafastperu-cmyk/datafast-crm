@@ -217,7 +217,6 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
-      onClick={onClose}
     >
       <div
         className={cn(

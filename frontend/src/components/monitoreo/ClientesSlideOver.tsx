@@ -57,7 +57,6 @@ export function ClientesSlideOver({ dispositivoId, nombreEmisor, isOpen, onClose
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/50 z-40"
-        onClick={onClose}
       />
 
       {/* Panel */}

@@ -129,15 +129,12 @@ export function OltFormModal({ open, onClose, editing }: Props) {
   }, [open, editing]);
 
   useEffect(() => {
-    if (!open) return () => {};
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handler);
+    if (!open) return;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', handler);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open]);
 
   const set = (field: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm((p) => ({ ...p, [field]: e.target.value }));
@@ -180,7 +177,6 @@ export function OltFormModal({ open, onClose, editing }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="relative w-full sm:max-w-2xl sm:mx-4 bg-background flex flex-col
                       h-[96dvh] sm:h-auto sm:max-h-[92vh]

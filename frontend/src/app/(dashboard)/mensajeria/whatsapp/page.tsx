@@ -407,7 +407,6 @@ function ModalPlantilla({ open, onClose, onInsertar }: ModalPlantillaProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm"
-      onClick={onClose}
     >
       <div
         className="w-full max-w-md bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 flex flex-col overflow-hidden"
