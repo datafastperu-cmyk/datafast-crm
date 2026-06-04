@@ -9,7 +9,7 @@ import {
   Package, MapPin, Wrench, DollarSign, Receipt, TrendingUp,
   Ticket, MessageSquare, Send, HardDrive, Wallet, Target, Megaphone,
   UserCheck, Zap,
-  List, Tv, Scissors, Layers,
+  Tv, Scissors,
   ChevronRight, Gift, Trophy, Settings2,
   Cpu,
 } from 'lucide-react';
@@ -33,9 +33,7 @@ const NAV: NavEntry[] = [
       { href: '/red/vpn',        label: 'OpenVPN',          icon: Shield,   permiso: 'mikrotik:manage' },
       { href: '/red/olt',        label: 'OLT / GPON',       icon: Server,   permiso: 'mikrotik:view'   },
       { href: '/red/redes-ipv4', label: 'Redes IPv4',       icon: Globe,    permiso: 'mikrotik:view'   },
-      { href: '/red/pppoe',      label: 'Sesiones PPPoE',   icon: Zap,      permiso: 'mikrotik:view'   },
-      { href: '/red/dhcp',       label: 'DHCP Leases',      icon: Layers,   permiso: 'mikrotik:view'   },
-      { href: '/red/colas',      label: 'Colas / QoS',      icon: List,     permiso: 'mikrotik:view'   },
+
       { href: '/red/cajas-nap',  label: 'Cajas NAP',        icon: Box,      permiso: 'mikrotik:view'   },
       { href: '/red/mapa',       label: 'Mapa de Red',      icon: MapPin,   permiso: 'mikrotik:view'   },
     ],
@@ -63,7 +61,7 @@ const NAV: NavEntry[] = [
     id: 'clientes', label: 'Abonados', icon: Users,
     items: [
       { href: '/clientes',               label: 'Abonados',      icon: Users,     permiso: 'clientes:view' },
-      { href: '/clientes/mapa',          label: 'Mapa',          icon: MapPin,    permiso: 'clientes:view' },
+
       { href: '/clientes/instalaciones', label: 'Instalaciones', icon: Wrench,    permiso: 'clientes:view' },
       { href: '/tecnicos',               label: 'Técnicos',      icon: UserCheck, permiso: null            },
     ],

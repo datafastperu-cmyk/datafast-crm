@@ -26,27 +26,6 @@ export interface MovimientoCaja {
   operador: string; hora: string; referencia?: string;
 }
 
-export interface SesionPppoe {
-  id: string; usuario: string; ipAsignada: string; ipServicio: string;
-  macAddress: string; interfaz: string; tiempo: string;
-  rxMbps: number; txMbps: number; rxTotal: string; txTotal: string;
-  routerNombre: string; estado: 'activa' | 'inactiva';
-}
-
-export interface LeaseDhcp {
-  id: string; hostname: string; ipAsignada: string; macAddress: string;
-  clienteId?: string; clienteNombre?: string;
-  expira: string; estado: 'activo' | 'expirado' | 'estatico';
-  servidor: string; interfaz: string;
-}
-
-export interface ColaSimple {
-  id: string; nombre: string; objetivo: string; ipOrigen: string;
-  limiteBajada: string; limitSubida: string;
-  usoBajada: number; usoSubida: number;
-  prioridad: number; estado: 'activa' | 'inactiva';
-  clienteNombre?: string;
-}
 
 export interface CanalIptv {
   id: string; nombre: string; numero: number; categoria: string;
@@ -81,7 +60,7 @@ export const mockDashboardStats = {
   nodos:       { total: 25, online: 22, offline: 2, degradado: 1 },
   alertas:     { activas: 5, criticas: 1, warnings: 4 },
   tickets:     { abiertos: 12, urgentes: 3, resueltosMes: 87 },
-  pppoe:       { sesionesActivas: 1_247, pico24h: 1_389 },
+
   banda:       { totalRxMbps: 2_840, totalTxMbps: 384, capacidad: 4_000 },
 };
 
@@ -230,43 +209,6 @@ export const mockMovimientosCaja: MovimientoCaja[] = [
   { id:'mc13', tipo:'egreso',  monto:220.00, descripcion:'Pago proveedor - FiberMax (facturas)',categoria:'Proveedores',metodo:'Transferencia',operador:'Contabilidad',hora:'12:45', referencia:'F001-00234' },
 ];
 
-// ─── SESIONES PPPOE ─────────────────────────────────────────────
-export const mockSesionesPppoe: SesionPppoe[] = [
-  { id:'pp1',  usuario:'jcquispe',   ipAsignada:'192.168.1.10',  ipServicio:'10.0.1.10',  macAddress:'6C:3B:6B:AB:CD:01', interfaz:'ether2-LAN', tiempo:'2d 04:23:11', rxMbps:12.4, txMbps:1.2,  rxTotal:'24.8 GB', txTotal:'2.4 GB',  routerNombre:'DIST-SJL-01',    estado:'activa' },
-  { id:'pp2',  usuario:'metorres',   ipAsignada:'192.168.1.11',  ipServicio:'10.0.1.11',  macAddress:'6C:3B:6B:AB:CD:02', interfaz:'ether3-LAN', tiempo:'0d 18:45:22', rxMbps:4.2,  txMbps:0.5,  rxTotal:'8.4 GB',  txTotal:'0.9 GB',  routerNombre:'DIST-SJL-01',    estado:'activa' },
-  { id:'pp3',  usuario:'rchavez',    ipAsignada:'192.168.2.10',  ipServicio:'10.0.2.10',  macAddress:'AA:BB:CC:DD:EE:01', interfaz:'ether2-LAN', tiempo:'5d 12:01:44', rxMbps:48.7, txMbps:6.8,  rxTotal:'210 GB',  txTotal:'28.4 GB', routerNombre:'DIST-CALLAO-01', estado:'activa' },
-  { id:'pp4',  usuario:'lmendoza',   ipAsignada:'192.168.3.10',  ipServicio:'10.0.3.10',  macAddress:'11:22:33:44:55:01', interfaz:'ether4-LAN', tiempo:'1d 02:10:30', rxMbps:2.8,  txMbps:0.3,  rxTotal:'5.6 GB',  txTotal:'0.6 GB',  routerNombre:'DIST-ATE-01',    estado:'activa' },
-  { id:'pp5',  usuario:'ahuanca',    ipAsignada:'192.168.5.10',  ipServicio:'10.0.5.10',  macAddress:'55:66:77:88:99:01', interfaz:'ether2-LAN', tiempo:'3d 07:55:01', rxMbps:22.1, txMbps:3.1,  rxTotal:'68.4 GB', txTotal:'9.8 GB',  routerNombre:'DIST-VMT-01',    estado:'activa' },
-  { id:'pp6',  usuario:'psanchez',   ipAsignada:'192.168.2.11',  ipServicio:'10.0.2.11',  macAddress:'AA:BB:CC:DD:EE:02', interfaz:'ether3-LAN', tiempo:'0d 06:12:44', rxMbps:1.4,  txMbps:0.2,  rxTotal:'2.8 GB',  txTotal:'0.4 GB',  routerNombre:'DIST-CALLAO-01', estado:'activa' },
-  { id:'pp7',  usuario:'rpalomino',  ipAsignada:'192.168.1.12',  ipServicio:'10.0.1.12',  macAddress:'6C:3B:6B:AB:CD:03', interfaz:'ether4-LAN', tiempo:'1d 22:30:11', rxMbps:9.8,  txMbps:1.1,  rxTotal:'19.6 GB', txTotal:'2.2 GB',  routerNombre:'DIST-SJL-01',    estado:'activa' },
-  { id:'pp8',  usuario:'jccori',     ipAsignada:'192.168.3.11',  ipServicio:'10.0.3.11',  macAddress:'11:22:33:44:55:02', interfaz:'ether2-LAN', tiempo:'7d 00:00:00', rxMbps:75.3, txMbps:12.4, rxTotal:'450 GB',  txTotal:'74.2 GB', routerNombre:'DIST-ATE-01',    estado:'activa' },
-  { id:'pp9',  usuario:'fcastillo',  ipAsignada:'192.168.5.11',  ipServicio:'10.0.5.11',  macAddress:'55:66:77:88:99:02', interfaz:'ether3-LAN', tiempo:'0d 03:44:22', rxMbps:5.6,  txMbps:0.7,  rxTotal:'11.2 GB', txTotal:'1.4 GB',  routerNombre:'DIST-VMT-01',    estado:'activa' },
-  { id:'pp10', usuario:'mavargas',   ipAsignada:'192.168.1.13',  ipServicio:'10.0.1.13',  macAddress:'6C:3B:6B:AB:CD:04', interfaz:'ether5-LAN', tiempo:'2d 11:28:55', rxMbps:18.9, txMbps:2.6,  rxTotal:'37.8 GB', txTotal:'5.2 GB',  routerNombre:'DIST-SJL-01',    estado:'activa' },
-];
-
-// ─── DHCP LEASES ────────────────────────────────────────────────
-export const mockDhcpLeases: LeaseDhcp[] = [
-  { id:'dh1',  hostname:'PC-QUISPE-01',   ipAsignada:'192.168.10.101', macAddress:'6C:3B:6B:AA:01:01', clienteNombre:'Juan Quispe',       expira:'2025-05-16 08:00', estado:'activo',   servidor:'DIST-SJL-01',    interfaz:'bridge-LAN' },
-  { id:'dh2',  hostname:'TV-SMART-01',    ipAsignada:'192.168.10.102', macAddress:'6C:3B:6B:AA:01:02', clienteNombre:'Juan Quispe',       expira:'2025-05-16 08:00', estado:'activo',   servidor:'DIST-SJL-01',    interfaz:'bridge-LAN' },
-  { id:'dh3',  hostname:'android-torres', ipAsignada:'192.168.10.103', macAddress:'AA:11:22:33:44:01', clienteNombre:'María Torres',      expira:'2025-05-15 18:30', estado:'activo',   servidor:'DIST-SJL-01',    interfaz:'bridge-LAN' },
-  { id:'dh4',  hostname:'servidor-chav',  ipAsignada:'192.168.20.10',  macAddress:'AA:BB:CC:01:02:03', clienteNombre:'Roberto Chávez',   expira:'permanente',       estado:'estatico', servidor:'DIST-CALLAO-01', interfaz:'bridge-FTTH' },
-  { id:'dh5',  hostname:'unknown-device', ipAsignada:'192.168.20.45',  macAddress:'FF:EE:DD:CC:BB:AA', clienteNombre:undefined,           expira:'2025-05-15 16:00', estado:'expirado', servidor:'DIST-CALLAO-01', interfaz:'bridge-FTTH' },
-  { id:'dh6',  hostname:'PC-MENDOZA',     ipAsignada:'192.168.30.101', macAddress:'11:22:33:44:55:66', clienteNombre:'Lucía Mendoza',     expira:'2025-05-16 09:15', estado:'activo',   servidor:'DIST-ATE-01',    interfaz:'bridge-LAN' },
-  { id:'dh7',  hostname:'router-home',    ipAsignada:'192.168.30.102', macAddress:'22:33:44:55:66:77', clienteNombre:'Lucía Mendoza',     expira:'2025-05-16 09:15', estado:'activo',   servidor:'DIST-ATE-01',    interfaz:'bridge-LAN' },
-  { id:'dh8',  hostname:'EMPRESA-CCORI',  ipAsignada:'10.10.5.10',     macAddress:'AA:BB:CC:DD:EE:FF', clienteNombre:'Jorge Ccori SAC',   expira:'permanente',       estado:'estatico', servidor:'DIST-ATE-01',    interfaz:'bridge-EMPR' },
-];
-
-// ─── COLAS SIMPLES ──────────────────────────────────────────────
-export const mockColas: ColaSimple[] = [
-  { id:'q1',  nombre:'jcquispe-100M',   objetivo:'192.168.1.10',   ipOrigen:'192.168.1.10',   limiteBajada:'100M', limitSubida:'20M',  usoBajada:12.4, usoSubida:2.1,  prioridad:5, estado:'activa',  clienteNombre:'Juan Quispe' },
-  { id:'q2',  nombre:'metorres-50M',    objetivo:'192.168.1.11',   ipOrigen:'192.168.1.11',   limiteBajada:'50M',  limitSubida:'10M',  usoBajada:4.2,  usoSubida:0.8,  prioridad:5, estado:'activa',  clienteNombre:'María Torres' },
-  { id:'q3',  nombre:'rchavez-200M',    objetivo:'192.168.2.10',   ipOrigen:'192.168.2.10',   limiteBajada:'200M', limitSubida:'40M',  usoBajada:48.7, usoSubida:9.2,  prioridad:6, estado:'activa',  clienteNombre:'Roberto Chávez' },
-  { id:'q4',  nombre:'lmendoza-20M',    objetivo:'192.168.3.10',   ipOrigen:'192.168.3.10',   limiteBajada:'20M',  limitSubida:'5M',   usoBajada:2.8,  usoSubida:0.5,  prioridad:4, estado:'activa',  clienteNombre:'Lucía Mendoza' },
-  { id:'q5',  nombre:'crojas-MORA',     objetivo:'192.168.5.20',   ipOrigen:'192.168.5.20',   limiteBajada:'1M',   limitSubida:'512k', usoBajada:0.8,  usoSubida:0.2,  prioridad:1, estado:'activa',  clienteNombre:'Carlos Rojas (THROTTLED)' },
-  { id:'q6',  nombre:'ahuanca-100M',    objetivo:'192.168.5.10',   ipOrigen:'192.168.5.10',   limiteBajada:'100M', limitSubida:'20M',  usoBajada:22.1, usoSubida:4.1,  prioridad:5, estado:'activa',  clienteNombre:'Ana Huanca' },
-  { id:'q7',  nombre:'PCQ-RESIDENCIAL', objetivo:'192.168.0.0/24', ipOrigen:'192.168.0.0/24', limiteBajada:'50M',  limitSubida:'10M',  usoBajada:38.4, usoSubida:6.2,  prioridad:4, estado:'activa',  clienteNombre:undefined },
-  { id:'q8',  nombre:'PCQ-EMPRESARIAL', objetivo:'10.10.0.0/24',   ipOrigen:'10.10.0.0/24',   limiteBajada:'200M', limitSubida:'50M',  usoBajada:124.3,usoSubida:28.4, prioridad:7, estado:'activa',  clienteNombre:undefined },
-];
 
 // ─── IPTV ───────────────────────────────────────────────────────
 export const mockCanalesIptv: CanalIptv[] = [
