@@ -285,27 +285,56 @@ export class SistemaService {
     recordatorio3: '19:00',
   };
 
-  async getCronHorarios(empresaId: string): Promise<CronHorarios> {
+  private readonly CRON_LOCK_MAP: Record<keyof CronHorarios, string> = {
+    facturacion:   'facturacion-worker',
+    corte:         'corte',
+    recordatorio1: 'rec1',
+    recordatorio2: 'rec2',
+    recordatorio3: 'rec3',
+  };
+
+  private async getEjecutoHoy(): Promise<Record<keyof CronHorarios, boolean>> {
+    const hoy = new Date().toISOString().split('T')[0];
+    const result = {} as Record<keyof CronHorarios, boolean>;
+    for (const [campo, lockKey] of Object.entries(this.CRON_LOCK_MAP) as [keyof CronHorarios, string][]) {
+      try {
+        result[campo] = !!(await this.cache.get(`cron:ran:${lockKey}:${hoy}`));
+      } catch {
+        result[campo] = false;
+      }
+    }
+    return result;
+  }
+
+  async getCronHorarios(empresaId: string): Promise<CronHorarios & { ejecutoHoy: Record<string, boolean> }> {
     const [row] = await this.ds.query(
       `SELECT cron_horarios FROM empresas WHERE id = $1`,
       [empresaId],
     );
-    return { ...this.DEFAULT_HORARIOS, ...(row?.cron_horarios ?? {}) };
+    const horarios = { ...this.DEFAULT_HORARIOS, ...(row?.cron_horarios ?? {}) };
+    const ejecutoHoy = await this.getEjecutoHoy();
+    return { ...horarios, ejecutoHoy };
   }
 
   async updateCronHorarios(
     empresaId: string,
     horarios: Partial<CronHorarios>,
-  ): Promise<CronHorarios> {
+  ): Promise<CronHorarios & { ejecutoHoy: Record<string, boolean> }> {
     const actual = await this.getCronHorarios(empresaId);
-    const nuevo  = { ...actual, ...horarios };
+    const nuevo  = { ...this.DEFAULT_HORARIOS, ...actual, ...horarios };
 
     await this.ds.query(
       `UPDATE empresas SET cron_horarios = $1 WHERE id = $2`,
       [JSON.stringify(nuevo), empresaId],
     );
 
-    return nuevo;
+    // Invalidar cache de horarios para que el cron lea el nuevo valor en el próximo minuto
+    for (const key of Object.keys(horarios) as (keyof CronHorarios)[]) {
+      await this.cache.del(`cron:horario:${key}`).catch(() => {});
+    }
+
+    const ejecutoHoy = await this.getEjecutoHoy();
+    return { ...nuevo, ejecutoHoy };
   }
 
   // ─── WhatsApp config — leer ───────────────────────────────────
