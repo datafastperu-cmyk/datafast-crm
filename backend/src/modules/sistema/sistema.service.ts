@@ -612,6 +612,28 @@ export class SistemaService {
   }
 
   // ─── Preview del mensaje enviado ────────────────────────────
+  // Mapeo tipo_template (TipoNotificacion) → plantillas_mensajes.codigo
+  private readonly TIPO_A_PLANTILLA: Record<string, string> = {
+    factura_emitida:     'nueva_factura',
+    pago_vence_hoy:      'aviso_pago_01',
+    pago_vencido:        'aviso_pago_02',
+    servicio_suspendido: 'corte_servicio',
+    servicio_reactivado: 'bienvenida',
+    servicio_activado:   'bienvenida',
+    bienvenida:          'bienvenida',
+    pago_recibido:       'confirmacion_pago',
+    alerta_egreso:       'datafast_alerta_egreso',
+  };
+
+  // Formatea un valor Date o string de fecha a DD/MM/YYYY
+  private fmtFecha(val: unknown): string {
+    if (!val) return '—';
+    const s = val instanceof Date
+      ? val.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : String(val).substring(0, 10).split('-').reverse().join('/');
+    return s;
+  }
+
   async previewNotifLog(logId: string, empresaId: string): Promise<{
     tipo: string; telefono: string; cliente: string; texto: string;
   }> {
@@ -628,11 +650,12 @@ export class SistemaService {
       SELECT co.id AS contrato_id, co.empresa_id, co.deuda_total, co.meses_deuda,
              co.usuario_pppoe, co.ip_asignada,
              cl.nombre_completo,
-             em.razon_social AS empresa_nombre,
-             pl.nombre       AS plan_nombre,
-             f.total              AS factura_total,
-             f.numero_completo    AS factura_numero,
-             f.fecha_vencimiento  AS factura_vencimiento
+             em.razon_social          AS empresa_nombre,
+             em.telefono_informativo  AS empresa_telefono,
+             pl.nombre                AS plan_nombre,
+             f.total                  AS factura_total,
+             f.numero_completo        AS factura_numero,
+             f.fecha_vencimiento      AS factura_vencimiento
       FROM contratos co
       JOIN clientes cl ON cl.id = co.cliente_id AND cl.deleted_at IS NULL
       JOIN empresas em ON em.id = co.empresa_id
@@ -648,8 +671,50 @@ export class SistemaService {
       WHERE co.id = $1
     `, [log.contrato_id]);
 
-    const variables = this.buildNotifVariables(log.tipo_template, row);
-    const texto     = this.gateway.renderTexto(log.tipo_template, variables);
+    // Buscar plantilla en DB
+    const codigoPlantilla = this.TIPO_A_PLANTILLA[log.tipo_template];
+    let texto = '—';
+
+    if (codigoPlantilla) {
+      const [plantilla] = await this.ds.query(`
+        SELECT contenido FROM plantillas_mensajes
+        WHERE empresa_id = $1 AND tipo = 'whatsapp' AND codigo = $2
+          AND activo = true AND deleted_at IS NULL
+        LIMIT 1
+      `, [empresaId, codigoPlantilla]);
+
+      if (plantilla?.contenido) {
+        const fechaVenc = this.fmtFecha(row?.factura_vencimiento);
+        const montoFact = row?.factura_total
+          ? parseFloat(row.factura_total).toFixed(2)
+          : parseFloat(row?.deuda_total || '0').toFixed(2);
+
+        const vars: Record<string, string> = {
+          nombre_completo:  row?.nombre_completo     ?? '—',
+          numero_factura:   row?.factura_numero      ?? '—',
+          monto_factura:    montoFact,
+          plan_contratado:  row?.plan_nombre         ?? '—',
+          fecha_pago:       fechaVenc,
+          empresa:          row?.empresa_nombre      ?? '—',
+          telefono_empresa: row?.empresa_telefono    ?? '—',
+          usuario_pppoe:    row?.usuario_pppoe       ?? '—',
+          ip_asignada:      row?.ip_asignada         ?? '—',
+          deuda_total:      `S/ ${parseFloat(row?.deuda_total || '0').toFixed(2)}`,
+          dias_vencimiento: String(row?.meses_deuda ?? 0),
+        };
+
+        texto = (plantilla.contenido as string).replace(
+          /\{\{(\w+)\}\}/g,
+          (_, key) => vars[key] ?? `{{${key}}}`,
+        );
+      }
+    }
+
+    // Fallback al TEXTOS hardcodeado si no hay plantilla
+    if (texto === '—') {
+      texto = this.gateway.renderTexto(log.tipo_template,
+        this.buildNotifVariables(log.tipo_template, row));
+    }
 
     return {
       tipo:     log.tipo_template,
