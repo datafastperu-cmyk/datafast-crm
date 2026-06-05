@@ -260,7 +260,7 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
             <Field label="Aviso de factura disponible">
               <select className={selectCls} value={facturacion.plantillaAvisoFactura ?? ''} onChange={e => updateF('plantillaAvisoFactura', e.target.value)}>
                 <option value="">— Sin plantilla específica —</option>
-                {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
+                {plantillasMsg.map(p => <option key={p.codigo} value={p.codigo}>{p.nombre}</option>)}
               </select>
             </Field>
             <Field label="Tipo impuesto">
@@ -377,7 +377,7 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                   </select>
                   <select className={selectCls} value={(notificaciones[plantillaKey] as string) ?? ''} onChange={e => updateN(plantillaKey, e.target.value)}>
                     <option value="">— Sin plantilla específica —</option>
-                    {plantillasMsg.map(p => <option key={p.id} value={p.id ?? ''}>{p.nombre}</option>)}
+                    {plantillasMsg.map(p => <option key={p.codigo} value={p.codigo}>{p.nombre}</option>)}
                   </select>
                 </Field>
               );
