@@ -3,6 +3,7 @@
 
 deploy_app() {
     step "Desplegando CRM ISP DATAFAST"
+    _ensure_evolution_api_key
     _deploy_code
     _write_backend_env
     _write_frontend_env
@@ -10,6 +11,7 @@ deploy_app() {
     _install_frontend
     _run_migrations
     _run_seed
+    _setup_evolution_api
 }
 
 _deploy_code() {
@@ -99,6 +101,13 @@ _run_seed() {
     fi
 }
 
+_ensure_evolution_api_key() {
+    if [[ -z "${EVOLUTION_API_KEY:-}" ]]; then
+        EVOLUTION_API_KEY=$(openssl rand -hex 16)
+        info "EVOLUTION_API_KEY generada automáticamente"
+    fi
+}
+
 _write_backend_env() {
     local ip; ip=$(hostname -I | awk '{print $1}')
     local frontend_url="http://${ip}"
@@ -134,10 +143,57 @@ JWT_REFRESH_EXPIRES_IN=7d
 
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
+EVOLUTION_API_URL=http://localhost:8080
+EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+
 LOG_LEVEL=warn
 ENVEOF
     chmod 600 "${INSTALL_DIR}/backend/.env.production"
     ok "Variables de entorno del backend creadas"
+}
+
+_setup_evolution_api() {
+    step "Levantando Evolution API (WhatsApp self-hosted)"
+
+    # Instalar Docker si no está disponible
+    if ! command -v docker &>/dev/null; then
+        info "Instalando Docker Engine..."
+        curl -fsSL https://get.docker.com | sh >> "${LOG_FILE}" 2>&1
+        systemctl enable --now docker >> "${LOG_FILE}" 2>&1
+        ok "Docker instalado"
+    fi
+
+    mkdir -p /opt/datafast/evolution
+
+    # Eliminar contenedor previo si existe (upgrade safe)
+    docker rm -f datafast-evolution >> "${LOG_FILE}" 2>&1 || true
+
+    docker run -d \
+        --name datafast-evolution \
+        --restart unless-stopped \
+        -p 127.0.0.1:8080:8080 \
+        -v /opt/datafast/evolution:/evolution/instances \
+        -e SERVER_URL="http://localhost:8080" \
+        -e AUTHENTICATION_API_KEY="${EVOLUTION_API_KEY}" \
+        -e AUTHENTICATION_TYPE=apikey \
+        -e STORE_MESSAGES=false \
+        -e STORE_MESSAGE_UP=false \
+        -e STORE_CONTACTS=false \
+        -e DEL_INSTANCE=false \
+        -e LOG_LEVEL=WARN \
+        -e TZ=America/Lima \
+        atendai/evolution-api:v2.2.3 >> "${LOG_FILE}" 2>&1
+
+    # Esperar health check (máx 60 s)
+    local tries=20
+    for i in $(seq 1 $tries); do
+        if curl -sf "http://localhost:8080/" &>/dev/null; then
+            ok "Evolution API disponible en localhost:8080"
+            return
+        fi
+        sleep 3
+    done
+    warn "Evolution API no respondió en 60s — el backend lo reintentará al arrancar"
 }
 
 _write_frontend_env() {
