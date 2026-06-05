@@ -887,7 +887,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
             </button>
             <button
               onClick={handleSave}
-              disabled={saving || (!router && testStatus !== 'ok')}
+              disabled={saving || testStatus !== 'ok'}
               className="btn-primary"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}

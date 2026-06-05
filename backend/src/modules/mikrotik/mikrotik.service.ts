@@ -212,6 +212,7 @@ export class MikrotikService {
     const updated = await this.findOne(id, user.empresaId);
     // Re-sincronizar subnets si cambió la IP de gestión/VPN
     if (dto.ipGestion || dto.vpnIp) this.syncSubnetsAsync(updated);
+    this.inyectarReglasMorososAsync(updated);
     return updated;
   }
 
