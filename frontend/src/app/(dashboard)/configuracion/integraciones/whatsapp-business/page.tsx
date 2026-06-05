@@ -259,6 +259,13 @@ function GatewayConfigForm() {
   // Switch de MASIVA sólo se puede encender si hay número de WhatsApp configurado
   const masivaCanActivate = !!whatsappNumeroOrigen?.trim();
 
+  // Credenciales válidas por proveedor (determina si se puede activar el switch)
+  const currentCredencialesValidas = isMeta
+    ? !!(waData?.phoneId && waData?.token)
+    : isMasiva
+    ? !!gwData?.whatsappNumeroOrigen
+    : !!gwData?.apiKeyStored;
+
   const isConfigured = isMeta
     ? !!(waData?.token)
     : isMasiva
@@ -443,15 +450,37 @@ function GatewayConfigForm() {
               </>
             )}
 
-            {/* ── Switch gateway (no-masiva) ───────────────────────────── */}
+            {/* ── Switch + badge de salud (no-masiva) ─────────────────── */}
             {!isMasiva && (
-              <div className="flex items-center justify-between border border-border rounded-lg px-4 py-3">
-                <span className="text-xs font-medium text-foreground">
-                  {currentActivo ? 'Gateway activo' : 'Gateway inactivo'}
-                </span>
+              <div className="flex items-center justify-between border border-border rounded-lg px-4 py-3 gap-3">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="text-xs font-medium text-foreground whitespace-nowrap">Gateway activo</span>
+                  {currentActivo && currentCredencialesValidas ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500 text-white">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />
+                      Servicio Activo
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
+                      Inactivo
+                    </span>
+                  )}
+                  {!currentCredencialesValidas && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-500 whitespace-nowrap">
+                      <Lock className="w-3 h-3" /> Sin credenciales
+                    </span>
+                  )}
+                </div>
                 <Toggle
                   on={currentActivo}
-                  onToggle={() => setValue(activoField, !currentActivo as any, { shouldDirty: true })}
+                  disabled={!currentCredencialesValidas}
+                  onToggle={() => {
+                    if (!currentCredencialesValidas) {
+                      toast('Guarda las credenciales antes de activar este proveedor.', { type: 'error' });
+                      return;
+                    }
+                    setValue(activoField, !currentActivo as any, { shouldDirty: true });
+                  }}
                 />
               </div>
             )}
@@ -550,9 +579,19 @@ function GatewayConfigForm() {
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
                           Activar Gateway
+                          {activo && masivaCanActivate ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500 text-white">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />
+                              Servicio Activo
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
+                              Inactivo
+                            </span>
+                          )}
                           {!masivaCanActivate && !activo && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] font-normal text-amber-500">
-                              <Lock className="w-3 h-3" /> Requiere configuración
+                              <Lock className="w-3 h-3" /> Sin número configurado
                             </span>
                           )}
                         </p>
