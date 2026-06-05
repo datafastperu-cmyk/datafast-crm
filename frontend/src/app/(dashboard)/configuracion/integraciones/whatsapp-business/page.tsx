@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   MessageSquare, Save, Loader2, Eye, EyeOff, Zap, ChevronLeft,
-  ChevronDown, RotateCcw, Shield,
+  ChevronDown, RotateCcw, Shield, Lock,
 } from 'lucide-react';
 import { sistemaApi, type ProveedorActivo } from '@/lib/api/sistema';
 import { useToast }       from '@/components/ui/toaster';
@@ -132,13 +132,17 @@ interface FormValues {
 }
 
 // ─── Toggle helper ────────────────────────────────────────────────────────────
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+function Toggle({
+  on, onToggle, disabled = false,
+}: { on: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={onToggle}
+      disabled={disabled}
       className={cn(
-        'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-none',
+        'relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none',
+        disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
         on ? 'bg-emerald-500' : 'bg-muted border border-border',
       )}
     >
@@ -207,11 +211,15 @@ function GatewayConfigForm() {
     }
   }, [gwData, waData, reset]); // eslint-disable-line
 
-  const proveedor = watch('proveedor');
-  const activo    = watch('activo');
-  const meta      = PROVIDER_META[proveedor];
-  const isMeta   = proveedor === 'META_GRAPH';
-  const isMasiva = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
+  const proveedor              = watch('proveedor');
+  const activo                 = watch('activo');
+  const whatsappNumeroOrigen   = watch('whatsappNumeroOrigen');
+  const meta                   = PROVIDER_META[proveedor];
+  const isMeta                 = proveedor === 'META_GRAPH';
+  const isMasiva               = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
+
+  // Switch de MASIVA sólo se puede encender si hay número de WhatsApp configurado
+  const masivaCanActivate = !!whatsappNumeroOrigen?.trim();
 
   const isConfigured = isMeta
     ? !!(waData?.token)
@@ -519,17 +527,36 @@ function GatewayConfigForm() {
                   {/* Switch: Activar Gateway */}
                   <div className="pt-3 border-t border-border">
                     <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-xs font-medium text-foreground">Activar Gateway</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {activo
-                            ? 'Notificaciones activas via DATAFAST_MENSAJERIA_MASIVA'
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                          Activar Gateway
+                          {!masivaCanActivate && !activo && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-normal text-amber-500">
+                              <Lock className="w-3 h-3" /> Requiere configuración
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {!masivaCanActivate && !activo
+                            ? 'Configura el número de WhatsApp y guarda antes de activar el servicio'
+                            : activo
+                            ? 'Notificaciones activas — DATAFAST_MENSAJERIA_MASIVA operativo'
                             : 'Gateway desactivado — los envíos serán bloqueados'}
                         </p>
                       </div>
                       <Toggle
                         on={activo}
-                        onToggle={() => setValue('activo', !activo, { shouldDirty: true })}
+                        disabled={!masivaCanActivate && !activo}
+                        onToggle={() => {
+                          if (!activo && !masivaCanActivate) {
+                            toast(
+                              'Debe rellenar y guardar la configuración técnica antes de activar el servicio.',
+                              { type: 'error' },
+                            );
+                            return;
+                          }
+                          setValue('activo', !activo, { shouldDirty: true });
+                        }}
                       />
                     </div>
                   </div>
