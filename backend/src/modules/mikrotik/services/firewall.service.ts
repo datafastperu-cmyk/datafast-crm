@@ -169,20 +169,12 @@ export class FirewallService {
         position: 'top',
       }, allRules);
 
+      // Prórroga = acceso completo hasta vencimiento; el corte se aplica al pasar a morosos
       await this.agregarReglaFirewallSiNoExiste(api, {
         chain:   'forward',
         srcList: ADDRESS_LIST_PRORROGA,
-        dstPort: '80,443,53',
-        proto:   'tcp',
         action:  'accept',
-        comment: 'DATAFAST: Prorroga acceso web',
-      }, allRules);
-
-      await this.agregarReglaFirewallSiNoExiste(api, {
-        chain:   'forward',
-        srcList: ADDRESS_LIST_PRORROGA,
-        action:  'drop',
-        comment: 'DATAFAST: Prorroga bloquear resto',
+        comment: 'DATAFAST: Prorroga acceso completo',
       }, allRules);
 
       this.logger.log(`Reglas de control configuradas en ${creds.ip}`);
