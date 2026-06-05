@@ -709,7 +709,7 @@ export class SistemaService {
           clienteNombre:    nombre,
           numeroFactura:    row?.factura_numero    ?? '—',
           montoTotal:       `S/ ${parseFloat(row?.factura_total || '0').toFixed(2)}`,
-          fechaVencimiento: row?.factura_vencimiento ?? '—',
+          fechaVencimiento: this.fmtFecha(row?.factura_vencimiento),
         };
       case TipoNotificacion.PAGO_VENCE_HOY:
         return { clienteNombre: nombre, montoDeuda: deuda, linkPago: '' };

@@ -207,6 +207,45 @@ class CustomApiStrategy implements IMensajeriaStrategy {
   }
 }
 
+// ─── Mapping tipo → código de plantilla en BD ─────────────
+const TIPO_A_CODIGO: Record<string, string> = {
+  factura_emitida:     'nueva_factura',
+  pago_vence_hoy:      'aviso_pago_01',
+  pago_vencido:        'aviso_pago_02',
+  servicio_suspendido: 'corte_servicio',
+  servicio_reactivado: 'bienvenida',
+  servicio_activado:   'bienvenida',
+  bienvenida:          'bienvenida',
+  pago_recibido:       'confirmacion_pago',
+  alerta_egreso:       'datafast_alerta_egreso',
+};
+
+// camelCase worker vars → snake_case template vars
+const VARS_ALIAS: Record<string, string> = {
+  clienteNombre:    'nombre_completo',
+  numeroFactura:    'numero_factura',
+  montoTotal:       'monto_factura',
+  fechaVencimiento: 'fecha_pago',
+  montoDeuda:       'monto_deuda',
+  diasVencido:      'dias_vencido',
+  numeroCuenta:     'numero_cuenta',
+  deudaTotal:       'deuda_total',
+  nombreEmpresa:    'nombre_empresa',
+  planNombre:       'plan_nombre',
+  ipAsignada:       'ip_asignada',
+  usuarioPppoe:     'usuario_pppoe',
+  velocidadBajada:  'velocidad_bajada',
+  velocidadSubida:  'velocidad_subida',
+  montoPago:        'monto_pago',
+  metodoPago:       'metodo_pago',
+  saldoPendiente:   'saldo_pendiente',
+  fechaProrroga:    'fecha_prorroga',
+  fechaHora:        'fecha_hora',
+  fechaInicio:      'fecha_inicio',
+  duracionEstimada: 'duracion_estimada',
+  linkPago:         'link_pago',
+};
+
 // ─── Config interna del gateway ───────────────────────────
 interface GwConfig {
   proveedor:            ProveedorActivo;
@@ -269,7 +308,8 @@ export class GatewayMensajeriaService {
     } else if (!config || config.proveedor === 'META_GRAPH') {
       resultado = await this.whatsapp.enviar({ ...params, telefono: destino });
     } else {
-      const texto = TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
+      const dbTexto = await this.resolveTextoDesdeDB(params.empresaId, params.tipo as string, params.variables ?? {});
+      const texto   = dbTexto ?? TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
 
       if (texto.length > config.limiteCaracteres) {
         this.logger.warn(`[GW] Texto excede límite (${texto.length} > ${config.limiteCaracteres})`);
@@ -412,6 +452,32 @@ export class GatewayMensajeriaService {
     if (clean.startsWith(dialCode))   return clean;
     if (clean.length <= 10)           return `${dialCode}${clean}`;
     return clean;
+  }
+
+  private async resolveTextoDesdeDB(
+    empresaId: string | undefined,
+    tipo: string,
+    variables: Record<string, string>,
+  ): Promise<string | null> {
+    if (!empresaId) return null;
+    const codigo = TIPO_A_CODIGO[tipo];
+    if (!codigo) return null;
+    try {
+      const [plantilla] = await this.ds.query(
+        `SELECT contenido FROM plantillas_mensajes
+         WHERE empresa_id = $1 AND tipo = 'whatsapp' AND codigo = $2 AND activo = true AND deleted_at IS NULL`,
+        [empresaId, codigo],
+      );
+      if (!plantilla?.contenido) return null;
+      // Build lookup with both camelCase originals and snake_case aliases
+      const lookup: Record<string, string> = { ...variables };
+      for (const [camel, snake] of Object.entries(VARS_ALIAS)) {
+        if (variables[camel] !== undefined) lookup[snake] = variables[camel];
+      }
+      return plantilla.contenido.replace(/\{\{(\w+)\}\}/g, (_: string, key: string) => lookup[key] ?? '');
+    } catch {
+      return null;
+    }
   }
 
   private sleep(seconds: number): Promise<void> {
