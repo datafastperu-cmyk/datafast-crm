@@ -262,11 +262,12 @@ export class GatewayMensajeriaService {
     const config = await this.resolveConfig(params.empresaId);
     let resultado: EnvioResult;
 
-    if (!config || config.proveedor === 'META_GRAPH') {
+    // Verificar switch de activación antes de cualquier despacho
+    if (config && !config.activo) {
+      this.logger.warn(`[GW] Servicio inactivo para empresa ${params.empresaId} (proveedor=${config.proveedor})`);
+      resultado = { enviado: false, error: 'Servicio de mensajería inactivo' };
+    } else if (!config || config.proveedor === 'META_GRAPH') {
       resultado = await this.whatsapp.enviar({ ...params, telefono: destino });
-    } else if (!config.activo) {
-      this.logger.warn(`[GW] Gateway desactivado para empresa ${params.empresaId}`);
-      resultado = { enviado: false, error: 'Gateway desactivado' };
     } else {
       const texto = TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
 
@@ -375,13 +376,15 @@ export class GatewayMensajeriaService {
       case 'CUSTOM_API':       return k        ? new CustomApiStrategy(this.http, k, s, config.clientId)        : null;
       case 'AUTOMATIZADO_VIP':         return k               ? new AutomatizadoVipStrategy(this.http, k, config.clientId) : null;
       case 'DATAFAST_NATIVE':          return this.datafastNative ?? null;
-      case 'DATAFAST_MENSAJERIA_MASIVA':
-        return k ? new DatafastMensajeriaMasivaStrategy(
+      case 'DATAFAST_MENSAJERIA_MASIVA': {
+        const evoKey = k || process.env.EVOLUTION_API_KEY || '';
+        return evoKey ? new DatafastMensajeriaMasivaStrategy(
           this.http,
-          k,
+          evoKey,
           config.clientId || 'datafast_masivos',
           config.codigoPais,
         ) : null;
+      }
       default:                         return null;
     }
   }

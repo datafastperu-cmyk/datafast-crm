@@ -38,7 +38,6 @@ export type ProveedorActivo =
   | 'VONAGE'
   | 'CUSTOM_API'
   | 'AUTOMATIZADO_VIP'
-  | 'DATAFAST_NATIVE'
   | 'DATAFAST_MENSAJERIA_MASIVA';
 
 export interface GatewayConfig {

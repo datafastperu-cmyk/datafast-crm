@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -20,8 +20,14 @@ export type ProveedorActivo =
   | 'VONAGE'
   | 'CUSTOM_API'
   | 'AUTOMATIZADO_VIP'
-  | 'DATAFAST_NATIVE'
   | 'DATAFAST_MENSAJERIA_MASIVA';
+
+// DATAFAST_NATIVE (whatsapp-web.js) es solo para el CRM interactivo —
+// no se acepta como proveedor del gateway de mensajería masiva.
+const PROVEEDORES_PUBLICOS = new Set<string>([
+  'META_GRAPH', 'TWILIO', 'VONAGE', 'CUSTOM_API',
+  'AUTOMATIZADO_VIP', 'DATAFAST_MENSAJERIA_MASIVA',
+]);
 
 export interface CronHorarios {
   facturacion:   string;
@@ -468,8 +474,45 @@ export class SistemaService {
     const params:     any[]    = [empresaId];
 
     if (dto.proveedorActivo) {
+      if (!PROVEEDORES_PUBLICOS.has(dto.proveedorActivo)) {
+        throw new BadRequestException(`Proveedor no válido: ${dto.proveedorActivo}`);
+      }
       params.push(dto.proveedorActivo);
       setClauses.push(`proveedor_activo = $${params.length}`);
+    }
+
+    // Validar credenciales antes de activar el switch
+    if (dto.activo === true) {
+      const [current] = await this.ds.query(
+        `SELECT proveedor_activo, gateway_api_key, whatsapp_phone_id, whatsapp_token
+         FROM empresas WHERE id = $1`,
+        [empresaId],
+      );
+      const proveedor  = dto.proveedorActivo ?? current?.proveedor_activo ?? 'META_GRAPH';
+      const hasStored  = !!current?.gateway_api_key;
+      const hasNewKey  = !!(dto.apiKey && dto.apiKey !== SENTINEL);
+
+      if (proveedor === 'META_GRAPH') {
+        if (!current?.whatsapp_phone_id || !current?.whatsapp_token) {
+          throw new BadRequestException(
+            'No puede activar este servicio sin configurar sus credenciales primero.',
+          );
+        }
+      } else if (proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
+        // Acepta la clave del env (auto-generada en el instalador) como credencial válida
+        if (!hasStored && !hasNewKey && !process.env.EVOLUTION_API_KEY) {
+          throw new BadRequestException(
+            'No puede activar este servicio sin configurar sus credenciales primero.',
+          );
+        }
+      } else {
+        // TWILIO, VONAGE, AUTOMATIZADO_VIP, CUSTOM_API requieren api_key explícita
+        if (!hasStored && !hasNewKey) {
+          throw new BadRequestException(
+            'No puede activar este servicio sin configurar sus credenciales primero.',
+          );
+        }
+      }
     }
 
     if (dto.apiKey !== undefined && dto.apiKey !== SENTINEL) {

@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   MessageSquare, Save, Loader2, Eye, EyeOff, Zap, ChevronLeft,
-  Wifi, WifiOff, AlertTriangle, ChevronDown, RotateCcw, Shield,
+  ChevronDown, RotateCcw, Shield,
 } from 'lucide-react';
 import { sistemaApi, type ProveedorActivo } from '@/lib/api/sistema';
 import { useToast }       from '@/components/ui/toaster';
@@ -87,12 +87,6 @@ const PROVIDER_META: Record<ProveedorActivo, ProviderMeta> = {
     f1Label: 'X-API-Key',          f1Ph: 'sk_live_...',                    f1Hint: 'Llave principal — cifrado AES-256',
     f2Label: 'X-API-Secret',       f2Ph: SENTINEL,                          f2Hint: 'Secreto — cifrado AES-256',
     f3Label: 'Endpoint URL',       f3Ph: 'https://api.proveedor.com/send',  f3Hint: 'URL del endpoint POST',
-  },
-  DATAFAST_NATIVE: {
-    display: 'DATAFAST Native (CRM)', color: 'green', noCredentials: true,
-    f1Label: '', f1Ph: '', f1Hint: '',
-    f2Label: '', f2Ph: '', f2Hint: '',
-    f3Label: '', f3Ph: '', f3Hint: '',
   },
   DATAFAST_MENSAJERIA_MASIVA: {
     display: 'DATAFAST Mensajería Masiva', color: 'teal', noCredentials: true,
@@ -177,15 +171,6 @@ function GatewayConfigForm() {
     staleTime: 60_000,
   });
 
-  const { data: waEstado } = useQuery({
-    queryKey: ['crm-nativo', 'estado'],
-    queryFn:  () => fetch('/api/v1/crm-nativo/estado', {
-      headers: { Authorization: `Bearer ${document.cookie.match(/access_token=([^;]+)/)?.[1] ?? ''}` },
-    }).then(r => r.json()).then(r => r.data),
-    refetchInterval: 15_000,
-    staleTime: 10_000,
-  });
-
   const isLoading = gwLoading || waLoading;
 
   const { register, watch, reset, setValue, handleSubmit } = useForm<FormValues>({
@@ -225,16 +210,13 @@ function GatewayConfigForm() {
   const proveedor = watch('proveedor');
   const activo    = watch('activo');
   const meta      = PROVIDER_META[proveedor];
-  const isMeta              = proveedor === 'META_GRAPH';
-  const isNative            = proveedor === 'DATAFAST_NATIVE';
-  const isMasiva            = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
+  const isMeta   = proveedor === 'META_GRAPH';
+  const isMasiva = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
 
   const isConfigured = isMeta
     ? !!(waData?.token)
-    : isNative
-    ? waEstado?.estado === 'CONECTADO'
     : isMasiva
-    ? !!(gwData?.whatsappNumeroOrigen)
+    ? gwData?.activo
     : gwData?.apiKeyStored;
 
   const cardColor = COLOR_BADGE[meta.color] ?? COLOR_BADGE.emerald;
@@ -271,8 +253,6 @@ function GatewayConfigForm() {
           businessId: values.businessId || undefined,
           token:      values.token ? values.token : undefined,
         });
-      } else if (values.proveedor === 'DATAFAST_NATIVE') {
-        await sistemaApi.updateGatewayConfig({ proveedorActivo: 'DATAFAST_NATIVE', ...trafico });
       } else if (values.proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
         await sistemaApi.updateGatewayConfig({
           proveedorActivo:      'DATAFAST_MENSAJERIA_MASIVA',
@@ -305,8 +285,8 @@ function GatewayConfigForm() {
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
         <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', iconBgCls)}>
           {isMasiva
-            ? <Shield       className={cn('w-4 h-4', iconCls)} />
-            : isNative || isMeta
+            ? <Shield        className={cn('w-4 h-4', iconCls)} />
+            : isMeta
             ? <MessageSquare className={cn('w-4 h-4', iconCls)} />
             : <Zap           className={cn('w-4 h-4', iconCls)} />}
         </div>
@@ -324,7 +304,7 @@ function GatewayConfigForm() {
         {isConfigured && (
           <span className={cn('ml-auto flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border', cardColor)}>
             <span className={cn('w-1.5 h-1.5 rounded-full animate-pulse', COLOR_PULSE[meta.color] ?? 'bg-emerald-500')} />
-            {isNative ? 'Sesión activa' : isMasiva ? 'Número configurado' : 'Configurado'}
+            {isMasiva ? 'Servicio activo' : 'Configurado'}
           </span>
         )}
       </div>
@@ -346,34 +326,12 @@ function GatewayConfigForm() {
                 <option value="TWILIO">Twilio</option>
                 <option value="VONAGE">Vonage (Nexmo)</option>
                 <option value="CUSTOM_API">API Personalizada</option>
-                <option value="DATAFAST_NATIVE">DATAFAST Native (sesión CRM WhatsApp Web)</option>
                 <option value="DATAFAST_MENSAJERIA_MASIVA">DATAFAST Mensajería Masiva (HTTP nativo)</option>
               </select>
               <p className="text-[10px] text-muted-foreground">
                 Las notificaciones automáticas usarán este proveedor para todos los envíos.
               </p>
             </div>
-
-            {/* ── DATAFAST_NATIVE: indicador de sesión ────────────────── */}
-            {isNative && (
-              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                <p className="text-xs font-semibold text-foreground">Sesión WhatsApp Web (CRM Nativo)</p>
-                <div className="flex items-center gap-2">
-                  {waEstado?.estado === 'CONECTADO'
-                    ? <><Wifi    className="w-4 h-4 text-emerald-500" /><span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Sesión activa y conectada</span></>
-                    : waEstado?.estado === 'INICIANDO'
-                    ? <><Loader2 className="w-4 h-4 animate-spin text-amber-500" /><span className="text-xs text-amber-600 dark:text-amber-400">Iniciando cliente...</span></>
-                    : <><WifiOff className="w-4 h-4 text-destructive" /><span className="text-xs text-destructive">Sin sesión activa — ve a CRM {'>'} WhatsApp para escanear QR</span></>
-                  }
-                </div>
-                {waEstado?.estado !== 'CONECTADO' && (
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3 text-amber-500" />
-                    Las campañas masivas no podrán enviarse sin sesión activa.
-                  </p>
-                )}
-              </div>
-            )}
 
             {/* ── META_GRAPH: credenciales ──────────────────────────────── */}
             {isMeta && (
@@ -404,7 +362,7 @@ function GatewayConfigForm() {
             )}
 
             {/* ── Otros proveedores (Twilio, Vonage, etc.) ─────────────── */}
-            {!isMeta && !isNative && !isMasiva && (
+            {!isMeta && !isMasiva && (
               <>
                 <div className={cn('grid grid-cols-1 gap-4', !meta.hideSecret && 'sm:grid-cols-2')}>
                   <div className="space-y-1.5">
@@ -448,7 +406,7 @@ function GatewayConfigForm() {
                     <Toggle on={activo} onToggle={() => setValue('activo', !activo, { shouldDirty: true })} />
                   </div>
                 </div>
-                <div className={cn('grid grid-cols-1 gap-4', isNative ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-foreground">Pausa entre mensajes (seg)</label>
                     <input type="number" min={0} max={60} {...register('pausa', { valueAsNumber: true })} className={INPUT} />
@@ -466,13 +424,6 @@ function GatewayConfigForm() {
                     </select>
                     <p className="text-[10px] text-muted-foreground">Se antepone a números sin código</p>
                   </div>
-                  {isNative && (
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-foreground">Cuota diaria máxima</label>
-                      <input type="number" min={1} max={10000} {...register('limiteDiarioMasivo', { valueAsNumber: true })} className={INPUT} />
-                      <p className="text-[10px] text-muted-foreground">Mensajes masivos / día (anti-ban)</p>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
