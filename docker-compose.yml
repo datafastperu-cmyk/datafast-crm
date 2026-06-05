@@ -23,6 +23,8 @@ volumes:
     driver: local
   certbot-www:
     driver: local
+  evolution-data:
+    driver: local
 
 x-restart-policy: &restart-policy
   restart: unless-stopped
@@ -203,6 +205,36 @@ services:
       "
     depends_on:
       - nginx
+
+  # ── Evolution API (WhatsApp self-hosted) ─────────────────────────
+  evolution-api:
+    image: atendai/evolution-api:v2.2.3
+    container_name: datafast-evolution
+    <<: *restart-policy
+    networks:
+      - datafast-internal
+    ports:
+      - "127.0.0.1:8080:8080"           # Sólo accesible desde el host (PM2 backend)
+    volumes:
+      - evolution-data:/evolution/instances
+    environment:
+      SERVER_URL:               http://localhost:8080
+      AUTHENTICATION_API_KEY:   ${EVOLUTION_API_KEY:?EVOLUTION_API_KEY requerida}
+      AUTHENTICATION_TYPE:      apikey
+      STORE_MESSAGES:           "false"
+      STORE_MESSAGE_UP:         "false"
+      STORE_CONTACTS:           "false"
+      DEL_INSTANCE:             "false"
+      LOG_LEVEL:                WARN
+      TZ:                       America/Lima
+    healthcheck:
+      <<: *hc-defaults
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/"]
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { memory: 512M }
+    expose: ["8080"]
 
   # ── Watchtower (actualizaciones automáticas de imágenes) ──────────
   # watchtower:

@@ -376,7 +376,12 @@ export class GatewayMensajeriaService {
       case 'AUTOMATIZADO_VIP':         return k               ? new AutomatizadoVipStrategy(this.http, k, config.clientId) : null;
       case 'DATAFAST_NATIVE':          return this.datafastNative ?? null;
       case 'DATAFAST_MENSAJERIA_MASIVA':
-        return new DatafastMensajeriaMasivaStrategy(config.whatsappNumeroOrigen, config.codigoPais);
+        return k ? new DatafastMensajeriaMasivaStrategy(
+          this.http,
+          k,
+          config.clientId || 'datafast_masivos',
+          config.codigoPais,
+        ) : null;
       default:                         return null;
     }
   }
