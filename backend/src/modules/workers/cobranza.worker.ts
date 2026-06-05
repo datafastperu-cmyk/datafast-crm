@@ -571,7 +571,7 @@ export class CobranzaWorker {
         this.logger.error(`✗ Error Address List ${ipAsignada}: ${err.message}`);
       }
 
-      // ── 3. Desconectar sesión PPPoE ────────────────────────
+      // ── 3. Desconectar sesión PPPoE activa ────────────────
       await job.progress(40);
       try {
         await this.pppoeSvc.desconectarSesion(creds, usuarioPppoe);
@@ -579,6 +579,15 @@ export class CobranzaWorker {
       } catch (err) {
         errores.push(`PPPoE disconnect: ${err.message}`);
         this.logger.warn(`✗ No se pudo desconectar sesión ${usuarioPppoe}: ${err.message}`);
+      }
+
+      // ── 4. Deshabilitar PPPoE secret (impide reconexión) ──
+      try {
+        await this.pppoeSvc.setEstado(creds, usuarioPppoe, true);
+        this.logger.log(`✓ PPPoE secret deshabilitado: ${usuarioPppoe}`);
+      } catch (err) {
+        errores.push(`PPPoE disable: ${err.message}`);
+        this.logger.warn(`✗ No se pudo deshabilitar PPPoE ${usuarioPppoe}: ${err.message}`);
       }
     } else {
       errores.push(`Router ${routerId} no encontrado`);
@@ -701,6 +710,22 @@ export class CobranzaWorker {
       } catch (err) {
         errores.push(`Firewall: ${err.message}`);
         this.logger.error(`✗ Error removiendo ${ipAsignada} de Address List: ${err.message}`);
+      }
+
+      // ── 2b. Habilitar PPPoE secret (permite reconexión) ──
+      const [conRow] = await this.ds.query(
+        'SELECT usuario_pppoe FROM contratos WHERE id = $1',
+        [contratoId],
+      ).catch(() => [null]);
+
+      if (conRow?.usuario_pppoe) {
+        try {
+          await this.pppoeSvc.setEstado(creds, conRow.usuario_pppoe, false);
+          this.logger.log(`✓ PPPoE secret habilitado: ${conRow.usuario_pppoe}`);
+        } catch (err) {
+          errores.push(`PPPoE enable: ${err.message}`);
+          this.logger.warn(`✗ No se pudo habilitar PPPoE ${conRow.usuario_pppoe}: ${err.message}`);
+        }
       }
 
       await job.progress(50);
