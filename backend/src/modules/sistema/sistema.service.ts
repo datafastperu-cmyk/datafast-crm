@@ -515,32 +515,35 @@ export class SistemaService {
     // Validar credenciales antes de activar el switch
     if (dto.activo === true) {
       const [current] = await this.ds.query(
-        `SELECT gateway_api_key, whatsapp_phone_id, whatsapp_token
+        `SELECT gateway_api_key, whatsapp_phone_id, whatsapp_token, whatsapp_numero_origen
          FROM empresas WHERE id = $1`,
         [empresaId],
       );
-      const proveedor  = targetProvider;
-      const hasStored  = !!current?.gateway_api_key;
-      const hasNewKey  = !!(dto.apiKey && dto.apiKey !== SENTINEL);
+      const proveedor = targetProvider;
 
       if (proveedor === 'META_GRAPH') {
+        // Requiere Phone ID + Access Token almacenados
         if (!current?.whatsapp_phone_id || !current?.whatsapp_token) {
           throw new BadRequestException(
-            'No puede activar este servicio sin configurar sus credenciales primero.',
+            'Configure el Phone ID y el Access Token de Meta Graph antes de activar el servicio.',
           );
         }
       } else if (proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
-        // Acepta la clave del env (auto-generada en el instalador) como credencial válida
-        if (!hasStored && !hasNewKey && !process.env.EVOLUTION_API_KEY) {
+        // Credencial de MASIVA = número de origen WhatsApp.
+        // Acepta el valor en DB o el que viene en este mismo request (evita chicken-and-egg).
+        const numOrigen = current?.whatsapp_numero_origen || dto.whatsappNumeroOrigen?.trim();
+        if (!numOrigen) {
           throw new BadRequestException(
-            'No puede activar este servicio sin configurar sus credenciales primero.',
+            'Configure el número de WhatsApp de origen antes de activar DATAFAST Mensajería Masiva.',
           );
         }
       } else {
-        // TWILIO, VONAGE, AUTOMATIZADO_VIP, CUSTOM_API requieren api_key explícita
+        // TWILIO, VONAGE, AUTOMATIZADO_VIP, CUSTOM_API requieren api_key almacenada o en este request
+        const hasStored = !!current?.gateway_api_key;
+        const hasNewKey = !!(dto.apiKey && dto.apiKey !== SENTINEL);
         if (!hasStored && !hasNewKey) {
           throw new BadRequestException(
-            'No puede activar este servicio sin configurar sus credenciales primero.',
+            `Configure las credenciales de ${proveedor} antes de activar el servicio.`,
           );
         }
       }
