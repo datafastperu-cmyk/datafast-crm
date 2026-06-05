@@ -404,35 +404,13 @@ function GatewayConfigForm() {
               </>
             )}
 
-            {/* ── Control de tráfico (no-masiva) ───────────────────────── */}
+            {/* ── Switch gateway (no-masiva) ───────────────────────────── */}
             {!isMasiva && (
-              <div className="border border-border rounded-lg p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-foreground uppercase tracking-wide">Control de tráfico</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{activo ? 'Gateway activo' : 'Gateway inactivo'}</span>
-                    <Toggle on={activo} onToggle={() => setValue('activo', !activo, { shouldDirty: true })} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">Pausa entre mensajes (seg)</label>
-                    <input type="number" min={0} max={60} {...register('pausa', { valueAsNumber: true })} className={INPUT} />
-                    <p className="text-[10px] text-muted-foreground">0–60 seg entre envíos</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">Límite de caracteres</label>
-                    <input type="number" min={50} max={5000} {...register('limiteCaracteres', { valueAsNumber: true })} className={INPUT} />
-                    <p className="text-[10px] text-muted-foreground">Mensajes más largos se rechazan</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">Código de país</label>
-                    <select {...register('codigoPais')} className={cn(INPUT, 'cursor-pointer')}>
-                      {CODIGOS_PAIS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                    </select>
-                    <p className="text-[10px] text-muted-foreground">Se antepone a números sin código</p>
-                  </div>
-                </div>
+              <div className="flex items-center justify-between border border-border rounded-lg px-4 py-3">
+                <span className="text-xs font-medium text-foreground">
+                  {activo ? 'Gateway activo' : 'Gateway inactivo'}
+                </span>
+                <Toggle on={activo} onToggle={() => setValue('activo', !activo, { shouldDirty: true })} />
               </div>
             )}
 
