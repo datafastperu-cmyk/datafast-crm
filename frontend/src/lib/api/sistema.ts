@@ -49,6 +49,11 @@ export interface GatewayConfig {
   limiteCaracteres:      number;
   codigoPais:            string;
   activo:                boolean;
+  metaGraphActivo:       boolean;
+  twilioActivo:          boolean;
+  vonageActivo:          boolean;
+  customApiActivo:       boolean;
+  automatizadoVipActivo: boolean;
   limiteDiarioMasivo:   number;
   whatsappNumeroOrigen: string | null;
 }

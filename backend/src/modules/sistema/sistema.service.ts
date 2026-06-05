@@ -425,16 +425,30 @@ export class SistemaService {
     limiteCaracteres:       number;
     codigoPais:             string;
     activo:                 boolean;
+    metaGraphActivo:        boolean;
+    twilioActivo:           boolean;
+    vonageActivo:           boolean;
+    customApiActivo:        boolean;
+    automatizadoVipActivo:  boolean;
     limiteDiarioMasivo:     number;
     whatsappNumeroOrigen:   string | null;
   }> {
     const [row] = await this.ds.query(
       `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
               gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
+              meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo, automatizado_vip_activo,
               gateway_masivo_limite_diario, whatsapp_numero_origen
        FROM empresas WHERE id = $1`,
       [empresaId],
     );
+    const ACTIVO_MAP: Record<string, boolean> = {
+      META_GRAPH:                 row?.meta_graph_activo       ?? true,
+      TWILIO:                     row?.twilio_activo          ?? false,
+      VONAGE:                     row?.vonage_activo          ?? false,
+      CUSTOM_API:                 row?.custom_api_activo      ?? false,
+      AUTOMATIZADO_VIP:           row?.automatizado_vip_activo ?? false,
+      DATAFAST_MENSAJERIA_MASIVA: row?.gateway_activo          ?? false,
+    };
     return {
       proveedorActivo:       (row?.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
       apiKeyStored:          !!row?.gateway_api_key,
@@ -443,7 +457,12 @@ export class SistemaService {
       pausa:                 row?.gateway_pausa                    ?? 2,
       limiteCaracteres:      row?.gateway_limite_caracteres        ?? 1000,
       codigoPais:            row?.gateway_codigo_pais              ?? '+51',
-      activo:               row?.gateway_activo               ?? true,
+      activo:               ACTIVO_MAP[row?.proveedor_activo ?? 'META_GRAPH'] ?? true,
+      metaGraphActivo:       row?.meta_graph_activo       ?? true,
+      twilioActivo:          row?.twilio_activo          ?? false,
+      vonageActivo:          row?.vonage_activo          ?? false,
+      customApiActivo:       row?.custom_api_activo      ?? false,
+      automatizadoVipActivo: row?.automatizado_vip_activo ?? false,
       limiteDiarioMasivo:   row?.gateway_masivo_limite_diario ?? 500,
       whatsappNumeroOrigen: row?.whatsapp_numero_origen        ?? null,
     };
@@ -467,11 +486,23 @@ export class SistemaService {
   ): Promise<{
     proveedorActivo: ProveedorActivo; apiKeyStored: boolean; apiSecretStored: boolean;
     clientId: string | null; pausa: number; limiteCaracteres: number; codigoPais: string; activo: boolean;
+    metaGraphActivo: boolean; twilioActivo: boolean; vonageActivo: boolean;
+    customApiActivo: boolean; automatizadoVipActivo: boolean;
     limiteDiarioMasivo: number; whatsappNumeroOrigen: string | null;
   }> {
     const SENTINEL    = '***stored***';
     const setClauses: string[] = [];
     const params:     any[]    = [empresaId];
+
+    // Resolve target provider for routing `activo` to the correct per-provider column
+    let _targetProvider: string | undefined = dto.proveedorActivo;
+    if (dto.activo !== undefined && !_targetProvider) {
+      const [prow] = await this.ds.query(
+        'SELECT proveedor_activo FROM empresas WHERE id = $1', [empresaId],
+      ).catch(() => [null]);
+      _targetProvider = prow?.proveedor_activo ?? 'META_GRAPH';
+    }
+    const targetProvider = _targetProvider ?? 'META_GRAPH';
 
     if (dto.proveedorActivo) {
       if (!PROVEEDORES_PUBLICOS.has(dto.proveedorActivo)) {
@@ -484,11 +515,11 @@ export class SistemaService {
     // Validar credenciales antes de activar el switch
     if (dto.activo === true) {
       const [current] = await this.ds.query(
-        `SELECT proveedor_activo, gateway_api_key, whatsapp_phone_id, whatsapp_token
+        `SELECT gateway_api_key, whatsapp_phone_id, whatsapp_token
          FROM empresas WHERE id = $1`,
         [empresaId],
       );
-      const proveedor  = dto.proveedorActivo ?? current?.proveedor_activo ?? 'META_GRAPH';
+      const proveedor  = targetProvider;
       const hasStored  = !!current?.gateway_api_key;
       const hasNewKey  = !!(dto.apiKey && dto.apiKey !== SENTINEL);
 
@@ -546,8 +577,17 @@ export class SistemaService {
     }
 
     if (dto.activo !== undefined) {
+      const ACTIVO_COL: Record<string, string> = {
+        META_GRAPH:                 'meta_graph_activo',
+        TWILIO:                     'twilio_activo',
+        VONAGE:                     'vonage_activo',
+        CUSTOM_API:                 'custom_api_activo',
+        AUTOMATIZADO_VIP:           'automatizado_vip_activo',
+        DATAFAST_MENSAJERIA_MASIVA: 'gateway_activo',
+      };
+      const col = ACTIVO_COL[targetProvider] ?? 'gateway_activo';
       params.push(dto.activo);
-      setClauses.push(`gateway_activo = $${params.length}`);
+      setClauses.push(`${col} = $${params.length}`);
     }
 
     if (dto.limiteDiarioMasivo !== undefined) {

@@ -127,6 +127,11 @@ interface FormValues {
   limiteCaracteres:      number;
   codigoPais:            string;
   activo:                boolean;
+  metaGraphActivo:       boolean;
+  twilioActivo:          boolean;
+  vonageActivo:          boolean;
+  customApiActivo:       boolean;
+  automatizadoVipActivo: boolean;
   limiteDiarioMasivo:    number;
   whatsappNumeroOrigen: string;
 }
@@ -183,7 +188,10 @@ function GatewayConfigForm() {
       phoneId: '', businessId: '', token: '',
       apiKey: '', apiSecret: '', clientId: '',
       pausa: 2, limiteCaracteres: 1000, codigoPais: '+51',
-      activo: true, limiteDiarioMasivo: 500,
+      activo: false,
+      metaGraphActivo: true, twilioActivo: false, vonageActivo: false,
+      customApiActivo: false, automatizadoVipActivo: false,
+      limiteDiarioMasivo: 500,
       whatsappNumeroOrigen: '',
     },
   });
@@ -201,7 +209,12 @@ function GatewayConfigForm() {
         codigoPais:            isMasivaP
           ? (gwData.codigoPais ?? '51').replace(/^\+/, '')
           : (gwData.codigoPais ?? '+51'),
-        activo:                gwData.activo             ?? true,
+        activo:                gwData.activo             ?? false,
+        metaGraphActivo:       gwData.metaGraphActivo       ?? true,
+        twilioActivo:          gwData.twilioActivo          ?? false,
+        vonageActivo:          gwData.vonageActivo          ?? false,
+        customApiActivo:       gwData.customApiActivo       ?? false,
+        automatizadoVipActivo: gwData.automatizadoVipActivo ?? false,
         limiteDiarioMasivo:    gwData.limiteDiarioMasivo ?? 500,
         phoneId:               waData?.phoneId    ?? '',
         businessId:            waData?.businessId ?? '',
@@ -213,10 +226,35 @@ function GatewayConfigForm() {
 
   const proveedor              = watch('proveedor');
   const activo                 = watch('activo');
+  const metaGraphActivo        = watch('metaGraphActivo');
+  const twilioActivo           = watch('twilioActivo');
+  const vonageActivo           = watch('vonageActivo');
+  const customApiActivo        = watch('customApiActivo');
+  const automatizadoVipActivo  = watch('automatizadoVipActivo');
   const whatsappNumeroOrigen   = watch('whatsappNumeroOrigen');
   const meta                   = PROVIDER_META[proveedor];
   const isMeta                 = proveedor === 'META_GRAPH';
   const isMasiva               = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
+
+  // Mapa proveedor → campo del formulario para el toggle de activación
+  const ACTIVO_FIELD: Record<ProveedorActivo, keyof FormValues> = {
+    META_GRAPH:                 'metaGraphActivo',
+    TWILIO:                     'twilioActivo',
+    VONAGE:                     'vonageActivo',
+    CUSTOM_API:                 'customApiActivo',
+    AUTOMATIZADO_VIP:           'automatizadoVipActivo',
+    DATAFAST_MENSAJERIA_MASIVA: 'activo',
+  };
+  const activoField   = ACTIVO_FIELD[proveedor];
+  const ACTIVO_WATCH: Record<ProveedorActivo, boolean> = {
+    META_GRAPH:                 metaGraphActivo,
+    TWILIO:                     twilioActivo,
+    VONAGE:                     vonageActivo,
+    CUSTOM_API:                 customApiActivo,
+    AUTOMATIZADO_VIP:           automatizadoVipActivo,
+    DATAFAST_MENSAJERIA_MASIVA: activo,
+  };
+  const currentActivo = ACTIVO_WATCH[proveedor];
 
   // Switch de MASIVA sólo se puede encender si hay número de WhatsApp configurado
   const masivaCanActivate = !!whatsappNumeroOrigen?.trim();
@@ -246,16 +284,13 @@ function GatewayConfigForm() {
   const onSave = handleSubmit(async (values) => {
     setIsSaving(true);
     try {
-      const trafico = {
-        pausa:              Number(values.pausa)             || 2,
-        limiteCaracteres:   Number(values.limiteCaracteres)  || 1000,
-        codigoPais:         values.codigoPais || (isMasiva ? '51' : '+51'),
-        activo:             values.activo,
-        limiteDiarioMasivo: Number(values.limiteDiarioMasivo) || 500,
-      };
+      const activoValue = values[ACTIVO_FIELD[values.proveedor]] as boolean;
 
       if (values.proveedor === 'META_GRAPH') {
-        await sistemaApi.updateGatewayConfig({ proveedorActivo: 'META_GRAPH', ...trafico });
+        await sistemaApi.updateGatewayConfig({
+          proveedorActivo: 'META_GRAPH',
+          activo:          activoValue,
+        });
         await sistemaApi.updateWhatsAppConfig({
           phoneId:    values.phoneId    || undefined,
           businessId: values.businessId || undefined,
@@ -264,16 +299,20 @@ function GatewayConfigForm() {
       } else if (values.proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
         await sistemaApi.updateGatewayConfig({
           proveedorActivo:      'DATAFAST_MENSAJERIA_MASIVA',
+          activo:               activoValue,
+          pausa:                Number(values.pausa)            || 12,
+          limiteCaracteres:     Number(values.limiteCaracteres) || 1000,
+          codigoPais:           values.codigoPais || '51',
+          limiteDiarioMasivo:   Number(values.limiteDiarioMasivo) || 500,
           whatsappNumeroOrigen: values.whatsappNumeroOrigen || undefined,
-          ...trafico,
         });
       } else {
         await sistemaApi.updateGatewayConfig({
           proveedorActivo: values.proveedor,
+          activo:          activoValue,
           apiKey:    values.apiKey    && values.apiKey    !== SENTINEL ? values.apiKey    : undefined,
           apiSecret: !meta.hideSecret && values.apiSecret && values.apiSecret !== SENTINEL ? values.apiSecret : undefined,
           clientId:  values.clientId || undefined,
-          ...trafico,
         });
       }
 
@@ -408,9 +447,12 @@ function GatewayConfigForm() {
             {!isMasiva && (
               <div className="flex items-center justify-between border border-border rounded-lg px-4 py-3">
                 <span className="text-xs font-medium text-foreground">
-                  {activo ? 'Gateway activo' : 'Gateway inactivo'}
+                  {currentActivo ? 'Gateway activo' : 'Gateway inactivo'}
                 </span>
-                <Toggle on={activo} onToggle={() => setValue('activo', !activo, { shouldDirty: true })} />
+                <Toggle
+                  on={currentActivo}
+                  onToggle={() => setValue(activoField, !currentActivo as any, { shouldDirty: true })}
+                />
               </div>
             )}
 

@@ -341,6 +341,7 @@ export class GatewayMensajeriaService {
       const [row] = await this.ds.query(
         `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
                 gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
+                meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo, automatizado_vip_activo,
                 whatsapp_numero_origen
          FROM empresas WHERE id = $1`,
         [empresaId],
@@ -354,7 +355,18 @@ export class GatewayMensajeriaService {
         pausa:                row.gateway_pausa             ?? 2,
         limiteCaracteres:     row.gateway_limite_caracteres ?? 1000,
         codigoPais:           row.gateway_codigo_pais       ?? '+51',
-        activo:               row.gateway_activo            ?? true,
+        activo:               (() => {
+          const p = row.proveedor_activo ?? 'META_GRAPH';
+          const m: Record<string, boolean> = {
+            META_GRAPH:                 row.meta_graph_activo       ?? true,
+            TWILIO:                     row.twilio_activo          ?? false,
+            VONAGE:                     row.vonage_activo          ?? false,
+            CUSTOM_API:                 row.custom_api_activo      ?? false,
+            AUTOMATIZADO_VIP:           row.automatizado_vip_activo ?? false,
+            DATAFAST_MENSAJERIA_MASIVA: row.gateway_activo          ?? false,
+          };
+          return m[p] ?? true;
+        })(),
         whatsappNumeroOrigen: row.whatsapp_numero_origen    ?? '',
       } : null;
 
