@@ -848,6 +848,8 @@ export class MikrotikService {
         identityRouteros: identity,
       });
 
+      this.inyectarReglasMorososAsync(router);
+
       return { exitoso: true, mensaje: `Conectado a "${identity}" en ${latencia}ms`, latenciaMs: latencia };
 
     } catch (error) {
@@ -1017,6 +1019,10 @@ export class MikrotikService {
     this.firewallSvc.inyectarReglaBloqueoMorosos(creds)
       .then(() => this.logger.log(`Regla morosos aplicada: ${ip}`))
       .catch((err) => this.logger.warn(`No se pudo aplicar regla morosos en ${ip}: ${err.message}`));
+
+    this.firewallSvc.configurarReglasControl(creds)
+      .then(() => this.logger.log(`Reglas de control configuradas: ${ip}`))
+      .catch((err) => this.logger.warn(`No se pudieron configurar reglas de control en ${ip}: ${err.message}`));
   }
 
   // ────────────────────────────────────────────────────────────
