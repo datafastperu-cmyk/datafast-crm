@@ -54,6 +54,20 @@ export class ContratosService {
       if (duplicate) throw new ConflictException(`Cliente ya tiene contrato activo con plan "${plan.nombre}" (${duplicate.numeroContrato})`);
     }
 
+    if (dto.segmentoId && dto.routerId) {
+      const [seg] = await this.dataSource.query<any[]>(
+        `SELECT router_id AS "routerId", nombre FROM segmentos_ipv4 WHERE id = $1 AND empresa_id = $2`,
+        [dto.segmentoId, user.empresaId],
+      );
+      if (!seg) throw new BadRequestException('Segmento de red no encontrado');
+      if (seg.routerId !== dto.routerId) {
+        throw new BadRequestException(
+          `El segmento "${seg.nombre}" no está asignado al router seleccionado. ` +
+          `Corrija la asignación en Red → Segmentos o seleccione el segmento correspondiente al router.`,
+        );
+      }
+    }
+
     const numeroContrato = await this.contratoRepo.generarNumeroContrato(user.empresaId);
     const usuarioPppoe   = dto.usuarioPppoe || `cli_${dto.clienteId.replace(/-/g,'').substring(0,8)}`;
     const passwordPlain  = dto.passwordPppoePlain || this.generarPassword(12);
