@@ -532,7 +532,7 @@ export class ContratosService {
     return true;
   }
 
-  protected async desaprovisionarMikrotik(contratoId: string): Promise<boolean> {
+  async desaprovisionarMikrotik(contratoId: string): Promise<boolean> {
     let row: any;
     try {
       const [r] = await this.dataSource.query<any[]>(`
