@@ -31,7 +31,7 @@ import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
 import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
 import { useToast }                  from '@/components/ui/toaster';
-import { formatDate, formatPEN, cn } from '@/lib/utils';
+import { formatDate, formatPEN, cn, parseApiError } from '@/lib/utils';
 import type { Contrato, Factura, Pago } from '@/types';
 
 // ── Tabs ──────────────────────────────────────────────────────
@@ -785,11 +785,16 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
 
   const { mutate: activar } = useMutation({
     mutationFn: (id: string) => contratosApi.activar(id),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
-      toast('Servicio activado', { type: 'success' });
+      const parts: string[] = [];
+      if (result.mikrotikOk)   parts.push('Mikrotik: OK');
+      if (result.antenaOk)     parts.push('Antena AP: OK');
+      const msg = parts.length ? `Servicio activado — ${parts.join(' | ')}` : 'Servicio activado';
+      toast(msg, { type: 'success' });
+      result.advertencias?.forEach(w => toast(`Advertencia: ${w}`, { type: 'warning' }));
     },
-    onError: () => toast('No se pudo activar el servicio', { type: 'error' }),
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
   const { mutate: darBaja, isPending: bajaPending } = useMutation({

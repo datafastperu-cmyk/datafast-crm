@@ -1048,7 +1048,7 @@ export class MikrotikService {
     }
   }
 
-  private async crearReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
+  async crearReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
     const comment = `DATAFAST:${co.nombreCompleto}`;
     if (tipoControl === 'pppoe_addresslist') {
       if (!co.usuarioPppoe) return;
@@ -1066,10 +1066,15 @@ export class MikrotikService {
       if (!iface) throw new Error(`No se encontró interfaz para ${co.ipAsignada}`);
       await this.arpSvc.crearArpEstatico(creds, co.ipAsignada, co.macAddress, iface, comment);
       if (tipoControl === 'amarre_ip_mac_dhcp') {
-        await this.firewallSvc.crearDhcpBinding(creds, {
-          macAddress: co.macAddress, ipAddress: co.ipAsignada,
-          hostname: co.nombreCompleto, comment,
-        });
+        try {
+          await this.firewallSvc.crearDhcpBinding(creds, {
+            macAddress: co.macAddress, ipAddress: co.ipAsignada,
+            hostname: co.nombreCompleto, comment,
+          });
+        } catch (dhcpErr) {
+          await this.arpSvc.eliminarArpEstatico(creds, co.ipAsignada).catch(() => {});
+          throw dhcpErr;
+        }
       }
     }
   }

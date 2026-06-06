@@ -2,6 +2,14 @@ import api from '@/lib/api';
 import type { Contrato, Plan, Nodo, HistorialEntry, PaginaRespuesta, PaginaMeta, ApiRespuesta } from '@/types';
 import type { Router } from '@/lib/api/mikrotik';
 
+// ─── Resultado de activar ─────────────────────────────────────
+export interface ActivarResultado {
+  contrato:     Contrato;
+  mikrotikOk:   boolean;
+  antenaOk:     boolean;
+  advertencias: string[];
+}
+
 // ─── Filtros ──────────────────────────────────────────────────
 export interface FiltrosContrato {
   search?:        string;
@@ -134,8 +142,8 @@ export const contratosApi = {
     return res.data.data;
   },
 
-  activar: async (id: string): Promise<Contrato> => {
-    const res = await api.patch<ApiRespuesta<Contrato>>(`/contratos/${id}/activar`);
+  activar: async (id: string): Promise<ActivarResultado> => {
+    const res = await api.patch<ApiRespuesta<ActivarResultado>>(`/contratos/${id}/activar`);
     return res.data.data;
   },
 

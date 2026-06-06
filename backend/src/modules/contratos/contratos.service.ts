@@ -18,7 +18,14 @@ import { RouterConnectionPool, RouterCredentials } from '../mikrotik/services/co
 import { PppoeService } from '../mikrotik/services/pppoe.service';
 import { ArpService } from '../mikrotik/services/arp.service';
 import { FirewallService } from '../mikrotik/services/firewall.service';
-import { decrypt } from '../../common/utils/encryption.util';
+import { MikrotikService } from '../mikrotik/mikrotik.service';
+
+export interface ActivarResultado {
+  contrato:     Contrato;
+  mikrotikOk:   boolean;
+  antenaOk:     boolean;
+  advertencias: string[];
+}
 
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_INSTALACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
@@ -45,6 +52,7 @@ export class ContratosService {
     private readonly pppoeSvc: PppoeService,
     private readonly arpSvc: ArpService,
     private readonly firewallSvc: FirewallService,
+    private readonly mikrotikSvc: MikrotikService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -325,7 +333,7 @@ export class ContratosService {
     return this.findOne(id, user.empresaId);
   }
 
-  async activar(id: string, user: JwtPayload, req?: any): Promise<Contrato> {
+  async activar(id: string, user: JwtPayload, req?: any): Promise<ActivarResultado> {
     const c = await this.findOne(id, user.empresaId);
     if (c.estado !== EstadoContrato.PENDIENTE_INSTALACION)
       throw new BadRequestException(`Solo se activan contratos PENDIENTE_INSTALACION. Estado: ${c.estado}`);
@@ -363,12 +371,14 @@ export class ContratosService {
       );
     }
 
-    const antenaOk = await this.registrarEnAccessListAntena(id);
+    const antenaResult = await this.registrarEnAccessListAntena(id);
+    const advertencias: string[] = [];
+    if (antenaResult.advertencia) advertencias.push(antenaResult.advertencia);
 
     const motivo = [
       'Instalación completada',
       `Mikrotik: ${provisionadoOk ? 'OK' : 'sin provisión'}`,
-      antenaOk ? 'Antena AP: OK' : null,
+      antenaResult.ok ? 'Antena AP: OK' : (antenaResult.advertencia ? 'Antena AP: ERROR' : null),
     ].filter(Boolean).join(' | ');
 
     await this.contratoRepo.guardarHistorial({
@@ -387,7 +397,12 @@ export class ContratosService {
       [c.clienteId, user.empresaId, user.sub],
     ).catch(() => {});
 
-    return this.findOne(id, user.empresaId);
+    return {
+      contrato:     await this.findOne(id, user.empresaId),
+      mikrotikOk:   provisionadoOk,
+      antenaOk:     antenaResult.ok,
+      advertencias,
+    };
   }
 
   async actualizarDeuda(id: string, deudaTotal: number, mesesDeuda: number, empresaId: string): Promise<void> {
@@ -526,66 +541,22 @@ export class ContratosService {
     };
 
     const tipoControl: string = row.tipoControl ?? 'ninguna';
-    const comment = `DATAFAST:${row.nombreCompleto}`;
+
+    // Pre-validate with informative errors before delegating
+    if (tipoControl === 'pppoe_addresslist' && !row.usuarioPppoe) {
+      this.logger.warn(`provisionarMikrotik → ${contratoId} | pppoe sin usuario asignado`);
+      return false;
+    }
+    if ((tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') && (!row.ipAsignada || !row.macAddress)) {
+      throw new BadRequestException(
+        `Amarre IP/MAC requiere IP (${row.ipAsignada ?? 'sin asignar'}) y MAC (${row.macAddress ?? 'sin asignar'}) configuradas en el contrato.`,
+      );
+    }
 
     try {
-      if (tipoControl === 'pppoe_addresslist') {
-        if (!row.usuarioPppoe) {
-          this.logger.warn(`provisionarMikrotik → ${contratoId} | pppoe sin usuario asignado`);
-          return false;
-        }
-        const password = row.passwordPppoe ? decrypt(row.passwordPppoe) : '';
-        await this.pppoeSvc.crear(creds, {
-          name:          row.usuarioPppoe,
-          password,
-          profile:       row.pppProfile ?? 'default',
-          service:       'pppoe',
-          remoteAddress: row.ipAsignada || undefined,
-          comment,
-          disabled:      false,
-        });
-        this.logger.log(`provisionarMikrotik → ${contratoId} | PPPoE creado: ${row.usuarioPppoe} en ${creds.ip}`);
-
-      } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
-        if (!row.ipAsignada || !row.macAddress) {
-          throw new BadRequestException(
-            `Amarre IP/MAC requiere IP (${row.ipAsignada ?? 'sin asignar'}) y MAC (${row.macAddress ?? 'sin asignar'}) configuradas en el contrato.`,
-          );
-        }
-
-        const iface = await this.arpSvc.detectarInterface(creds, row.ipAsignada);
-        if (!iface) {
-          throw new BadRequestException(
-            `No se encontró interfaz en el router "${row.routerNombre}" para la IP ${row.ipAsignada}. ` +
-            `Verifique que el segmento ${row.ipAsignada} esté configurado en IP → Addresses del router.`,
-          );
-        }
-
-        await this.arpSvc.crearArpEstatico(creds, row.ipAsignada, row.macAddress, iface, comment);
-        this.logger.log(`provisionarMikrotik → ${contratoId} | ARP estático creado: ${row.ipAsignada} → ${row.macAddress} (${iface})`);
-
-        if (tipoControl === 'amarre_ip_mac_dhcp') {
-          try {
-            await this.firewallSvc.crearDhcpBinding(creds, {
-              macAddress: row.macAddress,
-              ipAddress:  row.ipAsignada,
-              hostname:   row.nombreCompleto,
-              comment,
-            });
-            this.logger.log(`provisionarMikrotik → ${contratoId} | DHCP binding creado: ${row.macAddress} → ${row.ipAsignada}`);
-          } catch (dhcpErr) {
-            // Rollback ARP para evitar regla huérfana
-            await this.arpSvc.eliminarArpEstatico(creds, row.ipAsignada).catch(() => {});
-            this.logger.warn(`provisionarMikrotik → ${contratoId} | DHCP binding falló, ARP revertido: ${dhcpErr?.message}`);
-            throw dhcpErr;
-          }
-        }
-
-      } else {
-        this.logger.log(`provisionarMikrotik → ${contratoId} | tipo_control=${tipoControl}: sin acción de provisión`);
-      }
+      await this.mikrotikSvc.crearReglasControl(creds, row, tipoControl);
+      this.logger.log(`provisionarMikrotik → ${contratoId} | tipo_control=${tipoControl} completado en ${creds.ip}`);
     } catch (err) {
-      // Re-lanzar para que activar() pueda hacer rollback del estado
       this.logger.warn(`provisionarMikrotik → ${contratoId} | error en router ${creds.ip}: ${err?.message}`);
       throw err;
     }
@@ -674,7 +645,7 @@ export class ContratosService {
     return true;
   }
 
-  protected async registrarEnAccessListAntena(contratoId: string): Promise<boolean> {
+  protected async registrarEnAccessListAntena(contratoId: string): Promise<{ ok: boolean; advertencia?: string }> {
     const [row] = await this.dataSource.query<any[]>(`
       SELECT co.mac_address      AS "macAddress",
              co.antena_ap_id     AS "antenaApId",
@@ -690,7 +661,7 @@ export class ContratosService {
       WHERE co.id = $1
     `, [contratoId]);
 
-    if (!row?.macAddress || !row?.antenaApId || !row?.ipAddress) return false;
+    if (!row?.macAddress || !row?.antenaApId || !row?.ipAddress) return { ok: false };
 
     const creds: RouterCredentials = {
       id:              row.antenaApId,
@@ -706,10 +677,11 @@ export class ContratosService {
     try {
       await this.wirelessSvc.agregarMacAccessList(creds, row.macAddress, `DATAFAST:${row.nombreCompleto}`);
       this.logger.log(`registrarEnAccessListAntena → ${contratoId} | MAC ${row.macAddress} registrada en AP ${row.ipAddress}`);
+      return { ok: true };
     } catch (err) {
       this.logger.warn(`registrarEnAccessListAntena → ${contratoId} | error al registrar MAC en AP: ${err?.message}`);
+      return { ok: false, advertencia: `MAC ${row.macAddress} no registrada en AP ${row.ipAddress}: ${err?.message}` };
     }
-    return true;
   }
 
   async eliminarDeAccessListAntena(contratoId: string): Promise<void> {
