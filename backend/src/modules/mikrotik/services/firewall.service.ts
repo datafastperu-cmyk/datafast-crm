@@ -44,6 +44,15 @@ export class FirewallService {
         return;
       }
 
+      // Quitar de prorroga si estaba ahí
+      const prorroga = await api.write('/ip/firewall/address-list/print', [
+        `?list=${ADDRESS_LIST_PRORROGA}`,
+        `?address=${ip}`,
+      ]);
+      for (const e of prorroga) {
+        await api.write('/ip/firewall/address-list/remove', [`=.id=${e['.id']}`]);
+      }
+
       await api.write('/ip/firewall/address-list/add', [
         `=list=${ADDRESS_LIST_MOROSOS}`,
         `=address=${ip}`,

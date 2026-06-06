@@ -593,7 +593,7 @@ export class CobranzaWorker {
       errores.push(`Router ${routerId} no encontrado`);
     }
 
-    // ── 4. Actualizar estado en BD ─────────────────────────
+    // ── 5. Actualizar estado en BD ─────────────────────────
     await job.progress(60);
     await this.ds.query(`
       UPDATE contratos SET
@@ -612,7 +612,7 @@ export class CobranzaWorker {
       VALUES ($1, $2, 'activo', 'suspendido_mora', $3, 'sistema', true)
     `, [contratoId, empresaId, `Corte automático: deuda S/ ${deudaTotal}`]);
 
-    // ── 5. Notificar al cliente ────────────────────────────
+    // ── 6. Notificar al cliente ────────────────────────────
     await job.progress(80);
     if (notificar) {
       const [cliente] = await this.ds.query(`
@@ -644,7 +644,7 @@ export class CobranzaWorker {
       }
     }
 
-    // ── 6. Auditoría ───────────────────────────────────────
+    // ── 7. Auditoría ───────────────────────────────────────
     await job.progress(100);
     await this.auditoria.log({
       empresaId,
