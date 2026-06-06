@@ -217,53 +217,45 @@ export class FirewallService {
   // ────────────────────────────────────────────────────────────
 
   // ── Crear/actualizar binding estático (upsert por MAC) ───────────────────
+  // Usa pool.execute() (una sola conexión con retry) para leer y escribir.
   // No usa ?mac-address= como filtro en el print para evitar el bug UNKNOWNREPLY
-  // de RouterOS v7 con !empty en event-listener. Se obtienen todos los leases
-  // sin filtro y se busca por MAC en JS.
+  // de RouterOS v7: se obtienen todos los leases sin filtro y se busca en JS.
   async crearDhcpBinding(creds: RouterCredentials, binding: DhcpStaticBinding): Promise<string> {
     const macFormatted = binding.macAddress.toUpperCase()
       .replace(/[^A-F0-9]/g, '')
       .match(/.{2}/g)!.join(':');
 
-    // Conexión 1: leer todos los leases y buscar en JS
-    let existingId: string | null = null;
-    const checkApi = await this.pool.connectDirect(creds);
-    try {
-      const allLeases = await checkApi.write('/ip/dhcp-server/lease/print');
-      const match = allLeases.find(
-        (l: any) => (l['mac-address'] || '').toUpperCase() === macFormatted,
-      );
-      existingId = match ? match['.id'] : null;
-    } catch (err: any) {
-      if (err?.errno !== 'UNKNOWNREPLY') throw err;
-    } finally {
-      checkApi.close().catch(() => {});
-    }
+    return this.pool.execute(creds, async (api) => {
+      let existingId: string | null = null;
+      try {
+        const allLeases = await api.write('/ip/dhcp-server/lease/print');
+        const match = allLeases.find(
+          (l: any) => (l['mac-address'] || '').toUpperCase() === macFormatted,
+        );
+        existingId = match ? match['.id'] : null;
+      } catch (err: any) {
+        if (err?.errno !== 'UNKNOWNREPLY') throw err;
+      }
 
-    const leaseArgs = [
-      `=address=${binding.ipAddress}`,
-      `=mac-address=${macFormatted}`,
-      ...(binding.server       ? [`=server=${binding.server}`]            : []),
-      ...(binding.hostname     ? [`=host-name=${binding.hostname}`]       : []),
-      ...(binding.comment      ? [`=comment=${binding.comment}`]          : []),
-      ...(binding.addressLists ? [`=address-lists=${binding.addressLists}`] : []),
-    ];
+      const leaseArgs = [
+        `=address=${binding.ipAddress}`,
+        `=mac-address=${macFormatted}`,
+        ...(binding.server       ? [`=server=${binding.server}`]              : []),
+        ...(binding.hostname     ? [`=host-name=${binding.hostname}`]         : []),
+        ...(binding.comment      ? [`=comment=${binding.comment}`]            : []),
+        ...(binding.addressLists ? [`=address-lists=${binding.addressLists}`] : []),
+      ];
 
-    // Conexión 2: upsert
-    const writeApi = await this.pool.connectDirect(creds);
-    try {
       if (existingId) {
-        await writeApi.write('/ip/dhcp-server/lease/set', [`=.id=${existingId}`, ...leaseArgs]);
+        await api.write('/ip/dhcp-server/lease/set', [`=.id=${existingId}`, ...leaseArgs]);
         this.logger.log(`DHCP binding actualizado: ${macFormatted} → ${binding.ipAddress} en ${creds.ip}`);
         return existingId;
       } else {
-        const result = await writeApi.write('/ip/dhcp-server/lease/add', leaseArgs);
+        const result = await api.write('/ip/dhcp-server/lease/add', leaseArgs);
         this.logger.log(`DHCP binding creado: ${macFormatted} → ${binding.ipAddress} en ${creds.ip}`);
         return result?.[0]?.ret || '';
       }
-    } finally {
-      writeApi.close().catch(() => {});
-    }
+    });
   }
 
   // ── Eliminar binding ──────────────────────────────────────
