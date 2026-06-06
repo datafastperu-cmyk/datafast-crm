@@ -15,6 +15,10 @@ import { encrypt } from '../../common/utils/encryption.util';
 import { getNextAvailableIp, getCidrRange, isValidIp } from '../../common/utils/ip.util';
 import { WirelessService } from '../mikrotik/services/wireless.service';
 import { RouterConnectionPool, RouterCredentials } from '../mikrotik/services/connection-pool.service';
+import { PppoeService } from '../mikrotik/services/pppoe.service';
+import { ArpService } from '../mikrotik/services/arp.service';
+import { FirewallService } from '../mikrotik/services/firewall.service';
+import { decrypt } from '../../common/utils/encryption.util';
 
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_INSTALACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
@@ -38,6 +42,9 @@ export class ContratosService {
     private readonly config: ConfigService,
     private readonly wirelessSvc: WirelessService,
     private readonly pool: RouterConnectionPool,
+    private readonly pppoeSvc: PppoeService,
+    private readonly arpSvc: ArpService,
+    private readonly firewallSvc: FirewallService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -415,25 +422,193 @@ export class ContratosService {
   //   if (process.env.NODE_APP_INSTANCE !== '0') return true;
 
   protected async provisionarMikrotik(contratoId: string): Promise<boolean> {
+    let row: any;
     try {
-      const [row] = await this.dataSource.query<{ crearReglas: boolean; pppProfile: string }[]>(`
-        SELECT pl.crear_reglas_en_router AS "crearReglas", pl.ppp_profile AS "pppProfile"
-        FROM contratos co JOIN planes pl ON pl.id = co.plan_id
+      const [r] = await this.dataSource.query<any[]>(`
+        SELECT
+          co.usuario_pppoe       AS "usuarioPppoe",
+          co.password_pppoe      AS "passwordPppoe",
+          co.ip_asignada         AS "ipAsignada",
+          co.mac_address         AS "macAddress",
+          cl.nombre_completo     AS "nombreCompleto",
+          ro.tipo_control        AS "tipoControl",
+          ro.vpn_ip              AS "vpnIp",
+          ro.ip_gestion          AS "ipGestion",
+          ro.puerto_api          AS "puertoApi",
+          ro.puerto_api_ssl      AS "puertoApiSsl",
+          ro.usuario             AS "routerUsuario",
+          ro.password_cifrado    AS "routerPassword",
+          ro.usar_ssl            AS "usarSsl",
+          ro.nombre              AS "routerNombre",
+          pl.ppp_profile         AS "pppProfile",
+          pl.crear_reglas_en_router AS "crearReglas"
+        FROM contratos co
+        JOIN clientes cl ON cl.id = co.cliente_id
+        LEFT JOIN routers ro ON ro.id = co.router_id
+        LEFT JOIN planes pl ON pl.id = co.plan_id
         WHERE co.id = $1
       `, [contratoId]);
-      if (row?.crearReglas) {
-        this.logger.log(`[SIM] provisionarMikrotik → ${contratoId} | profile: ${row.pppProfile} | creando PPPoE secret + queue + ARP`);
-      } else {
-        this.logger.log(`[SIM] provisionarMikrotik → ${contratoId} | modo heredado: usando perfil existente en router`);
-      }
-    } catch {
-      this.logger.warn(`[SIM] provisionarMikrotik → ${contratoId} | no se pudo leer plan (contrato sin plan asignado)`);
+      row = r;
+    } catch (err) {
+      this.logger.warn(`provisionarMikrotik → ${contratoId} | error leyendo contrato: ${err?.message}`);
+      return false;
     }
+
+    if (!row) {
+      this.logger.warn(`provisionarMikrotik → ${contratoId} | contrato no encontrado`);
+      return false;
+    }
+
+    if (!row.crearReglas) {
+      this.logger.log(`provisionarMikrotik → ${contratoId} | modo heredado: sin inyección de reglas`);
+      return true;
+    }
+
+    if (!row.vpnIp && !row.ipGestion) {
+      this.logger.warn(`provisionarMikrotik → ${contratoId} | router sin IP configurada`);
+      return false;
+    }
+
+    const creds: RouterCredentials = {
+      id:              row.routerNombre ?? contratoId,
+      ip:              row.vpnIp || row.ipGestion,
+      port:            row.usarSsl ? (row.puertoApiSsl ?? 8729) : (row.puertoApi ?? 8728),
+      user:            row.routerUsuario ?? 'admin',
+      passwordCifrado: row.routerPassword ?? '',
+      useSsl:          row.usarSsl ?? false,
+      timeoutSec:      15,
+      version:         'v6',
+    };
+
+    const tipoControl: string = row.tipoControl ?? 'ninguna';
+    const comment = `DATAFAST:${row.nombreCompleto}`;
+
+    try {
+      if (tipoControl === 'pppoe_addresslist') {
+        if (!row.usuarioPppoe) {
+          this.logger.warn(`provisionarMikrotik → ${contratoId} | pppoe sin usuario asignado`);
+          return false;
+        }
+        const password = row.passwordPppoe ? decrypt(row.passwordPppoe) : '';
+        await this.pppoeSvc.crear(creds, {
+          name:          row.usuarioPppoe,
+          password,
+          profile:       row.pppProfile ?? 'default',
+          service:       'pppoe',
+          remoteAddress: row.ipAsignada || undefined,
+          comment,
+          disabled:      false,
+        });
+        this.logger.log(`provisionarMikrotik → ${contratoId} | PPPoE creado: ${row.usuarioPppoe} en ${creds.ip}`);
+
+      } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
+        if (!row.ipAsignada || !row.macAddress) {
+          this.logger.warn(`provisionarMikrotik → ${contratoId} | amarre IP/MAC requiere IP y MAC asignadas`);
+          return false;
+        }
+
+        const iface = await this.arpSvc.detectarInterface(creds, row.ipAsignada);
+        if (!iface) {
+          this.logger.warn(`provisionarMikrotik → ${contratoId} | no se encontró interfaz para ${row.ipAsignada} en ${creds.ip}`);
+          return false;
+        }
+
+        await this.arpSvc.crearArpEstatico(creds, row.ipAsignada, row.macAddress, iface, comment);
+        this.logger.log(`provisionarMikrotik → ${contratoId} | ARP estático creado: ${row.ipAsignada} → ${row.macAddress} (${iface})`);
+
+        if (tipoControl === 'amarre_ip_mac_dhcp') {
+          await this.firewallSvc.crearDhcpBinding(creds, {
+            macAddress: row.macAddress,
+            ipAddress:  row.ipAsignada,
+            hostname:   row.nombreCompleto,
+            comment,
+          });
+          this.logger.log(`provisionarMikrotik → ${contratoId} | DHCP binding creado: ${row.macAddress} → ${row.ipAsignada}`);
+        }
+
+      } else {
+        this.logger.log(`provisionarMikrotik → ${contratoId} | tipo_control=${tipoControl}: sin acción de provisión`);
+      }
+    } catch (err) {
+      this.logger.warn(`provisionarMikrotik → ${contratoId} | error al provisionar en router ${creds.ip}: ${err?.message}`);
+      return false;
+    }
+
     return true;
   }
 
   protected async desaprovisionarMikrotik(contratoId: string): Promise<boolean> {
-    this.logger.log(`[SIM] desaprovisionarMikrotik → ${contratoId} | eliminando PPPoE secret + queue + ARP lease`);
+    let row: any;
+    try {
+      const [r] = await this.dataSource.query<any[]>(`
+        SELECT
+          co.usuario_pppoe       AS "usuarioPppoe",
+          co.ip_asignada         AS "ipAsignada",
+          co.mac_address         AS "macAddress",
+          ro.tipo_control        AS "tipoControl",
+          ro.vpn_ip              AS "vpnIp",
+          ro.ip_gestion          AS "ipGestion",
+          ro.puerto_api          AS "puertoApi",
+          ro.puerto_api_ssl      AS "puertoApiSsl",
+          ro.usuario             AS "routerUsuario",
+          ro.password_cifrado    AS "routerPassword",
+          ro.usar_ssl            AS "usarSsl",
+          ro.nombre              AS "routerNombre",
+          pl.crear_reglas_en_router AS "crearReglas"
+        FROM contratos co
+        LEFT JOIN routers ro ON ro.id = co.router_id
+        LEFT JOIN planes pl ON pl.id = co.plan_id
+        WHERE co.id = $1
+      `, [contratoId]);
+      row = r;
+    } catch (err) {
+      this.logger.warn(`desaprovisionarMikrotik → ${contratoId} | error leyendo contrato: ${err?.message}`);
+      return false;
+    }
+
+    if (!row?.crearReglas || (!row.vpnIp && !row.ipGestion)) return true;
+
+    const creds: RouterCredentials = {
+      id:              row.routerNombre ?? contratoId,
+      ip:              row.vpnIp || row.ipGestion,
+      port:            row.usarSsl ? (row.puertoApiSsl ?? 8729) : (row.puertoApi ?? 8728),
+      user:            row.routerUsuario ?? 'admin',
+      passwordCifrado: row.routerPassword ?? '',
+      useSsl:          row.usarSsl ?? false,
+      timeoutSec:      15,
+      version:         'v6',
+    };
+
+    const tipoControl: string = row.tipoControl ?? 'ninguna';
+
+    try {
+      if (tipoControl === 'pppoe_addresslist' && row.usuarioPppoe) {
+        await this.pppoeSvc.eliminar(creds, row.usuarioPppoe);
+        this.logger.log(`desaprovisionarMikrotik → ${contratoId} | PPPoE eliminado: ${row.usuarioPppoe}`);
+      } else if ((tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') && row.ipAsignada) {
+        await this.pool.execute(creds, async (api) => {
+          const arps = await api.write('/ip/arp/print', [`?address=${row.ipAsignada}`]);
+          for (const a of arps) {
+            await api.write('/ip/arp/remove', [`=.id=${a['.id']}`]);
+          }
+        });
+        this.logger.log(`desaprovisionarMikrotik → ${contratoId} | ARP eliminado: ${row.ipAsignada}`);
+
+        if (tipoControl === 'amarre_ip_mac_dhcp' && row.macAddress) {
+          await this.pool.execute(creds, async (api) => {
+            const leases = await api.write('/ip/dhcp-server/lease/print');
+            const macFmt = row.macAddress.toUpperCase().replace(/[^A-F0-9]/g, '').match(/.{2}/g)!.join(':');
+            const match = leases.find((l: any) => (l['mac-address'] || '').toUpperCase() === macFmt);
+            if (match) await api.write('/ip/dhcp-server/lease/remove', [`=.id=${match['.id']}`]);
+          });
+          this.logger.log(`desaprovisionarMikrotik → ${contratoId} | DHCP binding eliminado: ${row.macAddress}`);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`desaprovisionarMikrotik → ${contratoId} | error al desprovisionar en router ${creds.ip}: ${err?.message}`);
+      return false;
+    }
+
     return true;
   }
 
