@@ -162,10 +162,20 @@ export function redirectToLogin(): void {
 // ─── Helper para parsear errores de la API ────────────────────
 export function parseApiError(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    const data = error.response?.data;
+    // Sin respuesta del servidor: timeout o sin conexión
+    if (!error.response) {
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        return 'El servidor no responde. Por favor, intenta de nuevo en unos segundos.';
+      }
+      return 'No se pudo conectar al servidor. Verifica tu conexión a internet.';
+    }
+    // Servidor caído (502/503/504)
+    if ([502, 503, 504].includes(error.response.status)) {
+      return 'El sistema está temporalmente no disponible. Inténtalo en unos segundos.';
+    }
+    const data = error.response.data as any;
     if (data?.message) return data.message;
     if (data?.error)   return data.error;
-    if (error.message) return error.message;
   }
   if (error instanceof Error) return error.message;
   return 'Error desconocido';
