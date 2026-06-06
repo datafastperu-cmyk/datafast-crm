@@ -329,18 +329,56 @@ export class ContratosService {
     const c = await this.findOne(id, user.empresaId);
     if (c.estado !== EstadoContrato.PENDIENTE_INSTALACION)
       throw new BadRequestException(`Solo se activan contratos PENDIENTE_INSTALACION. Estado: ${c.estado}`);
-    await this.contratoRepo.update(id, { estado:EstadoContrato.ACTIVO, fechaEstado:new Date(), fechaInstalacion:new Date(), updatedBy:user.sub });
 
-    const provisionadoOk = await this.provisionarMikrotik(id);
-    const antenaOk       = await this.registrarEnAccessListAntena(id);
+    await this.contratoRepo.update(id, {
+      estado: EstadoContrato.ACTIVO,
+      fechaEstado: new Date(),
+      fechaInstalacion: new Date(),
+      updatedBy: user.sub,
+    });
+
+    let provisionadoOk = false;
+    try {
+      provisionadoOk = await this.provisionarMikrotik(id);
+    } catch (err: any) {
+      // Rollback: revertir a PENDIENTE_INSTALACION — el router no aceptó la provisión
+      await this.contratoRepo.update(id, {
+        estado: EstadoContrato.PENDIENTE_INSTALACION,
+        fechaEstado: new Date(),
+        fechaInstalacion: null as any,
+        updatedBy: user.sub,
+      });
+      await this.contratoRepo.guardarHistorial({
+        contratoId: id,
+        empresaId: user.empresaId,
+        estadoAnterior: EstadoContrato.ACTIVO,
+        estadoNuevo: EstadoContrato.PENDIENTE_INSTALACION,
+        motivo: `Rollback automático — error de provisión Mikrotik: ${err?.message}`,
+        usuarioId: user.sub,
+      });
+      this.logger.error(`activar → ${id} | revertido a PENDIENTE_INSTALACION: ${err?.message}`);
+      throw new BadRequestException(
+        `No se pudo activar el servicio: ${err?.message}. ` +
+        `El contrato permanece en PENDIENTE_INSTALACION.`,
+      );
+    }
+
+    const antenaOk = await this.registrarEnAccessListAntena(id);
 
     const motivo = [
       'Instalación completada',
-      `Mikrotik: ${provisionadoOk ? 'OK' : 'FALLO'}`,
+      `Mikrotik: ${provisionadoOk ? 'OK' : 'sin provisión'}`,
       antenaOk ? 'Antena AP: OK' : null,
     ].filter(Boolean).join(' | ');
 
-    await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:EstadoContrato.PENDIENTE_INSTALACION, estadoNuevo:EstadoContrato.ACTIVO, motivo, usuarioId:user.sub });
+    await this.contratoRepo.guardarHistorial({
+      contratoId: id,
+      empresaId: user.empresaId,
+      estadoAnterior: EstadoContrato.PENDIENTE_INSTALACION,
+      estadoNuevo: EstadoContrato.ACTIVO,
+      motivo,
+      usuarioId: user.sub,
+    });
 
     // Promover cliente de PROSPECTO → ACTIVO automáticamente al activar su primer contrato
     await this.dataSource.query(
@@ -348,6 +386,7 @@ export class ContratosService {
        WHERE id = $1 AND empresa_id = $2 AND estado = 'prospecto'`,
       [c.clienteId, user.empresaId, user.sub],
     ).catch(() => {});
+
     return this.findOne(id, user.empresaId);
   }
 
@@ -509,14 +548,17 @@ export class ContratosService {
 
       } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
         if (!row.ipAsignada || !row.macAddress) {
-          this.logger.warn(`provisionarMikrotik → ${contratoId} | amarre IP/MAC requiere IP y MAC asignadas`);
-          return false;
+          throw new BadRequestException(
+            `Amarre IP/MAC requiere IP (${row.ipAsignada ?? 'sin asignar'}) y MAC (${row.macAddress ?? 'sin asignar'}) configuradas en el contrato.`,
+          );
         }
 
         const iface = await this.arpSvc.detectarInterface(creds, row.ipAsignada);
         if (!iface) {
-          this.logger.warn(`provisionarMikrotik → ${contratoId} | no se encontró interfaz para ${row.ipAsignada} en ${creds.ip}`);
-          return false;
+          throw new BadRequestException(
+            `No se encontró interfaz en el router "${row.routerNombre}" para la IP ${row.ipAsignada}. ` +
+            `Verifique que el segmento ${row.ipAsignada} esté configurado en IP → Addresses del router.`,
+          );
         }
 
         await this.arpSvc.crearArpEstatico(creds, row.ipAsignada, row.macAddress, iface, comment);
@@ -543,8 +585,9 @@ export class ContratosService {
         this.logger.log(`provisionarMikrotik → ${contratoId} | tipo_control=${tipoControl}: sin acción de provisión`);
       }
     } catch (err) {
-      this.logger.warn(`provisionarMikrotik → ${contratoId} | error al provisionar en router ${creds.ip}: ${err?.message}`);
-      return false;
+      // Re-lanzar para que activar() pueda hacer rollback del estado
+      this.logger.warn(`provisionarMikrotik → ${contratoId} | error en router ${creds.ip}: ${err?.message}`);
+      throw err;
     }
 
     // Marcar contrato como aprovisionado en la BD
@@ -783,9 +826,10 @@ export class ContratosService {
       });
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
-      throw new BadRequestException(
-        `No se pudo verificar el segmento en el router "${r.nombre}": ${err?.message ?? 'Error de conexión'}. ` +
-        `Verifique que el router esté accesible.`,
+      // Error de conectividad: el segmento podría estar bien configurado pero el router
+      // no es accesible en este momento. No bloquear la creación del contrato.
+      this.logger.warn(
+        `verificarSubredEnRouter → router "${r.nombre}" inaccesible, validación omitida: ${err?.message ?? 'Error de conexión'}`,
       );
     }
   }
