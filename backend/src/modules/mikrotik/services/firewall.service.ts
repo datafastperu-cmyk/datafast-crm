@@ -3,10 +3,8 @@ import { RouterConnectionPool, RouterCredentials } from './connection-pool.servi
 
 // Lista de morosos: IPs bloqueadas por mora
 export const ADDRESS_LIST_MOROSOS = 'morosos_datafast';
-// Lista de IPs en prórroga (acceso limitado)
+// Lista de IPs en prórroga (acceso completo hasta vencimiento)
 export const ADDRESS_LIST_PRORROGA = 'prorroga';
-// Lista de IPs con acceso restringido al portal de pago
-export const ADDRESS_LIST_PORTAL = 'portal-pago';
 
 export interface DhcpStaticBinding {
   macAddress:    string;
@@ -25,10 +23,6 @@ export class FirewallService {
 
   // ────────────────────────────────────────────────────────────
   // ADDRESS LISTS — Control de acceso por mora
-  //
-  // La regla de firewall en RouterOS debe estar configurada:
-  //   chain=forward src-address-list=morosos action=drop
-  // Esta regla bloquea TODO el tráfico de IPs en la lista.
   // ────────────────────────────────────────────────────────────
 
   // ── Agregar IP a la lista de morosos (SUSPENDER) ──────────
@@ -108,7 +102,7 @@ export class FirewallService {
     }));
   }
 
-  // ── Mover IP a prórroga (acceso al portal de pago) ────────
+  // ── Mover IP a prórroga (acceso completo hasta vencimiento) ──
   async aplicarProrroga(creds: RouterCredentials, ip: string, comment?: string): Promise<void> {
     await this.pool.execute(creds, async (api) => {
       // Quitar de morosos
@@ -135,19 +129,16 @@ export class FirewallService {
     });
   }
 
-  // ── Configurar/reparar las 3 reglas de control (idempotente) ───────────
+  // ── Configurar/reparar las 2 reglas de control (idempotente) ───────────
   // Orden garantizado en cadena forward:
-  //   pos 0 → PORTAL PAGO accept  (morosos acceden al portal de pago)
-  //   pos 1 → DROP morosos        (bloquea todo lo demás)
-  //   pos 2 → PRORROGA accept     (acceso completo — antes de cualquier default-deny)
+  //   pos 0 → DROP morosos    (bloquea todo el tráfico de IPs en mora)
+  //   pos 1 → PRORROGA accept (acceso completo — antes de cualquier default-deny)
   //
-  // Si las reglas ya existen pero están en orden incorrecto o tienen argumentos
-  // obsoletos (dst-address-list legacy), se eliminan y recrean.
-  // Técnica: inserción inversa en pos 0 → prorroga primero, drop segundo,
-  // portal tercero → resultado final: portal(0) drop(1) prorroga(2).
+  // Si las reglas existen con orden incorrecto o dst-address-list legacy,
+  // se eliminan y recrean. Inserción inversa en pos 0: prorroga primero,
+  // drop segundo → resultado final: drop(0) prorroga(1).
   async configurarReglasControl(creds: RouterCredentials): Promise<void> {
     const DROP_COMMENT     = 'Datafast-Bloquear Morosos';
-    const PORTAL_COMMENT   = 'DATAFAST: Morosos portal pago';
     const PRORROGA_COMMENT = 'DATAFAST: Prorroga acceso completo';
 
     // Conexión 1: leer sin filtros (bug UNKNOWNREPLY de v7 con ?comment=X)
@@ -161,31 +152,32 @@ export class FirewallService {
       checkApi.close().catch(() => {});
     }
 
-    const portalIdx   = allRules.findIndex((r: any) => r.comment === PORTAL_COMMENT);
     const dropIdx     = allRules.findIndex((r: any) => r.comment === DROP_COMMENT);
     const prorrogaIdx = allRules.findIndex((r: any) => r.comment === PRORROGA_COMMENT);
+    // Eliminar regla portal pago si existe de instalaciones previas
+    const portalIdx   = allRules.findIndex((r: any) => r.comment === 'DATAFAST: Morosos portal pago');
 
+    const dropRule     = dropIdx     >= 0 ? allRules[dropIdx]     : null;
+    const prorrogaRule = prorrogaIdx >= 0 ? allRules[prorrogaIdx] : null;
     const portalRule   = portalIdx   >= 0 ? allRules[portalIdx]   : null;
-    const dropRule     = dropIdx     >= 0 ? allRules[dropIdx]      : null;
-    const prorrogaRule = prorrogaIdx >= 0 ? allRules[prorrogaIdx]  : null;
 
-    const allExist  = !!(portalRule && dropRule && prorrogaRule);
-    const orderOk   = allExist && portalIdx < dropIdx && dropIdx < prorrogaIdx;
+    const allExist  = !!(dropRule && prorrogaRule);
+    const orderOk   = allExist && dropIdx < prorrogaIdx;
     const dropClean = !dropRule?.['dst-address-list'];
 
-    if (allExist && orderOk && dropClean) {
+    if (allExist && orderOk && dropClean && !portalRule) {
       this.logger.debug(`Reglas de control ya correctas en ${creds.ip}`);
       return;
     }
 
-    // Conexión 2: eliminar las que existan y recrear todas en orden correcto
+    // Conexión 2: eliminar las que existan (incluye portal pago legacy) y recrear
     const writeApi = await this.pool.connectDirect(creds);
     try {
-      for (const rule of [portalRule, dropRule, prorrogaRule]) {
+      for (const rule of [dropRule, prorrogaRule, portalRule]) {
         if (rule) await writeApi.write('/ip/firewall/filter/remove', [`=.id=${rule['.id']}`]);
       }
 
-      // Inserción inversa en pos 0 → resultado final: portal(0) drop(1) prorroga(2)
+      // Inserción inversa en pos 0 → resultado final: drop(0) prorroga(1)
       await writeApi.write('/ip/firewall/filter/add', [
         '=chain=forward',
         `=src-address-list=${ADDRESS_LIST_PRORROGA}`,
@@ -198,15 +190,6 @@ export class FirewallService {
         `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
         '=action=drop',
         `=comment=${DROP_COMMENT}`,
-        '=place-before=0',
-      ]);
-      await writeApi.write('/ip/firewall/filter/add', [
-        '=chain=forward',
-        `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
-        '=protocol=tcp',
-        '=dst-port=80,443',
-        '=action=accept',
-        `=comment=${PORTAL_COMMENT}`,
         '=place-before=0',
       ]);
 

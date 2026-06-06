@@ -348,7 +348,7 @@ export class MikrotikController {
     summary: 'Configurar reglas de firewall para suspensión automática',
     description:
       'Crea las reglas necesarias en el router para que el sistema de ' +
-      'Address Lists funcione: bloqueo de morosos, portal de pago, prórrogas.',
+      'Address Lists funcione: bloqueo de morosos y prórrogas.',
   })
   @ApiParam({ name: 'id' })
   async configurarFirewall(
