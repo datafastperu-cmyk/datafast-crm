@@ -135,28 +135,22 @@ export class FirewallService {
     });
   }
 
-  // ────────────────────────────────────────────────────────────
-  // CONFIGURAR REGLAS DE FIREWALL (primera vez)
-  // Crea las reglas necesarias para que el sistema de suspensión funcione.
-  // IMPORTANTE: Se deben agregar al principio de la cadena forward.
-  // ────────────────────────────────────────────────────────────
-  // ── Configurar/verificar las 3 reglas de control (idempotente) ──────────
+  // ── Configurar/reparar las 3 reglas de control (idempotente) ───────────
   // Orden garantizado en cadena forward:
-  //   pos 0 → PORTAL PAGO accept (morosos pueden pagar)
-  //   pos 1 → DROP morosos       (bloquea todo lo demás)
-  //   end   → PRORROGA accept    (acceso completo hasta vencimiento)
+  //   pos 0 → PORTAL PAGO accept  (morosos acceden al portal de pago)
+  //   pos 1 → DROP morosos        (bloquea todo lo demás)
+  //   pos 2 → PRORROGA accept     (acceso completo — antes de cualquier default-deny)
   //
-  // Técnica de inserción: drop se agrega en pos 0 primero; portal pago se inserta
-  // también en pos 0 y desplaza drop a pos 1 → orden correcto sin depender de índices.
-  //
-  // Usa connectDirect (2 conexiones separadas) para evitar el bug de RouterOS v7
-  // donde ?comment=X devuelve !empty y lanza UNKNOWNREPLY en el event-listener.
+  // Si las reglas ya existen pero están en orden incorrecto o tienen argumentos
+  // obsoletos (dst-address-list legacy), se eliminan y recrean.
+  // Técnica: inserción inversa en pos 0 → prorroga primero, drop segundo,
+  // portal tercero → resultado final: portal(0) drop(1) prorroga(2).
   async configurarReglasControl(creds: RouterCredentials): Promise<void> {
     const DROP_COMMENT     = 'Datafast-Bloquear Morosos';
     const PORTAL_COMMENT   = 'DATAFAST: Morosos portal pago';
     const PRORROGA_COMMENT = 'DATAFAST: Prorroga acceso completo';
 
-    // Conexión 1: leer estado actual
+    // Conexión 1: leer sin filtros (bug UNKNOWNREPLY de v7 con ?comment=X)
     let allRules: any[] = [];
     const checkApi = await this.pool.connectDirect(creds);
     try {
@@ -167,51 +161,56 @@ export class FirewallService {
       checkApi.close().catch(() => {});
     }
 
-    const dropRule     = allRules.find((r: any) => r.comment === DROP_COMMENT);
-    const portalRule   = allRules.find((r: any) => r.comment === PORTAL_COMMENT);
-    const prorrogaRule = allRules.find((r: any) => r.comment === PRORROGA_COMMENT);
+    const portalIdx   = allRules.findIndex((r: any) => r.comment === PORTAL_COMMENT);
+    const dropIdx     = allRules.findIndex((r: any) => r.comment === DROP_COMMENT);
+    const prorrogaIdx = allRules.findIndex((r: any) => r.comment === PRORROGA_COMMENT);
 
-    const dropArgs = [
-      '=chain=forward',
-      `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
-      '=action=drop',
-      `=comment=${DROP_COMMENT}`,
-    ];
+    const portalRule   = portalIdx   >= 0 ? allRules[portalIdx]   : null;
+    const dropRule     = dropIdx     >= 0 ? allRules[dropIdx]      : null;
+    const prorrogaRule = prorrogaIdx >= 0 ? allRules[prorrogaIdx]  : null;
 
-    // Conexión 2: escritura secuencial
+    const allExist  = !!(portalRule && dropRule && prorrogaRule);
+    const orderOk   = allExist && portalIdx < dropIdx && dropIdx < prorrogaIdx;
+    const dropClean = !dropRule?.['dst-address-list'];
+
+    if (allExist && orderOk && dropClean) {
+      this.logger.debug(`Reglas de control ya correctas en ${creds.ip}`);
+      return;
+    }
+
+    // Conexión 2: eliminar las que existan y recrear todas en orden correcto
     const writeApi = await this.pool.connectDirect(creds);
     try {
-      // Paso 1: upsert drop morosos en pos 0
-      if (dropRule) {
-        await writeApi.write('/ip/firewall/filter/set', [`=.id=${dropRule['.id']}`, ...dropArgs]);
-      } else {
-        await writeApi.write('/ip/firewall/filter/add', [...dropArgs, '=place-before=0']);
+      for (const rule of [portalRule, dropRule, prorrogaRule]) {
+        if (rule) await writeApi.write('/ip/firewall/filter/remove', [`=.id=${rule['.id']}`]);
       }
 
-      // Paso 2: portal pago en pos 0 → desplaza drop a pos 1
-      if (!portalRule) {
-        await writeApi.write('/ip/firewall/filter/add', [
-          '=chain=forward',
-          `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
-          '=protocol=tcp',
-          '=dst-port=80,443',
-          '=action=accept',
-          `=comment=${PORTAL_COMMENT}`,
-          '=place-before=0',
-        ]);
-      }
+      // Inserción inversa en pos 0 → resultado final: portal(0) drop(1) prorroga(2)
+      await writeApi.write('/ip/firewall/filter/add', [
+        '=chain=forward',
+        `=src-address-list=${ADDRESS_LIST_PRORROGA}`,
+        '=action=accept',
+        `=comment=${PRORROGA_COMMENT}`,
+        '=place-before=0',
+      ]);
+      await writeApi.write('/ip/firewall/filter/add', [
+        '=chain=forward',
+        `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
+        '=action=drop',
+        `=comment=${DROP_COMMENT}`,
+        '=place-before=0',
+      ]);
+      await writeApi.write('/ip/firewall/filter/add', [
+        '=chain=forward',
+        `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
+        '=protocol=tcp',
+        '=dst-port=80,443',
+        '=action=accept',
+        `=comment=${PORTAL_COMMENT}`,
+        '=place-before=0',
+      ]);
 
-      // Paso 3: prorroga acceso completo al final
-      if (!prorrogaRule) {
-        await writeApi.write('/ip/firewall/filter/add', [
-          '=chain=forward',
-          `=src-address-list=${ADDRESS_LIST_PRORROGA}`,
-          '=action=accept',
-          `=comment=${PRORROGA_COMMENT}`,
-        ]);
-      }
-
-      this.logger.log(`Reglas de control configuradas en ${creds.ip}`);
+      this.logger.log(`Reglas de control (re)configuradas en ${creds.ip}`);
     } finally {
       writeApi.close().catch(() => {});
     }
@@ -219,41 +218,6 @@ export class FirewallService {
 
   async inyectarReglaBloqueoMorosos(creds: RouterCredentials): Promise<void> {
     await this.configurarReglasControl(creds);
-  }
-
-  private async agregarReglaFirewallSiNoExiste(
-    api:       any,
-    params: {
-      chain:    string;
-      srcList?: string;
-      dstList?: string;
-      dstPort?: string;
-      proto?:   string;
-      action:   string;
-      comment:  string;
-      position?: 'top';
-    },
-    existingRules: any[],
-  ): Promise<void> {
-    // La búsqueda se hace en el array ya obtenido para evitar el bug de RouterOS v7
-    // donde ?comment=X devuelve !empty → lanza UNKNOWNREPLY en event-listener (no en Promise)
-    if (existingRules.some((r: any) => r.comment === params.comment)) return;
-
-    const args = [
-      `=chain=${params.chain}`,
-      ...(params.srcList ? [`=src-address-list=${params.srcList}`] : []),
-      ...(params.dstList ? [`=dst-address-list=${params.dstList}`] : []),
-      ...(params.proto   ? [`=protocol=${params.proto}`]           : []),
-      ...(params.dstPort ? [`=dst-port=${params.dstPort}`]         : []),
-      `=action=${params.action}`,
-      `=comment=${params.comment}`,
-    ];
-
-    if (params.position === 'top') {
-      await api.write('/ip/firewall/filter/add', [...args, `=place-before=0`]);
-    } else {
-      await api.write('/ip/firewall/filter/add', args);
-    }
   }
 
   // ────────────────────────────────────────────────────────────
