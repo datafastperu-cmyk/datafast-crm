@@ -14,7 +14,7 @@ import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 import { encrypt } from '../../common/utils/encryption.util';
 import { getNextAvailableIp, getCidrRange, isValidIp } from '../../common/utils/ip.util';
 import { WirelessService } from '../mikrotik/services/wireless.service';
-import { RouterCredentials } from '../mikrotik/services/connection-pool.service';
+import { RouterConnectionPool, RouterCredentials } from '../mikrotik/services/connection-pool.service';
 
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_INSTALACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
@@ -37,6 +37,7 @@ export class ContratosService {
     private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService,
     private readonly wirelessSvc: WirelessService,
+    private readonly pool: RouterConnectionPool,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -80,6 +81,7 @@ export class ContratosService {
             `Corrija la asignación en Red → Segmentos o seleccione el segmento correcto.`,
           );
         }
+        await this.verificarSubredEnRouter(dto.routerId, dto.segmentoId, user.empresaId);
       }
     }
 
@@ -265,6 +267,7 @@ export class ContratosService {
                 `Corrija la asignación en Red → Segmentos o seleccione el segmento correcto.`,
               );
             }
+            await this.verificarSubredEnRouter(effectiveRouterId, effectiveSegmentoId, user.empresaId);
           }
         }
       }
@@ -543,5 +546,67 @@ export class ContratosService {
       descripcion:  `[SIM] ONU aprovisionada SN: ${onuSn} en contrato ${contrato.numeroContrato}`,
     });
     return { ok: true, mensaje: `ONU ${onuSn} aprovisionada correctamente (simulado)` };
+  }
+
+  private async verificarSubredEnRouter(routerId: string, segmentoId: string, empresaId: string): Promise<void> {
+    const [[r], [s]] = await Promise.all([
+      this.dataSource.query<any[]>(`
+        SELECT vpn_ip AS "vpnIp", ip_gestion AS "ipGestion",
+               puerto_api AS "puertoApi", puerto_api_ssl AS "puertoApiSsl",
+               usuario, password_cifrado AS "passwordCifrado", usar_ssl AS "usarSsl",
+               nombre
+        FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+        [routerId, empresaId],
+      ),
+      this.dataSource.query<any[]>(
+        `SELECT red_cidr AS "redCidr", nombre FROM segmentos_ipv4 WHERE id = $1 AND empresa_id = $2`,
+        [segmentoId, empresaId],
+      ),
+    ]);
+    if (!r || !s) return;
+
+    const creds: RouterCredentials = {
+      id:              routerId,
+      ip:              r.vpnIp || r.ipGestion,
+      port:            r.usarSsl ? r.puertoApiSsl : r.puertoApi,
+      user:            r.usuario ?? 'admin',
+      passwordCifrado: r.passwordCifrado ?? '',
+      useSsl:          r.usarSsl ?? false,
+      timeoutSec:      10,
+      version:         'v6',
+    };
+
+    try {
+      await this.pool.execute(creds, async (api) => {
+        const addrs: any[] = await api.write('/ip/address/print');
+        const encontrado = addrs.some(a => a.address && this.subredCoincide(a.address, s.redCidr));
+        if (!encontrado) {
+          throw new BadRequestException(
+            `El segmento ${s.redCidr} (${s.nombre}) no está configurado en el router "${r.nombre}". ` +
+            `Agrégalo en IP → Addresses del router antes de asignar clientes.`,
+          );
+        }
+      });
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(
+        `No se pudo verificar el segmento en el router "${r.nombre}": ${err?.message ?? 'Error de conexión'}. ` +
+        `Verifique que el router esté accesible.`,
+      );
+    }
+  }
+
+  private subredCoincide(rosAddr: string, cidr: string): boolean {
+    const [rosIp, rosPfxStr] = rosAddr.split('/');
+    const [netIp, netPfxStr]  = cidr.split('/');
+    if (!rosIp || !rosPfxStr || !netIp || !netPfxStr) return false;
+    const pfx = parseInt(netPfxStr, 10);
+    if (parseInt(rosPfxStr, 10) !== pfx) return false;
+    const mask = pfx === 0 ? 0 : (~0 << (32 - pfx)) >>> 0;
+    return (this.ipToInt(rosIp) & mask) === (this.ipToInt(netIp) & mask);
+  }
+
+  private ipToInt(ip: string): number {
+    return ip.split('.').reduce((acc, oct) => ((acc << 8) + parseInt(oct, 10)) >>> 0, 0);
   }
 }
