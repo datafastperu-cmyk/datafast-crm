@@ -849,8 +849,6 @@ export class MikrotikService {
         identityRouteros: identity,
       });
 
-      this.inyectarReglasMorososAsync(router);
-
       return { exitoso: true, mensaje: `Conectado a "${identity}" en ${latencia}ms`, latenciaMs: latencia };
 
     } catch (error) {
