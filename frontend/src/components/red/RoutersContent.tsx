@@ -281,7 +281,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
 
   // ─── Estado del test de conexión ──────────────────────────
   type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
-  const [testStatus, setTestStatus] = useState<TestStatus>('idle');
+  const [testStatus, setTestStatus] = useState<TestStatus>(router ? 'ok' : 'idle');
   const [testResult, setTestResult] = useState<TestConexionResult | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showScript,   setShowScript]   = useState(false);
@@ -313,10 +313,13 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     snmpCommunity:   router?.snmpCommunity ?? 'public',
   });
 
+  const CONNECTION_FIELDS = new Set(['ipGestion','vpnIp','puertoApi','puertoApiSsl','puertoSsh','usuario','password','usarSsl','metodoConexion','versionRos','timeoutConexion']);
   const set = (key: keyof typeof form, val: any) => {
     setForm((f) => ({ ...f, [key]: val }));
-    setTestStatus('idle');
-    setTestResult(null);
+    if (CONNECTION_FIELDS.has(key)) {
+      setTestStatus('idle');
+      setTestResult(null);
+    }
   };
 
   // Cambiar tipo de conexión → sugerir puerto y SSL
