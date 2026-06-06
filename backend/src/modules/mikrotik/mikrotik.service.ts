@@ -259,10 +259,11 @@ export class MikrotikService {
     await this.routerRepo.update(id, { deletedAt: new Date(), activo: false });
     await this.pool.invalidate(id);
 
-    // Desactivar segmentos de red vinculados a este router
+    // Soft-delete segmentos de red vinculados a este router
+    // Setear deleted_at además de activo=false para respetar el índice único parcial
     try {
       await this.ds.query(
-        `UPDATE segmentos_ipv4 SET activo = false WHERE router_id = $1 AND deleted_at IS NULL`,
+        `UPDATE segmentos_ipv4 SET activo = false, deleted_at = NOW() WHERE router_id = $1 AND deleted_at IS NULL`,
         [id],
       );
     } catch (err: any) {

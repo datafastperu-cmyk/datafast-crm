@@ -127,4 +127,13 @@ export class ClienteRepository {
     const qb = this.buildFilterQuery(empresaId, filters);
     return qb.orderBy('c.nombre_completo','ASC').take(10000).getMany();
   }
+
+  async existeCodigoCliente(codigo: string, empresaId: string): Promise<boolean> {
+    return (await this.repo.count({ where: { codigoCliente: codigo, empresaId } as any })) > 0;
+  }
+
+  async countByEmpresa(empresaId: string): Promise<{ count: number }> {
+    const count = await this.repo.count({ where: { empresaId } as any });
+    return { count };
+  }
 }

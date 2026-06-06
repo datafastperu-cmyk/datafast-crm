@@ -541,10 +541,16 @@ export class ClientesService {
   }
 
   private async generarCodigoCliente(empresaId: string): Promise<string> {
-    // Formato: CLI-YYYYMMDD-XXXX (4 dígitos aleatorios para colisiones mínimas)
-    const hoy = new Date();
-    const fecha = hoy.toISOString().slice(0, 10).replace(/-/g, '');
-    const aleatorio = Math.floor(1000 + Math.random() * 9000);
-    return `CLI-${fecha}-${aleatorio}`;
+    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    // Hasta 5 reintentos para evitar colisiones en alta concurrencia
+    for (let i = 0; i < 5; i++) {
+      const { randomInt } = await import('crypto');
+      const codigo = `CLI-${fecha}-${randomInt(1000, 9999)}`;
+      const existe = await this.clienteRepo.existeCodigoCliente(codigo, empresaId);
+      if (!existe) return codigo;
+    }
+    // Fallback: secuencia por conteo si todos colisionan
+    const { count } = await this.clienteRepo.countByEmpresa(empresaId);
+    return `CLI-${fecha}-${String(count + 1).padStart(4, '0')}`;
   }
 }

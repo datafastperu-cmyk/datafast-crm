@@ -330,9 +330,18 @@ export class ContratosService {
     if (c.estado !== EstadoContrato.PENDIENTE_INSTALACION)
       throw new BadRequestException(`Solo se activan contratos PENDIENTE_INSTALACION. Estado: ${c.estado}`);
     await this.contratoRepo.update(id, { estado:EstadoContrato.ACTIVO, fechaEstado:new Date(), fechaInstalacion:new Date(), updatedBy:user.sub });
-    await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:EstadoContrato.PENDIENTE_INSTALACION, estadoNuevo:EstadoContrato.ACTIVO, motivo:'Instalación completada', usuarioId:user.sub });
-    await this.provisionarMikrotik(id);
-    await this.registrarEnAccessListAntena(id);
+
+    const provisionadoOk = await this.provisionarMikrotik(id);
+    const antenaOk       = await this.registrarEnAccessListAntena(id);
+
+    const motivo = [
+      'Instalación completada',
+      `Mikrotik: ${provisionadoOk ? 'OK' : 'FALLO'}`,
+      antenaOk ? 'Antena AP: OK' : null,
+    ].filter(Boolean).join(' | ');
+
+    await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:EstadoContrato.PENDIENTE_INSTALACION, estadoNuevo:EstadoContrato.ACTIVO, motivo, usuarioId:user.sub });
+
     // Promover cliente de PROSPECTO → ACTIVO automáticamente al activar su primer contrato
     await this.dataSource.query(
       `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
@@ -426,6 +435,7 @@ export class ContratosService {
     try {
       const [r] = await this.dataSource.query<any[]>(`
         SELECT
+          co.router_id           AS "routerId",
           co.usuario_pppoe       AS "usuarioPppoe",
           co.password_pppoe      AS "passwordPppoe",
           co.ip_asignada         AS "ipAsignada",
@@ -440,6 +450,7 @@ export class ContratosService {
           ro.password_cifrado    AS "routerPassword",
           ro.usar_ssl            AS "usarSsl",
           ro.nombre              AS "routerNombre",
+          ro.version_ros         AS "versionRos",
           pl.ppp_profile         AS "pppProfile",
           pl.crear_reglas_en_router AS "crearReglas"
         FROM contratos co
@@ -465,14 +476,14 @@ export class ContratosService {
     }
 
     const creds: RouterCredentials = {
-      id:              row.routerNombre ?? contratoId,
+      id:              row.routerId ?? contratoId,
       ip:              row.vpnIp || row.ipGestion,
       port:            row.usarSsl ? (row.puertoApiSsl ?? 8729) : (row.puertoApi ?? 8728),
       user:            row.routerUsuario ?? 'admin',
       passwordCifrado: row.routerPassword ?? '',
       useSsl:          row.usarSsl ?? false,
       timeoutSec:      15,
-      version:         'v6',
+      version:         (row.versionRos ?? 'v6') as any,
     };
 
     const tipoControl: string = row.tipoControl ?? 'ninguna';
@@ -512,13 +523,20 @@ export class ContratosService {
         this.logger.log(`provisionarMikrotik → ${contratoId} | ARP estático creado: ${row.ipAsignada} → ${row.macAddress} (${iface})`);
 
         if (tipoControl === 'amarre_ip_mac_dhcp') {
-          await this.firewallSvc.crearDhcpBinding(creds, {
-            macAddress: row.macAddress,
-            ipAddress:  row.ipAsignada,
-            hostname:   row.nombreCompleto,
-            comment,
-          });
-          this.logger.log(`provisionarMikrotik → ${contratoId} | DHCP binding creado: ${row.macAddress} → ${row.ipAsignada}`);
+          try {
+            await this.firewallSvc.crearDhcpBinding(creds, {
+              macAddress: row.macAddress,
+              ipAddress:  row.ipAsignada,
+              hostname:   row.nombreCompleto,
+              comment,
+            });
+            this.logger.log(`provisionarMikrotik → ${contratoId} | DHCP binding creado: ${row.macAddress} → ${row.ipAsignada}`);
+          } catch (dhcpErr) {
+            // Rollback ARP para evitar regla huérfana
+            await this.arpSvc.eliminarArpEstatico(creds, row.ipAsignada).catch(() => {});
+            this.logger.warn(`provisionarMikrotik → ${contratoId} | DHCP binding falló, ARP revertido: ${dhcpErr?.message}`);
+            throw dhcpErr;
+          }
         }
 
       } else {
@@ -529,6 +547,10 @@ export class ContratosService {
       return false;
     }
 
+    // Marcar contrato como aprovisionado en la BD
+    await this.contratoRepo.update(contratoId, { aprovisionado: true, aprovisionadoEn: new Date() } as any)
+      .catch(e => this.logger.error(`provisionarMikrotik → aprovisionado flag: ${e?.message}`));
+
     return true;
   }
 
@@ -537,6 +559,7 @@ export class ContratosService {
     try {
       const [r] = await this.dataSource.query<any[]>(`
         SELECT
+          co.router_id           AS "routerId",
           co.usuario_pppoe       AS "usuarioPppoe",
           co.ip_asignada         AS "ipAsignada",
           co.mac_address         AS "macAddress",
@@ -549,6 +572,7 @@ export class ContratosService {
           ro.password_cifrado    AS "routerPassword",
           ro.usar_ssl            AS "usarSsl",
           ro.nombre              AS "routerNombre",
+          ro.version_ros         AS "versionRos",
           pl.crear_reglas_en_router AS "crearReglas"
         FROM contratos co
         LEFT JOIN routers ro ON ro.id = co.router_id
@@ -564,14 +588,14 @@ export class ContratosService {
     if (!row?.crearReglas || (!row.vpnIp && !row.ipGestion)) return true;
 
     const creds: RouterCredentials = {
-      id:              row.routerNombre ?? contratoId,
+      id:              row.routerId ?? contratoId,
       ip:              row.vpnIp || row.ipGestion,
       port:            row.usarSsl ? (row.puertoApiSsl ?? 8729) : (row.puertoApi ?? 8728),
       user:            row.routerUsuario ?? 'admin',
       passwordCifrado: row.routerPassword ?? '',
       useSsl:          row.usarSsl ?? false,
       timeoutSec:      15,
-      version:         'v6',
+      version:         (row.versionRos ?? 'v6') as any,
     };
 
     const tipoControl: string = row.tipoControl ?? 'ninguna';
