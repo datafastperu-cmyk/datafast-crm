@@ -234,7 +234,42 @@ export class ContratosService {
   }
 
   async update(id: string, dto: UpdateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
-    await this.findOne(id, user.empresaId);
+    const existing = await this.findOne(id, user.empresaId);
+
+    if (dto.routerId !== undefined || dto.segmentoId !== undefined || dto.macAddress !== undefined) {
+      const effectiveRouterId  = dto.routerId    !== undefined ? dto.routerId    : (existing as any).routerId;
+      const effectiveMac       = dto.macAddress  !== undefined ? dto.macAddress  : (existing as any).macAddress;
+      const effectiveSegmentoId = dto.segmentoId !== undefined ? dto.segmentoId  : (existing as any).segmentoId;
+
+      if (effectiveRouterId) {
+        const [router] = await this.dataSource.query<any[]>(
+          `SELECT tipo_control AS "tipoControl", nombre FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+          [effectiveRouterId, user.empresaId],
+        );
+        if (router) {
+          const requiereMac = router.tipoControl === 'amarre_ip_mac' || router.tipoControl === 'amarre_ip_mac_dhcp';
+          if (requiereMac && !effectiveMac?.trim()) {
+            throw new BadRequestException(
+              `El router "${router.nombre}" usa autenticación por Amarre IP/MAC. La dirección MAC es obligatoria.`,
+            );
+          }
+          if (effectiveSegmentoId) {
+            const [seg] = await this.dataSource.query<any[]>(
+              `SELECT router_id AS "routerId", nombre FROM segmentos_ipv4 WHERE id = $1 AND empresa_id = $2`,
+              [effectiveSegmentoId, user.empresaId],
+            );
+            if (!seg) throw new BadRequestException('Segmento de red no encontrado');
+            if (seg.routerId !== effectiveRouterId) {
+              throw new BadRequestException(
+                `El segmento "${seg.nombre}" no está asignado al router "${router.nombre}". ` +
+                `Corrija la asignación en Red → Segmentos o seleccione el segmento correcto.`,
+              );
+            }
+          }
+        }
+      }
+    }
+
     const upd: any = { ...dto, updatedBy:user.sub };
     delete upd.ipManual; delete upd.usuarioPppoe; delete upd.passwordPppoePlain;
     await this.contratoRepo.update(id, upd);
