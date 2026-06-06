@@ -341,6 +341,7 @@ export class OnboardingContratoDto {
   @IsOptional() @IsNumber() @Min(-180) @Max(180) @Type(() => Number) longitudInstalacion?: number;
   @IsOptional() @IsString() @MaxLength(2000) notasInstalacion?: string;
   @IsOptional() @IsString() @MaxLength(2000) notasTecnicas?: string;
+  @IsOptional() @IsUUID() antenaApId?: string;
 }
 
 export class OnboardingDto {

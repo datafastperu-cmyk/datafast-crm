@@ -459,11 +459,6 @@ export class ContratosService {
       return false;
     }
 
-    if (!row.crearReglas) {
-      this.logger.log(`provisionarMikrotik → ${contratoId} | modo heredado: sin inyección de reglas`);
-      return true;
-    }
-
     if (!row.vpnIp && !row.ipGestion) {
       this.logger.warn(`provisionarMikrotik → ${contratoId} | router sin IP configurada`);
       return false;
