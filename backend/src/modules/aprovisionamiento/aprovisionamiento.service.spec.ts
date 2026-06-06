@@ -5,6 +5,8 @@ import { EventEmitter }          from '@nestjs/event-emitter';
 import { OrquestadorAprovisionamientoService } from './aprovisionamiento.service';
 import { PppoeService }           from '../mikrotik/services/pppoe.service';
 import { QueueService }           from '../mikrotik/services/queue.service';
+import { ArpService }             from '../mikrotik/services/arp.service';
+import { FirewallService }        from '../mikrotik/services/firewall.service';
 import { VelocidadOrquestador }   from '../mikrotik/services/velocidad/velocidad-orquestador.service';
 import { SmartoltApiService }     from '../smartolt/smartolt-api.service';
 import { WhatsAppService }        from '../notificaciones/services/whatsapp.service';
@@ -33,7 +35,8 @@ const mockContratoRow = {
   router_id: 'rtr-001', router_ip: '192.168.100.1',
   version_ros: 'v7', router_usuario: 'admin', router_pass: 'encryptedpass',
   usar_ssl: false, puerto_api: 8728, puerto_api_ssl: 8729,
-  timeout_conexion: 10, auto_configurar_queues: true,
+  timeout_conexion: 10, auto_configurar_queues: true, tipo_control: 'pppoe_addresslist',
+  mac_address: null,
   olt_id: 'olt-001', smartolt_id: 'smart-olt-001', olt_nombre: 'OLT Centro',
   empresa_nombre: 'CRM ISP DATAFAST', serie_boleta: 'B001',
   igv_rate: 0.18, dias_gracia: 5,
@@ -91,6 +94,18 @@ const mockWhatsapp = {
   enviar:                    jest.fn().mockResolvedValue({ enviado: true }),
 };
 
+const mockArpSvc = {
+  detectarInterface:   jest.fn().mockResolvedValue('ether2'),
+  crearArpEstatico:    jest.fn().mockResolvedValue(undefined),
+  eliminarArpEstatico: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockFirewallSvc = {
+  listarServidoresDhcp: jest.fn().mockResolvedValue([{ name: 'dhcp1', interface: 'ether2' }]),
+  crearDhcpBinding:     jest.fn().mockResolvedValue('*1'),
+  eliminarDhcpBinding:  jest.fn().mockResolvedValue(undefined),
+};
+
 const mockEvents = { emit: jest.fn() };
 
 // Secuencia de respuestas del DataSource para los 8 pasos
@@ -131,6 +146,8 @@ describe('OrquestadorAprovisionamientoService', () => {
         OrquestadorAprovisionamientoService,
         { provide: PppoeService,          useValue: mockPppoeSvc },
         { provide: QueueService,          useValue: mockQueueSvc },
+        { provide: ArpService,            useValue: mockArpSvc },
+        { provide: FirewallService,       useValue: mockFirewallSvc },
         { provide: VelocidadOrquestador,  useValue: mockVelocidadOrc },
         { provide: SmartoltApiService,    useValue: mockSmartoltApi },
         { provide: WhatsAppService,       useValue: mockWhatsapp },

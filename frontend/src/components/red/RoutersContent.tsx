@@ -36,10 +36,9 @@ const METODO_CONFIG: Record<MetodoConexion, {
 };
 
 const TIPO_CONTROL_OPTS = [
-  { val: 'pppoe_addresslist',  label: 'PPPoE/AddressList'           },
+  { val: 'pppoe_addresslist',  label: 'PPPoE'                       },
   { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
   { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
-  { val: 'ninguna',            label: 'Ninguno'                     },
 ];
 
 const TIPO_VELOCIDAD_OPTS = [

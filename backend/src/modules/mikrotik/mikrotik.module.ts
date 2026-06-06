@@ -12,6 +12,7 @@ import { QueueService }              from './services/queue.service';
 import { FirewallService }           from './services/firewall.service';
 import { InterfaceService }          from './services/interface.service';
 import { SubnetRouteService }        from './services/subnet-route.service';
+import { ArpService }               from './services/arp.service';
 
 // Fase 3.2 — Control de velocidad avanzado
 import { VelocidadService }          from './services/velocidad/velocidad.service';
@@ -70,6 +71,7 @@ import { OpenvpnModule }             from '../openvpn/openvpn.module';
     PppoeService,
     QueueService,
     FirewallService,
+    ArpService,
     InterfaceService,
     SubnetRouteService,
 
@@ -88,6 +90,7 @@ import { OpenvpnModule }             from '../openvpn/openvpn.module';
     PppoeService,
     QueueService,
     FirewallService,
+    ArpService,
     InterfaceService,
     SubnetRouteService,
     VelocidadOrquestador,   // Exportado para uso en módulo de contratos

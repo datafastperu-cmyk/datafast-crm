@@ -6,7 +6,10 @@ import { EventEmitter2 }          from '@nestjs/event-emitter';
 import { WhatsAppService }        from '../notificaciones/services/whatsapp.service';
 import { PppoeService }           from '../mikrotik/services/pppoe.service';
 import { QueueService }           from '../mikrotik/services/queue.service';
+import { ArpService }             from '../mikrotik/services/arp.service';
+import { FirewallService }        from '../mikrotik/services/firewall.service';
 import { VelocidadOrquestador }   from '../mikrotik/services/velocidad/velocidad-orquestador.service';
+import { TipoControl }            from '../mikrotik/entities/router.entity';
 import { SmartoltApiService }     from '../smartolt/smartolt-api.service';
 import { JwtPayload }             from '../../common/decorators/current-user.decorator';
 import { decrypt }                from '../../common/utils/encryption.util';
@@ -35,12 +38,14 @@ interface Ctx {
   onuId?:           string;          // ID en nuestra BD
   smartoltOnuId?:   string;          // ID en SmartOLT
   // Flags para rollback
-  ipRegistradaEnBd: boolean;
-  pppoeCreado:      boolean;
-  queueCreada:      boolean;
-  onuAprovisionada: boolean;
+  ipRegistradaEnBd:  boolean;
+  pppoeCreado:       boolean;
+  arpCreado:         boolean;
+  dhcpLeaseCreado:   boolean;
+  queueCreada:       boolean;
+  onuAprovisionada:  boolean;
   onuRegistradaEnBd: boolean;
-  contratoActivado: boolean;
+  contratoActivado:  boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -60,6 +65,8 @@ export class OrquestadorAprovisionamientoService {
   constructor(
     private readonly pppoeSvc:     PppoeService,
     private readonly queueSvc:     QueueService,
+    private readonly arpSvc:       ArpService,
+    private readonly firewallSvc:  FirewallService,
     private readonly velocidadOrc: VelocidadOrquestador,
     private readonly smartoltApi:  SmartoltApiService,
     private readonly whatsapp:     WhatsAppService,
@@ -87,12 +94,14 @@ export class OrquestadorAprovisionamientoService {
 
     // Contexto mutable compartido entre pasos
     const ctx: Ctx = {
-      ipRegistradaEnBd: false,
-      pppoeCreado:      false,
-      queueCreada:      false,
-      onuAprovisionada: false,
+      ipRegistradaEnBd:  false,
+      pppoeCreado:       false,
+      arpCreado:         false,
+      dhcpLeaseCreado:   false,
+      queueCreada:       false,
+      onuAprovisionada:  false,
       onuRegistradaEnBd: false,
-      contratoActivado: false,
+      contratoActivado:  false,
     };
 
     // ─── Definición de los 8 pasos ────────────────────────────
@@ -118,6 +127,7 @@ export class OrquestadorAprovisionamientoService {
               co.usuario_pppoe,
               co.password_pppoe,
               co.ip_asignada,
+              co.mac_address,
               co.plan_id,
               co.segmento_id,
               cl.id               AS cliente_id,
@@ -145,6 +155,7 @@ export class OrquestadorAprovisionamientoService {
               ro.puerto_api_ssl,
               ro.timeout_conexion,
               ro.auto_configurar_queues,
+              ro.tipo_control,
               ol.id               AS olt_id,
               ol.smartolt_id,
               ol.nombre           AS olt_nombre,
@@ -295,30 +306,88 @@ export class OrquestadorAprovisionamientoService {
       },
 
       // ══════════════════════════════════════════════════════
-      // PASO 3 — Crear usuario PPPoE en Mikrotik
+      // PASO 3 — Registrar acceso en Mikrotik
+      //   • pppoe_addresslist → PPPoE secret
+      //   • amarre_ip_mac     → ARP estático
+      //   • amarre_ip_mac_dhcp→ ARP estático + DHCP lease
       // ══════════════════════════════════════════════════════
       {
         num: 3,
-        nombre: 'Crear usuario PPPoE en Mikrotik',
+        nombre: 'Registrar acceso en Mikrotik',
         fn: async (ctx) => {
-          if (!ctx.usuarioPppoe) throw new Error('El contrato no tiene usuario PPPoE asignado');
-          if (!ctx.ipAsignada)   throw new Error('No hay IP asignada para el usuario PPPoE');
+          if (!ctx.ipAsignada) throw new Error('No hay IP asignada');
 
-          const creds = this.buildRouterCreds(ctx.contrato);
+          const creds       = this.buildRouterCreds(ctx.contrato);
+          const tipoControl = ctx.contrato.tipo_control as TipoControl;
+          const comment     = `DATAFAST:${dto.contratoId}:${ctx.contrato.cliente_nombre}`;
 
-          await this.pppoeSvc.crear(creds, {
-            name:          ctx.usuarioPppoe,
-            password:      ctx.passwordPppoePlain || '',
-            profile:       ctx.contrato.ppp_profile || 'default',
-            service:       'pppoe',
-            remoteAddress: ctx.ipAsignada,
-            comment:       `DATAFAST:${dto.contratoId}:${ctx.contrato.cliente_nombre}`,
-            disabled:      false,
-          });
+          // ── PPPoE ──────────────────────────────────────────
+          if (!tipoControl || tipoControl === TipoControl.PPPOE_ADDRESSLIST) {
+            if (!ctx.usuarioPppoe) throw new Error('El contrato no tiene usuario PPPoE asignado');
 
-          ctx.pppoeCreado = true;
+            await this.pppoeSvc.crear(creds, {
+              name:          ctx.usuarioPppoe,
+              password:      ctx.passwordPppoePlain || '',
+              profile:       ctx.contrato.ppp_profile || 'default',
+              service:       'pppoe',
+              remoteAddress: ctx.ipAsignada,
+              comment,
+              disabled:      false,
+            });
+
+            ctx.pppoeCreado = true;
+            return {
+              detalle: `PPPoE creado: usuario="${ctx.usuarioPppoe}" | IP: ${ctx.ipAsignada} | perfil: ${ctx.contrato.ppp_profile || 'default'}`,
+            };
+          }
+
+          // ── Amarre IP/MAC (con o sin DHCP) ────────────────
+          const mac = ctx.contrato.mac_address;
+          if (!mac) throw new Error('El contrato no tiene dirección MAC registrada. Actualiza el contrato antes de aprovisionar.');
+
+          // Detectar interface del router que tiene la subred del cliente
+          const iface = await this.arpSvc.detectarInterface(creds, ctx.ipAsignada);
+          if (!iface) {
+            throw new Error(
+              `No se encontró interface en el router que contenga la IP ${ctx.ipAsignada}. ` +
+              `Verifica que las interfaces del router tengan IPs configuradas en el segmento correspondiente.`,
+            );
+          }
+
+          await this.arpSvc.crearArpEstatico(creds, ctx.ipAsignada, mac, iface, comment);
+          ctx.arpCreado = true;
+
+          // ── + DHCP lease ────────────────────────────────────
+          if (tipoControl === TipoControl.AMARRE_IP_MAC_DHCP) {
+            // Detectar servidor DHCP en la misma interface, o usar el proporcionado
+            let dhcpServer = dto.dhcpServer;
+            if (!dhcpServer) {
+              const servers = await this.firewallSvc.listarServidoresDhcp(creds);
+              const match   = servers.find((s: any) => s.interface === iface);
+              dhcpServer    = match?.name || servers[0]?.name;
+              if (!dhcpServer) {
+                throw new Error(
+                  `No se encontró servidor DHCP en la interface "${iface}". ` +
+                  `Configura un servidor DHCP en el router o especifica dhcpServer en la petición.`,
+                );
+              }
+            }
+
+            await this.firewallSvc.crearDhcpBinding(creds, {
+              macAddress:  mac,
+              ipAddress:   ctx.ipAsignada,
+              server:      dhcpServer,
+              comment,
+            });
+            ctx.dhcpLeaseCreado = true;
+
+            return {
+              detalle: `Amarre IP/MAC + DHCP: ${ctx.ipAsignada} ↔ ${mac} | interface: ${iface} | servidor DHCP: ${dhcpServer}`,
+            };
+          }
+
           return {
-            detalle: `PPPoE creado: usuario="${ctx.usuarioPppoe}" | IP remota: ${ctx.ipAsignada} | perfil: ${ctx.contrato.ppp_profile || 'default'}`,
+            detalle: `Amarre IP/MAC: ${ctx.ipAsignada} ↔ ${mac} | interface: ${iface}`,
           };
         },
       },
@@ -691,7 +760,8 @@ export class OrquestadorAprovisionamientoService {
 
     // Obtener datos del contrato para el rollback
     const [contrato] = await this.ds.query(`
-      SELECT co.*, ro.ip_gestion AS router_ip, ro.usuario AS router_usuario,
+      SELECT co.*, ro.ip_gestion AS router_ip, ro.vpn_ip,
+             ro.usuario AS router_usuario,
              ro.password_cifrado AS router_pass, ro.usar_ssl, ro.puerto_api,
              ro.puerto_api_ssl, ro.version_ros, ro.timeout_conexion,
              ol.smartolt_id,
@@ -718,25 +788,45 @@ export class OrquestadorAprovisionamientoService {
       }
     }
 
-    // ── 2. Eliminar PPPoE del Mikrotik ───────────────────────
-    if (dto.eliminarPppoe !== false && contrato) {
+    // ── 2. Eliminar acceso en Mikrotik (PPPoE / ARP / DHCP) ─
+    if (dto.eliminarPppoe !== false && contrato?.router_ip) {
+      const rollbackCreds = {
+        id:              contrato.router_id,
+        ip:              contrato.vpn_ip || contrato.router_ip,
+        port:            contrato.usar_ssl ? contrato.puerto_api_ssl : contrato.puerto_api,
+        user:            contrato.router_usuario,
+        passwordCifrado: contrato.router_pass,
+        useSsl:          contrato.usar_ssl || false,
+        timeoutSec:      contrato.timeout_conexion || 10,
+        version:         contrato.version_ros === 'v7' ? 'v7' : 'v6' as any,
+      };
+
       const usuarioPppoe = ctx?.usuarioPppoe || contrato?.usuario_pppoe;
-      if (usuarioPppoe && contrato?.router_ip) {
+      if (ctx?.pppoeCreado && usuarioPppoe) {
         try {
-          const creds = {
-            id:              contrato.router_id,
-            ip:              contrato.router_ip,
-            port:            contrato.usar_ssl ? contrato.puerto_api_ssl : contrato.puerto_api,
-            user:            contrato.router_usuario,
-            passwordCifrado: contrato.router_pass,
-            useSsl:          contrato.usar_ssl || false,
-            timeoutSec:      contrato.timeout_conexion || 10,
-            version:         contrato.version_ros === 'v7' ? 'v7' : 'v6' as any,
-          };
-          await this.pppoeSvc.eliminar(creds, usuarioPppoe);
+          await this.pppoeSvc.eliminar(rollbackCreds, usuarioPppoe);
           revertidos.push(`Mikrotik: usuario PPPoE "${usuarioPppoe}" eliminado`);
         } catch (err) {
           errores.push(`Mikrotik PPPoE: ${err.message}`);
+        }
+      }
+
+      const ipAsignada = ctx?.ipAsignada || contrato?.ip_asignada;
+      if (ctx?.arpCreado && ipAsignada) {
+        try {
+          await this.arpSvc.eliminarArpEstatico(rollbackCreds, ipAsignada);
+          revertidos.push(`Mikrotik: ARP estático ${ipAsignada} eliminado`);
+        } catch (err) {
+          errores.push(`Mikrotik ARP: ${err.message}`);
+        }
+      }
+
+      if (ctx?.dhcpLeaseCreado && ipAsignada) {
+        try {
+          await this.firewallSvc.eliminarDhcpBinding(rollbackCreds, contrato.mac_address || '');
+          revertidos.push(`Mikrotik: DHCP lease ${ipAsignada} eliminado`);
+        } catch (err) {
+          errores.push(`Mikrotik DHCP: ${err.message}`);
         }
       }
     }

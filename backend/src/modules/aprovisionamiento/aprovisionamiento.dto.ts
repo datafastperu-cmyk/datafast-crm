@@ -109,6 +109,18 @@ export class AprovisionarFtthDto {
   @IsBoolean()
   notificarEmail?: boolean = false;
 
+  // ── Amarre IP/MAC ─────────────────────────────────────────
+  @ApiPropertyOptional({
+    description:
+      'Nombre del servidor DHCP en Mikrotik (solo para tipo_control=amarre_ip_mac_dhcp). ' +
+      'Si se omite, el sistema detecta automáticamente el servidor en la interface del segmento.',
+    example: 'dhcp1',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  dhcpServer?: string;
+
   // ── Opciones avanzadas ───────────────────────────────────
   @ApiPropertyOptional({
     description: 'Omitir el paso de configuración de velocidad en Mikrotik (para debug)',
