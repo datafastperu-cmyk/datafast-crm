@@ -147,6 +147,14 @@ export const mikrotikApi = {
     return data.data;
   },
 
+  migrarClientes: async (
+    id: string,
+    oldTipoControl: string,
+  ): Promise<{ total: number; ok: number; errores: Array<{ contratoId: string; numero: string; error: string }> }> => {
+    const { data } = await api.post(`/mikrotik/routers/${id}/migrar-clientes`, { oldTipoControl });
+    return data.data;
+  },
+
   aplicarAmareIpMac: async (id: string, dto: AmareIpMacDto): Promise<{ arp: boolean; dhcp: boolean }> => {
     const { data } = await api.post(`/mikrotik/routers/${id}/amarre-ip-mac`, dto);
     return data.data;

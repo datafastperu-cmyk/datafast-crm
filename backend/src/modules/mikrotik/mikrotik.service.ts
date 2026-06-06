@@ -15,6 +15,7 @@ import { RouterConnectionPool, RouterCredentials } from './services/connection-p
 import { PppoeService, CreatePppoeParams }         from './services/pppoe.service';
 import { QueueService, QueueParams }               from './services/queue.service';
 import { FirewallService }                          from './services/firewall.service';
+import { ArpService }                              from './services/arp.service';
 import { InterfaceService }                        from './services/interface.service';
 import { SubnetRouteService }                      from './services/subnet-route.service';
 import { AuditoriaService }                        from '../auth/auditoria.service';
@@ -43,6 +44,7 @@ export class MikrotikService {
     private readonly pppoeSvc:    PppoeService,
     private readonly queueSvc:    QueueService,
     private readonly firewallSvc: FirewallService,
+    private readonly arpSvc:      ArpService,
     private readonly ifaceSvc:    InterfaceService,
     private readonly subnetSvc:   SubnetRouteService,
     private readonly auditoria:   AuditoriaService,
@@ -1118,5 +1120,111 @@ export class MikrotikService {
         this.logger.warn(`No se pudo conectar a ${router.vpnIp || router.ipGestion}: ${err.message}`);
         return this.routerRepo.update(router.id, { estado: EstadoEquipo.OFFLINE });
       });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // MIGRACIÓN MASIVA DE CLIENTES AL CAMBIAR tipo_control
+  // ────────────────────────────────────────────────────────────
+
+  async migrarClientesRouter(
+    routerId:       string,
+    oldTipoControl: string,
+    empresaId:      string,
+  ): Promise<{ total: number; ok: number; errores: Array<{ contratoId: string; numero: string; error: string }> }> {
+    const router = await this.findOne(routerId, empresaId);
+    const newTipoControl = router.tipoControl;
+
+    const creds: RouterCredentials = {
+      id:              router.id,
+      ip:              router.vpnIp || router.ipGestion,
+      port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
+      user:            router.usuario ?? 'admin',
+      passwordCifrado: router.passwordCifrado ?? '',
+      useSsl:          router.usarSsl ?? false,
+      timeoutSec:      20,
+      version:         router.versionRos as any ?? 'v6',
+    };
+
+    const contratos = await this.ds.query<any[]>(`
+      SELECT co.id, co.numero_contrato AS "numeroContrato",
+             co.usuario_pppoe AS "usuarioPppoe", co.password_pppoe AS "passwordPppoe",
+             co.ip_asignada AS "ipAsignada", co.mac_address AS "macAddress",
+             cl.nombre_completo AS "nombreCompleto",
+             pl.ppp_profile AS "pppProfile"
+      FROM contratos co
+      JOIN clientes cl ON cl.id = co.cliente_id
+      LEFT JOIN planes pl ON pl.id = co.plan_id
+      WHERE co.router_id = $1
+        AND co.empresa_id = $2
+        AND co.estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+        AND co.deleted_at IS NULL
+    `, [routerId, empresaId]);
+
+    const errores: Array<{ contratoId: string; numero: string; error: string }> = [];
+    let ok = 0;
+
+    for (const co of contratos) {
+      try {
+        // 1. Limpiar reglas del tipo anterior
+        await this.limpiarReglasControl(creds, co, oldTipoControl);
+        // 2. Crear reglas del nuevo tipo
+        await this.crearReglasControl(creds, co, newTipoControl);
+        ok++;
+        this.logger.log(`migrarClientes → contrato ${co.numeroContrato}: ${oldTipoControl} → ${newTipoControl} OK`);
+      } catch (err: any) {
+        errores.push({ contratoId: co.id, numero: co.numeroContrato, error: err?.message ?? 'Error desconocido' });
+        this.logger.warn(`migrarClientes → contrato ${co.numeroContrato}: ERROR — ${err?.message}`);
+      }
+    }
+
+    return { total: contratos.length, ok, errores };
+  }
+
+  private async limpiarReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
+    if (tipoControl === 'pppoe_addresslist') {
+      if (co.usuarioPppoe) await this.pppoeSvc.eliminar(creds, co.usuarioPppoe);
+
+    } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
+      if (co.ipAsignada) {
+        await this.pool.execute(creds, async (api) => {
+          const arps = await api.write('/ip/arp/print', [`?address=${co.ipAsignada}`]);
+          for (const a of arps) await api.write('/ip/arp/remove', [`=.id=${a['.id']}`]);
+        });
+      }
+      if (tipoControl === 'amarre_ip_mac_dhcp' && co.macAddress) {
+        await this.pool.execute(creds, async (api) => {
+          const macFmt = co.macAddress.toUpperCase().replace(/[^A-F0-9]/g, '').match(/.{2}/g)!.join(':');
+          const leases = await api.write('/ip/dhcp-server/lease/print');
+          const match = leases.find((l: any) => (l['mac-address'] || '').toUpperCase() === macFmt);
+          if (match) await api.write('/ip/dhcp-server/lease/remove', [`=.id=${match['.id']}`]);
+        });
+      }
+    }
+  }
+
+  private async crearReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
+    const comment = `DATAFAST:${co.nombreCompleto}`;
+    if (tipoControl === 'pppoe_addresslist') {
+      if (!co.usuarioPppoe) return;
+      const password = co.passwordPppoe ? decrypt(co.passwordPppoe) : '';
+      await this.pppoeSvc.crear(creds, {
+        name: co.usuarioPppoe, password,
+        profile: co.pppProfile ?? 'default',
+        service: 'pppoe',
+        remoteAddress: co.ipAsignada || undefined,
+        comment, disabled: false,
+      });
+    } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
+      if (!co.ipAsignada || !co.macAddress) return;
+      const iface = await this.arpSvc.detectarInterface(creds, co.ipAsignada);
+      if (!iface) throw new Error(`No se encontró interfaz para ${co.ipAsignada}`);
+      await this.arpSvc.crearArpEstatico(creds, co.ipAsignada, co.macAddress, iface, comment);
+      if (tipoControl === 'amarre_ip_mac_dhcp') {
+        await this.firewallSvc.crearDhcpBinding(creds, {
+          macAddress: co.macAddress, ipAddress: co.ipAsignada,
+          hostname: co.nombreCompleto, comment,
+        });
+      }
+    }
   }
 }
