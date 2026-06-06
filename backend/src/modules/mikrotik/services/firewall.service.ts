@@ -153,13 +153,6 @@ export class FirewallService {
       }
 
       await this.agregarReglaFirewallSiNoExiste(api, {
-        chain:  'forward',
-        srcList: ADDRESS_LIST_MOROSOS,
-        action: 'drop',
-        comment: 'DATAFAST: Bloquear morosos',
-      }, allRules);
-
-      await this.agregarReglaFirewallSiNoExiste(api, {
         chain:   'forward',
         srcList: ADDRESS_LIST_MOROSOS,
         dstPort: '80,443',
