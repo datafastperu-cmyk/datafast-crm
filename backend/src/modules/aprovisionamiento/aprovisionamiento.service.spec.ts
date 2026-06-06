@@ -5,7 +5,6 @@ import { EventEmitter }          from '@nestjs/event-emitter';
 import { OrquestadorAprovisionamientoService } from './aprovisionamiento.service';
 import { PppoeService }           from '../mikrotik/services/pppoe.service';
 import { QueueService }           from '../mikrotik/services/queue.service';
-import { FirewallService }        from '../mikrotik/services/firewall.service';
 import { VelocidadOrquestador }   from '../mikrotik/services/velocidad/velocidad-orquestador.service';
 import { SmartoltApiService }     from '../smartolt/smartolt-api.service';
 import { WhatsAppService }        from '../notificaciones/services/whatsapp.service';
@@ -73,10 +72,6 @@ const mockQueueSvc = {
   actualizarLimiteQueue: jest.fn().mockResolvedValue(undefined),
 };
 
-const mockFirewallSvc = {
-  configurarReglasControl: jest.fn().mockResolvedValue(undefined),
-};
-
 const mockVelocidadOrc = {
   aplicarVelocidad: jest.fn().mockResolvedValue({
     exitoso: true, estrategia: EstrategiaQueue.SIMPLE_QUEUE,
@@ -136,7 +131,6 @@ describe('OrquestadorAprovisionamientoService', () => {
         OrquestadorAprovisionamientoService,
         { provide: PppoeService,          useValue: mockPppoeSvc },
         { provide: QueueService,          useValue: mockQueueSvc },
-        { provide: FirewallService,       useValue: mockFirewallSvc },
         { provide: VelocidadOrquestador,  useValue: mockVelocidadOrc },
         { provide: SmartoltApiService,    useValue: mockSmartoltApi },
         { provide: WhatsAppService,       useValue: mockWhatsapp },
@@ -281,8 +275,7 @@ describe('OrquestadorAprovisionamientoService', () => {
           OrquestadorAprovisionamientoService,
           { provide: PppoeService,         useValue: mockPppoeSvc },
           { provide: QueueService,         useValue: mockQueueSvc },
-          { provide: FirewallService,      useValue: mockFirewallSvc },
-          { provide: VelocidadOrquestador, useValue: mockVelocidadOrc },
+            { provide: VelocidadOrquestador, useValue: mockVelocidadOrc },
           { provide: SmartoltApiService,   useValue: mockSmartoltApi },
           { provide: WhatsAppService,      useValue: mockWhatsapp },
           { provide: EventEmitter,        useValue: mockEvents },
@@ -319,8 +312,7 @@ describe('OrquestadorAprovisionamientoService', () => {
           OrquestadorAprovisionamientoService,
           { provide: PppoeService,         useValue: pppoeFail },
           { provide: QueueService,         useValue: mockQueueSvc },
-          { provide: FirewallService,      useValue: mockFirewallSvc },
-          { provide: VelocidadOrquestador, useValue: mockVelocidadOrc },
+            { provide: VelocidadOrquestador, useValue: mockVelocidadOrc },
           { provide: SmartoltApiService,   useValue: mockSmartoltApi },
           { provide: WhatsAppService,      useValue: mockWhatsapp },
           { provide: EventEmitter,        useValue: mockEvents },
@@ -358,8 +350,7 @@ describe('OrquestadorAprovisionamientoService', () => {
           OrquestadorAprovisionamientoService,
           { provide: PppoeService,         useValue: mockPppoeSvc },
           { provide: QueueService,         useValue: mockQueueSvc },
-          { provide: FirewallService,      useValue: mockFirewallSvc },
-          { provide: VelocidadOrquestador, useValue: mockVelocidadOrc },
+            { provide: VelocidadOrquestador, useValue: mockVelocidadOrc },
           { provide: SmartoltApiService,   useValue: mockSmartoltApi },
           { provide: WhatsAppService,      useValue: mockWhatsapp },
           { provide: EventEmitter,        useValue: mockEvents },
@@ -399,8 +390,7 @@ describe('OrquestadorAprovisionamientoService', () => {
           OrquestadorAprovisionamientoService,
           { provide: PppoeService,         useValue: mockPppoeSvc },
           { provide: QueueService,         useValue: mockQueueSvc },
-          { provide: FirewallService,      useValue: mockFirewallSvc },
-          { provide: VelocidadOrquestador, useValue: mockVelocidadOrc },
+            { provide: VelocidadOrquestador, useValue: mockVelocidadOrc },
           { provide: SmartoltApiService,   useValue: mockSmartoltApi },
           { provide: WhatsAppService,      useValue: mockWhatsapp },
           { provide: EventEmitter,        useValue: mockEvents },

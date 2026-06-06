@@ -6,7 +6,6 @@ import { EventEmitter2 }          from '@nestjs/event-emitter';
 import { WhatsAppService }        from '../notificaciones/services/whatsapp.service';
 import { PppoeService }           from '../mikrotik/services/pppoe.service';
 import { QueueService }           from '../mikrotik/services/queue.service';
-import { FirewallService }        from '../mikrotik/services/firewall.service';
 import { VelocidadOrquestador }   from '../mikrotik/services/velocidad/velocidad-orquestador.service';
 import { SmartoltApiService }     from '../smartolt/smartolt-api.service';
 import { JwtPayload }             from '../../common/decorators/current-user.decorator';
@@ -61,7 +60,6 @@ export class OrquestadorAprovisionamientoService {
   constructor(
     private readonly pppoeSvc:     PppoeService,
     private readonly queueSvc:     QueueService,
-    private readonly firewallSvc:  FirewallService,
     private readonly velocidadOrc: VelocidadOrquestador,
     private readonly smartoltApi:  SmartoltApiService,
     private readonly whatsapp:     WhatsAppService,
@@ -365,30 +363,10 @@ export class OrquestadorAprovisionamientoService {
       },
 
       // ══════════════════════════════════════════════════════
-      // PASO 5 — Configurar reglas de firewall
+      // PASO 5 — Detectar y aprovisionar ONU en SmartOLT
       // ══════════════════════════════════════════════════════
       {
         num: 5,
-        nombre: 'Verificar reglas de firewall (morosos/prórroga)',
-        fn: async (ctx) => {
-          const creds = this.buildRouterCreds(ctx.contrato);
-
-          try {
-            await this.firewallSvc.configurarReglasControl(creds);
-            return { detalle: 'Reglas de control verificadas/actualizadas en el router' };
-          } catch (err) {
-            // No bloquear el flujo por esto — las reglas pueden ya existir
-            this.logger.warn(`Paso 5: no se pudo verificar firewall: ${err.message}`);
-            return { detalle: `Reglas de firewall: advertencia (${err.message}) — continuando` };
-          }
-        },
-      },
-
-      // ══════════════════════════════════════════════════════
-      // PASO 6 — Detectar y aprovisionar ONU en SmartOLT
-      // ══════════════════════════════════════════════════════
-      {
-        num: 6,
         nombre: 'Detectar y aprovisionar ONU en SmartOLT',
         fn: async (ctx) => {
           ctx.serialNumber = dto.serialNumber;
@@ -440,7 +418,7 @@ export class OrquestadorAprovisionamientoService {
       // PASO 7 — Registrar ONU en BD y asociar al contrato
       // ══════════════════════════════════════════════════════
       {
-        num: 7,
+        num: 6,
         nombre: 'Registrar ONU en base de datos y asociar al contrato',
         fn: async (ctx) => {
           // Parsear PON port
@@ -499,7 +477,7 @@ export class OrquestadorAprovisionamientoService {
       // PASO 8 — Activar contrato y notificar al cliente
       // ══════════════════════════════════════════════════════
       {
-        num: 8,
+        num: 7,
         nombre: 'Activar contrato y notificar al cliente',
         fn: async (ctx) => {
           const detalles: string[] = [];
