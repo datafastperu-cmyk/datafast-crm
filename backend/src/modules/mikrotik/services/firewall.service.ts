@@ -241,7 +241,6 @@ export class FirewallService {
         `=address=${binding.ipAddress}`,
         `=mac-address=${macFormatted}`,
         ...(binding.server       ? [`=server=${binding.server}`]              : []),
-        ...(binding.hostname     ? [`=host-name=${binding.hostname}`]         : []),
         ...(binding.comment      ? [`=comment=${binding.comment}`]            : []),
         ...(binding.addressLists ? [`=address-lists=${binding.addressLists}`] : []),
       ];
