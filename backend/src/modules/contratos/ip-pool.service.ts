@@ -292,6 +292,7 @@ export class IpPoolService {
     }
 
     await this.segRepo.update(seg.id, { activo: false });
+    await this.segRepo.softDelete(seg.id);
   }
 
   // ── Estadísticas de todos los segmentos ───────────────────
