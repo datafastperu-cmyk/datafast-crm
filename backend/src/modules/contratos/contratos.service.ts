@@ -54,17 +54,32 @@ export class ContratosService {
       if (duplicate) throw new ConflictException(`Cliente ya tiene contrato activo con plan "${plan.nombre}" (${duplicate.numeroContrato})`);
     }
 
-    if (dto.segmentoId && dto.routerId) {
-      const [seg] = await this.dataSource.query<any[]>(
-        `SELECT router_id AS "routerId", nombre FROM segmentos_ipv4 WHERE id = $1 AND empresa_id = $2`,
-        [dto.segmentoId, user.empresaId],
+    if (dto.routerId) {
+      const [router] = await this.dataSource.query<any[]>(
+        `SELECT tipo_control AS "tipoControl", nombre FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+        [dto.routerId, user.empresaId],
       );
-      if (!seg) throw new BadRequestException('Segmento de red no encontrado');
-      if (seg.routerId !== dto.routerId) {
+      if (!router) throw new BadRequestException('Router no encontrado');
+
+      const requiereMac = router.tipoControl === 'amarre_ip_mac' || router.tipoControl === 'amarre_ip_mac_dhcp';
+      if (requiereMac && !dto.macAddress?.trim()) {
         throw new BadRequestException(
-          `El segmento "${seg.nombre}" no está asignado al router seleccionado. ` +
-          `Corrija la asignación en Red → Segmentos o seleccione el segmento correspondiente al router.`,
+          `El router "${router.nombre}" usa autenticación por Amarre IP/MAC. La dirección MAC es obligatoria.`,
         );
+      }
+
+      if (dto.segmentoId) {
+        const [seg] = await this.dataSource.query<any[]>(
+          `SELECT router_id AS "routerId", nombre FROM segmentos_ipv4 WHERE id = $1 AND empresa_id = $2`,
+          [dto.segmentoId, user.empresaId],
+        );
+        if (!seg) throw new BadRequestException('Segmento de red no encontrado');
+        if (seg.routerId !== dto.routerId) {
+          throw new BadRequestException(
+            `El segmento "${seg.nombre}" no está asignado al router "${router.nombre}". ` +
+            `Corrija la asignación en Red → Segmentos o seleccione el segmento correcto.`,
+          );
+        }
       }
     }
 
