@@ -4,7 +4,7 @@ import { RouterConnectionPool, RouterCredentials } from './connection-pool.servi
 // Lista de morosos: IPs bloqueadas por mora
 export const ADDRESS_LIST_MOROSOS = 'morosos_datafast';
 // Lista de IPs en prórroga (acceso completo hasta vencimiento)
-export const ADDRESS_LIST_PRORROGA = 'prorroga';
+export const ADDRESS_LIST_PRORROGA = 'prorroga_datafast';
 
 export interface DhcpStaticBinding {
   macAddress:    string;
@@ -60,8 +60,8 @@ export class FirewallService {
   // ── Quitar IP de la lista de morosos (REACTIVAR) ──────────
   async reactivarCliente(creds: RouterCredentials, ip: string): Promise<void> {
     await this.pool.execute(creds, async (api) => {
-      // Quitar de TODAS las listas de control
-      for (const lista of [ADDRESS_LIST_MOROSOS, ADDRESS_LIST_PRORROGA]) {
+      // Quitar de TODAS las listas de control (incluye nombre legacy 'prorroga')
+      for (const lista of [ADDRESS_LIST_MOROSOS, ADDRESS_LIST_PRORROGA, 'prorroga']) {
         const entries = await api.write('/ip/firewall/address-list/print', [
           `?list=${lista}`,
           `?address=${ip}`,
