@@ -395,7 +395,7 @@ export class ContratosService {
       `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
        WHERE id = $1 AND empresa_id = $2 AND estado = 'prospecto'`,
       [c.clienteId, user.empresaId, user.sub],
-    ).catch(() => {});
+    ).catch(e => this.logger.warn(`activar → cliente ${c.clienteId} | fallo al promover estado prospecto→activo: ${e?.message}`));
 
     return {
       contrato:     await this.findOne(id, user.empresaId),
@@ -438,8 +438,8 @@ export class ContratosService {
         meses_deuda = 0,
         updated_at = NOW(),
         updated_by = $3
-      WHERE id = $1
-    `, [contratoId, nuevaFechaStr, operadorId]);
+      WHERE id = $1 AND empresa_id = $4
+    `, [contratoId, nuevaFechaStr, operadorId, empresaId]);
 
     await this.contratoRepo.guardarHistorial({
       contratoId, empresaId,

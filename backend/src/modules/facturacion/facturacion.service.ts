@@ -176,8 +176,8 @@ export class FacturacionService {
         );
 
         // Fecha de vencimiento
-        const diaVenc = parseInt(contrato.dia_facturacion || '1', 10) + diasGracia;
-        const fechaVencimiento = `${anio}-${String(mes).padStart(2, '0')}-${String(Math.min(diaVenc, 28)).padStart(2, '0')}`;
+        const vencimientoDate = new Date(anio, mes - 1, parseInt(contrato.dia_facturacion || '1', 10) + diasGracia);
+        const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
 
         const factura = this.facturaRepo.create({
           empresaId:               user.empresaId,
@@ -296,8 +296,8 @@ export class FacturacionService {
         const { subtotal, igv, total } = this.calcularMontosDesdeBase(precioBase, 0, aplicaIgv, igvRate);
         const { serie, correlativo }   = await this.obtenerSerieCorrelativo(empresaId, TipoComprobante.BOLETA);
 
-        const diaVenc = Math.min(dia + diasGracia, 28);
-        const fechaVencimiento = `${anio}-${String(mes).padStart(2, '0')}-${String(diaVenc).padStart(2, '0')}`;
+        const vencimientoDate = new Date(anio, mes - 1, dia + diasGracia);
+        const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
 
         const factura = this.facturaRepo.create({
           empresaId,

@@ -1039,7 +1039,7 @@ export class MikrotikService {
       }
       if (tipoControl === 'amarre_ip_mac_dhcp' && co.macAddress) {
         await this.pool.execute(creds, async (api) => {
-          const macFmt = co.macAddress.toUpperCase().replace(/[^A-F0-9]/g, '').match(/.{2}/g)!.join(':');
+          const macFmt = co.macAddress.toUpperCase().replace(/[^A-F0-9]/g, '').match(/.{2}/g)?.join(':') ?? co.macAddress.toUpperCase();
           const leases = await api.write('/ip/dhcp-server/lease/print');
           const match = leases.find((l: any) => (l['mac-address'] || '').toUpperCase() === macFmt);
           if (match) await api.write('/ip/dhcp-server/lease/remove', [`=.id=${match['.id']}`]);
