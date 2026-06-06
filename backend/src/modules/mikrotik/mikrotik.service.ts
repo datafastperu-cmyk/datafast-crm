@@ -1015,13 +1015,9 @@ export class MikrotikService {
       version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
     };
 
-    this.firewallSvc.inyectarReglaBloqueoMorosos(creds)
-      .then(() => this.logger.log(`Regla morosos aplicada: ${ip}`))
-      .catch((err) => this.logger.warn(`No se pudo aplicar regla morosos en ${ip}: ${err.message}`));
-
     this.firewallSvc.configurarReglasControl(creds)
-      .then(() => this.logger.log(`Reglas de control configuradas: ${ip}`))
-      .catch((err) => this.logger.warn(`No se pudieron configurar reglas de control en ${ip}: ${err.message}`));
+      .then(() => this.logger.log(`Reglas de control aplicadas: ${ip}`))
+      .catch((err) => this.logger.warn(`No se pudieron aplicar reglas en ${ip}: ${err.message}`));
   }
 
   // ────────────────────────────────────────────────────────────

@@ -140,86 +140,85 @@ export class FirewallService {
   // Crea las reglas necesarias para que el sistema de suspensión funcione.
   // IMPORTANTE: Se deben agregar al principio de la cadena forward.
   // ────────────────────────────────────────────────────────────
+  // ── Configurar/verificar las 3 reglas de control (idempotente) ──────────
+  // Orden garantizado en cadena forward:
+  //   pos 0 → PORTAL PAGO accept (morosos pueden pagar)
+  //   pos 1 → DROP morosos       (bloquea todo lo demás)
+  //   end   → PRORROGA accept    (acceso completo hasta vencimiento)
+  //
+  // Técnica de inserción: drop se agrega en pos 0 primero; portal pago se inserta
+  // también en pos 0 y desplaza drop a pos 1 → orden correcto sin depender de índices.
+  //
+  // Usa connectDirect (2 conexiones separadas) para evitar el bug de RouterOS v7
+  // donde ?comment=X devuelve !empty y lanza UNKNOWNREPLY en el event-listener.
   async configurarReglasControl(creds: RouterCredentials): Promise<void> {
-    await this.pool.execute(creds, async (api) => {
-      // Obtener todas las reglas una sola vez y filtrar en JS para evitar el bug
-      // de RouterOS v7 donde ?comment=X devuelve !empty (no captureable con try/catch)
-      let allRules: any[] = [];
-      try {
-        allRules = await api.write('/ip/firewall/filter/print');
-      } catch (err: any) {
-        if (err?.errno !== 'UNKNOWNREPLY') throw err;
-        // !empty = no hay reglas todavía
-      }
+    const DROP_COMMENT     = 'Datafast-Bloquear Morosos';
+    const PORTAL_COMMENT   = 'DATAFAST: Morosos portal pago';
+    const PRORROGA_COMMENT = 'DATAFAST: Prorroga acceso completo';
 
-      await this.agregarReglaFirewallSiNoExiste(api, {
-        chain:   'forward',
-        srcList: ADDRESS_LIST_MOROSOS,
-        dstPort: '80,443',
-        proto:   'tcp',
-        action:  'accept',
-        comment: 'DATAFAST: Morosos portal pago',
-        position: 'top',
-      }, allRules);
-
-      // Prórroga = acceso completo hasta vencimiento; el corte se aplica al pasar a morosos
-      await this.agregarReglaFirewallSiNoExiste(api, {
-        chain:   'forward',
-        srcList: ADDRESS_LIST_PRORROGA,
-        action:  'accept',
-        comment: 'DATAFAST: Prorroga acceso completo',
-      }, allRules);
-
-      this.logger.log(`Reglas de control configuradas en ${creds.ip}`);
-    });
-  }
-
-  // ── Inyectar regla principal de bloqueo morosos (al registrar router) ─
-  // NOTA: NO usar '?comment=X' como filtro en el print — RouterOS v7 responde !empty
-  // cuando no hay coincidencias, y node-routeros lanza UNKNOWNREPLY en un event-listener
-  // (no como Promise rejection), por lo que try/catch no lo captura y la promesa queda
-  // colgada indefinidamente. Fix: obtener TODAS las reglas sin filtro y buscar en JS.
-  async inyectarReglaBloqueoMorosos(creds: RouterCredentials): Promise<void> {
-    const comment = 'Datafast-Bloquear Morosos';
-    const ruleArgs = [
-      `=chain=forward`,
-      `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
-      `=dst-address-list=!ips_permitidas_morosos_datafast`,
-      `=action=drop`,
-      `=comment=${comment}`,
-    ];
-
-    // Conexión 1: obtener todas las reglas sin filtro (filtro ?comment=X lanza
-    // UNKNOWNREPLY en event-listener en v7, no captureable con try/catch en Promise)
-    let existingId: string | null = null;
+    // Conexión 1: leer estado actual
+    let allRules: any[] = [];
     const checkApi = await this.pool.connectDirect(creds);
     try {
-      const allRules = await checkApi.write('/ip/firewall/filter/print');
-      const match = allRules.find((r: any) => r.comment === comment);
-      existingId = match ? match['.id'] : null;
+      allRules = await checkApi.write('/ip/firewall/filter/print');
     } catch (err: any) {
       if (err?.errno !== 'UNKNOWNREPLY') throw err;
-      // !empty = no existe ninguna regla
     } finally {
       checkApi.close().catch(() => {});
     }
 
-    // Conexión 2: actualizar si existe, agregar si no
+    const dropRule     = allRules.find((r: any) => r.comment === DROP_COMMENT);
+    const portalRule   = allRules.find((r: any) => r.comment === PORTAL_COMMENT);
+    const prorrogaRule = allRules.find((r: any) => r.comment === PRORROGA_COMMENT);
+
+    const dropArgs = [
+      '=chain=forward',
+      `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
+      '=action=drop',
+      `=comment=${DROP_COMMENT}`,
+    ];
+
+    // Conexión 2: escritura secuencial
     const writeApi = await this.pool.connectDirect(creds);
     try {
-      if (existingId) {
-        await writeApi.write('/ip/firewall/filter/set', [
-          `=.id=${existingId}`,
-          ...ruleArgs,
-        ]);
-        this.logger.log(`Regla '${comment}' actualizada en ${creds.ip}`);
+      // Paso 1: upsert drop morosos en pos 0
+      if (dropRule) {
+        await writeApi.write('/ip/firewall/filter/set', [`=.id=${dropRule['.id']}`, ...dropArgs]);
       } else {
-        await writeApi.write('/ip/firewall/filter/add', ruleArgs);
-        this.logger.log(`Regla '${comment}' inyectada en ${creds.ip}`);
+        await writeApi.write('/ip/firewall/filter/add', [...dropArgs, '=place-before=0']);
       }
+
+      // Paso 2: portal pago en pos 0 → desplaza drop a pos 1
+      if (!portalRule) {
+        await writeApi.write('/ip/firewall/filter/add', [
+          '=chain=forward',
+          `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
+          '=protocol=tcp',
+          '=dst-port=80,443',
+          '=action=accept',
+          `=comment=${PORTAL_COMMENT}`,
+          '=place-before=0',
+        ]);
+      }
+
+      // Paso 3: prorroga acceso completo al final
+      if (!prorrogaRule) {
+        await writeApi.write('/ip/firewall/filter/add', [
+          '=chain=forward',
+          `=src-address-list=${ADDRESS_LIST_PRORROGA}`,
+          '=action=accept',
+          `=comment=${PRORROGA_COMMENT}`,
+        ]);
+      }
+
+      this.logger.log(`Reglas de control configuradas en ${creds.ip}`);
     } finally {
       writeApi.close().catch(() => {});
     }
+  }
+
+  async inyectarReglaBloqueoMorosos(creds: RouterCredentials): Promise<void> {
+    await this.configurarReglasControl(creds);
   }
 
   private async agregarReglaFirewallSiNoExiste(
