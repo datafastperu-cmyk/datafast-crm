@@ -13,6 +13,8 @@ import { CreateContratoDto, UpdateContratoDto, FilterContratoDto, CambiarEstadoC
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 import { encrypt } from '../../common/utils/encryption.util';
 import { getNextAvailableIp, getCidrRange, isValidIp } from '../../common/utils/ip.util';
+import { WirelessService } from '../mikrotik/services/wireless.service';
+import { RouterCredentials } from '../mikrotik/services/connection-pool.service';
 
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_INSTALACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
@@ -34,6 +36,7 @@ export class ContratosService {
     private readonly planesSvc: PlanesService,
     private readonly auditoria: AuditoriaService,
     private readonly config: ConfigService,
+    private readonly wirelessSvc: WirelessService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -224,6 +227,7 @@ export class ContratosService {
       upd.onuId      = null as any;  // Desvincula ONU → queda disponible para otro contrato
       if (contrato.segmentoId) await this.contratoRepo.liberarIp(id);
       await this.desaprovisionarMikrotik(id);
+      await this.eliminarDeAccessListAntena(id);
     }
     await this.contratoRepo.update(id, upd);
     await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:anterior, estadoNuevo:dto.estado, motivo:dto.motivo, usuarioId:user.sub, automatico });
@@ -367,8 +371,76 @@ export class ContratosService {
   }
 
   protected async registrarEnAccessListAntena(contratoId: string): Promise<boolean> {
-    this.logger.log(`[SIM] registrarEnAccessListAntena → ${contratoId} | registrando MAC + nombre cliente en AP de monitoreo`);
+    const [row] = await this.dataSource.query<any[]>(`
+      SELECT co.mac_address      AS "macAddress",
+             co.antena_ap_id     AS "antenaApId",
+             cl.nombre_completo  AS "nombreCompleto",
+             dm.ip_address       AS "ipAddress",
+             dm.usuario,
+             dm.contrasena_cifrada AS "contrasenaCifrada",
+             dm.puerto_api       AS "puertoApi",
+             dm.use_ssl          AS "useSsl"
+      FROM contratos co
+      JOIN clientes cl ON cl.id = co.cliente_id
+      LEFT JOIN dispositivos_monitoreo dm ON dm.id = co.antena_ap_id
+      WHERE co.id = $1
+    `, [contratoId]);
+
+    if (!row?.macAddress || !row?.antenaApId || !row?.ipAddress) return false;
+
+    const creds: RouterCredentials = {
+      id:              row.antenaApId,
+      ip:              row.ipAddress,
+      port:            row.useSsl ? 8729 : (row.puertoApi ?? 8728),
+      user:            row.usuario ?? 'admin',
+      passwordCifrado: row.contrasenaCifrada ?? '',
+      useSsl:          row.useSsl ?? false,
+      timeoutSec:      10,
+      version:         'v6',
+    };
+
+    try {
+      await this.wirelessSvc.agregarMacAccessList(creds, row.macAddress, `DATAFAST:${row.nombreCompleto}`);
+      this.logger.log(`registrarEnAccessListAntena → ${contratoId} | MAC ${row.macAddress} registrada en AP ${row.ipAddress}`);
+    } catch (err) {
+      this.logger.warn(`registrarEnAccessListAntena → ${contratoId} | error al registrar MAC en AP: ${err?.message}`);
+    }
     return true;
+  }
+
+  private async eliminarDeAccessListAntena(contratoId: string): Promise<void> {
+    const [row] = await this.dataSource.query<any[]>(`
+      SELECT co.mac_address      AS "macAddress",
+             co.antena_ap_id     AS "antenaApId",
+             dm.ip_address       AS "ipAddress",
+             dm.usuario,
+             dm.contrasena_cifrada AS "contrasenaCifrada",
+             dm.puerto_api       AS "puertoApi",
+             dm.use_ssl          AS "useSsl"
+      FROM contratos co
+      LEFT JOIN dispositivos_monitoreo dm ON dm.id = co.antena_ap_id
+      WHERE co.id = $1
+    `, [contratoId]);
+
+    if (!row?.macAddress || !row?.antenaApId || !row?.ipAddress) return;
+
+    const creds: RouterCredentials = {
+      id:              row.antenaApId,
+      ip:              row.ipAddress,
+      port:            row.useSsl ? 8729 : (row.puertoApi ?? 8728),
+      user:            row.usuario ?? 'admin',
+      passwordCifrado: row.contrasenaCifrada ?? '',
+      useSsl:          row.useSsl ?? false,
+      timeoutSec:      10,
+      version:         'v6',
+    };
+
+    try {
+      await this.wirelessSvc.eliminarMacAccessList(creds, row.macAddress);
+      this.logger.log(`eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} removida de AP ${row.ipAddress}`);
+    } catch (err) {
+      this.logger.warn(`eliminarDeAccessListAntena → ${contratoId} | error al remover MAC de AP: ${err?.message}`);
+    }
   }
 
   // Mantiene compatibilidad con el módulo de aprovisionamiento FTTH existente.

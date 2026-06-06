@@ -8,12 +8,14 @@ import { Contrato, ContratoHistorial } from './entities/contrato.entity';
 import { SegmentoIpv4, IpAsignada } from './entities/red.entity';
 import { PlanesModule } from '../planes/planes.module';
 import { AuthModule } from '../auth/auth.module';
+import { MikrotikModule } from '../mikrotik/mikrotik.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Contrato, ContratoHistorial, SegmentoIpv4, IpAsignada]),
     PlanesModule,
     AuthModule,
+    MikrotikModule,
   ],
   controllers: [ContratosController],
   providers: [ContratosService, IpPoolService, ContratoRepository],
