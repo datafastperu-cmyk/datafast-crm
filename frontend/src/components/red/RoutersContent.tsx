@@ -313,6 +313,15 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     snmpCommunity:   router?.snmpCommunity ?? 'public',
   });
 
+  const isDirty = !router || form.password !== '' || (
+    ['nombre','descripcion','ubicacion','modelo','zona','ipGestion','vpnIp','usuario',
+     'metodoConexion','versionRos','tipoControl','tipoControlVelocidad','snmpCommunity'] as const
+  ).some((k) => (form as any)[k] !== ((router as any)[k] ?? '')) ||
+  (['puertoApi','puertoApiSsl','puertoSsh','timeoutConexion','reintentos'] as const)
+    .some((k) => Number(form[k]) !== Number(router[k])) ||
+  (['usarSsl','autoConfigurarQueues','autoConfigurarPppoe','autoConfigurarFirewall'] as const)
+    .some((k) => Boolean(form[k]) !== Boolean(router[k]));
+
   const CONNECTION_FIELDS = new Set(['ipGestion','vpnIp','puertoApi','puertoApiSsl','puertoSsh','usuario','password','usarSsl','metodoConexion','versionRos','timeoutConexion']);
   const set = (key: keyof typeof form, val: any) => {
     setForm((f) => ({ ...f, [key]: val }));
@@ -946,7 +955,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
             </button>
             <button
               onClick={handleSave}
-              disabled={saving || testStatus !== 'ok'}
+              disabled={saving || testStatus !== 'ok' || !isDirty}
               className="btn-primary"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
