@@ -645,7 +645,7 @@ export class ContratosService {
     return true;
   }
 
-  private async eliminarDeAccessListAntena(contratoId: string): Promise<void> {
+  async eliminarDeAccessListAntena(contratoId: string): Promise<void> {
     const [row] = await this.dataSource.query<any[]>(`
       SELECT co.mac_address      AS "macAddress",
              co.antena_ap_id     AS "antenaApId",

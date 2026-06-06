@@ -236,6 +236,12 @@ export class ClientesService {
       );
     }
 
+    // Safety net: limpiar antenas de contratos que pudieron quedar sin desaprovisionar
+    const contratosCliente = await this.contratosSvc.findByClienteCompleto(id, user.empresaId);
+    for (const c of contratosCliente) {
+      try { await this.contratosSvc.eliminarDeAccessListAntena(c.id); } catch { /* ignorar */ }
+    }
+
     await this.clienteRepo.softDelete(id, user.empresaId);
 
     await this.auditoria.logDelete({
