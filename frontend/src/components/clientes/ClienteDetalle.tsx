@@ -1142,8 +1142,9 @@ function ServicioPanel({
   const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
 
   // Router seleccionado — para derivar tipoControl sin fetch adicional
-  const routerSel = (routers as RouterType[]).find(r => r.id === routerId);
+  const routerSel    = (routers as RouterType[]).find(r => r.id === routerId);
   const mostrarPppoe = routerSel?.tipoControl === 'pppoe_addresslist';
+  const requiereMac  = routerSel?.tipoControl === 'amarre_ip_mac' || routerSel?.tipoControl === 'amarre_ip_mac_dhcp';
 
   // Antenas AP vinculadas al router seleccionado
   const { data: antenasAP = [] } = useQuery({
@@ -1201,6 +1202,10 @@ function ServicioPanel({
     : [];
 
   const onSubmit = async (data: ServicioForm) => {
+    if (requiereMac && !data.macAddress?.trim()) {
+      setError('macAddress', { message: 'MAC obligatorio para Amarre IP/MAC' });
+      return;
+    }
     if (mostrarPppoe && !editing && !data.usuarioPppoe?.trim()) {
       setError('usuarioPppoe', { message: 'Usuario PPPoE requerido' });
       return;
@@ -1398,8 +1403,8 @@ function ServicioPanel({
                 )}
 
                 {/* MAC */}
-                <SP_Field label="Mac">
-                  <input {...register('macAddress')} placeholder="CC:2D:E0:FF:FA:55" className={sp_input()} />
+                <SP_Field label={requiereMac ? 'Mac *' : 'Mac'} error={errors.macAddress?.message}>
+                  <input {...register('macAddress')} placeholder="CC:2D:E0:FF:FA:55" className={sp_input(!!errors.macAddress)} />
                 </SP_Field>
 
                 {/* PPPoE — solo cuando el router usa pppoe_addresslist */}

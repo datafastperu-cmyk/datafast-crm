@@ -983,8 +983,9 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const segmentoId = watch('segmentoId');
 
   // Router seleccionado — para derivar tipoControl sin fetch adicional
-  const routerSel = (routers as RouterType[]).find(r => r.id === routerId);
+  const routerSel    = (routers as RouterType[]).find(r => r.id === routerId);
   const mostrarPppoe = routerSel?.tipoControl === 'pppoe_addresslist';
+  const requiereMac  = routerSel?.tipoControl === 'amarre_ip_mac' || routerSel?.tipoControl === 'amarre_ip_mac_dhcp';
 
   const { data: segmentosRaw = [] } = useQuery({
     queryKey: ['segmentos-router', routerId],
@@ -1031,6 +1032,10 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     : [];
 
   const onFormSubmit = async (data: S3) => {
+    if (requiereMac && !data.mac?.trim()) {
+      setError('mac', { message: 'MAC obligatorio para Amarre IP/MAC' });
+      return;
+    }
     if (mostrarPppoe && !data.userPppHs?.trim()) {
       setError('userPppHs', { message: 'Usuario PPPoE requerido' });
       return;
@@ -1170,7 +1175,11 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           )}
 
           {/* Mac */}
-          <Field label="Mac" hint="Dirección MAC del equipo cliente">
+          <Field
+            label={requiereMac ? 'Mac *' : 'Mac'}
+            hint={requiereMac ? 'Obligatorio — router configurado con Amarre IP/MAC' : 'Dirección MAC del equipo cliente'}
+            error={s3Errors.mac?.message}
+          >
             <input
               {...register('mac')}
               placeholder="AA:BB:CC:DD:EE:FF"
