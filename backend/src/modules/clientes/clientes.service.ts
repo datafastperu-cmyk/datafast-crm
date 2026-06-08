@@ -2,6 +2,8 @@ import {
   Injectable, NotFoundException, ConflictException,
   BadRequestException, Logger, ForbiddenException, HttpException,
 } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { LicenciaService } from '../licencia/licencia.service';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
@@ -45,6 +47,7 @@ export class ClientesService {
     private readonly config: ConfigService,
     private readonly licenciaSvc: LicenciaService,
     private readonly contratosSvc: ContratosService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   // ── Crear cliente ─────────────────────────────────────────
@@ -237,7 +240,16 @@ export class ClientesService {
     }
 
     // Safety net: eliminar todo rastro del cliente en router y antena
-    const contratosCliente = await this.contratosSvc.findByClienteCompleto(id, user.empresaId);
+    // Usar raw query para traer contratos aunque estén soft-deleteados (deleted_at IS NOT NULL)
+    // así garantizamos que siempre se limpie la antena inalámbrica (Access List) y el router.
+    const contratosCliente = await this.dataSource.query<any[]>(
+      `SELECT id FROM contratos
+       WHERE cliente_id = $1 AND empresa_id = $2
+         AND deleted_at IS NOT NULL
+         AND fecha_baja IS NOT NULL
+       ORDER BY created_at DESC`,
+      [id, user.empresaId],
+    );
     for (const c of contratosCliente) {
       try { await this.contratosSvc.desaprovisionarMikrotik(c.id); } catch { /* ignorar */ }
       try { await this.contratosSvc.eliminarDeAccessListAntena(c.id); } catch { /* ignorar */ }

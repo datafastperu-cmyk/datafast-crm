@@ -698,7 +698,24 @@ export class ContratosService {
       WHERE co.id = $1
     `, [contratoId]);
 
-    if (!row?.macAddress || !row?.antenaApId || !row?.ipAddress) return;
+    // Si no hay MAC address, no hay nada que limpiar en ninguna antena
+    if (!row?.macAddress) return;
+
+    // Hay MAC pero no antena_ap_id → el cliente fue dado de baja sin antena asignada
+    if (!row?.antenaApId) {
+      this.logger.warn(
+        `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} no tiene antena_ap_id asignado — no se puede limpiar Access List`,
+      );
+      return;
+    }
+
+    // Hay antena_ap_id pero el dispositivo de monitoreo no existe (fue eliminado)
+    if (!row?.ipAddress) {
+      this.logger.warn(
+        `eliminarDeAccessListAntena → ${contratoId} | antena_ap_id ${row.antenaApId} no tiene dispositivo de monitoreo (ipAddress) — posiblemente fue eliminado de la base de datos`,
+      );
+      return;
+    }
 
     const creds: RouterCredentials = {
       id:              row.antenaApId,
@@ -713,9 +730,13 @@ export class ContratosService {
 
     try {
       await this.wirelessSvc.eliminarMacAccessList(creds, row.macAddress);
-      this.logger.log(`eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} removida de AP ${row.ipAddress}`);
+      this.logger.log(
+        `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} removida de AP ${row.ipAddress}`,
+      );
     } catch (err) {
-      this.logger.warn(`eliminarDeAccessListAntena → ${contratoId} | error al remover MAC de AP: ${err?.message}`);
+      this.logger.warn(
+        `eliminarDeAccessListAntena → ${contratoId} | error al remover MAC ${row.macAddress} del AP ${row.ipAddress}: ${err?.message}`,
+      );
     }
   }
 
