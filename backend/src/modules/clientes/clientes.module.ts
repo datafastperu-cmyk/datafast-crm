@@ -12,6 +12,7 @@ import { ReniecService } from './reniec.service';
 import { Cliente, ClienteHistorialEstado } from './entities/cliente.entity';
 import { AuthModule } from '../auth/auth.module';
 import { ContratosModule } from '../contratos/contratos.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ContratosModule } from '../contratos/contratos.module';
 
     // Para usar AuditoriaService
     AuthModule,
+    NotificacionesModule,
   ],
   controllers: [ClientesController],
   providers: [
