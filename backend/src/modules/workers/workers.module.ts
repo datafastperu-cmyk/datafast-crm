@@ -1,4 +1,3 @@
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Module }          from '@nestjs/common';
 import { BullModule }      from '@nestjs/bull';
 import { ScheduleModule }  from '@nestjs/schedule';
@@ -51,13 +50,6 @@ import { QUEUES } from './workers.constants';
     ),
 
     ScheduleModule,
-
-    EventEmitterModule.forRoot({
-      wildcard:          false,
-      delimiter:         '.',
-      maxListeners:      30,
-      ignoreErrors:      false,
-    }),
 
     HttpModule.register({ timeout: 15_000 }),
 

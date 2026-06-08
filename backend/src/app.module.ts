@@ -5,6 +5,7 @@ import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 
 import { appConfig, databaseConfig, redisConfig, jwtConfig, validationSchema } from './config';
@@ -123,6 +124,12 @@ import { MensajeriaModule }            from './modules/mensajeria/mensajeria.mod
         },
       }),
       inject: [ConfigService],
+    }),
+    EventEmitterModule.forRoot({
+      wildcard:     false,
+      delimiter:    '.',
+      maxListeners: 30,
+      ignoreErrors: false,
     }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({

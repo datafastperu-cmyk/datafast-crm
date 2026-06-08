@@ -1,4 +1,3 @@
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Module }          from '@nestjs/common';
 import { TypeOrmModule }   from '@nestjs/typeorm';
 import { HttpModule }      from '@nestjs/axios';
@@ -27,14 +26,6 @@ import { MikrotikModule }        from '../mikrotik/mikrotik.module';
         'Accept':       'application/json',
         'User-Agent':   'DATAFAST-ISP/1.0',
       },
-    }),
-
-    // EventEmitter para el evento 'ftth.cliente.activado'
-    EventEmitterModule.forRoot({
-      wildcard: false,
-      delimiter: '.',
-      maxListeners: 20,
-      ignoreErrors: false,
     }),
 
     // Deps de negocio

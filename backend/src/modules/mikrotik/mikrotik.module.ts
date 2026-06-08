@@ -2,7 +2,6 @@ import { Module }              from '@nestjs/common';
 import { TypeOrmModule }       from '@nestjs/typeorm';
 import { BullModule }          from '@nestjs/bull';
 import { ScheduleModule }      from '@nestjs/schedule';
-import { EventEmitterModule }  from '@nestjs/event-emitter';
 
 import { MikrotikController }        from './mikrotik.controller';
 import { MikrotikService }           from './mikrotik.service';
@@ -47,15 +46,6 @@ import { OpenvpnModule }             from '../openvpn/openvpn.module';
 
     ScheduleModule,
 
-    EventEmitterModule.forRoot({
-      wildcard:           false,
-      delimiter:          '.',
-      newListener:        false,
-      removeListener:     false,
-      maxListeners:       20,
-      verboseMemoryLeak:  true,
-      ignoreErrors:       false,
-    }),
 
     AuthModule,
     OpenvpnModule,

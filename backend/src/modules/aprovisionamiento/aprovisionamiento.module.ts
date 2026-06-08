@@ -1,4 +1,3 @@
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Module }           from '@nestjs/common';
 import { TypeOrmModule }    from '@nestjs/typeorm';
 import { HttpModule }       from '@nestjs/axios';
@@ -16,7 +15,6 @@ import { SmartoltModule }   from '../smartolt/smartolt.module';
 @Module({
   imports: [
     HttpModule.register({ timeout: 15_000 }),
-    EventEmitterModule.forRoot({ wildcard: false, delimiter: '.', maxListeners: 20 }),
     AuthModule,
     MikrotikModule,
     SmartoltModule,
