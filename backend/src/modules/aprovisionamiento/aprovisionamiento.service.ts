@@ -579,26 +579,22 @@ export class OrquestadorAprovisionamientoService {
           resultado.onuId        = ctx.onuId;
           resultado.serialNumber = ctx.serialNumber;
 
-          // Notificación WhatsApp
+          // Notificación WhatsApp vía evento (desacoplado)
           const telCliente = ctx.contrato.cliente_whatsapp || ctx.contrato.cliente_telefono;
 
           if (dto.notificarWhatsApp && telCliente) {
-            const waResult = await this.whatsapp.notificarBienvenida({
+            this.events.emit('notification.bienvenida', {
               telefono:        telCliente,
               clienteNombre:   ctx.contrato.cliente_nombre,
               planNombre:      ctx.contrato.plan_nombre,
-              velocidadBajada: parseInt(ctx.contrato.velocidad_bajada, 10),
-              velocidadSubida: parseInt(ctx.contrato.velocidad_subida, 10),
+              velocidadBajada: `${ctx.contrato.velocidad_bajada ?? '--'} Mbps`,
+              velocidadSubida: `${ctx.contrato.velocidad_subida ?? '--'} Mbps`,
               usuarioPppoe:    ctx.usuarioPppoe,
               empresaId:       user.empresaId,
               clienteId:       dto.clienteId,
             });
 
-            detalles.push(
-              waResult.enviado
-                ? `WhatsApp de bienvenida enviado a ${telCliente}`
-                : `WhatsApp omitido: ${waResult.error}`,
-            );
+            detalles.push('Evento bienvenida emitido');
           } else if (dto.notificarWhatsApp && !telCliente) {
             detalles.push('WhatsApp omitido: cliente sin número registrado');
           }

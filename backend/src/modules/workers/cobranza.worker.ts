@@ -627,19 +627,16 @@ export class CobranzaWorker {
       if (cliente) {
         const tel = cliente.whatsapp || cliente.telefono;
         if (tel) {
-          await this.gatewaySvc.despachar({
-            telefono:  tel,
-            tipo:      TipoNotificacion.SERVICIO_SUSPENDIDO,
-            variables: {
-              clienteNombre: cliente.nombre_completo,
-              deudaTotal:    `S/ ${deudaTotal.toFixed(2)}`,
-              numeroCuenta:  'ver al asesor',
-              nombreEmpresa: cliente.empresa_nombre || 'DataFast',
-            },
+          this.events.emit('notification.servicio.suspendido', {
+            telefono:      tel,
+            clienteNombre: cliente.nombre_completo,
+            deudaTotal:    `S/ ${deudaTotal.toFixed(2)}`,
+            numeroCuenta:  'ver al asesor',
+            nombreEmpresa: cliente.empresa_nombre || 'DataFast',
             empresaId,
-          }).catch((err) =>
-            this.logger.warn(`Gateway suspensión falló: ${err.message}`),
-          );
+            contratoId,
+            clienteId,
+          });
         }
       }
     }
@@ -783,17 +780,14 @@ export class CobranzaWorker {
       if (cliente) {
         const tel = cliente.whatsapp || cliente.telefono;
         if (tel) {
-          await this.gatewaySvc.despachar({
-            telefono:  tel,
-            tipo:      TipoNotificacion.SERVICIO_REACTIVADO,
-            variables: {
-              clienteNombre: cliente.nombre_completo,
-              planNombre:    planNombre || 'tu plan',
-            },
+          this.events.emit('notification.servicio.reactivado', {
+            telefono:      tel,
+            clienteNombre: cliente.nombre_completo,
+            planNombre:    planNombre || 'tu plan',
             empresaId,
-          }).catch((err) =>
-            this.logger.warn(`Gateway reactivación fallido: ${err.message}`),
-          );
+            contratoId,
+            clienteId,
+          });
         }
       }
     }

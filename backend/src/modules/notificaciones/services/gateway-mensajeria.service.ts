@@ -357,16 +357,20 @@ export class GatewayMensajeriaService {
 
   // ── Enrutamiento dual: interno usa whatsapp_corporativo ───
   private async resolveDestino(params: WhatsAppParams): Promise<string> {
-    const tiposInternos: TipoNotificacion[] = [
-      TipoNotificacion.ONU_OFFLINE,
-      TipoNotificacion.ALERTA_EGRESO,
-    ];
-    if (tiposInternos.includes(params.tipo) && params.empresaId) {
-      const [row] = await this.ds.query(
-        `SELECT whatsapp_corporativo FROM empresas WHERE id = $1`,
-        [params.empresaId],
-      ).catch(() => [null]);
-      if (row?.whatsapp_corporativo) return row.whatsapp_corporativo;
+    try {
+      const tiposInternos: TipoNotificacion[] = [
+        TipoNotificacion.ONU_OFFLINE,
+        TipoNotificacion.ALERTA_EGRESO,
+      ];
+      if (tiposInternos.includes(params.tipo) && params.empresaId) {
+        const [row] = await this.ds.query(
+          `SELECT whatsapp_corporativo FROM empresas WHERE id = $1`,
+          [params.empresaId],
+        ).catch(() => [null]);
+        if (row?.whatsapp_corporativo) return row.whatsapp_corporativo;
+      }
+    } catch (err: any) {
+      this.logger.error(`[GW] Error en resolveDestino: ${err.message}`);
     }
     return params.telefono;
   }
@@ -375,42 +379,56 @@ export class GatewayMensajeriaService {
   private async resolveConfig(empresaId?: string): Promise<GwConfig | null> {
     if (!empresaId) return null;
     const cacheKey = `gw:config:${empresaId}`;
-    let cached = await this.cache.get<GwConfig | null>(cacheKey);
+    let cached: GwConfig | null | undefined;
+    try {
+      cached = await this.cache.get<GwConfig | null>(cacheKey);
+    } catch {
+      cached = undefined; // Redis caído → leer de BD
+    }
 
     if (cached === undefined) {
-      const [row] = await this.ds.query(
-        `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
-                gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
-                meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo, automatizado_vip_activo,
-                whatsapp_numero_origen
-         FROM empresas WHERE id = $1`,
-        [empresaId],
-      ).catch(() => [null]);
+      try {
+        const [row] = await this.ds.query(
+          `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
+                  gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
+                  meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo, automatizado_vip_activo,
+                  whatsapp_numero_origen
+           FROM empresas WHERE id = $1`,
+          [empresaId],
+        );
 
-      cached = row ? {
-        proveedor:            (row.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
-        apiKey:               row.gateway_api_key           ?? '',
-        apiSecret:            row.gateway_api_secret        ?? '',
-        clientId:             row.gateway_client_id         ?? '',
-        pausa:                row.gateway_pausa             ?? 2,
-        limiteCaracteres:     row.gateway_limite_caracteres ?? 1000,
-        codigoPais:           row.gateway_codigo_pais       ?? '+51',
-        activo:               (() => {
-          const p = row.proveedor_activo ?? 'META_GRAPH';
-          const m: Record<string, boolean> = {
-            META_GRAPH:                 row.meta_graph_activo       ?? true,
-            TWILIO:                     row.twilio_activo          ?? false,
-            VONAGE:                     row.vonage_activo          ?? false,
-            CUSTOM_API:                 row.custom_api_activo      ?? false,
-            AUTOMATIZADO_VIP:           row.automatizado_vip_activo ?? false,
-            DATAFAST_MENSAJERIA_MASIVA: row.gateway_activo          ?? false,
-          };
-          return m[p] ?? true;
-        })(),
-        whatsappNumeroOrigen: row.whatsapp_numero_origen    ?? '',
-      } : null;
+        cached = row ? {
+          proveedor:            (row.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
+          apiKey:               row.gateway_api_key           ?? '',
+          apiSecret:            row.gateway_api_secret        ?? '',
+          clientId:             row.gateway_client_id         ?? '',
+          pausa:                row.gateway_pausa             ?? 2,
+          limiteCaracteres:     row.gateway_limite_caracteres ?? 1000,
+          codigoPais:           row.gateway_codigo_pais       ?? '+51',
+          activo:               (() => {
+            const p = row.proveedor_activo ?? 'META_GRAPH';
+            const m: Record<string, boolean> = {
+              META_GRAPH:                 row.meta_graph_activo       ?? true,
+              TWILIO:                     row.twilio_activo          ?? false,
+              VONAGE:                     row.vonage_activo          ?? false,
+              CUSTOM_API:                 row.custom_api_activo      ?? false,
+              AUTOMATIZADO_VIP:           row.automatizado_vip_activo ?? false,
+              DATAFAST_MENSAJERIA_MASIVA: row.gateway_activo          ?? false,
+            };
+            return m[p] ?? true;
+          })(),
+          whatsappNumeroOrigen: row.whatsapp_numero_origen    ?? '',
+        } : null;
 
-      await this.cache.set(cacheKey, cached, 5 * 60 * 1000);
+        try {
+          await this.cache.set(cacheKey, cached, 5 * 60 * 1000);
+        } catch {
+          // Redis caído — no bloquear
+        }
+      } catch {
+        cached = null;
+        this.logger.error(`[GW] Error leyendo config de BD para empresa ${empresaId}`);
+      }
     }
     return cached;
   }

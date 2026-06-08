@@ -363,21 +363,19 @@ export class FacturacionWorker {
           resultado:  `${serie}-${String(correlativo).padStart(8, '0')} | S/ ${total.toFixed(2)}`,
         });
 
-        // ── Notificar al cliente por WhatsApp via gateway ────
+        // ── Notificar al cliente por Event (desacoplado) ────
         const tel = contrato.whatsapp || contrato.telefono;
         if (tel) {
-          this.gatewaySvc.despachar({
-            telefono:   tel,
-            tipo:       TipoNotificacion.FACTURA_EMITIDA,
-            variables: {
-              clienteNombre:    contrato.cliente_nombre,
-              numeroFactura:    `${serie}-${String(correlativo).padStart(8, '0')}`,
-              montoTotal:       `S/ ${total.toFixed(2)}`,
-              fechaVencimiento,
-            },
+          this.events.emit('notification.factura.emitida', {
+            telefono:        tel,
+            clienteNombre:   contrato.cliente_nombre,
+            numeroFactura:   `${serie}-${String(correlativo).padStart(8, '0')}`,
+            montoTotal:      `S/ ${total.toFixed(2)}`,
+            fechaVencimiento,
             empresaId,
-            contratoId: contrato.contrato_id,
-          }).catch((err) => this.logger.debug(`Gateway factura: ${err.message}`));
+            contratoId:      contrato.contrato_id,
+            clienteId:       contrato.cliente_id,
+          });
         }
 
       } catch (err) {

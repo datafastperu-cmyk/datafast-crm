@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { LicenciaService } from '../licencia/licencia.service';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
@@ -47,6 +48,7 @@ export class ClientesService {
     private readonly config: ConfigService,
     private readonly licenciaSvc: LicenciaService,
     private readonly contratosSvc: ContratosService,
+    private readonly events: EventEmitter2,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -106,6 +108,9 @@ export class ClientesService {
       descripcion: `Alta de cliente: ${saved.nombreCompleto} (${tipoDoc} ${dto.numeroDocumento})`,
       req,
     });
+
+    // Emitir bienvenida si el cliente tiene WhatsApp configurado
+    this.emitirBienvenidaSiAplica(saved, user.empresaId);
 
     this.logger.log(`Cliente creado: ${saved.id} | ${saved.nombreCompleto} | empresa: ${user.empresaId}`);
     return saved;
@@ -548,8 +553,30 @@ export class ClientesService {
       ).catch((err) => this.logger.error(`onboarding: facturacion config save failed for ${cliente.id}: ${err?.message}`));
     }
 
+    // Emitir bienvenida si el cliente tiene WhatsApp
+    this.emitirBienvenidaSiAplica(cliente, user.empresaId);
+
     const clienteFinal = await this.findOne(cliente.id, user.empresaId);
     return { cliente: clienteFinal, contrato };
+  }
+
+  private emitirBienvenidaSiAplica(cliente: Cliente, empresaId: string): void {
+    const tel = cliente.whatsapp || cliente.telefono;
+    if (!tel) return;
+
+    const nombreCompleto = cliente.nombreCompleto || `${cliente.nombres ?? ''} ${cliente.apellidoPaterno ?? ''}`.trim();
+    if (!nombreCompleto) return;
+
+    this.events.emit('notification.bienvenida', {
+      telefono:        tel,
+      clienteNombre:   nombreCompleto,
+      planNombre:      'Plan registrado',
+      velocidadBajada: '--',
+      velocidadSubida: '--',
+      usuarioPppoe:    '--',
+      empresaId,
+      clienteId:       cliente.id,
+    });
   }
 
   private async generarCodigoCliente(empresaId: string): Promise<string> {

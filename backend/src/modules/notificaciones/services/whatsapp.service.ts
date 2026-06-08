@@ -305,22 +305,37 @@ export class WhatsAppService {
     // Intentar config de la empresa en BD
     if (empresaId) {
       const cacheKey = `wa:config:${empresaId}`;
-      let cached = await this.cache.get<{ encryptedToken: string; phoneId: string } | null>(cacheKey);
+      let cached: { encryptedToken: string; phoneId: string } | null | undefined;
+      try {
+        cached = await this.cache.get<{ encryptedToken: string; phoneId: string } | null>(cacheKey);
+      } catch {
+        cached = undefined; // Redis caído → leer de BD
+      }
 
       if (cached === undefined) {
-        const [row] = await this.ds.query(
-          `SELECT whatsapp_token AS encrypted_token, whatsapp_phone_id AS phone_id
-           FROM empresas WHERE id = $1`,
-          [empresaId],
-        ).catch(() => [null]);
+        try {
+          const [row] = await this.ds.query(
+            `SELECT whatsapp_token AS encrypted_token, whatsapp_phone_id AS phone_id
+             FROM empresas WHERE id = $1`,
+            [empresaId],
+          );
 
-        if (row?.phone_id && row?.encrypted_token) {
-          cached = { encryptedToken: row.encrypted_token, phoneId: row.phone_id };
-        } else {
+          if (row?.phone_id && row?.encrypted_token) {
+            cached = { encryptedToken: row.encrypted_token, phoneId: row.phone_id };
+          } else {
+            cached = null;
+          }
+        } catch {
           cached = null;
+          this.logger.error(`[WA] Error leyendo config de BD para empresa ${empresaId}`);
         }
-        // Cache 5 min — null también se cachea para evitar queries repetidas
-        await this.cache.set(cacheKey, cached, 5 * 60 * 1000);
+
+        try {
+          // Cache 5 min — null también se cachea para evitar queries repetidas
+          await this.cache.set(cacheKey, cached, 5 * 60 * 1000);
+        } catch {
+          // Redis caído — no bloquear
+        }
       }
 
       if (cached) {
