@@ -26,12 +26,15 @@ export const JOBS = {
   GENERAR_FACTURA_CONTRATO:  'generar-factura-contrato',
   MARCAR_FACTURAS_VENCIDAS:  'marcar-facturas-vencidas',
 
-  // ── Notificaciones ────────────────────────────────────────
+  // ── Notificaciones (sistema, eventos) ─────────────────────
   NOTIF_COBRO_PREVIO:        'notif-cobro-previo',
   NOTIF_VENCIMIENTO:         'notif-vencimiento',
   NOTIF_CORTE:               'notif-corte',
   NOTIF_REACTIVACION:        'notif-reactivacion',
   NOTIF_FACTURA:             'notif-factura',
+
+  // ── Notificaciones individuales (encoladas desde eventos) ─
+  NOTIF_ENVIO:               'notif-envio',        // Job genérico para toda notificación individual
 
   // ── Mensajería Masiva Nativa (DATAFAST_NATIVE) ───────────
   CAMPANA_MASIVA:            'campana-masiva',

@@ -5,6 +5,7 @@ import {
 
 export enum EstadoEntrega {
   ENCOLADO     = 'ENCOLADO',
+  EN_PROCESO   = 'EN_PROCESO',
   ENVIADO_META = 'ENVIADO_META',
   FALLIDO      = 'FALLIDO',
   ENTREGADO    = 'ENTREGADO',
