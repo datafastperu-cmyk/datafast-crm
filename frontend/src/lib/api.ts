@@ -50,6 +50,19 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
+    // ── 409: conflicto de concurrencia optimista ─────────────
+    if (error.response?.status === 409) {
+      const data = error.response.data as any;
+      if (data?.code === 'CONCURRENCY_CONFLICT' && typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('concurrencia:conflicto', {
+            detail: { message: data.message },
+          }),
+        );
+      }
+      return Promise.reject(error);
+    }
+
     // ── 402: licencia inválida o límite de clientes ───────────
     if (error.response?.status === 402) {
       const data = error.response.data as any;

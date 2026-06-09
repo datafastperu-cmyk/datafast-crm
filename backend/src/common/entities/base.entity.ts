@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
+  VersionColumn,
   BaseEntity,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
@@ -37,4 +38,8 @@ export abstract class BaseModel extends BaseEntity {
     comment: 'Soft delete — null = activo',
   })
   deletedAt?: Date;
+
+  @ApiProperty({ description: 'Versión para bloqueo optimista de concurrencia' })
+  @VersionColumn({ name: 'version', default: 1 })
+  version: number;
 }

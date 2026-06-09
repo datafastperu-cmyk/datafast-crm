@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { QueryFailedError, EntityNotFoundError } from 'typeorm';
+import { QueryFailedError, EntityNotFoundError, OptimisticLockVersionMismatchError } from 'typeorm';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -78,6 +78,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = 'Error en la base de datos';
         this.logger.error(`DB Error ${pgError.code}: ${pgError.message}`, pgError.stack);
       }
+
+    } else if (exception instanceof OptimisticLockVersionMismatchError) {
+      status = HttpStatus.CONFLICT;
+      code = 'CONCURRENCY_CONFLICT';
+      message = 'Los datos fueron modificados por otro usuario. Por favor, recargue la página e intente nuevamente.';
 
     } else if (exception instanceof EntityNotFoundError) {
       status = HttpStatus.NOT_FOUND;
