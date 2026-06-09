@@ -42,6 +42,7 @@ interface VpnConnectedClient {
 @Injectable()
 export class VpnClienteService {
   private readonly logger = new Logger(VpnClienteService.name);
+  private _ipAssignLock: Promise<void> = Promise.resolve();
 
   constructor(
     @InjectRepository(VpnCliente)
@@ -63,6 +64,7 @@ export class VpnClienteService {
     const existingPending = await this.repo.findOne({
       where: {
         empresaId: user.empresaId,
+        usuarioId: user.sub,
         activo:    true,
         routerId:  IsNull(),
         estado:    'pendiente' as EstadoVpnCliente,
@@ -81,6 +83,7 @@ export class VpnClienteService {
     const existingConnected = await this.repo.findOne({
       where: {
         empresaId: user.empresaId,
+        usuarioId: user.sub,
         activo:    true,
         routerId:  IsNull(),
         estado:    'conectado' as EstadoVpnCliente,
@@ -159,6 +162,7 @@ export class VpnClienteService {
 
     const cliente = this.repo.create({
       empresaId:          user.empresaId,
+      usuarioId:          user.sub,
       nombre:             dto.nombre,
       ubicacion:          dto.ubicacion,
       descripcion:        dto.descripcion,
@@ -179,9 +183,14 @@ export class VpnClienteService {
     this.logger.log(`VPN cliente creado: ${cliente.id} | cert: ${nombreCert}`);
 
     // Pre-asignar IP VPN y escribir CCD antes de distribuir el script.
-    // Esto evita que el pool dinámico de OpenVPN asigne una IP ya ocupada
-    // por otro router cuyo CCD usa ifconfig-push (esas IPs no se registran en ipp.txt).
+    // Serializado con mutex para evitar race condition cuando varios operadores
+    // abren el wizard simultáneamente y seleccionan la misma IP libre.
     if (usarCerts) {
+      let releaseLock!: () => void;
+      const acquired = new Promise<void>(resolve => { releaseLock = resolve; });
+      const prev = this._ipAssignLock;
+      this._ipAssignLock = acquired;
+      await prev;
       try {
         const preasignedIp = await this._preasignarIpVpn();
         await this.escribirArchivoCcd(nombreCert, [], preasignedIp);
@@ -189,6 +198,8 @@ export class VpnClienteService {
       } catch (err: any) {
         this.logger.error(`[VPN] No se pudo pre-asignar IP para ${nombreCert}: ${err.message}`);
         throw err;
+      } finally {
+        releaseLock();
       }
     }
 

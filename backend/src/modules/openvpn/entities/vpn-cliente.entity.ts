@@ -12,6 +12,9 @@ export class VpnCliente extends BaseModel {
   @Column({ name: 'empresa_id', length: 36 })
   empresaId: string;
 
+  @Column({ name: 'usuario_id', length: 36, nullable: true })
+  usuarioId: string;
+
   // ── Identificación ────────────────────────────────────────
   @Column({ length: 100 })
   nombre: string;
