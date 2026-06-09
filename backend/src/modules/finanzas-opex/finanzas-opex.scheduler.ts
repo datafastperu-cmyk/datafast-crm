@@ -3,8 +3,6 @@ import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FinanzasOpexService } from './finanzas-opex.service';
 import { EgresoIngreso } from './egreso-ingreso.entity';
-import { GatewayMensajeriaService } from '../notificaciones/services/gateway-mensajeria.service';
-import { TipoNotificacion } from '../notificaciones/services/whatsapp.service';
 
 @Injectable()
 export class FinanzasOpexScheduler {
@@ -13,7 +11,6 @@ export class FinanzasOpexScheduler {
   constructor(
     private readonly svc:     FinanzasOpexService,
     private readonly events:  EventEmitter2,
-    private readonly gateway: GatewayMensajeriaService,
   ) {}
 
   // Corre cada día a las 07:00 hora Lima.
@@ -52,25 +49,23 @@ export class FinanzasOpexScheduler {
     }
   }
 
-  // Envía una alerta por cada egreso individual usando las variables del template.
-  // dias_restantes negativo = vencido hace N días.
+  // Envía una alerta por cada egreso individual vía Event Emitter.
+  // El evento es capturado por NotificationEventListener → Bull → MensajeriaWorker → tabla logs.
   private async notificarEgresos(egresos: EgresoIngreso[], hoy: Date): Promise<void> {
     for (const egreso of egresos) {
       try {
         const diasRestantes = (egreso.diaVencimiento ?? hoy.getDate()) - hoy.getDate();
-        await this.gateway.despachar({
-          telefono:  '',
-          tipo:      TipoNotificacion.ALERTA_EGRESO,
-          variables: {
-            nombre_gasto:   egreso.descripcion ?? 'Egreso recurrente',
-            categoria:      egreso.categoria,
-            monto:          parseFloat(String(egreso.monto)).toFixed(2),
-            dias_restantes: String(diasRestantes),
-          },
-          empresaId: egreso.empresaId,
+        this.events.emit('notification.alerta.egreso', {
+          telefono:      '',
+          nombre_gasto:  egreso.descripcion ?? 'Egreso recurrente',
+          categoria:     egreso.categoria,
+          monto:         parseFloat(String(egreso.monto)).toFixed(2),
+          dias_restantes: String(diasRestantes),
+          empresaId:     egreso.empresaId,
         });
+        this.logger.debug(`[OPEX-CRON] Evento alerta_egreso emitido: ${egreso.id}`);
       } catch (err: any) {
-        this.logger.error(`[OPEX-CRON] Error notificando egreso ${egreso.id}: ${err.message}`);
+        this.logger.error(`[OPEX-CRON] Error emitiendo alerta_egreso ${egreso.id}: ${err.message}`);
       }
     }
   }

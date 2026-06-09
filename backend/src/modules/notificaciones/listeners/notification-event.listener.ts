@@ -50,11 +50,22 @@ export class NotificationEventListener {
 
   // ── Helper: encolar en Bull ────────────────────────────────
   private async encolar(tipo: string, payload: PayloadNotificacionEnvio): Promise<void> {
+    const logId = payload.logId ?? '?';
     try {
-      await this.queue.add(JOBS.NOTIF_ENVIO, payload, JOB_OPTIONS.NOTIFICACION);
-      this.logger.log(`[EVENT] Encolado ${tipo} → ${payload.telefono}`);
+      const job = await this.queue.add(JOBS.NOTIF_ENVIO, payload, JOB_OPTIONS.NOTIFICACION);
+      this.logger.log(
+        `[EVENT] ✅ Encolado ${tipo} → ${payload.telefono.substring(0, 9)}... ` +
+        `| jobId=${job.id} | logId=${logId} | empresa=${payload.empresaId ?? '?'}`,
+      );
+
+      // Verificar estado de Redis/Bull: contar pending jobs
+      const counts = await this.queue.getJobCounts();
+      this.logger.debug(
+        `[EVENT] Cola NOTIFICACIONES: waiting=${counts.waiting} active=${counts.active} ` +
+        `completed=${counts.completed} failed=${counts.failed}`,
+      );
     } catch (err: any) {
-      this.logger.error(`[EVENT] Error encolando ${tipo}: ${err.message}`);
+      this.logger.error(`[EVENT] ❌ Error encolando ${tipo}: ${err.message}`);
     }
   }
 
@@ -63,6 +74,10 @@ export class NotificationEventListener {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.FACTURA_EMITIDA, { async: true })
   async onFacturaEmitida(event: EventNotificacionFacturaEmitida): Promise<void> {
+    this.logger.log(
+      `[EVENT] 📨 Recibido FACTURA_EMITIDA → ${event.telefono?.substring(0, 9)}... ` +
+      `| factura=${event.numeroFactura} | empresa=${event.empresaId}`,
+    );
     await this.encolar('factura_emitida', {
       telefono:    event.telefono,
       tipo:        'factura_emitida',
@@ -83,6 +98,10 @@ export class NotificationEventListener {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.PAGO_RECIBIDO, { async: true })
   async onPagoRecibido(event: EventNotificacionPagoRecibido): Promise<void> {
+    this.logger.log(
+      `[EVENT] 💰 Recibido PAGO_RECIBIDO → ${event.telefono?.substring(0, 9)}... ` +
+      `| monto=${event.montoPago} | empresa=${event.empresaId}`,
+    );
     await this.encolar('pago_recibido', {
       telefono:    event.telefono,
       tipo:        'pago_recibido',
@@ -103,6 +122,10 @@ export class NotificationEventListener {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, { async: true })
   async onServicioSuspendido(event: EventNotificacionServicioSuspendido): Promise<void> {
+    this.logger.log(
+      `[EVENT] 🔴 Recibido SERVICIO_SUSPENDIDO → ${event.telefono?.substring(0, 9)}... ` +
+      `| deuda=${event.deudaTotal} | empresa=${event.empresaId}`,
+    );
     await this.encolar('servicio_suspendido', {
       telefono:    event.telefono,
       tipo:        'servicio_suspendido',
@@ -123,6 +146,10 @@ export class NotificationEventListener {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.SERVICIO_REACTIVADO, { async: true })
   async onServicioReactivado(event: EventNotificacionServicioReactivado): Promise<void> {
+    this.logger.log(
+      `[EVENT] 🟢 Recibido SERVICIO_REACTIVADO → ${event.telefono?.substring(0, 9)}... ` +
+      `| plan=${event.planNombre} | empresa=${event.empresaId}`,
+    );
     await this.encolar('servicio_reactivado', {
       telefono:    event.telefono,
       tipo:        'servicio_reactivado',
@@ -141,6 +168,10 @@ export class NotificationEventListener {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.BIENVENIDA, { async: true })
   async onBienvenida(event: EventNotificacionBienvenida): Promise<void> {
+    this.logger.log(
+      `[EVENT] 🎉 Recibido BIENVENIDA → ${event.telefono?.substring(0, 9)}... ` +
+      `| plan=${event.planNombre} | empresa=${event.empresaId}`,
+    );
     await this.encolar('bienvenida', {
       telefono:    event.telefono,
       tipo:        'bienvenida',
@@ -162,6 +193,10 @@ export class NotificationEventListener {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.PAGO_VENCE_HOY, { async: true })
   async onPagoVenceHoy(event: EventNotificacionPagoVenceHoy): Promise<void> {
+    this.logger.log(
+      `[EVENT] ⏰ Recibido PAGO_VENCE_HOY → ${event.telefono?.substring(0, 9)}... ` +
+      `| deuda=${event.montoDeuda} | empresa=${event.empresaId}`,
+    );
     await this.encolar('pago_vence_hoy', {
       telefono:    event.telefono,
       tipo:        'pago_vence_hoy',
@@ -181,6 +216,10 @@ export class NotificationEventListener {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.PAGO_VENCIDO, { async: true })
   async onPagoVencido(event: EventNotificacionPagoVencido): Promise<void> {
+    this.logger.log(
+      `[EVENT] 🔴 Recibido PAGO_VENCIDO → ${event.telefono?.substring(0, 9)}... ` +
+      `| deuda=${event.montoDeuda} | días=${event.diasVencido} | empresa=${event.empresaId}`,
+    );
     await this.encolar('pago_vencido', {
       telefono:    event.telefono,
       tipo:        'pago_vencido',
@@ -201,6 +240,10 @@ export class NotificationEventListener {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.ALERTA_EGRESO, { async: true })
   async onAlertaEgreso(event: EventNotificacionAlertaEgreso): Promise<void> {
+    this.logger.log(
+      `[EVENT] 📊 Recibido ALERTA_EGRESO → ${event.nombre_gasto} | ` +
+      `monto=${event.monto} | empresa=${event.empresaId}`,
+    );
     await this.encolar('alerta_egreso', {
       telefono:    event.telefono,
       tipo:        'alerta_egreso',

@@ -381,7 +381,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
 
   return (
     <Portal>
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
         {/* Header */}

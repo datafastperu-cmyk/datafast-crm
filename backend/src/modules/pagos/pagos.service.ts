@@ -8,6 +8,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { PagoRepository }       from './repositories/pago.repository';
 import { MercadoPagoService }   from './mercadopago.service';
@@ -46,6 +47,7 @@ export class PagosService {
     private readonly contratosSvc: ContratosService,
     private readonly auditoria:    AuditoriaService,
     private readonly config:       ConfigService,
+    private readonly events:       EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
     @InjectQueue(QUEUES.COBRANZA) private readonly cobranzaQueue: Queue,
   ) {}
@@ -190,6 +192,25 @@ export class PagosService {
       req,
     });
 
+    // ── Emitir evento de notificación si el pago fue auto-verificado ─
+    if (savedPago.estado === EstadoPago.VERIFICADO) {
+      try {
+        this.events.emit('notification.pago.recibido', {
+          telefono:       '',
+          clienteNombre:  '',
+          montoPago:      `S/ ${Number(dto.monto).toFixed(2)}`,
+          metodoPago:     metodoPagoEntity,
+          saldoPendiente: 'S/ 0.00',
+          empresaId:      dto.empresaId,
+          contratoId:     savedPago.contratoId ?? undefined,
+          clienteId:      savedPago.clienteId ?? undefined,
+        });
+        this.logger.log(`[PAGOS] Evento pago_recibido emitido para pago ${savedPago.id}`);
+      } catch (err) {
+        this.logger.warn(`[PAGOS] Error emitiendo pago_recibido: ${err.message}`);
+      }
+    }
+
     this.logger.log(
       `Pago registrado: ${savedPago.id} | ${metodoPagoEntity} | S/ ${dto.monto} | ${savedPago.estado}`,
     );
@@ -235,6 +256,10 @@ export class PagosService {
       });
 
       this.logger.log(`Pago aprobado: ${id} | S/ ${pago.monto} | por: ${user.email}`);
+
+      // Emitir notificación de pago recibido
+      this.emitirEventoPagoRecibido(pagoVerificado);
+
       return pagoVerificado;
 
     } else {
@@ -413,6 +438,9 @@ export class PagosService {
       await this.aplicarPagoAFacturaYContrato(pago, userSistema);
       this.logger.log(`Pago MP aprobado aplicado: factura ${facturaId} | S/ ${pago.monto}`);
 
+      // Emitir notificación de pago recibido
+      this.emitirEventoPagoRecibido(pago);
+
     } else if (this.mpSvc.esPendiente(mpPayment)) {
       this.logger.log(`Pago MP ${mpPaymentId} pendiente — esperando confirmación`);
 
@@ -567,6 +595,31 @@ export class PagosService {
     }
   }
 
+
+  // ── Helper: emitir evento pago_recibido con datos del cliente ─
+  private async emitirEventoPagoRecibido(pago: Pago): Promise<void> {
+    try {
+      // Obtener telefono y nombre del cliente
+      const [cliente] = await this.ds.query(
+        'SELECT nombre_completo, whatsapp, telefono FROM clientes WHERE id = $1',
+        [pago.clienteId],
+      );
+      const tel = cliente?.whatsapp || cliente?.telefono || '';
+      this.events.emit('notification.pago.recibido', {
+        telefono:       tel,
+        clienteNombre:  cliente?.nombre_completo ?? '',
+        montoPago:      `S/ ${Number(pago.monto).toFixed(2)}`,
+        metodoPago:     pago.metodoPago,
+        saldoPendiente: 'S/ 0.00',
+        empresaId:      pago.empresaId,
+        contratoId:     pago.contratoId ?? undefined,
+        clienteId:      pago.clienteId ?? undefined,
+      });
+      this.logger.log(`[PAGOS] Evento pago_recibido emitido para pago ${pago.id}`);
+    } catch (err) {
+      this.logger.warn(`[PAGOS] Error emitiendo pago_recibido: ${err.message}`);
+    }
+  }
 
   // ────────────────────────────────────────────────────────────
   // LISTAR / OBTENER

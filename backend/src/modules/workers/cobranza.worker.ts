@@ -941,34 +941,33 @@ export class CobranzaWorker {
     return { pagoId, contratoId, nuevaDeuda, reactivar: nuevaDeuda <= 0 };
   }
 
-  // ── Notificaciones preventivas ────────────────────────────
+  // ── Notificaciones preventivas (vía Event Emitter → NotificationEventListener → Bull) ─
   @Process({ name: JOBS.NOTIF_COBRO_PREVIO, concurrency: 20 })
   async processNotifCobro(job: Job<PayloadNotificacionCobro>): Promise<any> {
-    const { telefono, nombre, montoDeuda, diasAntes, contratoId } = job.data;
+    const { telefono, nombre, montoDeuda, diasAntes, empresaId, contratoId, clienteId } = job.data;
 
     if (!telefono || !montoDeuda) return { omitido: true };
 
-    const tipo = diasAntes > 0
-      ? TipoNotificacion.PAGO_VENCE_HOY
-      : TipoNotificacion.PAGO_VENCIDO;
+    const eventName = diasAntes > 0
+      ? 'notification.pago.vence.hoy'
+      : 'notification.pago.vencido';
 
     try {
-      const result = await this.gatewaySvc.despachar({
+      this.events.emit(eventName, {
         telefono,
-        tipo,
-        variables: {
-          clienteNombre: nombre || '',
-          montoDeuda:    `S/ ${montoDeuda.toFixed(2)}`,
-          linkPago:      '',
-          diasVencido:   diasAntes < 0 ? String(Math.abs(diasAntes)) : '0',
-          numeroCuenta:  '',
-        },
-        empresaId:  job.data.empresaId,
-        contratoId: contratoId ?? undefined,
+        clienteNombre: nombre || '',
+        montoDeuda:    `S/ ${montoDeuda.toFixed(2)}`,
+        linkPago:      '',
+        diasVencido:   diasAntes < 0 ? String(Math.abs(diasAntes)) : '0',
+        numeroCuenta:  '',
+        empresaId,
+        contratoId:    contratoId ?? undefined,
+        clienteId:     clienteId ?? undefined,
       });
-      return { enviado: result.enviado };
+      this.logger.log(`[COBRANZA] Evento emitido: ${eventName} → ${telefono}`);
+      return { enviado: true, via: 'event-emitter' };
     } catch (err) {
-      this.logger.warn(`WhatsApp previo: ${err.message}`);
+      this.logger.warn(`[COBRANZA] Error emitiendo evento ${eventName}: ${err.message}`);
       return { enviado: false, error: err.message };
     }
   }

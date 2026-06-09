@@ -1098,6 +1098,7 @@ export function RoutersContent() {
   const { toast }   = useToast();
   const queryClient = useQueryClient();
   const [showWizard, setShowWizard]   = useState(false);
+  const [wizardKey,  setWizardKey]    = useState(0);
   const [showModal, setShowModal]     = useState(false);
   const [editRouter, setEditRouter]   = useState<RouterType | null>(null);
   const [testingId, setTestingId]     = useState<string | null>(null);
@@ -1161,7 +1162,7 @@ export function RoutersContent() {
 
   const onSaved = () => queryClient.invalidateQueries({ queryKey: ['routers'] });
 
-  const openAdd  = () => setShowWizard(true);
+  const openAdd  = () => { setWizardKey((k) => k + 1); setShowWizard(true); };
   const openEdit = (r: RouterType) => { setEditRouter(r); setShowModal(true); };
 
   return (
@@ -1407,6 +1408,7 @@ export function RoutersContent() {
 
       {showWizard && (
         <AgregarRouterWizard
+          key={wizardKey}
           onClose={() => setShowWizard(false)}
           onSaved={onSaved}
         />
