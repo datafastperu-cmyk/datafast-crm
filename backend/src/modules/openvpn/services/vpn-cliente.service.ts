@@ -178,6 +178,20 @@ export class VpnClienteService {
     await this.repo.save(cliente);
     this.logger.log(`VPN cliente creado: ${cliente.id} | cert: ${nombreCert}`);
 
+    // Pre-asignar IP VPN y escribir CCD antes de distribuir el script.
+    // Esto evita que el pool dinámico de OpenVPN asigne una IP ya ocupada
+    // por otro router cuyo CCD usa ifconfig-push (esas IPs no se registran en ipp.txt).
+    if (usarCerts) {
+      try {
+        const preasignedIp = await this._preasignarIpVpn();
+        await this.escribirArchivoCcd(nombreCert, [], preasignedIp);
+        this.logger.log(`[VPN] IP pre-asignada para ${nombreCert}: ${preasignedIp}`);
+      } catch (err: any) {
+        this.logger.error(`[VPN] No se pudo pre-asignar IP para ${nombreCert}: ${err.message}`);
+        throw err;
+      }
+    }
+
     const script = await this._generarScript(cliente);
     return { cliente, script };
   }
@@ -680,6 +694,41 @@ export class VpnClienteService {
         this.logger.log(`[VPN-CCD] Registro huérfano inactivado: ${orphanCn}`);
       }
     }
+  }
+
+  // Devuelve la próxima IP libre en 10.8.1.0/24 (pool del servidor MikroTik).
+  // Consulta tanto la BD como los CCD files para evitar colisiones con IPs
+  // asignadas vía ifconfig-push (que el pool de OpenVPN no registra en ipp.txt).
+  private async _preasignarIpVpn(): Promise<string> {
+    const usedIps = new Set<string>();
+
+    // IPs reservadas por certs activos en BD
+    const activeCerts = await this.repo.find({
+      where: { activo: true, vpnIp: Not(IsNull()) },
+      select: ['vpnIp'],
+    });
+    for (const c of activeCerts) {
+      if (c.vpnIp) usedIps.add(c.vpnIp);
+    }
+
+    // IPs reservadas en CCD files existentes (ifconfig-push)
+    try {
+      const files = await fs.readdir(CCD_DIR);
+      for (const file of files) {
+        try {
+          const content = await fs.readFile(path.join(CCD_DIR, file), 'utf8');
+          const m = content.match(/ifconfig-push (\d+\.\d+\.\d+\.\d+)/);
+          if (m) usedIps.add(m[1]);
+        } catch {}
+      }
+    } catch {}
+
+    // Buscar la primera IP libre en 10.8.1.2 – 10.8.1.254
+    for (let i = 2; i <= 254; i++) {
+      const candidate = `10.8.1.${i}`;
+      if (!usedIps.has(candidate)) return candidate;
+    }
+    throw new BadRequestException('No hay IPs VPN disponibles en el pool 10.8.1.0/24');
   }
 
   private killClienteVpnManagement(nombreCert: string): Promise<void> {
