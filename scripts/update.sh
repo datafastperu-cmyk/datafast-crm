@@ -94,7 +94,7 @@ NEW_VERSION="$(cat "$VERSION_FILE" 2>/dev/null || echo '?')"
 step "Reconstruyendo backend"
 cd "${INSTALL_DIR}/backend"
 npm install --production=false >> "$LOG_FILE" 2>&1
-npm run build                  >> "$LOG_FILE" 2>&1
+NODE_OPTIONS='--max-old-space-size=1800' npm run build >> "$LOG_FILE" 2>&1
 log "Backend compilado"
 
 # ── 4. Frontend: dependencias + compilación ───────────────────────────────────
