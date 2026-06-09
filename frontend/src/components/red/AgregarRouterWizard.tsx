@@ -118,7 +118,6 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // Si no hay JWT activo, usa tokenDescarga (endpoint público revoke-by-token).
   const fireRevoke = (id: string) => {
     if (revokedRef.current) return;
-    if (vpnConnectedRef.current) return;  // túnel activo — el cron de cleanup lo gestionará si el wizard se abandona
     revokedRef.current = true;
     sessionStorage.removeItem('vpn_pending_token');
     const base  = process.env.NEXT_PUBLIC_API_URL ?? '';
