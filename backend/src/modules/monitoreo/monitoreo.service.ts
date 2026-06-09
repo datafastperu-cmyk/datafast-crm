@@ -443,11 +443,16 @@ export class MonitoreoService {
     if (!d) throw new NotFoundException(`Dispositivo ${id} no encontrado`);
 
     const [{ count }] = await this.ds.query(
-      `SELECT COUNT(*) as count FROM contratos WHERE antena_ap_id = $1 AND deleted_at IS NULL`,
+      `SELECT COUNT(*) as count FROM contratos
+       WHERE antena_ap_id = $1 AND deleted_at IS NULL
+         AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')`,
       [id],
     );
     if (Number(count) > 0) {
-      throw new BadRequestException('No es posible eliminar el dispositivo porque tiene contratos asociados.');
+      throw new BadRequestException(
+        `No es posible eliminar "${d.nombre}" porque tiene ${count} abonado(s) vinculado(s). ` +
+        `Reasigna o elimina los abonados antes de continuar.`,
+      );
     }
 
     await this.dispoRepo.softDelete(id);
