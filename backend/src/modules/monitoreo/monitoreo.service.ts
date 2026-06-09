@@ -450,7 +450,7 @@ export class MonitoreoService {
     );
     if (Number(count) > 0) {
       throw new BadRequestException(
-        `No es posible eliminar "${d.nombre}" porque tiene ${count} abonado(s) vinculado(s). ` +
+        `No es posible eliminar "${d.nombreEmisor}" porque tiene ${count} abonado(s) vinculado(s). ` +
         `Reasigna o elimina los abonados antes de continuar.`,
       );
     }
