@@ -181,7 +181,7 @@ export class MikrotikService {
     const [{ count: countContratos }] = await this.ds.query(
       `SELECT COUNT(*) AS count FROM contratos
        WHERE router_id = $1
-         AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+         AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga','pendiente_instalacion')
          AND deleted_at IS NULL`,
       [id],
     );
