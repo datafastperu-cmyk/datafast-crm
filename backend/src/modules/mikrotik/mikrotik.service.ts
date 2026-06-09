@@ -36,6 +36,7 @@ export const EVENT_CLIENTE_REACTIVADO  = 'mikrotik.cliente.reactivado';
 @Injectable()
 export class MikrotikService {
   private readonly logger = new Logger(MikrotikService.name);
+  private readonly reglasOk = new Set<string>();
 
   constructor(
     @InjectRepository(Router)
@@ -820,7 +821,7 @@ export class MikrotikService {
     };
 
     this.firewallSvc.configurarReglasControl(creds)
-      .then(() => this.logger.log(`Reglas de control aplicadas: ${ip}`))
+      .then(() => { this.reglasOk.add(router.id); this.logger.log(`Reglas de control aplicadas: ${ip}`); })
       .catch((err) => this.logger.warn(`No se pudieron aplicar reglas en ${ip}: ${err.message}`));
   }
 
@@ -870,8 +871,6 @@ export class MikrotikService {
         const m = Math.floor((uptimeSec % 3600) / 60);
         const uptimeStr = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
 
-        const eraOffline = router.estado !== EstadoEquipo.ONLINE;
-
         await this.routerRepo.update(router.id, {
           estado:             EstadoEquipo.ONLINE,
           ultimoPing:         new Date(),
@@ -883,9 +882,9 @@ export class MikrotikService {
           totalSesionesPppoe: sesionesCount,
         });
 
-        if (eraOffline) {
+        if (!this.reglasOk.has(router.id)) {
           this.firewallSvc.configurarReglasControl(creds)
-            .then(() => this.logger.log(`Reglas de control (reconexión) aplicadas: ${creds.ip}`))
+            .then(() => { this.reglasOk.add(router.id); this.logger.log(`Reglas de control (poll) aplicadas: ${creds.ip}`); })
             .catch((err) => this.logger.warn(`No se pudieron aplicar reglas en ${creds.ip}: ${err.message}`));
         }
       } catch {
