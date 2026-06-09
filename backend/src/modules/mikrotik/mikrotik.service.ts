@@ -65,29 +65,26 @@ export class MikrotikService {
       passwordCifrado = dto.password;
     }
 
-    // Ignorar cualquier id que el cliente pudiera enviar — forzar INSERT limpio
-    const { id: _id, ...safeDto } = dto as any;
-
     // Validar unicidad de IP de gestión
     const existePorIp = await this.routerRepo.findOne({
-      where: { ipGestion: safeDto.ipGestion, empresaId: user.empresaId, deletedAt: null as any },
+      where: { ipGestion: dto.ipGestion, empresaId: user.empresaId, deletedAt: null as any },
     });
     if (existePorIp) {
-      throw new BadRequestException(`La IP de gestión ${safeDto.ipGestion} ya está registrada en esta empresa`);
+      throw new BadRequestException(`La IP de gestión ${dto.ipGestion} ya está registrada en esta empresa`);
     }
 
     // Validar unicidad de IP VPN
-    if (safeDto.vpnIp && safeDto.vpnIp !== safeDto.ipGestion) {
+    if (dto.vpnIp && dto.vpnIp !== dto.ipGestion) {
       const existePorVpnIp = await this.routerRepo.findOne({
-        where: { vpnIp: safeDto.vpnIp, empresaId: user.empresaId, deletedAt: null as any },
+        where: { vpnIp: dto.vpnIp, empresaId: user.empresaId, deletedAt: null as any },
       });
       if (existePorVpnIp) {
-        throw new BadRequestException(`La IP VPN ${safeDto.vpnIp} ya está registrada en esta empresa`);
+        throw new BadRequestException(`La IP VPN ${dto.vpnIp} ya está registrada en esta empresa`);
       }
     }
 
     const router = this.routerRepo.create({
-      ...safeDto,
+      ...dto,
       passwordCifrado,
       empresaId: user.empresaId,
       estado:    EstadoEquipo.DESCONOCIDO,
@@ -96,10 +93,10 @@ export class MikrotikService {
     this.detectarVersionAsync(saved);
     this.inyectarReglasMorososAsync(saved);
 
-    if (safeDto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
-      if (safeDto.vpnClienteId) {
+    if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
+      if (dto.vpnClienteId) {
         // Vincular cert del wizard directamente — evita generar un cert UUID huérfano
-        await this.vpnSvc.vincularCertWizardARouter(safeDto.vpnClienteId, saved.id, user.empresaId)
+        await this.vpnSvc.vincularCertWizardARouter(dto.vpnClienteId, saved.id, user.empresaId)
           .catch(e => this.logger.error(`[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`));
       } else {
         const vpnCn = `df_router_id_${saved.id}`;
@@ -113,7 +110,7 @@ export class MikrotikService {
     await this.auditoria.logCreate({
       empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
       modulo: 'mikrotik', entidadId: saved.id,
-      descripcion: `Router creado: ${safeDto.nombre} (${safeDto.ipGestion})`,
+      descripcion: `Router creado: ${dto.nombre} (${dto.ipGestion})`,
     });
 
     // Sincronizar subnets LAN del router (async, no bloquea la respuesta)
