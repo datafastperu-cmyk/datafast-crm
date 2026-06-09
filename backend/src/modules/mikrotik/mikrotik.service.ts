@@ -870,6 +870,8 @@ export class MikrotikService {
         const m = Math.floor((uptimeSec % 3600) / 60);
         const uptimeStr = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
 
+        const eraOffline = router.estado !== EstadoEquipo.ONLINE;
+
         await this.routerRepo.update(router.id, {
           estado:             EstadoEquipo.ONLINE,
           ultimoPing:         new Date(),
@@ -880,6 +882,12 @@ export class MikrotikService {
           versionFirmware:    recursos.version ?? router.versionFirmware,
           totalSesionesPppoe: sesionesCount,
         });
+
+        if (eraOffline) {
+          this.firewallSvc.configurarReglasControl(creds)
+            .then(() => this.logger.log(`Reglas de control (reconexión) aplicadas: ${creds.ip}`))
+            .catch((err) => this.logger.warn(`No se pudieron aplicar reglas en ${creds.ip}: ${err.message}`));
+        }
       } catch {
         await this.routerRepo.update(router.id, {
           estado:             EstadoEquipo.OFFLINE,
