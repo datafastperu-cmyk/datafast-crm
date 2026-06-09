@@ -253,6 +253,13 @@ export class ContratosService {
   async update(id: string, dto: UpdateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
     const existing = await this.findOne(id, user.empresaId);
 
+    if (dto.version !== undefined && existing.version !== dto.version) {
+      throw new ConflictException({
+        code: 'CONCURRENCY_CONFLICT',
+        message: 'Los datos fueron modificados por otro usuario. Por favor, recargue la página e intente nuevamente.',
+      });
+    }
+
     if (dto.routerId !== undefined || dto.segmentoId !== undefined || dto.macAddress !== undefined) {
       const effectiveRouterId  = dto.routerId    !== undefined ? dto.routerId    : (existing as any).routerId;
       const effectiveMac       = dto.macAddress  !== undefined ? dto.macAddress  : (existing as any).macAddress;
@@ -288,7 +295,8 @@ export class ContratosService {
       }
     }
 
-    const upd: any = { ...dto, updatedBy:user.sub };
+    const { version: _v, ...dtoSinVersion } = dto;
+    const upd: any = { ...dtoSinVersion, updatedBy:user.sub };
     delete upd.ipManual; delete upd.usuarioPppoe; delete upd.passwordPppoePlain;
     await this.contratoRepo.update(id, upd);
     return this.findOne(id, user.empresaId);

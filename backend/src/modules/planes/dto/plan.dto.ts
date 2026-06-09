@@ -39,7 +39,11 @@ export class CreatePlanDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Type(()=>Number) ordenDisplay?: number;
 }
 
-export class UpdatePlanDto extends PartialType(CreatePlanDto) {}
+export class UpdatePlanDto extends PartialType(CreatePlanDto) {
+  @ApiPropertyOptional({ description: 'Versión del registro para bloqueo optimista' })
+  @IsOptional() @IsInt() @Min(1)
+  version?: number;
+}
 
 export class FilterPlanDto extends PaginationDto {
   @ApiPropertyOptional({ enum:TipoPlan }) @IsOptional() @IsEnum(TipoPlan) tipo?: TipoPlan;

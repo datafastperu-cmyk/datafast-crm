@@ -96,6 +96,7 @@ export interface Cliente {
   usuarioPortal?:   string;
   passwordPortal?:  string;
   createdAt:        string;
+  version?:         number;
 }
 
 // ─── Planes ───────────────────────────────────────────────────
@@ -128,6 +129,7 @@ export interface Plan {
   visibleEnPortal:      boolean;
   ordenDisplay:         number;
   contratosCount?:      number;
+  version?:             number;
 }
 
 // ─── Contratos ────────────────────────────────────────────────
@@ -184,6 +186,7 @@ export interface Contrato {
   longitudInstalacion?: number;
   notasInstalacion?: string;
   fechaBaja?:      string;
+  version?:        number;
 }
 
 // ─── Facturas ─────────────────────────────────────────────────
@@ -216,6 +219,7 @@ export interface Factura {
   // Campos denormalizados
   clienteNombre?:   string;
   items?:           FacturaItem[];
+  version?:         number;
 }
 
 export interface FacturaItem {

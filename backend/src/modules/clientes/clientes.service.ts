@@ -140,6 +140,13 @@ export class ClientesService {
   ): Promise<Cliente> {
     const cliente = await this.findOne(id, user.empresaId);
 
+    if (dto.version !== undefined && cliente.version !== dto.version) {
+      throw new ConflictException({
+        code: 'CONCURRENCY_CONFLICT',
+        message: 'Los datos fueron modificados por otro usuario. Por favor, recargue la página e intente nuevamente.',
+      });
+    }
+
     // Si cambia el documento, verificar duplicado
     if (dto.numeroDocumento && dto.numeroDocumento !== cliente.numeroDocumento) {
       const tipo = dto.tipoDocumento || cliente.tipoDocumento;
@@ -153,7 +160,8 @@ export class ClientesService {
 
     const anterior = { ...cliente };
 
-    await this.clienteRepo.update(id, { ...dto, updatedBy: user.sub });
+    const { version: _v, ...camposCliente } = dto;
+    await this.clienteRepo.update(id, { ...camposCliente, updatedBy: user.sub });
     const actualizado = await this.findOne(id, user.empresaId);
 
     await this.auditoria.logUpdate({

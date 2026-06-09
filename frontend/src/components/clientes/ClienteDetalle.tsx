@@ -131,7 +131,7 @@ export function ClienteDetalle({ id }: { id: string }) {
   }, [cliente]);
 
   const { mutate: guardar, isPending: guardando } = useMutation({
-    mutationFn: () => clientesApi.update(id, form as any),
+    mutationFn: () => clientesApi.update(id, { ...form as any, version: cliente?.version }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cliente', id] });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
@@ -1250,7 +1250,7 @@ function ServicioPanel({
       if (editing) {
         if (data.usuarioPppoe)  payload.usuarioPppoe  = data.usuarioPppoe;
         if (data.passwordPppoe) payload.passwordPppoe = data.passwordPppoe;
-        await contratosApi.update(editing.id, payload);
+        await contratosApi.update(editing.id, { ...payload, version: editing.version });
         toast('Servicio actualizado', { type: 'success' });
       } else {
         payload.clienteId    = clienteId;
@@ -1993,6 +1993,7 @@ function ModalEditarFactura({
         precioUnitario: it.precioUnitario,
         descuento:      it.descuento || undefined,
       })),
+      version: factura.version,
     }),
     onSuccess,
     onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al actualizar', { type: 'error' }),

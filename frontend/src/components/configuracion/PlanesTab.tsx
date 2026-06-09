@@ -227,7 +227,7 @@ export function PlanesTab() {
     mutationFn: (values: FormValues) => {
       const payload = formToPayload(values);
       return editando
-        ? api.put(`/planes/${editando.id}`, payload)
+        ? api.put(`/planes/${editando.id}`, { ...payload, version: editando.version })
         : api.post('/planes', payload);
     },
     onSuccess: () => {

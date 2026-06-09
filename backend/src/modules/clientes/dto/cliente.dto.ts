@@ -184,7 +184,11 @@ export class CreateClienteDto {
   fotoUrl?: string;
 }
 
-export class UpdateClienteDto extends PartialType(CreateClienteDto) {}
+export class UpdateClienteDto extends PartialType(CreateClienteDto) {
+  @ApiPropertyOptional({ description: 'Versión del registro para bloqueo optimista' })
+  @IsOptional() @IsInt() @Min(1)
+  version?: number;
+}
 
 export class FilterClienteDto extends PaginationDto {
   @ApiPropertyOptional({ enum: EstadoCliente })

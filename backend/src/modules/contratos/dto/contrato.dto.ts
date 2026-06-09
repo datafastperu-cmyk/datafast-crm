@@ -188,7 +188,11 @@ export class CreateContratoDto {
 }
 
 // ─── Actualizar Contrato ──────────────────────────────────────
-export class UpdateContratoDto extends PartialType(CreateContratoDto) {}
+export class UpdateContratoDto extends PartialType(CreateContratoDto) {
+  @ApiPropertyOptional({ description: 'Versión del registro para bloqueo optimista' })
+  @IsOptional() @IsInt() @Min(1)
+  version?: number;
+}
 
 // ─── Cambiar Estado ───────────────────────────────────────────
 export class CambiarEstadoContratoDto {

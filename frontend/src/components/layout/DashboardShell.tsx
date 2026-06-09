@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar }               from '@/components/layout/Sidebar';
 import { Topbar }                from '@/components/layout/Topbar';
 import { useInactivityLogout }   from '@/hooks/useInactivityLogout';
@@ -8,6 +8,17 @@ import { UndoRedoProvider }      from '@/lib/contexts/undo-redo.context';
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   useInactivityLogout();
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const msg = (e as CustomEvent<{ message: string }>).detail?.message
+        ?? 'Los datos fueron modificados por otro usuario. Por favor, recargue la página.';
+      (window as any).__datafast_toast?.(msg, { type: 'error' });
+    };
+    window.addEventListener('concurrencia:conflicto', handler);
+    return () => window.removeEventListener('concurrencia:conflicto', handler);
+  }, []);
+
   const [sidebarOpen,    setSidebarOpen]    = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem('sidebar-collapsed') === 'true',

@@ -35,6 +35,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else if (typeof exceptionResponse === 'object') {
         const resp = exceptionResponse as any;
         message = resp.message || resp.error || message;
+        // Propagar código explícito si la excepción lo incluye (ej. CONCURRENCY_CONFLICT)
+        if (resp.code) code = resp.code;
         // Errores de validación (class-validator)
         if (Array.isArray(resp.message)) {
           errors = resp.message;

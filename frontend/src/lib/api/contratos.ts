@@ -132,7 +132,7 @@ export const contratosApi = {
     return res.data.data;
   },
 
-  update: async (id: string, dto: Partial<CreateContratoDto>): Promise<Contrato> => {
+  update: async (id: string, dto: Partial<CreateContratoDto> & { version?: number }): Promise<Contrato> => {
     const res = await api.put<ApiRespuesta<Contrato>>(`/contratos/${id}`, dto);
     return res.data.data;
   },

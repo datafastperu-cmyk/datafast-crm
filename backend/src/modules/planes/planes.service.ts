@@ -52,8 +52,17 @@ export class PlanesService {
   }
 
   async update(id: string, dto: UpdatePlanDto, user: JwtPayload): Promise<Plan> {
-    await this.findOne(id, user.empresaId);
-    await this.repo.update(id, dto);
+    const plan = await this.findOne(id, user.empresaId);
+
+    if (dto.version !== undefined && plan.version !== dto.version) {
+      throw new ConflictException({
+        code: 'CONCURRENCY_CONFLICT',
+        message: 'Los datos fueron modificados por otro usuario. Por favor, recargue la página e intente nuevamente.',
+      });
+    }
+
+    const { version: _v, ...camposPlan } = dto;
+    await this.repo.update(id, camposPlan);
     return this.findOne(id, user.empresaId);
   }
 

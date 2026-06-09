@@ -126,6 +126,10 @@ export class UpdateFacturaDto {
   @ApiPropertyOptional()
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => ItemFacturaDto)
   items?: ItemFacturaDto[];
+
+  @ApiPropertyOptional({ description: 'Versión del registro para bloqueo optimista' })
+  @IsOptional() @IsInt() @Min(1)
+  version?: number;
 }
 
 // ─── Anular factura ──────────────────────────────────────────

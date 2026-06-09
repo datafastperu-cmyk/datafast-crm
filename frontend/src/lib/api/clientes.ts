@@ -71,7 +71,7 @@ export const clientesApi = {
     return res.data.data;
   },
 
-  update: async (id: string, dto: Partial<CreateClienteDto>): Promise<Cliente> => {
+  update: async (id: string, dto: Partial<CreateClienteDto> & { version?: number }): Promise<Cliente> => {
     const res = await api.put<ApiRespuesta<Cliente>>(`/clientes/${id}`, dto);
     return res.data.data;
   },

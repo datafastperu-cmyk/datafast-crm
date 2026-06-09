@@ -571,6 +571,13 @@ export class FacturacionService {
     if (factura.estado === EstadoFactura.ANULADA)
       throw new BadRequestException('No se puede editar una factura anulada');
 
+    if (dto.version !== undefined && factura.version !== dto.version) {
+      throw new ConflictException({
+        code: 'CONCURRENCY_CONFLICT',
+        message: 'Los datos fueron modificados por otro usuario. Por favor, recargue la página e intente nuevamente.',
+      });
+    }
+
     const patch: Partial<Factura> = {};
     if (dto.contratoId      !== undefined) patch.contratoId      = dto.contratoId;
     if (dto.tipoComprobante !== undefined) patch.tipoComprobante = dto.tipoComprobante;

@@ -63,6 +63,7 @@ export interface UpdateFacturaDto {
     precioUnitario: number;
     descuento?:     number;
   }[];
+  version?: number;
 }
 
 export interface CreateFacturaDto {
