@@ -33,6 +33,7 @@ export interface WhatsAppParams {
   empresaId?:  string;
   clienteId?:  string;
   contratoId?: string;
+  logId?:      string;
 }
 
 // ─── Configuración resuelta por empresa ───────────────────────

@@ -19,6 +19,10 @@ import { FirewallService }           from '../mikrotik/services/firewall.service
 import { PppoeService }              from '../mikrotik/services/pppoe.service';
 import { GatewayMensajeriaService }  from '../notificaciones/services/gateway-mensajeria.service';
 import { TipoNotificacion }          from '../notificaciones/services/whatsapp.service';
+import {
+  NOTIFICATION_EVENTS,
+  EventNotificacionPagoRecibido,
+} from '../notificaciones/events/notification.events';
 import { FacturacionService }        from '../facturacion/facturacion.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
 import { IProvisionamientoProvider } from '../aprovisionamiento/interfaces/provisionamiento-provider.interface';
@@ -903,31 +907,51 @@ export class CobranzaWorker {
     await job.progress(75);
 
     // ── 3. Si la deuda quedó en cero y el contrato estaba suspendido → reactivar ─
-    if (nuevaDeuda <= 0) {
-      const [contrato] = await this.ds.query(`
-        SELECT co.estado, co.router_id, co.ip_asignada,
-               pl.nombre AS plan_nombre, cl.whatsapp, cl.telefono
-        FROM contratos co
-        JOIN planes  pl ON pl.id = co.plan_id
-        JOIN clientes cl ON cl.id = co.cliente_id
-        WHERE co.id = $1
-      `, [contratoId]);
+    const [contratoInfo] = await this.ds.query(`
+      SELECT co.estado, co.router_id, co.ip_asignada,
+             pl.nombre AS plan_nombre, cl.id AS cliente_id,
+             cl.nombre_completo, cl.whatsapp, cl.telefono,
+             COALESCE(p.metodo_pago, 'efectivo') AS metodo_pago
+      FROM contratos co
+      JOIN planes  pl ON pl.id = co.plan_id
+      JOIN clientes cl ON cl.id = co.cliente_id
+      LEFT JOIN pagos p ON p.id = $2
+      WHERE co.id = $1
+    `, [contratoId, pagoId]).catch(() => [null]);
 
-      if (contrato && ['suspendido_mora', 'prorroga'].includes(contrato.estado)) {
-        // Encolar reactivación con alta prioridad
-        await this.enqueueCobranza(JOBS.REACTIVAR_CONTRATO, {
-          contratoId,
+    if (contratoInfo && ['suspendido_mora', 'prorroga'].includes(contratoInfo.estado) && nuevaDeuda <= 0) {
+      // Encolar reactivación con alta prioridad
+      await this.enqueueCobranza(JOBS.REACTIVAR_CONTRATO, {
+        contratoId,
+        empresaId,
+        clienteId:   contratoInfo.cliente_id,
+        routerId:    contratoInfo.router_id,
+        ipAsignada:  contratoInfo.ip_asignada,
+        planNombre:  contratoInfo.plan_nombre,
+        notificar:   true,
+      } as PayloadReactivarContrato, { priority: 1 });
+
+      this.logger.log(
+        `[PAGO] 💰 Deuda saldada → reactivación encolada para contrato ${contratoId}`,
+      );
+    }
+
+    // ── 4. Notificar pago al cliente ────────────────────────
+    if (contratoInfo) {
+      const tel = contratoInfo.whatsapp || contratoInfo.telefono;
+      if (tel) {
+        this.events.emit(NOTIFICATION_EVENTS.PAGO_RECIBIDO, {
+          telefono:       tel,
+          clienteNombre:  contratoInfo.nombre_completo,
+          montoPago:      `S/ ${(montoPago as number).toFixed(2)}`,
+          metodoPago:     contratoInfo.metodo_pago,
+          saldoPendiente: `S/ ${nuevaDeuda.toFixed(2)}`,
           empresaId,
-          clienteId:   job.data.facturaId,   // placeholder
-          routerId:    contrato.router_id,
-          ipAsignada:  contrato.ip_asignada,
-          planNombre:  contrato.plan_nombre,
-          notificar:   true,
-        } as PayloadReactivarContrato, { priority: 1 });
+          contratoId,
+          clienteId:      contratoInfo.cliente_id,
+        } satisfies EventNotificacionPagoRecibido);
 
-        this.logger.log(
-          `[PAGO] 💰 Deuda saldada → reactivación encolada para contrato ${contratoId}`,
-        );
+        this.logger.log(`[PAGO] 📨 Evento pago.recibido emitido → ${tel.substring(0, 9)}...`);
       }
     }
 

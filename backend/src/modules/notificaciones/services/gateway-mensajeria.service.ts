@@ -283,30 +283,51 @@ export class GatewayMensajeriaService {
       this.logger.warn(
         `[GW] Sin destino para ${params.tipo} (empresa=${params.empresaId}) — whatsapp_corporativo no configurado`,
       );
+      // Actualizar log a NO_ENVIADO si existe antes de salir
+      if (params.logId) {
+        await this.ds.query(
+          `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1 WHERE id = $2`,
+          ['Sin número de destino configurado', params.logId],
+        ).catch(() => {});
+      }
       return { enviado: false, error: 'Sin número destino configurado' };
     }
 
-    // Registrar intento ANTES del envío — actualizado a ENVIADO_META | FALLIDO al terminar
-    let logId: string | null = null;
-    try {
-      const [row] = await this.ds.query(`
-        INSERT INTO notificaciones_logs (contrato_id, telefono, tipo_template, estado_entrega)
-        VALUES ($1, $2, $3, 'ENCOLADO') RETURNING id
-      `, [params.contratoId ?? null, destino.substring(0, 30), params.tipo]);
-      logId = row?.id ?? null;
-    } catch (logErr: any) {
-      this.logger.warn(`[GW] No se pudo crear log: ${logErr.message}`);
+    // Si el Worker ya creó el log (notificaciones individuales), reutilizarlo.
+    // Para campañas masivas (sin logId), crear uno nuevo con estado ENCOLADO.
+    let logId: string | null = params.logId ?? null;
+    if (!logId) {
+      try {
+        const [row] = await this.ds.query(`
+          INSERT INTO notificaciones_logs (contrato_id, telefono, tipo_template, estado_entrega)
+          VALUES ($1, $2, $3, 'ENCOLADO') RETURNING id
+        `, [params.contratoId ?? null, destino.substring(0, 30), params.tipo]);
+        logId = row?.id ?? null;
+      } catch (logErr: any) {
+        this.logger.warn(`[GW] No se pudo crear log: ${logErr.message}`);
+      }
     }
 
     const config = await this.resolveConfig(params.empresaId);
     let resultado: EnvioResult;
+    let noEnviado = false;
 
     // Verificar switch de activación antes de cualquier despacho
-    if (config && !config.activo) {
+    if (!config) {
+      // Sin configuración de mensajería — no hay servicio activo para esta empresa
+      this.logger.warn(`[GW] Sin config de mensajería para empresa ${params.empresaId}`);
+      resultado = { enviado: false, error: 'Sin configuración de mensajería activa' };
+      noEnviado = true;
+    } else if (!config.activo) {
       this.logger.warn(`[GW] Servicio inactivo para empresa ${params.empresaId} (proveedor=${config.proveedor})`);
-      resultado = { enviado: false, error: 'Servicio de mensajería inactivo' };
-    } else if (!config || config.proveedor === 'META_GRAPH') {
+      resultado  = { enviado: false, error: 'Servicio de mensajería inactivo' };
+      noEnviado  = true;
+    } else if (config.proveedor === 'META_GRAPH') {
       resultado = await this.whatsapp.enviar({ ...params, telefono: destino });
+      // WhatsApp retorna error de configuración cuando no hay token/phone_id
+      if (!resultado.enviado && resultado.error === 'WhatsApp no configurado') {
+        noEnviado = true;
+      }
     } else {
       const dbTexto = await this.resolveTextoDesdeDB(params.empresaId, params.tipo as string, params.variables ?? {});
       const texto   = dbTexto ?? TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
@@ -318,7 +339,8 @@ export class GatewayMensajeriaService {
         const strategy = this.buildStrategy(config);
         if (!strategy) {
           this.logger.warn(`[GW] ${config.proveedor} sin credenciales — notificación omitida`);
-          resultado = { enviado: false, error: `${config.proveedor} sin credenciales configuradas` };
+          resultado  = { enviado: false, error: `${config.proveedor} sin credenciales configuradas` };
+          noEnviado  = true;
         } else {
           const telefono = this.normalizarTelefono(destino, config.codigoPais);
           this.logger.log(`[GW] ${config.proveedor} → ${telefono} | ${params.tipo}`);
@@ -331,17 +353,28 @@ export class GatewayMensajeriaService {
     // Actualizar log con resultado final
     if (logId) {
       try {
+        let nuevoEstado: string;
         if (resultado.enviado) {
+          nuevoEstado = 'ENVIADO_META';
           await this.ds.query(
             `UPDATE notificaciones_logs SET estado_entrega = 'ENVIADO_META', meta_message_id = $1 WHERE id = $2`,
             [resultado.messageId ?? null, logId],
           );
+        } else if (noEnviado) {
+          // Sin servicio activo configurado — no es un error técnico
+          await this.ds.query(
+            `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1 WHERE id = $2`,
+            [(resultado.error ?? 'Sin servicio activo').substring(0, 500), logId],
+          );
+          nuevoEstado = 'NO_ENVIADO';
         } else {
           await this.ds.query(
             `UPDATE notificaciones_logs SET estado_entrega = 'FALLIDO', error_detalle = $1 WHERE id = $2`,
             [(resultado.error ?? 'Error desconocido').substring(0, 500), logId],
           );
+          nuevoEstado = 'FALLIDO';
         }
+        this.logger.log(`[GW] Log ${logId} → ${nuevoEstado}`);
       } catch (logErr: any) {
         this.logger.warn(`[GW] No se pudo actualizar log ${logId}: ${logErr.message}`);
       }
@@ -443,7 +476,7 @@ export class GatewayMensajeriaService {
     switch (config.proveedor) {
       case 'TWILIO':           return (k && s) ? new TwilioStrategy(this.http, k, s, config.clientId)          : null;
       case 'VONAGE':           return (k && s) ? new VonageStrategy(this.http, k, s, config.clientId)          : null;
-      case 'CUSTOM_API':       return k        ? new CustomApiStrategy(this.http, k, s, config.clientId)        : null;
+      case 'CUSTOM_API':       return (k && config.clientId) ? new CustomApiStrategy(this.http, k, s, config.clientId) : null;
       case 'AUTOMATIZADO_VIP':         return k               ? new AutomatizadoVipStrategy(this.http, k, config.clientId) : null;
       case 'DATAFAST_NATIVE':          return this.datafastNative ?? null;
       case 'DATAFAST_MENSAJERIA_MASIVA': {

@@ -1,7 +1,9 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
-import { OnEvent }             from '@nestjs/event-emitter';
-import { InjectQueue }         from '@nestjs/bull';
-import { Queue }               from 'bull';
+import { Injectable, Logger } from '@nestjs/common';
+import { OnEvent }            from '@nestjs/event-emitter';
+import { InjectQueue }        from '@nestjs/bull';
+import { Queue }              from 'bull';
+import { InjectDataSource }   from '@nestjs/typeorm';
+import { DataSource }         from 'typeorm';
 import {
   QUEUES, JOBS, JOB_OPTIONS,
 } from '../../workers/workers.constants';
@@ -46,26 +48,38 @@ export class NotificationEventListener {
 
   constructor(
     @InjectQueue(QUEUES.NOTIFICACIONES) private readonly queue: Queue,
+    @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
   // ── Helper: encolar en Bull ────────────────────────────────
+  // Crea el log ENCOLADO en BD ANTES de encolar para que el mensaje
+  // sea visible en /mensajeria/enviados desde el primer instante.
   private async encolar(tipo: string, payload: PayloadNotificacionEnvio): Promise<void> {
-    const logId = payload.logId ?? '?';
+    // 1. Registrar en notificaciones_logs con estado ENCOLADO
+    let logId: string | undefined;
     try {
-      const job = await this.queue.add(JOBS.NOTIF_ENVIO, payload, JOB_OPTIONS.NOTIFICACION);
-      this.logger.log(
-        `[EVENT] ✅ Encolado ${tipo} → ${payload.telefono.substring(0, 9)}... ` +
-        `| jobId=${job.id} | logId=${logId} | empresa=${payload.empresaId ?? '?'}`,
-      );
+      const [row] = await this.ds.query(`
+        INSERT INTO notificaciones_logs (contrato_id, telefono, tipo_template, estado_entrega)
+        VALUES ($1, $2, $3, 'ENCOLADO') RETURNING id
+      `, [payload.contratoId ?? null, payload.telefono.substring(0, 30), tipo]);
+      logId = row?.id ?? undefined;
+    } catch (dbErr: any) {
+      this.logger.warn(`[EVENT] No se pudo crear log para ${tipo}: ${dbErr.message}`);
+    }
 
-      // Verificar estado de Redis/Bull: contar pending jobs
-      const counts = await this.queue.getJobCounts();
-      this.logger.debug(
-        `[EVENT] Cola NOTIFICACIONES: waiting=${counts.waiting} active=${counts.active} ` +
-        `completed=${counts.completed} failed=${counts.failed}`,
+    // 2. Encolar en Bull con el logId para que el Worker no cree un duplicado
+    try {
+      const job = await this.queue.add(
+        JOBS.NOTIF_ENVIO,
+        { ...payload, logId },
+        JOB_OPTIONS.NOTIFICACION,
+      );
+      this.logger.log(
+        `[EVENT] Encolado ${tipo} → ${payload.telefono.substring(0, 9)}... ` +
+        `| jobId=${job.id} | logId=${logId ?? 'sin-log'} | empresa=${payload.empresaId ?? '?'}`,
       );
     } catch (err: any) {
-      this.logger.error(`[EVENT] ❌ Error encolando ${tipo}: ${err.message}`);
+      this.logger.error(`[EVENT] Error encolando ${tipo}: ${err.message}`);
     }
   }
 
