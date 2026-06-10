@@ -870,19 +870,20 @@ export class VpnClienteService {
       : this._scriptV7NoCert(cliente, pass);
   }
 
-  private _bloqueComun(cliente: VpnCliente): { cn: string; prefix: string; basePrefix: string; fetchPath: string } {
+  private _bloqueComun(cliente: VpnCliente): { cn: string; prefix: string; basePrefix: string; legacyPrefix: string; fetchPath: string } {
     const cn       = cliente.nombreCert;
     const baseSlug = cn.replace(/-[0-9a-f]{6}$/, ''); // strip short ID → limpia intentos previos del mismo router
     return {
       cn,
-      prefix:     `df-${cn}`,
-      basePrefix: `df-${baseSlug}`,
-      fetchPath:  `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`,
+      prefix:        `df-${cn}`,
+      basePrefix:    `df-${baseSlug}`,
+      legacyPrefix:  baseSlug,             // "mt-router-san-jacinto" — limpia certs creados antes del prefijo df-
+      fetchPath:     `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`,
     };
   }
 
   private _scriptV6Cert(cliente: VpnCliente): string {
-    const { cn, prefix, basePrefix, fetchPath } = this._bloqueComun(cliente);
+    const { cn, prefix, basePrefix, legacyPrefix, fetchPath } = this._bloqueComun(cliente);
     const urlCa   = `http://${VPS_IP}${fetchPath}/ca.crt`;
     const urlCert = `http://${VPS_IP}${fetchPath}/client.crt`;
     const urlKey  = `http://${VPS_IP}${fetchPath}/client.key`;
@@ -890,6 +891,7 @@ export class VpnClienteService {
 :local certCN "${cn}"
 :local certPrefix "${prefix}"
 :local certBasePrefix "${basePrefix}"
+:local certLegacyPrefix "${legacyPrefix}"
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
@@ -898,6 +900,9 @@ export class VpnClienteService {
 :do { /interface ovpn-client remove  [find name=vpndatafast] } on-error={}
 :delay 1s
 :foreach c in=[/certificate find where name~$certBasePrefix] do={
+  :do { /certificate remove $c } on-error={}
+}
+:foreach c in=[/certificate find where name~$certLegacyPrefix] do={
   :do { /certificate remove $c } on-error={}
 }
 /tool fetch url="${urlCa}" dst-path=$fCa
@@ -934,7 +939,7 @@ export class VpnClienteService {
   }
 
   private _scriptV7Cert(cliente: VpnCliente): string {
-    const { cn, prefix, basePrefix, fetchPath } = this._bloqueComun(cliente);
+    const { cn, prefix, basePrefix, legacyPrefix, fetchPath } = this._bloqueComun(cliente);
     const urlCa   = `http://${VPS_IP}${fetchPath}/ca.crt`;
     const urlCert = `http://${VPS_IP}${fetchPath}/client.crt`;
     const urlKey  = `http://${VPS_IP}${fetchPath}/client.key`;
@@ -945,6 +950,7 @@ export class VpnClienteService {
 :local certCN "${cn}"
 :local certPrefix "${prefix}"
 :local certBasePrefix "${basePrefix}"
+:local certLegacyPrefix "${legacyPrefix}"
 :local fCa ($certPrefix . "-ca.crt")
 :local fCert ($certPrefix . "-client.crt")
 :local fKey ($certPrefix . "-client.key")
@@ -953,6 +959,9 @@ export class VpnClienteService {
 :do { /interface ovpn-client remove  [find name=vpndatafast] } on-error={}
 :delay 1s
 :foreach c in=[/certificate find where name~$certBasePrefix] do={
+  :do { /certificate remove $c } on-error={}
+}
+:foreach c in=[/certificate find where name~$certLegacyPrefix] do={
   :do { /certificate remove $c } on-error={}
 }
 /tool fetch url="${urlCa}" dst-path=$fCa
