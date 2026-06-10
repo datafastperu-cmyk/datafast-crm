@@ -1,6 +1,6 @@
 import {
   Injectable, Logger, NotFoundException,
-  BadRequestException,
+  BadRequestException, InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
@@ -59,12 +59,7 @@ export class MikrotikService {
   // ────────────────────────────────────────────────────────────
 
   async crearRouter(dto: CreateRouterDto, user: JwtPayload): Promise<Router> {
-    let passwordCifrado: string;
-    try {
-      passwordCifrado = encrypt(dto.password);
-    } catch {
-      passwordCifrado = dto.password;
-    }
+    const passwordCifrado = encrypt(dto.password);
 
     // Validar unicidad de IP de gestión
     const existePorIp = await this.routerRepo.findOne({
@@ -84,8 +79,9 @@ export class MikrotikService {
       }
     }
 
+    const { password: _pw, vpnClienteId: _vpnClienteId, ...dtoRest } = dto;
     const router = this.routerRepo.create({
-      ...dto,
+      ...dtoRest,
       passwordCifrado,
       empresaId: user.empresaId,
       estado:    EstadoEquipo.DESCONOCIDO,
@@ -97,8 +93,15 @@ export class MikrotikService {
     if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
       if (dto.vpnClienteId) {
         // Vincular cert del wizard directamente — evita generar un cert UUID huérfano
-        await this.vpnSvc.vincularCertWizardARouter(dto.vpnClienteId, saved.id, user.empresaId)
-          .catch(e => this.logger.error(`[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`));
+        try {
+          await this.vpnSvc.vincularCertWizardARouter(dto.vpnClienteId, saved.id, user.empresaId);
+        } catch (e: any) {
+          this.logger.error(`[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`);
+          await this.routerRepo.update(saved.id, { activo: false, deletedAt: new Date() } as any);
+          throw new InternalServerErrorException(
+            `Router creado pero falló la configuración VPN: ${e.message}. El registro fue revertido.`,
+          );
+        }
       } else {
         const vpnCn = `df_router_id_${saved.id}`;
         await this.routerRepo.update(saved.id, { vpnCommonName: vpnCn } as any);
@@ -117,9 +120,7 @@ export class MikrotikService {
     // Sincronizar subnets LAN del router (async, no bloquea la respuesta)
     this.syncSubnetsAsync(saved);
 
-    // Esperar que detectarVersionAsync actualice estado antes de responder
-    await new Promise(r => setTimeout(r, 3000));
-    return this.findOne(saved.id, user.empresaId);
+    return saved;
   }
 
   async findAll(empresaId: string): Promise<(Router & { contratosCount: number })[]> {
@@ -150,17 +151,31 @@ export class MikrotikService {
   }
 
   async updateRouter(id: string, dto: UpdateRouterDto, user: JwtPayload): Promise<Router> {
-    const router = await this.findOne(id, user.empresaId);
-    const updates: Partial<Router> = { ...dto } as any;
+    await this.findOne(id, user.empresaId);
 
-    const rawPass = (dto as any).password;
-    if (rawPass && rawPass !== '***stored***') {
-      try { updates.passwordCifrado = encrypt(rawPass); }
-      catch { updates.passwordCifrado = rawPass; }
+    if (dto.ipGestion) {
+      const existePorIp = await this.routerRepo.findOne({
+        where: { ipGestion: dto.ipGestion, empresaId: user.empresaId, deletedAt: null as any },
+      });
+      if (existePorIp && existePorIp.id !== id) {
+        throw new BadRequestException(`La IP de gestión ${dto.ipGestion} ya está registrada en esta empresa`);
+      }
     }
-    delete (updates as any).password;
+    if (dto.vpnIp) {
+      const existePorVpnIp = await this.routerRepo.findOne({
+        where: { vpnIp: dto.vpnIp, empresaId: user.empresaId, deletedAt: null as any },
+      });
+      if (existePorVpnIp && existePorVpnIp.id !== id) {
+        throw new BadRequestException(`La IP VPN ${dto.vpnIp} ya está registrada en esta empresa`);
+      }
+    }
+
+    const { password: rawPass, vpnClienteId: _vpnClienteId, ...dtoRest } = dto as any;
+    const updates: Partial<Router> = { ...dtoRest };
+    if (rawPass && rawPass !== '***stored***') {
+      updates.passwordCifrado = encrypt(rawPass);
+    }
     // vpn_common_name es inmutable — identifica el túnel en el servidor OpenVPN.
-    // Cambiar el nombre comercial del router no debe alterar ni el CCD ni el certificado.
     delete (updates as any).vpnCommonName;
 
     await this.routerRepo.update(id, updates);
@@ -171,7 +186,10 @@ export class MikrotikService {
     const updated = await this.findOne(id, user.empresaId);
     // Re-sincronizar subnets si cambió la IP de gestión/VPN
     if (dto.ipGestion || dto.vpnIp) this.syncSubnetsAsync(updated);
-    this.inyectarReglasMorososAsync(updated);
+    // Re-inyectar solo cuando cambia algo que afecta la conectividad o las reglas
+    if (dto.ipGestion || dto.vpnIp || rawPass || dto.tipoControl) {
+      this.inyectarReglasMorososAsync(updated);
+    }
     return updated;
   }
 
@@ -666,7 +684,7 @@ export class MikrotikService {
   // TEST DE CONEXIÓN DIRECTA (antes de guardar el router)
   // ────────────────────────────────────────────────────────────
 
-  async testConexionDirecta(dto: TestConexionDirectaDto): Promise<{
+  async testConexionDirecta(dto: TestConexionDirectaDto, empresaId?: string): Promise<{
     exitoso: boolean;
     mensaje: string;
     latenciaMs?: number;
@@ -677,7 +695,9 @@ export class MikrotikService {
     // ── Resolver contraseña: sentinel '***stored***' → leer de BD ─
     let resolvedPassword = dto.password ?? '';
     if ((!resolvedPassword || resolvedPassword === '***stored***') && dto.routerId) {
-      const stored = await this.routerRepo.findOne({ where: { id: dto.routerId } });
+      const where: any = { id: dto.routerId };
+      if (empresaId) where.empresaId = empresaId;
+      const stored = await this.routerRepo.findOne({ where });
       if (stored) resolvedPassword = stored.passwordCifrado;
     }
 
@@ -816,7 +836,7 @@ export class MikrotikService {
       user:            router.usuario,
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
-      timeoutSec:      15,
+      timeoutSec:      router.timeoutConexion || 15,
       version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
     };
 
@@ -974,10 +994,10 @@ export class MikrotikService {
 
     for (const co of contratos) {
       try {
-        // 1. Limpiar reglas del tipo anterior
-        await this.limpiarReglasControl(creds, co, oldTipoControl);
-        // 2. Crear reglas del nuevo tipo
+        // 1. Crear reglas del nuevo tipo (si falla, las viejas permanecen intactas)
         await this.crearReglasControl(creds, co, newTipoControl);
+        // 2. Limpiar reglas del tipo anterior (solo si la creación fue exitosa)
+        await this.limpiarReglasControl(creds, co, oldTipoControl);
         ok++;
         this.logger.log(`migrarClientes → contrato ${co.numeroContrato}: ${oldTipoControl} → ${newTipoControl} OK`);
       } catch (err: any) {
