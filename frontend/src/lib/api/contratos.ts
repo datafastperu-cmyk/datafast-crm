@@ -62,6 +62,7 @@ export interface CreateContratoDto {
   comunidadSnmp?:         string;
   usuarioAntena?:         string;
   contrasenaAntena?:      string;
+  tipoAuth?:              string;
 }
 
 export interface CambiarEstadoDto {

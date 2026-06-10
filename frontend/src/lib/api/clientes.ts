@@ -163,6 +163,7 @@ export const clientesApi = {
       longitudInstalacion?: number;
       notasInstalacion?: string;
       notasTecnicas?: string;
+      tipoAuth?: string;
     };
     facturacion?: Record<string, any>;
     notificaciones?: Record<string, any>;
