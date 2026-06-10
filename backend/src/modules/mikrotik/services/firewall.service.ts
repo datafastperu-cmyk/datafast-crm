@@ -186,21 +186,34 @@ export class FirewallService {
         if (rule) await writeApi.write('/ip/firewall/filter/remove', [`=.id=${rule['.id']}`]);
       }
 
-      // Inserción inversa en pos 0 → resultado final: drop(0) prorroga(1)
-      await writeApi.write('/ip/firewall/filter/add', [
-        '=chain=forward',
-        `=src-address-list=${ADDRESS_LIST_PRORROGA}`,
-        '=action=accept',
-        `=comment=${PRORROGA_COMMENT}`,
-        '=place-before=0',
-      ]);
-      await writeApi.write('/ip/firewall/filter/add', [
+      // Añadir al final (sin place-before) para soportar cadena forward vacía.
+      // place-before=0 falla con "no such item" cuando la cadena está vacía.
+      const addDropRes     = await writeApi.write('/ip/firewall/filter/add', [
         '=chain=forward',
         `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
         '=action=drop',
         `=comment=${DROP_COMMENT}`,
-        '=place-before=0',
       ]);
+      const addProrrogaRes = await writeApi.write('/ip/firewall/filter/add', [
+        '=chain=forward',
+        `=src-address-list=${ADDRESS_LIST_PRORROGA}`,
+        '=action=accept',
+        `=comment=${PRORROGA_COMMENT}`,
+      ]);
+
+      // Mover al inicio: drop → posición 0, prorroga → posición 1
+      const dropId     = addDropRes?.[0]?.ret;
+      const prorrogaId = addProrrogaRes?.[0]?.ret;
+      if (dropId) {
+        await writeApi.write('/ip/firewall/filter/move', [
+          `=.id=${dropId}`, '=destination=0',
+        ]).catch(() => {});
+      }
+      if (prorrogaId) {
+        await writeApi.write('/ip/firewall/filter/move', [
+          `=.id=${prorrogaId}`, '=destination=1',
+        ]).catch(() => {});
+      }
 
       this.logger.log(`Reglas de control (re)configuradas en ${creds.ip}`);
     } finally {
