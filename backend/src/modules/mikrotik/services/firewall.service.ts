@@ -163,7 +163,6 @@ export class FirewallService {
 
     const dropIdx     = allRules.findIndex((r: any) => r.comment === DROP_COMMENT);
     const prorrogaIdx = allRules.findIndex((r: any) => r.comment === PRORROGA_COMMENT);
-    // Eliminar regla portal pago si existe de instalaciones previas
     const portalIdx   = allRules.findIndex((r: any) => r.comment === 'DATAFAST: Morosos portal pago');
 
     const dropRule     = dropIdx     >= 0 ? allRules[dropIdx]     : null;
@@ -201,9 +200,9 @@ export class FirewallService {
         `=comment=${PRORROGA_COMMENT}`,
       ]);
 
-      // Mover al inicio: drop → posición 0, prorroga → posición 1
       const dropId     = addDropRes?.[0]?.ret;
       const prorrogaId = addProrrogaRes?.[0]?.ret;
+
       if (dropId) {
         await writeApi.write('/ip/firewall/filter/move', [
           `=.id=${dropId}`, '=destination=0',
