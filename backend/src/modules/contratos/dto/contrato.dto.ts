@@ -185,6 +185,10 @@ export class CreateContratoDto {
   @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(2000)
   notasAdmin?: string;
+
+  @ApiPropertyOptional({ description: 'Tipo de autenticación por abonado cuando el router no controla la autenticación', enum: ['ninguna','pppoe_addresslist','amarre_ip_mac','amarre_ip_mac_dhcp'] })
+  @IsOptional() @IsString() @MaxLength(20)
+  tipoAuth?: string;
 }
 
 // ─── Actualizar Contrato ──────────────────────────────────────

@@ -72,15 +72,16 @@ export class ContratosService {
 
     if (dto.routerId) {
       const [router] = await this.dataSource.query<any[]>(
-        `SELECT tipo_control AS "tipoControl", nombre FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+        `SELECT tipo_control AS "tipoControl", controla_autenticacion AS "controlaAutenticacion", nombre FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
         [dto.routerId, user.empresaId],
       );
       if (!router) throw new BadRequestException('Router no encontrado');
 
-      const requiereMac = router.tipoControl === 'amarre_ip_mac' || router.tipoControl === 'amarre_ip_mac_dhcp';
+      const authEfectivo = router.controlaAutenticacion ? router.tipoControl : (dto.tipoAuth ?? 'ninguna');
+      const requiereMac  = authEfectivo === 'amarre_ip_mac' || authEfectivo === 'amarre_ip_mac_dhcp';
       if (requiereMac && !dto.macAddress?.trim()) {
         throw new BadRequestException(
-          `El router "${router.nombre}" usa autenticación por Amarre IP/MAC. La dirección MAC es obligatoria.`,
+          `La autenticación por Amarre IP/MAC requiere dirección MAC.`,
         );
       }
 

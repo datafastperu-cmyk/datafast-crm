@@ -76,7 +76,7 @@ export class Router extends BaseModel {
   @Column({ length: 100 })
   usuario: string;
 
-  @Column({ name: 'password_cifrado', length: 500 })
+  @Column({ name: 'password_cifrado', type: 'text' })
   passwordCifrado: string;   // AES-256-GCM
 
   @Column({
@@ -207,6 +207,11 @@ export class Router extends BaseModel {
     default: TipoControlVelocidad.NINGUNO,
   })
   tipoControlVelocidad: TipoControlVelocidad;
+
+  // Si true: la autenticación de abonados se define aquí (nivel router).
+  // Si false: cada abonado define su propio tipo de autenticación al registrarse.
+  @Column({ name: 'controla_autenticacion', default: true })
+  controlaAutenticacion: boolean;
 
   @Column({ default: true })
   activo: boolean;

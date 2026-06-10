@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Patch, Delete,
+  Controller, Get, Post, Patch, Delete,
   Body, Param, Query, Req,
   ParseUUIDPipe, HttpCode, HttpStatus,
   SetMetadata, Logger,
@@ -41,8 +41,11 @@ export class MikrotikController {
       'Valida credenciales y conectividad con un router antes de registrarlo en el sistema. ' +
       'Para API/API-SSL: autentica con RouterOS API. Para SSH/SNMP: verifica accesibilidad TCP.',
   })
-  async testConexionDirecta(@Body() dto: TestConexionDirectaDto) {
-    return StdResponse.ok(await this.svc.testConexionDirecta(dto));
+  async testConexionDirecta(
+    @Body() dto: TestConexionDirectaDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return StdResponse.ok(await this.svc.testConexionDirecta(dto, user.empresaId));
   }
 
   // ─── GESTIÓN DE ROUTERS ───────────────────────────────────
@@ -77,7 +80,7 @@ export class MikrotikController {
     return StdResponse.ok(await this.svc.findOne(id, user.empresaId));
   }
 
-  @Put('routers/:id')
+  @Patch('routers/:id')
   @RequirePermission('mikrotik:manage')
   @ApiOperation({ summary: 'Actualizar datos del router' })
   @ApiParam({ name: 'id' })

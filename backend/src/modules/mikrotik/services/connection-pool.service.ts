@@ -142,12 +142,7 @@ export class RouterConnectionPool implements OnModuleDestroy {
 
   // ── Crear conexión RouterOS ──────────────────────────────────
   private async connect(creds: RouterCredentials): Promise<RouterOSAPI> {
-    let password: string;
-    try {
-      password = decrypt(creds.passwordCifrado);
-    } catch {
-      password = creds.passwordCifrado; // sin cifrar (desarrollo)
-    }
+    const password = decrypt(creds.passwordCifrado);
 
     const api = new RouterOSAPI({
       host:     creds.ip,

@@ -47,9 +47,17 @@ const step1Schema = z.object({
 
 const step2Schema = z.object({ _placeholder: z.string().optional() });
 
+const SECURITY_OPTS_ABONADO = [
+  { val: 'pppoe_addresslist',  label: 'PPPoE'                       },
+  { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
+  { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
+  { val: 'ninguna',            label: 'Ninguna'                     },
+] as const;
+
 const step3Schema = z.object({
   // Configuración de servicio
   routerId:         z.string().optional(),
+  tipoControl:      z.string().optional(),
   excluirFirewall:  z.boolean().optional(),
   perfilId:         z.string().optional(),
   descripcion:      z.string().optional(),
@@ -392,6 +400,7 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
             direccionInstalacion: data.direccion              || undefined,
             latitudInstalacion,
             longitudInstalacion,
+            tipoAuth:            data.tipoControl             || undefined,
           },
         }),
         ...(s2 && { facturacion: s2.facturacion, notificaciones: s2.notificaciones }),
@@ -982,10 +991,13 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const routerId   = watch('routerId');
   const segmentoId = watch('segmentoId');
 
-  // Router seleccionado — para derivar tipoControl sin fetch adicional
-  const routerSel    = (routers as RouterType[]).find(r => r.id === routerId);
-  const mostrarPppoe = routerSel?.tipoControl === 'pppoe_addresslist';
-  const requiereMac  = routerSel?.tipoControl === 'amarre_ip_mac' || routerSel?.tipoControl === 'amarre_ip_mac_dhcp';
+  // Router seleccionado — para derivar comportamiento de auth
+  const routerSel      = (routers as RouterType[]).find(r => r.id === routerId);
+  const authPorAbonado = routerSel ? routerSel.controlaAutenticacion === false : false;
+  const tipoControlVal = watch('tipoControl');
+  const authEfectiva   = authPorAbonado ? (tipoControlVal ?? 'ninguna') : (routerSel?.tipoControl ?? 'ninguna');
+  const mostrarPppoe   = authEfectiva === 'pppoe_addresslist';
+  const requiereMac    = authEfectiva === 'amarre_ip_mac' || authEfectiva === 'amarre_ip_mac_dhcp';
 
   const { data: segmentosRaw = [] } = useQuery({
     queryKey: ['segmentos-router', routerId],
@@ -1064,6 +1076,17 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               ))}
             </select>
           </Field>
+
+          {/* Autenticación por abonado — visible solo si el router NO controla auth */}
+          {authPorAbonado && (
+            <Field label="Tipo de Autenticación">
+              <select {...register('tipoControl')} className={INPUT_CLS}>
+                {SECURITY_OPTS_ABONADO.map((o) => (
+                  <option key={o.val} value={o.val}>{o.label}</option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           {/* Excluir Firewall */}
           <div className="flex items-center justify-between py-0.5">

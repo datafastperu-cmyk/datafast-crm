@@ -1,7 +1,7 @@
 import {
   IsString, IsIP, IsOptional, IsEnum, IsBoolean,
   IsNumber, IsNotEmpty, Min, Max, MaxLength,
-  IsInt, IsPositive,
+  IsInt, IsPositive, IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -114,6 +114,10 @@ export class CreateRouterDto {
   @ApiPropertyOptional({ description: 'ID del vpn_cliente generado en el wizard — vincula el cert real sin crear uno UUID huérfano' })
   @IsOptional() @IsString() @MaxLength(100)
   vpnClienteId?: string;
+
+  @ApiPropertyOptional({ default: true, description: 'Si true: la autenticación se define a nivel router. Si false: cada abonado define su propia autenticación.' })
+  @IsOptional() @IsBoolean()
+  controlaAutenticacion?: boolean;
 }
 
 export class UpdateRouterDto extends PartialType(CreateRouterDto) {}
@@ -283,7 +287,7 @@ export class TestConexionDirectaDto {
   password?: string;
 
   @ApiPropertyOptional({ description: 'UUID del router existente. Cuando se provee y password es "***stored***"/vacío, el backend recupera las credenciales cifradas de la BD.' })
-  @IsOptional() @IsString()
+  @IsOptional() @IsUUID()
   routerId?: string;
 
   @ApiPropertyOptional({ default: false })

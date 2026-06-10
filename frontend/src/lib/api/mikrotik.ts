@@ -40,6 +40,7 @@ export interface Router {
   autoConfigurarQueues:   boolean;
   autoConfigurarPppoe:    boolean;
   autoConfigurarFirewall: boolean;
+  controlaAutenticacion:  boolean;
   snmpCommunity:    string;
   subnetsLocales?:  string[];
   activo:           boolean;
@@ -70,6 +71,7 @@ export interface CreateRouterDto {
   autoConfigurarQueues?:   boolean;
   autoConfigurarPppoe?:    boolean;
   autoConfigurarFirewall?: boolean;
+  controlaAutenticacion?:  boolean;
   snmpCommunity?:  string;
   latitud?:        number;
   longitud?:       number;
@@ -124,7 +126,7 @@ export const mikrotikApi = {
   },
 
   actualizar: async (id: string, dto: UpdateRouterDto): Promise<Router> => {
-    const { data } = await api.put(`/mikrotik/routers/${id}`, dto);
+    const { data } = await api.patch(`/mikrotik/routers/${id}`, dto);
     return data.data;
   },
 

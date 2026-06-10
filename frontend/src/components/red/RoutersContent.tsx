@@ -234,6 +234,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     versionRos:      router?.versionRos      ?? 'desconocida',
     tipoControl:            router?.tipoControl            ?? 'ninguna',
     tipoControlVelocidad:   router?.tipoControlVelocidad   ?? 'ninguno',
+    controlaAutenticacion:  router?.controlaAutenticacion  ?? true,
     autoConfigurarQueues:   router?.autoConfigurarQueues   ?? true,
     autoConfigurarPppoe:    router?.autoConfigurarPppoe    ?? true,
     autoConfigurarFirewall: router?.autoConfigurarFirewall ?? true,
@@ -246,7 +247,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
   ).some((k) => (form as any)[k] !== ((router as any)[k] ?? '')) ||
   (['puertoApi','puertoApiSsl','puertoSsh','timeoutConexion','reintentos'] as const)
     .some((k) => Number(form[k]) !== Number(router[k])) ||
-  (['usarSsl','autoConfigurarQueues','autoConfigurarPppoe','autoConfigurarFirewall'] as const)
+  (['usarSsl','controlaAutenticacion'] as const)
     .some((k) => Boolean(form[k]) !== Boolean(router[k]));
 
   const CONNECTION_FIELDS = new Set(['ipGestion','vpnIp','puertoApi','puertoApiSsl','puertoSsh','usuario','password','usarSsl','metodoConexion','versionRos','timeoutConexion']);
@@ -786,21 +787,51 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
           {tab === 'config' && (
             <div className="space-y-5">
 
-              {/* Control de Seguridad */}
-              <div>
-                <p className={sectionHdr}>
-                  <Shield className="w-3.5 h-3.5" />
-                  Autenticación y Control Abonado
-                </p>
-                <select className={cn(inputCls, 'cursor-pointer')}
-                  value={form.tipoControl ?? 'ninguna'}
-                  onChange={(e) => set('tipoControl', e.target.value)}
+              {/* Toggle: controla autenticación */}
+              <div className="flex items-start justify-between gap-4 p-4 rounded-xl border border-border bg-muted/10">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-primary" />
+                    Permitir que el Router Controle la Autenticación de los Abonados
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {form.controlaAutenticacion
+                      ? 'Todos los abonados usan el método definido abajo.'
+                      : 'Cada abonado configura su propia autenticación al registrarse.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => set('controlaAutenticacion', !form.controlaAutenticacion)}
+                  className={cn(
+                    'relative flex-shrink-0 w-10 h-6 rounded-full transition-colors',
+                    form.controlaAutenticacion ? 'bg-primary' : 'bg-muted-foreground/30',
+                  )}
                 >
-                  {TIPO_CONTROL_OPTS.map((o) => (
-                    <option key={o.val} value={o.val} className="bg-gray-900">{o.label}</option>
-                  ))}
-                </select>
+                  <span className={cn(
+                    'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+                    form.controlaAutenticacion ? 'translate-x-4' : 'translate-x-0.5',
+                  )} />
+                </button>
               </div>
+
+              {/* Control de Seguridad — solo si el router controla auth */}
+              {form.controlaAutenticacion && (
+                <div>
+                  <p className={sectionHdr}>
+                    <Shield className="w-3.5 h-3.5" />
+                    Autenticación y Control Abonado
+                  </p>
+                  <select className={cn(inputCls, 'cursor-pointer')}
+                    value={form.tipoControl ?? 'ninguna'}
+                    onChange={(e) => set('tipoControl', e.target.value)}
+                  >
+                    {TIPO_CONTROL_OPTS.map((o) => (
+                      <option key={o.val} value={o.val} className="bg-gray-900">{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Control de velocidad */}
               <div>
@@ -816,29 +847,6 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                     <option key={o.val} value={o.val} className="bg-gray-900">{o.label}</option>
                   ))}
                 </select>
-              </div>
-
-              {/* Auto-configuración */}
-              <div>
-                <p className={sectionHdr}>
-                  <Cpu className="w-3.5 h-3.5" />
-                  Auto-configuración al provisionar
-                </p>
-                <div className="space-y-2">
-                  {[
-                    { key: 'autoConfigurarQueues',   label: 'Crear/actualizar Queues automáticamente' },
-                    { key: 'autoConfigurarPppoe',    label: 'Crear/actualizar PPPoE automáticamente'  },
-                    { key: 'autoConfigurarFirewall', label: 'Configurar reglas de Firewall automáticamente' },
-                  ].map((opt) => (
-                    <label key={opt.key} className="flex items-center gap-2 cursor-pointer select-none">
-                      <input type="checkbox"
-                        checked={!!(form as any)[opt.key]}
-                        onChange={(e) => set(opt.key as any, e.target.checked)}
-                        className="accent-primary w-4 h-4 rounded" />
-                      <span className="text-sm text-foreground">{opt.label}</span>
-                    </label>
-                  ))}
-                </div>
               </div>
             </div>
           )}

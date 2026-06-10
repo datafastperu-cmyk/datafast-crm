@@ -689,9 +689,17 @@ const TIPO_ANTENA_OPS = [
   { value: 'mimosa',   label: 'Mimosa' },
 ];
 
+const SECURITY_OPTS_DETALLE = [
+  { val: 'pppoe_addresslist',  label: 'PPPoE'                       },
+  { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
+  { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
+  { val: 'ninguna',            label: 'Ninguna'                     },
+] as const;
+
 const servicioSchema = z.object({
   planId:               z.string().min(1, 'Requerido'),
   routerId:             z.string().optional(),
+  tipoControl:          z.string().optional(),
   excluirFirewall:      z.boolean().optional(),
   tipoIpv4:             z.string().optional(),
   segmentoId:           z.string().optional(),
@@ -1107,6 +1115,7 @@ function ServicioPanel({
     defaultValues: {
       planId:               e?.planId                ?? '',
       routerId:             e?.routerId              ?? '',
+      tipoControl:          e?.tipoAuth              ?? 'ninguna',
       excluirFirewall:      e?.excluirFirewall        ?? false,
       tipoIpv4:             e?.tipoIpv4              ?? 'estatica',
       segmentoId:           e?.segmentoId            ?? '',
@@ -1146,10 +1155,13 @@ function ServicioPanel({
   const { data: planes  = [] } = useQuery({ queryKey: ['planes'],        queryFn: planesApi.list });
   const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
 
-  // Router seleccionado — para derivar tipoControl sin fetch adicional
-  const routerSel    = (routers as RouterType[]).find(r => r.id === routerId);
-  const mostrarPppoe = routerSel?.tipoControl === 'pppoe_addresslist';
-  const requiereMac  = routerSel?.tipoControl === 'amarre_ip_mac' || routerSel?.tipoControl === 'amarre_ip_mac_dhcp';
+  // Router seleccionado — para derivar comportamiento de auth
+  const routerSel      = (routers as RouterType[]).find(r => r.id === routerId);
+  const authPorAbonado = routerSel ? routerSel.controlaAutenticacion === false : false;
+  const tipoControlVal = watch('tipoControl' as any) as string | undefined;
+  const authEfectiva   = authPorAbonado ? (tipoControlVal ?? e?.tipoAuth ?? 'ninguna') : (routerSel?.tipoControl ?? 'ninguna');
+  const mostrarPppoe   = authEfectiva === 'pppoe_addresslist';
+  const requiereMac    = authEfectiva === 'amarre_ip_mac' || authEfectiva === 'amarre_ip_mac_dhcp';
 
   // Antenas AP vinculadas al router seleccionado
   const { data: antenasAP = [] } = useQuery({
@@ -1229,6 +1241,7 @@ function ServicioPanel({
       const payload: any = {
         planId:               data.planId,
         routerId:             data.routerId             || undefined,
+        tipoAuth:             (data as any).tipoControl || undefined,
         excluirFirewall:      data.excluirFirewall      ?? false,
         tipoIpv4:             data.tipoIpv4             || 'estatica',
         macAddress:           data.macAddress           || undefined,
@@ -1310,6 +1323,17 @@ function ServicioPanel({
                     ))}
                   </select>
                 </SP_Field>
+
+                {/* Autenticación por abonado — solo si el router NO controla auth */}
+                {authPorAbonado && (
+                  <SP_Field label="Tipo de Autenticación">
+                    <select {...register('tipoControl' as any)} className={sp_input()}>
+                      {SECURITY_OPTS_DETALLE.map((o) => (
+                        <option key={o.val} value={o.val}>{o.label}</option>
+                      ))}
+                    </select>
+                  </SP_Field>
+                )}
 
                 {/* Excluir Firewall */}
                 <div className="flex items-center justify-between py-0.5">
