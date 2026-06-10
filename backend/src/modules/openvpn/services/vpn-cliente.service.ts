@@ -57,53 +57,22 @@ export class VpnClienteService {
     cliente: VpnCliente;
     script:  string;
   }> {
-    // Si ya existe un cert pendiente sin router asignado y sin IP aún asignada,
-    // reutilizarlo evita generar un cert huérfano en cada intento del wizard.
-    // No reutilizar si ya tiene vpnIp: el router puede haber desconectado y
-    // OpenVPN podría reasignar esa IP a otro equipo.
-    const existingPending = await this.repo.findOne({
+    // Limpiar todos los certs anteriores de este usuario sin router asignado.
+    // Garantiza inicio limpio: no quedan certs/CCD/túneles huérfanos de intentos previos.
+    const anteriores = await this.repo.find({
       where: {
         empresaId: user.empresaId,
         usuarioId: user.sub,
         activo:    true,
         routerId:  IsNull(),
-        estado:    'pendiente' as EstadoVpnCliente,
-        vpnIp:     IsNull(),
+        estado:    Not('revocado' as EstadoVpnCliente),
       },
-      order: { createdAt: 'DESC' },
     });
-    if (existingPending) {
-      this.logger.log(`[VPN] Reutilizando cert pendiente sin IP: ${existingPending.nombreCert}`);
-      const script = await this._generarScript(existingPending);
-      return { cliente: existingPending, script };
-    }
-
-    // Si hay un cert conectado sin router, verificar que su IP no esté ya
-    // asignada a otro router activo. Si hay conflicto, revocar y crear uno nuevo.
-    const existingConnected = await this.repo.findOne({
-      where: {
-        empresaId: user.empresaId,
-        usuarioId: user.sub,
-        activo:    true,
-        routerId:  IsNull(),
-        estado:    'conectado' as EstadoVpnCliente,
-      },
-      order: { ultimoHandshake: 'DESC' },
-    });
-    if (existingConnected?.vpnIp) {
-      const ipEnUso = await this.routerRepo.findOne({
-        where: { ipGestion: existingConnected.vpnIp, empresaId: user.empresaId, deletedAt: null as any },
-      });
-      if (ipEnUso) {
-        this.logger.warn(`[VPN] IP ${existingConnected.vpnIp} ya usada por router ${ipEnUso.id} — revocando cert huérfano ${existingConnected.nombreCert}`);
-        await this.revocar(existingConnected.id, user.empresaId);
-      } else {
-        this.logger.log(`[VPN] Reutilizando cert ya conectado: ${existingConnected.nombreCert} @ ${existingConnected.vpnIp}`);
-        return {
-          cliente: existingConnected,
-          script:  `# Certificado ya instalado en el MikroTik — el túnel está activo en ${existingConnected.vpnIp}.\n# No es necesario re-inyectar el script.`,
-        };
-      }
+    for (const ant of anteriores) {
+      this.logger.log(`[VPN] Revocando cert huérfano previo al nuevo wizard: ${ant.nombreCert}`);
+      await this.revocar(ant.id, ant.empresaId).catch(e =>
+        this.logger.warn(`[VPN] Error revocando cert anterior ${ant.nombreCert}: ${e.message}`),
+      );
     }
 
     const usarCerts  = dto.usarCertificados !== false;
