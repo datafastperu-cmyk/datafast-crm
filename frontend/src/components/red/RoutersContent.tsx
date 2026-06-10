@@ -164,79 +164,6 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
   );
 }
 
-// ─── Sincronizar Morosos Dialog ───────────────────────────────────
-
-function MorososDialog({ router, onClose }: { router: RouterType; onClose: () => void }) {
-  const { data: morosos = [], isLoading } = useQuery({
-    queryKey: ['morosos', router.id],
-    queryFn:  () => mikrotikApi.getMorosos(router.id),
-    staleTime: 30_000,
-  });
-
-  return (
-    <Portal>
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-card border border-border rounded-xl w-full max-w-lg flex flex-col shadow-2xl max-h-[80vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center">
-              <Users className="w-4 h-4 text-red-400" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-foreground text-base">Morosos en MikroTik</h2>
-              <p className="text-xs text-muted-foreground">{router.nombre} — address-list <code className="text-muted-foreground">morosos_datafast</code></p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
-            <XCircle className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-4 flex-1 overflow-y-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-32">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            </div>
-          ) : morosos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-center">
-              <CheckCircle2 className="w-8 h-8 mb-2 text-emerald-400 opacity-60" />
-              <p className="text-sm">Sin IPs en address-list morosos</p>
-              <p className="text-xs mt-1 opacity-60">Todos los abonados tienen acceso libre en este router</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-xs text-muted-foreground px-2 mb-2">
-                <span>{morosos.length} IP{morosos.length !== 1 ? 's' : ''} bloqueada{morosos.length !== 1 ? 's' : ''}</span>
-                <span className="text-red-400 font-medium">morosos_datafast</span>
-              </div>
-              {morosos.map((m, i) => (
-                <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-muted/20border border-border/60 hover:bg-muted/30 transition-colors">
-                  <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-mono text-white">{m.ip}</p>
-                    {m.comment && <p className="text-xs text-muted-foreground truncate">{m.comment}</p>}
-                  </div>
-                  {m.addedAt && (
-                    <p className="text-xs text-muted-foreground flex-shrink-0">{m.addedAt}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="px-6 py-4 border-t border-border flex justify-end">
-          <button onClick={onClose}
-            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Cerrar
-          </button>
-        </div>
-      </div>
-    </div>
-    </Portal>
-  );
-}
-
 // ─── Modal Agregar / Editar Router ────────────────────────────────
 
 type ModalTab = 'ident' | 'conn' | 'config';
@@ -1104,7 +1031,6 @@ export function RoutersContent() {
   const [testingId, setTestingId]     = useState<string | null>(null);
   const [syncingId, setSyncingId]     = useState<string | null>(null);
   const [repairingId, setRepairingId] = useState<string | null>(null);
-  const [morososRouter, setMorososRouter]   = useState<RouterType | null>(null);
   const [pendingDelete, setPendingDelete]   = useState<RouterType | null>(null);
   const [pendingRepair, setPendingRepair]   = useState<RouterType | null>(null);
   const [detailRouter, setDetailRouter]     = useState<RouterType | null>(null);
@@ -1223,8 +1149,6 @@ export function RoutersContent() {
                 const isTesting   = testingId === r.id;
                 const isSyncing   = syncingId === r.id;
                 const isRepairing = repairingId === r.id;
-                const hasContracts = (r.contratosCount ?? 0) > 0;
-
                 return (
                   <tr
                     key={r.id}
@@ -1283,52 +1207,46 @@ export function RoutersContent() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs">
-                      {r.cpuUsoPct != null || r.memoriaUsoPct != null || r.totalSesionesPppoe != null ? (
-                        <div className="space-y-0.5">
-                          {r.cpuUsoPct != null && (() => { const cpu = Number(r.cpuUsoPct); return (
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Cpu className="w-3 h-3" />
-                              <div className="flex items-center gap-1">
-                                <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full"
-                                    style={{
-                                      width: `${Math.min(cpu, 100)}%`,
-                                      background: cpu > 80 ? '#ef4444' : cpu > 50 ? '#f59e0b' : '#22c55e',
-                                    }}
-                                  />
-                                </div>
-                                <span>{cpu.toFixed(0)}%</span>
+                      <div className="space-y-0.5">
+                        {r.cpuUsoPct != null && (() => { const cpu = Number(r.cpuUsoPct); return (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Cpu className="w-3 h-3" />
+                            <div className="flex items-center gap-1">
+                              <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{
+                                    width: `${Math.min(cpu, 100)}%`,
+                                    background: cpu > 80 ? '#ef4444' : cpu > 50 ? '#f59e0b' : '#22c55e',
+                                  }}
+                                />
                               </div>
+                              <span>{cpu.toFixed(0)}%</span>
                             </div>
-                          ); })()}
-                          {r.memoriaUsoPct != null && (() => { const ram = Number(r.memoriaUsoPct); return (
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <MemoryStick className="w-3 h-3" />
-                              <div className="flex items-center gap-1">
-                                <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full"
-                                    style={{
-                                      width: `${Math.min(ram, 100)}%`,
-                                      background: ram > 85 ? '#ef4444' : ram > 65 ? '#f59e0b' : '#22c55e',
-                                    }}
-                                  />
-                                </div>
-                                <span>{ram.toFixed(0)}%</span>
+                          </div>
+                        ); })()}
+                        {r.memoriaUsoPct != null && (() => { const ram = Number(r.memoriaUsoPct); return (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <MemoryStick className="w-3 h-3" />
+                            <div className="flex items-center gap-1">
+                              <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{
+                                    width: `${Math.min(ram, 100)}%`,
+                                    background: ram > 85 ? '#ef4444' : ram > 65 ? '#f59e0b' : '#22c55e',
+                                  }}
+                                />
                               </div>
+                              <span>{ram.toFixed(0)}%</span>
                             </div>
-                          ); })()}
-                          {r.totalSesionesPppoe != null && (
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Users className="w-3 h-3" />
-                              <span>{r.totalSesionesPppoe} PPPoE</span>
-                            </div>
-                          )}
+                          </div>
+                        ); })()}
+                        <div className="flex items-center gap-1 text-muted-foreground" title="Clientes Activos en el Router">
+                          <Users className="w-3 h-3" />
+                          <span>{r.contratosCount ?? 0} PPPoE</span>
                         </div>
-                      ) : (
-                        <span className="text-muted-foreground/40">—</span>
-                      )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {r.latenciaMs != null ? `${r.latenciaMs}ms` : '—'}
@@ -1352,11 +1270,6 @@ export function RoutersContent() {
                             ? <Loader2 className="w-4 h-4 animate-spin" />
                             : <Globe className="w-4 h-4" />
                           }
-                        </button>
-                        <button onClick={() => setMorososRouter(r)} title="Ver morosos en MikroTik"
-                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                        >
-                          <Users className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setPendingRepair(r)}
@@ -1428,13 +1341,6 @@ export function RoutersContent() {
         <RouterDetailPanel
           router={detailRouter}
           onClose={() => setDetailRouter(null)}
-        />
-      )}
-
-      {morososRouter && (
-        <MorososDialog
-          router={morososRouter}
-          onClose={() => setMorososRouter(null)}
         />
       )}
 
