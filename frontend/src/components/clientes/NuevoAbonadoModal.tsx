@@ -23,7 +23,7 @@ export function NuevoAbonadoModal({ open, onClose }: Props) {
   }, [onClose]);
 
   useEffect(() => {
-    if (!open) { setConfirmClose(false); return; }
+    if (!open) { setConfirmClose(false); return () => {}; }
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); handleRequestClose(); }
     };
