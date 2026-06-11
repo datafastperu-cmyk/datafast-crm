@@ -235,11 +235,12 @@ export class VpnClienteService {
     await this.revocar(cliente.id, cliente.empresaId);
   }
 
-  // ── Cron: limpiar wizards abandonados (sin router, > 2h) ─────
+  // ── Cron: limpiar wizards abandonados (sin router, > 15 min) ────
+  // Corre cada 10 min; corte a 15 min. Máximo tiempo de IP bloqueada: ~25 min.
 
-  @Cron('0 */30 * * * *', { name: 'vpn-cleanup-abandonados', timeZone: 'America/Lima' })
+  @Cron('0 */10 * * * *', { name: 'vpn-cleanup-abandonados', timeZone: 'America/Lima' })
   async limpiarWizardsAbandonados(): Promise<void> {
-    const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000);
     const abandonados = await this.repo.find({
       where: {
         routerId:  IsNull(),
