@@ -34,7 +34,8 @@ git pull origin main
 if [[ "$SKIP_BACKEND" == false ]]; then
   log "Building backend..."
   cd "$BACKEND"
-  npm run build
+  # Usar tsc directamente en lugar de nest build (webpack) para evitar OOM en VPS con ≤2GB RAM
+  NODE_OPTIONS='--max-old-space-size=1400' node_modules/.bin/tsc -p tsconfig.build.json --outDir dist
 
   log "Running migrations..."
   npx typeorm migration:run -d dist/config/datasource.js
