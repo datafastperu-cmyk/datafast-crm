@@ -1340,9 +1340,9 @@ export function RoutersContent() {
                         </button>
                         <button
                           onClick={() => setPendingRepair(r)}
-                          disabled={isRepairing}
-                          title="Reparar / Sincronizar router"
-                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-50"
+                          disabled={isRepairing || r.estado !== 'online'}
+                          title={r.estado !== 'online' ? 'El router debe estar online para reparar' : 'Reparar / Sincronizar router'}
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isRepairing
                             ? <Loader2 className="w-4 h-4 animate-spin" />
