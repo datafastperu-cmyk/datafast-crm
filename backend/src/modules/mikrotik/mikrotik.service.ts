@@ -343,6 +343,23 @@ export class MikrotikService {
       (c) => c.estado === 'suspendido_mora' || c.estado === 'suspendido_manual',
     ).length;
 
+    // Pre-flight: verificar conectividad antes de procesar ningún contrato
+    try {
+      await this.pool.execute(creds, async (api) => {
+        await api.write('/system/identity/print');
+      });
+    } catch (err: any) {
+      throw new BadRequestException(
+        `No se puede conectar al router "${router.nombre}" ` +
+        `(${router.vpnIp || router.ipGestion}:${creds.port}). ` +
+        `Configure el router antes de reparar: ` +
+        `(1) verifique que el túnel VPN esté activo, ` +
+        `(2) habilite la API de RouterOS en el puerto ${creds.port}, ` +
+        `(3) configure WAN, LAN y el servidor PPPoE. ` +
+        `Detalle: ${err.message}`,
+      );
+    }
+
     this.logger.log(
       `[REPARAR] ${router.nombre} — ${contratos.length} contratos, ` +
       `tipoControl=${router.tipoControl}, controlaAutenticacion=${router.controlaAutenticacion}`,
@@ -442,6 +459,15 @@ export class MikrotikService {
           `[REPARAR] ${co.numeroContrato}: ${staleAuth ?? '—'} → ${targetAuth} OK`,
         );
       } catch (err: any) {
+        const esConexion = /timed out|econnrefused|econnreset|socket|no se pudo conectar/i
+          .test(err?.message ?? '');
+        if (esConexion) {
+          throw new BadRequestException(
+            `Conexión perdida con "${router.nombre}" al procesar ${co.numeroContrato} ` +
+            `(${ok} de ${contratos.length} procesados antes del fallo). ` +
+            `Verifique el túnel VPN y reintente. Detalle: ${err.message}`,
+          );
+        }
         errores.push(`${co.numeroContrato}: ${err?.message ?? 'error desconocido'}`);
         this.logger.warn(`[REPARAR] ${co.numeroContrato}: ERROR — ${err?.message}`);
         // tipo_auth NO se limpia: permite reintentar en el próximo reparar.
