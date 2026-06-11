@@ -74,4 +74,8 @@ export class VpnCliente extends BaseModel {
 
   @Column({ default: true })
   activo: boolean;
+
+  // Script íntegro generado en el wizard — guardado una única vez, nunca se modifica
+  @Column({ name: 'script_generado', type: 'text', nullable: true })
+  scriptGenerado: string;
 }

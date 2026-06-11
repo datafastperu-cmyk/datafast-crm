@@ -138,6 +138,8 @@ export class VpnClienteService {
     }
 
     const script = await this._generarScript(cliente);
+    // Guardar el script íntegro — esta es la única vez que se genera; "Ver script" lo leerá directamente
+    await this.repo.update(cliente.id, { scriptGenerado: script });
     return { cliente, script };
   }
 
@@ -147,7 +149,9 @@ export class VpnClienteService {
       order: { createdAt: 'DESC' },
     });
     if (!cliente) throw new NotFoundException('No hay cliente VPN asociado a este router');
-    return this._generarScript(cliente);
+    // Retornar el script guardado en el momento de generación (íntegro, MAC incluida)
+    // Fallback a reconstrucción solo para clientes anteriores a este cambio (scriptGenerado null)
+    return cliente.scriptGenerado ?? await this._generarScript(cliente);
   }
 
   // ── Listar por router (para revocación al eliminar router) ────
