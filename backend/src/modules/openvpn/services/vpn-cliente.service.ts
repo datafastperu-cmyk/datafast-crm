@@ -938,15 +938,26 @@ export class VpnClienteService {
   }
 
   private _scriptV6NoCert(cliente: VpnCliente, pass: string): string {
-    const vpnUser = cliente.vpnUsuario || '';
-    const mac     = this._generarMac();
-    return `:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
+    const vpnUser   = cliente.vpnUsuario || '';
+    const mac       = this._generarMac();
+    const fetchPath = `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`;
+    const urlCa     = `http://${VPS_IP}${fetchPath}/ca.crt`;
+    const prefix    = `df-${cliente.nombreCert}`;
+    return `{
+:local fCa "${prefix}-ca.crt"
+:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
 :delay 1s
 :do { /interface ovpn-client remove  [find name=vpndatafast] } on-error={}
 :delay 1s
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha256 user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
+:do { /certificate remove [find name~"${prefix}"] } on-error={}
+/tool fetch url="${urlCa}" dst-path=$fCa
+:delay 3s
+/certificate import file-name=$fCa passphrase=""
+:delay 2s
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha1 user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
 :delay 1s
-/interface ovpn-client enable vpndatafast`;
+/interface ovpn-client enable vpndatafast
+}`;
   }
 
   private _scriptV7Cert(cliente: VpnCliente): string {
@@ -995,15 +1006,26 @@ export class VpnClienteService {
   private _scriptV7NoCert(cliente: VpnCliente, pass: string): string {
     const vpnUser    = cliente.vpnUsuario || '';
     const mac        = this._generarMac();
+    const fetchPath  = `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`;
+    const urlCa      = `http://${VPS_IP}${fetchPath}/ca.crt`;
+    const prefix     = `df-${cliente.nombreCert}`;
     const verifyLine = cliente.verifyServerCert
       ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
       : '';
-    return `:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
+    return `{
+:local fCa "${prefix}-ca.crt"
+:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
 :delay 1s
 :do { /interface ovpn-client remove  [find name=vpndatafast] } on-error={}
 :delay 1s
+:do { /certificate remove [find name~"${prefix}"] } on-error={}
+/tool fetch url="${urlCa}" dst-path=$fCa
+:delay 3s
+/certificate import file-name=$fCa passphrase=""
+:delay 2s
 /interface ovpn-client add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
 :delay 1s
-/interface ovpn-client enable vpndatafast`;
+/interface ovpn-client enable vpndatafast
+}`;
   }
 }
