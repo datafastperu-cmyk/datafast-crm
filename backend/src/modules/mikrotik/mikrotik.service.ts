@@ -196,28 +196,47 @@ export class MikrotikService {
   async removeRouter(id: string, user: JwtPayload): Promise<void> {
     const router = await this.findOne(id, user.empresaId);
 
-    // Protección: impedir borrado si existen contratos activos/suspendidos
-    const [{ count: countContratos }] = await this.ds.query(
-      `SELECT COUNT(*) AS count FROM contratos
-       WHERE router_id = $1
-         AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga','pendiente_instalacion')
-         AND deleted_at IS NULL`,
-      [id],
-    );
-
-    // Protección: impedir borrado si hay dispositivos monitoreados dependiendo de este router
-    const [{ count: countDispositivos }] = await this.ds.query(
-      `SELECT COUNT(*) AS count FROM dispositivos_monitoreo
-       WHERE router_acceso_id = $1
-         AND deleted_at IS NULL`,
-      [id],
-    );
+    // ── Verificaciones de bloqueo ────────────────────────────────
+    const [
+      [{ count: countContratos }],
+      [{ count: countDispositivos }],
+      [{ count: countOlts }],
+      [{ count: countIpsActivas }],
+    ] = await Promise.all([
+      // Contratos activos/suspendidos
+      this.ds.query<[{ count: string }]>(
+        `SELECT COUNT(*) AS count FROM contratos
+         WHERE router_id = $1
+           AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga','pendiente_instalacion')
+           AND deleted_at IS NULL`,
+        [id],
+      ),
+      // Equipos monitoreados (antenas, cámaras, etc.)
+      this.ds.query<[{ count: string }]>(
+        `SELECT COUNT(*) AS count FROM dispositivos_monitoreo
+         WHERE router_acceso_id = $1 AND deleted_at IS NULL`,
+        [id],
+      ),
+      // OLTs vinculadas a este router como cabecera
+      this.ds.query<[{ count: string }]>(
+        `SELECT COUNT(*) AS count FROM olt_dispositivos
+         WHERE router_id = $1 AND deleted_at IS NULL`,
+        [id],
+      ),
+      // IPs activas en segmentos del router (infraestructura / reservadas)
+      this.ds.query<[{ count: string }]>(
+        `SELECT COUNT(*) AS count FROM ips_asignadas ia
+         JOIN segmentos_ipv4 s ON s.id = ia.segmento_id
+         WHERE s.router_id = $1 AND s.deleted_at IS NULL AND ia.activa = true`,
+        [id],
+      ),
+    ]);
 
     const bloqueadores: string[] = [];
-    if (Number(countContratos) > 0)
-      bloqueadores.push(`${countContratos} abonado(s) con servicio activo`);
-    if (Number(countDispositivos) > 0)
-      bloqueadores.push(`${countDispositivos} equipo(s) monitoreado(s) (antenas, cámaras u otros)`);
+    if (Number(countContratos)    > 0) bloqueadores.push(`${countContratos} abonado(s) con servicio activo`);
+    if (Number(countDispositivos) > 0) bloqueadores.push(`${countDispositivos} equipo(s) monitoreado(s) (antenas, cámaras u otros)`);
+    if (Number(countOlts)         > 0) bloqueadores.push(`${countOlts} OLT(s) registrada(s) con este router como cabecera`);
+    if (Number(countIpsActivas)   > 0) bloqueadores.push(`${countIpsActivas} IP(s) activa(s) en segmentos de red del router`);
 
     if (bloqueadores.length > 0) {
       throw new BadRequestException(
@@ -226,26 +245,34 @@ export class MikrotikService {
       );
     }
 
-    // Eliminar rutas del VPS al borrar el router
+    // ── Eliminación ──────────────────────────────────────────────
     if (router.subnetsLocales?.length) {
       const gw = router.vpnIp || router.ipGestion;
       await this.subnetSvc.removeVpsRoutes(gw, router.subnetsLocales);
     }
-    await this.routerRepo.update(id, { deletedAt: new Date(), activo: false });
+
+    await this.routerRepo.softDelete(id);
     await this.pool.invalidate(id);
 
-    // Soft-delete segmentos de red vinculados a este router
-    // Setear deleted_at además de activo=false para respetar el índice único parcial
+    // Soft-delete segmentos y limpiar sus IPs asignadas
     try {
       await this.ds.query(
-        `UPDATE segmentos_ipv4 SET activo = false, deleted_at = NOW() WHERE router_id = $1 AND deleted_at IS NULL`,
+        `UPDATE segmentos_ipv4 SET activo = false, deleted_at = NOW()
+         WHERE router_id = $1 AND deleted_at IS NULL`,
+        [id],
+      );
+      await this.ds.query(
+        `UPDATE ips_asignadas SET activa = false, liberada_en = NOW()
+         WHERE segmento_id IN (
+           SELECT id FROM segmentos_ipv4 WHERE router_id = $1
+         ) AND activa = true`,
         [id],
       );
     } catch (err: any) {
-      this.logger.warn(`Error desactivando segmentos del router ${id}: ${err.message}`);
+      this.logger.warn(`Error limpiando segmentos/IPs del router ${id}: ${err.message}`);
     }
 
-    // Revocar certificados VPN vinculados a este router
+    // Revocar VPN vinculada al router
     try {
       const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);
       for (const c of vpnClientes) {
@@ -255,6 +282,16 @@ export class MikrotikService {
     } catch (err: any) {
       this.logger.warn(`Error revocando VPN clientes del router ${id}: ${err.message}`);
     }
+
+    await this.auditoria.log({
+      empresaId:   user.empresaId,
+      usuarioId:   user.sub,
+      usuarioEmail: user.email,
+      accion:      'DELETE',
+      modulo:      'mikrotik',
+      entidadId:   id,
+      descripcion: `Router eliminado: ${router.nombre} (${router.ipGestion})`,
+    });
   }
 
   // ════════════════════════════════════════════════════════════
