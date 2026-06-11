@@ -17,9 +17,12 @@ import { UmbralAlerta }            from './entities/umbral-alerta.entity';
 import { MonitoreoController }     from './monitoreo.controller';
 import { MonitoreoService }        from './monitoreo.service';
 import { MonitoreoWorkerService }  from './services/monitoreo-worker.service';
+import { MonitoreoGateway }        from './monitoreo.gateway';
 
 // RouterConnectionPool vive en MikrotikModule y ya lo exporta
 import { MikrotikModule }          from '../mikrotik/mikrotik.module';
+// AuthModule exporta JwtModule (y por tanto JwtService) para el gateway WS
+import { AuthModule }              from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -30,12 +33,14 @@ import { MikrotikModule }          from '../mikrotik/mikrotik.module';
       UmbralAlerta,
     ]),
     MikrotikModule, // importa RouterConnectionPool ya configurado
+    AuthModule,     // provee JwtService para autenticación WebSocket
   ],
   controllers: [MonitoreoController],
   providers: [
     MonitoreoService,
     MonitoreoWorkerService,
+    MonitoreoGateway,
   ],
-  exports: [MonitoreoService],
+  exports: [MonitoreoService, MonitoreoGateway],
 })
 export class MonitoreoModule {}

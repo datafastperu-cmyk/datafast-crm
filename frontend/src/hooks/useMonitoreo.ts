@@ -16,21 +16,21 @@ interface MonitoreoState {
 }
 
 interface UseMonitoreoOptions {
-  onMedicion?:   (data: WsEventMedicion) => void;
-  onAlerta?:     (data: WsEventAlerta) => void;
-  onNodoStatus?: (data: WsEventNodoStatus) => void;
-  onDashboard?:  (data: WsEventDashboard) => void;
-  nodoIds?:      string[];
+  onMedicion?:    (data: WsEventMedicion) => void;
+  onAlerta?:      (data: WsEventAlerta) => void;
+  onNodoStatus?:  (data: WsEventNodoStatus) => void;
+  onDashboard?:   (data: WsEventDashboard) => void;
+  nodoIds?:       string[];
+  // F1: alertas pre-cargadas desde REST para evitar estado vacío al montar
+  initialAlertas?: WsEventAlerta[];
 }
 
-// Derive WS URL from current browser origin — works on any domain/IP.
-// Local dev only: set NEXT_PUBLIC_WS_URL=http://localhost:4000 in .env.local
+// F2: movida al interior del efecto para evitar ejecución en SSR
 function getWsUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
   if (typeof window === 'undefined') return 'http://localhost:4000';
   return `${window.location.protocol}//${window.location.host}`;
 }
-const WS_URL = getWsUrl();
 
 export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
   const socketRef = useRef<Socket | null>(null);
@@ -46,12 +46,13 @@ export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
   useEffect(() => { onNodoStatusRef.current = opts.onNodoStatus; }, [opts.onNodoStatus]);
   useEffect(() => { onDashboardRef.current  = opts.onDashboard;  }, [opts.onDashboard]);
 
+  // F1: inicializar con alertas pre-cargadas desde REST (evita estado vacío al montar)
   const [state, setState] = useState<MonitoreoState>({
     conectado:    false,
     mediciones:   new Map(),
-    alertas:      [],
+    alertas:      opts.initialAlertas ?? [],
     dashboard:    null,
-    ultimaAlerta: null,
+    ultimaAlerta: opts.initialAlertas?.[0] ?? null,
   });
 
   // ── Conectar WebSocket ─────────────────────────────────────
@@ -59,7 +60,9 @@ export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
     const token = getAccessToken();
     if (!token) return undefined;
 
-    const socket = io(`${WS_URL}/monitoreo`, {
+    // F2: computar URL en el efecto para garantizar acceso a window (seguro en SSR)
+    const wsUrl = getWsUrl();
+    const socket = io(`${wsUrl}/monitoreo`, {
       auth:                  { token },
       transports:            ['websocket', 'polling'],
       reconnection:          true,
@@ -135,11 +138,12 @@ export function useMonitoreo(opts: UseMonitoreoOptions = {}) {
     [state.mediciones],
   );
 
+  // F3: no exponer socketRef.current directamente — el valor sería null en el primer render
+  // y es stale por ser una ref no reactiva. Usar suscribir/desuscribir para interacción.
   return {
     ...state,
     suscribir,
     desuscribir,
     getMedicion,
-    socket: socketRef.current,
   };
 }

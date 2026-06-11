@@ -19,7 +19,7 @@ import {
 import { RouterConnectionPool, RouterCredentials }  from '../mikrotik/services/connection-pool.service';
 import { WirelessService }       from '../mikrotik/services/wireless.service';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsIP, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { encrypt, decrypt }      from '../../common/utils/encryption.util';
 
 // ─── DTOs / respuestas ────────────────────────────────────────────
@@ -58,7 +58,7 @@ export interface DispositivoConMetrica {
 }
 
 export class ProbarConexionDto {
-  @IsString() @IsNotEmpty()
+  @IsIP() @IsNotEmpty()
   ipAddress:       string;
   @IsString() @IsNotEmpty()
   usuario:         string;
@@ -77,7 +77,7 @@ export class ProbarConexionDto {
 export class CreateDispositivoDto {
   @IsString() @IsNotEmpty()
   nombreEmisor:        string;
-  @IsString() @IsNotEmpty()
+  @IsIP() @IsNotEmpty()
   ipAddress:           string;
   @IsOptional() @IsString()
   routerAccesoId?:     string;
@@ -97,7 +97,7 @@ export class CreateDispositivoDto {
   useSsl?:             boolean;
   @IsOptional() @IsBoolean()
   monitoreoSnmp?:      boolean;
-  @IsOptional() @IsNumber()
+  @IsOptional() @IsNumber() @Min(30)
   intervaloChequeoSeg?: number;
 }
 
@@ -105,7 +105,7 @@ export class CreateDispositivoDto {
 export class UpdateDispositivoDto {
   @IsOptional() @IsString()
   nombreEmisor?:        string;
-  @IsOptional() @IsString()
+  @IsOptional() @IsIP()
   ipAddress?:           string;
   @IsOptional() @IsString()
   routerAccesoId?:      string | null;
@@ -125,14 +125,14 @@ export class UpdateDispositivoDto {
   useSsl?:              boolean;
   @IsOptional() @IsBoolean()
   monitoreoSnmp?:       boolean;
-  @IsOptional() @IsNumber()
+  @IsOptional() @IsNumber() @Min(30)
   intervaloChequeoSeg?: number;
 }
 
 export class FiltroAlertaQuery {
-  @IsOptional() @IsString()
-  status?: string;
-  @IsOptional() @IsString()
+  @IsOptional() @IsEnum(StatusAlerta)
+  status?: string;   // string para compatibilidad con @Query(); @IsEnum valida el valor
+  @IsOptional() @IsEnum(NivelAlerta)
   nivel?:  string;
   @IsOptional() @IsNumber()
   page?:   number;
@@ -383,10 +383,12 @@ export class MonitoreoService {
       useSsl:              dto.useSsl          ?? false,
       monitoreoSnmp:       dto.monitoreoSnmp   ?? false,
       intervaloChequeoSeg: dto.intervaloChequeoSeg ?? 60,
-      status:              StatusDispositivo.ONLINE,
+      // C5: iniciar como REVERIFICANDO; el worker determina el estado real en el primer ciclo
+      status:              StatusDispositivo.REVERIFICANDO,
     });
     await this.dispoRepo.save(d);
-    return StdResponse.ok(d);
+    const { contrasenaCifrada: _pw, ...safeCreate } = d;
+    return StdResponse.ok(safeCreate as unknown as DispositivoMonitoreo);
   }
   // ═══════════════════════════════════════════════════════════════
   // GET /monitoreo/dispositivos
@@ -396,7 +398,9 @@ export class MonitoreoService {
       where: { empresaId, deletedAt: IsNull() },
       order: { nombreEmisor: 'ASC' },
     });
-    return StdResponse.ok(list);
+    // S1: no exponer contrasenaCifrada en la respuesta
+    const safe = list.map(({ contrasenaCifrada: _pw, ...d }) => d);
+    return StdResponse.ok(safe);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -405,7 +409,9 @@ export class MonitoreoService {
   async findDispositivo(id: string, empresaId: string) {
     const d = await this.dispoRepo.findOne({ where: { id, empresaId, deletedAt: IsNull() } });
     if (!d) throw new NotFoundException(`Dispositivo ${id} no encontrado`);
-    return StdResponse.ok(d);
+    // S1: no exponer contrasenaCifrada en la respuesta
+    const { contrasenaCifrada: _pw, ...safe } = d;
+    return StdResponse.ok(safe);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -434,7 +440,9 @@ export class MonitoreoService {
     }
 
     await this.dispoRepo.save(d);
-    return StdResponse.ok(d);
+    // S1: no exponer contrasenaCifrada en la respuesta
+    const { contrasenaCifrada: _pw, ...safe } = d;
+    return StdResponse.ok(safe);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -511,6 +519,17 @@ export class MonitoreoService {
   // POST /monitoreo/umbrales
   // ═══════════════════════════════════════════════════════════════
   async createUmbral(dto: CreateUmbralDto, empresaId: string) {
+    // U1: verificar que dispositivoId pertenece a la misma empresa
+    if (dto.dispositivoId) {
+      const dispo = await this.dispoRepo.findOne({
+        where: { id: dto.dispositivoId, empresaId, deletedAt: IsNull() },
+      });
+      if (!dispo) {
+        throw new BadRequestException(
+          `Dispositivo ${dto.dispositivoId} no encontrado en esta empresa`,
+        );
+      }
+    }
     const u = this.umbralRepo.create({ ...dto, empresaId });
     await this.umbralRepo.save(u);
     return StdResponse.ok(u);
@@ -522,7 +541,20 @@ export class MonitoreoService {
   async updateUmbral(id: string, empresaId: string, dto: Partial<CreateUmbralDto>) {
     const u = await this.umbralRepo.findOne({ where: { id, empresaId, deletedAt: IsNull() } });
     if (!u) throw new NotFoundException('Umbral no encontrado');
-    Object.assign(u, dto);
+
+    // U3: asignación explícita para evitar sobreescritura de campos protegidos (empresaId, etc.)
+    if (dto.dispositivoId  !== undefined) u.dispositivoId  = dto.dispositivoId  ?? null;
+    if (dto.tipoEquipo     !== undefined) u.tipoEquipo     = dto.tipoEquipo     ?? null;
+    if (dto.nombre         !== undefined) u.nombre         = dto.nombre         ?? null;
+    if (dto.latenciaMaxMs  !== undefined) u.latenciaMaxMs  = dto.latenciaMaxMs  ?? null;
+    if (dto.lossMaxPct     !== undefined) u.lossMaxPct     = dto.lossMaxPct     ?? null;
+    if (dto.cpuMaxPct      !== undefined) u.cpuMaxPct      = dto.cpuMaxPct      ?? null;
+    if (dto.memoryMaxPct   !== undefined) u.memoryMaxPct   = dto.memoryMaxPct   ?? null;
+    if (dto.trafficDownMaxBps !== undefined) u.trafficDownMaxBps = dto.trafficDownMaxBps ?? null;
+    if (dto.trafficUpMaxBps   !== undefined) u.trafficUpMaxBps   = dto.trafficUpMaxBps   ?? null;
+    if (dto.nivelAlerta    !== undefined) u.nivelAlerta    = dto.nivelAlerta;
+    if (dto.confirmacionesRequeridas !== undefined) u.confirmacionesRequeridas = dto.confirmacionesRequeridas;
+
     await this.umbralRepo.save(u);
     return StdResponse.ok(u);
   }

@@ -1,8 +1,8 @@
 // Ruta: /opt/datafast/backend/src/modules/monitoreo/monitoreo.controller.ts
 
 import {
-  Body, Controller, Delete, Get, Param,
-  ParseUUIDPipe, Patch, Post, Query,
+  Body, Controller, DefaultValuePipe, Delete, Get, Param,
+  ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
 }                            from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
@@ -43,7 +43,7 @@ export class MonitoreoController {
   // ── POST /monitoreo/dispositivos/probar-conexion ─────────────
   // Valida credenciales antes de guardar un dispositivo
   @Post('dispositivos/probar-conexion')
-  @RequirePermission('monitoring:view')
+  @RequirePermission('monitoring:manage')  // S2: conectar a un router requiere manage, no solo view
   @ApiOperation({ summary: 'Prueba rápida de credenciales MikroTik (no guarda datos)' })
   probarConexion(@Body() dto: ProbarConexionDto) {
     return this.monitoreoSvc.probarConexion(dto);
@@ -119,14 +119,11 @@ export class MonitoreoController {
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: string,
     @Query('nivel')  nivel?:  string,
-    @Query('page')   page?:   string,
-    @Query('limit')  limit?:  string,
+    // A4: ParseIntPipe valida que page/limit sean enteros; default values resuelven el orden TS
+    @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page  = 1,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
   ) {
-    return this.monitoreoSvc.getAlertas(user.empresaId, {
-      status, nivel,
-      page:  page  ? parseInt(page,  10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-    });
+    return this.monitoreoSvc.getAlertas(user.empresaId, { status, nivel, page, limit });
   }
 
   // ── PATCH /monitoreo/alertas/:id/resolver ────────────────────
