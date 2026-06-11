@@ -42,10 +42,13 @@ export function NodoCard({ nodo, onClick, onReparar, reparando }: Props) {
   const latenciaOk  = (nodo.latenciaMs ?? 0) > 0 && (nodo.latenciaMs ?? 0) < 100;
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
       className={cn(
-        'group relative flex flex-col gap-3 p-4 rounded-2xl border text-left transition-all',
+        'group relative flex flex-col gap-3 p-4 rounded-2xl border text-left transition-all cursor-pointer',
         'hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.99]',
         isOffline
           ? 'border-red-200 bg-red-50/50 dark:bg-red-950/10 dark:border-red-900/60'
@@ -216,7 +219,7 @@ export function NodoCard({ nodo, onClick, onReparar, reparando }: Props) {
           {reparando ? 'Reparando...' : 'Reparar antena'}
         </button>
       )}
-    </button>
+    </div>
   );
 }
 
