@@ -46,7 +46,7 @@ export function NodoCard({ nodo, onClick, onReparar, reparando }: Props) {
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       className={cn(
         'group relative flex flex-col gap-3 p-4 rounded-2xl border text-left transition-all cursor-pointer',
         'hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.99]',

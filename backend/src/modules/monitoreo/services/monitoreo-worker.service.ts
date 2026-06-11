@@ -4,7 +4,8 @@ import { Injectable, Logger }       from '@nestjs/common';
 import { Cron, CronExpression }      from '@nestjs/schedule';
 import { InjectRepository }          from '@nestjs/typeorm';
 import { InjectDataSource }          from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
+import * as net from 'net';
 import { exec }                      from 'child_process';
 import { promisify }                 from 'util';
 
@@ -21,8 +22,6 @@ import { MonitoreoGateway }      from '../monitoreo.gateway';
 
 const execAsync = promisify(exec);
 
-// C2: regex para validar IPv4 e IPv6 antes de exec
-const IP_REGEX = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$|^[0-9a-fA-F:]+$/;
 
 // ── Tipos internos ────────────────────────────────────────────────
 
@@ -115,8 +114,11 @@ export class MonitoreoWorkerService {
         if (!activeIds.has(key.split(':')[0])) this.thresholdHits.delete(key);
       }
 
-      // U2: pre-cargar todos los umbrales una sola vez por ciclo
-      const umbrales = await this.umbralRepo.find({ where: { deletedAt: IsNull() } });
+      // U2: pre-cargar umbrales solo de las empresas con dispositivos activos en este ciclo
+      const empresaIds = [...new Set(dispositivos.map(d => d.empresaId))];
+      const umbrales = await this.umbralRepo.find({
+        where: { empresaId: In(empresaIds), deletedAt: IsNull() },
+      });
 
       this.logger.debug(`Ciclo iniciado: ${dispositivos.length} dispositivo(s)`);
       await this.runBatched(dispositivos, 10, umbrales);
@@ -326,8 +328,7 @@ export class MonitoreoWorkerService {
   // SONDEO GENÉRICO — ping ICMP
   // ═══════════════════════════════════════════════════════════════
   private async sondarPing(ip: string): Promise<ProbeResult> {
-    // C2: validar IP antes de pasar al shell para evitar inyección
-    if (!IP_REGEX.test(ip)) {
+    if (!net.isIPv4(ip) && !net.isIPv6(ip)) {
       throw new Error(`Dirección IP inválida para ping: ${ip}`);
     }
 
@@ -491,6 +492,9 @@ export class MonitoreoWorkerService {
       await this.crearAlertaDeduplicada(
         d, chk.nivel, chk.categoria, chk.mensaje, chk.valor, chk.threshold,
       );
+      // Clampear el contador al techo para que no crezca indefinidamente y
+      // para que, si la alerta se resuelve externamente, el debounce se respete
+      this.thresholdHits.set(key, umbral.confirmacionesRequeridas);
     }
   }
 
@@ -504,7 +508,7 @@ export class MonitoreoWorkerService {
   ): UmbralAlerta | null {
     return (
       umbrales.find(u => u.dispositivoId === dispositivoId)
-      ?? umbrales.find(u => u.tipoEquipo === tipoEquipo && u.dispositivoId === null)
+      ?? umbrales.find(u => u.empresaId === empresaId && u.tipoEquipo === tipoEquipo && u.dispositivoId === null)
       ?? umbrales.find(u =>
           u.empresaId === empresaId &&
           u.tipoEquipo === null &&

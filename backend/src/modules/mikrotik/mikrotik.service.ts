@@ -251,18 +251,17 @@ export class MikrotikService {
 
     // Revocar VPN ANTES del softDelete para garantizar que si la revocación falla
     // el router siga visible en la UI y el operador pueda reintentar.
-    try {
-      const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);
-      for (const c of vpnClientes) {
+    const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);
+    for (const c of vpnClientes) {
+      try {
         await this.vpnSvc.revocar(c.id, user.empresaId);
         this.logger.log(`VPN cliente revocado al eliminar router ${id}: ${c.id}`);
-      }
-    } catch (err: any) {
-      if (err?.status === 409 || err?.constructor?.name === 'ConflictException') {
-        this.logger.warn(`VPN cliente del router ${id} ya estaba revocado — continuando eliminación`);
-      } else {
-        // Error real (red, BD, socket OpenVPN) — relanzar para que el operador pueda reintentar
-        throw err;
+      } catch (err: any) {
+        if (err?.status === 409 || err?.constructor?.name === 'ConflictException') {
+          this.logger.warn(`VPN cliente ${c.id} ya estaba revocado — continuando`);
+        } else {
+          throw err;
+        }
       }
     }
 
@@ -610,15 +609,18 @@ export class MikrotikService {
     empresaId:  string,
   ): Promise<void> {
     const router = await this.findOne(routerId, empresaId);
+    if (!router.passwordCifrado) {
+      throw new BadRequestException(`Router ${routerId} no tiene contraseña configurada`);
+    }
     const creds: RouterCredentials = {
       id:              router.id,
       ip:              router.vpnIp || router.ipGestion,
       port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
       user:            router.usuario ?? 'admin',
-      passwordCifrado: router.passwordCifrado ?? '',
+      passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl ?? false,
       timeoutSec:      10,
-      version:         router.versionRos as any ?? 'v6',
+      version:         (router.versionRos as 'v6' | 'v7') ?? 'v6',
     };
     await this.queueSvc.actualizarVelocidadQueue(creds, dto.nombreQueue, dto.downloadMbps, dto.uploadMbps);
   }

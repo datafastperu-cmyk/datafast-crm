@@ -119,11 +119,15 @@ export class MonitoreoController {
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: string,
     @Query('nivel')  nivel?:  string,
-    // A4: ParseIntPipe valida que page/limit sean enteros; default values resuelven el orden TS
     @Query('page',  new DefaultValuePipe(1),  ParseIntPipe) page  = 1,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
   ) {
-    return this.monitoreoSvc.getAlertas(user.empresaId, { status, nivel, page, limit });
+    return this.monitoreoSvc.getAlertas(user.empresaId, {
+      status: status as any,
+      nivel:  nivel  as any,
+      page,
+      limit,
+    });
   }
 
   // ── PATCH /monitoreo/alertas/:id/resolver ────────────────────

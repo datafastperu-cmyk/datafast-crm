@@ -131,9 +131,9 @@ export class UpdateDispositivoDto {
 
 export class FiltroAlertaQuery {
   @IsOptional() @IsEnum(StatusAlerta)
-  status?: string;   // string para compatibilidad con @Query(); @IsEnum valida el valor
+  status?: StatusAlerta;
   @IsOptional() @IsEnum(NivelAlerta)
-  nivel?:  string;
+  nivel?:  NivelAlerta;
   @IsOptional() @IsNumber()
   page?:   number;
   @IsOptional() @IsNumber()

@@ -5,11 +5,18 @@ import {
   OnGatewayConnection, OnGatewayDisconnect,
   SubscribeMessage, MessageBody, ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger }         from '@nestjs/common';
-import { JwtService }     from '@nestjs/jwt';
-import { ConfigService }  from '@nestjs/config';
-import { Server, Socket } from 'socket.io';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository }   from '@nestjs/typeorm';
+import { Repository, IsNull } from 'typeorm';
+import { JwtService }         from '@nestjs/jwt';
+import { ConfigService }      from '@nestjs/config';
+import { Server, Socket }     from 'socket.io';
 import { NivelAlerta, StatusDispositivo } from './enums/monitoreo.enums';
+import { DispositivoMonitoreo }           from './entities/dispositivo-monitoreo.entity';
+import { JwtPayload }                     from '../../common/decorators/current-user.decorator';
+
+// Socket con usuario autenticado tipado
+type AuthSocket = Socket & { user: JwtPayload };
 
 export interface MedicionPayload {
   nodoId:         string;
@@ -41,6 +48,7 @@ export interface NodoStatusPayload {
   timestamp: string;
 }
 
+@Injectable()
 @WebSocketGateway({
   namespace: '/monitoreo',
   cors: {
@@ -55,6 +63,8 @@ export class MonitoreoGateway implements OnGatewayConnection, OnGatewayDisconnec
   constructor(
     private readonly jwtService:    JwtService,
     private readonly configService: ConfigService,
+    @InjectRepository(DispositivoMonitoreo)
+    private readonly dispoRepo: Repository<DispositivoMonitoreo>,
   ) {}
 
   handleConnection(client: Socket): void {
@@ -65,14 +75,13 @@ export class MonitoreoGateway implements OnGatewayConnection, OnGatewayDisconnec
       const token = raw.replace(/^Bearer\s+/i, '');
       if (!token) throw new Error('Token no proporcionado');
 
-      const payload = this.jwtService.verify(token, {
+      const payload = this.jwtService.verify<JwtPayload>(token, {
         secret:   this.configService.get<string>('jwt.secret'),
         issuer:   'datafast-crm',
         audience: 'datafast-app',
       });
 
-      (client as any).user = payload;
-      // Unir al room de la empresa para broadcasts multi-tenant
+      (client as AuthSocket).user = payload;
       client.join(`empresa:${payload.empresaId}`);
       this.logger.debug(`WS /monitoreo conectado: ${client.id} | empresa: ${payload.empresaId}`);
     } catch (err: any) {
@@ -88,11 +97,17 @@ export class MonitoreoGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   // ── Suscripción a un nodo específico (room adicional) ────────
   @SubscribeMessage('monitoreo:subscribe')
-  onSubscribe(
+  async onSubscribe(
     @MessageBody() data: { nodoId: string },
     @ConnectedSocket() client: Socket,
-  ): void {
-    if (data?.nodoId) client.join(`nodo:${data.nodoId}`);
+  ): Promise<void> {
+    if (!data?.nodoId) return;
+    const user = (client as AuthSocket).user;
+    if (!user) return;
+    const nodo = await this.dispoRepo.findOne({
+      where: { id: data.nodoId, empresaId: user.empresaId, deletedAt: IsNull() },
+    });
+    if (nodo) client.join(`nodo:${data.nodoId}`);
   }
 
   @SubscribeMessage('monitoreo:unsubscribe')
@@ -107,29 +122,23 @@ export class MonitoreoGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   emitirMedicion(payload: MedicionPayload): void {
     this.server
-      .to(`empresa:${payload.empresaId}`)
+      ?.to(`empresa:${payload.empresaId}`)
       .emit('monitoreo:medicion', payload);
   }
 
   emitirAlerta(payload: AlertaPayload): void {
     this.server
-      .to(`empresa:${payload.empresaId}`)
+      ?.to(`empresa:${payload.empresaId}`)
       .emit('monitoreo:alerta', payload);
-  }
-
-  emitirRecuperacion(payload: AlertaPayload): void {
-    this.server
-      .to(`empresa:${payload.empresaId}`)
-      .emit('monitoreo:recovery', payload);
   }
 
   emitirNodoStatus(payload: NodoStatusPayload): void {
     this.server
-      .to(`empresa:${payload.empresaId}`)
+      ?.to(`empresa:${payload.empresaId}`)
       .emit('monitoreo:nodo_status', payload);
-    // También al room del nodo específico para subscriptores individuales
+    // Room del nodo para subscriptores de drill-down individual
     this.server
-      .to(`nodo:${payload.nodoId}`)
+      ?.to(`nodo:${payload.nodoId}`)
       .emit('monitoreo:nodo_status', payload);
   }
 }
