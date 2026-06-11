@@ -1,9 +1,9 @@
 import {
   Controller, Get, Post, Delete,
   Body, Param, Res, HttpCode, HttpStatus,
-  UnauthorizedException,
+  UnauthorizedException, ForbiddenException, Req,
 } from '@nestjs/common';
-import { Response }       from 'express';
+import { Response, Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
 import { VpnClienteService }     from './services/vpn-cliente.service';
@@ -100,8 +100,15 @@ export class VpnClienteController {
   @Post('verify-auth')
   @Public()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verificar credenciales VPN (uso interno del servidor OpenVPN)' })
-  async verifyAuth(@Body() body: { username: string; password: string }) {
+  @ApiOperation({ summary: 'Verificar credenciales VPN (uso interno — solo localhost)' })
+  async verifyAuth(
+    @Body() body: { username: string; password: string },
+    @Req()  req:  Request,
+  ) {
+    const ip = req.socket.remoteAddress ?? '';
+    if (!ip.includes('127.0.0.1') && !ip.includes('::1')) {
+      throw new ForbiddenException('Solo accesible desde localhost');
+    }
     const ok = await this.svc.verifyAuth(body.username ?? '', body.password ?? '');
     if (!ok) throw new UnauthorizedException('Credenciales inválidas');
     return StdResponse.ok(null, 'Autenticado');

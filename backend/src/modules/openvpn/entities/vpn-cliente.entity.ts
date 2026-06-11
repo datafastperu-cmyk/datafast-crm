@@ -6,6 +6,7 @@ export type EstadoVpnCliente = 'pendiente' | 'conectado' | 'desconectado' | 'rev
 @Entity('vpn_clientes')
 @Index(['empresaId', 'activo'])
 @Index(['nombreCert'], { unique: true })
+@Index(['vpnUsuario'], { unique: true, where: '"vpn_usuario" IS NOT NULL' })
 @Index(['tokenDescarga'])
 export class VpnCliente extends BaseModel {
 

@@ -28,7 +28,6 @@ const CCD_DIR     = '/etc/openvpn/ccd';
 const STATUS_LOG  = '/var/log/openvpn/status-mikrotik.log';
 const VPS_IP      = '149.34.48.224';
 const VPN_PORT    = 1195;
-const API_BASE    = `http://${VPS_IP}/api/v1`;
 
 interface VpnConnectedClient {
   commonName:     string;
@@ -127,7 +126,10 @@ export class VpnClienteService {
     }
 
     const tokenDescarga  = generateToken(32);
-    const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // Certs: 24h (el PKI de cliente es temporal por seguridad)
+    // User/pass: 365 días (las credenciales son permanentes; la CA no caduca)
+    const tokenTtlMs     = usarCerts ? 24 * 60 * 60 * 1000 : 365 * 24 * 60 * 60 * 1000;
+    const tokenExpiresAt = new Date(Date.now() + tokenTtlMs);
 
     const cliente = this.repo.create({
       empresaId:          user.empresaId,
@@ -200,19 +202,19 @@ export class VpnClienteService {
   // Revoca todos los clientes VPN activos cuyo router fue eliminado o no existe.
 
   async limpiarHuerfanos(empresaId: string): Promise<{ revocados: number; ids: string[] }> {
-    const todos = await this.repo.find({ where: { empresaId, activo: true } });
-    const activos = todos.filter(c => c.estado !== 'revocado');
-    if (!activos.length) return { revocados: 0, ids: [] };
-
     const routersActivos = await this.routerRepo.find({
       where: { empresaId, activo: true },
       select: ['id'],
     });
     const activeIds = new Set(routersActivos.map(r => r.id));
 
-    const huerfanos = activos.filter(
-      c => !c.routerId || !activeIds.has(c.routerId),
-    );
+    const candidatos = await this.repo.find({
+      where: { empresaId, activo: true, estado: Not('revocado' as EstadoVpnCliente) },
+      select: ['id', 'empresaId', 'nombreCert', 'routerId'],
+    });
+
+    const huerfanos = candidatos.filter(c => !c.routerId || !activeIds.has(c.routerId));
+    if (!huerfanos.length) return { revocados: 0, ids: [] };
 
     const ids: string[] = [];
     for (const c of huerfanos) {
@@ -275,17 +277,6 @@ export class VpnClienteService {
       return { conectado: false, mensaje: 'Cliente VPN revocado' };
     }
 
-    // Fast-path: si el DB ya confirmó la conexión activa, no re-validar status.log
-    if (cliente.estado === 'conectado' && cliente.vpnIp) {
-      return {
-        conectado: true,
-        vpnIp:     cliente.vpnIp,
-        ipReal:    cliente.ipReal || undefined,
-        routerId:  cliente.routerId ?? undefined,
-        mensaje:   `Túnel activo | IP VPN: ${cliente.vpnIp}`,
-      };
-    }
-
     // Para modo sin certificados, el CN en status.log es el vpnUsuario
     const cn = (!cliente.usarCertificados && cliente.vpnUsuario)
       ? cliente.vpnUsuario
@@ -295,6 +286,10 @@ export class VpnClienteService {
     const found = connectedClients.find(c => c.commonName === cn);
 
     if (!found) {
+      // Si el DB indicaba conectado pero el status.log ya no lo muestra, actualizar estado
+      if (cliente.estado === 'conectado') {
+        await this.repo.update(cliente.id, { estado: 'desconectado' });
+      }
       return {
         conectado: false,
         mensaje:   'Túnel no detectado. Ejecuta el script en el router y espera 15 segundos.',
@@ -462,18 +457,23 @@ export class VpnClienteService {
       return;
     }
 
-    // Actualizar router con el CN real
-    await this.routerRepo.update(routerId, { vpnCommonName: cliente.nombreCert } as any);
-    // Vincular el registro vpn_clientes al router
+    // Para modo user/pass, el CN efectivo es vpnUsuario (username-as-common-name).
+    // vpnCommonName en routers debe coincidir con lo que OpenVPN registra en el
+    // management interface y usa para buscar el CCD.
+    const effectiveCn = (!cliente.usarCertificados && cliente.vpnUsuario)
+      ? cliente.vpnUsuario
+      : cliente.nombreCert;
+
+    await this.routerRepo.update(routerId, { vpnCommonName: effectiveCn } as any);
     await this.repo.update(cliente.id, { routerId });
 
-    // Escribir/actualizar CCD
+    // Escribir/actualizar CCD con el CN correcto y las subnets del router
     const router = await this.routerRepo.findOne({ where: { id: routerId } });
     if (router) {
-      await this.escribirArchivoCcd(cliente.nombreCert, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
+      await this.escribirArchivoCcd(effectiveCn, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
     }
 
-    this.logger.log(`[VPN-LINK] Cert wizard vinculado: "${cliente.nombreCert}" → router ${routerId}`);
+    this.logger.log(`[VPN-LINK] VPN vinculada: "${effectiveCn}" → router ${routerId}`);
   }
 
   // ── Generar/garantizar certificado ID-based y escribir CCD ───
@@ -795,7 +795,6 @@ export class VpnClienteService {
     });
     if (existing) return existing;
 
-    const { encrypt: enc } = await import('../../../common/utils/encryption.util');
 
     const router = this.routerRepo.create({
       empresaId,
@@ -805,7 +804,7 @@ export class VpnClienteService {
       ipGestion:       vpnIp,
       vpnIp,
       usuario:         'admin',
-      passwordCifrado: enc(''),
+      passwordCifrado: encrypt(''),
       metodoConexion:  MetodoConexion.VPN_TUNNEL,
       estado:          EstadoEquipo.DESCONOCIDO,
       versionRos:      VersionRouterOS.DESCONOCIDA,
