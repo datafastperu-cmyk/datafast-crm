@@ -107,10 +107,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const tokenDescargaRef = useRef<string | null>(null);
   const routerGuardadoRef = useRef(false);
   const revokedRef       = useRef(false);
-  const vpnConnectedRef  = useRef(false);  // true una vez que el túnel está activo — no revocar en cleanup
   const generatingVpnRef = useRef(false);  // guard contra doble-click en Generar script VPN
   useEffect(() => { vpnClienteRef.current = vpnCliente; }, [vpnCliente]);
-  useEffect(() => { routerGuardadoRef.current = routerGuardado; }, [routerGuardado]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -272,7 +270,6 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         }
 
         // 2. Auto-rellenar IP VPN desde el túnel
-        vpnConnectedRef.current = true;
         const ip = vpnRes.vpnIp || ipGestion;
         if (vpnRes.vpnIp) {
           setVpnIp(vpnRes.vpnIp);
@@ -329,7 +326,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // ── Navegación ─────────────────────────────────────────────────────────────
 
   const canProceedStep1 = nombre.trim().length > 0 && versionRos !== '';
-  const canProceedStep2 = testStatus === 'ok' && (tipoConexion !== 'vpn_tunnel' || !!vpnIp);
+  const vpnIpValida = !!vpnIp && vpnIp.trim().length > 0 && vpnIp !== '0.0.0.0';
+  const canProceedStep2 = testStatus === 'ok' && (tipoConexion !== 'vpn_tunnel' || vpnIpValida);
 
   const goStep2 = () => {
     if (!nombre.trim()) { toast('El nombre del router es obligatorio', { type: 'error' }); return; }

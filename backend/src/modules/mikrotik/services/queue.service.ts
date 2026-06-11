@@ -88,6 +88,28 @@ export class QueueService {
     return this.pool.execute(creds, (api) => api.write('/queue/simple/print'));
   }
 
+  // Solo actualiza max-limit de una queue existente sin tocar su target ni otros campos
+  async actualizarVelocidadQueue(
+    creds:        RouterCredentials,
+    name:         string,
+    downloadMbps: number,
+    uploadMbps:   number,
+  ): Promise<void> {
+    await this.pool.execute(creds, async (api) => {
+      const existing = await api.write('/queue/simple/print', [`?name=${name}`]);
+      if (existing.length === 0) {
+        this.logger.warn(`Simple Queue no encontrada: ${name} en ${creds.ip} — velocidad no actualizada`);
+        return;
+      }
+      const maxLimit = `${uploadMbps}M/${downloadMbps}M`;
+      await api.write('/queue/simple/set', [
+        `=.id=${existing[0]['.id']}`,
+        `=max-limit=${maxLimit}`,
+      ]);
+      this.logger.log(`Velocidad actualizada en queue: ${name} | ${maxLimit}`);
+    });
+  }
+
   // ────────────────────────────────────────────────────────────
   // PCQ + QUEUE TREE
   // Método avanzado para gestión de ancho de banda por grupos.

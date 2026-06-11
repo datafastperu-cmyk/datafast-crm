@@ -15,7 +15,8 @@ import {
   CreateRouterDto, UpdateRouterDto,
   ProvisionarClienteDto, SuspenderClienteDto,
   ReactivarClienteDto, DhcpBindingDto,
-  ActualizarQueueDto, PingDto, AmareIpMacDto,
+  ActualizarQueueDto, MigrarClientesDto,
+  PingDto, AmareIpMacDto,
   TestConexionDirectaDto,
 } from './dto/mikrotik.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -98,10 +99,10 @@ export class MikrotikController {
   @ApiParam({ name: 'id' })
   async migrarClientesRouter(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { oldTipoControl: string },
+    @Body() dto: MigrarClientesDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    const result = await this.svc.migrarClientesRouter(id, body.oldTipoControl, user.empresaId);
+    const result = await this.svc.migrarClientesRouter(id, dto.oldTipoControl, user.empresaId);
     const msg = result.errores.length === 0
       ? `Migración completada: ${result.ok}/${result.total} clientes actualizados correctamente.`
       : `Migración completada con errores: ${result.ok}/${result.total} OK, ${result.errores.length} fallidos.`;

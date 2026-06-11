@@ -226,12 +226,19 @@ export class ActualizarQueueDto {
   nombreQueue: string;
 
   @ApiProperty({ example: 30 })
-  @IsInt() @Min(1) @Type(() => Number)
+  @IsInt() @Min(1) @Max(10000) @Type(() => Number)
   downloadMbps: number;
 
   @ApiProperty({ example: 15 })
-  @IsInt() @Min(1) @Type(() => Number)
+  @IsInt() @Min(1) @Max(10000) @Type(() => Number)
   uploadMbps: number;
+}
+
+// ─── Migrar Clientes ──────────────────────────────────────────
+export class MigrarClientesDto {
+  @ApiProperty({ enum: TipoControl, description: 'Tipo de control anterior que se reemplaza' })
+  @IsEnum(TipoControl)
+  oldTipoControl: TipoControl;
 }
 
 // ─── Amarre IP-MAC (ARP estático + opcionalmente DHCP lease) ─────

@@ -258,7 +258,12 @@ export class MikrotikService {
         this.logger.log(`VPN cliente revocado al eliminar router ${id}: ${c.id}`);
       }
     } catch (err: any) {
-      this.logger.warn(`Error revocando VPN clientes del router ${id}: ${err.message}`);
+      if (err?.status === 409 || err?.constructor?.name === 'ConflictException') {
+        this.logger.warn(`VPN cliente del router ${id} ya estaba revocado — continuando eliminación`);
+      } else {
+        // Error real (red, BD, socket OpenVPN) — relanzar para que el operador pueda reintentar
+        throw err;
+      }
     }
 
     await this.routerRepo.softDelete(id);
@@ -314,8 +319,10 @@ export class MikrotikService {
     if (router.metodoConexion === MetodoConexion.VPN_TUNNEL && !router.vpnCommonName) {
       this.logger.warn(`[VPN] Router ${routerId} sin vpnCommonName — regenerando VPN antes de reparar`);
       await this.vpnSvc.generarParaRouter(router);
-      // Recargar para obtener vpnCommonName y vpnIp actualizados
-      Object.assign(router, await this.findOne(routerId, empresaId));
+      // Recargar solo los campos VPN actualizados para no contaminar la entidad tracked
+      const fresh = await this.findOne(routerId, empresaId);
+      router.vpnCommonName = fresh.vpnCommonName;
+      router.vpnIp         = fresh.vpnIp;
     }
 
     const creds: RouterCredentials = {
@@ -358,7 +365,12 @@ export class MikrotikService {
     } catch (err: any) {
       // Verificar si la sesión VPN está ocupada por un impostor
       // (router offline cuyo script fue pegado en otro equipo por error)
-      const sesionKilled = await this.vpnSvc.matarSesionImpostora(routerId, empresaId);
+      let sesionKilled = false;
+      try {
+        sesionKilled = await this.vpnSvc.matarSesionImpostora(routerId, empresaId);
+      } catch (vpnErr: any) {
+        this.logger.warn(`[VPN] Error al verificar sesión impostora para ${routerId}: ${vpnErr.message}`);
+      }
       if (sesionKilled) {
         throw new BadRequestException(
           `Sesión VPN del router "${router.nombre}" estaba ocupada por un dispositivo no autorizado. ` +
@@ -608,12 +620,7 @@ export class MikrotikService {
       timeoutSec:      10,
       version:         router.versionRos as any ?? 'v6',
     };
-    await this.queueSvc.crearSimpleQueue(creds, {
-      name:         dto.nombreQueue,
-      target:       '',
-      maxLimitDown: dto.downloadMbps,
-      maxLimitUp:   dto.uploadMbps,
-    });
+    await this.queueSvc.actualizarVelocidadQueue(creds, dto.nombreQueue, dto.downloadMbps, dto.uploadMbps);
   }
 
   // ────────────────────────────────────────────────────────────
