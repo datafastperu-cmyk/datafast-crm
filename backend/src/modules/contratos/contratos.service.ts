@@ -315,7 +315,10 @@ export class ContratosService {
     if (dto.estado === EstadoContrato.BAJA_DEFINITIVA) {
       upd.fechaBaja  = new Date().toISOString().split('T')[0];
       upd.motivoBaja = dto.motivo;
-      upd.onuId      = null as any;  // Desvincula ONU → queda disponible para otro contrato
+      upd.onuId      = null as any;
+      upd.routerId   = null as any;
+      upd.segmentoId = null as any;
+      upd.ipAsignada = null as any;
       if (contrato.segmentoId) await this.contratoRepo.liberarIp(id);
       await this.desaprovisionarMikrotik(id);
       await this.eliminarDeAccessListAntena(id);
