@@ -103,8 +103,6 @@ export class MikrotikService {
           );
         }
       } else {
-        const vpnCn = `df_router_id_${saved.id}`;
-        await this.routerRepo.update(saved.id, { vpnCommonName: vpnCn } as any);
         this.vpnSvc.generarParaRouter(await this.findOne(saved.id, user.empresaId)).catch(e =>
           this.logger.error(`[VPN-CCD] router ${saved.id}: ${e.message}`)
         );

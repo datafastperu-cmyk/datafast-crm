@@ -77,7 +77,6 @@ export class VpnClienteService {
       );
     }
 
-    const usarCerts  = dto.usarCertificados === true;
     const versionRos = dto.versionRos ?? 'v7';
     const { cipher, authAlg } = this._resolveParams(
       versionRos,
@@ -92,47 +91,12 @@ export class VpnClienteService {
       .substring(0, 40);
     const shortId = generateToken(3);
 
-    let nombreCert:      string;
-    let autoVpnUsuario:  string | undefined;
-    let autoVpnPassword: string | undefined;
-
-    if (usarCerts) {
-      nombreCert = `mt-${slug}-${shortId}`;
-      this.logger.log(`Generando certificado: ${nombreCert}`);
-      try {
-        await execFileAsync(
-          `${EASYRSA_DIR}/easyrsa`,
-          ['build-client-full', nombreCert, 'nopass'],
-          {
-            cwd:     EASYRSA_DIR,
-            env:     {
-              ...process.env,
-              EASYRSA_BATCH:      'yes',
-              EASYRSA_VARS_FILE:  `${EASYRSA_DIR}/vars-clients`,
-            },
-            timeout: 60_000,
-          },
-        );
-        // pki/issued/*.crt must be world-readable: OpenVPN runs as 'nobody'
-        await execFileAsync('chmod', ['o+r', `${PKI_DIR}/issued/${nombreCert}.crt`]);
-      } catch (err: any) {
-        if (err.stderr?.includes('already exists') || err.message?.includes('already exists')) {
-          throw new ConflictException('Nombre de certificado duplicado, intenta nuevamente');
-        }
-        this.logger.error(`easyrsa error: ${err.stderr || err.message}`);
-        throw new BadRequestException(`Error generando certificado: ${err.message}`);
-      }
-    } else {
-      nombreCert         = `user-${slug}-${shortId}`;
-      autoVpnUsuario     = `df-${slug}-${shortId}`;
-      autoVpnPassword    = generateToken(12); // 24-char hex — 96 bits de entropía
-    }
+    const nombreCert    = `user-${slug}-${shortId}`;
+    const autoVpnUsuario  = `df-${slug}-${shortId}`;
+    const autoVpnPassword = generateToken(12);
 
     const tokenDescarga  = generateToken(32);
-    // Certs: 24h (el PKI de cliente es temporal por seguridad)
-    // User/pass: 365 días (las credenciales son permanentes; la CA no caduca)
-    const tokenTtlMs     = usarCerts ? 24 * 60 * 60 * 1000 : 365 * 24 * 60 * 60 * 1000;
-    const tokenExpiresAt = new Date(Date.now() + tokenTtlMs);
+    const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
     const cliente = this.repo.create({
       empresaId:          user.empresaId,
@@ -142,9 +106,9 @@ export class VpnClienteService {
       descripcion:        dto.descripcion,
       nombreCert,
       versionRos,
-      usarCertificados:   usarCerts,
+      usarCertificados:   false,
       vpnUsuario:         autoVpnUsuario,
-      vpnPasswordCifrado: autoVpnPassword ? encrypt(autoVpnPassword) : undefined,
+      vpnPasswordCifrado: encrypt(autoVpnPassword),
       cipher,
       authAlg,
       verifyServerCert:   dto.verifyServerCert ?? false,
@@ -169,7 +133,7 @@ export class VpnClienteService {
       await prev;
       try {
         const preasignedIp = await this._preasignarIpVpn();
-        const ccdCn = usarCerts ? nombreCert : autoVpnUsuario!;
+        const ccdCn = autoVpnUsuario;
         await this.escribirArchivoCcd(ccdCn, [], preasignedIp);
         this.logger.log(`[VPN] IP pre-asignada para ${ccdCn}: ${preasignedIp}`);
       } catch (err: any) {
@@ -486,78 +450,57 @@ export class VpnClienteService {
     this.logger.log(`[VPN-LINK] VPN vinculada: "${effectiveCn}" → router ${routerId}`);
   }
 
-  // ── Generar/garantizar certificado ID-based y escribir CCD ───
-  // El CN siempre es "df_router_id_<uuid>" — inmune a renombrados del router.
-  // Se llama desde MikrotikService al crear o re-registrar un router VPN_TUNNEL.
+  // ── Generar cliente VPN sin certificado (user/pass) y escribir CCD ─
+  // Llamado como fallback desde MikrotikService cuando se crea un router
+  // VPN_TUNNEL sin pasar por el wizard (sin vpnClienteId).
 
   async generarParaRouter(router: Router): Promise<string> {
-    const vpnCommonName = `df_router_id_${router.id}`;
-
-    // ── 1. Crear certificado en EasyRSA si no existe en disco ──
-    const certPath = path.join(PKI_DIR, 'issued', `${vpnCommonName}.crt`);
-    let certExists = false;
-    try { await fs.access(certPath); certExists = true; } catch { certExists = false; }
-
-    if (!certExists) {
-      this.logger.log(`[VPN-CCD] Generando certificado ID-based: ${vpnCommonName}`);
-      try {
-        await execFileAsync(
-          `${EASYRSA_DIR}/easyrsa`,
-          ['build-client-full', vpnCommonName, 'nopass'],
-          {
-            cwd: EASYRSA_DIR,
-            env: { ...process.env, EASYRSA_BATCH: 'yes', EASYRSA_VARS_FILE: `${EASYRSA_DIR}/vars-clients` },
-            timeout: 60_000,
-          },
-        );
-        await execFileAsync('chmod', ['o+r', `${PKI_DIR}/issued/${vpnCommonName}.crt`]);
-      } catch (err: any) {
-        if (!err.stderr?.includes('already exists') && !err.message?.includes('already exists')) {
-          this.logger.error(`easyrsa error para ${vpnCommonName}: ${err.stderr || err.message}`);
-          throw err;
-        }
-        this.logger.warn(`Cert ${vpnCommonName} ya existe en PKI — reutilizando`);
-      }
-    }
-
-    // ── 2. Upsert registro en vpn_clientes ─────────────────────
-    const porRouter = await this.repo.findOne({
+    // Si ya existe un cliente activo para este router, solo actualiza el CCD
+    const existing = await this.repo.findOne({
       where: { routerId: router.id, empresaId: router.empresaId, activo: true },
     });
-    const porCert = await this.repo.findOne({ where: { nombreCert: vpnCommonName } });
-
-    if (!porRouter && !porCert) {
-      const tokenDescarga  = generateToken(32);
-      const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-      const cliente = this.repo.create({
-        empresaId:        router.empresaId,
-        nombre:           router.nombre,
-        nombreCert:       vpnCommonName,
-        versionRos:       (router.versionRos as string) === 'v7' ? 'v7' : 'v6',
-        usarCertificados: true,
-        cipher:           'aes256',
-        authAlg:          'sha256',
-        verifyServerCert: false,
-        estado:           'pendiente',
-        routerId:         router.id,
-        tokenDescarga,
-        tokenExpiresAt,
-        activo:           true,
-      });
-      await this.repo.save(cliente);
-      this.logger.log(`[VPN-CCD] Registro creado: ${vpnCommonName} → router ${router.id}`);
-    } else {
-      const record = porRouter || porCert!;
-      const needs  = record.routerId !== router.id || record.nombreCert !== vpnCommonName;
-      if (needs) {
-        await this.repo.update(record.id, { routerId: router.id, nombreCert: vpnCommonName });
-      }
+    if (existing?.vpnUsuario) {
+      await this.escribirArchivoCcd(existing.vpnUsuario, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
+      await this.routerRepo.update(router.id, { vpnCommonName: existing.vpnUsuario } as any);
+      return existing.vpnUsuario;
     }
 
-    // ── 3. Escribir/actualizar archivo CCD con subnets actuales ─
-    await this.escribirArchivoCcd(vpnCommonName, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
+    const slug = router.nombre
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 30);
+    const shortId        = generateToken(3);
+    const vpnUsuario     = `df-${slug}-${shortId}`;
+    const vpnPassword    = generateToken(12);
+    const nombreCert     = `user-${slug}-${shortId}`;
+    const tokenDescarga  = generateToken(32);
+    const tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
-    return vpnCommonName;
+    const cliente = this.repo.create({
+      empresaId:          router.empresaId,
+      nombre:             router.nombre,
+      nombreCert,
+      versionRos:         (router.versionRos as string) === 'v7' ? 'v7' : 'v6',
+      usarCertificados:   false,
+      vpnUsuario,
+      vpnPasswordCifrado: encrypt(vpnPassword),
+      cipher:             'aes256',
+      authAlg:            'sha256',
+      verifyServerCert:   false,
+      estado:             'pendiente',
+      routerId:           router.id,
+      tokenDescarga,
+      tokenExpiresAt,
+      activo:             true,
+    });
+    await this.repo.save(cliente);
+
+    await this.routerRepo.update(router.id, { vpnCommonName: vpnUsuario } as any);
+    await this.escribirArchivoCcd(vpnUsuario, router.subnetsLocales || [], router.vpnIp || router.ipGestion);
+    this.logger.log(`[VPN] Cliente no-cert creado: ${vpnUsuario} → router ${router.id}`);
+
+    return vpnUsuario;
   }
 
   // ── Escribir archivo CCD en /etc/openvpn/ccd/<commonName> ────
@@ -1010,85 +953,21 @@ export class VpnClienteService {
 
   // ── Verificar credenciales VPN (llamado por vpn-auth.sh) ─────
   async verifyAuth(username: string, password: string): Promise<boolean> {
-    // No-cert: buscar por vpnUsuario
     const byUser = await this.repo.findOne({
       where: { vpnUsuario: username, activo: true },
     });
-    if (byUser) {
-      if (byUser.usarCertificados) return true; // cert client — TLS ya lo verificó
-      const plain = await this._decryptPassword(byUser.vpnPasswordCifrado);
-      return plain === password;
-    }
-    // Cert client: buscar por nombreCert
-    const byCert = await this.repo.findOne({
-      where: { nombreCert: username, activo: true },
-    });
-    return !!(byCert && byCert.usarCertificados);
+    if (!byUser) return false;
+    const plain = await this._decryptPassword(byUser.vpnPasswordCifrado);
+    return plain === password;
   }
 
   // ── Generador de script ───────────────────────────────────────
 
   private async _generarScript(cliente: VpnCliente): Promise<string> {
-    if (cliente.usarCertificados) {
-      return cliente.versionRos === 'v6'
-        ? this._scriptV6Cert(cliente)
-        : this._scriptV7Cert(cliente);
-    }
     const pass = await this._decryptPassword(cliente.vpnPasswordCifrado);
     return cliente.versionRos === 'v6'
       ? this._scriptV6NoCert(cliente, pass)
       : this._scriptV7NoCert(cliente, pass);
-  }
-
-  private _bloqueComun(cliente: VpnCliente): { cn: string; prefix: string; basePrefix: string; fetchPath: string } {
-    const cn       = cliente.nombreCert;
-    const baseSlug = cn.replace(/-[0-9a-f]{6}$/, ''); // strip short ID → limpia intentos previos del mismo router
-    return {
-      cn,
-      prefix:     `df-${cn}`,
-      basePrefix: `df-${baseSlug}`,
-      fetchPath:  `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`,
-    };
-  }
-
-  private _scriptV6Cert(cliente: VpnCliente): string {
-    const { cn, prefix, basePrefix, fetchPath } = this._bloqueComun(cliente);
-    const urlCa   = `http://${VPS_IP}${fetchPath}/ca.crt`;
-    const urlCert = `http://${VPS_IP}${fetchPath}/client.crt`;
-    const urlKey  = `http://${VPS_IP}${fetchPath}/client.key`;
-    return `{
-:local certCN "${cn}"
-:local certPrefix "${prefix}"
-:local certBasePrefix "${basePrefix}"
-:local fCa ($certPrefix . "-ca.crt")
-:local fCert ($certPrefix . "-client.crt")
-:local fKey ($certPrefix . "-client.key")
-:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
-:delay 2s
-:do { /interface ovpn-client remove  [find name=vpndatafast] } on-error={}
-:delay 1s
-:foreach c in=[/certificate find where name~$certBasePrefix] do={
-  :do { /certificate remove $c } on-error={}
-}
-/tool fetch url="${urlCa}" dst-path=$fCa
-:delay 3s
-/tool fetch url="${urlCert}" dst-path=$fCert
-:delay 3s
-/tool fetch url="${urlKey}" dst-path=$fKey
-:delay 3s
-/certificate import file-name=$fCa passphrase=""
-:delay 3s
-/certificate import file-name=$fCert passphrase=""
-:delay 3s
-/certificate import file-name=$fKey passphrase=""
-:delay 5s
-:local certEntry [/certificate find where name~($certPrefix . "-client")]
-:local certName [/certificate get $certEntry name]
-:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=${cliente.cipher} auth=${cliente.authAlg} user=$certCN certificate=$certName disabled=yes
-:delay 1s
-/interface ovpn-client enable vpndatafast
-}`;
   }
 
   private _scriptV6NoCert(cliente: VpnCliente, pass: string): string {
@@ -1109,49 +988,6 @@ export class VpnClienteService {
 /certificate import file-name=$fCa passphrase=""
 :delay 2s
 /interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=${cliente.cipher} auth=${cliente.authAlg} user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
-:delay 1s
-/interface ovpn-client enable vpndatafast
-}`;
-  }
-
-  private _scriptV7Cert(cliente: VpnCliente): string {
-    const { cn, prefix, basePrefix, fetchPath } = this._bloqueComun(cliente);
-    const urlCa   = `http://${VPS_IP}${fetchPath}/ca.crt`;
-    const urlCert = `http://${VPS_IP}${fetchPath}/client.crt`;
-    const urlKey  = `http://${VPS_IP}${fetchPath}/client.key`;
-    const verifyLine = cliente.verifyServerCert
-      ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
-      : '';
-    return `{
-:local certCN "${cn}"
-:local certPrefix "${prefix}"
-:local certBasePrefix "${basePrefix}"
-:local fCa ($certPrefix . "-ca.crt")
-:local fCert ($certPrefix . "-client.crt")
-:local fKey ($certPrefix . "-client.key")
-:do { /interface ovpn-client disable [find name=vpndatafast] } on-error={}
-:delay 2s
-:do { /interface ovpn-client remove  [find name=vpndatafast] } on-error={}
-:delay 1s
-:foreach c in=[/certificate find where name~$certBasePrefix] do={
-  :do { /certificate remove $c } on-error={}
-}
-/tool fetch url="${urlCa}" dst-path=$fCa
-:delay 3s
-/tool fetch url="${urlCert}" dst-path=$fCert
-:delay 3s
-/tool fetch url="${urlKey}" dst-path=$fKey
-:delay 3s
-/certificate import file-name=$fCa passphrase=""
-:delay 3s
-/certificate import file-name=$fCert passphrase=""
-:delay 3s
-/certificate import file-name=$fKey passphrase=""
-:delay 5s
-:local certEntry [/certificate find where name~($certPrefix . "-client")]
-:local certName [/certificate get $certEntry name]
-:do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
-/interface ovpn-client add certificate=$certName cipher=${this._cipherForRos(cliente.cipher, 'v7')} connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN disabled=yes${verifyLine}
 :delay 1s
 /interface ovpn-client enable vpndatafast
 }`;
