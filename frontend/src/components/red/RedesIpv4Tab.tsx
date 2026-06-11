@@ -37,6 +37,7 @@ export function RedesIpv4Tab() {
   });
 
   const eliminar = (seg: SegmentoIpv4) => {
+    // eslint-disable-next-line no-restricted-globals
     if (!confirm(`¿Eliminar el segmento "${seg.nombre}" (${seg.redCidr})? Esta acción no se puede deshacer.`)) return;
     eliminarMutation(seg.id);
   };
