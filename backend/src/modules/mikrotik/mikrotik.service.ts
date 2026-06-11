@@ -349,6 +349,17 @@ export class MikrotikService {
         await api.write('/system/identity/print');
       });
     } catch (err: any) {
+      // Verificar si la sesión VPN está ocupada por un impostor
+      // (router offline cuyo script fue pegado en otro equipo por error)
+      const sesionKilled = await this.vpnSvc.matarSesionImpostora(routerId, empresaId);
+      if (sesionKilled) {
+        throw new BadRequestException(
+          `Sesión VPN del router "${router.nombre}" estaba ocupada por un dispositivo no autorizado. ` +
+          `La sesión del impostor ha sido cerrada. ` +
+          `El router legítimo debería reconectar en los próximos 15 segundos. ` +
+          `Espere y vuelva a intentar "Reparar".`,
+        );
+      }
       throw new BadRequestException(
         `No se puede conectar al router "${router.nombre}" ` +
         `(${router.vpnIp || router.ipGestion}:${creds.port}). ` +

@@ -761,6 +761,26 @@ export class VpnClienteService {
     });
   }
 
+  // Mata la sesión activa de un router si la ocupa un impostor.
+  // Retorna true si se mató una sesión, false si no había sesión activa.
+  async matarSesionImpostora(routerId: string, empresaId: string): Promise<boolean> {
+    const cliente = await this.repo.findOne({
+      where: { routerId, empresaId, activo: true },
+    });
+    if (!cliente) return false;
+
+    const cn = (!cliente.usarCertificados && cliente.vpnUsuario)
+      ? cliente.vpnUsuario
+      : cliente.nombreCert;
+
+    const sessions = await this._leerManagement();
+    if (!sessions.find(s => s.commonName === cn)) return false;
+
+    await this.killClienteVpnManagement(cn);
+    this.logger.log(`[VPN] Sesión impostora terminada para CN ${cn} (router ${routerId})`);
+    return true;
+  }
+
   private async _getCliente(id: string, empresaId: string): Promise<VpnCliente> {
     const c = await this.repo.findOne({ where: { id, empresaId } });
     if (!c) throw new NotFoundException('Cliente VPN no encontrado');
