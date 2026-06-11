@@ -5,8 +5,6 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not, LessThan, In } from 'typeorm';
 import { Cron }             from '@nestjs/schedule';
-import { execFile }         from 'child_process';
-import { promisify }        from 'util';
 import * as fs              from 'fs/promises';
 import * as path            from 'path';
 import * as net             from 'net';
@@ -19,11 +17,7 @@ import { JwtPayload }                   from '../../../common/decorators/current
 import { generateToken, encrypt }       from '../../../common/utils/encryption.util';
 import { Router, MetodoConexion, EstadoEquipo, VersionRouterOS } from '../../mikrotik/entities/router.entity';
 
-const execFileAsync = promisify(execFile);
-
 // ── Rutas del sistema VPN ─────────────────────────────────────
-const EASYRSA_DIR = '/etc/openvpn/easy-rsa';
-const PKI_DIR     = '/etc/openvpn/easy-rsa/pki';
 const CA_CRT      = '/etc/openvpn/server/ca.crt';
 const CCD_DIR     = '/etc/openvpn/ccd';
 const STATUS_LOG  = '/var/log/openvpn/status-mikrotik.log';
@@ -250,10 +244,7 @@ export class VpnClienteService {
       return { conectado: false, mensaje: 'Cliente VPN revocado' };
     }
 
-    // Para modo sin certificados, el CN en status.log es el vpnUsuario
-    const cn = (!cliente.usarCertificados && cliente.vpnUsuario)
-      ? cliente.vpnUsuario
-      : cliente.nombreCert;
+    const cn = cliente.vpnUsuario ?? cliente.nombreCert;
 
     // Management socket: datos en tiempo real sin race condition de lectura de archivo
     const connectedClients = await this._leerManagement();
@@ -307,40 +298,7 @@ export class VpnClienteService {
     const cliente = await this._getCliente(id, empresaId);
     if (cliente.estado === 'revocado') throw new ConflictException('Ya revocado');
 
-    if (cliente.usarCertificados) {
-      const easyrsaEnv = {
-        ...process.env,
-        EASYRSA_BATCH:     'yes',
-        EASYRSA_VARS_FILE: `${EASYRSA_DIR}/vars-clients`,
-      };
-      try {
-        await execFileAsync(
-          `${EASYRSA_DIR}/easyrsa`,
-          ['revoke', cliente.nombreCert],
-          { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
-        );
-        await execFileAsync(
-          `${EASYRSA_DIR}/easyrsa`,
-          ['gen-crl'],
-          { cwd: EASYRSA_DIR, env: easyrsaEnv, timeout: 30_000 },
-        );
-        await fs.copyFile(
-          `${PKI_DIR}/crl.pem`,
-          '/etc/openvpn/server/crl.pem',
-        );
-        // EasyRSA genera crl.pem con 600 root:root; OpenVPN corre como 'nobody' → necesita o+r
-        await execFileAsync('chmod', ['644', '/etc/openvpn/server/crl.pem']).catch(() => {});
-        this.logger.log(`CRL actualizado en /etc/openvpn/server/crl.pem`);
-      } catch (err: any) {
-        this.logger.warn(`Error revocando ${cliente.nombreCert}: ${err.message}`);
-      }
-    }
-
-    // Para modo usuario/contraseña, el CN en el management y el nombre del CCD
-    // son el vpnUsuario (por username-as-common-name en el servidor OpenVPN).
-    const effectiveCn = (!cliente.usarCertificados && cliente.vpnUsuario)
-      ? cliente.vpnUsuario
-      : cliente.nombreCert;
+    const effectiveCn = cliente.vpnUsuario ?? cliente.nombreCert;
 
     await this.killClienteVpnManagement(effectiveCn);
     await this.repo.update(cliente.id, { estado: 'revocado', activo: false });
@@ -354,8 +312,7 @@ export class VpnClienteService {
   // ── Servir certificado (endpoint público protegido por token) ─
 
   async servirCertificado(token: string, filename: string, res: Response): Promise<void> {
-    const allowed = ['ca.crt', 'client.crt', 'client.key'];
-    if (!allowed.includes(filename)) {
+    if (filename !== 'ca.crt') {
       res.status(404).json({ message: 'Archivo no válido' });
       return;
     }
@@ -377,31 +334,13 @@ export class VpnClienteService {
       return;
     }
 
-    // Modo usuario/contraseña: solo ca.crt disponible (no hay PKI de cliente)
-    if (!cliente.usarCertificados && filename !== 'ca.crt') {
-      res.status(404).json({ message: 'Archivo no disponible en modo usuario/contraseña' });
-      return;
-    }
-
-    let filePath: string;
-    if (filename === 'ca.crt') {
-      filePath = CA_CRT;
-    } else if (filename === 'client.crt') {
-      filePath = path.join(PKI_DIR, 'issued', `${cliente.nombreCert}.crt`);
-    } else {
-      filePath = path.join(PKI_DIR, 'private', `${cliente.nombreCert}.key`);
-    }
-
     try {
-      const raw = await fs.readFile(filePath, 'utf8');
-      // EasyRSA incluye dump de texto antes del bloque PEM — extraer solo PEM
-      const pemMatch = raw.match(/(-----BEGIN [\s\S]+-----END [^\-]+-----)/);
-      const content  = pemMatch ? pemMatch[1].trim() + '\n' : raw;
+      const content = await fs.readFile(CA_CRT, 'utf8');
       res.setHeader('Content-Type', 'application/x-pem-file');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="ca.crt"`);
       res.send(content);
     } catch {
-      res.status(404).json({ message: `Certificado no disponible: ${filename}` });
+      res.status(404).json({ message: 'CA no disponible' });
     }
   }
 
@@ -431,12 +370,7 @@ export class VpnClienteService {
       return;
     }
 
-    // Para modo user/pass, el CN efectivo es vpnUsuario (username-as-common-name).
-    // vpnCommonName en routers debe coincidir con lo que OpenVPN registra en el
-    // management interface y usa para buscar el CCD.
-    const effectiveCn = (!cliente.usarCertificados && cliente.vpnUsuario)
-      ? cliente.vpnUsuario
-      : cliente.nombreCert;
+    const effectiveCn = cliente.vpnUsuario ?? cliente.nombreCert;
 
     await this.routerRepo.update(routerId, { vpnCommonName: effectiveCn } as any);
     await this.repo.update(cliente.id, { routerId });
@@ -824,9 +758,7 @@ export class VpnClienteService {
     });
     if (!cliente) return false;
 
-    const cn = (!cliente.usarCertificados && cliente.vpnUsuario)
-      ? cliente.vpnUsuario
-      : cliente.nombreCert;
+    const cn = cliente.vpnUsuario ?? cliente.nombreCert;
 
     const sessions = await this._leerManagement();
     if (!sessions.find(s => s.commonName === cn)) return false;

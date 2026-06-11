@@ -20,10 +20,6 @@ export class CrearVpnClienteDto {
   @IsIn(['v6', 'v7'])
   versionRos: 'v6' | 'v7';
 
-  @ApiPropertyOptional({ example: true })
-  @IsOptional() @IsBoolean()
-  usarCertificados?: boolean;
-
   @ApiPropertyOptional({ example: 'aes256', enum: ['aes128', 'aes192', 'aes256', 'blowfish128', 'aes128-gcm', 'aes256-gcm'] })
   @IsOptional() @IsIn(['aes128', 'aes192', 'aes256', 'blowfish128', 'aes128-gcm', 'aes256-gcm'])
   cipher?: string;
