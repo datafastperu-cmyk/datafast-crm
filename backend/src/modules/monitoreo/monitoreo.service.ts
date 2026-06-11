@@ -16,10 +16,11 @@ import {
   MonitoreoWorkerService,
   WirelessClient,
 }                                from './services/monitoreo-worker.service';
-import { RouterConnectionPool }  from '../mikrotik/services/connection-pool.service';
+import { RouterConnectionPool, RouterCredentials }  from '../mikrotik/services/connection-pool.service';
+import { WirelessService }       from '../mikrotik/services/wireless.service';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
-import { encrypt }               from '../../common/utils/encryption.util';
+import { encrypt, decrypt }      from '../../common/utils/encryption.util';
 
 // ─── DTOs / respuestas ────────────────────────────────────────────
 
@@ -188,6 +189,7 @@ export class MonitoreoService {
 
     private readonly worker: MonitoreoWorkerService,
     private readonly pool: RouterConnectionPool,
+    private readonly wirelessSvc: WirelessService,
 
     @InjectRepository(UmbralAlerta)
     private readonly umbralRepo: Repository<UmbralAlerta>,
@@ -535,6 +537,74 @@ export class MonitoreoService {
     return StdResponse.ok({ deleted: true });
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // POST /monitoreo/dispositivos/:id/reparar
+  // Re-registra MACs y comentarios de todos los abonados activos
+  // vinculados a una Antena AP en su Access List inalámbrica.
+  // ═══════════════════════════════════════════════════════════════
+  async repararAntenaAP(
+    id:        string,
+    empresaId: string,
+  ): Promise<StdResponse<{ total: number; ok: number; errores: { contrato: string; mac: string; error: string }[] }>> {
+    const d = await this.dispoRepo.findOne({
+      where: { id, empresaId, deletedAt: IsNull() },
+    });
+    if (!d) throw new NotFoundException(`Dispositivo ${id} no encontrado`);
+    if (d.tipoEquipo !== TipoEquipo.ANTENA_AP) {
+      throw new BadRequestException('Solo se puede reparar dispositivos de tipo ANTENA_AP');
+    }
+    if (d.status !== StatusDispositivo.ONLINE) {
+      throw new BadRequestException(`La antena "${d.nombreEmisor}" está offline — no se puede reparar`);
+    }
+    if (!d.contrasenaCifrada) {
+      throw new BadRequestException(`La antena "${d.nombreEmisor}" no tiene credenciales configuradas`);
+    }
+
+    const creds: RouterCredentials = {
+      id:              d.id,
+      ip:              d.ipAddress,
+      port:            d.useSsl ? 8729 : d.puertoApi,
+      user:            d.usuario ?? 'admin',
+      passwordCifrado: d.contrasenaCifrada,
+      useSsl:          d.useSsl,
+      timeoutSec:      10,
+      version:         'v6',
+    };
+
+    // Obtener todos los contratos activos vinculados a esta antena con MAC
+    const contratos: { numeroContrato: string; mac: string; nombre: string }[] = await this.ds.query(
+      `SELECT co.numero_contrato AS "numeroContrato",
+              co.mac_address     AS "mac",
+              cl.nombre_completo AS "nombre"
+       FROM   contratos co
+       JOIN   clientes cl ON cl.id = co.cliente_id
+       WHERE  co.antena_ap_id = $1
+         AND  co.mac_address IS NOT NULL
+         AND  co.mac_address != ''
+         AND  co.deleted_at IS NULL
+         AND  co.estado IN ('activo','suspendido_mora','suspendido_manual','prorroga','pendiente_instalacion')`,
+      [id],
+    );
+
+    let ok = 0;
+    const errores: { contrato: string; mac: string; error: string }[] = [];
+
+    for (const c of contratos) {
+      try {
+        await this.wirelessSvc.agregarMacAccessList(creds, c.mac, `DATAFAST:${c.nombre}`);
+        ok++;
+        this.logger.log(`[repararAntenaAP] ${d.nombreEmisor} | MAC ${c.mac} → ${c.nombre} ✓`);
+      } catch (err: any) {
+        errores.push({ contrato: c.numeroContrato, mac: c.mac, error: err.message });
+        this.logger.warn(`[repararAntenaAP] ${d.nombreEmisor} | MAC ${c.mac} error: ${err.message}`);
+      }
+    }
+
+    return StdResponse.ok(
+      { total: contratos.length, ok, errores },
+      `Reparación completada: ${ok}/${contratos.length} MACs registradas`,
+    );
+  }
 
 }
 

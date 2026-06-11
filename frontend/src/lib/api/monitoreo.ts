@@ -344,6 +344,13 @@ export const dispositivosApi = {
     await api.delete(`/monitoreo/dispositivos/${id}`);
   },
 
+  repararAntenaAP: async (id: string): Promise<{ total: number; ok: number; errores: { contrato: string; mac: string; error: string }[] }> => {
+    const res = await api.post<{ data: { total: number; ok: number; errores: { contrato: string; mac: string; error: string }[] } }>(
+      `/monitoreo/dispositivos/${id}/reparar`,
+    );
+    return res.data.data;
+  },
+
 };
 export interface DispositivoItem {
   id:              string;

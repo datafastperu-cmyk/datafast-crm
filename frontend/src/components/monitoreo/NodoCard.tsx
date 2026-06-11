@@ -1,6 +1,6 @@
 'use client';
 
-import { Wifi, WifiOff, Cpu, Thermometer, Activity, Users } from 'lucide-react';
+import { Wifi, WifiOff, Cpu, Thermometer, Activity, Users, Wrench } from 'lucide-react';
 import { cn, formatBps, formatPct }                          from '@/lib/utils';
 import type { Nodo }                                          from '@/types';
 
@@ -23,11 +23,13 @@ const TIPO_ICON: Record<string, string> = {
 };
 
 interface Props {
-  nodo:    Nodo;
-  onClick: () => void;
+  nodo:       Nodo;
+  onClick:    () => void;
+  onReparar?: (e: React.MouseEvent) => void;
+  reparando?: boolean;
 }
 
-export function NodoCard({ nodo, onClick }: Props) {
+export function NodoCard({ nodo, onClick, onReparar, reparando }: Props) {
   const cfg = ESTADO_CONFIG[nodo.estado as keyof typeof ESTADO_CONFIG]
     ?? ESTADO_CONFIG.desconocido;
 
@@ -196,6 +198,23 @@ export function NodoCard({ nodo, onClick }: Props) {
             />
           </div>
         </div>
+      )}
+
+      {/* Botón Reparar — solo para ANTENA_AP online */}
+      {onReparar && (
+        <button
+          onClick={onReparar}
+          disabled={reparando}
+          className={cn(
+            'w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium',
+            'border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors',
+            'dark:border-blue-700/50 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+          )}
+        >
+          <Wrench className={cn('w-3.5 h-3.5', reparando && 'animate-spin')} />
+          {reparando ? 'Reparando...' : 'Reparar antena'}
+        </button>
       )}
     </button>
   );

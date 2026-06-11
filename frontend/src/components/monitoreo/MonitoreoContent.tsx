@@ -24,6 +24,7 @@ export function MonitoreoContent() {
   const [showAdd, setShowAdd]   = useState(false);
   const [wsDash, setWsDash]     = useState<WsEventDashboard | null>(null);
   const [filtroTipo, setFiltro] = useState<string>('');
+  const [reparandoId, setReparandoId] = useState<string | null>(null);
 
   // ── REST: dispositivos desde /monitoreo/tiempo-real ───────
   const TIPO_MAP: Record<string, string> = {
@@ -39,6 +40,11 @@ export function MonitoreoContent() {
     queryFn:         () => dispositivosApi.getTiempoReal(),
     refetchInterval: 60_000,
   });
+
+  // Mapa id → tipoEquipo raw para identificar ANTENA_AP sin modificar el tipo Nodo
+  const tipoEquipoMap = new Map<string, string>(
+    (tiempoReal?.dispositivos ?? []).map((d: any) => [d.id, d.tipoEquipo]),
+  );
 
   const nodos: Nodo[] = (tiempoReal?.dispositivos ?? [] as any[]).map((d: any) => ({
     id:            d.id,
@@ -80,6 +86,24 @@ export function MonitoreoContent() {
       }
     },
   });
+
+  // ── Reparar Antena AP ────────────────────────────────────────
+  const handleReparar = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setReparandoId(id);
+    try {
+      const res = await dispositivosApi.repararAntenaAP(id);
+      if (res.ok === res.total) {
+        toast(`${res.ok} MAC${res.ok !== 1 ? 's' : ''} registrada${res.ok !== 1 ? 's' : ''} correctamente`, { type: 'success' });
+      } else {
+        toast(`${res.ok}/${res.total} MACs registradas. ${res.errores.length} error${res.errores.length !== 1 ? 'es' : ''}`, { type: 'warning' });
+      }
+    } catch (err: any) {
+      toast(err?.response?.data?.message ?? 'Error al reparar la antena', { type: 'error' });
+    } finally {
+      setReparandoId(null);
+    }
+  };
 
   // ── Actualización manual ────────────────────────────────────
   const [escaneando, setEscaneando] = useState(false);
@@ -280,13 +304,19 @@ export function MonitoreoContent() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {nodosOrdenados.map((nodo) => (
-            <NodoCard
-              key={nodo.id}
-              nodo={nodo}
-              onClick={() => router.push(`/monitoreo/${nodo.id}`)}
-            />
-          ))}
+          {nodosOrdenados.map((nodo) => {
+            const esAntenaAP = tipoEquipoMap.get(nodo.id) === 'ANTENA_AP';
+            const estaOnline = nodo.estado === 'online';
+            return (
+              <NodoCard
+                key={nodo.id}
+                nodo={nodo}
+                onClick={() => router.push(`/monitoreo/${nodo.id}`)}
+                onReparar={esAntenaAP && estaOnline ? (e) => handleReparar(e, nodo.id) : undefined}
+                reparando={reparandoId === nodo.id}
+              />
+            );
+          })}
         </div>
       )}
 

@@ -89,6 +89,17 @@ export class MonitoreoController {
     return this.monitoreoSvc.updateDispositivo(id, user.empresaId, dto);
   }
 
+  // ── POST /monitoreo/dispositivos/:id/reparar ────────────────
+  @Post('dispositivos/:id/reparar')
+  @RequirePermission('monitoring:manage')
+  @ApiOperation({ summary: 'Re-registrar MACs y comentarios de abonados en la Access List de una Antena AP' })
+  repararAntenaAP(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.monitoreoSvc.repararAntenaAP(id, user.empresaId);
+  }
+
   // ── DELETE /monitoreo/dispositivos/:id ───────────────────────
   @Delete('dispositivos/:id')
   @RequirePermission('monitoring:manage')
