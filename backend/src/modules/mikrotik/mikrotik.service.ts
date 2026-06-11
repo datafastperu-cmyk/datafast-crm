@@ -271,7 +271,7 @@ export class MikrotikService {
   async repararRouter(
     routerId:  string,
     empresaId: string,
-  ): Promise<{ mensaje: string; procesados: number; morosos: number }> {
+  ): Promise<{ mensaje: string; procesados: number; morosos: number; advertencias: string[] }> {
     const router = await this.findOne(routerId, empresaId);
 
     const creds: RouterCredentials = {
@@ -290,6 +290,7 @@ export class MikrotikService {
              co.usuario_pppoe AS "usuarioPppoe", co.password_pppoe AS "passwordPppoe",
              co.ip_asignada AS "ipAsignada", co.mac_address AS "macAddress",
              co.estado,
+             co.tipo_auth AS "tipoAuth",
              cl.nombre_completo AS "nombreCompleto",
              pl.ppp_profile AS "pppProfile"
       FROM contratos co
@@ -305,19 +306,108 @@ export class MikrotikService {
       (c) => c.estado === 'suspendido_mora' || c.estado === 'suspendido_manual',
     ).length;
 
-    this.logger.log(`[REPARAR] ${router.nombre} — ${contratos.length} contratos, tipoControl=${router.tipoControl}`);
+    this.logger.log(
+      `[REPARAR] ${router.nombre} — ${contratos.length} contratos, ` +
+      `tipoControl=${router.tipoControl}, controlaAutenticacion=${router.controlaAutenticacion}`,
+    );
 
     let ok = 0;
-    const errores: string[] = [];
+    const errores:      string[] = [];
+    const advertencias: string[] = [];
 
     for (const co of contratos) {
-      try {
-        await this.crearReglasControl(creds, co, router.tipoControl);
+      // ── Auth efectiva que DEBE tener este contrato en el MikroTik ─────────
+      const targetAuth: string = router.controlaAutenticacion
+        ? router.tipoControl
+        : (co.tipoAuth ?? 'ninguna');
+
+      // ── Auth obsoleta que puede haber quedado en el MikroTik ──────────────
+      // Solo limpiamos si conocemos con certeza qué fue provisionado antes Y
+      // la familia de autenticación cambia (evitar borrar reglas que el nuevo
+      // tipo también necesita, ej: amarre_ip_mac → amarre_ip_mac_dhcp ambos usan ARP).
+      const staleAuth: string | null = (() => {
+        if (router.controlaAutenticacion && co.tipoAuth && co.tipoAuth !== targetAuth) {
+          // Transición false→true: cada abonado tenía auth individual, ahora el router controla.
+          return co.tipoAuth;
+        }
+        if (!router.controlaAutenticacion && co.tipoAuth && co.tipoAuth !== router.tipoControl) {
+          // Transición true→false: el router controlaba con tipoControl, ahora cada abonado
+          // tiene su propio tipoAuth distinto al anterior tipoControl del router.
+          return router.tipoControl;
+        }
+        return null;
+      })();
+
+      // Familias: 'pppoe' | 'mac' | 'none'
+      const authFamily = (a: string) =>
+        a === 'pppoe_addresslist' ? 'pppoe'
+        : (a === 'amarre_ip_mac' || a === 'amarre_ip_mac_dhcp') ? 'mac'
+        : 'none';
+
+      // Si stale y target son de la misma familia no limpiamos: la operación crear
+      // ya escribe sobre las mismas entradas (idempotente) y limpiar borraría lo que
+      // acabamos de crear. Solo limpiamos cuando la familia cambia (PPPoE ↔ MAC).
+      const deberíaLimpiar =
+        staleAuth !== null &&
+        staleAuth !== 'ninguna' &&
+        authFamily(staleAuth) !== authFamily(targetAuth);
+
+      // ── Pre-flight: validar campos requeridos por el tipo destino ─────────
+      const camposFaltantes: string[] = [];
+      if (targetAuth === 'pppoe_addresslist' && !co.usuarioPppoe)
+        camposFaltantes.push('usuarioPppoe');
+      if ((targetAuth === 'amarre_ip_mac' || targetAuth === 'amarre_ip_mac_dhcp') && !co.ipAsignada)
+        camposFaltantes.push('ipAsignada');
+      if ((targetAuth === 'amarre_ip_mac' || targetAuth === 'amarre_ip_mac_dhcp') && !co.macAddress)
+        camposFaltantes.push('macAddress');
+
+      if (camposFaltantes.length > 0) {
+        // No se puede provisionar pero tampoco hay riesgo de dejar al abonado sin reglas.
+        // Si el router ahora controla auth, limpiamos tipo_auth en BD para no reintentar indefinidamente.
+        const aviso = `${co.numeroContrato}: sin ${camposFaltantes.join(', ')} para ${targetAuth} — omitido`;
+        advertencias.push(aviso);
+        this.logger.warn(`[REPARAR] ${aviso}`);
+        if (router.controlaAutenticacion && co.tipoAuth) {
+          await this.ds.query(`UPDATE contratos SET tipo_auth = NULL WHERE id = $1`, [co.id]);
+        }
         ok++;
-        this.logger.log(`[REPARAR] contrato ${co.numeroContrato}: OK`);
+        continue;
+      }
+
+      try {
+        // 1. Crear reglas nuevas (idempotente: si ya existen, las actualiza).
+        if (targetAuth !== 'ninguna') {
+          await this.crearReglasControl(creds, co, targetAuth);
+        }
+
+        // 2. Limpiar reglas obsoletas SOLO tras crear exitosamente las nuevas.
+        //    Un fallo aquí es no-fatal: el abonado tiene sus nuevas reglas activas;
+        //    la entrada huérfana en MikroTik no bloquea el acceso.
+        if (deberíaLimpiar) {
+          try {
+            await this.limpiarReglasControl(creds, co, staleAuth!);
+          } catch (cleanErr: any) {
+            const aviso = `${co.numeroContrato}: reglas ${staleAuth} no eliminadas — ${cleanErr?.message ?? 'error'}`;
+            advertencias.push(aviso);
+            this.logger.warn(`[REPARAR] ${aviso}`);
+          }
+        }
+
+        // 3. Limpiar tipo_auth en BD SOLO tras éxito en MikroTik.
+        //    Si hubo fallo en MikroTik (catch externo), tipo_auth se conserva
+        //    y el próximo reparar podrá reintentar este contrato.
+        if (router.controlaAutenticacion && co.tipoAuth) {
+          await this.ds.query(`UPDATE contratos SET tipo_auth = NULL WHERE id = $1`, [co.id]);
+        }
+
+        ok++;
+        this.logger.log(
+          `[REPARAR] ${co.numeroContrato}: ${staleAuth ?? '—'} → ${targetAuth} OK`,
+        );
       } catch (err: any) {
         errores.push(`${co.numeroContrato}: ${err?.message ?? 'error desconocido'}`);
-        this.logger.warn(`[REPARAR] contrato ${co.numeroContrato}: ERROR — ${err?.message}`);
+        this.logger.warn(`[REPARAR] ${co.numeroContrato}: ERROR — ${err?.message}`);
+        // tipo_auth NO se limpia: permite reintentar en el próximo reparar.
       }
     }
 
@@ -325,7 +415,7 @@ export class MikrotikService {
       ? `Reparación completada para "${router.nombre}". ${ok}/${contratos.length} contratos procesados.`
       : `Reparación con ${errores.length} error(es). ${ok}/${contratos.length} OK. Errores: ${errores.slice(0, 3).join('; ')}`;
 
-    return { mensaje: msg, procesados: ok, morosos: morososCount };
+    return { mensaje: msg, procesados: ok, morosos: morososCount, advertencias };
   }
 
   // ── Planes únicos de un conjunto de contratos ─────────────

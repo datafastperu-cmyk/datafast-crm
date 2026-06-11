@@ -1058,7 +1058,13 @@ export function RoutersContent() {
   const repararMut = useMutation({
     mutationFn: (id: string) => mikrotikApi.reparar(id),
     onMutate:   (id) => { setRepairingId(id); setPendingRepair(null); },
-    onSuccess:  (res) => { setRepairingId(null); toast(res.mensaje, { type: 'success' }); },
+    onSuccess:  (res) => {
+      setRepairingId(null);
+      toast(res.mensaje, { type: res.procesados > 0 ? 'success' : 'warning' });
+      if (res.advertencias?.length) {
+        res.advertencias.forEach((a) => toast(`⚠ ${a}`, { type: 'warning' }));
+      }
+    },
     onError:    (err) => { setRepairingId(null); toast(parseApiError(err), { type: 'error' }); },
   });
 

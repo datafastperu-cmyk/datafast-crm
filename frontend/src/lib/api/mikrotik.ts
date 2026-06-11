@@ -167,7 +167,7 @@ export const mikrotikApi = {
     return data.data;
   },
 
-  reparar: async (id: string): Promise<{ mensaje: string; procesados: number; morosos: number }> => {
+  reparar: async (id: string): Promise<{ mensaje: string; procesados: number; morosos: number; advertencias?: string[] }> => {
     const { data } = await api.post(`/mikrotik/routers/${id}/reparar`);
     return data.data;
   },
