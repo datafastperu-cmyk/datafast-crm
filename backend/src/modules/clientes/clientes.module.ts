@@ -43,6 +43,11 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
     ClientesService,
     ClienteRepository,
     ReniecService,
+    // Dependencias resueltas vía módulos globales en AppModule:
+    // - LicenciaService    → @Global() LicenciaModule
+    // - EventEmitter2      → EventEmitterModule.forRoot()
+    // - CACHE_MANAGER      → CacheModule.registerAsync()
+    // - DataSource         → TypeOrmModule.forRootAsync()
   ],
   exports: [
     // Exportar para uso en otros módulos (contratos, facturación, etc.)

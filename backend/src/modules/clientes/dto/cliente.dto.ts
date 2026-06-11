@@ -2,7 +2,7 @@ import {
   IsString, IsEmail, IsOptional, IsEnum, IsBoolean,
   IsNumber, MaxLength, IsArray, Min, Max,
   ValidateIf, Matches, IsNotEmpty, Length, ArrayMinSize,
-  IsUUID, IsDateString, IsInt, ValidateNested,
+  IsUUID, IsDateString, IsInt, ValidateNested, IsDate,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType, OmitType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
@@ -253,14 +253,14 @@ export class FilterClienteDto extends PaginationDto {
   @IsString()
   etiqueta?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2024-01-01' })
   @IsOptional()
-  @IsString()
+  @IsDateString({}, { message: 'fechaDesde debe ser una fecha válida (YYYY-MM-DD)' })
   fechaDesde?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2024-12-31' })
   @IsOptional()
-  @IsString()
+  @IsDateString({}, { message: 'fechaHasta debe ser una fecha válida (YYYY-MM-DD)' })
   fechaHasta?: string;
 }
 
@@ -321,22 +321,59 @@ export class BulkActionClienteDto {
   motivo?: string;
 }
 
+// ─── Tipos estructurados para configuración de facturación ───
+export class FacturacionConfigDto {
+  @IsOptional() @IsString() tipoFacturacion?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number) diaPago?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(30) @Type(() => Number) diasGracia?: number;
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) moraDiaria?: number;
+  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) cargoReconexion?: number;
+  @IsOptional() @IsString() plantillaFactura?: string;
+}
+
+export class NotificacionesConfigDto {
+  @IsOptional() @IsBoolean() enviarFactura?: boolean;
+  @IsOptional() @IsBoolean() recordatorioVencimiento?: boolean;
+  @IsOptional() @IsInt() @Min(1) @Max(30) @Type(() => Number) diasAntesRecordatorio?: number;
+  @IsOptional() @IsString() plantillaBienvenida?: string;
+  @IsOptional() @IsString() plantillaCorte?: string;
+  @IsOptional() @IsString() plantillaReconexion?: string;
+}
+
+export class FacturacionConfigBodyDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FacturacionConfigDto)
+  facturacion?: FacturacionConfigDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NotificacionesConfigDto)
+  notificaciones?: NotificacionesConfigDto;
+}
+
 // ─── Onboarding (wizard paso a paso) ─────────────────────────
 export class OnboardingContratoDto {
   @IsOptional() @IsUUID() planId?: string;
   @IsOptional() @IsUUID() routerId?: string;
   @IsOptional() @IsUUID() segmentoId?: string;
   @IsOptional() @IsUUID() nodoId?: string;
-  @IsOptional() @IsString() ipManual?: string;
+  @IsOptional()
+  @Matches(/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/, { message: 'IP manual inválida' })
+  ipManual?: string;
   @IsOptional() @IsString() usuarioPppoe?: string;
   @IsOptional() @IsString() passwordPppoePlain?: string;
   @IsOptional() @IsDateString() fechaInicio?: string;
   @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number) diaFacturacion?: number;
   @IsOptional() @IsNumber() @Min(0) @Max(100) @Type(() => Number) descuentoPct?: number;
-  @IsOptional() @IsString() @MaxLength(17) macAddress?: string;
+  @IsOptional()
+  @Matches(/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/, { message: 'MAC address inválida (formato: AA:BB:CC:DD:EE:FF)' })
+  macAddress?: string;
   @IsOptional() @IsBoolean() excluirFirewall?: boolean;
   @IsOptional() @IsString() @MaxLength(500) routes?: string;
-  @IsOptional() @IsString() @MaxLength(45) ipAdministracion?: string;
+  @IsOptional()
+  @Matches(/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/, { message: 'Dirección IP inválida' })
+  ipAdministracion?: string;
   @IsOptional() @IsString() @MaxLength(50) tipoAntena?: string;
   @IsOptional() @IsString() @MaxLength(100) cajaNap?: string;
   @IsOptional() @IsString() @MaxLength(50) puertoNap?: string;

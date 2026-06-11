@@ -2,6 +2,10 @@ import {
   Injectable, NotFoundException, ConflictException,
   BadRequestException, Logger, ForbiddenException, HttpException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
+import * as sharp from 'sharp';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -76,6 +80,11 @@ export class ClientesService {
     // Generar código de cliente automático si no se proveyó
     if (!dto.codigoCliente) {
       dto.codigoCliente = await this.generarCodigoCliente(user.empresaId);
+    }
+
+    // Hash de contraseña del portal si se provee
+    if (dto.passwordPortal) {
+      dto.passwordPortal = await bcrypt.hash(dto.passwordPortal, 12);
     }
 
     const cliente = this.clienteRepo.create({
@@ -161,7 +170,13 @@ export class ClientesService {
     const anterior = { ...cliente };
 
     const { version: _v, ...camposCliente } = dto;
-    await this.clienteRepo.update(id, { ...camposCliente, updatedBy: user.sub });
+
+    // Hash de nueva contraseña de portal si se está actualizando
+    if (camposCliente.passwordPortal) {
+      camposCliente.passwordPortal = await bcrypt.hash(camposCliente.passwordPortal, 12);
+    }
+
+    await this.clienteRepo.update(id, user.empresaId, { ...camposCliente, updatedBy: user.sub });
     const actualizado = await this.findOne(id, user.empresaId);
 
     await this.auditoria.logUpdate({
@@ -207,7 +222,7 @@ export class ClientesService {
       await this.terminarContratosCliente(id, user, dto.motivo);
     }
 
-    await this.clienteRepo.update(id, {
+    await this.clienteRepo.update(id, user.empresaId, {
       estado:      dto.estado,
       fechaEstado: new Date(),
       motivoEstado: dto.motivo,
@@ -316,9 +331,9 @@ export class ClientesService {
     return this.contratosSvc.findByClienteCompleto(id, empresaId);
   }
 
-  async getHistorial(id: string, empresaId: string) {
+  async getHistorial(id: string, empresaId: string, limit = 50, offset = 0) {
     await this.findOne(id, empresaId); // verifica existencia
-    return this.clienteRepo.getHistorialEstados(id);
+    return this.clienteRepo.getHistorialEstados(id, limit, offset);
   }
 
   // ── Resumen / estadísticas ────────────────────────────────
@@ -346,25 +361,23 @@ export class ClientesService {
     filters: ExportClientesDto,
     res: Response,
   ): Promise<void> {
-    const clientes = await this.clienteRepo.findAllForExport(empresaId, filters);
     const formato = filters.formato || 'csv';
-
     if (formato === 'csv') {
-      await this.exportarCsv(clientes, res);
+      await this.exportarCsvStream(empresaId, filters, res);
     } else {
-      await this.exportarXlsx(clientes, res);
+      await this.exportarXlsx(empresaId, filters, res);
     }
   }
 
-  private async exportarCsv(clientes: Cliente[], res: Response): Promise<void> {
+  private async exportarCsvStream(
+    empresaId: string,
+    filters: ExportClientesDto,
+    res: Response,
+  ): Promise<void> {
     const fecha = new Date().toISOString().split('T')[0];
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="clientes_${fecha}.csv"`);
-
-    // BOM para Excel en español
-    res.write('\uFEFF');
-
-    // Cabecera
+    res.write('﻿'); // BOM para Excel en español
     const headers = [
       'Código','Tipo Doc','Documento','Nombres','Apellido Paterno','Apellido Materno',
       'Nombre Completo','Email','Teléfono','WhatsApp','Dirección','Referencia',
@@ -374,48 +387,54 @@ export class ClientesService {
       'Etiquetas','Notas','Fecha Alta',
     ];
     res.write(headers.join(';') + '\r\n');
-
-    // Filas
-    for (const c of clientes) {
-      const row = [
-        this.escapeCsv(c.codigoCliente),
-        c.tipoDocumento?.toUpperCase(),
-        this.escapeCsv(c.numeroDocumento),
-        this.escapeCsv(c.nombres),
-        this.escapeCsv(c.apellidoPaterno),
-        this.escapeCsv(c.apellidoMaterno),
-        this.escapeCsv(c.nombreCompleto),
-        this.escapeCsv(c.email),
-        this.escapeCsv(c.telefono),
-        this.escapeCsv(c.whatsapp),
-        this.escapeCsv(c.direccion),
-        this.escapeCsv(c.referencia),
-        this.escapeCsv(c.departamento),
-        this.escapeCsv(c.provincia),
-        this.escapeCsv(c.distrito),
-        this.escapeCsv(c.ubigeo),
-        c.latitud ?? '',
-        c.longitud ?? '',
-        c.estado,
-        c.tipoServicio,
-        c.esEmpresa ? 'Sí' : 'No',
-        this.escapeCsv(c.rucEmpresa),
-        this.escapeCsv(c.razonSocial),
-        this.escapeCsv(c.etiquetas?.join(', ')),
-        this.escapeCsv(c.notasInternas),
-        c.createdAt?.toISOString().split('T')[0],
-      ];
-      res.write(row.join(';') + '\r\n');
-    }
-
+    const stream = await this.clienteRepo.getExportStream(empresaId, filters);
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (raw: any) => {
+        const row = [
+          this.escapeCsv(raw.c_codigo_cliente),
+          (raw.c_tipo_documento ?? '').toUpperCase(),
+          this.escapeCsv(raw.c_numero_documento),
+          this.escapeCsv(raw.c_nombres),
+          this.escapeCsv(raw.c_apellido_paterno),
+          this.escapeCsv(raw.c_apellido_materno),
+          this.escapeCsv(raw.c_nombre_completo),
+          this.escapeCsv(raw.c_email),
+          this.escapeCsv(raw.c_telefono),
+          this.escapeCsv(raw.c_whatsapp),
+          this.escapeCsv(raw.c_direccion),
+          this.escapeCsv(raw.c_referencia),
+          this.escapeCsv(raw.c_departamento),
+          this.escapeCsv(raw.c_provincia),
+          this.escapeCsv(raw.c_distrito),
+          this.escapeCsv(raw.c_ubigeo),
+          raw.c_latitud ?? '',
+          raw.c_longitud ?? '',
+          raw.c_estado ?? '',
+          raw.c_tipo_servicio ?? '',
+          raw.c_es_empresa ? 'Sí' : 'No',
+          this.escapeCsv(raw.c_ruc_empresa),
+          this.escapeCsv(raw.c_razon_social),
+          this.escapeCsv(raw.c_etiquetas ? raw.c_etiquetas.join(', ') : ''),
+          this.escapeCsv(raw.c_notas_internas),
+          raw.c_created_at ? new Date(raw.c_created_at).toISOString().split('T')[0] : '',
+        ];
+        res.write(row.join(';') + '\r\n');
+      });
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
     res.end();
   }
 
-  private async exportarXlsx(clientes: Cliente[], res: Response): Promise<void> {
-    // Importación dinámica para no cargar xlsx en toda la app
+  private async exportarXlsx(
+    empresaId: string,
+    filters: ExportClientesDto,
+    res: Response,
+  ): Promise<void> {
     const XLSX = await import('xlsx');
     const fecha = new Date().toISOString().split('T')[0];
-
+    const qb = this.clienteRepo.buildFilterQuery(empresaId, filters);
+    const clientes = await qb.orderBy('c.nombre_completo', 'ASC').take(5000).getMany();
     const data = clientes.map((c) => ({
       'Código':          c.codigoCliente,
       'Tipo Documento':  c.tipoDocumento?.toUpperCase(),
@@ -438,11 +457,8 @@ export class ClientesService {
       'Etiquetas':       c.etiquetas?.join(', '),
       'Fecha Alta':      c.createdAt?.toISOString().split('T')[0],
     }));
-
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(data);
-
-    // Ancho de columnas
     ws['!cols'] = [
       { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 35 },
       { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 40 },
@@ -450,10 +466,8 @@ export class ClientesService {
       { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 8 },
       { wch: 15 }, { wch: 30 }, { wch: 20 }, { wch: 12 },
     ];
-
     XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="clientes_${fecha}.xlsx"`);
     res.send(buf);
@@ -480,13 +494,19 @@ export class ClientesService {
       marcar_moroso:  EstadoCliente.MOROSO,
     };
     const nuevoEstado = estadoMap[dto.action];
-    const results = await Promise.allSettled(
-      dto.ids.map((id) =>
-        this.cambiarEstado(id, { estado: nuevoEstado, motivo: dto.motivo }, user, false, req),
-      ),
-    );
-    const ok     = results.filter((r) => r.status === 'fulfilled').length;
-    const errors = results.filter((r) => r.status === 'rejected').length;
+    const CHUNK = 20;
+    let ok = 0, errors = 0;
+
+    for (let i = 0; i < dto.ids.length; i += CHUNK) {
+      const chunk = dto.ids.slice(i, i + CHUNK);
+      const settled = await Promise.allSettled(
+        chunk.map((id) =>
+          this.cambiarEstado(id, { estado: nuevoEstado, motivo: dto.motivo }, user, false, req),
+        ),
+      );
+      ok     += settled.filter((r) => r.status === 'fulfilled').length;
+      errors += settled.filter((r) => r.status === 'rejected').length;
+    }
     return { ok, errors, total: dto.ids.length };
   }
 
@@ -504,7 +524,7 @@ export class ClientesService {
   ) {
     const c = await this.clienteRepo.findById(id, empresaId);
     if (!c) throw new NotFoundException('Cliente no encontrado');
-    await this.clienteRepo.update(id, { facturacionConfig: facturacion, notificacionesConfig: notificaciones });
+    await this.clienteRepo.update(id, empresaId, { facturacionConfig: facturacion, notificacionesConfig: notificaciones });
     return { facturacion, notificaciones };
   }
 
@@ -525,7 +545,7 @@ export class ClientesService {
           req,
         );
         // Promover cliente de PROSPECTO → ACTIVO
-        await this.clienteRepo.update(cliente.id, {
+        await this.clienteRepo.update(cliente.id, user.empresaId, {
           estado: EstadoCliente.ACTIVO,
           fechaEstado: new Date(),
         } as any);
@@ -537,6 +557,15 @@ export class ClientesService {
           motivo: `Alta con plan: ${contrato.numeroContrato}`,
           usuarioId: user.sub,
           automatico: true,
+        });
+        await this.auditoria.logUpdate({
+          empresaId:    user.empresaId,
+          usuarioId:    user.sub,
+          usuarioEmail: user.email,
+          modulo:       'clientes',
+          entidadId:    cliente.id,
+          descripcion:  `Estado: ${EstadoCliente.PROSPECTO} → ${EstadoCliente.ACTIVO} | Alta con plan (onboarding)`,
+          req,
         });
       } catch (err: any) {
         this.logger.error(`onboarding: contrato fallido para ${cliente.id}: ${err.message}`);
@@ -587,17 +616,46 @@ export class ClientesService {
     });
   }
 
-  private async generarCodigoCliente(empresaId: string): Promise<string> {
-    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    // Hasta 5 reintentos para evitar colisiones en alta concurrencia
-    for (let i = 0; i < 5; i++) {
-      const { randomInt } = await import('crypto');
-      const codigo = `CLI-${fecha}-${randomInt(1000, 9999)}`;
-      const existe = await this.clienteRepo.existeCodigoCliente(codigo, empresaId);
-      if (!existe) return codigo;
+  // ── Procesar y guardar foto del cliente ──────────────────────
+  async procesarFoto(
+    clienteId: string,
+    file: Express.Multer.File,
+    empresaId: string,
+  ): Promise<string> {
+    const uploadDir = this.config.get<string>('app.uploadDir') || '/app/uploads';
+    const dir = path.join(uploadDir, 'clientes', empresaId);
+    await fs.mkdir(dir, { recursive: true });
+
+    // Eliminar foto anterior si existe
+    const clienteActual = await this.clienteRepo.findById(clienteId, empresaId);
+    if (clienteActual?.fotoUrl) {
+      const oldPath = path.join(uploadDir, clienteActual.fotoUrl.replace('/uploads/', ''));
+      await fs.unlink(oldPath).catch(() => {}); // ignorar si ya no existe
     }
-    // Fallback: secuencia por conteo si todos colisionan
-    const { count } = await this.clienteRepo.countByEmpresa(empresaId);
-    return `CLI-${fecha}-${String(count + 1).padStart(4, '0')}`;
+
+    const filename = `${clienteId}_${Date.now()}.webp`;
+    const filepath = path.join(dir, filename);
+
+    await (sharp as any)(file.buffer)
+      .resize(400, 400, { fit: 'cover', position: 'centre' })
+      .webp({ quality: 85 })
+      .toFile(filepath);
+
+    return `/uploads/clientes/${empresaId}/${filename}`;
+  }
+
+  private async generarCodigoCliente(empresaId: string): Promise<string> {
+    // Secuencia atómica: usa un contador de BD para evitar colisiones en concurrencia.
+    // nextval garantiza que dos transacciones simultáneas nunca obtengan el mismo número.
+    const seqName = `seq_cod_cli_${empresaId.replace(/-/g, '_')}`;
+    const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+    await this.dataSource.query(
+      `CREATE SEQUENCE IF NOT EXISTS "${seqName}" START 1 INCREMENT 1`,
+    );
+    const [{ nextval }] = await this.dataSource.query<{ nextval: string }[]>(
+      `SELECT nextval('${seqName}')`,
+    );
+    return `CLI-${fecha}-${String(parseInt(nextval, 10)).padStart(4, '0')}`;
   }
 }

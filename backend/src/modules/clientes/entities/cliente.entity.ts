@@ -3,6 +3,7 @@ import {
   JoinColumn, Index,
 } from 'typeorm';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Exclude } from 'class-transformer';
 import { BaseModel } from '../../../common/entities/base.entity';
 
 export enum EstadoCliente {
@@ -116,6 +117,7 @@ export class Cliente extends BaseModel {
   @Column({ name: 'usuario_portal', length: 50, nullable: true })
   usuarioPortal: string;
 
+  @Exclude()
   @Column({ name: 'password_portal', length: 100, nullable: true })
   passwordPortal: string;
 

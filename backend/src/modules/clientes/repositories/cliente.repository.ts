@@ -85,8 +85,8 @@ export class ClienteRepository {
     await this.repo.update({ id, empresaId }, { deletedAt: new Date() });
   }
 
-  async update(id: string, data: Partial<Cliente>): Promise<void> {
-    await this.repo.update({ id }, data);
+  async update(id: string, empresaId: string, data: Partial<Cliente>): Promise<void> {
+    await this.repo.update({ id, empresaId }, data);
   }
 
   async existeDocumento(tipo: string, numero: string, empresaId: string, excludeId?: string): Promise<boolean> {
@@ -103,8 +103,18 @@ export class ClienteRepository {
     await this.histRepo.save(this.histRepo.create(data));
   }
 
-  async getHistorialEstados(clienteId: string): Promise<ClienteHistorialEstado[]> {
-    return this.histRepo.find({ where: { clienteId }, order: { createdAt: 'DESC' }, take: 50 });
+  async getHistorialEstados(
+    clienteId: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<{ items: ClienteHistorialEstado[]; total: number }> {
+    const [items, total] = await this.histRepo.findAndCount({
+      where: { clienteId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
+    return { items, total };
   }
 
   async getEstadisticas(empresaId: string) {
@@ -123,9 +133,9 @@ export class ClienteRepository {
     return { totales, nuevosEsteMes };
   }
 
-  async findAllForExport(empresaId: string, filters: any): Promise<Cliente[]> {
+  getExportStream(empresaId: string, filters: any) {
     const qb = this.buildFilterQuery(empresaId, filters);
-    return qb.orderBy('c.nombre_completo','ASC').take(10000).getMany();
+    return qb.orderBy('c.nombre_completo', 'ASC').stream();
   }
 
   async existeCodigoCliente(codigo: string, empresaId: string): Promise<boolean> {

@@ -2,7 +2,7 @@ import {
   Controller, Get, Post, Put, Patch, Delete,
   Body, Param, Query, Req, Res, ParseUUIDPipe,
   HttpCode, HttpStatus, UseInterceptors,
-  UploadedFile, Logger, Header,
+  UploadedFile, Logger, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -16,7 +16,7 @@ import { ClientesService } from './clientes.service';
 import {
   CreateClienteDto, UpdateClienteDto, FilterClienteDto,
   CambiarEstadoDto, ConsultarReniecDto, ExportClientesDto, BulkActionClienteDto,
-  OnboardingDto,
+  OnboardingDto, FacturacionConfigBodyDto,
 } from './dto/cliente.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -174,10 +174,10 @@ export class ClientesController {
     return StdResponse.ok(data);
   }
 
-  // ── PUT /clientes/:id — Actualizar completo ───────────────
-  @Put(':id')
+  // ── PATCH /clientes/:id — Actualizar campos del cliente ──────
+  @Patch(':id')
   @RequirePermission('clientes:edit')
-  @ApiOperation({ summary: 'Actualizar datos completos de un cliente' })
+  @ApiOperation({ summary: 'Actualizar campos de un cliente (parcial o completo)' })
   @ApiParam({ name: 'id', description: 'UUID del cliente' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -187,21 +187,6 @@ export class ClientesController {
   ) {
     const data = await this.clientesSvc.update(id, dto, user, req);
     return StdResponse.ok(data, 'Cliente actualizado correctamente');
-  }
-
-  // ── PATCH /clientes/:id — Actualizar parcial ──────────────
-  @Patch(':id')
-  @RequirePermission('clientes:edit')
-  @ApiOperation({ summary: 'Actualizar campos específicos de un cliente' })
-  @ApiParam({ name: 'id', description: 'UUID del cliente' })
-  async patch(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateClienteDto,
-    @CurrentUser() user: JwtPayload,
-    @Req() req: Request,
-  ) {
-    const data = await this.clientesSvc.update(id, dto, user, req);
-    return StdResponse.ok(data, 'Cliente actualizado');
   }
 
   // ── PATCH /clientes/:id/estado — Cambiar estado ───────────
@@ -246,11 +231,11 @@ export class ClientesController {
   @ApiOperation({ summary: 'Guardar configuración de facturación del cliente' })
   async saveFacturacionConfig(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { facturacion: Record<string, any>; notificaciones: Record<string, any> },
+    @Body() body: FacturacionConfigBodyDto,
     @CurrentUser() user: JwtPayload,
   ) {
     const data = await this.clientesSvc.saveFacturacionConfig(
-      id, user.empresaId, body.facturacion, body.notificaciones,
+      id, user.empresaId, body.facturacion ?? {}, body.notificaciones ?? {},
     );
     return StdResponse.ok(data, 'Configuración guardada');
   }
@@ -278,8 +263,14 @@ export class ClientesController {
   async getHistorial(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
   ) {
-    const data = await this.clientesSvc.getHistorial(id, user.empresaId);
+    const data = await this.clientesSvc.getHistorial(
+      id, user.empresaId,
+      limit ? Number(limit) : 50,
+      offset ? Number(offset) : 0,
+    );
     return StdResponse.ok(data);
   }
 
@@ -308,8 +299,8 @@ export class ClientesController {
     @CurrentUser() user: JwtPayload,
     @Req() req: Request,
   ) {
-    if (!file) throw new Error('No se recibió ningún archivo');
-    const fotoUrl = await this.procesarFoto(id, file, user.empresaId);
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const fotoUrl = await this.clientesSvc.procesarFoto(id, file, user.empresaId);
     await this.clientesSvc.update(id, { fotoUrl }, user, req);
     return StdResponse.ok({ fotoUrl }, 'Foto actualizada correctamente');
   }
@@ -333,30 +324,4 @@ export class ClientesController {
     await this.clientesSvc.remove(id, user, req);
   }
 
-  // ── Helper privado: procesar foto ─────────────────────────
-  private async procesarFoto(
-    clienteId: string,
-    file: Express.Multer.File,
-    empresaId: string,
-  ): Promise<string> {
-    const sharp = await import('sharp');
-    const uploadDir = process.env.UPLOAD_DIR || '/app/uploads';
-    const fs = await import('fs/promises');
-    const path = await import('path');
-
-    // Directorio por empresa
-    const dir = path.join(uploadDir, 'clientes', empresaId);
-    await fs.mkdir(dir, { recursive: true });
-
-    const filename = `${clienteId}_${Date.now()}.webp`;
-    const filepath = path.join(dir, filename);
-
-    // Redimensionar y convertir a WebP
-    await sharp.default(file.buffer)
-      .resize(400, 400, { fit: 'cover', position: 'face' })
-      .webp({ quality: 85 })
-      .toFile(filepath);
-
-    return `/uploads/clientes/${empresaId}/${filename}`;
-  }
 }

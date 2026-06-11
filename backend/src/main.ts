@@ -1,5 +1,5 @@
-import { NestFactory, Reflector } from '@nestjs/core';
-import { ValidationPipe, VersioningType, Logger } from '@nestjs/common';
+import { NestFactory, Reflector, HttpAdapterHost } from '@nestjs/core';
+import { ValidationPipe, VersioningType, Logger, ClassSerializerInterceptor } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { IoAdapter } from '@nestjs/platform-socket.io';
@@ -81,6 +81,9 @@ async function bootstrap() {
 
   // ── WebSocket con Socket.IO ───────────────────────────────────
   app.useWebSocketAdapter(new IoAdapter(app));
+
+  // ── Serialización global (respeta @Exclude en entidades) ─────
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
   // ── Validación global de DTOs ─────────────────────────────────
   app.useGlobalPipes(

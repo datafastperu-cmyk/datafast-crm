@@ -81,10 +81,10 @@ export class ReniecService {
 
   // ── Proveedor 1: apis.net.pe ──────────────────────────────────
   private async consultarApisNetPe(dni: string): Promise<ReniecResponseDto> {
-    const url = this.config.get('app.reniec.url', 'https://api.apis.net.pe/v2');
-    const token = this.config.get('app.reniec.token');
+    const url   = this.config.get('app.reniec.url', 'https://api.apis.net.pe/v2');
+    const token = this.config.get('app.reniec.tokenApisNetPe') || this.config.get('app.reniec.token');
 
-    if (!token) throw new Error('Token RENIEC no configurado (apis.net.pe)');
+    if (!token) throw new Error('Token RENIEC no configurado (app.reniec.tokenApisNetPe)');
 
     const response = await firstValueFrom(
       this.http.get(`${url}/reniec/dni`, {
@@ -114,8 +114,8 @@ export class ReniecService {
 
   // ── Proveedor 2: apiperu.dev ──────────────────────────────────
   private async consultarApiPeru(dni: string): Promise<ReniecResponseDto> {
-    const token = this.config.get('app.reniec.token');
-    if (!token) throw new Error('Token no configurado');
+    const token = this.config.get('app.reniec.tokenApiPeru') || this.config.get('app.reniec.token');
+    if (!token) throw new Error('Token no configurado (app.reniec.tokenApiPeru)');
 
     const response = await firstValueFrom(
       this.http.get('https://apiperu.dev/api/dni', {
@@ -144,8 +144,8 @@ export class ReniecService {
 
   // ── Proveedor 3: consulta.pe ──────────────────────────────────
   private async consultarConsultaPe(dni: string): Promise<ReniecResponseDto> {
-    const token = this.config.get('app.reniec.token');
-    if (!token) throw new Error('Token no configurado');
+    const token = this.config.get('app.reniec.tokenConsultaPe') || this.config.get('app.reniec.token');
+    if (!token) throw new Error('Token no configurado (app.reniec.tokenConsultaPe)');
 
     const response = await firstValueFrom(
       this.http.get(`https://api.consulta.pe/v1/dni/${dni}`, {
@@ -158,17 +158,22 @@ export class ReniecService {
     );
 
     const data = response.data;
-    if (!data?.nombre_completo) throw new Error('consulta.pe: sin datos');
+    if (!data?.nombre_completo && !data?.nombres) throw new Error('consulta.pe: sin datos');
 
-    const partes = data.nombre_completo.split(' ');
-    return this.normalizar({
-      nombres: partes.slice(2).join(' '),
-      apellidoPaterno: partes[0] || '',
-      apellidoMaterno: partes[1] || '',
-      dni,
-      fuente: 'consulta.pe',
-      raw: data,
-    });
+    // Usar campos separados si el proveedor los devuelve; si no, marcar como no confiable
+    if (data.nombres && data.apellido_paterno) {
+      return this.normalizar({
+        nombres: data.nombres,
+        apellidoPaterno: data.apellido_paterno,
+        apellidoMaterno: data.apellido_materno,
+        dni,
+        fuente: 'consulta.pe',
+        raw: data,
+      });
+    }
+
+    // Sin campos separados este proveedor no es confiable — lanzar para usar fallback manual
+    throw new Error('consulta.pe: respuesta sin campos separados de nombre/apellido');
   }
 
   // ── Normalizar respuesta de cualquier proveedor ────────────────
