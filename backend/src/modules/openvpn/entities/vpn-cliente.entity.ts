@@ -45,7 +45,7 @@ export class VpnCliente extends BaseModel {
   @Column({ length: 20, default: 'aes256' })
   cipher: string;
 
-  @Column({ name: 'auth_alg', length: 20, default: 'sha256' })
+  @Column({ name: 'auth_alg', length: 20, default: 'sha1' })
   authAlg: string;
 
   @Column({ name: 'verify_server_cert', default: false })

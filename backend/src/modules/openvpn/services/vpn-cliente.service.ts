@@ -79,7 +79,7 @@ export class VpnClienteService {
     const { cipher, authAlg } = this._resolveParams(
       versionRos,
       dto.cipher  ?? 'aes256',
-      dto.authAlg ?? 'sha256',
+      dto.authAlg ?? 'sha1',
     );
 
     const slug = dto.nombre
@@ -282,7 +282,8 @@ export class VpnClienteService {
       ? cliente.vpnUsuario
       : cliente.nombreCert;
 
-    const connectedClients = await this._leerStatusLog();
+    // Management socket: datos en tiempo real sin race condition de lectura de archivo
+    const connectedClients = await this._leerManagement();
     const found = connectedClients.find(c => c.commonName === cn);
 
     if (!found) {
@@ -836,6 +837,22 @@ export class VpnClienteService {
     return { cipher, authAlg };
   }
 
+  // Convierte el cipher interno (estilo v6: 'aes256') al formato que espera
+  // el comando OVPN de RouterOS según la versión:
+  //   v6: 'aes256'      v7: 'aes256-cbc'
+  //   v6: 'aes128'      v7: 'aes128-cbc'
+  private _cipherForRos(cipher: string, version: 'v6' | 'v7'): string {
+    if (version === 'v7') {
+      const map: Record<string, string> = {
+        aes128: 'aes128-cbc',
+        aes192: 'aes192-cbc',
+        aes256: 'aes256-cbc',
+      };
+      return map[cipher] ?? cipher;
+    }
+    return cipher;
+  }
+
   private _prefixToMask(prefix: number): string {
     const p = Math.min(32, Math.max(0, prefix || 24));
     const mask = p === 0 ? 0 : (0xFFFFFFFF << (32 - p)) >>> 0;
@@ -930,7 +947,7 @@ export class VpnClienteService {
 :local certEntry [/certificate find where name~($certPrefix . "-client")]
 :local certName [/certificate get $certEntry name]
 :do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha1 user=$certCN certificate=$certName disabled=yes
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=${cliente.cipher} auth=${cliente.authAlg} user=$certCN certificate=$certName disabled=yes
 :delay 1s
 /interface ovpn-client enable vpndatafast
 }`;
@@ -953,7 +970,7 @@ export class VpnClienteService {
 :delay 3s
 /certificate import file-name=$fCa passphrase=""
 :delay 2s
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=aes256 auth=sha1 user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
+/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=${cliente.cipher} auth=${cliente.authAlg} user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
 :delay 1s
 /interface ovpn-client enable vpndatafast
 }`;
@@ -996,7 +1013,7 @@ export class VpnClienteService {
 :local certEntry [/certificate find where name~($certPrefix . "-client")]
 :local certName [/certificate get $certEntry name]
 :do { /interface ovpn-client remove [find name=vpndatafast] } on-error={}
-/interface ovpn-client add certificate=$certName cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN disabled=yes${verifyLine}
+/interface ovpn-client add certificate=$certName cipher=${this._cipherForRos(cliente.cipher, 'v7')} connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=$certCN disabled=yes${verifyLine}
 :delay 1s
 /interface ovpn-client enable vpndatafast
 }`;
@@ -1022,7 +1039,7 @@ export class VpnClienteService {
 :delay 3s
 /certificate import file-name=$fCa passphrase=""
 :delay 2s
-/interface ovpn-client add cipher=aes256-cbc connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
+/interface ovpn-client add cipher=${this._cipherForRos(cliente.cipher, 'v7')} connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
 :delay 1s
 /interface ovpn-client enable vpndatafast
 }`;

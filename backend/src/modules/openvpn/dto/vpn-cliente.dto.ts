@@ -28,7 +28,7 @@ export class CrearVpnClienteDto {
   @IsOptional() @IsIn(['aes128', 'aes192', 'aes256', 'blowfish128', 'aes128-gcm', 'aes256-gcm'])
   cipher?: string;
 
-  @ApiPropertyOptional({ example: 'sha256', enum: ['md5', 'sha1', 'sha256', 'sha512'] })
+  @ApiPropertyOptional({ example: 'sha1', enum: ['md5', 'sha1', 'sha256', 'sha512'] })
   @IsOptional() @IsIn(['md5', 'sha1', 'sha256', 'sha512'])
   authAlg?: string;
 
