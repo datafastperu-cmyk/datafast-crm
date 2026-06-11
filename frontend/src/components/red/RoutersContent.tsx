@@ -1233,7 +1233,7 @@ export function RoutersContent() {
                       {r.identityRouteros && (
                         <div className="text-xs text-muted-foreground/60 font-mono">{r.identityRouteros}</div>
                       )}
-                      {r.subnetsLocales?.length ? (
+                      {Array.isArray(r.subnetsLocales) && r.subnetsLocales.length ? (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {r.subnetsLocales.map((s) => (
                             <span key={s} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-sky-100 text-sky-700 border border-sky-300 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20">
