@@ -122,6 +122,9 @@ export class Cliente extends BaseModel {
   @Column({ name: 'notas_internas', type: 'text', nullable: true })
   notasInternas: string;
 
+  @Column({ name: 'nota_baja', type: 'text', nullable: true })
+  notaBaja: string;
+
   @Column({ name: 'etiquetas', type: 'text', array: true, nullable: true })
   etiquetas: string[];
 

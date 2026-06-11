@@ -11,7 +11,7 @@ import { Contrato, EstadoContrato, ContratoHistorial, TipoPago } from './entitie
 import { SegmentoIpv4, IpAsignada } from './entities/red.entity';
 import { CreateContratoDto, UpdateContratoDto, FilterContratoDto, CambiarEstadoContratoDto, OtorgarProrrogaDto } from './dto/contrato.dto';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
-import { encrypt } from '../../common/utils/encryption.util';
+import { encrypt, decrypt } from '../../common/utils/encryption.util';
 import { getNextAvailableIp, getCidrRange, isValidIp } from '../../common/utils/ip.util';
 import { WirelessService } from '../mikrotik/services/wireless.service';
 import { RouterConnectionPool, RouterCredentials } from '../mikrotik/services/connection-pool.service';
@@ -188,6 +188,12 @@ export class ContratosService {
     await this.auditoria.logCreate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:saved.id, descripcion:`Contrato ${saved.numeroContrato}`, req });
     this.logger.log(`Contrato creado: ${saved.numeroContrato} | ip: ${ipAsignada}`);
 
+    // Al crear nuevo contrato se elimina la nota de baja del abonado (reactivación)
+    await this.dataSource.query(
+      `UPDATE clientes SET nota_baja = NULL WHERE id = $1 AND nota_baja IS NOT NULL`,
+      [dto.clienteId],
+    );
+
     return saved;
   }
 
@@ -322,6 +328,23 @@ export class ContratosService {
       if (contrato.segmentoId) await this.contratoRepo.liberarIp(id);
       await this.desaprovisionarMikrotik(id);
       await this.eliminarDeAccessListAntena(id);
+
+      // Nota informativa con las credenciales de la última conexión
+      const partes: string[] = [];
+      if (contrato.usuarioPppoe) {
+        let passPlain = '';
+        try { passPlain = contrato.passwordPppoe ? decrypt(contrato.passwordPppoe) : ''; } catch { /* cifrado desconocido */ }
+        partes.push(`PPPoE: ${contrato.usuarioPppoe}${passPlain ? ` / ${passPlain}` : ''}`);
+      }
+      if (contrato.ipAsignada)  partes.push(`IP: ${contrato.ipAsignada}`);
+      if (contrato.macAddress)  partes.push(`MAC: ${contrato.macAddress}`);
+      if (partes.length > 0) {
+        const fecha = new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        await this.dataSource.query(
+          `UPDATE clientes SET nota_baja = $1 WHERE id = $2`,
+          [`Última conexión (${fecha}): ${partes.join(' | ')}`, contrato.clienteId],
+        );
+      }
     }
     await this.contratoRepo.update(id, upd);
     await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:anterior, estadoNuevo:dto.estado, motivo:dto.motivo, usuarioId:user.sub, automatico });
