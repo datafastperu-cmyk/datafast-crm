@@ -75,7 +75,7 @@ export class VpnClienteService {
       );
     }
 
-    const usarCerts  = dto.usarCertificados !== false;
+    const usarCerts  = dto.usarCertificados === true;
     const versionRos = dto.versionRos ?? 'v7';
     const { cipher, authAlg } = this._resolveParams(
       versionRos,
@@ -154,7 +154,9 @@ export class VpnClienteService {
     // Pre-asignar IP VPN y escribir CCD antes de distribuir el script.
     // Serializado con mutex para evitar race condition cuando varios operadores
     // abren el wizard simultáneamente y seleccionan la misma IP libre.
-    if (usarCerts) {
+    // Para modo usuario/contraseña, el CCD se escribe con el vpnUsuario como clave
+    // (porque username-as-common-name está activo en el servidor OpenVPN).
+    {
       let releaseLock!: () => void;
       const acquired = new Promise<void>(resolve => { releaseLock = resolve; });
       const prev = this._ipAssignLock;
@@ -162,8 +164,9 @@ export class VpnClienteService {
       await prev;
       try {
         const preasignedIp = await this._preasignarIpVpn();
-        await this.escribirArchivoCcd(nombreCert, [], preasignedIp);
-        this.logger.log(`[VPN] IP pre-asignada para ${nombreCert}: ${preasignedIp}`);
+        const ccdCn = usarCerts ? nombreCert : autoVpnUsuario!;
+        await this.escribirArchivoCcd(ccdCn, [], preasignedIp);
+        this.logger.log(`[VPN] IP pre-asignada para ${ccdCn}: ${preasignedIp}`);
       } catch (err: any) {
         this.logger.error(`[VPN] No se pudo pre-asignar IP para ${nombreCert}: ${err.message}`);
         throw err;
@@ -364,11 +367,17 @@ export class VpnClienteService {
       }
     }
 
-    await this.killClienteVpnManagement(cliente.nombreCert);
+    // Para modo usuario/contraseña, el CN en el management y el nombre del CCD
+    // son el vpnUsuario (por username-as-common-name en el servidor OpenVPN).
+    const effectiveCn = (!cliente.usarCertificados && cliente.vpnUsuario)
+      ? cliente.vpnUsuario
+      : cliente.nombreCert;
+
+    await this.killClienteVpnManagement(effectiveCn);
     await this.repo.update(cliente.id, { estado: 'revocado', activo: false });
 
     // Eliminar archivo CCD del cliente revocado para limpiar rutas del servidor
-    const ccdPath = path.join(CCD_DIR, cliente.nombreCert);
+    const ccdPath = path.join(CCD_DIR, effectiveCn);
     await fs.unlink(ccdPath).catch(() => {});
     this.logger.log(`VPN cliente revocado: ${cliente.id}`);
   }
@@ -396,6 +405,12 @@ export class VpnClienteService {
     }
     if (cliente.estado === 'revocado') {
       res.status(403).json({ message: 'Cliente VPN revocado' });
+      return;
+    }
+
+    // Modo usuario/contraseña: solo ca.crt disponible (no hay PKI de cliente)
+    if (!cliente.usarCertificados && filename !== 'ca.crt') {
+      res.status(404).json({ message: 'Archivo no disponible en modo usuario/contraseña' });
       return;
     }
 

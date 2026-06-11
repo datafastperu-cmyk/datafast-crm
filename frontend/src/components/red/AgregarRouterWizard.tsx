@@ -224,7 +224,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         ubicacion:        ubicacion   || undefined,
         descripcion:      descripcion || undefined,
         versionRos:       versionRos as VersionRos,
-        usarCertificados: true,
+        usarCertificados: false,
       });
       setVpnCliente(result.cliente);
       setVpnScript(result.script);
