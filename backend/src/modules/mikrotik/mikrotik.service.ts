@@ -26,7 +26,7 @@ import { encrypt, decrypt }                        from '../../common/utils/encr
 import {
   CreateRouterDto, UpdateRouterDto, ProvisionarClienteDto,
   SuspenderClienteDto, ReactivarClienteDto, AmareIpMacDto,
-  TestConexionDirectaDto,
+  TestConexionDirectaDto, ActualizarQueueDto,
 } from './dto/mikrotik.dto';
 
 // ─── Evento emitido al suspender/reactivar ────────────────────
@@ -104,7 +104,7 @@ export class MikrotikService {
         }
       } else {
         this.vpnSvc.generarParaRouter(await this.findOne(saved.id, user.empresaId)).catch(e =>
-          this.logger.error(`[VPN-CCD] router ${saved.id}: ${e.message}`)
+          this.logger.error(`[VPN-CCD] generarParaRouter falló para router ${saved.id} — vpnCommonName quedará null hasta el próximo "Reparar": ${e.message}`)
         );
       }
     }
@@ -249,6 +249,18 @@ export class MikrotikService {
       await this.subnetSvc.removeVpsRoutes(gw, router.subnetsLocales);
     }
 
+    // Revocar VPN ANTES del softDelete para garantizar que si la revocación falla
+    // el router siga visible en la UI y el operador pueda reintentar.
+    try {
+      const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);
+      for (const c of vpnClientes) {
+        await this.vpnSvc.revocar(c.id, user.empresaId);
+        this.logger.log(`VPN cliente revocado al eliminar router ${id}: ${c.id}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Error revocando VPN clientes del router ${id}: ${err.message}`);
+    }
+
     await this.routerRepo.softDelete(id);
     await this.pool.invalidate(id);
 
@@ -268,17 +280,6 @@ export class MikrotikService {
       );
     } catch (err: any) {
       this.logger.warn(`Error limpiando segmentos/IPs del router ${id}: ${err.message}`);
-    }
-
-    // Revocar VPN vinculada al router
-    try {
-      const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);
-      for (const c of vpnClientes) {
-        await this.vpnSvc.revocar(c.id, user.empresaId);
-        this.logger.log(`VPN cliente revocado al eliminar router ${id}: ${c.id}`);
-      }
-    } catch (err: any) {
-      this.logger.warn(`Error revocando VPN clientes del router ${id}: ${err.message}`);
     }
 
     await this.auditoria.log({
@@ -308,6 +309,14 @@ export class MikrotikService {
     empresaId: string,
   ): Promise<{ mensaje: string; procesados: number; morosos: number; advertencias: string[] }> {
     const router = await this.findOne(routerId, empresaId);
+
+    // Si la configuración VPN inicial falló (vpnCommonName quedó null), regenerar ahora
+    if (router.metodoConexion === MetodoConexion.VPN_TUNNEL && !router.vpnCommonName) {
+      this.logger.warn(`[VPN] Router ${routerId} sin vpnCommonName — regenerando VPN antes de reparar`);
+      await this.vpnSvc.generarParaRouter(router);
+      // Recargar para obtener vpnCommonName y vpnIp actualizados
+      Object.assign(router, await this.findOne(routerId, empresaId));
+    }
 
     const creds: RouterCredentials = {
       id:              router.id,
@@ -578,6 +587,33 @@ export class MikrotikService {
     });
 
     return { arp: true, dhcp: dhcpAdded };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // ACTUALIZAR QUEUE DE UN CLIENTE
+  // ────────────────────────────────────────────────────────────
+  async actualizarQueue(
+    routerId:   string,
+    dto:        ActualizarQueueDto,
+    empresaId:  string,
+  ): Promise<void> {
+    const router = await this.findOne(routerId, empresaId);
+    const creds: RouterCredentials = {
+      id:              router.id,
+      ip:              router.vpnIp || router.ipGestion,
+      port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
+      user:            router.usuario ?? 'admin',
+      passwordCifrado: router.passwordCifrado ?? '',
+      useSsl:          router.usarSsl ?? false,
+      timeoutSec:      10,
+      version:         router.versionRos as any ?? 'v6',
+    };
+    await this.queueSvc.crearSimpleQueue(creds, {
+      name:         dto.nombreQueue,
+      target:       '',
+      maxLimitDown: dto.downloadMbps,
+      maxLimitUp:   dto.uploadMbps,
+    });
   }
 
   // ────────────────────────────────────────────────────────────
@@ -857,9 +893,8 @@ export class MikrotikService {
     // ── Resolver contraseña: sentinel '***stored***' → leer de BD ─
     let resolvedPassword = dto.password ?? '';
     if ((!resolvedPassword || resolvedPassword === '***stored***') && dto.routerId) {
-      const where: any = { id: dto.routerId };
-      if (empresaId) where.empresaId = empresaId;
-      const stored = await this.routerRepo.findOne({ where });
+      if (!empresaId) throw new BadRequestException('Empresa no identificada');
+      const stored = await this.routerRepo.findOne({ where: { id: dto.routerId, empresaId } });
       if (stored) resolvedPassword = stored.passwordCifrado;
     }
 

@@ -355,7 +355,8 @@ export class MikrotikController {
     @Body() dto: ActualizarQueueDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return StdResponse.ok(null, 'Velocidad actualizada en el router');
+    const result = await this.svc.actualizarQueue(id, dto, user.empresaId);
+    return StdResponse.ok(result, 'Velocidad actualizada en el router');
   }
 
   // ─── FIREWALL SETUP ───────────────────────────────────────

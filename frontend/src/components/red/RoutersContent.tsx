@@ -1170,7 +1170,8 @@ export function RoutersContent() {
               </div>
               <button
                 onClick={() => descartarAlertaMut.mutate(alerta.id)}
-                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
+                disabled={descartarAlertaMut.isPending && descartarAlertaMut.variables === alerta.id}
+                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Descartar alerta"
               >
                 <XCircle className="w-4 h-4" />
@@ -1340,8 +1341,8 @@ export function RoutersContent() {
                         </button>
                         <button
                           onClick={() => setPendingRepair(r)}
-                          disabled={isRepairing || r.estado !== 'online'}
-                          title={r.estado !== 'online' ? 'El router debe estar online para reparar' : 'Reparar / Sincronizar router'}
+                          disabled={isRepairing || (r.estado !== 'online' && r.estado !== 'degradado')}
+                          title={(r.estado !== 'online' && r.estado !== 'degradado') ? 'El router debe estar online o degradado para reparar' : 'Reparar / Sincronizar router'}
                           className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isRepairing

@@ -72,7 +72,7 @@ export class CreateRouterDto {
   longitud?: number;
 
   @ApiPropertyOptional({ example: '10.8.0.2', description: 'IP asignada por el túnel OpenVPN' })
-  @IsOptional() @IsString() @MaxLength(50)
+  @IsOptional() @IsIP()
   vpnIp?: string;
 
   @ApiPropertyOptional({ enum: TipoControl, default: TipoControl.NINGUNA })

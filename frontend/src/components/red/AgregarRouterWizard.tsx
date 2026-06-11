@@ -108,6 +108,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const routerGuardadoRef = useRef(false);
   const revokedRef       = useRef(false);
   const vpnConnectedRef  = useRef(false);  // true una vez que el túnel está activo — no revocar en cleanup
+  const generatingVpnRef = useRef(false);  // guard contra doble-click en Generar script VPN
   useEffect(() => { vpnClienteRef.current = vpnCliente; }, [vpnCliente]);
   useEffect(() => { routerGuardadoRef.current = routerGuardado; }, [routerGuardado]);
 
@@ -213,10 +214,12 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // ── VPN: generar script ────────────────────────────────────────────────────
 
   const handleGenerarVpn = async () => {
+    if (generatingVpnRef.current) return;
     if (!versionRos) {
       toast('Selecciona la versión RouterOS en el paso 1', { type: 'error' });
       return;
     }
+    generatingVpnRef.current = true;
     setVpnSubStep('generating');
     try {
       const result = await vpnApi.crear({
@@ -234,6 +237,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
     } catch (err) {
       toast(parseApiError(err), { type: 'error' });
       setVpnSubStep('init');
+    } finally {
+      generatingVpnRef.current = false;
     }
   };
 
@@ -324,7 +329,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // ── Navegación ─────────────────────────────────────────────────────────────
 
   const canProceedStep1 = nombre.trim().length > 0 && versionRos !== '';
-  const canProceedStep2 = testStatus === 'ok';
+  const canProceedStep2 = testStatus === 'ok' && (tipoConexion !== 'vpn_tunnel' || !!vpnIp);
 
   const goStep2 = () => {
     if (!nombre.trim()) { toast('El nombre del router es obligatorio', { type: 'error' }); return; }
