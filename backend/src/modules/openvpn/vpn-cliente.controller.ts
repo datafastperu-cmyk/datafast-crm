@@ -114,6 +114,24 @@ export class VpnClienteController {
     return StdResponse.ok(null, 'Autenticado');
   }
 
+  // ── Verificar sesión CN antes de permitir nueva conexión (client-connect) ─
+  // Mata sesión impostora si la sesión existente no responde a la API del router.
+  @Post('verificar-sesion-cn')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verificar sesión activa por CN y matar impostora si aplica (solo localhost)' })
+  async verificarSesionCn(
+    @Body() body: { cn: string },
+    @Req()  req:  Request,
+  ) {
+    const ip = req.socket.remoteAddress ?? '';
+    if (!ip.includes('127.0.0.1') && !ip.includes('::1')) {
+      throw new ForbiddenException('Solo accesible desde localhost');
+    }
+    const permitir = await this.svc.verificarSesionCn(body.cn ?? '');
+    return { permitir };
+  }
+
   // ── Descargar certificado (público — protegido por token de 24h) ─
   // IMPORTANTE: Este endpoint es público, el token en la URL es la protección.
   // El MikroTik lo invoca con /tool fetch durante la ejecución del script.

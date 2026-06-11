@@ -761,6 +761,54 @@ export class VpnClienteService {
     });
   }
 
+  // Decide si permitir una nueva conexión VPN para un CN dado.
+  // Lógica:
+  //   1. CN no registrado → denegar
+  //   2. Sin sesión activa → permitir
+  //   3. Sesión activa:
+  //      a. Router asociado responde TCP en su API → sesión legítima → denegar
+  //      b. Router no responde → impostor → matar sesión → permitir
+  async verificarSesionCn(cn: string): Promise<boolean> {
+    const cliente = await this.repo.findOne({
+      where: [{ nombreCert: cn, activo: true }, { vpnUsuario: cn, activo: true }],
+    });
+    if (!cliente || cliente.estado === 'revocado') return false;
+
+    const sessions = await this._leerManagement();
+    const sesionActiva = sessions.find(s => s.commonName === cn);
+    if (!sesionActiva) return true; // sin sesión → permitir siempre
+
+    // Hay sesión activa: verificar si es legítima por TCP al API del router
+    const router = cliente.routerId
+      ? await this.routerRepo.findOne({ where: { id: cliente.routerId } })
+      : null;
+
+    if (router?.vpnIp) {
+      const port = router.puertoApi ?? 8728;
+      const responde = await this._testTcpPort(router.vpnIp, port, 3000);
+      if (responde) {
+        this.logger.log(`[VPN] CN ${cn}: sesión legítima activa en ${router.vpnIp}:${port} — nueva conexión rechazada`);
+        return false; // sesión genuina → rechazar nueva
+      }
+    }
+
+    // No responde → impostor → matar sesión → permitir al legítimo
+    await this.killClienteVpnManagement(cn);
+    this.logger.log(`[VPN] CN ${cn}: sesión impostora eliminada — router legítimo puede reconectar`);
+    return true;
+  }
+
+  private _testTcpPort(host: string, port: number, timeoutMs: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const socket = new net.Socket();
+      socket.setTimeout(timeoutMs);
+      socket.on('connect', () => { socket.destroy(); resolve(true); });
+      socket.on('error',   () => { socket.destroy(); resolve(false); });
+      socket.on('timeout', () => { socket.destroy(); resolve(false); });
+      socket.connect(port, host);
+    });
+  }
+
   // Mata la sesión activa de un router si la ocupa un impostor.
   // Retorna true si se mató una sesión, false si no había sesión activa.
   async matarSesionImpostora(routerId: string, empresaId: string): Promise<boolean> {
