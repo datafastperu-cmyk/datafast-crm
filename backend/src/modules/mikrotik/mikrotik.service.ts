@@ -97,7 +97,7 @@ export class MikrotikService {
           await this.vpnSvc.vincularCertWizardARouter(dto.vpnClienteId, saved.id, user.empresaId);
         } catch (e: any) {
           this.logger.error(`[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`);
-          await this.routerRepo.update(saved.id, { activo: false });
+          await this.routerRepo.softDelete(saved.id);
           throw new InternalServerErrorException(
             `Router creado pero falló la configuración VPN: ${e.message}. El registro fue revertido.`,
           );

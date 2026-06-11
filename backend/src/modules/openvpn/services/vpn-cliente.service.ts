@@ -240,19 +240,25 @@ export class VpnClienteService {
     await this.revocar(cliente.id, cliente.empresaId);
   }
 
-  // ── Cron: limpiar wizards abandonados (sin router, > 15 min) ────
-  // Corre cada 10 min; corte a 15 min. Máximo tiempo de IP bloqueada: ~25 min.
+  // ── Cron: limpiar wizards abandonados (sin router asignado) ────
+  // Dos cutoffs según estado del túnel:
+  //   · pendiente  (nunca conectó)  → 15 min: el operador abandonó antes de ejecutar el script
+  //   · conectado  (túnel activo)   → 60 min: el operador tardó en completar el paso 3
+  // Corre cada 10 min. Máxima exposición de IP bloqueada: ~25 min / ~70 min.
 
   @Cron('0 */10 * * * *', { name: 'vpn-cleanup-abandonados', timeZone: 'America/Lima' })
   async limpiarWizardsAbandonados(): Promise<void> {
-    const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+    const cutoff15 = new Date(Date.now() - 15 * 60 * 1000);
+    const cutoff60 = new Date(Date.now() - 60 * 60 * 1000);
+
     const abandonados = await this.repo.find({
-      where: {
-        routerId:  IsNull(),
-        activo:    true,
-        estado:    Not('revocado' as EstadoVpnCliente),
-        createdAt: LessThan(cutoff),
-      },
+      where: [
+        // Nunca conectó: corte corto
+        { routerId: IsNull(), activo: true, estado: 'pendiente'     as EstadoVpnCliente, createdAt: LessThan(cutoff15) },
+        { routerId: IsNull(), activo: true, estado: 'desconectado'  as EstadoVpnCliente, createdAt: LessThan(cutoff15) },
+        // Túnel activo pero paso 3 nunca completado: corte largo
+        { routerId: IsNull(), activo: true, estado: 'conectado'     as EstadoVpnCliente, createdAt: LessThan(cutoff60) },
+      ],
     });
     if (!abandonados.length) return;
     this.logger.log(`VPN cron: ${abandonados.length} wizard(s) abandonado(s) — revocando`);
