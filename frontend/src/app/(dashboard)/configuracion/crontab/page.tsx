@@ -28,7 +28,8 @@ const DEFAULT: CronHorarios = {
 };
 
 // Devuelve true si la hora HH:MM ya pasó en Lima (UTC-5)
-function yaPassoHoy(hora: string): boolean {
+function yaPassoHoy(hora?: string): boolean {
+  if (!hora || typeof hora !== 'string') return false;
   const [h, m] = hora.split(':').map(Number);
   const ahora = new Date();
   // Lima = UTC-5
@@ -211,7 +212,13 @@ export default function CrontabPage() {
   });
 
   const serverData: CronHorarios = data
-    ? { facturacion: data.facturacion, corte: data.corte, recordatorio1: data.recordatorio1, recordatorio2: data.recordatorio2, recordatorio3: data.recordatorio3 }
+    ? {
+        facturacion:   data.facturacion   ?? DEFAULT.facturacion,
+        corte:         data.corte         ?? DEFAULT.corte,
+        recordatorio1: data.recordatorio1 ?? DEFAULT.recordatorio1,
+        recordatorio2: data.recordatorio2 ?? DEFAULT.recordatorio2,
+        recordatorio3: data.recordatorio3 ?? DEFAULT.recordatorio3,
+      }
     : DEFAULT;
 
   const [form, setForm] = useState<CronHorarios>(DEFAULT);

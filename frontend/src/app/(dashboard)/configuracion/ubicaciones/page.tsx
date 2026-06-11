@@ -10,7 +10,7 @@ import { parseApiError } from '@/lib/utils';
 interface Zona { id: string; nombre: string; activo: boolean; createdAt: string; }
 
 const zonasApi = {
-  list:   (search?: string) => api.get<any>('/zonas', { params: search ? { search } : {} }).then(r => r.data.data as Zona[]),
+  list:   (search?: string) => api.get<any>('/zonas', { params: search ? { search } : {} }).then(r => (Array.isArray(r.data.data) ? r.data.data : []) as Zona[]),
   create: (nombre: string)  => api.post<any>('/zonas', { nombre }).then(r => r.data.data as Zona),
   update: (id: string, nombre: string) => api.put<any>(`/zonas/${id}`, { nombre }).then(r => r.data.data as Zona),
   remove: (id: string)      => api.delete(`/zonas/${id}`),

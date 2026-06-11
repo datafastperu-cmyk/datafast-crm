@@ -120,15 +120,17 @@ export default function PlantillasConfigPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const { data: plantillas = [], isLoading } = useQuery<PlantillaAbonado[]>({
+  const { data: rawPlantillas, isLoading } = useQuery<PlantillaAbonado[]>({
     queryKey: ['plantillas-abonados'],
     queryFn: plantillasAbonadosApi.list,
   });
+  const plantillas = Array.isArray(rawPlantillas) ? rawPlantillas : [];
 
-  const { data: plantillasMsg = [] } = useQuery({
+  const { data: rawPlantillasMsg } = useQuery({
     queryKey: ['plantillas', 'whatsapp'],
     queryFn: () => plantillasApi.listar('whatsapp'),
   });
+  const plantillasMsg = Array.isArray(rawPlantillasMsg) ? rawPlantillasMsg : [];
 
   const [selId, setSelId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);

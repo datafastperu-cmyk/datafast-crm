@@ -82,7 +82,9 @@ export function ServidorTab() {
     );
   }
 
-  const { version, update, system, processes } = info!;
+  if (!info) return null;
+
+  const { version, update, system, processes } = info;
 
   return (
     <div className="space-y-6">

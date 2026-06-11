@@ -49,7 +49,8 @@ interface BackupList {
 // ─── API ──────────────────────────────────────────────────────
 const fetchConfig = async (): Promise<BackupConfig> => {
   const res = await api.get<ApiRespuesta<BackupConfig>>('/admin/backup/config');
-  return res.data.data;
+  const d = res.data.data;
+  return { ...d, contenido: Array.isArray(d.contenido) ? d.contenido : [] };
 };
 const fetchBackups = async (): Promise<BackupList> => {
   const res = await api.get<ApiRespuesta<BackupList>>('/admin/backup', { params: { limit: 30 } });

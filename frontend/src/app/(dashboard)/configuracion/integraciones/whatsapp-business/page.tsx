@@ -232,7 +232,7 @@ function GatewayConfigForm() {
   const customApiActivo        = watch('customApiActivo');
   const automatizadoVipActivo  = watch('automatizadoVipActivo');
   const whatsappNumeroOrigen   = watch('whatsappNumeroOrigen');
-  const meta                   = PROVIDER_META[proveedor];
+  const meta                   = PROVIDER_META[proveedor] ?? PROVIDER_META['META_GRAPH'];
   const isMeta                 = proveedor === 'META_GRAPH';
   const isMasiva               = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
 
