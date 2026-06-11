@@ -3,7 +3,7 @@ import Link from 'next/link';
 import {
   Settings, Users, Mail, Receipt, FileCheck, CreditCard,
   FileEdit, Globe, Upload, ArrowUpDown, Layout, MapPin,
-  SlidersHorizontal, MessageSquare, HardDrive, Clock,
+  SlidersHorizontal, HardDrive, Clock,
   Terminal, Monitor, Server, Key, Plug, Cpu,
 } from 'lucide-react';
 
@@ -23,7 +23,6 @@ const SECTIONS = [
   { href: '/configuracion/plantillas-config',      label: 'Plantillas Abonados',      icon: Layout },
   { href: '/configuracion/ubicaciones',            label: 'Zonas',                    icon: MapPin },
   { href: '/configuracion/campos-personalizados',  label: 'Campos Personalizados',    icon: SlidersHorizontal },
-  { href: '/configuracion/mensajeria-config',      label: 'Mensajería',               icon: MessageSquare },
   { href: '/configuracion/backup',                 label: 'Copia de Seguridad',       icon: HardDrive },
   { href: '/configuracion/crontab',                label: 'Crontab',                  icon: Clock },
   { href: '/configuracion/log',                    label: 'Log',                      icon: Terminal },
