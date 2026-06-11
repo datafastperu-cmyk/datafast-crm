@@ -48,6 +48,21 @@ export interface ValidarTunelResult {
   mensaje:            string;
 }
 
+export type TipoVpnAlerta = 'conexion_bloqueada' | 'sesion_eliminada';
+
+export interface VpnAlerta {
+  id:           string;
+  cn:           string;
+  routerId?:    string;
+  routerNombre?: string;
+  tipo:         TipoVpnAlerta;
+  ipNueva?:     string;
+  ipSesion?:    string;
+  mensaje:      string;
+  leida:        boolean;
+  createdAt:    string;
+}
+
 export const vpnApi = {
   crear: async (dto: CrearVpnClienteDto): Promise<{ cliente: VpnCliente; script: string }> => {
     const { data } = await api.post('/openvpn/mikrotik-clients', dto);
@@ -66,5 +81,14 @@ export const vpnApi = {
   getScriptByRouterId: async (routerId: string): Promise<string> => {
     const { data } = await api.get(`/openvpn/mikrotik-clients/by-router/${routerId}/script`);
     return data.data.script;
+  },
+
+  listarAlertas: async (): Promise<VpnAlerta[]> => {
+    const { data } = await api.get('/openvpn/mikrotik-clients/alertas');
+    return data.data;
+  },
+
+  descartarAlerta: async (id: string): Promise<void> => {
+    await api.post(`/openvpn/mikrotik-clients/${id}/descartar-alerta`);
   },
 };

@@ -20,7 +20,7 @@ import type {
 } from '@/lib/api/mikrotik';
 import { AgregarRouterWizard } from './AgregarRouterWizard';
 import { RouterDetailPanel }  from './RouterDetailPanel';
-import { vpnApi } from '@/lib/api/vpn';
+import { vpnApi, type VpnAlerta } from '@/lib/api/vpn';
 
 // ─── Constantes de UI ─────────────────────────────────────────────
 
@@ -1043,6 +1043,17 @@ export function RoutersContent() {
   const [pendingRepair, setPendingRepair]   = useState<RouterType | null>(null);
   const [detailRouter, setDetailRouter]     = useState<RouterType | null>(null);
 
+  const { data: alertasVpn = [], refetch: refetchAlertas } = useQuery<VpnAlerta[]>({
+    queryKey:        ['vpn-alertas'],
+    queryFn:         vpnApi.listarAlertas,
+    refetchInterval: 60_000,
+  });
+
+  const descartarAlertaMut = useMutation({
+    mutationFn: (id: string) => vpnApi.descartarAlerta(id),
+    onSuccess:  () => refetchAlertas(),
+  });
+
   const { data: routers = [], isLoading } = useQuery<RouterType[]>({
     queryKey:        ['routers'],
     queryFn:         mikrotikApi.listar,
@@ -1126,6 +1137,48 @@ export function RoutersContent() {
           Agregar router
         </button>
       </div>
+
+      {/* Alertas VPN */}
+      {alertasVpn.length > 0 && (
+        <div className="space-y-2">
+          {alertasVpn.map((alerta) => (
+            <div
+              key={alerta.id}
+              className={cn(
+                'flex items-start gap-3 rounded-xl border px-4 py-3 text-sm',
+                alerta.tipo === 'conexion_bloqueada'
+                  ? 'border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10'
+                  : 'border-red-300 bg-red-50 dark:border-red-500/30 dark:bg-red-500/10',
+              )}
+            >
+              <AlertTriangle className={cn(
+                'w-4 h-4 flex-shrink-0 mt-0.5',
+                alerta.tipo === 'conexion_bloqueada' ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400',
+              )} />
+              <div className="flex-1 min-w-0">
+                <p className={cn(
+                  'font-semibold text-xs uppercase tracking-wide',
+                  alerta.tipo === 'conexion_bloqueada' ? 'text-amber-700 dark:text-amber-400' : 'text-red-700 dark:text-red-400',
+                )}>
+                  {alerta.tipo === 'conexion_bloqueada' ? 'Conexión duplicada bloqueada' : 'Sesión VPN eliminada'}
+                  {alerta.routerNombre && ` — ${alerta.routerNombre}`}
+                </p>
+                <p className="text-muted-foreground mt-0.5 text-xs">{alerta.mensaje}</p>
+                <p className="text-muted-foreground/60 text-[10px] mt-0.5">
+                  {new Date(alerta.createdAt).toLocaleString('es-PE')}
+                </p>
+              </div>
+              <button
+                onClick={() => descartarAlertaMut.mutate(alerta.id)}
+                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
+                title="Descartar alerta"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Table */}
       {isLoading ? (

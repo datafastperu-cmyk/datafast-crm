@@ -121,15 +121,38 @@ export class VpnClienteController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verificar sesión activa por CN y matar impostora si aplica (solo localhost)' })
   async verificarSesionCn(
-    @Body() body: { cn: string },
+    @Body() body: { cn: string; ipNueva?: string },
     @Req()  req:  Request,
   ) {
     const ip = req.socket.remoteAddress ?? '';
     if (!ip.includes('127.0.0.1') && !ip.includes('::1')) {
       throw new ForbiddenException('Solo accesible desde localhost');
     }
-    const permitir = await this.svc.verificarSesionCn(body.cn ?? '');
+    const permitir = await this.svc.verificarSesionCn(body.cn ?? '', body.ipNueva);
     return { permitir };
+  }
+
+  // ── Listar alertas VPN activas ────────────────────────────────
+
+  @Get('alertas')
+  @RequirePermission('mikrotik:manage')
+  @ApiOperation({ summary: 'Listar alertas VPN no leídas (intentos de conexión bloqueados o sesiones eliminadas)' })
+  async listarAlertas(@CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.svc.listarAlertas(user.empresaId), 'Alertas VPN');
+  }
+
+  // ── Descartar alerta ──────────────────────────────────────────
+
+  @Post(':id/descartar-alerta')
+  @RequirePermission('mikrotik:manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Marcar alerta VPN como leída (descartarla)' })
+  async descartarAlerta(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.svc.descartarAlerta(id, user.empresaId);
+    return StdResponse.ok(null, 'Alerta descartada');
   }
 
   // ── Descargar certificado (público — protegido por token de 24h) ─

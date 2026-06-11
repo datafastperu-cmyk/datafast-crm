@@ -13,6 +13,7 @@ import * as net             from 'net';
 import { Response }         from 'express';
 
 import { VpnCliente, EstadoVpnCliente } from '../entities/vpn-cliente.entity';
+import { VpnAlerta }                    from '../entities/vpn-alerta.entity';
 import { CrearVpnClienteDto }           from '../dto/vpn-cliente.dto';
 import { JwtPayload }                   from '../../../common/decorators/current-user.decorator';
 import { generateToken, encrypt }       from '../../../common/utils/encryption.util';
@@ -46,6 +47,8 @@ export class VpnClienteService {
   constructor(
     @InjectRepository(VpnCliente)
     private readonly repo: Repository<VpnCliente>,
+    @InjectRepository(VpnAlerta)
+    private readonly alertaRepo: Repository<VpnAlerta>,
     @InjectRepository(Router)
     private readonly routerRepo: Repository<Router>,
   ) {}
@@ -766,9 +769,9 @@ export class VpnClienteService {
   //   1. CN no registrado → denegar
   //   2. Sin sesión activa → permitir
   //   3. Sesión activa:
-  //      a. Router asociado responde TCP en su API → sesión legítima → denegar
-  //      b. Router no responde → impostor → matar sesión → permitir
-  async verificarSesionCn(cn: string): Promise<boolean> {
+  //      a. Router asociado responde TCP en su API → sesión legítima → denegar + alerta
+  //      b. Router no responde → impostor → matar sesión → permitir + alerta
+  async verificarSesionCn(cn: string, ipNueva?: string): Promise<boolean> {
     const cliente = await this.repo.findOne({
       where: [{ nombreCert: cn, activo: true }, { vpnUsuario: cn, activo: true }],
     });
@@ -776,9 +779,12 @@ export class VpnClienteService {
 
     const sessions = await this._leerManagement();
     const sesionActiva = sessions.find(s => s.commonName === cn);
-    if (!sesionActiva) return true; // sin sesión → permitir siempre
+    if (!sesionActiva) return true;
 
-    // Hay sesión activa: verificar si es legítima por TCP al API del router
+    const ipSesion = sesionActiva.realAddress.includes(':')
+      ? sesionActiva.realAddress.split(':')[0]
+      : sesionActiva.realAddress;
+
     const router = cliente.routerId
       ? await this.routerRepo.findOne({ where: { id: cliente.routerId } })
       : null;
@@ -787,15 +793,73 @@ export class VpnClienteService {
       const port = router.puertoApi ?? 8728;
       const responde = await this._testTcpPort(router.vpnIp, port, 3000);
       if (responde) {
-        this.logger.log(`[VPN] CN ${cn}: sesión legítima activa en ${router.vpnIp}:${port} — nueva conexión rechazada`);
-        return false; // sesión genuina → rechazar nueva
+        this.logger.log(`[VPN] CN ${cn}: sesión legítima activa en ${router.vpnIp}:${port} — nueva conexión rechazada (IP entrante: ${ipNueva ?? '?'})`);
+        this._crearAlerta({
+          empresaId:    cliente.empresaId,
+          cn,
+          routerId:     router.id,
+          routerNombre: router.nombre,
+          tipo:         'conexion_bloqueada',
+          ipNueva:      ipNueva ?? null,
+          ipSesion,
+          mensaje:      `Se bloqueó intento de conexión duplicada para "${router.nombre}" (CN: ${cn}). La sesión activa desde ${ipSesion} respondió correctamente. Intento rechazado desde ${ipNueva ?? 'IP desconocida'}.`,
+        });
+        return false;
       }
     }
 
-    // No responde → impostor → matar sesión → permitir al legítimo
     await this.killClienteVpnManagement(cn);
-    this.logger.log(`[VPN] CN ${cn}: sesión impostora eliminada — router legítimo puede reconectar`);
+    this.logger.log(`[VPN] CN ${cn}: sesión previa (${ipSesion}) no respondió — eliminada. Nueva conexión permitida desde ${ipNueva ?? '?'}`);
+    this._crearAlerta({
+      empresaId:    cliente.empresaId,
+      cn,
+      routerId:     router?.id ?? null,
+      routerNombre: router?.nombre ?? null,
+      tipo:         'sesion_eliminada',
+      ipNueva:      ipNueva ?? null,
+      ipSesion,
+      mensaje:      `La sesión VPN de "${router?.nombre ?? cn}" (CN: ${cn}) fue eliminada porque no respondió al API. La sesión activa era desde ${ipSesion}. Nueva conexión permitida desde ${ipNueva ?? 'IP desconocida'}.`,
+    });
     return true;
+  }
+
+  // ── Alertas VPN ───────────────────────────────────────────────
+
+  async listarAlertas(empresaId: string): Promise<VpnAlerta[]> {
+    return this.alertaRepo.find({
+      where:  { empresaId, leida: false },
+      order:  { createdAt: 'DESC' },
+      take:   50,
+    });
+  }
+
+  async descartarAlerta(id: string, empresaId: string): Promise<void> {
+    await this.alertaRepo.update({ id, empresaId }, { leida: true });
+  }
+
+  private _crearAlerta(data: {
+    empresaId:    string;
+    cn:           string;
+    routerId:     string | null;
+    routerNombre: string | null;
+    tipo:         'conexion_bloqueada' | 'sesion_eliminada';
+    ipNueva:      string | null;
+    ipSesion:     string;
+    mensaje:      string;
+  }): void {
+    this.alertaRepo.save(
+      this.alertaRepo.create({
+        empresaId:    data.empresaId,
+        cn:           data.cn,
+        routerId:     data.routerId ?? undefined,
+        routerNombre: data.routerNombre ?? undefined,
+        tipo:         data.tipo,
+        ipNueva:      data.ipNueva ?? undefined,
+        ipSesion:     data.ipSesion,
+        mensaje:      data.mensaje,
+        leida:        false,
+      }),
+    ).catch(err => this.logger.error(`[VPN] Error guardando alerta: ${err.message}`));
   }
 
   private _testTcpPort(host: string, port: number, timeoutMs: number): Promise<boolean> {

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { OpenvpnConfig }         from './entities/openvpn-config.entity';
 import { VpnCliente }            from './entities/vpn-cliente.entity';
+import { VpnAlerta }             from './entities/vpn-alerta.entity';
 import { OpenvpnService }        from './openvpn.service';
 import { VpnClienteService }     from './services/vpn-cliente.service';
 import { OpenvpnController }     from './openvpn.controller';
@@ -11,7 +12,7 @@ import { Router }                from '../mikrotik/entities/router.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OpenvpnConfig, VpnCliente, Router]),
+    TypeOrmModule.forFeature([OpenvpnConfig, VpnCliente, VpnAlerta, Router]),
   ],
   controllers: [OpenvpnController, VpnClienteController],
   providers:   [OpenvpnService, VpnClienteService],
