@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Router, X, ChevronRight, ChevronLeft, Network, Shield, CheckCircle2,
-  XCircle, Loader2, Copy, Check, RefreshCw, Wifi, Key, Gauge, Eye, EyeOff, Settings,
+  XCircle, Loader2, Copy, Check, RefreshCw, Wifi, Key, Gauge, Eye, EyeOff, Settings, Lock,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -326,8 +326,10 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // ── Navegación ─────────────────────────────────────────────────────────────
 
   const canProceedStep1 = nombre.trim().length > 0 && versionRos !== '';
-  const vpnIpValida = !!vpnIp && vpnIp.trim().length > 0 && vpnIp !== '0.0.0.0';
+  const vpnIpValida     = !!vpnIp && vpnIp.trim().length > 0 && vpnIp !== '0.0.0.0';
   const canProceedStep2 = testStatus === 'ok' && (tipoConexion !== 'vpn_tunnel' || vpnIpValida);
+  // Bloquear cambio de modo una vez que el script VPN fue generado (directriz: un script por wizard)
+  const scriptBloqueado = vpnSubStep === 'script_ready';
 
   const goStep2 = () => {
     if (!nombre.trim()) { toast('El nombre del router es obligatorio', { type: 'error' }); return; }
@@ -513,18 +515,21 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                     { val: 'api'        as TipoConexion, label: 'API directa',     sub: 'IP local o pública + puerto API',             icon: Network },
                     { val: 'vpn_tunnel' as TipoConexion, label: 'Túnel VPN + API', sub: 'Router sin IP pública — conecta via OpenVPN', icon: Shield  },
                   ]).map((o) => {
-                    const Icon   = o.icon;
-                    const active = tipoConexion === o.val;
+                    const Icon    = o.icon;
+                    const active  = tipoConexion === o.val;
+                    const bloq    = scriptBloqueado && o.val !== 'vpn_tunnel';
                     return (
                       <label key={o.val}
                         className={cn(
-                          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                          active ? 'border-primary/60 bg-primary/10' : 'border-border hover:border-muted-foreground/30 hover:bg-muted/20',
+                          'flex items-start gap-3 p-3 rounded-lg border transition-colors',
+                          active  ? 'border-primary/60 bg-primary/10' : 'border-border',
+                          bloq    ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:border-muted-foreground/30 hover:bg-muted/20',
                         )}
                       >
                         <input type="radio" name="tipoConexion" value={o.val}
                           checked={active}
-                          onChange={() => { setTipoConexion(o.val); resetTest(); }}
+                          disabled={bloq}
+                          onChange={() => { if (!bloq) { setTipoConexion(o.val); resetTest(); } }}
                           className="mt-0.5 accent-primary" />
                         <div>
                           <div className={cn('text-sm font-medium flex items-center gap-1.5', active ? 'text-foreground' : 'text-foreground')}>
@@ -537,6 +542,12 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                     );
                   })}
                 </div>
+                {scriptBloqueado && (
+                  <p className="text-xs text-amber-400/80 flex items-center gap-1.5">
+                    <Lock className="w-3 h-3 flex-shrink-0" />
+                    Modo bloqueado — script VPN ya generado. Para usar otro modo de conexión inicia un nuevo registro.
+                  </p>
+                )}
 
                 {/* Card Avanzado: SSH / SNMP / API-SSL */}
                 {(() => {
@@ -545,9 +556,10 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                     <div className={cn(
                       'rounded-lg border transition-colors',
                       isAvanzado ? 'border-primary/60 bg-primary/10' : 'border-border hover:border-muted-foreground/30 hover:bg-muted/20',
+                      scriptBloqueado ? 'opacity-40 cursor-not-allowed' : '',
                     )}>
-                      <div className="flex items-center gap-3 p-3 cursor-pointer"
-                        onClick={() => { if (!isAvanzado) { setTipoConexion('api_ssl'); resetTest(); } }}>
+                      <div className={cn('flex items-center gap-3 p-3', scriptBloqueado ? 'cursor-not-allowed' : 'cursor-pointer')}
+                        onClick={() => { if (!isAvanzado && !scriptBloqueado) { setTipoConexion('api_ssl'); resetTest(); } }}>
                         <div className={cn(
                           'w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors',
                           isAvanzado ? 'border-primary bg-primary' : 'border-muted-foreground/30',
@@ -579,7 +591,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                               >
                                 <input type="radio" name="tipoConexion" value={o.val}
                                   checked={tipoConexion === o.val}
-                                  onChange={() => { setTipoConexion(o.val); resetTest(); }}
+                                  disabled={scriptBloqueado}
+                                  onChange={() => { if (!scriptBloqueado) { setTipoConexion(o.val); resetTest(); } }}
                                   className="accent-primary" />
                                 <div>
                                   <div className="font-medium">{o.label}</div>
