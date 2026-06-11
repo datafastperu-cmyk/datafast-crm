@@ -33,9 +33,6 @@ export class VpnCliente extends BaseModel {
   @Column({ name: 'version_ros', length: 5, default: 'v7' })
   versionRos: 'v6' | 'v7';
 
-  @Column({ name: 'usar_certificados', default: false })
-  usarCertificados: boolean;
-
   @Column({ name: 'vpn_usuario', length: 100, nullable: true })
   vpnUsuario: string;
 
