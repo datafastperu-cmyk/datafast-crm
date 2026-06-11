@@ -1,6 +1,12 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
 
+export enum TipoServicio {
+  FTTH      = 'ftth',
+  WISP      = 'wisp',
+  DEDICADO  = 'dedicado',
+}
+
 // ─── Segmento IPv4 ────────────────────────────────────────────
 @Entity('segmentos_ipv4')
 @Index(['empresaId', 'activo'])
@@ -50,8 +56,8 @@ export class SegmentoIpv4 extends BaseModel {
   @Column({ name: 'ips_disponibles', type: 'int', insert: false, update: false, nullable: true })
   ipsDisponibles: number;
 
-  @Column({ name: 'tipo_servicio', length: 20, default: 'ftth' })
-  tipoServicio: string;
+  @Column({ name: 'tipo_servicio', type: 'enum', enum: TipoServicio, default: TipoServicio.FTTH })
+  tipoServicio: TipoServicio;
 
   @Column({ name: 'vlan_id', type: 'smallint', nullable: true })
   vlanId: number;

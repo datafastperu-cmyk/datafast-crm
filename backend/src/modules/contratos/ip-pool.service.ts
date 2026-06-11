@@ -35,10 +35,10 @@ export class IpPoolService {
 
   async getSegmentos(empresaId: string, routerId?: string): Promise<SegmentoIpv4[]> {
     const qb = this.segRepo.createQueryBuilder('s')
-      .where('s.empresa_id = :empresaId', { empresaId })
-      .andWhere('s.deleted_at IS NULL')
+      .where('s.empresaId = :empresaId', { empresaId })
+      .andWhere('s.deletedAt IS NULL')
       .andWhere('s.activo = true');
-    if (routerId) qb.andWhere('s.router_id = :routerId', { routerId });
+    if (routerId) qb.andWhere('s.routerId = :routerId', { routerId });
     return qb.orderBy('s.nombre', 'ASC').getMany();
   }
 
@@ -61,7 +61,7 @@ export class IpPoolService {
         .getRepository(SegmentoIpv4)
         .createQueryBuilder('s')
         .setLock('pessimistic_write')   // SELECT ... FOR UPDATE
-        .where('s.id = :id AND s.empresa_id = :empresaId', { id: segmentoId, empresaId })
+        .where('s.id = :id AND s.empresaId = :empresaId', { id: segmentoId, empresaId })
         .getOne();
 
       if (!segmento) throw new NotFoundException('Segmento no encontrado');
@@ -73,12 +73,12 @@ export class IpPoolService {
       const asignadas = await manager
         .getRepository(IpAsignada)
         .createQueryBuilder('ip')
-        .select('ip.ip_address')
-        .where('ip.segmento_id = :segmentoId', { segmentoId })
+        .select(['ip.ipAddress'])
+        .where('ip.segmentoId = :segmentoId', { segmentoId })
         .andWhere('ip.activa = true')
-        .getRawMany();
+        .getMany();
 
-      const ipsEnUso = asignadas.map((r) => r.ip_ip_address || r.ipAddress);
+      const ipsEnUso = asignadas.map((r) => r.ipAddress);
 
       // IPs a excluir: gateway + reservadas + broadcast
       const ipsReservadas = [
@@ -134,7 +134,7 @@ export class IpPoolService {
         .getRepository(SegmentoIpv4)
         .createQueryBuilder('s')
         .setLock('pessimistic_write')
-        .where('s.id = :id AND s.empresa_id = :empresaId', { id: segmentoId, empresaId })
+        .where('s.id = :id AND s.empresaId = :empresaId', { id: segmentoId, empresaId })
         .getOne();
 
       if (!segmento) throw new NotFoundException('Segmento no encontrado');
@@ -170,18 +170,12 @@ export class IpPoolService {
 
   // ── Liberar IP al dar de baja un contrato ──────────────────
   async liberarIp(contratoId: string, empresaId: string): Promise<void> {
-    const asignaciones = await this.ipRepo.find({
-      where: { contratoId, empresaId, activa: true },
-    });
-
-    if (!asignaciones.length) return;
-
-    for (const a of asignaciones) {
-      await this.ipRepo.update(a.id, {
-        activa: false,
-        liberadaEn: new Date(),
-      });
-      this.logger.log(`IP liberada: ${a.ipAddress} | contrato: ${contratoId}`);
+    const resultado = await this.ipRepo.update(
+      { contratoId, empresaId, activa: true },
+      { activa: false, liberadaEn: new Date() },
+    );
+    if (resultado.affected) {
+      this.logger.log(`${resultado.affected} IP(s) liberadas | contrato: ${contratoId}`);
     }
   }
 
@@ -223,12 +217,13 @@ export class IpPoolService {
       ...(segmento.ipsReservadas || []),
     ]);
 
-    // Generar vista de todas las IPs del rango
-    const firstInt = ipToInt(range.firstUsable);
-    const lastInt  = ipToInt(range.lastUsable);
+    // Generar vista de las primeras 256 IPs del rango
+    const firstInt  = ipToInt(range.firstUsable);
+    const lastInt   = ipToInt(range.lastUsable);
+    const LIMITE    = 256;
     const ips: Array<{ ip: string; estado: 'libre' | 'asignada' | 'reservada' }> = [];
 
-    for (let i = firstInt; i <= lastInt && ips.length < 500; i++) {
+    for (let i = firstInt; i <= lastInt && ips.length < LIMITE; i++) {
       const ip = intToIp(i);
       ips.push({
         ip,
@@ -251,8 +246,8 @@ export class IpPoolService {
         ipsDisponibles: range.usableHosts - asignadas.length,
         porcentajeUso: Math.round((asignadas.length / range.usableHosts) * 100),
       },
-      ips: ips.slice(0, 256), // Máximo 256 para no saturar respuesta
-      hayMas: ips.length > 256,
+      ips,
+      hayMas: lastInt - firstInt + 1 > LIMITE,
     };
   }
 
@@ -304,8 +299,8 @@ export class IpPoolService {
         's.total_ips AS "totalIps"', 's.ips_usadas AS "ipsUsadas"',
         's.ips_disponibles AS "ipsDisponibles"',
       ])
-      .where('s.empresa_id = :empresaId', { empresaId })
-      .andWhere('s.deleted_at IS NULL')
+      .where('s.empresaId = :empresaId', { empresaId })
+      .andWhere('s.deletedAt IS NULL')
       .andWhere('s.activo = true')
       .getRawMany();
   }

@@ -1,11 +1,12 @@
 import {
   IsString, IsUUID, IsOptional, IsEnum, IsBoolean,
   IsNumber, IsDateString, IsNotEmpty, Min, Max,
-  MaxLength, IsInt, IsIP, ValidateIf,
+  MaxLength, IsInt, IsIP, IsArray, ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { EstadoContrato, TipoPago } from '../entities/contrato.entity';
+import { TipoServicio } from '../entities/red.entity';
 import { PaginationDto } from '../../../common/dto/response.dto';
 
 // ─── Crear Contrato ───────────────────────────────────────────
@@ -287,4 +288,41 @@ export class ContratoCompletoDto {
   cliente: { id: string; nombreCompleto: string; telefono: string; email: string };
   plan: { id: string; nombre: string; velocidadBajada: number; velocidadSubida: number; tipoQueue: string };
   router: { id: string; nombre: string; ipGestion: string } | null;
+}
+
+// ─── Segmento IPv4 ────────────────────────────────────────────
+export class CreateSegmentoDto {
+  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(100)
+  nombre: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  descripcion?: string;
+
+  @ApiProperty({ example: '192.168.1.0/24' }) @IsString() @IsNotEmpty()
+  redCidr: string;
+
+  @ApiProperty({ example: '192.168.1.1' }) @IsIP()
+  gateway: string;
+
+  @ApiPropertyOptional({ default: '8.8.8.8' }) @IsOptional() @IsIP()
+  dnsPrimario?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsIP()
+  dnsSecundario?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  routerId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  nodoId?: string;
+
+  @ApiPropertyOptional({ enum: TipoServicio, default: TipoServicio.FTTH })
+  @IsOptional() @IsEnum(TipoServicio)
+  tipoServicio?: TipoServicio;
+
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Type(() => Number)
+  vlanId?: number;
+
+  @ApiPropertyOptional() @IsOptional() @IsArray() @IsIP('4', { each: true })
+  ipsReservadas?: string[];
 }

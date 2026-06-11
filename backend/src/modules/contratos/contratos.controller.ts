@@ -1,29 +1,12 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Req, ParseUUIDPipe, HttpCode, HttpStatus, SetMetadata } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiQuery } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNotEmpty, MaxLength, IsIP, IsInt, IsBoolean, IsArray, IsEnum } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { Request } from 'express';
 import { ContratosService } from './contratos.service';
 import { IpPoolService } from './ip-pool.service';
-import { CreateContratoDto, UpdateContratoDto, FilterContratoDto, CambiarEstadoContratoDto, OtorgarProrrogaDto } from './dto/contrato.dto';
+import { CreateContratoDto, UpdateContratoDto, FilterContratoDto, CambiarEstadoContratoDto, OtorgarProrrogaDto, CreateSegmentoDto } from './dto/contrato.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/roles.decorator';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
-
-class CreateSegmentoDto {
-  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(100) nombre: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() descripcion?: string;
-  @ApiProperty({ example: '192.168.1.0/24' }) @IsString() @IsNotEmpty() redCidr: string;
-  @ApiProperty({ example: '192.168.1.1' }) @IsIP() gateway: string;
-  @ApiPropertyOptional({ default: '8.8.8.8' }) @IsOptional() @IsIP() dnsPrimario?: string;
-  @ApiPropertyOptional() @IsOptional() @IsIP() dnsSecundario?: string;
-  @ApiPropertyOptional() @IsOptional() routerId?: string;
-  @ApiPropertyOptional() @IsOptional() nodoId?: string;
-  @ApiPropertyOptional({ enum: ['ftth','wisp','dedicado'], default: 'ftth' }) @IsOptional() @IsString() tipoServicio?: string;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Type(() => Number) vlanId?: number;
-  @ApiPropertyOptional() @IsOptional() @IsArray() ipsReservadas?: string[];
-}
 
 @ApiTags('Contratos') @ApiBearerAuth('JWT') @Controller('contratos')
 export class ContratosController {

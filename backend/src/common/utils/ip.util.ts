@@ -44,20 +44,6 @@ export function getCidrRange(cidr: string): {
   };
 }
 
-// Obtener todas las IPs usables de un rango CIDR
-export function getUsableIps(cidr: string): string[] {
-  const range = getCidrRange(cidr);
-  const firstInt = ipToInt(range.firstUsable);
-  const lastInt = ipToInt(range.lastUsable);
-  const ips: string[] = [];
-
-  for (let i = firstInt; i <= lastInt; i++) {
-    ips.push(intToIp(i));
-  }
-
-  return ips;
-}
-
 // Encontrar la próxima IP disponible que no esté en la lista de usadas
 export function getNextAvailableIp(
   cidr: string,
@@ -99,12 +85,14 @@ export function isValidIp(ip: string): boolean {
   });
 }
 
-// Validar formato CIDR
+// Validar formato CIDR — requiere dirección de red correcta (host bits = 0)
 export function isValidCidr(cidr: string): boolean {
   const [ip, prefix] = cidr.split('/');
   if (!ip || !prefix) return false;
   const prefixLen = parseInt(prefix, 10);
-  return isValidIp(ip) && prefixLen >= 0 && prefixLen <= 32;
+  if (!isValidIp(ip) || prefixLen < 1 || prefixLen > 30) return false;
+  const mask = (~0 << (32 - prefixLen)) >>> 0;
+  return (ipToInt(ip) & mask) === ipToInt(ip);
 }
 
 // Calcular porcentaje de uso del pool

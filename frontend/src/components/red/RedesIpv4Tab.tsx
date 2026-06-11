@@ -27,7 +27,7 @@ export function RedesIpv4Tab() {
     queryFn: () => redesApi.listRouters(),
   });
 
-  const { mutate: eliminar } = useMutation({
+  const { mutate: eliminarMutation } = useMutation({
     mutationFn: (id: string) => redesApi.deleteSegmento(id),
     onSuccess: () => {
       toast('Segmento eliminado', { type: 'success' });
@@ -35,6 +35,11 @@ export function RedesIpv4Tab() {
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
+
+  const eliminar = (seg: SegmentoIpv4) => {
+    if (!confirm(`¿Eliminar el segmento "${seg.nombre}" (${seg.redCidr})? Esta acción no se puede deshacer.`)) return;
+    eliminarMutation(seg.id);
+  };
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['segmentos-ipv4'] });
 
@@ -98,7 +103,7 @@ export function RedesIpv4Tab() {
                   key={seg.id}
                   seg={seg}
                   onEditar={() => setEditando(seg)}
-                  onEliminar={() => eliminar(seg.id)}
+                  onEliminar={() => eliminar(seg)}
                   onDetalle={() => setDetalle(detalle === seg.id ? null : seg.id)}
                   showDetalle={detalle === seg.id}
                 />
