@@ -90,7 +90,7 @@ _install_backend() {
     sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
     local build_retries=2
     for i in $(seq 1 $build_retries); do
-        if sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/nest build" >> "${LOG_FILE}" 2>&1; then
+        if sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/nest build --builder swc" >> "${LOG_FILE}" 2>&1; then
             ok "Backend compilado — dist/ listo"
             return
         fi
