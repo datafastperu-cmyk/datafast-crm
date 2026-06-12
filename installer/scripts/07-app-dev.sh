@@ -106,6 +106,10 @@ _install_backend_dev() {
 
     sudo -u datafast npm install >> "${LOG_FILE}" 2>&1
 
+    # Eliminar archivos .js en src/ — el repo puede incluir builds viejos con __esDecorate (Stage 3)
+    # que SWC recompila y sobrescribe el output LEGACY correcto del .ts
+    find "${INSTALL_DIR}/backend/src" -name '*.js' -delete 2>/dev/null || true
+
     info "Compilando backend con SWC (evita __esDecorate en TypeORM)..."
     sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
     if sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/nest build" >> "${LOG_FILE}" 2>&1; then
