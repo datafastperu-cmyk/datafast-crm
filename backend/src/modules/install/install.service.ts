@@ -131,7 +131,7 @@ export class InstallService {
 
     this.logger.log(`Instalación web completada. Admin: ${dto.email}`);
 
-    return { adminEmail: 'admin', adminPassword: 'admin' };
+    return { adminEmail: dto.email, adminPassword: 'Admin123' };
   }
 
   // ── Ejecutar migraciones vía CLI ─────────────────────────────
@@ -178,7 +178,7 @@ export class InstallService {
 
     try {
       await ds.initialize();
-      const passwordHash = await bcrypt.hash('admin', 12);
+      const passwordHash = await bcrypt.hash('Admin123', 12);
 
       // Actualizar o insertar el usuario admin
       await ds.query(`
