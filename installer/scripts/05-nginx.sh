@@ -300,46 +300,12 @@ EOF
     ln -sf /etc/nginx/sites-available/datafast-api      /etc/nginx/sites-enabled/
     ln -sf /etc/nginx/sites-available/datafast-frontend /etc/nginx/sites-enabled/
 
-    nginx -t >> "${LOG_FILE}" 2>&1
-    systemctl enable nginx >> "${LOG_FILE}" 2>&1
-    systemctl reload nginx >> "${LOG_FILE}" 2>&1
-
-    ok "Nginx configurado y recargado"
-}
-
-# ── Módulo 06 — SSL con Let's Encrypt ─────────────────────────────────────────
-
-setup_ssl() {
-    step "Configurando SSL / HTTPS"
-
-    if [[ -z "${DOMINIO_FRONTEND:-}" ]]; then
-        warn "Sin dominio configurado. SSL omitido."
-        warn "Para activar SSL después: datafast-ssl tu-dominio.pe"
-        return
-    fi
-
-    info "Instalando Certbot..."
-    apt-get install -y -q certbot python3-certbot-nginx >> "${LOG_FILE}" 2>&1
-
-    info "Solicitando certificado para ${DOMINIO_FRONTEND} y ${DOMINIO_BACKEND}..."
-    local domains="-d ${DOMINIO_FRONTEND}"
-    [[ "${DOMINIO_BACKEND}" != "${DOMINIO_FRONTEND}" ]] && domains+=" -d ${DOMINIO_BACKEND}"
-
-    if certbot --nginx ${domains} \
-        --email "${ADMIN_EMAIL}" \
-        --agree-tos \
-        --non-interactive \
-        --redirect \
-        >> "${LOG_FILE}" 2>&1; then
-        ok "SSL activado: HTTPS en ${DOMINIO_FRONTEND}"
+    if nginx -t >> "${LOG_FILE}" 2>&1; then
+        systemctl enable nginx >> "${LOG_FILE}" 2>&1
+        systemctl reload nginx >> "${LOG_FILE}" 2>&1 || systemctl start nginx >> "${LOG_FILE}" 2>&1
+        ok "Nginx configurado y activo"
     else
-        warn "No se pudo obtener el certificado SSL."
-        warn "Asegúrate de que el DNS apunta a esta IP: $(hostname -I | awk '{print $1}')"
-        warn "Luego ejecuta: datafast-ssl ${DOMINIO_FRONTEND}"
+        warn "Nginx tiene errores de configuración — revisa: nginx -t"
+        tail -20 "${LOG_FILE}" >&2
     fi
-
-    # Cron para renovación automática
-    (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet && systemctl reload nginx") | \
-        sort -u | crontab -
-    ok "Renovación automática de SSL programada (3 AM diario)"
 }

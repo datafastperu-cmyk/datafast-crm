@@ -20,6 +20,7 @@ run_install() {
     _create_cli
     _create_secrets_file
     _save_install_info
+    _validate_install
     show_completion
 }
 
@@ -202,6 +203,180 @@ show_completion() {
     echo -e "    \033[36mdatafast logs\033[0m     — Ver logs"
     echo -e "    \033[36mdatafast help\033[0m     — Ayuda"
     echo ""
+}
+
+# ── Flujo de instalación en modo DESARROLLO ──────────────────
+run_install_dev() {
+    run_checks
+    _prepare_config
+    install_system
+    install_nodejs
+    install_postgres_dev
+    install_redis_dev
+    deploy_app_dev
+    setup_openvpn
+    start_dev_servers
+    _create_cli
+    _create_secrets_file
+    _save_install_info_dev
+    _validate_install_dev
+    show_completion_dev
+}
+
+_save_install_info_dev() {
+    local ip="${PUBLIC_IP:-$(hostname -I | awk '{print $1}')}"
+
+    mkdir -p "${INSTALL_DIR}/config"
+    cat > "${INSTALL_DIR}/config/install-info.txt" << INFOEOF
+═══════════════════════════════════════════════════════
+  DATAFAST ISP ERP — Instalación Desarrollo
+  Instalado: $(date)
+  Versión:   v${DATAFAST_VERSION}-dev
+═══════════════════════════════════════════════════════
+
+URLS DEL SISTEMA
+  Frontend      →  http://${ip}:3000
+  Backend       →  http://${ip}:4000
+  pgAdmin       →  http://${ip}:5050  (admin@datafast.pe / admin123)
+  Redis UI      →  http://${ip}:8081
+  Evolution API →  http://${ip}:8080  (WhatsApp self-hosted)
+  OpenVPN       →  ${ip}:1194/UDP
+
+ACCESO INICIAL
+  Email:    admin@datafast.pe
+  Password: admin
+
+BASE DE DATOS (Docker)
+  Contenedor: datafast-postgres
+  Host:       localhost:5432
+  BD:         datafast_db
+  Usuario:    datafast_db_user
+
+COMANDOS
+  datafast status    Ver estado de los procesos
+  datafast logs      Ver logs del backend
+  datafast restart   Reiniciar procesos
+  pm2 logs           Ver todos los logs en tiempo real
+  datafast db shell  Consola SQL directa
+
+DOCKER
+  docker ps                        Ver contenedores activos
+  docker logs datafast-postgres    Logs de PostgreSQL
+  docker logs datafast-redis       Logs de Redis
+
+ARCHIVOS
+  Backend .env:  ${INSTALL_DIR}/backend/.env
+  Frontend .env: ${INSTALL_DIR}/frontend/.env.local
+  Secretos:      ${INSTALL_DIR}/config/secrets.conf
+  Logs:          ${INSTALL_DIR}/logs/
+═══════════════════════════════════════════════════════
+INFOEOF
+    chmod 600 "${INSTALL_DIR}/config/install-info.txt"
+    echo "${DATAFAST_VERSION}-dev" > "${INSTALL_DIR}/.installed_console"
+    ok "Información de instalación guardada en ${INSTALL_DIR}/config/install-info.txt"
+}
+
+show_completion_dev() {
+    local ip="${PUBLIC_IP:-$(hostname -I | awk '{print $1}')}"
+
+    echo ""
+    echo -e "\033[1;32m"
+    echo "  ╔════════════════════════════════════════════════════════════════╗"
+    echo "  ║                                                                ║"
+    echo -e "  ║   \033[0;37m✅  INSTALACIÓN DESARROLLO CONCLUIDA\033[1;32m                        ║"
+    echo "  ║                                                                ║"
+    echo "  ╚════════════════════════════════════════════════════════════════╝"
+    echo -e "\033[0m"
+    echo ""
+    echo -e "  \033[1;36mURLs del sistema:\033[0m"
+    echo -e "    Frontend      →  \033[36mhttp://${ip}:3000\033[0m"
+    echo -e "    Backend       →  \033[36mhttp://${ip}:4000\033[0m"
+    echo -e "    pgAdmin       →  \033[36mhttp://${ip}:5050\033[0m   (admin@datafast.pe / admin123)"
+    echo -e "    Redis UI      →  \033[36mhttp://${ip}:8081\033[0m"
+    echo -e "    Evolution API →  \033[36mhttp://${ip}:8080\033[0m   (WhatsApp)"
+    echo -e "    OpenVPN       →  \033[36m${ip}:1194/UDP\033[0m"
+    echo ""
+    echo -e "  \033[1;33mCredenciales iniciales:\033[0m"
+    echo -e "    Email:    \033[37madmin@datafast.pe\033[0m"
+    echo -e "    Password: \033[37madmin\033[0m"
+    echo ""
+    echo -e "  \033[2mNota: primera carga del frontend puede tardar ~60s (compilación on-demand)\033[0m"
+    echo ""
+    echo -e "  \033[2mComandos útiles:\033[0m"
+    echo -e "    \033[36mdatafast status\033[0m    Estado de los procesos"
+    echo -e "    \033[36mpm2 logs\033[0m           Logs en tiempo real"
+    echo -e "    \033[36mdatafast restart\033[0m   Reiniciar todo"
+    echo ""
+}
+
+# ── Validación post-instalación (producción) ──────────────────
+_validate_install() {
+    step "Validación post-instalación"
+    local errores=0
+
+    # Servicios
+    PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user \
+        -d datafast_db -c "SELECT 1;" &>/dev/null \
+        && ok "PostgreSQL — OK" || { warn "PostgreSQL — no responde"; (( errores++ )) || true; }
+
+    redis-cli -a "${REDIS_PASSWORD}" --no-auth-warning ping 2>/dev/null | grep -q PONG \
+        && ok "Redis — OK" || { warn "Redis — no responde"; (( errores++ )) || true; }
+
+    # PM2 procesos
+    sudo -u datafast pm2 list 2>/dev/null | grep -q "datafast-backend.*online" \
+        && ok "PM2 backend — online" || { warn "PM2 backend — no está online"; (( errores++ )) || true; }
+
+    sudo -u datafast pm2 list 2>/dev/null | grep -q "datafast-frontend.*online" \
+        && ok "PM2 frontend — online" || { warn "PM2 frontend — no está online"; (( errores++ )) || true; }
+
+    # Health del backend
+    local be_code
+    be_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+        http://localhost:4000/api/v1/health 2>/dev/null || echo "000")
+    [[ "$be_code" == "200" ]] \
+        && ok "Backend API — HTTP 200" \
+        || { warn "Backend API — HTTP ${be_code} (puede estar iniciando aún)"; (( errores++ )) || true; }
+
+    # Nginx
+    systemctl is-active nginx &>/dev/null \
+        && ok "Nginx — activo" || { warn "Nginx — inactivo"; (( errores++ )) || true; }
+
+    if [[ $errores -gt 0 ]]; then
+        warn "${errores} componente(s) con advertencias — revisa con: datafast status"
+        _log "WARN" "Validación post-install: ${errores} advertencias"
+    else
+        ok "Todos los componentes validados correctamente"
+    fi
+}
+
+# ── Validación post-instalación (desarrollo) ──────────────────
+_validate_install_dev() {
+    step "Validación post-instalación (dev)"
+    local errores=0
+
+    # Contenedores Docker
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "datafast-postgres" \
+        && ok "PostgreSQL (Docker) — corriendo" || { warn "PostgreSQL (Docker) — no encontrado"; (( errores++ )) || true; }
+
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "datafast-redis" \
+        && ok "Redis (Docker) — corriendo" || { warn "Redis (Docker) — no encontrado"; (( errores++ )) || true; }
+
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "datafast-evolution" \
+        && ok "Evolution API (Docker) — corriendo" || warn "Evolution API (Docker) — no encontrado (no bloqueante)"
+
+    # PM2
+    sudo -u datafast pm2 list 2>/dev/null | grep -q "datafast-backend.*online" \
+        && ok "PM2 backend — online" || { warn "PM2 backend — iniciando (puede tardar 60-90s)"; (( errores++ )) || true; }
+
+    sudo -u datafast pm2 list 2>/dev/null | grep -q "datafast-frontend.*online" \
+        && ok "PM2 frontend — online" || warn "PM2 frontend — iniciando (puede tardar 30-60s)"
+
+    if [[ $errores -gt 0 ]]; then
+        warn "${errores} componente(s) con advertencias"
+        warn "Si los procesos PM2 aún están iniciando, espera 2 minutos y ejecuta: pm2 status"
+    else
+        ok "Todos los componentes activos"
+    fi
 }
 
 # ── Desinstalar ───────────────────────────────────────────────

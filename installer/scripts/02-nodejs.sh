@@ -24,10 +24,15 @@ install_nodejs() {
 }
 
 _install_pm2() {
+    if command -v pm2 &>/dev/null; then
+        ok "PM2 ya instalado: $(pm2 --version)"
+        return
+    fi
     info "Instalando PM2..."
     npm install -g pm2@latest >> "${LOG_FILE}" 2>&1
     ok "PM2 $(pm2 --version) instalado"
 
-    # Configurar PM2 para arrancar con el sistema
-    pm2 startup systemd -u root --hp /root >> "${LOG_FILE}" 2>&1 || true
+    # Startup como usuario datafast (no root)
+    pm2 startup systemd -u datafast --hp /home/datafast >> "${LOG_FILE}" 2>&1 || true
+    systemctl enable pm2-datafast >> "${LOG_FILE}" 2>&1 || true
 }

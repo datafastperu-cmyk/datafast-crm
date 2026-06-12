@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Módulo 07 — Despliegue de la aplicación
+# Módulo 07 — Despliegue de la aplicación (producción)
 
 deploy_app() {
     step "Desplegando CRM ISP DATAFAST"
@@ -14,105 +14,238 @@ deploy_app() {
     _setup_evolution_api
 }
 
+# ── Código fuente ──────────────────────────────────────────────
 _deploy_code() {
     info "Clonando repositorio..."
     local REPO="https://github.com/datafastperu-cmyk/datafast-crm.git"
+    local retries=3
 
-    if [[ -d "${INSTALL_DIR}/backend/.git" ]]; then
-        git -C "${INSTALL_DIR}" pull >> "${LOG_FILE}" 2>&1
-    else
-        # Clonar en temp y copiar
-        rm -rf /tmp/datafast-src
-        git clone --depth 1 "$REPO" /tmp/datafast-src >> "${LOG_FILE}" 2>&1
-        cp -r /tmp/datafast-src/backend/.  "${INSTALL_DIR}/backend/"
-        cp -r /tmp/datafast-src/frontend/. "${INSTALL_DIR}/frontend/"
-        rm -rf /tmp/datafast-src
+    if [[ -d "${INSTALL_DIR}/backend/src" ]]; then
+        info "Código ya presente — actualizando..."
+        git -C "${INSTALL_DIR}/backend" pull >> "${LOG_FILE}" 2>&1 || \
+            warn "git pull falló — usando versión actual"
+        return
     fi
+
+    rm -rf /tmp/datafast-src
+    for i in $(seq 1 $retries); do
+        if git clone --depth 1 "$REPO" /tmp/datafast-src >> "${LOG_FILE}" 2>&1; then
+            break
+        fi
+        warn "git clone falló (intento ${i}/${retries}) — reintentando en 10s..."
+        sleep 10
+        [[ $i -eq $retries ]] && error "No se pudo clonar el repositorio después de ${retries} intentos.
+    Verifica conectividad a GitHub y que el repo sea accesible."
+    done
+
+    cp -r /tmp/datafast-src/backend/.  "${INSTALL_DIR}/backend/"
+    cp -r /tmp/datafast-src/frontend/. "${INSTALL_DIR}/frontend/"
+    if [[ -d /tmp/datafast-src/scripts ]]; then
+        cp -r /tmp/datafast-src/scripts/. "${INSTALL_DIR}/scripts/"
+        find "${INSTALL_DIR}/scripts" -name "*.sh" -exec chmod +x {} +
+    fi
+    if [[ -d /tmp/datafast-src/docs ]]; then
+        mkdir -p "${INSTALL_DIR}/docs"
+        cp -r /tmp/datafast-src/docs/. "${INSTALL_DIR}/docs/"
+    fi
+    rm -rf /tmp/datafast-src
+
     chown -R datafast:datafast "${INSTALL_DIR}/backend" "${INSTALL_DIR}/frontend"
     ok "Código desplegado"
 }
 
+# ── Dependencias backend ───────────────────────────────────────
 _install_backend() {
     info "Instalando dependencias del backend..."
     cd "${INSTALL_DIR}/backend"
 
-    # Eliminar paquetes problemáticos del package.json
+    # Eliminar paquetes con dependencias nativas problemáticas
     if [[ -f package.json ]]; then
         sed -i '/"node-ping"/d'   package.json
         sed -i '/"snmp-native"/d' package.json
     fi
 
-    npm install >> "${LOG_FILE}" 2>&1
-    ok "Dependencias backend instaladas"
+    local retries=3
+    for i in $(seq 1 $retries); do
+        if sudo -u datafast npm install --prefer-offline >> "${LOG_FILE}" 2>&1; then
+            ok "Dependencias backend instaladas"
+            break
+        fi
+        warn "npm install falló (intento ${i}/${retries})..."
+        if [[ $i -lt $retries ]]; then
+            info "Limpiando caché npm y reintentando..."
+            sudo -u datafast npm cache clean --force >> "${LOG_FILE}" 2>&1 || true
+            sleep 5
+        else
+            error "npm install del backend falló después de ${retries} intentos.
+    Revisa el log: ${LOG_FILE}
+    Comando manual: cd ${INSTALL_DIR}/backend && npm install"
+        fi
+    done
 
-    info "Compilando backend (TypeScript)..."
+    info "Compilando backend (TypeScript → JavaScript)..."
     npm install -g @nestjs/cli >> "${LOG_FILE}" 2>&1
-    if npm run build >> "${LOG_FILE}" 2>&1; then
-        ok "Backend compilado"
-    else
-        warn "Compilación con errores — últimas 30 líneas del log:"
-        tail -30 "${LOG_FILE}" >&2
-        error "npm run build falló. Revisa el log: ${LOG_FILE}"
-    fi
+    local build_retries=2
+    for i in $(seq 1 $build_retries); do
+        if sudo -u datafast npm run build >> "${LOG_FILE}" 2>&1; then
+            ok "Backend compilado"
+            return
+        fi
+        warn "Build falló (intento ${i}/${build_retries})..."
+        sleep 5
+    done
+
+    echo -e "\n${R}[✗] Error de compilación TypeScript — últimas 50 líneas:${NC}" >&2
+    tail -50 "${LOG_FILE}" >&2
+    error "npm run build del backend falló.
+    Revisa errores TypeScript arriba.
+    Comando manual: cd ${INSTALL_DIR}/backend && npm run build"
 }
 
+# ── Dependencias frontend ──────────────────────────────────────
 _install_frontend() {
     info "Instalando dependencias del frontend..."
     cd "${INSTALL_DIR}/frontend"
-    npm install >> "${LOG_FILE}" 2>&1
-    ok "Dependencias frontend instaladas"
-
-    info "Compilando frontend (Next.js)..."
-    NODE_ENV=production npm run build >> "${LOG_FILE}" 2>&1
-    ok "Frontend compilado"
-}
-
-_run_migrations() {
-    info "Ejecutando migraciones de base de datos..."
-    cd "${INSTALL_DIR}/backend"
-    set -a; source .env.production; set +a
 
     local retries=3
     for i in $(seq 1 $retries); do
-        if npm run migration:run >> "${LOG_FILE}" 2>&1; then
+        if sudo -u datafast npm install --prefer-offline >> "${LOG_FILE}" 2>&1; then
+            ok "Dependencias frontend instaladas"
+            break
+        fi
+        warn "npm install frontend falló (intento ${i}/${retries})..."
+        [[ $i -lt $retries ]] && { sudo -u datafast npm cache clean --force >> "${LOG_FILE}" 2>&1 || true; sleep 5; } \
+            || error "npm install del frontend falló después de ${retries} intentos."
+    done
+
+    info "Compilando frontend (Next.js build)..."
+    if ! sudo -u datafast NODE_ENV=production npm run build >> "${LOG_FILE}" 2>&1; then
+        echo -e "\n${R}[✗] Error de compilación Next.js — últimas 30 líneas:${NC}" >&2
+        tail -30 "${LOG_FILE}" >&2
+        error "npm run build del frontend falló.
+    Comando manual: cd ${INSTALL_DIR}/frontend && npm run build"
+    fi
+    ok "Frontend compilado"
+}
+
+# ── Migraciones ────────────────────────────────────────────────
+_run_migrations() {
+    info "Ejecutando migraciones de base de datos..."
+    cd "${INSTALL_DIR}/backend"
+    [[ -f .env.production ]] && { set -a; source .env.production; set +a; }
+
+    # Esperar a que la BD esté disponible (hasta 60s)
+    info "Esperando disponibilidad de la base de datos..."
+    local tries=20
+    for i in $(seq 1 $tries); do
+        if PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user \
+            -d datafast_db -c "SELECT 1;" &>/dev/null; then
+            break
+        fi
+        [[ $i -eq $tries ]] && error "PostgreSQL no respondió en 60s.
+    Verifica con: systemctl status postgresql
+    O con: docker logs datafast-postgres"
+        sleep 3
+    done
+
+    local retries=3
+    for i in $(seq 1 $retries); do
+        if sudo -u datafast npm run migration:run >> "${LOG_FILE}" 2>&1; then
             ok "Migraciones ejecutadas"
             return
         fi
-        warn "Intento ${i}/${retries} falló. Reintentando en 5s..."
+        warn "Migraciones fallaron (intento ${i}/${retries}) — reintentando en 5s..."
         sleep 5
     done
-    warn "No se pudieron ejecutar las migraciones — verificar manualmente"
+    warn "No se pudieron ejecutar las migraciones automáticamente.
+    Comando manual: cd ${INSTALL_DIR}/backend && npm run migration:run"
 }
 
+# ── Seed ───────────────────────────────────────────────────────
 _run_seed() {
     info "Verificando datos iniciales..."
     cd "${INSTALL_DIR}/backend"
-    set -a; source .env.production; set +a
+    [[ -f .env.production ]] && { set -a; source .env.production; set +a; }
 
     local count
     count=$(PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user \
-        -d datafast_db -t -c "SELECT COUNT(*) FROM empresas;" 2>/dev/null | tr -d ' \n' || echo "0")
+        -d datafast_db -t -c "SELECT COUNT(*) FROM empresas;" 2>/dev/null \
+        | tr -d ' \n' || echo "0")
 
     if [[ "${count}" == "0" ]]; then
-        npm run seed:run >> "${LOG_FILE}" 2>&1
-        ok "Datos iniciales creados"
+        if sudo -u datafast npm run seed:run >> "${LOG_FILE}" 2>&1; then
+            ok "Datos iniciales creados"
+        else
+            warn "Seed falló — el sistema puede iniciar sin datos de prueba"
+        fi
     else
-        ok "Base de datos ya tiene datos — seed omitido"
+        ok "Base de datos ya tiene datos (${count} empresa(s)) — seed omitido"
     fi
 }
 
+# ── Evolution API ──────────────────────────────────────────────
 _ensure_evolution_api_key() {
     if [[ -z "${EVOLUTION_API_KEY:-}" ]]; then
         EVOLUTION_API_KEY=$(openssl rand -hex 16)
+        export EVOLUTION_API_KEY
         info "EVOLUTION_API_KEY generada automáticamente"
     fi
 }
 
+_setup_evolution_api() {
+    step "Levantando Evolution API (WhatsApp self-hosted)"
+
+    if ! command -v docker &>/dev/null; then
+        info "Instalando Docker Engine..."
+        curl -fsSL https://get.docker.com | sh >> "${LOG_FILE}" 2>&1
+        systemctl enable --now docker >> "${LOG_FILE}" 2>&1
+        ok "Docker instalado"
+    fi
+
+    mkdir -p /opt/datafast/evolution
+    docker rm -f datafast-evolution >> "${LOG_FILE}" 2>&1 || true
+
+    local retries=2
+    for i in $(seq 1 $retries); do
+        if docker run -d \
+            --name datafast-evolution \
+            --restart unless-stopped \
+            -p 127.0.0.1:8080:8080 \
+            -v /opt/datafast/evolution:/evolution/instances \
+            -e SERVER_URL="http://localhost:8080" \
+            -e AUTHENTICATION_API_KEY="${EVOLUTION_API_KEY}" \
+            -e AUTHENTICATION_TYPE=apikey \
+            -e STORE_MESSAGES=false \
+            -e STORE_MESSAGE_UP=false \
+            -e STORE_CONTACTS=false \
+            -e DEL_INSTANCE=false \
+            -e LOG_LEVEL=WARN \
+            -e TZ=America/Lima \
+            atendai/evolution-api:v2.2.3 >> "${LOG_FILE}" 2>&1; then
+            break
+        fi
+        warn "docker run Evolution API falló (intento ${i}/${retries})..."
+        sleep 5
+        [[ $i -eq $retries ]] && { warn "Evolution API no pudo iniciarse — WhatsApp no disponible hasta revisar Docker"; return; }
+    done
+
+    # Health check con timeout
+    local tries=20
+    for i in $(seq 1 $tries); do
+        if curl -sf --max-time 3 "http://localhost:8080/" &>/dev/null; then
+            ok "Evolution API disponible en localhost:8080"
+            return
+        fi
+        sleep 3
+    done
+    warn "Evolution API no respondió en 60s — revisa: docker logs datafast-evolution"
+}
+
+# ── Variables de entorno ───────────────────────────────────────
 _write_backend_env() {
     local ip; ip=$(hostname -I | awk '{print $1}')
     local frontend_url="http://${ip}"
     [[ -n "${DOMINIO_FRONTEND:-}" ]] && frontend_url="https://${DOMINIO_FRONTEND}"
-
     local api_url="http://${ip}:4000"
     [[ -n "${DOMINIO_BACKEND:-}" ]] && api_url="https://${DOMINIO_BACKEND}"
 
@@ -149,51 +282,7 @@ EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
 LOG_LEVEL=warn
 ENVEOF
     chmod 600 "${INSTALL_DIR}/backend/.env.production"
-    ok "Variables de entorno del backend creadas"
-}
-
-_setup_evolution_api() {
-    step "Levantando Evolution API (WhatsApp self-hosted)"
-
-    # Instalar Docker si no está disponible
-    if ! command -v docker &>/dev/null; then
-        info "Instalando Docker Engine..."
-        curl -fsSL https://get.docker.com | sh >> "${LOG_FILE}" 2>&1
-        systemctl enable --now docker >> "${LOG_FILE}" 2>&1
-        ok "Docker instalado"
-    fi
-
-    mkdir -p /opt/datafast/evolution
-
-    # Eliminar contenedor previo si existe (upgrade safe)
-    docker rm -f datafast-evolution >> "${LOG_FILE}" 2>&1 || true
-
-    docker run -d \
-        --name datafast-evolution \
-        --restart unless-stopped \
-        -p 127.0.0.1:8080:8080 \
-        -v /opt/datafast/evolution:/evolution/instances \
-        -e SERVER_URL="http://localhost:8080" \
-        -e AUTHENTICATION_API_KEY="${EVOLUTION_API_KEY}" \
-        -e AUTHENTICATION_TYPE=apikey \
-        -e STORE_MESSAGES=false \
-        -e STORE_MESSAGE_UP=false \
-        -e STORE_CONTACTS=false \
-        -e DEL_INSTANCE=false \
-        -e LOG_LEVEL=WARN \
-        -e TZ=America/Lima \
-        atendai/evolution-api:v2.2.3 >> "${LOG_FILE}" 2>&1
-
-    # Esperar health check (máx 60 s)
-    local tries=20
-    for i in $(seq 1 $tries); do
-        if curl -sf "http://localhost:8080/" &>/dev/null; then
-            ok "Evolution API disponible en localhost:8080"
-            return
-        fi
-        sleep 3
-    done
-    warn "Evolution API no respondió en 60s — el backend lo reintentará al arrancar"
+    ok "Backend .env.production creado"
 }
 
 _write_frontend_env() {
@@ -203,23 +292,23 @@ _write_frontend_env() {
 
     cat > "${INSTALL_DIR}/frontend/.env.production" << ENVEOF
 NEXT_PUBLIC_API_URL=${api_url}
-NEXT_PUBLIC_WS_URL=${api_url}
+NEXT_PUBLIC_WS_URL=${api_url/http/ws}
 NEXT_PUBLIC_APP_NAME=${EMPRESA_NOMBRE:-CRM ISP DATAFAST}
 NEXT_PUBLIC_VERSION=${DATAFAST_VERSION}
 NEXT_TELEMETRY_DISABLED=1
 ENVEOF
     chmod 640 "${INSTALL_DIR}/frontend/.env.production"
-    ok "Variables de entorno del frontend creadas"
+    ok "Frontend .env.production creado"
 }
 
 upgrade_app() {
     step "Actualizando DATAFAST"
-    "${INSTALL_DIR}/scripts/backup.sh" >> "${LOG_FILE}" 2>&1
+    "${INSTALL_DIR}/scripts/backup.sh" >> "${LOG_FILE}" 2>&1 || warn "Backup previo falló — continuando actualización"
     _deploy_code
     _install_backend
     _install_frontend
     _run_migrations
-    pm2 reload datafast-backend  >> "${LOG_FILE}" 2>&1 || true
-    pm2 restart datafast-frontend >> "${LOG_FILE}" 2>&1 || true
+    sudo -u datafast pm2 reload datafast-backend  >> "${LOG_FILE}" 2>&1 || true
+    sudo -u datafast pm2 restart datafast-frontend >> "${LOG_FILE}" 2>&1 || true
     ok "DATAFAST actualizado"
 }

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────────────────
-#  Módulo 08 — PM2 Process Manager
-# ─────────────────────────────────────────────────────────────────────────────
+# Módulo 08 — PM2 Process Manager (producción)
 
 setup_pm2() {
     step "Configurando PM2 Process Manager"
@@ -9,19 +7,19 @@ setup_pm2() {
     local cpus; cpus=$(nproc)
     local instances=1
     [[ $cpus -ge 4 ]] && instances=3
-    [[ $cpus -ge 2 ]] && [[ $cpus -lt 4 ]] && instances=2
+    [[ $cpus -ge 2 && $cpus -lt 4 ]] && instances=2
 
-    # ── ecosystem.config.js ───────────────────────────────────────────────
+    # ── ecosystem.config.js ────────────────────────────────────
     info "Generando ecosystem.config.js..."
     cat > "${INSTALL_DIR}/ecosystem.config.js" << EOF
-// CRM ISP DATAFAST — PM2 Ecosystem
+// CRM ISP DATAFAST — PM2 Ecosystem (producción)
 // Generado: $(date)
-// Instancias backend: ${instances} (CPUs disponibles: ${cpus})
+// Instancias backend: ${instances} (CPUs: ${cpus})
 
 module.exports = {
   apps: [
 
-    // ── Backend NestJS ────────────────────────────────────────────────────
+    // ── Backend NestJS ────────────────────────────────────────
     {
       name:       'datafast-backend',
       script:     './dist/main.js',
@@ -37,43 +35,31 @@ module.exports = {
         TZ:                 'America/Lima',
       },
 
-      // Gestión de memoria y estabilidad
       max_memory_restart:        '900M',
       restart_delay:             5000,
       exp_backoff_restart_delay: 100,
       max_restarts:              10,
       min_uptime:                '10s',
 
-      // Zero-downtime reload
       wait_ready:      true,
-      listen_timeout:  15000,
+      listen_timeout:  20000,
       kill_timeout:    10000,
 
-      // Logs
-      log_file:        '${INSTALL_DIR}/logs/backend-combined.log',
       out_file:        '${INSTALL_DIR}/logs/backend-out.log',
       error_file:      '${INSTALL_DIR}/logs/backend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs:      true,
-      log_type:        'json',
 
-      // Node.js flags de rendimiento
-      node_args: [
-        '--max-old-space-size=768',
-        '--optimize-for-size',
-      ],
-
-      // Watch (deshabilitado en producción)
-      watch:          false,
-      ignore_watch:   ['node_modules', 'logs', '.git'],
+      node_args: ['--max-old-space-size=768', '--optimize-for-size'],
+      watch:     false,
     },
 
-    // ── Frontend Next.js ──────────────────────────────────────────────────
+    // ── Frontend Next.js ──────────────────────────────────────
     {
-      name:    'datafast-frontend',
-      script:  'node_modules/.bin/next',
-      args:    'start',
-      cwd:     '${INSTALL_DIR}/frontend',
+      name:      'datafast-frontend',
+      script:    'node_modules/.bin/next',
+      args:      'start',
+      cwd:       '${INSTALL_DIR}/frontend',
       instances: 1,
       exec_mode: 'fork',
 
@@ -90,31 +76,34 @@ module.exports = {
       max_restarts:       10,
       min_uptime:         '10s',
 
-      log_file:        '${INSTALL_DIR}/logs/frontend-combined.log',
       out_file:        '${INSTALL_DIR}/logs/frontend-out.log',
       error_file:      '${INSTALL_DIR}/logs/frontend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-
-      watch: false,
+      watch:           false,
     },
   ],
 };
 EOF
     chown datafast:datafast "${INSTALL_DIR}/ecosystem.config.js"
 
-    # ── Iniciar procesos ──────────────────────────────────────────────────
+    # ── Iniciar procesos ───────────────────────────────────────
     info "Iniciando procesos con PM2..."
+    sudo -u datafast pm2 delete datafast-backend datafast-frontend >> "${LOG_FILE}" 2>&1 || true
+
     cd "${INSTALL_DIR}"
-    sudo -u datafast pm2 start ecosystem.config.js >> "${LOG_FILE}" 2>&1
+    if ! sudo -u datafast pm2 start ecosystem.config.js >> "${LOG_FILE}" 2>&1; then
+        error "PM2 no pudo iniciar los procesos.
+    Revisa el log: ${LOG_FILE}
+    Comando manual: cd ${INSTALL_DIR} && pm2 start ecosystem.config.js"
+    fi
     sudo -u datafast pm2 save >> "${LOG_FILE}" 2>&1
 
-    # ── Unidad systemd para PM2 ───────────────────────────────────────────
+    # ── Systemd ────────────────────────────────────────────────
     info "Creando servicio systemd para PM2..."
     cat > /etc/systemd/system/datafast.service << 'EOF'
 [Unit]
 Description=CRM ISP DATAFAST (via PM2)
-After=network.target network-online.target postgresql.service redis-server.service
-Requires=postgresql.service redis-server.service
+After=network.target network-online.target
 Wants=network-online.target
 
 [Service]
@@ -130,27 +119,21 @@ Environment=PM2_HOME=/home/datafast/.pm2
 ExecStart=/usr/bin/pm2 resurrect
 ExecReload=/usr/bin/pm2 reload all
 ExecStop=/usr/bin/pm2 kill
-TimeoutStartSec=60
+TimeoutStartSec=90
 TimeoutStopSec=60
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
     systemctl daemon-reload   >> "${LOG_FILE}" 2>&1
     systemctl enable datafast >> "${LOG_FILE}" 2>&1
-    systemctl start  datafast >> "${LOG_FILE}" 2>&1
+    systemctl start  datafast >> "${LOG_FILE}" 2>&1 || true
 
-    # ── Verificar que los procesos están corriendo ────────────────────────
-    sleep 5
-    if sudo -u datafast pm2 list | grep -q "online"; then
-        ok "PM2 iniciado correctamente (${instances} instancias del backend)"
-    else
-        warn "PM2 arrancó pero los procesos no están online. Revisa los logs."
-    fi
+    # ── Healthcheck real post-arranque ─────────────────────────
+    _wait_for_backend
+    _wait_for_frontend
 
-    # ── Configurar logrotate para PM2 ─────────────────────────────────────
-    info "Configurando rotación de logs..."
+    # ── Logrotate ─────────────────────────────────────────────
     cat > /etc/logrotate.d/datafast << EOF
 ${INSTALL_DIR}/logs/*.log {
     daily
@@ -166,5 +149,41 @@ ${INSTALL_DIR}/logs/*.log {
     endscript
 }
 EOF
-    ok "Logrotate configurado (retención 30 días)"
+    ok "PM2 configurado (${instances} instancias backend, logrotate 30 días)"
+}
+
+_wait_for_backend() {
+    info "Esperando que el backend responda en /api/v1/health..."
+    local tries=30   # 90s máximo
+    for i in $(seq 1 $tries); do
+        local code
+        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+            http://localhost:4000/api/v1/health 2>/dev/null || echo "000")
+        if [[ "$code" == "200" ]]; then
+            ok "Backend respondiendo (HTTP 200)"
+            return
+        fi
+        [[ $((i % 5)) -eq 0 ]] && info "  ...esperando backend (${i}/${tries}) — HTTP ${code}"
+        sleep 3
+    done
+    warn "Backend no respondió en 90s — puede estar compilando aún"
+    warn "Verifica con: pm2 logs datafast-backend --lines 30"
+}
+
+_wait_for_frontend() {
+    info "Esperando que el frontend responda..."
+    local tries=20   # 60s máximo
+    for i in $(seq 1 $tries); do
+        local code
+        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+            http://localhost:3000 2>/dev/null || echo "000")
+        if [[ "$code" =~ ^(200|307|302)$ ]]; then
+            ok "Frontend respondiendo (HTTP ${code})"
+            return
+        fi
+        [[ $((i % 5)) -eq 0 ]] && info "  ...esperando frontend (${i}/${tries}) — HTTP ${code}"
+        sleep 3
+    done
+    warn "Frontend no respondió en 60s"
+    warn "Verifica con: pm2 logs datafast-frontend --lines 30"
 }

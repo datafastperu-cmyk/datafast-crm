@@ -15,22 +15,41 @@ _setup_ufw() {
     info "Configurando UFW (Firewall)..."
     apt-get install -y -q ufw >> "${LOG_FILE}" 2>&1
 
-    ufw --force reset         >> "${LOG_FILE}" 2>&1
-    ufw default deny incoming >> "${LOG_FILE}" 2>&1
-    ufw default allow outgoing >> "${LOG_FILE}" 2>&1
+    # Detectar el puerto SSH activo para no bloquearse
+    local ssh_port
+    ssh_port=$(ss -tlnp 2>/dev/null | awk '/:22 /{print 22; exit}')
+    ssh_port=${ssh_port:-22}
 
-    # Reglas básicas
-    ufw allow ssh             >> "${LOG_FILE}" 2>&1   # Puerto 22 (SSH)
-    ufw allow 80/tcp          >> "${LOG_FILE}" 2>&1   # HTTP
-    ufw allow 443/tcp         >> "${LOG_FILE}" 2>&1   # HTTPS
+    if ufw status 2>/dev/null | grep -q "Status: active"; then
+        info "UFW ya activo — verificando reglas..."
+    else
+        ufw --force reset          >> "${LOG_FILE}" 2>&1
+        ufw default deny incoming  >> "${LOG_FILE}" 2>&1
+        ufw default allow outgoing >> "${LOG_FILE}" 2>&1
+    fi
 
-    # Puerto alternativo SSH (si se configuró)
-    if [[ "${SSH_PORT:-22}" != "22" ]]; then
-        ufw allow "${SSH_PORT}/tcp" >> "${LOG_FILE}" 2>&1
+    # SSH primero — nunca perder acceso
+    ufw allow "${ssh_port}/tcp" comment 'SSH'    >> "${LOG_FILE}" 2>&1
+    ufw allow 80/tcp  comment 'HTTP'             >> "${LOG_FILE}" 2>&1
+    ufw allow 443/tcp comment 'HTTPS'            >> "${LOG_FILE}" 2>&1
+    ufw allow 1194/udp comment 'OpenVPN'         >> "${LOG_FILE}" 2>&1
+
+    # Verificar que SSH sigue accesible antes de activar UFW
+    if ! nc -z -w3 127.0.0.1 "${ssh_port}" 2>/dev/null; then
+        warn "No se pudo verificar SSH en puerto ${ssh_port} — UFW no activado"
+        warn "Activa manualmente: ufw allow ${ssh_port}/tcp && ufw enable"
+        return
     fi
 
     echo "y" | ufw enable >> "${LOG_FILE}" 2>&1
-    ok "UFW activado: SSH(22), HTTP(80), HTTPS(443)"
+
+    # Bloquear puertos internos al exterior
+    for port in 3000 4000 5432 6379 8080 5050 8081; do
+        ufw deny ${port}/tcp >> "${LOG_FILE}" 2>&1 || true
+    done
+
+    ok "UFW activo: SSH(${ssh_port}), HTTP(80), HTTPS(443), OpenVPN(1194/UDP)"
+    ok "Puertos internos bloqueados al exterior"
 }
 
 _setup_fail2ban() {
@@ -81,12 +100,18 @@ EOF
 
 _harden_ssh() {
     info "Reforzando configuración SSH..."
+    local sshd_config="/etc/ssh/sshd_config"
 
-    # Backup de la configuración original
-    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+    # Backup idempotente
+    [[ ! -f "${sshd_config}.bak" ]] && cp "${sshd_config}" "${sshd_config}.bak"
 
-    # Parámetros de seguridad SSH
-    cat >> /etc/ssh/sshd_config << 'EOF'
+    # Solo aplicar si no está ya aplicado
+    if grep -q "DATAFAST — SSH Hardening" "${sshd_config}" 2>/dev/null; then
+        ok "SSH hardening ya aplicado"
+        return
+    fi
+
+    cat >> "${sshd_config}" << 'EOF'
 
 # DATAFAST — SSH Hardening
 PermitRootLogin no
@@ -99,6 +124,12 @@ X11Forwarding no
 AllowTcpForwarding no
 EOF
 
-    systemctl restart sshd >> "${LOG_FILE}" 2>&1 || warn "SSHD no reiniciado — verificar /etc/ssh/sshd_config"
-    ok "SSH reforzado (root login deshabilitado)"
+    # Verificar config antes de reiniciar
+    if sshd -t >> "${LOG_FILE}" 2>&1; then
+        systemctl restart sshd >> "${LOG_FILE}" 2>&1 || warn "SSHD no reiniciado — se aplica al próximo reinicio"
+        ok "SSH reforzado (root login deshabilitado, MaxAuthTries=3)"
+    else
+        warn "Config SSH inválida — revirtiendo"
+        cp "${sshd_config}.bak" "${sshd_config}"
+    fi
 }
