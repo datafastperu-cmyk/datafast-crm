@@ -21,10 +21,6 @@ export enum MetodoPago {
 export class RegistrarPagoDto {
   @IsUUID('4')
   @IsNotEmpty()
-  empresaId: string;
-
-  @IsUUID('4')
-  @IsNotEmpty()
   facturaId: string;
 
   @IsNumber({ allowInfinity: false, allowNaN: false, maxDecimalPlaces: 2 })

@@ -185,7 +185,7 @@ export class PagosService {
 
     // Auditoría
     await this.auditoria.logCreate({
-      empresaId:    dto.empresaId,
+      empresaId,
       usuarioId:    user.sub,
       usuarioEmail: user.email,
       modulo:       'pagos',
@@ -203,7 +203,7 @@ export class PagosService {
           montoPago:      `S/ ${Number(dto.monto).toFixed(2)}`,
           metodoPago:     metodoPagoEntity,
           saldoPendiente: 'S/ 0.00',
-          empresaId:      dto.empresaId,
+          empresaId,
           contratoId:     savedPago.contratoId ?? undefined,
           clienteId:      savedPago.clienteId ?? undefined,
         });

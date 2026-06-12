@@ -20,7 +20,6 @@ import { Router, MetodoConexion, EstadoEquipo, VersionRouterOS } from '../../mik
 // ── Rutas del sistema VPN ─────────────────────────────────────
 const CA_CRT      = '/etc/openvpn/server/ca.crt';
 const CCD_DIR     = '/etc/openvpn/ccd';
-const STATUS_LOG  = '/var/log/openvpn/status-mikrotik.log';
 const VPS_IP      = process.env.VPN_SERVER_IP || process.env.APP_URL?.replace(/^https?:\/\//, '').split(':')[0] || '127.0.0.1';
 const VPN_PORT    = parseInt(process.env.VPN_SERVER_PORT || '1195', 10);
 
@@ -774,30 +773,6 @@ export class VpnClienteService {
     const c = await this.repo.findOne({ where: { id, empresaId } });
     if (!c) throw new NotFoundException('Cliente VPN no encontrado');
     return c;
-  }
-
-  private async _leerStatusLog(): Promise<VpnConnectedClient[]> {
-    try {
-      const log     = await fs.readFile(STATUS_LOG, 'utf8');
-      const clients: VpnConnectedClient[] = [];
-      for (const line of log.split('\n')) {
-        if (!line.startsWith('CLIENT_LIST,')) continue;
-        const parts = line.split(',');
-        if (parts.length < 8) continue;
-        clients.push({
-          commonName:     parts[1],
-          realAddress:    parts[2],
-          vpnAddress:     parts[3],
-          bytesReceived:  parseInt(parts[5], 10) || 0,
-          bytesSent:      parseInt(parts[6], 10) || 0,
-          connectedSince: parts[7],
-        });
-      }
-      return clients;
-    } catch {
-      this.logger.warn('status-mikrotik.log no disponible');
-      return [];
-    }
   }
 
   private async _autoRegistrarRouter(
