@@ -357,7 +357,7 @@ function SslStatusCard() {
         </div>
       )}
 
-      {!data.hasCert && (data.dnsOk || data.cloudflare) && (
+      {!data.hasCert && (
         <button
           type="button"
           onClick={() => provisionar()}
@@ -365,7 +365,7 @@ function SslStatusCard() {
           className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
         >
           {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-          {isPending ? 'Obteniendo certificado…' : 'Activar HTTPS'}
+          {isPending ? 'Obteniendo certificado SSL…' : 'Obtener certificado SSL'}
         </button>
       )}
     </div>
