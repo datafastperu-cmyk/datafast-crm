@@ -192,8 +192,13 @@ async function bootstrap() {
 // 2. RouterOS socket timeouts that escape MonitoreoWorker error handling
 process.on('uncaughtException', (err) => {
   const msg = (err as any).message ?? '';
+  // Winston "write after end" durante shutdown — ignorar
   if (msg === 'write after end') return;
-  if (msg.includes('Timed out after') || (err as any).constructor?.name === 'RosException') return;
+  // Timeouts de RouterOS — loguear pero no crashear (fallos de red esperados)
+  if (msg.includes('Timed out after') || (err as any).constructor?.name === 'RosException') {
+    console.error('[RouterOS] Excepción no capturada:', msg);
+    return;
+  }
   console.error('Uncaught exception:', msg);
   process.exit(1);
 });

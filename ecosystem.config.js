@@ -23,7 +23,7 @@ module.exports = {
         PORT:               4000,
         UV_THREADPOOL_SIZE: 8,
         TZ:                 'America/Lima',
-        ALLOWED_ORIGINS:    'http://149.34.48.224,http://149.34.48.224:3000',
+        ALLOWED_ORIGINS:    'https://149.34.48.224,https://149.34.48.224:3000',
       },
 
       // Estabilidad
