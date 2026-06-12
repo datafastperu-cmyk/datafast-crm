@@ -220,6 +220,7 @@ main() {
     init_logs
 
     # Copiar o descargar módulos
+    mkdir -p "${INSTALL_DIR}"
     if [[ -d "./installer/scripts" ]]; then
         cp -r ./installer "${INSTALL_DIR}/"
         find "${INSTALL_DIR}/installer" -name "*.sh"   -exec sed -i 's/\r//' {} +

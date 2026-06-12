@@ -67,7 +67,7 @@ _install_backend() {
 
     local retries=3
     for i in $(seq 1 $retries); do
-        if sudo -u datafast npm install --prefer-offline >> "${LOG_FILE}" 2>&1; then
+        if sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm install --prefer-offline" >> "${LOG_FILE}" 2>&1; then
             ok "Dependencias backend instaladas"
             break
         fi
@@ -79,7 +79,7 @@ _install_backend() {
         else
             error "npm install del backend falló después de ${retries} intentos.
     Revisa el log: ${LOG_FILE}
-    Comando manual: cd ${INSTALL_DIR}/backend && npm install"
+    Comando manual: cd ${INSTALL_DIR}/backend && PUPPETEER_SKIP_DOWNLOAD=true npm install"
         fi
     done
 
@@ -304,6 +304,7 @@ NEXT_PUBLIC_APP_NAME=${EMPRESA_NOMBRE:-CRM ISP DATAFAST}
 NEXT_PUBLIC_VERSION=${DATAFAST_VERSION}
 NEXT_TELEMETRY_DISABLED=1
 ENVEOF
+    chown datafast:datafast "${INSTALL_DIR}/frontend/.env.production"
     chmod 640 "${INSTALL_DIR}/frontend/.env.production"
     ok "Frontend .env.production creado"
 }

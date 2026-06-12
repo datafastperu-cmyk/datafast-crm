@@ -91,6 +91,7 @@ NEXT_PUBLIC_APP_NAME=${EMPRESA_NOMBRE:-CRM ISP DATAFAST}
 NEXT_PUBLIC_VERSION=${DATAFAST_VERSION}
 NEXT_TELEMETRY_DISABLED=1
 ENVEOF
+    chown datafast:datafast "${INSTALL_DIR}/frontend/.env.local"
     chmod 640 "${INSTALL_DIR}/frontend/.env.local"
     ok "Frontend .env.local creado"
 }
@@ -104,7 +105,7 @@ _install_backend_dev() {
         sed -i '/"snmp-native"/d' package.json
     fi
 
-    sudo -u datafast npm install >> "${LOG_FILE}" 2>&1
+    sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm install" >> "${LOG_FILE}" 2>&1
 
     # Eliminar archivos .js en src/ — el repo puede incluir builds viejos con __esDecorate (Stage 3)
     # que SWC recompila y sobrescribe el output LEGACY correcto del .ts
