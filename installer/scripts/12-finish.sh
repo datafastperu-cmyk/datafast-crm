@@ -364,11 +364,11 @@ _validate_install_dev() {
     docker ps --format '{{.Names}}' 2>/dev/null | grep -q "datafast-evolution" \
         && ok "Evolution API (Docker) — corriendo" || warn "Evolution API (Docker) — no encontrado (no bloqueante)"
 
-    # PM2
-    sudo -u datafast pm2 list 2>/dev/null | grep -q "datafast-backend.*online" \
+    # PM2 (en modo dev corre como root, no como datafast)
+    pm2 list 2>/dev/null | grep -q "datafast-backend.*online" \
         && ok "PM2 backend — online" || { warn "PM2 backend — iniciando (puede tardar 60-90s)"; (( errores++ )) || true; }
 
-    sudo -u datafast pm2 list 2>/dev/null | grep -q "datafast-frontend.*online" \
+    pm2 list 2>/dev/null | grep -q "datafast-frontend.*online" \
         && ok "PM2 frontend — online" || warn "PM2 frontend — iniciando (puede tardar 30-60s)"
 
     if [[ $errores -gt 0 ]]; then
