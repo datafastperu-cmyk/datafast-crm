@@ -327,13 +327,21 @@ server {
   // ── Helpers ───────────────────────────────────────────────────
 
   private async getServerPublicIp(): Promise<string> {
+    // Prioridad: var de entorno explícita → detección automática → error claro
+    const envIp = process.env.VPN_SERVER_IP;
+    if (envIp) return envIp;
     try {
       const { stdout } = await execAsync(
         'curl -s --max-time 5 https://api.ipify.org || curl -s --max-time 5 https://ifconfig.me',
       );
-      return stdout.trim();
-    } catch {
-      return '149.34.48.224';
+      const ip = stdout.trim();
+      if (ip) return ip;
+      throw new Error('respuesta vacía');
+    } catch (err) {
+      throw new Error(
+        `No se pudo detectar la IP pública del servidor: ${(err as Error).message}. ` +
+        `Configura VPN_SERVER_IP en el .env`,
+      );
     }
   }
 
