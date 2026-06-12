@@ -22,7 +22,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 // ── Tipos ─────────────────────────────────────────────────────
 interface DbConfig { host: string; port: number; username: string; password: string; database: string; rawPassword?: string; }
-interface StepState { step: number; dbConfig: DbConfig; testResult: { ok: boolean; message: string; details?: string } | null; licenseEmail: string; licenseKey: string; finalCredentials: { adminEmail: string; adminPassword: string } | null; }
+interface StepState { step: number; dbConfig: DbConfig; testResult: { ok: boolean; message: string; details?: string } | null; licenseEmail: string; licenseKey: string; finalCredentials: { adminEmail: string; adminPassword: string } | null; isDev: boolean; }
 
 const STEPS = [
   { id: 1, label: 'Base de Datos', icon: Database },
@@ -175,7 +175,7 @@ function StepDb({ config, onNext }: { config: DbConfig; onNext: (cfg: DbConfig, 
 // ════════════════════════════════════════════════════════════
 // PASO 2 — Activación de Licencia
 // ════════════════════════════════════════════════════════════
-function StepLicense({ onNext }: { onNext: (creds: { adminEmail: string; adminPassword: string }) => void }) {
+function StepLicense({ onNext, isDev }: { onNext: (creds: { adminEmail: string; adminPassword: string }) => void; isDev: boolean }) {
   const [email, setEmail]         = useState('');
   const [licenseKey, setLicense]  = useState('');
   const [loading, setLoading]     = useState(false);
@@ -183,8 +183,8 @@ function StepLicense({ onNext }: { onNext: (creds: { adminEmail: string; adminPa
   const [progress, setProgress]   = useState('');
 
   const handleActivate = async () => {
-    if (!email || !licenseKey) { setError('Completa todos los campos'); return; }
-    setLoading(true); setError(''); setProgress('Validando licencia...');
+    if (!email || (!isDev && !licenseKey)) { setError('Completa todos los campos'); return; }
+    setLoading(true); setError(''); setProgress(isDev ? 'Configurando...' : 'Validando licencia...');
 
     try {
       setProgress('Ejecutando migraciones...');
@@ -203,12 +203,23 @@ function StepLicense({ onNext }: { onNext: (creds: { adminEmail: string; adminPa
     }
   };
 
+  const steps = isDev
+    ? ['Creación de tablas en la base de datos', 'Generación del usuario administrador']
+    : ['Verificación de la clave de licencia', 'Creación de tablas en la base de datos', 'Generación del usuario administrador'];
+
   return (
     <div className="space-y-5">
+      {isDev && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300 flex items-center gap-2">
+          <Lock className="w-4 h-4 flex-shrink-0" />
+          Modo desarrollo — licencia no requerida
+        </div>
+      )}
+
       <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-sm text-slate-400 space-y-1">
         <p className="text-white font-medium text-xs uppercase tracking-wider mb-2">¿Qué ocurre al activar?</p>
         <div className="space-y-1.5">
-          {['Verificación de la clave de licencia', 'Creación de tablas en la base de datos', 'Generación del usuario administrador'].map((t) => (
+          {steps.map((t) => (
             <div key={t} className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
               <span>{t}</span>
@@ -220,9 +231,11 @@ function StepLicense({ onNext }: { onNext: (creds: { adminEmail: string; adminPa
       <Field label="Correo Electrónico">
         <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="contacto@tuisp.pe" />
       </Field>
-      <Field label="Código de Licencia" hint="Formato: XXXXX-XXXXX-XXXXX-XXXXX o JWT">
-        <Input value={licenseKey} onChange={(e) => setLicense(e.target.value)} placeholder="Pega aquí tu clave de licencia" className="font-mono text-xs" />
-      </Field>
+      {!isDev && (
+        <Field label="Código de Licencia" hint="Formato: XXXXX-XXXXX-XXXXX-XXXXX o JWT">
+          <Input value={licenseKey} onChange={(e) => setLicense(e.target.value)} placeholder="Pega aquí tu clave de licencia" className="font-mono text-xs" />
+        </Field>
+      )}
 
       {error && (
         <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
@@ -326,6 +339,7 @@ export default function InstalllPage() {
     licenseEmail: '',
     licenseKey: '',
     finalCredentials: null,
+    isDev: false,
   });
 
   // Verificar estado al cargar
@@ -335,6 +349,7 @@ export default function InstalllPage() {
         setBlocked(true);
         setTimeout(() => { window.location.href = '/login'; }, 4000);
       } else {
+        setState((s) => ({ ...s, isDev: !!status.isDev }));
         // Pre-cargar config de BD
         apiFetch('/install/db-config').then((cfg) => {
           setState((s) => ({
@@ -443,6 +458,7 @@ export default function InstalllPage() {
             )}
             {currentStep === 2 && (
               <StepLicense
+                isDev={state.isDev}
                 onNext={(creds) => setState((s) => ({ ...s, step: 3, finalCredentials: creds }))}
               />
             )}

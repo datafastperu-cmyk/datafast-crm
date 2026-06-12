@@ -3,7 +3,7 @@ import {
   HttpCode, HttpStatus, Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 import { InstallService, DbConfigDto, ActivateLicenseDto } from './install.service';
 import { Public } from '../../common/decorators/public.decorator';
@@ -18,7 +18,7 @@ class TestDbDto implements DbConfigDto {
 
 class ActivateDto implements ActivateLicenseDto {
   @IsEmail() email: string;
-  @IsString() @IsNotEmpty() licenseKey: string;
+  @IsOptional() @IsString() licenseKey: string;
 }
 
 @ApiTags('Install')

@@ -35,11 +35,13 @@ export class InstallService {
   getStatus() {
     const consoleInstalled = fs.existsSync(path.join(APP_DIR, '.installed_console'));
     const webInstalled     = fs.existsSync(INSTALL_FLAG);
+    const isDev            = (process.env.NODE_ENV || 'development') === 'development';
 
     return {
       consoleInstalled,
       webInstalled,
       canProceed: consoleInstalled && !webInstalled,
+      isDev,
     };
   }
 
@@ -98,8 +100,14 @@ export class InstallService {
   async activateAndFinalize(dto: ActivateLicenseDto): Promise<{ adminEmail: string; adminPassword: string }> {
     this.assertNotInstalled();
 
-    if (!dto.email || !dto.licenseKey) {
-      throw new BadRequestException('Email y clave de licencia son requeridos');
+    const isDev = (process.env.NODE_ENV || 'development') === 'development';
+
+    if (!dto.email) {
+      throw new BadRequestException('Email es requerido');
+    }
+
+    if (!isDev && !dto.licenseKey) {
+      throw new BadRequestException('Código de licencia requerido');
     }
 
     // Validar formato básico del email
@@ -107,8 +115,10 @@ export class InstallService {
       throw new BadRequestException('Email inválido');
     }
 
-    // Guardar la licencia en el .env
-    this.writeLicenseKey(dto.licenseKey.trim());
+    // Guardar la licencia en el .env (solo en producción)
+    if (!isDev && dto.licenseKey) {
+      this.writeLicenseKey(dto.licenseKey.trim());
+    }
 
     // Ejecutar migraciones
     await this.runMigrations();
