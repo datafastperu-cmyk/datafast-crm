@@ -27,7 +27,16 @@ export class TransformInterceptor<T>
     return next.handle().pipe(
       map((data) => {
         // Si el controller ya retorna un ApiResponse, no envolver
-        if (data instanceof ApiResponse) {
+        // Nota: instanceof falla con SWC Stage-3 decorators (prototype mismatch),
+        // por eso usamos duck-typing sobre los campos que ApiResponse siempre tiene.
+        if (
+          data !== null &&
+          data !== undefined &&
+          typeof data === 'object' &&
+          typeof (data as any).success === 'boolean' &&
+          'message' in data &&
+          'timestamp' in data
+        ) {
           return data;
         }
 
