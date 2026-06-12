@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 const PKI_DIR    = '/etc/openvpn/server';
 const PKI_META   = '/etc/openvpn/server/pki-meta.json';
 const CLIENTS_DIR = '/etc/openvpn/server/clients';
-const STATUS_LOG  = '/var/log/openvpn/openvpn-status.log';
+const STATUS_LOG  = '/var/log/openvpn/status-mikrotik.log';
 const OPENVPN_LOG = '/var/log/openvpn/openvpn.log';
 const CLIENT_SCRIPT = '/opt/datafast/scripts/openvpn-client.sh';
 
@@ -96,9 +96,9 @@ export class OpenvpnService {
       serviceActive: false,
       serviceEnabled: false,
       openvpnVersion: '',
-      port: 1194,
+      port: 1195,
       protocol: 'tcp',
-      network: '10.8.0.0/24',
+      network: '10.8.1.0/24',
       serverIp: '',
       connectedClients: [],
       tunInterface: null,
@@ -126,12 +126,12 @@ export class OpenvpnService {
 
     // Estado del servicio systemd
     try {
-      const { stdout } = await execFileAsync('systemctl', ['is-active', 'openvpn-server@server']);
+      const { stdout } = await execFileAsync('systemctl', ['is-active', 'openvpn-server@mikrotik']);
       status.serviceActive = stdout.trim() === 'active';
     } catch { status.serviceActive = false; }
 
     try {
-      const { stdout } = await execFileAsync('systemctl', ['is-enabled', 'openvpn-server@server']);
+      const { stdout } = await execFileAsync('systemctl', ['is-enabled', 'openvpn-server@mikrotik']);
       status.serviceEnabled = stdout.trim() === 'enabled';
     } catch { status.serviceEnabled = false; }
 
@@ -139,9 +139,9 @@ export class OpenvpnService {
     try {
       const raw = await fs.readFile(PKI_META, 'utf8');
       const meta = JSON.parse(raw);
-      status.port        = meta.vpnPort      ?? meta.port     ?? status.port;
-      status.protocol    = meta.vpnProtocol  ?? meta.protocol ?? status.protocol;
-      status.network     = meta.vpnNetwork   ?? meta.network  ?? status.network;
+      status.port        = meta.mikrotikPort     ?? meta.vpnPort     ?? meta.port     ?? status.port;
+      status.protocol    = meta.mikrotikProtocol ?? meta.vpnProtocol ?? meta.protocol ?? status.protocol;
+      status.network     = meta.mikrotikNetwork  ?? meta.vpnNetwork  ?? meta.network  ?? status.network;
       status.serverIp    = meta.publicIp     ?? meta.server_ip ?? '';
       status.caExpiry    = meta.caExpiry     ?? meta.ca_expiry ?? null;
       status.serverExpiry = meta.serverExpiry ?? meta.server_expiry ?? null;
@@ -193,7 +193,7 @@ export class OpenvpnService {
     if (!allowed.includes(action)) throw new BadRequestException('Acción no permitida');
 
     try {
-      const { stdout, stderr } = await execFileAsync('systemctl', [action, 'openvpn-server@server']);
+      const { stdout, stderr } = await execFileAsync('systemctl', [action, 'openvpn-server@mikrotik']);
       return { ok: true, output: (stdout + stderr).trim() };
     } catch (err: any) {
       return { ok: false, output: err.message };
