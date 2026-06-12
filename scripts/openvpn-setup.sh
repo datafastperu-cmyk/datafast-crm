@@ -29,19 +29,13 @@ readonly CCD_DIR="${OPENVPN_DIR}/ccd"           # Directivas por cliente (iroute
 readonly PKI_META_FILE="${SERVER_DIR}/pki-meta.json"
 
 # Parámetros configurables
-VPN_PORT="${VPN_PORT:-1194}"
-VPN_PROTO="${VPN_PROTO:-tcp}"
-VPN_NETWORK="${VPN_NETWORK:-10.8.0.0}"
-VPN_NETMASK="${VPN_NETMASK:-255.255.255.0}"
 VPN_DNS1="${VPN_DNS1:-1.1.1.1}"
 VPN_DNS2="${VPN_DNS2:-8.8.8.8}"
-VPN_MAX_CLIENTS="${VPN_MAX_CLIENTS:-100}"
-VPN_KEEPALIVE="${VPN_KEEPALIVE:-10 60}"
 CA_EXPIRE="${CA_EXPIRE:-3650}"
 CERT_EXPIRE="${CERT_EXPIRE:-3650}"
 EASYRSA_VERSION="${EASYRSA_VERSION:-3.1.7}"
 
-# MikroTik VPN (segundo servidor — puerto 1195)
+# MikroTik VPN — único servidor OpenVPN del ERP (puerto 1195/tcp)
 MIKROTIK_PORT="${MIKROTIK_PORT:-1195}"
 MIKROTIK_NETWORK="${MIKROTIK_NETWORK:-10.8.1.0}"
 MIKROTIK_NETMASK="${MIKROTIK_NETMASK:-255.255.255.0}"
@@ -215,60 +209,6 @@ deploy_server_certs() {
     ok "Certificados con permisos correctos"
 }
 
-# ── Genera el servidor principal (clientes finales) ──────────────
-generate_server_conf() {
-    step "Generando server.conf (clientes finales)"
-    cat > "${SERVER_DIR}/server.conf" << EOF
-# ================================================================
-#  DATAFAST ISP — OpenVPN Server (clientes finales)
-#  Puerto ${VPN_PORT}/${VPN_PROTO} | Generado v${SCRIPT_VERSION}
-# ================================================================
-port ${VPN_PORT}
-proto ${VPN_PROTO}
-dev tun
-
-ca   ${SERVER_DIR}/ca.crt
-cert ${SERVER_DIR}/server.crt
-key  ${SERVER_DIR}/server.key
-dh   ${SERVER_DIR}/dh.pem
-crl-verify ${SERVER_DIR}/crl.pem
-tls-crypt ${SERVER_DIR}/ta.key 0
-
-server ${VPN_NETWORK} ${VPN_NETMASK}
-topology subnet
-ifconfig-pool-persist ${VPN_LOG_DIR}/ipp.txt
-
-push "route ${VPN_NETWORK} ${VPN_NETMASK}"
-push "dhcp-option DNS ${VPN_DNS1}"
-push "dhcp-option DNS ${VPN_DNS2}"
-
-cipher AES-256-CBC
-ncp-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
-auth SHA1
-tls-version-min 1.2
-ecdh-curve prime256v1
-
-max-clients ${VPN_MAX_CLIENTS}
-client-to-client
-
-keepalive ${VPN_KEEPALIVE}
-persist-key
-persist-tun
-
-user nobody
-group nogroup
-
-status ${VPN_LOG_DIR}/status.log 30
-log-append ${VPN_LOG_DIR}/openvpn.log
-verb 3
-mute 20
-status-version 2
-explicit-exit-notify 1
-EOF
-    chmod 640 "${SERVER_DIR}/server.conf"
-    ok "server.conf generado"
-}
-
 # ── Genera el servidor dedicado para routers MikroTik ──────────
 generate_mikrotik_conf() {
     step "Generando mikrotik.conf (routers MikroTik)"
@@ -415,14 +355,13 @@ PYEOF
         ufw allow 22/tcp   comment 'SSH'           >> "${LOG_FILE}" 2>&1
         ufw allow 80/tcp   comment 'HTTP-nginx'    >> "${LOG_FILE}" 2>&1
         ufw allow 443/tcp  comment 'HTTPS-nginx'   >> "${LOG_FILE}" 2>&1
-        ufw allow "${VPN_PORT}/udp"       comment 'OpenVPN-clientes'  >> "${LOG_FILE}" 2>&1
-        ufw allow "${MIKROTIK_PORT}/udp"  comment 'OpenVPN-mikrotik'  >> "${LOG_FILE}" 2>&1
+        ufw allow "${MIKROTIK_PORT}/tcp"  comment 'OpenVPN-mikrotik'  >> "${LOG_FILE}" 2>&1
         ufw deny from any to any port 3000 proto tcp comment 'NextJS-internal'  >> "${LOG_FILE}" 2>&1
         ufw deny from any to any port 4000 proto tcp comment 'NestJS-internal'  >> "${LOG_FILE}" 2>&1
         ufw deny from any to any port 5432 proto tcp comment 'Postgres-block'   >> "${LOG_FILE}" 2>&1
         ufw deny from any to any port 6379 proto tcp comment 'Redis-block'      >> "${LOG_FILE}" 2>&1
         echo "y" | ufw enable >> "${LOG_FILE}" 2>&1
-        ok "UFW activo — puertos permitidos: 22, 80, 443, ${VPN_PORT}/udp, ${MIKROTIK_PORT}/udp"
+        ok "UFW activo — puertos permitidos: 22, 80, 443, ${MIKROTIK_PORT}/tcp"
         ok "UFW bloqueado: 3000, 4000, 5432, 6379"
     else
         ufw disable >> "${LOG_FILE}" 2>&1 || true
@@ -496,14 +435,11 @@ FILTER
 }
 
 configure_systemd() {
-    step "Configurando servicios systemd"
+    step "Configurando servicio systemd"
     systemctl daemon-reload >> "${LOG_FILE}" 2>&1
-    systemctl enable openvpn-server@server   >> "${LOG_FILE}" 2>&1 || true
     systemctl enable openvpn-server@mikrotik >> "${LOG_FILE}" 2>&1 || true
-    systemctl start openvpn-server@server    >> "${LOG_FILE}" 2>&1 || warn "server.conf no pudo iniciar"
-    systemctl start openvpn-server@mikrotik  >> "${LOG_FILE}" 2>&1 || warn "mikrotik.conf no pudo iniciar"
+    systemctl start  openvpn-server@mikrotik >> "${LOG_FILE}" 2>&1 || warn "mikrotik.conf no pudo iniciar"
     sleep 2
-    systemctl is-active openvpn-server@server   && ok "openvpn@server activo" || warn "openvpn@server inactivo"
     systemctl is-active openvpn-server@mikrotik && ok "openvpn@mikrotik activo" || warn "openvpn@mikrotik inactivo"
 }
 
@@ -515,10 +451,8 @@ save_pki_metadata() {
   "version": "${SCRIPT_VERSION}",
   "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "publicIp": "${public_ip}",
-  "vpnPort": ${VPN_PORT},
-  "vpnProtocol": "${VPN_PROTO}",
-  "vpnNetwork": "${VPN_NETWORK}",
   "mikrotikPort": ${MIKROTIK_PORT},
+  "mikrotikProtocol": "tcp",
   "mikrotikNetwork": "${MIKROTIK_NETWORK}",
   "ccdDir": "${CCD_DIR}",
   "pkiDir": "${EASYRSA_DIR}",
@@ -536,11 +470,9 @@ validate_installation() {
     step "Validando instalación"
     local errors=0
 
-    systemctl is-active --quiet openvpn-server@server   && ok "openvpn@server: ACTIVO"  || { warn "openvpn@server: INACTIVO"; ((errors++)) || true; }
     systemctl is-active --quiet openvpn-server@mikrotik && ok "openvpn@mikrotik: ACTIVO" || { warn "openvpn@mikrotik: INACTIVO"; ((errors++)) || true; }
 
-    ip link show tun0 &>/dev/null && ok "tun0 UP" || { warn "tun0 no encontrada"; ((errors++)) || true; }
-    ip link show tun1 &>/dev/null && ok "tun1 UP" || warn "tun1 no encontrada (mikrotik puede estar sin clientes)"
+    ip link show tun0 &>/dev/null && ok "tun0 UP" || warn "tun0 no encontrada (sin clientes aún)"
 
     [[ "$(cat /proc/sys/net/ipv4/ip_forward)" == "1" ]] && ok "IP forwarding: ON" || { warn "IP forwarding: OFF"; ((errors++)) || true; }
 
@@ -557,12 +489,9 @@ validate_installation() {
 show_status() {
     echo ""
     echo -e "${W}━━━ Estado OpenVPN ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    for svc in server mikrotik; do
-        local active; active=$(systemctl is-active "openvpn-server@${svc}" 2>/dev/null || echo "desconocido")
-        echo -e "  openvpn@${svc}: $([ "$active" = "active" ] && echo "${G}${active}${NC}" || echo "${R}${active}${NC}")"
-    done
-    ip link show tun0 &>/dev/null && echo -e "  tun0: ${G}UP${NC}" || echo -e "  tun0: ${R}DOWN${NC}"
-    ip link show tun1 &>/dev/null && echo -e "  tun1: ${G}UP${NC}" || echo -e "  tun1: ${Y}no hay clientes MikroTik${NC}"
+    local active; active=$(systemctl is-active "openvpn-server@mikrotik" 2>/dev/null || echo "desconocido")
+    echo -e "  openvpn@mikrotik: $([ "$active" = "active" ] && echo "${G}${active}${NC}" || echo "${R}${active}${NC}")"
+    ip link show tun0 &>/dev/null && echo -e "  tun0: ${G}UP${NC}" || echo -e "  tun0: ${Y}sin clientes aún${NC}"
     echo ""
     ufw status verbose 2>/dev/null | head -20 || true
     echo ""
@@ -578,9 +507,8 @@ show_summary() {
     echo "  ║  ✅  DATAFAST VPN Infrastructure — Instalación completa  ║"
     echo "  ╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
-    echo -e "  ${W}VPN clientes:${NC}  ${public_ip}:${VPN_PORT}/tcp"
     echo -e "  ${W}VPN MikroTik:${NC}  ${public_ip}:${MIKROTIK_PORT}/tcp"
-    echo -e "  ${W}Red VPN:${NC}       ${VPN_NETWORK}/24 | ${MIKROTIK_NETWORK}/24"
+    echo -e "  ${W}Red VPN:${NC}       ${MIKROTIK_NETWORK}/24"
     echo -e "  ${W}Cifrado:${NC}       AES-256-GCM/CBC | SHA-256 | TLS 1.2+"
     echo -e "  ${W}CCD dir:${NC}       ${CCD_DIR}/ (gestionado por el ERP)"
     echo -e "  ${W}Firewall:${NC}      UFW activo | Fail2Ban activo (4 jails)"
@@ -610,7 +538,7 @@ main() {
 
     if ${FLAG_STATUS_ONLY}; then show_status; exit 0; fi
 
-    if systemctl is-active --quiet openvpn-server@server 2>/dev/null && ! ${FLAG_REINSTALL}; then
+    if systemctl is-active --quiet openvpn-server@mikrotik 2>/dev/null && ! ${FLAG_REINSTALL}; then
         echo -e "${Y}[!] OpenVPN ya está instalado. Usa --reinstall para forzar.${NC}"
         show_status
         exit 0
@@ -621,7 +549,6 @@ main() {
     install_easyrsa
     generate_pki
     deploy_server_certs
-    generate_server_conf
     generate_mikrotik_conf
     configure_network
     configure_ufw
