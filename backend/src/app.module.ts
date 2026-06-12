@@ -78,7 +78,7 @@ import { MensajeriaModule }            from './modules/mensajeria/mensajeria.mod
         entities:             [__dirname + '/**/*.entity{.ts,.js}'],
         migrations:           [__dirname + '/database/migrations/*{.ts,.js}'],
         migrationsTableName:  'typeorm_migrations',
-        migrationsRun:        false,
+        migrationsRun:        process.env.NODE_ENV === 'production',
         synchronize:          false,
         logging:              false,
         extra:                { max: 20, min: 2, idleTimeoutMillis: 30000 },

@@ -141,62 +141,41 @@ _run_migrations_dev() {
     # Liberar caché del kernel antes de correr migraciones
     sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
-    # datasource.ts carga todos los .entity.ts via glob → OOM en VPS ≤2GB (>1.4GB heap)
-    # Solución A: datasource mínimo sin entities
-    # Solución B: tsconfig sin sección "ts-node" + TS_NODE_TRANSPILE_ONLY=true
-    # (tsconfig.migration.json tiene "transpileOnly: false" que sobrescribe la env var)
-
-    # tsconfig sin sección ts-node → TS_NODE_TRANSPILE_ONLY env var funciona
-    cat > "${INSTALL_DIR}/backend/tsconfig.migrate.json" << 'TCEOF'
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "module": "commonjs",
-    "target": "ES2021",
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "useDefineForClassFields": false
-  },
-  "exclude": ["dist", "node_modules"]
-}
-TCEOF
-    chown datafast:datafast "${INSTALL_DIR}/backend/tsconfig.migrate.json"
-
-    cat > "${INSTALL_DIR}/backend/src/config/datasource.migrate.ts" << 'DSEOF'
-import * as dotenv from 'dotenv';
-import * as path from 'path';
-import { DataSource } from 'typeorm';
-
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-
-export default new DataSource({
-  type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  database: process.env.DB_NAME || 'datafast_db',
-  username: process.env.DB_USER || 'datafast_db_user',
-  password: process.env.DB_PASSWORD,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-  entities: [],
-  migrations: [path.join(__dirname, '../database/migrations/*{.ts,.js}')],
+    # Usa node con dist/ ya compilado (igual que producción) — sin ts-node, sin cargar entidades.
+    # _install_backend_dev ya ejecutó nest build, así que dist/database/migrations/*.js existe.
+    local tmp_script="${INSTALL_DIR}/backend/_run_migrations.js"
+    cat > "$tmp_script" << 'MIGJS'
+const path = require('path');
+require('dotenv').config({ path: path.join(process.cwd(), '.env') });
+const { DataSource } = require('typeorm');
+const ds = new DataSource({
+  type:                'postgres',
+  host:                process.env.DB_HOST     || 'localhost',
+  port:                parseInt(process.env.DB_PORT || '5432', 10),
+  database:            process.env.DB_NAME     || 'datafast_db',
+  username:            process.env.DB_USER     || 'datafast_db_user',
+  password:            process.env.DB_PASSWORD,
+  ssl:                 process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  entities:            [],
+  migrations:          [path.join(process.cwd(), 'dist', 'database', 'migrations', '*.js')],
   migrationsTableName: 'typeorm_migrations',
-  migrationsTransactionMode: 'each',
-  synchronize: false,
-  logging: true,
+  synchronize:         false,
+  logging:             true,
 });
-DSEOF
-    chown datafast:datafast "${INSTALL_DIR}/backend/src/config/datasource.migrate.ts"
-
-    # sudo -u datafast no hereda env vars del shell root → source .env dentro del bash del usuario
-    # tsconfig.migrate.json (sin sección ts-node) + TS_NODE_TRANSPILE_ONLY → solo compila lo necesario
-    local migrate_cmd="set -a; source '${INSTALL_DIR}/backend/.env'; set +a; cd '${INSTALL_DIR}/backend'; TS_NODE_TRANSPILE_ONLY=true TS_NODE_PROJECT=tsconfig.migrate.json '${INSTALL_DIR}/backend/node_modules/.bin/typeorm-ts-node-commonjs' migration:run -d src/config/datasource.migrate.ts"
+ds.initialize()
+  .then(() => ds.runMigrations({ transaction: 'each' }))
+  .then(ran => { console.log('Migraciones aplicadas: ' + ran.length); return ds.destroy(); })
+  .then(() => process.exit(0))
+  .catch(err => { console.error('Error en migraciones: ' + err.message); process.exit(1); });
+MIGJS
+    chown datafast:datafast "$tmp_script"
 
     local retries=3
     for i in $(seq 1 $retries); do
         sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-        if sudo -u datafast bash -c "$migrate_cmd" >> "${LOG_FILE}" 2>&1; then
+        if sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && node _run_migrations.js" >> "${LOG_FILE}" 2>&1; then
             ok "Migraciones ejecutadas"
-            rm -f "${INSTALL_DIR}/backend/src/config/datasource.migrate.ts" "${INSTALL_DIR}/backend/tsconfig.migrate.json"
+            rm -f "$tmp_script"
             docker start datafast-pgadmin >> "${LOG_FILE}" 2>&1 || true
             return
         fi
@@ -204,10 +183,10 @@ DSEOF
         sleep 15
     done
 
-    rm -f "${INSTALL_DIR}/backend/src/config/datasource.migrate.ts" "${INSTALL_DIR}/backend/tsconfig.migrate.json"
+    rm -f "$tmp_script"
     docker start datafast-pgadmin >> "${LOG_FILE}" 2>&1 || true
     warn "No se pudieron ejecutar las migraciones — ejecutar manualmente:"
-    warn "  cd /opt/datafast/backend && TS_NODE_TRANSPILE_ONLY=true TS_NODE_PROJECT=tsconfig.migrate.json ./node_modules/.bin/typeorm-ts-node-commonjs migration:run -d src/config/datasource.migrate.ts"
+    warn "  cd /opt/datafast/backend && node _run_migrations.js"
 }
 
 _run_seed_dev() {

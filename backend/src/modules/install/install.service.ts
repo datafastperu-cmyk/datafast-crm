@@ -4,7 +4,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource, DataSourceOptions } from 'typeorm';
-import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as bcrypt from 'bcryptjs';
@@ -134,33 +133,42 @@ export class InstallService {
     return { adminEmail: dto.email, adminPassword: 'Admin123' };
   }
 
-  // ── Ejecutar migraciones vía CLI ─────────────────────────────
+  // ── Ejecutar migraciones vía DataSource API ──────────────────
+  // Usa DataSource programático con entities:[] — evita OOM en VPS ≤2GB
+  // que ocurría al cargar todos los .entity.ts vía ts-node (execSync npm run migration:run).
+  // Funciona en dev y producción: el glob *{.ts,.js} resuelve src/ o dist/ según contexto.
   private async runMigrations(): Promise<void> {
-    const backendDir = path.join(APP_DIR, 'backend');
+    const dbCfg         = this.getCurrentDbConfig();
+    const migrationsPath = path.join(__dirname, '..', 'database', 'migrations', '*{.ts,.js}');
 
-    if (!fs.existsSync(path.join(backendDir, 'dist'))) {
-      this.logger.warn('Backend dist no encontrado — migraciones se ejecutarán en modo dev');
-    }
+    const ds = new DataSource({
+      type:                'postgres',
+      host:                dbCfg.host,
+      port:                dbCfg.port,
+      username:            dbCfg.username,
+      password:            dbCfg.password,
+      database:            dbCfg.database,
+      entities:            [],
+      migrations:          [migrationsPath],
+      migrationsTableName: 'typeorm_migrations',
+      synchronize:         false,
+      logging:             false,
+    } as DataSourceOptions);
 
     try {
-      const envFile = path.join(backendDir, '.env.production');
-      const envExists = fs.existsSync(envFile);
-      const envFlag   = envExists ? `NODE_ENV=production` : '';
-
-      execSync(
-        `cd "${backendDir}" && ${envFlag} npm run migration:run 2>&1`,
-        { timeout: 120_000, stdio: 'pipe' },
-      );
-      this.logger.log('Migraciones ejecutadas correctamente');
-    } catch (err: any) {
-      const output = err.stdout?.toString() || err.stderr?.toString() || '';
-      // Si ya están aplicadas no es un error real
-      if (output.includes('No migrations are pending')) {
+      await ds.initialize();
+      const hasPending = await ds.showMigrations();
+      if (!hasPending) {
         this.logger.log('Migraciones ya aplicadas — skip');
-        return;
+      } else {
+        await ds.runMigrations({ transaction: 'each' });
+        this.logger.log('Migraciones ejecutadas correctamente');
       }
-      this.logger.error('Error ejecutando migraciones:', output.slice(-500));
+    } catch (err: any) {
+      this.logger.error('Error ejecutando migraciones:', err.message);
       throw new BadRequestException('Error ejecutando migraciones de base de datos. Verifica la conexión y vuelve a intentar.');
+    } finally {
+      await ds.destroy().catch(() => {});
     }
   }
 

@@ -134,6 +134,7 @@ _install_frontend() {
 }
 
 # ── Migraciones ────────────────────────────────────────────────
+# Usa node con dist/ ya compilado — sin ts-node, sin cargar entidades → evita OOM en VPS ≤2GB
 _run_migrations() {
     info "Ejecutando migraciones de base de datos..."
     cd "${INSTALL_DIR}/backend"
@@ -143,29 +144,58 @@ _run_migrations() {
     info "Esperando disponibilidad de la base de datos..."
     local tries=20
     for i in $(seq 1 $tries); do
-        if PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user \
-            -d datafast_db -c "SELECT 1;" &>/dev/null; then
+        if PGPASSWORD="${DB_PASSWORD:-}" psql -h "${DB_HOST:-localhost}" \
+            -U "${DB_USER:-datafast_db_user}" \
+            -d "${DB_NAME:-datafast_db}" -c "SELECT 1;" &>/dev/null; then
             break
         fi
         [[ $i -eq $tries ]] && error "PostgreSQL no respondió en 60s.
-    Verifica con: systemctl status postgresql
-    O con: docker logs datafast-postgres"
+    Verifica con: systemctl status postgresql"
         sleep 3
     done
 
-    local migrate_cmd="set -a; source '${INSTALL_DIR}/backend/.env.production'; set +a; cd '${INSTALL_DIR}/backend' && npm run migration:run"
+    # Script Node.js — carga migraciones compiladas desde dist/ (no ts-node, no entidades)
+    local tmp_script="${INSTALL_DIR}/backend/_run_migrations.js"
+    cat > "$tmp_script" << 'MIGJS'
+const path = require('path');
+require('dotenv').config({ path: path.join(process.cwd(), '.env.production') });
+const { DataSource } = require('typeorm');
+const ds = new DataSource({
+  type:                'postgres',
+  host:                process.env.DB_HOST     || 'localhost',
+  port:                parseInt(process.env.DB_PORT || '5432', 10),
+  database:            process.env.DB_NAME     || 'datafast_db',
+  username:            process.env.DB_USER     || 'datafast_db_user',
+  password:            process.env.DB_PASSWORD,
+  ssl:                 process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  entities:            [],
+  migrations:          [path.join(process.cwd(), 'dist', 'database', 'migrations', '*.js')],
+  migrationsTableName: 'typeorm_migrations',
+  synchronize:         false,
+  logging:             true,
+});
+ds.initialize()
+  .then(() => ds.runMigrations({ transaction: 'each' }))
+  .then(ran => { console.log('Migraciones aplicadas: ' + ran.length); return ds.destroy(); })
+  .then(() => process.exit(0))
+  .catch(err => { console.error('Error en migraciones: ' + err.message); process.exit(1); });
+MIGJS
+    chown datafast:datafast "$tmp_script"
+
     local retries=3
     for i in $(seq 1 $retries); do
         sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-        if sudo -u datafast bash -c "$migrate_cmd" >> "${LOG_FILE}" 2>&1; then
+        if sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && node _run_migrations.js" >> "${LOG_FILE}" 2>&1; then
             ok "Migraciones ejecutadas"
+            rm -f "$tmp_script"
             return
         fi
         warn "Migraciones fallaron (intento ${i}/${retries}) — reintentando en 15s..."
         sleep 15
     done
+    rm -f "$tmp_script"
     warn "No se pudieron ejecutar las migraciones automáticamente.
-    Comando manual: cd ${INSTALL_DIR}/backend && npm run migration:run"
+    Comando manual: cd ${INSTALL_DIR}/backend && node _run_migrations.js"
 }
 
 # ── Seed ───────────────────────────────────────────────────────
