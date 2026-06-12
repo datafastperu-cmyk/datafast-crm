@@ -30,7 +30,7 @@ export class VpnCliente extends BaseModel {
   @Column({ name: 'nombre_cert', length: 100, unique: true })
   nombreCert: string;
 
-  @Column({ name: 'version_ros', length: 5, default: 'v7' })
+  @Column({ name: 'version_ros', type: 'varchar', length: 5, default: 'v7' })
   versionRos: 'v6' | 'v7';
 
   @Column({ name: 'vpn_usuario', length: 100, nullable: true })
@@ -49,7 +49,7 @@ export class VpnCliente extends BaseModel {
   verifyServerCert: boolean;
 
   // ── Estado ────────────────────────────────────────────────
-  @Column({ length: 20, default: 'pendiente' })
+  @Column({ type: 'varchar', length: 20, default: 'pendiente' })
   estado: EstadoVpnCliente;
 
   @Column({ name: 'vpn_ip', length: 20, nullable: true })

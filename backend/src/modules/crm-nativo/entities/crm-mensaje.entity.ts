@@ -15,13 +15,13 @@ export class CrmMensaje {
   @Column({ name: 'empresa_id', type: 'uuid' })
   empresaId: string;
 
-  @Column({ name: 'wa_msg_id', length: 100, nullable: true })
+  @Column({ name: 'wa_msg_id', type: 'varchar', length: 100, nullable: true })
   waMsgId: string | null;
 
-  @Column({ length: 10 })
+  @Column({ type: 'varchar', length: 10 })
   direction: 'INBOUND' | 'OUTBOUND';
 
-  @Column({ length: 120, nullable: true })
+  @Column({ type: 'varchar', length: 120, nullable: true })
   agente: string | null;
 
   @Column({ type: 'text' })

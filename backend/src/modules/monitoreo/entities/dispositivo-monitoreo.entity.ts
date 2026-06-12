@@ -29,7 +29,7 @@ export class DispositivoMonitoreo {
 
   // ── Relación opcional al router padre (tabla existente) ──────
   // Nullable: dispositivos standalone no tienen router padre.
-  @Column({ name: 'router_acceso_id', nullable: true })
+  @Column({ name: 'router_acceso_id', type: 'uuid', nullable: true })
   routerAccesoId: string | null;
 
   // ── Clasificación ────────────────────────────────────────────
@@ -49,11 +49,11 @@ export class DispositivoMonitoreo {
   })
   fabricante: Fabricante;
 
-  @Column({ name: 'modelo_nombre', length: 100, nullable: true })
+  @Column({ name: 'modelo_nombre', type: 'varchar', length: 100, nullable: true })
   modeloNombre: string | null;
 
   // ── Credenciales de acceso ────────────────────────────────────
-  @Column({ name: 'usuario', length: 64, nullable: true })
+  @Column({ name: 'usuario', type: 'varchar', length: 64, nullable: true })
   usuario: string | null;
 
   // Almacenado cifrado mediante encrypt() / decrypt()

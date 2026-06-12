@@ -76,6 +76,7 @@ EVOLUTION_API_KEY=${evo_key}
 
 LOG_LEVEL=debug
 ENVEOF
+    chown datafast:datafast "${INSTALL_DIR}/backend/.env"
     chmod 600 "${INSTALL_DIR}/backend/.env"
     ok "Backend .env creado (modo desarrollo)"
 }
@@ -104,31 +105,104 @@ _install_backend_dev() {
     fi
 
     sudo -u datafast npm install >> "${LOG_FILE}" 2>&1
-    ok "Dependencias backend instaladas (hot-reload activo, sin build)"
+
+    info "Compilando backend con SWC (evita __esDecorate en TypeORM)..."
+    sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    if sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/nest build" >> "${LOG_FILE}" 2>&1; then
+        ok "Backend compilado — dist/ listo"
+    else
+        warn "nest build falló — revisa: tail -50 ${LOG_FILE}"
+        return 1
+    fi
 }
 
 _install_frontend_dev() {
     info "Instalando dependencias del frontend..."
     cd "${INSTALL_DIR}/frontend"
     sudo -u datafast npm install >> "${LOG_FILE}" 2>&1
-    ok "Dependencias frontend instaladas (hot-reload activo, sin build)"
+
+    info "Compilando frontend (next build, puede tardar 3-8 min)..."
+    sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    if sudo -u datafast bash -c "cd '${INSTALL_DIR}/frontend' && NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/next build" >> "${LOG_FILE}" 2>&1; then
+        ok "Frontend compilado — .next/ listo"
+    else
+        warn "next build falló — frontend iniciará en modo dev. Revisa: tail -50 ${LOG_FILE}"
+    fi
 }
 
 _run_migrations_dev() {
     info "Ejecutando migraciones de base de datos..."
-    cd "${INSTALL_DIR}/backend"
-    set -a; source .env; set +a
+
+    # Liberar caché del kernel antes de correr migraciones
+    sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+    # datasource.ts carga todos los .entity.ts via glob → OOM en VPS ≤2GB (>1.4GB heap)
+    # Solución A: datasource mínimo sin entities
+    # Solución B: tsconfig sin sección "ts-node" + TS_NODE_TRANSPILE_ONLY=true
+    # (tsconfig.migration.json tiene "transpileOnly: false" que sobrescribe la env var)
+
+    # tsconfig sin sección ts-node → TS_NODE_TRANSPILE_ONLY env var funciona
+    cat > "${INSTALL_DIR}/backend/tsconfig.migrate.json" << 'TCEOF'
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2021",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false
+  },
+  "exclude": ["dist", "node_modules"]
+}
+TCEOF
+    chown datafast:datafast "${INSTALL_DIR}/backend/tsconfig.migrate.json"
+
+    cat > "${INSTALL_DIR}/backend/src/config/datasource.migrate.ts" << 'DSEOF'
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+import { DataSource } from 'typeorm';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+
+export default new DataSource({
+  type: 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  database: process.env.DB_NAME || 'datafast_db',
+  username: process.env.DB_USER || 'datafast_db_user',
+  password: process.env.DB_PASSWORD,
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  entities: [],
+  migrations: [path.join(__dirname, '../database/migrations/*{.ts,.js}')],
+  migrationsTableName: 'typeorm_migrations',
+  migrationsTransactionMode: 'each',
+  synchronize: false,
+  logging: true,
+});
+DSEOF
+    chown datafast:datafast "${INSTALL_DIR}/backend/src/config/datasource.migrate.ts"
+
+    # sudo -u datafast no hereda env vars del shell root → source .env dentro del bash del usuario
+    # tsconfig.migrate.json (sin sección ts-node) + TS_NODE_TRANSPILE_ONLY → solo compila lo necesario
+    local migrate_cmd="set -a; source '${INSTALL_DIR}/backend/.env'; set +a; cd '${INSTALL_DIR}/backend'; TS_NODE_TRANSPILE_ONLY=true TS_NODE_PROJECT=tsconfig.migrate.json '${INSTALL_DIR}/backend/node_modules/.bin/typeorm-ts-node-commonjs' migration:run -d src/config/datasource.migrate.ts"
 
     local retries=3
     for i in $(seq 1 $retries); do
-        if sudo -u datafast npm run migration:run >> "${LOG_FILE}" 2>&1; then
+        sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+        if sudo -u datafast bash -c "$migrate_cmd" >> "${LOG_FILE}" 2>&1; then
             ok "Migraciones ejecutadas"
+            rm -f "${INSTALL_DIR}/backend/src/config/datasource.migrate.ts" "${INSTALL_DIR}/backend/tsconfig.migrate.json"
+            docker start datafast-pgadmin >> "${LOG_FILE}" 2>&1 || true
             return
         fi
-        warn "Intento ${i}/${retries} falló. Reintentando en 5s..."
-        sleep 5
+        warn "Intento ${i}/${retries} falló. Reintentando en 15s..."
+        sleep 15
     done
-    warn "No se pudieron ejecutar las migraciones — ejecutar manualmente: cd /opt/datafast/backend && npm run migration:run"
+
+    rm -f "${INSTALL_DIR}/backend/src/config/datasource.migrate.ts" "${INSTALL_DIR}/backend/tsconfig.migrate.json"
+    docker start datafast-pgadmin >> "${LOG_FILE}" 2>&1 || true
+    warn "No se pudieron ejecutar las migraciones — ejecutar manualmente:"
+    warn "  cd /opt/datafast/backend && TS_NODE_TRANSPILE_ONLY=true TS_NODE_PROJECT=tsconfig.migrate.json ./node_modules/.bin/typeorm-ts-node-commonjs migration:run -d src/config/datasource.migrate.ts"
 }
 
 _run_seed_dev() {
@@ -142,8 +216,13 @@ _run_seed_dev() {
         -c "SELECT COUNT(*) FROM empresas;" 2>/dev/null | tr -d ' \n' || echo "0")
 
     if [[ "${count}" == "0" ]]; then
-        sudo -u datafast npm run seed:run >> "${LOG_FILE}" 2>&1
-        ok "Datos iniciales creados"
+        local seed_cmd="set -a; source '${INSTALL_DIR}/backend/.env'; set +a; cd '${INSTALL_DIR}/backend'; npm run seed:run"
+        if sudo -u datafast bash -c "$seed_cmd" >> "${LOG_FILE}" 2>&1; then
+            ok "Datos iniciales creados"
+        else
+            warn "Seed falló — el sistema puede iniciar sin datos de prueba"
+            warn "Ejecutar manualmente: cd /opt/datafast/backend && npm run seed:run"
+        fi
     else
         ok "Base de datos ya tiene datos — seed omitido"
     fi

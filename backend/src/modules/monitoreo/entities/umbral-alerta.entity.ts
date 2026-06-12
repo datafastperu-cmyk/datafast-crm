@@ -28,7 +28,7 @@ export class UmbralAlerta {
   empresaId: string;
 
   // ── Alcance del umbral (al menos uno debe ser NOT NULL) ───────
-  @Column({ name: 'dispositivo_id', nullable: true })
+  @Column({ name: 'dispositivo_id', type: 'uuid', nullable: true })
   dispositivoId: string | null;
 
   @ManyToOne(() => DispositivoMonitoreo, { nullable: true, onDelete: 'CASCADE' })
@@ -45,7 +45,7 @@ export class UmbralAlerta {
   tipoEquipo: TipoEquipo | null;
 
   // Nombre descriptivo (ej: "Crítico AP centro", "Global MikroTik")
-  @Column({ name: 'nombre', length: 100, nullable: true })
+  @Column({ name: 'nombre', type: 'varchar', length: 100, nullable: true })
   nombre: string | null;
 
   // ── Umbrales de red ───────────────────────────────────────────

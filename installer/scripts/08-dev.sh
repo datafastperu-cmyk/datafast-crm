@@ -20,26 +20,28 @@ start_dev_servers() {
 
     info "Generando ecosystem.dev.config.js..."
     cat > "${INSTALL_DIR}/ecosystem.dev.config.js" << EOF
-// CRM ISP DATAFAST — PM2 Desarrollo (hot-reload)
+// CRM ISP DATAFAST — PM2 Dev (dist pre-compilado)
 // Generado: $(date)
 module.exports = {
   apps: [
     {
       name:      'datafast-backend',
-      script:    'node_modules/.bin/nest',
-      args:      'start --watch',
+      script:    'node',
+      args:      'dist/main.js',
       cwd:       '${INSTALL_DIR}/backend',
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'development',
-        PORT:     4000,
-        TZ:       'America/Lima',
+        NODE_ENV:     'development',
+        PORT:         4000,
+        TZ:           'America/Lima',
+        NODE_OPTIONS: '--max-old-space-size=1400',
       },
       watch:              false,
-      max_memory_restart: '1G',
-      restart_delay:      3000,
-      max_restarts:       15,
+      max_memory_restart: '1500M',
+      restart_delay:      5000,
+      max_restarts:       5,
+      kill_timeout:       5000,
       out_file:    '${INSTALL_DIR}/logs/backend-out.log',
       error_file:  '${INSTALL_DIR}/logs/backend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
@@ -47,19 +49,22 @@ module.exports = {
     {
       name:    'datafast-frontend',
       script:  'node_modules/.bin/next',
-      args:    'dev --port 3000',
+      args:    'start',
       cwd:     '${INSTALL_DIR}/frontend',
       instances: 1,
       exec_mode: 'fork',
       env: {
-        NODE_ENV: 'development',
-        PORT:     3000,
-        HOSTNAME: '0.0.0.0',
-        TZ:       'America/Lima',
+        NODE_ENV:  'production',
+        PORT:      3000,
+        TZ:        'America/Lima',
       },
-      max_memory_restart: '1G',
-      restart_delay:      3000,
-      max_restarts:       15,
+      watch:              false,
+      max_memory_restart: '1500M',
+      restart_delay:      8000,
+      max_restarts:       10,
+      kill_timeout:       5000,
+      listen_timeout:     30000,
+      wait_ready:         false,
       out_file:    '${INSTALL_DIR}/logs/frontend-out.log',
       error_file:  '${INSTALL_DIR}/logs/frontend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
@@ -67,22 +72,24 @@ module.exports = {
   ],
 };
 EOF
-    chown datafast:datafast "${INSTALL_DIR}/ecosystem.dev.config.js"
+    chown root:root "${INSTALL_DIR}/ecosystem.dev.config.js"
 
-    info "Iniciando procesos (primera compilación puede tardar 60-90s)..."
+    info "Iniciando procesos con PM2..."
+    # Matar cualquier PM2 existente del usuario datafast para evitar conflicto de daemons
+    sudo -u datafast pm2 kill >> "${LOG_FILE}" 2>&1 || true
     pm2 delete datafast-backend datafast-frontend >> "${LOG_FILE}" 2>&1 || true
 
     cd "${INSTALL_DIR}"
-    sudo -u datafast pm2 start ecosystem.dev.config.js >> "${LOG_FILE}" 2>&1
-    sudo -u datafast pm2 save >> "${LOG_FILE}" 2>&1
+    pm2 start ecosystem.dev.config.js >> "${LOG_FILE}" 2>&1
+    pm2 save >> "${LOG_FILE}" 2>&1
 
     # Startup automático al reiniciar
-    pm2 startup systemd -u datafast --hp /home/datafast >> "${LOG_FILE}" 2>&1 || true
+    pm2 startup systemd >> "${LOG_FILE}" 2>&1 || true
 
-    sleep 8
-    if sudo -u datafast pm2 list | grep -q "online"; then
-        ok "Servidores de desarrollo iniciados"
+    sleep 10
+    if pm2 list | grep -q "online"; then
+        ok "Servidores iniciados"
     else
-        warn "Los procesos aún están compilando. Verifica con: pm2 logs datafast-backend"
+        warn "Los procesos no están online. Verifica con: pm2 logs datafast-backend"
     fi
 }

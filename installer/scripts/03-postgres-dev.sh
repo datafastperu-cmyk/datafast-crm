@@ -34,6 +34,25 @@ install_postgres_dev() {
 }
 
 _start_pgadmin() {
+    # pgAdmin 4 consume ~400MB — solo instalar si hay RAM suficiente
+    local available_mb
+    available_mb=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo)
+    if [[ ${available_mb} -lt 600 ]]; then
+        warn "pgAdmin omitido — RAM disponible insuficiente (${available_mb}MB < 600MB requeridos)"
+        warn "Iniciar manualmente después con: docker start datafast-pgadmin"
+        # Crear contenedor pero no iniciarlo
+        docker rm -f datafast-pgadmin >> "${LOG_FILE}" 2>&1 || true
+        docker create \
+            --name datafast-pgadmin \
+            --restart no \
+            -p 127.0.0.1:5050:80 \
+            -e PGADMIN_DEFAULT_EMAIL=admin@datafast.pe \
+            -e PGADMIN_DEFAULT_PASSWORD=admin123 \
+            -e PGADMIN_DISABLE_POSTFIX=true \
+            dpage/pgadmin4:latest >> "${LOG_FILE}" 2>&1 || true
+        return
+    fi
+
     info "Levantando pgAdmin (UI de base de datos)..."
     docker rm -f datafast-pgadmin >> "${LOG_FILE}" 2>&1 || true
 

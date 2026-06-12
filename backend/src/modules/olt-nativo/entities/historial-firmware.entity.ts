@@ -55,14 +55,14 @@ export class HistorialFirmware {
   @Column({ name: 'uploaded_by' })
   uploadedBy: string;  // userId del administrador
 
-  @Column({ name: 'uploaded_by_email', length: 200, nullable: true })
+  @Column({ name: 'uploaded_by_email', type: 'varchar', length: 200, nullable: true })
   uploadedByEmail: string | null;
 
   // ── Estado del proceso ────────────────────────────────────
-  @Column({ name: 'estado', length: 30, default: 'pendiente' })
+  @Column({ name: 'estado', type: 'varchar', length: 30, default: 'pendiente' })
   estado: EstadoFirmware;
 
-  @Column({ name: 'python_job_id', length: 40, nullable: true })
+  @Column({ name: 'python_job_id', type: 'varchar', length: 40, nullable: true })
   pythonJobId: string | null;
 
   @Column({ name: 'resultado', type: 'jsonb', nullable: true })

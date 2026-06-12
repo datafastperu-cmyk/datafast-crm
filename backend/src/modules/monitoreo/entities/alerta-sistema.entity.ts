@@ -37,7 +37,7 @@ export class AlertaSistema {
   nivel: NivelAlerta;
 
   // Categoría corta para filtrado rápido (ej: 'PING', 'CPU', 'MEMORIA', 'TRÁFICO')
-  @Column({ name: 'categoria', length: 40, nullable: true })
+  @Column({ name: 'categoria', type: 'varchar', length: 40, nullable: true })
   categoria: string | null;
 
   // ── Contenido ─────────────────────────────────────────────────
@@ -45,11 +45,11 @@ export class AlertaSistema {
   mensaje: string;
 
   // Valor que disparó la alerta (ej: "95" para cpu 95%)
-  @Column({ name: 'valor_detectado', length: 50, nullable: true })
+  @Column({ name: 'valor_detectado', type: 'varchar', length: 50, nullable: true })
   valorDetectado: string | null;
 
   // Umbral que fue superado (ej: "80" para cpu threshold 80%)
-  @Column({ name: 'valor_umbral', length: 50, nullable: true })
+  @Column({ name: 'valor_umbral', type: 'varchar', length: 50, nullable: true })
   valorUmbral: string | null;
 
   // ── Ciclo de vida ─────────────────────────────────────────────
@@ -65,7 +65,7 @@ export class AlertaSistema {
   resueltoAt: Date | null;
 
   // Usuario que marcó la alerta como resuelta (nullable = auto-resuelta)
-  @Column({ name: 'resuelto_por_id', nullable: true })
+  @Column({ name: 'resuelto_por_id', type: 'uuid', nullable: true })
   resueltoPorId: string | null;
 
   // ── Auditoría ─────────────────────────────────────────────────

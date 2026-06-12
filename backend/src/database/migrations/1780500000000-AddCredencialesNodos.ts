@@ -17,20 +17,13 @@ export class AddCredencialesNodos1780500000000 implements MigrationInterface {
         ADD COLUMN IF NOT EXISTS metodo_conexion  VARCHAR(20)  NOT NULL DEFAULT 'snmp'
     `);
 
-    // ── Asegurar que el enum tipo_nodo tenga todos los valores ─
-    // ADD VALUE IF NOT EXISTS es idempotente en Postgres 9.6+
-    const tipos = [
-      'router', 'switch', 'olt', 'antena', 'servidor',
-      'cliente', 'enlace_uplink', 'camara', 'alarma', 'otro',
-    ];
-    for (const val of tipos) {
-      try {
-        await queryRunner.query(
-          `ALTER TYPE tipo_nodo ADD VALUE IF NOT EXISTS '${val}'`,
-        );
-      } catch {
-        // Ignorar: tipo_nodo puede ser varchar o el valor ya existe
-      }
+    // ── Asegurar que el enum nodos_tipo_enum tenga todos los valores ─
+    // ADD VALUE IF NOT EXISTS es idempotente en Postgres 12+
+    const nuevosTipos = ['camara', 'alarma', 'otro'];
+    for (const val of nuevosTipos) {
+      await queryRunner.query(
+        `ALTER TYPE nodos_tipo_enum ADD VALUE IF NOT EXISTS '${val}'`,
+      );
     }
   }
 

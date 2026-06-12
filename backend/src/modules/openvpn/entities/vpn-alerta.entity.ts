@@ -19,7 +19,7 @@ export class VpnAlerta extends BaseModel {
   @Column({ name: 'router_nombre', length: 200, nullable: true })
   routerNombre: string;
 
-  @Column({ length: 30 })
+  @Column({ type: 'varchar', length: 30 })
   tipo: TipoVpnAlerta;
 
   // IP pública del dispositivo que intentó conectar

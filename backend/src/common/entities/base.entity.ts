@@ -4,13 +4,12 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   VersionColumn,
-  BaseEntity,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 
 // ─── Entidad base para todas las entidades del sistema ─────────
 // Provee: id UUID, created_at, updated_at, deleted_at (soft delete)
-export abstract class BaseModel extends BaseEntity {
+export abstract class BaseModel {
   @ApiProperty({ description: 'ID único UUID' })
   @PrimaryGeneratedColumn('uuid')
   id: string;

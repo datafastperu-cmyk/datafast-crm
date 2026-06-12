@@ -12,22 +12,19 @@ export class CreateOltDispositivos1781700000000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
 
-    // ── Tipos nuevos ──────────────────────────────────────────
+    // ── Tipos nuevos (DO block para idempotencia) ─────────────
     await queryRunner.query(`
-      CREATE TYPE olt_marca AS ENUM (
-        'huawei',
-        'zte',
-        'vsol',
-        'cdata'
-      )
+      DO $$ BEGIN
+        CREATE TYPE olt_marca AS ENUM ('huawei','zte','vsol','cdata');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$
     `);
 
     await queryRunner.query(`
-      CREATE TYPE olt_metodo_conexion AS ENUM (
-        'smartolt_api',
-        'nativo_ssh',
-        'nativo_snmp'
-      )
+      DO $$ BEGIN
+        CREATE TYPE olt_metodo_conexion AS ENUM ('smartolt_api','nativo_ssh','nativo_snmp');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$
     `);
 
     // ── Tabla principal ───────────────────────────────────────
@@ -65,7 +62,7 @@ export class CreateOltDispositivos1781700000000 implements MigrationInterface {
         -- Relaciones FK
         router_id               UUID              NOT NULL
                                                     REFERENCES routers(id) ON DELETE RESTRICT,
-        dispositivo_monitoreo_id UUID             REFERENCES dispositivos_monitoreo(id) ON DELETE SET NULL,
+        dispositivo_monitoreo_id UUID             REFERENCES nodos(id) ON DELETE SET NULL,
 
         -- Estado operativo (reutiliza tipo existente de migración 006)
         estado                  estado_olt        NOT NULL DEFAULT 'desconocido',

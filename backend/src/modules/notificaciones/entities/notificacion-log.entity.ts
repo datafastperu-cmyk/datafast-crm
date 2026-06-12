@@ -42,7 +42,7 @@ export class NotificacionLog {
   })
   estadoEntrega: EstadoEntrega;
 
-  @Column({ name: 'meta_message_id', length: 100, nullable: true })
+  @Column({ name: 'meta_message_id', type: 'varchar', length: 100, nullable: true })
   metaMessageId: string | null;
 
   @Column({ name: 'error_detalle', type: 'text', nullable: true })

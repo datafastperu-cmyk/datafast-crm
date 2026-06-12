@@ -3,8 +3,8 @@ import { ValidationPipe, VersioningType, Logger, ClassSerializerInterceptor } fr
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import * as helmet from 'helmet';
-import * as compression from 'compression';
+import helmet from 'helmet';
+import compression from 'compression';
 import * as path from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
@@ -55,7 +55,7 @@ async function bootstrap() {
 
   // ── Helmet — Headers de seguridad HTTP ───────────────────────
   app.use(
-    (helmet as any).default({
+    helmet({
       contentSecurityPolicy: env === 'production',  // Solo en producción
       crossOriginEmbedderPolicy: false,
     }),
@@ -99,6 +99,7 @@ async function bootstrap() {
 
   // ── Swagger — Documentación de la API ────────────────────────
   if (env !== 'production') {
+    try {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('CRM ISP DATAFAST — API')
       .setDescription(
@@ -152,6 +153,9 @@ async function bootstrap() {
     });
 
     logger.log(`Swagger disponible en: http://localhost:${port}/api/docs`);
+    } catch (swaggerErr) {
+      logger.warn(`Swagger deshabilitado: ${(swaggerErr as Error).message}`);
+    }
   }
 
   // ── Manejo de señales del sistema (graceful shutdown) ─────────

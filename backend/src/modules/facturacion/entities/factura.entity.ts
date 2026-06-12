@@ -1,7 +1,6 @@
-import { Entity, Column, Index, BeforeInsert } from 'typeorm';
+import { Entity, Column, Index } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
 
-// ─── Enums ────────────────────────────────────────────────────
 export enum TipoComprobante {
   BOLETA         = 'boleta',
   FACTURA        = 'factura',
@@ -20,13 +19,12 @@ export enum EstadoFactura {
   EN_COBRANZA    = 'en_cobranza',
 }
 
-// ─── Item de factura (para facturas multi-concepto) ──────────
 export interface ItemFactura {
   descripcion:    string;
   cantidad:       number;
   precioUnitario: number;
-  descuento?:     number;   // monto de descuento por unidad
-  subtotal:       number;   // cantidad * precioUnitario - descuento
+  descuento?:     number;
+  subtotal:       number;
 }
 
 // ─── Entidad principal ────────────────────────────────────────
@@ -205,23 +203,4 @@ export class Factura extends BaseModel {
   @Column({ name: 'created_by', nullable: true })
   createdBy: string;
 
-  // ── Helpers computados ───────────────────────────────────
-  get estaVencida(): boolean {
-    if (this.estado === EstadoFactura.PAGADA) return false;
-    return new Date(this.fechaVencimiento) < new Date();
-  }
-
-  get esPagada(): boolean {
-    return [EstadoFactura.PAGADA].includes(this.estado);
-  }
-
-  get saldoPendiente(): number {
-    return Math.max(0, Number(this.total) - Number(this.montoPagado));
-  }
-
-  get diasVencida(): number {
-    if (!this.estaVencida) return 0;
-    const diff = Date.now() - new Date(this.fechaVencimiento).getTime();
-    return Math.floor(diff / (1000 * 60 * 60 * 24));
-  }
 }

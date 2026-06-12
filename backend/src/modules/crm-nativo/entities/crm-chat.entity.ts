@@ -17,7 +17,7 @@ export class CrmChat {
   @Column({ length: 30 })
   telefono: string;
 
-  @Column({ name: 'nombre_contacto', length: 120, nullable: true })
+  @Column({ name: 'nombre_contacto', type: 'varchar', length: 120, nullable: true })
   nombreContacto: string | null;
 
   @Column({ name: 'ultimo_mensaje', type: 'text', nullable: true })

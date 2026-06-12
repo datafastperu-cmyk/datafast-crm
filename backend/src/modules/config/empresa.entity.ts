@@ -17,22 +17,22 @@ export class Empresa {
   @Column({ name: 'direccion_fiscal', type: 'text', nullable: true })
   direccion: string | null;
 
-  @Column({ name: 'whatsapp_corporativo', length: 20, nullable: true })
+  @Column({ name: 'whatsapp_corporativo', type: 'varchar', length: 20, nullable: true })
   whatsappCorporativo: string | null;
 
-  @Column({ name: 'telefono_informativo', length: 30, nullable: true })
+  @Column({ name: 'telefono_informativo', type: 'varchar', length: 30, nullable: true })
   telefonoInformativo: string | null;
 
-  @Column({ length: 150, nullable: true })
+  @Column({ type: 'varchar', length: 150, nullable: true })
   email: string | null;
 
-  @Column({ name: 'sitio_web', length: 250, nullable: true })
+  @Column({ name: 'sitio_web', type: 'varchar', length: 250, nullable: true })
   websiteUrl: string | null;
 
-  @Column({ name: 'logo_url', length: 500, nullable: true })
+  @Column({ name: 'logo_url', type: 'varchar', length: 500, nullable: true })
   logoUrl: string | null;
 
-  @Column({ length: 250, nullable: true })
+  @Column({ type: 'varchar', length: 250, nullable: true })
   dominio: string | null;
 
   @Column({ name: 'serie_boleta', length: 10, default: 'B001' })

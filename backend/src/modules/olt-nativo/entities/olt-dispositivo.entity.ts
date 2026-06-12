@@ -102,7 +102,7 @@ export class OltDispositivo extends BaseModel {
 
   // Enlace opcional al módulo de telemetría pasiva.
   // ON DELETE SET NULL — si se borra el dispositivo de monitoreo, la OLT persiste.
-  @Column({ name: 'dispositivo_monitoreo_id', nullable: true })
+  @Column({ name: 'dispositivo_monitoreo_id', type: 'uuid', nullable: true })
   dispositivoMonitoreoId: string | null;
 
   // ── Estado operativo ──────────────────────────────────────
