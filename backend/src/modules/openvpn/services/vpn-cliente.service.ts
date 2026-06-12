@@ -20,7 +20,10 @@ import { Router, MetodoConexion, EstadoEquipo, VersionRouterOS } from '../../mik
 // ── Rutas del sistema VPN ─────────────────────────────────────
 const CA_CRT      = '/etc/openvpn/server/ca.crt';
 const CCD_DIR     = '/etc/openvpn/ccd';
+// IP pura para el campo connect-to del cliente OVPN (sin protocolo ni puerto)
 const VPS_IP      = process.env.VPN_SERVER_IP || process.env.APP_URL?.replace(/^https?:\/\//, '').split(':')[0] || '127.0.0.1';
+// Base URL completa para el endpoint de descarga del CA (incluye puerto en dev sin Nginx)
+const API_BASE    = (process.env.APP_URL || `http://${VPS_IP}`).replace(/\/$/, '');
 const VPN_PORT    = parseInt(process.env.VPN_SERVER_PORT || '1195', 10);
 
 interface VpnConnectedClient {
@@ -883,7 +886,7 @@ export class VpnClienteService {
     const vpnUser   = cliente.vpnUsuario || '';
     const mac       = this._generarMac();
     const fetchPath = `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`;
-    const urlCa     = `http://${VPS_IP}${fetchPath}/ca.crt`;
+    const urlCa     = `${API_BASE}${fetchPath}/ca.crt`;
     const prefix    = `df-${cliente.nombreCert}`;
     return `{
 :local fCa "${prefix}-ca.crt"
@@ -906,7 +909,7 @@ export class VpnClienteService {
     const vpnUser    = cliente.vpnUsuario || '';
     const mac        = this._generarMac();
     const fetchPath  = `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`;
-    const urlCa      = `http://${VPS_IP}${fetchPath}/ca.crt`;
+    const urlCa      = `${API_BASE}${fetchPath}/ca.crt`;
     const prefix     = `df-${cliente.nombreCert}`;
     const verifyLine = cliente.verifyServerCert
       ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
