@@ -925,7 +925,7 @@ export class VpnClienteService {
 :delay 3s
 /certificate import file-name=$fCa passphrase=""
 :delay 2s
-/interface ovpn-client add cipher=${this._cipherForRos(cliente.cipher, 'v7')} connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
+/interface ovpn-client add cipher=${this._cipherForRos(cliente.cipher, 'v7')} auth=${cliente.authAlg} connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
 :delay 1s
 /interface ovpn-client enable vpndatafast
 }`;

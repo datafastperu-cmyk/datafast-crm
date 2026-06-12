@@ -297,8 +297,15 @@ mute 20
 # ── Gestión remota (usada por el backend para kill sessions) ─────
 management 127.0.0.1 7505
 
-# ── Scripts de conexión/desconexión ──────────────────────────────
+# ── Autenticación usuario/contraseña sin certificado cliente ────
+# Los routers MikroTik usan user/pass generados por el ERP, sin cert cliente.
+# username-as-common-name → OpenVPN usa el username como CN para buscar CCD.
 script-security 2
+auth-user-pass-verify ${INSTALL_DIR}/scripts/vpn-auth.sh via-env
+username-as-common-name
+verify-client-cert none
+
+# ── Scripts de conexión/desconexión ──────────────────────────────
 client-connect    ${INSTALL_DIR}/scripts/vpn-client-connect.sh
 client-disconnect ${INSTALL_DIR}/scripts/vpn-client-disconnect.sh
 
@@ -307,6 +314,30 @@ explicit-exit-notify 0
 EOF
     chmod 640 "${SERVER_DIR}/mikrotik.conf"
     ok "mikrotik.conf generado (puerto ${MIKROTIK_PORT})"
+}
+
+generate_vpn_auth_script() {
+    step "Generando vpn-auth.sh (autenticación usuario/contraseña)"
+    mkdir -p "${INSTALL_DIR}/scripts"
+    cat > "${INSTALL_DIR}/scripts/vpn-auth.sh" << 'AUTHEOF'
+#!/bin/bash
+# Verifica credenciales VPN usuario/contraseña contra el backend ERP.
+# Llamado por OpenVPN via: auth-user-pass-verify <script> via-env
+# OpenVPN inyecta: username y password como variables de entorno.
+
+[ -z "${username}" ] && exit 1
+
+RESPONSE=$(curl -sf -m 5 \
+  -X POST "http://127.0.0.1:4000/api/v1/openvpn/mikrotik-clients/verify-auth" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${username}\",\"password\":\"${password}\"}" 2>/dev/null)
+
+[ $? -ne 0 ] && exit 1
+
+echo "${RESPONSE}" | grep -q '"success":true' && exit 0 || exit 1
+AUTHEOF
+    chmod 750 "${INSTALL_DIR}/scripts/vpn-auth.sh"
+    ok "vpn-auth.sh creado en ${INSTALL_DIR}/scripts/"
 }
 
 configure_network() {
@@ -550,6 +581,7 @@ main() {
     generate_pki
     deploy_server_certs
     generate_mikrotik_conf
+    generate_vpn_auth_script
     configure_network
     configure_ufw
     configure_fail2ban

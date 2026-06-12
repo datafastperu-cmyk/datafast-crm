@@ -13,7 +13,7 @@ fi
 
 IP="${trusted_ip}"
 
-RESPONSE=$(curl -sf -m 5 -X POST http://127.0.0.1:3000/api/v1/openvpn/mikrotik-clients/verificar-sesion-cn \
+RESPONSE=$(curl -sf -m 5 -X POST http://127.0.0.1:4000/api/v1/openvpn/mikrotik-clients/verificar-sesion-cn \
   -H 'Content-Type: application/json' \
   -d "{\"cn\":\"${CN}\",\"ipNueva\":\"${IP}\"}" 2>/dev/null)
 
