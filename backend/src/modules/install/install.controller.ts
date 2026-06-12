@@ -44,13 +44,11 @@ export class InstallController {
     const cfg = this.installSvc.getCurrentDbConfig();
     // No exponer la contraseña completa, solo confirmar si está configurada
     return {
-      host:              cfg.host,
-      port:              cfg.port,
-      username:          cfg.username,
-      password:          cfg.password ? '••••••••' : '',
+      host:               cfg.host,
+      port:               cfg.port,
+      username:           cfg.username,
       passwordConfigured: !!cfg.password,
-      database:          cfg.database,
-      rawPassword:       cfg.password,
+      database:           cfg.database,
     };
   }
 

@@ -275,9 +275,9 @@ export class AuthService {
     const mailEnviado = await this.enviarEmailRecuperacion(usuario, resetUrl);
 
     if (!mailEnviado) {
-      // Fallback de emergencia: loggear en servidor cuando SMTP no está configurado
+      // SMTP no configurado — solo loggear que el email no se pudo enviar, sin exponer el token
       this.logger.warn(
-        `[RECOVERY] SMTP no configurado — enlace de recuperación para <${email}>: ${resetUrl}`,
+        `[RECOVERY] SMTP no configurado — no se pudo enviar correo a <${email}>. Configura SMTP_HOST en .env`,
       );
     }
 

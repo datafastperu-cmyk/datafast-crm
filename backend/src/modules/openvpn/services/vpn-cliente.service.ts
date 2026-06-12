@@ -21,8 +21,8 @@ import { Router, MetodoConexion, EstadoEquipo, VersionRouterOS } from '../../mik
 const CA_CRT      = '/etc/openvpn/server/ca.crt';
 const CCD_DIR     = '/etc/openvpn/ccd';
 const STATUS_LOG  = '/var/log/openvpn/status-mikrotik.log';
-const VPS_IP      = '149.34.48.224';
-const VPN_PORT    = 1195;
+const VPS_IP      = process.env.VPN_SERVER_IP || process.env.APP_URL?.replace(/^https?:\/\//, '').split(':')[0] || '127.0.0.1';
+const VPN_PORT    = parseInt(process.env.VPN_SERVER_PORT || '1195', 10);
 
 interface VpnConnectedClient {
   commonName:     string;

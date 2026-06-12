@@ -99,7 +99,7 @@ import { MensajeriaModule }            from './modules/mensajeria/mensajeria.mod
             port:     config.get<number>('redis.port') || 6379,
             password: config.get<string>('redis.password') || undefined,
             db:       0,
-            ttl:      300,
+            ttl:      300_000, // 5 minutos en ms (cache-manager v5 usa ms)
           }),
         };
       },

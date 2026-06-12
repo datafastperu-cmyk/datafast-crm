@@ -65,6 +65,8 @@ export class PagosService {
     user: JwtPayload,
     req?: any,
   ): Promise<Pago> {
+    // Siempre usar la empresa del JWT — nunca confiar en el body para esto
+    const empresaId = user.empresaId;
     const metodoPagoEntity = METODO_PAGO_MAP[dto.metodoPago];
     let contratoParaReactivar: Contrato | null = null;
 
@@ -73,7 +75,7 @@ export class PagosService {
 
       // PASO 1 — Idempotencia
       const duplicado = await manager.findOne(Pago, {
-        where: { empresaId: dto.empresaId, metodoPago: metodoPagoEntity, numeroOperacion: dto.numeroOperacion },
+        where: { empresaId, metodoPago: metodoPagoEntity, numeroOperacion: dto.numeroOperacion },
       });
       if (duplicado) {
         throw new ConflictException(
@@ -84,7 +86,7 @@ export class PagosService {
 
       // PASO 2 — Validar factura y cargar contrato
       const factura = await manager.findOne(Factura, {
-        where: { id: dto.facturaId, empresaId: dto.empresaId },
+        where: { id: dto.facturaId, empresaId },
       });
       if (!factura) {
         throw new NotFoundException(`Factura ${dto.facturaId} no encontrada`);
@@ -106,7 +108,7 @@ export class PagosService {
       const estadoInicial  = autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION;
 
       const pago = manager.create(Pago, {
-        empresaId:       dto.empresaId,
+        empresaId,
         clienteId:       factura.clienteId,
         facturaId:       dto.facturaId,
         contratoId:      factura.contratoId ?? null,

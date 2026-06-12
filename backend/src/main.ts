@@ -39,12 +39,10 @@ async function bootstrap() {
   });
 
   // ── CORS ─────────────────────────────────────────────────────
+  const allowedOrigins = config.get<string[]>('app.allowedOrigins') ?? [];
   app.enableCors({
-    // JWT en Authorization header es la capa de seguridad real.
-    // Aceptamos cualquier origen para que funcione en cualquier dominio
-    // sin reconfigurar por cada cliente (multi-tenant).
-    origin: true,
-    credentials: true,           // Permitir cookies
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
