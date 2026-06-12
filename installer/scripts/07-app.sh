@@ -83,23 +83,27 @@ _install_backend() {
         fi
     done
 
-    info "Compilando backend (TypeScript → JavaScript)..."
-    npm install -g @nestjs/cli >> "${LOG_FILE}" 2>&1
+    # Eliminar archivos .js en src/ — evita que SWC Stage-3 (__esDecorate) sobreescriba el output LEGACY correcto
+    find "${INSTALL_DIR}/backend/src" -name '*.js' -delete 2>/dev/null || true
+
+    info "Compilando backend con SWC (evita __esDecorate en TypeORM)..."
+    sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
     local build_retries=2
     for i in $(seq 1 $build_retries); do
-        if sudo -u datafast npm run build >> "${LOG_FILE}" 2>&1; then
-            ok "Backend compilado"
+        if sudo -u datafast bash -c "cd '${INSTALL_DIR}/backend' && NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/nest build" >> "${LOG_FILE}" 2>&1; then
+            ok "Backend compilado — dist/ listo"
             return
         fi
         warn "Build falló (intento ${i}/${build_retries})..."
-        sleep 5
+        sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+        sleep 10
     done
 
-    echo -e "\n${R}[✗] Error de compilación TypeScript — últimas 50 líneas:${NC}" >&2
+    echo -e "\n${R}[✗] Error de compilación — últimas 50 líneas:${NC}" >&2
     tail -50 "${LOG_FILE}" >&2
-    error "npm run build del backend falló.
+    error "nest build del backend falló.
     Revisa errores TypeScript arriba.
-    Comando manual: cd ${INSTALL_DIR}/backend && npm run build"
+    Comando manual: cd ${INSTALL_DIR}/backend && NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/nest build"
 }
 
 # ── Dependencias frontend ──────────────────────────────────────
@@ -118,14 +122,15 @@ _install_frontend() {
             || error "npm install del frontend falló después de ${retries} intentos."
     done
 
-    info "Compilando frontend (Next.js build)..."
-    if ! sudo -u datafast NODE_ENV=production npm run build >> "${LOG_FILE}" 2>&1; then
+    info "Compilando frontend (Next.js build, puede tardar 3-8 min)..."
+    sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    if ! sudo -u datafast bash -c "cd '${INSTALL_DIR}/frontend' && NODE_ENV=production NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/next build" >> "${LOG_FILE}" 2>&1; then
         echo -e "\n${R}[✗] Error de compilación Next.js — últimas 30 líneas:${NC}" >&2
         tail -30 "${LOG_FILE}" >&2
-        error "npm run build del frontend falló.
-    Comando manual: cd ${INSTALL_DIR}/frontend && npm run build"
+        error "next build del frontend falló.
+    Comando manual: cd ${INSTALL_DIR}/frontend && NODE_OPTIONS='--max-old-space-size=1200' node_modules/.bin/next build"
     fi
-    ok "Frontend compilado"
+    ok "Frontend compilado — .next/ listo"
 }
 
 # ── Migraciones ────────────────────────────────────────────────
@@ -148,14 +153,16 @@ _run_migrations() {
         sleep 3
     done
 
+    local migrate_cmd="set -a; source '${INSTALL_DIR}/backend/.env.production'; set +a; cd '${INSTALL_DIR}/backend' && npm run migration:run"
     local retries=3
     for i in $(seq 1 $retries); do
-        if sudo -u datafast npm run migration:run >> "${LOG_FILE}" 2>&1; then
+        sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+        if sudo -u datafast bash -c "$migrate_cmd" >> "${LOG_FILE}" 2>&1; then
             ok "Migraciones ejecutadas"
             return
         fi
-        warn "Migraciones fallaron (intento ${i}/${retries}) — reintentando en 5s..."
-        sleep 5
+        warn "Migraciones fallaron (intento ${i}/${retries}) — reintentando en 15s..."
+        sleep 15
     done
     warn "No se pudieron ejecutar las migraciones automáticamente.
     Comando manual: cd ${INSTALL_DIR}/backend && npm run migration:run"
