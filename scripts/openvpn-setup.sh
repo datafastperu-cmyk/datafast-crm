@@ -44,13 +44,18 @@ FLAG_REINSTALL=false
 FLAG_STATUS_ONLY=false
 
 # Leer NODE_ENV desde .env — controla si se activa UFW/Fail2Ban
-ENV_FILE="${ENV_FILE:-/opt/datafast/.env}"
+# Buscar en orden: variable de entorno → dev → producción
 NODE_ENV="development"
-if [[ -f "$ENV_FILE" ]]; then
-    _ne=$(grep -E '^NODE_ENV=' "$ENV_FILE" 2>/dev/null | head -1 \
+for _candidate in \
+    "${ENV_FILE:-}" \
+    "/opt/datafast/backend/.env" \
+    "/opt/datafast/backend/.env.production"; do
+    [[ -n "$_candidate" && -f "$_candidate" ]] || continue
+    ENV_FILE="$_candidate"
+    _ne=$(grep -E '^NODE_ENV=' "$_candidate" 2>/dev/null | head -1 \
         | cut -d'=' -f2 | tr -d '"' | tr -d "'" | xargs)
-    [[ -n "$_ne" ]] && NODE_ENV="$_ne"
-fi
+    [[ -n "$_ne" ]] && NODE_ENV="$_ne" && break
+done
 
 # ── Colores ────────────────────────────────────────────────────
 R='\033[0;31m'; G='\033[0;32m'; Y='\033[1;33m'
@@ -359,10 +364,10 @@ configure_network() {
 }
 
 configure_ufw() {
-    step "Configurando UFW para VPN"
+    step "Configurando UFW"
     command -v ufw &>/dev/null || { warn "UFW no instalado — omitiendo"; return 0; }
 
-    # Configurar NAT masquerade para que el tráfico VPN salga por la interfaz principal
+    # NAT masquerade y forward policy (siempre — necesario para que el tráfico VPN fluya)
     local before=/etc/ufw/before.rules
     if ! grep -q "DATAFAST-NAT" "$before" 2>/dev/null; then
         python3 - << PYEOF
@@ -380,16 +385,24 @@ PYEOF
     fi
     sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw 2>/dev/null || true
 
-    # Siempre añadir el puerto VPN — no resetear ni deshabilitar UFW
-    # (09-security.sh gestiona las reglas generales del firewall)
-    ufw allow "${MIKROTIK_PORT}/tcp" comment 'OpenVPN-MikroTik' >> "${LOG_FILE}" 2>&1 || true
-
-    # Recargar solo si UFW está activo
-    if ufw status 2>/dev/null | grep -q "Status: active"; then
-        ufw reload >> "${LOG_FILE}" 2>&1 || true
-        ok "UFW: puerto ${MIKROTIK_PORT}/tcp abierto para OpenVPN"
+    if [ "$NODE_ENV" = "production" ]; then
+        ufw --force reset >> "${LOG_FILE}" 2>&1
+        ufw default deny incoming >> "${LOG_FILE}" 2>&1
+        ufw default allow outgoing >> "${LOG_FILE}" 2>&1
+        ufw allow 22/tcp   comment 'SSH'              >> "${LOG_FILE}" 2>&1
+        ufw allow 80/tcp   comment 'HTTP-nginx'        >> "${LOG_FILE}" 2>&1
+        ufw allow 443/tcp  comment 'HTTPS-nginx'       >> "${LOG_FILE}" 2>&1
+        ufw allow "${MIKROTIK_PORT}/tcp" comment 'OpenVPN-MikroTik' >> "${LOG_FILE}" 2>&1
+        ufw deny from any to any port 3000 proto tcp comment 'NextJS-internal'  >> "${LOG_FILE}" 2>&1
+        ufw deny from any to any port 4000 proto tcp comment 'NestJS-internal'  >> "${LOG_FILE}" 2>&1
+        ufw deny from any to any port 5432 proto tcp comment 'Postgres-block'   >> "${LOG_FILE}" 2>&1
+        ufw deny from any to any port 6379 proto tcp comment 'Redis-block'      >> "${LOG_FILE}" 2>&1
+        echo "y" | ufw enable >> "${LOG_FILE}" 2>&1
+        ok "UFW activo — puertos permitidos: 22, 80, 443, ${MIKROTIK_PORT}/tcp"
+        ok "UFW bloqueado: 3000, 4000, 5432, 6379"
     else
-        ok "Regla UFW añadida — se activará cuando UFW esté habilitado"
+        ufw disable >> "${LOG_FILE}" 2>&1 || true
+        warn "UFW desactivado — NODE_ENV=development"
     fi
 }
 
@@ -576,6 +589,7 @@ main() {
     generate_vpn_auth_script
     configure_network
     configure_ufw
+    configure_fail2ban
     configure_systemd
     save_pki_metadata
     validate_installation || true
