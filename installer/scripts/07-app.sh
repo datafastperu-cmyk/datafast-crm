@@ -22,9 +22,9 @@ _deploy_code() {
     local REPO="https://github.com/datafastperu-cmyk/datafast-crm.git"
     local retries=3
 
-    if [[ -d "${INSTALL_DIR}/backend/src" ]]; then
+    if [[ -d "${INSTALL_DIR}/.git" ]]; then
         info "Código ya presente — actualizando..."
-        git -C "${INSTALL_DIR}/backend" pull >> "${LOG_FILE}" 2>&1 || \
+        git -C "${INSTALL_DIR}" pull >> "${LOG_FILE}" 2>&1 || \
             warn "git pull falló — usando versión actual"
         return
     fi
@@ -55,7 +55,12 @@ _deploy_code() {
         mkdir -p "${INSTALL_DIR}/docs"
         cp -r /tmp/datafast-src/docs/. "${INSTALL_DIR}/docs/"
     fi
+    # Mover .git a INSTALL_DIR para habilitar git pull desde ahí
+    mv /tmp/datafast-src/.git "${INSTALL_DIR}/.git"
     rm -rf /tmp/datafast-src
+    # Permitir que root y datafast accedan al repo (evita "dubious ownership")
+    git config --global --add safe.directory "${INSTALL_DIR}" 2>/dev/null || true
+    sudo -u datafast git config --global --add safe.directory "${INSTALL_DIR}" 2>/dev/null || true
 
     chown -R datafast:datafast "${INSTALL_DIR}/backend" "${INSTALL_DIR}/frontend"
     ok "Código desplegado"
