@@ -133,6 +133,15 @@ check_aplicacion() {
     else
         _fail "Migraciones — ${pending} migración(es) pendiente(s)"
     fi
+
+    # Drift entidad→BD: columnas en TypeORM que no existen en la tabla real
+    local drift_lines
+    drift_lines=$(npm run db:check --silent 2>/dev/null | grep -c "^query:" || echo "0")
+    if [[ "${drift_lines}" == "0" ]]; then
+        _ok "Schema drift — entidades y BD sincronizadas"
+    else
+        _fail "Schema drift — ${drift_lines} columna(s)/tabla(s) en las entidades sin migración correspondiente. Ejecuta: npm run migration:generate -- src/database/migrations/FixDrift && npm run migration:run"
+    fi
 }
 
 # ══════════════════════════════════════════════════════════════
