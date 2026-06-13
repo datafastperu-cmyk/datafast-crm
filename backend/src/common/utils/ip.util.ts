@@ -92,7 +92,7 @@ export function isValidCidr(cidr: string): boolean {
   const prefixLen = parseInt(prefix, 10);
   if (!isValidIp(ip) || prefixLen < 1 || prefixLen > 30) return false;
   const mask = (~0 << (32 - prefixLen)) >>> 0;
-  return (ipToInt(ip) & mask) === ipToInt(ip);
+  return ((ipToInt(ip) & mask) >>> 0) === ipToInt(ip);
 }
 
 // Calcular porcentaje de uso del pool
