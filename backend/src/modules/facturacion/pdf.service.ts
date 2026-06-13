@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit';
 import { Factura, TipoComprobante, EstadoFactura } from './entities/factura.entity';
 
 // ─── Datos de la empresa para el PDF ─────────────────────────
