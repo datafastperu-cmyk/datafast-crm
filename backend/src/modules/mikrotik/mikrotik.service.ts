@@ -1144,9 +1144,13 @@ export class MikrotikService {
       version:         'v6',
     };
 
-    this.ifaceSvc.detectarVersion(creds)
-      .then((version) => {
-        const rosVersion = version === 'v7' ? VersionRouterOS.V7 : VersionRouterOS.V6;
+    // getRecursos lanza si la conexión falla (a diferencia de detectarVersion,
+    // que tiene fallback interno y nunca lanza — lo que causaba que siempre se
+    // seteara ONLINE aunque el router no fuera alcanzable).
+    this.ifaceSvc.getRecursos(creds)
+      .then((recursos) => {
+        const version    = recursos.version || '';
+        const rosVersion = version.startsWith('7') ? VersionRouterOS.V7 : VersionRouterOS.V6;
         return this.routerRepo.update(router.id, {
           versionRos: rosVersion,
           estado:     EstadoEquipo.ONLINE,
