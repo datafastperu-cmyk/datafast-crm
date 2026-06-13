@@ -295,7 +295,12 @@ export function TiempoRealContent() {
       {modalOpen && (
         <DispositivoFormModal
           onClose={() => setModalOpen(false)}
-          onSuccess={() => { setModalOpen(false); refetch(); }}
+          onSuccess={() => {
+            setModalOpen(false);
+            refetch();
+            // El sondeo inmediato del backend tarda ~3-5s; un segundo refetch lo captura
+            setTimeout(() => refetch(), 5000);
+          }}
         />
       )}
 
