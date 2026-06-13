@@ -407,6 +407,13 @@ export class MikrotikService {
     const errores:      string[] = [];
     const advertencias: string[] = [];
 
+    // Asegurar reglas globales de firewall (drop morosos / accept prorroga)
+    await this.firewallSvc.configurarReglasControl(creds).catch((err) => {
+      this.reglasOk.delete(router.id);
+      advertencias.push(`Reglas de firewall: ${err?.message ?? 'error desconocido'}`);
+      this.logger.warn(`[REPARAR] No se pudieron configurar reglas firewall en ${creds.ip}: ${err?.message}`);
+    });
+
     for (const co of contratos) {
       // ── Auth efectiva que DEBE tener este contrato en el MikroTik ─────────
       const targetAuth: string = router.controlaAutenticacion

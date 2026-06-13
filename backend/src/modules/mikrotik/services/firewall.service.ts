@@ -18,6 +18,7 @@ export interface DhcpStaticBinding {
 @Injectable()
 export class FirewallService {
   private readonly logger = new Logger(FirewallService.name);
+  private readonly _reglasLock = new Map<string, Promise<void>>();
 
   constructor(private readonly pool: RouterConnectionPool) {}
 
@@ -139,14 +140,16 @@ export class FirewallService {
   }
 
   // ── Configurar/reparar las 2 reglas de control (idempotente) ───────────
-  // Orden garantizado en cadena forward:
-  //   pos 0 → DROP morosos    (bloquea todo el tráfico de IPs en mora)
-  //   pos 1 → PRORROGA accept (acceso completo — antes de cualquier default-deny)
-  //
-  // Si las reglas existen con orden incorrecto o dst-address-list legacy,
-  // se eliminan y recrean. Inserción inversa en pos 0: prorroga primero,
-  // drop segundo → resultado final: drop(0) prorroga(1).
+  // Serializa llamadas concurrentes por router para evitar duplicados.
   async configurarReglasControl(creds: RouterCredentials): Promise<void> {
+    const id   = creds.id;
+    const prev = this._reglasLock.get(id) ?? Promise.resolve();
+    const next = prev.then(() => this._doConfigurarReglasControl(creds));
+    this._reglasLock.set(id, next.catch(() => {}));
+    return next;
+  }
+
+  private async _doConfigurarReglasControl(creds: RouterCredentials): Promise<void> {
     const DROP_COMMENT     = 'Datafast-Bloquear Morosos';
     const PRORROGA_COMMENT = 'DATAFAST: Prorroga acceso completo';
 
@@ -197,8 +200,15 @@ export class FirewallService {
     // con estado corrupto si devolvió UNKNOWNREPLY por cadena vacía).
     const writeApi = await this.pool.connectDirect(creds);
     try {
-      for (const rule of [dropRule, prorrogaRule, portalRule]) {
-        if (rule) await writeApi.write('/ip/firewall/filter/remove', [`=.id=${rule['.id']}`]);
+      // Eliminar TODAS las instancias con nuestros comentarios (no solo la primera)
+      // para limpiar duplicados previos causados por llamadas concurrentes.
+      const toRemove = allRules.filter((r: any) =>
+        r.comment === DROP_COMMENT ||
+        r.comment === PRORROGA_COMMENT ||
+        r.comment === 'DATAFAST: Morosos portal pago',
+      );
+      for (const rule of toRemove) {
+        await writeApi.write('/ip/firewall/filter/remove', [`=.id=${rule['.id']}`]);
       }
 
       // Añadir al final sin place-before: place-before=0 falla con "no such item"
