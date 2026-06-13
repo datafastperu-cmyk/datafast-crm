@@ -3,8 +3,8 @@ import * as bcrypt from 'bcryptjs';
 
 // ─────────────────────────────────────────────────────────────
 // Migración 010 — Seeds iniciales
-// Datos necesarios para arrancar el sistema:
-// - Empresa demo
+// Datos mínimos para arrancar el sistema:
+// - Empresa placeholder (el operador completa sus datos en primer login)
 // - Permisos del sistema (todos)
 // - Roles predefinidos con permisos
 // - Usuario administrador inicial
@@ -14,7 +14,7 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
 
-    // ── 1. Empresa demo ───────────────────────────────────────
+    // ── 1. Empresa inicial (placeholder — configurar en primer login) ──
     await queryRunner.query(`
       INSERT INTO empresas (
         id, razon_social, nombre_comercial, ruc,
@@ -23,11 +23,11 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
         serie_boleta, serie_factura, estado
       ) VALUES (
         'a0000000-0000-0000-0000-000000000001',
-        'DATAFAST Internet S.A.C.',
-        'CRM ISP DATAFAST',
-        '20600000001',
-        '+51 073 000000',
-        'admin@datafast.pe',
+        'Mi Empresa ISP S.A.C.',
+        'Mi Empresa ISP',
+        '00000000000',
+        '',
+        'admin@miempresa.pe',
         'PEN', 'S/',
         0.18, 1, 5,
         'B001', 'F001', 'activo'
@@ -221,7 +221,7 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
         'a0000000-0000-0000-0000-000000000001',
         'SEED',
         'sistema',
-        'Seeds iniciales aplicados: empresa demo, permisos, roles y usuario administrador'
+        'Seeds iniciales aplicados: empresa placeholder, permisos, roles y usuario administrador'
       )
     `);
   }
