@@ -7,8 +7,10 @@ deploy_app() {
     _deploy_code
     _write_backend_env
     _write_frontend_env
+    _write_olt_env
     _install_backend
     _install_frontend
+    _install_olt_service
     _run_migrations
     _run_seed
     _setup_evolution_api
@@ -40,6 +42,11 @@ _deploy_code() {
 
     cp -r /tmp/datafast-src/backend/.  "${INSTALL_DIR}/backend/"
     cp -r /tmp/datafast-src/frontend/. "${INSTALL_DIR}/frontend/"
+    if [[ -d /tmp/datafast-src/olt-automation-service ]]; then
+        mkdir -p "${INSTALL_DIR}/olt-automation-service"
+        cp -r /tmp/datafast-src/olt-automation-service/. "${INSTALL_DIR}/olt-automation-service/"
+        chown -R datafast:datafast "${INSTALL_DIR}/olt-automation-service"
+    fi
     if [[ -d /tmp/datafast-src/scripts ]]; then
         cp -r /tmp/datafast-src/scripts/. "${INSTALL_DIR}/scripts/"
         find "${INSTALL_DIR}/scripts" -name "*.sh" -exec chmod +x {} +
@@ -52,6 +59,58 @@ _deploy_code() {
 
     chown -R datafast:datafast "${INSTALL_DIR}/backend" "${INSTALL_DIR}/frontend"
     ok "Código desplegado"
+}
+
+# ── OLT Automation Service ─────────────────────────────────────────────────────
+
+_write_olt_env() {
+    cat > "${INSTALL_DIR}/olt-automation-service/.env" << ENVEOF
+APP_NAME=olt-automation-service
+APP_VERSION=1.0.0
+DEBUG=false
+INTERNAL_API_KEY=$(openssl rand -hex 16)
+ALLOWED_ORIGINS=http://127.0.0.1:4000,http://localhost:4000
+ENVEOF
+    chown datafast:datafast "${INSTALL_DIR}/olt-automation-service/.env"
+    chmod 600 "${INSTALL_DIR}/olt-automation-service/.env"
+    ok "OLT service .env creado"
+}
+
+_install_olt_service() {
+    step "Instalando OLT Automation Service (Python)"
+
+    info "Instalando dependencias de sistema para OLT service..."
+    apt-get install -y -qq python3 python3-pip python3-venv python3-dev \
+        libsnmp-dev snmp >> "${LOG_FILE}" 2>&1
+
+    local svc_dir="${INSTALL_DIR}/olt-automation-service"
+    cd "$svc_dir"
+
+    info "Creando virtualenv Python..."
+    if [[ ! -d venv ]]; then
+        sudo -u datafast python3 -m venv venv >> "${LOG_FILE}" 2>&1
+    fi
+
+    info "Instalando dependencias Python (pip)..."
+    if ! sudo -u datafast bash -c "
+        cd '${svc_dir}' &&
+        venv/bin/pip install --upgrade pip --quiet &&
+        venv/bin/pip install -r requirements.txt --quiet
+    " >> "${LOG_FILE}" 2>&1; then
+        error "pip install del OLT service falló.
+    Revisa el log: ${LOG_FILE}
+    Comando manual: cd ${svc_dir} && venv/bin/pip install -r requirements.txt"
+    fi
+
+    # cap_net_raw permite a icmplib enviar ICMP sin root
+    local py_bin; py_bin=$(readlink -f venv/bin/python3 2>/dev/null || echo "")
+    if [[ -n "$py_bin" ]]; then
+        setcap cap_net_raw+ep "$py_bin" >> "${LOG_FILE}" 2>&1 && \
+            info "cap_net_raw asignado a $py_bin" || \
+            warn "setcap falló — ping ICMP requiere root o cap_net_raw manual"
+    fi
+
+    ok "OLT Automation Service instalado"
 }
 
 # ── Dependencias backend ───────────────────────────────────────
@@ -316,6 +375,8 @@ ENCRYPTION_KEY=${ENCRYPTION_KEY}
 EVOLUTION_API_URL=http://localhost:8080
 EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
 
+OLT_SERVICE_URL=http://127.0.0.1:8001
+
 LOG_LEVEL=warn
 ENVEOF
     chmod 600 "${INSTALL_DIR}/backend/.env.production"
@@ -345,8 +406,10 @@ upgrade_app() {
     _deploy_code
     _install_backend
     _install_frontend
+    _install_olt_service
     _run_migrations
-    sudo -u datafast pm2 reload datafast-backend  >> "${LOG_FILE}" 2>&1 || true
-    sudo -u datafast pm2 restart datafast-frontend >> "${LOG_FILE}" 2>&1 || true
+    sudo -u datafast pm2 reload  datafast-backend       >> "${LOG_FILE}" 2>&1 || true
+    sudo -u datafast pm2 restart datafast-frontend       >> "${LOG_FILE}" 2>&1 || true
+    pm2 restart olt-automation-service                   >> "${LOG_FILE}" 2>&1 || true
     ok "DATAFAST actualizado"
 }

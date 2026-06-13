@@ -47,6 +47,28 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
+      name:        'olt-automation-service',
+      script:      '${INSTALL_DIR}/olt-automation-service/venv/bin/uvicorn',
+      args:        'app.main:app --host 127.0.0.1 --port 8001 --reload',
+      cwd:         '${INSTALL_DIR}/olt-automation-service',
+      interpreter: 'none',
+      exec_mode:   'fork',
+      instances:   1,
+      env_file: '${INSTALL_DIR}/olt-automation-service/.env',
+      env: {
+        PYTHONPATH: '${INSTALL_DIR}/olt-automation-service',
+        TZ:         'America/Lima',
+      },
+      max_memory_restart: '256M',
+      restart_delay:      5000,
+      max_restarts:       5,
+      kill_timeout:       5000,
+      out_file:    '${INSTALL_DIR}/logs/olt-out.log',
+      error_file:  '${INSTALL_DIR}/logs/olt-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      watch: false,
+    },
+    {
       name:    'datafast-frontend',
       script:  'node_modules/.bin/next',
       args:    'start',
@@ -77,7 +99,7 @@ EOF
     info "Iniciando procesos con PM2..."
     # Matar cualquier PM2 existente del usuario datafast para evitar conflicto de daemons
     sudo -u datafast pm2 kill >> "${LOG_FILE}" 2>&1 || true
-    pm2 delete datafast-backend datafast-frontend >> "${LOG_FILE}" 2>&1 || true
+    pm2 delete datafast-backend datafast-frontend olt-automation-service >> "${LOG_FILE}" 2>&1 || true
 
     cd "${INSTALL_DIR}"
     pm2 start ecosystem.dev.config.js >> "${LOG_FILE}" 2>&1

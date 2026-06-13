@@ -54,6 +54,34 @@ module.exports = {
       watch:     false,
     },
 
+    // ── OLT Automation Service (Python/FastAPI) ───────────────
+    {
+      name:        'olt-automation-service',
+      script:      '${INSTALL_DIR}/olt-automation-service/venv/bin/uvicorn',
+      args:        'app.main:app --host 127.0.0.1 --port 8001 --workers 2',
+      cwd:         '${INSTALL_DIR}/olt-automation-service',
+      interpreter: 'none',
+      exec_mode:   'fork',
+      instances:   1,
+
+      env_file: '${INSTALL_DIR}/olt-automation-service/.env',
+      env: {
+        PYTHONPATH: '${INSTALL_DIR}/olt-automation-service',
+        TZ:         'America/Lima',
+      },
+
+      max_memory_restart: '256M',
+      restart_delay:      5000,
+      max_restarts:       10,
+      min_uptime:         '10s',
+
+      out_file:        '${INSTALL_DIR}/logs/olt-out.log',
+      error_file:      '${INSTALL_DIR}/logs/olt-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs:      true,
+      watch:           false,
+    },
+
     // ── Frontend Next.js ──────────────────────────────────────
     {
       name:      'datafast-frontend',
@@ -88,7 +116,7 @@ EOF
 
     # ── Iniciar procesos ───────────────────────────────────────
     info "Iniciando procesos con PM2..."
-    sudo -u datafast pm2 delete datafast-backend datafast-frontend >> "${LOG_FILE}" 2>&1 || true
+    sudo -u datafast pm2 delete datafast-backend datafast-frontend olt-automation-service >> "${LOG_FILE}" 2>&1 || true
 
     cd "${INSTALL_DIR}"
     if ! sudo -u datafast pm2 start ecosystem.config.js >> "${LOG_FILE}" 2>&1; then
@@ -132,6 +160,7 @@ EOF
     # ── Healthcheck real post-arranque ─────────────────────────
     _wait_for_backend
     _wait_for_frontend
+    _wait_for_olt
 
     # ── Logrotate ─────────────────────────────────────────────
     cat > /etc/logrotate.d/datafast << EOF
@@ -168,6 +197,24 @@ _wait_for_backend() {
     done
     warn "Backend no respondió en 90s — puede estar compilando aún"
     warn "Verifica con: pm2 logs datafast-backend --lines 30"
+}
+
+_wait_for_olt() {
+    info "Esperando que el OLT service responda en /api/v1/health..."
+    local tries=20   # 60s máximo
+    for i in $(seq 1 $tries); do
+        local code
+        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+            http://127.0.0.1:8001/api/v1/health 2>/dev/null || echo "000")
+        if [[ "$code" == "200" ]]; then
+            ok "OLT service respondiendo (HTTP 200)"
+            return
+        fi
+        [[ $((i % 5)) -eq 0 ]] && info "  ...esperando OLT service (${i}/${tries}) — HTTP ${code}"
+        sleep 3
+    done
+    warn "OLT service no respondió en 60s"
+    warn "Verifica con: pm2 logs olt-automation-service --lines 30"
 }
 
 _wait_for_frontend() {

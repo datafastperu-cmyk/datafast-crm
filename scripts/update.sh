@@ -124,7 +124,21 @@ for i in 1 2 3; do
     [[ $i -eq 3 ]] && warn "Migraciones fallaron — verificar manualmente"
 done
 
-# ── 6. Reload backend (zero-downtime cluster) ─────────────────────────────────
+# ── 6. OLT Automation Service: dependencias + restart ────────────────────────
+step "Actualizando OLT Automation Service"
+OLT_DIR="${INSTALL_DIR}/olt-automation-service"
+if [[ -d "${OLT_DIR}" && -d "${OLT_DIR}/venv" ]]; then
+    "${OLT_DIR}/venv/bin/pip" install -r "${OLT_DIR}/requirements.txt" --quiet >> "$LOG_FILE" 2>&1 \
+        && log "OLT service: dependencias actualizadas" \
+        || warn "OLT service: pip install falló — revisa el log"
+    pm2 restart olt-automation-service >> "$LOG_FILE" 2>&1 \
+        && log "OLT service reiniciado" \
+        || warn "OLT service: pm2 restart falló"
+else
+    warn "OLT service no instalado en ${OLT_DIR} — omitiendo"
+fi
+
+# ── 7. Reload backend (zero-downtime cluster) ─────────────────────────────────
 step "Reload backend"
 pm2 reload "${ECOSYSTEM}" --only datafast-backend >> "$LOG_FILE" 2>&1 \
     || pm2 restart datafast-backend               >> "$LOG_FILE" 2>&1 \

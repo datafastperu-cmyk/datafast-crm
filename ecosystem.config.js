@@ -50,6 +50,36 @@ module.exports = {
       watch:     false,
     },
 
+    // ── OLT Automation Service (Python/FastAPI) ──────────────────────────────
+    {
+      name:        'olt-automation-service',
+      script:      '/opt/datafast/olt-automation-service/venv/bin/uvicorn',
+      args:        'app.main:app --host 127.0.0.1 --port 8001 --workers 2',
+      cwd:         '/opt/datafast/olt-automation-service',
+      interpreter: 'none',
+      exec_mode:   'fork',
+      instances:   1,
+
+      env_file: '/opt/datafast/olt-automation-service/.env',
+      env: {
+        PYTHONPATH: '/opt/datafast/olt-automation-service',
+        TZ:         'America/Lima',
+      },
+
+      max_memory_restart: '256M',
+      restart_delay:      5000,
+      max_restarts:       10,
+      min_uptime:         '10s',
+
+      log_file:        '/opt/datafast/logs/olt-combined.log',
+      out_file:        '/opt/datafast/logs/olt-out.log',
+      error_file:      '/opt/datafast/logs/olt-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs:      true,
+
+      watch: false,
+    },
+
     // ── Frontend Next.js ─────────────────────────────────────────────────────
     //
     // USA server.js DIRECTAMENTE (no npm start).

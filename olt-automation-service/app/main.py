@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.routers.mikrotik import router as mikrotik_router
+from app.routers.monitoring import router as monitoring_router
 from app.schemas.olt import (
     BatchStatusRequest,
     BatchStatusResponse,
@@ -74,6 +76,9 @@ app.add_middleware(
     allow_methods=['GET', 'POST'],
     allow_headers=['*'],
 )
+
+app.include_router(mikrotik_router)
+app.include_router(monitoring_router)
 
 
 # ── Manejadores de excepción globales ─────────────────────────

@@ -7,8 +7,10 @@ deploy_app_dev() {
     _deploy_code_dev
     _write_backend_env_dev
     _write_frontend_env_dev
+    _write_olt_env_dev
     _install_backend_dev
     _install_frontend_dev
+    _install_olt_service_dev
     _run_migrations_dev
     _run_seed_dev
     _setup_evolution_api_dev
@@ -26,6 +28,11 @@ _deploy_code_dev() {
         git clone --depth 1 "$REPO" /tmp/datafast-src >> "${LOG_FILE}" 2>&1
         cp -r /tmp/datafast-src/backend/.  "${INSTALL_DIR}/backend/"
         cp -r /tmp/datafast-src/frontend/. "${INSTALL_DIR}/frontend/"
+        if [[ -d /tmp/datafast-src/olt-automation-service ]]; then
+            mkdir -p "${INSTALL_DIR}/olt-automation-service"
+            cp -r /tmp/datafast-src/olt-automation-service/. "${INSTALL_DIR}/olt-automation-service/"
+            chown -R datafast:datafast "${INSTALL_DIR}/olt-automation-service"
+        fi
         if [[ -d /tmp/datafast-src/scripts ]]; then
             cp -r /tmp/datafast-src/scripts/. "${INSTALL_DIR}/scripts/"
             find "${INSTALL_DIR}/scripts" -name "*.sh" -exec chmod +x {} +
@@ -73,6 +80,8 @@ ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
 EVOLUTION_API_URL=http://localhost:8080
 EVOLUTION_API_KEY=${evo_key}
+
+OLT_SERVICE_URL=http://127.0.0.1:8001
 
 LOG_LEVEL=debug
 ENVEOF

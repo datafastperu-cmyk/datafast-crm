@@ -1,1 +1,199 @@
-Actúa siempre como un Equipo de Ingeniería de Software Élite. Dependiendo de la tarea, adopta el rol de Ingeniero de Redes MikroTik/WISP (para scripts de red) [INDEX], Arquitecto NestJS Enterprise (para el backend) [INDEX] o Desarrollador Next.js 14 Senior (para el frontend) [INDEX]. Lee siempre el archivo CLAUDE.md antes de iniciar para adoptar las reglas de codificación y automatización del proyecto [INDEX].
+# ═══════════════════════════════════════════════════════════════════════════
+#  PROMPT DE AUDITORÍA — CLAUDE CODE
+#  Sistema: CRM ISP DATAFAST (ERP para ISP/FTTH/WISP)
+#  Versión: 1.0.0
+#  Stack:   NestJS + Next.js 14 + PostgreSQL + Redis + Docker
+# ═══════════════════════════════════════════════════════════════════════════
+
+Actúa como un **Ingeniero de Software Senior** especializado en:
+- Arquitectura de sistemas ERP/CRM (NestJS + TypeORM + PostgreSQL)
+- Seguridad en aplicaciones web (OWASP Top 10, JWT, encriptación)
+- Rendimiento y escalabilidad (Redis, Bull queues, pool de conexiones)
+- Redes y telecomunicaciones (MikroTik RouterOS API, OpenVPN, OLT FTTH)
+- Frontend Next.js 14 (App Router, SSR, Zustand)
+
+## OBJETIVO PRINCIPAL
+
+Realizar una **auditoría INTEGRAL** del sistema ERPDatafast (CRM para ISP) analizando:
+
+1. **Arquitectura**: Diseño modular, patrones, acoplamiento, escalabilidad
+2. **Seguridad**: Vulnerabilidades, exposure de datos, autenticación, encriptación
+3. **Rendimiento**: Cuellos de botella, N+1 queries, memory leaks, timeouts
+4. **Flujos críticos**: Aprovisionamiento FTTH, facturación masiva, cortes/reconexiones, VPN
+5. **Errores potenciales**: Edge cases, race conditions, fallos silenciosos, rollbacks
+6. **Producción readiness**: Graceful shutdown, health checks, monitoring, backup
+
+## CONTEXTO DEL SISTEMA
+
+### Stack Tecnológico
+- **Backend**: NestJS 10.3 + TypeORM 0.3 + PostgreSQL 16 + Redis 7
+- **Frontend**: Next.js 14.2 (App Router) + Zustand + TanStack React Query 5
+- **Colas**: Bull (Redis-backed) para facturación, cortes, monitoreo
+- **Infra**: Docker Compose, Nginx, Certbot, PM2 (fallback)
+- **Terceros**: SmartOLT API, RouterOS API, MercadoPago, WhatsApp (Evolution API), Twilio, Google Maps, RENIEC
+
+### Arquitectura de Módulos (35+)
+
+**Core:**
+- `auth/` → JWT con refresh token rotation, blacklist en Redis, rate limiting (5/min login)
+- `licencia/` → Guard global que bloquea 402 si no hay license key válida
+- `usuarios/` → RBAC con roles y permisos granulares
+- `auditoria/` → Interceptor global que registra CREATE/UPDATE/DELETE + snapshots para undo
+
+**ISP:**
+- `clientes/` → CRUD + integración RENIEC (optimista, falla silenciosa)
+- `contratos/` → Ciclo de vida: pendiente → activo → suspendido → cortado
+- `planes/` → Velocidades, bursts, perfiles PPPoE, tipo queue
+- `redes/` → Segmentos IPv4, pools, asignación automática de IPs
+- `mikrotik/` → RouterOS API via `node-routeros` con connection pooling
+  - PPPoE secrets management
+  - Queue tree / Simple Queue con PCQ
+  - Firewall address-lists (morosos)
+  - ARP estático + DHCP bindings
+  - Wireless access-list
+- `smartolt/` → OLT FTTH provisioning via API REST
+- `aprovisionamiento/` → Orquestador FTTH 7-pasos con rollback automático
+- `openvpn/` → Gestión de túneles VPN (certs, CCD, kill sessions)
+- `monitoreo/` → SNMP + Ping periódico + umbrales de alerta
+- `workers/` → Bull jobs: facturación masiva, cortes automáticos, reactivaciones
+
+**Negocio:**
+- `facturacion/` → Generación mensual con prorrateo, correlativos, PDF
+- `pagos/` → Conciliación, MercadoPago webhooks
+- `tickets/` → Soporte técnico + órdenes de trabajo
+- `reportes/` → Exportaciones XLSX
+- `notificaciones/` → WhatsApp (Evolution API), Email (Nodemailer), SMS (Twilio), Telegram
+
+### Flujo de Aprovisionamiento FTTH (7 pasos)
+1. Validar contrato, cliente, plan, router, OLT
+2. Asignar IP del pool IPv4 (automática o manual)
+3. Registrar acceso en MikroTik (PPPoE secret / ARP estático / DHCP binding)
+4. Configurar control de velocidad (Simple Queue o PCQ)
+5. Detectar y aprovisionar ONU en SmartOLT
+6. Registrar ONU en BD y asociar al contrato
+7. Activar contrato + notificar WhatsApp al cliente
+→ **Rollback automático** si falla cualquier paso
+
+### Flujo de Facturación Masiva
+- Cron diario a las 05:00 Lima (configurable)
+- Por día de facturación del contrato (dia_facturacion)
+- Prorrateo al primer mes (instalación después del día 1)
+- Marca facturas vencidas (fecha_vencimiento < hoy)
+- Notifica vía EventEmitter (desacoplado → WhatsApp)
+- Usa Bull con concurrencia 2, jobs con delay de 5s entre empresas
+
+### Flujo VPN (OpenVPN + MikroTik)
+- IPs VPN permanentes (vía CCD `ifconfig-push`)
+- Liberación solo al eliminar router (revoca cert + elimina CCD + mata túnel)
+- Wizard de registro con fireRevoke si se cierra sin completar
+- Cron `limpiarWizardsAbandonados` cada 30 min (corte a 2h)
+- `matarSesionImpostora` si router offline es suplantado
+
+## ARCHIVOS CRÍTICOS A REVISAR
+
+### Backend (NestJS)
+```
+backend/src/main.ts                              → Bootstrap, Helmet, CORS, Swagger
+backend/src/app.module.ts                        → Módulo raíz, guards globales, interceptores
+backend/src/config/app.config.ts                 → Validación Joi, variables de entorno
+backend/src/config/database.config.ts            → TypeORM config, pool, cache Redis
+backend/src/config/redis.config.ts               → Redis config, DB separation
+backend/src/config/jwt.config.ts                 → JWT secret, expiration
+backend/src/config/logger.config.ts              → Winston transports (consola + file)
+backend/src/common/guards/jwt-auth.guard.ts      → JWT guard con @Public()
+backend/src/common/guards/roles.guard.ts         → RBAC roles + permisos
+backend/src/common/interceptors/transform.interceptor.ts  → Envuelve respuestas en ApiResponse
+backend/src/common/interceptors/logging.interceptor.ts    → Logging HTTP con duración
+backend/src/common/interceptors/timeout.interceptor.ts    → Timeout 30s / 120s rutas largas
+backend/src/common/interceptors/audit.interceptor.ts      → Auditoría global + entity versions
+backend/src/common/filters/http-exception.filter.ts       → Mapeo errores TypeORM → HTTP
+backend/src/modules/auth/auth.service.ts        → Login, refresh, logout, cambio password, reset
+backend/src/modules/auth/auth.controller.ts     → Endpoints auth con rate limiting
+backend/src/modules/licencia/licencia.guard.ts  → Guard global 402
+backend/src/modules/mikrotik/mikrotik.service.ts → Gestión routers MikroTik (1270 líneas)
+backend/src/modules/aprovisionamiento/aprovisionamiento.service.ts → Orquestador FTTH (908 líneas)
+backend/src/modules/monitoreo/monitoreo.service.ts → Monitoreo dispositivos (657 líneas)
+backend/src/modules/workers/facturacion.worker.ts → Facturación masiva Bull (521 líneas)
+```
+
+### Frontend (Next.js 14)
+```
+frontend/src/middleware.ts    → Protección rutas, refresh_token cookie
+frontend/src/lib/api.ts       → Axios interceptor con refresh automático
+frontend/src/store/auth.store.ts → Zustand persist (localStorage)
+```
+
+### Infraestructura
+```
+docker-compose.yml   → Producción: postgres, redis, backend(x2 réplicas), frontend, nginx, certbot, evolution-api
+Makefile             → Comandos deploy, backup, restore, SSL
+nginx/conf.d/        → Configuración HTTP→HTTPS, proxy inverso
+```
+
+## ÁREAS DE RIESGO IDENTIFICADAS (PRE-AUDITORÍA)
+
+### 1. 🔴 SEGURIDAD CRÍTICA
+- **`process.on('uncaughtException')`** en `main.ts` silencia `write after end` y `RosException` — puede ocultar bugs graves
+- **Winston `exceptionHandlers: []`** vacío — las excepciones no loggeadas podrían perderse
+- **CORS `origin: true`** en producción — acepta cualquier origen, aunque argumentan que JWT protege
+- **`forbidNonWhitelisted: false`** en ValidationPipe — campos extra no causan error
+- **`enableImplicitConversion: true`** — conversión automática puede ser vector de ataque
+- **Auth tokens en localStorage** (Zustand persist) vs cookies httponly
+- **Refresh token rotation** implementado pero validar si el token anterior se invalida correctamente
+- **Blacklist JWT** usa hash parcial del token (`token.split('.')[2]?.substring(0, 40)`) — riesgo de colisiones
+
+### 2. 🟡 ARQUITECTURA
+- **Módulo `auditoria`** importado desde `auth/auditoria.service` en lugar de módulo independiente → riesgo de dependency cycle
+- **35+ módulos** en un solo `AppModule` — peso de arranque, tiempos de carga
+- **`syncSubnets`** y **`inyectarReglasMorososAsync`** se ejecutan sin await en `crearRouter` — pueden fallar silenciosamente
+- **MikroTik connection pool** no tiene límite máximo de conexiones por router visible en código
+- **Orquestador aprovisionamiento** usa `@InjectDataSource()` para queries raw — bypass de TypeORM
+
+### 3. 🟡 RENDIMIENTO
+- **TypeORM cache con Redis** en database.config.ts — 30s de cache, pero algunas queries pueden no usar cache
+- **Facturación masiva**: job por empresa con delay de 5s — para 50+ empresas puede tardar >4 min
+- **Monitoreo worker**: ping y SNMP periódico — sin rate limiting por dispositivo
+- **Query sin paginación** en algunas listas (ej: `findAll` en mikrotik.service.ts)
+- **N+1 potencial** en operaciones bulk de aprovisionamiento
+
+### 4. 🟡 FLUJOS CRÍTICOS
+- **Rollback en aprovisionamiento**: corrección de errores en rollback asume ORDER temporal (primero SmartOLT, luego MikroTik, finalmente BD) — inconsistencia parcial si falla un paso intermedio
+- **VPN IP collision**: validación de unicidad de `vpnIp` no considera routers soft-deleteados
+- **Facturación**: la suma de `deuda_total` y `meses_deuda` se incrementa sin control de concurrencia (SELECT ... FOR UPDATE ausente)
+- **Cortes worker**: no encontrado el archivo (`cortes.worker.ts`) — puede no estar implementado aún
+- **Concurrencia en suspensión/reactivación**: evento emitido antes de confirmar persistencia del estado
+
+### 5. 🔴 ERRORES POTENCIALES
+- **`any` en TypeORM queries**: varias queries usan `any[]` como tipo de retorno
+- **`as any` casts**: múltiples en mikrotik.service.ts (dto, RouterCredentials, etc.)
+- **Error handling inconsistente**: algunos catch loggean, otros silencian (`catch(() => {})`)
+- **`findOne` sin validación de permisos**: en algunos servicios no se verifica empresaId
+- **MercadoPago webhook**: no se validó si `rawBody: true` y el orden de middleware permiten verificar firma HMAC correctamente
+
+## FORMATO DE SALIDA ESPERADO
+
+Para cada hallazgo, usar el siguiente formato:
+
+### [CRITICAL|HIGH|MEDIUM|LOW] [SECURITY|ARCHITECTURE|PERFORMANCE|FLOW|ERROR] — Título descriptivo
+
+**Archivo**: `ruta/al/archivo.ts:Línea`
+**Problema**: Descripción del problema
+**Impacto**: Qué podría pasar en producción si no se corrige
+**Solución propuesta**: Código o cambios recomendados
+**Escenario pesimista**: Situación realista + cómo respondería el sistema actual
+
+---
+
+## EJECUCIÓN
+
+Usa el comando `read_file` para examinar cada archivo listado arriba, y `search_files` para encontrar patrones específicos como `any`, `catch(()`, `as any`, `process.on`, queries sin paginación, etc.
+
+**Comando inicial sugerido:**
+
+```
+/review
+```
+
+Analiza archivo por archivo, módulo por módulo, generando reporte detallado de cada hallazgo. Enfócate en **situaciones pesimistas**: ¿qué pasa si SmartOLT está caído durante un aprovisionamiento? ¿si Redis se reinicia en medio de una facturación masiva? ¿si un router MikroTik cambia su IP durante una suspensión? ¿si dos jobs de cortes se ejecutan simultáneamente para el mismo contrato?
+
+**Prioridad**: Primero los hallazgos CRITICAL y HIGH que impiden poner en producción, luego MEDIUM como deuda técnica, finalmente LOW como optimizaciones.

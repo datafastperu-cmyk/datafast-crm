@@ -48,6 +48,16 @@ services:
       - "80:80"
     # Sin SSL en desarrollo
 
+  olt-automation-service:
+    build:
+      target: development
+    environment:
+      DEBUG: "true"
+    volumes:
+      - ./olt-automation-service:/app
+    ports:
+      - "8001:8001"
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: datafast_pgadmin
