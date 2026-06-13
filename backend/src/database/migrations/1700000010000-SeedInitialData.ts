@@ -213,23 +213,6 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
       ON CONFLICT DO NOTHING
     `);
 
-    // ── 6. Planes de ejemplo ──────────────────────────────────
-    await queryRunner.query(`
-      INSERT INTO planes (
-        empresa_id, nombre, descripcion, tipo,
-        velocidad_bajada, velocidad_subida,
-        precio, tipo_queue, ppp_profile,
-        color_ui, activo, visible_en_portal
-      ) VALUES
-        ('a0000000-0000-0000-0000-000000000001', 'Plan 10 Mbps', 'Internet básico residencial', 'residencial', 10, 5, 45.00, 'simple_queue', 'plan-10mbps', '#6B7280', true, true),
-        ('a0000000-0000-0000-0000-000000000001', 'Plan 20 Mbps', 'Internet estándar', 'residencial', 20, 10, 65.00, 'simple_queue', 'plan-20mbps', '#3B82F6', true, true),
-        ('a0000000-0000-0000-0000-000000000001', 'Plan 30 Mbps', 'Internet rápido', 'residencial', 30, 15, 85.00, 'simple_queue', 'plan-30mbps', '#8B5CF6', true, true),
-        ('a0000000-0000-0000-0000-000000000001', 'Plan 50 Mbps', 'Internet premium', 'residencial', 50, 25, 110.00, 'simple_queue', 'plan-50mbps', '#F59E0B', true, true),
-        ('a0000000-0000-0000-0000-000000000001', 'Plan 100 Mbps', 'Internet empresarial', 'empresarial', 100, 50, 180.00, 'queue_tree', 'plan-100mbps', '#10B981', true, true),
-        ('a0000000-0000-0000-0000-000000000001', 'Plan 200 Mbps', 'Enlace dedicado', 'dedicado', 200, 200, 350.00, 'pcq', 'plan-200mbps', '#EF4444', true, false)
-      ON CONFLICT (empresa_id, nombre) DO NOTHING
-    `);
-
     // ── Log del seed ──────────────────────────────────────────
     await queryRunner.query(`
       INSERT INTO auditoria_logs (
