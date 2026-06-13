@@ -76,6 +76,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
       else if (pgError.code === '22P02') {
         message = 'Formato de dato inválido';
         code = 'INVALID_DATA_TYPE';
+      }
+      // Violación de check constraint (ej: vlan_id fuera de rango, descuento fuera de 0-100)
+      else if (pgError.code === '23514') {
+        message = `Valor fuera de rango permitido${pgError.constraint ? ` (${pgError.constraint})` : ''}`;
+        code = 'CHECK_VIOLATION';
+      }
+      // Columna o tabla no encontrada — generalmente indica migración pendiente
+      else if (pgError.code === '42703' || pgError.code === '42P01') {
+        message = 'Error de esquema en base de datos — puede haber migraciones pendientes';
+        code = 'SCHEMA_ERROR';
+        this.logger.error(`SCHEMA ERROR ${pgError.code}: ${pgError.message}`, pgError.stack);
       } else {
         message = 'Error en la base de datos';
         this.logger.error(`DB Error ${pgError.code}: ${pgError.message}`, pgError.stack);

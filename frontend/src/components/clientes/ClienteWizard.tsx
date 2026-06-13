@@ -1044,6 +1044,10 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     : [];
 
   const onFormSubmit = async (data: S3) => {
+    if (data.perfilId && !data.routerId?.trim()) {
+      setError('routerId', { message: 'Debes seleccionar un router cuando se elige un plan de servicio' });
+      return;
+    }
     if (requiereMac && !data.mac?.trim()) {
       setError('mac', { message: 'MAC obligatorio para Amarre IP/MAC' });
       return;
@@ -1068,7 +1072,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         {/* ── Izquierda: Configuración ── */}
         <Section title="Configuración de servicio" icon={Wifi}>
           {/* Router */}
-          <Field label="Router">
+          <Field label="Router" error={s3Errors.routerId?.message}>
             <select {...register('routerId')} className={INPUT_CLS}>
               <option value="">— Seleccionar router —</option>
               {(routers as any[]).map((r: any) => (

@@ -20,7 +20,7 @@ import { JwtPayload }           from '../../common/decorators/current-user.decor
 import { Pago, EstadoPago, MetodoPago, CuentaBancaria } from './entities/pago.entity';
 import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
-import { RegistrarPagoDto, MetodoPago as DtoMetodoPago } from './dto/registrar-pago.dto';
+import { RegistrarPagoDto } from './dto/registrar-pago.dto';
 import {
   VerificarPagoDto, ConciliarPagoDto,
   FilterPagoDto, CrearPreferenciaDto,
@@ -28,13 +28,6 @@ import {
 } from './dto/pago.dto';
 import { QUEUES, JOBS, PayloadReactivarContrato } from '../workers/workers.constants';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
-
-// ─── Mapa de normalización: DTO uppercase → entity lowercase ──
-const METODO_PAGO_MAP: Record<DtoMetodoPago, MetodoPago> = {
-  [DtoMetodoPago.MERCADOPAGO]:          MetodoPago.MERCADOPAGO,
-  [DtoMetodoPago.YAPE]:                 MetodoPago.YAPE,
-  [DtoMetodoPago.TRANSFERENCIA_MANUAL]: MetodoPago.TRANSFERENCIA_BANCARIA,
-};
 
 @Injectable()
 export class PagosService {
@@ -67,7 +60,8 @@ export class PagosService {
   ): Promise<Pago> {
     // Siempre usar la empresa del JWT — nunca confiar en el body para esto
     const empresaId = user.empresaId;
-    const metodoPagoEntity = METODO_PAGO_MAP[dto.metodoPago];
+    // El DTO ya usa los mismos valores lowercase que la entidad gracias al @Transform
+    const metodoPagoEntity = dto.metodoPago as unknown as MetodoPago;
     let contratoParaReactivar: Contrato | null = null;
 
     // ── TRANSACCIÓN ACID ──────────────────────────────────────
@@ -102,9 +96,13 @@ export class PagosService {
         });
       }
 
-      // PASO 3 — Determinar estado: auto-verificar MercadoPago o Yape con OTP
-      const esYapeConOtp = dto.metodoPago === DtoMetodoPago.YAPE && !!dto.otpYape;
-      const autoVerificado = dto.metodoPago === DtoMetodoPago.MERCADOPAGO || esYapeConOtp;
+      // PASO 3 — Determinar estado inicial del pago
+      // Auto-verificado si: MercadoPago (confirmación automática), Yape con OTP,
+      // o el cajero marca autoVerificar: true (pagos presenciales inmediatos).
+      const esYapeConOtp   = metodoPagoEntity === MetodoPago.YAPE && !!dto.otpYape;
+      const autoVerificado = metodoPagoEntity === MetodoPago.MERCADOPAGO
+                          || esYapeConOtp
+                          || dto.autoVerificar === true;
       const estadoInicial  = autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION;
 
       const pago = manager.create(Pago, {

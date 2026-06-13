@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNotEmpty,
@@ -12,10 +13,26 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
+// Valores en minúsculas alineados 1:1 con el enum MetodoPago de la entidad.
 export enum MetodoPago {
-  MERCADOPAGO      = 'MERCADOPAGO',
-  YAPE             = 'YAPE',
-  TRANSFERENCIA_MANUAL = 'TRANSFERENCIA_MANUAL',
+  EFECTIVO               = 'efectivo',
+  YAPE                   = 'yape',
+  PLIN                   = 'plin',
+  TRANSFERENCIA_BANCARIA = 'transferencia_bancaria',
+  DEPOSITO_BANCARIO      = 'deposito_bancario',
+  MERCADOPAGO            = 'mercadopago',
+  TARJETA_CREDITO        = 'tarjeta_credito',
+  TARJETA_DEBITO         = 'tarjeta_debito',
+  CHEQUE                 = 'cheque',
+  OTRO                   = 'otro',
+}
+
+// Normaliza casing y el alias legacy TRANSFERENCIA_MANUAL → transferencia_bancaria
+function normalizarMetodoPago(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const lower = value.toLowerCase();
+  if (lower === 'transferencia_manual') return MetodoPago.TRANSFERENCIA_BANCARIA;
+  return lower;
 }
 
 export class RegistrarPagoDto {
@@ -27,6 +44,7 @@ export class RegistrarPagoDto {
   @IsPositive()
   monto: number;
 
+  @Transform(({ value }) => normalizarMetodoPago(value))
   @IsEnum(MetodoPago)
   metodoPago: MetodoPago;
 
@@ -53,4 +71,10 @@ export class RegistrarPagoDto {
   @IsString()
   @Length(1, 500)
   voucherUrl?: string;
+
+  // El cajero puede marcar autoVerificar: true en pagos presenciales (efectivo,
+  // depósito, etc.) para que queden VERIFICADO directamente sin un segundo paso.
+  @IsOptional()
+  @IsBoolean()
+  autoVerificar?: boolean;
 }
