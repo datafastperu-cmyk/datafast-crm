@@ -151,15 +151,21 @@ export class FirewallService {
     const PRORROGA_COMMENT = 'DATAFAST: Prorroga acceso completo';
 
     // Conexión 1: solo lectura. No usar filtros ?comment= (bug UNKNOWNREPLY en v7).
-    // RouterOS v7 devuelve !empty (UNKNOWNREPLY) cuando la cadena forward está vacía —
-    // esto corrompe el estado de la conexión, por eso se cierra con await antes de abrir
-    // la conexión de escritura. Sin el await el router puede rechazar la segunda conexión.
+    // RouterOS v7 devuelve !empty cuando la cadena forward está completamente vacía.
+    // node-routeros lanza RosException('UNKNOWNREPLY') DENTRO del callback del evento
+    // 'data' del socket (fuera del Promise), por lo que el Promise de write() nunca
+    // resuelve ni rechaza — queda colgado indefinidamente. El Promise.race con timeout
+    // garantiza que siempre se continúa (resolviendo con [] si la cadena está vacía).
     let allRules: any[] = [];
     const readApi = await this.pool.connectDirect(creds);
     try {
-      allRules = await readApi.write('/ip/firewall/filter/print');
+      allRules = await Promise.race([
+        readApi.write('/ip/firewall/filter/print'),
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 6000)),
+      ]);
     } catch (err: any) {
       if (err?.errno !== 'UNKNOWNREPLY') throw err;
+      this.logger.warn(`[Firewall] ${creds.ip} — UNKNOWNREPLY en filter/print; cadena vacía asumida`);
     } finally {
       await readApi.close().catch(() => {});
     }

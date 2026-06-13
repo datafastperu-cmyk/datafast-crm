@@ -1158,8 +1158,9 @@ export class MikrotikService {
         });
       })
       .catch((err) => {
-        this.logger.warn(`No se pudo conectar a ${router.vpnIp || router.ipGestion} al registrar: ${err.message}`);
-        this.routerRepo.update(router.id, { estado: EstadoEquipo.OFFLINE }).catch(() => {});
+        // No setear OFFLINE: el router recién registrado puede tardar en ser alcanzable
+        // (ej. túnel VPN aún estableciéndose). El cron de métricas actualizará el estado.
+        this.logger.warn(`No se pudo detectar versión en ${router.vpnIp || router.ipGestion} al registrar: ${err.message}`);
       });
   }
 
