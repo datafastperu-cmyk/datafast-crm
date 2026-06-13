@@ -79,7 +79,7 @@ import { SchemaGuardModule }           from './modules/schema-guard/schema-guard
         entities:             [__dirname + '/**/*.entity{.ts,.js}'],
         migrations:           [__dirname + '/database/migrations/*{.ts,.js}'],
         migrationsTableName:  'typeorm_migrations',
-        migrationsRun:        process.env.NODE_ENV === 'production',
+        migrationsRun:        true,
         synchronize:          false,
         logging:              false,
         extra:                { max: 20, min: 2, idleTimeoutMillis: 30000 },

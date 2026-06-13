@@ -18,7 +18,7 @@ export const databaseConfig = registerAs('database', (): TypeOrmModuleOptions =>
   // Migraciones
   migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
   migrationsTableName: 'typeorm_migrations',
-  migrationsRun: process.env.NODE_ENV === 'production', // Auto-run en producción
+  migrationsRun: true,
 
   // NUNCA usar synchronize en producción — usar migraciones
   synchronize: false,
