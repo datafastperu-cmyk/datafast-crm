@@ -48,6 +48,4 @@ export class Plan extends BaseModel {
   @Column({ name:'visible_en_portal', default:false }) visibleEnPortal: boolean;
   @Column({ name:'orden_display', type:'smallint', default:0 }) ordenDisplay: number;
 
-  get maxLimitMikrotik(): string { return `${this.velocidadSubida}M/${this.velocidadBajada}M`; }
-  get descripcionVelocidad(): string { return `${this.velocidadBajada}/${this.velocidadSubida} Mbps`; }
 }
