@@ -387,6 +387,10 @@ export class MonitoreoService {
       status:              StatusDispositivo.REVERIFICANDO,
     });
     await this.dispoRepo.save(d);
+    // Sondeo inmediato para no mostrar REVERIFICANDO al usuario
+    this.worker.sondearInmediato(d).catch((err) =>
+      this.logger.warn(`Sondeo inmediato fallido para ${d.id}: ${err.message}`),
+    );
     const { contrasenaCifrada: _pw, ...safeCreate } = d;
     return StdResponse.ok(safeCreate as unknown as DispositivoMonitoreo);
   }

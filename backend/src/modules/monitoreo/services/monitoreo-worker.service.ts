@@ -152,6 +152,18 @@ export class MonitoreoWorkerService {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // SONDEO INMEDIATO (llamado externamente al registrar un dispositivo)
+  // ═══════════════════════════════════════════════════════════════
+  async sondearInmediato(d: DispositivoMonitoreo): Promise<void> {
+    const umbrales = await this.umbralRepo.find({
+      where: { empresaId: d.empresaId, deletedAt: IsNull() },
+    });
+    // Forzar sondeo ignorando el guard de intervalo
+    this.lastProbeAt.delete(d.id);
+    await this.sondarDispositivo(d, umbrales);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // SONDEO INDIVIDUAL
   // ═══════════════════════════════════════════════════════════════
   private async sondarDispositivo(
