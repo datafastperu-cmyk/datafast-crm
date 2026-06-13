@@ -879,6 +879,8 @@ export class MikrotikService {
         identityRouteros: identity,
       });
 
+      this.inyectarReglasMorososAsync(router);
+
       return { exitoso: true, mensaje: `Conectado a "${identity}" en ${latencia}ms`, latenciaMs: latencia };
 
     } catch (error) {
@@ -1152,8 +1154,7 @@ export class MikrotikService {
         });
       })
       .catch((err) => {
-        this.logger.warn(`No se pudo conectar a ${router.vpnIp || router.ipGestion}: ${err.message}`);
-        return this.routerRepo.update(router.id, { estado: EstadoEquipo.OFFLINE });
+        this.logger.warn(`No se pudo conectar a ${router.vpnIp || router.ipGestion} al registrar: ${err.message}`);
       });
   }
 
