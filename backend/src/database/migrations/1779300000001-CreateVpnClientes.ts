@@ -32,15 +32,19 @@ export class CreateVpnClientes1779300000001 implements MigrationInterface {
         created_at            TIMESTAMPTZ  NOT NULL DEFAULT now(),
         updated_at            TIMESTAMPTZ  NOT NULL DEFAULT now(),
         deleted_at            TIMESTAMPTZ,
-        CONSTRAINT pk_vpn_clientes         PRIMARY KEY (id),
-        CONSTRAINT uq_vpn_clientes_nombre_cert UNIQUE (nombre_cert)
+        CONSTRAINT pk_vpn_clientes         PRIMARY KEY (id)
       )
     `);
 
     await queryRunner.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_vpn_clientes_nombre_cert
+        ON vpn_clientes (nombre_cert)
+        WHERE deleted_at IS NULL
+    `);
+    await queryRunner.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_vpn_clientes_vpn_usuario
         ON vpn_clientes (vpn_usuario)
-        WHERE vpn_usuario IS NOT NULL
+        WHERE vpn_usuario IS NOT NULL AND deleted_at IS NULL
     `);
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS idx_vpn_clientes_empresa

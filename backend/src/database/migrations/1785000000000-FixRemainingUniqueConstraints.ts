@@ -79,9 +79,20 @@ export class FixRemainingUniqueConstraints1785000000000 implements MigrationInte
         ON plantillas_mensajes (empresa_id, tipo, codigo)
         WHERE deleted_at IS NULL
     `);
+
+    // ── vpn_clientes: UNIQUE (nombre_cert) ───────────────────────────────────────
+    await queryRunner.query(`ALTER TABLE vpn_clientes DROP CONSTRAINT IF EXISTS uq_vpn_clientes_nombre_cert`);
+    await queryRunner.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_vpn_clientes_nombre_cert
+        ON vpn_clientes (nombre_cert)
+        WHERE deleted_at IS NULL
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP INDEX IF EXISTS uq_vpn_clientes_nombre_cert`);
+    await queryRunner.query(`ALTER TABLE vpn_clientes ADD CONSTRAINT uq_vpn_clientes_nombre_cert UNIQUE (nombre_cert)`);
+
     await queryRunner.query(`DROP INDEX IF EXISTS uq_plantillas_empresa_tipo_codigo`);
     await queryRunner.query(`ALTER TABLE plantillas_mensajes ADD CONSTRAINT uq_plantilla_empresa_tipo_codigo UNIQUE (empresa_id, tipo, codigo)`);
 

@@ -5,8 +5,8 @@ export type EstadoVpnCliente = 'pendiente' | 'conectado' | 'desconectado' | 'rev
 
 @Entity('vpn_clientes')
 @Index(['empresaId', 'activo'])
-@Index(['nombreCert'], { unique: true })
-@Index(['vpnUsuario'], { unique: true, where: '"vpn_usuario" IS NOT NULL' })
+@Index(['nombreCert'], { unique: true, where: '"deleted_at" IS NULL' })
+@Index(['vpnUsuario'], { unique: true, where: '"vpn_usuario" IS NOT NULL AND "deleted_at" IS NULL' })
 @Index(['tokenDescarga'])
 export class VpnCliente extends BaseModel {
 
@@ -27,7 +27,7 @@ export class VpnCliente extends BaseModel {
   descripcion: string;
 
   // ── PKI ───────────────────────────────────────────────────
-  @Column({ name: 'nombre_cert', length: 100, unique: true })
+  @Column({ name: 'nombre_cert', length: 100 })
   nombreCert: string;
 
   @Column({ name: 'version_ros', type: 'varchar', length: 5, default: 'v7' })
