@@ -87,8 +87,6 @@ export class MikrotikService {
       estado:    EstadoEquipo.DESCONOCIDO,
     });
     const saved = await this.routerRepo.save(router);
-    this.detectarVersionAsync(saved);
-    this.inyectarReglasMorososAsync(saved);
 
     if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
       if (dto.vpnClienteId) {
@@ -118,7 +116,18 @@ export class MikrotikService {
     // Sincronizar subnets LAN del router (async, no bloquea la respuesta)
     this.syncSubnetsAsync(saved);
 
-    return saved;
+    // Detectar versión y marcar ONLINE antes de responder al frontend (máx 5s).
+    // Si el router no responde en ese tiempo, quedará en DESCONOCIDO y el cron
+    // de métricas lo actualizará en los próximos 5 minutos.
+    await Promise.race([
+      this.detectarVersionAsync(saved),
+      new Promise<void>((r) => setTimeout(r, 5000)),
+    ]);
+
+    // Recargar entidad con el estado actualizado para retornarlo al frontend
+    const routerFinal = await this.findOne(saved.id, user.empresaId);
+    this.inyectarReglasMorososAsync(routerFinal);
+    return routerFinal;
   }
 
   async findAll(empresaId: string): Promise<(Router & { contratosCount: number })[]> {
@@ -1131,8 +1140,8 @@ export class MikrotikService {
     }
   }
 
-  // ── Detectar versión RouterOS de forma asíncrona ──────────
-  private detectarVersionAsync(router: Router): void {
+  // ── Detectar versión RouterOS (retorna Promise para poder awaitar con timeout) ──
+  private detectarVersionAsync(router: Router): Promise<void> {
     const creds: RouterCredentials = {
       id:              router.id,
       ip:              router.vpnIp || router.ipGestion,
@@ -1140,14 +1149,11 @@ export class MikrotikService {
       user:            router.usuario,
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
-      timeoutSec:      10,
-      version:         'v6',
+      timeoutSec:      router.timeoutConexion || 10,
+      version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
     };
 
-    // getRecursos lanza si la conexión falla (a diferencia de detectarVersion,
-    // que tiene fallback interno y nunca lanza — lo que causaba que siempre se
-    // seteara ONLINE aunque el router no fuera alcanzable).
-    this.ifaceSvc.getRecursos(creds)
+    return this.ifaceSvc.getRecursos(creds)
       .then((recursos) => {
         const version    = recursos.version || '';
         const rosVersion = version.startsWith('7') ? VersionRouterOS.V7 : VersionRouterOS.V6;
@@ -1157,9 +1163,9 @@ export class MikrotikService {
           ultimoPing: new Date(),
         });
       })
+      .then(() => {})
       .catch((err) => {
-        // No setear OFFLINE: el router recién registrado puede tardar en ser alcanzable
-        // (ej. túnel VPN aún estableciéndose). El cron de métricas actualizará el estado.
+        // Si no responde al registrar, queda en DESCONOCIDO; el cron actualizará.
         this.logger.warn(`No se pudo detectar versión en ${router.vpnIp || router.ipGestion} al registrar: ${err.message}`);
       });
   }
