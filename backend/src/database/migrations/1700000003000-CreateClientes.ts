@@ -95,9 +95,7 @@ export class CreateClientes1700000003000 implements MigrationInterface {
         updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
         deleted_at      TIMESTAMPTZ,
         created_by      UUID          REFERENCES usuarios(id) ON DELETE SET NULL,
-        updated_by      UUID          REFERENCES usuarios(id) ON DELETE SET NULL,
-
-        UNIQUE (empresa_id, tipo_documento, numero_documento)
+        updated_by      UUID          REFERENCES usuarios(id) ON DELETE SET NULL
       )
     `);
 
@@ -117,6 +115,10 @@ export class CreateClientes1700000003000 implements MigrationInterface {
 
       CREATE INDEX idx_clientes_estado
         ON clientes (empresa_id, estado) WHERE deleted_at IS NULL;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_clientes_empresa_documento
+        ON clientes (empresa_id, tipo_documento, numero_documento)
+        WHERE deleted_at IS NULL;
 
       CREATE INDEX idx_clientes_vendedor
         ON clientes (vendedor_id) WHERE deleted_at IS NULL;

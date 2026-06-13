@@ -91,9 +91,7 @@ export class CreateTicketsAndConsumo1700000009000 implements MigrationInterface 
         created_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         closed_at           TIMESTAMPTZ,
-        deleted_at          TIMESTAMPTZ,
-
-        UNIQUE (empresa_id, numero_ticket)
+        deleted_at          TIMESTAMPTZ
       )
     `);
 
@@ -119,6 +117,9 @@ export class CreateTicketsAndConsumo1700000009000 implements MigrationInterface 
         ON tickets (empresa_id, fecha_limite_sla)
         WHERE estado NOT IN ('resuelto', 'cerrado', 'cancelado') AND deleted_at IS NULL;
 
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_tickets_empresa_numero
+        ON tickets (empresa_id, numero_ticket)
+        WHERE deleted_at IS NULL;
       COMMENT ON TABLE tickets IS 'Tickets de soporte técnico del ISP';
     `);
 
@@ -209,9 +210,7 @@ export class CreateTicketsAndConsumo1700000009000 implements MigrationInterface 
         -- Auditoría
         created_at          TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
         updated_at          TIMESTAMPTZ       NOT NULL DEFAULT NOW(),
-        deleted_at          TIMESTAMPTZ,
-
-        UNIQUE (empresa_id, numero_orden)
+        deleted_at          TIMESTAMPTZ
       )
     `);
 
@@ -233,6 +232,9 @@ export class CreateTicketsAndConsumo1700000009000 implements MigrationInterface 
         ON ordenes_trabajo (empresa_id, estado, fecha_programada)
         WHERE deleted_at IS NULL;
 
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_ordenes_empresa_numero
+        ON ordenes_trabajo (empresa_id, numero_orden)
+        WHERE deleted_at IS NULL;
       COMMENT ON TABLE ordenes_trabajo IS 'Órdenes de trabajo para instalaciones, mantenimientos y reparaciones';
     `);
 

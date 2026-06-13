@@ -77,9 +77,7 @@ export class CreateRoutersAndNodos1700000005000 implements MigrationInterface {
         activo              BOOLEAN      NOT NULL DEFAULT TRUE,
         created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-        deleted_at          TIMESTAMPTZ,
-
-        UNIQUE (empresa_id, ip_gestion)
+        deleted_at          TIMESTAMPTZ
       )
     `);
 
@@ -88,6 +86,9 @@ export class CreateRoutersAndNodos1700000005000 implements MigrationInterface {
         BEFORE UPDATE ON routers
         FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_routers_empresa_ip_gestion
+        ON routers (empresa_id, ip_gestion)
+        WHERE deleted_at IS NULL;
       CREATE INDEX idx_routers_empresa
         ON routers (empresa_id) WHERE deleted_at IS NULL AND activo = TRUE;
 

@@ -41,9 +41,7 @@ export class CreateRolesPermisosUsuarios1700000002000
         es_sistema  BOOLEAN     NOT NULL DEFAULT FALSE,  -- roles predefinidos no editables
         created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        deleted_at  TIMESTAMPTZ,
-
-        UNIQUE (empresa_id, nombre)
+        deleted_at  TIMESTAMPTZ
       )
     `);
 
@@ -53,6 +51,9 @@ export class CreateRolesPermisosUsuarios1700000002000
         FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 
       CREATE INDEX idx_roles_empresa ON roles (empresa_id) WHERE deleted_at IS NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_roles_empresa_nombre
+        ON roles (empresa_id, nombre)
+        WHERE deleted_at IS NULL;
       COMMENT ON TABLE roles IS 'Roles de usuario por empresa';
       COMMENT ON COLUMN roles.es_sistema IS 'TRUE = rol predefinido del sistema, no se puede eliminar';
     `);
@@ -111,9 +112,7 @@ export class CreateRolesPermisosUsuarios1700000002000
         -- Auditoría
         created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-        deleted_at      TIMESTAMPTZ,
-
-        UNIQUE (empresa_id, email)
+        deleted_at      TIMESTAMPTZ
       )
     `);
 
@@ -125,6 +124,9 @@ export class CreateRolesPermisosUsuarios1700000002000
       CREATE INDEX idx_usuarios_empresa   ON usuarios (empresa_id) WHERE deleted_at IS NULL;
       CREATE INDEX idx_usuarios_email     ON usuarios (email)      WHERE deleted_at IS NULL;
       CREATE INDEX idx_usuarios_estado    ON usuarios (estado)     WHERE deleted_at IS NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_usuarios_empresa_email
+        ON usuarios (empresa_id, email)
+        WHERE deleted_at IS NULL;
 
       COMMENT ON TABLE usuarios IS 'Usuarios internos del sistema (staff ISP)';
       COMMENT ON COLUMN usuarios.intentos_fallidos IS 'Se bloquea el usuario al llegar a 5 intentos';

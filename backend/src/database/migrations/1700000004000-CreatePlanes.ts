@@ -86,9 +86,7 @@ export class CreatePlanes1700000004000 implements MigrationInterface {
         -- ── Auditoría ─────────────────────────────────────────
         created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-        deleted_at          TIMESTAMPTZ,
-
-        UNIQUE (empresa_id, nombre)
+        deleted_at          TIMESTAMPTZ
       )
     `);
 
@@ -97,6 +95,9 @@ export class CreatePlanes1700000004000 implements MigrationInterface {
         BEFORE UPDATE ON planes
         FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_planes_empresa_nombre
+        ON planes (empresa_id, nombre)
+        WHERE deleted_at IS NULL;
       CREATE INDEX idx_planes_empresa
         ON planes (empresa_id) WHERE deleted_at IS NULL AND activo = TRUE;
 

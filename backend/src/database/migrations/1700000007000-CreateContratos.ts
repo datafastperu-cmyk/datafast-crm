@@ -104,12 +104,7 @@ export class CreateContratos1700000007000 implements MigrationInterface {
         updated_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         deleted_at          TIMESTAMPTZ,
         created_by          UUID           REFERENCES usuarios(id),
-        updated_by          UUID           REFERENCES usuarios(id),
-
-        UNIQUE (empresa_id, numero_contrato),
-        -- Un cliente no puede tener dos contratos activos en el mismo nodo
-        -- (constraint flexible, comentar si se requiere multi-servicio en mismo nodo)
-        UNIQUE (empresa_id, onu_id) -- cada ONU a un solo contrato activo
+        updated_by          UUID           REFERENCES usuarios(id)
       )
     `);
 
@@ -148,6 +143,15 @@ export class CreateContratos1700000007000 implements MigrationInterface {
       CREATE INDEX idx_contratos_prorroga
         ON contratos (empresa_id, prorroga_hasta)
         WHERE en_prorroga = TRUE AND deleted_at IS NULL;
+
+      -- número de contrato único entre activos; soft-deleted no bloquean reuso
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_contratos_empresa_numero
+        ON contratos (empresa_id, numero_contrato)
+        WHERE deleted_at IS NULL;
+      -- una ONU solo puede estar en un contrato activo a la vez
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_contratos_empresa_onu
+        ON contratos (empresa_id, onu_id)
+        WHERE deleted_at IS NULL AND onu_id IS NOT NULL;
 
       COMMENT ON TABLE contratos IS 'Contratos de servicio: nexo entre cliente, plan, router, ONU e IP';
       COMMENT ON COLUMN contratos.precio_final IS 'Precio calculado automáticamente con descuento aplicado';

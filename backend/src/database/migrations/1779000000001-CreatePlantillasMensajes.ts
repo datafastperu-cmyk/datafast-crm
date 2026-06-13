@@ -15,11 +15,14 @@ export class CreatePlantillasMensajes1779000000001 implements MigrationInterface
         activo       BOOLEAN NOT NULL DEFAULT TRUE,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-        deleted_at   TIMESTAMPTZ,
-        CONSTRAINT uq_plantilla_empresa_tipo_codigo UNIQUE (empresa_id, tipo, codigo)
+        deleted_at   TIMESTAMPTZ
       )
     `);
-
+    await queryRunner.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_plantillas_empresa_tipo_codigo
+        ON plantillas_mensajes (empresa_id, tipo, codigo)
+        WHERE deleted_at IS NULL
+    `);
     await queryRunner.query(`
       CREATE INDEX idx_plantillas_empresa_tipo ON plantillas_mensajes (empresa_id, tipo)
     `);

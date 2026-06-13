@@ -116,10 +116,7 @@ export class CreateOltsOnusAndRedes1700000006000 implements MigrationInterface {
         -- Auditoría
         created_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         updated_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-        deleted_at          TIMESTAMPTZ,
-
-        UNIQUE (empresa_id, serial_number),
-        UNIQUE (olt_id, pon_port, onu_id)
+        deleted_at          TIMESTAMPTZ
       )
     `);
 
@@ -132,6 +129,12 @@ export class CreateOltsOnusAndRedes1700000006000 implements MigrationInterface {
       CREATE INDEX idx_onus_olt          ON onus (olt_id) WHERE deleted_at IS NULL;
       CREATE INDEX idx_onus_estado       ON onus (empresa_id, estado) WHERE deleted_at IS NULL;
       CREATE INDEX idx_onus_serial       ON onus (serial_number);
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_onus_empresa_serial
+        ON onus (empresa_id, serial_number)
+        WHERE deleted_at IS NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_onus_olt_pon_id
+        ON onus (olt_id, pon_port, onu_id)
+        WHERE deleted_at IS NULL AND onu_id IS NOT NULL;
 
       COMMENT ON TABLE onus IS 'ONUs Huawei aprovisionadas en OLTs mediante SmartOLT';
     `);
@@ -167,9 +170,7 @@ export class CreateOltsOnusAndRedes1700000006000 implements MigrationInterface {
         activo          BOOLEAN       NOT NULL DEFAULT TRUE,
         created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
         updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-        deleted_at      TIMESTAMPTZ,
-
-        UNIQUE (empresa_id, red_cidr)
+        deleted_at      TIMESTAMPTZ
       )
     `);
 
@@ -183,6 +184,9 @@ export class CreateOltsOnusAndRedes1700000006000 implements MigrationInterface {
 
       CREATE INDEX idx_segmentos_router
         ON segmentos_ipv4 (router_id) WHERE deleted_at IS NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_segmentos_empresa_red_cidr
+        ON segmentos_ipv4 (empresa_id, red_cidr)
+        WHERE deleted_at IS NULL;
 
       COMMENT ON TABLE segmentos_ipv4 IS 'Segmentos de red IPv4 gestionados para asignación a clientes';
       COMMENT ON COLUMN segmentos_ipv4.ips_reservadas IS 'IPs que no se pueden asignar: gateway, broadcast, DNS, etc.';
