@@ -337,6 +337,8 @@ RESPONSE=$(curl -sf -m 5 \
 echo "${RESPONSE}" | grep -q '"success":true' && exit 0 || exit 1
 AUTHEOF
     chmod 755 "${INSTALL_DIR}/scripts/vpn-auth.sh"
+    # Permitir traverse a nobody (OpenVPN corre como nobody al ejecutar auth scripts)
+    chmod o+x "${INSTALL_DIR}" "${INSTALL_DIR}/scripts"
     ok "vpn-auth.sh creado en ${INSTALL_DIR}/scripts/"
 }
 
