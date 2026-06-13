@@ -150,50 +150,48 @@ export class FirewallService {
     const DROP_COMMENT     = 'Datafast-Bloquear Morosos';
     const PRORROGA_COMMENT = 'DATAFAST: Prorroga acceso completo';
 
-    // Conexión 1: leer sin filtros (bug UNKNOWNREPLY de v7 con ?comment=X)
-    let allRules: any[] = [];
-    const checkApi = await this.pool.connectDirect(creds);
+    // Una sola conexión para leer y escribir (evita problemas de conexiones simultáneas
+    // cuando la cadena forward está vacía y el router tiene límite de conexiones).
+    // No usar filtros ?comment= en el print: bug UNKNOWNREPLY en RouterOS v7.
+    const api = await this.pool.connectDirect(creds);
     try {
-      allRules = await checkApi.write('/ip/firewall/filter/print');
-    } catch (err: any) {
-      if (err?.errno !== 'UNKNOWNREPLY') throw err;
-    } finally {
-      checkApi.close().catch(() => {});
-    }
+      let allRules: any[] = [];
+      try {
+        allRules = await api.write('/ip/firewall/filter/print');
+      } catch (err: any) {
+        if (err?.errno !== 'UNKNOWNREPLY') throw err;
+      }
 
-    const dropIdx     = allRules.findIndex((r: any) => r.comment === DROP_COMMENT);
-    const prorrogaIdx = allRules.findIndex((r: any) => r.comment === PRORROGA_COMMENT);
-    const portalIdx   = allRules.findIndex((r: any) => r.comment === 'DATAFAST: Morosos portal pago');
+      const dropIdx     = allRules.findIndex((r: any) => r.comment === DROP_COMMENT);
+      const prorrogaIdx = allRules.findIndex((r: any) => r.comment === PRORROGA_COMMENT);
+      const portalIdx   = allRules.findIndex((r: any) => r.comment === 'DATAFAST: Morosos portal pago');
 
-    const dropRule     = dropIdx     >= 0 ? allRules[dropIdx]     : null;
-    const prorrogaRule = prorrogaIdx >= 0 ? allRules[prorrogaIdx] : null;
-    const portalRule   = portalIdx   >= 0 ? allRules[portalIdx]   : null;
+      const dropRule     = dropIdx     >= 0 ? allRules[dropIdx]     : null;
+      const prorrogaRule = prorrogaIdx >= 0 ? allRules[prorrogaIdx] : null;
+      const portalRule   = portalIdx   >= 0 ? allRules[portalIdx]   : null;
 
-    const allExist  = !!(dropRule && prorrogaRule);
-    const orderOk   = allExist && dropIdx < prorrogaIdx;
-    const dropClean = !dropRule?.['dst-address-list'];
+      const allExist  = !!(dropRule && prorrogaRule);
+      const orderOk   = allExist && dropIdx < prorrogaIdx;
+      const dropClean = !dropRule?.['dst-address-list'];
 
-    if (allExist && orderOk && dropClean && !portalRule) {
-      this.logger.debug(`Reglas de control ya correctas en ${creds.ip}`);
-      return;
-    }
+      if (allExist && orderOk && dropClean && !portalRule) {
+        this.logger.debug(`Reglas de control ya correctas en ${creds.ip}`);
+        return;
+      }
 
-    // Conexión 2: eliminar las que existan (incluye portal pago legacy) y recrear
-    const writeApi = await this.pool.connectDirect(creds);
-    try {
       for (const rule of [dropRule, prorrogaRule, portalRule]) {
-        if (rule) await writeApi.write('/ip/firewall/filter/remove', [`=.id=${rule['.id']}`]);
+        if (rule) await api.write('/ip/firewall/filter/remove', [`=.id=${rule['.id']}`]);
       }
 
       // Añadir al final (sin place-before) para soportar cadena forward vacía.
       // place-before=0 falla con "no such item" cuando la cadena está vacía.
-      const addDropRes     = await writeApi.write('/ip/firewall/filter/add', [
+      const addDropRes     = await api.write('/ip/firewall/filter/add', [
         '=chain=forward',
         `=src-address-list=${ADDRESS_LIST_MOROSOS}`,
         '=action=drop',
         `=comment=${DROP_COMMENT}`,
       ]);
-      const addProrrogaRes = await writeApi.write('/ip/firewall/filter/add', [
+      const addProrrogaRes = await api.write('/ip/firewall/filter/add', [
         '=chain=forward',
         `=src-address-list=${ADDRESS_LIST_PRORROGA}`,
         '=action=accept',
@@ -204,19 +202,19 @@ export class FirewallService {
       const prorrogaId = addProrrogaRes?.[0]?.ret;
 
       if (dropId) {
-        await writeApi.write('/ip/firewall/filter/move', [
+        await api.write('/ip/firewall/filter/move', [
           `=.id=${dropId}`, '=destination=0',
         ]).catch(() => {});
       }
       if (prorrogaId) {
-        await writeApi.write('/ip/firewall/filter/move', [
+        await api.write('/ip/firewall/filter/move', [
           `=.id=${prorrogaId}`, '=destination=1',
         ]).catch(() => {});
       }
 
       this.logger.log(`Reglas de control (re)configuradas en ${creds.ip}`);
     } finally {
-      writeApi.close().catch(() => {});
+      api.close().catch(() => {});
     }
   }
 

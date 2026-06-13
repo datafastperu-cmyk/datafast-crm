@@ -1155,6 +1155,7 @@ export class MikrotikService {
       })
       .catch((err) => {
         this.logger.warn(`No se pudo conectar a ${router.vpnIp || router.ipGestion} al registrar: ${err.message}`);
+        this.routerRepo.update(router.id, { estado: EstadoEquipo.OFFLINE }).catch(() => {});
       });
   }
 
