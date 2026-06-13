@@ -176,8 +176,14 @@ export class FirewallService {
     const orderOk   = allExist && dropIdx < prorrogaIdx;
     const dropClean = !dropRule?.['dst-address-list'];
 
+    this.logger.log(
+      `[Firewall] ${creds.ip} — reglas leídas: ${allRules.length} ` +
+      `| drop=${dropIdx} prorroga=${prorrogaIdx} portal=${portalIdx} ` +
+      `| allExist=${allExist} orderOk=${orderOk} dropClean=${dropClean}`,
+    );
+
     if (allExist && orderOk && dropClean && !portalRule) {
-      this.logger.debug(`Reglas de control ya correctas en ${creds.ip}`);
+      this.logger.warn(`[Firewall] Reglas ya correctas en ${creds.ip} — sin cambios`);
       return;
     }
 
@@ -206,6 +212,8 @@ export class FirewallService {
 
       const dropId     = addDropRes?.[0]?.ret;
       const prorrogaId = addProrrogaRes?.[0]?.ret;
+
+      this.logger.log(`[Firewall] Add resultado en ${creds.ip} — dropId=${dropId ?? 'NULL'} prorrogaId=${prorrogaId ?? 'NULL'}`);
 
       if (dropId) {
         await writeApi.write('/ip/firewall/filter/move', [
