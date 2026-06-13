@@ -259,7 +259,7 @@ URLS DEL SISTEMA
   pgAdmin       →  http://${ip}:5050  (admin@datafast.pe / admin123)
   Redis UI      →  http://${ip}:8081
   Evolution API →  http://${ip}:8080  (WhatsApp self-hosted)
-  OpenVPN       →  ${ip}:1194/UDP
+  OpenVPN       →  ${ip}:1195/TCP
 
 ACCESO INICIAL
   Email:    admin@datafast.pe
@@ -364,7 +364,7 @@ _validate_install() {
     # Health del backend
     local be_code
     be_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
-        http://localhost:4000/api/v1/health 2>/dev/null || echo "000")
+        http://localhost:4000/health/live 2>/dev/null || echo "000")
     [[ "$be_code" == "200" ]] \
         && ok "Backend API — HTTP 200" \
         || { warn "Backend API — HTTP ${be_code} (puede estar iniciando aún)"; (( errores++ )) || true; }

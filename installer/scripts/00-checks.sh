@@ -119,7 +119,7 @@ _check_ports() {
             "5432:PostgreSQL:si"
             "6379:Redis:si"
             "8080:Evolution API:no"
-            "1194:OpenVPN:no"
+            "1195:OpenVPN-MikroTik:no"
         )
     fi
 

@@ -30,7 +30,7 @@ _setup_ufw() {
     ufw allow "${ssh_port}/tcp"  comment 'SSH'        >> "${LOG_FILE}" 2>&1
     ufw allow 80/tcp             comment 'HTTP'        >> "${LOG_FILE}" 2>&1
     ufw allow 443/tcp            comment 'HTTPS'       >> "${LOG_FILE}" 2>&1
-    ufw allow 1194/udp           comment 'OpenVPN'     >> "${LOG_FILE}" 2>&1
+    ufw allow 1195/tcp           comment 'OpenVPN-MikroTik' >> "${LOG_FILE}" 2>&1
 
     # Verificar que SSH sigue accesible antes de activar
     if ! nc -z -w3 127.0.0.1 "${ssh_port}" 2>/dev/null; then
@@ -40,7 +40,7 @@ _setup_ufw() {
     fi
 
     echo "y" | ufw enable >> "${LOG_FILE}" 2>&1
-    ok "UFW activo: SSH(${ssh_port}), HTTP(80), HTTPS(443), OpenVPN(1194/UDP)"
+    ok "UFW activo: SSH(${ssh_port}), HTTP(80), HTTPS(443), OpenVPN(1195/TCP)"
 
     # Asegurar que puertos internos NO están expuestos
     ufw deny 3000/tcp >> "${LOG_FILE}" 2>&1 || true

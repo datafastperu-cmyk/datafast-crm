@@ -158,7 +158,7 @@ _wait_for_backend() {
     for i in $(seq 1 $tries); do
         local code
         code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
-            http://localhost:4000/api/v1/health 2>/dev/null || echo "000")
+            http://localhost:4000/health/live 2>/dev/null || echo "000")
         if [[ "$code" == "200" ]]; then
             ok "Backend respondiendo (HTTP 200)"
             return
