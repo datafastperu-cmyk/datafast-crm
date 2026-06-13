@@ -1312,7 +1312,7 @@ export function RoutersContent() {
                         ); })()}
                         <div className="flex items-center gap-1 text-muted-foreground" title="Clientes Activos en el Router">
                           <Users className="w-3 h-3" />
-                          <span>{r.contratosCount ?? 0} Clientes Activos</span>
+                          <span>{r.contratosCount ?? 0} Clientes</span>
                         </div>
                       </div>
                     </td>
