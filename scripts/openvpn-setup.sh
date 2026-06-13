@@ -336,7 +336,7 @@ RESPONSE=$(curl -sf -m 5 \
 
 echo "${RESPONSE}" | grep -q '"success":true' && exit 0 || exit 1
 AUTHEOF
-    chmod 750 "${INSTALL_DIR}/scripts/vpn-auth.sh"
+    chmod 755 "${INSTALL_DIR}/scripts/vpn-auth.sh"
     ok "vpn-auth.sh creado en ${INSTALL_DIR}/scripts/"
 }
 
