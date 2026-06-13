@@ -306,7 +306,7 @@ management 127.0.0.1 7505
 # Los routers MikroTik usan user/pass generados por el ERP, sin cert cliente.
 # username-as-common-name → OpenVPN usa el username como CN para buscar CCD.
 script-security 2
-auth-user-pass-verify ${INSTALL_DIR}/scripts/vpn-auth.sh via-env
+auth-user-pass-verify ${INSTALL_DIR}/scripts/vpn-auth.sh via-file
 username-as-common-name
 verify-client-cert none
 
@@ -326,20 +326,27 @@ generate_vpn_auth_script() {
     mkdir -p "${INSTALL_DIR}/scripts"
     cat > "${INSTALL_DIR}/scripts/vpn-auth.sh" << 'AUTHEOF'
 #!/bin/bash
-# Verifica credenciales VPN usuario/contraseña contra el backend ERP.
-# Llamado por OpenVPN via: auth-user-pass-verify <script> via-env
-# OpenVPN inyecta: username y password como variables de entorno.
+# Verifica credenciales VPN contra el backend ERP.
+# Llamado por OpenVPN: auth-user-pass-verify <script> via-file
+# OpenVPN escribe un archivo temporal: linea1=username, linea2=password
 
-[ -z "${username}" ] && exit 1
+TMPFILE="$1"
+[ -z "$TMPFILE" ] && exit 1
+[ ! -f "$TMPFILE" ] && exit 1
+
+VPN_USER=$(sed -n '1p' "$TMPFILE")
+VPN_PASS=$(sed -n '2p' "$TMPFILE")
+
+[ -z "$VPN_USER" ] && exit 1
 
 RESPONSE=$(curl -sf -m 5 \
   -X POST "http://127.0.0.1:4000/api/v1/openvpn/mikrotik-clients/verify-auth" \
   -H 'Content-Type: application/json' \
-  -d "{\"username\":\"${username}\",\"password\":\"${password}\"}" 2>/dev/null)
+  -d "{\"username\":\"$VPN_USER\",\"password\":\"$VPN_PASS\"}" 2>/dev/null)
 
 [ $? -ne 0 ] && exit 1
 
-echo "${RESPONSE}" | grep -q '"success":true' && exit 0 || exit 1
+echo "$RESPONSE" | grep -q '"success":true' && exit 0 || exit 1
 AUTHEOF
     chmod 755 "${INSTALL_DIR}/scripts/vpn-auth.sh"
     # Permitir traverse a nobody (OpenVPN corre como nobody al ejecutar auth scripts)
