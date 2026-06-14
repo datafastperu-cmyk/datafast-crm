@@ -19,6 +19,9 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
   name = 'UnificarEstadosAbonados1785400000000';
 
   public async up(qr: QueryRunner): Promise<void> {
+    // Eliminar vistas dependientes antes de alterar columnas de tipo ENUM
+    await qr.query(`DROP VIEW IF EXISTS v_resumen_clientes`);
+
     // ── 1. Convertir columnas cliente a TEXT para poder cambiar el ENUM ──
     await qr.query(`ALTER TABLE clientes ALTER COLUMN estado TYPE TEXT`);
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_anterior TYPE TEXT`);
@@ -87,6 +90,9 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
   }
 
   public async down(qr: QueryRunner): Promise<void> {
+    // Eliminar vistas dependientes antes de alterar columnas de tipo ENUM
+    await qr.query(`DROP VIEW IF EXISTS v_resumen_clientes`);
+
     // Revertir enum estado_contrato
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado TYPE TEXT`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE TEXT`);
