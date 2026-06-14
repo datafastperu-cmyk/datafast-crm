@@ -40,7 +40,7 @@ const mockFacturaRow = {
 
 const mockContratoSuspendido = {
   id: 'cnt-001', empresaId: 'emp-001',
-  estado: EstadoContrato.SUSPENDIDO_MORA,
+  estado: EstadoContrato.SUSPENDIDO,
   deudaTotal: 85, mesesDeuda: 1,
 };
 

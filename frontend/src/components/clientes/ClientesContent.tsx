@@ -21,12 +21,11 @@ import { cn }                 from '@/lib/utils';
 import { MOCK_STATS } from '@/data/clientes.mock';
 
 const ESTADO_TABS = [
-  { key: '',               label: 'Todos',      color: 'text-foreground' },
-  { key: 'activo',         label: 'Activos',    color: 'text-green-600 dark:text-green-400' },
-  { key: 'moroso',         label: 'Morosos',    color: 'text-orange-600 dark:text-orange-400' },
-  { key: 'suspendido',     label: 'Suspendidos', color: 'text-yellow-600 dark:text-yellow-400' },
-  { key: 'baja_definitiva', label: 'Bajas',     color: 'text-muted-foreground' },
-  { key: 'prospecto',      label: 'Prospectos', color: 'text-blue-600 dark:text-blue-400' },
+  { key: '',                     label: 'Todos',      color: 'text-foreground' },
+  { key: 'pendiente_instalacion',label: 'Pendientes', color: 'text-blue-600 dark:text-blue-400' },
+  { key: 'activo',               label: 'Activos',    color: 'text-green-600 dark:text-green-400' },
+  { key: 'suspendido',           label: 'Suspendidos',color: 'text-yellow-600 dark:text-yellow-400' },
+  { key: 'baja_definitiva',      label: 'Bajas',      color: 'text-muted-foreground' },
 ] as const;
 
 const SERVICIO_OPTIONS = [
@@ -98,7 +97,7 @@ export function ClientesContent() {
   }, []);
 
   const { mutate: bulkAction, isPending: bulkPending } = useMutation({
-    mutationFn: ({ action, motivo }: { action: 'suspender' | 'reactivar' | 'baja_temporal' | 'marcar_moroso'; motivo?: string }) =>
+    mutationFn: ({ action, motivo }: { action: 'suspender' | 'reactivar'; motivo?: string }) =>
       clientesApi.bulkAction(Array.from(selectedIds), action, motivo),
     onSuccess: (result) => {
       toast(`${result.ok} clientes actualizados${result.errors ? `, ${result.errors} errores` : ''}`, {
@@ -216,8 +215,8 @@ export function ClientesContent() {
       border: 'border-t-green-500',
     },
     {
-      label: 'Morosos',
-      value: statsData.morosos ?? 0,
+      label: 'Suspendidos',
+      value: statsData.suspendidos ?? 0,
       icon: AlertTriangle,
       iconBg: 'bg-orange-100 dark:bg-orange-950/40',
       iconColor: 'text-orange-600 dark:text-orange-400',
@@ -458,26 +457,6 @@ export function ClientesContent() {
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               Reactivar
-            </button>
-            <button
-              onClick={() => bulkAction({ action: 'marcar_moroso' })}
-              disabled={bulkPending}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg font-medium
-                         bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-950/40
-                         dark:text-orange-400 dark:hover:bg-orange-900/40 transition-colors disabled:opacity-50"
-            >
-              <AlertOctagon className="w-3.5 h-3.5" />
-              Marcar moroso
-            </button>
-            <button
-              onClick={() => bulkAction({ action: 'baja_temporal' })}
-              disabled={bulkPending}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg font-medium
-                         bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800
-                         dark:text-gray-400 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              Baja temporal
             </button>
             <button
               onClick={() => setSelectedIds(new Set())}

@@ -75,7 +75,7 @@ export function ContratoDetalle({ id }: { id: string }) {
   if (!contrato) return <p className="text-muted-foreground text-center py-20">Contrato no encontrado.</p>;
 
   const esActivo    = contrato.estado === 'activo';
-  const esSuspendido = ['suspendido_mora','suspendido_manual'].includes(contrato.estado);
+  const esSuspendido = contrato.estado === 'suspendido';
   const esPendiente = contrato.estado === 'pendiente_instalacion';
 
   return (
@@ -147,7 +147,7 @@ export function ContratoDetalle({ id }: { id: string }) {
                         icon={WifiOff}
                         label="Suspender"
                         loading={cambiando}
-                        onClick={() => cambiarEstado({ estado: 'suspendido_manual', motivo: 'Suspensión manual' })}
+                        onClick={() => cambiarEstado({ estado: 'suspendido', motivo: 'Suspensión manual' })}
                       />
                     )}
                     {contrato.aprovisionado && (

@@ -33,12 +33,10 @@ import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 // Define qué estados pueden cambiar a cuáles.
 // Protege la integridad del ciclo de vida del cliente.
 const TRANSICIONES_VALIDAS: Record<EstadoCliente, EstadoCliente[]> = {
-  [EstadoCliente.PROSPECTO]:       [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
-  [EstadoCliente.ACTIVO]:          [EstadoCliente.SUSPENDIDO, EstadoCliente.MOROSO, EstadoCliente.BAJA_TEMPORAL, EstadoCliente.BAJA_DEFINITIVA],
-  [EstadoCliente.SUSPENDIDO]:      [EstadoCliente.ACTIVO, EstadoCliente.MOROSO, EstadoCliente.BAJA_DEFINITIVA],
-  [EstadoCliente.MOROSO]:          [EstadoCliente.ACTIVO, EstadoCliente.SUSPENDIDO, EstadoCliente.BAJA_DEFINITIVA],
-  [EstadoCliente.BAJA_TEMPORAL]:   [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
-  [EstadoCliente.BAJA_DEFINITIVA]: [], // Estado terminal
+  [EstadoCliente.PENDIENTE_INSTALACION]: [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
+  [EstadoCliente.ACTIVO]:               [EstadoCliente.SUSPENDIDO, EstadoCliente.BAJA_DEFINITIVA],
+  [EstadoCliente.SUSPENDIDO]:           [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
+  [EstadoCliente.BAJA_DEFINITIVA]:      [],
 };
 
 @Injectable()
@@ -92,7 +90,7 @@ export class ClientesService {
       empresaId:  user.empresaId,
       createdBy:  user.sub,
       updatedBy:  user.sub,
-      estado:     EstadoCliente.PROSPECTO,
+      estado:     EstadoCliente.PENDIENTE_INSTALACION,
       fechaEstado: new Date(),
     });
 
@@ -102,7 +100,7 @@ export class ClientesService {
     await this.clienteRepo.guardarHistorial({
       clienteId:   saved.id,
       empresaId:   user.empresaId,
-      estadoNuevo: EstadoCliente.PROSPECTO,
+      estadoNuevo: EstadoCliente.PENDIENTE_INSTALACION,
       motivo:      'Alta de cliente',
       usuarioId:   user.sub,
       automatico:  false,
@@ -301,7 +299,7 @@ export class ClientesService {
     const contratos = await this.contratosSvc.findByCliente(clienteId, user.empresaId);
     if (!contratos.length) return;
 
-    const estadosTerminales = new Set<EstadoContrato>([EstadoContrato.BAJA_DEFINITIVA, EstadoContrato.MIGRADO]);
+    const estadosTerminales = new Set<EstadoContrato>([EstadoContrato.BAJA_DEFINITIVA]);
     const motivoBaja = `Baja definitiva de cliente${motivo ? `: ${motivo}` : ''}`;
 
     for (const contrato of contratos) {
@@ -488,10 +486,8 @@ export class ClientesService {
     req?: any,
   ): Promise<{ ok: number; errors: number; total: number }> {
     const estadoMap: Record<string, EstadoCliente> = {
-      suspender:      EstadoCliente.SUSPENDIDO,
-      reactivar:      EstadoCliente.ACTIVO,
-      baja_temporal:  EstadoCliente.BAJA_TEMPORAL,
-      marcar_moroso:  EstadoCliente.MOROSO,
+      suspender:  EstadoCliente.SUSPENDIDO,
+      reactivar:  EstadoCliente.ACTIVO,
     };
     const nuevoEstado = estadoMap[dto.action];
     const CHUNK = 20;
@@ -544,29 +540,7 @@ export class ClientesService {
           user,
           req,
         );
-        // Promover cliente de PROSPECTO → ACTIVO
-        await this.clienteRepo.update(cliente.id, user.empresaId, {
-          estado: EstadoCliente.ACTIVO,
-          fechaEstado: new Date(),
-        } as any);
-        await this.clienteRepo.guardarHistorial({
-          clienteId: cliente.id,
-          empresaId: user.empresaId,
-          estadoAnterior: EstadoCliente.PROSPECTO,
-          estadoNuevo: EstadoCliente.ACTIVO,
-          motivo: `Alta con plan: ${contrato.numeroContrato}`,
-          usuarioId: user.sub,
-          automatico: true,
-        });
-        await this.auditoria.logUpdate({
-          empresaId:    user.empresaId,
-          usuarioId:    user.sub,
-          usuarioEmail: user.email,
-          modulo:       'clientes',
-          entidadId:    cliente.id,
-          descripcion:  `Estado: ${EstadoCliente.PROSPECTO} → ${EstadoCliente.ACTIVO} | Alta con plan (onboarding)`,
-          req,
-        });
+        // El cliente permanece en PENDIENTE_INSTALACION hasta que el técnico active el servicio
       } catch (err: any) {
         this.logger.error(`onboarding: contrato fallido para ${cliente.id}: ${err.message}`);
         // Si el contrato ya fue creado, terminarlo primero para que libere la IP

@@ -141,7 +141,7 @@ export class MikrotikService {
       `SELECT router_id, COUNT(*) AS count
        FROM contratos
        WHERE router_id = ANY($1)
-         AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+         AND estado IN ('activo','suspendido')
          AND deleted_at IS NULL
        GROUP BY router_id`,
       [routers.map((r) => r.id)],
@@ -214,7 +214,7 @@ export class MikrotikService {
       this.ds.query<[{ count: string }]>(
         `SELECT COUNT(*) AS count FROM contratos
          WHERE router_id = $1
-           AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga','pendiente_instalacion')
+           AND estado IN ('activo','suspendido','pendiente_instalacion')
            AND deleted_at IS NULL`,
         [id],
       ),
@@ -362,7 +362,7 @@ export class MikrotikService {
     `, [routerId, empresaId]);
 
     const morososCount = contratos.filter(
-      (c) => c.estado === 'suspendido_mora' || c.estado === 'suspendido_manual',
+      (c) => c.estado === 'suspendido',
     ).length;
 
     // Pre-flight: verificar conectividad antes de procesar ningún contrato

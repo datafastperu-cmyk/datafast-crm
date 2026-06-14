@@ -63,13 +63,10 @@ const SERVICIO_CFG: Record<string, {
 
 // ── Estado dot color ──────────────────────────────────────────
 const ESTADO_DOT: Record<string, string> = {
-  activo:          'bg-green-500 shadow-[0_0_0_2px_rgba(34,197,94,0.3)]',
-  moroso:          'bg-orange-500 shadow-[0_0_0_2px_rgba(249,115,22,0.3)]',
-  suspendido:      'bg-yellow-400 shadow-[0_0_0_2px_rgba(250,204,21,0.3)]',
-  suspendido_mora: 'bg-orange-500',
-  baja_temporal:   'bg-gray-400',
-  baja_definitiva: 'bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.3)]',
-  prospecto:       'bg-blue-500 shadow-[0_0_0_2px_rgba(59,130,246,0.3)]',
+  pendiente_instalacion: 'bg-blue-500 shadow-[0_0_0_2px_rgba(59,130,246,0.3)]',
+  activo:                'bg-green-500 shadow-[0_0_0_2px_rgba(34,197,94,0.3)]',
+  suspendido:            'bg-yellow-400 shadow-[0_0_0_2px_rgba(250,204,21,0.3)]',
+  baja_definitiva:       'bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.3)]',
 };
 
 // ── Avatar initials color ─────────────────────────────────────

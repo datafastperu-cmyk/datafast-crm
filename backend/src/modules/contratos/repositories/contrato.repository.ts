@@ -271,7 +271,7 @@ export class ContratoRepository {
     const limitDate = new Date();
     limitDate.setDate(limitDate.getDate() - graceDays);
     return this.repo.createQueryBuilder('c')
-      .where('c.estado IN (:...estados)', { estados:[EstadoContrato.ACTIVO, EstadoContrato.PRORROGA] })
+      .where('c.estado = :estado', { estado: EstadoContrato.ACTIVO })
       .andWhere('c.deuda_total > 0').andWhere('c.deleted_at IS NULL')
       .andWhere('(c.en_prorroga = false OR (c.en_prorroga = true AND c.prorroga_hasta < :hoy))', { hoy:new Date().toISOString().split('T')[0] })
       .andWhere('c.fecha_estado <= :limite', { limite:limitDate }).getMany();
@@ -279,7 +279,7 @@ export class ContratoRepository {
 
   async findParaReactivar(): Promise<Contrato[]> {
     return this.repo.createQueryBuilder('c')
-      .where('c.estado = :estado', { estado:EstadoContrato.SUSPENDIDO_MORA })
+      .where('c.estado = :estado', { estado: EstadoContrato.SUSPENDIDO })
       .andWhere('c.deuda_total <= 0').andWhere('c.deleted_at IS NULL').getMany();
   }
 

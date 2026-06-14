@@ -20,8 +20,8 @@ export class DashboardService {
         this.dataSource.query(`
           SELECT
             COUNT(*)                                                                        AS total,
-            COUNT(*) FILTER (WHERE estado IN ('activo','prorroga'))                         AS activos,
-            COUNT(*) FILTER (WHERE estado IN ('suspendido_mora','suspendido_manual'))        AS suspendidos,
+            COUNT(*) FILTER (WHERE estado = 'activo')                                        AS activos,
+            COUNT(*) FILTER (WHERE estado = 'suspendido')                                   AS suspendidos,
             COUNT(*) FILTER (WHERE fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
                              AND estado = 'activo')                                         AS por_vencer
           FROM contratos WHERE empresa_id = $1

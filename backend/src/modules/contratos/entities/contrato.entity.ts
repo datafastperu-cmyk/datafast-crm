@@ -10,12 +10,8 @@ export enum TipoPago {
 export enum EstadoContrato {
   PENDIENTE_INSTALACION = 'pendiente_instalacion',
   ACTIVO                = 'activo',
-  SUSPENDIDO_MORA       = 'suspendido_mora',
-  SUSPENDIDO_MANUAL     = 'suspendido_manual',
-  PRORROGA              = 'prorroga',
-  BAJA_SOLICITADA       = 'baja_solicitada',
+  SUSPENDIDO            = 'suspendido',
   BAJA_DEFINITIVA       = 'baja_definitiva',
-  MIGRADO               = 'migrado',
 }
 
 // ─── Contrato ─────────────────────────────────────────────────
@@ -252,11 +248,11 @@ export class Contrato extends BaseModel {
 
   // ── Helpers ───────────────────────────────────────────────
   get estaActivo(): boolean {
-    return [EstadoContrato.ACTIVO, EstadoContrato.PRORROGA].includes(this.estado);
+    return this.estado === EstadoContrato.ACTIVO;
   }
 
   get estaSuspendido(): boolean {
-    return [EstadoContrato.SUSPENDIDO_MORA, EstadoContrato.SUSPENDIDO_MANUAL].includes(this.estado);
+    return this.estado === EstadoContrato.SUSPENDIDO;
   }
 
   get tieneMora(): boolean {

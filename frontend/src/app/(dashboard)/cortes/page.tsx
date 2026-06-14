@@ -6,8 +6,8 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { cn, formatPEN } from '@/lib/utils';
 import { mockClientes } from '@/mock-data';
 
-// Clientes morosos aptos para corte
-const clientesMorosos = mockClientes.filter(c => c.estado === 'moroso' || c.estado === 'suspendido');
+// Clientes suspendidos aptos para corte
+const clientesMorosos = mockClientes.filter(c => c.estado === 'suspendido');
 
 const HISTORIAL_CORTES = [
   { id:'h1', fecha:'2025-05-15 06:00', tipo:'automatico', afectados:23, restaurados:18, pendientes:5, estado:'completado' },
@@ -157,9 +157,7 @@ export default function CortesPage() {
                     <td className="text-xs text-muted-foreground">{c.plan}</td>
                     <td className="text-sm font-semibold text-red-400">{formatPEN(c.deuda)}</td>
                     <td>
-                      <span className={cn('text-[11px] font-medium px-2 py-0.5 rounded-full',
-                        c.estado === 'moroso' ? 'bg-orange-500/10 text-orange-400' : 'bg-red-500/10 text-red-400'
-                      )}>
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">
                         {c.estado}
                       </span>
                     </td>

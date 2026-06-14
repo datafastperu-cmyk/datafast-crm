@@ -56,8 +56,7 @@ export interface HistorialEntry {
 
 // ─── Clientes ─────────────────────────────────────────────────
 export type EstadoCliente =
-  | 'activo' | 'suspendido' | 'moroso'
-  | 'baja_temporal' | 'baja_definitiva' | 'prospecto';
+  | 'pendiente_instalacion' | 'activo' | 'suspendido' | 'baja_definitiva';
 
 export type TipoDocumento = 'dni' | 'ruc' | 'ce' | 'pasaporte';
 export type TipoServicio  = 'ftth' | 'wisp' | 'dedicado' | 'mixto';
@@ -134,9 +133,7 @@ export interface Plan {
 
 // ─── Contratos ────────────────────────────────────────────────
 export type EstadoContrato =
-  | 'pendiente_instalacion' | 'activo' | 'suspendido_mora'
-  | 'suspendido_manual' | 'prorroga' | 'baja_solicitada'
-  | 'baja_definitiva' | 'migrado';
+  | 'pendiente_instalacion' | 'activo' | 'suspendido' | 'baja_definitiva';
 
 export interface Contrato {
   id:              string;
@@ -312,7 +309,7 @@ export interface Alerta {
 
 // ─── Dashboard ────────────────────────────────────────────────
 export interface DashboardStats {
-  clientes:    { total: number; activos: number; morosos: number; nuevosHoy: number; nuevosMes: number };
+  clientes:    { total: number; activos: number; suspendidos: number; nuevosHoy: number; nuevosMes: number };
   contratos:   { total: number; activos: number; suspendidos: number; porVencer: number };
   facturacion: { cobradoHoy: number; cobradoMes: number; cuentasPorCobrar: number; tasaCobranza: number; meta: number };
   nodos:       { total: number; online: number; offline: number; degradado: number };

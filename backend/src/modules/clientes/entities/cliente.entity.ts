@@ -7,12 +7,10 @@ import { Exclude } from 'class-transformer';
 import { BaseModel } from '../../../common/entities/base.entity';
 
 export enum EstadoCliente {
-  ACTIVO          = 'activo',
-  SUSPENDIDO      = 'suspendido',
-  MOROSO          = 'moroso',
-  BAJA_TEMPORAL   = 'baja_temporal',
-  BAJA_DEFINITIVA = 'baja_definitiva',
-  PROSPECTO       = 'prospecto',
+  PENDIENTE_INSTALACION = 'pendiente_instalacion',
+  ACTIVO                = 'activo',
+  SUSPENDIDO            = 'suspendido',
+  BAJA_DEFINITIVA       = 'baja_definitiva',
 }
 
 export enum TipoDocumento {
@@ -99,7 +97,7 @@ export class Cliente extends BaseModel {
   @Column({ name: 'foto_instalacion_url', length: 500, nullable: true })
   fotoInstalacionUrl: string;
 
-  @Column({ type: 'enum', enum: EstadoCliente, default: EstadoCliente.PROSPECTO })
+  @Column({ type: 'enum', enum: EstadoCliente, default: EstadoCliente.PENDIENTE_INSTALACION })
   estado: EstadoCliente;
 
   @Column({ name: 'fecha_estado', type: 'timestamptz', default: () => 'NOW()' })

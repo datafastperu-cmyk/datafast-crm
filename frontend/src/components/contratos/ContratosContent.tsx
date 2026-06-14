@@ -14,11 +14,11 @@ import { useDebounce }       from '@/hooks/useDebounce';
 import { cn, formatPEN }     from '@/lib/utils';
 
 const ESTADO_TABS = [
-  { key: '',                    label: 'Todos',         icon: FileText },
-  { key: 'activo',              label: 'Activos',       icon: Wifi },
-  { key: 'suspendido_mora',     label: 'Suspendidos',   icon: WifiOff },
-  { key: 'prorroga',            label: 'Prórroga',      icon: Clock },
-  { key: 'pendiente_instalacion', label: 'Pendientes',  icon: AlertTriangle },
+  { key: '',                     label: 'Todos',       icon: FileText },
+  { key: 'pendiente_instalacion',label: 'Pendientes',  icon: AlertTriangle },
+  { key: 'activo',               label: 'Activos',     icon: Wifi },
+  { key: 'suspendido',           label: 'Suspendidos', icon: WifiOff },
+  { key: 'baja_definitiva',      label: 'Bajas',       icon: Clock },
 ];
 
 export function ContratosContent() {

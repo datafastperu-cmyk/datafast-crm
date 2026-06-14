@@ -75,7 +75,7 @@ describe('ContratosService', () => {
 
   describe('otorgarProrroga()', () => {
     it('prórroga válida a contrato activo', async () => {
-      mockRepo.findById.mockResolvedValueOnce({ ...mockContrato, estado:EstadoContrato.ACTIVO }).mockResolvedValueOnce({ ...mockContrato, estado:EstadoContrato.PRORROGA });
+      mockRepo.findById.mockResolvedValueOnce({ ...mockContrato, estado:EstadoContrato.ACTIVO }).mockResolvedValueOnce({ ...mockContrato, estado:EstadoContrato.ACTIVO });
       const futuro = new Date(); futuro.setDate(futuro.getDate()+15);
       await service.otorgarProrroga('cnt-001', { prorrogaHasta:futuro.toISOString().split('T')[0], motivo:'Acuerdo' }, mockUser as any);
       expect(mockRepo.update).toHaveBeenCalledWith('cnt-001', expect.objectContaining({ enProrroga:true }));

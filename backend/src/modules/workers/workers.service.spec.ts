@@ -23,7 +23,7 @@ const mockRouter = {
 const mockContrato = {
   id: 'cnt-001', deuda_total: 85.00, meses_deuda: 1,
   router_id: 'rtr-001', ip_asignada: '192.168.1.2',
-  usuario_pppoe: 'cli_abc', estado: 'suspendido_mora',
+  usuario_pppoe: 'cli_abc', estado: 'suspendido',
   plan_nombre: 'Plan 30 Mbps',
 };
 

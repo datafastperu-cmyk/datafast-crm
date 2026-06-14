@@ -301,8 +301,6 @@ export function ClienteDetalle({ id }: { id: string }) {
                   >
                     <option value="activo">Activo</option>
                     <option value="suspendido">Suspendido</option>
-                    <option value="moroso">Moroso</option>
-                    <option value="baja_temporal">Baja temporal</option>
                     <option value="baja_definitiva">Baja definitiva</option>
                   </select>
                 </div>
@@ -644,13 +642,9 @@ function SvcTh({ children, className }: { children: React.ReactNode; className?:
 
 const CONTRATO_ESTADO_CFG: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
   pendiente_instalacion: { label: 'Pendiente',  icon: Clock,         cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
-  activo:               { label: 'Activo',     icon: Wifi,          cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-  suspendido_mora:      { label: 'Mora',        icon: AlertTriangle, cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-  suspendido_manual:    { label: 'Suspendido',  icon: WifiOff,       cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
-  prorroga:             { label: 'Prórroga',    icon: CheckCircle2,  cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  baja_solicitada:      { label: 'Baja Sol.',   icon: XCircle,       cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-  baja_definitiva:      { label: 'Baja Def.',   icon: XCircle,       cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
-  migrado:              { label: 'Migrado',     icon: Shuffle,       cls: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
+  activo:                { label: 'Activo',     icon: Wifi,          cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  suspendido:            { label: 'Suspendido', icon: WifiOff,       cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+  baja_definitiva:       { label: 'Baja Def.',  icon: XCircle,       cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
 };
 
 function ContratoEstadoBadge({ estado }: { estado: string }) {
@@ -802,7 +796,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
     c.numeroContrato.toLowerCase().includes(q1.toLowerCase()),
   );
 
-  const { mutate: activar } = useMutation({
+  const { mutate: activar, isPending: activarPending, variables: activarId } = useMutation({
     mutationFn: (id: string) => contratosApi.activar(id),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
@@ -920,10 +914,14 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       {c.estado === 'pendiente_instalacion' && (
                         <button
                           onClick={() => activar(c.id)}
-                          title="Activar servicio"
-                          className="p-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-muted-foreground hover:text-emerald-600 transition-colors"
+                          disabled={activarPending && activarId === c.id}
+                          title={activarPending && activarId === c.id ? 'Ingresando datos...' : 'Activar servicio'}
+                          className="p-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-muted-foreground hover:text-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-wait"
                         >
-                          <CheckCircle2 className="w-3 h-3" />
+                          {activarPending && activarId === c.id
+                            ? <span className="text-[10px] font-medium text-emerald-600 leading-none">Ingresando...</span>
+                            : <CheckCircle2 className="w-3 h-3" />
+                          }
                         </button>
                       )}
                       {c.estado !== 'baja_definitiva' && (

@@ -21,12 +21,12 @@ function initials(name: string) {
 }
 
 const ESTADO_LABEL: Record<string, string> = {
-  activo: 'ACTIVO', suspendido: 'SUSPENDIDO', moroso: 'MOROSO',
-  baja_temporal: 'BAJA TEMP.', baja_definitiva: 'BAJA', prospecto: 'PROSPECTO',
+  pendiente_instalacion: 'PENDIENTE', activo: 'ACTIVO',
+  suspendido: 'SUSPENDIDO', baja_definitiva: 'BAJA',
 };
 const ESTADO_COLOR: Record<string, string> = {
-  activo: 'bg-emerald-500', suspendido: 'bg-yellow-500', moroso: 'bg-red-500',
-  baja_temporal: 'bg-gray-400', baja_definitiva: 'bg-gray-600', prospecto: 'bg-blue-500',
+  pendiente_instalacion: 'bg-blue-500', activo: 'bg-emerald-500',
+  suspendido: 'bg-yellow-500', baja_definitiva: 'bg-gray-600',
 };
 
 const PAGO_BADGE: Record<string, string> = {

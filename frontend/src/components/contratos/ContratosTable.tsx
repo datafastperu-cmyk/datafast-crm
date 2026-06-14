@@ -1,19 +1,15 @@
 'use client';
 
-import { Wifi, WifiOff, AlertTriangle, Clock } from 'lucide-react';
+import { Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import { cn, formatPEN, formatDate, labelContrato } from '@/lib/utils';
 import type { Contrato } from '@/types';
 
 // ─── Badge de estado ──────────────────────────────────────────
 const ESTADOS: Record<string, { label: string; cls: string; icon?: React.ElementType }> = {
-  activo:               { label: 'Activo',         cls: 'badge-activo',    icon: Wifi },
-  suspendido_mora:      { label: 'Mora',           cls: 'badge-moroso',    icon: WifiOff },
-  suspendido_manual:    { label: 'Suspendido',     cls: 'badge-suspendido',icon: WifiOff },
-  prorroga:             { label: 'Prórroga',       cls: 'badge-prorroga',  icon: Clock },
-  pendiente_instalacion:{ label: 'Pend. Instalac.',cls: 'badge-pendiente', icon: AlertTriangle },
-  baja_definitiva:      { label: 'Baja',           cls: 'badge-baja' },
-  baja_solicitada:      { label: 'Baja Solic.',    cls: 'badge-baja' },
-  migrado:              { label: 'Migrado',        cls: 'badge-baja' },
+  pendiente_instalacion: { label: 'Pend. Instalac.', cls: 'badge-pendiente', icon: AlertTriangle },
+  activo:                { label: 'Activo',           cls: 'badge-activo',    icon: Wifi },
+  suspendido:            { label: 'Suspendido',       cls: 'badge-suspendido',icon: WifiOff },
+  baja_definitiva:       { label: 'Baja',             cls: 'badge-baja' },
 };
 
 export function ContratoEstadoBadge({ estado }: { estado: string }) {

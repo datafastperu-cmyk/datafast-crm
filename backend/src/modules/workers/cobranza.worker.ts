@@ -101,16 +101,13 @@ export class CobranzaScheduler {
         co.usuario_pppoe,
         co.deuda_total,
         co.meses_deuda,
-        co.en_prorroga,
-        co.prorroga_hasta,
-        co.estado,
         em.dias_gracia AS dias_gracia_corte,
         em.notif_whatsapp_corte,
         EXTRACT(DAY FROM (NOW() - COALESCE(co.fecha_ultimo_pago, co.fecha_inicio)::timestamptz))::int
           AS dias_sin_pago
       FROM contratos co
       JOIN empresas em ON em.id = co.empresa_id
-      WHERE co.estado IN ('activo', 'prorroga')
+      WHERE co.estado = 'activo'
         AND co.deuda_total > 0
         AND co.deleted_at IS NULL
         AND co.router_id IS NOT NULL
@@ -120,28 +117,10 @@ export class CobranzaScheduler {
     `);
 
     let suspender = 0;
-    let omitidos  = 0;
 
     for (const c of morosos) {
       const diasGracia = parseInt(c.dias_gracia_corte || '5', 10);
 
-      // Si está en prórroga y la prórroga no ha vencido → omitir
-      if (c.en_prorroga && c.prorroga_hasta) {
-        const venceProrroga = new Date(c.prorroga_hasta);
-        if (venceProrroga > new Date()) {
-          omitidos++;
-          continue;
-        }
-        // Prórroga vencida → encolar job de vencimiento de prórroga
-        await this.queue.add(JOBS.VENCER_PRORROGA, {
-          contratoId: c.contrato_id,
-          empresaId:  c.empresa_id,
-          clienteId:  c.cliente_id,
-          prorrogaHasta: c.prorroga_hasta,
-        } as PayloadEvaluarProrroga, JOB_OPTIONS.CRITICO);
-      }
-
-      // Solo suspender si superó los días de gracia
       if (parseInt(c.dias_sin_pago, 10) > diasGracia) {
         await this.queue.add(
           JOBS.SUSPENDER_CONTRATO,
@@ -158,7 +137,6 @@ export class CobranzaScheduler {
           } as PayloadSuspenderContrato,
           {
             ...JOB_OPTIONS.CRITICO,
-            // Escalonar suspensiones: 1 seg entre cada una
             delay: suspender * 1000,
           },
         );
@@ -167,48 +145,14 @@ export class CobranzaScheduler {
     }
 
     this.logger.log(
-      `[CRON] Detección morosos: ${morosos.length} encontrados | ` +
-      `${suspender} a suspender | ${omitidos} en prórroga vigente`,
+      `[CRON] Detección morosos: ${morosos.length} encontrados | ${suspender} a suspender`,
     );
   }
 
-  // ─── PRÓRROGAS VENCIDAS (verificar cada 2h) ───────────────
-  @Cron('0 */2 * * *', { timeZone: 'America/Lima', name: 'prorrogas-vencidas' })
-  async verificarProrrogasVencidas(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
-    const hoy = new Date().toISOString().split('T')[0];
-
-    const prorrogasVencidas = await this.ds.query(`
-      SELECT co.id, co.empresa_id, co.cliente_id, co.router_id,
-             co.ip_asignada, co.usuario_pppoe, co.deuda_total,
-             co.meses_deuda, co.prorroga_hasta
-      FROM contratos co
-      WHERE co.en_prorroga = true
-        AND co.prorroga_hasta < $1
-        AND co.estado = 'prorroga'
-        AND co.deleted_at IS NULL
-    `, [hoy]);
-
-    for (const c of prorrogasVencidas) {
-      await this.queue.add(JOBS.VENCER_PRORROGA, {
-        contratoId:   c.id,
-        empresaId:    c.empresa_id,
-        clienteId:    c.cliente_id,
-        prorrogaHasta: c.prorroga_hasta,
-      } as PayloadEvaluarProrroga, JOB_OPTIONS.CRITICO);
-    }
-
-    if (prorrogasVencidas.length) {
-      this.logger.log(
-        `[CRON] ${prorrogasVencidas.length} prórrogas vencidas encoladas para suspensión`,
-      );
-    }
-  }
-
   // ─── BARRIDO NOCTURNO (00:05 AM) ─────────────────────────────
-  // Escenario A: ACTIVO → PRORROGA cuando fecha_vencimiento <= HOY
-  // Escenario B: PRORROGA vencida → encola SUSPENDER via Bull
-  // Escenario C: Recordatorios personalizados (dias_recordatorio_N)
+  // Escenario único: Recordatorios personalizados (dias_recordatorio_N)
+  // La prórroga ya no cambia estado — el contrato permanece ACTIVO
+  // hasta que detectarMorosos lo suspende al superar los días de gracia.
   // Solo instancia 0 del clúster PM2 ejecuta este barrido.
   @Cron('5 0 * * *', { timeZone: 'America/Lima', name: 'barrido-nocturno-cobranza' })
   async barridoNocturno(): Promise<void> {
@@ -217,92 +161,9 @@ export class CobranzaScheduler {
     const inicio = Date.now();
     this.logger.log('═══ BARRIDO NOCTURNO cobranza iniciado ═══');
 
-    const qr = this.ds.createQueryRunner();
-    await qr.connect();
-    await qr.startTransaction();
-
-    let countA = 0;
-    let countB = 0;
     let countR = 0;
 
-    try {
-      // ── Escenario A: ACTIVO → PRORROGA ─────────────────────
-      const activosVencidos: Array<{
-        id: string; empresa_id: string; numero_contrato: string;
-        fecha_vencimiento: string; dias_prorroga: number;
-      }> = await qr.manager.query(`
-        SELECT id, empresa_id, numero_contrato, fecha_vencimiento, dias_prorroga
-        FROM contratos
-        WHERE estado = 'activo'
-          AND fecha_vencimiento IS NOT NULL
-          AND fecha_vencimiento <= CURRENT_DATE
-          AND deleted_at IS NULL
-      `);
-
-      this.logger.log(`[A] Contratos ACTIVO vencidos: ${activosVencidos.length}`);
-
-      for (const c of activosVencidos) {
-        const prorrogaHasta = this.addDays(c.fecha_vencimiento, c.dias_prorroga ?? 3);
-
-        await qr.manager.query(`
-          UPDATE contratos
-          SET estado = 'prorroga',
-              en_prorroga = true,
-              prorroga_hasta = $1,
-              fecha_estado = NOW(),
-              motivo_estado = 'Vencimiento automático — período de gracia activo',
-              updated_at = NOW()
-          WHERE id = $2
-        `, [prorrogaHasta, c.id]);
-
-        await qr.manager.query(`
-          INSERT INTO contratos_historial
-            (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico, created_at)
-          VALUES ($1, $2, 'activo', 'prorroga', $3, true, NOW())
-        `, [
-          c.id, c.empresa_id,
-          `Vencimiento: ${c.fecha_vencimiento} | Gracia hasta: ${prorrogaHasta}`,
-        ]);
-
-        this.logger.debug(`[A] ${c.numero_contrato} → PRORROGA hasta ${prorrogaHasta}`);
-        countA++;
-      }
-
-      // ── Escenario B: prórrogas vencidas → SUSPENDER (via Bull) ─
-      const prorrogasVencidas: Array<{
-        id: string; empresa_id: string; cliente_id: string; prorroga_hasta: string;
-      }> = await qr.manager.query(`
-        SELECT id, empresa_id, cliente_id, prorroga_hasta
-        FROM contratos
-        WHERE estado = 'prorroga'
-          AND en_prorroga = true
-          AND prorroga_hasta < CURRENT_DATE
-          AND deleted_at IS NULL
-      `);
-
-      this.logger.log(`[B] Prórrogas vencidas a suspender: ${prorrogasVencidas.length}`);
-
-      await qr.commitTransaction();
-
-      // Encolar fuera de la transacción — si el encolado falla no reversa la tx A
-      for (const c of prorrogasVencidas) {
-        await this.queue.add(JOBS.VENCER_PRORROGA, {
-          contratoId:    c.id,
-          empresaId:     c.empresa_id,
-          clienteId:     c.cliente_id,
-          prorrogaHasta: c.prorroga_hasta,
-        } as PayloadEvaluarProrroga, JOB_OPTIONS.CRITICO);
-        countB++;
-      }
-
-    } catch (err) {
-      try { await qr.rollbackTransaction(); } catch { /* ignorar si ya cerrada */ }
-      this.logger.error(`BARRIDO NOCTURNO error: ${err.message}`, err.stack);
-    } finally {
-      await qr.release();
-    }
-
-    // ── Escenario C: recordatorios personalizados por contrato ─
+    // ── Recordatorios personalizados por contrato ─
     try {
       const recordatorios: Array<{
         id: string; empresa_id: string; cliente_id: string;
@@ -355,15 +216,8 @@ export class CobranzaScheduler {
 
     const ms = Date.now() - inicio;
     this.logger.log(
-      `═══ BARRIDO NOCTURNO completado en ${ms}ms | ` +
-      `A=${countA} → PRORROGA | B=${countB} → SUSPENDER | R=${countR} recordatorios ═══`,
+      `═══ BARRIDO NOCTURNO completado en ${ms}ms | R=${countR} recordatorios ═══`,
     );
-  }
-
-  private addDays(fechaStr: string, dias: number): string {
-    const d = new Date(fechaStr);
-    d.setDate(d.getDate() + dias);
-    return d.toISOString().split('T')[0];
   }
 
   // ─── NOTIFICACIONES PREVENTIVAS ───────────────────────────
@@ -601,10 +455,10 @@ export class CobranzaWorker {
     await job.progress(60);
     await this.ds.query(`
       UPDATE contratos SET
-        estado = 'suspendido_mora',
+        estado = 'suspendido',
         fecha_estado = NOW(),
         motivo_estado = $1
-      WHERE id = $2 AND estado IN ('activo', 'prorroga')
+      WHERE id = $2 AND estado = 'activo'
     `, [
       `Suspensión automática: S/ ${deudaTotal} de deuda | ${new Date().toLocaleDateString('es-PE')}`,
       contratoId,
@@ -613,7 +467,7 @@ export class CobranzaWorker {
     await this.ds.query(`
       INSERT INTO contratos_historial
         (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
-      VALUES ($1, $2, 'activo', 'suspendido_mora', $3, 'sistema', true)
+      VALUES ($1, $2, 'activo', 'suspendido', $3, 'sistema', true)
     `, [contratoId, empresaId, `Corte automático: deuda S/ ${deudaTotal}`]);
 
     // ── 6. Notificar al cliente ────────────────────────────
@@ -746,7 +600,7 @@ export class CobranzaWorker {
       SELECT ciclo_facturacion, estado FROM contratos WHERE id = $1
     `, [contratoId]).catch(() => [null]);
 
-    const estadoAnterior = contratoData?.estado ?? 'suspendido_mora';
+    const estadoAnterior = contratoData?.estado ?? 'suspendido';
     const ciclo = contratoData?.ciclo_facturacion ?? 'mensual';
     const meses = CICLO_MESES[ciclo] ?? 1;
     const nuevaFechaVenc = new Date();
@@ -763,7 +617,7 @@ export class CobranzaWorker {
         fecha_vencimiento = $2,
         deuda_total = 0,
         meses_deuda = 0
-      WHERE id = $1 AND estado IN ('suspendido_mora', 'prorroga')
+      WHERE id = $1 AND estado = 'suspendido'
     `, [contratoId, nuevaFechaStr]);
 
     await this.ds.query(`
@@ -843,8 +697,8 @@ export class CobranzaWorker {
     }
 
     // Verificar que sigue en prórroga y tiene deuda
-    if (contrato.estado !== 'prorroga' || parseFloat(contrato.deuda_total) <= 0) {
-      this.logger.log(`Contrato ${contratoId}: prórroga ya resuelta o sin deuda`);
+    if (parseFloat(contrato.deuda_total) <= 0) {
+      this.logger.log(`Contrato ${contratoId}: sin deuda, no requiere suspensión`);
       return { omitido: true };
     }
 
@@ -919,7 +773,7 @@ export class CobranzaWorker {
       WHERE co.id = $1
     `, [contratoId, pagoId]).catch(() => [null]);
 
-    if (contratoInfo && ['suspendido_mora', 'prorroga'].includes(contratoInfo.estado) && nuevaDeuda <= 0) {
+    if (contratoInfo && contratoInfo.estado === 'suspendido' && nuevaDeuda <= 0) {
       // Encolar reactivación con alta prioridad
       await this.enqueueCobranza(JOBS.REACTIVAR_CONTRATO, {
         contratoId,

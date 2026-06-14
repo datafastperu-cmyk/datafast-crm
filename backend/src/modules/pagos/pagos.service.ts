@@ -146,7 +146,7 @@ export class PagosService {
         // Reactivación automática si contrato suspendido por mora o manual
         if (
           contrato &&
-          [EstadoContrato.SUSPENDIDO_MORA, EstadoContrato.SUSPENDIDO_MANUAL].includes(contrato.estado)
+          contrato.estado === EstadoContrato.SUSPENDIDO
         ) {
           await manager.update(Contrato, contrato.id, {
             estado:       EstadoContrato.ACTIVO,
@@ -567,12 +567,7 @@ export class PagosService {
         return; // Contrato no encontrado, ignorar
       }
 
-      const estadosSuspendidos = [
-        EstadoContrato.SUSPENDIDO_MORA,
-        EstadoContrato.PRORROGA,
-      ];
-
-      if (estadosSuspendidos.includes(contrato.estado)) {
+      if (contrato.estado === EstadoContrato.SUSPENDIDO) {
         // ── REACTIVAR AUTOMÁTICAMENTE ─────────────────────
         await this.contratosSvc.cambiarEstado(
           contratoId,

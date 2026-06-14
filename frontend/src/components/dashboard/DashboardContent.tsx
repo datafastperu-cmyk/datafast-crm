@@ -289,7 +289,7 @@ export function DashboardContent() {
         <StatCard
           label="Clientes activos"
           value={stats.clientes.activos.toLocaleString()}
-          sub={`${stats.clientes.morosos} en mora · ${stats.clientes.total.toLocaleString()} totales`}
+          sub={`${stats.clientes.suspendidos ?? 0} suspendidos · ${stats.clientes.total.toLocaleString()} totales`}
           icon={Users} color="blue" highlight
           trend={{ value: stats.clientes.nuevosHoy, label: 'nuevos hoy', up: true }}
         />

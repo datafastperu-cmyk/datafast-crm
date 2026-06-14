@@ -110,7 +110,7 @@ export class FacturacionScheduler {
       FROM contratos co
       JOIN empresas em ON em.id = co.empresa_id
       WHERE co.dia_facturacion = $1
-        AND co.estado IN ('activo', 'prorroga')
+        AND co.estado = 'activo'
         AND co.deleted_at IS NULL
         AND em.estado = 'activo'
         AND em.deleted_at IS NULL
@@ -219,7 +219,7 @@ export class FacturacionWorker {
       JOIN clientes cl ON cl.id = co.cliente_id
       JOIN planes   pl ON pl.id = co.plan_id
       WHERE co.empresa_id = $1
-        AND co.estado IN ('activo', 'prorroga')
+        AND co.estado = 'activo'
         AND ($2::int IS NULL OR co.dia_facturacion = $2)
         AND co.deleted_at IS NULL
       ORDER BY co.dia_facturacion, cl.nombre_completo

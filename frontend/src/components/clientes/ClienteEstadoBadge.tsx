@@ -1,19 +1,12 @@
 import { cn } from '@/lib/utils';
 
-type EstadoCliente =
-  | 'activo' | 'suspendido' | 'moroso' | 'suspendido_mora'
-  | 'baja_temporal' | 'baja_definitiva' | 'prospecto';
+type EstadoCliente = 'pendiente_instalacion' | 'activo' | 'suspendido' | 'baja_definitiva';
 
 const ESTADOS: Record<string, { label: string; class: string }> = {
-  activo:               { label: 'Activo',        class: 'badge-activo' },
-  moroso:               { label: 'Moroso',        class: 'badge-moroso' },
-  suspendido_mora:      { label: 'Mora',          class: 'badge-moroso' },
-  suspendido:           { label: 'Suspendido',    class: 'badge-suspendido' },
-  suspendido_manual:    { label: 'Suspendido',    class: 'badge-suspendido' },
-  prorroga:             { label: 'Prórroga',      class: 'badge-prorroga' },
-  baja_temporal:        { label: 'Baja temp.',    class: 'badge-baja' },
-  baja_definitiva:      { label: 'Baja',          class: 'badge-baja' },
-  prospecto:            { label: 'Prospecto',     class: 'badge-pendiente' },
+  pendiente_instalacion: { label: 'Pend. Instalación', class: 'badge-pendiente' },
+  activo:                { label: 'Activo',             class: 'badge-activo' },
+  suspendido:            { label: 'Suspendido',         class: 'badge-suspendido' },
+  baja_definitiva:       { label: 'Baja',               class: 'badge-baja' },
 };
 
 export function ClienteEstadoBadge({ estado }: { estado: string }) {

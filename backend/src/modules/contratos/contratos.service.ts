@@ -29,13 +29,9 @@ export interface ActivarResultado {
 
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_INSTALACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO_MORA, EstadoContrato.SUSPENDIDO_MANUAL, EstadoContrato.BAJA_SOLICITADA, EstadoContrato.BAJA_DEFINITIVA, EstadoContrato.MIGRADO],
-  [EstadoContrato.SUSPENDIDO_MORA]:      [EstadoContrato.ACTIVO, EstadoContrato.PRORROGA, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.SUSPENDIDO_MANUAL]:    [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.PRORROGA]:             [EstadoContrato.ACTIVO, EstadoContrato.SUSPENDIDO_MORA, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.BAJA_SOLICITADA]:      [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.BAJA_DEFINITIVA]:      [],
-  [EstadoContrato.MIGRADO]:              [],
 };
 
 @Injectable()
@@ -65,7 +61,7 @@ export class ContratosService {
       const contratosCliente = await this.contratoRepo.findByClienteId(dto.clienteId, user.empresaId);
       const duplicate = contratosCliente.find(c =>
         c.planId === dto.planId &&
-        [EstadoContrato.ACTIVO, EstadoContrato.PENDIENTE_INSTALACION, EstadoContrato.PRORROGA].includes(c.estado),
+        [EstadoContrato.ACTIVO, EstadoContrato.PENDIENTE_INSTALACION].includes(c.estado),
       );
       if (duplicate) throw new ConflictException(`Cliente ya tiene contrato activo con plan "${plan.nombre}" (${duplicate.numeroContrato})`);
     }
@@ -360,11 +356,12 @@ export class ContratosService {
 
   async otorgarProrroga(id: string, dto: OtorgarProrrogaDto, user: JwtPayload, req?: any): Promise<Contrato> {
     const c = await this.findOne(id, user.empresaId);
-    if (![EstadoContrato.ACTIVO, EstadoContrato.SUSPENDIDO_MORA, EstadoContrato.PRORROGA].includes(c.estado))
+    if (![EstadoContrato.ACTIVO, EstadoContrato.SUSPENDIDO].includes(c.estado))
       throw new BadRequestException(`No se puede prorrogar contrato en estado ${c.estado}`);
     if (new Date(dto.prorrogaHasta) <= new Date()) throw new BadRequestException('Fecha de prórroga debe ser futura');
-    await this.contratoRepo.update(id, { enProrroga:true, prorrogaHasta:dto.prorrogaHasta, prorrogaMotivo:dto.motivo, prorrogaOtorgadaPor:user.sub, estado:EstadoContrato.PRORROGA, updatedBy:user.sub });
-    await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:c.estado, estadoNuevo:EstadoContrato.PRORROGA, motivo:`Prórroga hasta ${dto.prorrogaHasta}: ${dto.motivo}`, usuarioId:user.sub });
+    // Solo actualiza fechas de gracia; el estado no cambia (Opción A)
+    await this.contratoRepo.update(id, { enProrroga:true, prorrogaHasta:dto.prorrogaHasta, prorrogaMotivo:dto.motivo, prorrogaOtorgadaPor:user.sub, updatedBy:user.sub });
+    await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:c.estado, estadoNuevo:c.estado, motivo:`Prórroga hasta ${dto.prorrogaHasta}: ${dto.motivo}`, usuarioId:user.sub });
     return this.findOne(id, user.empresaId);
   }
 
@@ -425,10 +422,10 @@ export class ContratosService {
       usuarioId: user.sub,
     });
 
-    // Promover cliente de PROSPECTO → ACTIVO automáticamente al activar su primer contrato
+    // Promover cliente de PENDIENTE_INSTALACION → ACTIVO automáticamente al activar su primer contrato
     await this.dataSource.query(
       `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
-       WHERE id = $1 AND empresa_id = $2 AND estado = 'prospecto'`,
+       WHERE id = $1 AND empresa_id = $2 AND estado = 'pendiente_instalacion'`,
       [c.clienteId, user.empresaId, user.sub],
     ).catch(e => this.logger.warn(`activar → cliente ${c.clienteId} | fallo al promover estado prospecto→activo: ${e?.message}`));
 
@@ -450,8 +447,8 @@ export class ContratosService {
 
   async reactivarPorPago(contratoId: string, empresaId: string, operadorId: string): Promise<Contrato> {
     const c = await this.findOne(contratoId, empresaId);
-    if (![EstadoContrato.SUSPENDIDO_MORA, EstadoContrato.PRORROGA].includes(c.estado))
-      throw new BadRequestException(`Solo se reactivan contratos en SUSPENDIDO_MORA o PRORROGA. Estado: ${c.estado}`);
+    if (c.estado !== EstadoContrato.SUSPENDIDO)
+      throw new BadRequestException(`Solo se reactivan contratos en SUSPENDIDO. Estado: ${c.estado}`);
 
     const CICLO_MESES: Record<string, number> = {
       mensual: 1, bimestral: 2, trimestral: 3, semestral: 6, anual: 12,

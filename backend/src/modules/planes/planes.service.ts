@@ -36,7 +36,7 @@ export class PlanesService {
     const counts: { plan_id: string; cnt: string }[] = await this.ds.query(
       `SELECT plan_id, COUNT(*) AS cnt FROM contratos
        WHERE plan_id = ANY($1) AND deleted_at IS NULL
-       AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+       AND estado IN ('activo','suspendido')
        GROUP BY plan_id`,
       [ids],
     );
@@ -71,7 +71,7 @@ export class PlanesService {
     const [{ cnt }] = await this.ds.query(
       `SELECT COUNT(*) AS cnt FROM contratos
        WHERE plan_id = $1 AND deleted_at IS NULL
-       AND estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')`,
+       AND estado IN ('activo','suspendido')`,
       [id],
     );
     if (Number(cnt) > 0)
