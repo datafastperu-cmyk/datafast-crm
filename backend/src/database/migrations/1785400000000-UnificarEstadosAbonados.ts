@@ -51,8 +51,10 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_nuevo TYPE estado_cliente USING estado_nuevo::estado_cliente`);
 
     // ── 4. Convertir columnas contrato a TEXT ────────────────────────────
-    // Eliminar DEFAULT antes del TYPE change — el DEFAULT 'pendiente_instalacion'::estado_contrato
-    // causa "operator does not exist: text = estado_contrato" al intentar alterar el tipo
+    // idx_contratos_mora tiene WHERE con 'activo'::estado_contrato — bloquea el ALTER TYPE.
+    // Se dropea el índice, se convierte a TEXT, se recrea al final con los nuevos valores.
+    // El DEFAULT 'pendiente_instalacion'::estado_contrato también bloquea; se elimina primero.
+    await qr.query(`DROP INDEX IF EXISTS idx_contratos_mora`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado DROP DEFAULT`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado TYPE TEXT`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE TEXT`);
@@ -129,6 +131,12 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
         LEFT JOIN onus    on2 ON on2.id = co.onu_id
       WHERE co.deleted_at IS NULL
     `);
+
+    // Recrear idx_contratos_mora con los nuevos valores del enum
+    await qr.query(`
+      CREATE INDEX idx_contratos_mora ON public.contratos USING btree (empresa_id, estado, deuda_total)
+      WHERE ((estado = ANY (ARRAY['activo'::estado_contrato, 'suspendido'::estado_contrato])) AND (deleted_at IS NULL))
+    `);
   }
 
   public async down(qr: QueryRunner): Promise<void> {
@@ -137,6 +145,7 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`DROP VIEW IF EXISTS v_contratos_completos`);
 
     // Revertir enum estado_contrato
+    await qr.query(`DROP INDEX IF EXISTS idx_contratos_mora`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado DROP DEFAULT`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado TYPE TEXT`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE TEXT`);
@@ -217,6 +226,12 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
         LEFT JOIN routers ro  ON ro.id  = co.router_id
         LEFT JOIN onus    on2 ON on2.id = co.onu_id
       WHERE co.deleted_at IS NULL
+    `);
+
+    // Restaurar idx_contratos_mora con los valores originales del enum
+    await qr.query(`
+      CREATE INDEX idx_contratos_mora ON public.contratos USING btree (empresa_id, estado, deuda_total)
+      WHERE ((estado = ANY (ARRAY['activo'::estado_contrato, 'prorroga'::estado_contrato])) AND (deleted_at IS NULL))
     `);
   }
 }
