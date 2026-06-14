@@ -67,6 +67,23 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado SET DEFAULT 'pendiente_instalacion'`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE estado_contrato USING estado_anterior::estado_contrato`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_nuevo TYPE estado_contrato USING estado_nuevo::estado_contrato`);
+
+    // ── 7. Actualizar vista v_resumen_clientes ───────────────────
+    // La columna "morosos" deja de existir; se reemplaza por "pendiente_instalacion"
+    await qr.query(`
+      CREATE OR REPLACE VIEW v_resumen_clientes AS
+      SELECT
+        c.empresa_id,
+        COUNT(*)                                                              AS total,
+        COUNT(*) FILTER (WHERE c.estado = 'activo')                          AS activos,
+        COUNT(*) FILTER (WHERE c.estado = 'suspendido')                      AS suspendidos,
+        COUNT(*) FILTER (WHERE c.estado = 'pendiente_instalacion')           AS pendientes,
+        COUNT(*) FILTER (WHERE c.estado = 'baja_definitiva')                 AS bajas,
+        COUNT(*) FILTER (WHERE c.created_at >= DATE_TRUNC('month', NOW()))   AS nuevos_este_mes
+      FROM clientes c
+      WHERE c.deleted_at IS NULL
+      GROUP BY c.empresa_id
+    `);
   }
 
   public async down(qr: QueryRunner): Promise<void> {
@@ -100,5 +117,21 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`ALTER TABLE clientes ALTER COLUMN estado SET DEFAULT 'prospecto'`);
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_anterior TYPE estado_cliente USING estado_anterior::estado_cliente`);
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_nuevo TYPE estado_cliente USING estado_nuevo::estado_cliente`);
+
+    // Restaurar vista v_resumen_clientes con columna morosos
+    await qr.query(`
+      CREATE OR REPLACE VIEW v_resumen_clientes AS
+      SELECT
+        c.empresa_id,
+        COUNT(*)                                                            AS total,
+        COUNT(*) FILTER (WHERE c.estado = 'activo')                        AS activos,
+        COUNT(*) FILTER (WHERE c.estado = 'suspendido')                    AS suspendidos,
+        COUNT(*) FILTER (WHERE c.estado = 'moroso')                        AS morosos,
+        COUNT(*) FILTER (WHERE c.estado = 'baja_definitiva')               AS bajas,
+        COUNT(*) FILTER (WHERE c.created_at >= DATE_TRUNC('month', NOW())) AS nuevos_este_mes
+      FROM clientes c
+      WHERE c.deleted_at IS NULL
+      GROUP BY c.empresa_id
+    `);
   }
 }

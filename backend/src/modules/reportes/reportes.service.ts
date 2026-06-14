@@ -19,7 +19,7 @@ export class ReportesService {
     const [clientes] = await this.ds.query(`
       SELECT
         COUNT(*) FILTER (WHERE estado = 'activo') AS activos,
-        COUNT(*) FILTER (WHERE estado = 'moroso') AS morosos,
+        COUNT(*) FILTER (WHERE estado = 'suspendido') AS suspendidos,
         COUNT(*) FILTER (WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', NOW())) AS nuevos_mes
       FROM clientes WHERE empresa_id = $1 AND deleted_at IS NULL
     `, [empresaId]);
@@ -47,7 +47,7 @@ export class ReportesService {
       },
       clientes: {
         activos:    Number(clientes.activos)    || 0,
-        morosos:    Number(clientes.morosos)    || 0,
+        suspendidos: Number(clientes.suspendidos) || 0,
         nuevosMes:  Number(clientes.nuevos_mes) || 0,
       },
       red: {
@@ -139,10 +139,10 @@ export class ReportesService {
 
     const [estados] = await this.ds.query(`
       SELECT
-        COUNT(*) FILTER (WHERE estado = 'activo')    AS activos,
-        COUNT(*) FILTER (WHERE estado = 'suspendido') AS suspendidos,
-        COUNT(*) FILTER (WHERE estado = 'baja_definitiva') AS baja,
-        COUNT(*) FILTER (WHERE estado = 'moroso')    AS morosos
+        COUNT(*) FILTER (WHERE estado = 'activo')              AS activos,
+        COUNT(*) FILTER (WHERE estado = 'suspendido')          AS suspendidos,
+        COUNT(*) FILTER (WHERE estado = 'baja_definitiva')     AS baja,
+        COUNT(*) FILTER (WHERE estado = 'pendiente_instalacion') AS pendientes
       FROM clientes WHERE empresa_id = $1 AND deleted_at IS NULL
     `, [empresaId]);
 

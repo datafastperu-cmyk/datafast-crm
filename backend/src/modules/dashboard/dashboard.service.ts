@@ -12,7 +12,7 @@ export class DashboardService {
           SELECT
             COUNT(*)                                                   AS total,
             COUNT(*) FILTER (WHERE estado = 'activo')                  AS activos,
-            COUNT(*) FILTER (WHERE estado = 'moroso')                  AS morosos,
+            COUNT(*) FILTER (WHERE estado = 'suspendido')              AS suspendidos,
             COUNT(*) FILTER (WHERE DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE) AS nuevos_hoy
           FROM clientes WHERE empresa_id = $1
         `, [empresaId]),
@@ -66,7 +66,7 @@ export class DashboardService {
       clientes: {
         total:     Number(clientes.total)      || 0,
         activos:   Number(clientes.activos)    || 0,
-        morosos:   Number(clientes.morosos)    || 0,
+        suspendidos: Number(clientes.suspendidos) || 0,
         nuevosHoy: Number(clientes.nuevos_hoy) || 0,
       },
       contratos: {

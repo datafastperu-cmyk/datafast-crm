@@ -413,8 +413,20 @@ upgrade_app() {
     _install_frontend
     _install_olt_service
     _run_migrations
-    sudo -u datafast pm2 reload  datafast-backend       >> "${LOG_FILE}" 2>&1 || true
-    sudo -u datafast pm2 restart datafast-frontend       >> "${LOG_FILE}" 2>&1 || true
-    pm2 restart olt-automation-service                   >> "${LOG_FILE}" 2>&1 || true
+
+    # Recargar/iniciar procesos (startOrRestart tolera procesos caídos o inexistentes)
+    local eco="${INSTALL_DIR}/ecosystem.config.js"
+    if [[ -f "$eco" ]]; then
+        sudo -u datafast pm2 startOrReload  "$eco" --only datafast-backend        >> "${LOG_FILE}" 2>&1 || \
+            sudo -u datafast pm2 start      "$eco" --only datafast-backend        >> "${LOG_FILE}" 2>&1 || true
+        sudo -u datafast pm2 startOrRestart "$eco" --only datafast-frontend       >> "${LOG_FILE}" 2>&1 || \
+            sudo -u datafast pm2 start      "$eco" --only datafast-frontend       >> "${LOG_FILE}" 2>&1 || true
+        pm2 startOrRestart                  "$eco" --only olt-automation-service  >> "${LOG_FILE}" 2>&1 || true
+    else
+        sudo -u datafast pm2 reload  datafast-backend      >> "${LOG_FILE}" 2>&1 || true
+        sudo -u datafast pm2 restart datafast-frontend     >> "${LOG_FILE}" 2>&1 || true
+        pm2 restart olt-automation-service                 >> "${LOG_FILE}" 2>&1 || true
+    fi
+    sudo -u datafast pm2 save >> "${LOG_FILE}" 2>&1 || true
     ok "DATAFAST actualizado"
 }

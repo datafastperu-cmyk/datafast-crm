@@ -7,7 +7,7 @@ const COMMANDS = [
   'pm2 stop datafast-backend 2>/dev/null; cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc --build && pm2 start datafast-backend',
   'cd /opt/datafast/frontend && git pull origin main',
   'cd /opt/datafast/frontend && NODE_OPTIONS="--max-old-space-size=1400" NEXT_TELEMETRY_DISABLED=1 npm run build 2>&1 | tail -10',
-  'pm2 restart datafast-frontend',
+  'pm2 startOrRestart /opt/datafast/ecosystem.config.js --only datafast-frontend || pm2 restart datafast-frontend || true',
   'pm2 status',
 ].join(' && ');
 
