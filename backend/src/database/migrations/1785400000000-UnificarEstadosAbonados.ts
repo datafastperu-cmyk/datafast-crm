@@ -51,6 +51,9 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_nuevo TYPE estado_cliente USING estado_nuevo::estado_cliente`);
 
     // ── 4. Convertir columnas contrato a TEXT ────────────────────────────
+    // Eliminar DEFAULT antes del TYPE change — el DEFAULT 'pendiente_instalacion'::estado_contrato
+    // causa "operator does not exist: text = estado_contrato" al intentar alterar el tipo
+    await qr.query(`ALTER TABLE contratos ALTER COLUMN estado DROP DEFAULT`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado TYPE TEXT`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE TEXT`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_nuevo TYPE TEXT`);
@@ -134,6 +137,7 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`DROP VIEW IF EXISTS v_contratos_completos`);
 
     // Revertir enum estado_contrato
+    await qr.query(`ALTER TABLE contratos ALTER COLUMN estado DROP DEFAULT`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado TYPE TEXT`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE TEXT`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_nuevo TYPE TEXT`);
@@ -150,6 +154,7 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_nuevo TYPE estado_contrato USING estado_nuevo::estado_contrato`);
 
     // Revertir enum estado_cliente
+    await qr.query(`ALTER TABLE clientes ALTER COLUMN estado DROP DEFAULT`);
     await qr.query(`ALTER TABLE clientes ALTER COLUMN estado TYPE TEXT`);
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_anterior TYPE TEXT`);
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_nuevo TYPE TEXT`);
