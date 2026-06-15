@@ -298,7 +298,7 @@ export function ClienteDetalle({ id }: { id: string }) {
               title="Cambiar Estado de Cliente"
               className="px-3 py-3 text-muted-foreground hover:text-foreground transition-colors"
             >
-              <Wrench className="w-4.5 h-4.5" style={{ width: '1.125rem', height: '1.125rem' }} />
+              <Wrench style={{ width: '1.125rem', height: '1.125rem' }} />
             </button>
 
             {menuEstadoOpen && cliente && (
@@ -308,45 +308,53 @@ export function ClienteDetalle({ id }: { id: string }) {
                   Cambiar Estado
                 </p>
 
-                {cliente.estado !== 'baja_definitiva' && (
-                  <>
-                    {cliente.estado === 'suspendido' ? (
-                      <button
-                        disabled={cambiandoEstado}
-                        onClick={() => { cambiarEstado('activo'); setMenuEstadoOpen(false); }}
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                                   text-xs font-bold bg-green-500 hover:bg-green-600 text-white
-                                   transition-colors disabled:opacity-50"
-                      >
-                        <Power className="w-3.5 h-3.5" /> ACTIVAR
-                      </button>
-                    ) : (
-                      <button
-                        disabled={cambiandoEstado}
-                        onClick={() => { cambiarEstado('suspendido'); setMenuEstadoOpen(false); }}
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                                   text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white
-                                   transition-colors disabled:opacity-50"
-                      >
-                        <PauseCircle className="w-3.5 h-3.5" /> SUSPENDER
-                      </button>
-                    )}
+                {/* ACTIVAR — para suspendido y pendiente_activacion */}
+                {(cliente.estado === 'suspendido' || cliente.estado === 'pendiente_activacion') && (
+                  <button
+                    disabled={cambiandoEstado}
+                    onClick={() => { cambiarEstado('activo'); setMenuEstadoOpen(false); }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                               text-xs font-bold bg-green-500 hover:bg-green-600 text-white
+                               transition-colors disabled:opacity-50"
+                  >
+                    <Power className="w-3.5 h-3.5" /> ACTIVAR
+                  </button>
+                )}
 
-                    <button
-                      disabled={cambiandoEstado}
-                      onClick={() => {
-                        if (window.confirm('¿Confirmar baja definitiva? Se eliminarán todos los servicios y contratos activos del abonado.')) {
-                          cambiarEstado('baja_definitiva');
-                          setMenuEstadoOpen(false);
-                        }
-                      }}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                                 text-xs font-bold bg-red-500 hover:bg-red-600 text-white
-                                 transition-colors disabled:opacity-50"
-                    >
-                      <XCircle className="w-3.5 h-3.5" /> BAJA DEFINITIVA
-                    </button>
-                  </>
+                {/* SUSPENDER — solo para abonados activos */}
+                {cliente.estado === 'activo' && (
+                  <button
+                    disabled={cambiandoEstado}
+                    onClick={() => {
+                      if (window.confirm('¿Suspender el abonado? Se cortará su acceso al servicio.')) {
+                        cambiarEstado('suspendido');
+                        setMenuEstadoOpen(false);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                               text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white
+                               transition-colors disabled:opacity-50"
+                  >
+                    <PauseCircle className="w-3.5 h-3.5" /> SUSPENDER
+                  </button>
+                )}
+
+                {/* BAJA DEFINITIVA — para cualquier estado excepto baja_definitiva */}
+                {cliente.estado !== 'baja_definitiva' && (
+                  <button
+                    disabled={cambiandoEstado}
+                    onClick={() => {
+                      if (window.confirm('¿Confirmar baja definitiva? Se eliminarán todos los servicios y contratos activos del abonado.')) {
+                        cambiarEstado('baja_definitiva');
+                        setMenuEstadoOpen(false);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                               text-xs font-bold bg-red-500 hover:bg-red-600 text-white
+                               transition-colors disabled:opacity-50"
+                  >
+                    <XCircle className="w-3.5 h-3.5" /> BAJA DEFINITIVA
+                  </button>
                 )}
 
                 {cliente.estado === 'baja_definitiva' && (

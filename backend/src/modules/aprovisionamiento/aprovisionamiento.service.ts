@@ -552,31 +552,41 @@ export class OrquestadorAprovisionamientoService {
         fn: async (ctx) => {
           const detalles: string[] = [];
 
-          // Activar el contrato en la BD
-          await this.ds.query(`
-            UPDATE contratos SET
-              estado            = 'activo',
-              aprovisionado     = true,
-              fecha_estado      = COALESCE(fecha_estado, NOW()),
-              fecha_instalacion = COALESCE(fecha_instalacion, NOW()),
-              motivo_estado     = 'Aprovisionamiento FTTH completado'
-            WHERE id = $1
-          `, [dto.contratoId]);
+          // Activar contrato + tipo_servicio + historial de forma atómica
+          const qrPaso7 = this.ds.createQueryRunner();
+          await qrPaso7.connect();
+          await qrPaso7.startTransaction();
+          try {
+            await qrPaso7.query(`
+              UPDATE contratos SET
+                estado            = 'activo',
+                aprovisionado     = true,
+                fecha_estado      = COALESCE(fecha_estado, NOW()),
+                fecha_instalacion = COALESCE(fecha_instalacion, NOW()),
+                motivo_estado     = 'Aprovisionamiento FTTH completado'
+              WHERE id = $1
+            `, [dto.contratoId]);
 
-          // Marcar al cliente como FTTH al tener una ONU en la OLT
-          await this.ds.query(
-            `UPDATE clientes SET tipo_servicio = 'ftth' WHERE id = $1`,
-            [dto.clienteId],
-          );
+            await qrPaso7.query(
+              `UPDATE clientes SET tipo_servicio = 'ftth' WHERE id = $1`,
+              [dto.clienteId],
+            );
 
-          // Insertar historial de cambio de estado
-          await this.ds.query(`
-            INSERT INTO contratos_historial
-              (contrato_id, empresa_id, estado_anterior, estado_nuevo,
-               motivo, usuario_id, automatico, created_at)
-            VALUES ($1, $2, $3, 'activo',
-                   'Aprovisionamiento FTTH completado', $4, false, NOW())
-          `, [dto.contratoId, user.empresaId, ctx.contrato.contrato_estado, user.sub]);
+            await qrPaso7.query(`
+              INSERT INTO contratos_historial
+                (contrato_id, empresa_id, estado_anterior, estado_nuevo,
+                 motivo, usuario_id, automatico, created_at)
+              VALUES ($1, $2, $3, 'activo',
+                     'Aprovisionamiento FTTH completado', $4, false, NOW())
+            `, [dto.contratoId, user.empresaId, ctx.contrato.contrato_estado, user.sub]);
+
+            await qrPaso7.commitTransaction();
+          } catch (err) {
+            await qrPaso7.rollbackTransaction();
+            throw err;
+          } finally {
+            await qrPaso7.release();
+          }
 
           ctx.contratoActivado = true;
           detalles.push('Contrato activado');
@@ -870,17 +880,33 @@ export class OrquestadorAprovisionamientoService {
           WHERE id = $1
         `, [onuBdId]);
 
-        // Recalcular tipo_servicio: FTTH si aún queda algún contrato con ONU, sino WISP
-        await this.ds.query(`
-          UPDATE clientes SET tipo_servicio = CASE
-            WHEN EXISTS (
-              SELECT 1 FROM contratos co2
-              WHERE co2.cliente_id = clientes.id
-                AND co2.onu_id IS NOT NULL
-                AND co2.deleted_at IS NULL
-            ) THEN 'ftth' ELSE 'wisp' END
-          WHERE id = (SELECT cliente_id FROM contratos WHERE id = $1)
-        `, [dto.contratoId]);
+        // Recalcular tipo_servicio de forma atómica con FOR UPDATE para evitar
+        // race conditions entre rollbacks concurrentes del mismo cliente
+        const qrTipo = this.ds.createQueryRunner();
+        await qrTipo.connect();
+        await qrTipo.startTransaction();
+        try {
+          await qrTipo.query(
+            `SELECT id FROM clientes WHERE id = $1 FOR UPDATE`,
+            [dto.clienteId],
+          );
+          await qrTipo.query(`
+            UPDATE clientes SET tipo_servicio = CASE
+              WHEN EXISTS (
+                SELECT 1 FROM contratos co2
+                WHERE co2.cliente_id = $1
+                  AND co2.onu_id IS NOT NULL
+                  AND co2.deleted_at IS NULL
+              ) THEN 'ftth' ELSE 'wisp' END
+            WHERE id = $1
+          `, [dto.clienteId]);
+          await qrTipo.commitTransaction();
+        } catch (err) {
+          await qrTipo.rollbackTransaction();
+          errores.push(`tipo_servicio recalc: ${err.message}`);
+        } finally {
+          await qrTipo.release();
+        }
 
         revertidos.push(`ONU ${onuBdId} desasociada y marcada sin_aprovisionar`);
       } catch (err) {
