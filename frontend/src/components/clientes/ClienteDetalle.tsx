@@ -328,7 +328,12 @@ export function ClienteDetalle({ id }: { id: string }) {
               {(cliente.estado === 'suspendido' || cliente.estado === 'pendiente_activacion') && (
                 <button
                   disabled={cambiandoEstado}
-                  onClick={() => { cambiarEstado('activo'); setMenuEstadoOpen(false); }}
+                  onClick={() => {
+                    if (window.confirm('¿Activar el abonado? Se restaurará su acceso al servicio.')) {
+                      cambiarEstado('activo');
+                      setMenuEstadoOpen(false);
+                    }
+                  }}
                   className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
                              text-xs font-bold bg-green-500 hover:bg-green-600 text-white
                              transition-colors disabled:opacity-50"
