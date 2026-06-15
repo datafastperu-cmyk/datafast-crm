@@ -91,6 +91,10 @@ export function ClienteDetalle({ id }: { id: string }) {
   const [formErrors, setErrors] = useState<Record<string, string>>({});
   const [menuEstadoOpen, setMenuEstadoOpen] = useState(false);
   const [menuPos, setMenuPos]               = useState({ top: 0, right: 0 });
+  const [confirmModal, setConfirmModal]     = useState<{
+    title: string; body: string; confirmLabel: string;
+    confirmClass: string; onConfirm: () => void;
+  } | null>(null);
   const initialized                         = useRef(false);
   const menuButtonRef                       = useRef<HTMLButtonElement>(null);
   const menuDropdownRef                     = useRef<HTMLDivElement>(null);
@@ -329,10 +333,14 @@ export function ClienteDetalle({ id }: { id: string }) {
                 <button
                   disabled={cambiandoEstado}
                   onClick={() => {
-                    if (window.confirm('¿Activar el abonado? Se restaurará su acceso al servicio.')) {
-                      cambiarEstado('activo');
-                      setMenuEstadoOpen(false);
-                    }
+                    setMenuEstadoOpen(false);
+                    setConfirmModal({
+                      title: '¿Activar el abonado?',
+                      body: 'Se restaurará su acceso al servicio.',
+                      confirmLabel: 'Activar',
+                      confirmClass: 'bg-green-500 hover:bg-green-600 text-white',
+                      onConfirm: () => cambiarEstado('activo'),
+                    });
                   }}
                   className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
                              text-xs font-bold bg-green-500 hover:bg-green-600 text-white
@@ -346,10 +354,14 @@ export function ClienteDetalle({ id }: { id: string }) {
                 <button
                   disabled={cambiandoEstado}
                   onClick={() => {
-                    if (window.confirm('¿Suspender el abonado? Se cortará su acceso al servicio.')) {
-                      cambiarEstado('suspendido');
-                      setMenuEstadoOpen(false);
-                    }
+                    setMenuEstadoOpen(false);
+                    setConfirmModal({
+                      title: '¿Suspender el abonado?',
+                      body: 'Se cortará su acceso al servicio hasta que sea reactivado manualmente.',
+                      confirmLabel: 'Suspender',
+                      confirmClass: 'bg-orange-500 hover:bg-orange-600 text-white',
+                      onConfirm: () => cambiarEstado('suspendido'),
+                    });
                   }}
                   className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
                              text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white
@@ -363,10 +375,14 @@ export function ClienteDetalle({ id }: { id: string }) {
                 <button
                   disabled={cambiandoEstado}
                   onClick={() => {
-                    if (window.confirm('¿Confirmar baja definitiva? Se eliminarán todos los servicios y contratos activos del abonado.')) {
-                      cambiarEstado('baja_definitiva');
-                      setMenuEstadoOpen(false);
-                    }
+                    setMenuEstadoOpen(false);
+                    setConfirmModal({
+                      title: '¿Confirmar baja definitiva?',
+                      body: 'Se eliminarán todos los servicios y contratos activos. Esta acción no se puede revertir.',
+                      confirmLabel: 'Dar de baja',
+                      confirmClass: 'bg-destructive hover:bg-destructive/90 text-destructive-foreground',
+                      onConfirm: () => cambiarEstado('baja_definitiva'),
+                    });
                   }}
                   className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
                              text-xs font-bold bg-red-500 hover:bg-red-600 text-white
@@ -380,10 +396,14 @@ export function ClienteDetalle({ id }: { id: string }) {
                 <button
                   disabled={eliminando}
                   onClick={() => {
-                    if (window.confirm('¿Eliminar definitivamente al abonado? Esta acción borrará todos sus registros y no se puede deshacer.')) {
-                      eliminarCliente();
-                      setMenuEstadoOpen(false);
-                    }
+                    setMenuEstadoOpen(false);
+                    setConfirmModal({
+                      title: '¿Eliminar definitivamente?',
+                      body: 'Se borrarán todos los registros del abonado (facturas, pagos, tickets, contratos). Esta acción es irreversible.',
+                      confirmLabel: 'Eliminar',
+                      confirmClass: 'bg-destructive hover:bg-destructive/90 text-destructive-foreground',
+                      onConfirm: () => eliminarCliente(),
+                    });
                   }}
                   className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
                              text-xs font-bold bg-muted hover:bg-muted/70 text-muted-foreground
@@ -599,6 +619,34 @@ export function ClienteDetalle({ id }: { id: string }) {
         {tab === 'logs'         && <div className="p-6"><PlaceholderTab icon={ScrollText}    title="Log de actividad"       desc="Registro detallado de acciones."       badge="Próximamente" /></div>}
       </div>
     </div>
+
+    {/* ── Modal de confirmación de cambio de estado ──────────── */}
+    {confirmModal && createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="bg-background rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4">
+          <div className="flex items-center gap-3 mb-3">
+            <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+            <h3 className="font-semibold text-foreground">{confirmModal.title}</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-5">{confirmModal.body}</p>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setConfirmModal(null)}
+              className="px-4 py-2 rounded-lg text-sm border border-border hover:bg-accent transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => { confirmModal.onConfirm(); setConfirmModal(null); }}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${confirmModal.confirmClass}`}
+            >
+              {confirmModal.confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
   );
 }
 
