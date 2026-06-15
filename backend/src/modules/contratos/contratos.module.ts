@@ -9,6 +9,7 @@ import { SegmentoIpv4, IpAsignada } from './entities/red.entity';
 import { PlanesModule } from '../planes/planes.module';
 import { AuthModule } from '../auth/auth.module';
 import { MikrotikModule } from '../mikrotik/mikrotik.module';
+import { SmartoltModule } from '../smartolt/smartolt.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { MikrotikModule } from '../mikrotik/mikrotik.module';
     PlanesModule,
     AuthModule,
     MikrotikModule,
+    SmartoltModule,
   ],
   controllers: [ContratosController],
   providers: [ContratosService, IpPoolService, ContratoRepository],

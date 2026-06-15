@@ -753,8 +753,9 @@ function ModalConfirmBaja({
           </p>
           <ul className="text-xs text-muted-foreground space-y-1.5 list-none">
             <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se liberará la IP asignada ({(contrato as any).ipAsignada ?? '—'}).</li>
-            <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se desvinculará la ONU si la hay.</li>
-            <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se enviará la señal de desaprovisionamiento MikroTik (simulado).</li>
+            <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se eliminará el usuario PPPoE, colas y ARP del router MikroTik.</li>
+            <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> {contrato.aprovisionado ? 'Se desaprovisionará la ONU de la OLT.' : 'Sin ONU activa en la OLT.'}</li>
+            <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> El contrato quedará archivado como baja definitiva.</li>
           </ul>
         </div>
         <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3">

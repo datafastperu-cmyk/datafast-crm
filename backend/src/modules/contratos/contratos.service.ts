@@ -19,6 +19,7 @@ import { PppoeService } from '../mikrotik/services/pppoe.service';
 import { ArpService } from '../mikrotik/services/arp.service';
 import { FirewallService } from '../mikrotik/services/firewall.service';
 import { MikrotikService } from '../mikrotik/mikrotik.service';
+import { SmartoltApiService } from '../smartolt/smartolt-api.service';
 
 export interface ActivarResultado {
   contrato:     Contrato;
@@ -49,6 +50,7 @@ export class ContratosService {
     private readonly arpSvc: ArpService,
     private readonly firewallSvc: FirewallService,
     private readonly mikrotikSvc: MikrotikService,
+    private readonly smartoltApi: SmartoltApiService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -322,6 +324,7 @@ export class ContratosService {
       upd.segmentoId = null as any;
       upd.ipAsignada = null as any;
       if (contrato.segmentoId) await this.contratoRepo.liberarIp(id);
+      await this.desaprovisionarOlt(id);
       await this.desaprovisionarMikrotik(id);
       await this.eliminarDeAccessListAntena(id);
 
@@ -675,6 +678,60 @@ export class ContratosService {
     }
 
     return true;
+  }
+
+  // ─── Eliminar ONU de la OLT (SmartOLT o nativo) ─────────────
+  // Se llama ANTES de limpiar MikroTik para respetar el orden inverso
+  // al aprovisionamiento: OLT → MikroTik → IP.
+  // Nunca lanza excepción: un fallo de OLT no debe bloquear la baja.
+  async desaprovisionarOlt(contratoId: string): Promise<void> {
+    let row: any;
+    try {
+      const [r] = await this.dataSource.query<any[]>(`
+        SELECT
+          co.aprovisionado        AS aprovisionado,
+          onu.id                  AS "onuId",
+          onu.smartolt_onu_id     AS "smartoltOnuId",
+          olt.smartolt_id         AS "smartoltId"
+        FROM contratos co
+        LEFT JOIN onus onu ON onu.id = co.onu_id
+        LEFT JOIN olts olt ON olt.id = onu.olt_id
+        WHERE co.id = $1
+      `, [contratoId]);
+      row = r;
+    } catch (err) {
+      this.logger.warn(`desaprovisionarOlt → ${contratoId} | error leyendo datos: ${err?.message}`);
+      return;
+    }
+
+    if (!row?.aprovisionado || !row?.onuId) return;
+
+    // SmartOLT: eliminar provisión via API
+    if (row.smartoltOnuId && row.smartoltId) {
+      try {
+        await this.smartoltApi.eliminarProvision(row.smartoltId, row.smartoltOnuId);
+        this.logger.log(`desaprovisionarOlt → ${contratoId} | ONU eliminada de SmartOLT: ${row.smartoltOnuId}`);
+      } catch (err) {
+        this.logger.warn(`desaprovisionarOlt → ${contratoId} | Error eliminando ONU de SmartOLT: ${err?.message}`);
+      }
+    } else {
+      // OLT nativo (SSH): el deprovisioning se delega al microservicio Python.
+      // El técnico debe confirmar manualmente en la OLT si el Python no está disponible.
+      this.logger.warn(`desaprovisionarOlt → ${contratoId} | ONU ${row.onuId} sin SmartOLT ID — deprovision nativo requiere confirmación manual.`);
+    }
+
+    // Actualizar estado de la ONU en BD (independientemente del resultado de la OLT)
+    try {
+      await this.dataSource.query(`
+        UPDATE onus
+        SET estado            = 'sin_aprovisionar',
+            smartolt_onu_id   = NULL,
+            aprovisionada_en  = NULL
+        WHERE id = $1
+      `, [row.onuId]);
+    } catch (err) {
+      this.logger.warn(`desaprovisionarOlt → ${contratoId} | Error actualizando ONU en BD: ${err?.message}`);
+    }
   }
 
   protected async registrarEnAccessListAntena(contratoId: string): Promise<{ ok: boolean; advertencia?: string }> {

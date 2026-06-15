@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Zap, WifiOff, Wifi, Clock,
   MoreVertical, Loader2, FileText, CreditCard,
+  Trash2, XCircle,
 } from 'lucide-react';
 
 import { contratosApi }      from '@/lib/api/contratos';
@@ -25,6 +26,7 @@ export function ContratoDetalle({ id }: { id: string }) {
   const [menuOpen, setMenu]     = useState(false);
   const [prorrogaDias, setPD]   = useState(7);
   const [showProrroga, setShowP] = useState(false);
+  const [showBaja, setShowBaja]  = useState(false);
 
   const { data: contrato, isLoading } = useQuery({
     queryKey: ['contrato', id],
@@ -51,7 +53,7 @@ export function ContratoDetalle({ id }: { id: string }) {
   const { mutate: cambiarEstado, isPending: cambiando } = useMutation({
     mutationFn: (dto: { estado: string; motivo?: string }) =>
       contratosApi.cambiarEstado(id, dto),
-    onSuccess: () => { invalida(); toast('Estado actualizado', { type: 'success' }); setMenu(false); },
+    onSuccess: () => { invalida(); toast('Estado actualizado', { type: 'success' }); setMenu(false); setShowBaja(false); },
     onError:   (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
@@ -165,7 +167,7 @@ export function ContratoDetalle({ id }: { id: string }) {
                         label="Dar de baja"
                         danger
                         loading={cambiando}
-                        onClick={() => cambiarEstado({ estado: 'baja_definitiva', motivo: 'Baja solicitada' })}
+                        onClick={() => setShowBaja(true)}
                       />
                     )}
                   </div>
@@ -347,6 +349,47 @@ export function ContratoDetalle({ id }: { id: string }) {
               >
                 {prorrogando && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Aplicar {prorrogaDias}d
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Confirmar Baja Definitiva ───────────────────── */}
+      {showBaja && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-card border border-red-900/40 rounded-2xl shadow-2xl">
+            <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                <Trash2 className="w-4 h-4 text-red-400" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-foreground">Confirmar Baja Definitiva</h2>
+                <p className="text-[11px] text-muted-foreground">{contrato.numeroContrato}</p>
+              </div>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-foreground">
+                Esta acción <strong className="text-red-400">no se puede deshacer</strong>.
+              </p>
+              <ul className="text-xs text-muted-foreground space-y-1.5 list-none">
+                <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se liberará la IP asignada ({(contrato as any).ipAsignada ?? '—'}).</li>
+                <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> Se eliminará el usuario PPPoE, colas y ARP del router MikroTik.</li>
+                <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> {contrato.aprovisionado ? 'Se desaprovisionará la ONU de la OLT.' : 'Sin ONU activa en la OLT.'}</li>
+                <li className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" /> El contrato pasará a baja definitiva y quedará archivado.</li>
+              </ul>
+            </div>
+            <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3">
+              <button onClick={() => setShowBaja(false)} disabled={cambiando} className="btn-secondary">
+                Cancelar
+              </button>
+              <button
+                onClick={() => cambiarEstado({ estado: 'baja_definitiva', motivo: 'Baja solicitada' })}
+                disabled={cambiando}
+                className="btn-danger"
+              >
+                {cambiando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Dar de Baja
               </button>
             </div>
           </div>
