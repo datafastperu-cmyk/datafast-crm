@@ -6,7 +6,7 @@ const ESTADOS: Record<string, { label: string; class: string }> = {
   pendiente_activacion: { label: 'Pend. Activación', class: 'badge-pendiente' },
   activo:                { label: 'Activo',             class: 'badge-activo' },
   suspendido:            { label: 'Suspendido',         class: 'badge-suspendido' },
-  baja_definitiva:       { label: 'Baja',               class: 'badge-baja' },
+  baja_definitiva:       { label: 'Baja Definitiva',    class: 'badge-baja' },
 };
 
 export function ClienteEstadoBadge({ estado }: { estado: string }) {

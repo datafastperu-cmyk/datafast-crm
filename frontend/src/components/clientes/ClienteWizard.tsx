@@ -977,9 +977,10 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     },
   });
 
-  const excluirFirewall = watch('excluirFirewall') ?? false;
-  const cajaNap         = watch('cajaNapId');
-  const perfilId        = watch('perfilId');
+  const excluirFirewall  = watch('excluirFirewall') ?? false;
+  const cajaNap          = watch('cajaNapId');
+  const perfilId         = watch('perfilId');
+  const conectadoAIdVal  = watch('conectadoAId');
 
   const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
 
@@ -998,6 +999,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const authEfectiva   = authPorAbonado ? (tipoControlVal ?? 'ninguna') : (routerSel?.tipoControl ?? 'ninguna');
   const mostrarPppoe   = authEfectiva === 'pppoe_addresslist';
   const requiereMac    = authEfectiva === 'amarre_ip_mac' || authEfectiva === 'amarre_ip_mac_dhcp';
+  const macRequerida   = requiereMac || !!conectadoAIdVal;
 
   const { data: segmentosRaw = [] } = useQuery({
     queryKey: ['segmentos-router', routerId],
@@ -1048,8 +1050,11 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
       setError('routerId', { message: 'Debes seleccionar un router cuando se elige un plan de servicio' });
       return;
     }
-    if (requiereMac && !data.mac?.trim()) {
-      setError('mac', { message: 'MAC obligatorio para Amarre IP/MAC' });
+    if ((requiereMac || !!data.conectadoAId) && !data.mac?.trim()) {
+      const motivo = requiereMac
+        ? 'MAC obligatorio para Amarre IP/MAC'
+        : 'MAC obligatorio al seleccionar una antena';
+      setError('mac', { message: motivo });
       return;
     }
     if (mostrarPppoe && !data.userPppHs?.trim()) {
@@ -1203,8 +1208,14 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
           {/* Mac */}
           <Field
-            label={requiereMac ? 'Mac *' : 'Mac'}
-            hint={requiereMac ? 'Obligatorio — router configurado con Amarre IP/MAC' : 'Dirección MAC del equipo cliente'}
+            label={macRequerida ? 'Mac *' : 'Mac'}
+            hint={
+              requiereMac
+                ? 'Obligatorio — router configurado con Amarre IP/MAC'
+                : conectadoAIdVal
+                ? 'Obligatorio — requerido al seleccionar una antena'
+                : 'Dirección MAC del equipo cliente'
+            }
             error={s3Errors.mac?.message}
           >
             <input

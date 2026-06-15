@@ -563,6 +563,12 @@ export class OrquestadorAprovisionamientoService {
             WHERE id = $1
           `, [dto.contratoId]);
 
+          // Marcar al cliente como FTTH al tener una ONU en la OLT
+          await this.ds.query(
+            `UPDATE clientes SET tipo_servicio = 'ftth' WHERE id = $1`,
+            [dto.clienteId],
+          );
+
           // Insertar historial de cambio de estado
           await this.ds.query(`
             INSERT INTO contratos_historial
@@ -863,6 +869,18 @@ export class OrquestadorAprovisionamientoService {
           UPDATE onus SET estado = 'sin_aprovisionar', smartolt_onu_id = NULL, aprovisionada_en = NULL
           WHERE id = $1
         `, [onuBdId]);
+
+        // Recalcular tipo_servicio: FTTH si aún queda algún contrato con ONU, sino WISP
+        await this.ds.query(`
+          UPDATE clientes SET tipo_servicio = CASE
+            WHEN EXISTS (
+              SELECT 1 FROM contratos co2
+              WHERE co2.cliente_id = clientes.id
+                AND co2.onu_id IS NOT NULL
+                AND co2.deleted_at IS NULL
+            ) THEN 'ftth' ELSE 'wisp' END
+          WHERE id = (SELECT cliente_id FROM contratos WHERE id = $1)
+        `, [dto.contratoId]);
 
         revertidos.push(`ONU ${onuBdId} desasociada y marcada sin_aprovisionar`);
       } catch (err) {

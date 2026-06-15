@@ -15,6 +15,7 @@ import {
   LayoutGrid, RefreshCcw, Maximize2, Minus, Phone, Package,
   Network, Lock, Navigation, Server, MapPin, User, ChevronRight,
   MoreVertical, CheckCircle2, Clock, AlertTriangle, Zap,
+  Power, PauseCircle,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -87,7 +88,20 @@ export function ClienteDetalle({ id }: { id: string }) {
   const [form, setForm]         = useState<Record<string, string>>({});
   const [formDirty, setDirty]   = useState(false);
   const [formErrors, setErrors] = useState<Record<string, string>>({});
+  const [menuEstadoOpen, setMenuEstadoOpen] = useState(false);
   const initialized             = useRef(false);
+  const menuEstadoRef           = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuEstadoOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuEstadoRef.current && !menuEstadoRef.current.contains(e.target as Node)) {
+        setMenuEstadoOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuEstadoOpen]);
 
   const { data: cliente, isLoading } = useQuery({
     queryKey: ['cliente', id],
@@ -141,14 +155,27 @@ export function ClienteDetalle({ id }: { id: string }) {
     onError: () => toast('Error al guardar los datos', { type: 'error' }),
   });
 
-  const { mutate: cambiarEstado } = useMutation({
+  const { mutate: cambiarEstado, isPending: cambiandoEstado } = useMutation({
     mutationFn: (estado: string) => clientesApi.cambiarEstado(id, estado),
-    onSuccess: () => {
+    onSuccess: (_data, estado) => {
       queryClient.invalidateQueries({ queryKey: ['cliente', id] });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
+      if (estado === 'baja_definitiva') {
+        queryClient.invalidateQueries({ queryKey: ['cliente-contratos', id] });
+      }
       toast('Estado actualizado', { type: 'success' });
     },
     onError: () => toast('No se pudo cambiar el estado', { type: 'error' }),
+  });
+
+  const { mutate: eliminarCliente, isPending: eliminando } = useMutation({
+    mutationFn: () => clientesApi.eliminar(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clientes'] });
+      toast('Abonado eliminado definitivamente', { type: 'success' });
+      router.push('/clientes');
+    },
+    onError: () => toast('No se pudo eliminar el abonado', { type: 'error' }),
   });
 
   const set = (key: string, val: string) => {
@@ -265,9 +292,82 @@ export function ClienteDetalle({ id }: { id: string }) {
               </button>
             );
           })}
-          <button className="ml-auto px-3 py-3 text-muted-foreground hover:text-foreground flex-shrink-0 transition-colors">
-            <Wrench className="w-3.5 h-3.5" />
-          </button>
+          <div ref={menuEstadoRef} className="ml-auto relative flex-shrink-0">
+            <button
+              onClick={() => setMenuEstadoOpen(v => !v)}
+              title="Cambiar Estado de Cliente"
+              className="px-3 py-3 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Wrench className="w-4.5 h-4.5" style={{ width: '1.125rem', height: '1.125rem' }} />
+            </button>
+
+            {menuEstadoOpen && cliente && (
+              <div className="absolute right-0 top-full mt-1 z-50 flex flex-col gap-2 p-3 rounded-xl
+                              border border-border bg-card shadow-lg min-w-[200px]">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">
+                  Cambiar Estado
+                </p>
+
+                {cliente.estado !== 'baja_definitiva' && (
+                  <>
+                    {cliente.estado === 'suspendido' ? (
+                      <button
+                        disabled={cambiandoEstado}
+                        onClick={() => { cambiarEstado('activo'); setMenuEstadoOpen(false); }}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                                   text-xs font-bold bg-green-500 hover:bg-green-600 text-white
+                                   transition-colors disabled:opacity-50"
+                      >
+                        <Power className="w-3.5 h-3.5" /> ACTIVAR
+                      </button>
+                    ) : (
+                      <button
+                        disabled={cambiandoEstado}
+                        onClick={() => { cambiarEstado('suspendido'); setMenuEstadoOpen(false); }}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                                   text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white
+                                   transition-colors disabled:opacity-50"
+                      >
+                        <PauseCircle className="w-3.5 h-3.5" /> SUSPENDER
+                      </button>
+                    )}
+
+                    <button
+                      disabled={cambiandoEstado}
+                      onClick={() => {
+                        if (window.confirm('¿Confirmar baja definitiva? Se eliminarán todos los servicios y contratos activos del abonado.')) {
+                          cambiarEstado('baja_definitiva');
+                          setMenuEstadoOpen(false);
+                        }
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                                 text-xs font-bold bg-red-500 hover:bg-red-600 text-white
+                                 transition-colors disabled:opacity-50"
+                    >
+                      <XCircle className="w-3.5 h-3.5" /> BAJA DEFINITIVA
+                    </button>
+                  </>
+                )}
+
+                {cliente.estado === 'baja_definitiva' && (
+                  <button
+                    disabled={eliminando}
+                    onClick={() => {
+                      if (window.confirm('¿Eliminar definitivamente al abonado? Esta acción borrará todos sus registros y no se puede deshacer.')) {
+                        eliminarCliente();
+                        setMenuEstadoOpen(false);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                               text-xs font-bold bg-muted hover:bg-muted/70 text-muted-foreground
+                               transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> ELIMINAR
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Resumen ──────────────────────────────────────── */}
@@ -291,19 +391,7 @@ export function ClienteDetalle({ id }: { id: string }) {
               </h3>
 
               <FormRow label="Estado">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <ClienteEstadoBadge estado={cliente.estado} />
-                  <select
-                    value={cliente.estado}
-                    onChange={(e) => cambiarEstado(e.target.value)}
-                    className="text-xs bg-muted border border-input rounded-lg px-2 py-1.5
-                               text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <option value="activo">Activo</option>
-                    <option value="suspendido">Suspendido</option>
-                    <option value="baja_definitiva">Baja definitiva</option>
-                  </select>
-                </div>
+                <ClienteEstadoBadge estado={cliente.estado} />
               </FormRow>
 
               <FormRow label="Conectado al Router(s)">
@@ -1161,6 +1249,7 @@ function ServicioPanel({
   const planId          = watch('planId');
   const excluirFirewall = watch('excluirFirewall') ?? false;
   const cajaNap         = watch('cajaNap');
+  const antenaApIdVal   = watch('antenaApId');
 
   const { data: planes  = [] } = useQuery({ queryKey: ['planes'],        queryFn: planesApi.list });
   const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
@@ -1172,6 +1261,7 @@ function ServicioPanel({
   const authEfectiva   = authPorAbonado ? (tipoControlVal ?? e?.tipoAuth ?? 'ninguna') : (routerSel?.tipoControl ?? 'ninguna');
   const mostrarPppoe   = authEfectiva === 'pppoe_addresslist';
   const requiereMac    = authEfectiva === 'amarre_ip_mac' || authEfectiva === 'amarre_ip_mac_dhcp';
+  const macRequerida   = requiereMac || !!antenaApIdVal;
 
   // Antenas AP vinculadas al router seleccionado
   const { data: antenasAP = [] } = useQuery({
@@ -1229,8 +1319,11 @@ function ServicioPanel({
     : [];
 
   const onSubmit = async (data: ServicioForm) => {
-    if (requiereMac && !data.macAddress?.trim()) {
-      setError('macAddress', { message: 'MAC obligatorio para Amarre IP/MAC' });
+    if ((requiereMac || !!data.antenaApId) && !data.macAddress?.trim()) {
+      const motivo = requiereMac
+        ? 'MAC obligatorio para Amarre IP/MAC'
+        : 'MAC obligatorio al seleccionar una antena';
+      setError('macAddress', { message: motivo });
       return;
     }
     if (mostrarPppoe && !editing && !data.usuarioPppoe?.trim()) {
@@ -1442,7 +1535,17 @@ function ServicioPanel({
                 )}
 
                 {/* MAC */}
-                <SP_Field label={requiereMac ? 'Mac *' : 'Mac'} error={errors.macAddress?.message}>
+                <SP_Field
+                  label={macRequerida ? 'Mac *' : 'Mac'}
+                  hint={
+                    requiereMac
+                      ? 'Obligatorio — router configurado con Amarre IP/MAC'
+                      : antenaApIdVal
+                      ? 'Obligatorio — requerido al seleccionar una antena'
+                      : undefined
+                  }
+                  error={errors.macAddress?.message}
+                >
                   <input {...register('macAddress')} placeholder="CC:2D:E0:FF:FA:55" className={sp_input(!!errors.macAddress)} />
                 </SP_Field>
 

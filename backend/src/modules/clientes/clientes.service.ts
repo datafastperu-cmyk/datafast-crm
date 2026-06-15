@@ -1,6 +1,7 @@
 import {
   Injectable, NotFoundException, ConflictException,
-  BadRequestException, Logger, ForbiddenException, HttpException,
+  BadRequestException, InternalServerErrorException,
+  Logger, ForbiddenException, HttpException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import * as sharp from 'sharp';
@@ -255,7 +256,13 @@ export class ClientesService {
     return this.findOne(id, user.empresaId);
   }
 
-  // ── Eliminar (soft delete) ────────────────────────────────
+  // ── Eliminar definitivamente (hard delete) ───────────────
+  // Solo ejecutable si el cliente está en BAJA_DEFINITIVA.
+  // Limpia todos los datos relacionados en orden para respetar FK constraints:
+  //   ordenes_trabajo → tickets (+comentarios CASCADE) → pagos → facturas
+  //   → contratos (+historial/consumo CASCADE) → cliente (+historial_estados CASCADE)
+  // Las llamadas de red (MikroTik / antena) van ANTES de la transacción DB
+  // para no mezclar I/O de red con la atomicidad de la transacción.
   async remove(id: string, user: JwtPayload, req?: any): Promise<void> {
     const cliente = await this.findOne(id, user.empresaId);
 
@@ -265,23 +272,74 @@ export class ClientesService {
       );
     }
 
-    // Safety net: eliminar todo rastro del cliente en router y antena
-    // Usar raw query para traer contratos aunque estén soft-deleteados (deleted_at IS NOT NULL)
-    // así garantizamos que siempre se limpie la antena inalámbrica (Access List) y el router.
-    const contratosCliente = await this.dataSource.query<any[]>(
-      `SELECT id FROM contratos
-       WHERE cliente_id = $1 AND empresa_id = $2
-         AND deleted_at IS NOT NULL
-         AND fecha_baja IS NOT NULL
-       ORDER BY created_at DESC`,
-      [id, user.empresaId],
-    );
-    for (const c of contratosCliente) {
-      try { await this.contratosSvc.desaprovisionarMikrotik(c.id); } catch { /* ignorar */ }
-      try { await this.contratosSvc.eliminarDeAccessListAntena(c.id); } catch { /* ignorar */ }
-    }
+    // ── Hard delete en transacción atómica ────────────────
+    const qr = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      // 1. Órdenes de trabajo (RESTRICT → clientes, SET NULL → tickets/contratos)
+      await qr.query(
+        `DELETE FROM ordenes_trabajo WHERE cliente_id = $1`,
+        [id],
+      );
 
-    await this.clienteRepo.softDelete(id, user.empresaId);
+      // 2. Tickets (RESTRICT → clientes; tickets_comentarios se borra en CASCADE)
+      await qr.query(
+        `DELETE FROM tickets WHERE cliente_id = $1`,
+        [id],
+      );
+
+      // 3. Pagos (RESTRICT → clientes; factura_id/contrato_id son SET NULL — no bloquean)
+      await qr.query(
+        `DELETE FROM pagos WHERE cliente_id = $1`,
+        [id],
+      );
+
+      // 4. Facturas (RESTRICT → clientes; factura_original_id/contrato_id SET NULL)
+      await qr.query(
+        `DELETE FROM facturas WHERE cliente_id = $1`,
+        [id],
+      );
+
+      // 5. Contratos (RESTRICT → clientes)
+      //    contratos_historial y consumo_datos se borran en CASCADE.
+      //    ips_asignadas.contrato_id queda en SET NULL (no bloquea).
+      //    notificaciones_logs.contrato_id queda en SET NULL.
+      await qr.query(
+        `DELETE FROM contratos WHERE cliente_id = $1`,
+        [id],
+      );
+
+      // 6. Sincronización Google Contacts (varchar, no hay FK formal)
+      await qr.query(
+        `DELETE FROM google_client_contacts WHERE cliente_id = $1`,
+        [id],
+      );
+
+      // 7. Limpiar auto-referencia referido_por antes del DELETE
+      await qr.query(
+        `UPDATE clientes SET referido_por = NULL WHERE referido_por = $1`,
+        [id],
+      );
+
+      // 8. Eliminar el cliente
+      //    clientes_historial_estados se borra en CASCADE.
+      //    notificaciones.cliente_id queda en SET NULL automáticamente.
+      await qr.query(
+        `DELETE FROM clientes WHERE id = $1 AND empresa_id = $2`,
+        [id, user.empresaId],
+      );
+
+      await qr.commitTransaction();
+    } catch (err) {
+      await qr.rollbackTransaction();
+      this.logger.error(`Hard-delete cliente ${id} (${cliente.nombreCompleto}): ${err?.message}`);
+      throw new InternalServerErrorException(
+        'No se pudo eliminar el abonado. La operación fue revertida completamente.',
+      );
+    } finally {
+      await qr.release();
+    }
 
     await this.auditoria.logDelete({
       empresaId:    user.empresaId,
@@ -289,7 +347,7 @@ export class ClientesService {
       usuarioEmail: user.email,
       modulo:       'clientes',
       entidadId:    id,
-      descripcion:  `Eliminación de cliente: ${cliente.nombreCompleto}`,
+      descripcion:  `Eliminación definitiva: ${cliente.nombreCompleto} | DNI/Doc: ${cliente.numeroDocumento}`,
       req,
     });
   }

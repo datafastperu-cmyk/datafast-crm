@@ -106,7 +106,7 @@ export class Cliente extends BaseModel {
   @Column({ name: 'motivo_estado', type: 'text', nullable: true })
   motivoEstado: string;
 
-  @Column({ name: 'tipo_servicio', type: 'enum', enum: TipoServicio, nullable: true, default: TipoServicio.FTTH })
+  @Column({ name: 'tipo_servicio', type: 'enum', enum: TipoServicio, nullable: true, default: TipoServicio.WISP })
   tipoServicio: TipoServicio;
 
   @Column({ name: 'codigo_cliente', length: 30, nullable: true })

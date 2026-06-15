@@ -9,7 +9,7 @@ const ESTADOS: Record<string, { label: string; cls: string; icon?: React.Element
   pendiente_activacion: { label: 'Pend. Instalac.', cls: 'badge-pendiente', icon: AlertTriangle },
   activo:                { label: 'Activo',           cls: 'badge-activo',    icon: Wifi },
   suspendido:            { label: 'Suspendido',       cls: 'badge-suspendido',icon: WifiOff },
-  baja_definitiva:       { label: 'Baja',             cls: 'badge-baja' },
+  baja_definitiva:       { label: 'Baja Definitiva',  cls: 'badge-baja' },
 };
 
 export function ContratoEstadoBadge({ estado }: { estado: string }) {
