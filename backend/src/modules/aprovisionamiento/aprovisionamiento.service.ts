@@ -286,12 +286,13 @@ export class OrquestadorAprovisionamientoService {
             );
           }
 
-          // Registrar IP en la tabla ips_asignadas
+          // Registrar IP en la tabla ips_asignadas (upsert sobre el índice parcial activo)
           await this.ds.query(`
             INSERT INTO ips_asignadas
               (empresa_id, segmento_id, contrato_id, ip_address, tipo, activa, asignada_en)
             VALUES ($1, $2, $3, $4, 'cliente', true, NOW())
-            ON CONFLICT (ip_address) DO UPDATE SET activa = true, contrato_id = $3
+            ON CONFLICT (segmento_id, ip_address) WHERE activa = true
+            DO UPDATE SET empresa_id = $1, contrato_id = $3, asignada_en = NOW()
           `, [user.empresaId, dto.segmentoId || ctx.contrato.segmento_id, dto.contratoId, ctx.ipAsignada]);
 
           // Actualizar el contrato
