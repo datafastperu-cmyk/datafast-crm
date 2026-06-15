@@ -886,20 +886,27 @@ export class OrquestadorAprovisionamientoService {
         await qrTipo.connect();
         await qrTipo.startTransaction();
         try {
-          await qrTipo.query(
-            `SELECT id FROM clientes WHERE id = $1 FOR UPDATE`,
-            [dto.clienteId],
+          const rows = await qrTipo.query<{ cliente_id: string }[]>(
+            `SELECT cliente_id FROM contratos WHERE id = $1`,
+            [dto.contratoId],
           );
-          await qrTipo.query(`
-            UPDATE clientes SET tipo_servicio = CASE
-              WHEN EXISTS (
-                SELECT 1 FROM contratos co2
-                WHERE co2.cliente_id = $1
-                  AND co2.onu_id IS NOT NULL
-                  AND co2.deleted_at IS NULL
-              ) THEN 'ftth' ELSE 'wisp' END
-            WHERE id = $1
-          `, [dto.clienteId]);
+          const clienteIdRollback = rows[0]?.cliente_id;
+          if (clienteIdRollback) {
+            await qrTipo.query(
+              `SELECT id FROM clientes WHERE id = $1 FOR UPDATE`,
+              [clienteIdRollback],
+            );
+            await qrTipo.query(`
+              UPDATE clientes SET tipo_servicio = CASE
+                WHEN EXISTS (
+                  SELECT 1 FROM contratos co2
+                  WHERE co2.cliente_id = $1
+                    AND co2.onu_id IS NOT NULL
+                    AND co2.deleted_at IS NULL
+                ) THEN 'ftth' ELSE 'wisp' END
+              WHERE id = $1
+            `, [clienteIdRollback]);
+          }
           await qrTipo.commitTransaction();
         } catch (err) {
           await qrTipo.rollbackTransaction();
