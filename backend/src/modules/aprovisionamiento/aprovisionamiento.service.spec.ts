@@ -21,7 +21,7 @@ const mockUser = {
 
 const mockContratoRow = {
   contrato_id: 'cnt-001', numero_contrato: 'CNT-2024-000001',
-  contrato_estado: 'pendiente_instalacion', aprovisionado: false,
+  contrato_estado: 'pendiente_activacion', aprovisionado: false,
   usuario_pppoe: 'cli_abc12345', password_pppoe: 'pass123',
   ip_asignada: null,   // Sin IP asignada — se asignará del pool
   segmento_id: 'seg-001',

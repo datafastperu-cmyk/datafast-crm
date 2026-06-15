@@ -33,7 +33,7 @@ import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 // Define qué estados pueden cambiar a cuáles.
 // Protege la integridad del ciclo de vida del cliente.
 const TRANSICIONES_VALIDAS: Record<EstadoCliente, EstadoCliente[]> = {
-  [EstadoCliente.PENDIENTE_INSTALACION]: [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
+  [EstadoCliente.PENDIENTE_ACTIVACION]: [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
   [EstadoCliente.ACTIVO]:               [EstadoCliente.SUSPENDIDO, EstadoCliente.BAJA_DEFINITIVA],
   [EstadoCliente.SUSPENDIDO]:           [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
   [EstadoCliente.BAJA_DEFINITIVA]:      [],
@@ -90,7 +90,7 @@ export class ClientesService {
       empresaId:  user.empresaId,
       createdBy:  user.sub,
       updatedBy:  user.sub,
-      estado:     EstadoCliente.PENDIENTE_INSTALACION,
+      estado:     EstadoCliente.PENDIENTE_ACTIVACION,
       fechaEstado: new Date(),
     });
 
@@ -100,7 +100,7 @@ export class ClientesService {
     await this.clienteRepo.guardarHistorial({
       clienteId:   saved.id,
       empresaId:   user.empresaId,
-      estadoNuevo: EstadoCliente.PENDIENTE_INSTALACION,
+      estadoNuevo: EstadoCliente.PENDIENTE_ACTIVACION,
       motivo:      'Alta de cliente',
       usuarioId:   user.sub,
       automatico:  false,
@@ -540,7 +540,7 @@ export class ClientesService {
           user,
           req,
         );
-        // El cliente permanece en PENDIENTE_INSTALACION hasta que el técnico active el servicio
+        // El cliente permanece en PENDIENTE_ACTIVACION hasta que el técnico active el servicio
       } catch (err: any) {
         this.logger.error(`onboarding: contrato fallido para ${cliente.id}: ${err.message}`);
         // Si el contrato ya fue creado, terminarlo primero para que libere la IP

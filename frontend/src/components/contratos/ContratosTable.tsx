@@ -6,7 +6,7 @@ import type { Contrato } from '@/types';
 
 // ─── Badge de estado ──────────────────────────────────────────
 const ESTADOS: Record<string, { label: string; cls: string; icon?: React.ElementType }> = {
-  pendiente_instalacion: { label: 'Pend. Instalac.', cls: 'badge-pendiente', icon: AlertTriangle },
+  pendiente_activacion: { label: 'Pend. Instalac.', cls: 'badge-pendiente', icon: AlertTriangle },
   activo:                { label: 'Activo',           cls: 'badge-activo',    icon: Wifi },
   suspendido:            { label: 'Suspendido',       cls: 'badge-suspendido',icon: WifiOff },
   baja_definitiva:       { label: 'Baja',             cls: 'badge-baja' },

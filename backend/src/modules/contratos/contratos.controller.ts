@@ -137,7 +137,7 @@ export class ContratosController {
   }
 
   @Patch(':id/activar') @RequirePermission('contratos:edit')
-  @ApiOperation({ summary: 'Activar contrato (PENDIENTE_INSTALACION → ACTIVO) al finalizar la instalación' })
+  @ApiOperation({ summary: 'Activar contrato (PENDIENTE_ACTIVACION → ACTIVO) al finalizar la instalación' })
   @ApiParam({ name:'id' })
   async activar(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload, @Req() req: Request) {
     return StdResponse.ok(await this.svc.activar(id, user, req), 'Contrato activado — servicio habilitado');

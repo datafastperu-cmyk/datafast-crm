@@ -2,10 +2,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
  * Unifica los estados de clientes y contratos a 4 estados simétricos:
- *   PENDIENTE_INSTALACION | ACTIVO | SUSPENDIDO | BAJA_DEFINITIVA
+ *   PENDIENTE_ACTIVACION | ACTIVO | SUSPENDIDO | BAJA_DEFINITIVA
  *
  * Mapeo de estados eliminados:
- *   EstadoCliente:  prospecto      → pendiente_instalacion
+ *   EstadoCliente:  prospecto      → pendiente_activacion
  *                   moroso         → suspendido
  *                   baja_temporal  → suspendido
  *
@@ -14,6 +14,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *                   prorroga          → activo  (Opción A: sin cambio de estado)
  *                   baja_solicitada   → baja_definitiva
  *                   migrado           → baja_definitiva
+ *
+ * Nota: el valor 'pendiente_activacion' fue renombrado a 'pendiente_activacion'
+ * por la migración posterior RenombrarPendienteActivacion1785400001000.
  */
 export class UnificarEstadosAbonados1785400000000 implements MigrationInterface {
   name = 'UnificarEstadosAbonados1785400000000';
@@ -21,7 +24,7 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
   public async up(qr: QueryRunner): Promise<void> {
     // Eliminar vistas dependientes antes de alterar columnas de tipo ENUM.
     // v_contratos_completos depende de contratos.estado (estado_contrato).
-    // Los DEFAULT 'prospecto'::estado_cliente y 'pendiente_instalacion'::estado_contrato
+    // Los DEFAULT 'prospecto'::estado_cliente y 'pendiente_activacion'::estado_contrato
     // también referencian el tipo; se eliminan con CASCADE al hacer DROP TYPE.
     await qr.query(`DROP VIEW IF EXISTS v_resumen_clientes`);
     await qr.query(`DROP VIEW IF EXISTS v_contratos_completos`);
@@ -32,28 +35,28 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_nuevo TYPE TEXT`);
 
     // ── 2. Migrar datos de clientes ──────────────────────────────────────
-    await qr.query(`UPDATE clientes SET estado = 'pendiente_instalacion' WHERE estado = 'prospecto'`);
+    await qr.query(`UPDATE clientes SET estado = 'pendiente_activacion' WHERE estado = 'prospecto'`);
     await qr.query(`UPDATE clientes SET estado = 'suspendido' WHERE estado IN ('moroso', 'baja_temporal')`);
 
-    await qr.query(`UPDATE clientes_historial_estados SET estado_anterior = 'pendiente_instalacion' WHERE estado_anterior = 'prospecto'`);
+    await qr.query(`UPDATE clientes_historial_estados SET estado_anterior = 'pendiente_activacion' WHERE estado_anterior = 'prospecto'`);
     await qr.query(`UPDATE clientes_historial_estados SET estado_anterior = 'suspendido' WHERE estado_anterior IN ('moroso', 'baja_temporal')`);
-    await qr.query(`UPDATE clientes_historial_estados SET estado_nuevo = 'pendiente_instalacion' WHERE estado_nuevo = 'prospecto'`);
+    await qr.query(`UPDATE clientes_historial_estados SET estado_nuevo = 'pendiente_activacion' WHERE estado_nuevo = 'prospecto'`);
     await qr.query(`UPDATE clientes_historial_estados SET estado_nuevo = 'suspendido' WHERE estado_nuevo IN ('moroso', 'baja_temporal')`);
 
     // ── 3. Reemplazar enum estado_cliente ────────────────────────────────
     // CASCADE elimina el DEFAULT 'prospecto'::estado_cliente que aún referencia el tipo
     await qr.query(`DROP TYPE IF EXISTS estado_cliente CASCADE`);
-    await qr.query(`CREATE TYPE estado_cliente AS ENUM ('pendiente_instalacion', 'activo', 'suspendido', 'baja_definitiva')`);
+    await qr.query(`CREATE TYPE estado_cliente AS ENUM ('pendiente_activacion', 'activo', 'suspendido', 'baja_definitiva')`);
 
     await qr.query(`ALTER TABLE clientes ALTER COLUMN estado TYPE estado_cliente USING estado::estado_cliente`);
-    await qr.query(`ALTER TABLE clientes ALTER COLUMN estado SET DEFAULT 'pendiente_instalacion'`);
+    await qr.query(`ALTER TABLE clientes ALTER COLUMN estado SET DEFAULT 'pendiente_activacion'`);
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_anterior TYPE estado_cliente USING estado_anterior::estado_cliente`);
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_nuevo TYPE estado_cliente USING estado_nuevo::estado_cliente`);
 
     // ── 4. Convertir columnas contrato a TEXT ────────────────────────────
     // idx_contratos_mora tiene WHERE con 'activo'::estado_contrato — bloquea el ALTER TYPE.
     // Se dropea el índice, se convierte a TEXT, se recrea al final con los nuevos valores.
-    // El DEFAULT 'pendiente_instalacion'::estado_contrato también bloquea; se elimina primero.
+    // El DEFAULT 'pendiente_activacion'::estado_contrato también bloquea; se elimina primero.
     await qr.query(`DROP INDEX IF EXISTS idx_contratos_mora`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado DROP DEFAULT`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado TYPE TEXT`);
@@ -73,12 +76,12 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`UPDATE contratos_historial SET estado_nuevo = 'baja_definitiva' WHERE estado_nuevo IN ('baja_solicitada', 'migrado')`);
 
     // ── 6. Reemplazar enum estado_contrato ───────────────────────────────
-    // CASCADE elimina el DEFAULT 'pendiente_instalacion'::estado_contrato
+    // CASCADE elimina el DEFAULT 'pendiente_activacion'::estado_contrato
     await qr.query(`DROP TYPE IF EXISTS estado_contrato CASCADE`);
-    await qr.query(`CREATE TYPE estado_contrato AS ENUM ('pendiente_instalacion', 'activo', 'suspendido', 'baja_definitiva')`);
+    await qr.query(`CREATE TYPE estado_contrato AS ENUM ('pendiente_activacion', 'activo', 'suspendido', 'baja_definitiva')`);
 
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado TYPE estado_contrato USING estado::estado_contrato`);
-    await qr.query(`ALTER TABLE contratos ALTER COLUMN estado SET DEFAULT 'pendiente_instalacion'`);
+    await qr.query(`ALTER TABLE contratos ALTER COLUMN estado SET DEFAULT 'pendiente_activacion'`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE estado_contrato USING estado_anterior::estado_contrato`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_nuevo TYPE estado_contrato USING estado_nuevo::estado_contrato`);
 
@@ -90,7 +93,7 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
         COUNT(*)                                                              AS total,
         COUNT(*) FILTER (WHERE c.estado = 'activo')                          AS activos,
         COUNT(*) FILTER (WHERE c.estado = 'suspendido')                      AS suspendidos,
-        COUNT(*) FILTER (WHERE c.estado = 'pendiente_instalacion')           AS pendientes,
+        COUNT(*) FILTER (WHERE c.estado = 'pendiente_activacion')           AS pendientes,
         COUNT(*) FILTER (WHERE c.estado = 'baja_definitiva')                 AS bajas,
         COUNT(*) FILTER (WHERE c.created_at >= DATE_TRUNC('month', NOW()))   AS nuevos_este_mes
       FROM clientes c
@@ -153,12 +156,17 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
     await qr.query(`DROP TYPE IF EXISTS estado_contrato CASCADE`);
     await qr.query(`
       CREATE TYPE estado_contrato AS ENUM (
-        'pendiente_instalacion','activo','suspendido_mora','suspendido_manual',
+        'pendiente_activacion','activo','suspendido_mora','suspendido_manual',
         'prorroga','baja_solicitada','baja_definitiva','migrado'
       )
     `);
+    // Reversa parcial de datos: 'suspendido' no existe en el enum viejo.
+    // 'suspendido_mora'/'suspendido_manual' se unificaron sin conservar distinción → se usa suspendido_mora como canónico.
+    await qr.query(`UPDATE contratos SET estado = 'suspendido_mora' WHERE estado = 'suspendido'`);
+    await qr.query(`UPDATE contratos_historial SET estado_anterior = 'suspendido_mora' WHERE estado_anterior = 'suspendido'`);
+    await qr.query(`UPDATE contratos_historial SET estado_nuevo = 'suspendido_mora' WHERE estado_nuevo = 'suspendido'`);
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado TYPE estado_contrato USING estado::estado_contrato`);
-    await qr.query(`ALTER TABLE contratos ALTER COLUMN estado SET DEFAULT 'pendiente_instalacion'`);
+    await qr.query(`ALTER TABLE contratos ALTER COLUMN estado SET DEFAULT 'pendiente_activacion'`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE estado_contrato USING estado_anterior::estado_contrato`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_nuevo TYPE estado_contrato USING estado_nuevo::estado_contrato`);
 
@@ -173,6 +181,10 @@ export class UnificarEstadosAbonados1785400000000 implements MigrationInterface 
         'activo','suspendido','moroso','baja_temporal','baja_definitiva','prospecto'
       )
     `);
+    // Reversa: 'pendiente_activacion' no existe en el enum viejo → vuelve a 'prospecto'.
+    await qr.query(`UPDATE clientes SET estado = 'prospecto' WHERE estado = 'pendiente_activacion'`);
+    await qr.query(`UPDATE clientes_historial_estados SET estado_anterior = 'prospecto' WHERE estado_anterior = 'pendiente_activacion'`);
+    await qr.query(`UPDATE clientes_historial_estados SET estado_nuevo = 'prospecto' WHERE estado_nuevo = 'pendiente_activacion'`);
     await qr.query(`ALTER TABLE clientes ALTER COLUMN estado TYPE estado_cliente USING estado::estado_cliente`);
     await qr.query(`ALTER TABLE clientes ALTER COLUMN estado SET DEFAULT 'prospecto'`);
     await qr.query(`ALTER TABLE clientes_historial_estados ALTER COLUMN estado_anterior TYPE estado_cliente USING estado_anterior::estado_cliente`);

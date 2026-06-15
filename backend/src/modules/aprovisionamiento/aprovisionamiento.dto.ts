@@ -10,7 +10,7 @@ import { Type, Transform }                  from 'class-transformer';
 export class AprovisionarFtthDto {
 
   // ── Identificadores del contrato ─────────────────────────
-  @ApiProperty({ description: 'UUID del contrato existente en estado PENDIENTE_INSTALACION' })
+  @ApiProperty({ description: 'UUID del contrato existente en estado PENDIENTE_ACTIVACION' })
   @IsUUID()
   @IsNotEmpty()
   contratoId: string;

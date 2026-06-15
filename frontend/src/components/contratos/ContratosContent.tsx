@@ -15,7 +15,7 @@ import { cn, formatPEN }     from '@/lib/utils';
 
 const ESTADO_TABS = [
   { key: '',                     label: 'Todos',       icon: FileText },
-  { key: 'pendiente_instalacion',label: 'Pendientes',  icon: AlertTriangle },
+  { key: 'pendiente_activacion',label: 'Pendientes',  icon: AlertTriangle },
   { key: 'activo',               label: 'Activos',     icon: Wifi },
   { key: 'suspendido',           label: 'Suspendidos', icon: WifiOff },
   { key: 'baja_definitiva',      label: 'Bajas',       icon: Clock },

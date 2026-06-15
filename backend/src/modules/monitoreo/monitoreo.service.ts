@@ -459,7 +459,7 @@ export class MonitoreoService {
     const [{ count }] = await this.ds.query(
       `SELECT COUNT(*) as count FROM contratos
        WHERE antena_ap_id = $1 AND deleted_at IS NULL
-         AND estado IN ('activo','suspendido','pendiente_instalacion')`,
+         AND estado IN ('activo','suspendido','pendiente_activacion')`,
       [id],
     );
     if (Number(count) > 0) {
@@ -618,7 +618,7 @@ export class MonitoreoService {
          AND  co.mac_address IS NOT NULL
          AND  co.mac_address != ''
          AND  co.deleted_at IS NULL
-         AND  co.estado IN ('activo','suspendido','pendiente_instalacion')`,
+         AND  co.estado IN ('activo','suspendido','pendiente_activacion')`,
       [id],
     );
 

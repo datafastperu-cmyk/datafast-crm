@@ -28,7 +28,7 @@ export interface ActivarResultado {
 }
 
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
-  [EstadoContrato.PENDIENTE_INSTALACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.PENDIENTE_ACTIVACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.BAJA_DEFINITIVA]:      [],
@@ -61,7 +61,7 @@ export class ContratosService {
       const contratosCliente = await this.contratoRepo.findByClienteId(dto.clienteId, user.empresaId);
       const duplicate = contratosCliente.find(c =>
         c.planId === dto.planId &&
-        [EstadoContrato.ACTIVO, EstadoContrato.PENDIENTE_INSTALACION].includes(c.estado),
+        [EstadoContrato.ACTIVO, EstadoContrato.PENDIENTE_ACTIVACION].includes(c.estado),
       );
       if (duplicate) throw new ConflictException(`Cliente ya tiene contrato activo con plan "${plan.nombre}" (${duplicate.numeroContrato})`);
     }
@@ -146,7 +146,7 @@ export class ContratosService {
         ...dto,
         empresaId:      user.empresaId,
         numeroContrato,
-        estado:         EstadoContrato.PENDIENTE_INSTALACION,
+        estado:         EstadoContrato.PENDIENTE_ACTIVACION,
         fechaEstado:    new Date(),
         usuarioPppoe,
         passwordPppoe:  passwordCifrado,
@@ -180,7 +180,7 @@ export class ContratosService {
     }
 
     // ── Post-commit: historial y auditoría ────────────────────
-    await this.contratoRepo.guardarHistorial({ contratoId:saved.id, empresaId:user.empresaId, estadoNuevo:EstadoContrato.PENDIENTE_INSTALACION, motivo:`Plan: ${plan?.nombre ?? 'sin plan'} | IP: ${ipAsignada||'sin asignar'}`, usuarioId:user.sub });
+    await this.contratoRepo.guardarHistorial({ contratoId:saved.id, empresaId:user.empresaId, estadoNuevo:EstadoContrato.PENDIENTE_ACTIVACION, motivo:`Plan: ${plan?.nombre ?? 'sin plan'} | IP: ${ipAsignada||'sin asignar'}`, usuarioId:user.sub });
     await this.auditoria.logCreate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:saved.id, descripcion:`Contrato ${saved.numeroContrato}`, req });
     this.logger.log(`Contrato creado: ${saved.numeroContrato} | ip: ${ipAsignada}`);
 
@@ -367,8 +367,8 @@ export class ContratosService {
 
   async activar(id: string, user: JwtPayload, req?: any): Promise<ActivarResultado> {
     const c = await this.findOne(id, user.empresaId);
-    if (c.estado !== EstadoContrato.PENDIENTE_INSTALACION)
-      throw new BadRequestException(`Solo se activan contratos PENDIENTE_INSTALACION. Estado: ${c.estado}`);
+    if (c.estado !== EstadoContrato.PENDIENTE_ACTIVACION)
+      throw new BadRequestException(`Solo se activan contratos PENDIENTE_ACTIVACION. Estado: ${c.estado}`);
 
     await this.contratoRepo.update(id, {
       estado: EstadoContrato.ACTIVO,
@@ -381,9 +381,9 @@ export class ContratosService {
     try {
       provisionadoOk = await this.provisionarMikrotik(id);
     } catch (err: any) {
-      // Rollback: revertir a PENDIENTE_INSTALACION — el router no aceptó la provisión
+      // Rollback: revertir a PENDIENTE_ACTIVACION — el router no aceptó la provisión
       await this.contratoRepo.update(id, {
-        estado: EstadoContrato.PENDIENTE_INSTALACION,
+        estado: EstadoContrato.PENDIENTE_ACTIVACION,
         fechaEstado: new Date(),
         fechaInstalacion: null as any,
         updatedBy: user.sub,
@@ -392,14 +392,14 @@ export class ContratosService {
         contratoId: id,
         empresaId: user.empresaId,
         estadoAnterior: EstadoContrato.ACTIVO,
-        estadoNuevo: EstadoContrato.PENDIENTE_INSTALACION,
+        estadoNuevo: EstadoContrato.PENDIENTE_ACTIVACION,
         motivo: `Rollback automático — error de provisión Mikrotik: ${err?.message}`,
         usuarioId: user.sub,
       });
-      this.logger.error(`activar → ${id} | revertido a PENDIENTE_INSTALACION: ${err?.message}`);
+      this.logger.error(`activar → ${id} | revertido a PENDIENTE_ACTIVACION: ${err?.message}`);
       throw new BadRequestException(
         `No se pudo activar el servicio: ${err?.message}. ` +
-        `El contrato permanece en PENDIENTE_INSTALACION.`,
+        `El contrato permanece en PENDIENTE_ACTIVACION.`,
       );
     }
 
@@ -416,16 +416,16 @@ export class ContratosService {
     await this.contratoRepo.guardarHistorial({
       contratoId: id,
       empresaId: user.empresaId,
-      estadoAnterior: EstadoContrato.PENDIENTE_INSTALACION,
+      estadoAnterior: EstadoContrato.PENDIENTE_ACTIVACION,
       estadoNuevo: EstadoContrato.ACTIVO,
       motivo,
       usuarioId: user.sub,
     });
 
-    // Promover cliente de PENDIENTE_INSTALACION → ACTIVO automáticamente al activar su primer contrato
+    // Promover cliente de PENDIENTE_ACTIVACION → ACTIVO automáticamente al activar su primer contrato
     await this.dataSource.query(
       `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
-       WHERE id = $1 AND empresa_id = $2 AND estado = 'pendiente_instalacion'`,
+       WHERE id = $1 AND empresa_id = $2 AND estado = 'pendiente_activacion'`,
       [c.clienteId, user.empresaId, user.sub],
     ).catch(e => this.logger.warn(`activar → cliente ${c.clienteId} | fallo al promover estado prospecto→activo: ${e?.message}`));
 

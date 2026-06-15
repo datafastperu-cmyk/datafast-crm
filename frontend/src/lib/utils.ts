@@ -82,10 +82,10 @@ export function mesNombre(mes: number): string {
 /** Clase CSS del badge según estado de contrato */
 export function badgeContrato(estado: string): string {
   const map: Record<string, string> = {
-    pendiente_instalacion: 'badge-pendiente',
-    activo:                'badge-activo',
-    suspendido:            'badge-suspendido',
-    baja_definitiva:       'badge-baja',
+    pendiente_activacion: 'badge-pendiente',
+    activo:               'badge-activo',
+    suspendido:           'badge-suspendido',
+    baja_definitiva:      'badge-baja',
   };
   return map[estado] ?? 'badge-pendiente';
 }
@@ -93,7 +93,7 @@ export function badgeContrato(estado: string): string {
 /** Texto del estado de contrato */
 export function labelContrato(estado: string): string {
   const map: Record<string, string> = {
-    pendiente_instalacion: 'Pend. Instalación',
+    pendiente_activacion: 'Pend. Activación',
     activo:                'Activo',
     suspendido:            'Suspendido',
     baja_definitiva:       'Baja definitiva',

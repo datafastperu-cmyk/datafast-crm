@@ -22,7 +22,7 @@ const RE_PPPOE_USER = /^[a-zA-Z0-9._@-]+$/;
 // ─── DTO principal ────────────────────────────────────────────
 export class CreateMikrotikUserDto {
 
-  @ApiProperty({ description: 'UUID del contrato en estado PENDIENTE_INSTALACION' })
+  @ApiProperty({ description: 'UUID del contrato en estado PENDIENTE_ACTIVACION' })
   @IsUUID()
   @IsNotEmpty()
   contratoId: string;

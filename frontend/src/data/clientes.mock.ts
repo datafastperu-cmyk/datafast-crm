@@ -161,7 +161,7 @@ export const MOCK_CLIENTES: ClienteRich[] = [
     email: 'joanna.js@gmail.com', telefono: '950109964', whatsapp: '950109964',
     direccion: 'Urb. Santa Rosa Mz A Lt 8, Piura', distrito: 'Piura',
     provincia: 'Piura', departamento: 'Piura',
-    estado: 'pendiente_instalacion', tipoServicio: 'ftth', codigoCliente: 'DF-012',
+    estado: 'pendiente_activacion', tipoServicio: 'ftth', codigoCliente: 'DF-012',
     deudaTotal: 0, fechaInstalacion: undefined,
     createdAt: '2026-01-07T09:00:00Z', esEmpresa: false,
     etiquetas: [], reniecConsultado: true, fechaEstado: '2026-01-07T00:00:00Z',

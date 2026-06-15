@@ -1,9 +1,9 @@
 import { cn } from '@/lib/utils';
 
-type EstadoCliente = 'pendiente_instalacion' | 'activo' | 'suspendido' | 'baja_definitiva';
+type EstadoCliente = 'pendiente_activacion' | 'activo' | 'suspendido' | 'baja_definitiva';
 
 const ESTADOS: Record<string, { label: string; class: string }> = {
-  pendiente_instalacion: { label: 'Pend. Instalación', class: 'badge-pendiente' },
+  pendiente_activacion: { label: 'Pend. Activación', class: 'badge-pendiente' },
   activo:                { label: 'Activo',             class: 'badge-activo' },
   suspendido:            { label: 'Suspendido',         class: 'badge-suspendido' },
   baja_definitiva:       { label: 'Baja',               class: 'badge-baja' },

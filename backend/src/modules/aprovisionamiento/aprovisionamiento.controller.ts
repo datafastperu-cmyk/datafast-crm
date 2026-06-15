@@ -94,7 +94,7 @@ Revierte un aprovisionamiento realizado (total o parcialmente):
 2. Elimina el usuario PPPoE del Mikrotik
 3. Libera la IP al pool (ips_asignadas.activa = false)
 4. Desasocia la ONU del contrato en BD
-5. Revierte el estado del contrato a \`pendiente_instalacion\`
+5. Revierte el estado del contrato a \`pendiente_activacion\`
 
 Útil cuando hay un error de instalación física o se necesita mover al cliente a otro nodo.
     `,

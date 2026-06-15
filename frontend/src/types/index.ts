@@ -56,7 +56,7 @@ export interface HistorialEntry {
 
 // ─── Clientes ─────────────────────────────────────────────────
 export type EstadoCliente =
-  | 'pendiente_instalacion' | 'activo' | 'suspendido' | 'baja_definitiva';
+  | 'pendiente_activacion' | 'activo' | 'suspendido' | 'baja_definitiva';
 
 export type TipoDocumento = 'dni' | 'ruc' | 'ce' | 'pasaporte';
 export type TipoServicio  = 'ftth' | 'wisp' | 'dedicado' | 'mixto';
@@ -133,7 +133,7 @@ export interface Plan {
 
 // ─── Contratos ────────────────────────────────────────────────
 export type EstadoContrato =
-  | 'pendiente_instalacion' | 'activo' | 'suspendido' | 'baja_definitiva';
+  | 'pendiente_activacion' | 'activo' | 'suspendido' | 'baja_definitiva';
 
 export interface Contrato {
   id:              string;

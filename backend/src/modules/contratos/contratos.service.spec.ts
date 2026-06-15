@@ -10,7 +10,7 @@ import { TipoQueue } from '../planes/entities/plan.entity';
 
 const mockUser = { sub:'u-001', email:'admin@test.pe', empresaId:'emp-001', roles:['Administrador'], permisos:[], nombreCompleto:'Admin', tema:'dark' };
 const mockPlan = { id:'plan-001', empresaId:'emp-001', nombre:'Plan 30 Mbps', activo:true, precio:85.00, tipoQueue:TipoQueue.SIMPLE_QUEUE };
-const mockContrato = { id:'cnt-001', empresaId:'emp-001', clienteId:'cli-001', planId:'plan-001', numeroContrato:'CNT-2024-000001', estado:EstadoContrato.PENDIENTE_INSTALACION, ipAsignada:'192.168.1.2', segmentoId:'seg-001', deudaTotal:0, deletedAt:null };
+const mockContrato = { id:'cnt-001', empresaId:'emp-001', clienteId:'cli-001', planId:'plan-001', numeroContrato:'CNT-2024-000001', estado:EstadoContrato.PENDIENTE_ACTIVACION, ipAsignada:'192.168.1.2', segmentoId:'seg-001', deudaTotal:0, deletedAt:null };
 const mockSegmento = { id:'seg-001', redCidr:'192.168.1.0/24', gateway:'192.168.1.1', ipsReservadas:['192.168.1.1'], activo:true };
 
 const mockRepo = { create:jest.fn(d=>({...mockContrato,...d})), save:jest.fn(async c=>({...mockContrato,...c})), update:jest.fn(), findById:jest.fn(), findByClienteId:jest.fn(), softDelete:jest.fn(), findAllPaginated:jest.fn(), findCompleto:jest.fn(), findSegmento:jest.fn(), getIpsUsadas:jest.fn(), getIpsReservadas:jest.fn(), asignarIp:jest.fn(), liberarIp:jest.fn(), ipYaAsignada:jest.fn(), generarNumeroContrato:jest.fn(), guardarHistorial:jest.fn(), getHistorial:jest.fn(), findMorososParaCorte:jest.fn(), findParaReactivar:jest.fn(), findProrrogasVencidas:jest.fn(), getResumen:jest.fn() };
@@ -55,7 +55,7 @@ describe('ContratosService', () => {
   });
 
   describe('cambiarEstado()', () => {
-    it('PENDIENTE_INSTALACION → ACTIVO', async () => {
+    it('PENDIENTE_ACTIVACION → ACTIVO', async () => {
       mockRepo.findById.mockResolvedValueOnce(mockContrato).mockResolvedValueOnce({ ...mockContrato, estado:EstadoContrato.ACTIVO });
       await service.cambiarEstado('cnt-001', { estado:EstadoContrato.ACTIVO }, mockUser as any);
       expect(mockRepo.update).toHaveBeenCalledWith('cnt-001', expect.objectContaining({ estado:EstadoContrato.ACTIVO }));

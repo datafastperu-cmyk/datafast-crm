@@ -12,7 +12,7 @@ export class CreateContratos1700000007000 implements MigrationInterface {
 
     await queryRunner.query(`
       CREATE TYPE estado_contrato AS ENUM (
-        'pendiente_instalacion',
+        'pendiente_activacion',
         'activo',
         'suspendido_mora',
         'suspendido_manual',
@@ -40,7 +40,7 @@ export class CreateContratos1700000007000 implements MigrationInterface {
         numero_contrato     VARCHAR(30)   NOT NULL,  -- ej: CNT-2024-000123
 
         -- Estado
-        estado              estado_contrato NOT NULL DEFAULT 'pendiente_instalacion',
+        estado              estado_contrato NOT NULL DEFAULT 'pendiente_activacion',
         fecha_estado        TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         motivo_estado       TEXT,
 

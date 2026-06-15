@@ -93,7 +93,7 @@ export class MikrotikUserService {
         macAddress: null as any,
         nombreQueue: null as any,
         tipoAuth: null as any,
-        estado: EstadoContrato.PENDIENTE_INSTALACION,
+        estado: EstadoContrato.PENDIENTE_ACTIVACION,
         fechaInstalacion: null as any,
       });
 
@@ -399,9 +399,9 @@ export class MikrotikUserService {
     if (!contrato) {
       throw new NotFoundException(`Contrato ${contratoId} no encontrado`);
     }
-    if (contrato.estado !== EstadoContrato.PENDIENTE_INSTALACION) {
+    if (contrato.estado !== EstadoContrato.PENDIENTE_ACTIVACION) {
       throw new BadRequestException(
-        `El contrato debe estar en estado PENDIENTE_INSTALACION (actual: ${contrato.estado})`,
+        `El contrato debe estar en estado PENDIENTE_ACTIVACION (actual: ${contrato.estado})`,
       );
     }
     if (!contrato.routerId) {

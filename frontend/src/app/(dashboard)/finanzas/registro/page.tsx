@@ -21,11 +21,11 @@ function initials(name: string) {
 }
 
 const ESTADO_LABEL: Record<string, string> = {
-  pendiente_instalacion: 'PENDIENTE', activo: 'ACTIVO',
+  pendiente_activacion: 'PENDIENTE', activo: 'ACTIVO',
   suspendido: 'SUSPENDIDO', baja_definitiva: 'BAJA',
 };
 const ESTADO_COLOR: Record<string, string> = {
-  pendiente_instalacion: 'bg-blue-500', activo: 'bg-emerald-500',
+  pendiente_activacion: 'bg-blue-500', activo: 'bg-emerald-500',
   suspendido: 'bg-yellow-500', baja_definitiva: 'bg-gray-600',
 };
 

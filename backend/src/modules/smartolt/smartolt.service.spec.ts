@@ -218,7 +218,7 @@ describe('OrquestadorFtthService - ejecutarFlujoComipletoFtth', () => {
 
   const mockContratoRow = {
     id: 'cnt-001', numero_contrato: 'CNT-2024-000001',
-    estado: 'pendiente_instalacion', aprovisionado: false,
+    estado: 'pendiente_activacion', aprovisionado: false,
     usuario_pppoe: 'cli_abc12345', password_pppoe: 'pass123',
     ip_asignada: '192.168.1.2',
     cliente_nombre: 'Juan Pérez', telefono: '987654321', email: 'juan@test.pe',

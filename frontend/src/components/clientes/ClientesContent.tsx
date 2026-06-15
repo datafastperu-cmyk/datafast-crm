@@ -22,7 +22,7 @@ import { MOCK_STATS } from '@/data/clientes.mock';
 
 const ESTADO_TABS = [
   { key: '',                     label: 'Todos',      color: 'text-foreground' },
-  { key: 'pendiente_instalacion',label: 'Pendientes', color: 'text-blue-600 dark:text-blue-400' },
+  { key: 'pendiente_activacion',label: 'Pendientes', color: 'text-blue-600 dark:text-blue-400' },
   { key: 'activo',               label: 'Activos',    color: 'text-green-600 dark:text-green-400' },
   { key: 'suspendido',           label: 'Suspendidos',color: 'text-yellow-600 dark:text-yellow-400' },
   { key: 'baja_definitiva',      label: 'Bajas',      color: 'text-muted-foreground' },

@@ -142,7 +142,7 @@ export class ReportesService {
         COUNT(*) FILTER (WHERE estado = 'activo')              AS activos,
         COUNT(*) FILTER (WHERE estado = 'suspendido')          AS suspendidos,
         COUNT(*) FILTER (WHERE estado = 'baja_definitiva')     AS baja,
-        COUNT(*) FILTER (WHERE estado = 'pendiente_instalacion') AS pendientes
+        COUNT(*) FILTER (WHERE estado = 'pendiente_activacion') AS pendientes
       FROM clientes WHERE empresa_id = $1 AND deleted_at IS NULL
     `, [empresaId]);
 

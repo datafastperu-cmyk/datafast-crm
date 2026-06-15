@@ -63,7 +63,7 @@ const SERVICIO_CFG: Record<string, {
 
 // ── Estado dot color ──────────────────────────────────────────
 const ESTADO_DOT: Record<string, string> = {
-  pendiente_instalacion: 'bg-blue-500 shadow-[0_0_0_2px_rgba(59,130,246,0.3)]',
+  pendiente_activacion: 'bg-blue-500 shadow-[0_0_0_2px_rgba(59,130,246,0.3)]',
   activo:                'bg-green-500 shadow-[0_0_0_2px_rgba(34,197,94,0.3)]',
   suspendido:            'bg-yellow-400 shadow-[0_0_0_2px_rgba(250,204,21,0.3)]',
   baja_definitiva:       'bg-red-500 shadow-[0_0_0_2px_rgba(239,68,68,0.3)]',

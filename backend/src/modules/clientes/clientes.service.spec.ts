@@ -26,7 +26,7 @@ const mockCliente = {
   nombres: 'Juan', apellidoPaterno: 'Pérez', apellidoMaterno: 'García',
   nombreCompleto: 'Juan Pérez García', email: 'juan@test.pe',
   telefono: '987654321', direccion: 'Av. Lima 123',
-  estado: EstadoCliente.PENDIENTE_INSTALACION, tipoServicio: TipoServicio.FTTH,
+  estado: EstadoCliente.PENDIENTE_ACTIVACION, tipoServicio: TipoServicio.FTTH,
   codigoCliente: 'CLI-20240101-1234',
   version: 1, createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
   facturacionConfig: null, notificacionesConfig: null,
@@ -111,7 +111,7 @@ describe('ClientesService', () => {
       const result = await service.create(dto as any, mockUser as any);
       expect(result).toHaveProperty('id');
       expect(mockRepo.guardarHistorial).toHaveBeenCalledWith(
-        expect.objectContaining({ estadoNuevo: EstadoCliente.PENDIENTE_INSTALACION }),
+        expect.objectContaining({ estadoNuevo: EstadoCliente.PENDIENTE_ACTIVACION }),
       );
       expect(mockLicencia.verificarLimiteClientes).toHaveBeenCalledWith('empresa-001');
     });
@@ -163,9 +163,9 @@ describe('ClientesService', () => {
 
   // ── Cambiar estado ────────────────────────────────────────
   describe('cambiarEstado()', () => {
-    it('debe cambiar de PENDIENTE_INSTALACION a ACTIVO', async () => {
+    it('debe cambiar de PENDIENTE_ACTIVACION a ACTIVO', async () => {
       mockRepo.findById
-        .mockResolvedValueOnce({ ...mockCliente, estado: EstadoCliente.PENDIENTE_INSTALACION })
+        .mockResolvedValueOnce({ ...mockCliente, estado: EstadoCliente.PENDIENTE_ACTIVACION })
         .mockResolvedValueOnce({ ...mockCliente, estado: EstadoCliente.ACTIVO });
       mockRepo.update.mockResolvedValue(undefined);
       mockRepo.guardarHistorial.mockResolvedValue(undefined);
@@ -178,7 +178,7 @@ describe('ClientesService', () => {
 
       expect(mockRepo.guardarHistorial).toHaveBeenCalledWith(
         expect.objectContaining({
-          estadoAnterior: EstadoCliente.PENDIENTE_INSTALACION,
+          estadoAnterior: EstadoCliente.PENDIENTE_ACTIVACION,
           estadoNuevo: EstadoCliente.ACTIVO,
         }),
       );

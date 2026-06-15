@@ -214,7 +214,7 @@ export class MikrotikService {
       this.ds.query<[{ count: string }]>(
         `SELECT COUNT(*) AS count FROM contratos
          WHERE router_id = $1
-           AND estado IN ('activo','suspendido','pendiente_instalacion')
+           AND estado IN ('activo','suspendido','pendiente_activacion')
            AND deleted_at IS NULL`,
         [id],
       ),
@@ -357,7 +357,7 @@ export class MikrotikService {
       LEFT JOIN planes pl ON pl.id = co.plan_id
       WHERE co.router_id  = $1
         AND co.empresa_id = $2
-        AND co.estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+        AND co.estado IN ('activo','suspendido')
         AND co.deleted_at IS NULL
     `, [routerId, empresaId]);
 
@@ -1211,7 +1211,7 @@ export class MikrotikService {
       LEFT JOIN planes pl ON pl.id = co.plan_id
       WHERE co.router_id = $1
         AND co.empresa_id = $2
-        AND co.estado IN ('activo','suspendido_mora','suspendido_manual','prorroga')
+        AND co.estado IN ('activo','suspendido')
         AND co.deleted_at IS NULL
     `, [routerId, empresaId]);
 

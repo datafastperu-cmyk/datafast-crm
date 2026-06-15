@@ -8,7 +8,7 @@ export enum TipoPago {
 }
 
 export enum EstadoContrato {
-  PENDIENTE_INSTALACION = 'pendiente_instalacion',
+  PENDIENTE_ACTIVACION = 'pendiente_activacion',
   ACTIVO                = 'activo',
   SUSPENDIDO            = 'suspendido',
   BAJA_DEFINITIVA       = 'baja_definitiva',
@@ -61,7 +61,7 @@ export class Contrato extends BaseModel {
   @Column({
     type: 'enum',
     enum: EstadoContrato,
-    default: EstadoContrato.PENDIENTE_INSTALACION,
+    default: EstadoContrato.PENDIENTE_ACTIVACION,
   })
   estado: EstadoContrato;
 
