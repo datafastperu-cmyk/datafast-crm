@@ -93,13 +93,12 @@ export function ClienteDetalle({ id }: { id: string }) {
   const menuEstadoRef           = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!menuEstadoOpen) return;
     const handler = (e: MouseEvent) => {
       if (menuEstadoRef.current && !menuEstadoRef.current.contains(e.target as Node)) {
         setMenuEstadoOpen(false);
       }
     };
-    document.addEventListener('mousedown', handler);
+    if (menuEstadoOpen) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [menuEstadoOpen]);
 
