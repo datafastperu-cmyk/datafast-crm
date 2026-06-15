@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal }                from 'react-dom';
 import { useForm }                     from 'react-hook-form';
 import { zodResolver }                 from '@hookform/resolvers/zod';
 import { z }                           from 'zod';
@@ -89,18 +90,32 @@ export function ClienteDetalle({ id }: { id: string }) {
   const [formDirty, setDirty]   = useState(false);
   const [formErrors, setErrors] = useState<Record<string, string>>({});
   const [menuEstadoOpen, setMenuEstadoOpen] = useState(false);
-  const initialized             = useRef(false);
-  const menuEstadoRef           = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos]               = useState({ top: 0, right: 0 });
+  const initialized                         = useRef(false);
+  const menuButtonRef                       = useRef<HTMLButtonElement>(null);
+  const menuDropdownRef                     = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (menuEstadoRef.current && !menuEstadoRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        !menuButtonRef.current?.contains(target) &&
+        !menuDropdownRef.current?.contains(target)
+      ) {
         setMenuEstadoOpen(false);
       }
     };
     if (menuEstadoOpen) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [menuEstadoOpen]);
+
+  const handleOpenMenu = () => {
+    if (!menuEstadoOpen && menuButtonRef.current) {
+      const rect = menuButtonRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setMenuEstadoOpen(v => !v);
+  };
 
   const { data: cliente, isLoading } = useQuery({
     queryKey: ['cliente', id],
@@ -291,90 +306,90 @@ export function ClienteDetalle({ id }: { id: string }) {
               </button>
             );
           })}
-          <div ref={menuEstadoRef} className="ml-auto relative flex-shrink-0">
-            <button
-              onClick={() => setMenuEstadoOpen(v => !v)}
-              title="Cambiar Estado de Cliente"
-              className="px-3 py-3 text-muted-foreground hover:text-foreground transition-colors"
+          <button
+            ref={menuButtonRef}
+            onClick={handleOpenMenu}
+            title="Cambiar Estado de Cliente"
+            className="ml-auto px-3 py-3 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+          >
+            <Wrench style={{ width: '1.125rem', height: '1.125rem' }} />
+          </button>
+
+          {menuEstadoOpen && cliente && createPortal(
+            <div
+              ref={menuDropdownRef}
+              style={{ position: 'fixed', top: menuPos.top, right: menuPos.right }}
+              className="z-[9999] flex flex-col gap-2 p-3 rounded-xl border border-border bg-card shadow-lg min-w-[200px]"
             >
-              <Wrench style={{ width: '1.125rem', height: '1.125rem' }} />
-            </button>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">
+                Cambiar Estado
+              </p>
 
-            {menuEstadoOpen && cliente && (
-              <div className="absolute right-0 top-full mt-1 z-50 flex flex-col gap-2 p-3 rounded-xl
-                              border border-border bg-card shadow-lg min-w-[200px]">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">
-                  Cambiar Estado
-                </p>
+              {(cliente.estado === 'suspendido' || cliente.estado === 'pendiente_activacion') && (
+                <button
+                  disabled={cambiandoEstado}
+                  onClick={() => { cambiarEstado('activo'); setMenuEstadoOpen(false); }}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                             text-xs font-bold bg-green-500 hover:bg-green-600 text-white
+                             transition-colors disabled:opacity-50"
+                >
+                  <Power className="w-3.5 h-3.5" /> ACTIVAR
+                </button>
+              )}
 
-                {/* ACTIVAR — para suspendido y pendiente_activacion */}
-                {(cliente.estado === 'suspendido' || cliente.estado === 'pendiente_activacion') && (
-                  <button
-                    disabled={cambiandoEstado}
-                    onClick={() => { cambiarEstado('activo'); setMenuEstadoOpen(false); }}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                               text-xs font-bold bg-green-500 hover:bg-green-600 text-white
-                               transition-colors disabled:opacity-50"
-                  >
-                    <Power className="w-3.5 h-3.5" /> ACTIVAR
-                  </button>
-                )}
+              {cliente.estado === 'activo' && (
+                <button
+                  disabled={cambiandoEstado}
+                  onClick={() => {
+                    if (window.confirm('¿Suspender el abonado? Se cortará su acceso al servicio.')) {
+                      cambiarEstado('suspendido');
+                      setMenuEstadoOpen(false);
+                    }
+                  }}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                             text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white
+                             transition-colors disabled:opacity-50"
+                >
+                  <PauseCircle className="w-3.5 h-3.5" /> SUSPENDER
+                </button>
+              )}
 
-                {/* SUSPENDER — solo para abonados activos */}
-                {cliente.estado === 'activo' && (
-                  <button
-                    disabled={cambiandoEstado}
-                    onClick={() => {
-                      if (window.confirm('¿Suspender el abonado? Se cortará su acceso al servicio.')) {
-                        cambiarEstado('suspendido');
-                        setMenuEstadoOpen(false);
-                      }
-                    }}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                               text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white
-                               transition-colors disabled:opacity-50"
-                  >
-                    <PauseCircle className="w-3.5 h-3.5" /> SUSPENDER
-                  </button>
-                )}
+              {cliente.estado !== 'baja_definitiva' && (
+                <button
+                  disabled={cambiandoEstado}
+                  onClick={() => {
+                    if (window.confirm('¿Confirmar baja definitiva? Se eliminarán todos los servicios y contratos activos del abonado.')) {
+                      cambiarEstado('baja_definitiva');
+                      setMenuEstadoOpen(false);
+                    }
+                  }}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                             text-xs font-bold bg-red-500 hover:bg-red-600 text-white
+                             transition-colors disabled:opacity-50"
+                >
+                  <XCircle className="w-3.5 h-3.5" /> BAJA DEFINITIVA
+                </button>
+              )}
 
-                {/* BAJA DEFINITIVA — para cualquier estado excepto baja_definitiva */}
-                {cliente.estado !== 'baja_definitiva' && (
-                  <button
-                    disabled={cambiandoEstado}
-                    onClick={() => {
-                      if (window.confirm('¿Confirmar baja definitiva? Se eliminarán todos los servicios y contratos activos del abonado.')) {
-                        cambiarEstado('baja_definitiva');
-                        setMenuEstadoOpen(false);
-                      }
-                    }}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                               text-xs font-bold bg-red-500 hover:bg-red-600 text-white
-                               transition-colors disabled:opacity-50"
-                  >
-                    <XCircle className="w-3.5 h-3.5" /> BAJA DEFINITIVA
-                  </button>
-                )}
-
-                {cliente.estado === 'baja_definitiva' && (
-                  <button
-                    disabled={eliminando}
-                    onClick={() => {
-                      if (window.confirm('¿Eliminar definitivamente al abonado? Esta acción borrará todos sus registros y no se puede deshacer.')) {
-                        eliminarCliente();
-                        setMenuEstadoOpen(false);
-                      }
-                    }}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                               text-xs font-bold bg-muted hover:bg-muted/70 text-muted-foreground
-                               transition-colors disabled:opacity-50"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> ELIMINAR
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+              {cliente.estado === 'baja_definitiva' && (
+                <button
+                  disabled={eliminando}
+                  onClick={() => {
+                    if (window.confirm('¿Eliminar definitivamente al abonado? Esta acción borrará todos sus registros y no se puede deshacer.')) {
+                      eliminarCliente();
+                      setMenuEstadoOpen(false);
+                    }
+                  }}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                             text-xs font-bold bg-muted hover:bg-muted/70 text-muted-foreground
+                             transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> ELIMINAR
+                </button>
+              )}
+            </div>,
+            document.body
+          )}
         </div>
 
         {/* ── Resumen ──────────────────────────────────────── */}
