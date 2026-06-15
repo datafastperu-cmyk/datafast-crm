@@ -886,7 +886,7 @@ export class OrquestadorAprovisionamientoService {
         await qrTipo.connect();
         await qrTipo.startTransaction();
         try {
-          const rows = await qrTipo.query<{ cliente_id: string }[]>(
+          const rows: { cliente_id: string }[] = await qrTipo.query(
             `SELECT cliente_id FROM contratos WHERE id = $1`,
             [dto.contratoId],
           );
