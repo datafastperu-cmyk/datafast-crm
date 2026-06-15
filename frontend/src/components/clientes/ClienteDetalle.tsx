@@ -244,6 +244,7 @@ export function ClienteDetalle({ id }: { id: string }) {
   const routerNombre = (contratos as any[]).map((c) => c.nodo ?? c.router ?? '').filter(Boolean).join(', ') || '—';
 
   return (
+    <>
     <div className="max-w-6xl space-y-4">
 
       {/* ── Header ───────────────────────────────────────── */}
@@ -647,6 +648,7 @@ export function ClienteDetalle({ id }: { id: string }) {
       </div>,
       document.body
     )}
+    </>
   );
 }
 
