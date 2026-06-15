@@ -81,6 +81,7 @@ export interface ProvisionResult {
 }
 
 export interface ProvisionarOnuDto {
+  contratoId:     string;
   clienteId:      string;
   frame:          number;
   slot:           number;

@@ -190,10 +190,10 @@ export class OrquestadorAprovisionamientoService {
               `Para reaprovisionar, primero haz rollback.`,
             );
           }
-          if (!['pendiente_instalacion', 'activo'].includes(row.contrato_estado)) {
+          if (row.contrato_estado !== 'activo') {
             throw new Error(
-              `Estado del contrato no permite aprovisionamiento: "${row.contrato_estado}". ` +
-              `Solo se puede aprovisionar en estado PENDIENTE_INSTALACION o ACTIVO.`,
+              `El contrato debe estar ACTIVO para aprovisionar la ONU en la OLT. ` +
+              `Activa primero el servicio en MikroTik (estado actual: "${row.contrato_estado}").`,
             );
           }
           if (!row.smartolt_id) {
@@ -554,10 +554,11 @@ export class OrquestadorAprovisionamientoService {
           // Activar el contrato en la BD
           await this.ds.query(`
             UPDATE contratos SET
-              estado           = 'activo',
-              fecha_estado     = NOW(),
-              fecha_instalacion = NOW(),
-              motivo_estado    = 'Aprovisionamiento FTTH completado'
+              estado            = 'activo',
+              aprovisionado     = true,
+              fecha_estado      = COALESCE(fecha_estado, NOW()),
+              fecha_instalacion = COALESCE(fecha_instalacion, NOW()),
+              motivo_estado     = 'Aprovisionamiento FTTH completado'
             WHERE id = $1
           `, [dto.contratoId]);
 
@@ -872,13 +873,13 @@ export class OrquestadorAprovisionamientoService {
     try {
       await this.ds.query(`
         UPDATE contratos SET
-          estado       = 'pendiente_instalacion',
+          estado       = 'pendiente_activacion',
           fecha_estado = NOW(),
           motivo_estado = $1,
           aprovisionado = false
         WHERE id = $2 AND estado = 'activo'
       `, [dto.motivo || 'Rollback de aprovisionamiento', dto.contratoId]);
-      revertidos.push('Contrato revertido a pendiente_instalacion');
+      revertidos.push('Contrato revertido a pendiente_activacion');
     } catch (err) {
       errores.push(`Estado contrato: ${err.message}`);
     }

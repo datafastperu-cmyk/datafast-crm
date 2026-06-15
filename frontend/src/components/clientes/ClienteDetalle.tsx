@@ -641,7 +641,7 @@ function SvcTh({ children, className }: { children: React.ReactNode; className?:
 }
 
 const CONTRATO_ESTADO_CFG: Record<string, { label: string; icon: React.ElementType; cls: string }> = {
-  pendiente_instalacion: { label: 'Pendiente',  icon: Clock,         cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  pendiente_activacion: { label: 'Pendiente',  icon: Clock,         cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
   activo:                { label: 'Activo',     icon: Wifi,          cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
   suspendido:            { label: 'Suspendido', icon: WifiOff,       cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
   baja_definitiva:       { label: 'Baja Def.',  icon: XCircle,       cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
@@ -902,7 +902,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
-                      {!c.aprovisionado && (
+                      {c.estado === 'activo' && !c.aprovisionado && (
                         <button
                           onClick={() => setOnuContrato(c)}
                           title="Aprovisionar ONU"
@@ -911,7 +911,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                           <Zap className="w-3 h-3" />
                         </button>
                       )}
-                      {c.estado === 'pendiente_instalacion' && (
+                      {c.estado === 'pendiente_activacion' && (
                         <button
                           onClick={() => activar(c.id)}
                           disabled={activarPending && activarId === c.id}

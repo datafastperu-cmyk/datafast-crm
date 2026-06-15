@@ -331,6 +331,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
 
   const { mutate: provisionar, isPending: provIsPending } = useMutation({
     mutationFn: () => oltNativoApi.provisionar(selectedOltId, {
+      contratoId:   contrato.id,
       clienteId:    contrato.clienteId,
       frame:        parseInt(frame) || 0,
       slot:         slotNum,

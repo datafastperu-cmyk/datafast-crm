@@ -115,8 +115,11 @@ export class OrquestadorFtthService {
           if (row.aprovisionado) {
             throw new Error(`El contrato ${row.numero_contrato} ya está aprovisionado`);
           }
-          if (!['pendiente_instalacion', 'activo'].includes(row.estado)) {
-            throw new Error(`Estado del contrato no permite aprovisionamiento: ${row.estado}`);
+          if (row.estado !== 'activo') {
+            throw new Error(
+              `El contrato debe estar ACTIVO para aprovisionar. ` +
+              `Activa primero el servicio en MikroTik (estado actual: "${row.estado}").`,
+            );
           }
 
           ctx.contrato     = row;
@@ -317,23 +320,14 @@ export class OrquestadorFtthService {
         paso:   8,
         nombre: 'Activar contrato y notificar al cliente',
         fn: async () => {
-          // Activar el contrato
+          // Marcar contrato como aprovisionado (estado ya es 'activo' — validado en paso 1)
           await this.ds.query(`
             UPDATE contratos
-            SET estado = 'activo',
-                fecha_estado = NOW(),
-                fecha_instalacion = NOW(),
-                motivo_estado = 'Aprovisionamiento FTTH completado'
+            SET aprovisionado     = true,
+                fecha_instalacion = COALESCE(fecha_instalacion, NOW()),
+                motivo_estado     = 'Aprovisionamiento FTTH SmartOLT completado'
             WHERE id = $1
           `, [dto.contratoId]);
-
-          // Insertar historial
-          await this.ds.query(`
-            INSERT INTO contratos_historial
-              (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
-            VALUES ($1, $2, 'pendiente_instalacion', 'activo',
-                   'Aprovisionamiento FTTH completado', $3, false)
-          `, [dto.contratoId, user.empresaId, user.sub]);
 
           // Emitir evento para notificaciones (el módulo de notificaciones lo escuchará)
           if (dto.notificarCliente !== false) {

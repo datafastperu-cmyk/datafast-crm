@@ -76,7 +76,7 @@ export function ContratoDetalle({ id }: { id: string }) {
 
   const esActivo    = contrato.estado === 'activo';
   const esSuspendido = contrato.estado === 'suspendido';
-  const esPendiente = contrato.estado === 'pendiente_instalacion';
+  const esPendiente = contrato.estado === 'pendiente_activacion';
 
   return (
     <div className="space-y-5 max-w-5xl">
@@ -89,8 +89,8 @@ export function ContratoDetalle({ id }: { id: string }) {
         </button>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Aprovisionar FTTH */}
-          {(esPendiente || !contrato.aprovisionado) && (
+          {/* Aprovisionar FTTH — solo disponible cuando MikroTik ya está configurado (estado activo) */}
+          {esActivo && !contrato.aprovisionado && (
             <button
               onClick={() => router.push(`/contratos/${id}/aprovisionar`)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg

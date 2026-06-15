@@ -1,9 +1,9 @@
 import {
-  Injectable, Logger, NotFoundException,
+  BadRequestException, Injectable, Logger, NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository }       from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository }             from 'typeorm';
 
 import { OltDispositivo, OltMetodoConexion } from './entities/olt-dispositivo.entity';
 import { Onu, EstadoOnu }  from '../smartolt/entities/onu.entity';
@@ -37,6 +37,9 @@ export class OltNativoService {
   private readonly logger = new Logger(OltNativoService.name);
 
   constructor(
+    @InjectDataSource()
+    private readonly ds: DataSource,
+
     @InjectRepository(OltDispositivo)
     private readonly oltRepo: Repository<OltDispositivo>,
 
@@ -58,6 +61,29 @@ export class OltNativoService {
     empresaId: string,
     dto:       ProvisionarOnuNativaDto,
   ): Promise<ProvisionResult> {
+
+    // Validar que el contrato existe, pertenece a la empresa y está ACTIVO
+    const [contrato] = await this.ds.query<{ estado: string; aprovisionado: boolean; numero_contrato: string }[]>(
+      `SELECT estado, aprovisionado, numero_contrato
+       FROM contratos
+       WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+      [dto.contratoId, empresaId],
+    );
+    if (!contrato) {
+      throw new NotFoundException(`Contrato ${dto.contratoId} no encontrado.`);
+    }
+    if (contrato.estado !== 'activo') {
+      throw new BadRequestException(
+        `El contrato debe estar ACTIVO para aprovisionar la ONU en la OLT. ` +
+        `Activa primero el servicio en MikroTik (estado actual: "${contrato.estado}").`,
+      );
+    }
+    if (contrato.aprovisionado) {
+      throw new BadRequestException(
+        `El contrato ${contrato.numero_contrato} ya está aprovisionado. ` +
+        `Para reaprovisionar, primero ejecuta el rollback.`,
+      );
+    }
 
     const olt = await this.findOlt(oltId, empresaId);
 

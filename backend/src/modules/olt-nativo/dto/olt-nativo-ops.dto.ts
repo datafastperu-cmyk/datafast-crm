@@ -9,6 +9,10 @@ import { Type } from 'class-transformer';
 
 export class ProvisionarOnuNativaDto {
 
+  @ApiProperty({ description: 'UUID del contrato en estado ACTIVO — se valida estado antes de aprovisionar' })
+  @IsUUID('4')
+  contratoId: string;
+
   @ApiProperty({ description: 'UUID del cliente — para auditoría' })
   @IsUUID('4')
   clienteId: string;
