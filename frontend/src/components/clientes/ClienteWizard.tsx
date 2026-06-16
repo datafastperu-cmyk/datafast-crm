@@ -1057,8 +1057,12 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             </select>
           </Field>
 
-          <Field label="Tipo de Autenticación">
-            <select {...register('tipoControl')} className={INPUT_CLS}>
+          <Field label="Tipo de Autenticación" hint={!routerId ? '* Selecciona un router primero' : undefined}>
+            <select
+              {...register('tipoControl')}
+              disabled={!routerId}
+              className={cn(INPUT_CLS, !routerId && 'opacity-50 cursor-not-allowed')}
+            >
               {SECURITY_OPTS_ABONADO.map((o) => (
                 <option key={o.val} value={o.val}>{o.label}</option>
               ))}

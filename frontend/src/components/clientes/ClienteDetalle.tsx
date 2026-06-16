@@ -1663,8 +1663,12 @@ function ServicioPanel({
                   </select>
                 </SP_Field>
 
-                <SP_Field label="Tipo de Autenticación">
-                  <select {...register('tipoControl' as any)} className={sp_input()}>
+                <SP_Field label="Tipo de Autenticación" hint={!routerId ? '* Selecciona un router primero' : undefined}>
+                  <select
+                    {...register('tipoControl' as any)}
+                    disabled={!routerId}
+                    className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
+                  >
                     {SECURITY_OPTS_DETALLE.map((o) => (
                       <option key={o.val} value={o.val}>{o.label}</option>
                     ))}
