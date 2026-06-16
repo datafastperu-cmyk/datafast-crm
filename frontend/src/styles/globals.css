@@ -427,6 +427,17 @@ select option {
 
 select:focus { outline: none; }
 
+/* ── Placeholders globales — opacidad 40-45 % sobre fondo ─────────────── */
+/* Fuera de @layer → gana sobre cualquier placeholder:text-* de Tailwind   */
+input::placeholder,
+textarea::placeholder {
+  color: rgba(0, 0, 0, 0.38);
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
 /* ── ThemeCustomizer layout overrides ─────────────────────────────────── */
 
 /* Barra oscura: topbar usa el color de fondo del sidebar */

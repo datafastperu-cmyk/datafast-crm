@@ -609,7 +609,7 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
         <FormRow label="Nombres Completos" required hintColor="gray">
           <input
             {...register('nombresCompletos')}
-            placeholder="Jean Piero Escobar Bautista"
+            placeholder="Piero Escobar Bautista"
             className={cn(INPUT_CLS, !!errors.nombresCompletos && INPUT_ERR)}
           />
           {errors.nombresCompletos && (
