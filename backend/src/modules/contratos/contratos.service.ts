@@ -213,6 +213,79 @@ export class ContratosService {
     return saved;
   }
 
+  // ── Actualizar servicio con re-provisión MikroTik ───────────
+  async actualizarServicio(id: string, dto: UpdateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
+    const existing: any = await this.findOne(id, user.empresaId);
+
+    if (dto.version !== undefined && existing.version !== dto.version) {
+      throw new ConflictException({
+        code: 'CONCURRENCY_CONFLICT',
+        message: 'Los datos fueron modificados por otro usuario. Recargue la página e intente nuevamente.',
+      });
+    }
+
+    // ── Re-asignación de IP si cambia el segmento ──────────────
+    let newIp: string | undefined;
+    const segmentoCambio = dto.segmentoId && dto.segmentoId !== existing.segmentoId;
+
+    if (segmentoCambio) {
+      const qr = this.dataSource.createQueryRunner();
+      await qr.connect();
+      await qr.startTransaction();
+      try {
+        if (existing.ipAsignada && existing.segmentoId) {
+          await this.contratoRepo.liberarIp(id);
+        }
+        newIp = dto.ipManual?.trim()
+          ? dto.ipManual.trim()
+          : await this.calcularNextIpDesdePool(qr, dto.segmentoId!, user.empresaId);
+
+        await qr.manager.save(
+          qr.manager.create(IpAsignada, {
+            empresaId:   user.empresaId,
+            segmentoId:  dto.segmentoId!,
+            contratoId:  id,
+            ipAddress:   newIp,
+            tipo:        'cliente',
+            activa:      true,
+          }),
+        );
+        await qr.commitTransaction();
+      } catch (err) {
+        await qr.rollbackTransaction();
+        throw err;
+      } finally {
+        await qr.release();
+      }
+    }
+
+    // ── Actualizar campos en BD ─────────────────────────────────
+    const { version: _v, ...rest } = dto;
+    const upd: any = { ...rest, updatedBy: user.sub };
+    delete upd.ipManual;
+    delete upd.passwordPppoePlain;
+
+    if (dto.usuarioPppoe)       upd.usuarioPppoe  = dto.usuarioPppoe;
+    if (dto.passwordPppoePlain) {
+      try { upd.passwordPppoe = encrypt(dto.passwordPppoePlain); }
+      catch { upd.passwordPppoe = dto.passwordPppoePlain; }
+    }
+    if (newIp) upd.ipAsignada = newIp;
+
+    await this.contratoRepo.update(id, upd);
+
+    // ── Re-provisionar si el contrato está ACTIVO ───────────────
+    if (existing.estado === EstadoContrato.ACTIVO) {
+      await this.desaprovisionarMikrotik(id)
+        .catch((e: any) => this.logger.warn(`actualizarServicio desaprovision: ${e?.message}`));
+      await this.provisionarMikrotik(id)
+        .catch((e: any) => this.logger.warn(`actualizarServicio provision: ${e?.message}`));
+    }
+
+    await this.auditoria.logUpdate({ empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email, modulo: 'contratos', entidadId: id, descripcion: 'Actualización de servicio con re-provisión', req });
+    return this.findOne(id, user.empresaId);
+  }
+
   // Bloqueo pesimista de escritura sobre el segmento — serializa la asignación
   // de IPs entre las 2 instancias PM2 en modo clúster sin race conditions.
   // El lock se libera automáticamente al commitTransaction() / rollbackTransaction().

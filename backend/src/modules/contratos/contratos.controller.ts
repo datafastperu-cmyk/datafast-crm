@@ -170,6 +170,13 @@ export class ContratosController {
     return StdResponse.ok(await this.svc.update(id, dto, user, req), 'Contrato actualizado');
   }
 
+  @Patch(':id/actualizar-servicio') @RequirePermission('contratos:edit')
+  @ApiOperation({ summary: 'Actualizar servicio con re-asignación de IP y re-provisión MikroTik' })
+  @ApiParam({ name:'id' })
+  async actualizarServicio(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateContratoDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
+    return StdResponse.ok(await this.svc.actualizarServicio(id, dto, user, req), 'Servicio actualizado');
+  }
+
   @Patch(':id/activar') @RequirePermission('contratos:edit')
   @ApiOperation({ summary: 'Activar contrato (PENDIENTE_ACTIVACION → ACTIVO) al finalizar la instalación' })
   @ApiParam({ name:'id' })

@@ -138,6 +138,11 @@ export const contratosApi = {
     return res.data.data;
   },
 
+  actualizarServicio: async (id: string, dto: Partial<CreateContratoDto> & { version?: number }): Promise<Contrato> => {
+    const res = await api.patch<ApiRespuesta<Contrato>>(`/contratos/${id}/actualizar-servicio`, dto);
+    return res.data.data;
+  },
+
   cambiarEstado: async (id: string, dto: CambiarEstadoDto): Promise<Contrato> => {
     const res = await api.patch<ApiRespuesta<Contrato>>(`/contratos/${id}/estado`, dto);
     return res.data.data;

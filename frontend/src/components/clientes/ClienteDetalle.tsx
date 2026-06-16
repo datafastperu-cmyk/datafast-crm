@@ -1479,10 +1479,11 @@ function ServicioPanel({
     queryFn:  () => redesApi.listSegmentos(routerId!),
     enabled:  !!routerId,
   });
+  const segmentoCambio = editing ? segmentoId !== (e?.segmentoId ?? '') : !!segmentoId;
   const { data: nextIp, isFetching: fetchingIp } = useQuery({
     queryKey:  ['next-ip', segmentoId],
     queryFn:   () => redesApi.getNextIp(segmentoId!),
-    enabled:   !!segmentoId && !editing,
+    enabled:   !!segmentoId && segmentoCambio,
     staleTime: 0,
   });
 
@@ -1504,7 +1505,7 @@ function ServicioPanel({
     if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); setValue('nodoId', ''); }
   }, [routerId]);
   useEffect(() => {
-    if (!segmentoId || editing) return;
+    if (!segmentoId || !segmentoCambio) return;
     if (nextIp !== undefined) setValue('ipManual', nextIp ?? '');
   }, [segmentoId, nextIp]);
 
@@ -1562,9 +1563,13 @@ function ServicioPanel({
         longitudInstalacion,
       };
       if (editing) {
-        if (data.usuarioPppoe)  payload.usuarioPppoe  = data.usuarioPppoe;
-        if (data.passwordPppoe) payload.passwordPppoe = data.passwordPppoe;
-        await contratosApi.update(editing.id, { ...payload, version: editing.version });
+        if (data.usuarioPppoe)       payload.usuarioPppoe       = data.usuarioPppoe;
+        if (data.passwordPppoe)      payload.passwordPppoePlain = data.passwordPppoe;
+        if (segmentoCambio && data.segmentoId) {
+          payload.segmentoId = data.segmentoId;
+          payload.ipManual   = data.ipManual || undefined;
+        }
+        await contratosApi.actualizarServicio(editing.id, { ...payload, version: editing.version });
         toast('Servicio actualizado', { type: 'success' });
       } else {
         payload.clienteId    = clienteId;
@@ -1664,7 +1669,7 @@ function ServicioPanel({
                 {/* IPv4 — chip cuando editando, input cuando nuevo */}
                 {(segmentoId || e?.ipAsignada) && (
                   <SP_Field label="IPv4 Asignada">
-                    {editing && ipVal ? (
+                    {editing && !segmentoCambio && ipVal ? (
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm font-mono text-foreground">
                           <Network className="w-3.5 h-3.5 text-primary flex-shrink-0" />
@@ -1677,13 +1682,14 @@ function ServicioPanel({
                         <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                         <input
                           {...register('ipManual')}
-                          placeholder={fetchingIp ? 'Buscando…' : '0.0.0.0'}
+                          placeholder={fetchingIp ? 'Buscando IP nueva…' : '0.0.0.0'}
                           className={cn(sp_input(), 'pl-9')}
                         />
                         {fetchingIp && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
                       </div>
                     )}
-                    {!editing && nextIp && <p className="text-[11px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible</p>}
+                    {segmentoCambio && nextIp && <p className="text-[11px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible — se reasignará al guardar</p>}
+                    {!editing && !segmentoCambio && nextIp && <p className="text-[11px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible</p>}
                   </SP_Field>
                 )}
 
