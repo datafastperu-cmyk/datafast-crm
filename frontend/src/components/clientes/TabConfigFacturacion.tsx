@@ -107,7 +107,7 @@ function DecimalInput({ value, onChange, className, placeholder }: {
 }
 
 // ── Date calculations ─────────────────────────────────────────────
-function calcularFechas(diaPago: string, crearFactura: string, diasGracia: string) {
+export function calcularFechas(diaPago: string, crearFactura: string, diasGracia: string) {
   const hoy = new Date();
   const dia = parseInt(diaPago, 10) || 1;
 
@@ -133,7 +133,7 @@ function calcularFechas(diaPago: string, crearFactura: string, diasGracia: strin
   };
 }
 
-function calcularFechaRecordatorio(diaPago: string, valor: string): string | null {
+export function calcularFechaRecordatorio(diaPago: string, valor: string): string | null {
   if (valor === 'desactivado') return null;
   const hoy = new Date();
   const dia = parseInt(diaPago, 10) || 1;

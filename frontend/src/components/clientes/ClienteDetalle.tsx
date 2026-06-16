@@ -28,7 +28,7 @@ import type { Router as RouterType }            from '@/lib/api/mikrotik';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
-import { TabConfigFacturacion }                from './TabConfigFacturacion';
+import { TabConfigFacturacion, calcularFechas, calcularFechaRecordatorio } from './TabConfigFacturacion';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
 import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
@@ -272,42 +272,16 @@ export function ClienteDetalle({ id }: { id: string }) {
   const factuCfg = facturacionConfig?.facturacion   as Record<string, any> | null | undefined;
   const notifCfg = facturacionConfig?.notificaciones as Record<string, any> | null | undefined;
 
-  // Misma lógica que TabConfigFacturacion
-  const _calcFechas = (diaPago: string, crearFactura: string, diasGracia: string) => {
-    const hoy = new Date();
-    const dia = parseInt(diaPago, 10) || 1;
-    let pago = new Date(hoy.getFullYear(), hoy.getMonth(), dia);
-    if (pago <= hoy) pago = new Date(hoy.getFullYear(), hoy.getMonth() + 1, dia);
-    const fmt = (d: Date) => d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const corte = diasGracia === '0' || diasGracia === 'desactivado'
-      ? null : new Date(pago.getTime() + parseInt(diasGracia, 10) * 86400000);
-    const crearDias = parseInt(crearFactura, 10);
-    const crear = isNaN(crearDias) || crearFactura === 'desactivado'
-      ? null : new Date(pago.getTime() - crearDias * 86400000);
-    return { pago: fmt(pago), corte: corte ? fmt(corte) : null, crear: crear ? fmt(crear) : null };
-  };
-  const _calcRec = (diaPago: string, valor: string) => {
-    if (valor === 'desactivado') return null;
-    const hoy = new Date();
-    const dia = parseInt(diaPago, 10) || 1;
-    let pago = new Date(hoy.getFullYear(), hoy.getMonth(), dia);
-    if (pago <= hoy) pago = new Date(hoy.getFullYear(), hoy.getMonth() + 1, dia);
-    const offset = parseInt(valor, 10);
-    if (isNaN(offset)) return null;
-    return new Date(pago.getTime() + offset * 86400000)
-      .toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
+  const dp     = (factuCfg?.diaPago      as string) || '01';
+  const cf     = (factuCfg?.crearFactura as string) || 'desactivado';
+  const dg     = (factuCfg?.diasGracia   as string) || '0';
+  const fechas = calcularFechas(dp, cf, dg);
+  const rec1   = calcularFechaRecordatorio(dp, (notifCfg?.recordatorio1 as string) || 'desactivado');
+  const rec2   = calcularFechaRecordatorio(dp, (notifCfg?.recordatorio2 as string) || 'desactivado');
+  const rec3   = calcularFechaRecordatorio(dp, (notifCfg?.recordatorio3 as string) || 'desactivado');
 
-  const dp      = (factuCfg?.diaPago      as string) || '01';
-  const cf      = (factuCfg?.crearFactura as string) || 'desactivado';
-  const dg      = (factuCfg?.diasGracia   as string) || '0';
-  const fechas  = _calcFechas(dp, cf, dg);
-  const rec1    = _calcRec(dp, (notifCfg?.recordatorio1 as string) || 'desactivado');
-  const rec2    = _calcRec(dp, (notifCfg?.recordatorio2 as string) || 'desactivado');
-  const rec3    = _calcRec(dp, (notifCfg?.recordatorio3 as string) || 'desactivado');
-
-  const diaPago     = factuCfg ? fechas.pago : '—';
-  const proxCorte   = factuCfg ? (fechas.corte ?? 'Sin corte') : '—';
+  const diaPago      = factuCfg ? fechas.pago : '—';
+  const proxCorte    = factuCfg ? (fechas.corte ?? 'Sin corte') : '—';
   const crearFactura = factuCfg ? (fechas.crear ?? 'Desactivado') : '—';
   const avisoPantalla = (notifCfg?.avisoPantalla as string) === 'activado' ? 'Activado' : 'Desactivado';
   const avisoSms = (() => {
