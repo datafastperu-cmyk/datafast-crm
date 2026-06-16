@@ -337,7 +337,7 @@ export function ClienteDetalle({ id }: { id: string }) {
                     setMenuEstadoOpen(false);
                     setConfirmModal({
                       title: '¿Activar el abonado?',
-                      body: 'Se restaurará su acceso al servicio.',
+                      body: 'El abonado quedará clasificado como activo. Sus contratos no cambian de estado automáticamente.',
                       confirmLabel: 'Activar',
                       confirmClass: 'bg-green-500 hover:bg-green-600 text-white',
                       onConfirm: () => cambiarEstado('activo'),
@@ -358,7 +358,7 @@ export function ClienteDetalle({ id }: { id: string }) {
                     setMenuEstadoOpen(false);
                     setConfirmModal({
                       title: '¿Suspender el abonado?',
-                      body: 'Se cortará su acceso al servicio hasta que sea reactivado manualmente.',
+                      body: 'El abonado quedará clasificado como suspendido. Sus contratos no cambian de estado automáticamente.',
                       confirmLabel: 'Suspender',
                       confirmClass: 'bg-orange-500 hover:bg-orange-600 text-white',
                       onConfirm: () => cambiarEstado('suspendido'),
@@ -379,7 +379,7 @@ export function ClienteDetalle({ id }: { id: string }) {
                     setMenuEstadoOpen(false);
                     setConfirmModal({
                       title: '¿Confirmar baja definitiva?',
-                      body: 'Se eliminarán todos los servicios y contratos activos. Esta acción no se puede revertir.',
+                      body: 'Se terminarán todos los contratos activos y se eliminará al abonado de los routers MikroTik. Se conservan facturas, pagos e historial. Estado irreversible.',
                       confirmLabel: 'Dar de baja',
                       confirmClass: 'bg-destructive hover:bg-destructive/90 text-destructive-foreground',
                       onConfirm: () => cambiarEstado('baja_definitiva'),

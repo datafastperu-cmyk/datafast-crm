@@ -168,20 +168,20 @@ export function ClientesContent() {
   const CONFIRM_CFG = {
     activar: {
       titulo: 'Activar abonado',
-      desc: 'Se reactivará el servicio de internet. El abonado quedará clasificado como activo.',
+      desc: 'El abonado quedará clasificado como activo en el sistema. Sus contratos no cambian de estado automáticamente.',
       boton: 'Activar',
       color: 'bg-green-600 hover:bg-green-700',
     },
     suspender: {
       titulo: 'Suspender abonado',
-      desc: 'Se suspenderá el servicio de internet. El abonado quedará clasificado como suspendido.',
+      desc: 'El abonado quedará clasificado como suspendido en el sistema. Sus contratos no cambian de estado automáticamente.',
       boton: 'Suspender',
       color: 'bg-yellow-500 hover:bg-yellow-600',
     },
     retirar: {
-      titulo: 'Retirar abonado',
-      desc: 'Se retirará al abonado de los routers MikroTik. Se conservan facturas, estadísticas, logs, mensajes y todos sus datos históricos. El abonado no estará activo.',
-      boton: 'Retirar',
+      titulo: 'Baja definitiva',
+      desc: 'Se terminarán todos los contratos activos y se eliminará al abonado de los routers MikroTik. Se conservan facturas, pagos, tickets e historial.',
+      boton: 'Dar de baja',
       color: 'bg-orange-500 hover:bg-orange-600',
     },
     eliminar: {
