@@ -24,7 +24,6 @@ import {
 
 import { clientesApi }                          from '@/lib/api/clientes';
 import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
-import type { Router as RouterType }            from '@/lib/api/mikrotik';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
@@ -1446,7 +1445,7 @@ function ServicioPanel({
     defaultValues: {
       planId:               e?.planId                ?? '',
       routerId:             e?.routerId              ?? '',
-      tipoControl:          e?.tipoAuth              ?? 'ninguna',
+      tipoControl:          e?.tipoAuth              ?? 'pppoe_addresslist',
       excluirFirewall:      e?.excluirFirewall        ?? false,
       segmentoId:           e?.segmentoId            ?? '',
       ipManual:             e?.ipAsignada            ?? '',
@@ -1482,10 +1481,8 @@ function ServicioPanel({
   const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
 
   // Router seleccionado — para derivar comportamiento de auth
-  const routerSel      = (routers as RouterType[]).find(r => r.id === routerId);
-  const authPorAbonado = routerSel ? routerSel.controlaAutenticacion === false : false;
   const tipoControlVal = watch('tipoControl' as any) as string | undefined;
-  const authEfectiva   = authPorAbonado ? (tipoControlVal ?? e?.tipoAuth ?? 'ninguna') : (routerSel?.tipoControl ?? 'ninguna');
+  const authEfectiva   = (tipoControlVal ?? e?.tipoAuth ?? 'ninguna') as string;
   const mostrarPppoe   = authEfectiva === 'pppoe_addresslist';
   const requiereMac    = authEfectiva === 'amarre_ip_mac' || authEfectiva === 'amarre_ip_mac_dhcp';
   const macRequerida   = requiereMac || !!antenaApIdVal;
@@ -1666,16 +1663,13 @@ function ServicioPanel({
                   </select>
                 </SP_Field>
 
-                {/* Autenticación por abonado — solo si el router NO controla auth */}
-                {authPorAbonado && (
-                  <SP_Field label="Tipo de Autenticación">
-                    <select {...register('tipoControl' as any)} className={sp_input()}>
-                      {SECURITY_OPTS_DETALLE.map((o) => (
-                        <option key={o.val} value={o.val}>{o.label}</option>
-                      ))}
-                    </select>
-                  </SP_Field>
-                )}
+                <SP_Field label="Tipo de Autenticación">
+                  <select {...register('tipoControl' as any)} className={sp_input()}>
+                    {SECURITY_OPTS_DETALLE.map((o) => (
+                      <option key={o.val} value={o.val}>{o.label}</option>
+                    ))}
+                  </select>
+                </SP_Field>
 
                 {/* Excluir Firewall */}
                 <div className="flex items-center justify-between py-0.5">
@@ -1744,13 +1738,8 @@ function ServicioPanel({
                   <input {...register('macAddress')} placeholder="CC:2D:E0:FF:FA:55" className={sp_input(!!errors.macAddress)} />
                 </SP_Field>
 
-                {/* PPPoE — solo cuando el router usa pppoe_addresslist */}
                 {mostrarPppoe && (
                   <>
-                    <div className="flex items-center gap-2 text-[11px] text-primary font-semibold bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
-                      <Lock className="w-3 h-3 flex-shrink-0" />
-                      Router configurado con PPPoE + Address List
-                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <SP_Field label={editing ? 'User PPP/HS' : 'User PPP/HS *'} error={errors.usuarioPppoe?.message}>
                         <div className="relative">

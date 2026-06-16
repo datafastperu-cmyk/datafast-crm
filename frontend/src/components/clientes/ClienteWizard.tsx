@@ -15,7 +15,6 @@ import {
 
 import { clientesApi }                       from '@/lib/api/clientes';
 import { redesApi, planesApi } from '@/lib/api/contratos';
-import type { Router as RouterType } from '@/lib/api/mikrotik';
 import { facturacionApi }                    from '@/lib/api/facturacion';
 import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
 import { plantillasApi }                     from '@/lib/api/plantillas';
@@ -966,10 +965,8 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const segmentoId = watch('segmentoId');
 
   // Router seleccionado — para derivar comportamiento de auth
-  const routerSel      = (routers as RouterType[]).find(r => r.id === routerId);
-  const authPorAbonado = routerSel ? routerSel.controlaAutenticacion === false : false;
   const tipoControlVal = watch('tipoControl');
-  const authEfectiva   = authPorAbonado ? (tipoControlVal ?? 'ninguna') : (routerSel?.tipoControl ?? 'ninguna');
+  const authEfectiva   = tipoControlVal ?? 'ninguna';
   const mostrarPppoe   = authEfectiva === 'pppoe_addresslist';
   const requiereMac    = authEfectiva === 'amarre_ip_mac' || authEfectiva === 'amarre_ip_mac_dhcp';
   const macRequerida   = requiereMac || !!conectadoAIdVal;
@@ -1060,16 +1057,13 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             </select>
           </Field>
 
-          {/* Autenticación por abonado — visible solo si el router NO controla auth */}
-          {authPorAbonado && (
-            <Field label="Tipo de Autenticación">
-              <select {...register('tipoControl')} className={INPUT_CLS}>
-                {SECURITY_OPTS_ABONADO.map((o) => (
-                  <option key={o.val} value={o.val}>{o.label}</option>
-                ))}
-              </select>
-            </Field>
-          )}
+          <Field label="Tipo de Autenticación">
+            <select {...register('tipoControl')} className={INPUT_CLS}>
+              {SECURITY_OPTS_ABONADO.map((o) => (
+                <option key={o.val} value={o.val}>{o.label}</option>
+              ))}
+            </select>
+          </Field>
 
           {/* Excluir Firewall */}
           <div className="flex items-center justify-between py-0.5">
@@ -1154,12 +1148,6 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           {/* PPPoE — solo cuando el router tiene tipoControl = pppoe_addresslist */}
           {mostrarPppoe && (
             <>
-              <div className="px-0 py-1">
-                <div className="flex items-center gap-2 text-[11px] text-primary font-semibold bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
-                  <Lock className="w-3 h-3 flex-shrink-0" />
-                  Router configurado con PPPoE + Address List
-                </div>
-              </div>
               <Field label="User PPP/HS *" error={s3Errors.userPppHs?.message}>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
