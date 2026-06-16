@@ -4,11 +4,9 @@ import { GoogleOAuthService } from './google-oauth.service';
 import { GoogleSyncService, GoogleSyncResult } from '../entities/google-sync-log.entity';
 
 export interface ContactInput {
-  clienteId:       string;
-  nombres:         string;
-  apellidoPaterno: string;
-  apellidoMaterno?: string;
-  email?:          string;
+  clienteId:        string;
+  nombreCompleto:   string;
+  email?:           string;
   telefono?:       string;
   telefonoAlt?:    string;
   direccion?:      string;
@@ -59,14 +57,14 @@ export class GoogleContactsService {
         empresaId, GoogleSyncService.CONTACTS,
         input.googleContactId ? 'update_contact' : 'create_contact',
         GoogleSyncResult.SUCCESS,
-        `${input.nombres} ${input.apellidoPaterno}`, undefined, 'system', input.clienteId,
+        input.nombreCompleto, undefined, 'system', input.clienteId,
         Date.now() - start, 1, 0,
       );
 
       return {
         resourceName: result.resourceName!,
         etag:         result.etag!,
-        displayName:  result.names?.[0]?.displayName ?? `${input.nombres} ${input.apellidoPaterno}`,
+        displayName:  result.names?.[0]?.displayName ?? input.nombreCompleto,
       };
     } catch (err: any) {
       await this.oauthSvc.markError(empresaId, err.message);
@@ -127,8 +125,8 @@ export class GoogleContactsService {
   private buildPersonBody(input: ContactInput): people_v1.Schema$Person {
     const body: people_v1.Schema$Person = {
       names: [{
-        givenName:  input.nombres,
-        familyName: [input.apellidoPaterno, input.apellidoMaterno].filter(Boolean).join(' '),
+        displayName: input.nombreCompleto,
+        givenName:   input.nombreCompleto,
       }],
       memberships: [{
         contactGroupMembership: { contactGroupResourceName: 'contactGroups/myContacts' },

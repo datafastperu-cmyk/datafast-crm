@@ -83,19 +83,6 @@ type S1 = z.infer<typeof step1Schema>;
 type S2 = { facturacion: FacturacionConfig; notificaciones: NotificacionesConfig };
 type S3 = z.infer<typeof step3Schema>;
 
-// Convención peruana: últimas 2 palabras = apellidos, el resto = nombres
-function parsearNombresCompletos(full: string) {
-  const parts = full.trim().split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return { nombres: parts[0] ?? full, apellidoPaterno: '', apellidoMaterno: undefined as string | undefined };
-  if (parts.length === 2) return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: undefined as string | undefined };
-  if (parts.length === 3) return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: parts[2] };
-  return {
-    nombres:         parts.slice(0, parts.length - 2).join(' '),
-    apellidoPaterno: parts[parts.length - 2],
-    apellidoMaterno: parts[parts.length - 1],
-  };
-}
-
 // ── Mock data ─────────────────────────────────────────────────
 const MOCK_UBICACIONES = [
   { id: 'loc-1', nombre: 'Piura — Piura — Piura' },
@@ -366,14 +353,13 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
 
     let resultado: { cliente: any; contrato: any | null };
     try {
-      const { nombres, apellidoPaterno, apellidoMaterno } = parsearNombresCompletos(s1.nombresCompletos);
       resultado = await registrar({
         cliente: {
           tipoDocumento:   s1.tipoDocumento || 'dni',
           numeroDocumento: s1.numeroDocumento,
-          nombres,
-          apellidoPaterno,
-          apellidoMaterno,
+          nombres:         s1.nombresCompletos.trim(),
+          apellidoPaterno: '',
+          apellidoMaterno: undefined,
           telefono:        s1.telefono?.trim() || s1.whatsapp || undefined,
           whatsapp:        s1.whatsapp         || undefined,
           email:           s1.email            || undefined,

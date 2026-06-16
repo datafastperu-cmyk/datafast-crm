@@ -18,8 +18,7 @@ import { CrearCampanaDto } from './dto/crear-campana.dto';
 interface Destinatario {
   id:              string;
   whatsapp:        string;
-  nombres:         string;
-  apellido_paterno: string;
+  nombre_completo: string;
 }
 
 @Injectable()
@@ -67,7 +66,7 @@ export class CampanasService {
         tipo:      dto.tipo,
         telefono:  d.whatsapp,
         variables: {
-          clienteNombre: `${d.nombres ?? ''} ${d.apellido_paterno ?? ''}`.trim(),
+          clienteNombre: d.nombre_completo ?? '',
           ...(dto.variables ?? {}),
         },
         plantillaId: dto.templateId,
@@ -156,8 +155,7 @@ export class CampanasService {
       SELECT DISTINCT ON (cl.id)
         cl.id,
         cl.whatsapp,
-        cl.nombres,
-        cl.apellido_paterno
+        cl.nombre_completo
       FROM clientes cl
       INNER JOIN contratos co
         ON  co.cliente_id  = cl.id

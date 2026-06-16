@@ -80,9 +80,7 @@ export class GoogleSyncProcessor {
 
     await this.contactsSvc.upsertContact(empresaId, {
       clienteId,
-      nombres:          cliente.nombres,
-      apellidoPaterno:  cliente.apellido_paterno,
-      apellidoMaterno:  cliente.apellido_materno,
+      nombreCompleto:   cliente.nombre_completo ?? cliente.nombres,
       email:            cliente.email,
       telefono:         cliente.telefono,
       telefonoAlt:      cliente.telefono_alt,
@@ -107,16 +105,14 @@ export class GoogleSyncProcessor {
     );
 
     const contacts = clientes.map((c: any) => ({
-      clienteId:       c.id,
-      nombres:         c.nombres,
-      apellidoPaterno: c.apellido_paterno,
-      apellidoMaterno: c.apellido_materno,
-      email:           c.email,
-      telefono:        c.telefono,
-      telefonoAlt:     c.telefono_alt,
-      direccion:       c.direccion,
-      distrito:        c.distrito,
-      provincia:       c.provincia,
+      clienteId:      c.id,
+      nombreCompleto: c.nombre_completo ?? c.nombres,
+      email:          c.email,
+      telefono:       c.telefono,
+      telefonoAlt:    c.telefono_alt,
+      direccion:      c.direccion,
+      distrito:       c.distrito,
+      provincia:      c.provincia,
     }));
 
     await this.contactsSvc.syncBulk(empresaId, contacts);
