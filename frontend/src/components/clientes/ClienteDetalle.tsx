@@ -74,11 +74,7 @@ const SVC: Record<string, { icon: React.ElementType; label: string }> = {
 };
 
 // ── Field input style ─────────────────────────────────────────
-const INPUT = [
-  'w-full px-3 py-2 text-sm bg-background border border-input rounded-lg',
-  'text-foreground placeholder:text-muted-foreground',
-  'focus:outline-none focus:ring-1 focus:ring-primary transition-colors',
-].join(' ');
+const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border bg-background transition-all duration-150 placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary border-primary/25 hover:border-primary/50';
 
 // ─────────────────────────────────────────────────────────────
 export function ClienteDetalle({ id }: { id: string }) {
@@ -494,10 +490,11 @@ export function ClienteDetalle({ id }: { id: string }) {
           <div className="grid lg:grid-cols-[1fr_300px] divide-y lg:divide-y-0 lg:divide-x divide-border">
 
             {/* Izquierda: Datos del cliente */}
-            <div className="p-6 space-y-1">
+            <div className="p-6">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-4">
                 <span className="text-primary font-bold">&raquo;</span> Datos del Abonado
               </h3>
+              <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border/50">
 
               <FormRow label="Estado">
                 <ClienteEstadoBadge estado={cliente.estado} />
@@ -626,7 +623,7 @@ export function ClienteDetalle({ id }: { id: string }) {
               </FormRow>
 
               <FormRow label="Credenciales Portal" required>
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex flex-col gap-1 flex-1">
                     <span className="text-xs text-muted-foreground">Usuario<span className="text-destructive ml-0.5">*</span></span>
                     <input
@@ -659,6 +656,8 @@ export function ClienteDetalle({ id }: { id: string }) {
                   </div>
                 </div>
               </FormRow>
+
+              </div>{/* end card */}
 
               <div className="pt-4">
                 <button
@@ -755,11 +754,11 @@ function FormRow({ label, required, error, children }: {
   label: string; required?: boolean; error?: string; children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[140px_1fr] items-start gap-3 py-2 border-b border-border/50 last:border-0">
-      <span className="text-xs text-muted-foreground pt-2.5 font-medium leading-none">
-        {label}{required && <span className="text-destructive ml-0.5">*</span>}
-      </span>
-      <div>
+    <div className="space-y-1.5 px-4 sm:px-6 py-2">
+      <label className="text-xs font-medium text-foreground block">
+        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <div className="min-w-0">
         {children}
         {error && (
           <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
@@ -1384,7 +1383,7 @@ function SP_Section({ title, icon: Icon, children }: { title: string; icon: Reac
 function SP_Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{label}</label>
+      <label className="text-xs font-medium text-foreground block">{label}</label>
       {children}
       {hint && !error && <p className="text-[11px] text-muted-foreground">{hint}</p>}
       {error && <p className="text-[11px] text-destructive flex items-center gap-1"><AlertCircle className="w-3 h-3 flex-shrink-0" />{error}</p>}
@@ -1394,8 +1393,8 @@ function SP_Field({ label, hint, error, children }: { label: string; hint?: stri
 function sp_input(err = false) {
   return cn(
     'w-full px-3 py-2.5 text-sm rounded-lg border bg-background transition-all duration-150',
-    'placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary',
-    err ? 'border-destructive bg-destructive/5' : 'border-input hover:border-muted-foreground/40',
+    'placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary',
+    err ? 'border-destructive bg-destructive/5' : 'border-primary/25 hover:border-primary/50',
   );
 }
 function SP_Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
