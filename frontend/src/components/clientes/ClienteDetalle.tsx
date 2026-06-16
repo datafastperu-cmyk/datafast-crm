@@ -1592,25 +1592,41 @@ function ServicioPanel({
         await contratosApi.actualizarServicio(editing.id, { ...payload, version: editing.version });
         toast('Servicio actualizado', { type: 'success' });
       } else {
-        payload.clienteId    = clienteId;
-        payload.segmentoId   = data.segmentoId   || undefined;
-        payload.ipManual     = data.ipManual      || undefined;
-        payload.usuarioPppoe = data.usuarioPppoe  || undefined;
-        payload.passwordPppoe = data.passwordPppoe || undefined;
+        payload.clienteId     = clienteId;
+        payload.segmentoId    = data.segmentoId    || undefined;
+        payload.ipManual      = data.ipManual       || undefined;
+        payload.usuarioPppoe  = data.usuarioPppoe   || undefined;
+        payload.passwordPppoe = data.passwordPppoe  || undefined;
         await contratosApi.create(payload);
-        if (costoInstalacion && montoCostoInstalacion > 0) {
-          try {
-            const hoy = new Date();
-            const fin = new Date(hoy);
-            fin.setMonth(fin.getMonth() + 1);
+        try {
+          const factuConfig = await clientesApi.getFacturacionConfig(clienteId);
+          const esPrepago   = (factuConfig?.facturacion as any)?.tipo === 'prepago';
+          const hoy         = new Date();
+          const fin         = new Date(hoy);
+          fin.setMonth(fin.getMonth() + 1);
+          const periodoInicio = hoy.toISOString().split('T')[0];
+          const periodoFin    = fin.toISOString().split('T')[0];
+          const conInstalacion = costoInstalacion && montoCostoInstalacion > 0;
+
+          if (esPrepago) {
+            const items: { descripcion: string; cantidad: number; precioUnitario: number }[] = [
+              {
+                descripcion:    planSel?.descripcion ?? planSel?.nombre ?? 'Servicio de internet',
+                cantidad:       1,
+                precioUnitario: Number(planSel?.precio ?? 0),
+              },
+            ];
+            if (conInstalacion) {
+              items.push({ descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: montoCostoInstalacion });
+            }
+            await facturacionApi.create({ clienteId, periodoInicio, periodoFin, items });
+          } else if (conInstalacion) {
             await facturacionApi.create({
-              clienteId,
-              periodoInicio: hoy.toISOString().split('T')[0],
-              periodoFin:    fin.toISOString().split('T')[0],
+              clienteId, periodoInicio, periodoFin,
               items: [{ descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: montoCostoInstalacion }],
             });
-          } catch { /* no bloquea el flujo principal */ }
-        }
+          }
+        } catch { /* la factura no bloquea el flujo principal */ }
         toast('Servicio creado correctamente', { type: 'success' });
       }
       onSaved();
