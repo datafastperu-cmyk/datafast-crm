@@ -134,6 +134,12 @@ export function ClienteDetalle({ id }: { id: string }) {
     enabled:  tab === 'servicios' || tab === 'resumen',
   });
 
+  const { data: facturacionConfig } = useQuery({
+    queryKey: ['cliente-facturacion-config', id],
+    queryFn:  () => clientesApi.getFacturacionConfig(id),
+    enabled:  tab === 'resumen',
+  });
+
   const { data: zonas = [] } = useQuery({
     queryKey: ['zonas'],
     queryFn:  zonasApi.list,
@@ -263,10 +269,31 @@ export function ClienteDetalle({ id }: { id: string }) {
   }
 
   const grad         = avatarGradient(cliente.nombreCompleto);
-  const ctrato       = (contratos as any[])[0];
-  const diaPago      = ctrato?.diaPago ? `Día ${ctrato.diaPago} de cada mes` : '—';
-  const deuda        = formatPEN(ctrato?.deudaTotal ?? 0);
-  const proxCorte    = ctrato?.fechaProximaFacturacion ? formatDate(ctrato.fechaProximaFacturacion) : '—';
+  const factuCfg     = facturacionConfig?.facturacion   as Record<string, any> | null | undefined;
+  const notifCfg     = facturacionConfig?.notificaciones as Record<string, any> | null | undefined;
+
+  const diaPagoNum   = factuCfg?.diaPago ? parseInt(factuCfg.diaPago as string, 10) : 0;
+  const diaPago      = diaPagoNum ? `Día ${diaPagoNum} de cada mes` : '—';
+
+  const proxCorte = (() => {
+    if (!diaPagoNum) return '—';
+    const hoy  = new Date();
+    const mes  = diaPagoNum <= hoy.getDate() ? hoy.getMonth() + 1 : hoy.getMonth();
+    const año  = hoy.getMonth() === 11 && diaPagoNum <= hoy.getDate() ? hoy.getFullYear() + 1 : hoy.getFullYear();
+    return formatDate(new Date(año, mes, diaPagoNum).toISOString());
+  })();
+
+  const crearFacturaVal = factuCfg?.crearFactura as string | undefined;
+  const crearFactura = !crearFacturaVal || crearFacturaVal === 'desactivado'
+    ? 'Desactivado'
+    : crearFacturaVal === '1' ? '1 día antes' : `${crearFacturaVal} días antes`;
+
+  const avisoPantalla = (notifCfg?.avisoPantalla as string | undefined) === 'desactivado' || !notifCfg?.avisoPantalla
+    ? 'Desactivado' : 'Activado';
+  const avisoSms = (notifCfg?.recordatoriosPago as string | undefined) === 'desactivado' || !notifCfg?.recordatoriosPago
+    ? 'Desactivado' : 'Activado';
+
+  const deuda        = formatPEN((contratos as any[]).reduce((sum, c) => sum + (c.deudaTotal ?? 0), 0));
   const routerNombre = (contratos as any[]).map((c) => c.nodo ?? c.router ?? '').filter(Boolean).join(', ') || '—';
 
   return (
@@ -650,13 +677,13 @@ export function ClienteDetalle({ id }: { id: string }) {
                 <span className="text-primary font-bold">&raquo;</span> Resumen Notificaciones
               </h3>
               <div className="grid grid-cols-2 gap-2">
-                <NotifCard color="blue"   icon={Calendar}       label="Día de Pago"           value={diaPago}   />
-                <NotifCard color="orange" icon={Receipt}        label="Crear & Enviar Factura" value="—"         />
-                <NotifCard color="teal"   icon={Monitor}        label="Aviso en pantalla"      value="Desactivado" />
-                <NotifCard color="purple" icon={MessageSquare}  label="Aviso SMS"              value="—"         />
-                <NotifCard color="red"    icon={XCircle}        label="Próximo Corte"          value={proxCorte} />
-                <NotifCard color="indigo" icon={CreditCard}     label="Deuda Actual"           value={deuda}     />
-                <NotifCard color="pink"   icon={BarChart2}      label="Saldos"                 value={formatPEN(0)} className="col-span-2" />
+                <NotifCard color="blue"   icon={Calendar}       label="Día de Pago"           value={diaPago}        />
+                <NotifCard color="orange" icon={Receipt}        label="Crear & Enviar Factura" value={crearFactura}   />
+                <NotifCard color="teal"   icon={Monitor}        label="Aviso en pantalla"      value={avisoPantalla}  />
+                <NotifCard color="purple" icon={MessageSquare}  label="Aviso SMS"              value={avisoSms}       />
+                <NotifCard color="red"    icon={XCircle}        label="Próximo Corte"          value={proxCorte}      />
+                <NotifCard color="indigo" icon={CreditCard}     label="Deuda Actual"           value={deuda}          />
+                <NotifCard color="pink"   icon={BarChart2}      label="Saldos"                 value={formatPEN(0)}   className="col-span-2" />
               </div>
             </div>
           </div>
