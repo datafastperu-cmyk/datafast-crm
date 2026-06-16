@@ -635,6 +635,7 @@ export class ContratosService {
           co.password_pppoe      AS "passwordPppoe",
           co.ip_asignada         AS "ipAsignada",
           co.mac_address         AS "macAddress",
+          co.tipo_auth           AS "tipoAuth",
           cl.nombre_completo     AS "nombreCompleto",
           ro.tipo_control        AS "tipoControl",
           ro.vpn_ip              AS "vpnIp",
@@ -687,13 +688,14 @@ export class ContratosService {
       version:         (row.versionRos ?? 'v6') as any,
     };
 
-    const tipoControl: string = row.tipoControl ?? 'ninguna';
+    // co.tipo_auth tiene prioridad sobre ro.tipo_control (auth por abonado desde Task 2)
+    const tipoControl: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
 
-    // Fix 1: tipo_control NINGUNA → error explícito, no fallo silencioso
+    // Fix 1: tipo efectivo NINGUNA → error explícito, no fallo silencioso
     if (tipoControl === 'ninguna') {
       throw new BadRequestException(
-        `El router del contrato tiene tipo_control=NINGUNA. ` +
-        `Configura el tipo de control (pppoe_addresslist / amarre_ip_mac) en el router antes de activar.`,
+        `El contrato no tiene tipo de autenticación configurado. ` +
+        `Selecciona PPPoE, Amarre IP/MAC o Amarre IP/MAC+DHCP al editar el servicio.`,
       );
     }
 
