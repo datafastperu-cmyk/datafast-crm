@@ -946,14 +946,6 @@ function SvcPagination({ total }: { total: number }) {
 }
 
 // ── ServicioPanel schema ──────────────────────────────────────
-const TIPO_ANTENA_OPS = [
-  { value: 'otro',     label: 'Otro' },
-  { value: 'ubiquiti', label: 'Ubiquiti' },
-  { value: 'mikrotik', label: 'MikroTik' },
-  { value: 'tplink',   label: 'TP-Link' },
-  { value: 'cambium',  label: 'Cambium Networks' },
-  { value: 'mimosa',   label: 'Mimosa' },
-];
 
 const SECURITY_OPTS_DETALLE = [
   { val: 'pppoe_addresslist',  label: 'PPPoE'                       },
@@ -981,11 +973,6 @@ const servicioSchema = z.object({
   precioMensual:        z.string().optional(),
   nodoId:               z.string().optional(),
   antenaApId:           z.string().optional(),
-  ipAdministracion:     z.string().optional(),
-  tipoAntena:           z.string().optional(),
-  comunidadSnmp:        z.string().optional(),
-  usuarioAntena:        z.string().optional(),
-  contrasenaAntena:     z.string().optional(),
   direccionInstalacion: z.string().optional(),
   coordenadas:          z.string().optional(),
 });
@@ -1429,7 +1416,6 @@ function ServicioPanel({
 }) {
   const e = editing as any;
   const { toast } = useToast();
-  const [showPass, setShowPass] = useState(false);
   const {
     register, handleSubmit, watch, setValue, setError,
     formState: { errors, isSubmitting },
@@ -1457,11 +1443,6 @@ function ServicioPanel({
         ? Number(e.precioMensual).toFixed(2) : '',
       nodoId:               e?.nodoId               ?? '',
       antenaApId:           e?.antenaApId           ?? '',
-      ipAdministracion:     e?.ipAdministracion     ?? '',
-      tipoAntena:           e?.tipoAntena           ?? 'otro',
-      comunidadSnmp:        e?.comunidadSnmp        ?? '',
-      usuarioAntena:        e?.usuarioAntena        ?? '',
-      contrasenaAntena:     e?.contrasenaAntena     ?? '',
       direccionInstalacion: e?.direccionInstalacion ?? '',
       coordenadas:          (e?.latitudInstalacion && e?.longitudInstalacion)
         ? `${e.latitudInstalacion},${e.longitudInstalacion}`
@@ -1579,11 +1560,6 @@ function ServicioPanel({
         fechaInicio:          data.fechaInicio,
         nodoId:               undefined,
         antenaApId:           (data as any).antenaApId  || undefined,
-        ipAdministracion:     data.ipAdministracion     || undefined,
-        tipoAntena:           data.tipoAntena           || undefined,
-        comunidadSnmp:        data.comunidadSnmp        || undefined,
-        usuarioAntena:        data.usuarioAntena        || undefined,
-        contrasenaAntena:     data.contrasenaAntena     || undefined,
         direccionInstalacion: data.direccionInstalacion || undefined,
         latitudInstalacion,
         longitudInstalacion,
@@ -1814,43 +1790,6 @@ function ServicioPanel({
                   {routerId && (antenasAP as any[]).length === 0 && (
                     <p className="text-[11px] text-amber-500 mt-1">Sin antenas AP registradas para este router.</p>
                   )}
-                </SP_Field>
-                <SP_Field label="IP administración" hint="* Ip antena/Equipo del cliente">
-                  <input {...register('ipAdministracion')} placeholder="172.16.2.115" className={sp_input()} />
-                </SP_Field>
-                <SP_Field label="Tipo antena">
-                  <select {...register('tipoAntena')} className={sp_input()}>
-                    {TIPO_ANTENA_OPS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </SP_Field>
-                <SP_Field label="Comunidad SNMP">
-                  <input {...register('comunidadSnmp')} placeholder="public" className={sp_input()} />
-                </SP_Field>
-                <SP_Field label="Usuario antena">
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input {...register('usuarioAntena')} placeholder="admin" className={cn(sp_input(), 'pl-9')} />
-                  </div>
-                </SP_Field>
-                <SP_Field label="Contraseña antena">
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input
-                      {...register('contrasenaAntena')}
-                      type={showPass ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      className={cn(sp_input(), 'pl-9 pr-9')}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass(v => !v)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {showPass
-                        ? <Minus className="w-3.5 h-3.5" />
-                        : <Plus className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
                 </SP_Field>
               </SP_Section>
             </div>
