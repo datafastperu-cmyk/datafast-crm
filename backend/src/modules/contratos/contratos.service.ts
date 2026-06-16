@@ -318,6 +318,15 @@ export class ContratosService {
       }
     }
 
+    // Validar unicidad de MAC si cambia
+    if (dto.macAddress?.trim() && dto.macAddress.trim() !== (existing as any).macAddress) {
+      const [macExistente] = await this.dataSource.query<any[]>(
+        `SELECT numero_contrato FROM contratos WHERE empresa_id = $1 AND mac_address = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL AND id != $3 LIMIT 1`,
+        [user.empresaId, dto.macAddress.trim(), id],
+      );
+      if (macExistente) throw new ConflictException(`La MAC ${dto.macAddress} ya está registrada en el contrato ${macExistente.numero_contrato}`);
+    }
+
     const { version: _v, ...dtoSinVersion } = dto;
     const upd: any = { ...dtoSinVersion, updatedBy:user.sub };
     delete upd.ipManual; delete upd.usuarioPppoe; delete upd.passwordPppoePlain;

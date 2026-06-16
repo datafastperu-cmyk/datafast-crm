@@ -76,6 +76,22 @@ export class ClientesService {
       );
     }
 
+    // Verificar unicidad de email y teléfono
+    if (dto.email) {
+      const [emailExiste] = await this.dataSource.query<any[]>(
+        `SELECT id FROM clientes WHERE empresa_id = $1 AND email = $2 AND deleted_at IS NULL LIMIT 1`,
+        [user.empresaId, dto.email],
+      );
+      if (emailExiste) throw new ConflictException(`El email ${dto.email} ya está registrado`);
+    }
+    if (dto.telefono) {
+      const [telExiste] = await this.dataSource.query<any[]>(
+        `SELECT id FROM clientes WHERE empresa_id = $1 AND telefono = $2 AND deleted_at IS NULL LIMIT 1`,
+        [user.empresaId, dto.telefono],
+      );
+      if (telExiste) throw new ConflictException(`El teléfono ${dto.telefono} ya está registrado`);
+    }
+
     // Generar código de cliente automático si no se proveyó
     if (!dto.codigoCliente) {
       dto.codigoCliente = await this.generarCodigoCliente(user.empresaId);
@@ -164,6 +180,22 @@ export class ClientesService {
       if (existe) {
         throw new ConflictException(`Documento ${dto.numeroDocumento} ya está registrado`);
       }
+    }
+
+    // Verificar unicidad de email y teléfono al actualizar
+    if (dto.email && dto.email !== cliente.email) {
+      const [emailExiste] = await this.dataSource.query<any[]>(
+        `SELECT id FROM clientes WHERE empresa_id = $1 AND email = $2 AND deleted_at IS NULL AND id != $3 LIMIT 1`,
+        [user.empresaId, dto.email, id],
+      );
+      if (emailExiste) throw new ConflictException(`El email ${dto.email} ya está registrado`);
+    }
+    if (dto.telefono && dto.telefono !== (cliente as any).telefono) {
+      const [telExiste] = await this.dataSource.query<any[]>(
+        `SELECT id FROM clientes WHERE empresa_id = $1 AND telefono = $2 AND deleted_at IS NULL AND id != $3 LIMIT 1`,
+        [user.empresaId, dto.telefono, id],
+      );
+      if (telExiste) throw new ConflictException(`El teléfono ${dto.telefono} ya está registrado`);
     }
 
     const anterior = { ...cliente };

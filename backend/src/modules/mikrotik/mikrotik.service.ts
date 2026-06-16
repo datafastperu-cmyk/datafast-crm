@@ -1,6 +1,6 @@
 import {
   Injectable, Logger, NotFoundException,
-  BadRequestException, InternalServerErrorException,
+  BadRequestException, ConflictException, InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
@@ -67,6 +67,14 @@ export class MikrotikService {
     });
     if (existePorIp) {
       throw new BadRequestException(`La IP de gestión ${dto.ipGestion} ya está registrada en esta empresa`);
+    }
+
+    // Validar unicidad de nombre
+    const existePorNombre = await this.routerRepo.findOne({
+      where: { nombre: dto.nombre, empresaId: user.empresaId, deletedAt: null as any },
+    });
+    if (existePorNombre) {
+      throw new ConflictException(`Ya existe un router con el nombre "${dto.nombre}"`);
     }
 
     // Validar unicidad de IP VPN
@@ -166,6 +174,14 @@ export class MikrotikService {
       });
       if (existePorIp && existePorIp.id !== id) {
         throw new BadRequestException(`La IP de gestión ${dto.ipGestion} ya está registrada en esta empresa`);
+      }
+    }
+    if (dto.nombre) {
+      const existePorNombre = await this.routerRepo.findOne({
+        where: { nombre: dto.nombre, empresaId: user.empresaId, deletedAt: null as any },
+      });
+      if (existePorNombre && existePorNombre.id !== id) {
+        throw new ConflictException(`Ya existe un router con el nombre "${dto.nombre}"`);
       }
     }
     if (dto.vpnIp) {

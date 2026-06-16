@@ -61,6 +61,13 @@ export class PlanesService {
       });
     }
 
+    if (dto.nombre && dto.nombre !== plan.nombre) {
+      const existe = await this.repo.findOne({
+        where: { nombre: dto.nombre, empresaId: user.empresaId, deletedAt: null as any },
+      });
+      if (existe) throw new ConflictException(`Plan "${dto.nombre}" ya existe`);
+    }
+
     const { version: _v, ...camposPlan } = dto;
     await this.repo.update(id, camposPlan);
     return this.findOne(id, user.empresaId);
