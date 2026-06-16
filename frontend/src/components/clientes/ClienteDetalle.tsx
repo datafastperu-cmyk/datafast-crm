@@ -2047,9 +2047,6 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
             <span className="text-xs font-bold text-muted-foreground bg-muted px-2.5 py-1 rounded-lg min-w-[2rem] text-center">
               {filtradas.length}
             </span>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground">
-              <Plus className="w-3.5 h-3.5" /> Factura Libre
-            </button>
             <button
               onClick={() => setShowModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground"
