@@ -1827,7 +1827,7 @@ function ServicioPanel({
                       className={cn(sp_input(), 'pl-9 opacity-60 cursor-default select-none')}
                     />
                   </div>
-                  {planSel?.velocidadBajada && <p className="text-[11px] text-muted-foreground mt-1">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</p>}
+                  {!!planSel?.velocidadBajada && <p className="text-[11px] text-muted-foreground mt-1">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</p>}
                 </SP_Field>
               </SP_Section>
 
