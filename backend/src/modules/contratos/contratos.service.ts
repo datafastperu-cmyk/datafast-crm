@@ -279,14 +279,19 @@ export class ContratosService {
     await this.auditoria.logUpdate({ empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email, modulo: 'contratos', entidadId: id, descripcion: 'Actualización de servicio con re-provisión', req });
 
     setImmediate(async () => {
-      await this.desaprovisionarMikrotik(id)
+      const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+        Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms}ms en ${label}`)), ms))]);
+
+      this.logger.log(`actualizarServicio background → iniciando re-provisión contrato ${id}`);
+      await withTimeout(this.desaprovisionarMikrotik(id), 25000, 'desaprovision')
         .catch((e: any) => this.logger.warn(`actualizarServicio desaprovision: ${e?.message}`));
-      await this.provisionarMikrotik(id)
+      await withTimeout(this.provisionarMikrotik(id), 25000, 'provision')
         .catch((e: any) => this.logger.warn(`actualizarServicio provision: ${e?.message}`));
-      await this.eliminarDeAccessListAntena(id)
+      await withTimeout(this.eliminarDeAccessListAntena(id), 15000, 'antena-remove')
         .catch((e: any) => this.logger.warn(`actualizarServicio antena remove: ${e?.message}`));
-      await this.registrarEnAccessListAntena(id)
+      await withTimeout(this.registrarEnAccessListAntena(id), 15000, 'antena-register')
         .catch((e: any) => this.logger.warn(`actualizarServicio antena register: ${e?.message}`));
+      this.logger.log(`actualizarServicio background → re-provisión completada contrato ${id}`);
     });
 
     return contratoActualizado;
@@ -700,7 +705,7 @@ export class ContratosService {
     }
 
     // Fix 3: validaciones con error claro en lugar de return silencioso
-    if (tipoControl === 'pppoe_addresslist' && !row.usuarioPppoe) {
+    if (tipoControl === 'pppoe' && !row.usuarioPppoe) {
       throw new BadRequestException(
         `El contrato no tiene usuario PPPoE asignado. Asígnalo antes de activar.`,
       );
@@ -735,6 +740,7 @@ export class ContratosService {
           co.usuario_pppoe       AS "usuarioPppoe",
           co.ip_asignada         AS "ipAsignada",
           co.mac_address         AS "macAddress",
+          co.tipo_auth           AS "tipoAuth",
           ro.tipo_control        AS "tipoControl",
           ro.vpn_ip              AS "vpnIp",
           ro.ip_gestion          AS "ipGestion",
@@ -770,10 +776,10 @@ export class ContratosService {
       version:         (row.versionRos ?? 'v6') as any,
     };
 
-    const tipoControl: string = row.tipoControl ?? 'ninguna';
+    const tipoControl: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
 
     try {
-      if (tipoControl === 'pppoe_addresslist' && row.usuarioPppoe) {
+      if (tipoControl === 'pppoe' && row.usuarioPppoe) {
         await this.pppoeSvc.eliminar(creds, row.usuarioPppoe);
         this.logger.log(`desaprovisionarMikrotik → ${contratoId} | PPPoE eliminado: ${row.usuarioPppoe}`);
       } else if ((tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') && row.ipAsignada) {

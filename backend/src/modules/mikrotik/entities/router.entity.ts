@@ -26,7 +26,7 @@ export enum EstadoEquipo {
 
 export enum TipoControl {
   NINGUNA            = 'ninguna',
-  PPPOE_ADDRESSLIST  = 'pppoe_addresslist',
+  PPPOE              = 'pppoe',
   AMARRE_IP_MAC      = 'amarre_ip_mac',
   AMARRE_IP_MAC_DHCP = 'amarre_ip_mac_dhcp',
 }

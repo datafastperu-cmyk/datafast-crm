@@ -947,7 +947,7 @@ function SvcPagination({ total }: { total: number }) {
 // ── ServicioPanel schema ──────────────────────────────────────
 
 const SECURITY_OPTS_DETALLE = [
-  { val: 'pppoe_addresslist',  label: 'PPPoE'                       },
+  { val: 'pppoe',  label: 'PPPoE'                       },
   { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
   { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
   { val: 'ninguna',            label: 'Ninguna'                     },
@@ -1445,7 +1445,7 @@ function ServicioPanel({
     defaultValues: {
       planId:               e?.planId                ?? '',
       routerId:             e?.routerId              ?? '',
-      tipoControl:          e?.tipoAuth              ?? 'pppoe_addresslist',
+      tipoControl:          e?.tipoAuth              ?? 'pppoe',
       excluirFirewall:      e?.excluirFirewall        ?? false,
       segmentoId:           e?.segmentoId            ?? '',
       ipManual:             e?.ipAsignada            ?? '',
@@ -1483,7 +1483,7 @@ function ServicioPanel({
   // Router seleccionado — para derivar comportamiento de auth
   const tipoControlVal = watch('tipoControl' as any) as string | undefined;
   const authEfectiva   = (tipoControlVal ?? e?.tipoAuth ?? 'ninguna') as string;
-  const mostrarPppoe   = authEfectiva === 'pppoe_addresslist';
+  const mostrarPppoe   = authEfectiva === 'pppoe';
   const requiereMac    = authEfectiva === 'amarre_ip_mac' || authEfectiva === 'amarre_ip_mac_dhcp';
   const macRequerida   = requiereMac || !!antenaApIdVal;
 

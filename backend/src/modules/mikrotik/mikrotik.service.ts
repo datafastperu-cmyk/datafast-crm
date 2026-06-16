@@ -455,7 +455,7 @@ export class MikrotikService {
 
       // Familias: 'pppoe' | 'mac' | 'none'
       const authFamily = (a: string) =>
-        a === 'pppoe_addresslist' ? 'pppoe'
+        a === 'pppoe' ? 'pppoe'
         : (a === 'amarre_ip_mac' || a === 'amarre_ip_mac_dhcp') ? 'mac'
         : 'none';
 
@@ -469,7 +469,7 @@ export class MikrotikService {
 
       // ── Pre-flight: validar campos requeridos por el tipo destino ─────────
       const camposFaltantes: string[] = [];
-      if (targetAuth === 'pppoe_addresslist' && !co.usuarioPppoe)
+      if (targetAuth === 'pppoe' && !co.usuarioPppoe)
         camposFaltantes.push('usuarioPppoe');
       if ((targetAuth === 'amarre_ip_mac' || targetAuth === 'amarre_ip_mac_dhcp') && !co.ipAsignada)
         camposFaltantes.push('ipAsignada');
@@ -1252,7 +1252,7 @@ export class MikrotikService {
   }
 
   private async limpiarReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
-    if (tipoControl === 'pppoe_addresslist') {
+    if (tipoControl === 'pppoe') {
       if (co.usuarioPppoe) await this.pppoeSvc.eliminar(creds, co.usuarioPppoe);
 
     } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
@@ -1275,7 +1275,7 @@ export class MikrotikService {
 
   async crearReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
     const comment = `DATAFAST:${co.nombreCompleto}`;
-    if (tipoControl === 'pppoe_addresslist') {
+    if (tipoControl === 'pppoe') {
       // Fix 3: error explícito en lugar de return silencioso
       if (!co.usuarioPppoe) throw new Error('El contrato no tiene usuario PPPoE asignado');
       const password = co.passwordPppoe ? decrypt(co.passwordPppoe) : '';

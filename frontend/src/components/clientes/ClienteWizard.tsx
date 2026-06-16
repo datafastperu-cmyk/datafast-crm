@@ -45,7 +45,7 @@ const step1Schema = z.object({
 const step2Schema = z.object({ _placeholder: z.string().optional() });
 
 const SECURITY_OPTS_ABONADO = [
-  { val: 'pppoe_addresslist',  label: 'PPPoE'                       },
+  { val: 'pppoe',  label: 'PPPoE'                       },
   { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
   { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
   { val: 'ninguna',            label: 'Ninguna'                     },
@@ -938,7 +938,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     resolver:      zodResolver(step3Schema),
     defaultValues: initial ?? {
       excluirFirewall:  false,
-      tipoControl:      'pppoe_addresslist',
+      tipoControl:      'pppoe',
       tipoIpv4:         'dinamica',
       cajaNapId:        '',
       puertoNapId:      '',
@@ -967,7 +967,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   // Router seleccionado — para derivar comportamiento de auth
   const tipoControlVal = watch('tipoControl');
   const authEfectiva   = tipoControlVal ?? 'ninguna';
-  const mostrarPppoe   = authEfectiva === 'pppoe_addresslist';
+  const mostrarPppoe   = authEfectiva === 'pppoe';
   const requiereMac    = authEfectiva === 'amarre_ip_mac' || authEfectiva === 'amarre_ip_mac_dhcp';
   const macRequerida   = requiereMac || !!conectadoAIdVal;
 
@@ -1149,7 +1149,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             />
           </Field>
 
-          {/* PPPoE — solo cuando el router tiene tipoControl = pppoe_addresslist */}
+          {/* PPPoE — solo cuando el router tiene tipoControl = pppoe */}
           {mostrarPppoe && (
             <>
               <Field label="User PPP/HS *" error={s3Errors.userPppHs?.message}>

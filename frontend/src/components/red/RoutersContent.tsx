@@ -36,7 +36,7 @@ const METODO_CONFIG: Record<MetodoConexion, {
 };
 
 const TIPO_CONTROL_OPTS = [
-  { val: 'pppoe_addresslist',  label: 'PPPoE'                       },
+  { val: 'pppoe',  label: 'PPPoE'                       },
   { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
   { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
 ];
@@ -184,7 +184,7 @@ interface MigrarResult {
 
 const LABEL_CONTROL: Record<string, string> = {
   ninguna:           'Sin autenticación',
-  pppoe_addresslist: 'PPPoE',
+  pppoe: 'PPPoE',
   amarre_ip_mac:     'Amarre IP/MAC',
   amarre_ip_mac_dhcp:'Amarre IP/MAC + DHCP Leases',
 };

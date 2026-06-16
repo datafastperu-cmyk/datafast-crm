@@ -3,7 +3,7 @@ import api from '@/lib/api';
 export type MetodoConexion        = 'api' | 'api_ssl' | 'ssh' | 'snmp' | 'vpn_tunnel';
 export type VersionRouterOS       = 'v6' | 'v7' | 'desconocida';
 export type EstadoEquipo          = 'online' | 'offline' | 'degradado' | 'mantenimiento' | 'desconocido';
-export type TipoControl           = 'ninguna' | 'pppoe_addresslist' | 'amarre_ip_mac' | 'amarre_ip_mac_dhcp';
+export type TipoControl           = 'ninguna' | 'pppoe' | 'amarre_ip_mac' | 'amarre_ip_mac_dhcp';
 export type TipoControlVelocidad  = 'ninguno' | 'colas_simples' | 'pcq_addresslist' | 'dhcp_lease_queues';
 
 export interface Router {
