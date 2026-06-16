@@ -86,6 +86,8 @@ export function ClienteDetalle({ id }: { id: string }) {
   const queryClient = useQueryClient();
   const { toast }   = useToast();
   const [tab, setTab]           = useState<TabKey>('resumen');
+  const [reniecStatus, setReniecStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  const [reniecMsg, setReniecMsg]       = useState('');
   const [form, setForm]         = useState<Record<string, string>>({});
   const [formDirty, setDirty]   = useState(false);
   const [formErrors, setErrors] = useState<Record<string, string>>({});
@@ -142,16 +144,16 @@ export function ClienteDetalle({ id }: { id: string }) {
     if (cliente && !initialized.current) {
       initialized.current = true;
       setForm({
-        nombres:         (cliente as any).nombres         ?? '',
-        apellidoPaterno: (cliente as any).apellidoPaterno ?? '',
-        apellidoMaterno: (cliente as any).apellidoMaterno ?? '',
-        numeroDocumento: cliente.numeroDocumento          ?? '',
+        tipoDocumento:   (cliente as any).tipoDocumento   ?? 'dni',
+        numeroDocumento: cliente.numeroDocumento           ?? '',
+        // Mostrar siempre el nombre completo generado por la BD
+        nombres:         (cliente as any).nombreCompleto  ?? (cliente as any).nombres ?? '',
+        apellidoPaterno: '',
+        apellidoMaterno: '',
         telefono:        cliente.telefono                 ?? '',
-        telefonoAlt:     (cliente as any).telefonoAlt     ?? '',
         whatsapp:        (cliente as any).whatsapp        ?? '',
         email:           (cliente as any).email           ?? '',
         direccion:       (cliente as any).direccion       ?? '',
-        referencia:      (cliente as any).referencia      ?? '',
         departamento:    (cliente as any).departamento    ?? '',
         provincia:       (cliente as any).provincia       ?? '',
         distrito:        (cliente as any).distrito        ?? '',
@@ -195,6 +197,30 @@ export function ClienteDetalle({ id }: { id: string }) {
     },
     onError: () => toast('No se pudo eliminar el abonado', { type: 'error' }),
   });
+
+  const consultarReniec = async () => {
+    const doc = form.numeroDocumento?.trim();
+    if (!doc || doc.length < 6) { toast('Ingresa un número de identificación válido', { type: 'warning' }); return; }
+    setReniecStatus('loading');
+    try {
+      const datos = await clientesApi.consultarReniec(doc);
+      const nombreCompleto = [datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' ');
+      setForm((f) => ({
+        ...f,
+        nombres: nombreCompleto,
+        ...(datos.departamento && { departamento: datos.departamento }),
+        ...(datos.provincia    && { provincia:    datos.provincia    }),
+        ...(datos.distrito     && { distrito:     datos.distrito     }),
+        ...(!f.direccion?.trim() && datos.direccion && { direccion: datos.direccion }),
+      }));
+      setDirty(true);
+      setReniecStatus('ok');
+      setReniecMsg(nombreCompleto);
+    } catch (err) {
+      setReniecStatus('error');
+      setReniecMsg(parseApiError(err));
+    }
+  };
 
   const set = (key: string, val: string) => {
     setForm((f) => ({ ...f, [key]: val }));
@@ -454,23 +480,57 @@ export function ClienteDetalle({ id }: { id: string }) {
                 />
               </FormRow>
 
+              <FormRow label="Tipo Documento">
+                <select
+                  value={form.tipoDocumento ?? 'dni'}
+                  onChange={(e) => set('tipoDocumento', e.target.value)}
+                  className={INPUT}
+                >
+                  <option value="dni">DNI</option>
+                  <option value="ruc">RUC</option>
+                  <option value="cedula">Cédula</option>
+                  <option value="pasaporte">Pasaporte</option>
+                  <option value="cuit">CUIT</option>
+                  <option value="nit">NIT</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </FormRow>
+
               <FormRow label="Nº Identificación" required error={formErrors.numeroDocumento}>
                 <div className="space-y-1">
                   <div className="flex gap-2">
                     <input
                       value={form.numeroDocumento ?? ''}
                       onChange={(e) => set('numeroDocumento', e.target.value)}
+                      maxLength={13}
                       className={cn(INPUT, 'flex-1', formErrors.numeroDocumento && 'border-destructive')}
                     />
-                    <button className="flex items-center gap-1 px-3 py-2 text-xs rounded-lg
-                                       border border-input hover:bg-accent transition-colors
-                                       text-muted-foreground flex-shrink-0">
-                      <Search className="w-3.5 h-3.5" />
+                    <button
+                      type="button"
+                      onClick={consultarReniec}
+                      disabled={reniecStatus === 'loading'}
+                      title="Consultar RENIEC / padrón"
+                      className="flex-shrink-0 px-3 rounded-lg border border-input bg-muted
+                                 hover:bg-muted/70 transition-colors disabled:opacity-50"
+                    >
+                      {reniecStatus === 'loading'
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Search  className="w-3.5 h-3.5" />}
                     </button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    CEDULA, DNI, RUC, CUIT, NIT, SAT, RUT, RTN, ETC.
-                  </p>
+                  {reniecStatus !== 'idle' && (
+                    <div className={cn(
+                      'flex items-center gap-1.5 text-xs rounded-lg px-3 py-2',
+                      reniecStatus === 'ok'
+                        ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400'
+                        : 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400',
+                    )}>
+                      {reniecStatus === 'ok'
+                        ? <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                        : <AlertCircle  className="w-3.5 h-3.5 flex-shrink-0" />}
+                      {reniecMsg}
+                    </div>
+                  )}
                 </div>
               </FormRow>
 
