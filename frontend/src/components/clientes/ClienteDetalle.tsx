@@ -1799,33 +1799,6 @@ function ServicioPanel({
                   </>
                 )}
 
-                {/* Caja + Puerto NAP */}
-                <div className="grid grid-cols-2 gap-3">
-                  <SP_Field label="Caja Nap">
-                    <select {...register('cajaNap')} className={sp_input()}>
-                      <option value="">Ninguno</option>
-                      {['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].map(n => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                      {cajaNap && !['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].includes(cajaNap) && (
-                        <option value={cajaNap}>{cajaNap}</option>
-                      )}
-                    </select>
-                  </SP_Field>
-                  <SP_Field label="Puerto Nap">
-                    {PUERTOS_NAP.length > 0 ? (
-                      <select {...register('puertoNap')} className={sp_input()}>
-                        <option value="">Ninguno</option>
-                        {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    ) : (
-                      <select {...register('puertoNap')} className={sp_input()}>
-                        <option value="">Ninguno</option>
-                        {Array.from({length:8},(_,i)=>`Puerto ${i+1}`).map(p=><option key={p} value={p}>{p}</option>)}
-                      </select>
-                    )}
-                  </SP_Field>
-                </div>
 
               </SP_Section>
             </div>
@@ -1914,6 +1887,36 @@ function ServicioPanel({
                     </button>
                   </div>
                 </SP_Field>
+              </SP_Section>
+
+              {/* Terminales FTTH */}
+              <SP_Section title="Terminales FTTH" icon={Cable}>
+                <div className="grid grid-cols-2 gap-3">
+                  <SP_Field label="Caja Nap">
+                    <select {...register('cajaNap')} className={sp_input()}>
+                      <option value="">Ninguno</option>
+                      {['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                      {cajaNap && !['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].includes(cajaNap) && (
+                        <option value={cajaNap}>{cajaNap}</option>
+                      )}
+                    </select>
+                  </SP_Field>
+                  <SP_Field label="Puerto Nap">
+                    {PUERTOS_NAP.length > 0 ? (
+                      <select {...register('puertoNap')} className={sp_input()}>
+                        <option value="">Ninguno</option>
+                        {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    ) : (
+                      <select {...register('puertoNap')} className={sp_input()}>
+                        <option value="">Ninguno</option>
+                        {Array.from({length:8},(_,i)=>`Puerto ${i+1}`).map(p=><option key={p} value={p}>{p}</option>)}
+                      </select>
+                    )}
+                  </SP_Field>
+                </div>
               </SP_Section>
 
             </div>
