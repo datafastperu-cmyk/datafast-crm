@@ -1113,7 +1113,7 @@ export class MikrotikService {
           version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
         };
 
-        const esPppoe = router.tipoControl === TipoControl.PPPOE_ADDRESSLIST;
+        const esPppoe = router.tipoControl === TipoControl.PPPOE;
         const [recursos, sesionesCount] = await Promise.all([
           this.ifaceSvc.getRecursos(creds),
           esPppoe

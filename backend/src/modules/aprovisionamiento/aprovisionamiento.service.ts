@@ -323,7 +323,7 @@ export class OrquestadorAprovisionamientoService {
           const comment     = `DATAFAST:${dto.contratoId}:${ctx.contrato.cliente_nombre}`;
 
           // ── PPPoE ──────────────────────────────────────────
-          if (!tipoControl || tipoControl === TipoControl.PPPOE_ADDRESSLIST) {
+          if (!tipoControl || tipoControl === TipoControl.PPPOE) {
             if (!ctx.usuarioPppoe) throw new Error('El contrato no tiene usuario PPPoE asignado');
 
             await this.pppoeSvc.crear(creds, {
