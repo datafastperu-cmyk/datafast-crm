@@ -333,7 +333,7 @@ export class MonitoreoWorkerService {
       }
 
       return result;
-    });
+    }, 2, 'monitoreo');
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -403,7 +403,7 @@ export class MonitoreoWorkerService {
           comment:      e['comment'] ?? '',
         } satisfies WirelessClient;
       });
-    });
+    }, 2, 'monitoreo');
   }
 
   // ═══════════════════════════════════════════════════════════════

@@ -23,24 +23,34 @@ export interface RouterCredentials {
   version:    string;
 }
 
+export type PoolChannel = 'monitoreo' | 'provision';
+
 // ─────────────────────────────────────────────────────────────
-// Pool de conexiones RouterOS
-// Mantiene conexiones persistentes reutilizables por router.
-// Máx. 3 conexiones por router (RouterOS limita por defecto a 10).
+// Pool de conexiones RouterOS con canales separados.
+// 'monitoreo' y 'provision' tienen slots independientes para
+// que el worker de monitoreo no bloquee las operaciones de
+// aprovisionamiento y viceversa.
+// Máx. por canal: 2 monitoreo / 3 provision.
 // Timeout de inactividad: 5 minutos.
 // ─────────────────────────────────────────────────────────────
 @Injectable()
 export class RouterConnectionPool implements OnModuleDestroy {
   private readonly logger = new Logger(RouterConnectionPool.name);
 
-  // routerId → lista de conexiones
-  private readonly pool = new Map<string, PooledConnection[]>();
+  // canal → routerId → conexiones
+  private readonly pools: Record<PoolChannel, Map<string, PooledConnection[]>> = {
+    monitoreo: new Map(),
+    provision: new Map(),
+  };
 
-  private readonly MAX_PER_ROUTER   = 3;
-  private readonly IDLE_TIMEOUT_MS  = 5 * 60 * 1000;  // 5 minutos
-  private readonly CONNECT_TIMEOUT  = 15_000;           // 15 segundos
+  private readonly MAX_PER_CHANNEL: Record<PoolChannel, number> = {
+    monitoreo: 2,
+    provision: 3,
+  };
 
-  // Limpiar conexiones inactivas cada 2 minutos
+  private readonly IDLE_TIMEOUT_MS  = 5 * 60 * 1000;
+  private readonly CONNECT_TIMEOUT  = 15_000;
+
   private cleanupInterval: NodeJS.Timeout;
 
   constructor() {
@@ -48,28 +58,26 @@ export class RouterConnectionPool implements OnModuleDestroy {
   }
 
   // ── Obtener conexión (del pool o nueva) ────────────────────
-  async acquire(creds: RouterCredentials): Promise<RouterOSAPI> {
+  async acquire(creds: RouterCredentials, channel: PoolChannel = 'provision'): Promise<RouterOSAPI> {
     const routerId  = creds.id;
-    const existing  = this.pool.get(routerId) || [];
+    const pool      = this.pools[channel];
+    const existing  = pool.get(routerId) || [];
+    const max       = this.MAX_PER_CHANNEL[channel];
 
-    // Buscar conexión disponible (no busy)
     const available = existing.find((c) => !c.busy);
     if (available) {
       available.busy   = true;
       available.usedAt = new Date();
-      this.logger.debug(`Pool hit: router ${routerId} | pool size: ${existing.length}`);
+      this.logger.debug(`Pool hit [${channel}]: router ${routerId} | pool size: ${existing.length}`);
       return available.api;
     }
 
-    // Si ya tenemos el máximo, lanzar error (no bloquear)
-    if (existing.length >= this.MAX_PER_ROUTER) {
+    if (existing.length >= max) {
       throw new Error(
-        `Pool exhausto para router ${routerId}: ${existing.length}/${this.MAX_PER_ROUTER} conexiones en uso. ` +
-        `Intenta en unos segundos.`,
+        `Pool exhausto [${channel}] para router ${routerId}: ${existing.length}/${max} conexiones en uso.`,
       );
     }
 
-    // Crear nueva conexión
     const api = await this.connect(creds);
 
     const conn: PooledConnection = {
@@ -80,14 +88,14 @@ export class RouterConnectionPool implements OnModuleDestroy {
       version: creds.version,
     };
 
-    this.pool.set(routerId, [...existing, conn]);
-    this.logger.debug(`Nueva conexión router ${routerId} | pool: ${existing.length + 1}`);
+    pool.set(routerId, [...existing, conn]);
+    this.logger.debug(`Nueva conexión [${channel}] router ${routerId} | pool: ${existing.length + 1}`);
     return api;
   }
 
   // ── Liberar conexión al pool ────────────────────────────────
-  release(routerId: string, api: RouterOSAPI): void {
-    const conns = this.pool.get(routerId);
+  release(routerId: string, api: RouterOSAPI, channel: PoolChannel = 'provision'): void {
+    const conns = this.pools[channel].get(routerId);
     if (!conns) return;
 
     const conn = conns.find((c) => c.api === api);
@@ -97,13 +105,15 @@ export class RouterConnectionPool implements OnModuleDestroy {
     }
   }
 
-  // ── Invalidar todas las conexiones de un router ────────────
+  // ── Invalidar todas las conexiones de un router (ambos canales) ─
   async invalidate(routerId: string): Promise<void> {
-    const conns = this.pool.get(routerId) || [];
-    for (const c of conns) {
-      try { await c.api.close(); } catch { /* ignorar */ }
+    for (const channel of ['monitoreo', 'provision'] as PoolChannel[]) {
+      const conns = this.pools[channel].get(routerId) || [];
+      for (const c of conns) {
+        try { await c.api.close(); } catch { /* ignorar */ }
+      }
+      this.pools[channel].delete(routerId);
     }
-    this.pool.delete(routerId);
     this.logger.log(`Pool invalidado: router ${routerId}`);
   }
 
@@ -112,26 +122,26 @@ export class RouterConnectionPool implements OnModuleDestroy {
     return this.connect(creds);
   }
 
-  // ── Cleanup de conexiones inactivas ─────────────────────────
+  // ── Cleanup de conexiones inactivas (ambos canales) ─────────
   private cleanup(): void {
-    const now     = Date.now();
-    let removed   = 0;
+    const now   = Date.now();
+    let removed = 0;
 
-    for (const [routerId, conns] of this.pool.entries()) {
-      const activas = conns.filter((c) => {
-        const idle = now - c.usedAt.getTime();
-        if (!c.busy && idle > this.IDLE_TIMEOUT_MS) {
-          try { c.api.close(); } catch { /* ignorar */ }
-          removed++;
-          return false; // eliminar
-        }
-        return true; // mantener
-      });
+    for (const channel of ['monitoreo', 'provision'] as PoolChannel[]) {
+      const pool = this.pools[channel];
+      for (const [routerId, conns] of pool.entries()) {
+        const activas = conns.filter((c) => {
+          const idle = now - c.usedAt.getTime();
+          if (!c.busy && idle > this.IDLE_TIMEOUT_MS) {
+            try { c.api.close(); } catch { /* ignorar */ }
+            removed++;
+            return false;
+          }
+          return true;
+        });
 
-      if (activas.length === 0) {
-        this.pool.delete(routerId);
-      } else {
-        this.pool.set(routerId, activas);
+        if (activas.length === 0) pool.delete(routerId);
+        else                      pool.set(routerId, activas);
       }
     }
 
@@ -176,6 +186,7 @@ export class RouterConnectionPool implements OnModuleDestroy {
     creds:   RouterCredentials,
     fn:      (api: RouterOSAPI) => Promise<T>,
     retries: number = 2,
+    channel: PoolChannel = 'provision',
   ): Promise<T> {
     let lastError: Error;
 
@@ -183,27 +194,24 @@ export class RouterConnectionPool implements OnModuleDestroy {
       let api: RouterOSAPI | null = null;
 
       try {
-        api = await this.acquire(creds);
+        api = await this.acquire(creds, channel);
         const result = await fn(api);
-        this.release(creds.id, api);
+        this.release(creds.id, api, channel);
         return result;
 
       } catch (error) {
         lastError = error;
 
-        // Si es error de conexión, invalidar el pool e intentar de nuevo
         if (api && this.isConnectionError(error)) {
           this.logger.warn(
-            `Error de conexión router ${creds.id} (intento ${attempt + 1}): ${error.message}`,
+            `Error de conexión [${channel}] router ${creds.id} (intento ${attempt + 1}): ${error.message}`,
           );
           await this.invalidate(creds.id);
-          // Esperar antes de reintentar
           if (attempt < retries) {
             await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
           }
         } else {
-          // Error de comando (no de conexión) — no reintentar
-          if (api) this.release(creds.id, api);
+          if (api) this.release(creds.id, api, channel);
           throw error;
         }
       }
@@ -226,13 +234,14 @@ export class RouterConnectionPool implements OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     clearInterval(this.cleanupInterval);
-    // Cerrar todas las conexiones al apagar el servidor
-    for (const [routerId, conns] of this.pool.entries()) {
-      for (const c of conns) {
-        try { await c.api.close(); } catch { /* ignorar */ }
+    for (const channel of ['monitoreo', 'provision'] as PoolChannel[]) {
+      for (const conns of this.pools[channel].values()) {
+        for (const c of conns) {
+          try { await c.api.close(); } catch { /* ignorar */ }
+        }
       }
+      this.pools[channel].clear();
     }
-    this.pool.clear();
     this.logger.log('Pool de conexiones RouterOS cerrado');
   }
 }
