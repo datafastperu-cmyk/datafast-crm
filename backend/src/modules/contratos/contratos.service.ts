@@ -274,18 +274,22 @@ export class ContratosService {
 
     await this.contratoRepo.update(id, upd);
 
-    // ── Re-provisionar siempre: MikroTik + antena ──────────────
-    await this.desaprovisionarMikrotik(id)
-      .catch((e: any) => this.logger.warn(`actualizarServicio desaprovision: ${e?.message}`));
-    await this.provisionarMikrotik(id)
-      .catch((e: any) => this.logger.warn(`actualizarServicio provision: ${e?.message}`));
-    await this.eliminarDeAccessListAntena(id)
-      .catch((e: any) => this.logger.warn(`actualizarServicio antena remove: ${e?.message}`));
-    await this.registrarEnAccessListAntena(id)
-      .catch((e: any) => this.logger.warn(`actualizarServicio antena register: ${e?.message}`));
-
+    // ── Responder inmediatamente; hardware en background ───────
+    const contratoActualizado = await this.findOne(id, user.empresaId);
     await this.auditoria.logUpdate({ empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email, modulo: 'contratos', entidadId: id, descripcion: 'Actualización de servicio con re-provisión', req });
-    return this.findOne(id, user.empresaId);
+
+    setImmediate(async () => {
+      await this.desaprovisionarMikrotik(id)
+        .catch((e: any) => this.logger.warn(`actualizarServicio desaprovision: ${e?.message}`));
+      await this.provisionarMikrotik(id)
+        .catch((e: any) => this.logger.warn(`actualizarServicio provision: ${e?.message}`));
+      await this.eliminarDeAccessListAntena(id)
+        .catch((e: any) => this.logger.warn(`actualizarServicio antena remove: ${e?.message}`));
+      await this.registrarEnAccessListAntena(id)
+        .catch((e: any) => this.logger.warn(`actualizarServicio antena register: ${e?.message}`));
+    });
+
+    return contratoActualizado;
   }
 
   // Bloqueo pesimista de escritura sobre el segmento — serializa la asignación
