@@ -1367,7 +1367,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
       {!perfilId && (
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-sm">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          Sin plan seleccionado, el abonado quedará en <strong>PENDIENTE DE ACTIVACIÓN</strong> sin contrato activo.
+          El abonado se guardará como <strong>PENDIENTE DE ACTIVACIÓN</strong>.
         </div>
       )}
 
