@@ -1391,6 +1391,27 @@ function SP_Toggle({ checked, onChange }: { checked: boolean; onChange: (v: bool
     </button>
   );
 }
+function SP_DecimalInput({ value, onChange, className, placeholder }: {
+  value: number; onChange: (v: number) => void; className?: string; placeholder?: string;
+}) {
+  const [display, setDisplay] = useState(value.toFixed(2));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setDisplay(value.toFixed(2)); }, [value, focused]);
+  return (
+    <input type="text" inputMode="decimal" className={className} placeholder={placeholder}
+      value={display}
+      onChange={e => setDisplay(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        const parsed = Math.max(0, parseFloat(display) || 0);
+        const formatted = parsed.toFixed(2);
+        setDisplay(formatted);
+        onChange(parseFloat(formatted));
+      }}
+    />
+  );
+}
 
 // ── SvcSection (tabla servicios) ──────────────────────────────
 function _SvcSectionUnused({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
@@ -1415,6 +1436,8 @@ function ServicioPanel({
 }) {
   const e = editing as any;
   const { toast } = useToast();
+  const [costoInstalacion, setCostoInstalacion]           = useState(false);
+  const [montoCostoInstalacion, setMontoCostoInstalacion] = useState(0);
   const {
     register, handleSubmit, watch, setValue, setError,
     formState: { errors, isSubmitting },
@@ -1578,6 +1601,19 @@ function ServicioPanel({
         payload.usuarioPppoe = data.usuarioPppoe  || undefined;
         payload.passwordPppoe = data.passwordPppoe || undefined;
         await contratosApi.create(payload);
+        if (costoInstalacion && montoCostoInstalacion > 0) {
+          try {
+            const hoy = new Date();
+            const fin = new Date(hoy);
+            fin.setMonth(fin.getMonth() + 1);
+            await facturacionApi.create({
+              clienteId,
+              periodoInicio: hoy.toISOString().split('T')[0],
+              periodoFin:    fin.toISOString().split('T')[0],
+              items: [{ descripcion: 'Costo de instalación', cantidad: 1, precioUnitario: montoCostoInstalacion }],
+            });
+          } catch { /* no bloquea el flujo principal */ }
+        }
         toast('Servicio creado correctamente', { type: 'success' });
       }
       onSaved();
@@ -1803,12 +1839,13 @@ function ServicioPanel({
                     ))}
                   </select>
                 </SP_Field>
-                <SP_Field label="Descripción">
-                  <input
+                <SP_Field label="Descripción" hint="* Texto para facturación">
+                  <textarea
                     readOnly
-                    value={planSel?.nombre ?? (e?.descripcionServicio ?? '')}
+                    value={planSel?.descripcion ?? planSel?.nombre ?? (e?.descripcionServicio ?? '')}
                     placeholder="Selecciona un plan…"
-                    className={cn(sp_input(), 'opacity-60 cursor-default select-none')}
+                    rows={2}
+                    className={cn(sp_input(), 'resize-none opacity-60 cursor-default select-none')}
                   />
                 </SP_Field>
                 <SP_Field label="Costo (S/.)">
@@ -1823,6 +1860,25 @@ function ServicioPanel({
                   </div>
                   {!!planSel?.velocidadBajada && <p className="text-[11px] text-muted-foreground mt-1">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</p>}
                 </SP_Field>
+                {!editing && (
+                  <div className="flex items-center justify-between py-1">
+                    <span className="text-sm text-foreground">Añadir costo de instalación</span>
+                    <div className="flex items-center gap-3">
+                      <SP_Toggle checked={costoInstalacion} onChange={v => setCostoInstalacion(v)} />
+                      {costoInstalacion && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm text-muted-foreground">S/</span>
+                          <SP_DecimalInput
+                            className={sp_input()}
+                            placeholder="Monto instalación"
+                            value={montoCostoInstalacion}
+                            onChange={v => setMontoCostoInstalacion(v)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </SP_Section>
 
               {/* Datos de instalación */}
