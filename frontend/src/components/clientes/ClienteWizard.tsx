@@ -66,7 +66,6 @@ const step3Schema = z.object({
   mac:              z.string().optional(),
   userPppHs:        z.string().optional(),
   passwordPppHs:    z.string().optional(),
-  routes:           z.string().optional(),
   cajaNapId:        z.string().optional(),
   puertoNapId:      z.string().optional(),
   // Instalación
@@ -75,8 +74,6 @@ const step3Schema = z.object({
   fechaInstalacion: z.string().optional(),
   // Equipo receptor
   conectadoAId:     z.string().optional(),
-  ipAdministracion: z.string().optional(),
-  tipoAntena:       z.string().optional(),
 });
 
 type S1 = z.infer<typeof step1Schema>;
@@ -112,15 +109,6 @@ const MOCK_CAJAS_NAP = [
   { id: 'nap-2', nombre: 'NAP-02 Loreto' },
   { id: 'nap-3', nombre: 'NAP-03 Castilla' },
   { id: 'nap-4', nombre: 'NAP-04 Norte' },
-];
-
-const MOCK_TIPO_ANTENA = [
-  { value: 'otro',     label: 'Otro' },
-  { value: 'ubiquiti', label: 'Ubiquiti' },
-  { value: 'mikrotik', label: 'MikroTik' },
-  { value: 'tplink',   label: 'TP-Link' },
-  { value: 'cambium',  label: 'Cambium Networks' },
-  { value: 'mimosa',   label: 'Mimosa' },
 ];
 
 // ── Steps ─────────────────────────────────────────────────────
@@ -390,9 +378,6 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
             })(),
             macAddress:          data.mac                     || undefined,
             excluirFirewall:     data.excluirFirewall         ?? false,
-            routes:              data.routes                  || undefined,
-            ipAdministracion:    data.ipAdministracion        || undefined,
-            tipoAntena:          data.tipoAntena              || undefined,
             cajaNap:             data.cajaNapId               || undefined,
             puertoNap:           data.puertoNapId             || undefined,
             direccionInstalacion: data.direccion              || undefined,
@@ -961,7 +946,6 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
       passwordPppHs:    pppPass,
       direccion:        direccionDefault ?? '',
       fechaInstalacion: new Date().toISOString().split('T')[0],
-      tipoAntena:       'otro',
     },
   });
 
@@ -1243,15 +1227,6 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             </>
           )}
 
-          {/* Routes */}
-          <Field label="Routes" hint="* Dato Opcional">
-            <input
-              {...register('routes')}
-              placeholder="Ejm: 192.168.10.0/24"
-              className={INPUT_CLS}
-            />
-          </Field>
-
           {/* Caja Nap */}
           <Field label="Caja Nap">
             <select {...register('cajaNapId')} className={INPUT_CLS}>
@@ -1339,26 +1314,6 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               )}
             </Field>
 
-            {/* IP administración */}
-            <Field label="IP administración" hint="* IP antena del cliente">
-              <div className="relative">
-                <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input
-                  {...register('ipAdministracion')}
-                  placeholder="192.168.1.1"
-                  className={cn(INPUT_CLS, 'pl-9')}
-                />
-              </div>
-            </Field>
-
-            {/* Tipo antena */}
-            <Field label="Tipo antena">
-              <select {...register('tipoAntena')} className={INPUT_CLS}>
-                {MOCK_TIPO_ANTENA.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </Field>
           </Section>
         </div>
       </div>
