@@ -26,14 +26,12 @@ import { parseApiError, cn }                 from '@/lib/utils';
 
 // ── Schemas ───────────────────────────────────────────────────
 const step1Schema = z.object({
-  usuarioPortal:   z.string().optional(),
-  passwordPortal:  z.string().optional(),
-  tipoDocumento:   z.string().optional(),
-  numeroDocumento: z.string().min(6, 'Identificación requerida').max(13),
-  nombres:         z.string().min(2, 'Nombres requeridos'),
-  apellidoPaterno: z.string().optional(),
-  apellidoMaterno: z.string().optional(),
-  zonaId:          z.string().optional(),
+  usuarioPortal:    z.string().optional(),
+  passwordPortal:   z.string().optional(),
+  tipoDocumento:    z.string().optional(),
+  numeroDocumento:  z.string().min(6, 'Identificación requerida').max(13),
+  nombresCompletos: z.string().min(2, 'Nombres requeridos'),
+  zonaId:           z.string().optional(),
   direccion:       z.string().min(1, 'Dirección requerida'),
   ubicacionId:     z.string().optional(),
   departamento:    z.string().optional(),
@@ -84,6 +82,19 @@ const step3Schema = z.object({
 type S1 = z.infer<typeof step1Schema>;
 type S2 = { facturacion: FacturacionConfig; notificaciones: NotificacionesConfig };
 type S3 = z.infer<typeof step3Schema>;
+
+// Convención peruana: últimas 2 palabras = apellidos, el resto = nombres
+function parsearNombresCompletos(full: string) {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { nombres: parts[0] ?? full, apellidoPaterno: '', apellidoMaterno: undefined as string | undefined };
+  if (parts.length === 2) return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: undefined as string | undefined };
+  if (parts.length === 3) return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: parts[2] };
+  return {
+    nombres:         parts.slice(0, parts.length - 2).join(' '),
+    apellidoPaterno: parts[parts.length - 2],
+    apellidoMaterno: parts[parts.length - 1],
+  };
+}
 
 // ── Mock data ─────────────────────────────────────────────────
 const MOCK_UBICACIONES = [
@@ -355,13 +366,14 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
 
     let resultado: { cliente: any; contrato: any | null };
     try {
+      const { nombres, apellidoPaterno, apellidoMaterno } = parsearNombresCompletos(s1.nombresCompletos);
       resultado = await registrar({
         cliente: {
           tipoDocumento:   s1.tipoDocumento || 'dni',
           numeroDocumento: s1.numeroDocumento,
-          nombres:         s1.nombres,
-          apellidoPaterno: s1.apellidoPaterno || '',
-          apellidoMaterno: s1.apellidoMaterno || undefined,
+          nombres,
+          apellidoPaterno,
+          apellidoMaterno,
           telefono:        s1.telefono?.trim() || s1.whatsapp || undefined,
           whatsapp:        s1.whatsapp         || undefined,
           email:           s1.email            || undefined,
@@ -538,10 +550,8 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
     setReniecStatus('loading');
     try {
       const datos = await clientesApi.consultarReniec(doc);
-      setValue('nombres',         datos.nombres         || '', { shouldDirty: true });
-      setValue('apellidoPaterno', datos.apellidoPaterno || '', { shouldDirty: true });
-      setValue('apellidoMaterno', datos.apellidoMaterno || '', { shouldDirty: true });
       const nombreCompleto = [datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' ');
+      setValue('nombresCompletos', nombreCompleto, { shouldDirty: true });
       setReniecStatus('ok');
       setReniecMsg(nombreCompleto);
     } catch (err) {
@@ -609,26 +619,18 @@ function Step1Form({ initial, onNext }: { initial: S1 | null; onNext: (d: S1) =>
           )}
         </FormRow>
 
-        {/* Nombres */}
-        <FormRow label="Nombres" required hintColor="gray">
+        {/* Nombres Completos */}
+        <FormRow label="Nombres Completos" required hintColor="gray">
           <input
-            {...register('nombres')}
-            placeholder="Piero"
-            className={cn(INPUT_CLS, !!errors.nombres && INPUT_ERR)}
+            {...register('nombresCompletos')}
+            placeholder="Jean Piero Escobar Bautista"
+            className={cn(INPUT_CLS, !!errors.nombresCompletos && INPUT_ERR)}
           />
-          {errors.nombres && (
+          {errors.nombresCompletos && (
             <p className="text-[11px] text-destructive flex items-center gap-1 mt-1">
-              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.nombres.message}
+              <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors.nombresCompletos.message}
             </p>
           )}
-        </FormRow>
-
-        {/* Apellidos */}
-        <FormRow label="Apellido Paterno" hintColor="gray">
-          <input {...register('apellidoPaterno')} placeholder="Escobar" className={INPUT_CLS} />
-        </FormRow>
-        <FormRow label="Apellido Materno" hintColor="gray">
-          <input {...register('apellidoMaterno')} placeholder="Bautista" className={INPUT_CLS} />
         </FormRow>
 
         {/* Dirección principal */}
