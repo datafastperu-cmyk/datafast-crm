@@ -1927,7 +1927,7 @@ function ServicioPanel({
               Cerrar
             </button>
             <button
-              onClick={handleSubmit(onSubmit)}
+              onClick={handleSubmit(onSubmit, (errs) => toast(`Error de validación: ${Object.entries(errs).map(([k,v]) => `${k}: ${(v as any)?.message}`).join(', ')}`, { type: 'error' }))}
               disabled={isSubmitting}
               className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
             >
