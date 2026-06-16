@@ -444,6 +444,10 @@ export class MonitoreoService {
     }
 
     await this.dispoRepo.save(d);
+    // Forzar sondeo inmediato para reflejar cambios de credenciales sin esperar el cron
+    this.worker.sondearInmediato(d).catch((err) =>
+      this.logger.warn(`Sondeo inmediato tras update fallido para ${d.id}: ${err.message}`),
+    );
     // S1: no exponer contrasenaCifrada en la respuesta
     const { contrasenaCifrada: _pw, ...safe } = d;
     return StdResponse.ok(safe);
