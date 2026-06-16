@@ -1367,16 +1367,16 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
 }
 
 // ── ServicioPanel helpers (wizard style) ─────────────────────
-function SP_Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+function SP_Section({ title, icon: Icon, compact, children }: { title: string; icon: React.ElementType; compact?: boolean; children: React.ReactNode }) {
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden h-fit">
-      <div className="px-5 py-4 border-b border-border flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+      <div className={cn(compact ? 'px-4 py-2.5' : 'px-5 py-4', 'border-b border-border flex items-center gap-3')}>
+        <div className={cn(compact ? 'w-7 h-7' : 'w-8 h-8', 'rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0')}>
           <Icon className="w-4 h-4 text-primary" />
         </div>
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
-      <div className="p-5 space-y-4">{children}</div>
+      <div className={cn(compact ? 'p-3 space-y-3' : 'p-5 space-y-4')}>{children}</div>
     </div>
   );
 }
@@ -1672,42 +1672,6 @@ function ServicioPanel({
                   <SP_Toggle checked={excluirFirewall} onChange={(v) => setValue('excluirFirewall', v)} />
                 </div>
 
-                {/* Perfil Internet */}
-                <SP_Field label="Perfil Internet *" error={errors.planId?.message}>
-                  <select {...register('planId')} className={sp_input(!!errors.planId)}>
-                    <option value="">— Seleccionar plan —</option>
-                    {(planes as any[]).map((p: any) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </SP_Field>
-
-                {/* Descripción — solo lectura, viene del plan */}
-                <SP_Field label="Descripción">
-                  <input
-                    readOnly
-                    value={planSel?.nombre ?? (e?.descripcionServicio ?? '')}
-                    placeholder="Selecciona un plan…"
-                    className={cn(sp_input(), 'opacity-60 cursor-default select-none')}
-                  />
-                </SP_Field>
-
-                {/* Costo — solo lectura, viene del plan */}
-                <SP_Field label="Costo (S/.)">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">S/.</span>
-                    <input
-                      readOnly
-                      value={planSel ? Number(planSel.precio ?? 0).toFixed(2) : (e?.precioMensual ? Number(e.precioMensual).toFixed(2) : '')}
-                      placeholder="0.00"
-                      className={cn(sp_input(), 'pl-9 opacity-60 cursor-default select-none')}
-                    />
-                  </div>
-                  {planSel?.velocidadBajada && <p className="text-[11px] text-muted-foreground mt-1">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</p>}
-                </SP_Field>
-
                 {/* Tipo IPv4 */}
                 <SP_Field label="Tipo IPv4">
                   <select {...register('tipoIpv4')} className={sp_input()}>
@@ -1797,38 +1761,40 @@ function ServicioPanel({
                     </div>
                   </>
                 )}
-
-
               </SP_Section>
-            </div>
 
-            {/* ─────────── Columna derecha ─────────── */}
-            <div className="space-y-5">
-
-              {/* Datos de instalación */}
-              <SP_Section title="Datos de Instalación" icon={MapPin}>
-                <SP_Field label="Dirección">
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input {...register('direccionInstalacion')} placeholder="Los Olivos 4ta etapa, mz D lte 17" className={cn(sp_input(), 'pl-9')} />
-                  </div>
-                </SP_Field>
-                <SP_Field label="Coordenadas" hint="* Latitud,longitud">
-                  <div className="relative">
-                    <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input {...register('coordenadas')} placeholder="-5.1944,-80.6328" className={cn(sp_input(), 'pl-9')} />
-                  </div>
-                </SP_Field>
-                <SP_Field label="Fecha Instalación" error={errors.fechaInicio?.message}>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input type="date" {...register('fechaInicio')} className={cn(sp_input(!!errors.fechaInicio), 'pl-9')} />
-                  </div>
-                </SP_Field>
+              {/* Terminales FTTH */}
+              <SP_Section title="Terminales FTTH" icon={Cable} compact>
+                <div className="grid grid-cols-2 gap-3">
+                  <SP_Field label="Caja Nap">
+                    <select {...register('cajaNap')} className={sp_input()}>
+                      <option value="">Ninguno</option>
+                      {['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                      {cajaNap && !['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].includes(cajaNap) && (
+                        <option value={cajaNap}>{cajaNap}</option>
+                      )}
+                    </select>
+                  </SP_Field>
+                  <SP_Field label="Puerto Nap">
+                    {PUERTOS_NAP.length > 0 ? (
+                      <select {...register('puertoNap')} className={sp_input()}>
+                        <option value="">Ninguno</option>
+                        {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    ) : (
+                      <select {...register('puertoNap')} className={sp_input()}>
+                        <option value="">Ninguno</option>
+                        {Array.from({length:8},(_,i)=>`Puerto ${i+1}`).map(p=><option key={p} value={p}>{p}</option>)}
+                      </select>
+                    )}
+                  </SP_Field>
+                </div>
               </SP_Section>
 
               {/* Equipo Receptor */}
-              <SP_Section title="Equipo Receptor" icon={Radio}>
+              <SP_Section title="Equipo Receptor" icon={Radio} compact>
                 <SP_Field
                   label="Conectado A"
                   hint={!routerId ? '* Selecciona un router primero' : undefined}
@@ -1887,35 +1853,65 @@ function ServicioPanel({
                   </div>
                 </SP_Field>
               </SP_Section>
+            </div>
 
-              {/* Terminales FTTH */}
-              <SP_Section title="Terminales FTTH" icon={Cable}>
-                <div className="grid grid-cols-2 gap-3">
-                  <SP_Field label="Caja Nap">
-                    <select {...register('cajaNap')} className={sp_input()}>
-                      <option value="">Ninguno</option>
-                      {['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].map(n => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                      {cajaNap && !['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].includes(cajaNap) && (
-                        <option value={cajaNap}>{cajaNap}</option>
-                      )}
-                    </select>
-                  </SP_Field>
-                  <SP_Field label="Puerto Nap">
-                    {PUERTOS_NAP.length > 0 ? (
-                      <select {...register('puertoNap')} className={sp_input()}>
-                        <option value="">Ninguno</option>
-                        {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    ) : (
-                      <select {...register('puertoNap')} className={sp_input()}>
-                        <option value="">Ninguno</option>
-                        {Array.from({length:8},(_,i)=>`Puerto ${i+1}`).map(p=><option key={p} value={p}>{p}</option>)}
-                      </select>
-                    )}
-                  </SP_Field>
-                </div>
+            {/* ─────────── Columna derecha ─────────── */}
+            <div className="space-y-5">
+
+              {/* Plan de Internet */}
+              <SP_Section title="Plan de Internet" icon={Package}>
+                <SP_Field label="Perfil Internet *" error={errors.planId?.message}>
+                  <select {...register('planId')} className={sp_input(!!errors.planId)}>
+                    <option value="">— Seleccionar plan —</option>
+                    {(planes as any[]).map((p: any) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </SP_Field>
+                <SP_Field label="Descripción">
+                  <input
+                    readOnly
+                    value={planSel?.nombre ?? (e?.descripcionServicio ?? '')}
+                    placeholder="Selecciona un plan…"
+                    className={cn(sp_input(), 'opacity-60 cursor-default select-none')}
+                  />
+                </SP_Field>
+                <SP_Field label="Costo (S/.)">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">S/.</span>
+                    <input
+                      readOnly
+                      value={planSel ? Number(planSel.precio ?? 0).toFixed(2) : (e?.precioMensual ? Number(e.precioMensual).toFixed(2) : '')}
+                      placeholder="0.00"
+                      className={cn(sp_input(), 'pl-9 opacity-60 cursor-default select-none')}
+                    />
+                  </div>
+                  {planSel?.velocidadBajada && <p className="text-[11px] text-muted-foreground mt-1">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</p>}
+                </SP_Field>
+              </SP_Section>
+
+              {/* Datos de instalación */}
+              <SP_Section title="Datos de Instalación" icon={MapPin}>
+                <SP_Field label="Dirección">
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input {...register('direccionInstalacion')} placeholder="Los Olivos 4ta etapa, mz D lte 17" className={cn(sp_input(), 'pl-9')} />
+                  </div>
+                </SP_Field>
+                <SP_Field label="Coordenadas" hint="* Latitud,longitud">
+                  <div className="relative">
+                    <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input {...register('coordenadas')} placeholder="-5.1944,-80.6328" className={cn(sp_input(), 'pl-9')} />
+                  </div>
+                </SP_Field>
+                <SP_Field label="Fecha Instalación" error={errors.fechaInicio?.message}>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                    <input type="date" {...register('fechaInicio')} className={cn(sp_input(!!errors.fechaInicio), 'pl-9')} />
+                  </div>
+                </SP_Field>
               </SP_Section>
 
             </div>
