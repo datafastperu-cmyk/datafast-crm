@@ -13,6 +13,7 @@ deploy_app() {
     _install_olt_service
     _run_migrations
     _run_seed
+    _setup_whatsapp_web
     _setup_evolution_api
 }
 
@@ -284,6 +285,70 @@ _run_seed() {
     fi
 }
 
+# ── WhatsApp Web: Chrome + directorios ────────────────────────
+_setup_whatsapp_web() {
+    step "Configurando WhatsApp Web (Chrome + directorios)"
+
+    # Dependencias de sistema requeridas por Chrome headless
+    info "Instalando dependencias de sistema para Chrome headless..."
+    apt-get install -y -qq \
+        fonts-liberation libatk-bridge2.0-0 libatk1.0-0 libcairo2 \
+        libcups2 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 \
+        libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libx11-6 \
+        libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
+        libxkbcommon0 libxrandr2 xdg-utils \
+        >> "${LOG_FILE}" 2>&1
+
+    # Instalar Google Chrome Stable si no hay ningún Chrome/Chromium disponible
+    if ! command -v google-chrome-stable &>/dev/null && \
+       ! command -v google-chrome &>/dev/null && \
+       ! command -v chromium &>/dev/null && \
+       ! command -v chromium-browser &>/dev/null; then
+
+        info "Instalando Google Chrome Stable..."
+        local deb="/tmp/google-chrome-stable.deb"
+        if wget -qO "$deb" \
+            "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" \
+            >> "${LOG_FILE}" 2>&1; then
+            apt-get install -y -qq "$deb" >> "${LOG_FILE}" 2>&1 || \
+                apt-get install -y -f -qq  >> "${LOG_FILE}" 2>&1
+            rm -f "$deb"
+        else
+            warn "No se pudo descargar Chrome — instalando Chromium como alternativa..."
+            apt-get install -y -qq chromium-browser >> "${LOG_FILE}" 2>&1 || \
+                apt-get install -y -qq chromium       >> "${LOG_FILE}" 2>&1 || \
+                warn "Chromium tampoco disponible — WhatsApp Web no funcionará hasta instalar Chrome manualmente"
+        fi
+
+        if command -v google-chrome-stable &>/dev/null; then
+            ok "Google Chrome instalado: $(google-chrome-stable --version 2>/dev/null || echo 'versión desconocida')"
+        elif command -v chromium-browser &>/dev/null || command -v chromium &>/dev/null; then
+            ok "Chromium instalado como alternativa a Chrome"
+        fi
+    else
+        ok "Chrome/Chromium ya presente — se omite instalación"
+    fi
+
+    # Crear directorios de sesión y caché de WhatsApp Web
+    info "Creando directorios para sesión y media de WhatsApp Web..."
+    mkdir -p \
+        /opt/datafast/.wwebjs_auth \
+        /opt/datafast/.wwebjs_cache \
+        /opt/datafast/backend/public/crm_whatsapp
+    chown -R datafast:datafast \
+        /opt/datafast/.wwebjs_auth \
+        /opt/datafast/.wwebjs_cache \
+        /opt/datafast/backend/public
+    chmod 750 /opt/datafast/.wwebjs_auth /opt/datafast/.wwebjs_cache
+    chmod 755 /opt/datafast/backend/public/crm_whatsapp
+    ok "Directorios WhatsApp Web creados"
+
+    info "IMPORTANTE: al iniciar el backend por primera vez, ve a"
+    info "  /mensajeria/whatsapp y escanea el QR con tu celular para"
+    info "  vincular el número de WhatsApp. La sesión queda guardada"
+    info "  en /opt/datafast/.wwebjs_auth y no se repite salvo reset."
+}
+
 # ── Evolution API ──────────────────────────────────────────────
 _ensure_evolution_api_key() {
     if [[ -z "${EVOLUTION_API_KEY:-}" ]]; then
@@ -383,6 +448,11 @@ EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
 OLT_SERVICE_URL=http://127.0.0.1:8001
 
 LOG_LEVEL=warn
+
+# ── WhatsApp Web (whatsapp-web.js) ─────────────────────────────
+WA_SESSION_PATH=/opt/datafast/.wwebjs_auth
+WA_CACHE_PATH=/opt/datafast/.wwebjs_cache
+MEDIA_DIR=/opt/datafast/backend/public/crm_whatsapp
 ENVEOF
     chmod 600 "${INSTALL_DIR}/backend/.env.production"
     ok "Backend .env.production creado"
