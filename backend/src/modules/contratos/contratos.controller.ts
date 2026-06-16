@@ -1,12 +1,17 @@
 import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Req, ParseUUIDPipe, HttpCode, HttpStatus, SetMetadata } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { Request } from 'express';
+import * as net from 'net';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { ContratosService } from './contratos.service';
 import { IpPoolService } from './ip-pool.service';
 import { CreateContratoDto, UpdateContratoDto, FilterContratoDto, CambiarEstadoContratoDto, OtorgarProrrogaDto, CreateSegmentoDto } from './dto/contrato.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/roles.decorator';
 import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
+
+const execAsync = promisify(exec);
 
 @ApiTags('Contratos') @ApiBearerAuth('JWT') @Controller('contratos')
 export class ContratosController {
@@ -22,6 +27,35 @@ export class ContratosController {
   @ApiResponse({ status: 422, description: 'Pool IPv4 exhausto' })
   async create(@Body() dto: CreateContratoDto, @CurrentUser() user: JwtPayload, @Req() req: Request) {
     return StdResponse.ok(await this.svc.create(dto, user, req), 'Contrato creado correctamente');
+  }
+
+  @Post('ping-batch') @RequirePermission('contratos:view') @HttpCode(HttpStatus.OK)
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Verificar conectividad ICMP de una lista de IPs' })
+  async pingBatch(@Body() body: { ips: string[] }): Promise<StdResponse<Array<{ ip: string; online: boolean; latenciaMs: number | null }>>> {
+    const ips: string[] = (body.ips ?? []).filter(ip => net.isIPv4(ip) || net.isIPv6(ip)).slice(0, 50);
+
+    const resultados = await Promise.all(
+      ips.map(async ip => {
+        try {
+          const { stdout } = await execAsync(`ping -c 3 -W 2 -q -- ${ip}`, { timeout: 10_000 })
+            .catch((err: any) => ({ stdout: (err.stdout as string) ?? '' }));
+
+          const lossMatch = stdout.match(/(\d+)%\s+packet loss/);
+          const lossPct   = lossMatch ? parseInt(lossMatch[1], 10) : 100;
+
+          if (lossPct === 100) return { ip, online: false, latenciaMs: null };
+
+          const rttMatch  = stdout.match(/rtt .* = [\d.]+\/([\d.]+)\//);
+          const latenciaMs = rttMatch ? Math.round(parseFloat(rttMatch[1])) : null;
+          return { ip, online: true, latenciaMs };
+        } catch {
+          return { ip, online: false, latenciaMs: null };
+        }
+      }),
+    );
+
+    return StdResponse.ok(resultados);
   }
 
   @Get() @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)

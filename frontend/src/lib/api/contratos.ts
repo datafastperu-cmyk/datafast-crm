@@ -190,6 +190,11 @@ export const contratosApi = {
     return res.data.data;
   },
 
+  pingBatch: async (ips: string[]): Promise<Array<{ ip: string; online: boolean; latenciaMs: number | null }>> => {
+    const res = await api.post<ApiRespuesta<Array<{ ip: string; online: boolean; latenciaMs: number | null }>>>('/contratos/ping-batch', { ips });
+    return res.data.data;
+  },
+
   aprovisionarOnu: async (id: string, onuSn: string): Promise<{ ok: boolean; mensaje: string }> => {
     const res = await api.post<ApiRespuesta<{ ok: boolean; mensaje: string }>>(
       `/contratos/${id}/aprovisionar-onu`,

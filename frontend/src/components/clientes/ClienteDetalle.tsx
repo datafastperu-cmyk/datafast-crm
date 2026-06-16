@@ -16,7 +16,7 @@ import {
   LayoutGrid, RefreshCcw, Maximize2, Minus, Phone, Package,
   Network, Lock, Navigation, Server, MapPin, User, ChevronRight,
   MoreVertical, CheckCircle2, Clock, AlertTriangle, Zap,
-  Power, PauseCircle,
+  Power, PauseCircle, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1049,6 +1049,23 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
   const [confirmBaja,     setConfirmBaja]     = useState<Contrato | null>(null);
   const [onuContrato,     setOnuContrato]     = useState<Contrato | null>(null);
 
+  // IPs a monitorear: contratos activos/suspendidos con IP asignada
+  const ipsMonitoreo = contratos
+    .filter(c => ['activo', 'suspendido'].includes(c.estado) && c.ipAsignada)
+    .map(c => c.ipAsignada!);
+
+  const { data: pingData, isFetching: pingFetching, refetch: refetchPing } = useQuery({
+    queryKey: ['ping-batch', ipsMonitoreo],
+    queryFn:  () => contratosApi.pingBatch(ipsMonitoreo),
+    enabled:  ipsMonitoreo.length > 0,
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+  });
+
+  const pingMap = new Map<string, { online: boolean; latenciaMs: number | null }>(
+    (pingData ?? []).map(r => [r.ip, { online: r.online, latenciaMs: r.latenciaMs }]),
+  );
+
   const filtered = contratos.filter(c =>
     !q1 ||
     (c.planNombre ?? '').toLowerCase().includes(q1.toLowerCase()) ||
@@ -1112,7 +1129,19 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                 <SvcTh>IP</SvcTh>
                 <SvcTh>ROUTER</SvcTh>
                 <SvcTh>INSTALADO</SvcTh>
-                <SvcTh>ESTADO</SvcTh>
+                <SvcTh>
+                  <span className="flex items-center gap-1">
+                    ESTADO
+                    <button
+                      onClick={() => refetchPing()}
+                      disabled={pingFetching}
+                      title="Actualizar conectividad"
+                      className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${pingFetching ? 'animate-spin' : ''}`} />
+                    </button>
+                  </span>
+                </SvcTh>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
@@ -1145,7 +1174,30 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                     {c.fechaInicio ? formatDate(c.fechaInicio) : '—'}
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
-                    <ContratoEstadoBadge estado={c.estado} />
+                    {c.ipAsignada && ['activo', 'suspendido'].includes(c.estado) ? (
+                      pingFetching && !pingData ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
+                          <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-pulse" />
+                          Verificando...
+                        </span>
+                      ) : pingMap.has(c.ipAsignada) ? (
+                        pingMap.get(c.ipAsignada)!.online ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Online{pingMap.get(c.ipAsignada)!.latenciaMs !== null ? ` ${pingMap.get(c.ipAsignada)!.latenciaMs}ms` : ''}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                            Offline
+                          </span>
+                        )
+                      ) : (
+                        <ContratoEstadoBadge estado={c.estado} />
+                      )
+                    ) : (
+                      <ContratoEstadoBadge estado={c.estado} />
+                    )}
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-0.5">
