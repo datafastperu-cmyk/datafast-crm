@@ -186,7 +186,7 @@ export function ClientesContent() {
     },
     eliminar: {
       titulo: 'Eliminar abonado',
-      desc: 'Se eliminará al abonado con todos sus registros. Esta acción puede deshacerse desde la Papelera.',
+      desc: 'Se borrarán permanentemente todos los registros: facturas, pagos, tickets y contratos. Esta acción es irreversible.',
       boton: 'Eliminar',
       color: 'bg-destructive hover:bg-destructive/90',
     },
