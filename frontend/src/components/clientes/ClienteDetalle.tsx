@@ -140,6 +140,12 @@ export function ClienteDetalle({ id }: { id: string }) {
     enabled:  tab === 'resumen',
   });
 
+  const { data: facturasResumen = [] } = useQuery({
+    queryKey: ['facturas-cliente-resumen', id],
+    queryFn:  () => facturacionApi.getByCliente(id),
+    enabled:  tab === 'resumen',
+  });
+
   const { data: zonas = [] } = useQuery({
     queryKey: ['zonas'],
     queryFn:  zonasApi.list,
@@ -292,7 +298,10 @@ export function ClienteDetalle({ id }: { id: string }) {
     return 'WhatsApp + SMS';
   })();
 
-  const deuda        = formatPEN((contratos as any[]).reduce((sum, c) => sum + (c.deudaTotal ?? 0), 0));
+  const PENDIENTE_ESTADOS = new Set(['emitida', 'vencida', 'en_cobranza', 'pagada_parcial', 'borrador']);
+  const deuda        = formatPEN((facturasResumen as any[])
+    .filter(f => PENDIENTE_ESTADOS.has(f.estado))
+    .reduce((s, f) => s + (+(f.saldo ?? 0)), 0));
   const routerNombre = (contratos as any[]).map((c) => c.nodo ?? c.router ?? '').filter(Boolean).join(', ') || '—';
 
   return (
