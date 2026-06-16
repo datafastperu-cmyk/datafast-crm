@@ -939,6 +939,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     resolver:      zodResolver(step3Schema),
     defaultValues: initial ?? {
       excluirFirewall:  false,
+      tipoControl:      'pppoe_addresslist',
       tipoIpv4:         'dinamica',
       cajaNapId:        '',
       puertoNapId:      '',
