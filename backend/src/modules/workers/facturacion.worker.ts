@@ -225,10 +225,17 @@ export class FacturacionWorker {
       ORDER BY co.dia_facturacion, cl.nombre_completo
     `, [empresaId, diaFacturacion ?? null]);
 
+    // Agrupar contratos por cliente — una sola factura por cliente con todos sus servicios
+    const porCliente = new Map<string, typeof contratos>();
+    for (const c of contratos) {
+      if (!porCliente.has(c.cliente_id)) porCliente.set(c.cliente_id, []);
+      porCliente.get(c.cliente_id)!.push(c);
+    }
+
     const resultado: ResultadoGeneracion = {
       empresaId,
       mes, anio,
-      total:      contratos.length,
+      total:      porCliente.size,
       exitosas:   0,
       omitidas:   0,
       errores:    0,
@@ -238,84 +245,101 @@ export class FacturacionWorker {
 
     await job.progress(10);
 
-    const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
-    const periodoFin    = this.ultimoDiaMes(anio, mes);
-    const igvRate       = parseFloat(empresa.igv_rate || '0.18');
-    const totalContratos = contratos.length;
+    const periodoInicio  = `${anio}-${String(mes).padStart(2, '0')}-01`;
+    const periodoFin     = this.ultimoDiaMes(anio, mes);
+    const igvRate        = parseFloat(empresa.igv_rate || '0.18');
+    const totalClientes  = porCliente.size;
+    let   idx            = 0;
 
-    // ── Procesar cada contrato ──────────────────────────────
-    for (let i = 0; i < contratos.length; i++) {
-      const contrato = contratos[i];
-
+    // ── Procesar una factura por cliente ────────────────────
+    for (const [clienteId, grupo] of porCliente) {
       try {
-        // Actualizar progreso del job
-        await job.progress(10 + Math.floor((i / totalContratos) * 80));
+        await job.progress(10 + Math.floor((idx++ / totalClientes) * 80));
 
-        // ── Verificar si ya existe factura para este periodo ─
+        // Idempotencia: ya existe factura de este cliente para este periodo
         if (!forzar) {
           const [existente] = await this.ds.query(`
             SELECT id FROM facturas
-            WHERE contrato_id = $1
+            WHERE cliente_id    = $1
               AND periodo_inicio = $2
               AND periodo_fin    = $3
-              AND estado != 'anulada'
-              AND deleted_at IS NULL
-          `, [contrato.contrato_id, periodoInicio, periodoFin]);
+              AND estado        != 'anulada'
+              AND deleted_at    IS NULL
+            LIMIT 1
+          `, [clienteId, periodoInicio, periodoFin]);
 
           if (existente) {
             resultado.omitidas++;
-            resultado.detalles.push({
-              contratoId: contrato.contrato_id,
+            grupo.forEach(c => resultado.detalles.push({
+              contratoId: c.contrato_id,
               resultado:  `Omitido — factura ${existente.id} ya existe para ${mes}/${anio}`,
-            });
+            }));
             continue;
           }
         }
 
-        // ── Calcular montos con prorrateo si aplica ──────────
-        let precioBase = parseFloat(contrato.precio || '0');
-        let descripcionExtra = '';
+        // ── Calcular monto por cada contrato del cliente ────
+        const primer    = grupo[0];
+        const serie     = empresa.serie_boleta || 'B001';
+        const aplicaIgv = primer.aplica_igv === true || primer.aplica_igv === 'true';
+        const items: Array<{ descripcion: string; cantidad: number; precioUnitario: number; subtotal: number }> = [];
+        let   totalFactura  = 0;
+        let   totalSubtotal = 0;
+        let   totalIgv      = 0;
+        const montoPorContrato: Array<{ id: string; monto: number }> = [];
 
-        // Prorrateo: si el contrato fue instalado en este mes y no es día 1
-        if (contrato.fecha_instalacion) {
-          const instFecha = new Date(contrato.fecha_instalacion);
-          if (instFecha.getFullYear() === anio && instFecha.getMonth() + 1 === mes) {
-            const diaInst    = instFecha.getDate();
-            const diasMes    = new Date(anio, mes, 0).getDate();
-            const diasFact   = diasMes - diaInst + 1;
-            if (diaInst > 1) {
-              precioBase = Math.round((precioBase / diasMes * diasFact) * 100) / 100;
-              descripcionExtra = ` (prorrateo ${diasFact}/${diasMes} días)`;
-              this.logger.debug(
-                `[PRORROGA] Contrato ${contrato.contrato_id}: día inst=${diaInst}, ` +
-                `días=${diasFact}/${diasMes}, precio ajustado=S/${precioBase}`,
-              );
+        for (const contrato of grupo) {
+          let precioBase = parseFloat(contrato.precio || '0');
+          let descripcionExtra = '';
+
+          if (contrato.fecha_instalacion) {
+            const instFecha = new Date(contrato.fecha_instalacion);
+            if (instFecha.getFullYear() === anio && instFecha.getMonth() + 1 === mes) {
+              const diaInst  = instFecha.getDate();
+              const diasMes  = new Date(anio, mes, 0).getDate();
+              const diasFact = diasMes - diaInst + 1;
+              if (diaInst > 1) {
+                precioBase = Math.round((precioBase / diasMes * diasFact) * 100) / 100;
+                descripcionExtra = ` (prorrateo ${diasFact}/${diasMes} días)`;
+              }
             }
           }
+
+          const sub  = aplicaIgv ? Math.round((precioBase / (1 + igvRate)) * 100) / 100 : precioBase;
+          const igv  = aplicaIgv ? Math.round((precioBase - sub) * 100) / 100 : 0;
+          const tot  = Math.round(precioBase * 100) / 100;
+
+          items.push({
+            descripcion:    `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}${descripcionExtra}`,
+            cantidad:       1,
+            precioUnitario: sub,
+            subtotal:       sub,
+          });
+
+          totalSubtotal += sub;
+          totalIgv      += igv;
+          totalFactura  += tot;
+          montoPorContrato.push({ id: contrato.contrato_id, monto: tot });
         }
 
-        const aplicaIgv  = contrato.aplica_igv === true || contrato.aplica_igv === 'true';
-        const subtotal   = aplicaIgv
-          ? Math.round((precioBase / (1 + igvRate)) * 100) / 100
-          : precioBase;
-        const igv        = aplicaIgv ? Math.round((precioBase - subtotal) * 100) / 100 : 0;
-        const total      = Math.round(precioBase * 100) / 100;
+        totalSubtotal = Math.round(totalSubtotal * 100) / 100;
+        totalIgv      = Math.round(totalIgv      * 100) / 100;
+        totalFactura  = Math.round(totalFactura   * 100) / 100;
 
-        // ── Obtener correlativo ─────────────────────────────
-        const serie = empresa.serie_boleta || 'B001';
+        // ── Correlativo ─────────────────────────────────────
         const [{ siguiente }] = await this.ds.query(`
           SELECT COALESCE(MAX(correlativo), 0) + 1 AS siguiente
-          FROM facturas
-          WHERE empresa_id = $1 AND serie = $2 AND deleted_at IS NULL
+          FROM facturas WHERE empresa_id = $1 AND serie = $2 AND deleted_at IS NULL
         `, [empresaId, serie]);
-
         const correlativo = parseInt(siguiente, 10);
 
-        // Calcular fecha de vencimiento
-        const diaVenc = Math.min((contrato.dia_facturacion || 1) + 5, 28);
+        const diaVenc        = Math.min((primer.dia_facturacion || 1) + 5, 28);
         const fechaVencimiento = `${anio}-${String(mes).padStart(2, '0')}-${String(diaVenc).padStart(2, '0')}`;
+        const descripcion    = grupo.length === 1
+          ? `${primer.plan_nombre} — ${this.mesNombre(mes)} ${anio}`
+          : `Servicios contratados — ${this.mesNombre(mes)} ${anio}`;
 
-        // ── Insertar factura ────────────────────────────────
+        // ── Insertar factura unificada (contrato_id = NULL) ─
         const [factura] = await this.ds.query(`
           INSERT INTO facturas (
             empresa_id, cliente_id, contrato_id,
@@ -325,68 +349,63 @@ export class FacturacionWorker {
             monto_pagado, estado, fecha_emision, fecha_vencimiento,
             moneda, generada_automaticamente, items, created_at
           ) VALUES (
-            $1, $2, $3,
-            'boleta', $4, $5,
-            $6, $7,
-            $8, $9, 0, $10, $11,
-            0, 'emitida', CURRENT_DATE, $12,
-            'PEN', true, $13, NOW()
+            $1, $2, NULL,
+            'boleta', $3, $4,
+            $5, $6,
+            $7, $8, 0, $9, $10,
+            0, 'emitida', CURRENT_DATE, $11,
+            'PEN', true, $12, NOW()
           )
           RETURNING id, numero_completo
         `, [
-          empresaId, contrato.cliente_id, contrato.contrato_id,
+          empresaId, clienteId,
           serie, correlativo,
           periodoInicio, periodoFin,
-          `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}${descripcionExtra}`,
-          subtotal, igv, total,
+          descripcion, totalSubtotal, totalIgv, totalFactura,
           fechaVencimiento,
-          JSON.stringify([{
-            descripcion:    `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}${descripcionExtra}`,
-            cantidad:       1,
-            precioUnitario: subtotal,
-            subtotal,
-          }]),
+          JSON.stringify(items),
         ]);
 
-        // Actualizar deuda del contrato
-        await this.ds.query(`
-          UPDATE contratos SET
-            deuda_total = COALESCE(deuda_total, 0) + $1,
-            meses_deuda = COALESCE(meses_deuda, 0) + 1
-          WHERE id = $2
-        `, [total, contrato.contrato_id]);
+        // ── Actualizar deuda en cada contrato individualmente ─
+        for (const { id, monto } of montoPorContrato) {
+          await this.ds.query(`
+            UPDATE contratos SET
+              deuda_total = COALESCE(deuda_total, 0) + $1,
+              meses_deuda = COALESCE(meses_deuda, 0) + 1
+            WHERE id = $2
+          `, [monto, id]);
+        }
 
         resultado.exitosas++;
-        resultado.montoTotal += total;
-        resultado.detalles.push({
-          contratoId: contrato.contrato_id,
-          resultado:  `${serie}-${String(correlativo).padStart(8, '0')} | S/ ${total.toFixed(2)}`,
-        });
+        resultado.montoTotal += totalFactura;
+        grupo.forEach(c => resultado.detalles.push({
+          contratoId: c.contrato_id,
+          resultado:  `${serie}-${String(correlativo).padStart(8, '0')} | S/ ${totalFactura.toFixed(2)}`,
+        }));
 
-        // ── Notificar al cliente por Event (desacoplado) ────
-        const tel = contrato.whatsapp || contrato.telefono;
+        const tel = primer.whatsapp || primer.telefono;
         if (tel) {
           this.events.emit('notification.factura.emitida', {
             telefono:        tel,
-            clienteNombre:   contrato.cliente_nombre,
+            clienteNombre:   primer.cliente_nombre,
             numeroFactura:   `${serie}-${String(correlativo).padStart(8, '0')}`,
-            montoTotal:      `S/ ${total.toFixed(2)}`,
+            montoTotal:      `S/ ${totalFactura.toFixed(2)}`,
             fechaVencimiento,
             empresaId,
-            contratoId:      contrato.contrato_id,
-            clienteId:       contrato.cliente_id,
+            contratoId:      null,
+            clienteId,
           });
         }
 
       } catch (err) {
         resultado.errores++;
-        resultado.detalles.push({
-          contratoId: contrato.contrato_id,
+        grupo.forEach(c => resultado.detalles.push({
+          contratoId: c.contrato_id,
           resultado:  'error',
           error:      err.message,
-        });
+        }));
         this.logger.error(
-          `Error generando factura contrato ${contrato.numero_contrato}: ${err.message}`,
+          `Error generando factura cliente ${clienteId}: ${err.message}`,
         );
       }
     }

@@ -739,24 +739,32 @@ export class CobranzaWorker {
       facturaId, montoPago, empresaId, fechaPago,
     );
 
-    // ── 2. Recalcular deuda total del contrato ─────────────
+    // ── 2. Recalcular deuda del cliente (facturas por clienteId) ─
     await job.progress(50);
+
+    // Obtener clienteId desde la factura (facturas unificadas tienen contrato_id = NULL)
+    const [facturaInfo] = await this.ds.query(
+      `SELECT cliente_id FROM facturas WHERE id = $1`,
+      [facturaId],
+    );
+    const clienteId = facturaInfo?.cliente_id ?? contratoId; // fallback a contratoId si no hay factura
+
     const [deudaRow] = await this.ds.query(`
       SELECT
         COALESCE(SUM(saldo), 0)::DECIMAL AS deuda,
         COUNT(*) FILTER (WHERE estado IN ('emitida','pagada_parcial','vencida','en_cobranza'))::INT AS meses
       FROM facturas
-      WHERE contrato_id = $1 AND estado != 'anulada' AND deleted_at IS NULL
-    `, [contratoId]);
+      WHERE cliente_id = $1 AND estado != 'anulada' AND deleted_at IS NULL
+    `, [clienteId]);
 
     const nuevaDeuda  = parseFloat(deudaRow?.deuda || '0');
     const nuevosMeses = parseInt(deudaRow?.meses || '0', 10);
 
-    // Actualizar deuda en el contrato
+    // Actualizar deuda en todos los contratos activos del cliente
     await this.ds.query(`
       UPDATE contratos SET deuda_total = $1, meses_deuda = $2, fecha_ultimo_pago = $3
-      WHERE id = $4
-    `, [nuevaDeuda, nuevosMeses, fechaPago, contratoId]);
+      WHERE cliente_id = $4 AND estado != 'baja_definitiva' AND deleted_at IS NULL
+    `, [nuevaDeuda, nuevosMeses, fechaPago, clienteId]);
 
     await job.progress(75);
 

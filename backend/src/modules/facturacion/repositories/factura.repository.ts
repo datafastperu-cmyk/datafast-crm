@@ -210,6 +210,22 @@ export class FacturaRepository {
     return count > 0;
   }
 
+  async existeFacturaClientePeriodo(
+    clienteId: string,
+    periodoInicio: string,
+    periodoFin: string,
+  ): Promise<boolean> {
+    const count = await this.repo
+      .createQueryBuilder('f')
+      .where('f.cliente_id = :clienteId', { clienteId })
+      .andWhere('f.periodo_inicio = :pi', { pi: periodoInicio })
+      .andWhere('f.periodo_fin = :pf', { pf: periodoFin })
+      .andWhere("f.estado != 'anulada'")
+      .andWhere('f.deleted_at IS NULL')
+      .getCount();
+    return count > 0;
+  }
+
   // ── Contratos que requieren factura este mes ───────────────
   async findContratosParaFacturar(
     empresaId: string,

@@ -131,70 +131,91 @@ export class FacturacionService {
       return { total: 0, exitosas: 0, omitidas: 0, errores: 0, detalles: [] };
     }
 
+    // Agrupar por cliente — una sola factura con todos sus servicios
+    const porCliente = new Map<string, typeof contratos>();
+    for (const c of contratos) {
+      if (!porCliente.has(c.cliente_id)) porCliente.set(c.cliente_id, []);
+      porCliente.get(c.cliente_id)!.push(c);
+    }
+
     const resultado: ResultadoGeneracion = {
-      total:    contratos.length,
+      total:    porCliente.size,
       exitosas: 0, omitidas: 0, errores: 0,
       detalles: [],
     };
 
     const tipoComprobante = dto.tipoComprobante || TipoComprobante.BOLETA;
-    const igvRate  = parseFloat(contratos[0]?.igv_rate || '0.18');
+    const igvRate    = parseFloat(contratos[0]?.igv_rate || '0.18');
     const diasGracia = parseInt(contratos[0]?.dias_gracia || '5', 10);
+    const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
+    const periodoFin    = this.ultimoDiaMes(anio, mes);
 
-    for (const contrato of contratos) {
+    for (const [, grupo] of porCliente) {
+      const primer = grupo[0];
       try {
-        // Calcular periodo del mes a facturar
-        const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
-        const periodoFin    = this.ultimoDiaMes(anio, mes);
-
-        // Verificar si ya existe factura para este periodo
-        const yaFacturado = await this.facturaRepo.existeFacturaPeriodo(
-          contrato.contrato_id, periodoInicio, periodoFin,
+        const yaFacturado = await this.facturaRepo.existeFacturaClientePeriodo(
+          primer.cliente_id, periodoInicio, periodoFin,
         );
 
         if (yaFacturado) {
           resultado.omitidas++;
-          resultado.detalles.push({
-            contratoId:     contrato.contrato_id,
-            numeroContrato: contrato.numero_contrato,
-            resultado:      'omitida — ya facturado este periodo',
-          });
+          grupo.forEach(c => resultado.detalles.push({
+            contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
+            resultado:  'omitida — ya facturado este periodo',
+          }));
           continue;
         }
 
-        // Calcular montos
-        const precioBase = parseFloat(contrato.precio || '0');
-        const aplicaIgv  = contrato.aplica_igv === true || contrato.aplica_igv === 'true';
+        // Calcular monto por contrato y construir items
+        const aplicaIgv = primer.aplica_igv === true || primer.aplica_igv === 'true';
+        let totalSubtotal = 0, totalIgv = 0, totalTotal = 0;
+        const items: ItemFactura[] = [];
 
-        const { subtotal, descuento, igv, total } = this.calcularMontosDesdeBase(
-          precioBase, 0, aplicaIgv, igvRate,
-        );
+        for (const contrato of grupo) {
+          const precioBase = parseFloat(contrato.precio || '0');
+          const { subtotal: sub, igv: igvItem, total: tot } = this.calcularMontosDesdeBase(
+            precioBase, 0, aplicaIgv, igvRate,
+          );
+          items.push({
+            descripcion:    `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
+            cantidad:       1,
+            precioUnitario: sub,
+            descuento:      0,
+            subtotal:       sub,
+          });
+          totalSubtotal += sub;
+          totalIgv      += igvItem;
+          totalTotal    += tot;
+        }
 
-        // Obtener serie y correlativo
-        const { serie, correlativo } = await this.obtenerSerieCorrelativo(
-          user.empresaId, tipoComprobante,
-        );
+        totalSubtotal = Math.round(totalSubtotal * 100) / 100;
+        totalIgv      = Math.round(totalIgv      * 100) / 100;
+        totalTotal    = Math.round(totalTotal     * 100) / 100;
 
-        // Fecha de vencimiento
-        const vencimientoDate = new Date(anio, mes - 1, parseInt(contrato.dia_facturacion || '1', 10) + diasGracia);
+        const { serie, correlativo } = await this.obtenerSerieCorrelativo(user.empresaId, tipoComprobante);
+
+        const vencimientoDate  = new Date(anio, mes - 1, parseInt(primer.dia_facturacion || '1', 10) + diasGracia);
         const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
+        const descripcion      = grupo.length === 1
+          ? `Servicio de internet ${primer.plan_nombre} — ${this.mesNombre(mes)} ${anio}`
+          : `Servicios contratados — ${this.mesNombre(mes)} ${anio}`;
 
         const factura = this.facturaRepo.create({
           empresaId:               user.empresaId,
-          clienteId:               contrato.cliente_id,
-          contratoId:              contrato.contrato_id,
+          clienteId:               primer.cliente_id,
+          contratoId:              null,
           tipoComprobante,
           serie,
           correlativo,
           periodoInicio,
           periodoFin,
-          descripcion:             `Servicio de internet ${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
-          subtotal,
-          descuento: 0,
-          igv,
-          total,
+          descripcion,
+          subtotal:                totalSubtotal,
+          descuento:               0,
+          igv:                     totalIgv,
+          total:                   totalTotal,
           montoPagado:             0,
-          items:                   this.buildItemsDesdeContrato(contrato, mes, anio),
+          items,
           estado:                  EstadoFactura.EMITIDA,
           fechaEmision:            new Date().toISOString().split('T')[0],
           fechaVencimiento,
@@ -205,38 +226,32 @@ export class FacturacionService {
 
         const saved = await this.facturaRepo.save(factura);
 
-        // PDF asíncrono
         this.generarPdfAsync(saved, user.empresaId, {
-          razonSocial:     contrato.empresa_nombre,
-          ruc:             contrato.empresa_ruc,
-          direccionFiscal: contrato.empresa_direccion,
+          razonSocial:     primer.empresa_nombre,
+          ruc:             primer.empresa_ruc,
+          direccionFiscal: primer.empresa_direccion,
         }, {
-          nombreCompleto:  contrato.cliente_nombre,
-          tipoDocumento:   contrato.tipo_documento,
-          numeroDocumento: contrato.cliente_documento,
-          direccion:       contrato.cliente_direccion,
-          email:           contrato.cliente_email,
-          telefono:        contrato.cliente_telefono,
+          nombreCompleto:  primer.cliente_nombre,
+          tipoDocumento:   primer.tipo_documento,
+          numeroDocumento: primer.cliente_documento,
+          direccion:       primer.cliente_direccion,
+          email:           primer.cliente_email,
+          telefono:        primer.cliente_telefono,
         });
 
         resultado.exitosas++;
-        resultado.detalles.push({
-          contratoId:     contrato.contrato_id,
-          numeroContrato: contrato.numero_contrato,
-          resultado:      `generada: ${serie}-${correlativo} | total: S/ ${total.toFixed(2)}`,
-        });
+        grupo.forEach(c => resultado.detalles.push({
+          contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
+          resultado:  `generada: ${serie}-${correlativo} | total: S/ ${totalTotal.toFixed(2)}`,
+        }));
 
       } catch (err) {
         resultado.errores++;
-        resultado.detalles.push({
-          contratoId:     contrato.contrato_id,
-          numeroContrato: contrato.numero_contrato,
-          resultado:      'error',
-          error:          err.message,
-        });
-        this.logger.error(
-          `Error generando factura para contrato ${contrato.numero_contrato}: ${err.message}`,
-        );
+        grupo.forEach(c => resultado.detalles.push({
+          contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
+          resultado: 'error', error: err.message,
+        }));
+        this.logger.error(`Error generando factura cliente ${primer.cliente_id}: ${err.message}`);
       }
     }
 
@@ -271,43 +286,67 @@ export class FacturacionService {
       return { total: 0, exitosas: 0, omitidas: 0, errores: 0, detalles: [] };
     }
 
+    // Agrupar por cliente
+    const porCliente = new Map<string, typeof contratos>();
+    for (const c of contratos) {
+      if (!porCliente.has(c.cliente_id)) porCliente.set(c.cliente_id, []);
+      porCliente.get(c.cliente_id)!.push(c);
+    }
+
     const resultado: ResultadoGeneracion = {
-      total: contratos.length, exitosas: 0, omitidas: 0, errores: 0, detalles: [],
+      total: porCliente.size, exitosas: 0, omitidas: 0, errores: 0, detalles: [],
     };
     const igvRate    = parseFloat(contratos[0]?.igv_rate || '0.18');
     const diasGracia = parseInt(contratos[0]?.dias_gracia || '5', 10);
+    const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
+    const periodoFin    = this.ultimoDiaMes(anio, mes);
 
-    for (const contrato of contratos) {
+    for (const [, grupo] of porCliente) {
+      const primer = grupo[0];
       try {
-        const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
-        const periodoFin    = this.ultimoDiaMes(anio, mes);
-
-        if (await this.facturaRepo.existeFacturaPeriodo(contrato.contrato_id, periodoInicio, periodoFin)) {
+        if (await this.facturaRepo.existeFacturaClientePeriodo(primer.cliente_id, periodoInicio, periodoFin)) {
           resultado.omitidas++;
-          resultado.detalles.push({
-            contratoId: contrato.contrato_id, numeroContrato: contrato.numero_contrato,
+          grupo.forEach(c => resultado.detalles.push({
+            contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
             resultado: 'omitida — ya facturado',
-          });
+          }));
           continue;
         }
 
-        const precioBase = parseFloat(contrato.precio || '0');
-        const aplicaIgv  = contrato.aplica_igv === true || contrato.aplica_igv === 'true';
-        const { subtotal, igv, total } = this.calcularMontosDesdeBase(precioBase, 0, aplicaIgv, igvRate);
-        const { serie, correlativo }   = await this.obtenerSerieCorrelativo(empresaId, TipoComprobante.BOLETA);
+        const aplicaIgv = primer.aplica_igv === true || primer.aplica_igv === 'true';
+        let totalSubtotal = 0, totalIgv = 0, totalTotal = 0;
+        const items: ItemFactura[] = [];
 
-        const vencimientoDate = new Date(anio, mes - 1, dia + diasGracia);
+        for (const contrato of grupo) {
+          const precioBase = parseFloat(contrato.precio || '0');
+          const { subtotal: sub, igv: igvItem, total: tot } = this.calcularMontosDesdeBase(precioBase, 0, aplicaIgv, igvRate);
+          items.push({
+            descripcion: `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
+            cantidad: 1, precioUnitario: sub, descuento: 0, subtotal: sub,
+          });
+          totalSubtotal += sub; totalIgv += igvItem; totalTotal += tot;
+        }
+
+        totalSubtotal = Math.round(totalSubtotal * 100) / 100;
+        totalIgv      = Math.round(totalIgv      * 100) / 100;
+        totalTotal    = Math.round(totalTotal     * 100) / 100;
+
+        const { serie, correlativo } = await this.obtenerSerieCorrelativo(empresaId, TipoComprobante.BOLETA);
+        const vencimientoDate  = new Date(anio, mes - 1, dia + diasGracia);
         const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
+        const descripcion      = grupo.length === 1
+          ? `Servicio de internet ${primer.plan_nombre} — ${this.mesNombre(mes)} ${anio}`
+          : `Servicios contratados — ${this.mesNombre(mes)} ${anio}`;
 
         const factura = this.facturaRepo.create({
           empresaId,
-          clienteId:               contrato.cliente_id,
-          contratoId:              contrato.contrato_id,
+          clienteId:               primer.cliente_id,
+          contratoId:              null,
           tipoComprobante:         TipoComprobante.BOLETA,
           serie, correlativo, periodoInicio, periodoFin,
-          descripcion:             `Servicio de internet ${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
-          subtotal, descuento: 0, igv, total, montoPagado: 0,
-          items:                   this.buildItemsDesdeContrato(contrato, mes, anio),
+          descripcion,
+          subtotal: totalSubtotal, descuento: 0, igv: totalIgv, total: totalTotal, montoPagado: 0,
+          items,
           estado:                  EstadoFactura.EMITIDA,
           fechaEmision:            new Date().toISOString().split('T')[0],
           fechaVencimiento, moneda: 'PEN',
@@ -317,30 +356,30 @@ export class FacturacionService {
         const saved = await this.facturaRepo.save(factura);
 
         this.generarPdfAsync(saved, empresaId, {
-          razonSocial:     contrato.empresa_nombre,
-          ruc:             contrato.empresa_ruc,
-          direccionFiscal: contrato.empresa_direccion,
+          razonSocial:     primer.empresa_nombre,
+          ruc:             primer.empresa_ruc,
+          direccionFiscal: primer.empresa_direccion,
         }, {
-          nombreCompleto:  contrato.cliente_nombre,
-          tipoDocumento:   contrato.tipo_documento,
-          numeroDocumento: contrato.cliente_documento,
-          direccion:       contrato.cliente_direccion,
-          email:           contrato.cliente_email,
-          telefono:        contrato.cliente_telefono,
+          nombreCompleto:  primer.cliente_nombre,
+          tipoDocumento:   primer.tipo_documento,
+          numeroDocumento: primer.cliente_documento,
+          direccion:       primer.cliente_direccion,
+          email:           primer.cliente_email,
+          telefono:        primer.cliente_telefono,
         });
 
         resultado.exitosas++;
-        resultado.detalles.push({
-          contratoId: contrato.contrato_id, numeroContrato: contrato.numero_contrato,
-          resultado: `generada: ${serie}-${correlativo} | S/ ${total.toFixed(2)}`,
-        });
+        grupo.forEach(c => resultado.detalles.push({
+          contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
+          resultado: `generada: ${serie}-${correlativo} | S/ ${totalTotal.toFixed(2)}`,
+        }));
       } catch (err) {
         resultado.errores++;
-        resultado.detalles.push({
-          contratoId: contrato.contrato_id, numeroContrato: contrato.numero_contrato,
+        grupo.forEach(c => resultado.detalles.push({
+          contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
           resultado: 'error', error: err.message,
-        });
-        this.logger.error(`[AUTO] Error contrato ${contrato.numero_contrato}: ${err.message}`);
+        }));
+        this.logger.error(`[AUTO] Error cliente ${primer.cliente_id}: ${err.message}`);
       }
     }
 

@@ -60,12 +60,14 @@ export class ContratosService {
     if (dto.planId) {
       plan = await this.planesSvc.findOne(dto.planId, user.empresaId);
       if (!plan.activo) throw new BadRequestException(`Plan "${plan.nombre}" inactivo`);
-      const contratosCliente = await this.contratoRepo.findByClienteId(dto.clienteId, user.empresaId);
-      const duplicate = contratosCliente.find(c =>
-        c.planId === dto.planId &&
-        [EstadoContrato.ACTIVO, EstadoContrato.PENDIENTE_ACTIVACION].includes(c.estado),
+    }
+
+    if (dto.macAddress?.trim()) {
+      const [macExistente] = await this.dataSource.query<any[]>(
+        `SELECT numero_contrato FROM contratos WHERE empresa_id = $1 AND mac_address = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL LIMIT 1`,
+        [user.empresaId, dto.macAddress.trim()],
       );
-      if (duplicate) throw new ConflictException(`Cliente ya tiene contrato activo con plan "${plan.nombre}" (${duplicate.numeroContrato})`);
+      if (macExistente) throw new ConflictException(`La MAC ${dto.macAddress} ya está registrada en el contrato ${macExistente.numero_contrato}`);
     }
 
     if (dto.routerId) {
@@ -100,7 +102,23 @@ export class ContratosService {
     }
 
     const numeroContrato = await this.contratoRepo.generarNumeroContrato(user.empresaId);
-    const usuarioPppoe   = dto.usuarioPppoe || `cli_${dto.clienteId.replace(/-/g,'').substring(0,8)}`;
+
+    // Generar usuario PPPoE único: sufijo _N si el cliente ya tiene contratos activos
+    const [{ total: totalContratos }] = await this.dataSource.query<any[]>(
+      `SELECT COUNT(*)::int AS total FROM contratos WHERE cliente_id = $1 AND empresa_id = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL`,
+      [dto.clienteId, user.empresaId],
+    );
+    const base = `cli_${dto.clienteId.replace(/-/g, '').substring(0, 8)}`;
+    const pppoeBase = dto.usuarioPppoe || (totalContratos > 0 ? `${base}_${totalContratos + 1}` : base);
+
+    // Verificar unicidad PPPoE en el ERP
+    const [pppoeExistente] = await this.dataSource.query<any[]>(
+      `SELECT numero_contrato FROM contratos WHERE empresa_id = $1 AND usuario_pppoe = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL LIMIT 1`,
+      [user.empresaId, pppoeBase],
+    );
+    if (pppoeExistente) throw new ConflictException(`El usuario PPPoE "${pppoeBase}" ya está en uso (contrato ${pppoeExistente.numero_contrato})`);
+
+    const usuarioPppoe = pppoeBase;
     const passwordPlain  = dto.passwordPppoePlain || this.generarPassword(12);
     let passwordCifrado: string;
     try { passwordCifrado = encrypt(passwordPlain); }
