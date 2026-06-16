@@ -10,7 +10,7 @@ import {
   Loader2, Search, CheckCircle2, AlertCircle, ChevronRight, ChevronLeft,
   User, Wifi, CreditCard, Bell, Trash2,
   MapPin, Lock, Calendar, Navigation, Server, Radio,
-  Check, Building2, Network, Package,
+  Check, Building2, Network, Package, Cable,
 } from 'lucide-react';
 
 import { clientesApi }                       from '@/lib/api/clientes';
@@ -1181,25 +1181,29 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             </>
           )}
 
-          {/* Caja Nap */}
-          <Field label="Caja Nap">
-            <select {...register('cajaNapId')} className={INPUT_CLS}>
-              <option value="">Ninguno</option>
-              {MOCK_CAJAS_NAP.filter(n => n.id).map((n) => (
-                <option key={n.id} value={n.nombre}>{n.nombre}</option>
-              ))}
-            </select>
-          </Field>
+        </Section>
 
-          {/* Puerto Nap */}
-          <Field label="Puerto Nap">
-            <select {...register('puertoNapId')} className={INPUT_CLS} disabled={!cajaNap}>
-              <option value="">Ninguno</option>
-              {PUERTOS_NAP.map((p) => (
-                <option key={p.id} value={p.nombre}>{p.nombre}</option>
-              ))}
-            </select>
-          </Field>
+        {/* ── Terminales FTTH ── */}
+        <Section title="Terminales FTTH" icon={Cable}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Caja Nap">
+              <select {...register('cajaNapId')} className={INPUT_CLS}>
+                <option value="">Ninguno</option>
+                {MOCK_CAJAS_NAP.filter(n => n.id).map((n) => (
+                  <option key={n.id} value={n.nombre}>{n.nombre}</option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Puerto Nap">
+              <select {...register('puertoNapId')} className={INPUT_CLS} disabled={!cajaNap}>
+                <option value="">Ninguno</option>
+                {PUERTOS_NAP.map((p) => (
+                  <option key={p.id} value={p.nombre}>{p.nombre}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
         </Section>
 
         {/* ── Plan de Internet ── */}
