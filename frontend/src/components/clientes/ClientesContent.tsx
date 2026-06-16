@@ -50,7 +50,7 @@ export function ClientesContent() {
 
   // Modal de confirmación para acciones individuales
   const [accion, setAccion] = useState<{
-    tipo: 'suspender' | 'retirar' | 'eliminar';
+    tipo: 'activar' | 'suspender' | 'retirar' | 'eliminar';
     cliente: Cliente;
   } | null>(null);
 
@@ -115,6 +115,16 @@ export function ClientesContent() {
     queryClient.invalidateQueries({ queryKey: ['clientes-stats'] });
   };
 
+  const { mutate: activarUno, isPending: activando } = useMutation({
+    mutationFn: (c: Cliente) => clientesApi.cambiarEstado(c.id, 'activo'),
+    onSuccess: (_, c) => {
+      toast(`${c.nombreCompleto} activado`, { type: 'success' });
+      setAccion(null);
+      invalidarClientes();
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
   const { mutate: suspenderUno, isPending: suspendiendo } = useMutation({
     mutationFn: (c: Cliente) => clientesApi.cambiarEstado(c.id, 'suspendido'),
     onSuccess: (_, c) => {
@@ -147,14 +157,21 @@ export function ClientesContent() {
 
   const ejecutarAccion = () => {
     if (!accion) return;
-    if (accion.tipo === 'suspender') suspenderUno(accion.cliente);
-    else if (accion.tipo === 'retirar') retirarUno(accion.cliente);
+    if (accion.tipo === 'activar')    activarUno(accion.cliente);
+    else if (accion.tipo === 'suspender') suspenderUno(accion.cliente);
+    else if (accion.tipo === 'retirar')   retirarUno(accion.cliente);
     else eliminarUno(accion.cliente);
   };
 
-  const confirmPending = suspendiendo || retirando || eliminando;
+  const confirmPending = activando || suspendiendo || retirando || eliminando;
 
   const CONFIRM_CFG = {
+    activar: {
+      titulo: 'Activar abonado',
+      desc: 'Se reactivará el servicio de internet. El abonado quedará clasificado como activo.',
+      boton: 'Activar',
+      color: 'bg-green-600 hover:bg-green-700',
+    },
     suspender: {
       titulo: 'Suspender abonado',
       desc: 'Se suspenderá el servicio de internet. El abonado quedará clasificado como suspendido.',
@@ -479,6 +496,7 @@ export function ClientesContent() {
           selectedIds={selectedIds}
           onToggleId={toggleId}
           onToggleAll={toggleAll}
+          onActivar={(c)   => setAccion({ tipo: 'activar',   cliente: c as Cliente })}
           onSuspender={(c) => setAccion({ tipo: 'suspender', cliente: c as Cliente })}
           onRetirar={(c)   => setAccion({ tipo: 'retirar',   cliente: c as Cliente })}
           onEliminar={(c)  => setAccion({ tipo: 'eliminar',  cliente: c as Cliente })}

@@ -3,7 +3,7 @@
 import {
   ChevronUp, ChevronDown, ChevronsUpDown,
   Phone, MessageCircle, Wifi, Radio, Cable, Shuffle,
-  Pencil, Trash2, PauseCircle, UserMinus, Eye,
+  Pencil, Trash2, PauseCircle, PlayCircle, UserMinus, Eye,
 } from 'lucide-react';
 
 import { ClienteEstadoBadge } from './ClienteEstadoBadge';
@@ -21,6 +21,7 @@ interface Props {
   selectedIds?: Set<string>;
   onToggleId?:  (id: string) => void;
   onToggleAll?: (ids: string[]) => void;
+  onActivar?:   (c: Cliente) => void;
   onSuspender?: (c: Cliente) => void;
   onRetirar?:   (c: Cliente) => void;
   onEliminar?:  (c: Cliente) => void;
@@ -111,7 +112,7 @@ const COLUMNAS = [
   { key: 'acciones',        label: '',            sortable: false },
 ];
 
-export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder, onSort, selectedIds, onToggleId, onToggleAll, onSuspender, onRetirar, onEliminar }: Props) {
+export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder, onSort, selectedIds, onToggleId, onToggleAll, onActivar, onSuspender, onRetirar, onEliminar }: Props) {
   const allSelected = selectedIds != null && clientes.length > 0 && clientes.every(c => selectedIds.has((c as any).id));
   const someSelected = selectedIds != null && clientes.some(c => selectedIds.has((c as any).id));
   const handleSort = (col: string) => {
@@ -325,17 +326,29 @@ export function ClientesTable({ clientes, loading, onRowClick, sortBy, sortOrder
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        onClick={() => onSuspender?.(c)}
-                        title="Suspender servicio"
-                        className="p-1.5 rounded-lg text-muted-foreground hover:text-yellow-600 hover:bg-yellow-500/10 transition-colors"
-                      >
-                        <PauseCircle className="w-3.5 h-3.5" />
-                      </button>
+                      {c.estado === 'suspendido' ? (
+                        <button
+                          onClick={() => onActivar?.(c)}
+                          title="Activar servicio"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-green-600 hover:bg-green-500/10 transition-colors"
+                        >
+                          <PlayCircle className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onSuspender?.(c)}
+                          title="Suspender servicio"
+                          disabled={c.estado === 'baja_definitiva'}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-yellow-600 hover:bg-yellow-500/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                        >
+                          <PauseCircle className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => onRetirar?.(c)}
-                        title="Retirar abonado (conserva datos)"
-                        className="p-1.5 rounded-lg text-muted-foreground hover:text-orange-600 hover:bg-orange-500/10 transition-colors"
+                        title="Dar de baja (conserva datos)"
+                        disabled={c.estado === 'baja_definitiva'}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-orange-600 hover:bg-orange-500/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                       >
                         <UserMinus className="w-3.5 h-3.5" />
                       </button>
