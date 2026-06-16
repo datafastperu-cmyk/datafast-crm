@@ -1060,8 +1060,8 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
     queryKey: ['ping-batch', ipsMonitoreo],
     queryFn:  () => contratosApi.pingBatch(ipsMonitoreo),
     enabled:  ipsMonitoreo.length > 0,
-    refetchInterval: 30_000,
-    staleTime: 25_000,
+    refetchInterval: 30 * 60_000,
+    staleTime: 29 * 60_000,
   });
 
   const pingMap = new Map<string, { online: boolean; latenciaMs: number | null }>(
