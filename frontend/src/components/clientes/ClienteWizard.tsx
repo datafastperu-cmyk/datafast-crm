@@ -1206,9 +1206,34 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           </div>
         </Section>
 
+          {/* Equipo receptor */}
+          <Section title="Equipo receptor" icon={Radio}>
+            <Field
+              label="Conectado A"
+              hint={!routerId ? '* Selecciona un router primero' : undefined}
+            >
+              <select
+                {...register('conectadoAId')}
+                disabled={!routerId}
+                className={cn(INPUT_CLS, !routerId && 'opacity-50 cursor-not-allowed')}
+              >
+                <option value="">{routerId ? '— Seleccionar antena AP —' : '— Elige un router primero —'}</option>
+                {(antenasAP as any[]).map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nombreEmisor}{a.ipAddress ? ` — ${a.ipAddress}` : ''}
+                  </option>
+                ))}
+              </select>
+              {routerId && (antenasAP as any[]).length === 0 && (
+                <p className="text-[11px] text-amber-500 mt-1">
+                  Sin antenas AP registradas para este router.
+                </p>
+              )}
+            </Field>
+          </Section>
         </div>
 
-        {/* ── Derecha: Plan + Instalación + Equipo ── */}
+        {/* ── Derecha: Plan + Instalación ── */}
         <div className="space-y-4">
           <Section title="Plan de Internet" icon={Package}>
             {/* Perfil Internet */}
@@ -1299,33 +1324,6 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
             </Field>
           </Section>
 
-          {/* Equipo receptor */}
-          <Section title="Equipo receptor" icon={Radio}>
-            {/* Conectado A — Antenas AP vinculadas al router seleccionado */}
-            <Field
-              label="Conectado A"
-              hint={!routerId ? '* Selecciona un router primero' : undefined}
-            >
-              <select
-                {...register('conectadoAId')}
-                disabled={!routerId}
-                className={cn(INPUT_CLS, !routerId && 'opacity-50 cursor-not-allowed')}
-              >
-                <option value="">{routerId ? '— Seleccionar antena AP —' : '— Elige un router primero —'}</option>
-                {(antenasAP as any[]).map((a: any) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nombreEmisor}{a.ipAddress ? ` — ${a.ipAddress}` : ''}
-                  </option>
-                ))}
-              </select>
-              {routerId && (antenasAP as any[]).length === 0 && (
-                <p className="text-[11px] text-amber-500 mt-1">
-                  Sin antenas AP registradas para este router.
-                </p>
-              )}
-            </Field>
-
-          </Section>
         </div>
       </div>
 
