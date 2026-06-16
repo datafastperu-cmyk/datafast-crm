@@ -39,6 +39,7 @@ export class ContratoRepository {
         co.cliente_id AS "clienteId", co.plan_id AS "planId", co.router_id AS "routerId",
         co.nodo_id AS "nodoId", co.antena_ap_id AS "antenaApId", co.segmento_id AS "segmentoId",
         co.ip_asignada AS "ipAsignada", co.usuario_pppoe AS "usuarioPppoe",
+        co.tipo_auth AS "tipoAuth",
         co.excluir_firewall AS "excluirFirewall",
         co.routes,
         co.ip_administracion AS "ipAdministracion",
