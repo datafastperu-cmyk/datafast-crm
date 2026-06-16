@@ -16,7 +16,7 @@ import {
   LayoutGrid, RefreshCcw, Maximize2, Minus, Phone, Package,
   Network, Lock, Navigation, Server, MapPin, User, ChevronRight,
   MoreVertical, CheckCircle2, Clock, AlertTriangle, Zap,
-  Power, PauseCircle, RefreshCw,
+  Power, PauseCircle, RefreshCw, Bell,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -685,13 +685,15 @@ export function ClienteDetalle({ id }: { id: string }) {
                 <span className="text-primary font-bold">&raquo;</span> Resumen Notificaciones
               </h3>
               <div className="grid grid-cols-2 gap-2">
-                <NotifCard color="blue"   icon={Calendar}       label="Día de Pago"           value={diaPago}        />
-                <NotifCard color="orange" icon={Receipt}        label="Crear & Enviar Factura" value={crearFactura}   />
-                <NotifCard color="teal"   icon={Monitor}        label="Aviso en pantalla"      value={avisoPantalla}  />
-                <NotifCard color="purple" icon={MessageSquare}  label="Aviso SMS"              value={avisoSms}       />
-                <NotifCard color="red"    icon={XCircle}        label="Próximo Corte"          value={proxCorte}      />
-                <NotifCard color="indigo" icon={CreditCard}     label="Deuda Actual"           value={deuda}          />
-                <NotifCard color="pink"   icon={BarChart2}      label="Saldos"                 value={formatPEN(0)}   className="col-span-2" />
+                <NotifCard color="blue"   icon={Calendar}      label="Día de Pago"           value={diaPago}                />
+                <NotifCard color="orange" icon={Receipt}       label="Crear & Enviar Factura" value={crearFactura}            />
+                <NotifCard color="teal"   icon={Monitor}       label="Aviso en pantalla"      value={avisoPantalla}           />
+                <NotifCard color="red"    icon={XCircle}       label="Próximo Corte"          value={proxCorte}               />
+                <NotifCard color="purple" icon={Bell}          label="Aviso #1"               value={rec1 ?? 'Desactivado'}   />
+                <NotifCard color="purple" icon={Bell}          label="Aviso #2"               value={rec2 ?? 'Desactivado'}   />
+                <NotifCard color="purple" icon={Bell}          label="Aviso #3"               value={rec3 ?? 'Desactivado'}   />
+                <NotifCard color="indigo" icon={CreditCard}    label="Deuda Actual"           value={deuda}                   />
+                <NotifCard color="pink"   icon={BarChart2}     label="Saldos"                 value={formatPEN(0)}            className="col-span-2" />
               </div>
             </div>
           </div>
