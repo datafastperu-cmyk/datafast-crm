@@ -959,7 +959,6 @@ const servicioSchema = z.object({
   routerId:             z.string().optional(),
   tipoControl:          z.string().optional(),
   excluirFirewall:      z.boolean().optional(),
-  tipoIpv4:             z.string().optional(),
   segmentoId:           z.string().optional(),
   ipManual:             z.string().optional(),
   usuarioPppoe:         z.string().optional(),
@@ -1426,7 +1425,6 @@ function ServicioPanel({
       routerId:             e?.routerId              ?? '',
       tipoControl:          e?.tipoAuth              ?? 'ninguna',
       excluirFirewall:      e?.excluirFirewall        ?? false,
-      tipoIpv4:             e?.tipoIpv4              ?? 'estatica',
       segmentoId:           e?.segmentoId            ?? '',
       ipManual:             e?.ipAsignada            ?? '',
       usuarioPppoe:         e?.usuarioPppoe          ?? '',
@@ -1552,7 +1550,6 @@ function ServicioPanel({
         routerId:             data.routerId             || undefined,
         tipoAuth:             (data as any).tipoControl || undefined,
         excluirFirewall:      data.excluirFirewall      ?? false,
-        tipoIpv4:             data.tipoIpv4             || 'estatica',
         macAddress:           data.macAddress           || undefined,
         routes:               data.routes               || undefined,
         cajaNap:              data.cajaNap              || undefined,
@@ -1647,15 +1644,6 @@ function ServicioPanel({
                   </div>
                   <SP_Toggle checked={excluirFirewall} onChange={(v) => setValue('excluirFirewall', v)} />
                 </div>
-
-                {/* Tipo IPv4 */}
-                <SP_Field label="Tipo IPv4">
-                  <select {...register('tipoIpv4')} className={sp_input()}>
-                    <option value="estatica">IP Fija (Estática)</option>
-                    <option value="dhcp">DHCP Dinámico</option>
-                    <option value="pppoe">PPPoE</option>
-                  </select>
-                </SP_Field>
 
                 {/* Redes IPv4 */}
                 <SP_Field label={`Redes IPv4${!routerId ? ' — elige router primero' : ''}`}>
