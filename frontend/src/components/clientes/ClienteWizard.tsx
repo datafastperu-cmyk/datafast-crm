@@ -119,14 +119,14 @@ const STEPS = [
 ];
 
 // ── UI helpers ────────────────────────────────────────────────
-function Section({ title, subtitle, icon: Icon, children }: {
-  title: string; subtitle?: string; icon?: React.ElementType; children: React.ReactNode;
+function Section({ title, subtitle, icon: Icon, compact, children }: {
+  title: string; subtitle?: string; icon?: React.ElementType; compact?: boolean; children: React.ReactNode;
 }) {
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden h-fit">
-      <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+      <div className={cn(compact ? 'px-4 py-2.5' : 'px-5 py-4', 'border-b border-border flex items-center gap-3')}>
         {Icon && (
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <div className={cn(compact ? 'w-7 h-7' : 'w-8 h-8', 'rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0')}>
             <Icon className="w-4 h-4 text-primary" />
           </div>
         )}
@@ -135,7 +135,7 @@ function Section({ title, subtitle, icon: Icon, children }: {
           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
         </div>
       </div>
-      <div className="p-5 space-y-4">{children}</div>
+      <div className={cn(compact ? 'p-3 space-y-3' : 'p-5 space-y-4')}>{children}</div>
     </div>
   );
 }
@@ -1184,7 +1184,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         </Section>
 
         {/* ── Terminales FTTH ── */}
-        <Section title="Terminales FTTH" icon={Cable}>
+        <Section title="Terminales FTTH" icon={Cable} compact>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Caja Nap">
               <select {...register('cajaNapId')} className={INPUT_CLS}>
@@ -1207,7 +1207,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         </Section>
 
           {/* Equipo receptor */}
-          <Section title="Equipo receptor" icon={Radio}>
+          <Section title="Equipo receptor" icon={Radio} compact>
             <Field
               label="Conectado A"
               hint={!routerId ? '* Selecciona un router primero' : undefined}
