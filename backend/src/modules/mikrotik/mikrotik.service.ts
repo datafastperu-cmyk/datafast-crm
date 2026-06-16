@@ -1276,7 +1276,8 @@ export class MikrotikService {
   async crearReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
     const comment = `DATAFAST:${co.nombreCompleto}`;
     if (tipoControl === 'pppoe_addresslist') {
-      if (!co.usuarioPppoe) return;
+      // Fix 3: error explícito en lugar de return silencioso
+      if (!co.usuarioPppoe) throw new Error('El contrato no tiene usuario PPPoE asignado');
       const password = co.passwordPppoe ? decrypt(co.passwordPppoe) : '';
       await this.pppoeSvc.crear(creds, {
         name: co.usuarioPppoe, password,
@@ -1286,7 +1287,8 @@ export class MikrotikService {
         comment, disabled: false,
       });
     } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
-      if (!co.ipAsignada || !co.macAddress) return;
+      // Fix 3: error explícito en lugar de return silencioso
+      if (!co.ipAsignada || !co.macAddress) throw new Error(`Amarre IP/MAC requiere IP (${co.ipAsignada ?? 'sin asignar'}) y MAC (${co.macAddress ?? 'sin asignar'})`);
       const iface = await this.arpSvc.detectarInterface(creds, co.ipAsignada);
       if (!iface) throw new Error(`No se encontró interfaz para ${co.ipAsignada}`);
       await this.arpSvc.crearArpEstatico(creds, co.ipAsignada, co.macAddress, iface, comment);

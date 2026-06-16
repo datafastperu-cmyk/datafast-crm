@@ -591,6 +591,12 @@ export class ContratosService {
       return false;
     }
 
+    // Fix 2: respetar el flag del plan (igual que desaprovisionarMikrotik)
+    if (!row.crearReglas) {
+      this.logger.warn(`provisionarMikrotik → ${contratoId} | plan sin crear_reglas_en_router=true — omitiendo provisión MikroTik`);
+      return false;
+    }
+
     const creds: RouterCredentials = {
       id:              row.routerId ?? contratoId,
       ip:              row.vpnIp || row.ipGestion,
@@ -604,10 +610,19 @@ export class ContratosService {
 
     const tipoControl: string = row.tipoControl ?? 'ninguna';
 
-    // Pre-validate with informative errors before delegating
+    // Fix 1: tipo_control NINGUNA → error explícito, no fallo silencioso
+    if (tipoControl === 'ninguna') {
+      throw new BadRequestException(
+        `El router del contrato tiene tipo_control=NINGUNA. ` +
+        `Configura el tipo de control (pppoe_addresslist / amarre_ip_mac) en el router antes de activar.`,
+      );
+    }
+
+    // Fix 3: validaciones con error claro en lugar de return silencioso
     if (tipoControl === 'pppoe_addresslist' && !row.usuarioPppoe) {
-      this.logger.warn(`provisionarMikrotik → ${contratoId} | pppoe sin usuario asignado`);
-      return false;
+      throw new BadRequestException(
+        `El contrato no tiene usuario PPPoE asignado. Asígnalo antes de activar.`,
+      );
     }
     if ((tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') && (!row.ipAsignada || !row.macAddress)) {
       throw new BadRequestException(
@@ -777,7 +792,10 @@ export class ContratosService {
       WHERE co.id = $1
     `, [contratoId]);
 
-    if (!row?.macAddress || !row?.antenaApId || !row?.ipAddress) return { ok: false };
+    // Fix 4: siempre retornar advertencia con detalle del campo faltante
+    if (!row?.macAddress)  return { ok: false, advertencia: `Contrato sin MAC address — no se puede registrar en Access List de la antena` };
+    if (!row?.antenaApId)  return { ok: false, advertencia: `Contrato sin antena_ap_id asignado — selecciona la antena AP del cliente` };
+    if (!row?.ipAddress)   return { ok: false, advertencia: `El dispositivo de monitoreo antena_ap_id=${row.antenaApId} no tiene IP configurada` };
 
     const creds: RouterCredentials = {
       id:              row.antenaApId,
