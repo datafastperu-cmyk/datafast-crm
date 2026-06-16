@@ -1206,61 +1206,61 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           </div>
         </Section>
 
-        {/* ── Plan de Internet ── */}
-        <Section title="Plan de Internet" icon={Package}>
-          {/* Perfil Internet */}
-          <Field label="Perfil Internet">
-            <select {...register('perfilId')} className={INPUT_CLS}>
-              <option value="">— Seleccionar plan —</option>
-              {planes.map((p: any) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {/* Descripción */}
-          <Field label="Descripción" hint="* Texto para facturación">
-            <textarea
-              value={planSeleccionado?.descripcion ?? ''}
-              readOnly
-              rows={2}
-              className={cn(INPUT_CLS, 'resize-none bg-muted/50 cursor-default')}
-            />
-          </Field>
-
-          {/* Costo */}
-          <Field label="Costo">
-            <input
-              {...register('costo')}
-              type="number"
-              min={0}
-              step="0.01"
-              placeholder="0.00"
-              className={INPUT_CLS}
-            />
-          </Field>
-
-          {/* Añadir costo de instalación */}
-          <div className="flex items-center justify-between py-1">
-            <span className="text-sm text-foreground">Añadir costo de instalación</span>
-            <div className="flex items-center gap-3">
-              <ToggleSwitch checked={costoInstalacion} onChange={v => setCostoInstalacion(v)} />
-              {costoInstalacion && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm text-muted-foreground">S/</span>
-                  <DecimalInput2 className={INPUT_CLS} placeholder="Monto instalación"
-                    value={montoCostoInstalacion} onChange={v => setMontoCostoInstalacion(v)} />
-                </div>
-              )}
-            </div>
-          </div>
-        </Section>
         </div>
 
-        {/* ── Derecha: Instalación + Equipo ── */}
+        {/* ── Derecha: Plan + Instalación + Equipo ── */}
         <div className="space-y-4">
+          <Section title="Plan de Internet" icon={Package}>
+            {/* Perfil Internet */}
+            <Field label="Perfil Internet">
+              <select {...register('perfilId')} className={INPUT_CLS}>
+                <option value="">— Seleccionar plan —</option>
+                {planes.map((p: any) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}{p.precio ? ` — S/. ${Number(p.precio).toFixed(2)}` : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            {/* Descripción */}
+            <Field label="Descripción" hint="* Texto para facturación">
+              <textarea
+                value={planSeleccionado?.descripcion ?? ''}
+                readOnly
+                rows={2}
+                className={cn(INPUT_CLS, 'resize-none bg-muted/50 cursor-default')}
+              />
+            </Field>
+
+            {/* Costo */}
+            <Field label="Costo">
+              <input
+                {...register('costo')}
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="0.00"
+                className={INPUT_CLS}
+              />
+            </Field>
+
+            {/* Añadir costo de instalación */}
+            <div className="flex items-center justify-between py-1">
+              <span className="text-sm text-foreground">Añadir costo de instalación</span>
+              <div className="flex items-center gap-3">
+                <ToggleSwitch checked={costoInstalacion} onChange={v => setCostoInstalacion(v)} />
+                {costoInstalacion && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-muted-foreground">S/</span>
+                    <DecimalInput2 className={INPUT_CLS} placeholder="Monto instalación"
+                      value={montoCostoInstalacion} onChange={v => setMontoCostoInstalacion(v)} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </Section>
+
           <Section title="Datos de instalación" icon={MapPin}>
             {/* Dirección */}
             <Field label="Dirección">
