@@ -1445,7 +1445,7 @@ function ServicioPanel({
     defaultValues: {
       planId:               e?.planId                ?? '',
       routerId:             e?.routerId              ?? '',
-      tipoControl:          e?.tipoAuth              ?? 'pppoe',
+      tipoControl:          (e?.tipoAuth === 'pppoe_addresslist' ? 'pppoe' : e?.tipoAuth) ?? 'pppoe',
       excluirFirewall:      e?.excluirFirewall        ?? false,
       segmentoId:           e?.segmentoId            ?? '',
       ipManual:             e?.ipAsignada            ?? '',

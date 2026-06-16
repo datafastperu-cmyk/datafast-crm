@@ -694,7 +694,8 @@ export class ContratosService {
     };
 
     // co.tipo_auth tiene prioridad sobre ro.tipo_control (auth por abonado desde Task 2)
-    const tipoControl: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+    const _rawTipo: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+    const tipoControl: string = _rawTipo === 'pppoe_addresslist' ? 'pppoe' : _rawTipo;
 
     // Fix 1: tipo efectivo NINGUNA → error explícito, no fallo silencioso
     if (tipoControl === 'ninguna') {
@@ -776,7 +777,8 @@ export class ContratosService {
       version:         (row.versionRos ?? 'v6') as any,
     };
 
-    const tipoControl: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+    const _rawTipo2: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+    const tipoControl: string = _rawTipo2 === 'pppoe_addresslist' ? 'pppoe' : _rawTipo2;
 
     try {
       if (tipoControl === 'pppoe' && row.usuarioPppoe) {
