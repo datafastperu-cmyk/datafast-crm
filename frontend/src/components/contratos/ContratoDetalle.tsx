@@ -6,12 +6,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Zap, WifiOff, Wifi, Clock,
   MoreVertical, Loader2, FileText, CreditCard,
-  Trash2, XCircle,
+  Trash2, XCircle, Cable,
 } from 'lucide-react';
 
-import { contratosApi }      from '@/lib/api/contratos';
-import { ContratoEstadoBadge } from './ContratosTable';
-import { useToast }          from '@/components/ui/toaster';
+import { contratosApi }         from '@/lib/api/contratos';
+import { ContratoEstadoBadge }  from './ContratosTable';
+import { MigracionWizardModal } from './MigracionWizardModal';
+import { useToast }             from '@/components/ui/toaster';
 import { formatDate, formatDateTime, formatPEN, cn, parseApiError } from '@/lib/utils';
 import type { Factura, HistorialEntry } from '@/types';
 
@@ -26,7 +27,8 @@ export function ContratoDetalle({ id }: { id: string }) {
   const [menuOpen, setMenu]     = useState(false);
   const [prorrogaDias, setPD]   = useState(7);
   const [showProrroga, setShowP] = useState(false);
-  const [showBaja, setShowBaja]  = useState(false);
+  const [showBaja, setShowBaja]      = useState(false);
+  const [showMigracion, setShowMig]  = useState(false);
 
   const { data: contrato, isLoading } = useQuery({
     queryKey: ['contrato', id],
@@ -76,8 +78,9 @@ export function ContratoDetalle({ id }: { id: string }) {
   if (isLoading) return <div className="space-y-4 animate-pulse">{[...Array(3)].map((_, i) => <div key={i} className="skeleton h-28 rounded-xl"/>)}</div>;
   if (!contrato) return <p className="text-muted-foreground text-center py-20">Contrato no encontrado.</p>;
 
-  const esActivo    = contrato.estado === 'activo';
-  const esSuspendido = contrato.estado === 'suspendido';
+  const esActivo      = contrato.estado === 'activo';
+  const esSuspendido  = contrato.estado === 'suspendido';
+  const esWisp        = (contrato as any).tipoServicio === 'wisp';
   const esPendiente = contrato.estado === 'pendiente_activacion';
 
   return (
@@ -92,7 +95,7 @@ export function ContratoDetalle({ id }: { id: string }) {
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* Aprovisionar FTTH — solo disponible cuando MikroTik ya está configurado (estado activo) */}
-          {esActivo && !contrato.aprovisionado && (
+          {esActivo && !contrato.aprovisionado && !esWisp && (
             <button
               onClick={() => router.push(`/contratos/${id}/aprovisionar`)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
@@ -100,6 +103,25 @@ export function ContratoDetalle({ id }: { id: string }) {
             >
               <Zap className="w-3.5 h-3.5" /> Aprovisionar FTTH
             </button>
+          )}
+
+          {/* Migrar WISP → FTTH */}
+          {esActivo && esWisp && !(contrato as any).enMigracion && (
+            <button
+              onClick={() => setShowMig(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
+                         bg-violet-600 text-white font-medium hover:bg-violet-700 transition-colors"
+            >
+              <Cable className="w-3.5 h-3.5" /> Migrar a FTTH
+            </button>
+          )}
+
+          {/* En migración badge */}
+          {(contrato as any).enMigracion && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
+                             bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-medium">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> En migración…
+            </span>
           )}
 
           {/* Renotificar */}
@@ -394,6 +416,16 @@ export function ContratoDetalle({ id }: { id: string }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Modal Migración WISP → FTTH ───────────────────────── */}
+      {showMigracion && (
+        <MigracionWizardModal
+          contratoId={id}
+          clienteId={contrato.clienteId}
+          onClose={() => setShowMig(false)}
+          onSuccess={() => { invalida(); setShowMig(false); }}
+        />
       )}
     </div>
   );

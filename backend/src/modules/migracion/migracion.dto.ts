@@ -17,12 +17,12 @@ export class MigrarWispFtthDto {
   clienteId: string;
 
   // ── OLT / ONU ─────────────────────────────────────────────
-  @ApiProperty({ description: 'UUID del OLT (tabla olts) donde está la ONU' })
-  @IsUUID() @IsNotEmpty()
-  oltId: string;
+  @ApiPropertyOptional({ description: 'UUID del OLT SmartOLT (tabla olts). Requerido si no se usa oltDispositivoId.' })
+  @IsOptional() @IsUUID()
+  oltId?: string;
 
   @ApiPropertyOptional({
-    description: 'UUID del OltDispositivo (tabla olt_dispositivos) para SSH nativo',
+    description: 'UUID del OltDispositivo (tabla olt_dispositivos) para SSH nativo. Requerido si no se usa oltId.',
   })
   @IsOptional() @IsUUID()
   oltDispositivoId?: string;
