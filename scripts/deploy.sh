@@ -48,6 +48,21 @@ sleep 10
 log "Recargando Nginx..."
 docker compose exec nginx nginx -s reload
 
+# Sincronizar scripts VPN en el host (OpenVPN los ejecuta directamente, fuera de Docker)
+HOST_SCRIPTS="/opt/datafast/scripts"
+if [[ -d "$HOST_SCRIPTS" ]]; then
+    log "Sincronizando scripts VPN en el host ($HOST_SCRIPTS)..."
+    cp "$SCRIPT_DIR/vpn-auth.sh"             "$HOST_SCRIPTS/vpn-auth.sh"
+    cp "$SCRIPT_DIR/vpn-client-connect.sh"   "$HOST_SCRIPTS/vpn-client-connect.sh"
+    cp "$SCRIPT_DIR/vpn-client-disconnect.sh" "$HOST_SCRIPTS/vpn-client-disconnect.sh"
+    chmod 755 "$HOST_SCRIPTS/vpn-auth.sh" \
+              "$HOST_SCRIPTS/vpn-client-connect.sh" \
+              "$HOST_SCRIPTS/vpn-client-disconnect.sh"
+    log "Scripts VPN actualizados"
+else
+    warn "Directorio $HOST_SCRIPTS no encontrado — scripts VPN no actualizados (¿primera instalación?)"
+fi
+
 # Limpiar imágenes antiguas
 docker image prune -f --filter "dangling=true"
 

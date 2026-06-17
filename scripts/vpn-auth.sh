@@ -1,20 +1,28 @@
 #!/bin/bash
-# Verifica credenciales VPN usuario/contraseña contra el backend ERP.
-# Llamado por OpenVPN via: auth-user-pass-verify <script> via-env
-# OpenVPN inyecta: username y password como variables de entorno.
+# Verifica credenciales VPN contra el backend ERP.
+# Llamado por OpenVPN con: auth-user-pass-verify <script> via-file
+# OpenVPN escribe un archivo temporal: línea 1 = username, línea 2 = password.
 #
 # SEGURIDAD: username y password se escapan antes de embeber en JSON
-# para evitar shell injection / JSON injection.
+# para evitar JSON injection. Se usa via-file para que las credenciales
+# nunca queden expuestas en variables de entorno del proceso.
 
-[ -z "${username}" ] && exit 1
+TMPFILE="$1"
+[ -z "$TMPFILE" ]  && exit 1
+[ ! -f "$TMPFILE" ] && exit 1
+
+VPN_USER=$(sed -n '1p' "$TMPFILE")
+VPN_PASS=$(sed -n '2p' "$TMPFILE")
+
+[ -z "$VPN_USER" ] && exit 1
 
 # Escapar caracteres especiales JSON: \ → \\ y " → \"
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
-UN=$(json_escape "${username}")
-PW=$(json_escape "${password}")
+UN=$(json_escape "$VPN_USER")
+PW=$(json_escape "$VPN_PASS")
 
 RESPONSE=$(curl -sf -m 5 \
   -X POST "http://127.0.0.1:4000/api/v1/openvpn/mikrotik-clients/verify-auth" \
@@ -23,4 +31,4 @@ RESPONSE=$(curl -sf -m 5 \
 
 [ $? -ne 0 ] && exit 1
 
-echo "${RESPONSE}" | grep -q '"success":true' && exit 0 || exit 1
+echo "$RESPONSE" | grep -q '"success":true' && exit 0 || exit 1
