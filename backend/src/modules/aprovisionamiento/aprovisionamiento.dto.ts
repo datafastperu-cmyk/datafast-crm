@@ -21,10 +21,19 @@ export class AprovisionarFtthDto {
   clienteId: string;
 
   // ── OLT / ONU ─────────────────────────────────────────────
-  @ApiProperty({ description: 'UUID del OLT (registro local) donde está la ONU' })
+  @ApiProperty({ description: 'UUID del OLT (registro local, tabla olts) donde está la ONU' })
   @IsUUID()
   @IsNotEmpty()
   oltId: string;
+
+  @ApiPropertyOptional({
+    description:
+      'UUID del OltDispositivo (tabla olt_dispositivos) para provisioning nativo SSH. ' +
+      'Si se omite, se asume SmartOLT.',
+  })
+  @IsOptional()
+  @IsUUID()
+  oltDispositivoId?: string;
 
   @ApiPropertyOptional({
     description:

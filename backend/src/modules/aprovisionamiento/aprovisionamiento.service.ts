@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource }       from '@nestjs/typeorm';
 import { DataSource }             from 'typeorm';
 import { EventEmitter2 }          from '@nestjs/event-emitter';
@@ -11,6 +11,9 @@ import { FirewallService }        from '../mikrotik/services/firewall.service';
 import { VelocidadOrquestador }   from '../mikrotik/services/velocidad/velocidad-orquestador.service';
 import { TipoControl }            from '../mikrotik/entities/router.entity';
 import { SmartoltApiService }     from '../smartolt/smartolt-api.service';
+import { OltMetodoConexion }      from '../olt-nativo/entities/olt-dispositivo.entity';
+import { OltProviderFactory }     from '../olt-provider/olt-provider.factory';
+import { OltConexion }            from '../olt-provider/interfaces/olt-provider.interface';
 import { JwtPayload }             from '../../common/decorators/current-user.decorator';
 import { decrypt }                from '../../common/utils/encryption.util';
 import { getNextAvailableIp }     from '../../common/utils/ip.util';
@@ -46,6 +49,9 @@ interface Ctx {
   onuAprovisionada:  boolean;
   onuRegistradaEnBd: boolean;
   contratoActivado:  boolean;
+  // Proveedor OLT activo
+  oltConexion?:      OltConexion;
+  oltMetodo?:        OltMetodoConexion;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -62,6 +68,9 @@ interface Ctx {
 export class OrquestadorAprovisionamientoService {
   private readonly logger = new Logger(OrquestadorAprovisionamientoService.name);
 
+  // Semáforo por router: evita saturar el pool de sesiones RouterOS
+  private readonly routerSem = new Map<string, Promise<void>>();
+
   constructor(
     private readonly pppoeSvc:     PppoeService,
     private readonly queueSvc:     QueueService,
@@ -69,10 +78,25 @@ export class OrquestadorAprovisionamientoService {
     private readonly firewallSvc:  FirewallService,
     private readonly velocidadOrc: VelocidadOrquestador,
     private readonly smartoltApi:  SmartoltApiService,
+    private readonly oltFactory:   OltProviderFactory,
     private readonly whatsapp:     WhatsAppService,
     private readonly events:       EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
+
+  // Serializa llamadas al mismo router para evitar session limit exhaustion
+  private async withRouterLock<T>(routerId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.routerSem.get(routerId) ?? Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((res) => { release = res; });
+    this.routerSem.set(routerId, next);
+    try {
+      await prev;
+      return await fn();
+    } finally {
+      release();
+    }
+  }
 
   // ────────────────────────────────────────────────────────────
   // PUNTO DE ENTRADA PRINCIPAL
@@ -128,6 +152,7 @@ export class OrquestadorAprovisionamientoService {
               co.password_pppoe,
               co.ip_asignada,
               co.mac_address,
+              co.tipo_servicio    AS contrato_tipo_servicio,
               co.plan_id,
               co.segmento_id,
               cl.id               AS cliente_id,
@@ -196,14 +221,52 @@ export class OrquestadorAprovisionamientoService {
               `Activa primero el servicio en MikroTik (estado actual: "${row.contrato_estado}").`,
             );
           }
-          if (!row.smartolt_id) {
+          // ── Cargar OltDispositivo (nativo SSH) si se proporcionó ──
+          let oltMetodo = OltMetodoConexion.SMARTOLT_API;
+          let oltConexion: OltConexion = {
+            externId: row.smartolt_id || row.olt_id,
+            marca:    'huawei',
+          };
+
+          if (dto.oltDispositivoId) {
+            const [oltDisp] = await this.ds.query(
+              `SELECT id, metodo_conexion, ip_gestion, puerto, usuario_anclado,
+                      contrasena_cifrada, marca::text AS marca, vlan_gestion_defecto
+               FROM olt_dispositivos
+               WHERE id = $1 AND empresa_id = $2 AND activo = true`,
+              [dto.oltDispositivoId, user.empresaId],
+            );
+            if (!oltDisp) {
+              throw new Error(
+                `OltDispositivo ${dto.oltDispositivoId} no encontrado o inactivo.`,
+              );
+            }
+            oltMetodo = oltDisp.metodo_conexion as OltMetodoConexion;
+            let passClear: string | undefined;
+            try { passClear = oltDisp.contrasena_cifrada ? decrypt(oltDisp.contrasena_cifrada) : undefined; }
+            catch { passClear = oltDisp.contrasena_cifrada; }
+
+            oltConexion = {
+              externId:          oltDisp.id,
+              ipGestion:         oltDisp.ip_gestion,
+              puerto:            oltDisp.puerto ?? 22,
+              usuario:           oltDisp.usuario_anclado,
+              contrasenaCifrada: passClear,
+              marca:             (oltDisp.marca as string).toLowerCase(),
+            };
+          } else if (!row.smartolt_id) {
             throw new Error(
               `El OLT "${row.olt_nombre}" no tiene SmartOLT ID configurado. ` +
-              `Sincroniza los OLTs desde SmartOLT primero (POST /smartolt/olts/sincronizar).`,
+              `Proporciona oltDispositivoId para usar SSH nativo, o sincroniza desde SmartOLT.`,
             );
+          } else {
+            oltConexion = { externId: row.smartolt_id, marca: 'huawei' };
           }
 
-          // Cargar en contexto
+          ctx.oltConexion = oltConexion;
+          ctx.oltMetodo   = oltMetodo;
+
+          // ── Cargar en contexto ──────────────────────────────
           ctx.contrato     = row;
           ctx.usuarioPppoe = row.usuario_pppoe;
           ctx.ipAsignada   = row.ip_asignada;
@@ -232,74 +295,103 @@ export class OrquestadorAprovisionamientoService {
         num: 2,
         nombre: 'Asignar IP del pool IPv4',
         fn: async (ctx) => {
-          // Si ya tiene IP asignada, usar la existente
           if (ctx.ipAsignada) {
             return { detalle: `IP ya asignada previamente: ${ctx.ipAsignada}` };
           }
 
-          // Determinar segmento a usar
           const segmentoId = dto.segmentoId || ctx.contrato.segmento_id;
 
           if (dto.ipManual) {
-            // Verificar que la IP no esté ocupada
             const [ocupada] = await this.ds.query(
               `SELECT id FROM ips_asignadas WHERE ip_address = $1 AND activa = true AND empresa_id = $2`,
               [dto.ipManual, user.empresaId],
             );
             if (ocupada) throw new Error(`La IP ${dto.ipManual} ya está asignada a otro contrato`);
-
             ctx.ipAsignada = dto.ipManual;
+            await this.ds.query(`
+              INSERT INTO ips_asignadas
+                (empresa_id, segmento_id, contrato_id, ip_address, tipo, activa, asignada_en)
+              VALUES ($1, $2, $3, $4, 'cliente', true, NOW())
+              ON CONFLICT DO NOTHING
+            `, [user.empresaId, segmentoId ?? null, dto.contratoId, ctx.ipAsignada]);
+            await this.ds.query(
+              'UPDATE contratos SET ip_asignada = $1 WHERE id = $2',
+              [ctx.ipAsignada, dto.contratoId],
+            );
 
           } else if (segmentoId) {
-            // Obtener próxima IP disponible del segmento
-            const [segmento] = await this.ds.query(
-              `SELECT red_cidr, gateway, ips_reservadas FROM segmentos_ipv4
-               WHERE id = $1 AND empresa_id = $2 AND activo = true`,
-              [segmentoId, user.empresaId],
-            );
-            if (!segmento) throw new Error(`Segmento IPv4 ${segmentoId} no encontrado o inactivo`);
-
-            // Obtener IPs en uso
-            const enUso = await this.ds.query(
-              `SELECT ip_address FROM ips_asignadas WHERE segmento_id = $1 AND activa = true`,
-              [segmentoId],
-            );
-            const ipsUsadas    = enUso.map((r: any) => r.ip_address);
-            const ipsReservadas = [
-              segmento.gateway,
-              ...(segmento.ips_reservadas || []),
-            ].filter(Boolean);
-
-            const ip = getNextAvailableIp(segmento.red_cidr, ipsUsadas, ipsReservadas);
-            if (!ip) {
-              throw new Error(
-                `Pool IPv4 exhausto en segmento ${segmento.red_cidr}. ` +
-                `Usadas: ${ipsUsadas.length}. Agrega más IPs al pool o usa ipManual.`,
+            // Advisory lock de nivel de transacción por segmento — evita doble asignación
+            const qr = this.ds.createQueryRunner();
+            await qr.connect();
+            await qr.startTransaction();
+            try {
+              await qr.query(
+                `SELECT pg_advisory_xact_lock(hashtext('ip_pool_' || $1))`,
+                [segmentoId],
               );
+
+              const [segmento] = await qr.query(
+                `SELECT red_cidr, gateway, ips_reservadas, tipo_servicio FROM segmentos_ipv4
+                 WHERE id = $1 AND empresa_id = $2 AND activo = true`,
+                [segmentoId, user.empresaId],
+              );
+              if (!segmento) throw new Error(`Segmento IPv4 ${segmentoId} no encontrado o inactivo`);
+
+              // Validar que el tipo de segmento coincide con el tipo de contrato
+              if (
+                ctx.contrato.contrato_tipo_servicio &&
+                segmento.tipo_servicio !== ctx.contrato.contrato_tipo_servicio &&
+                segmento.tipo_servicio !== 'dedicado'
+              ) {
+                throw new Error(
+                  `El segmento "${segmento.red_cidr}" es de tipo "${segmento.tipo_servicio}" ` +
+                  `pero el contrato es "${ctx.contrato.contrato_tipo_servicio}". ` +
+                  `Los pools WISP y FTTH no se comparten.`,
+                );
+              }
+
+              const enUso = await qr.query(
+                `SELECT ip_address FROM ips_asignadas WHERE segmento_id = $1 AND activa = true`,
+                [segmentoId],
+              );
+              const ipsUsadas    = enUso.map((r: any) => r.ip_address);
+              const ipsReservadas = [segmento.gateway, ...(segmento.ips_reservadas || [])].filter(Boolean);
+
+              const ip = getNextAvailableIp(segmento.red_cidr, ipsUsadas, ipsReservadas);
+              if (!ip) {
+                throw new Error(
+                  `Pool IPv4 exhausto en segmento ${segmento.red_cidr}. ` +
+                  `Usadas: ${ipsUsadas.length}. Agrega más IPs al pool o usa ipManual.`,
+                );
+              }
+              ctx.ipAsignada = ip;
+
+              await qr.query(`
+                INSERT INTO ips_asignadas
+                  (empresa_id, segmento_id, contrato_id, ip_address, tipo, activa, asignada_en)
+                VALUES ($1, $2, $3, $4, 'cliente', true, NOW())
+                ON CONFLICT (segmento_id, ip_address) WHERE activa = true
+                DO UPDATE SET empresa_id = $1, contrato_id = $3, asignada_en = NOW()
+              `, [user.empresaId, segmentoId, dto.contratoId, ip]);
+
+              await qr.query(
+                'UPDATE contratos SET ip_asignada = $1 WHERE id = $2',
+                [ip, dto.contratoId],
+              );
+
+              await qr.commitTransaction();
+            } catch (err) {
+              await qr.rollbackTransaction();
+              throw err;
+            } finally {
+              await qr.release();
             }
-            ctx.ipAsignada = ip;
 
           } else {
             throw new Error(
-              'El contrato no tiene IP asignada ni se proporcionó segmentoId o ipManual. ' +
-              'Proporciona uno de estos campos.',
+              'El contrato no tiene IP asignada ni se proporcionó segmentoId o ipManual.',
             );
           }
-
-          // Registrar IP en la tabla ips_asignadas (upsert sobre el índice parcial activo)
-          await this.ds.query(`
-            INSERT INTO ips_asignadas
-              (empresa_id, segmento_id, contrato_id, ip_address, tipo, activa, asignada_en)
-            VALUES ($1, $2, $3, $4, 'cliente', true, NOW())
-            ON CONFLICT (segmento_id, ip_address) WHERE activa = true
-            DO UPDATE SET empresa_id = $1, contrato_id = $3, asignada_en = NOW()
-          `, [user.empresaId, dto.segmentoId || ctx.contrato.segmento_id, dto.contratoId, ctx.ipAsignada]);
-
-          // Actualizar el contrato
-          await this.ds.query(
-            'UPDATE contratos SET ip_asignada = $1 WHERE id = $2',
-            [ctx.ipAsignada, dto.contratoId],
-          );
 
           ctx.ipRegistradaEnBd = true;
           return { detalle: `IP asignada: ${ctx.ipAsignada}` };
@@ -318,6 +410,7 @@ export class OrquestadorAprovisionamientoService {
         fn: async (ctx) => {
           if (!ctx.ipAsignada) throw new Error('No hay IP asignada');
 
+          return this.withRouterLock(ctx.contrato.router_id, async () => {
           const creds       = this.buildRouterCreds(ctx.contrato);
           const tipoControl = ctx.contrato.tipo_control as TipoControl;
           const comment     = `DATAFAST:${dto.contratoId}:${ctx.contrato.cliente_nombre}`;
@@ -390,6 +483,7 @@ export class OrquestadorAprovisionamientoService {
           return {
             detalle: `Amarre IP/MAC: ${ctx.ipAsignada} ↔ ${mac} | interface: ${iface}`,
           };
+          }); // withRouterLock
         },
       },
 
@@ -408,6 +502,7 @@ export class OrquestadorAprovisionamientoService {
             return { detalle: 'Router configurado para no auto-crear queues — omitido' };
           }
 
+          return this.withRouterLock(ctx.contrato.router_id, async () => {
           const creds = this.buildRouterCreds(ctx.contrato);
 
           const res = await this.velocidadOrc.aplicarVelocidad({
@@ -429,56 +524,59 @@ export class OrquestadorAprovisionamientoService {
             detalle: `Queue configurada: ${res.estrategia} | ${ctx.contrato.velocidad_bajada}/${ctx.contrato.velocidad_subida} Mbps | ${res.detalle}`,
             datos:   { estrategia: res.estrategia, reglasCreadas: res.reglasCreadas },
           };
+          }); // withRouterLock
         },
       },
 
       // ══════════════════════════════════════════════════════
-      // PASO 5 — Detectar y aprovisionar ONU en SmartOLT
+      // PASO 5 — Detectar y aprovisionar ONU en la OLT
       // ══════════════════════════════════════════════════════
       {
         num: 5,
-        nombre: 'Detectar y aprovisionar ONU en SmartOLT',
+        nombre: 'Detectar y aprovisionar ONU en la OLT',
         fn: async (ctx) => {
           ctx.serialNumber = dto.serialNumber;
+          const provider = this.oltFactory.get(ctx.oltMetodo!);
 
-          // Si no se proporcionó SN, detectar automáticamente
           if (!ctx.serialNumber) {
-            const onuDetectada = await this.smartoltApi.detectarOnuEnPuerto(
-              ctx.contrato.smartolt_id,
-              dto.ponPort,
-            );
-            if (!onuDetectada) {
+            const onusDisponibles = await provider.listarOnusNoAprovisionadas(ctx.oltConexion!);
+            const match = onusDisponibles.find((o) => o.ponPort === dto.ponPort);
+            if (!match) {
               throw new Error(
                 `No se encontró ONU no aprovisionada en el puerto PON ${dto.ponPort} ` +
                 `del OLT "${ctx.contrato.olt_nombre}". ` +
-                `Verifica que la ONU esté conectada y enciendida.`,
+                `Verifica que la ONU esté conectada y encendida.`,
               );
             }
-            ctx.serialNumber = onuDetectada.serial;
+            ctx.serialNumber = match.serial;
             this.logger.log(`ONU detectada automáticamente: SN=${ctx.serialNumber}`);
           }
 
-          // Aprovisionar en SmartOLT
-          const onuSmartolt = await this.smartoltApi.aprovisionarOnu({
-            serial:      ctx.serialNumber,
-            olt_id:      ctx.contrato.smartolt_id,
-            pon_port:    dto.ponPort,
-            profile:     dto.perfilSmartolt,
-            vlan:        dto.vlanId,
-            vlan_mode:   dto.vlanModo || 'access',
-            description: `${ctx.contrato.cliente_nombre} — ${ctx.contrato.numero_contrato}`,
+          const partes    = dto.ponPort.split('/').map(Number);
+          const onuResult = await provider.aprovisionarOnu(ctx.oltConexion!, {
+            serial:       ctx.serialNumber,
+            ponPort:      dto.ponPort,
+            perfil:       dto.perfilSmartolt,
+            vlanId:       dto.vlanId,
+            vlanModo:     dto.vlanModo || 'access',
+            descripcion:  `${ctx.contrato.cliente_nombre} — ${ctx.contrato.numero_contrato}`,
+            frame:        0,
+            ponSlot:      partes[0] ?? undefined,
+            ponSubslot:   partes[1] ?? undefined,
+            ponPortNum:   partes[partes.length - 1] ?? undefined,
           });
 
-          ctx.smartoltOnuId = onuSmartolt.id;
+          ctx.smartoltOnuId    = onuResult.externId;
           ctx.onuAprovisionada = true;
 
           return {
-            detalle: `ONU aprovisionada en SmartOLT: SN=${ctx.serialNumber} | PON=${dto.ponPort} | VLAN=${dto.vlanId} | SmartOLT ID=${onuSmartolt.id}`,
+            detalle: `ONU aprovisionada | método=${ctx.oltMetodo} | SN=${ctx.serialNumber} | PON=${dto.ponPort} | VLAN=${dto.vlanId} | externId=${onuResult.externId}`,
             datos: {
               serialNumber:  ctx.serialNumber,
-              smartoltOnuId: onuSmartolt.id,
+              smartoltOnuId: onuResult.externId,
               ponPort:       dto.ponPort,
               vlanId:        dto.vlanId,
+              metodo:        ctx.oltMetodo,
             },
           };
         },
@@ -499,30 +597,33 @@ export class OrquestadorAprovisionamientoService {
             INSERT INTO onus
               (empresa_id, olt_id, serial_number, pon_port, pon_slot, pon_subslot, pon_port_num,
                perfil_smartolt, smartolt_onu_id, vlan_id, vlan_modo,
+               metodo_aprovisionamiento,
                estado, aprovisionada_en, aprovisionada_por)
             VALUES
-              ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-               'aprovisionada', NOW(), $12)
+              ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::metodo_aprovisionamiento,
+               'aprovisionada', NOW(), $13)
             ON CONFLICT (olt_id, pon_port, onu_id)
               WHERE deleted_at IS NULL
             DO UPDATE SET
-              estado          = 'aprovisionada',
-              smartolt_onu_id = $9,
-              perfil_smartolt = $8,
-              vlan_id         = $10,
-              aprovisionada_en = NOW(),
-              aprovisionada_por = $12
+              estado                  = 'aprovisionada',
+              smartolt_onu_id         = $9,
+              perfil_smartolt         = $8,
+              vlan_id                 = $10,
+              metodo_aprovisionamiento = $12::metodo_aprovisionamiento,
+              aprovisionada_en        = NOW(),
+              aprovisionada_por       = $13
             RETURNING id
           `, [
             user.empresaId, dto.oltId, ctx.serialNumber,
             dto.ponPort,
-            partes[0] || null,     // slot
-            partes[1] || null,     // subslot
-            partes[2] || null,     // port
+            partes[0] || null,
+            partes[1] || null,
+            partes[2] || null,
             dto.perfilSmartolt,
             ctx.smartoltOnuId,
             dto.vlanId,
             dto.vlanModo || 'access',
+            ctx.oltMetodo ?? 'smartolt',
             user.sub,
           ]);
 
@@ -567,8 +668,9 @@ export class OrquestadorAprovisionamientoService {
               WHERE id = $1
             `, [dto.contratoId]);
 
+            // Recalcular tipo_servicio derivado del cliente (wisp|ftth|mixto)
             await qrPaso7.query(
-              `UPDATE clientes SET tipo_servicio = 'ftth' WHERE id = $1`,
+              `SELECT recalc_tipo_servicio_cliente($1)`,
               [dto.clienteId],
             );
 
@@ -787,15 +889,24 @@ export class OrquestadorAprovisionamientoService {
       WHERE co.id = $1
     `, [dto.contratoId]).catch(() => [null]);
 
-    // ── 1. Eliminar de SmartOLT ──────────────────────────────
+    // ── 1. Eliminar provisión OLT ────────────────────────────
     if (dto.eliminarSmartolt !== false) {
-      const smartoltOnuId = ctx?.smartoltOnuId || contrato?.smartolt_onu_id;
-      const smartoltOltId = contrato?.smartolt_id;
+      const onuExternId   = ctx?.smartoltOnuId || contrato?.smartolt_onu_id;
+      const oltMetodoRollback = ctx?.oltMetodo ?? OltMetodoConexion.SMARTOLT_API;
 
-      if (smartoltOnuId && smartoltOltId) {
+      if (onuExternId && ctx?.oltConexion) {
         try {
-          await this.smartoltApi.eliminarProvision(smartoltOltId, smartoltOnuId);
-          revertidos.push(`SmartOLT: provisión eliminada (ONU ${smartoltOnuId})`);
+          const provider = this.oltFactory.get(oltMetodoRollback);
+          await provider.desaprovisionarOnu(ctx.oltConexion, onuExternId);
+          revertidos.push(`OLT (${oltMetodoRollback}): provisión eliminada (ONU ${onuExternId})`);
+        } catch (err) {
+          errores.push(`OLT rollback: ${err.message}`);
+        }
+      } else if (onuExternId && contrato?.smartolt_id) {
+        // Fallback: SmartOLT directo cuando no hay ctx
+        try {
+          await this.smartoltApi.eliminarProvision(contrato.smartolt_id, onuExternId);
+          revertidos.push(`SmartOLT: provisión eliminada (ONU ${onuExternId})`);
         } catch (err) {
           errores.push(`SmartOLT: ${err.message}`);
         }
@@ -893,19 +1004,9 @@ export class OrquestadorAprovisionamientoService {
           const clienteIdRollback = rows[0]?.cliente_id;
           if (clienteIdRollback) {
             await qrTipo.query(
-              `SELECT id FROM clientes WHERE id = $1 FOR UPDATE`,
+              `SELECT recalc_tipo_servicio_cliente($1)`,
               [clienteIdRollback],
             );
-            await qrTipo.query(`
-              UPDATE clientes SET tipo_servicio = CASE
-                WHEN EXISTS (
-                  SELECT 1 FROM contratos co2
-                  WHERE co2.cliente_id = $1
-                    AND co2.onu_id IS NOT NULL
-                    AND co2.deleted_at IS NULL
-                ) THEN 'ftth' ELSE 'wisp' END
-              WHERE id = $1
-            `, [clienteIdRollback]);
           }
           await qrTipo.commitTransaction();
         } catch (err) {
