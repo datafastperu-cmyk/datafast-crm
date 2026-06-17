@@ -73,3 +73,6 @@ coverage/
 # ── Herramientas privadas de licencias (NUNCA versionar) ──────
 tools/private.pem
 tools/generate-license.js
+
+# ── Credenciales locales (NUNCA versionar ni subir a VPS) ─────
+ACCESOS.local.md
