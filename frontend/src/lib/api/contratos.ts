@@ -230,6 +230,7 @@ export interface SegmentoIpv4 {
   routerId?:      string;
   nodoId?:        string;
   tipoServicio:   string;
+  authType?:      string;
   vlanId?:        number;
   totalIps:       number;
   ipsUsadas:      number;
@@ -262,6 +263,7 @@ export interface CreateSegmentoDto {
   routerId?:      string;
   nodoId?:        string;
   tipoServicio?:  string;
+  authType?:      string;
   vlanId?:        number;
   ipsReservadas?: string[];
 }

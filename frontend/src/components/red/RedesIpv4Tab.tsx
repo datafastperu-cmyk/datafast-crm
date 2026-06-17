@@ -304,6 +304,7 @@ function SegmentoForm({
     gateway:      segmento?.gateway      ?? '',
     routerId:     segmento?.routerId     ?? '',
     tipoServicio: segmento?.tipoServicio ?? 'wisp',
+    authType:     segmento?.authType     ?? 'pppoe',
   });
 
   // Auto-rellena gateway solo en modo creación
@@ -321,6 +322,7 @@ function SegmentoForm({
     gateway:      form.gateway,
     routerId:     form.routerId     || undefined,
     tipoServicio: form.tipoServicio || 'wisp',
+    authType:     form.authType     || 'pppoe',
   };
 
   const { mutate: crear, isPending: creando } = useMutation({
@@ -381,6 +383,30 @@ function SegmentoForm({
                   className={cn(
                     'flex-1 py-1.5 px-2 text-xs font-medium rounded-lg border-2 transition-all',
                     form.tipoServicio === val ? cls : 'border-input bg-background text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </FRow>
+
+          <FRow label="Tipo de auth">
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { val: 'pppoe',              label: 'PPPoE' },
+                { val: 'amarre_ip_mac',      label: 'IP/MAC' },
+                { val: 'amarre_ip_mac_dhcp', label: 'IP/MAC + DHCP' },
+              ].map(({ val, label }) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => set('authType', val)}
+                  className={cn(
+                    'flex-1 py-1.5 px-2 text-xs font-medium rounded-lg border-2 transition-all whitespace-nowrap',
+                    form.authType === val
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-input bg-background text-muted-foreground hover:bg-muted',
                   )}
                 >
                   {label}

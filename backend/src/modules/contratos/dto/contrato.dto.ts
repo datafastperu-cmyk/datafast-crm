@@ -332,6 +332,10 @@ export class CreateSegmentoDto {
   @IsOptional() @IsEnum(TipoServicio)
   tipoServicio?: TipoServicio;
 
+  @ApiPropertyOptional({ enum: AuthType, default: AuthType.PPPOE })
+  @IsOptional() @IsEnum(AuthType)
+  authType?: AuthType;
+
   @ApiPropertyOptional() @IsOptional() @IsInt() @Type(() => Number)
   vlanId?: number;
 
