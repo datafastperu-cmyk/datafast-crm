@@ -1066,10 +1066,13 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
       queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
       queryClient.invalidateQueries({ queryKey: ['cliente', clienteId] });
       const parts: string[] = [];
-      if (result.mikrotikOk)   parts.push('Mikrotik: OK');
-      if (result.antenaOk)     parts.push('Antena AP: OK');
-      const msg = parts.length ? `Servicio activado — ${parts.join(' | ')}` : 'Servicio activado';
-      toast(msg, { type: 'success' });
+      if (result.mikrotikOk) parts.push('Mikrotik: OK');
+      if (result.antenaOk)   parts.push('Antena AP: OK');
+      if (parts.length) {
+        toast(`Servicio activado — ${parts.join(' | ')}`, { type: 'success' });
+      } else {
+        toast('Servicio activado en BD, pero los equipos físicos NO fueron configurados. Revisa las advertencias.', { type: 'warning' });
+      }
       result.advertencias?.forEach(w => toast(w, { type: 'warning' }));
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),

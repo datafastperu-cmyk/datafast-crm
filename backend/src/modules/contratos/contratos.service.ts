@@ -487,13 +487,8 @@ export class ContratosService {
     if (c.estado !== EstadoContrato.PENDIENTE_ACTIVACION)
       throw new BadRequestException(`Solo se activan contratos PENDIENTE_ACTIVACION. Estado: ${c.estado}`);
 
-    await this.contratoRepo.update(id, {
-      estado: EstadoContrato.ACTIVO,
-      fechaEstado: new Date(),
-      fechaInstalacion: new Date(),
-      updatedBy: user.sub,
-    });
-
+    // ── 1. Provisionar MikroTik ANTES de activar en BD ───────────────────────
+    // Si falla, el contrato nunca se marca ACTIVO → no hay estado inconsistente.
     let provisionadoOk = false;
     let provisionMotivoFallo: string | undefined;
     try {
@@ -501,29 +496,34 @@ export class ContratosService {
       provisionadoOk = provResult.ok;
       provisionMotivoFallo = provResult.motivo;
     } catch (err: any) {
-      // Rollback: revertir a PENDIENTE_ACTIVACION — el router no aceptó la provisión
-      await this.contratoRepo.update(id, {
-        estado: EstadoContrato.PENDIENTE_ACTIVACION,
-        fechaEstado: new Date(),
-        fechaInstalacion: null as any,
-        updatedBy: user.sub,
-      });
+      this.logger.error(`activar → ${id} | fallo de provisión MikroTik: ${err?.message}`);
+      // Registrar intento fallido en historial sin cambiar el estado del contrato
       await this.contratoRepo.guardarHistorial({
         contratoId: id,
-        empresaId: user.empresaId,
-        estadoAnterior: EstadoContrato.ACTIVO,
-        estadoNuevo: EstadoContrato.PENDIENTE_ACTIVACION,
-        motivo: `Rollback automático — error de provisión Mikrotik: ${err?.message}`,
+        empresaId:  user.empresaId,
+        estadoAnterior: EstadoContrato.PENDIENTE_ACTIVACION,
+        estadoNuevo:    EstadoContrato.PENDIENTE_ACTIVACION,
+        motivo: `Intento de activación fallido — error MikroTik: ${err?.message}`,
         usuarioId: user.sub,
-      });
-      this.logger.error(`activar → ${id} | revertido a PENDIENTE_ACTIVACION: ${err?.message}`);
+      }).catch(he => this.logger.error(`activar → historial intento fallido: ${he?.message}`));
       throw new BadRequestException(
-        `No se pudo activar el servicio: ${err?.message}. ` +
+        `No se pudo configurar el router MikroTik: ${err?.message}. ` +
         `El contrato permanece en PENDIENTE_ACTIVACION.`,
       );
     }
 
+    // ── 2. Registrar en la antena AP (soft — no bloquea la activación) ───────
     const antenaResult = await this.registrarEnAccessListAntena(id);
+
+    // ── 3. Activar el contrato en BD ahora que el hardware está configurado ───
+    await this.contratoRepo.update(id, {
+      estado:           EstadoContrato.ACTIVO,
+      fechaEstado:      new Date(),
+      fechaInstalacion: new Date(),
+      updatedBy:        user.sub,
+    });
+
+    // ── 4. Historial de activación ────────────────────────────────────────────
     const advertencias: string[] = [];
     if (!provisionadoOk && provisionMotivoFallo) advertencias.push(`MikroTik sin provisión: ${provisionMotivoFallo}`);
     if (antenaResult.advertencia) advertencias.push(antenaResult.advertencia);
@@ -535,20 +535,26 @@ export class ContratosService {
     ].filter(Boolean).join(' | ');
 
     await this.contratoRepo.guardarHistorial({
-      contratoId: id,
-      empresaId: user.empresaId,
+      contratoId:     id,
+      empresaId:      user.empresaId,
       estadoAnterior: EstadoContrato.PENDIENTE_ACTIVACION,
-      estadoNuevo: EstadoContrato.ACTIVO,
+      estadoNuevo:    EstadoContrato.ACTIVO,
       motivo,
-      usuarioId: user.sub,
-    });
+      usuarioId:      user.sub,
+    }).catch(he => this.logger.error(`activar → guardarHistorial: ${he?.message}`));
 
-    // Promover cliente de PENDIENTE_ACTIVACION → ACTIVO automáticamente al activar su primer contrato
-    await this.dataSource.query(
-      `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
-       WHERE id = $1 AND empresa_id = $2 AND estado = 'pendiente_activacion'`,
-      [c.clienteId, user.empresaId, user.sub],
-    ).catch(e => this.logger.warn(`activar → cliente ${c.clienteId} | fallo al promover estado prospecto→activo: ${e?.message}`));
+    // ── 5. Promover cliente PENDIENTE_ACTIVACION → ACTIVO ────────────────────
+    try {
+      await this.dataSource.query(
+        `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
+         WHERE id = $1 AND empresa_id = $2 AND estado = 'pendiente_activacion'`,
+        [c.clienteId, user.empresaId, user.sub],
+      );
+    } catch (e: any) {
+      // No revertir la activación del contrato, pero sí registrar y advertir
+      this.logger.error(`activar → cliente ${c.clienteId} | fallo al promover estado: ${e?.message}`);
+      advertencias.push(`Estado del abonado no pudo actualizarse a "activo" — actualízalo manualmente en su ficha.`);
+    }
 
     return {
       contrato:     await this.findOne(id, user.empresaId),
