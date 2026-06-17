@@ -340,8 +340,7 @@ export class OrquestadorAprovisionamientoService {
               // Validar que el tipo de segmento coincide con el tipo de contrato
               if (
                 ctx.contrato.contrato_tipo_servicio &&
-                segmento.tipo_servicio !== ctx.contrato.contrato_tipo_servicio &&
-                segmento.tipo_servicio !== 'dedicado'
+                segmento.tipo_servicio !== ctx.contrato.contrato_tipo_servicio
               ) {
                 throw new Error(
                   `El segmento "${segmento.red_cidr}" es de tipo "${segmento.tipo_servicio}" ` +

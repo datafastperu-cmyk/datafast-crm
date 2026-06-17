@@ -100,7 +100,7 @@ export function RevertirFtthModal({ contratoId, clienteId, numeroContrato, onClo
     enabled:  !!routerWispId,
   });
   const segmentosWisp = (segmentosRaw as any[]).filter(
-    (s: any) => !s.tipoServicio || s.tipoServicio === 'wisp' || s.tipoServicio === 'dedicado',
+    (s: any) => !s.tipoServicio || s.tipoServicio === 'wisp',
   );
 
   const { mutate, isPending } = useMutation({

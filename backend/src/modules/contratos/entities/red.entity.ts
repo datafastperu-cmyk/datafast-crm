@@ -3,10 +3,9 @@ import { BaseModel } from '../../../common/entities/base.entity';
 import { AuthType } from '../../../common/constants/service-types';
 
 export enum TipoServicio {
-  FTTH      = 'ftth',
-  WISP      = 'wisp',
-  DEDICADO  = 'dedicado',
-  MIXTO     = 'mixto',
+  FTTH = 'ftth',
+  WISP = 'wisp',
+  MIXTO = 'mixto',
 }
 
 // ─── Segmento IPv4 ────────────────────────────────────────────

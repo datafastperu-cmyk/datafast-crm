@@ -371,9 +371,8 @@ function SegmentoForm({
           <FRow label="Tipo de servicio">
             <div className="flex gap-2">
               {[
-                { val: 'wisp',     label: 'WISP',     cls: 'border-orange-400 bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400' },
-                { val: 'ftth',     label: 'FTTH',     cls: 'border-blue-400 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400' },
-                { val: 'dedicado', label: 'Dedicado', cls: 'border-purple-400 bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400' },
+                { val: 'wisp', label: 'WISP', cls: 'border-orange-400 bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400' },
+                { val: 'ftth', label: 'FTTH', cls: 'border-blue-400 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400' },
               ].map(({ val, label, cls }) => (
                 <button
                   key={val}

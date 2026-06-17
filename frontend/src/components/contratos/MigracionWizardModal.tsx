@@ -133,7 +133,7 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
     enabled:  !!routerFtthId,
   });
   const segmentosFtth = (segmentosRaw as any[]).filter(
-    (s: any) => !s.tipoServicio || s.tipoServicio === 'ftth' || s.tipoServicio === 'dedicado',
+    (s: any) => !s.tipoServicio || s.tipoServicio === 'ftth',
   );
 
   const { mutate, isPending } = useMutation({

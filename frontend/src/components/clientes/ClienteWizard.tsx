@@ -991,7 +991,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   });
   const segmentos = segmentosRaw as any[];
   const segmentosFiltrados = segmentos.filter(
-    (s: any) => !s.tipoServicio || s.tipoServicio === tipoServicio || s.tipoServicio === 'dedicado',
+    (s: any) => !s.tipoServicio || s.tipoServicio === tipoServicio,
   );
 
   // Antenas AP vinculadas al router seleccionado

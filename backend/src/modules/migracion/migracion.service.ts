@@ -395,7 +395,7 @@ export class MigracionService {
                 [dto.segmentoFtthId, user.empresaId],
               );
               if (!seg) throw new Error(`Segmento FTTH ${dto.segmentoFtthId} no encontrado o inactivo`);
-              if (seg.tipo_servicio !== TipoServicioContrato.FTTH && seg.tipo_servicio !== 'dedicado') {
+              if (seg.tipo_servicio !== TipoServicioContrato.FTTH) {
                 throw new Error(
                   `El segmento "${seg.red_cidr}" es de tipo "${seg.tipo_servicio}", no FTTH. ` +
                   `Los pools WISP y FTTH no se comparten.`,
@@ -1051,7 +1051,7 @@ export class MigracionService {
             SELECT * FROM segmentos_ipv4 WHERE id = $1 AND empresa_id = $2 FOR UPDATE
           `, [dto.segmentoWispId, user.empresaId]);
           if (!seg.length) throw new Error('Segmento WISP no encontrado');
-          if (seg[0].tipo_servicio && seg[0].tipo_servicio !== 'wisp' && seg[0].tipo_servicio !== 'dedicado')
+          if (seg[0].tipo_servicio && seg[0].tipo_servicio !== 'wisp')
             throw new Error(`Segmento no es WISP (tipo: ${seg[0].tipo_servicio})`);
 
           let ipWisp: string;
