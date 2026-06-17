@@ -300,9 +300,10 @@ function SegmentoForm({
   const [red,    setRed]    = useState(redInicial);
   const [prefix, setPrefix] = useState(prefInicial ?? '24');
   const [form,   setForm]   = useState({
-    nombre:   segmento?.nombre   ?? '',
-    gateway:  segmento?.gateway  ?? '',
-    routerId: segmento?.routerId ?? '',
+    nombre:       segmento?.nombre       ?? '',
+    gateway:      segmento?.gateway      ?? '',
+    routerId:     segmento?.routerId     ?? '',
+    tipoServicio: segmento?.tipoServicio ?? 'wisp',
   });
 
   // Auto-rellena gateway solo en modo creación
@@ -315,10 +316,11 @@ function SegmentoForm({
   }, [red, esEdicion]);
 
   const dto = {
-    nombre:   form.nombre,
-    redCidr:  `${red}/${prefix}`,
-    gateway:  form.gateway,
-    routerId: form.routerId || undefined,
+    nombre:       form.nombre,
+    redCidr:      `${red}/${prefix}`,
+    gateway:      form.gateway,
+    routerId:     form.routerId     || undefined,
+    tipoServicio: form.tipoServicio || 'wisp',
   };
 
   const { mutate: crear, isPending: creando } = useMutation({
@@ -364,6 +366,28 @@ function SegmentoForm({
               placeholder="RED NUEVA"
               className={inputCls()}
             />
+          </FRow>
+
+          <FRow label="Tipo de servicio">
+            <div className="flex gap-2">
+              {[
+                { val: 'wisp',     label: 'WISP',     cls: 'border-orange-400 bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400' },
+                { val: 'ftth',     label: 'FTTH',     cls: 'border-blue-400 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400' },
+                { val: 'dedicado', label: 'Dedicado', cls: 'border-purple-400 bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400' },
+              ].map(({ val, label, cls }) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => set('tipoServicio', val)}
+                  className={cn(
+                    'flex-1 py-1.5 px-2 text-xs font-medium rounded-lg border-2 transition-all',
+                    form.tipoServicio === val ? cls : 'border-input bg-background text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </FRow>
 
           <FRow label="Router">
