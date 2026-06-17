@@ -1071,23 +1071,15 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         <Section title="Configuración de servicio" icon={Wifi}>
           {/* Tipo de Servicio */}
           <Field label="Tipo de Servicio">
-            <div className="flex gap-2">
+            <select
+              value={tipoServicio}
+              onChange={(e) => setValue('tipoServicio', e.target.value as any)}
+              className={INPUT_CLS}
+            >
               {TIPO_SERVICIO_CONTRATO.map((t) => (
-                <button
-                  key={t.val}
-                  type="button"
-                  onClick={() => setValue('tipoServicio', t.val as any)}
-                  className={cn(
-                    'flex-1 py-2 px-3 text-sm rounded-lg border transition-all',
-                    tipoServicio === t.val
-                      ? 'border-primary bg-primary/10 text-primary font-medium'
-                      : 'border-input bg-background text-foreground hover:bg-accent',
-                  )}
-                >
-                  {t.label}
-                </button>
+                <option key={t.val} value={t.val}>{t.label}</option>
               ))}
-            </div>
+            </select>
           </Field>
 
           {/* Router */}
