@@ -28,6 +28,9 @@ export interface ActivarResultado {
   advertencias: string[];
 }
 
+const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+  Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms}ms en ${label}`)), ms))]);
+
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_ACTIVACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.BAJA_DEFINITIVA],
@@ -279,9 +282,6 @@ export class ContratosService {
     await this.auditoria.logUpdate({ empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email, modulo: 'contratos', entidadId: id, descripcion: 'Actualización de servicio con re-provisión', req });
 
     setImmediate(async () => {
-      const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
-        Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms}ms en ${label}`)), ms))]);
-
       this.logger.log(`actualizarServicio background → iniciando re-provisión contrato ${id}`);
       await withTimeout(this.desaprovisionarMikrotik(id), 25000, 'desaprovision')
         .catch((e: any) => this.logger.warn(`actualizarServicio desaprovision: ${e?.message}`));
@@ -435,9 +435,12 @@ export class ContratosService {
       upd.segmentoId = null as any;
       upd.ipAsignada = null as any;
       if (contrato.segmentoId) await this.contratoRepo.liberarIp(id);
-      await this.desaprovisionarOlt(id);
-      await this.desaprovisionarMikrotik(id);
-      await this.eliminarDeAccessListAntena(id);
+      await withTimeout(this.desaprovisionarOlt(id), 20000, 'desaprovision-olt')
+        .catch((e: any) => this.logger.warn(`cambiarEstado baja OLT: ${e?.message}`));
+      await withTimeout(this.desaprovisionarMikrotik(id), 25000, 'desaprovision-mikrotik')
+        .catch((e: any) => this.logger.warn(`cambiarEstado baja MikroTik: ${e?.message}`));
+      await withTimeout(this.eliminarDeAccessListAntena(id), 15000, 'baja-antena')
+        .catch((e: any) => this.logger.warn(`cambiarEstado baja antena: ${e?.message}`));
 
       // Nota informativa con las credenciales de la última conexión
       const partes: string[] = [];
