@@ -1175,7 +1175,7 @@ export class MikrotikService {
         if (prevFails === 1) {
           // Primer fallo: puede ser un timeout transitorio — no declarar OFFLINE aún
           await this.routerRepo.update(router.id, { estado: EstadoEquipo.REVERIFICANDO });
-          this.logger.warn(`[POLL] ${router.nombre} (${creds.ip}): fallo transitorio #${prevFails} → REVERIFICANDO`);
+          this.logger.warn(`[POLL] ${router.nombre} (${router.vpnIp || router.ipGestion}): fallo transitorio #${prevFails} → REVERIFICANDO`);
         } else {
           // Segundo fallo o más: OFFLINE confirmado
           await this.routerRepo.update(router.id, {
@@ -1185,7 +1185,7 @@ export class MikrotikService {
             totalSesionesPppoe: 0,
           });
           this.reglasOk.delete(router.id);
-          this.logger.warn(`[POLL] ${router.nombre} (${creds.ip}): fallo #${prevFails} → OFFLINE`);
+          this.logger.warn(`[POLL] ${router.nombre} (${router.vpnIp || router.ipGestion}): fallo #${prevFails} → OFFLINE`);
         }
       }
     };
