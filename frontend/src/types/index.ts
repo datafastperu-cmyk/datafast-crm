@@ -156,6 +156,7 @@ export interface Contrato {
   enProrroga:      boolean;
   prorrogaHasta?:  string;
   aprovisionado:   boolean;
+  onuId?:          string;
   // JOINs
   clienteNombre?:  string;
   clienteTelefono?: string;

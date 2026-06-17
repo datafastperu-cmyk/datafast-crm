@@ -1202,7 +1202,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
-                      {c.estado === 'activo' && !c.aprovisionado && (
+                      {c.estado === 'activo' && c.onuId && !c.aprovisionado && (
                         <button
                           onClick={() => setOnuContrato(c)}
                           title="Aprovisionar ONU"
