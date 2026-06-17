@@ -54,6 +54,7 @@ import { FinanzasOpexModule }          from './modules/finanzas-opex/finanzas-op
 import { ProyectosInversionModule }    from './modules/proyectos-inversion/proyectos-inversion.module';
 import { MensajeriaModule }            from './modules/mensajeria/mensajeria.module';
 import { SchemaGuardModule }           from './modules/schema-guard/schema-guard.module';
+import { MigracionModule }            from './modules/migracion/migracion.module';
 
 @Module({
   imports: [
@@ -178,6 +179,7 @@ import { SchemaGuardModule }           from './modules/schema-guard/schema-guard
     ProyectosInversionModule,
     MensajeriaModule,
     SchemaGuardModule,
+    MigracionModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
