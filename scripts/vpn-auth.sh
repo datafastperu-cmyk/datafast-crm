@@ -2,13 +2,24 @@
 # Verifica credenciales VPN usuario/contraseña contra el backend ERP.
 # Llamado por OpenVPN via: auth-user-pass-verify <script> via-env
 # OpenVPN inyecta: username y password como variables de entorno.
+#
+# SEGURIDAD: username y password se escapan antes de embeber en JSON
+# para evitar shell injection / JSON injection.
 
 [ -z "${username}" ] && exit 1
+
+# Escapar caracteres especiales JSON: \ → \\ y " → \"
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+UN=$(json_escape "${username}")
+PW=$(json_escape "${password}")
 
 RESPONSE=$(curl -sf -m 5 \
   -X POST "http://127.0.0.1:4000/api/v1/openvpn/mikrotik-clients/verify-auth" \
   -H 'Content-Type: application/json' \
-  -d "{\"username\":\"${username}\",\"password\":\"${password}\"}" 2>/dev/null)
+  -d "{\"username\":\"${UN}\",\"password\":\"${PW}\"}" 2>/dev/null)
 
 [ $? -ne 0 ] && exit 1
 

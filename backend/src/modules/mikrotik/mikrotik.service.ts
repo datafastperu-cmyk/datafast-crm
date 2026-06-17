@@ -37,6 +37,9 @@ export const EVENT_CLIENTE_REACTIVADO  = 'mikrotik.cliente.reactivado';
 export class MikrotikService {
   private readonly logger = new Logger(MikrotikService.name);
   private readonly reglasOk = new Set<string>();
+  // Contador de fallos consecutivos de poll por router (en memoria).
+  // 1 fallo → REVERIFICANDO (puede ser transitorio), 2+ fallos → OFFLINE real.
+  private readonly _pollFailCount = new Map<string, number>();
 
   constructor(
     @InjectRepository(Router)
@@ -98,9 +101,10 @@ export class MikrotikService {
 
     if (dto.metodoConexion === MetodoConexion.VPN_TUNNEL) {
       if (dto.vpnClienteId) {
-        // Vincular cert del wizard directamente — evita generar un cert UUID huérfano
+        // Vincular cert del wizard directamente — evita generar un cert UUID huérfano.
+        // Pasamos usuarioId para asegurar que el cert pertenece al operador que abrió el wizard.
         try {
-          await this.vpnSvc.vincularCertWizardARouter(dto.vpnClienteId, saved.id, user.empresaId);
+          await this.vpnSvc.vincularCertWizardARouter(dto.vpnClienteId, saved.id, user.empresaId, user.sub);
         } catch (e: any) {
           this.logger.error(`[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`);
           await this.routerRepo.softDelete(saved.id);
@@ -933,6 +937,20 @@ export class MikrotikService {
     identityDetectada?: string;
     rosVersion?: string;
   }> {
+    // ── Bloquear SSRF: loopback y link-local no son routers válidos ─────────
+    // Permite IPs privadas (192.168.x, 10.x, 172.16-31.x) porque son routers LAN legítimos.
+    // Bloquea solo loopback VPS (127.x) y cloud metadata (169.254.x) que expondrían servicios internos.
+    const ipLower = dto.ip.toLowerCase().trim();
+    if (
+      ipLower === 'localhost' ||
+      ipLower.startsWith('127.') ||
+      ipLower === '0.0.0.0' ||
+      ipLower.startsWith('169.254.') ||
+      ipLower === '::1'
+    ) {
+      throw new BadRequestException(`La IP "${dto.ip}" no es un destino válido para un router`);
+    }
+
     // ── Resolver contraseña: sentinel '***stored***' → leer de BD ─
     let resolvedPassword = dto.password ?? '';
     if ((!resolvedPassword || resolvedPassword === '***stored***') && dto.routerId) {
@@ -1142,18 +1160,33 @@ export class MikrotikService {
           totalSesionesPppoe: sesionesCount,
         });
 
+        // Reset contador de fallos consecutivos al recuperar conectividad
+        this._pollFailCount.delete(router.id);
+
         if (!this.reglasOk.has(router.id)) {
           this.firewallSvc.configurarReglasControl(creds)
             .then(() => { this.reglasOk.add(router.id); this.logger.log(`Reglas de control (poll) aplicadas: ${creds.ip}`); })
             .catch((err) => this.logger.warn(`No se pudieron aplicar reglas en ${creds.ip}: ${err.message}`));
         }
       } catch {
-        await this.routerRepo.update(router.id, {
-          estado:             EstadoEquipo.OFFLINE,
-          cpuUsoPct:          null,
-          memoriaUsoPct:      null,
-          totalSesionesPppoe: 0,
-        });
+        const prevFails = (this._pollFailCount.get(router.id) ?? 0) + 1;
+        this._pollFailCount.set(router.id, prevFails);
+
+        if (prevFails === 1) {
+          // Primer fallo: puede ser un timeout transitorio — no declarar OFFLINE aún
+          await this.routerRepo.update(router.id, { estado: EstadoEquipo.REVERIFICANDO });
+          this.logger.warn(`[POLL] ${router.nombre} (${creds.ip}): fallo transitorio #${prevFails} → REVERIFICANDO`);
+        } else {
+          // Segundo fallo o más: OFFLINE confirmado
+          await this.routerRepo.update(router.id, {
+            estado:             EstadoEquipo.OFFLINE,
+            cpuUsoPct:          null,
+            memoriaUsoPct:      null,
+            totalSesionesPppoe: 0,
+          });
+          this.reglasOk.delete(router.id);
+          this.logger.warn(`[POLL] ${router.nombre} (${creds.ip}): fallo #${prevFails} → OFFLINE`);
+        }
       }
     };
 
@@ -1216,6 +1249,20 @@ export class MikrotikService {
       version:         router.versionRos as any ?? 'v6',
     };
 
+    // Pre-flight: verificar conectividad antes de comenzar la migración.
+    // Sin esto, un fallo a mitad deja algunos contratos migrados y otros no.
+    try {
+      await this.pool.execute(creds, async (api) => {
+        await api.write('/system/identity/print');
+      });
+    } catch (err: any) {
+      throw new BadRequestException(
+        `No se puede conectar al router "${router.nombre}" ` +
+        `(${creds.ip}:${creds.port}) — verifica el túnel VPN antes de migrar. ` +
+        `Detalle: ${err.message}`,
+      );
+    }
+
     const contratos = await this.ds.query<any[]>(`
       SELECT co.id, co.numero_contrato AS "numeroContrato",
              co.usuario_pppoe AS "usuarioPppoe", co.password_pppoe AS "passwordPppoe",
@@ -1265,9 +1312,11 @@ export class MikrotikService {
       if (tipoControl === 'amarre_ip_mac_dhcp' && co.macAddress) {
         await this.pool.execute(creds, async (api) => {
           const macFmt = co.macAddress.toUpperCase().replace(/[^A-F0-9]/g, '').match(/.{2}/g)?.join(':') ?? co.macAddress.toUpperCase();
-          const leases = await api.write('/ip/dhcp-server/lease/print');
-          const match = leases.find((l: any) => (l['mac-address'] || '').toUpperCase() === macFmt);
-          if (match) await api.write('/ip/dhcp-server/lease/remove', [`=.id=${match['.id']}`]);
+          // Filtrar en RouterOS API directamente, evitando cargar todos los leases en Node
+          const matches = await api.write('/ip/dhcp-server/lease/print', [`?mac-address=${macFmt}`]);
+          for (const m of matches) {
+            await api.write('/ip/dhcp-server/lease/remove', [`=.id=${m['.id']}`]);
+          }
         });
       }
     }

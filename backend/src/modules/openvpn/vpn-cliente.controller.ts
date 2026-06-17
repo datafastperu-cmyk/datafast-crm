@@ -132,6 +132,26 @@ export class VpnClienteController {
     return { permitir };
   }
 
+  // ── Notificar desconexión VPN (client-disconnect) ─────────────
+  // Llamado por vpn-client-disconnect.sh cuando OpenVPN cierra un túnel.
+  // Actualiza el estado del cliente en BD sin esperar al siguiente poll.
+  @Post('disconnect-notify')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Notificar desconexión de túnel VPN (uso interno — solo localhost)' })
+  async disconnectNotify(
+    @Body() body: { cn: string },
+    @Req()  req:  Request,
+  ) {
+    const ip = req.socket.remoteAddress ?? '';
+    if (!ip.includes('127.0.0.1') && !ip.includes('::1')) {
+      throw new ForbiddenException('Solo accesible desde localhost');
+    }
+    if (!body?.cn) return StdResponse.ok(null, 'Sin CN');
+    await this.svc.notificarDesconexion(body.cn);
+    return StdResponse.ok(null, 'Desconexión registrada');
+  }
+
   // ── Listar alertas VPN activas ────────────────────────────────
 
   @Get('alertas')

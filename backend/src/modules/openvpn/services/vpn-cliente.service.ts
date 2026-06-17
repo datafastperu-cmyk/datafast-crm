@@ -8,6 +8,7 @@ import { Cron }             from '@nestjs/schedule';
 import * as fs              from 'fs/promises';
 import * as path            from 'path';
 import * as net             from 'net';
+import * as crypto          from 'crypto';
 import { Response }         from 'express';
 
 import { VpnCliente, EstadoVpnCliente } from '../entities/vpn-cliente.entity';
@@ -25,6 +26,10 @@ const VPS_IP      = process.env.VPN_SERVER_IP || process.env.APP_URL?.replace(/^
 // Base URL completa para el endpoint de descarga del CA (incluye puerto en dev sin Nginx)
 const API_BASE    = (process.env.APP_URL || `http://${VPS_IP}`).replace(/\/$/, '');
 const VPN_PORT    = parseInt(process.env.VPN_SERVER_PORT || '1195', 10);
+// Máscara de subred para ifconfig-push en los archivos CCD.
+// Debe coincidir con la topología del servidor OpenVPN (subnet/net30).
+// Configurable via VPN_CCD_NETMASK para soportar /30 u otras topologías.
+const CCD_NETMASK = process.env.VPN_CCD_NETMASK || '255.255.255.0';
 
 interface VpnConnectedClient {
   commonName:     string;
@@ -151,9 +156,17 @@ export class VpnClienteService {
       order: { createdAt: 'DESC' },
     });
     if (!cliente) throw new NotFoundException('No hay cliente VPN asociado a este router');
-    // Retornar el script guardado en el momento de generación (íntegro, MAC incluida)
-    // Fallback a reconstrucción solo para clientes anteriores a este cambio (scriptGenerado null)
-    return cliente.scriptGenerado ?? await this._generarScript(cliente);
+    if (!cliente.scriptGenerado) {
+      // Clientes anteriores al campo scriptGenerado: el script original se perdió.
+      // Regenerar generaría una nueva MAC aleatoria incompatible con la configuración
+      // actual del router, por lo que lanzamos un error explícito en lugar de
+      // producir un script silenciosamente inválido.
+      throw new BadRequestException(
+        'El script original de este cliente VPN no fue almacenado. ' +
+        'Revoca este cliente VPN y genera uno nuevo desde el wizard para obtener un script actualizado.',
+      );
+    }
+    return cliente.scriptGenerado;
   }
 
   // ── Listar por router (para revocación al eliminar router) ────
@@ -366,10 +379,16 @@ export class VpnClienteService {
     vpnClienteId: string,
     routerId:     string,
     empresaId:    string,
+    usuarioId?:   string,
   ): Promise<void> {
-    const cliente = await this.repo.findOne({ where: { id: vpnClienteId, empresaId, activo: true } });
+    const where: any = { id: vpnClienteId, empresaId, activo: true };
+    // Validar que el cert pertenezca al mismo usuario que creó el wizard
+    // para evitar que un operador reclame el cert pendiente de otro.
+    if (usuarioId) where.usuarioId = usuarioId;
+
+    const cliente = await this.repo.findOne({ where });
     if (!cliente || cliente.estado === 'revocado') {
-      this.logger.warn(`[VPN-LINK] vpn_cliente ${vpnClienteId} no encontrado o revocado — fallback a generarParaRouter`);
+      this.logger.warn(`[VPN-LINK] vpn_cliente ${vpnClienteId} no encontrado, revocado o de otro usuario — fallback a generarParaRouter`);
       const router = await this.routerRepo.findOne({ where: { id: routerId, empresaId } });
       if (router) await this.generarParaRouter(router);
       return;
@@ -449,7 +468,7 @@ export class VpnClienteService {
   async escribirArchivoCcd(commonName: string, subnets: string[], vpnIp?: string): Promise<void> {
     const filePath = path.join(CCD_DIR, commonName);
     const lines: string[] = [];
-    if (vpnIp) lines.push(`ifconfig-push ${vpnIp} 255.255.255.0`);
+    if (vpnIp) lines.push(`ifconfig-push ${vpnIp} ${CCD_NETMASK}`);
     for (const sn of (subnets || []).filter(Boolean)) {
       const [ip, prefix] = sn.split('/');
       const mask = this._prefixToMask(parseInt(prefix ?? '24', 10));
@@ -561,21 +580,30 @@ export class VpnClienteService {
     }
   }
 
-  // Vincula el registro del cert real al router y desactiva el huérfano UUID
+  // Vincula el registro del cert real al router y desactiva el huérfano UUID.
+  // actualCn proviene del management de OpenVPN (username-as-common-name) y
+  // coincide con vpnUsuario (prefijo df-), NO con nombreCert (prefijo user-).
   private async _sincronizarRegistroVpn(
     routerId:   string,
     empresaId:  string,
     actualCn:   string,
     orphanCn:   string | undefined,
   ): Promise<void> {
-    // Vincular registro del cert real al router
-    const realRecord = await this.repo.findOne({ where: { nombreCert: actualCn } });
+    // Buscar por vpnUsuario (path normal wizard) O por nombreCert (certs PKI legacy)
+    const realRecord = await this.repo.findOne({
+      where: [{ vpnUsuario: actualCn }, { nombreCert: actualCn }],
+    });
     if (realRecord) {
       await this.repo.update(realRecord.id, { routerId, empresaId });
+      this.logger.log(`[VPN-CCD] Registro real vinculado: ${actualCn} → router ${routerId}`);
+    } else {
+      this.logger.warn(`[VPN-CCD] No se encontró registro para CN "${actualCn}" — no se pudo vincular a router ${routerId}`);
     }
-    // Desactivar el registro UUID huérfano si existe y está sin router conectado
+    // Desactivar el registro huérfano si existe y no tiene VPN IP asignada
     if (orphanCn && orphanCn !== actualCn) {
-      const orphan = await this.repo.findOne({ where: { nombreCert: orphanCn } });
+      const orphan = await this.repo.findOne({
+        where: [{ vpnUsuario: orphanCn }, { nombreCert: orphanCn }],
+      });
       if (orphan && !orphan.vpnIp) {
         await this.repo.update(orphan.id, { activo: false, estado: 'revocado' as EstadoVpnCliente });
         this.logger.log(`[VPN-CCD] Registro huérfano inactivado: ${orphanCn}`);
@@ -778,41 +806,15 @@ export class VpnClienteService {
     return c;
   }
 
-  private async _autoRegistrarRouter(
-    cliente:    VpnCliente,
-    vpnIp:      string,
-    ipReal:     string,
-    empresaId:  string,
-  ): Promise<Router> {
-    const existing = await this.routerRepo.findOne({
-      where: { vpnIp, empresaId },
+  // ── Notificar desconexión VPN (llamado por vpn-client-disconnect.sh) ─
+  // Actualiza el estado del cliente a 'desconectado' cuando OpenVPN cierra el túnel.
+  async notificarDesconexion(cn: string): Promise<void> {
+    const cliente = await this.repo.findOne({
+      where: [{ vpnUsuario: cn, activo: true }, { nombreCert: cn, activo: true }],
     });
-    if (existing) return existing;
-
-
-    const router = this.routerRepo.create({
-      empresaId,
-      nombre:          cliente.nombre,
-      descripcion:     cliente.descripcion,
-      ubicacion:       cliente.ubicacion,
-      ipGestion:       vpnIp,
-      vpnIp,
-      usuario:         'admin',
-      passwordCifrado: encrypt(''),
-      metodoConexion:  MetodoConexion.VPN_TUNNEL,
-      estado:          EstadoEquipo.DESCONOCIDO,
-      versionRos:      VersionRouterOS.DESCONOCIDA,
-      activo:          true,
-      puertoApi:       8728,
-      puertoApiSsl:    8729,
-      puertoSsh:       22,
-      usarSsl:         false,
-      timeoutConexion: 10,
-      reintentos:      3,
-    });
-    await this.routerRepo.save(router);
-    this.logger.log(`Router auto-registrado: ${router.id} | VPN IP: ${vpnIp}`);
-    return router;
+    if (!cliente || cliente.estado === 'revocado') return;
+    await this.repo.update(cliente.id, { estado: 'desconectado' });
+    this.logger.log(`[VPN] Desconexión notificada por OpenVPN: CN="${cn}" → estado=desconectado`);
   }
 
   // ── Resolver compatibilidad cipher/auth ───────────────────────
@@ -870,7 +872,14 @@ export class VpnClienteService {
     });
     if (!byUser) return false;
     const plain = await this._decryptPassword(byUser.vpnPasswordCifrado);
-    return plain === password;
+    // timingSafeEqual evita timing attacks en la comparación de contraseñas
+    try {
+      const a = Buffer.from(plain);
+      const b = Buffer.from(password);
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    } catch {
+      return false;
+    }
   }
 
   // ── Generador de script ───────────────────────────────────────
