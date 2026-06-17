@@ -21,9 +21,9 @@ export class CreateRecalcTipoServicioFn1786500000000 implements MigrationInterfa
           SET tipo_servicio = (
             SELECT
               CASE
-                WHEN COUNT(DISTINCT co.tipo_servicio) > 1         THEN 'mixto'
-                WHEN MAX(co.tipo_servicio::text) = 'ftth'         THEN 'ftth'
-                ELSE                                                   'wisp'
+                WHEN COUNT(DISTINCT co.tipo_servicio) > 1         THEN 'mixto'::tipo_servicio
+                WHEN MAX(co.tipo_servicio::text) = 'ftth'         THEN 'ftth'::tipo_servicio
+                ELSE                                                   'wisp'::tipo_servicio
               END
             FROM contratos co
             WHERE co.cliente_id  = p_cliente_id
