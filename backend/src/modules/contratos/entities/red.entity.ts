@@ -1,10 +1,12 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
+import { AuthType } from '../../../common/constants/service-types';
 
 export enum TipoServicio {
   FTTH      = 'ftth',
   WISP      = 'wisp',
   DEDICADO  = 'dedicado',
+  MIXTO     = 'mixto',
 }
 
 // ─── Segmento IPv4 ────────────────────────────────────────────
@@ -58,6 +60,14 @@ export class SegmentoIpv4 extends BaseModel {
 
   @Column({ name: 'tipo_servicio', type: 'enum', enum: TipoServicio, default: TipoServicio.FTTH })
   tipoServicio: TipoServicio;
+
+  @Column({
+    name: 'auth_type',
+    type: 'enum',
+    enum: AuthType,
+    default: AuthType.PPPOE,
+  })
+  authType: AuthType;
 
   @Column({ name: 'vlan_id', type: 'smallint', nullable: true })
   vlanId: number;

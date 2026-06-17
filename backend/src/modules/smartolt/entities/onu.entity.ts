@@ -1,5 +1,6 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
+import { MetodoAprovisionamiento } from '../../../common/constants/service-types';
 
 // ─── Enums ────────────────────────────────────────────────────
 export enum EstadoOlt {
@@ -155,6 +156,14 @@ export class Onu extends BaseModel {
   distanciaKm: number;
 
   // ── Aprovisionamiento ─────────────────────────────────────
+  @Column({
+    name: 'metodo_aprovisionamiento',
+    type: 'enum',
+    enum: MetodoAprovisionamiento,
+    default: MetodoAprovisionamiento.SMARTOLT,
+  })
+  metodoAprovisionamiento: MetodoAprovisionamiento;
+
   @Column({ name: 'aprovisionada_en', type: 'timestamptz', nullable: true })
   aprovisionadaEn: Date;
 

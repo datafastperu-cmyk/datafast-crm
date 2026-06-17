@@ -1,5 +1,6 @@
 import { Entity, Column, Index, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
+import { TipoServicioContrato } from '../../../common/constants/service-types';
 
 // ─── Enums ────────────────────────────────────────────────────
 export enum TipoPago {
@@ -184,12 +185,29 @@ export class Contrato extends BaseModel {
   @Column({ name: 'meses_deuda', type: 'smallint', default: 0 })
   mesesDeuda: number;
 
+  // ── Tipo de servicio ──────────────────────────────────────
+  @Column({
+    name: 'tipo_servicio',
+    type: 'enum',
+    enum: TipoServicioContrato,
+    enumName: 'tipo_servicio',   // referencia el enum PG existente
+    default: TipoServicioContrato.WISP,
+  })
+  tipoServicio: TipoServicioContrato;
+
   // ── Aprovisionamiento FTTH ────────────────────────────────
   @Column({ default: false })
   aprovisionado: boolean;
 
   @Column({ name: 'aprovisionado_en', type: 'timestamptz', nullable: true })
   aprovisionadoEn: Date;
+
+  // ── Migración de servicio ─────────────────────────────────
+  @Column({ name: 'en_migracion', default: false })
+  enMigracion: boolean;
+
+  @Column({ name: 'migracion_iniciada_en', type: 'timestamptz', nullable: true })
+  migracionIniciadaEn: Date;
 
   // ── Red — campos adicionales ──────────────────────────────
   @Column({ name: 'excluir_firewall', default: false })

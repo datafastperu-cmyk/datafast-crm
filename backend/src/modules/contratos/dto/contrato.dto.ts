@@ -7,6 +7,7 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { EstadoContrato, TipoPago } from '../entities/contrato.entity';
 import { TipoServicio } from '../entities/red.entity';
+import { AuthType, TipoServicioContrato } from '../../../common/constants/service-types';
 import { PaginationDto } from '../../../common/dto/response.dto';
 
 // ─── Crear Contrato ───────────────────────────────────────────
@@ -187,9 +188,20 @@ export class CreateContratoDto {
   @IsOptional() @IsString() @MaxLength(2000)
   notasAdmin?: string;
 
-  @ApiPropertyOptional({ description: 'Tipo de autenticación por abonado cuando el router no controla la autenticación', enum: ['ninguna','pppoe','amarre_ip_mac','amarre_ip_mac_dhcp'] })
-  @IsOptional() @IsString() @MaxLength(20)
-  tipoAuth?: string;
+  @ApiPropertyOptional({
+    description: 'Tipo de autenticación del abonado',
+    enum: AuthType,
+  })
+  @IsOptional() @IsEnum(AuthType)
+  tipoAuth?: AuthType;
+
+  @ApiPropertyOptional({
+    description: 'Tipo de servicio: wisp (radio) o ftth (fibra)',
+    enum: TipoServicioContrato,
+    default: TipoServicioContrato.WISP,
+  })
+  @IsOptional() @IsEnum(TipoServicioContrato)
+  tipoServicio?: TipoServicioContrato;
 }
 
 // ─── Actualizar Contrato ──────────────────────────────────────
