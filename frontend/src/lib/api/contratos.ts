@@ -63,6 +63,7 @@ export interface CreateContratoDto {
   usuarioAntena?:         string;
   contrasenaAntena?:      string;
   tipoAuth?:              string;
+  tipoServicio?:          'wisp' | 'ftth';
 }
 
 export interface CambiarEstadoDto {

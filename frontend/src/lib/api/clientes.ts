@@ -164,6 +164,7 @@ export const clientesApi = {
       notasInstalacion?: string;
       notasTecnicas?: string;
       tipoAuth?: string;
+      tipoServicio?: 'wisp' | 'ftth';
     };
     facturacion?: Record<string, any>;
     notificaciones?: Record<string, any>;

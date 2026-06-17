@@ -15,6 +15,7 @@ import {
 
 import { clientesApi }                       from '@/lib/api/clientes';
 import { redesApi, planesApi } from '@/lib/api/contratos';
+import { AUTH_TYPES, TIPO_SERVICIO_CONTRATO } from '@/lib/constants/service-types';
 import { facturacionApi }                    from '@/lib/api/facturacion';
 import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
 import { plantillasApi }                     from '@/lib/api/plantillas';
@@ -44,15 +45,12 @@ const step1Schema = z.object({
 
 const step2Schema = z.object({ _placeholder: z.string().optional() });
 
-const SECURITY_OPTS_ABONADO = [
-  { val: 'pppoe',  label: 'PPPoE'                       },
-  { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
-  { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
-  { val: 'ninguna',            label: 'Ninguna'                     },
-] as const;
+// Fuente única desde constants — sin opción "ninguna"
+const SECURITY_OPTS_ABONADO = AUTH_TYPES;
 
 const step3Schema = z.object({
   // Configuración de servicio
+  tipoServicio:     z.enum(['wisp', 'ftth']).default('wisp'),
   routerId:         z.string().optional(),
   tipoControl:      z.string().optional(),
   excluirFirewall:  z.boolean().optional(),
@@ -383,6 +381,7 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
             latitudInstalacion,
             longitudInstalacion,
             tipoAuth:            data.tipoControl             || undefined,
+            tipoServicio:        data.tipoServicio            || 'wisp',
           },
         }),
         ...(s2 && { facturacion: s2.facturacion, notificaciones: s2.notificaciones }),
@@ -948,6 +947,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const { register, handleSubmit, watch, setValue, setError, formState: { errors: s3Errors } } = useForm<S3>({
     resolver:      zodResolver(step3Schema),
     defaultValues: initial ?? {
+      tipoServicio:     'wisp',
       excluirFirewall:  false,
       tipoControl:      'pppoe',
       tipoIpv4:         'dinamica',
@@ -972,8 +972,10 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
   const planSeleccionado = planes.find((p: any) => p.id === perfilId) as any | undefined;
 
-  const routerId   = watch('routerId');
-  const segmentoId = watch('segmentoId');
+  const routerId     = watch('routerId');
+  const segmentoId   = watch('segmentoId');
+  const tipoServicio = watch('tipoServicio');
+  const esFtth       = tipoServicio === 'ftth';
 
   // Router seleccionado — para derivar comportamiento de auth
   const tipoControlVal = watch('tipoControl');
@@ -988,6 +990,9 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     enabled:  !!routerId,
   });
   const segmentos = segmentosRaw as any[];
+  const segmentosFiltrados = segmentos.filter(
+    (s: any) => !s.tipoServicio || s.tipoServicio === tipoServicio || s.tipoServicio === 'dedicado',
+  );
 
   // Antenas AP vinculadas al router seleccionado
   const { data: antenasAP = [] } = useQuery({
@@ -1002,6 +1007,12 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     setValue('ipv4', '');
     setValue('conectadoAId', '');
   }, [routerId]);
+
+  // Al cambiar tipo de servicio: limpiar segmento e IP (pools no son compartidos)
+  useEffect(() => {
+    setValue('segmentoId', '');
+    setValue('ipv4', '');
+  }, [tipoServicio]);
 
   const { data: nextIpData, isFetching: fetchingIp } = useQuery({
     queryKey:  ['next-ip', segmentoId],
@@ -1058,6 +1069,27 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         {/* ── Izquierda: Configuración + Plan ── */}
         <div className="space-y-4">
         <Section title="Configuración de servicio" icon={Wifi}>
+          {/* Tipo de Servicio */}
+          <Field label="Tipo de Servicio">
+            <div className="flex gap-2">
+              {TIPO_SERVICIO_CONTRATO.map((t) => (
+                <button
+                  key={t.val}
+                  type="button"
+                  onClick={() => setValue('tipoServicio', t.val as any)}
+                  className={cn(
+                    'flex-1 py-2 px-3 text-sm rounded-lg border transition-all',
+                    tipoServicio === t.val
+                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      : 'border-input bg-background text-foreground hover:bg-accent',
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
           {/* Router */}
           <Field label="Router" error={s3Errors.routerId?.message}>
             <select {...register('routerId')} className={INPUT_CLS}>
@@ -1100,7 +1132,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               className={cn(INPUT_CLS, !routerId && 'opacity-50 cursor-not-allowed')}
             >
               <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
-              {segmentos.map((s: any) => (
+              {segmentosFiltrados.map((s: any) => (
                 <option key={s.id} value={s.id}>
                   {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} disponibles)` : ''}
                 </option>
@@ -1209,7 +1241,8 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           </div>
         </Section>
 
-          {/* Equipo receptor */}
+          {/* Equipo receptor — solo WISP */}
+          {!esFtth && (
           <Section title="Equipo receptor" icon={Radio} compact>
             <Field
               label="Conectado A"
@@ -1234,6 +1267,19 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               )}
             </Field>
           </Section>
+          )}
+
+          {/* Terminal FTTH — solo FTTH */}
+          {esFtth && (
+          <Section title="Terminal FTTH (ONU)" icon={Cable} compact>
+            <Field label="Serial ONU" hint="Se completará durante el aprovisionamiento">
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-dashed border-border bg-muted/30">
+                <Cable className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm text-muted-foreground">Pendiente de aprovisionamiento OLT</span>
+              </div>
+            </Field>
+          </Section>
+          )}
         </div>
 
         {/* ── Derecha: Plan + Instalación ── */}
