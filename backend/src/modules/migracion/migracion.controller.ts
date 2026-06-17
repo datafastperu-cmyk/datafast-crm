@@ -6,7 +6,7 @@ import {
 } from '@nestjs/swagger';
 
 import { MigracionService }    from './migracion.service';
-import { MigrarWispFtthDto, MigracionResultadoDto } from './migracion.dto';
+import { MigrarWispFtthDto, MigrarFtthWispDto, MigracionResultadoDto } from './migracion.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission }   from '../../common/decorators/roles.decorator';
 
@@ -47,5 +47,33 @@ Transición completa de un abonado radio (WISP) a fibra óptica (FTTH).
   ): Promise<MigracionResultadoDto> {
     this.logger.log(`[MIGRACIÓN] wisp-a-ftth | contrato=${dto.contratoId} | por=${user.email}`);
     return this.svc.migrarWispAFtth(dto, user);
+  }
+
+  // ── POST /migracion/ftth-a-wisp ──────────────────────────
+  @Post('ftth-a-wisp')
+  @RequirePermission('contrato:migrar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '🔄 Revertir contrato FTTH → WISP (7 pasos)',
+    description: `
+Reversión de un abonado FTTH a radio (WISP).
+
+**Pasos:**
+1. Validar contrato FTTH
+2. Marcar contrato en migración (advisory lock)
+3. Desaprovisionar ONU del OLT (best-effort)
+4. Eliminar acceso FTTH en MikroTik
+5. Liberar IP FTTH del pool
+6. Asignar IP del pool WISP (advisory lock)
+7. Finalizar: actualizar contrato a WISP, recalcular tipo_servicio del cliente
+    `.trim(),
+  })
+  @ApiResponse({ status: 200, type: MigracionResultadoDto })
+  async migrarFtthAWisp(
+    @Body() dto: MigrarFtthWispDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<MigracionResultadoDto> {
+    this.logger.log(`[MIGRACIÓN] ftth-a-wisp | contrato=${dto.contratoId} | por=${user.email}`);
+    return this.svc.migrarFtthAWisp(dto, user);
   }
 }

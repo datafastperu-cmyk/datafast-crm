@@ -20,6 +20,7 @@ import { TipoServicioContrato } from '../../common/constants/service-types';
 
 import {
   MigrarWispFtthDto,
+  MigrarFtthWispDto,
   MigracionResultadoDto,
   PasoMigracionDto,
 } from './migracion.dto';
@@ -839,6 +840,346 @@ export class MigracionService {
       timeoutSec:      get('timeout') || row.timeout_conexion || 10,
       version:         ((get('version') || row.version_ros) === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
     };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // MIGRACIÓN FTTH → WISP (7 pasos)
+  // ────────────────────────────────────────────────────────────
+  async migrarFtthAWisp(
+    dto: MigrarFtthWispDto,
+    user: JwtPayload,
+  ): Promise<MigracionResultadoDto> {
+    const pasos: PasoMigracionDto[] = [];
+    const t0 = Date.now();
+
+    interface FtthCtx {
+      contrato?:          any;
+      onu?:               any;
+      ipFtth?:            string;
+      ipWisp?:            string;
+      routerFtth?:        any;
+      routerWisp?:        any;
+      // rollback flags
+      marcadoEnMigracion: boolean;
+      onuDesaprovisionada: boolean;
+      accesoFtthEliminado: boolean;
+      ipFtthLiberada:      boolean;
+      ipWispAsignada:      boolean;
+    }
+
+    const ctx: FtthCtx = {
+      marcadoEnMigracion:  false,
+      onuDesaprovisionada: false,
+      accesoFtthEliminado: false,
+      ipFtthLiberada:      false,
+      ipWispAsignada:      false,
+    };
+
+    const paso = (n: number, nombre: string, estado: PasoMigracionDto['estado'], detalle: string, ms?: number, datos?: Record<string, any>) => {
+      pasos.push({ paso: n, nombre, estado, detalle, duracionMs: ms, datos });
+    };
+
+    const fallar = async (n: number, nombre: string, err: any, rollback: boolean): Promise<MigracionResultadoDto> => {
+      paso(n, nombre, 'error', err?.message ?? String(err));
+      if (rollback) await this.ejecutarRollbackFtthWisp(ctx, user);
+      return {
+        pasos,
+        exitoso:           false,
+        contratoId:        dto.contratoId,
+        mensajeFinal:      `Migración FTTH→WISP fallida en paso ${n}: ${err?.message ?? String(err)}`,
+        rollbackEjecutado: rollback,
+        duracionTotalMs:   Date.now() - t0,
+        pasosFallidos:     [n],
+      };
+    };
+
+    const doRollback = dto.rollbackEnError !== false;
+
+    // ── Paso 1: Validar contrato FTTH ────────────────────────
+    {
+      const t = Date.now();
+      try {
+        const rows = await this.ds.query(`
+          SELECT c.*, s.tipo_servicio AS seg_tipo
+          FROM contratos c
+          LEFT JOIN segmentos_ipv4 s ON s.id = c.segmento_id
+          WHERE c.id = $1 AND c.empresa_id = $2
+          FOR UPDATE
+        `, [dto.contratoId, user.empresaId]);
+
+        if (!rows.length) throw new Error('Contrato no encontrado');
+        ctx.contrato = rows[0];
+
+        if (ctx.contrato.cliente_id !== dto.clienteId)
+          throw new Error('clienteId no coincide con el contrato');
+        if (ctx.contrato.tipo_servicio !== 'ftth')
+          throw new Error(`Contrato no es FTTH (actual: ${ctx.contrato.tipo_servicio})`);
+        if (ctx.contrato.estado !== 'activo')
+          throw new Error(`Estado inválido: ${ctx.contrato.estado}`);
+        if (ctx.contrato.en_migracion)
+          throw new Error('Contrato ya está en migración');
+
+        ctx.ipFtth = ctx.contrato.ip_asignada;
+
+        // Cargar ONU si está aprovisionada
+        if (ctx.contrato.onu_id) {
+          const onuRows = await this.ds.query(`
+            SELECT o.*, olt.smartolt_id AS olt_smartolt_id, olt.id AS olt_tabla_id
+            FROM onus o
+            LEFT JOIN olts olt ON olt.id = o.olt_id
+            WHERE o.id = $1
+          `, [ctx.contrato.onu_id]);
+          ctx.onu = onuRows[0] ?? null;
+        }
+
+        paso(1, 'Validar contrato FTTH', 'ok',
+          `Contrato ${ctx.contrato.numero_contrato} validado. IP FTTH: ${ctx.ipFtth ?? '—'}`, Date.now() - t);
+      } catch (e) { return fallar(1, 'Validar contrato FTTH', e, false); }
+    }
+
+    // ── Paso 2: Marcar en_migracion ──────────────────────────
+    {
+      const t = Date.now();
+      try {
+        await this.ds.query(`
+          SELECT pg_advisory_xact_lock(hashtext('migracion_' || $1))
+        `, [dto.contratoId]);
+
+        const re = await this.ds.query(`
+          UPDATE contratos SET en_migracion = true, migracion_iniciada_en = NOW()
+          WHERE id = $1 AND en_migracion = false
+          RETURNING id
+        `, [dto.contratoId]);
+        if (!re.length) throw new Error('Otro proceso ya inició la migración (race condition)');
+        ctx.marcadoEnMigracion = true;
+        paso(2, 'Marcar contrato en migración', 'ok', 'Advisory lock adquirido', Date.now() - t);
+      } catch (e) { return fallar(2, 'Marcar contrato en migración', e, false); }
+    }
+
+    // ── Paso 3: Desaprovisionar ONU del OLT ─────────────────
+    {
+      const t = Date.now();
+      try {
+        if (!ctx.onu) {
+          paso(3, 'Desaprovisionar ONU', 'omitido', 'Sin ONU aprovisionada — se omite', Date.now() - t);
+        } else {
+          const metodo = ctx.onu.metodo_aprovisionamiento;
+          if (metodo === 'smartolt' && ctx.onu.smartolt_onu_id && ctx.onu.olt_smartolt_id) {
+            await this.smartoltApi.eliminarProvision(ctx.onu.olt_smartolt_id, ctx.onu.smartolt_onu_id);
+          } else {
+            this.logger.warn(`[MIGRACIÓN F→W] ONU ${ctx.onu.serial_number} método ${metodo} — deprov manual requerido`);
+          }
+          await this.ds.query(`
+            UPDATE onus SET estado = 'sin_aprovisionar', smartolt_onu_id = NULL, aprovisionada_en = NULL
+            WHERE id = $1
+          `, [ctx.onu.id]);
+          await this.ds.query(`
+            UPDATE contratos SET onu_id = NULL, aprovisionado = false, aprovisionado_en = NULL WHERE id = $1
+          `, [dto.contratoId]);
+          ctx.onuDesaprovisionada = true;
+          paso(3, 'Desaprovisionar ONU', 'ok',
+            `ONU ${ctx.onu.serial_number} desaprovisionada (${metodo})`, Date.now() - t);
+        }
+      } catch (e) {
+        if (doRollback) return fallar(3, 'Desaprovisionar ONU', e, true);
+        paso(3, 'Desaprovisionar ONU', 'error', e.message, Date.now() - t);
+      }
+    }
+
+    // ── Paso 4: Eliminar acceso FTTH en MikroTik ─────────────
+    {
+      const t = Date.now();
+      try {
+        if (!ctx.contrato.router_id) {
+          paso(4, 'Eliminar acceso FTTH MikroTik', 'omitido', 'Sin router FTTH configurado', Date.now() - t);
+        } else {
+          const routerRows = await this.ds.query(`
+            SELECT * FROM routers WHERE id = $1
+          `, [ctx.contrato.router_id]);
+          if (!routerRows.length) throw new Error('Router FTTH no encontrado');
+          ctx.routerFtth = routerRows[0];
+          const creds = this.buildCreds(ctx.routerFtth, 'ftth');
+          await this.withRouterLock(creds.id, async () => {
+            const tipoControl = ctx.contrato.tipo_control ?? ctx.contrato.tipo_auth ?? 'pppoe';
+            if (tipoControl === 'pppoe' && ctx.contrato.usuario_pppoe) {
+              await this.pppoeSvc.eliminar(creds, ctx.contrato.usuario_pppoe);
+            } else if (ctx.ipFtth) {
+              await this.arpSvc.eliminarArpEstatico(creds, ctx.ipFtth);
+              await this.queueSvc.eliminarSimpleQueue(creds, ctx.ipFtth);
+            }
+          });
+          ctx.accesoFtthEliminado = true;
+          paso(4, 'Eliminar acceso FTTH MikroTik', 'ok', 'Acceso FTTH eliminado del router', Date.now() - t);
+        }
+      } catch (e) {
+        if (doRollback) return fallar(4, 'Eliminar acceso FTTH MikroTik', e, true);
+        paso(4, 'Eliminar acceso FTTH MikroTik', 'error', e.message, Date.now() - t);
+      }
+    }
+
+    // ── Paso 5: Liberar IP FTTH ──────────────────────────────
+    {
+      const t = Date.now();
+      try {
+        if (ctx.ipFtth) {
+          await this.ds.query(`
+            UPDATE ips_asignadas SET activa = false, liberada_en = NOW()
+            WHERE contrato_id = $1 AND ip_address = $2
+          `, [dto.contratoId, ctx.ipFtth]);
+          await this.ds.query(`UPDATE contratos SET ip_asignada = NULL WHERE id = $1`, [dto.contratoId]);
+          ctx.ipFtthLiberada = true;
+          paso(5, 'Liberar IP FTTH', 'ok', `IP ${ctx.ipFtth} liberada del pool FTTH`, Date.now() - t);
+        } else {
+          paso(5, 'Liberar IP FTTH', 'omitido', 'Sin IP FTTH asignada', Date.now() - t);
+        }
+      } catch (e) {
+        if (doRollback) return fallar(5, 'Liberar IP FTTH', e, true);
+        paso(5, 'Liberar IP FTTH', 'error', e.message, Date.now() - t);
+      }
+    }
+
+    // ── Paso 6: Asignar IP del pool WISP ────────────────────
+    {
+      const t = Date.now();
+      try {
+        const qr = this.ds.createQueryRunner();
+        await qr.connect();
+        await qr.startTransaction();
+        try {
+          await qr.query(`SELECT pg_advisory_xact_lock(hashtext('ip_pool_' || $1))`, [dto.segmentoWispId]);
+          const seg = await qr.query(`
+            SELECT * FROM segmentos_ipv4 WHERE id = $1 AND empresa_id = $2 FOR UPDATE
+          `, [dto.segmentoWispId, user.empresaId]);
+          if (!seg.length) throw new Error('Segmento WISP no encontrado');
+          if (seg[0].tipo_servicio && seg[0].tipo_servicio !== 'wisp' && seg[0].tipo_servicio !== 'dedicado')
+            throw new Error(`Segmento no es WISP (tipo: ${seg[0].tipo_servicio})`);
+
+          let ipWisp: string;
+          if (dto.ipManual) {
+            ipWisp = dto.ipManual;
+          } else {
+            const usadas = await qr.query(`
+              SELECT ip_address FROM ips_asignadas WHERE segmento_id = $1 AND activa = true
+            `, [dto.segmentoWispId]);
+            const usadasList: string[] = usadas.map((r: any) => r.ip_address as string);
+            ipWisp = getNextAvailableIp(seg[0].red_cidr, usadasList);
+            if (!ipWisp) throw new Error('Sin IPs disponibles en el segmento WISP');
+          }
+
+          await qr.query(`
+            INSERT INTO ips_asignadas (empresa_id, segmento_id, contrato_id, ip_address, tipo, activa, asignada_en)
+            VALUES ($1, $2, $3, $4, 'cliente', true, NOW())
+            ON CONFLICT DO NOTHING
+          `, [user.empresaId, dto.segmentoWispId, dto.contratoId, ipWisp]);
+
+          await qr.query(`
+            UPDATE contratos SET ip_asignada = $1, segmento_id = $2 WHERE id = $3
+          `, [ipWisp, dto.segmentoWispId, dto.contratoId]);
+
+          await qr.commitTransaction();
+          ctx.ipWisp = ipWisp;
+          ctx.ipWispAsignada = true;
+          paso(6, 'Asignar IP WISP', 'ok', `IP ${ipWisp} asignada del pool WISP`, Date.now() - t, { ipWisp });
+        } catch (e) {
+          await qr.rollbackTransaction();
+          throw e;
+        } finally {
+          await qr.release();
+        }
+      } catch (e) {
+        if (doRollback) return fallar(6, 'Asignar IP WISP', e, true);
+        paso(6, 'Asignar IP WISP', 'error', e.message, Date.now() - t);
+      }
+    }
+
+    // ── Paso 7: Finalizar — actualizar contrato y recalcular tipo cliente ──
+    {
+      const t = Date.now();
+      try {
+        const routerWispRows = await this.ds.query(`
+          SELECT * FROM routers WHERE id = $1
+        `, [dto.routerWispId]);
+        if (!routerWispRows.length) throw new Error('Router WISP no encontrado');
+        ctx.routerWisp = routerWispRows[0];
+
+        await this.ds.query(`
+          UPDATE contratos SET
+            tipo_servicio      = 'wisp',
+            router_id          = $1,
+            antena_ap_id       = $2,
+            onu_id             = NULL,
+            aprovisionado      = false,
+            aprovisionado_en   = NULL,
+            en_migracion       = false,
+            migracion_iniciada_en = NULL,
+            estado             = 'pendiente_activacion'
+          WHERE id = $3
+        `, [dto.routerWispId, dto.antenaApId ?? null, dto.contratoId]);
+
+        await this.ds.query(`SELECT recalc_tipo_servicio_cliente($1)`, [ctx.contrato.cliente_id]);
+
+        this.events.emit('contrato.migrado_a_wisp', {
+          contratoId: dto.contratoId,
+          clienteId:  ctx.contrato.cliente_id,
+          motivo:     dto.motivo ?? 'Reversión FTTH→WISP',
+          ipWisp:     ctx.ipWisp,
+          ipFtth:     ctx.ipFtth,
+          usuario:    user.email,
+        });
+
+        paso(7, 'Finalizar migración FTTH→WISP', 'ok',
+          `Contrato actualizado a WISP. Estado: pendiente_activacion. IP WISP: ${ctx.ipWisp}`, Date.now() - t);
+      } catch (e) {
+        if (doRollback) return fallar(7, 'Finalizar migración FTTH→WISP', e, true);
+        paso(7, 'Finalizar migración FTTH→WISP', 'error', e.message, Date.now() - t);
+      }
+    }
+
+    return {
+      pasos,
+      exitoso:         true,
+      contratoId:      dto.contratoId,
+      ipFtth:          ctx.ipFtth,
+      mensajeFinal:    `Migración FTTH→WISP completada. IP WISP: ${ctx.ipWisp}. El contrato queda pendiente de activación.`,
+      duracionTotalMs: Date.now() - t0,
+    };
+  }
+
+  // ── Rollback FTTH→WISP ──────────────────────────────────────
+  private async ejecutarRollbackFtthWisp(ctx: any, user: JwtPayload): Promise<void> {
+    const errs: string[] = [];
+
+    if (ctx.ipWispAsignada && ctx.ipWisp) {
+      try {
+        await this.ds.query(
+          `UPDATE ips_asignadas SET activa = false, liberada_en = NOW() WHERE contrato_id = $1 AND ip_address = $2`,
+          [ctx.contrato?.id, ctx.ipWisp],
+        );
+        await this.ds.query(`UPDATE contratos SET ip_asignada = NULL WHERE id = $1`, [ctx.contrato?.id]);
+      } catch (e) { errs.push(`IP WISP rollback: ${e.message}`); }
+    }
+
+    if (ctx.ipFtthLiberada && ctx.ipFtth && ctx.contrato?.segmento_id) {
+      try {
+        await this.ds.query(`
+          INSERT INTO ips_asignadas (empresa_id, segmento_id, contrato_id, ip_address, tipo, activa, asignada_en)
+          VALUES ($1, $2, $3, $4, 'cliente', true, NOW())
+          ON CONFLICT DO NOTHING
+        `, [user.empresaId, ctx.contrato.segmento_id, ctx.contrato.id, ctx.ipFtth]);
+        await this.ds.query(`UPDATE contratos SET ip_asignada = $1 WHERE id = $2`, [ctx.ipFtth, ctx.contrato.id]);
+      } catch (e) { errs.push(`IP FTTH restore: ${e.message}`); }
+    }
+
+    if (ctx.marcadoEnMigracion) {
+      try {
+        await this.ds.query(
+          `UPDATE contratos SET en_migracion = false, migracion_iniciada_en = NULL WHERE id = $1`,
+          [ctx.contrato?.id],
+        );
+      } catch (e) { errs.push(`en_migracion clear: ${e.message}`); }
+    }
+
+    if (errs.length) this.logger.error(`[MIGRACIÓN F→W] Rollback errores: ${errs.join(' | ')}`);
   }
 
   private async persistirIp(empresaId: string, segmentoId: string, contratoId: string, ip: string) {

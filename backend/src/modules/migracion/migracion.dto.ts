@@ -87,6 +87,42 @@ export class MigrarWispFtthDto {
   notificarWhatsApp?: boolean;
 }
 
+// ─── DTO FTTH → WISP ──────────────────────────────────────
+export class MigrarFtthWispDto {
+
+  @ApiProperty({ description: 'UUID del contrato FTTH a revertir a WISP' })
+  @IsUUID() @IsNotEmpty()
+  contratoId: string;
+
+  @ApiProperty({ description: 'UUID del cliente (validación cruzada)' })
+  @IsUUID() @IsNotEmpty()
+  clienteId: string;
+
+  @ApiProperty({ description: 'UUID del router MikroTik WISP de destino' })
+  @IsUUID() @IsNotEmpty()
+  routerWispId: string;
+
+  @ApiProperty({ description: 'UUID del segmento IPv4 WISP para asignar IP' })
+  @IsUUID() @IsNotEmpty()
+  segmentoWispId: string;
+
+  @ApiPropertyOptional({ description: 'IP manual WISP' })
+  @IsOptional() @IsIP()
+  ipManual?: string;
+
+  @ApiPropertyOptional({ description: 'UUID de la antena AP WISP (opcional)' })
+  @IsOptional() @IsUUID()
+  antenaApId?: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional() @IsBoolean()
+  rollbackEnError?: boolean;
+
+  @ApiPropertyOptional({ description: 'Motivo de la reversión' })
+  @IsOptional() @IsString() @MaxLength(255)
+  motivo?: string;
+}
+
 // ─── Resultado de cada paso ────────────────────────────────
 export class PasoMigracionDto {
   paso:      number;

@@ -6,12 +6,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Zap, WifiOff, Wifi, Clock,
   MoreVertical, Loader2, FileText, CreditCard,
-  Trash2, XCircle, Cable,
+  Trash2, XCircle, Cable, Radio,
 } from 'lucide-react';
 
 import { contratosApi }         from '@/lib/api/contratos';
 import { ContratoEstadoBadge }  from './ContratosTable';
 import { MigracionWizardModal } from './MigracionWizardModal';
+import { RevertirFtthModal }    from './RevertirFtthModal';
 import { useToast }             from '@/components/ui/toaster';
 import { formatDate, formatDateTime, formatPEN, cn, parseApiError } from '@/lib/utils';
 import type { Factura, HistorialEntry } from '@/types';
@@ -28,7 +29,8 @@ export function ContratoDetalle({ id }: { id: string }) {
   const [prorrogaDias, setPD]   = useState(7);
   const [showProrroga, setShowP] = useState(false);
   const [showBaja, setShowBaja]      = useState(false);
-  const [showMigracion, setShowMig]  = useState(false);
+  const [showMigracion, setShowMig]     = useState(false);
+  const [showRevertir, setShowRevertir] = useState(false);
 
   const { data: contrato, isLoading } = useQuery({
     queryKey: ['contrato', id],
@@ -81,6 +83,7 @@ export function ContratoDetalle({ id }: { id: string }) {
   const esActivo      = contrato.estado === 'activo';
   const esSuspendido  = contrato.estado === 'suspendido';
   const esWisp        = (contrato as any).tipoServicio === 'wisp';
+  const esFtth        = (contrato as any).tipoServicio === 'ftth';
   const esPendiente = contrato.estado === 'pendiente_activacion';
 
   return (
@@ -122,6 +125,17 @@ export function ContratoDetalle({ id }: { id: string }) {
                              bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-medium">
               <Loader2 className="w-3.5 h-3.5 animate-spin" /> En migración…
             </span>
+          )}
+
+          {/* Revertir FTTH → WISP */}
+          {esActivo && esFtth && !(contrato as any).enMigracion && (
+            <button
+              onClick={() => setShowRevertir(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
+                         border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              <Radio className="w-3.5 h-3.5" /> Revertir a WISP
+            </button>
           )}
 
           {/* Renotificar */}
@@ -425,6 +439,17 @@ export function ContratoDetalle({ id }: { id: string }) {
           clienteId={contrato.clienteId}
           onClose={() => setShowMig(false)}
           onSuccess={() => { invalida(); setShowMig(false); }}
+        />
+      )}
+
+      {/* ── Modal Reversión FTTH → WISP ───────────────────────── */}
+      {showRevertir && (
+        <RevertirFtthModal
+          contratoId={id}
+          clienteId={contrato.clienteId}
+          numeroContrato={contrato.numeroContrato}
+          onClose={() => setShowRevertir(false)}
+          onSuccess={() => { invalida(); setShowRevertir(false); }}
         />
       )}
     </div>

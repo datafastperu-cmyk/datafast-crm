@@ -41,9 +41,25 @@ export interface MigracionResultado {
   pasosFallidos?:     number[];
 }
 
+export interface MigrarFtthWispDto {
+  contratoId:      string;
+  clienteId:       string;
+  routerWispId:    string;
+  segmentoWispId:  string;
+  ipManual?:       string;
+  antenaApId?:     string;
+  rollbackEnError?: boolean;
+  motivo?:         string;
+}
+
 export const migracionApi = {
   migrarWispAFtth: async (dto: MigrarWispFtthDto): Promise<MigracionResultado> => {
     const res = await api.post<ApiRespuesta<MigracionResultado>>('/migracion/wisp-a-ftth', dto);
+    return res.data.data;
+  },
+
+  migrarFtthAWisp: async (dto: MigrarFtthWispDto): Promise<MigracionResultado> => {
+    const res = await api.post<ApiRespuesta<MigracionResultado>>('/migracion/ftth-a-wisp', dto);
     return res.data.data;
   },
 };
