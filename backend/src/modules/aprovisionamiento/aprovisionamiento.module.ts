@@ -9,8 +9,9 @@ import { MockProvisionamientoProvider }        from './providers/mock-provisiona
 
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { AuthModule }            from '../auth/auth.module';
-import { MikrotikModule }   from '../mikrotik/mikrotik.module';
-import { SmartoltModule }   from '../smartolt/smartolt.module';
+import { MikrotikModule }     from '../mikrotik/mikrotik.module';
+import { SmartoltModule }     from '../smartolt/smartolt.module';
+import { OltProviderModule }  from '../olt-provider/olt-provider.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { SmartoltModule }   from '../smartolt/smartolt.module';
     AuthModule,
     MikrotikModule,
     SmartoltModule,
+    OltProviderModule,
     NotificacionesModule,
   ],
   controllers: [AprovisionamientoController],

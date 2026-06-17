@@ -46,6 +46,6 @@ import { FirmwareService }     from './firmware.service';
   ],
   controllers: [OltNativoController],
   providers:   [OltAutomationClient, OltNativoService, OltMonitoreoService, FirmwareService],
-  exports:     [OltNativoService],
+  exports:     [OltNativoService, OltAutomationClient],
 })
 export class OltNativoModule {}
