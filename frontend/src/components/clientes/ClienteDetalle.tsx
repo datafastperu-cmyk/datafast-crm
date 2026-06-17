@@ -1070,8 +1070,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
       if (result.antenaOk)     parts.push('Antena AP: OK');
       const msg = parts.length ? `Servicio activado — ${parts.join(' | ')}` : 'Servicio activado';
       toast(msg, { type: 'success' });
-      if (!result.mikrotikOk) toast('MikroTik: sin provisión — revisa que el plan tenga "crear reglas en router" activo y que el router tenga IP configurada', { type: 'warning' });
-      result.advertencias?.forEach(w => toast(`Advertencia: ${w}`, { type: 'warning' }));
+      result.advertencias?.forEach(w => toast(w, { type: 'warning' }));
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });

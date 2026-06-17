@@ -444,6 +444,17 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
             <p className="text-muted-foreground mt-1">{resultado.clienteNombre}</p>
           )}
         </div>
+
+        {!resultado.contratoId && (
+          <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-sm text-left">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>
+              El abonado se registró <strong>sin servicio de internet</strong> porque no se seleccionó un plan.
+              Para agregar uno, ve al perfil del abonado → pestaña <strong>Servicios</strong> → <strong>Agregar servicio</strong>.
+            </span>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
             onClick={() => { onClose?.(); router.push(`/clientes/${resultado.clienteId}`); }}
@@ -1323,7 +1334,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
       {!perfilId && (
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-sm">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          El abonado se guardará como <strong>PENDIENTE DE ACTIVACIÓN</strong>.
+          Sin plan seleccionado, <strong>NO se creará el servicio de internet</strong> — el abonado quedará pendiente de activación.
         </div>
       )}
 

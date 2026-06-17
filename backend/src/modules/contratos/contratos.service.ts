@@ -495,8 +495,11 @@ export class ContratosService {
     });
 
     let provisionadoOk = false;
+    let provisionMotivoFallo: string | undefined;
     try {
-      provisionadoOk = await this.provisionarMikrotik(id);
+      const provResult = await this.provisionarMikrotik(id);
+      provisionadoOk = provResult.ok;
+      provisionMotivoFallo = provResult.motivo;
     } catch (err: any) {
       // Rollback: revertir a PENDIENTE_ACTIVACION — el router no aceptó la provisión
       await this.contratoRepo.update(id, {
@@ -522,6 +525,7 @@ export class ContratosService {
 
     const antenaResult = await this.registrarEnAccessListAntena(id);
     const advertencias: string[] = [];
+    if (!provisionadoOk && provisionMotivoFallo) advertencias.push(`MikroTik sin provisión: ${provisionMotivoFallo}`);
     if (antenaResult.advertencia) advertencias.push(antenaResult.advertencia);
 
     const motivo = [
@@ -633,7 +637,7 @@ export class ContratosService {
   // PM2 cluster guard: si se agregan crons aquí usar
   //   if (process.env.NODE_APP_INSTANCE !== '0') return true;
 
-  protected async provisionarMikrotik(contratoId: string): Promise<boolean> {
+  protected async provisionarMikrotik(contratoId: string): Promise<{ ok: boolean; motivo?: string }> {
     let row: any;
     try {
       const [r] = await this.dataSource.query<any[]>(`
@@ -666,23 +670,23 @@ export class ContratosService {
       row = r;
     } catch (err) {
       this.logger.warn(`provisionarMikrotik → ${contratoId} | error leyendo contrato: ${err?.message}`);
-      return false;
+      return { ok: false, motivo: `Error leyendo datos del contrato: ${err?.message}` };
     }
 
     if (!row) {
       this.logger.warn(`provisionarMikrotik → ${contratoId} | contrato no encontrado`);
-      return false;
+      return { ok: false, motivo: 'Contrato no encontrado en la base de datos' };
     }
 
     if (!row.vpnIp && !row.ipGestion) {
       this.logger.warn(`provisionarMikrotik → ${contratoId} | router sin IP configurada`);
-      return false;
+      return { ok: false, motivo: `El router "${row.routerNombre ?? 'sin nombre'}" no tiene IP VPN ni IP de gestión configurada — configúrala en Red → Routers` };
     }
 
     // Fix 2: respetar el flag del plan (igual que desaprovisionarMikrotik)
     if (!row.crearReglas) {
       this.logger.warn(`provisionarMikrotik → ${contratoId} | plan sin crear_reglas_en_router=true — omitiendo provisión MikroTik`);
-      return false;
+      return { ok: false, motivo: 'El plan del abonado tiene "Crear reglas en router" desactivado — actívalo en Configuración → Planes' };
     }
 
     const creds: RouterCredentials = {
@@ -732,7 +736,7 @@ export class ContratosService {
     await this.contratoRepo.update(contratoId, { aprovisionado: true, aprovisionadoEn: new Date() } as any)
       .catch(e => this.logger.error(`provisionarMikrotik → aprovisionado flag: ${e?.message}`));
 
-    return true;
+    return { ok: true };
   }
 
   async desaprovisionarMikrotik(contratoId: string): Promise<boolean> {
