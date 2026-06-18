@@ -191,6 +191,7 @@ const TIPO_A_CODIGO: Record<string, string> = {
   servicio_activado:   'activacion_servicio',
   bienvenida:          'bienvenida',
   pago_recibido:       'confirmacion_pago',
+  prorroga_concedida:  'prorroga_concedida',
   alerta_egreso:       'datafast_alerta_egreso',
 };
 
@@ -382,8 +383,9 @@ export class GatewayMensajeriaService {
           [empresaId],
         );
 
-        cached = row ? {
-          proveedor:            (row.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
+        // Si proveedor_activo es null, la empresa no configuró mensajería → null = sin config
+        cached = (row && row.proveedor_activo) ? {
+          proveedor:            row.proveedor_activo as ProveedorActivo,
           apiKey:               row.gateway_api_key           ?? '',
           apiSecret:            row.gateway_api_secret        ?? '',
           clientId:             row.gateway_client_id         ?? '',
@@ -391,16 +393,16 @@ export class GatewayMensajeriaService {
           limiteCaracteres:     row.gateway_limite_caracteres ?? 1000,
           codigoPais:           row.gateway_codigo_pais       ?? '+51',
           activo:               (() => {
-            const p = row.proveedor_activo ?? 'META_GRAPH';
+            const p: string = row.proveedor_activo;
             const m: Record<string, boolean> = {
-              META_GRAPH:                 row.meta_graph_activo       ?? true,
+              META_GRAPH:                 row.meta_graph_activo       ?? false,
               TWILIO:                     row.twilio_activo          ?? false,
               VONAGE:                     row.vonage_activo          ?? false,
               CUSTOM_API:                 row.custom_api_activo      ?? false,
               AUTOMATIZADO_VIP:           row.automatizado_vip_activo ?? false,
               DATAFAST_MENSAJERIA_MASIVA: row.gateway_activo          ?? false,
             };
-            return m[p] ?? true;
+            return m[p] ?? false;
           })(),
           whatsappNumeroOrigen: row.whatsapp_numero_origen    ?? '',
         } : null;

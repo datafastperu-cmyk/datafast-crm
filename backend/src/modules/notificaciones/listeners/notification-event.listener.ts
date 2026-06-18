@@ -80,6 +80,13 @@ export class NotificationEventListener {
       );
     } catch (err: any) {
       this.logger.error(`[EVENT] Error encolando ${tipo}: ${err.message}`);
+      // Evitar log huérfano en estado ENCOLADO si Bull no pudo aceptar el job
+      if (logId) {
+        await this.ds.query(
+          `UPDATE notificaciones_logs SET estado_entrega = 'FALLIDO', error_detalle = $1 WHERE id = $2`,
+          [`Bull queue.add failed: ${err.message}`.substring(0, 500), logId],
+        ).catch(() => {});
+      }
     }
   }
 

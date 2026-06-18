@@ -59,6 +59,11 @@ export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenid
     contenido:
       '✅ {{nombre_cliente}}, hemos recibido su pago de S/ {{monto}} para la factura N° {{numero_factura}}. ¡Gracias por su puntualidad! Su servicio {{plan}} continúa activo. {{empresa}}.',
   },
+  prorroga_concedida: {
+    nombre: 'Prórroga Concedida',
+    contenido:
+      '⏳ {{nombre_cliente}}, se le ha concedido una prórroga de pago. Su nueva fecha de vencimiento es {{fecha_vencimiento}}. Deuda pendiente: S/ {{monto}}. Por favor regularice antes de la nueva fecha. Consultas: {{telefono_empresa}}.',
+  },
   datafast_alerta_egreso: {
     nombre: 'Alerta Egreso Recurrente (Interno)',
     contenido:
