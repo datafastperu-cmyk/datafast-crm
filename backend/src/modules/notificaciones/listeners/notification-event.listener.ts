@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { OnEvent }            from '@nestjs/event-emitter';
-import { InjectQueue }        from '@nestjs/bull';
-import { Queue }              from 'bull';
-import { InjectDataSource }   from '@nestjs/typeorm';
-import { DataSource }         from 'typeorm';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { OnEvent }                          from '@nestjs/event-emitter';
+import { InjectQueue }                      from '@nestjs/bull';
+import { Queue }                            from 'bull';
+import { InjectDataSource }                 from '@nestjs/typeorm';
+import { DataSource }                       from 'typeorm';
+import { ModuleHealthService }              from '../../../common/services/module-health.service';
 import {
   QUEUES, JOBS, JOB_OPTIONS,
 } from '../../workers/workers.constants';
@@ -47,18 +48,35 @@ export interface PayloadNotificacionEnvio {
 //   3. No bloquee el worker principal (facturación/cobranza)
 // ─────────────────────────────────────────────────────────────
 @Injectable()
-export class NotificationEventListener {
+export class NotificationEventListener implements OnModuleInit {
   private readonly logger = new Logger(NotificationEventListener.name);
+
+  private degraded = false;
 
   constructor(
     @InjectQueue(QUEUES.NOTIFICACIONES) private readonly queue: Queue,
-    @InjectDataSource() private readonly ds: DataSource,
+    @InjectDataSource()                 private readonly ds:    DataSource,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.ds.query(`SELECT 1 FROM notificaciones_logs LIMIT 0`);
+      this.moduleHealth.registrar('notificaciones', 'ok');
+    } catch (err: any) {
+      this.degraded = true;
+      this.moduleHealth.registrar('notificaciones', 'degraded', err.message);
+    }
+  }
 
   // ── Helper: encolar en Bull ────────────────────────────────
   // Crea el log ENCOLADO en BD ANTES de encolar para que el mensaje
   // sea visible en /mensajeria/enviados desde el primer instante.
   private async encolar(tipo: string, payload: PayloadNotificacionEnvio): Promise<void> {
+    if (this.degraded) {
+      this.logger.warn(`[notificaciones] Módulo degradado — notificación '${tipo}' descartada`);
+      return;
+    }
     // 1. Registrar en notificaciones_logs con estado ENCOLADO
     let logId: string | undefined;
     try {

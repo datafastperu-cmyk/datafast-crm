@@ -1,7 +1,8 @@
 // Ruta: /opt/datafast/backend/src/modules/monitoreo/services/monitoreo-worker.service.ts
 
-import { Injectable, Logger }       from '@nestjs/common';
-import { Cron, CronExpression }      from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Cron, CronExpression }             from '@nestjs/schedule';
+import { ModuleHealthService }              from '../../../common/services/module-health.service';
 import { InjectRepository }          from '@nestjs/typeorm';
 import { InjectDataSource }          from '@nestjs/typeorm';
 import { DataSource, In, IsNull, Repository } from 'typeorm';
@@ -48,8 +49,10 @@ interface RouterCreds {
 }
 
 @Injectable()
-export class MonitoreoWorkerService {
+export class MonitoreoWorkerService implements OnModuleInit {
   private readonly logger = new Logger('MonitoreoWorker');
+
+  private degraded = false;
 
   // Guard: evita solapamiento de ciclos lentos
   private running = false;
@@ -77,10 +80,21 @@ export class MonitoreoWorkerService {
     @InjectDataSource()
     private readonly ds: DataSource,
 
-    private readonly pool:    RouterConnectionPool,
-    private readonly gateway: MonitoreoGateway,
-    private readonly events:  EventEmitter2,
+    private readonly pool:         RouterConnectionPool,
+    private readonly gateway:      MonitoreoGateway,
+    private readonly events:       EventEmitter2,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.ds.query(`SELECT 1 FROM dispositivos_monitoreo LIMIT 0`);
+      this.moduleHealth.registrar('monitoreo', 'ok');
+    } catch (err: any) {
+      this.degraded = true;
+      this.moduleHealth.registrar('monitoreo', 'degraded', err.message);
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // CICLO PRINCIPAL — cada 60 segundos
@@ -91,6 +105,8 @@ export class MonitoreoWorkerService {
         process.env.NODE_APP_INSTANCE !== '0') {
       return;
     }
+
+    if (this.degraded) return;
 
     if (this.running) {
       this.logger.warn('Ciclo previo aún en ejecución — saltando');

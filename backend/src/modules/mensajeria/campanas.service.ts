@@ -1,12 +1,13 @@
 import {
-  Injectable, Logger, Inject, BadRequestException,
+  Injectable, Logger, Inject, BadRequestException, OnModuleInit,
 } from '@nestjs/common';
-import { InjectDataSource }  from '@nestjs/typeorm';
-import { InjectQueue }       from '@nestjs/bull';
-import { DataSource }        from 'typeorm';
-import { Queue }             from 'bull';
-import { CACHE_MANAGER }     from '@nestjs/cache-manager';
-import { Cache }             from 'cache-manager';
+import { InjectDataSource }    from '@nestjs/typeorm';
+import { InjectQueue }         from '@nestjs/bull';
+import { DataSource }          from 'typeorm';
+import { Queue }               from 'bull';
+import { CACHE_MANAGER }       from '@nestjs/cache-manager';
+import { Cache }               from 'cache-manager';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 import {
   QUEUES, JOBS, JOB_OPTIONS, JOB_PRIORITIES,
@@ -22,16 +23,36 @@ interface Destinatario {
 }
 
 @Injectable()
-export class CampanasService {
+export class CampanasService implements OnModuleInit {
   private readonly logger = new Logger(CampanasService.name);
+
+  private degraded      = false;
+  private degradedReason: string | null = null;
 
   constructor(
     @InjectDataSource()                    private readonly ds:    DataSource,
     @Inject(CACHE_MANAGER)                 private readonly cache: Cache,
     @InjectQueue(QUEUES.NOTIFICACIONES)    private readonly queue: Queue,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.ds.query(`SELECT 1 FROM clientes LIMIT 0`);
+      this.moduleHealth.registrar('mensajeria', 'ok');
+    } catch (err: any) {
+      this.degraded       = true;
+      this.degradedReason = err.message;
+      this.moduleHealth.registrar('mensajeria', 'degraded', err.message);
+    }
+  }
+
   async iniciar(dto: CrearCampanaDto, empresaId: string) {
+    if (this.degraded) {
+      throw new BadRequestException(
+        `Módulo de mensajería no disponible: ${this.degradedReason ?? 'error de esquema'}`,
+      );
+    }
     // 1. Segmentar destinatarios activos con WhatsApp
     const destinatarios = await this.segmentar(empresaId, dto.sectorId, dto.routerId);
 
