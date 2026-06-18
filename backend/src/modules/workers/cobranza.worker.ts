@@ -17,6 +17,7 @@ import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
 import { FirewallService }           from '../mikrotik/services/firewall.service';
 import { PppoeService }              from '../mikrotik/services/pppoe.service';
+import { OutboxRedService }          from '../outbox-red/outbox-red.service';
 import { GatewayMensajeriaService }  from '../notificaciones/services/gateway-mensajeria.service';
 import { TipoNotificacion }          from '../notificaciones/services/whatsapp.service';
 import {
@@ -385,6 +386,7 @@ export class CobranzaWorker {
     private readonly facturacionSvc: FacturacionService,
     private readonly auditoria:      AuditoriaService,
     private readonly events:         EventEmitter,
+    private readonly outboxSvc:      OutboxRedService,
     @InjectDataSource() private readonly ds: DataSource,
     @Inject('PROVISIONAMIENTO_PROVIDER') private readonly provisionamientoSvc: IProvisionamientoProvider,
   ) {}
@@ -405,10 +407,11 @@ export class CobranzaWorker {
     );
 
     const errores: string[] = [];
+    let mikrotikFallido    = false;
 
     // ── 1. Obtener credenciales del router ────────────────────
     const [router] = await this.ds.query(`
-      SELECT ip_gestion, usuario, password_cifrado, usar_ssl,
+      SELECT ip_gestion, vpn_ip, usuario, password_cifrado, usar_ssl,
              puerto_api, puerto_api_ssl, version_ros, timeout_conexion
       FROM routers WHERE id = $1
     `, [routerId]).catch(() => [null]);
@@ -425,6 +428,7 @@ export class CobranzaWorker {
         );
         this.logger.log(`✓ IP ${ipAsignada} en lista morosos | router: ${router.ip_gestion}`);
       } catch (err) {
+        mikrotikFallido = true;
         errores.push(`Firewall: ${err.message}`);
         this.logger.error(`✗ Error Address List ${ipAsignada}: ${err.message}`);
       }
@@ -444,8 +448,16 @@ export class CobranzaWorker {
         await this.pppoeSvc.setEstado(creds, usuarioPppoe, true);
         this.logger.log(`✓ PPPoE secret deshabilitado: ${usuarioPppoe}`);
       } catch (err) {
+        mikrotikFallido = true;
         errores.push(`PPPoE disable: ${err.message}`);
         this.logger.warn(`✗ No se pudo deshabilitar PPPoE ${usuarioPppoe}: ${err.message}`);
+      }
+
+      // ── Outbox: reintento automático si el router no respondió ─
+      if (mikrotikFallido) {
+        await this.outboxSvc.encolar('SUSPENDER', contratoId, routerId, {
+          ipAsignada, usuarioPppoe, clienteId, deudaTotal,
+        }).catch(e => this.logger.error(`OutboxRed encolar SUSPENDER: ${e.message}`));
       }
     } else {
       errores.push(`Router ${routerId} no encontrado`);
@@ -546,10 +558,11 @@ export class CobranzaWorker {
     }
 
     const errores: string[] = [];
+    let mikrotikFallido    = false;
 
     // ── 1. Credenciales del router ─────────────────────────
     const [router] = await this.ds.query(
-      'SELECT ip_gestion, usuario, password_cifrado, usar_ssl, puerto_api, puerto_api_ssl, version_ros, timeout_conexion FROM routers WHERE id = $1',
+      'SELECT ip_gestion, vpn_ip, usuario, password_cifrado, usar_ssl, puerto_api, puerto_api_ssl, version_ros, timeout_conexion FROM routers WHERE id = $1',
       [routerId],
     ).catch(() => [null]);
 
@@ -563,6 +576,7 @@ export class CobranzaWorker {
         await this.firewallSvc.reactivarCliente(creds, ipAsignada);
         this.logger.log(`✓ IP ${ipAsignada} removida de listas de control`);
       } catch (err) {
+        mikrotikFallido = true;
         errores.push(`Firewall: ${err.message}`);
         this.logger.error(`✗ Error removiendo ${ipAsignada} de Address List: ${err.message}`);
       }
@@ -578,9 +592,17 @@ export class CobranzaWorker {
           await this.pppoeSvc.setEstado(creds, conRow.usuario_pppoe, false);
           this.logger.log(`✓ PPPoE secret habilitado: ${conRow.usuario_pppoe}`);
         } catch (err) {
+          mikrotikFallido = true;
           errores.push(`PPPoE enable: ${err.message}`);
           this.logger.warn(`✗ No se pudo habilitar PPPoE ${conRow.usuario_pppoe}: ${err.message}`);
         }
+      }
+
+      // ── Outbox: reintento automático si el router no respondió ─
+      if (mikrotikFallido) {
+        await this.outboxSvc.encolar('REACTIVAR', contratoId, routerId, {
+          ipAsignada, usuarioPppoe: conRow?.usuario_pppoe,
+        }).catch(e => this.logger.error(`OutboxRed encolar REACTIVAR: ${e.message}`));
       }
 
       await job.progress(50);

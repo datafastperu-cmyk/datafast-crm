@@ -14,6 +14,7 @@ import { MikrotikModule }            from '../mikrotik/mikrotik.module';
 import { FacturacionModule }         from '../facturacion/facturacion.module';
 import { AprovisionamientoModule }   from '../aprovisionamiento/aprovisionamiento.module';
 import { NotificacionesModule }      from '../notificaciones/notificaciones.module';
+import { OutboxRedModule }           from '../outbox-red/outbox-red.module';
 
 import { QUEUES } from './workers.constants';
 
@@ -59,6 +60,7 @@ import { QUEUES } from './workers.constants';
     FacturacionModule,
     AprovisionamientoModule,
     NotificacionesModule,
+    OutboxRedModule,
   ],
   providers: [
     // Cobranza
