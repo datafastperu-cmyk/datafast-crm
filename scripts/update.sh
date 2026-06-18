@@ -112,7 +112,7 @@ rm -rf .next.old 2>/dev/null || true
 log "Frontend compilado (build atómico)"
 
 # ── 5. Migraciones de base de datos ───────────────────────────────────────────
-step "Ejecutando migraciones"
+step "Migraciones CORE (bloqueantes — abortan el deploy si fallan)"
 cd "${INSTALL_DIR}/backend"
 
 # Cargar variables de entorno (producción tiene .env.production, dev tiene .env)
@@ -124,9 +124,10 @@ else
     warn "No se encontró archivo .env — las migraciones pueden fallar por falta de credenciales"
 fi
 
-# Correr migraciones desde dist/ compilado (no requiere ts-node, no carga entidades — evita OOM)
-tmp_mig="${INSTALL_DIR}/backend/_run_migrations.js"
-cat > "$tmp_mig" << 'MIGJS'
+# ─── 5a. Migraciones CORE — abortan el deploy si fallan ──────────────────────
+# Corre desde dist/ compilado (evita ts-node + OOM); path: migrations/core/*.js
+tmp_core="${INSTALL_DIR}/backend/_run_core_migrations.js"
+cat > "$tmp_core" << 'MIGJS'
 const path = require('path');
 const envFile = require('fs').existsSync(path.join(process.cwd(), '.env.production'))
   ? '.env.production' : '.env';
@@ -141,29 +142,65 @@ const ds = new DataSource({
   password:            process.env.DB_PASSWORD,
   ssl:                 process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
   entities:            [],
-  migrations:          [path.join(process.cwd(), 'dist', 'database', 'migrations', '*.js')],
+  migrations:          [path.join(process.cwd(), 'dist', 'database', 'migrations', 'core', '*.js')],
   migrationsTableName: 'typeorm_migrations',
   synchronize:         false,
   logging:             true,
 });
 ds.initialize()
   .then(() => ds.runMigrations({ transaction: 'each' }))
-  .then(ran => { console.log('Migraciones aplicadas: ' + ran.length); return ds.destroy(); })
+  .then(ran => { console.log('Core: ' + ran.length + ' migración(es) aplicada(s)'); return ds.destroy(); })
   .then(() => process.exit(0))
-  .catch(err => { console.error('Error en migraciones: ' + err.message); process.exit(1); });
+  .catch(e => { console.error('ERROR core: ' + e.message); process.exit(1); });
 MIGJS
 
+CORE_OK=false
 for i in 1 2 3; do
-    if node "$tmp_mig" >> "$LOG_FILE" 2>&1; then
-        log "Migraciones ejecutadas"; rm -f "$tmp_mig"; break
+    if node "$tmp_core" >> "$LOG_FILE" 2>&1; then
+        log "Migraciones core ejecutadas"; CORE_OK=true; break
     fi
     warn "Intento ${i}/3 falló. Reintentando en 5s..."
     sleep 5
-    if [[ $i -eq 3 ]]; then
-        rm -f "$tmp_mig"
-        warn "Migraciones fallaron — verificar manualmente: node ${tmp_mig}"
-    fi
 done
+rm -f "$tmp_core"
+[[ "$CORE_OK" == true ]] || err "Migraciones CORE fallaron tras 3 intentos — deploy abortado para proteger la BD"
+
+# ─── 5b. Migraciones AUXILIARES — no bloquean el deploy ──────────────────────
+step "Migraciones AUXILIARES (no bloqueantes — módulos degradados si fallan)"
+tmp_aux="${INSTALL_DIR}/backend/_run_aux_migrations.js"
+cat > "$tmp_aux" << 'MIGJS'
+const path = require('path');
+const envFile = require('fs').existsSync(path.join(process.cwd(), '.env.production'))
+  ? '.env.production' : '.env';
+require('dotenv').config({ path: path.join(process.cwd(), envFile) });
+const { DataSource } = require('typeorm');
+const ds = new DataSource({
+  type:                'postgres',
+  host:                process.env.DB_HOST     || 'localhost',
+  port:                parseInt(process.env.DB_PORT || '5432', 10),
+  database:            process.env.DB_NAME     || 'datafast_db',
+  username:            process.env.DB_USER     || 'datafast_db_user',
+  password:            process.env.DB_PASSWORD,
+  ssl:                 process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  entities:            [],
+  migrations:          [path.join(process.cwd(), 'dist', 'database', 'migrations', 'auxiliary', '*.js')],
+  migrationsTableName: 'typeorm_migrations',
+  synchronize:         false,
+  logging:             true,
+});
+ds.initialize()
+  .then(() => ds.runMigrations({ transaction: 'each' }))
+  .then(ran => { console.log('Auxiliary: ' + ran.length + ' migración(es) aplicada(s)'); return ds.destroy(); })
+  .then(() => process.exit(0))
+  .catch(e => { console.error('ERROR auxiliary: ' + e.message); process.exit(1); });
+MIGJS
+
+if node "$tmp_aux" >> "$LOG_FILE" 2>&1; then
+    log "Migraciones auxiliares ejecutadas"
+else
+    warn "Migraciones AUXILIARES fallaron — deploy continúa; módulos afectados entrarán en modo degradado (ver GET /api/v1/health/modules)"
+fi
+rm -f "$tmp_aux"
 
 # ── 6. OLT Automation Service: dependencias + restart ────────────────────────
 step "Actualizando OLT Automation Service"

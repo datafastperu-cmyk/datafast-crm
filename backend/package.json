@@ -19,6 +19,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migration:generate": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:generate -d src/config/datasource.ts",
     "migration:run": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:run -d src/config/datasource.ts",
+    "migration:run:core": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:run -d src/config/datasource.ts",
     "migration:run:auxiliary": "TS_NODE_PROJECT=tsconfig.migration.json ts-node src/database/run-auxiliary-migrations.ts",
     "migration:generate:auxiliary": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:generate -d src/config/datasource.auxiliary.ts",
     "migration:revert": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:revert -d src/config/datasource.ts",

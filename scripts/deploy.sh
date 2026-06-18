@@ -22,9 +22,14 @@ git pull origin main
 log "Construyendo imágenes Docker..."
 docker compose build --no-cache backend frontend
 
-# Ejecutar migraciones de BD
-log "Ejecutando migraciones de base de datos..."
-docker compose run --rm backend npm run migration:run
+# Migraciones CORE — abortan el deploy si fallan
+log "Ejecutando migraciones core..."
+docker compose run --rm backend npm run migration:run:core
+
+# Migraciones AUXILIARES — no bloquean; módulos afectados entran en modo degradado
+log "Ejecutando migraciones auxiliares (no bloqueantes)..."
+docker compose run --rm backend npm run migration:run:auxiliary || \
+    warn "Migraciones auxiliares fallaron — el backend continuará con módulos degradados (ver GET /api/v1/health/modules)"
 
 # Reemplazar containers uno por uno (zero-downtime básico)
 log "Actualizando backend..."
