@@ -1,11 +1,12 @@
 import {
-  Injectable, Logger, BadRequestException,
+  Injectable, Logger, BadRequestException, OnModuleInit,
   ServiceUnavailableException, NotFoundException,
 } from '@nestjs/common';
-import { HttpService }    from '@nestjs/axios';
-import { ConfigService }  from '@nestjs/config';
-import { firstValueFrom } from 'rxjs';
-import { AxiosRequestConfig } from 'axios';
+import { HttpService }         from '@nestjs/axios';
+import { ConfigService }       from '@nestjs/config';
+import { firstValueFrom }      from 'rxjs';
+import { AxiosRequestConfig }  from 'axios';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 // ─── Tipos de la API SmartOLT ─────────────────────────────────
 export interface SmartoltOnu {
@@ -70,20 +71,52 @@ export interface ProvisionarOnuPayload {
 // Documentación SmartOLT: https://smartolt.com/api-docs
 // ─────────────────────────────────────────────────────────────
 @Injectable()
-export class SmartoltApiService {
+export class SmartoltApiService implements OnModuleInit {
   private readonly logger  = new Logger(SmartoltApiService.name);
   private readonly baseUrl: string;
   private readonly token:   string;
+
+  private degraded      = false;
+  private degradedReason: string | null = null;
 
   // Timeout generoso para SmartOLT (puede tardar al consultar OLTs remotas)
   private readonly TIMEOUT_MS = 30_000;
 
   constructor(
-    private readonly http:   HttpService,
-    private readonly config: ConfigService,
+    private readonly http:         HttpService,
+    private readonly config:       ConfigService,
+    private readonly moduleHealth: ModuleHealthService,
   ) {
     this.baseUrl = config.get<string>('app.smartolt.url', '');
     this.token   = config.get<string>('app.smartolt.token', '');
+  }
+
+  async onModuleInit(): Promise<void> {
+    try {
+      const result = await this.verificarConectividad();
+      if (result.conectado) {
+        this.moduleHealth.registrar('smartolt', 'ok');
+      } else {
+        this.degraded       = true;
+        this.degradedReason = result.mensaje;
+        this.moduleHealth.registrar('smartolt', 'degraded', result.mensaje);
+      }
+    } catch (err: any) {
+      this.degraded       = true;
+      this.degradedReason = err.message;
+      this.moduleHealth.registrar('smartolt', 'degraded', err.message);
+    }
+  }
+
+  isDegraded():        boolean       { return this.degraded; }
+  getDegradedReason(): string | null { return this.degradedReason; }
+
+  private assertNotDegraded(): void {
+    if (this.degraded) {
+      throw new ServiceUnavailableException(
+        `Módulo SmartOLT no disponible: ${this.degradedReason ?? 'sin configuración o API inalcanzable'}`,
+      );
+    }
   }
 
   // ────────────────────────────────────────────────────────────
@@ -180,6 +213,7 @@ export class SmartoltApiService {
   // ────────────────────────────────────────────────────────────
 
   async aprovisionarOnu(payload: ProvisionarOnuPayload): Promise<SmartoltOnu> {
+    this.assertNotDegraded();
     this.logger.log(
       `Aprovisionando ONU: SN=${payload.serial} | ` +
       `OLT=${payload.olt_id} | PON=${payload.pon_port} | ` +
@@ -213,12 +247,14 @@ export class SmartoltApiService {
   // ────────────────────────────────────────────────────────────
 
   async eliminarProvision(oltId: string, onuId: string): Promise<void> {
+    this.assertNotDegraded();
     this.logger.log(`Eliminando provisión ONU: ID=${onuId} en OLT=${oltId}`);
     await this.delete(`/api/olt/${oltId}/onu/${onuId}`);
     this.logger.log(`Provisión eliminada: ONU ${onuId}`);
   }
 
   async eliminarProvisionPorSerial(serial: string): Promise<void> {
+    this.assertNotDegraded();
     const onu = await this.getOnuBySerial(serial);
     if (!onu) {
       this.logger.warn(`ONU con SN ${serial} no encontrada en SmartOLT — omitiendo eliminación`);
@@ -232,6 +268,7 @@ export class SmartoltApiService {
   // ────────────────────────────────────────────────────────────
 
   async reiniciarOnu(oltId: string, onuId: string): Promise<void> {
+    this.assertNotDegraded();
     await this.post(`/api/olt/${oltId}/onu/${onuId}/reboot`, {});
     this.logger.log(`ONU reiniciada: ${onuId}`);
   }
@@ -245,6 +282,7 @@ export class SmartoltApiService {
     onuId: string,
     params: { profile?: string; vlan?: number; description?: string },
   ): Promise<SmartoltOnu> {
+    this.assertNotDegraded();
     const onu = await this.put<SmartoltOnu>(
       `/api/olt/${oltId}/onu/${onuId}`,
       params,

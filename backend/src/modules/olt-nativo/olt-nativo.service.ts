@@ -1,9 +1,10 @@
 import {
   BadRequestException, Injectable, Logger, NotFoundException,
-  ServiceUnavailableException,
+  OnModuleInit, ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository }             from 'typeorm';
+import { ModuleHealthService }                from '../../common/services/module-health.service';
 
 import { OltDispositivo, OltMetodoConexion } from './entities/olt-dispositivo.entity';
 import { Onu, EstadoOnu }  from '../smartolt/entities/onu.entity';
@@ -33,8 +34,11 @@ import { CreateOltDispositivoDto, UpdateOltDispositivoDto } from './dto/olt-disp
 //             Python → tun0 (OpenVPN) → IP privada de la OLT
 // ─────────────────────────────────────────────────────────────
 @Injectable()
-export class OltNativoService {
+export class OltNativoService implements OnModuleInit {
   private readonly logger = new Logger(OltNativoService.name);
+
+  private degraded      = false;
+  private degradedReason: string | null = null;
 
   constructor(
     @InjectDataSource()
@@ -48,7 +52,30 @@ export class OltNativoService {
 
     private readonly smartoltApi:  SmartoltApiService,
     private readonly automation:   OltAutomationClient,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.ds.query(`SELECT 1 FROM olt_dispositivos LIMIT 0`);
+      this.moduleHealth.registrar('olt-nativo', 'ok');
+    } catch (err: any) {
+      this.degraded       = true;
+      this.degradedReason = err.message;
+      this.moduleHealth.registrar('olt-nativo', 'degraded', err.message);
+    }
+  }
+
+  isDegraded():        boolean       { return this.degraded; }
+  getDegradedReason(): string | null { return this.degradedReason; }
+
+  private assertNotDegraded(): void {
+    if (this.degraded) {
+      throw new ServiceUnavailableException(
+        `Módulo OLT Nativo no disponible: ${this.degradedReason ?? 'error de esquema en BD'}`,
+      );
+    }
+  }
 
   // ────────────────────────────────────────────────────────────
   // provisionarOnuNativa
@@ -61,6 +88,7 @@ export class OltNativoService {
     empresaId: string,
     dto:       ProvisionarOnuNativaDto,
   ): Promise<ProvisionResult> {
+    this.assertNotDegraded();
 
     // Validar que el contrato existe, pertenece a la empresa y está ACTIVO
     const [contrato] = await this.ds.query<{ estado: string; aprovisionado: boolean; numero_contrato: string }[]>(
