@@ -2,10 +2,10 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { RouterOSAPI } from 'node-routeros';
 import { decrypt } from '../../../common/utils/encryption.util';
 
-// ── Patch: RouterOS envía '!empty' en vez de '!done' cuando un /print filtrado
-// devuelve lista vacía. node-routeros no reconoce '!empty' y lanza una excepción
-// síncrona dentro del EventEmitter, dejando el Promise de write() colgado hasta
-// que el socket timeout (15 s) lo mata. Tratamos '!empty' como '!done' vacío.
+// ── Patch A: RouterOS v7 envía '!empty' en vez de '!done' cuando un /print filtrado
+// devuelve lista vacía. node-routeros no reconoce '!empty' → onUnknown() lanza
+// sincrónicamente dentro del EventEmitter → write() Promise cuelga hasta timeout.
+// Solución: tratamos '!empty' como '!done' vacío para que el Promise resuelva.
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const RosChannel = require('node-routeros/dist/Channel').Channel;
@@ -16,6 +16,29 @@ try {
   };
 } catch {
   // Si la versión de la librería cambia y el path es distinto, continuar sin el patch.
+}
+
+// ── Patch B: RouterOS v7 envía TANTO '!empty' COMO '!done' para el mismo tag cuando
+// un /print filtrado no tiene resultados. El Patch A convierte '!empty'→'!done', el
+// Channel resuelve y cierra el tag. Cuando llega el '!done' real, Receiver.sendTagData
+// no encuentra el tag y lanza UNREGISTEREDTAG sincrónicamente, dejando
+// processingSentencePipe=true de forma permanente → todos los write() posteriores
+// en esa conexión nunca reciben respuesta → timeout 30 s.
+// Solución: si el tag ya no existe, limpiar estado y retornar en lugar de lanzar.
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const RosReceiver = require('node-routeros/dist/connector/Receiver').Receiver;
+  const _origSend: (tag: string) => void = RosReceiver.prototype.sendTagData;
+  RosReceiver.prototype.sendTagData = function (currentTag: string) {
+    const tag = this.tags.get(currentTag);
+    if (!tag) {
+      this.cleanUp();
+      return;
+    }
+    return _origSend.call(this, currentTag);
+  };
+} catch {
+  // Continuar sin el patch si cambia la librería.
 }
 
 // ─── Conexión activa en el pool ────────────────────────────────
