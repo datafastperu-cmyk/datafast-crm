@@ -104,7 +104,7 @@ function SortIcon({ col, sortBy, sortOrder }: {
 const COLUMNAS = [
   { key: 'nombreCompleto',  label: 'Abonado',     sortable: true  },
   { key: 'telefono',        label: 'Contacto',    sortable: false },
-  { key: 'tipoServicio',    label: 'Servicio',    sortable: true  },
+  { key: 'tipoServicio',    label: 'Tipo Servicio', sortable: true  },
   { key: 'plan',            label: 'Plan / IP',   sortable: false },
   { key: 'estado',          label: 'Estado',      sortable: true  },
   { key: 'deuda',           label: 'Deuda',       sortable: false },

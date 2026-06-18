@@ -384,6 +384,7 @@ export class OnboardingContratoDto {
   @IsOptional() @IsString() @MaxLength(2000) notasTecnicas?: string;
   @IsOptional() @IsUUID() antenaApId?: string;
   @IsOptional() @IsString() @MaxLength(20) tipoAuth?: string;
+  @IsOptional() @IsString() tipoServicio?: string;
 }
 
 export class OnboardingDto {

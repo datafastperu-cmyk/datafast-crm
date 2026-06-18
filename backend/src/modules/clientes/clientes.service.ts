@@ -654,6 +654,13 @@ export class ClientesService {
       ).catch((err) => this.logger.error(`onboarding: facturacion config save failed for ${cliente.id}: ${err?.message}`));
     }
 
+    // Sincronizar tipo_servicio del cliente según el contrato recién creado
+    if (contrato) {
+      await this.dataSource
+        .query(`SELECT recalc_tipo_servicio_cliente($1)`, [cliente.id])
+        .catch((e) => this.logger.error(`onboarding: recalc tipo_servicio failed: ${e?.message}`));
+    }
+
     // Emitir bienvenida si el cliente tiene WhatsApp
     this.emitirBienvenidaSiAplica(cliente, user.empresaId);
 
