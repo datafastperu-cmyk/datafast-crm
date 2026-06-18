@@ -21,7 +21,7 @@ export default new DataSource({
   password: process.env.DATABASE_PASSWORD || process.env.DB_PASSWORD,
   ssl: (process.env.DATABASE_SSL || process.env.DB_SSL) === 'true' ? { rejectUnauthorized: false } : false,
   entities: [path.join(__dirname, '../**/*.entity{.ts,.js}')],
-  migrations: [path.join(__dirname, '../database/migrations/*{.ts,.js}')],
+  migrations: [path.join(__dirname, '../database/migrations/core/*{.ts,.js}')],
   migrationsTableName: 'typeorm_migrations',
   migrationsTransactionMode: 'each',
   synchronize: false,

@@ -15,10 +15,11 @@ export const databaseConfig = registerAs('database', (): TypeOrmModuleOptions =>
   // Auto-detectar todas las entidades del proyecto
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
 
-  // Migraciones
-  migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
+  // Migraciones — solo core en startup. Auxiliares via script separado.
+  migrations: [__dirname + '/../database/migrations/core/*{.ts,.js}'],
   migrationsTableName: 'typeorm_migrations',
   migrationsRun: true,
+  migrationsTransactionMode: 'each',
 
   // NUNCA usar synchronize en producción — usar migraciones
   synchronize: false,
