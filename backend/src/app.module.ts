@@ -20,6 +20,7 @@ import { LoggingInterceptor }    from './common/interceptors/logging.interceptor
 import { TimeoutInterceptor }    from './common/interceptors/timeout.interceptor';
 import { AuditInterceptor }      from './common/interceptors/audit.interceptor';
 import { AllExceptionsFilter }   from './common/filters/http-exception.filter';
+import { QueuePauseService }     from './common/services/queue-pause.service';
 
 import { LicenciaModule }        from './modules/licencia/licencia.module';
 import { HealthModule }           from './modules/health/health.module';
@@ -85,7 +86,12 @@ import { MigracionModule }            from './modules/migracion/migracion.module
         migrationsTransactionMode: 'each',
         synchronize:          false,
         logging:              false,
-        extra:                { max: 20, min: 2, idleTimeoutMillis: 30000 },
+        extra:                {
+          max: parseInt(process.env.DB_POOL_MAX, 10) || 15,
+          min: parseInt(process.env.DB_POOL_MIN, 10) || 2,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 5000,
+        },
         retryAttempts:        10,
         retryDelay:           3000,
         autoLoadEntities:     true,
@@ -135,7 +141,7 @@ import { MigracionModule }            from './modules/migracion/migracion.module
       maxListeners: 30,
       ignoreErrors: false,
     }),
-    ScheduleModule.forRoot(),
+    ...(process.env.RUN_CRONS === 'true' ? [ScheduleModule.forRoot()] : []),
     ThrottlerModule.forRootAsync({
       imports:    [ConfigModule],
       useFactory: () => ({
@@ -193,6 +199,7 @@ import { MigracionModule }            from './modules/migracion/migracion.module
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     { provide: APP_FILTER,      useClass: AllExceptionsFilter },
+    QueuePauseService,
   ],
 })
 export class AppModule {}
