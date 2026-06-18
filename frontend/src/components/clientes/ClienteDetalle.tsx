@@ -34,6 +34,7 @@ import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
 import { useToast }                  from '@/components/ui/toaster';
 import { formatDate, formatPEN, cn, parseApiError } from '@/lib/utils';
 import type { Contrato, Factura, Pago } from '@/types';
+import { TIPO_SERVICIO_CONTRATO } from '@/lib/constants/service-types';
 
 // ── Tabs ──────────────────────────────────────────────────────
 const TABS = [
@@ -954,6 +955,7 @@ const SECURITY_OPTS_DETALLE = [
 ] as const;
 
 const servicioSchema = z.object({
+  tipoServicio:         z.enum(['wisp', 'ftth']).default('wisp'),
   planId:               z.string().min(1, 'Requerido'),
   routerId:             z.string().optional(),
   tipoControl:          z.string().optional(),
@@ -1447,6 +1449,7 @@ function ServicioPanel({
   } = useForm<ServicioForm>({
     resolver: zodResolver(servicioSchema),
     defaultValues: {
+      tipoServicio:         (e?.tipoServicio as 'wisp' | 'ftth') ?? 'wisp',
       planId:               e?.planId                ?? '',
       routerId:             e?.routerId              ?? '',
       tipoControl:          (e?.tipoAuth === 'pppoe_addresslist' ? 'pppoe' : e?.tipoAuth) ?? 'pppoe',
@@ -1480,6 +1483,8 @@ function ServicioPanel({
   const excluirFirewall = watch('excluirFirewall') ?? false;
   const cajaNap         = watch('cajaNap');
   const antenaApIdVal   = watch('antenaApId');
+  const tipoServicio    = watch('tipoServicio') as 'wisp' | 'ftth';
+  const esFtth          = tipoServicio === 'ftth';
 
   const { data: planes  = [] } = useQuery({ queryKey: ['planes'],        queryFn: planesApi.list });
   const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
@@ -1503,6 +1508,9 @@ function ServicioPanel({
     queryFn:  () => redesApi.listSegmentos(routerId!),
     enabled:  !!routerId,
   });
+  const segmentosFiltrados = (segmentos as any[]).filter(
+    (s: any) => !s.tipoServicio || s.tipoServicio === tipoServicio,
+  );
   const segmentoCambio = editing ? segmentoId !== (e?.segmentoId ?? '') : !!segmentoId;
   const { data: nextIp, isFetching: fetchingIp } = useQuery({
     queryKey:  ['next-ip', segmentoId],
@@ -1529,17 +1537,20 @@ function ServicioPanel({
     if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); setValue('nodoId', ''); }
   }, [routerId]);
   useEffect(() => {
+    if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); }
+  }, [tipoServicio]);
+  useEffect(() => {
     if (!segmentoId || !segmentoCambio) return;
     if (nextIp !== undefined) setValue('ipManual', nextIp ?? '');
   }, [segmentoId, nextIp]);
 
   const planSel = (planes as any[]).find((p: any) => p.id === planId);
 
-  // Auto-fill precio y descripción al seleccionar plan (solo en creación)
+  // Auto-fill precio y descripción al seleccionar plan
   useEffect(() => {
-    if (!editing && planSel) {
+    if (planSel) {
       setValue('precioMensual', Number(planSel.precio ?? 0).toFixed(2));
-      if (!watch('descripcionServicio')) setValue('descripcionServicio', planSel.nombre ?? '');
+      if (!editing && !watch('descripcionServicio')) setValue('descripcionServicio', planSel.nombre ?? '');
     }
   }, [planId]);
 
@@ -1571,6 +1582,7 @@ function ServicioPanel({
     }
     try {
       const payload: any = {
+        tipoServicio:         data.tipoServicio         || 'wisp',
         planId:               data.planId,
         routerId:             data.routerId             || undefined,
         tipoAuth:             (data as any).tipoControl || undefined,
@@ -1601,6 +1613,7 @@ function ServicioPanel({
         payload.ipManual      = data.ipManual       || undefined;
         payload.usuarioPppoe  = data.usuarioPppoe   || undefined;
         payload.passwordPppoe = data.passwordPppoe  || undefined;
+        if (data.precioMensual) payload.precioMensual = parseFloat(data.precioMensual);
         await contratosApi.create(payload);
         try {
           const factuConfig = await clientesApi.getFacturacionConfig(clienteId);
@@ -1673,6 +1686,19 @@ function ServicioPanel({
             <div className="space-y-5">
               <SP_Section title="Configuración del Servicio" icon={Wifi}>
 
+                {/* Tipo de Servicio */}
+                <SP_Field label="Tipo de Servicio">
+                  <select
+                    value={tipoServicio}
+                    onChange={(ev) => setValue('tipoServicio', ev.target.value as any)}
+                    className={sp_input()}
+                  >
+                    {TIPO_SERVICIO_CONTRATO.map((t) => (
+                      <option key={t.val} value={t.val}>{t.label}</option>
+                    ))}
+                  </select>
+                </SP_Field>
+
                 {/* Router */}
                 <SP_Field label="Router">
                   <select {...register('routerId')} className={sp_input()}>
@@ -1712,7 +1738,7 @@ function ServicioPanel({
                     className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
                   >
                     <option value="">{routerId ? 'Seleccionar red…' : '— Elige un router primero —'}</option>
-                    {(segmentos as any[]).map((s: any) => (
+                    {segmentosFiltrados.map((s: any) => (
                       <option key={s.id} value={s.id}>
                         {s.nombre}{s.redCidr ? ` — ${s.redCidr}` : ''}{s.ipsDisponibles != null ? ` (${s.ipsDisponibles} disp.)` : ''}
                       </option>
@@ -1732,18 +1758,34 @@ function ServicioPanel({
                         <span className="text-[11px] text-muted-foreground">La IP no se puede modificar</span>
                       </div>
                     ) : (
-                      <div className="relative">
-                        <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                        <input
-                          {...register('ipManual')}
-                          placeholder={fetchingIp ? 'Buscando IP nueva…' : '0.0.0.0'}
-                          className={cn(sp_input(), 'pl-9')}
-                        />
-                        {fetchingIp && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-                      </div>
+                      <>
+                        <div className="relative">
+                          <Network className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                          <input
+                            {...register('ipManual')}
+                            placeholder={fetchingIp ? 'Buscando IP nueva…' : '0.0.0.0'}
+                            className={cn(sp_input(), 'pl-9 pr-28')}
+                            readOnly={fetchingIp}
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                            {fetchingIp ? (
+                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <Loader2 className="w-3 h-3 animate-spin" /> Buscando…
+                              </span>
+                            ) : nextIp ? (
+                              <span className="flex items-center gap-1 text-[11px] text-emerald-500 font-medium">
+                                <CheckCircle2 className="w-3 h-3" /> {segmentoCambio ? 'Disponible' : 'Disponible'}
+                              </span>
+                            ) : segmentoId ? (
+                              <span className="flex items-center gap-1 text-[11px] text-amber-500 font-medium">
+                                <AlertCircle className="w-3 h-3" /> Pool lleno
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1">Primera IP libre del segmento. Puedes editarla manualmente.</p>
+                      </>
                     )}
-                    {segmentoCambio && nextIp && <p className="text-[11px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible — se reasignará al guardar</p>}
-                    {!editing && !segmentoCambio && nextIp && <p className="text-[11px] text-emerald-500 mt-1 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Disponible</p>}
                   </SP_Field>
                 )}
 
@@ -1782,59 +1824,68 @@ function ServicioPanel({
                 )}
               </SP_Section>
 
-              {/* Terminales FTTH */}
-              <SP_Section title="Terminales FTTH" icon={Cable} compact>
-                <div className="grid grid-cols-2 gap-3">
-                  <SP_Field label="Caja Nap">
-                    <select {...register('cajaNap')} className={sp_input()}>
-                      <option value="">Ninguno</option>
-                      {['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].map(n => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                      {cajaNap && !['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].includes(cajaNap) && (
-                        <option value={cajaNap}>{cajaNap}</option>
-                      )}
-                    </select>
-                  </SP_Field>
-                  <SP_Field label="Puerto Nap">
-                    {PUERTOS_NAP.length > 0 ? (
-                      <select {...register('puertoNap')} className={sp_input()}>
+              {/* Terminales FTTH — solo FTTH */}
+              {esFtth && (
+                <SP_Section title="Terminales FTTH" icon={Cable} compact>
+                  <div className="grid grid-cols-2 gap-3">
+                    <SP_Field label="Caja Nap">
+                      <select {...register('cajaNap')} className={sp_input()}>
+                        <option value="">Ninguno</option>
+                        {['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].map(n => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                        {cajaNap && !['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].includes(cajaNap) && (
+                          <option value={cajaNap}>{cajaNap}</option>
+                        )}
+                      </select>
+                    </SP_Field>
+                    <SP_Field label="Puerto Nap">
+                      <select {...register('puertoNap')} className={sp_input()} disabled={!cajaNap}>
                         <option value="">Ninguno</option>
                         {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
-                    ) : (
-                      <select {...register('puertoNap')} className={sp_input()}>
-                        <option value="">Ninguno</option>
-                        {Array.from({length:8},(_,i)=>`Puerto ${i+1}`).map(p=><option key={p} value={p}>{p}</option>)}
-                      </select>
+                    </SP_Field>
+                  </div>
+                </SP_Section>
+              )}
+
+              {/* Equipo Receptor — solo WISP */}
+              {!esFtth && (
+                <SP_Section title="Equipo Receptor" icon={Radio} compact>
+                  <SP_Field
+                    label="Conectado A"
+                    hint={!routerId ? '* Selecciona un router primero' : undefined}
+                  >
+                    <select
+                      {...register('antenaApId')}
+                      disabled={!routerId}
+                      className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
+                    >
+                      <option value="">{routerId ? '— Seleccionar antena AP —' : '— Elige un router primero —'}</option>
+                      {(antenasAP as any[]).map((a: any) => (
+                        <option key={a.id} value={a.id}>
+                          {a.nombreEmisor}{a.ipAddress ? ` — ${a.ipAddress}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {routerId && (antenasAP as any[]).length === 0 && (
+                      <p className="text-[11px] text-amber-500 mt-1">Sin antenas AP registradas para este router.</p>
                     )}
                   </SP_Field>
-                </div>
-              </SP_Section>
+                </SP_Section>
+              )}
 
-              {/* Equipo Receptor */}
-              <SP_Section title="Equipo Receptor" icon={Radio} compact>
-                <SP_Field
-                  label="Conectado A"
-                  hint={!routerId ? '* Selecciona un router primero' : undefined}
-                >
-                  <select
-                    {...register('antenaApId')}
-                    disabled={!routerId}
-                    className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
-                  >
-                    <option value="">{routerId ? '— Seleccionar antena AP —' : '— Elige un router primero —'}</option>
-                    {(antenasAP as any[]).map((a: any) => (
-                      <option key={a.id} value={a.id}>
-                        {a.nombreEmisor}{a.ipAddress ? ` — ${a.ipAddress}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {routerId && (antenasAP as any[]).length === 0 && (
-                    <p className="text-[11px] text-amber-500 mt-1">Sin antenas AP registradas para este router.</p>
-                  )}
-                </SP_Field>
-              </SP_Section>
+              {/* Terminal FTTH (ONU) — solo FTTH */}
+              {esFtth && (
+                <SP_Section title="Terminal FTTH (ONU)" icon={Cable} compact>
+                  <SP_Field label="Serial ONU" hint="Se completará durante el aprovisionamiento">
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-dashed border-border bg-muted/30">
+                      <Cable className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm text-muted-foreground">Pendiente de aprovisionamiento OLT</span>
+                    </div>
+                  </SP_Field>
+                </SP_Section>
+              )}
             </div>
 
             {/* ─────────── Columna derecha ─────────── */}
@@ -1862,15 +1913,14 @@ function ServicioPanel({
                   />
                 </SP_Field>
                 <SP_Field label="Costo (S/.)">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">S/.</span>
-                    <input
-                      readOnly
-                      value={planSel ? Number(planSel.precio ?? 0).toFixed(2) : (e?.precioMensual ? Number(e.precioMensual).toFixed(2) : '')}
-                      placeholder="0.00"
-                      className={cn(sp_input(), 'pl-9 opacity-60 cursor-default select-none')}
-                    />
-                  </div>
+                  <input
+                    {...register('precioMensual')}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0.00"
+                    className={sp_input()}
+                  />
                   {!!planSel?.velocidadBajada && <p className="text-[11px] text-muted-foreground mt-1">{planSel.velocidadBajada}/{planSel.velocidadSubida} Mbps</p>}
                 </SP_Field>
                 {!editing && (
@@ -1919,6 +1969,14 @@ function ServicioPanel({
             </div>
           </div>
         </div>
+
+        {/* ── Advertencia sin plan ── */}
+        {!planId && (
+          <div className="mx-5 mb-2 flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-sm">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            Sin plan seleccionado, <strong className="ml-1">NO se creará el servicio de internet</strong> — el contrato quedará pendiente de activación.
+          </div>
+        )}
 
         {/* ── Footer ── */}
         <div className="px-6 py-4 border-t border-border flex items-center justify-between flex-shrink-0 bg-muted/20 rounded-b-2xl">
