@@ -1210,8 +1210,8 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
         </Section>
 
-        {/* ── Terminales FTTH ── */}
-        <Section title="Terminales FTTH" icon={Cable} compact>
+        {/* ── Terminales FTTH — solo FTTH ── */}
+        {esFtth && <Section title="Terminales FTTH" icon={Cable} compact>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Caja Nap">
               <select {...register('cajaNapId')} className={INPUT_CLS}>
@@ -1231,7 +1231,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               </select>
             </Field>
           </div>
-        </Section>
+        </Section>}
 
           {/* Equipo receptor — solo WISP */}
           {!esFtth && (
