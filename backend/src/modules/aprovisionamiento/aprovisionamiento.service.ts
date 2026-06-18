@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectDataSource }       from '@nestjs/typeorm';
-import { DataSource }             from 'typeorm';
-import { EventEmitter2 }          from '@nestjs/event-emitter';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { InjectDataSource }                 from '@nestjs/typeorm';
+import { DataSource }                       from 'typeorm';
+import { EventEmitter2 }                    from '@nestjs/event-emitter';
+import { ModuleHealthService }              from '../../common/services/module-health.service';
 
 import { WhatsAppService }        from '../notificaciones/services/whatsapp.service';
 import { PppoeService }           from '../mikrotik/services/pppoe.service';
@@ -65,8 +66,11 @@ interface Ctx {
 // - Evento EventEmitter2 al completar (para WebSocket broadcast)
 // ─────────────────────────────────────────────────────────────
 @Injectable()
-export class OrquestadorAprovisionamientoService {
+export class OrquestadorAprovisionamientoService implements OnModuleInit {
   private readonly logger = new Logger(OrquestadorAprovisionamientoService.name);
+
+  private degraded      = false;
+  private degradedReason: string | null = null;
 
   // Semáforo por router: evita saturar el pool de sesiones RouterOS
   private readonly routerSem = new Map<string, Promise<void>>();
@@ -82,7 +86,22 @@ export class OrquestadorAprovisionamientoService {
     private readonly whatsapp:     WhatsAppService,
     private readonly events:       EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.ds.query(`SELECT 1 FROM contratos LIMIT 0`);
+      this.moduleHealth.registrar('aprovisionamiento', 'ok');
+    } catch (err: any) {
+      this.degraded       = true;
+      this.degradedReason = err.message;
+      this.moduleHealth.registrar('aprovisionamiento', 'degraded', err.message);
+    }
+  }
+
+  isDegraded():        boolean       { return this.degraded; }
+  getDegradedReason(): string | null { return this.degradedReason; }
 
   // Serializa llamadas al mismo router para evitar session limit exhaustion
   private async withRouterLock<T>(routerId: string, fn: () => Promise<T>): Promise<T> {
@@ -105,6 +124,17 @@ export class OrquestadorAprovisionamientoService {
     dto:  AprovisionarFtthDto,
     user: JwtPayload,
   ): Promise<AprovisionamientoResultadoDto> {
+    if (this.degraded) {
+      return {
+        pasos:             [],
+        exitoso:           false,
+        contratoId:        dto.contratoId,
+        mensajeFinal:      `Módulo de aprovisionamiento no disponible: ${this.degradedReason ?? 'error de esquema en BD'}`,
+        rollbackEjecutado: false,
+        pasosFallidos:     [],
+      };
+    }
+
     const inicio = Date.now();
 
     const resultado: AprovisionamientoResultadoDto = {

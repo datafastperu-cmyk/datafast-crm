@@ -1,7 +1,9 @@
 import {
-  Injectable, Logger, NotFoundException,
+  Injectable, Logger, NotFoundException, OnModuleInit,
   BadRequestException, ConflictException, InternalServerErrorException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
 import { InjectDataSource }  from '@nestjs/typeorm';
@@ -34,9 +36,13 @@ export const EVENT_CLIENTE_SUSPENDIDO  = 'mikrotik.cliente.suspendido';
 export const EVENT_CLIENTE_REACTIVADO  = 'mikrotik.cliente.reactivado';
 
 @Injectable()
-export class MikrotikService {
+export class MikrotikService implements OnModuleInit {
   private readonly logger = new Logger(MikrotikService.name);
   private readonly reglasOk = new Set<string>();
+
+  private degraded      = false;
+  private degradedReason: string | null = null;
+
   // Contador de fallos consecutivos de poll por router (en memoria).
   // 1 fallo → REVERIFICANDO (puede ser transitorio), 2+ fallos → OFFLINE real.
   private readonly _pollFailCount = new Map<string, number>();
@@ -55,7 +61,30 @@ export class MikrotikService {
     private readonly events:      EventEmitter,
     @InjectDataSource() private readonly ds: DataSource,
     private readonly vpnSvc:      VpnClienteService,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.ds.query(`SELECT 1 FROM routers LIMIT 0`);
+      this.moduleHealth.registrar('mikrotik', 'ok');
+    } catch (err: any) {
+      this.degraded       = true;
+      this.degradedReason = err.message;
+      this.moduleHealth.registrar('mikrotik', 'degraded', err.message);
+    }
+  }
+
+  isDegraded():        boolean       { return this.degraded; }
+  getDegradedReason(): string | null { return this.degradedReason; }
+
+  private assertNotDegraded(): void {
+    if (this.degraded) {
+      throw new ServiceUnavailableException(
+        `Módulo MikroTik no disponible: ${this.degradedReason ?? 'error de esquema en BD'}`,
+      );
+    }
+  }
 
   // ────────────────────────────────────────────────────────────
   // GESTIÓN DE ROUTERS
@@ -644,6 +673,7 @@ export class MikrotikService {
     dto:        ActualizarQueueDto,
     empresaId:  string,
   ): Promise<void> {
+    this.assertNotDegraded();
     const router = await this.findOne(routerId, empresaId);
     if (!router.passwordCifrado) {
       throw new BadRequestException(`Router ${routerId} no tiene contraseña configurada`);
@@ -670,6 +700,7 @@ export class MikrotikService {
     dto:      ProvisionarClienteDto,
     user:     JwtPayload,
   ): Promise<{ ppppoeId: string; queueId: string }> {
+    this.assertNotDegraded();
     const creds = await this.getCredentials(routerId, user.empresaId);
 
     this.logger.log(
@@ -743,6 +774,7 @@ export class MikrotikService {
     dto:      SuspenderClienteDto,
     user:     JwtPayload,
   ): Promise<void> {
+    this.assertNotDegraded();
     const creds = await this.getCredentials(routerId, user.empresaId);
 
     // 1. Agregar a Address List morosos
@@ -785,6 +817,7 @@ export class MikrotikService {
     dto:      ReactivarClienteDto,
     user:     JwtPayload,
   ): Promise<void> {
+    this.assertNotDegraded();
     const creds = await this.getCredentials(routerId, user.empresaId);
 
     // Quitar de Address Lists de control
