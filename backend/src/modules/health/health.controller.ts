@@ -9,16 +9,18 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { HealthService } from './health.service';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 @ApiTags('Sistema')
 @Controller()
 export class HealthController {
   constructor(
-    private readonly health: HealthCheckService,
-    private readonly db: TypeOrmHealthIndicator,
-    private readonly memory: MemoryHealthIndicator,
-    private readonly disk: DiskHealthIndicator,
-    private readonly healthService: HealthService,
+    private readonly health:         HealthCheckService,
+    private readonly db:             TypeOrmHealthIndicator,
+    private readonly memory:         MemoryHealthIndicator,
+    private readonly disk:           DiskHealthIndicator,
+    private readonly healthService:  HealthService,
+    private readonly moduleHealth:   ModuleHealthService,
   ) {}
 
   // ── GET /health — Health check completo (usado por Docker) ───
@@ -89,6 +91,35 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       uptime: Math.floor(process.uptime()),
       ...info,
+    };
+  }
+
+  // ── GET /health/modules — Estado de módulos auxiliares ────────
+  @Get('health/modules')
+  @Public()
+  @ApiOperation({
+    summary: 'Estado de módulos auxiliares',
+    description:
+      'Muestra el estado de cada módulo auxiliar (ok / degraded). ' +
+      'Retorna HTTP 200 siempre — el sistema está operativo aunque algún módulo esté degradado. ' +
+      'Un módulo degradado significa que esa funcionalidad está inactiva pero el core funciona.',
+  })
+  modulesStatus() {
+    const registros  = this.moduleHealth.getEstados();
+    const hayDeg     = this.moduleHealth.hayDegradados();
+
+    const modulos: Record<string, unknown> = {};
+    for (const r of registros) {
+      modulos[r.modulo] = r.estado === 'ok'
+        ? 'ok'
+        : { estado: 'degraded', razon: r.razon ?? 'sin detalle', desde: r.desde };
+    }
+
+    return {
+      success:   true,
+      status:    hayDeg ? 'degraded' : 'ok',
+      timestamp: new Date().toISOString(),
+      modulos,
     };
   }
 }
