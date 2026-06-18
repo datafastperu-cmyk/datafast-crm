@@ -822,9 +822,9 @@ export class MikrotikService {
     const creds  = await this.getCredentials(routerId, empresaId);
 
     const [recursos, interfaces, sesionesActivas] = await Promise.all([
-      this.ifaceSvc.getRecursos(creds),
+      this.ifaceSvc.getRecursos(creds, 'monitoreo'),
       this.ifaceSvc.listarInterfaces(creds),
-      this.pppoeSvc.contarSesionesActivas(creds).catch(() => 0),
+      this.pppoeSvc.contarSesionesActivas(creds, 'monitoreo').catch(() => 0),
     ]);
 
     // Actualizar estado en BD
@@ -1133,9 +1133,9 @@ export class MikrotikService {
 
         const esPppoe = router.tipoControl === TipoControl.PPPOE;
         const [recursos, sesionesCount] = await Promise.all([
-          this.ifaceSvc.getRecursos(creds),
+          this.ifaceSvc.getRecursos(creds, 'monitoreo'),
           esPppoe
-            ? this.pppoeSvc.contarSesionesActivas(creds).catch(() => 0)
+            ? this.pppoeSvc.contarSesionesActivas(creds, 'monitoreo').catch(() => 0)
             : Promise.resolve(0),
         ]);
 

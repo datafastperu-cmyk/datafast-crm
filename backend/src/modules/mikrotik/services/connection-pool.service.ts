@@ -45,7 +45,7 @@ export class RouterConnectionPool implements OnModuleDestroy {
 
   private readonly MAX_PER_CHANNEL: Record<PoolChannel, number> = {
     monitoreo: 2,
-    provision: 3,
+    provision: 5,
   };
 
   private readonly IDLE_TIMEOUT_MS  = 5 * 60 * 1000;
@@ -192,11 +192,13 @@ export class RouterConnectionPool implements OnModuleDestroy {
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       let api: RouterOSAPI | null = null;
+      let released = false;
 
       try {
         api = await this.acquire(creds, channel);
         const result = await fn(api);
         this.release(creds.id, api, channel);
+        released = true;
         return result;
 
       } catch (error) {
@@ -206,13 +208,24 @@ export class RouterConnectionPool implements OnModuleDestroy {
           this.logger.warn(
             `Error de conexión [${channel}] router ${creds.id} (intento ${attempt + 1}): ${error.message}`,
           );
+          // invalidate cierra y borra el pool → siempre libera la conexión
           await this.invalidate(creds.id);
+          released = true;
           if (attempt < retries) {
             await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
           }
         } else {
-          if (api) this.release(creds.id, api, channel);
+          if (api && !released) {
+            this.release(creds.id, api, channel);
+            released = true;
+          }
           throw error;
+        }
+      } finally {
+        // Guardia de seguridad: si por cualquier camino imprevisto la conexión
+        // sigue marcada busy, la liberamos para evitar leak permanente.
+        if (api && !released) {
+          this.release(creds.id, api, channel);
         }
       }
     }

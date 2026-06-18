@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RouterConnectionPool, RouterCredentials } from './connection-pool.service';
+import { RouterConnectionPool, RouterCredentials, PoolChannel } from './connection-pool.service';
 
 export interface InterfaceInfo {
   name:        string;
@@ -57,7 +57,7 @@ export class InterfaceService {
   constructor(private readonly pool: RouterConnectionPool) {}
 
   // ── Recursos del sistema ─────────────────────────────────
-  async getRecursos(creds: RouterCredentials): Promise<RouterResources> {
+  async getRecursos(creds: RouterCredentials, channel: PoolChannel = 'provision'): Promise<RouterResources> {
     return this.pool.execute(creds, async (api) => {
       const [res] = await api.write('/system/resource/print');
       const uptime = res['uptime'] || '0s';
@@ -77,7 +77,7 @@ export class InterfaceService {
         platform:     res['platform']      || '',
         temperature:  parseInt(res['temperature'] || '0', 10) || undefined,
       };
-    });
+    }, 2, channel);
   }
 
   // ── Identity del router ───────────────────────────────────

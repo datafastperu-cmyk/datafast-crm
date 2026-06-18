@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RouterOSAPI } from 'node-routeros';
-import { RouterConnectionPool, RouterCredentials } from './connection-pool.service';
+import { RouterConnectionPool, RouterCredentials, PoolChannel } from './connection-pool.service';
 import { decrypt, encrypt } from '../../../common/utils/encryption.util';
 
 export interface PppoeUser {
@@ -170,12 +170,12 @@ export class PppoeService {
   }
 
   // ── Contar sesiones activas (count-only) ────────────────────
-  async contarSesionesActivas(creds: RouterCredentials): Promise<number> {
+  async contarSesionesActivas(creds: RouterCredentials, channel: PoolChannel = 'provision'): Promise<number> {
     return this.pool.execute(creds, async (api) => {
       const result = await api.write('/ppp/active/print', ['=count-only=']);
       const n = parseInt(result?.[0]?.ret ?? '0', 10);
       return isNaN(n) ? 0 : n;
-    });
+    }, 2, channel);
   }
 
   // ── Sesión de un usuario específico ────────────────────────
