@@ -47,7 +47,7 @@ export class MensajeriaWorker {
     const { telefono, tipo, variables, empresaId, contratoId, clienteId, logId } = job.data;
 
     // El log ya fue creado como ENCOLADO por NotificationEventListener.
-    // El gateway actualizará el estado a ENVIADO_META | FALLIDO | NO_ENVIADO.
+    // El gateway actualizará el estado a ENVIADO | NO_ENVIADO | FALLIDO.
     const result = await this.gatewaySvc.despachar({
       telefono,
       tipo:      tipo as TipoNotificacion,

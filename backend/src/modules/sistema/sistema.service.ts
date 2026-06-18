@@ -12,6 +12,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { encrypt } from '../../common/utils/encryption.util';
 import { GatewayMensajeriaService } from '../notificaciones/services/gateway-mensajeria.service';
+import { SYSTEM_DEFAULTS_WHATSAPP } from '../plantillas/plantillas.service';
 import { TipoNotificacion }         from '../notificaciones/services/whatsapp.service';
 
 export type ProveedorActivo =
@@ -428,7 +429,7 @@ export class SistemaService {
     const items = await this.ds.query(
       `SELECT nl.id, nl.contrato_id, nl.telefono, nl.canal,
               nl.tipo_template, nl.estado_entrega,
-              nl.meta_message_id, nl.error_detalle, nl.created_at,
+              nl.provider_message_id, nl.proveedor, nl.error_detalle, nl.created_at,
               co.numero_contrato,
               cl.nombre_completo AS cliente_nombre
        FROM notificaciones_logs nl
@@ -733,8 +734,8 @@ export class SistemaService {
     pago_vence_hoy:      'aviso_pago_01',
     pago_vencido:        'aviso_pago_02',
     servicio_suspendido: 'corte_servicio',
-    servicio_reactivado: 'bienvenida',
-    servicio_activado:   'bienvenida',
+    servicio_reactivado: 'reactivacion_servicio',
+    servicio_activado:   'activacion_servicio',
     bienvenida:          'bienvenida',
     pago_recibido:       'confirmacion_pago',
     alerta_egreso:       'datafast_alerta_egreso',
@@ -805,15 +806,22 @@ export class SistemaService {
           : parseFloat(row?.deuda_total || '0').toFixed(2);
 
         const vars: Record<string, string> = {
-          nombre_completo:  row?.nombre_completo     ?? '—',
+          // nuevos nombres canónicos
+          nombre_cliente:   row?.nombre_completo     ?? '—',
+          monto:            montoFact,
+          plan:             row?.plan_nombre         ?? '—',
+          fecha_vencimiento: fechaVenc,
           numero_factura:   row?.factura_numero      ?? '—',
-          monto_factura:    montoFact,
-          plan_contratado:  row?.plan_nombre         ?? '—',
-          fecha_pago:       fechaVenc,
           empresa:          row?.empresa_nombre      ?? '—',
           telefono_empresa: row?.empresa_telefono    ?? '—',
           usuario_pppoe:    row?.usuario_pppoe       ?? '—',
           ip_asignada:      row?.ip_asignada         ?? '—',
+          dias_vencidos:    String(row?.meses_deuda ?? 0),
+          // alias legados (para plantillas en DB con nombres anteriores)
+          nombre_completo:  row?.nombre_completo     ?? '—',
+          monto_factura:    montoFact,
+          plan_contratado:  row?.plan_nombre         ?? '—',
+          fecha_pago:       fechaVenc,
           deuda_total:      `S/ ${parseFloat(row?.deuda_total || '0').toFixed(2)}`,
           dias_vencimiento: String(row?.meses_deuda ?? 0),
         };
@@ -825,10 +833,28 @@ export class SistemaService {
       }
     }
 
-    // Fallback al TEXTOS hardcodeado si no hay plantilla
-    if (texto === '—') {
-      texto = this.gateway.renderTexto(log.tipo_template,
-        this.buildNotifVariables(log.tipo_template, row));
+    // Fallback a la plantilla del sistema si no hay plantilla personalizada en BD
+    if (texto === '—' && codigoPlantilla) {
+      const defContenido = SYSTEM_DEFAULTS_WHATSAPP[codigoPlantilla]?.contenido;
+      if (defContenido) {
+        const fechaV = this.fmtFecha(row?.factura_vencimiento);
+        const montoV = row?.factura_total
+          ? parseFloat(row.factura_total).toFixed(2)
+          : parseFloat(row?.deuda_total || '0').toFixed(2);
+        const sysVars: Record<string, string> = {
+          nombre_cliente:    row?.nombre_completo  ?? '—',
+          empresa:           row?.empresa_nombre   ?? '—',
+          telefono_empresa:  row?.empresa_telefono ?? '—',
+          plan:              row?.plan_nombre      ?? '—',
+          usuario_pppoe:     row?.usuario_pppoe    ?? '—',
+          ip_asignada:       row?.ip_asignada      ?? '—',
+          monto:             montoV,
+          numero_factura:    row?.factura_numero   ?? '—',
+          fecha_vencimiento: fechaV,
+          dias_vencidos:     String(row?.meses_deuda ?? 0),
+        };
+        texto = defContenido.replace(/\{\{(\w+)\}\}/g, (_, key: string) => sysVars[key] ?? `{{${key}}}`);
+      }
     }
 
     return {

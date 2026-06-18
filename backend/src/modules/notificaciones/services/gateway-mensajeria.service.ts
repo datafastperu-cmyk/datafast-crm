@@ -7,6 +7,7 @@ import { CACHE_MANAGER }    from '@nestjs/cache-manager';
 import { Cache }            from 'cache-manager';
 import { decrypt }          from '../../../common/utils/encryption.util';
 import { WhatsAppService, TipoNotificacion, WhatsAppParams } from './whatsapp.service';
+import { SYSTEM_DEFAULTS_WHATSAPP } from '../../plantillas/plantillas.service';
 import { DatafastNativeStrategy }          from './datafast-native.strategy';
 import { DatafastMensajeriaMasivaStrategy } from './datafast-mensajeria-masiva.strategy';
 
@@ -34,33 +35,6 @@ export interface IMensajeriaStrategy {
   ): Promise<EnvioResult>;
 }
 
-// ─── Textos renderizados para proveedores no-template ────
-const TEXTOS: Record<string, (v: Record<string, string>) => string> = {
-  [TipoNotificacion.PAGO_VENCE_HOY]:      (v) =>
-    `Hola ${v.clienteNombre}, su pago de ${v.montoDeuda} vence hoy. ${v.linkPago || ''}`.trim(),
-  [TipoNotificacion.PAGO_VENCIDO]:        (v) =>
-    `Hola ${v.clienteNombre}, su deuda de ${v.montoDeuda} lleva ${v.diasVencido} días vencida. Cuenta: ${v.numeroCuenta}`,
-  [TipoNotificacion.SERVICIO_SUSPENDIDO]: (v) =>
-    `Hola ${v.clienteNombre}, servicio suspendido por deuda de ${v.deudaTotal}. ${v.nombreEmpresa}`,
-  [TipoNotificacion.SERVICIO_REACTIVADO]: (v) =>
-    `Hola ${v.clienteNombre}, su servicio ${v.planNombre} fue reactivado.`,
-  [TipoNotificacion.SERVICIO_ACTIVADO]:   (v) =>
-    `Bienvenido ${v.clienteNombre}. Plan ${v.planNombre} | IP: ${v.ipAsignada} | Usuario: ${v.usuarioPppoe}`,
-  [TipoNotificacion.BIENVENIDA]:          (v) =>
-    `Bienvenido ${v.clienteNombre}. Plan: ${v.planNombre} ${v.velocidadBajada}↓/${v.velocidadSubida}↑ | Usuario: ${v.usuarioPppoe}`,
-  [TipoNotificacion.FACTURA_EMITIDA]:     (v) =>
-    `Hola ${v.clienteNombre}, factura #${v.numeroFactura} por ${v.montoTotal}. Vence: ${v.fechaVencimiento}`,
-  [TipoNotificacion.PAGO_RECIBIDO]:       (v) =>
-    `Hola ${v.clienteNombre}, recibimos ${v.montoPago} vía ${v.metodoPago}. Saldo: ${v.saldoPendiente}`,
-  [TipoNotificacion.PRORROGA_CONCEDIDA]:  (v) =>
-    `Hola ${v.clienteNombre}, prórroga concedida hasta ${v.fechaProrroga}. Deuda: ${v.montoDeuda}`,
-  [TipoNotificacion.ONU_OFFLINE]:         (v) =>
-    `Hola ${v.clienteNombre}, su ONU se desconectó el ${v.fechaHora}.`,
-  [TipoNotificacion.MANTENIMIENTO]:       (v) =>
-    `Hola ${v.clienteNombre}, mantenimiento el ${v.fechaInicio} (~${v.duracionEstimada}). Motivo: ${v.motivo}`,
-  [TipoNotificacion.ALERTA_EGRESO]:       (v) =>
-    `Estimado Administrador, le recordamos que la obligación fija *${v.nombre_gasto}* de categoría *${v.categoria}* por un monto de *S/. ${v.monto}* está próxima a vencer. Días restantes: *${v.dias_restantes}*. Por favor, procese el pago desde el ERP.`,
-};
 
 // ─── Estrategia Twilio ────────────────────────────────────
 // accountSid → apiKey, authToken → apiSecret, fromNumber → clientId
@@ -207,43 +181,17 @@ class CustomApiStrategy implements IMensajeriaStrategy {
   }
 }
 
-// ─── Mapping tipo → código de plantilla en BD ─────────────
+// ─── Mapping tipo → código de plantilla ───────────────────────
 const TIPO_A_CODIGO: Record<string, string> = {
   factura_emitida:     'nueva_factura',
   pago_vence_hoy:      'aviso_pago_01',
   pago_vencido:        'aviso_pago_02',
   servicio_suspendido: 'corte_servicio',
-  servicio_reactivado: 'bienvenida',
-  servicio_activado:   'bienvenida',
+  servicio_reactivado: 'reactivacion_servicio',
+  servicio_activado:   'activacion_servicio',
   bienvenida:          'bienvenida',
   pago_recibido:       'confirmacion_pago',
   alerta_egreso:       'datafast_alerta_egreso',
-};
-
-// camelCase worker vars → snake_case template vars
-const VARS_ALIAS: Record<string, string> = {
-  clienteNombre:    'nombre_completo',
-  numeroFactura:    'numero_factura',
-  montoTotal:       'monto_factura',
-  fechaVencimiento: 'fecha_pago',
-  montoDeuda:       'monto_deuda',
-  diasVencido:      'dias_vencido',
-  numeroCuenta:     'numero_cuenta',
-  deudaTotal:       'deuda_total',
-  nombreEmpresa:    'nombre_empresa',
-  planNombre:       'plan_nombre',
-  ipAsignada:       'ip_asignada',
-  usuarioPppoe:     'usuario_pppoe',
-  velocidadBajada:  'velocidad_bajada',
-  velocidadSubida:  'velocidad_subida',
-  montoPago:        'monto_pago',
-  metodoPago:       'metodo_pago',
-  saldoPendiente:   'saldo_pendiente',
-  fechaProrroga:    'fecha_prorroga',
-  fechaHora:        'fecha_hora',
-  fechaInicio:      'fecha_inicio',
-  duracionEstimada: 'duracion_estimada',
-  linkPago:         'link_pago',
 };
 
 // ─── Config interna del gateway ───────────────────────────
@@ -329,10 +277,19 @@ export class GatewayMensajeriaService {
         noEnviado = true;
       }
     } else {
-      const dbTexto = await this.resolveTextoDesdeDB(params.empresaId, params.tipo as string, params.variables ?? {});
-      const texto   = dbTexto ?? TEXTOS[params.tipo]?.(params.variables ?? {}) ?? String(params.tipo);
+      const texto = await this.resolveTexto(
+        params.empresaId,
+        params.tipo as string,
+        params.contratoId,
+        params.clienteId,
+        params.variables ?? {},
+      );
 
-      if (texto.length > config.limiteCaracteres) {
+      if (texto === null) {
+        this.logger.warn(`[GW] Sin plantilla para tipo='${params.tipo}' — notificación omitida`);
+        resultado = { enviado: false, error: `Sin plantilla configurada para '${params.tipo}'` };
+        noEnviado = true;
+      } else if (texto.length > config.limiteCaracteres) {
         this.logger.warn(`[GW] Texto excede límite (${texto.length} > ${config.limiteCaracteres})`);
         resultado = { enviado: false, error: `Texto excede límite de ${config.limiteCaracteres} caracteres` };
       } else {
@@ -354,23 +311,23 @@ export class GatewayMensajeriaService {
     if (logId) {
       try {
         let nuevoEstado: string;
+        const proveedorNombre = config?.proveedor ?? null;
         if (resultado.enviado) {
-          nuevoEstado = 'ENVIADO_META';
+          nuevoEstado = 'ENVIADO';
           await this.ds.query(
-            `UPDATE notificaciones_logs SET estado_entrega = 'ENVIADO_META', meta_message_id = $1 WHERE id = $2`,
-            [resultado.messageId ?? null, logId],
+            `UPDATE notificaciones_logs SET estado_entrega = 'ENVIADO', provider_message_id = $1, proveedor = $2 WHERE id = $3`,
+            [resultado.messageId ?? null, proveedorNombre, logId],
           );
         } else if (noEnviado) {
-          // Sin servicio activo configurado — no es un error técnico
           await this.ds.query(
-            `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1 WHERE id = $2`,
-            [(resultado.error ?? 'Sin servicio activo').substring(0, 500), logId],
+            `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1, proveedor = $2 WHERE id = $3`,
+            [(resultado.error ?? 'Sin servicio activo').substring(0, 500), proveedorNombre, logId],
           );
           nuevoEstado = 'NO_ENVIADO';
         } else {
           await this.ds.query(
-            `UPDATE notificaciones_logs SET estado_entrega = 'FALLIDO', error_detalle = $1 WHERE id = $2`,
-            [(resultado.error ?? 'Error desconocido').substring(0, 500), logId],
+            `UPDATE notificaciones_logs SET estado_entrega = 'FALLIDO', error_detalle = $1, proveedor = $2 WHERE id = $3`,
+            [(resultado.error ?? 'Error desconocido').substring(0, 500), proveedorNombre, logId],
           );
           nuevoEstado = 'FALLIDO';
         }
@@ -381,11 +338,6 @@ export class GatewayMensajeriaService {
     }
 
     return resultado;
-  }
-
-  // ── Renderiza el texto de un tipo de notificación con variables ──
-  renderTexto(tipo: string, variables: Record<string, string>): string {
-    return TEXTOS[tipo]?.(variables) ?? tipo;
   }
 
   // ── Enrutamiento dual: interno usa whatsapp_corporativo ───
@@ -505,30 +457,119 @@ export class GatewayMensajeriaService {
     return clean;
   }
 
-  private async resolveTextoDesdeDB(
+  // ── Enriquece variables desde BD (contrato → cliente → plan → empresa) ──
+  private async resolveVariables(
+    empresaId: string | undefined,
+    contratoId: string | undefined,
+    clienteId: string | undefined,
+    eventVars: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    const base: Record<string, string> = {};
+
+    if (contratoId) {
+      try {
+        const [row] = await this.ds.query(`
+          SELECT
+            cl.nombre_completo       AS nombre_cliente,
+            em.razon_social          AS empresa,
+            em.telefono              AS telefono_empresa,
+            pl.nombre                AS plan,
+            pl.velocidad_bajada::text AS velocidad_bajada,
+            pl.velocidad_subida::text AS velocidad_subida,
+            co.usuario_pppoe         AS usuario_pppoe,
+            co.ip_asignada           AS ip_asignada,
+            co.numero_contrato       AS numero_contrato
+          FROM contratos co
+          JOIN clientes  cl ON cl.id = co.cliente_id
+          JOIN empresas  em ON em.id = co.empresa_id
+          LEFT JOIN planes pl ON pl.id = co.plan_id
+          WHERE co.id = $1
+        `, [contratoId]);
+        if (row) {
+          for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+            if (v != null) base[k] = String(v);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`[GW] resolveVariables contratoId=${contratoId}: ${err.message}`);
+      }
+    } else if (clienteId && empresaId) {
+      try {
+        const [row] = await this.ds.query(`
+          SELECT cl.nombre_completo AS nombre_cliente,
+                 em.razon_social   AS empresa,
+                 em.telefono       AS telefono_empresa
+          FROM clientes cl, empresas em
+          WHERE cl.id = $1 AND em.id = $2
+        `, [clienteId, empresaId]);
+        if (row) {
+          for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+            if (v != null) base[k] = String(v);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`[GW] resolveVariables clienteId=${clienteId}: ${err.message}`);
+      }
+    } else if (empresaId) {
+      try {
+        const [row] = await this.ds.query(
+          `SELECT razon_social AS empresa, telefono AS telefono_empresa FROM empresas WHERE id = $1`,
+          [empresaId],
+        );
+        if (row) {
+          for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+            if (v != null) base[k] = String(v);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`[GW] resolveVariables empresaId=${empresaId}: ${err.message}`);
+      }
+    }
+
+    // Event vars override enriched vars (permite que el evento sobreescriba si necesita)
+    return { ...base, ...eventVars };
+  }
+
+  // ── Resuelve plantilla + variables → texto final o null si no hay plantilla ──
+  private async resolveTexto(
     empresaId: string | undefined,
     tipo: string,
-    variables: Record<string, string>,
+    contratoId: string | undefined,
+    clienteId: string | undefined,
+    eventVars: Record<string, string>,
   ): Promise<string | null> {
-    if (!empresaId) return null;
     const codigo = TIPO_A_CODIGO[tipo];
-    if (!codigo) return null;
-    try {
-      const [plantilla] = await this.ds.query(
-        `SELECT contenido FROM plantillas_mensajes
-         WHERE empresa_id = $1 AND tipo = 'whatsapp' AND codigo = $2 AND activo = true AND deleted_at IS NULL`,
-        [empresaId, codigo],
-      );
-      if (!plantilla?.contenido) return null;
-      // Build lookup with both camelCase originals and snake_case aliases
-      const lookup: Record<string, string> = { ...variables };
-      for (const [camel, snake] of Object.entries(VARS_ALIAS)) {
-        if (variables[camel] !== undefined) lookup[snake] = variables[camel];
-      }
-      return plantilla.contenido.replace(/\{\{(\w+)\}\}/g, (_: string, key: string) => lookup[key] ?? '');
-    } catch {
+    if (!codigo) {
+      this.logger.warn(`[GW] Tipo '${tipo}' no tiene mapping en TIPO_A_CODIGO`);
       return null;
     }
+
+    let contenido: string | null = null;
+
+    // 1. Plantilla personalizada de la empresa en BD
+    if (empresaId) {
+      try {
+        const [plantilla] = await this.ds.query(
+          `SELECT contenido FROM plantillas_mensajes
+           WHERE empresa_id = $1 AND tipo = 'whatsapp' AND codigo = $2 AND activo = true AND deleted_at IS NULL`,
+          [empresaId, codigo],
+        );
+        if (plantilla?.contenido) contenido = plantilla.contenido;
+      } catch (err: any) {
+        this.logger.warn(`[GW] Error buscando plantilla ${codigo}: ${err.message}`);
+      }
+    }
+
+    // 2. Fallback al sistema de plantillas por defecto
+    if (!contenido) {
+      contenido = SYSTEM_DEFAULTS_WHATSAPP[codigo]?.contenido ?? null;
+    }
+
+    if (!contenido) return null;
+
+    // 3. Enriquecer con datos de BD y renderizar
+    const vars = await this.resolveVariables(empresaId, contratoId, clienteId, eventVars);
+    return contenido.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '');
   }
 
   private sleep(seconds: number): Promise<void> {

@@ -194,21 +194,7 @@ export class PagosService {
 
     // ── Emitir evento de notificación si el pago fue auto-verificado ─
     if (savedPago.estado === EstadoPago.VERIFICADO) {
-      try {
-        this.events.emit('notification.pago.recibido', {
-          telefono:       '',
-          clienteNombre:  '',
-          montoPago:      `S/ ${Number(dto.monto).toFixed(2)}`,
-          metodoPago:     metodoPagoEntity,
-          saldoPendiente: 'S/ 0.00',
-          empresaId,
-          contratoId:     savedPago.contratoId ?? undefined,
-          clienteId:      savedPago.clienteId ?? undefined,
-        });
-        this.logger.log(`[PAGOS] Evento pago_recibido emitido para pago ${savedPago.id}`);
-      } catch (err) {
-        this.logger.warn(`[PAGOS] Error emitiendo pago_recibido: ${err.message}`);
-      }
+      this.emitirEventoPagoRecibido(savedPago);
     }
 
     this.logger.log(

@@ -485,12 +485,12 @@ export class CobranzaWorker {
       if (cliente) {
         const tel = cliente.whatsapp || cliente.telefono;
         if (tel) {
-          this.events.emit('notification.servicio.suspendido', {
+          this.events.emit(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, {
             telefono:      tel,
             clienteNombre: cliente.nombre_completo,
             deudaTotal:    `S/ ${deudaTotal.toFixed(2)}`,
-            numeroCuenta:  'ver al asesor',
-            nombreEmpresa: cliente.empresa_nombre || 'DataFast',
+            numeroCuenta:  '',
+            nombreEmpresa: cliente.empresa_nombre || '',
             empresaId,
             contratoId,
             clienteId,
@@ -638,10 +638,10 @@ export class CobranzaWorker {
       if (cliente) {
         const tel = cliente.whatsapp || cliente.telefono;
         if (tel) {
-          this.events.emit('notification.servicio.reactivado', {
+          this.events.emit(NOTIFICATION_EVENTS.SERVICIO_REACTIVADO, {
             telefono:      tel,
             clienteNombre: cliente.nombre_completo,
-            planNombre:    planNombre || 'tu plan',
+            planNombre:    planNombre || '',
             empresaId,
             contratoId,
             clienteId,
@@ -834,9 +834,9 @@ export class CobranzaWorker {
 
     if (!telefono || !montoDeuda) return { omitido: true };
 
-    const eventName = diasAntes > 0
-      ? 'notification.pago.vence.hoy'
-      : 'notification.pago.vencido';
+    const eventName = diasAntes >= 0
+      ? NOTIFICATION_EVENTS.PAGO_VENCE_HOY
+      : NOTIFICATION_EVENTS.PAGO_VENCIDO;
 
     try {
       this.events.emit(eventName, {

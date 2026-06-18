@@ -96,10 +96,15 @@ export class NotificationEventListener {
       telefono:    event.telefono,
       tipo:        'factura_emitida',
       variables: {
-        clienteNombre:    event.clienteNombre,
-        numeroFactura:    event.numeroFactura,
-        montoTotal:       event.montoTotal,
-        fechaVencimiento: event.fechaVencimiento,
+        // snake_case para plantillas (no-META)
+        numero_factura:    event.numeroFactura,
+        monto:             event.montoTotal,
+        fecha_vencimiento: event.fechaVencimiento,
+        // camelCase para META_GRAPH paramKeys
+        clienteNombre:     event.clienteNombre,
+        numeroFactura:     event.numeroFactura,
+        montoTotal:        event.montoTotal,
+        fechaVencimiento:  event.fechaVencimiento,
       },
       empresaId:  event.empresaId,
       contratoId: event.contratoId,
@@ -120,6 +125,10 @@ export class NotificationEventListener {
       telefono:    event.telefono,
       tipo:        'pago_recibido',
       variables: {
+        monto:          event.montoPago,
+        metodo_pago:    event.metodoPago,
+        saldo_pendiente: event.saldoPendiente,
+        // META compat
         clienteNombre:  event.clienteNombre,
         montoPago:      event.montoPago,
         metodoPago:     event.metodoPago,
@@ -144,10 +153,13 @@ export class NotificationEventListener {
       telefono:    event.telefono,
       tipo:        'servicio_suspendido',
       variables: {
+        monto:         event.deudaTotal,
+        numero_cuenta: event.numeroCuenta ?? '',
+        // META compat
         clienteNombre: event.clienteNombre,
         deudaTotal:    event.deudaTotal,
         numeroCuenta:  event.numeroCuenta ?? 'ver al asesor',
-        nombreEmpresa: event.nombreEmpresa ?? 'CRM ISP DATAFAST',
+        nombreEmpresa: event.nombreEmpresa ?? '',
       },
       empresaId:  event.empresaId,
       contratoId: event.contratoId,
@@ -168,6 +180,8 @@ export class NotificationEventListener {
       telefono:    event.telefono,
       tipo:        'servicio_reactivado',
       variables: {
+        // todo enriquecido desde BD (nombre_cliente, plan, empresa, etc.)
+        // META compat
         clienteNombre: event.clienteNombre,
         planNombre:    event.planNombre,
       },
@@ -190,6 +204,8 @@ export class NotificationEventListener {
       telefono:    event.telefono,
       tipo:        'bienvenida',
       variables: {
+        // todo enriquecido desde BD (nombre_cliente, plan, usuario_pppoe, etc.)
+        // META compat
         clienteNombre:   event.clienteNombre,
         planNombre:      event.planNombre,
         velocidadBajada: event.velocidadBajada,
@@ -215,6 +231,9 @@ export class NotificationEventListener {
       telefono:    event.telefono,
       tipo:        'pago_vence_hoy',
       variables: {
+        monto:     event.montoDeuda,
+        link_pago: event.linkPago ?? '',
+        // META compat
         clienteNombre: event.clienteNombre,
         montoDeuda:    event.montoDeuda,
         linkPago:      event.linkPago ?? '',
@@ -238,6 +257,10 @@ export class NotificationEventListener {
       telefono:    event.telefono,
       tipo:        'pago_vencido',
       variables: {
+        monto:         event.montoDeuda,
+        dias_vencidos: event.diasVencido,
+        numero_cuenta: event.numeroCuenta ?? '',
+        // META compat
         clienteNombre: event.clienteNombre,
         montoDeuda:    event.montoDeuda,
         diasVencido:   event.diasVencido,

@@ -4,70 +4,71 @@ import { Repository } from 'typeorm';
 import { PlantillaMensaje, TipoPlantilla } from './entities/plantilla-mensaje.entity';
 import { PlantillaAbonado, FacturacionConfig, NotificacionesConfig } from './entities/plantilla-abonado.entity';
 
+// ─── Plantillas del sistema para WhatsApp ────────────────────
+// Variables estándar (enriquecidas desde BD): {{nombre_cliente}},
+// {{empresa}}, {{telefono_empresa}}, {{plan}}, {{usuario_pppoe}},
+// {{ip_asignada}}, {{velocidad_bajada}}, {{velocidad_subida}},
+// {{numero_contrato}}
+// Variables de evento: {{monto}}, {{numero_factura}},
+// {{fecha_vencimiento}}, {{dias_vencidos}}, {{numero_cuenta}},
+// {{metodo_pago}}, {{saldo_pendiente}}, {{link_pago}},
+// {{nombre_gasto}}, {{categoria}}, {{dias_restantes}}
+export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenido: string }> = {
+  aviso_pago_01: {
+    nombre: 'Aviso de Pago #1',
+    contenido:
+      'Hola {{nombre_cliente}} 👋, le recordamos que su factura N° {{numero_factura}} por S/ {{monto}} vencerá el {{fecha_vencimiento}}. Por favor realice su pago a tiempo para evitar interrupciones en su servicio {{plan}}. Gracias, {{empresa}}.',
+  },
+  aviso_pago_02: {
+    nombre: 'Aviso de Pago #2 (Vencido)',
+    contenido:
+      '{{nombre_cliente}}, su factura N° {{numero_factura}} por S/ {{monto}} lleva {{dias_vencidos}} día(s) vencida. Por favor regularice su deuda para evitar el corte de servicio. Consultas: {{telefono_empresa}}.',
+  },
+  aviso_pago_03: {
+    nombre: 'Aviso de Pago #3 (Último aviso)',
+    contenido:
+      '⚠️ ÚLTIMO AVISO — {{nombre_cliente}}, su factura N° {{numero_factura}} por S/ {{monto}} VENCE HOY {{fecha_vencimiento}}. Sin pago, su servicio {{plan}} será SUSPENDIDO. Comuníquese al {{telefono_empresa}}.',
+  },
+  nueva_factura: {
+    nombre: 'Nueva Factura Generada',
+    contenido:
+      '{{nombre_cliente}}, se ha generado su factura N° {{numero_factura}} por S/ {{monto}} (Plan: {{plan}}). Fecha de vencimiento: {{fecha_vencimiento}}. {{empresa}} — {{telefono_empresa}}.',
+  },
+  corte_servicio: {
+    nombre: 'Corte de Servicio',
+    contenido:
+      '{{nombre_cliente}}, su servicio {{plan}} ha sido SUSPENDIDO por falta de pago. Deuda: S/ {{monto}}. Para reactivar, realice el pago y contáctenos al {{telefono_empresa}}. {{empresa}}.',
+  },
+  bienvenida: {
+    nombre: 'Bienvenida',
+    contenido:
+      '🎉 ¡Bienvenido a {{empresa}}, {{nombre_cliente}}! Su servicio {{plan}} ha sido ACTIVADO. Usuario: {{usuario_pppoe}} | IP: {{ip_asignada}}. Soporte: {{telefono_empresa}}. ¡Que lo disfrute!',
+  },
+  reactivacion_servicio: {
+    nombre: 'Reactivación de Servicio',
+    contenido:
+      '✅ {{nombre_cliente}}, su servicio {{plan}} ha sido REACTIVADO exitosamente. Gracias por regularizar su pago. Para consultas comuníquese al {{telefono_empresa}}. {{empresa}}.',
+  },
+  activacion_servicio: {
+    nombre: 'Activación de Servicio',
+    contenido:
+      '✅ {{nombre_cliente}}, su servicio {{plan}} ha sido ACTIVADO. Usuario: {{usuario_pppoe}} | IP: {{ip_asignada}} | Velocidad: {{velocidad_bajada}}/{{velocidad_subida}} Mbps. Soporte: {{telefono_empresa}}. {{empresa}}.',
+  },
+  confirmacion_pago: {
+    nombre: 'Confirmación de Pago',
+    contenido:
+      '✅ {{nombre_cliente}}, hemos recibido su pago de S/ {{monto}} para la factura N° {{numero_factura}}. ¡Gracias por su puntualidad! Su servicio {{plan}} continúa activo. {{empresa}}.',
+  },
+  datafast_alerta_egreso: {
+    nombre: 'Alerta Egreso Recurrente (Interno)',
+    contenido:
+      'Estimado Administrador, le recordamos que la obligación fija *{{nombre_gasto}}* de categoría *{{categoria}}* por un monto de *S/. {{monto}}* está próxima a vencer. Días restantes: *{{dias_restantes}}*. Por favor, procese el pago desde el ERP.',
+  },
+};
+
 // ─── Defaults por tipo ────────────────────────────────────────
 const DEFAULTS: Record<TipoPlantilla, Record<string, { nombre: string; contenido: string }>> = {
-  whatsapp: {
-    aviso_pago_01: {
-      nombre: 'Aviso de Pago #1',
-      contenido:
-        'Hola {{nombre_completo}} 👋, le recordamos que su factura N° {{numero_factura}} por S/ {{monto_factura}} vencerá el {{fecha_pago}}. Por favor realice su pago a tiempo para evitar interrupciones en su servicio {{plan_contratado}}. Gracias, {{empresa}}.',
-    },
-    aviso_pago_02: {
-      nombre: 'Aviso de Pago #2',
-      contenido:
-        '{{nombre_completo}}, quedan {{dias_vencimiento}} día(s) para el vencimiento de su factura N° {{numero_factura}} por S/ {{monto_factura}}. Fecha límite: {{fecha_pago}}. Evite el corte de su servicio. Consultas: {{telefono_empresa}}.',
-    },
-    aviso_pago_03: {
-      nombre: 'Aviso de Pago #3 (Último aviso)',
-      contenido:
-        '⚠️ ÚLTIMO AVISO — {{nombre_completo}}, su factura N° {{numero_factura}} por S/ {{monto_factura}} VENCE HOY {{fecha_pago}}. Sin pago, su servicio {{plan_contratado}} será SUSPENDIDO. Comuníquese al {{telefono_empresa}}.',
-    },
-    nueva_factura: {
-      nombre: 'Nueva Factura Generada',
-      contenido:
-        '{{nombre_completo}}, se ha generado su factura N° {{numero_factura}} por S/ {{monto_factura}} (Plan: {{plan_contratado}}). Fecha de vencimiento: {{fecha_pago}}. {{empresa}} — {{telefono_empresa}}.',
-    },
-    corte_servicio: {
-      nombre: 'Corte de Servicio',
-      contenido:
-        '{{nombre_completo}}, su servicio {{plan_contratado}} ha sido SUSPENDIDO por falta de pago. Deuda: S/ {{monto_factura}}. Para reactivar, realice el pago y contáctenos al {{telefono_empresa}}. {{empresa}}.',
-    },
-    bienvenida: {
-      nombre: 'Bienvenida',
-      contenido:
-        '🎉 ¡Bienvenido a {{empresa}}, {{nombre_completo}}! Su servicio {{plan_contratado}} ha sido ACTIVADO. Usuario: {{usuario_pppoe}} | IP: {{ip_asignada}}. Soporte: {{telefono_empresa}}. ¡Que lo disfrute!',
-    },
-    emisor_caido: {
-      nombre: 'Emisor Caído',
-      contenido:
-        '⚠️ ALERTA {{empresa}}: El nodo {{nodo_nombre}} ha perdido conectividad. Estamos trabajando para restablecer el servicio. Disculpe los inconvenientes. Reportes: {{telefono_empresa}}.',
-    },
-    emisor_conectado: {
-      nombre: 'Emisor Conectado',
-      contenido:
-        '✅ {{empresa}}: El nodo {{nodo_nombre}} ha sido RESTAURADO exitosamente. El servicio está operativo. Gracias por su paciencia.',
-    },
-    router_caido: {
-      nombre: 'Router Caído',
-      contenido:
-        '⚠️ ALERTA {{empresa}}: El router {{router_nombre}} está CAÍDO. Se está atendiendo la incidencia. Consultas: {{telefono_empresa}}.',
-    },
-    router_conectado: {
-      nombre: 'Router Conectado',
-      contenido:
-        '✅ {{empresa}}: El router {{router_nombre}} ha sido RECONECTADO exitosamente. Todo funciona con normalidad.',
-    },
-    confirmacion_pago: {
-      nombre: 'Confirmación de Pago',
-      contenido:
-        '✅ {{nombre_completo}}, hemos recibido su pago de S/ {{monto_factura}} para la factura N° {{numero_factura}}. ¡Gracias por su puntualidad! Su servicio {{plan_contratado}} continúa activo. {{empresa}}.',
-    },
-    datafast_alerta_egreso: {
-      nombre: 'Alerta Egreso Recurrente (Interno)',
-      contenido:
-        'Estimado Administrador, le recordamos que la obligación fija *{{nombre_gasto}}* de categoría *{{categoria}}* por un monto de *S/. {{monto}}* está próxima a vencer. Días restantes: *{{dias_restantes}}*. Por favor, procese el pago desde el ERP.',
-    },
-  },
+  whatsapp: SYSTEM_DEFAULTS_WHATSAPP,
 
   email: {
     aviso_pago_01: {

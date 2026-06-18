@@ -392,7 +392,7 @@ export class FacturacionWorker {
             montoTotal:      `S/ ${totalFactura.toFixed(2)}`,
             fechaVencimiento,
             empresaId,
-            contratoId:      null,
+            contratoId:      primer.contrato_id ?? undefined,
             clienteId,
           });
         }

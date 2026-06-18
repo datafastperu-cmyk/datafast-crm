@@ -113,7 +113,7 @@ export class CampanasService {
 
     return {
       encolados: stats['ENCOLADO']     ?? 0,
-      enviados:  stats['ENVIADO_META'] ?? 0,
+      enviados:  stats['ENVIADO'] ?? 0,
       fallidos:  stats['FALLIDO']      ?? 0,
       entregados: stats['ENTREGADO']   ?? 0,
     };

@@ -28,12 +28,11 @@ export class WebhooksService {
       return;
     }
 
-    // UPDATE usando el índice idx_notif_logs_meta_msg_id
-    // La condición extra evita escrituras redundantes (mismo estado ya guardado)
+    // UPDATE usando el índice idx_notif_logs_provider_msg_id
     const result = await this.db.query<{ rowCount: number }>(
       `UPDATE notificaciones_logs
           SET estado_entrega = $1
-        WHERE meta_message_id = $2
+        WHERE provider_message_id = $2
           AND estado_entrega != $1
           AND estado_entrega != 'FALLIDO'`,
       [newStatus, messageId],
