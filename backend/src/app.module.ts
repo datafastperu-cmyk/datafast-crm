@@ -11,6 +11,7 @@ import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { appConfig, databaseConfig, redisConfig, jwtConfig, validationSchema } from './config';
 
 
+import { ModuleHealthModule }    from './common/module-health.module';
 import { LicenciaGuard }         from './modules/licencia/licencia.guard';
 import { JwtAuthGuard }          from './common/guards/jwt-auth.guard';
 import { RolesGuard }            from './common/guards/roles.guard';
@@ -78,9 +79,10 @@ import { MigracionModule }            from './modules/migracion/migracion.module
         password:             config.get('database.password'),
         ssl:                  config.get('database.ssl'),
         entities:             [__dirname + '/**/*.entity{.ts,.js}'],
-        migrations:           [__dirname + '/database/migrations/*{.ts,.js}'],
-        migrationsTableName:  'typeorm_migrations',
-        migrationsRun:        true,
+        migrations:              [__dirname + '/database/migrations/core/*{.ts,.js}'],
+        migrationsTableName:     'typeorm_migrations',
+        migrationsRun:           true,
+        migrationsTransactionMode: 'each',
         synchronize:          false,
         logging:              false,
         extra:                { max: 20, min: 2, idleTimeoutMillis: 30000 },
@@ -145,6 +147,7 @@ import { MigracionModule }            from './modules/migracion/migracion.module
       }),
       inject: [ConfigService],
     }),
+    ModuleHealthModule,  // global — inyectable en todos los módulos sin importar
     LicenciaModule,
     HealthModule,
     AuthModule,
