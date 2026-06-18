@@ -14,14 +14,18 @@ export enum EstadoEntrega {
 }
 
 @Entity('notificaciones_logs')
-@Index('idx_notif_logs_contrato',    ['contratoId'])
-@Index('idx_notif_logs_created_at',  ['createdAt'])
-@Index('idx_notif_logs_estado',      ['estadoEntrega'])
+@Index('idx_notif_logs_empresa',         ['empresaId'])
+@Index('idx_notif_logs_contrato',        ['contratoId'])
+@Index('idx_notif_logs_created_at',      ['createdAt'])
+@Index('idx_notif_logs_estado',          ['estadoEntrega'])
 @Index('idx_notif_logs_provider_msg_id', ['providerMessageId'])
 export class NotificacionLog {
 
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ name: 'empresa_id', type: 'uuid', nullable: true })
+  empresaId: string | null;
 
   @Column({ name: 'contrato_id', type: 'uuid', nullable: true })
   contratoId: string | null;

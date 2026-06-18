@@ -741,6 +741,7 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
               usuarioPppoe:    ctx.usuarioPppoe,
               empresaId:       user.empresaId,
               clienteId:       dto.clienteId,
+              contratoId:      dto.contratoId,
             });
 
             detalles.push('Evento bienvenida emitido');

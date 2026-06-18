@@ -70,8 +70,9 @@ export interface NotifLog {
   telefono:       string;
   canal:          string;
   tipo_template:  string;
-  estado_entrega: 'ENCOLADO' | 'ENVIADO_META' | 'FALLIDO' | 'ENTREGADO' | 'LEIDO';
-  meta_message_id: string | null;
+  estado_entrega: 'ENCOLADO' | 'EN_PROCESO' | 'ENVIADO' | 'ENVIADO_META' | 'NO_ENVIADO' | 'FALLIDO' | 'ENTREGADO' | 'LEIDO';
+  provider_message_id: string | null;
+  proveedor: string | null;
   error_detalle:  string | null;
   created_at:     string;
   numero_contrato?: string | null;

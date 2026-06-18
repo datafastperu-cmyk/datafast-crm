@@ -253,9 +253,9 @@ export class GatewayMensajeriaService {
     if (!logId) {
       try {
         const [row] = await this.ds.query(`
-          INSERT INTO notificaciones_logs (contrato_id, telefono, tipo_template, estado_entrega)
-          VALUES ($1, $2, $3, 'ENCOLADO') RETURNING id
-        `, [params.contratoId ?? null, destino.substring(0, 30), params.tipo]);
+          INSERT INTO notificaciones_logs (empresa_id, contrato_id, telefono, tipo_template, estado_entrega)
+          VALUES ($1, $2, $3, $4, 'ENCOLADO') RETURNING id
+        `, [params.empresaId ?? null, params.contratoId ?? null, destino.substring(0, 30), params.tipo]);
         logId = row?.id ?? null;
       } catch (logErr: any) {
         this.logger.warn(`[GW] No se pudo crear log: ${logErr.message}`);

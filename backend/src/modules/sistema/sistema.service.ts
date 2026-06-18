@@ -409,7 +409,7 @@ export class SistemaService {
     tipo?:   string,
   ): Promise<{ items: any[]; total: number }> {
     const offset = (page - 1) * limit;
-    const conds: string[] = [`co.empresa_id = $1`, `co.deleted_at IS NULL`];
+    const conds: string[] = [`nl.empresa_id = $1`];
     const params: any[]   = [empresaId];
 
     if (estado) { params.push(estado);  conds.push(`nl.estado_entrega = $${params.length}`); }
@@ -420,21 +420,20 @@ export class SistemaService {
     const [countRow] = await this.ds.query(
       `SELECT COUNT(*)::int AS total
        FROM notificaciones_logs nl
-       INNER JOIN contratos co ON co.id = nl.contrato_id
        WHERE ${where}`,
       params,
     );
 
     params.push(limit, offset);
     const items = await this.ds.query(
-      `SELECT nl.id, nl.contrato_id, nl.telefono, nl.canal,
+      `SELECT nl.id, nl.contrato_id, nl.empresa_id, nl.telefono, nl.canal,
               nl.tipo_template, nl.estado_entrega,
               nl.provider_message_id, nl.proveedor, nl.error_detalle, nl.created_at,
               co.numero_contrato,
               cl.nombre_completo AS cliente_nombre
        FROM notificaciones_logs nl
-       INNER JOIN contratos co ON co.id = nl.contrato_id
-       LEFT  JOIN clientes  cl ON cl.id = co.cliente_id AND cl.deleted_at IS NULL
+       LEFT JOIN contratos co ON co.id = nl.contrato_id AND co.deleted_at IS NULL
+       LEFT JOIN clientes  cl ON cl.id = co.cliente_id  AND cl.deleted_at IS NULL
        WHERE ${where}
        ORDER BY nl.created_at DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,

@@ -28,9 +28,12 @@ const INPUT = [
 ].join(' ');
 
 function EstadoBadge({ estado, error }: { estado: NotifLog['estado_entrega']; error?: string | null }) {
-  const map: Record<NotifLog['estado_entrega'], { cls: string; icon: React.ReactNode; label: string }> = {
+  const map: Record<string, { cls: string; icon: React.ReactNode; label: string }> = {
     ENCOLADO:     { cls: 'bg-amber-500/10 text-amber-500',     icon: <Clock        className="w-3 h-3" />, label: 'En Espera'  },
+    EN_PROCESO:   { cls: 'bg-sky-500/10 text-sky-500',         icon: <Loader2      className="w-3 h-3 animate-spin" />, label: 'Procesando' },
+    ENVIADO:      { cls: 'bg-emerald-500/10 text-emerald-500', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Enviado'   },
     ENVIADO_META: { cls: 'bg-emerald-500/10 text-emerald-500', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Enviado'   },
+    NO_ENVIADO:   { cls: 'bg-rose-500/10 text-rose-500',       icon: <AlertCircle  className="w-3 h-3" />, label: 'No Enviado' },
     FALLIDO:      { cls: 'bg-rose-500/10 text-rose-500',       icon: <AlertCircle  className="w-3 h-3" />, label: 'No Enviado' },
     ENTREGADO:    { cls: 'bg-blue-500/10 text-blue-400',       icon: <Truck        className="w-3 h-3" />, label: 'Entregado' },
     LEIDO:        { cls: 'bg-cyan-500/10 text-cyan-400',       icon: <CheckCheck   className="w-3 h-3" />, label: 'Leído'     },
@@ -163,10 +166,12 @@ export default function MensajesEnviadosPage() {
             >
               <option value="">Todos los estados</option>
               <option value="ENCOLADO">En Espera</option>
-              <option value="ENVIADO_META">Enviado</option>
+              <option value="ENVIADO">Enviado</option>
+              <option value="ENVIADO_META">Enviado (Meta)</option>
               <option value="ENTREGADO">Entregado</option>
               <option value="LEIDO">Leído</option>
-              <option value="FALLIDO">No Enviado</option>
+              <option value="NO_ENVIADO">No Enviado</option>
+              <option value="FALLIDO">Fallido</option>
             </select>
             <select
               value={tipo}
