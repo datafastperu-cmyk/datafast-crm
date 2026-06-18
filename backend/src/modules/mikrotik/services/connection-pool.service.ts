@@ -196,7 +196,27 @@ export class RouterConnectionPool implements OnModuleDestroy {
 
       try {
         api = await this.acquire(creds, channel);
-        const result = await fn(api);
+
+        // RouterOS envía `!empty` en vez de `!re` cuando un /print devuelve lista
+        // vacía. El cliente node-routeros no reconoce ese tipo de sentencia y lanza
+        // una excepción, dejando el socket en estado indeterminado. Interceptamos el
+        // `write` para devolver [] en ese caso y mantener el contrato "resultado vacío
+        // = array vacío" que todos los servicios ya esperan.
+        const safeApi = new Proxy(api, {
+          get(target, prop) {
+            if (prop !== 'write') return (target as any)[prop];
+            return async (...args: any[]) => {
+              try {
+                return await (target as any).write(...args);
+              } catch (err: any) {
+                if (err?.message?.includes('!empty')) return [];
+                throw err;
+              }
+            };
+          },
+        }) as RouterOSAPI;
+
+        const result = await fn(safeApi);
         this.release(creds.id, api, channel);
         released = true;
         return result;
