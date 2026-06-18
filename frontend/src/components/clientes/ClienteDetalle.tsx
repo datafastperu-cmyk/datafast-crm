@@ -27,6 +27,8 @@ import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
+import { MigracionWizardModal }               from '../contratos/MigracionWizardModal';
+import { RevertirFtthModal }                  from '../contratos/RevertirFtthModal';
 import { TabConfigFacturacion, calcularFechas, calcularFechaRecordatorio } from './TabConfigFacturacion';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
@@ -1032,10 +1034,12 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
   const [q2, setQ2] = useState('');
   const [q3, setQ3] = useState('');
   const [q4, setQ4] = useState('');
-  const [showPanel,       setShowPanel]       = useState(false);
-  const [editingContrato, setEditingContrato] = useState<Contrato | null>(null);
-  const [confirmBaja,     setConfirmBaja]     = useState<Contrato | null>(null);
-  const [onuContrato,     setOnuContrato]     = useState<Contrato | null>(null);
+  const [showPanel,        setShowPanel]        = useState(false);
+  const [editingContrato,  setEditingContrato]  = useState<Contrato | null>(null);
+  const [confirmBaja,      setConfirmBaja]      = useState<Contrato | null>(null);
+  const [onuContrato,      setOnuContrato]      = useState<Contrato | null>(null);
+  const [migracionContrato,setMigracionContrato]= useState<Contrato | null>(null);
+  const [revertirContrato, setRevertirContrato] = useState<Contrato | null>(null);
 
   // IPs a monitorear: contratos activos/suspendidos con IP asignada
   const ipsMonitoreo = contratos
@@ -1222,6 +1226,29 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                           }
                         </button>
                       )}
+                      {c.estado === 'activo' && (c as any).tipoServicio === 'wisp' && !(c as any).enMigracion && (
+                        <button
+                          onClick={() => setMigracionContrato(c)}
+                          title="Migrar a FTTH"
+                          className="p-1.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-muted-foreground hover:text-violet-600 transition-colors"
+                        >
+                          <Cable className="w-3 h-3" />
+                        </button>
+                      )}
+                      {c.estado === 'activo' && (c as any).tipoServicio === 'ftth' && !(c as any).enMigracion && (
+                        <button
+                          onClick={() => setRevertirContrato(c)}
+                          title="Revertir a WISP"
+                          className="p-1.5 rounded hover:bg-amber-50 dark:hover:bg-amber-900/20 text-muted-foreground hover:text-amber-600 transition-colors"
+                        >
+                          <Radio className="w-3 h-3" />
+                        </button>
+                      )}
+                      {(c as any).enMigracion && (
+                        <span title="En migración" className="p-1.5 text-amber-500">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        </span>
+                      )}
                       {c.estado !== 'baja_definitiva' && (
                         <button
                           onClick={() => setConfirmBaja(c)}
@@ -1344,6 +1371,25 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
         <ModalProvisionOnu
           contrato={onuContrato}
           onClose={() => setOnuContrato(null)}
+        />
+      )}
+
+      {migracionContrato && (
+        <MigracionWizardModal
+          contratoId={migracionContrato.id}
+          clienteId={clienteId}
+          onClose={() => setMigracionContrato(null)}
+          onSuccess={() => { setMigracionContrato(null); onSaved(); }}
+        />
+      )}
+
+      {revertirContrato && (
+        <RevertirFtthModal
+          contratoId={revertirContrato.id}
+          clienteId={clienteId}
+          numeroContrato={(revertirContrato as any).numeroContrato}
+          onClose={() => setRevertirContrato(null)}
+          onSuccess={() => { setRevertirContrato(null); onSaved(); }}
         />
       )}
     </div>
