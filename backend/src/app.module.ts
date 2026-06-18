@@ -21,6 +21,7 @@ import { TimeoutInterceptor }    from './common/interceptors/timeout.interceptor
 import { AuditInterceptor }      from './common/interceptors/audit.interceptor';
 import { AllExceptionsFilter }   from './common/filters/http-exception.filter';
 import { QueuePauseService }     from './common/services/queue-pause.service';
+import { QUEUES }                from './modules/workers/workers.constants';
 
 import { LicenciaModule }        from './modules/licencia/licencia.module';
 import { HealthModule }           from './modules/health/health.module';
@@ -135,6 +136,12 @@ import { MigracionModule }            from './modules/migracion/migracion.module
       }),
       inject: [ConfigService],
     }),
+    BullModule.registerQueue(
+      { name: QUEUES.COBRANZA },
+      { name: QUEUES.FACTURACION },
+      { name: QUEUES.NOTIFICACIONES },
+      { name: QUEUES.GOOGLE_SYNC },
+    ),
     EventEmitterModule.forRoot({
       wildcard:     false,
       delimiter:    '.',

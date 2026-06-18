@@ -1,17 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
-import { ScheduleModule } from '@nestjs/schedule';
 
 import { FacturacionController } from './facturacion.controller';
 import { FacturacionService } from './facturacion.service';
 import { FacturaRepository } from './repositories/factura.repository';
 import { PdfService } from './pdf.service';
-import {
-  FacturacionWorker,
-  FacturacionScheduler,
-  FACTURACION_QUEUE,
-} from './facturacion.worker';
+import { FACTURACION_QUEUE } from './facturacion.worker';
 
 import { Factura } from './entities/factura.entity';
 import { AuthModule } from '../auth/auth.module';
@@ -31,7 +26,6 @@ import { AuthModule } from '../auth/auth.module';
       },
     }),
 
-    ScheduleModule,
     AuthModule,
   ],
   controllers: [FacturacionController],
@@ -39,8 +33,6 @@ import { AuthModule } from '../auth/auth.module';
     FacturacionService,
     FacturaRepository,
     PdfService,
-    FacturacionWorker,
-    FacturacionScheduler,
   ],
   exports: [
     // Exportar para uso en módulo de Pagos

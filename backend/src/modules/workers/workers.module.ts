@@ -1,12 +1,11 @@
 import { Module }          from '@nestjs/common';
 import { BullModule }      from '@nestjs/bull';
-import { ScheduleModule }  from '@nestjs/schedule';
 
 import { HttpModule }      from '@nestjs/axios';
 
 // Workers
 import { CobranzaWorker, CobranzaScheduler }       from './cobranza.worker';
-import { FacturacionWorker, FacturacionScheduler }  from './facturacion.worker';
+import { FacturacionWorker, FacturacionScheduler }  from '../facturacion/facturacion.worker';
 
 // Módulos de dependencias
 import { AuthModule }                from '../auth/auth.module';
@@ -49,8 +48,6 @@ import { QUEUES } from './workers.constants';
         },
       },
     ),
-
-    ScheduleModule,
 
     HttpModule.register({ timeout: 15_000 }),
 
