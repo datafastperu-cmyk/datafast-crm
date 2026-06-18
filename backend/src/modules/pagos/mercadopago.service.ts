@@ -1,8 +1,9 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import * as crypto from 'crypto';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 // ─── Tipos de MercadoPago ────────────────────────────────────
 export interface MpPreferencia {
@@ -30,7 +31,7 @@ export interface MpPaymentDetail {
 }
 
 @Injectable()
-export class MercadoPagoService {
+export class MercadoPagoService implements OnModuleInit {
   private readonly logger   = new Logger(MercadoPagoService.name);
   private readonly baseUrl  = 'https://api.mercadopago.com';
   private readonly accessToken: string;
@@ -39,9 +40,21 @@ export class MercadoPagoService {
   constructor(
     private readonly config: ConfigService,
     private readonly http:   HttpService,
+    private readonly moduleHealth: ModuleHealthService,
   ) {
     this.accessToken   = config.get<string>('app.mp.accessToken', '');
     this.webhookSecret = config.get<string>('app.mp.webhookSecret', '');
+  }
+
+  onModuleInit(): void {
+    if (this.accessToken) {
+      this.moduleHealth.registrar('mercadopago', 'ok');
+    } else {
+      this.moduleHealth.registrar(
+        'mercadopago', 'degraded',
+        'MERCADOPAGO_ACCESS_TOKEN no configurado — pagos online deshabilitados',
+      );
+    }
   }
 
   // ── Crear preferencia de pago ──────────────────────────────

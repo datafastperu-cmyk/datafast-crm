@@ -20,9 +20,10 @@ function mimeToExt(mime: string): string {
   const sub = mime.split('/')[1]?.split(';')[0] ?? 'bin';
   return '.' + sub;
 }
-import { CrmNativoService } from './crm-nativo.service';
-import { CrmNativoGateway } from './crm-nativo.gateway';
-import { WaStateService }   from './wa-state.service';
+import { CrmNativoService }   from './crm-nativo.service';
+import { CrmNativoGateway }   from './crm-nativo.gateway';
+import { WaStateService }     from './wa-state.service';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 // whatsapp-web.js + qrcode importados dinámicamente para evitar
 // errores de arranque si la librería aún no está instalada.
@@ -75,16 +76,27 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   private readonly sendingByChatId = new Set<string>();
 
   constructor(
-    private readonly crmSvc:  CrmNativoService,
-    private readonly gateway: CrmNativoGateway,
-    private readonly state:   WaStateService,
+    private readonly crmSvc:       CrmNativoService,
+    private readonly gateway:      CrmNativoGateway,
+    private readonly state:        WaStateService,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
 
   onModuleInit(): void {
     if (!IS_PRIMARY) {
+      this.moduleHealth.registrar('crm-whatsapp', 'ok');
       this.logger.log('Instancia secundaria — WaClient delegado a instancia 0');
       return;
     }
+    if (!CHROME_PATH) {
+      this.moduleHealth.registrar(
+        'crm-whatsapp', 'degraded',
+        'Chrome/Chromium no encontrado — instálalo con: apt install google-chrome-stable',
+      );
+      this.logger.warn('[CrmWhatsapp] Chrome no encontrado — módulo degradado');
+      return;
+    }
+    this.moduleHealth.registrar('crm-whatsapp', 'ok');
     // Non-blocking: let NestJS finish booting before Chrome starts
     setImmediate(() => this.iniciarCliente().catch((err) => this.logger.error(`WA init fatal: ${err?.message}`)));
   }

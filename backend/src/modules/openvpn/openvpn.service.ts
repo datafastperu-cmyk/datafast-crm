@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository }       from 'typeorm';
 import { promisify }        from 'util';
 import { execFile }         from 'child_process';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 import * as fs              from 'fs/promises';
 import * as path            from 'path';
 
@@ -53,11 +54,26 @@ export interface VpnClientResult {
 }
 
 @Injectable()
-export class OpenvpnService {
+export class OpenvpnService implements OnModuleInit {
+  private readonly logger = new Logger(OpenvpnService.name);
+
   constructor(
     @InjectRepository(OpenvpnConfig)
     private readonly repo: Repository<OpenvpnConfig>,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await execFileAsync('which', ['openvpn']);
+      this.moduleHealth.registrar('openvpn', 'ok');
+    } catch {
+      this.moduleHealth.registrar(
+        'openvpn', 'degraded',
+        'OpenVPN no está instalado en el servidor — instálalo con: apt install openvpn',
+      );
+    }
+  }
 
   // ── CRUD config ──────────────────────────────────────────────
 

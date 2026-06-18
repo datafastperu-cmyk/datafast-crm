@@ -1,5 +1,5 @@
 import {
-  Injectable, Logger, NotFoundException, Inject,
+  Injectable, Logger, NotFoundException, Inject, OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -15,6 +15,7 @@ import * as path from 'path';
 import axios from 'axios';
 
 import { Backup, EstadoBackup, TipoBackup, EstadoSubida } from './backup.entity';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 const execAsync = promisify(exec);
 
@@ -41,7 +42,7 @@ const DEFAULT_CONFIG: BackupConfig = {
 };
 
 @Injectable()
-export class BackupService {
+export class BackupService implements OnModuleInit {
   private readonly logger = new Logger(BackupService.name);
 
   constructor(
@@ -51,7 +52,20 @@ export class BackupService {
     private readonly ds: DataSource,
     private readonly config: ConfigService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      await execAsync('which pg_dump');
+      this.moduleHealth.registrar('backup', 'ok');
+    } catch {
+      this.moduleHealth.registrar(
+        'backup', 'degraded',
+        'pg_dump no encontrado — backups de base de datos deshabilitados (instala postgresql-client)',
+      );
+    }
+  }
 
   private get appDir(): string {
     return this.config.get<string>('UPDATE_DIR') || '/opt/datafast';

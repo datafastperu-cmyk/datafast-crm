@@ -1,5 +1,5 @@
 import {
-  Injectable, Logger, NotFoundException, UnauthorizedException,
+  Injectable, Logger, NotFoundException, UnauthorizedException, OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -10,6 +10,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { GoogleAccount, GoogleSyncStatus } from '../entities/google-account.entity';
 import { GoogleSyncLog, GoogleSyncService, GoogleSyncResult } from '../entities/google-sync-log.entity';
+import { ModuleHealthService } from '../../../common/services/module-health.service';
 
 export interface SaveAppConfigDto {
   clientId:     string;
@@ -27,7 +28,7 @@ const SCOPES = [
 ];
 
 @Injectable()
-export class GoogleOAuthService {
+export class GoogleOAuthService implements OnModuleInit {
   private readonly logger = new Logger(GoogleOAuthService.name);
   private readonly ALGORITHM = 'aes-256-gcm';
   private readonly encryptionKey: Buffer;
@@ -38,10 +39,22 @@ export class GoogleOAuthService {
     private readonly accountRepo: Repository<GoogleAccount>,
     @InjectRepository(GoogleSyncLog)
     private readonly logRepo: Repository<GoogleSyncLog>,
+    private readonly moduleHealth: ModuleHealthService,
   ) {
     const key = this.config.get<string>('GOOGLE_TOKEN_ENCRYPTION_KEY', '');
     // Derive 32-byte key from whatever secret is provided
     this.encryptionKey = crypto.createHash('sha256').update(key || 'default-insecure-key').digest();
+  }
+
+  onModuleInit(): void {
+    if (this.isAppConfigured()) {
+      this.moduleHealth.registrar('google-integration', 'ok');
+    } else {
+      this.moduleHealth.registrar(
+        'google-integration', 'degraded',
+        'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET no configurados — ver .env.example',
+      );
+    }
   }
 
   // ── App-level config helpers ──────────────────────────────
