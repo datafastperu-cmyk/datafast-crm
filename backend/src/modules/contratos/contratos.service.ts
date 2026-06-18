@@ -965,10 +965,16 @@ export class ContratosService {
     };
 
     try {
-      await this.wirelessSvc.eliminarMacAccessList(creds, row.macAddress);
-      this.logger.log(
-        `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} removida de AP ${row.ipAddress}`,
-      );
+      const removed = await this.wirelessSvc.eliminarMacAccessList(creds, row.macAddress);
+      if (removed > 0) {
+        this.logger.log(
+          `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} removida de AP ${row.ipAddress} (${removed} entrada(s))`,
+        );
+      } else {
+        this.logger.warn(
+          `eliminarDeAccessListAntena → ${contratoId} | MAC ${row.macAddress} no encontrada en Access List del AP ${row.ipAddress} — posiblemente ya fue removida o nunca existió`,
+        );
+      }
     } catch (err) {
       this.logger.warn(
         `eliminarDeAccessListAntena → ${contratoId} | error al remover MAC ${row.macAddress} del AP ${row.ipAddress}: ${err?.message}`,
