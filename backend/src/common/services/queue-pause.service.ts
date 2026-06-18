@@ -11,7 +11,6 @@ export class QueuePauseService implements OnApplicationBootstrap {
   constructor(
     @InjectQueue(QUEUES.COBRANZA)       private readonly qCobranza: Queue,
     @InjectQueue(QUEUES.FACTURACION)    private readonly qFacturacion: Queue,
-    @InjectQueue(QUEUES.NOTIFICACIONES) private readonly qNotificaciones: Queue,
     @InjectQueue(QUEUES.GOOGLE_SYNC)    private readonly qGoogleSync: Queue,
     @InjectQueue(VELOCIDAD_QUEUE)       private readonly qVelocidad: Queue,
   ) {}
@@ -19,14 +18,14 @@ export class QueuePauseService implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     if (process.env.RUN_CRONS === 'true') return;
 
-    // Pausa local (este proceso no consume jobs; el worker-auxiliary lo hace)
+    // NOTIFICACIONES se consume en el core (acceso a Chrome/WhatsApp)
+    // Resto de colas pesadas → worker-auxiliary
     await Promise.all([
       this.qCobranza.pause(true),
       this.qFacturacion.pause(true),
-      this.qNotificaciones.pause(true),
       this.qGoogleSync.pause(true),
       this.qVelocidad.pause(true),
     ]);
-    this.logger.log('API Core: queues Bull pausados localmente — worker-auxiliary es el consumidor');
+    this.logger.log('API Core: queues MikroTik/Google/Velocidad pausados — NOTIFICACIONES activo en core');
   }
 }

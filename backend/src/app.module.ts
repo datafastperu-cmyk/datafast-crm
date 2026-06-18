@@ -140,7 +140,6 @@ import { MigracionModule }            from './modules/migracion/migracion.module
     BullModule.registerQueue(
       { name: QUEUES.COBRANZA },
       { name: QUEUES.FACTURACION },
-      { name: QUEUES.NOTIFICACIONES },
       { name: QUEUES.GOOGLE_SYNC },
       { name: VELOCIDAD_QUEUE },
     ),
