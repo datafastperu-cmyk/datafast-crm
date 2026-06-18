@@ -193,6 +193,11 @@ const TIPO_A_CODIGO: Record<string, string> = {
   pago_recibido:       'confirmacion_pago',
   prorroga_concedida:  'prorroga_concedida',
   alerta_egreso:       'datafast_alerta_egreso',
+  // Monitoreo de infraestructura
+  emisor_caido:        'emisor_caido',
+  emisor_conectado:    'emisor_conectado',
+  router_caido:        'router_caido',
+  router_conectado:    'router_conectado',
 };
 
 // ─── Config interna del gateway ───────────────────────────
@@ -341,14 +346,21 @@ export class GatewayMensajeriaService {
     return resultado;
   }
 
-  // ── Enrutamiento dual: interno usa whatsapp_corporativo ───
+  // ── Enrutamiento dual: alertas internas → whatsapp_corporativo ──
+  // Los tipos internos no tienen telefono de cliente en el payload;
+  // el destino es siempre el número corporativo de la empresa.
+  private readonly TIPOS_INTERNOS = new Set<string>([
+    TipoNotificacion.ONU_OFFLINE,
+    TipoNotificacion.ALERTA_EGRESO,
+    'emisor_caido',
+    'emisor_conectado',
+    'router_caido',
+    'router_conectado',
+  ]);
+
   private async resolveDestino(params: WhatsAppParams): Promise<string> {
     try {
-      const tiposInternos: TipoNotificacion[] = [
-        TipoNotificacion.ONU_OFFLINE,
-        TipoNotificacion.ALERTA_EGRESO,
-      ];
-      if (tiposInternos.includes(params.tipo) && params.empresaId) {
+      if (this.TIPOS_INTERNOS.has(params.tipo as string) && params.empresaId) {
         const [row] = await this.ds.query(
           `SELECT whatsapp_corporativo FROM empresas WHERE id = $1`,
           [params.empresaId],

@@ -17,6 +17,10 @@ import {
   EventNotificacionPagoVenceHoy,
   EventNotificacionPagoVencido,
   EventNotificacionAlertaEgreso,
+  EventNotificacionEmisorCaido,
+  EventNotificacionEmisorConectado,
+  EventNotificacionRouterCaido,
+  EventNotificacionRouterConectado,
 } from '../events/notification.events';
 
 // ─── Payload unificado para la cola Bull ──────────────────────
@@ -298,6 +302,56 @@ export class NotificationEventListener {
         dias_restantes: event.dias_restantes,
       },
       empresaId:  event.empresaId,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // MONITOREO DE INFRAESTRUCTURA
+  // Estos handlers reciben eventos del módulo de monitoreo.
+  // El destino es whatsapp_corporativo de la empresa (resuelto en resolveDestino).
+  // ═══════════════════════════════════════════════════════════
+
+  @OnEvent(NOTIFICATION_EVENTS.EMISOR_CAIDO, { async: true })
+  async onEmisorCaido(event: EventNotificacionEmisorCaido): Promise<void> {
+    this.logger.log(`[EVENT] ⚠️ EMISOR_CAIDO → nodo=${event.nodoNombre} | empresa=${event.empresaId}`);
+    await this.encolar('emisor_caido', {
+      telefono:  '',
+      tipo:      'emisor_caido',
+      variables: { nodo_nombre: event.nodoNombre },
+      empresaId: event.empresaId,
+    });
+  }
+
+  @OnEvent(NOTIFICATION_EVENTS.EMISOR_CONECTADO, { async: true })
+  async onEmisorConectado(event: EventNotificacionEmisorConectado): Promise<void> {
+    this.logger.log(`[EVENT] ✅ EMISOR_CONECTADO → nodo=${event.nodoNombre} | empresa=${event.empresaId}`);
+    await this.encolar('emisor_conectado', {
+      telefono:  '',
+      tipo:      'emisor_conectado',
+      variables: { nodo_nombre: event.nodoNombre },
+      empresaId: event.empresaId,
+    });
+  }
+
+  @OnEvent(NOTIFICATION_EVENTS.ROUTER_CAIDO, { async: true })
+  async onRouterCaido(event: EventNotificacionRouterCaido): Promise<void> {
+    this.logger.log(`[EVENT] ⚠️ ROUTER_CAIDO → router=${event.routerNombre} | empresa=${event.empresaId}`);
+    await this.encolar('router_caido', {
+      telefono:  '',
+      tipo:      'router_caido',
+      variables: { router_nombre: event.routerNombre },
+      empresaId: event.empresaId,
+    });
+  }
+
+  @OnEvent(NOTIFICATION_EVENTS.ROUTER_CONECTADO, { async: true })
+  async onRouterConectado(event: EventNotificacionRouterConectado): Promise<void> {
+    this.logger.log(`[EVENT] ✅ ROUTER_CONECTADO → router=${event.routerNombre} | empresa=${event.empresaId}`);
+    await this.encolar('router_conectado', {
+      telefono:  '',
+      tipo:      'router_conectado',
+      variables: { router_nombre: event.routerNombre },
+      empresaId: event.empresaId,
     });
   }
 }

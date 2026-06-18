@@ -18,6 +18,11 @@ export const NOTIFICATION_EVENTS = {
   ONU_OFFLINE:          'notification.onu.offline',
   MANTENIMIENTO:        'notification.mantenimiento',
   ALERTA_EGRESO:        'notification.alerta.egreso',
+  // Monitoreo de infraestructura
+  EMISOR_CAIDO:         'notification.emisor.caido',
+  EMISOR_CONECTADO:     'notification.emisor.conectado',
+  ROUTER_CAIDO:         'notification.router.caido',
+  ROUTER_CONECTADO:     'notification.router.conectado',
 } as const;
 
 // ─── Payloads tipados para cada evento ───────────────────────
@@ -104,4 +109,26 @@ export interface EventNotificacionAlertaEgreso {
   monto:         string;
   dias_restantes: string;
   empresaId:     string;
+}
+
+// ─── Monitoreo de infraestructura ────────────────────────────
+
+export interface EventNotificacionEmisorCaido {
+  nodoNombre: string;
+  empresaId:  string;
+}
+
+export interface EventNotificacionEmisorConectado {
+  nodoNombre: string;
+  empresaId:  string;
+}
+
+export interface EventNotificacionRouterCaido {
+  routerNombre: string;
+  empresaId:    string;
+}
+
+export interface EventNotificacionRouterConectado {
+  routerNombre: string;
+  empresaId:    string;
 }
