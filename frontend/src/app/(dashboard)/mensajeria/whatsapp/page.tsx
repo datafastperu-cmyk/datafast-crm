@@ -732,9 +732,6 @@ export default function WhatsAppWebPage() {
       reconnectionAttempts: 20,
     });
 
-    sock.on('connect',    () => console.log('[CRM-WS] conectado'));
-    sock.on('disconnect', () => console.log('[CRM-WS] desconectado'));
-
     sock.on('wa:status', (payload: WaStatus) => {
       setStatus(payload);
       if (payload.estado === 'CONECTADO') {

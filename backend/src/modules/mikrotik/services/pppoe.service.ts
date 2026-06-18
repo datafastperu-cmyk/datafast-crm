@@ -1,7 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RouterOSAPI } from 'node-routeros';
 import { RouterConnectionPool, RouterCredentials, PoolChannel } from './connection-pool.service';
-import { decrypt, encrypt } from '../../../common/utils/encryption.util';
 
 export interface PppoeUser {
   id?:          string;  // RouterOS .id
