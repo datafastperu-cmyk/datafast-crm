@@ -2,6 +2,22 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { RouterOSAPI } from 'node-routeros';
 import { decrypt } from '../../../common/utils/encryption.util';
 
+// ── Patch: RouterOS envía '!empty' en vez de '!done' cuando un /print filtrado
+// devuelve lista vacía. node-routeros no reconoce '!empty' y lanza una excepción
+// síncrona dentro del EventEmitter, dejando el Promise de write() colgado hasta
+// que el socket timeout (15 s) lo mata. Tratamos '!empty' como '!done' vacío.
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const RosChannel = require('node-routeros/dist/Channel').Channel;
+  const _orig: (packet: string[]) => void = RosChannel.prototype.processPacket;
+  RosChannel.prototype.processPacket = function (packet: string[]) {
+    if (Array.isArray(packet) && packet[0] === '!empty') packet[0] = '!done';
+    return _orig.call(this, packet);
+  };
+} catch {
+  // Si la versión de la librería cambia y el path es distinto, continuar sin el patch.
+}
+
 // ─── Conexión activa en el pool ────────────────────────────────
 interface PooledConnection {
   api:        RouterOSAPI;
