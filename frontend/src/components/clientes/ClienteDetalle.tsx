@@ -1226,20 +1226,22 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                           }
                         </button>
                       )}
-                      {c.estado === 'activo' && (c as any).tipoServicio === 'wisp' && !(c as any).enMigracion && (
+                      {(c as any).tipoServicio === 'wisp' && !(c as any).enMigracion && (
                         <button
-                          onClick={() => setMigracionContrato(c)}
-                          title="Migrar a FTTH"
-                          className="p-1.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-muted-foreground hover:text-violet-600 transition-colors"
+                          onClick={() => c.estado === 'activo' && setMigracionContrato(c)}
+                          disabled={c.estado !== 'activo'}
+                          title={c.estado === 'activo' ? 'Migrar a FTTH' : 'El contrato debe estar activo para migrar'}
+                          className="p-1.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-muted-foreground hover:text-violet-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                         >
                           <Cable className="w-3 h-3" />
                         </button>
                       )}
-                      {c.estado === 'activo' && (c as any).tipoServicio === 'ftth' && !(c as any).enMigracion && (
+                      {(c as any).tipoServicio === 'ftth' && !(c as any).enMigracion && (
                         <button
-                          onClick={() => setRevertirContrato(c)}
-                          title="Revertir a WISP"
-                          className="p-1.5 rounded hover:bg-amber-50 dark:hover:bg-amber-900/20 text-muted-foreground hover:text-amber-600 transition-colors"
+                          onClick={() => c.estado === 'activo' && setRevertirContrato(c)}
+                          disabled={c.estado !== 'activo'}
+                          title={c.estado === 'activo' ? 'Revertir a WISP' : 'El contrato debe estar activo para revertir'}
+                          className="p-1.5 rounded hover:bg-amber-50 dark:hover:bg-amber-900/20 text-muted-foreground hover:text-amber-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                         >
                           <Radio className="w-3 h-3" />
                         </button>
