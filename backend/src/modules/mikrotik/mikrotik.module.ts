@@ -1,8 +1,6 @@
 import { Module }              from '@nestjs/common';
 import { TypeOrmModule }       from '@nestjs/typeorm';
 import { BullModule }          from '@nestjs/bull';
-import { ScheduleModule }      from '@nestjs/schedule';
-
 import { MikrotikController }        from './mikrotik.controller';
 import { MikrotikService }           from './mikrotik.service';
 import { RouterConnectionPool }      from './services/connection-pool.service';
@@ -43,9 +41,6 @@ import { OpenvpnModule }             from '../openvpn/openvpn.module';
         removeOnFail:     200,
       },
     }),
-
-    ScheduleModule,
-
 
     AuthModule,
     OpenvpnModule,

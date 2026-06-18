@@ -22,6 +22,7 @@ import { AuditInterceptor }      from './common/interceptors/audit.interceptor';
 import { AllExceptionsFilter }   from './common/filters/http-exception.filter';
 import { QueuePauseService }     from './common/services/queue-pause.service';
 import { QUEUES }                from './modules/workers/workers.constants';
+import { VELOCIDAD_QUEUE }       from './modules/mikrotik/velocidad.worker';
 
 import { LicenciaModule }        from './modules/licencia/licencia.module';
 import { HealthModule }           from './modules/health/health.module';
@@ -141,6 +142,7 @@ import { MigracionModule }            from './modules/migracion/migracion.module
       { name: QUEUES.FACTURACION },
       { name: QUEUES.NOTIFICACIONES },
       { name: QUEUES.GOOGLE_SYNC },
+      { name: VELOCIDAD_QUEUE },
     ),
     EventEmitterModule.forRoot({
       wildcard:     false,

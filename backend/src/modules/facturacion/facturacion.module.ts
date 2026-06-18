@@ -6,7 +6,11 @@ import { FacturacionController } from './facturacion.controller';
 import { FacturacionService } from './facturacion.service';
 import { FacturaRepository } from './repositories/factura.repository';
 import { PdfService } from './pdf.service';
-import { FACTURACION_QUEUE } from './facturacion.worker';
+import {
+  FacturacionWorker,
+  FacturacionScheduler,
+  FACTURACION_QUEUE,
+} from './facturacion.worker';
 
 import { Factura } from './entities/factura.entity';
 import { AuthModule } from '../auth/auth.module';
@@ -33,6 +37,8 @@ import { AuthModule } from '../auth/auth.module';
     FacturacionService,
     FacturaRepository,
     PdfService,
+    FacturacionWorker,
+    FacturacionScheduler,
   ],
   exports: [
     // Exportar para uso en módulo de Pagos

@@ -5,7 +5,7 @@ import { HttpModule }      from '@nestjs/axios';
 
 // Workers
 import { CobranzaWorker, CobranzaScheduler }       from './cobranza.worker';
-import { FacturacionWorker, FacturacionScheduler }  from '../facturacion/facturacion.worker';
+import { FacturacionWorker, FacturacionScheduler }  from './facturacion.worker';
 
 // Módulos de dependencias
 import { AuthModule }                from '../auth/auth.module';
