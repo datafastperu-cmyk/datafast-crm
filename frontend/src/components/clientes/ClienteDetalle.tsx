@@ -1194,13 +1194,6 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-0.5">
                       <button
-                        onClick={() => navigator.clipboard?.writeText(c.id)}
-                        title="Copiar ID"
-                        className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </button>
-                      <button
                         onClick={() => openEdit(c)}
                         title="Editar"
                         className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
