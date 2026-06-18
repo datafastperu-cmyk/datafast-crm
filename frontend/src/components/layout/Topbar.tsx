@@ -35,7 +35,6 @@ const LABELS: Record<string, string> = {
   proyectos:     'Proyectos de Expansión',
   iptv:          'IPTV / Streaming',
   logs:          'Logs del Sistema',
-  cortes:        'Cortes Automáticos',
 };
 
 function getBreadcrumb(pathname: string): string {

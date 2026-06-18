@@ -9,7 +9,7 @@ import {
   Package, MapPin, Wrench, DollarSign, Receipt, TrendingUp,
   Ticket, MessageSquare, Send, HardDrive, Wallet, Target, Megaphone,
   UserCheck, Zap,
-  Tv, Scissors,
+  Tv,
   ChevronRight, Gift, Trophy, Settings2,
   Cpu,
 } from 'lucide-react';
@@ -75,7 +75,6 @@ const NAV: NavEntry[] = [
       { href: '/pagos',             label: 'Transacciones',     icon: TrendingUp, permiso: 'pagos:view'       },
       { href: '/finanzas/gastos',     label: 'Gastos / Ingresos',    icon: Wallet,  permiso: 'pagos:view'       },
       { href: '/finanzas/proyectos',  label: 'Proyectos Expansión',  icon: Target,  permiso: 'pagos:view'       },
-      { href: '/cortes',              label: 'Cortes Automáticos',   icon: Scissors,permiso: 'pagos:view'       },
       { href: '/reportes',          label: 'Reportes',          icon: BarChart2,  permiso: 'reportes:view'    },
     ],
   },
