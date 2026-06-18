@@ -8,6 +8,7 @@ import { DataSource, In, IsNull, Repository } from 'typeorm';
 import * as net from 'net';
 import { exec }                      from 'child_process';
 import { promisify }                 from 'util';
+import { EventEmitter2 }             from '@nestjs/event-emitter';
 
 import { DispositivoMonitoreo }  from '../entities/dispositivo-monitoreo.entity';
 import { MetricasMonitoreo }     from '../entities/metricas-monitoreo.entity';
@@ -19,6 +20,7 @@ import {
 } from '../enums/monitoreo.enums';
 import { RouterConnectionPool }  from '../../mikrotik/services/connection-pool.service';
 import { MonitoreoGateway }      from '../monitoreo.gateway';
+import { NOTIFICATION_EVENTS }   from '../../notificaciones/events/notification.events';
 
 const execAsync = promisify(exec);
 
@@ -76,7 +78,8 @@ export class MonitoreoWorkerService {
     private readonly ds: DataSource,
 
     private readonly pool:    RouterConnectionPool,
-    private readonly gateway: MonitoreoGateway,   // C1
+    private readonly gateway: MonitoreoGateway,
+    private readonly events:  EventEmitter2,
   ) {}
 
   // ═══════════════════════════════════════════════════════════════
@@ -222,6 +225,13 @@ export class MonitoreoWorkerService {
           nombre:    d.nombreEmisor,
           timestamp: new Date().toISOString(),
         });
+        // Notificación WhatsApp al whatsapp_corporativo de la empresa
+        const esRouter = d.tipoEquipo === TipoEquipo.ROUTER_BORDE || d.tipoEquipo === TipoEquipo.ROUTER_ACCESO;
+        if (esRouter) {
+          this.events.emit(NOTIFICATION_EVENTS.ROUTER_CONECTADO, { routerNombre: d.nombreEmisor, empresaId: d.empresaId });
+        } else {
+          this.events.emit(NOTIFICATION_EVENTS.EMISOR_CONECTADO, { nodoNombre: d.nombreEmisor, empresaId: d.empresaId });
+        }
         this.logger.log(`Recuperado: ${d.nombreEmisor} → ONLINE`);
       } else {
         await this.dispoRepo.update(d.id, { lastSeenAt: new Date() });
@@ -274,6 +284,13 @@ export class MonitoreoWorkerService {
         nombre:    d.nombreEmisor,
         timestamp: new Date().toISOString(),
       });
+      // Notificación WhatsApp al whatsapp_corporativo de la empresa
+      const esRouter = d.tipoEquipo === TipoEquipo.ROUTER_BORDE || d.tipoEquipo === TipoEquipo.ROUTER_ACCESO;
+      if (esRouter) {
+        this.events.emit(NOTIFICATION_EVENTS.ROUTER_CAIDO, { routerNombre: d.nombreEmisor, empresaId: d.empresaId });
+      } else {
+        this.events.emit(NOTIFICATION_EVENTS.EMISOR_CAIDO, { nodoNombre: d.nombreEmisor, empresaId: d.empresaId });
+      }
       this.logger.error(`${d.nombreEmisor} → OFFLINE — alerta CRITICA registrada`);
     }
   }

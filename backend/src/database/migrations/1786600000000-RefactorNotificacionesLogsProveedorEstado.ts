@@ -5,8 +5,6 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 // - Renombra meta_message_id → provider_message_id
 // - Agrega columna proveedor (qué proveedor ejecutó el envío)
 export class RefactorNotificacionesLogsProveedorEstado1786600000000 implements MigrationInterface {
-  public readonly transaction = false;
-
   async up(qr: QueryRunner): Promise<void> {
     // 1. Renombrar valor del enum (PG ≥ 10)
     await qr.query(
