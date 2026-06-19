@@ -13,7 +13,7 @@ import {
 
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
-import { apiFetch } from '@/lib/api/fetch';
+import apiClient from '@/lib/api';
 
 // ─── Tipos ────────────────────────────────────────────────────
 interface ComprobanteConfig {
@@ -46,17 +46,18 @@ interface Resumen {
 
 // ─── API ──────────────────────────────────────────────────────
 const api = {
-  getResumen:   (): Promise<Resumen> => apiFetch('/facturacion/config'),
-  updateGlobal: (data: Partial<ConfiguracionFacturacion>) =>
-    apiFetch('/facturacion/config/global', { method: 'PATCH', body: JSON.stringify(data) }),
-  crearTipo:    (data: Omit<ComprobanteConfig, 'id' | 'correlativoActual'>) =>
-    apiFetch('/facturacion/config/comprobantes', { method: 'POST', body: JSON.stringify(data) }),
+  getResumen:     (): Promise<Resumen> =>
+    apiClient.get('/facturacion/config').then(r => r.data),
+  updateGlobal:   (data: Partial<ConfiguracionFacturacion>) =>
+    apiClient.patch('/facturacion/config/global', data).then(r => r.data),
+  crearTipo:      (data: Omit<ComprobanteConfig, 'id' | 'correlativoActual'>) =>
+    apiClient.post('/facturacion/config/comprobantes', data).then(r => r.data),
   actualizarTipo: (id: string, data: Partial<ComprobanteConfig>) =>
-    apiFetch(`/facturacion/config/comprobantes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  eliminarTipo: (id: string) =>
-    apiFetch(`/facturacion/config/comprobantes/${id}`, { method: 'DELETE' }),
-  setDefault:   (id: string) =>
-    apiFetch(`/facturacion/config/comprobantes/${id}/default`, { method: 'PUT' }),
+    apiClient.patch(`/facturacion/config/comprobantes/${id}`, data).then(r => r.data),
+  eliminarTipo:   (id: string) =>
+    apiClient.delete(`/facturacion/config/comprobantes/${id}`).then(r => r.data),
+  setDefault:     (id: string) =>
+    apiClient.put(`/facturacion/config/comprobantes/${id}/default`).then(r => r.data),
 };
 
 // ─── Monedas LatAm ────────────────────────────────────────────
@@ -120,7 +121,7 @@ export default function FacturacionConfigPage() {
   // ── Mutaciones globales ──────────────────────────────────────
   const { mutate: guardarGlobal, isPending: guardandoGlobal } = useMutation({
     mutationFn: (v: GlobalForm) =>
-      api.updateGlobal({ ...v, igvRate: v.igvRate / 100 }),
+      api.updateGlobal(v),
     onSuccess: () => { invalidar(); toast('Configuración guardada', { type: 'success' }); },
     onError:   (e) => toast(parseApiError(e), { type: 'error' }),
   });
