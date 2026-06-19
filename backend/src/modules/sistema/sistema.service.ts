@@ -4,6 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
@@ -14,6 +15,10 @@ import { encrypt } from '../../common/utils/encryption.util';
 import { GatewayMensajeriaService } from '../notificaciones/services/gateway-mensajeria.service';
 import { SYSTEM_DEFAULTS_WHATSAPP } from '../plantillas/plantillas.service';
 import { TipoNotificacion }         from '../notificaciones/services/whatsapp.service';
+
+export const GATEWAY_EVENTS = {
+  PROVIDER_ACTIVATED: 'gateway.provider.activated',
+} as const;
 
 export type ProveedorActivo =
   | 'META_GRAPH'
@@ -55,6 +60,7 @@ export class SistemaService {
     @InjectDataSource() private readonly ds: DataSource,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     private readonly gateway: GatewayMensajeriaService,
+    private readonly events: EventEmitter2,
   ) {
     this.appDir       = this.config.get('UPDATE_DIR')            || '/opt/datafast';
     this.sourceType   = this.config.get('UPDATE_SOURCE_TYPE')    || 'git';
@@ -639,6 +645,10 @@ export class SistemaService {
         params,
       );
       await this.cache.del(`gw:config:${empresaId}`).catch(() => {});
+
+      if (dto.activo === true) {
+        this.events.emit(GATEWAY_EVENTS.PROVIDER_ACTIVATED, { empresaId, proveedor: targetProvider });
+      }
     }
 
     return this.getGatewayConfig(empresaId);
@@ -657,10 +667,9 @@ export class SistemaService {
   // ─── Reenviar notificación fallida/encolada ───────────────────
   async reenviarNotifLog(logId: string, empresaId: string): Promise<{ enviado: boolean; error?: string }> {
     const [log] = await this.ds.query(`
-      SELECT nl.id, nl.telefono, nl.tipo_template, nl.contrato_id
-      FROM notificaciones_logs nl
-      INNER JOIN contratos co ON co.id = nl.contrato_id
-      WHERE nl.id = $1 AND co.empresa_id = $2
+      SELECT id, telefono, tipo_template, contrato_id
+      FROM notificaciones_logs
+      WHERE id = $1 AND empresa_id = $2
     `, [logId, empresaId]);
 
     if (!log) throw new NotFoundException('Log no encontrado');
