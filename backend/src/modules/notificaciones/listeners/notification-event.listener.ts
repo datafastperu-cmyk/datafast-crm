@@ -17,6 +17,7 @@ import {
   EventNotificacionBienvenida,
   EventNotificacionPagoVenceHoy,
   EventNotificacionPagoVencido,
+  EventNotificacionProrrogaConcedida,
   EventNotificacionAlertaEgreso,
   EventNotificacionEmisorCaido,
   EventNotificacionEmisorConectado,
@@ -66,6 +67,22 @@ export class NotificationEventListener implements OnModuleInit {
     } catch (err: any) {
       this.degraded = true;
       this.moduleHealth.registrar('notificaciones', 'degraded', err.message);
+    }
+  }
+
+  // ── Helper: verificar si el tipo de notificación está habilitado ──
+  private async isNotifEnabled(
+    empresaId: string | undefined,
+    col: 'notif_bienvenida_activa' | 'notif_pago_recibido_activa' | 'notif_prorroga_activa' | 'notif_suspension_activa',
+  ): Promise<boolean> {
+    if (!empresaId) return true;
+    try {
+      const [row] = await this.ds.query(
+        `SELECT ${col} AS enabled FROM empresas WHERE id = $1`, [empresaId],
+      );
+      return row?.enabled ?? true;
+    } catch {
+      return true; // ante fallo de BD, no bloquear
     }
   }
 
@@ -150,6 +167,10 @@ export class NotificationEventListener implements OnModuleInit {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.PAGO_RECIBIDO, { async: true })
   async onPagoRecibido(event: EventNotificacionPagoRecibido): Promise<void> {
+    if (!await this.isNotifEnabled(event.empresaId, 'notif_pago_recibido_activa')) {
+      this.logger.log(`[EVENT] PAGO_RECIBIDO omitido — notif_pago_recibido_activa=false | empresa=${event.empresaId}`);
+      return;
+    }
     this.logger.log(
       `[EVENT] 💰 Recibido PAGO_RECIBIDO → ${event.telefono?.substring(0, 9)}... ` +
       `| monto=${event.montoPago} | empresa=${event.empresaId}`,
@@ -178,6 +199,10 @@ export class NotificationEventListener implements OnModuleInit {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, { async: true })
   async onServicioSuspendido(event: EventNotificacionServicioSuspendido): Promise<void> {
+    if (!await this.isNotifEnabled(event.empresaId, 'notif_suspension_activa')) {
+      this.logger.log(`[EVENT] SERVICIO_SUSPENDIDO omitido — notif_suspension_activa=false | empresa=${event.empresaId}`);
+      return;
+    }
     this.logger.log(
       `[EVENT] 🔴 Recibido SERVICIO_SUSPENDIDO → ${event.telefono?.substring(0, 9)}... ` +
       `| deuda=${event.deudaTotal} | empresa=${event.empresaId}`,
@@ -229,6 +254,10 @@ export class NotificationEventListener implements OnModuleInit {
   // ═══════════════════════════════════════════════════════════
   @OnEvent(NOTIFICATION_EVENTS.BIENVENIDA, { async: true })
   async onBienvenida(event: EventNotificacionBienvenida): Promise<void> {
+    if (!await this.isNotifEnabled(event.empresaId, 'notif_bienvenida_activa')) {
+      this.logger.log(`[EVENT] BIENVENIDA omitida — notif_bienvenida_activa=false | empresa=${event.empresaId}`);
+      return;
+    }
     this.logger.log(
       `[EVENT] 🎉 Recibido BIENVENIDA → ${event.telefono?.substring(0, 9)}... ` +
       `| plan=${event.planNombre} | empresa=${event.empresaId}`,
@@ -325,6 +354,33 @@ export class NotificationEventListener implements OnModuleInit {
       },
       empresaId:  event.empresaId,
     }, JOB_OPTIONS.GASTO_RECURRENTE);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // PRÓRROGA CONCEDIDA
+  // ═══════════════════════════════════════════════════════════
+  @OnEvent(NOTIFICATION_EVENTS.PRORROGA_CONCEDIDA, { async: true })
+  async onProrrogaConcedida(event: EventNotificacionProrrogaConcedida): Promise<void> {
+    if (!await this.isNotifEnabled(event.empresaId, 'notif_prorroga_activa')) {
+      this.logger.log(`[EVENT] PRORROGA_CONCEDIDA omitida — notif_prorroga_activa=false | empresa=${event.empresaId}`);
+      return;
+    }
+    this.logger.log(
+      `[EVENT] 📅 Recibido PRORROGA_CONCEDIDA → ${event.telefono?.substring(0, 9)}... ` +
+      `| fecha=${event.fechaProrroga} | empresa=${event.empresaId}`,
+    );
+    await this.encolar('prorroga_concedida', {
+      telefono:    event.telefono,
+      tipo:        'prorroga_concedida',
+      variables: {
+        clienteNombre: event.clienteNombre,
+        fechaProrroga: event.fechaProrroga,
+        montoDeuda:    event.montoDeuda,
+      },
+      empresaId:  event.empresaId,
+      contratoId: event.contratoId,
+      clienteId:  event.clienteId,
+    }, JOB_OPTIONS.AVISO_PAGO);
   }
 
   // ═══════════════════════════════════════════════════════════

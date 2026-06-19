@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MessageSquare, Loader2, RefreshCw,
   ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, Clock, CheckCheck, Truck,
-  RotateCcw, Trash2, Eye, X,
+  RotateCcw, Trash2, Eye, X, Settings,
 } from 'lucide-react';
 import { sistemaApi, type NotifLog } from '@/lib/api/sistema';
 import { cn } from '@/lib/utils';
@@ -75,12 +75,40 @@ export default function MensajesEnviadosPage() {
   const [tipo,    setTipo]    = useState('');
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+
+  // Cerrar popover al hacer click fuera
+  useEffect(() => {
+    if (!settingsOpen) return undefined;
+    const handler = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [settingsOpen]);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['notif-logs', page, estado, tipo],
     queryFn:  () => sistemaApi.getNotifLogs({ page, limit: LIMIT, estado: estado || undefined, tipo: tipo || undefined }),
     staleTime: 30_000,
+  });
+
+  const { data: gwConfig } = useQuery({
+    queryKey: ['gateway-config'],
+    queryFn:  sistemaApi.getGatewayConfig,
+    staleTime: 60_000,
+  });
+
+  const toggleNotifMut = useMutation({
+    mutationFn: sistemaApi.updateGatewayConfig,
+    onSuccess:  (updated) => {
+      qc.setQueryData(['gateway-config'], updated);
+    },
+    onError: () => toast.error('Error al guardar la configuración'),
   });
 
   const reenviarMut = useMutation({
@@ -136,17 +164,88 @@ export default function MensajesEnviadosPage() {
     }
   };
 
+  const notifOpts = [
+    { key: 'notifBienvenidaActiva'   as const, label: 'Bienvenida',        desc: 'Al aprovisionar un nuevo contrato'    },
+    { key: 'notifPagoRecibidoActiva' as const, label: 'Pago registrado',   desc: 'Al registrar un pago del abonado'     },
+    { key: 'notifProrrogaActiva'     as const, label: 'Prórroga otorgada', desc: 'Al conceder una extensión de plazo'   },
+    { key: 'notifSuspensionActiva'   as const, label: 'Suspensión',        desc: 'Al suspender el servicio por deuda'   },
+  ] as const;
+
   return (
     <>
     <div className="p-6 max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-primary" />
-          Mensajes Enviados
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Historial de notificaciones automáticas enviadas a los abonados.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-primary" />
+            Mensajes Enviados
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Historial de notificaciones automáticas enviadas a los abonados.
+          </p>
+        </div>
+
+        {/* Botón de ajustes */}
+        <div className="relative flex-shrink-0" ref={settingsRef}>
+          <button
+            onClick={() => setSettingsOpen(v => !v)}
+            title="Ajustes de notificaciones automáticas"
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+              settingsOpen
+                ? 'bg-primary/10 border-primary/30 text-primary'
+                : 'border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <Settings className="w-3.5 h-3.5" />
+            Ajustes
+          </button>
+
+          {settingsOpen && (
+            <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl border border-border bg-card shadow-xl">
+              <div className="px-4 py-3 border-b border-border">
+                <p className="text-sm font-semibold text-foreground">Notificaciones automáticas</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Activa o desactiva el envío por tipo de evento.
+                </p>
+              </div>
+              <div className="divide-y divide-border">
+                {notifOpts.map(({ key, label, desc }) => {
+                  const enabled = gwConfig?.[key] ?? true;
+                  const loading = toggleNotifMut.isPending;
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                        <p className="text-xs text-muted-foreground truncate">{desc}</p>
+                      </div>
+                      <button
+                        disabled={loading || !gwConfig}
+                        onClick={() => toggleNotifMut.mutate({ [key]: !enabled })}
+                        className={cn(
+                          'relative flex-shrink-0 w-10 h-5.5 rounded-full transition-colors focus:outline-none',
+                          'disabled:opacity-50',
+                          enabled ? 'bg-emerald-500' : 'bg-muted-foreground/30',
+                        )}
+                        style={{ height: '22px', width: '40px' }}
+                        title={enabled ? 'Desactivar' : 'Activar'}
+                        role="switch"
+                        aria-checked={enabled}
+                      >
+                        <span
+                          className={cn(
+                            'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200',
+                            enabled ? 'translate-x-5' : 'translate-x-0.5',
+                          )}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">

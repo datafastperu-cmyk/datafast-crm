@@ -467,12 +467,17 @@ export class SistemaService {
     automatizadoVipActivo:  boolean;
     limiteDiarioMasivo:     number;
     whatsappNumeroOrigen:   string | null;
+    notifBienvenidaActiva:   boolean;
+    notifPagoRecibidoActiva: boolean;
+    notifProrrogaActiva:     boolean;
+    notifSuspensionActiva:   boolean;
   }> {
     const [row] = await this.ds.query(
       `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
               gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
               meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo, automatizado_vip_activo,
-              gateway_masivo_limite_diario, whatsapp_numero_origen
+              gateway_masivo_limite_diario, whatsapp_numero_origen,
+              notif_bienvenida_activa, notif_pago_recibido_activa, notif_prorroga_activa, notif_suspension_activa
        FROM empresas WHERE id = $1`,
       [empresaId],
     );
@@ -501,6 +506,10 @@ export class SistemaService {
       automatizadoVipActivo: row?.automatizado_vip_activo ?? false,
       limiteDiarioMasivo:    row?.gateway_masivo_limite_diario ?? 500,
       whatsappNumeroOrigen:  row?.whatsapp_numero_origen        ?? null,
+      notifBienvenidaActiva:   row?.notif_bienvenida_activa   ?? true,
+      notifPagoRecibidoActiva: row?.notif_pago_recibido_activa ?? true,
+      notifProrrogaActiva:     row?.notif_prorroga_activa      ?? true,
+      notifSuspensionActiva:   row?.notif_suspension_activa    ?? true,
     };
   }
 
@@ -508,16 +517,20 @@ export class SistemaService {
   async updateGatewayConfig(
     empresaId: string,
     dto: {
-      proveedorActivo?:       string;
-      apiKey?:                string;
-      apiSecret?:             string;
-      clientId?:              string;
-      pausa?:                 number;
-      limiteCaracteres?:      number;
-      codigoPais?:            string;
-      activo?:                boolean;
-      limiteDiarioMasivo?:    number;
-      whatsappNumeroOrigen?:  string;
+      proveedorActivo?:         string;
+      apiKey?:                  string;
+      apiSecret?:               string;
+      clientId?:                string;
+      pausa?:                   number;
+      limiteCaracteres?:        number;
+      codigoPais?:              string;
+      activo?:                  boolean;
+      limiteDiarioMasivo?:      number;
+      whatsappNumeroOrigen?:    string;
+      notifBienvenidaActiva?:   boolean;
+      notifPagoRecibidoActiva?: boolean;
+      notifProrrogaActiva?:     boolean;
+      notifSuspensionActiva?:   boolean;
     },
   ): Promise<{
     proveedorActivo: ProveedorActivo; apiKeyStored: boolean; apiSecretStored: boolean;
@@ -637,6 +650,26 @@ export class SistemaService {
     if (dto.whatsappNumeroOrigen !== undefined) {
       params.push(dto.whatsappNumeroOrigen?.replace(/[^\d+]/g, '') || null);
       setClauses.push(`whatsapp_numero_origen = $${params.length}`);
+    }
+
+    if (dto.notifBienvenidaActiva !== undefined) {
+      params.push(dto.notifBienvenidaActiva);
+      setClauses.push(`notif_bienvenida_activa = $${params.length}`);
+    }
+
+    if (dto.notifPagoRecibidoActiva !== undefined) {
+      params.push(dto.notifPagoRecibidoActiva);
+      setClauses.push(`notif_pago_recibido_activa = $${params.length}`);
+    }
+
+    if (dto.notifProrrogaActiva !== undefined) {
+      params.push(dto.notifProrrogaActiva);
+      setClauses.push(`notif_prorroga_activa = $${params.length}`);
+    }
+
+    if (dto.notifSuspensionActiva !== undefined) {
+      params.push(dto.notifSuspensionActiva);
+      setClauses.push(`notif_suspension_activa = $${params.length}`);
     }
 
     if (setClauses.length > 0) {

@@ -102,6 +102,16 @@ export interface EventNotificacionPagoVencido {
   clienteId?:    string;
 }
 
+export interface EventNotificacionProrrogaConcedida {
+  telefono:      string;
+  clienteNombre: string;
+  fechaProrroga: string;
+  montoDeuda:    string;
+  empresaId:     string;
+  contratoId?:   string;
+  clienteId?:    string;
+}
+
 export interface EventNotificacionAlertaEgreso {
   telefono:      string;
   nombre_gasto:  string;

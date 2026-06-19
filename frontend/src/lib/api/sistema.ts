@@ -56,6 +56,10 @@ export interface GatewayConfig {
   automatizadoVipActivo: boolean;
   limiteDiarioMasivo:   number;
   whatsappNumeroOrigen: string | null;
+  notifBienvenidaActiva:   boolean;
+  notifPagoRecibidoActiva: boolean;
+  notifProrrogaActiva:     boolean;
+  notifSuspensionActiva:   boolean;
 }
 
 export interface WhatsAppConfig {
@@ -111,16 +115,20 @@ export const sistemaApi = {
     api.get<{ data: GatewayConfig }>('/admin/sistema/gateway-config').then(r => r.data.data),
 
   updateGatewayConfig: (dto: {
-    proveedorActivo?:       ProveedorActivo;
-    apiKey?:                string;
-    apiSecret?:             string;
-    clientId?:              string;
-    pausa?:                 number;
-    limiteCaracteres?:      number;
-    codigoPais?:            string;
-    activo?:               boolean;
-    limiteDiarioMasivo?:   number;
-    whatsappNumeroOrigen?: string;
+    proveedorActivo?:         ProveedorActivo;
+    apiKey?:                  string;
+    apiSecret?:               string;
+    clientId?:                string;
+    pausa?:                   number;
+    limiteCaracteres?:        number;
+    codigoPais?:              string;
+    activo?:                  boolean;
+    limiteDiarioMasivo?:      number;
+    whatsappNumeroOrigen?:    string;
+    notifBienvenidaActiva?:   boolean;
+    notifPagoRecibidoActiva?: boolean;
+    notifProrrogaActiva?:     boolean;
+    notifSuspensionActiva?:   boolean;
   }) =>
     api.patch<{ data: GatewayConfig }>('/admin/sistema/gateway-config', dto).then(r => r.data.data),
 };
