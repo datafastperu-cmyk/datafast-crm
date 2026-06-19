@@ -8,7 +8,7 @@ import { z }                 from 'zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Loader2, Search, CheckCircle2, AlertCircle, ChevronRight, ChevronLeft,
-  User, Wifi, CreditCard, Bell, Trash2,
+  User, Wifi, CreditCard, Bell,
   MapPin, Lock, Calendar, Navigation, Server, Radio,
   Check, Building2, Network, Package, Cable,
 } from 'lucide-react';
@@ -705,12 +705,6 @@ const S2_APLICAR_CORTE_OPTS = [
   { value: 'desactivado', label: 'Desactivado' },
   ...Array.from({ length: 5 }, (_, i) => ({ value: String(i + 1), label: i === 0 ? '1 mes vencido' : `${i + 1} meses vencidos` })),
 ];
-const S2_BAJAR_VEL_OPTS = [
-  { value: 'desactivado', label: 'Desactivado' },
-  { value: '512k', label: '512 Kbps' },
-  { value: '1m',   label: '1 Mbps'   },
-  { value: '2m',   label: '2 Mbps'   },
-];
 const S2_RECORDATORIO_ANTES = Array.from({ length: 10 }, (_, i) => ({
   value: String(-(i + 1)), label: i === 0 ? '1 Día Antes' : `${i + 1} Días Antes`,
 }));
@@ -737,10 +731,6 @@ function Step2Form({ initial, onBack, onNext }: {
 }) {
   const [fact, setFact]   = useState<FacturacionConfig>(initial?.facturacion ?? { ...DEF_FACT });
   const [notif, setNotif] = useState<NotificacionesConfig>(initial?.notificaciones ?? { ...DEF_NOTIF });
-  const [bajarVel, setBajarVel]   = useState((initial?.facturacion as any)?.bajarVelocidad ?? 'desactivado');
-  const [fechaFija, setFechaFija] = useState((initial?.facturacion as any)?.fechaFija ?? '');
-  const [corteFijo, setCorteFijo] = useState((initial?.facturacion as any)?.corteFijoProgramado ?? '');
-
   const { data: plantillas = [] } = useQuery({
     queryKey: ['plantillas-abonados'],
     queryFn: plantillasAbonadosApi.list,
@@ -763,7 +753,7 @@ function Step2Form({ initial, onBack, onNext }: {
     setNotif(prev => ({ ...prev, [k]: v }));
   }
   function handleContinuar() {
-    onNext({ facturacion: { ...fact, bajarVelocidad: bajarVel, fechaFija: fechaFija || null, corteFijoProgramado: corteFijo || null } as any, notificaciones: notif });
+    onNext({ facturacion: fact, notificaciones: notif });
   }
 
   return (
@@ -781,6 +771,13 @@ function Step2Form({ initial, onBack, onNext }: {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {/* Facturación */}
         <Section title="Facturación" icon={CreditCard}>
+          <Field label="Tipo de Comprobante">
+            <select className={INPUT_CLS} value={fact.tipoComprobante ?? 'comprobante_interno'} onChange={e => updateF('tipoComprobante', e.target.value)}>
+              <option value="comprobante_interno">COMPROBANTE INTERNO</option>
+              <option value="recibo">RECIBO</option>
+              <option value="factura">FACTURA</option>
+            </select>
+          </Field>
           <Field label="Tipo">
             <select className={INPUT_CLS} value={fact.tipo} onChange={e => updateF('tipo', e.target.value)}>
               <option value="prepago">Prepago (Adelantado)</option>
@@ -803,13 +800,14 @@ function Step2Form({ initial, onBack, onNext }: {
               {plantillasMsg.map(p => <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>)}
             </select>
           </Field>
-          <Field label="Esquema de impuesto">
-            <select className={INPUT_CLS} value={fact.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
-              <option value="ninguno">Ninguno</option>
-              <option value="incluido">Impuestos incluidos</option>
-              <option value="mas_impuestos">Más impuestos</option>
-            </select>
-          </Field>
+          {(fact.tipoComprobante ?? 'comprobante_interno') !== 'comprobante_interno' && (
+            <Field label="Esquema de impuesto">
+              <select className={INPUT_CLS} value={fact.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
+                <option value="incluido">Impuestos incluidos</option>
+                <option value="mas_impuestos">Más impuestos</option>
+              </select>
+            </Field>
+          )}
           <Field label="Días de gracia" hint="*días tolerancia para aplicar corte">
             <select className={INPUT_CLS} value={fact.diasGracia} onChange={e => updateF('diasGracia', e.target.value)}>
               {S2_DIAS_GRACIA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -819,33 +817,6 @@ function Step2Form({ initial, onBack, onNext }: {
             <select className={INPUT_CLS} value={fact.aplicarCorte} onChange={e => updateF('aplicarCorte', e.target.value)}>
               {S2_APLICAR_CORTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-          </Field>
-          <Field label="Bajar Velocidad">
-            <select className={INPUT_CLS} value={bajarVel} onChange={e => setBajarVel(e.target.value)}>
-              {S2_BAJAR_VEL_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Fecha Fija" hint="Dejar vacío para fecha automática">
-            <div className="flex gap-2">
-              <input type="date" className={INPUT_CLS} value={fechaFija} onChange={e => setFechaFija(e.target.value)} />
-              {fechaFija && (
-                <button type="button" onClick={() => setFechaFija('')}
-                  className="flex-shrink-0 p-2.5 rounded-lg border border-input bg-muted hover:bg-muted/70 transition-colors">
-                  <Trash2 className="w-4 h-4 text-muted-foreground" />
-                </button>
-              )}
-            </div>
-          </Field>
-          <Field label="Corte Fijo Programado">
-            <div className="flex gap-2">
-              <input type="date" className={INPUT_CLS} value={corteFijo} onChange={e => setCorteFijo(e.target.value)} />
-              {corteFijo && (
-                <button type="button" onClick={() => setCorteFijo('')}
-                  className="flex-shrink-0 p-2.5 rounded-lg border border-input bg-muted hover:bg-muted/70 transition-colors">
-                  <Trash2 className="w-4 h-4 text-muted-foreground" />
-                </button>
-              )}
-            </div>
           </Field>
           <div className="flex items-center justify-between py-1">
             <span className="text-sm text-foreground">Aplicar Mora</span>
