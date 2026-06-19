@@ -321,7 +321,7 @@ export class GatewayMensajeriaService {
         if (resultado.enviado) {
           nuevoEstado = 'ENVIADO';
           await this.ds.query(
-            `UPDATE notificaciones_logs SET estado_entrega = 'ENVIADO', provider_message_id = $1, proveedor = $2 WHERE id = $3`,
+            `UPDATE notificaciones_logs SET estado_entrega = 'ENVIADO', provider_message_id = $1, proveedor = $2, sent_at = NOW() WHERE id = $3`,
             [resultado.messageId ?? null, proveedorNombre, logId],
           );
         } else if (noEnviado) {

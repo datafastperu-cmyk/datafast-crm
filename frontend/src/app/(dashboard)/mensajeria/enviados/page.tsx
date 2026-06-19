@@ -306,11 +306,13 @@ export default function MensajesEnviadosPage() {
           </div>
         ) : (
           <>
-            <div className="hidden md:grid grid-cols-[1fr_120px_150px_130px_110px_96px] gap-3 px-6 py-2.5 border-b border-border text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="hidden md:grid grid-cols-[1fr_108px_140px_108px_108px_80px_108px_80px] gap-2 px-6 py-2.5 border-b border-border text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
               <span>Cliente / Contrato</span>
-              <span>Teléfono</span>
+              <span>WhatsApp</span>
               <span>Tipo de alerta</span>
-              <span>Fecha</span>
+              <span>Encolado</span>
+              <span>Enviado</span>
+              <span>Servicio</span>
               <span>Estado</span>
               <span>Acciones</span>
             </div>
@@ -319,10 +321,19 @@ export default function MensajesEnviadosPage() {
                 const isReenviando = reenviarMut.isPending && reenviarMut.variables === log.id;
                 const isEliminando = eliminarMut.isPending && eliminarMut.variables === log.id;
 
+                const proveedorLabel: Record<string, string> = {
+                  META_GRAPH:                 'Meta',
+                  TWILIO:                     'Twilio',
+                  VONAGE:                     'Vonage',
+                  CUSTOM_API:                 'Custom',
+                  AUTOMATIZADO_VIP:           'VIP',
+                  DATAFAST_MENSAJERIA_MASIVA: 'Masivo',
+                };
+
                 return (
                   <div
                     key={log.id}
-                    className="grid grid-cols-1 md:grid-cols-[1fr_120px_150px_130px_110px_96px] gap-x-3 gap-y-1 px-6 py-3 hover:bg-muted/30 transition-colors items-center"
+                    className="grid grid-cols-1 md:grid-cols-[1fr_108px_140px_108px_108px_80px_108px_80px] gap-x-2 gap-y-1 px-6 py-3 hover:bg-muted/30 transition-colors items-center"
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">
@@ -332,11 +343,22 @@ export default function MensajesEnviadosPage() {
                         <p className="text-xs text-muted-foreground font-mono">{log.numero_contrato}</p>
                       )}
                     </div>
-                    <p className="text-xs font-mono text-muted-foreground">{log.telefono}</p>
+                    <p className="text-xs font-mono text-muted-foreground truncate">{log.telefono}</p>
                     <p className="text-xs text-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded inline-block truncate">
                       {log.tipo_template}
                     </p>
                     <p className="text-xs text-muted-foreground tabular-nums">{formatFecha(log.created_at)}</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {log.sent_at ? formatFecha(log.sent_at) : <span className="text-muted-foreground/40">—</span>}
+                    </p>
+                    <span className={cn(
+                      'text-[10px] font-medium px-1.5 py-0.5 rounded truncate inline-block',
+                      log.proveedor
+                        ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+                        : 'text-muted-foreground/40',
+                    )}>
+                      {log.proveedor ? (proveedorLabel[log.proveedor] ?? log.proveedor) : '—'}
+                    </span>
                     <div>
                       <EstadoBadge estado={log.estado_entrega} error={log.error_detalle} />
                     </div>

@@ -434,7 +434,7 @@ export class SistemaService {
     const items = await this.ds.query(
       `SELECT nl.id, nl.contrato_id, nl.empresa_id, nl.telefono, nl.canal,
               nl.tipo_template, nl.estado_entrega,
-              nl.provider_message_id, nl.proveedor, nl.error_detalle, nl.created_at,
+              nl.provider_message_id, nl.proveedor, nl.error_detalle, nl.created_at, nl.sent_at,
               co.numero_contrato,
               cl.nombre_completo AS cliente_nombre
        FROM notificaciones_logs nl

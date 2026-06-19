@@ -76,9 +76,10 @@ export interface NotifLog {
   tipo_template:  string;
   estado_entrega: 'ENCOLADO' | 'EN_PROCESO' | 'ENVIADO' | 'ENVIADO_META' | 'NO_ENVIADO' | 'FALLIDO' | 'ENTREGADO' | 'LEIDO';
   provider_message_id: string | null;
-  proveedor: string | null;
+  proveedor:      string | null;
   error_detalle:  string | null;
   created_at:     string;
+  sent_at:        string | null;
   numero_contrato?: string | null;
   cliente_nombre?:  string | null;
 }
