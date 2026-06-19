@@ -446,14 +446,15 @@ export class SistemaService {
 
     params.push(limit, offset);
     const items = await this.ds.query(
-      `SELECT nl.id, nl.contrato_id, nl.empresa_id, nl.telefono, nl.canal,
+      `SELECT nl.id, nl.contrato_id, nl.cliente_id, nl.empresa_id, nl.telefono, nl.canal,
               nl.tipo_template, nl.estado_entrega,
               nl.provider_message_id, nl.proveedor, nl.error_detalle, nl.created_at, nl.sent_at,
               co.numero_contrato,
-              cl.nombre_completo AS cliente_nombre
+              COALESCE(cl.nombre_completo, cl2.nombre_completo) AS cliente_nombre
        FROM notificaciones_logs nl
-       LEFT JOIN contratos co ON co.id = nl.contrato_id AND co.deleted_at IS NULL
-       LEFT JOIN clientes  cl ON cl.id = co.cliente_id  AND cl.deleted_at IS NULL
+       LEFT JOIN contratos co  ON co.id  = nl.contrato_id AND co.deleted_at  IS NULL
+       LEFT JOIN clientes  cl  ON cl.id  = co.cliente_id  AND cl.deleted_at  IS NULL
+       LEFT JOIN clientes  cl2 ON cl2.id = nl.cliente_id  AND cl2.deleted_at IS NULL
        WHERE ${where}
        ORDER BY ${sortCol} ${sortDir}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -812,7 +813,7 @@ export class SistemaService {
     tipo: string; telefono: string; cliente: string; texto: string;
   }> {
     const [log] = await this.ds.query(`
-      SELECT id, telefono, tipo_template, contrato_id
+      SELECT id, telefono, tipo_template, contrato_id, cliente_id
       FROM notificaciones_logs
       WHERE id = $1 AND empresa_id = $2
     `, [logId, empresaId]);
@@ -845,6 +846,15 @@ export class SistemaService {
         ) f ON true
         WHERE co.id = $1
       `, [log.contrato_id]);
+    } else if (log.cliente_id) {
+      [row] = await this.ds.query(`
+        SELECT cl.nombre_completo,
+               em.razon_social         AS empresa_nombre,
+               em.telefono_informativo AS empresa_telefono
+        FROM clientes cl
+        JOIN empresas em ON em.id = $2
+        WHERE cl.id = $1 AND cl.deleted_at IS NULL
+      `, [log.cliente_id, empresaId]);
     }
 
     // Buscar plantilla en DB

@@ -30,6 +30,9 @@ export class NotificacionLog {
   @Column({ name: 'contrato_id', type: 'uuid', nullable: true })
   contratoId: string | null;
 
+  @Column({ name: 'cliente_id', type: 'uuid', nullable: true })
+  clienteId: string | null;
+
   @Column({ length: 30 })
   telefono: string;
 

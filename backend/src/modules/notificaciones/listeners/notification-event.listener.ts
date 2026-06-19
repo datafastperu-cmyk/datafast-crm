@@ -102,9 +102,9 @@ export class NotificationEventListener implements OnModuleInit {
     let logId: string | undefined;
     try {
       const [row] = await this.ds.query(`
-        INSERT INTO notificaciones_logs (empresa_id, contrato_id, telefono, tipo_template, estado_entrega)
-        VALUES ($1, $2, $3, $4, 'ENCOLADO') RETURNING id
-      `, [payload.empresaId ?? null, payload.contratoId ?? null, payload.telefono.substring(0, 30), tipo]);
+        INSERT INTO notificaciones_logs (empresa_id, contrato_id, cliente_id, telefono, tipo_template, estado_entrega)
+        VALUES ($1, $2, $3, $4, $5, 'ENCOLADO') RETURNING id
+      `, [payload.empresaId ?? null, payload.contratoId ?? null, payload.clienteId ?? null, payload.telefono.substring(0, 30), tipo]);
       logId = row?.id ?? undefined;
     } catch (dbErr: any) {
       this.logger.warn(`[EVENT] No se pudo crear log para ${tipo}: ${dbErr.message}`);
