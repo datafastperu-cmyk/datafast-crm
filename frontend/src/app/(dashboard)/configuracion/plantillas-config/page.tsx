@@ -11,6 +11,7 @@ import { parseApiError } from '@/lib/utils';
 
 // ─── Defaults ────────────────────────────────────────────────────
 const DEFAULT_FACTURACION: FacturacionConfig = {
+  tipoComprobante: 'comprobante_interno',
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   plantillaAvisoFactura: '',
   tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
@@ -271,6 +272,13 @@ export default function PlantillasConfigPage() {
               <span className="text-sm font-semibold text-foreground">Facturación</span>
             </div>
             <div className="px-4 py-3 space-y-0.5">
+              <Field label="Tipo de Comprobante">
+                <select className={selectCls} value={facturacion.tipoComprobante ?? 'comprobante_interno'} onChange={e => updateF('tipoComprobante', e.target.value)}>
+                  <option value="comprobante_interno">COMPROBANTE INTERNO</option>
+                  <option value="recibo">RECIBO</option>
+                  <option value="factura">FACTURA</option>
+                </select>
+              </Field>
               <Field label="Tipo">
                 <select className={selectCls} value={facturacion.tipo} onChange={e => updateF('tipo', e.target.value)}>
                   <option value="prepago">Prepago (Adelantado)</option>
