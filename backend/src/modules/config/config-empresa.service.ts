@@ -24,8 +24,6 @@ export interface UpdateEmpresaDto {
   igvRate?:                  number;
   diaFacturacion?:           number;
   diasGraciaCorte?:          number;
-  notifWhatsappVencimiento?: boolean;
-  notifWhatsappCorte?:       boolean;
 }
 
 export interface SslStatus {

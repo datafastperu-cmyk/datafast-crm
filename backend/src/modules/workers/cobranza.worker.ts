@@ -103,7 +103,6 @@ export class CobranzaScheduler {
         co.deuda_total,
         co.meses_deuda,
         em.dias_gracia AS dias_gracia_corte,
-        em.notif_whatsapp_corte,
         EXTRACT(DAY FROM (NOW() - COALESCE(co.fecha_ultimo_pago, co.fecha_inicio)::timestamptz))::int
           AS dias_sin_pago
       FROM contratos co
@@ -134,7 +133,6 @@ export class CobranzaScheduler {
             usuarioPppoe: c.usuario_pppoe,
             deudaTotal:   parseFloat(c.deuda_total),
             mesesDeuda:   parseInt(c.meses_deuda, 10),
-            notificar:    c.notif_whatsapp_corte,
           } as PayloadSuspenderContrato,
           {
             ...JOB_OPTIONS.CRITICO,
@@ -271,7 +269,6 @@ export class CobranzaScheduler {
       WHERE co.estado = 'activo'
         AND co.deuda_total > 0
         AND co.deleted_at IS NULL
-        AND em.notif_whatsapp_vencimiento = true
         AND (cl.whatsapp IS NOT NULL OR cl.telefono IS NOT NULL)
         AND co.${campoRec} IS NOT NULL
         AND (co.fecha_vencimiento - co.${campoRec}) = CURRENT_DATE
@@ -400,7 +397,7 @@ export class CobranzaWorker {
   // ────────────────────────────────────────────────────────────
   @Process({ name: JOBS.SUSPENDER_CONTRATO, concurrency: 5 })
   async processSuspenderContrato(job: Job<PayloadSuspenderContrato>): Promise<any> {
-    const { contratoId, empresaId, clienteId, routerId, ipAsignada, usuarioPppoe, deudaTotal, notificar } = job.data;
+    const { contratoId, empresaId, clienteId, routerId, ipAsignada, usuarioPppoe, deudaTotal } = job.data;
 
     this.logger.log(
       `[SUSPENDER] Contrato ${contratoId} | IP: ${ipAsignada} | Deuda: S/ ${deudaTotal}`,
@@ -484,30 +481,28 @@ export class CobranzaWorker {
 
     // ── 6. Notificar al cliente ────────────────────────────
     await job.progress(80);
-    if (notificar) {
-      const [cliente] = await this.ds.query(`
-        SELECT cl.nombre_completo, cl.whatsapp, cl.telefono,
-               em.razon_social AS empresa_nombre
-        FROM contratos co
-        JOIN clientes cl ON cl.id = co.cliente_id
-        JOIN empresas em ON em.id = co.empresa_id
-        WHERE co.id = $1
-      `, [contratoId]).catch(() => [null]);
+    const [cliente] = await this.ds.query(`
+      SELECT cl.nombre_completo, cl.whatsapp, cl.telefono,
+             em.razon_social AS empresa_nombre
+      FROM contratos co
+      JOIN clientes cl ON cl.id = co.cliente_id
+      JOIN empresas em ON em.id = co.empresa_id
+      WHERE co.id = $1
+    `, [contratoId]).catch(() => [null]);
 
-      if (cliente) {
-        const tel = cliente.whatsapp || cliente.telefono;
-        if (tel) {
-          this.events.emit(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, {
-            telefono:      tel,
-            clienteNombre: cliente.nombre_completo,
-            deudaTotal:    `S/ ${deudaTotal.toFixed(2)}`,
-            numeroCuenta:  '',
-            nombreEmpresa: cliente.empresa_nombre || '',
-            empresaId,
-            contratoId,
-            clienteId,
-          });
-        }
+    if (cliente) {
+      const tel = cliente.whatsapp || cliente.telefono;
+      if (tel) {
+        this.events.emit(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, {
+          telefono:      tel,
+          clienteNombre: cliente.nombre_completo,
+          deudaTotal:    `S/ ${deudaTotal.toFixed(2)}`,
+          numeroCuenta:  '',
+          nombreEmpresa: cliente.empresa_nombre || '',
+          empresaId,
+          contratoId,
+          clienteId,
+        });
       }
     }
 

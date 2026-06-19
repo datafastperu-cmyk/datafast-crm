@@ -50,12 +50,6 @@ export class Empresa {
   @Column({ name: 'dias_gracia', type: 'smallint', default: 5 })
   diasGraciaCorte: number;
 
-  @Column({ name: 'notif_whatsapp_vencimiento', default: true })
-  notifWhatsappVencimiento: boolean;
-
-  @Column({ name: 'notif_whatsapp_corte', default: true })
-  notifWhatsappCorte: boolean;
-
   @Column({ default: 'activo' })
   estado: string;
 

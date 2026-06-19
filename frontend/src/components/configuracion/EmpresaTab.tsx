@@ -29,8 +29,6 @@ const schema = z.object({
   igvRate:           z.coerce.number().min(0).max(1),
   diasGraciaCorte:   z.coerce.number().int().min(0).max(30),
   diaFacturacion:    z.coerce.number().int().min(1).max(28),
-  notifWhatsappVencimiento: z.boolean(),
-  notifWhatsappCorte:       z.boolean(),
   dominio: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
@@ -54,7 +52,6 @@ export function EmpresaTab() {
     defaultValues: {
       igvRate: 0.18, diasGraciaCorte: 5, diaFacturacion: 1,
       serieBoleta: 'B001', serieFactura: 'F001',
-      notifWhatsappVencimiento: true, notifWhatsappCorte: true,
     },
   });
 
@@ -217,24 +214,6 @@ export function EmpresaTab() {
         </Field>
 
         <SslStatusCard />
-      </Section>
-
-      {/* Notificaciones */}
-      <Section title="Notificaciones automáticas">
-        <div className="space-y-3">
-          {[
-            { name: 'notifWhatsappVencimiento', label: 'WhatsApp cuando una factura está por vencer', desc: 'Avisa 3 días antes y el día del vencimiento' },
-            { name: 'notifWhatsappCorte', label: 'WhatsApp al cortar el servicio por mora', desc: 'Notifica al cliente cuando se suspende por deuda' },
-          ].map(({ name, label, desc }) => (
-            <label key={name} className="flex items-start gap-3 cursor-pointer">
-              <input type="checkbox" {...register(name as any)} className="rounded mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-foreground">{label}</p>
-                <p className="text-xs text-muted-foreground">{desc}</p>
-              </div>
-            </label>
-          ))}
-        </div>
       </Section>
 
       <div className="flex justify-end gap-3 pt-2">
