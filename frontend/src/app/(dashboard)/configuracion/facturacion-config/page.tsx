@@ -45,7 +45,7 @@ const schema = z.object({
   serieBoleta:            z.string().min(2, 'Mínimo 2 caracteres'),
   serieFactura:           z.string().min(2, 'Mínimo 2 caracteres'),
   tipoComprobanteDefault: z.string().min(1),
-  igvRate:                z.coerce.number().min(0).max(1),
+  igvRate:                z.coerce.number().int().min(0).max(100),
   moneda:                 z.string().length(3),
 });
 type FormValues = z.infer<typeof schema>;
@@ -73,18 +73,19 @@ export default function FacturacionConfigPage() {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      igvRate: 0.18,
+      igvRate: 18,
       serieBoleta: 'B001', serieFactura: 'F001',
       moneda: 'PEN', tipoComprobanteDefault: 'boleta',
     },
   });
 
   useEffect(() => {
-    if (empresa) reset(empresa as any);
+    if (empresa) reset({ ...empresa, igvRate: Math.round((empresa.igvRate ?? 0.18) * 100) } as any);
   }, [empresa, reset]);
 
   const { mutate: guardar, isPending } = useMutation({
-    mutationFn: (values: FormValues) => configApi.updateEmpresa(values as UpdateEmpresaDto),
+    mutationFn: (values: FormValues) =>
+      configApi.updateEmpresa({ ...values, igvRate: values.igvRate / 100 } as UpdateEmpresaDto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['empresa'] });
       toast('Configuración guardada', { type: 'success' });
@@ -222,19 +223,14 @@ export default function FacturacionConfigPage() {
               )}
             </Field>
             <Field label="Tasa IGV / IVA" error={errors.igvRate?.message}>
-              <div className="flex gap-2 items-center">
+              <div className="relative w-32">
                 <input
-                  type="number" step="0.01" min="0" max="1"
+                  type="number" step="1" min="0" max="100"
                   {...register('igvRate')}
-                  className={cn(inp(!!errors.igvRate), 'w-28')}
+                  className={cn(inp(!!errors.igvRate), 'pr-8')}
                 />
-                <div className="flex-1 h-10 flex items-center px-3 rounded-lg bg-muted border border-border text-sm font-medium text-foreground">
-                  = {((parseFloat(String(watch('igvRate') ?? 0.18)) || 0.18) * 100).toFixed(0)}%
-                </div>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Ingresa el decimal: 0.18 = 18%, 0.19 = 19%, 0.12 = 12%
-              </p>
             </Field>
           </div>
         </Card>
