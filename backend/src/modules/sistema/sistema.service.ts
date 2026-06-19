@@ -446,7 +446,7 @@ export class SistemaService {
   // ─── Gateway multi-proveedor — leer ─────────────────────────
 
   async getGatewayConfig(empresaId: string): Promise<{
-    proveedorActivo:        ProveedorActivo;
+    proveedorActivo:        ProveedorActivo | null;
     apiKeyStored:           boolean;
     apiSecretStored:        boolean;
     clientId:               string | null;
@@ -471,29 +471,30 @@ export class SistemaService {
       [empresaId],
     );
     const ACTIVO_MAP: Record<string, boolean> = {
-      META_GRAPH:                 row?.meta_graph_activo       ?? true,
-      TWILIO:                     row?.twilio_activo          ?? false,
-      VONAGE:                     row?.vonage_activo          ?? false,
-      CUSTOM_API:                 row?.custom_api_activo      ?? false,
+      META_GRAPH:                 row?.meta_graph_activo       ?? false,
+      TWILIO:                     row?.twilio_activo           ?? false,
+      VONAGE:                     row?.vonage_activo           ?? false,
+      CUSTOM_API:                 row?.custom_api_activo       ?? false,
       AUTOMATIZADO_VIP:           row?.automatizado_vip_activo ?? false,
       DATAFAST_MENSAJERIA_MASIVA: row?.gateway_activo          ?? false,
     };
+    const proveedor = (row?.proveedor_activo ?? null) as ProveedorActivo | null;
     return {
-      proveedorActivo:       (row?.proveedor_activo ?? 'META_GRAPH') as ProveedorActivo,
+      proveedorActivo:       proveedor,
       apiKeyStored:          !!row?.gateway_api_key,
       apiSecretStored:       !!row?.gateway_api_secret,
       clientId:              row?.gateway_client_id               ?? null,
-      pausa:                 row?.gateway_pausa                    ?? 2,
-      limiteCaracteres:      row?.gateway_limite_caracteres        ?? 1000,
-      codigoPais:            row?.gateway_codigo_pais              ?? '+51',
-      activo:               ACTIVO_MAP[row?.proveedor_activo ?? 'META_GRAPH'] ?? true,
-      metaGraphActivo:       row?.meta_graph_activo       ?? true,
-      twilioActivo:          row?.twilio_activo          ?? false,
-      vonageActivo:          row?.vonage_activo          ?? false,
-      customApiActivo:       row?.custom_api_activo      ?? false,
+      pausa:                 row?.gateway_pausa                   ?? 2,
+      limiteCaracteres:      row?.gateway_limite_caracteres       ?? 1000,
+      codigoPais:            row?.gateway_codigo_pais             ?? '+51',
+      activo:                proveedor ? (ACTIVO_MAP[proveedor] ?? false) : false,
+      metaGraphActivo:       row?.meta_graph_activo       ?? false,
+      twilioActivo:          row?.twilio_activo           ?? false,
+      vonageActivo:          row?.vonage_activo           ?? false,
+      customApiActivo:       row?.custom_api_activo       ?? false,
       automatizadoVipActivo: row?.automatizado_vip_activo ?? false,
-      limiteDiarioMasivo:   row?.gateway_masivo_limite_diario ?? 500,
-      whatsappNumeroOrigen: row?.whatsapp_numero_origen        ?? null,
+      limiteDiarioMasivo:    row?.gateway_masivo_limite_diario ?? 500,
+      whatsappNumeroOrigen:  row?.whatsapp_numero_origen        ?? null,
     };
   }
 

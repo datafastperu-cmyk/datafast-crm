@@ -396,26 +396,24 @@ export class GatewayMensajeriaService {
         );
 
         // Si proveedor_activo es null, la empresa no configuró mensajería → null = sin config
-        cached = (row && row.proveedor_activo) ? {
-          proveedor:            row.proveedor_activo as ProveedorActivo,
+        const proveedor: string | null = row?.proveedor_activo ?? null;
+        const activoMap: Record<string, boolean> = {
+          META_GRAPH:                 row?.meta_graph_activo       ?? false,
+          TWILIO:                     row?.twilio_activo           ?? false,
+          VONAGE:                     row?.vonage_activo           ?? false,
+          CUSTOM_API:                 row?.custom_api_activo       ?? false,
+          AUTOMATIZADO_VIP:           row?.automatizado_vip_activo ?? false,
+          DATAFAST_MENSAJERIA_MASIVA: row?.gateway_activo          ?? false,
+        };
+        cached = (row && proveedor) ? {
+          proveedor:            proveedor as ProveedorActivo,
           apiKey:               row.gateway_api_key           ?? '',
           apiSecret:            row.gateway_api_secret        ?? '',
           clientId:             row.gateway_client_id         ?? '',
           pausa:                row.gateway_pausa             ?? 2,
           limiteCaracteres:     row.gateway_limite_caracteres ?? 1000,
           codigoPais:           row.gateway_codigo_pais       ?? '+51',
-          activo:               (() => {
-            const p: string = row.proveedor_activo;
-            const m: Record<string, boolean> = {
-              META_GRAPH:                 row.meta_graph_activo       ?? false,
-              TWILIO:                     row.twilio_activo          ?? false,
-              VONAGE:                     row.vonage_activo          ?? false,
-              CUSTOM_API:                 row.custom_api_activo      ?? false,
-              AUTOMATIZADO_VIP:           row.automatizado_vip_activo ?? false,
-              DATAFAST_MENSAJERIA_MASIVA: row.gateway_activo          ?? false,
-            };
-            return m[p] ?? false;
-          })(),
+          activo:               activoMap[proveedor] ?? false,
           whatsappNumeroOrigen: row.whatsapp_numero_origen    ?? '',
         } : null;
 
