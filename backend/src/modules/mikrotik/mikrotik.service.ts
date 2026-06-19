@@ -31,6 +31,8 @@ import {
   TestConexionDirectaDto, ActualizarQueueDto,
 } from './dto/mikrotik.dto';
 
+import { NOTIFICATION_EVENTS } from '../notificaciones/events/notification.events';
+
 // ─── Evento emitido al suspender/reactivar ────────────────────
 export const EVENT_CLIENTE_SUSPENDIDO  = 'mikrotik.cliente.suspendido';
 export const EVENT_CLIENTE_REACTIVADO  = 'mikrotik.cliente.reactivado';
@@ -1194,7 +1196,16 @@ export class MikrotikService implements OnModuleInit {
         });
 
         // Reset contador de fallos consecutivos al recuperar conectividad
+        const prevFailsOnRecovery = this._pollFailCount.get(router.id) ?? 0;
         this._pollFailCount.delete(router.id);
+
+        // Emitir alerta de recuperación solo si el router estaba OFFLINE confirmado (≥2 fallos)
+        if (prevFailsOnRecovery >= 2) {
+          this.events.emit(NOTIFICATION_EVENTS.ROUTER_CONECTADO, {
+            routerNombre: router.nombre,
+            empresaId:    router.empresaId,
+          });
+        }
 
         if (!this.reglasOk.has(router.id)) {
           this.firewallSvc.configurarReglasControl(creds)
@@ -1219,6 +1230,14 @@ export class MikrotikService implements OnModuleInit {
           });
           this.reglasOk.delete(router.id);
           this.logger.warn(`[POLL] ${router.nombre} (${router.vpnIp || router.ipGestion}): fallo #${prevFails} → OFFLINE`);
+
+          // Emitir alerta solo en la transición (fallo #2), no en cada ciclo siguiente
+          if (prevFails === 2) {
+            this.events.emit(NOTIFICATION_EVENTS.ROUTER_CAIDO, {
+              routerNombre: router.nombre,
+              empresaId:    router.empresaId,
+            });
+          }
         }
       }
     };
