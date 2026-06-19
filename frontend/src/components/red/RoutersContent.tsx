@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Router, Plus, Pencil, Trash2, Wifi, WifiOff,
@@ -8,6 +8,7 @@ import {
   Lock, Shield, Network, Terminal, Radio,
   Key, Settings, ChevronRight, Activity, Cpu, MemoryStick,
   Copy, Check, Users, FileCode, Globe, Eye, EyeOff, Wrench,
+  ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 
 import { mikrotikApi } from '@/lib/api/mikrotik';
@@ -1042,6 +1043,13 @@ export function RoutersContent() {
   const [pendingDelete, setPendingDelete]   = useState<RouterType | null>(null);
   const [pendingRepair, setPendingRepair]   = useState<RouterType | null>(null);
   const [detailRouter, setDetailRouter]     = useState<RouterType | null>(null);
+  const [sortField,    setSortField]        = useState<string>('nombre');
+  const [sortDir,      setSortDir]          = useState<'ASC' | 'DESC'>('ASC');
+
+  function handleSort(field: string) {
+    if (sortField === field) setSortDir(d => d === 'ASC' ? 'DESC' : 'ASC');
+    else { setSortField(field); setSortDir('ASC'); }
+  }
 
   const { data: alertasVpn = [], refetch: refetchAlertas } = useQuery<VpnAlerta[]>({
     queryKey:        ['vpn-alertas'],
@@ -1054,11 +1062,24 @@ export function RoutersContent() {
     onSuccess:  () => refetchAlertas(),
   });
 
-  const { data: routers = [], isLoading } = useQuery<RouterType[]>({
+  const { data: rawRouters = [], isLoading } = useQuery<RouterType[]>({
     queryKey:        ['routers'],
     queryFn:         mikrotikApi.listar,
     refetchInterval: 60_000,
   });
+
+  const routers = useMemo(() => {
+    const sorted = [...rawRouters].sort((a, b) => {
+      let av: any = (a as any)[sortField] ?? '';
+      let bv: any = (b as any)[sortField] ?? '';
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av < bv) return sortDir === 'ASC' ? -1 : 1;
+      if (av > bv) return sortDir === 'ASC' ?  1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [rawRouters, sortField, sortDir]);
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => mikrotikApi.eliminar(id),
@@ -1199,13 +1220,24 @@ export function RoutersContent() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground/70 uppercase tracking-wider">
-                <th className="text-left px-4 py-3">Router</th>
-                <th className="text-left px-4 py-3">IP Gestión</th>
-                <th className="text-left px-4 py-3">IP VPN</th>
-                <th className="text-left px-4 py-3">Método</th>
-                <th className="text-left px-4 py-3">Estado</th>
-                <th className="text-left px-4 py-3">CPU / RAM</th>
-                <th className="text-left px-4 py-3">Latencia</th>
+                {([
+                  { field: 'nombre',          label: 'Router'    },
+                  { field: 'ip',              label: 'IP Gestión'},
+                  { field: 'vpnIp',           label: 'IP VPN'    },
+                  { field: 'metodoConexion',  label: 'Método'    },
+                  { field: 'estado',          label: 'Estado'    },
+                  { field: 'cpuUsoPct',       label: 'CPU / RAM' },
+                  { field: 'latenciaMs',      label: 'Latencia'  },
+                ] as const).map(({ field, label }) => (
+                  <th key={field} onClick={() => handleSort(field)} className="text-left px-4 py-3 cursor-pointer select-none group">
+                    <span className="inline-flex items-center gap-1">
+                      {label}
+                      {sortField === field
+                        ? sortDir === 'ASC' ? <ChevronUp className="w-3 h-3 text-primary" /> : <ChevronDown className="w-3 h-3 text-primary" />
+                        : <ChevronsUpDown className="w-3 h-3 opacity-30 group-hover:opacity-70" />}
+                    </span>
+                  </th>
+                ))}
                 <th className="text-right px-4 py-3">Acciones</th>
               </tr>
             </thead>

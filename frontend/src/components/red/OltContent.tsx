@@ -1,10 +1,11 @@
 'use client';
 
-import { useState }   from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery }   from '@tanstack/react-query';
 import {
   Radio, RefreshCw, Server, Signal,
   Wifi, WifiOff, Upload,
+  ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 
 import { smartoltApi, type EstadoOnu } from '@/lib/api/smartolt';
@@ -44,6 +45,25 @@ export function OltContent() {
   const [selectedOlt, setOlt]       = useState<string>('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoOnu | ''>('');
   const [firmwareOlt, setFirmwareOlt] = useState<OltDispositivo | null>(null);
+  const [oltSortField, setOltSortField] = useState<string>('nombre');
+  const [oltSortDir,   setOltSortDir]   = useState<'ASC' | 'DESC'>('ASC');
+  const [onuSortField, setOnuSortField] = useState<string>('nombre');
+  const [onuSortDir,   setOnuSortDir]   = useState<'ASC' | 'DESC'>('ASC');
+
+  function handleOltSort(field: string) {
+    if (oltSortField === field) setOltSortDir(d => d === 'ASC' ? 'DESC' : 'ASC');
+    else { setOltSortField(field); setOltSortDir('ASC'); }
+  }
+  function handleOnuSort(field: string) {
+    if (onuSortField === field) setOnuSortDir(d => d === 'ASC' ? 'DESC' : 'ASC');
+    else { setOnuSortField(field); setOnuSortDir('ASC'); }
+  }
+  function SortIcon({ field, sf, sd }: { field: string; sf: string; sd: 'ASC' | 'DESC' }) {
+    if (sf !== field) return <ChevronsUpDown className="w-3 h-3 opacity-30 group-hover:opacity-70 flex-shrink-0" />;
+    return sd === 'ASC'
+      ? <ChevronUp   className="w-3 h-3 text-primary flex-shrink-0" />
+      : <ChevronDown className="w-3 h-3 text-primary flex-shrink-0" />;
+  }
 
   const { data: oltNativas = [] } = useQuery({
     queryKey:  ['olt-nativas'],
@@ -69,7 +89,31 @@ export function OltContent() {
     enabled:   tab === 'onus',
   });
 
-  const onus = (onusResp as any)?.data ?? [];
+  const rawOnus = (onusResp as any)?.data ?? [];
+
+  const sortedOlts = useMemo(() => {
+    return [...olts].sort((a, b) => {
+      let av: any = (a as any)[oltSortField] ?? '';
+      let bv: any = (b as any)[oltSortField] ?? '';
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av < bv) return oltSortDir === 'ASC' ? -1 : 1;
+      if (av > bv) return oltSortDir === 'ASC' ?  1 : -1;
+      return 0;
+    });
+  }, [olts, oltSortField, oltSortDir]);
+
+  const onus = useMemo(() => {
+    return [...rawOnus].sort((a: any, b: any) => {
+      let av: any = a[onuSortField] ?? '';
+      let bv: any = b[onuSortField] ?? '';
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av < bv) return onuSortDir === 'ASC' ? -1 : 1;
+      if (av > bv) return onuSortDir === 'ASC' ?  1 : -1;
+      return 0;
+    });
+  }, [rawOnus, onuSortField, onuSortDir]);
 
   const onlineCount  = olts.filter(o => o.estado === 'online').length;
   const offlineCount = olts.filter(o => o.estado === 'offline').length;
@@ -148,16 +192,22 @@ export function OltContent() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">OLT</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Marca / Modelo</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">IP</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Estado</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">SmartOLT ID</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Último Ping</th>
+                    {([
+                      { field: 'nombre',      label: 'OLT'          },
+                      { field: 'marca',       label: 'Marca / Modelo'},
+                      { field: 'ipGestion',   label: 'IP'            },
+                      { field: 'estado',      label: 'Estado'        },
+                      { field: 'smartoltId',  label: 'SmartOLT ID'   },
+                      { field: 'ultimoPing',  label: 'Último Ping'   },
+                    ] as const).map(({ field, label }) => (
+                      <th key={field} onClick={() => handleOltSort(field)} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer select-none group">
+                        <span className="inline-flex items-center gap-1">{label}<SortIcon field={field} sf={oltSortField} sd={oltSortDir} /></span>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {olts.map((olt) => (
+                  {sortedOlts.map((olt) => (
                     <tr
                       key={olt.id}
                       onClick={() => { setTab('onus'); setOlt(olt.id); }}
@@ -235,11 +285,17 @@ export function OltContent() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Serial / Nombre</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">OLT · Puerto</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Cliente</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Rx Power</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Estado</th>
+                      {([
+                        { field: 'nombre',      label: 'Serial / Nombre' },
+                        { field: 'oltNombre',   label: 'OLT · Puerto'   },
+                        { field: 'clienteNombre', label: 'Cliente'       },
+                        { field: 'rxPower',     label: 'Rx Power'        },
+                        { field: 'estado',      label: 'Estado'          },
+                      ] as const).map(({ field, label }) => (
+                        <th key={field} onClick={() => handleOnuSort(field)} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer select-none group">
+                          <span className="inline-flex items-center gap-1">{label}<SortIcon field={field} sf={onuSortField} sd={onuSortDir} /></span>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">

@@ -490,9 +490,9 @@ export function ClientesContent() {
           clientes={clientes}
           loading={isLoading}
           onRowClick={(c) => router.push(`/clientes/${c.id}`)}
-          sortBy={filtros.orderBy}
-          sortOrder={filtros.order}
-          onSort={(col, dir) => { updateFiltro('orderBy', col); updateFiltro('order', dir); }}
+          sortBy={filtros.sortBy}
+          sortOrder={filtros.sortOrder}
+          onSort={(col, dir) => { updateFiltro('sortBy', col); updateFiltro('sortOrder', dir); }}
           selectedIds={selectedIds}
           onToggleId={toggleId}
           onToggleAll={toggleAll}
