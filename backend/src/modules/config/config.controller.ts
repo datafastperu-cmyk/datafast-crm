@@ -10,7 +10,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission }       from '../../common/decorators/roles.decorator';
 import { ApiResponse }             from '../../common/dto/response.dto';
-import { ConfigEmpresaService, UpdateEmpresaDto } from './config-empresa.service';
+import { ConfigEmpresaService, UpdateEmpresaDto, FacturacionResumen } from './config-empresa.service';
 
 @ApiTags('Configuración')
 @ApiBearerAuth('JWT')
@@ -50,6 +50,14 @@ export class ConfigController {
   ) {
     const result = await this.svc.uploadLogo(user.empresaId, file);
     return ApiResponse.ok(result, 'Logo actualizado');
+  }
+
+  @Get('facturacion-resumen')
+  @RequirePermission('configuracion:view')
+  @ApiOperation({ summary: 'Resumen en vivo de facturación: correlativos y deuda pendiente' })
+  async getFacturacionResumen(@CurrentUser() user: JwtPayload) {
+    const resumen = await this.svc.getFacturacionResumen(user.empresaId);
+    return ApiResponse.ok(resumen);
   }
 
   @Get('ssl-status')

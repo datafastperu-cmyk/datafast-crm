@@ -50,6 +50,12 @@ export class Empresa {
   @Column({ name: 'dias_gracia', type: 'smallint', default: 5 })
   diasGraciaCorte: number;
 
+  @Column({ name: 'moneda', type: 'varchar', length: 3, default: 'PEN' })
+  moneda: string;
+
+  @Column({ name: 'tipo_comprobante_default', type: 'varchar', length: 20, default: 'boleta' })
+  tipoComprobanteDefault: string;
+
   @Column({ default: 'activo' })
   estado: string;
 

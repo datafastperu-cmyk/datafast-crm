@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as dns from 'dns/promises';
@@ -24,6 +24,20 @@ export interface UpdateEmpresaDto {
   igvRate?:                  number;
   diaFacturacion?:           number;
   diasGraciaCorte?:          number;
+  moneda?:                   string;
+  tipoComprobanteDefault?:   string;
+}
+
+export interface FacturacionResumen {
+  ultimaBoleta:         number;
+  serieBoleta:          string;
+  ultimaFactura:        number;
+  serieFactura:         string;
+  ultimoRecibo:         number;
+  serieRecibo:          string;
+  totalEmitidas:        number;
+  totalVencidas:        number;
+  montoDeudaPendiente:  number;
 }
 
 export interface SslStatus {
@@ -63,6 +77,8 @@ export class ConfigEmpresaService {
   constructor(
     @InjectRepository(Empresa)
     private readonly repo: Repository<Empresa>,
+    @InjectDataSource()
+    private readonly ds: DataSource,
   ) {}
 
   // ── Empresa CRUD ──────────────────────────────────────────────
@@ -341,6 +357,52 @@ server {
         `Configura VPN_SERVER_IP en el .env`,
       );
     }
+  }
+
+  // ── Facturación Resumen ───────────────────────────────────────
+
+  async getFacturacionResumen(empresaId: string): Promise<FacturacionResumen> {
+    const empresa = await this.getEmpresa(empresaId);
+
+    const [correlativos, conteos] = await Promise.all([
+      this.ds.query(`
+        SELECT tipo_comprobante, serie, COALESCE(MAX(correlativo), 0) AS ultimo
+        FROM facturas
+        WHERE empresa_id = $1
+          AND tipo_comprobante IN ('boleta', 'factura', 'recibo_interno')
+          AND deleted_at IS NULL
+        GROUP BY tipo_comprobante, serie
+      `, [empresaId]),
+
+      this.ds.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE estado NOT IN ('pagada', 'anulada', 'borrador')) AS total_emitidas,
+          COUNT(*) FILTER (WHERE estado = 'vencida')                               AS total_vencidas,
+          COALESCE(SUM(total - monto_pagado) FILTER (
+            WHERE estado NOT IN ('pagada', 'anulada', 'borrador')
+          ), 0)                                                                     AS monto_deuda
+        FROM facturas
+        WHERE empresa_id = $1 AND deleted_at IS NULL
+      `, [empresaId]),
+    ]);
+
+    const porTipo = (tipo: string) => correlativos.find((r: any) => r.tipo_comprobante === tipo);
+
+    const boleta  = porTipo('boleta');
+    const factura = porTipo('factura');
+    const recibo  = porTipo('recibo_interno');
+
+    return {
+      ultimaBoleta:        parseInt(boleta?.ultimo  ?? '0', 10),
+      serieBoleta:         boleta?.serie  ?? empresa.serieBoleta,
+      ultimaFactura:       parseInt(factura?.ultimo ?? '0', 10),
+      serieFactura:        factura?.serie ?? empresa.serieFactura,
+      ultimoRecibo:        parseInt(recibo?.ultimo  ?? '0', 10),
+      serieRecibo:         recibo?.serie  ?? 'R001',
+      totalEmitidas:       parseInt(conteos[0]?.total_emitidas ?? '0', 10),
+      totalVencidas:       parseInt(conteos[0]?.total_vencidas ?? '0', 10),
+      montoDeudaPendiente: parseFloat(conteos[0]?.monto_deuda ?? '0'),
+    };
   }
 
   private async upsertEnvFile(filePath: string, updates: Record<string, string>): Promise<void> {

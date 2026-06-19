@@ -17,8 +17,22 @@ export interface Empresa {
   igvRate:           number;
   diasGraciaCorte:   number;
   diaFacturacion:    number;
+  moneda:            string;
+  tipoComprobanteDefault: string;
   dominio?:          string;
   estado:            string;
+}
+
+export interface FacturacionResumen {
+  ultimaBoleta:        number;
+  serieBoleta:         string;
+  ultimaFactura:       number;
+  serieFactura:        string;
+  ultimoRecibo:        number;
+  serieRecibo:         string;
+  totalEmitidas:       number;
+  totalVencidas:       number;
+  montoDeudaPendiente: number;
 }
 
 export interface UpdateEmpresaDto extends Partial<Omit<Empresa, 'id' | 'estado'>> {}
@@ -148,6 +162,11 @@ export const configApi = {
   getRoles: async (): Promise<string[]> => {
     const res = await api.get<ApiRespuesta<string[]>>('/auth/roles');
     return res.data.data ?? ['Administrador', 'Supervisor', 'Cajero', 'Técnico'];
+  },
+
+  getFacturacionResumen: async (): Promise<FacturacionResumen> => {
+    const res = await api.get<ApiRespuesta<FacturacionResumen>>('/config/facturacion-resumen');
+    return res.data.data;
   },
 };
 

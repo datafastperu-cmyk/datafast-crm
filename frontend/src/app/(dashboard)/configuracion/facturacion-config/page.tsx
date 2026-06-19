@@ -5,18 +5,50 @@ import { useForm }     from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z }           from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2 }     from 'lucide-react';
+import {
+  Loader2, FileText, Receipt, Hash, BadgeDollarSign,
+  Calendar, Clock, AlertCircle, TrendingUp, FileCheck,
+} from 'lucide-react';
 
-import { configApi, type UpdateEmpresaDto } from '@/lib/api/configuracion';
+import { configApi, type UpdateEmpresaDto, type FacturacionResumen } from '@/lib/api/configuracion';
 import { useToast }  from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
+// ─── Monedas LatAm ────────────────────────────────────────────
+const MONEDAS = [
+  { code: 'PEN', label: 'Sol Peruano',         symbol: 'S/',  pais: 'Perú' },
+  { code: 'USD', label: 'Dólar Americano',      symbol: '$',   pais: 'Internacional' },
+  { code: 'ARS', label: 'Peso Argentino',       symbol: '$',   pais: 'Argentina' },
+  { code: 'BOB', label: 'Boliviano',            symbol: 'Bs.', pais: 'Bolivia' },
+  { code: 'BRL', label: 'Real Brasileño',       symbol: 'R$',  pais: 'Brasil' },
+  { code: 'CLP', label: 'Peso Chileno',         symbol: '$',   pais: 'Chile' },
+  { code: 'COP', label: 'Peso Colombiano',      symbol: '$',   pais: 'Colombia' },
+  { code: 'CRC', label: 'Colón Costarricense',  symbol: '₡',   pais: 'Costa Rica' },
+  { code: 'DOP', label: 'Peso Dominicano',      symbol: 'RD$', pais: 'R. Dominicana' },
+  { code: 'GTQ', label: 'Quetzal Guatemalteco', symbol: 'Q',   pais: 'Guatemala' },
+  { code: 'HNL', label: 'Lempira Hondureño',    symbol: 'L',   pais: 'Honduras' },
+  { code: 'MXN', label: 'Peso Mexicano',        symbol: '$',   pais: 'México' },
+  { code: 'NIO', label: 'Córdoba Nicaragüense', symbol: 'C$',  pais: 'Nicaragua' },
+  { code: 'PAB', label: 'Balboa Panameño',      symbol: 'B/.',  pais: 'Panamá' },
+  { code: 'PYG', label: 'Guaraní Paraguayo',    symbol: '₲',   pais: 'Paraguay' },
+  { code: 'UYU', label: 'Peso Uruguayo',        symbol: '$U',  pais: 'Uruguay' },
+  { code: 'VES', label: 'Bolívar Venezolano',   symbol: 'Bs.S',pais: 'Venezuela' },
+];
+
+const TIPOS_COMPROBANTE = [
+  { value: 'boleta',        label: 'Boleta de Venta',  desc: 'Para clientes personas naturales. Incluye IGV integrado.' },
+  { value: 'factura',       label: 'Factura',          desc: 'Para clientes con RUC. Detalla subtotal + IGV por separado.' },
+  { value: 'recibo_interno', label: 'Recibo',          desc: 'Comprobante interno sin desglose de impuestos. Ideal para ISPs sin facturación SUNAT.' },
+];
+
 const schema = z.object({
-  serieBoleta:     z.string().min(2, 'Mínimo 2 caracteres'),
-  serieFactura:    z.string().min(2, 'Mínimo 2 caracteres'),
-  igvRate:         z.coerce.number().min(0).max(1),
-  diaFacturacion:  z.coerce.number().int().min(1).max(28),
-  diasGraciaCorte: z.coerce.number().int().min(0).max(30),
+  serieBoleta:            z.string().min(2, 'Mínimo 2 caracteres'),
+  serieFactura:           z.string().min(2, 'Mínimo 2 caracteres'),
+  tipoComprobanteDefault: z.string().min(1),
+  igvRate:                z.coerce.number().min(0).max(1),
+  moneda:                 z.string().length(3),
+  diaFacturacion:         z.coerce.number().int().min(1).max(28),
+  diasGraciaCorte:        z.coerce.number().int().min(0).max(30),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -30,14 +62,22 @@ export default function FacturacionConfigPage() {
     staleTime: 5 * 60_000,
   });
 
+  const { data: resumen, isLoading: loadingResumen } = useQuery({
+    queryKey: ['facturacion-resumen'],
+    queryFn:  configApi.getFacturacionResumen,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
   const {
-    register, handleSubmit, reset,
+    register, handleSubmit, reset, watch,
     formState: { errors, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       igvRate: 0.18, diasGraciaCorte: 5, diaFacturacion: 1,
       serieBoleta: 'B001', serieFactura: 'F001',
+      moneda: 'PEN', tipoComprobanteDefault: 'boleta',
     },
   });
 
@@ -54,81 +94,246 @@ export default function FacturacionConfigPage() {
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
+  const watchSerieBoleta  = watch('serieBoleta');
+  const watchSerieFactura = watch('serieFactura');
+  const watchMoneda       = watch('moneda');
+  const watchTipo         = watch('tipoComprobanteDefault');
+  const monedaInfo        = MONEDAS.find(m => m.code === watchMoneda);
+
   if (isLoading) {
     return (
-      <div className="p-6 max-w-2xl space-y-4">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="skeleton h-10 rounded-lg animate-pulse" />
+      <div className="p-6 max-w-4xl space-y-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
         ))}
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-2xl">
-      <h2 className="text-lg font-semibold text-foreground mb-6">Facturación y cobranza</h2>
+    <div className="p-6 max-w-4xl">
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-foreground">Facturación y cobranza</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">Configura los parámetros de comprobantes, impuestos y ciclo de cobranza.</p>
+      </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
-        <form onSubmit={handleSubmit((v) => guardar(v))} className="space-y-6">
+      {/* ── Resumen en vivo ────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <StatCard
+          icon={<Receipt className="w-4 h-4" />}
+          label="Último N° boleta"
+          value={loadingResumen ? '…' : formatCorrelativo(resumen?.serieBoleta, resumen?.ultimaBoleta)}
+          color="blue"
+        />
+        <StatCard
+          icon={<FileText className="w-4 h-4" />}
+          label="Último N° factura"
+          value={loadingResumen ? '…' : formatCorrelativo(resumen?.serieFactura, resumen?.ultimaFactura)}
+          color="violet"
+        />
+        <StatCard
+          icon={<FileCheck className="w-4 h-4" />}
+          label="Comprobantes activos"
+          value={loadingResumen ? '…' : String(resumen?.totalEmitidas ?? 0)}
+          sub={resumen?.totalVencidas ? `${resumen.totalVencidas} vencidos` : undefined}
+          color={resumen?.totalVencidas ? 'amber' : 'green'}
+        />
+        <StatCard
+          icon={<TrendingUp className="w-4 h-4" />}
+          label="Deuda pendiente"
+          value={loadingResumen ? '…' : fmtMonto(resumen?.montoDeudaPendiente ?? 0, monedaInfo?.symbol ?? 'S/')}
+          color={resumen?.montoDeudaPendiente ? 'red' : 'green'}
+        />
+      </div>
 
-          <Section title="Series de comprobantes">
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Serie boleta" error={errors.serieBoleta?.message}>
-                <input {...register('serieBoleta')} placeholder="B001" className={cn(inp(!!errors.serieBoleta), 'font-mono')} />
-              </Field>
-              <Field label="Serie factura" error={errors.serieFactura?.message}>
-                <input {...register('serieFactura')} placeholder="F001" className={cn(inp(!!errors.serieFactura), 'font-mono')} />
-              </Field>
-            </div>
-          </Section>
+      <form onSubmit={handleSubmit((v) => guardar(v))} className="space-y-5">
 
-          <Section title="Impuestos y cobranza">
-            <div className="grid grid-cols-3 gap-4">
-              <Field label="Tasa IGV (0.18 = 18%)" error={errors.igvRate?.message}>
-                <input type="number" step="0.01" min="0" max="1" {...register('igvRate')} className={inp(!!errors.igvRate)} />
-              </Field>
-              <Field label="Día de facturación (1-28)" error={errors.diaFacturacion?.message}>
-                <input type="number" min={1} max={28} {...register('diaFacturacion')} className={inp(!!errors.diaFacturacion)} />
-                <p className="text-[11px] text-muted-foreground leading-snug mt-1">
-                  Día del mes en que se genera la factura mensual
-                </p>
-              </Field>
-              <Field label="Días de gracia antes del corte" error={errors.diasGraciaCorte?.message}>
-                <input type="number" min={0} max={30} {...register('diasGraciaCorte')} className={inp(!!errors.diasGraciaCorte)} />
-                <p className="text-[11px] text-muted-foreground leading-snug mt-1">
-                  Días de tolerancia tras el vencimiento antes de suspender
-                </p>
-              </Field>
-            </div>
-          </Section>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => reset()}
-              className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
-              Restablecer
-            </button>
-            <button
-              type="submit"
-              disabled={isPending || !isDirty}
-              className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg
-                         bg-primary text-primary-foreground font-medium
-                         hover:bg-primary/90 disabled:opacity-60 transition-colors"
-            >
-              {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              Guardar cambios
-            </button>
+        {/* ── Tipo de comprobante ──────────────────────────────── */}
+        <Card title="Tipo de comprobante de pago" icon={<Receipt className="w-4 h-4" />}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {TIPOS_COMPROBANTE.map(({ value, label, desc }) => {
+              const active = watchTipo === value;
+              return (
+                <label key={value} className={cn(
+                  'relative flex flex-col gap-1 p-4 rounded-xl border-2 cursor-pointer transition-all',
+                  active
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-muted-foreground/40',
+                )}>
+                  <input
+                    type="radio"
+                    value={value}
+                    {...register('tipoComprobanteDefault')}
+                    className="sr-only"
+                  />
+                  {active && (
+                    <span className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full bg-primary" />
+                  )}
+                  <span className="text-sm font-semibold text-foreground">{label}</span>
+                  <span className="text-xs text-muted-foreground leading-snug">{desc}</span>
+                </label>
+              );
+            })}
           </div>
-        </form>
+
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <Field label="Serie boleta" error={errors.serieBoleta?.message}>
+              <div className="relative">
+                <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  {...register('serieBoleta')}
+                  placeholder="B001"
+                  className={cn(inp(!!errors.serieBoleta), 'font-mono pl-8')}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Próximo: <span className="font-mono text-primary">{watchSerieBoleta || 'B001'}-{String((resumen?.ultimaBoleta ?? 0) + 1).padStart(5, '0')}</span>
+              </p>
+            </Field>
+            <Field label="Serie factura" error={errors.serieFactura?.message}>
+              <div className="relative">
+                <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  {...register('serieFactura')}
+                  placeholder="F001"
+                  className={cn(inp(!!errors.serieFactura), 'font-mono pl-8')}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Próximo: <span className="font-mono text-primary">{watchSerieFactura || 'F001'}-{String((resumen?.ultimaFactura ?? 0) + 1).padStart(5, '0')}</span>
+              </p>
+            </Field>
+          </div>
+        </Card>
+
+        {/* ── Moneda e Impuestos ───────────────────────────────── */}
+        <Card title="Moneda e impuestos" icon={<BadgeDollarSign className="w-4 h-4" />}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Moneda del sistema" error={undefined}>
+              <select {...register('moneda')} className={inp()}>
+                {MONEDAS.map(m => (
+                  <option key={m.code} value={m.code}>
+                    {m.code} — {m.label} ({m.pais})
+                  </option>
+                ))}
+              </select>
+              {monedaInfo && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Símbolo: <span className="font-mono font-semibold">{monedaInfo.symbol}</span> · Los comprobantes usarán esta moneda
+                </p>
+              )}
+            </Field>
+            <Field label="Tasa IGV / IVA" error={errors.igvRate?.message}>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="number" step="0.01" min="0" max="1"
+                  {...register('igvRate')}
+                  className={cn(inp(!!errors.igvRate), 'w-28')}
+                />
+                <div className="flex-1 h-10 flex items-center px-3 rounded-lg bg-muted border border-border text-sm font-medium text-foreground">
+                  = {((parseFloat(String(watch('igvRate') ?? 0.18)) || 0.18) * 100).toFixed(0)}%
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Ingresa el decimal: 0.18 = 18%, 0.19 = 19%, 0.12 = 12%
+              </p>
+            </Field>
+          </div>
+        </Card>
+
+        {/* ── Ciclo de cobranza ────────────────────────────────── */}
+        <Card title="Ciclo de cobranza" icon={<Calendar className="w-4 h-4" />}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Día de facturación (1-28)" error={errors.diaFacturacion?.message}>
+              <input
+                type="number" min={1} max={28}
+                {...register('diaFacturacion')}
+                className={inp(!!errors.diaFacturacion)}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Día del mes en que el sistema genera comprobantes automáticamente
+              </p>
+            </Field>
+            <Field label="Días de gracia antes del corte" error={errors.diasGraciaCorte?.message}>
+              <input
+                type="number" min={0} max={30}
+                {...register('diasGraciaCorte')}
+                className={inp(!!errors.diasGraciaCorte)}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Tolerancia tras el vencimiento. 0 = corte inmediato al vencer
+              </p>
+            </Field>
+          </div>
+
+          <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-100 dark:bg-blue-950/30 dark:border-blue-900">
+            <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              Los horarios de ejecución automática (facturación, corte, recordatorios) se configuran en{' '}
+              <a href="/configuracion/crontab" className="underline font-medium">Crontab</a>.
+            </p>
+          </div>
+        </Card>
+
+        <div className="flex justify-end gap-3 pt-1">
+          <button
+            type="button"
+            onClick={() => reset()}
+            className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors"
+          >
+            Restablecer
+          </button>
+          <button
+            type="submit"
+            disabled={isPending || !isDirty}
+            className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg
+                       bg-primary text-primary-foreground font-medium
+                       hover:bg-primary/90 disabled:opacity-60 transition-colors"
+          >
+            {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+            Guardar cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Sub-components ───────────────────────────────────────────
+
+function StatCard({ icon, label, value, sub, color }: {
+  icon: React.ReactNode; label: string; value: string;
+  sub?: string; color: 'blue' | 'violet' | 'green' | 'amber' | 'red';
+}) {
+  const colors = {
+    blue:   'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400',
+    violet: 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400',
+    green:  'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400',
+    amber:  'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
+    red:    'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400',
+  };
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-2">
+      <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center', colors[color])}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-base font-semibold text-foreground font-mono">{value}</p>
+        {sub && <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">{sub}</p>}
       </div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-foreground pb-2 border-b border-border">{title}</h3>
-      {children}
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border bg-muted/30">
+        <span className="text-muted-foreground">{icon}</span>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      </div>
+      <div className="p-5">{children}</div>
     </div>
   );
 }
@@ -151,4 +356,15 @@ function inp(hasError = false) {
     'focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent',
     hasError ? 'border-destructive' : 'border-input',
   );
+}
+
+function formatCorrelativo(serie?: string, ultimo?: number): string {
+  if (!serie || ultimo === undefined) return '—';
+  if (ultimo === 0) return 'Sin emitir';
+  return `${serie}-${String(ultimo).padStart(5, '0')}`;
+}
+
+function fmtMonto(monto: number, symbol: string): string {
+  if (monto === 0) return `${symbol} 0.00`;
+  return `${symbol} ${monto.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
