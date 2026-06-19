@@ -12,6 +12,7 @@ import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantill
 
 // ── Defaults ──────────────────────────────────────────────────────
 const DEF_FACT: FacturacionConfig = {
+  tipoComprobante: 'comprobante_interno',
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   plantillaAvisoFactura: '',
   esquemaImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
@@ -45,12 +46,6 @@ const APLICAR_CORTE_OPTS = [
   ...Array.from({ length: 5 }, (_, i) => ({
     value: String(i + 1), label: i === 0 ? '1 mes vencido' : `${i + 1} meses vencidos`,
   })),
-];
-const BAJAR_VEL_OPTS = [
-  { value: 'desactivado', label: 'Desactivado' },
-  { value: '512k', label: '512 Kbps' },
-  { value: '1m', label: '1 Mbps' },
-  { value: '2m', label: '2 Mbps' },
 ];
 const RECORDATORIO_ANTES = Array.from({ length: 10 }, (_, i) => ({
   value: String(-(i + 1)), label: i === 0 ? '1 Día Antes' : `${i + 1} Días Antes`,
@@ -166,26 +161,15 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
 
   const [facturacion, setFact] = useState<FacturacionConfig>({ ...DEF_FACT });
   const [notificaciones, setNotif] = useState<NotificacionesConfig>({ ...DEF_NOTIF });
-  const [bajarVelocidad, setBajarVelocidad] = useState('desactivado');
-  const [fechaFija, setFechaFija] = useState('');
-  const [corteFijoProgramado, setCorteFijoProgramado] = useState('');
 
   useEffect(() => {
     if (!data) return;
-    if (data.facturacion) {
-      const f = data.facturacion as any;
-      setFact({ ...DEF_FACT, ...f });
-      setBajarVelocidad(f.bajarVelocidad ?? 'desactivado');
-      setFechaFija(f.fechaFija ?? '');
-      setCorteFijoProgramado(f.corteFijoProgramado ?? '');
-    }
+    if (data.facturacion) setFact({ ...DEF_FACT, ...(data.facturacion as any) });
     if (data.notificaciones) setNotif({ ...DEF_NOTIF, ...(data.notificaciones as any) });
   }, [data]);
 
   const mut = useMutation({
-    mutationFn: () => clientesApi.saveFacturacionConfig(clienteId, {
-      ...facturacion, bajarVelocidad, fechaFija: fechaFija || null, corteFijoProgramado: corteFijoProgramado || null,
-    }, notificaciones),
+    mutationFn: () => clientesApi.saveFacturacionConfig(clienteId, facturacion, notificaciones),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cliente-facturacion-config', clienteId] });
       qc.invalidateQueries({ queryKey: ['cliente', clienteId] });
@@ -241,6 +225,13 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
             <span className="text-sm font-semibold text-foreground">Facturación</span>
           </div>
           <div className="px-4 py-3 space-y-0.5">
+            <Field label="Tipo de Comprobante">
+              <select className={selectCls} value={facturacion.tipoComprobante ?? 'comprobante_interno'} onChange={e => updateF('tipoComprobante', e.target.value)}>
+                <option value="comprobante_interno">COMPROBANTE INTERNO</option>
+                <option value="recibo">RECIBO</option>
+                <option value="factura">FACTURA</option>
+              </select>
+            </Field>
             <Field label="Tipo">
               <select className={selectCls} value={facturacion.tipo} onChange={e => updateF('tipo', e.target.value)}>
                 <option value="prepago">Prepago (Adelantado)</option>
@@ -263,13 +254,14 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 {plantillasMsg.map(p => <option key={p.codigo} value={p.codigo}>{p.nombre}</option>)}
               </select>
             </Field>
-            <Field label="Esquema de impuesto">
-              <select className={selectCls} value={facturacion.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
-                <option value="ninguno">Ninguno</option>
-                <option value="incluido">Impuestos incluidos</option>
-                <option value="mas_impuestos">Más impuestos</option>
-              </select>
-            </Field>
+            {(facturacion.tipoComprobante ?? 'comprobante_interno') !== 'comprobante_interno' && (
+              <Field label="Esquema de impuesto">
+                <select className={selectCls} value={facturacion.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
+                  <option value="incluido">Impuestos incluidos</option>
+                  <option value="mas_impuestos">Más impuestos</option>
+                </select>
+              </Field>
+            )}
             <Field label="Días de gracia" note="*días tolerancia para aplicar corte">
               <select className={selectCls} value={facturacion.diasGracia} onChange={e => updateF('diasGracia', e.target.value)}>
                 {DIAS_GRACIA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -279,19 +271,6 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
               <select className={selectCls} value={facturacion.aplicarCorte} onChange={e => updateF('aplicarCorte', e.target.value)}>
                 {APLICAR_CORTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-            </Field>
-            <Field label="Bajar Velocidad" note="*Cancela velocidad del cliente y no suspende. Se aplica el límite de velocidad. Automáticamente cuando el cliente paga salen sus facturas.">
-              <select className={selectCls} value={bajarVelocidad} onChange={e => setBajarVelocidad(e.target.value)}>
-                {BAJAR_VEL_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Fecha Fija">
-              <input type="date" className={inputCls} value={fechaFija}
-                onChange={e => setFechaFija(e.target.value)} />
-            </Field>
-            <Field label="Corte Fijo Programado">
-              <input type="date" className={inputCls} value={corteFijoProgramado}
-                onChange={e => setCorteFijoProgramado(e.target.value)} />
             </Field>
             <Field label="Aplicar Mora">
               <div className="flex items-center gap-3 pt-1">
