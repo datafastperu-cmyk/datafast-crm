@@ -72,7 +72,11 @@ export class NotificationEventListener implements OnModuleInit {
   // ── Helper: encolar en Bull ────────────────────────────────
   // Crea el log ENCOLADO en BD ANTES de encolar para que el mensaje
   // sea visible en /mensajeria/enviados desde el primer instante.
-  private async encolar(tipo: string, payload: PayloadNotificacionEnvio): Promise<void> {
+  private async encolar(
+    tipo: string,
+    payload: PayloadNotificacionEnvio,
+    jobOptions: object = JOB_OPTIONS.NOTIFICACION,
+  ): Promise<void> {
     if (this.degraded) {
       this.logger.warn(`[notificaciones] Módulo degradado — notificación '${tipo}' descartada`);
       return;
@@ -94,7 +98,7 @@ export class NotificationEventListener implements OnModuleInit {
       const job = await this.queue.add(
         JOBS.NOTIF_ENVIO,
         { ...payload, logId },
-        JOB_OPTIONS.NOTIFICACION,
+        jobOptions,
       );
       this.logger.log(
         `[EVENT] Encolado ${tipo} → ${payload.telefono.substring(0, 9)}... ` +
@@ -337,7 +341,7 @@ export class NotificationEventListener implements OnModuleInit {
       tipo:      'emisor_caido',
       variables: { nodo_nombre: event.nodoNombre },
       empresaId: event.empresaId,
-    });
+    }, JOB_OPTIONS.ALERTA);
   }
 
   @OnEvent(NOTIFICATION_EVENTS.EMISOR_CONECTADO, { async: true })
@@ -348,7 +352,7 @@ export class NotificationEventListener implements OnModuleInit {
       tipo:      'emisor_conectado',
       variables: { nodo_nombre: event.nodoNombre },
       empresaId: event.empresaId,
-    });
+    }, JOB_OPTIONS.ALERTA);
   }
 
   @OnEvent(NOTIFICATION_EVENTS.ROUTER_CAIDO, { async: true })
@@ -359,7 +363,7 @@ export class NotificationEventListener implements OnModuleInit {
       tipo:      'router_caido',
       variables: { router_nombre: event.routerNombre },
       empresaId: event.empresaId,
-    });
+    }, JOB_OPTIONS.ALERTA);
   }
 
   @OnEvent(NOTIFICATION_EVENTS.ROUTER_CONECTADO, { async: true })
@@ -370,6 +374,6 @@ export class NotificationEventListener implements OnModuleInit {
       tipo:      'router_conectado',
       variables: { router_nombre: event.routerNombre },
       empresaId: event.empresaId,
-    });
+    }, JOB_OPTIONS.ALERTA);
   }
 }
