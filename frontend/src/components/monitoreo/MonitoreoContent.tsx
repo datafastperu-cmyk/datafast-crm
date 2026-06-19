@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect }   from 'react';
+import { useState, useEffect, useMemo }   from 'react';
 import { useRouter }             from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -24,6 +24,7 @@ export function MonitoreoContent() {
   const [showAdd, setShowAdd]   = useState(false);
   const [wsDash, setWsDash]     = useState<WsEventDashboard | null>(null);
   const [filtroTipo, setFiltro] = useState<string>('');
+  const [sortBy, setSortBy]     = useState<string>('estado');
   const [reparandoId, setReparandoId] = useState<string | null>(null);
 
   // ── REST: dispositivos desde /monitoreo/tiempo-real ───────
@@ -150,11 +151,24 @@ export function MonitoreoContent() {
     ? nodosConEstadoLive.filter((n) => n.tipo === filtroTipo)
     : nodosConEstadoLive;
 
-  // Ordenar: offline primero, luego degradado, luego online
-  const nodosOrdenados = [...nodosFiltrados].sort((a, b) => {
-    const orden: Record<string, number> = { offline: 0, degradado: 1, desconocido: 2, online: 3 };
-    return (orden[a.estado] ?? 4) - (orden[b.estado] ?? 4);
-  });
+  const ESTADO_ORDEN: Record<string, number> = { offline: 0, degradado: 1, desconocido: 2, online: 3 };
+
+  const nodosOrdenados = useMemo(() => {
+    return [...nodosFiltrados].sort((a, b) => {
+      switch (sortBy) {
+        case 'nombre':
+          return a.nombre.localeCompare(b.nombre, 'es');
+        case 'latencia':
+          return (b.latenciaMs ?? -1) - (a.latenciaMs ?? -1);
+        case 'cpu':
+          return (b.cpuUsoPct ?? -1) - (a.cpuUsoPct ?? -1);
+        case 'trafico':
+          return ((b.traficoRxBps ?? 0) + (b.traficoTxBps ?? 0)) - ((a.traficoRxBps ?? 0) + (a.traficoTxBps ?? 0));
+        default: // 'estado'
+          return (ESTADO_ORDEN[a.estado] ?? 4) - (ESTADO_ORDEN[b.estado] ?? 4);
+      }
+    });
+  }, [nodosFiltrados, sortBy]);
 
   return (
     <div className="space-y-5">
@@ -279,6 +293,31 @@ export function MonitoreoContent() {
           ))}
         </div>
       )}
+
+      {/* ── Selector de ordenamiento ────────────────────────── */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Ordenar por:</span>
+        {([
+          { key: 'estado',   label: 'Estado'   },
+          { key: 'nombre',   label: 'Nombre'   },
+          { key: 'latencia', label: 'Latencia' },
+          { key: 'cpu',      label: 'CPU'      },
+          { key: 'trafico',  label: 'Tráfico'  },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setSortBy(key)}
+            className={cn(
+              'px-2.5 py-1 text-xs rounded-full border font-medium transition-colors',
+              sortBy === key
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'border-input text-muted-foreground hover:text-foreground hover:bg-muted',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* ── Grid de nodos ────────────────────────────────────── */}
       {isLoading ? (
