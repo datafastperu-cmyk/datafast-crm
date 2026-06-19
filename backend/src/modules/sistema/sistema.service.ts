@@ -533,11 +533,13 @@ export class SistemaService {
       notifSuspensionActiva?:   boolean;
     },
   ): Promise<{
-    proveedorActivo: ProveedorActivo; apiKeyStored: boolean; apiSecretStored: boolean;
+    proveedorActivo: ProveedorActivo | null; apiKeyStored: boolean; apiSecretStored: boolean;
     clientId: string | null; pausa: number; limiteCaracteres: number; codigoPais: string; activo: boolean;
     metaGraphActivo: boolean; twilioActivo: boolean; vonageActivo: boolean;
     customApiActivo: boolean; automatizadoVipActivo: boolean;
     limiteDiarioMasivo: number; whatsappNumeroOrigen: string | null;
+    notifBienvenidaActiva: boolean; notifPagoRecibidoActiva: boolean;
+    notifProrrogaActiva: boolean; notifSuspensionActiva: boolean;
   }> {
     const SENTINEL    = '***stored***';
     const setClauses: string[] = [];

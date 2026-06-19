@@ -166,14 +166,25 @@ export class SistemaController {
   async getGatewayConfig(@CurrentUser() user: JwtPayload) {
     const cfg = await this.sistema.getGatewayConfig(user.empresaId);
     return ApiResponse.ok({
-      proveedorActivo:  cfg.proveedorActivo,
-      apiKey:           cfg.apiKeyStored    ? '***stored***' : null,
-      apiSecret:        cfg.apiSecretStored ? '***stored***' : null,
-      clientId:         cfg.clientId,
-      pausa:            cfg.pausa,
-      limiteCaracteres: cfg.limiteCaracteres,
-      codigoPais:       cfg.codigoPais,
-      activo:           cfg.activo,
+      proveedorActivo:        cfg.proveedorActivo,
+      apiKeyStored:           cfg.apiKeyStored,
+      apiSecretStored:        cfg.apiSecretStored,
+      clientId:               cfg.clientId,
+      pausa:                  cfg.pausa,
+      limiteCaracteres:       cfg.limiteCaracteres,
+      codigoPais:             cfg.codigoPais,
+      activo:                 cfg.activo,
+      metaGraphActivo:        cfg.metaGraphActivo,
+      twilioActivo:           cfg.twilioActivo,
+      vonageActivo:           cfg.vonageActivo,
+      customApiActivo:        cfg.customApiActivo,
+      automatizadoVipActivo:  cfg.automatizadoVipActivo,
+      limiteDiarioMasivo:     cfg.limiteDiarioMasivo,
+      whatsappNumeroOrigen:   cfg.whatsappNumeroOrigen,
+      notifBienvenidaActiva:   cfg.notifBienvenidaActiva,
+      notifPagoRecibidoActiva: cfg.notifPagoRecibidoActiva,
+      notifProrrogaActiva:     cfg.notifProrrogaActiva,
+      notifSuspensionActiva:   cfg.notifSuspensionActiva,
     });
   }
 
@@ -182,28 +193,45 @@ export class SistemaController {
   @ApiOperation({ summary: 'Actualizar proveedor de mensajería y credenciales' })
   async updateGatewayConfig(
     @Body() body: {
-      proveedorActivo?:  ProveedorActivo;
-      apiKey?:           string;
-      apiSecret?:        string;
-      clientId?:         string;
-      pausa?:            number;
-      limiteCaracteres?: number;
-      codigoPais?:       string;
-      activo?:           boolean;
+      proveedorActivo?:         ProveedorActivo;
+      apiKey?:                  string;
+      apiSecret?:               string;
+      clientId?:                string;
+      pausa?:                   number;
+      limiteCaracteres?:        number;
+      codigoPais?:              string;
+      activo?:                  boolean;
+      limiteDiarioMasivo?:      number;
+      whatsappNumeroOrigen?:    string;
+      notifBienvenidaActiva?:   boolean;
+      notifPagoRecibidoActiva?: boolean;
+      notifProrrogaActiva?:     boolean;
+      notifSuspensionActiva?:   boolean;
     },
     @CurrentUser() user: JwtPayload,
   ) {
     const cfg = await this.sistema.updateGatewayConfig(user.empresaId, body);
     return ApiResponse.ok(
       {
-        proveedorActivo:  cfg.proveedorActivo,
-        apiKey:           cfg.apiKeyStored    ? '***stored***' : null,
-        apiSecret:        cfg.apiSecretStored ? '***stored***' : null,
-        clientId:         cfg.clientId,
-        pausa:            cfg.pausa,
-        limiteCaracteres: cfg.limiteCaracteres,
-        codigoPais:       cfg.codigoPais,
-        activo:           cfg.activo,
+        proveedorActivo:        cfg.proveedorActivo,
+        apiKeyStored:           cfg.apiKeyStored,
+        apiSecretStored:        cfg.apiSecretStored,
+        clientId:               cfg.clientId,
+        pausa:                  cfg.pausa,
+        limiteCaracteres:       cfg.limiteCaracteres,
+        codigoPais:             cfg.codigoPais,
+        activo:                 cfg.activo,
+        metaGraphActivo:        cfg.metaGraphActivo,
+        twilioActivo:           cfg.twilioActivo,
+        vonageActivo:           cfg.vonageActivo,
+        customApiActivo:        cfg.customApiActivo,
+        automatizadoVipActivo:  cfg.automatizadoVipActivo,
+        limiteDiarioMasivo:     cfg.limiteDiarioMasivo,
+        whatsappNumeroOrigen:   cfg.whatsappNumeroOrigen,
+        notifBienvenidaActiva:   cfg.notifBienvenidaActiva,
+        notifPagoRecibidoActiva: cfg.notifPagoRecibidoActiva,
+        notifProrrogaActiva:     cfg.notifProrrogaActiva,
+        notifSuspensionActiva:   cfg.notifSuspensionActiva,
       },
       'Configuración de gateway actualizada',
     );
