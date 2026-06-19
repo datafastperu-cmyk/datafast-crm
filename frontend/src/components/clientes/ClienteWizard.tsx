@@ -471,20 +471,25 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
             </button>
           )}
         </div>
-        <button
-          onClick={() => { setResultado(null); setStep(0); setS1(null); setS2(null); setS3(null); }}
-          className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2"
-        >
-          Registrar otro abonado
-        </button>
-        {onClose && (
+        <div className="flex items-center justify-center gap-4">
           <button
-            onClick={onClose}
+            onClick={() => { setResultado(null); setStep(0); setS1(null); setS2(null); setS3(null); }}
             className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2"
           >
-            Cerrar
+            Registrar otro abonado
           </button>
-        )}
+          {onClose && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <button
+                onClick={onClose}
+                className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                Cerrar
+              </button>
+            </>
+          )}
+        </div>
       </div>
     );
   }
