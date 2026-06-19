@@ -1387,7 +1387,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {routerId
             ? <><strong>Plan requerido:</strong> selecciona un plan de internet para continuar con el router configurado.</>
-            : <>Sin plan seleccionado, <strong>NO se creará el servicio de internet</strong> — el abonado quedará pendiente de activación.</>
+            : <><strong>Seleccionar un Router es Obligatorio</strong> — sin router asignado no se creará el contrato de servicio.</>
           }
         </div>
       )}
