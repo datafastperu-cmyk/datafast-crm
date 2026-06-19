@@ -661,9 +661,6 @@ export class ClientesService {
         .catch((e) => this.logger.error(`onboarding: recalc tipo_servicio failed: ${e?.message}`));
     }
 
-    // Emitir bienvenida si el cliente tiene WhatsApp
-    this.emitirBienvenidaSiAplica(cliente, user.empresaId);
-
     const clienteFinal = await this.findOne(cliente.id, user.empresaId);
     return { cliente: clienteFinal, contrato };
   }
