@@ -7,7 +7,7 @@ import { z }           from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Loader2, FileText, Receipt, Hash, BadgeDollarSign,
-  Calendar, Clock, AlertCircle, TrendingUp, FileCheck,
+  TrendingUp, FileCheck,
 } from 'lucide-react';
 
 import { configApi, type UpdateEmpresaDto, type FacturacionResumen } from '@/lib/api/configuracion';
@@ -47,8 +47,6 @@ const schema = z.object({
   tipoComprobanteDefault: z.string().min(1),
   igvRate:                z.coerce.number().min(0).max(1),
   moneda:                 z.string().length(3),
-  diaFacturacion:         z.coerce.number().int().min(1).max(28),
-  diasGraciaCorte:        z.coerce.number().int().min(0).max(30),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -75,7 +73,7 @@ export default function FacturacionConfigPage() {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      igvRate: 0.18, diasGraciaCorte: 5, diaFacturacion: 1,
+      igvRate: 0.18,
       serieBoleta: 'B001', serieFactura: 'F001',
       moneda: 'PEN', tipoComprobanteDefault: 'boleta',
     },
@@ -238,40 +236,6 @@ export default function FacturacionConfigPage() {
                 Ingresa el decimal: 0.18 = 18%, 0.19 = 19%, 0.12 = 12%
               </p>
             </Field>
-          </div>
-        </Card>
-
-        {/* ── Ciclo de cobranza ────────────────────────────────── */}
-        <Card title="Ciclo de cobranza" icon={<Calendar className="w-4 h-4" />}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Día de facturación (1-28)" error={errors.diaFacturacion?.message}>
-              <input
-                type="number" min={1} max={28}
-                {...register('diaFacturacion')}
-                className={inp(!!errors.diaFacturacion)}
-              />
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Día del mes en que el sistema genera comprobantes automáticamente
-              </p>
-            </Field>
-            <Field label="Días de gracia antes del corte" error={errors.diasGraciaCorte?.message}>
-              <input
-                type="number" min={0} max={30}
-                {...register('diasGraciaCorte')}
-                className={inp(!!errors.diasGraciaCorte)}
-              />
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Tolerancia tras el vencimiento. 0 = corte inmediato al vencer
-              </p>
-            </Field>
-          </div>
-
-          <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-blue-50 border border-blue-100 dark:bg-blue-950/30 dark:border-blue-900">
-            <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-            <p className="text-xs text-blue-700 dark:text-blue-300">
-              Los horarios de ejecución automática (facturación, corte, recordatorios) se configuran en{' '}
-              <a href="/configuracion/crontab" className="underline font-medium">Crontab</a>.
-            </p>
           </div>
         </Card>
 
