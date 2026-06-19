@@ -409,10 +409,12 @@ export class SistemaService {
 
   async getNotifLogs(
     empresaId: string,
-    page    = 1,
-    limit   = 20,
-    estado?: string,
-    tipo?:   string,
+    page      = 1,
+    limit     = 20,
+    estado?:   string,
+    tipo?:     string,
+    sortBy?:   string,
+    sortOrder?: 'ASC' | 'DESC',
   ): Promise<{ items: any[]; total: number }> {
     const offset = (page - 1) * limit;
     const conds: string[] = [`nl.empresa_id = $1`];
@@ -420,6 +422,18 @@ export class SistemaService {
 
     if (estado) { params.push(estado);  conds.push(`nl.estado_entrega = $${params.length}`); }
     if (tipo)   { params.push(tipo);    conds.push(`nl.tipo_template   = $${params.length}`); }
+
+    const allowedSort: Record<string, string> = {
+      createdAt:      'nl.created_at',
+      sentAt:         'nl.sent_at',
+      estadoEntrega:  'nl.estado_entrega',
+      tipoTemplate:   'nl.tipo_template',
+      proveedor:      'nl.proveedor',
+      telefono:       'nl.telefono',
+      clienteNombre:  'cl.nombre_completo',
+    };
+    const sortCol = allowedSort[sortBy ?? ''] ?? 'nl.created_at';
+    const sortDir = sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
     const where = conds.join(' AND ');
 
@@ -441,7 +455,7 @@ export class SistemaService {
        LEFT JOIN contratos co ON co.id = nl.contrato_id AND co.deleted_at IS NULL
        LEFT JOIN clientes  cl ON cl.id = co.cliente_id  AND cl.deleted_at IS NULL
        WHERE ${where}
-       ORDER BY nl.created_at DESC
+       ORDER BY ${sortCol} ${sortDir}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );

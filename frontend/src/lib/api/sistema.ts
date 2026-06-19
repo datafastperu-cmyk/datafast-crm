@@ -96,7 +96,7 @@ export const sistemaApi = {
   updateWhatsAppConfig: (dto: { token?: string; phoneId?: string; businessId?: string }) =>
     api.patch<{ data: WhatsAppConfig }>('/admin/sistema/whatsapp-config', dto).then(r => r.data.data),
 
-  getNotifLogs: (params: { page?: number; limit?: number; estado?: string; tipo?: string }) =>
+  getNotifLogs: (params: { page?: number; limit?: number; estado?: string; tipo?: string; sortBy?: string; sortOrder?: 'ASC' | 'DESC' }) =>
     api.get<{ data: { items: NotifLog[]; total: number } }>('/admin/sistema/notif-logs', { params })
        .then(r => r.data.data),
 

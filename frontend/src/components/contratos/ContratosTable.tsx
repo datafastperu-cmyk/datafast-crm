@@ -2,6 +2,7 @@
 
 import { Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import { cn, formatPEN, formatDate, labelContrato } from '@/lib/utils';
+import { SortableHeader } from '@/components/ui/SortableHeader';
 import type { Contrato } from '@/types';
 
 // ─── Badge de estado ──────────────────────────────────────────
@@ -31,9 +32,12 @@ interface Props {
   contratos:   Contrato[];
   loading:     boolean;
   onRowClick:  (c: Contrato) => void;
+  sortField?:  string;
+  sortOrder?:  'ASC' | 'DESC';
+  onSort:      (field: string) => void;
 }
 
-export function ContratosTable({ contratos, loading, onRowClick }: Props) {
+export function ContratosTable({ contratos, loading, onRowClick, sortField, sortOrder, onSort }: Props) {
   if (loading) {
     return (
       <div className="p-6 space-y-3">
@@ -66,14 +70,14 @@ export function ContratosTable({ contratos, loading, onRowClick }: Props) {
       <table className="data-table">
         <thead>
           <tr>
-            <th>N° Contrato</th>
+            <SortableHeader field="numeroContrato" label="N° Contrato" sortField={sortField} sortOrder={sortOrder} onSort={onSort} />
             <th>Cliente</th>
             <th>Plan</th>
             <th>IP / PPPoE</th>
-            <th>Estado</th>
-            <th>Precio</th>
-            <th>Deuda</th>
-            <th>Inicio</th>
+            <SortableHeader field="estado"       label="Estado"  sortField={sortField} sortOrder={sortOrder} onSort={onSort} />
+            <SortableHeader field="precioFinal"  label="Precio"  sortField={sortField} sortOrder={sortOrder} onSort={onSort} />
+            <SortableHeader field="deudaTotal"   label="Deuda"   sortField={sortField} sortOrder={sortOrder} onSort={onSort} />
+            <SortableHeader field="fechaInicio"  label="Inicio"  sortField={sortField} sortOrder={sortOrder} onSort={onSort} />
           </tr>
         </thead>
         <tbody>

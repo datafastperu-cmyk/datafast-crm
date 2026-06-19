@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MessageSquare, Loader2, RefreshCw,
   ChevronLeft, ChevronRight,
   CheckCircle2, AlertCircle, Clock, CheckCheck, Truck,
   RotateCcw, Trash2, Eye, X, Settings,
+  ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 import { sistemaApi, type NotifLog } from '@/lib/api/sistema';
 import { cn } from '@/lib/utils';
@@ -70,10 +71,24 @@ function EstadoBadge({ estado, error }: { estado: NotifLog['estado_entrega']; er
 type PreviewData = { tipo: string; telefono: string; cliente: string; texto: string };
 
 export default function MensajesEnviadosPage() {
-  const [page,    setPage]    = useState(1);
-  const [estado,  setEstado]  = useState('');
-  const [tipo,    setTipo]    = useState('');
-  const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [page,      setPage]      = useState(1);
+  const [estado,    setEstado]    = useState('');
+  const [tipo,      setTipo]      = useState('');
+  const [sortBy,    setSortBy]    = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+  const [preview,   setPreview]   = useState<PreviewData | null>(null);
+
+  const handleSort = useCallback((field: string) => {
+    setSortBy((prev) => {
+      if (prev === field) {
+        setSortOrder((d) => d === 'ASC' ? 'DESC' : 'ASC');
+        return prev;
+      }
+      setSortOrder('ASC');
+      return field;
+    });
+    setPage(1);
+  }, []);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -92,8 +107,8 @@ export default function MensajesEnviadosPage() {
   }, [settingsOpen]);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['notif-logs', page, estado, tipo],
-    queryFn:  () => sistemaApi.getNotifLogs({ page, limit: LIMIT, estado: estado || undefined, tipo: tipo || undefined }),
+    queryKey: ['notif-logs', page, estado, tipo, sortBy, sortOrder],
+    queryFn:  () => sistemaApi.getNotifLogs({ page, limit: LIMIT, estado: estado || undefined, tipo: tipo || undefined, sortBy, sortOrder }),
     staleTime: 30_000,
   });
 
@@ -307,13 +322,29 @@ export default function MensajesEnviadosPage() {
         ) : (
           <>
             <div className="hidden md:grid grid-cols-[1fr_108px_140px_108px_108px_80px_108px_80px] gap-2 px-6 py-2.5 border-b border-border text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-              <span>Cliente / Contrato</span>
-              <span>WhatsApp</span>
-              <span>Tipo de alerta</span>
-              <span>Encolado</span>
-              <span>Enviado</span>
-              <span>Servicio</span>
-              <span>Estado</span>
+              {([
+                { field: 'clienteNombre', label: 'Cliente / Contrato' },
+                { field: 'telefono',      label: 'WhatsApp' },
+                { field: 'tipoTemplate',  label: 'Tipo de alerta' },
+                { field: 'createdAt',     label: 'Encolado' },
+                { field: 'sentAt',        label: 'Enviado' },
+                { field: 'proveedor',     label: 'Servicio' },
+                { field: 'estadoEntrega', label: 'Estado' },
+              ] as const).map(({ field, label }) => (
+                <span
+                  key={field}
+                  onClick={() => handleSort(field)}
+                  className="inline-flex items-center gap-0.5 cursor-pointer select-none group hover:text-foreground transition-colors"
+                >
+                  {label}
+                  {sortBy === field
+                    ? sortOrder === 'ASC'
+                      ? <ChevronUp   className="w-2.5 h-2.5 text-primary flex-shrink-0" />
+                      : <ChevronDown className="w-2.5 h-2.5 text-primary flex-shrink-0" />
+                    : <ChevronsUpDown className="w-2.5 h-2.5 text-muted-foreground/40 group-hover:text-muted-foreground flex-shrink-0" />
+                  }
+                </span>
+              ))}
               <span>Acciones</span>
             </div>
             <div className="divide-y divide-border">

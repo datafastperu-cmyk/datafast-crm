@@ -13,8 +13,8 @@ export interface FiltrosFactura {
   fechaHasta?:  string;
   page?:        number;
   limit?:       number;
-  orderBy?:     string;
-  order?:       'ASC' | 'DESC';
+  sortBy?:      string;
+  sortOrder?:   'ASC' | 'DESC';
 }
 
 export interface FiltrosPago {

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, RefreshCw, CheckCircle2, Trash2, Repeat2, X, CreditCard, AlertCircle } from 'lucide-react';
+import { Plus, RefreshCw, CheckCircle2, Trash2, Repeat2, X, CreditCard, AlertCircle, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
 import {
   finanzasOpexApi,
@@ -55,6 +55,24 @@ export function GastosContent() {
   const [showModal,    setShowModal]    = useState(false);
   const [form,         setForm]         = useState<CreateEgresoIngresoDto>(FORM_EMPTY);
   const [pendienteId,  setPendienteId]  = useState<string | null>(null);
+  const [sortField,    setSortField]    = useState<string>('fechaRegistro');
+  const [sortDir,      setSortDir]      = useState<'ASC' | 'DESC'>('DESC');
+
+  function handleSort(field: string) {
+    if (sortField === field) {
+      setSortDir((d) => d === 'ASC' ? 'DESC' : 'ASC');
+    } else {
+      setSortField(field);
+      setSortDir('ASC');
+    }
+  }
+
+  function SortIcon({ field }: { field: string }) {
+    if (sortField !== field) return <ChevronsUpDown className="w-3 h-3 text-muted-foreground/40 group-hover:text-muted-foreground flex-shrink-0" />;
+    return sortDir === 'ASC'
+      ? <ChevronUp   className="w-3 h-3 text-primary flex-shrink-0" />
+      : <ChevronDown className="w-3 h-3 text-primary flex-shrink-0" />;
+  }
 
   // ── Queries ────────────────────────────────────────────────
   const filtros = { tipo: tab || undefined, page: 1, limit: 50 };
@@ -140,7 +158,22 @@ export function GastosContent() {
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
-  const rows = data?.data ?? [];
+  const rawRows = data?.data ?? [];
+
+  const rows = useMemo(() => {
+    const sorted = [...rawRows].sort((a, b) => {
+      let av: any = a[sortField as keyof typeof a];
+      let bv: any = b[sortField as keyof typeof b];
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av === null || av === undefined) av = '';
+      if (bv === null || bv === undefined) bv = '';
+      if (av < bv) return sortDir === 'ASC' ? -1 : 1;
+      if (av > bv) return sortDir === 'ASC' ?  1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [rawRows, sortField, sortDir]);
 
   function diasLabel(dias: number): { text: string; cls: string } {
     if (dias > 1)  return { text: `Vence en ${dias} días`,                cls: 'text-amber-400' };
@@ -296,13 +329,23 @@ export function GastosContent() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Fecha</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tipo</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Categoría</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Descripción</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Monto</th>
-                <th className="px-4 py-3 text-center font-medium text-muted-foreground">Estado</th>
-                <th className="px-4 py-3 text-center font-medium text-muted-foreground">Rec.</th>
+                {[
+                  { field: 'fechaRegistro', label: 'Fecha',      cls: 'px-4 py-3 text-left font-medium text-muted-foreground text-sm' },
+                  { field: 'tipo',          label: 'Tipo',        cls: 'px-4 py-3 text-left font-medium text-muted-foreground text-sm' },
+                  { field: 'categoria',     label: 'Categoría',   cls: 'px-4 py-3 text-left font-medium text-muted-foreground text-sm' },
+                ].map(({ field, label, cls }) => (
+                  <th key={field} onClick={() => handleSort(field)} className={cn(cls, 'cursor-pointer select-none group')}>
+                    <span className="inline-flex items-center gap-1">{label}<SortIcon field={field} /></span>
+                  </th>
+                ))}
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-sm">Descripción</th>
+                <th onClick={() => handleSort('monto')} className="px-4 py-3 text-right font-medium text-muted-foreground text-sm cursor-pointer select-none group">
+                  <span className="inline-flex items-center gap-1 justify-end w-full">Monto<SortIcon field="monto" /></span>
+                </th>
+                <th onClick={() => handleSort('estado')} className="px-4 py-3 text-center font-medium text-muted-foreground text-sm cursor-pointer select-none group">
+                  <span className="inline-flex items-center gap-1 justify-center w-full">Estado<SortIcon field="estado" /></span>
+                </th>
+                <th className="px-4 py-3 text-center font-medium text-muted-foreground text-sm">Rec.</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>

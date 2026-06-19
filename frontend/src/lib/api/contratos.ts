@@ -21,8 +21,8 @@ export interface FiltrosContrato {
   aprovisionado?: boolean;
   page?:          number;
   limit?:         number;
-  orderBy?:       string;
-  order?:         'ASC' | 'DESC';
+  sortBy?:        string;
+  sortOrder?:     'ASC' | 'DESC';
 }
 
 // ─── DTOs ─────────────────────────────────────────────────────

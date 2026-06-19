@@ -93,17 +93,21 @@ export class SistemaController {
   @ApiOperation({ summary: 'Historial de notificaciones enviadas' })
   async getNotifLogs(
     @CurrentUser() user: JwtPayload,
-    @Query('page')   page?:   string,
-    @Query('limit')  limit?:  string,
-    @Query('estado') estado?: string,
-    @Query('tipo')   tipo?:   string,
+    @Query('page')       page?:       string,
+    @Query('limit')      limit?:      string,
+    @Query('estado')     estado?:     string,
+    @Query('tipo')       tipo?:       string,
+    @Query('sortBy')     sortBy?:     string,
+    @Query('sortOrder')  sortOrder?:  string,
   ) {
     const result = await this.sistema.getNotifLogs(
       user.empresaId,
       page  ? parseInt(page,  10) : 1,
       limit ? parseInt(limit, 10) : 20,
-      estado || undefined,
-      tipo   || undefined,
+      estado    || undefined,
+      tipo      || undefined,
+      sortBy    || undefined,
+      (sortOrder === 'ASC' ? 'ASC' : sortOrder === 'DESC' ? 'DESC' : undefined),
     );
     return ApiResponse.ok(result);
   }

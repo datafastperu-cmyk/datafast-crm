@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { facturacionApi, type FiltrosFactura } from '@/lib/api/facturacion';
+import { SortableHeader } from '@/components/ui/SortableHeader';
 import { useToast }   from '@/components/ui/toaster';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn, formatPEN, formatDate, parseApiError } from '@/lib/utils';
@@ -46,7 +47,7 @@ export function FacturacionContent() {
   const router    = useRouter();
   const { toast } = useToast();
 
-  const [filtros, setFiltros]   = useState<FiltrosFactura>({ page: 1, limit: 25 });
+  const [filtros, setFiltros]   = useState<FiltrosFactura>({ page: 1, limit: 25, sortBy: 'createdAt', sortOrder: 'DESC' });
   const [searchInput, setSearch] = useState('');
   const searchDebounced          = useDebounce(searchInput, 400);
   const [showGenerar, setShowGenerar] = useState(false);
@@ -56,6 +57,15 @@ export function FacturacionContent() {
 
   const upd = useCallback(<K extends keyof FiltrosFactura>(k: K, v: FiltrosFactura[K]) =>
     setFiltros((f) => ({ ...f, [k]: v, page: 1 })), []);
+
+  const handleSort = useCallback((field: string) => {
+    setFiltros((f) => ({
+      ...f,
+      sortBy:    field,
+      sortOrder: f.sortBy === field && f.sortOrder === 'ASC' ? 'DESC' : 'ASC',
+      page:      1,
+    }));
+  }, []);
 
   const params = { ...filtros, search: searchDebounced || undefined };
 
@@ -229,12 +239,12 @@ export function FacturacionContent() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>N° Comprobante</th>
+                  <SortableHeader field="correlativo"      label="N° Comprobante" sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} />
                   <th>Abonado</th>
-                  <th>Período</th>
-                  <th>Vencimiento</th>
-                  <th>Estado</th>
-                  <th>Total</th>
+                  <SortableHeader field="fechaEmision"     label="Período"        sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} />
+                  <SortableHeader field="fechaVencimiento" label="Vencimiento"    sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} />
+                  <SortableHeader field="estado"           label="Estado"         sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} />
+                  <SortableHeader field="total"            label="Total"          sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} />
                   <th>Saldo</th>
                   <th>Acciones</th>
                 </tr>

@@ -7,6 +7,7 @@ import {
   Search, Plus, RefreshCw, Ticket, AlertTriangle,
   Clock, CheckCircle, XCircle, ChevronRight, MessageSquare,
 } from 'lucide-react';
+import { SortableHeader } from '@/components/ui/SortableHeader';
 
 import {
   ticketsApi,
@@ -56,6 +57,15 @@ export function TicketsContent({ defaultEstado = '', title = 'Tickets' }: Props)
 
   const upd = useCallback(<K extends keyof FiltrosTicket>(k: K, v: FiltrosTicket[K]) =>
     setFiltros((f) => ({ ...f, [k]: v, page: 1 })), []);
+
+  const handleSort = useCallback((field: string) => {
+    setFiltros((f) => ({
+      ...f,
+      sortBy:    field,
+      sortOrder: f.sortBy === field && f.sortOrder === 'ASC' ? 'DESC' : 'ASC',
+      page:      1,
+    }));
+  }, []);
 
   const params: FiltrosTicket = {
     ...filtros,
@@ -188,13 +198,13 @@ export function TicketsContent({ defaultEstado = '', title = 'Tickets' }: Props)
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Ticket</th>
+                  <SortableHeader field="numeroTicket"  label="Ticket"   sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider" />
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Cliente</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Categoría</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Prioridad</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Estado</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">SLA</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Fecha</th>
+                  <SortableHeader field="prioridad"     label="Prioridad" sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider" />
+                  <SortableHeader field="estado"        label="Estado"    sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider" />
+                  <SortableHeader field="fechaLimiteSla" label="SLA"      sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider" />
+                  <SortableHeader field="createdAt"     label="Fecha"     sortField={filtros.sortBy} sortOrder={filtros.sortOrder} onSort={handleSort} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider" />
                   <th className="w-8" />
                 </tr>
               </thead>

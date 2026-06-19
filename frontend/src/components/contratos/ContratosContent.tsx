@@ -30,6 +30,15 @@ export function ContratosContent() {
   const upd = useCallback(<K extends keyof FiltrosContrato>(k: K, v: FiltrosContrato[K]) =>
     setFiltros((f) => ({ ...f, [k]: v, page: 1 })), []);
 
+  const handleSort = useCallback((field: string) => {
+    setFiltros((f) => ({
+      ...f,
+      sortBy:    field,
+      sortOrder: f.sortBy === field && f.sortOrder === 'ASC' ? 'DESC' : 'ASC',
+      page:      1,
+    }));
+  }, []);
+
   const params: FiltrosContrato = {
     ...filtros,
     search: searchDebounced || undefined,
@@ -157,6 +166,9 @@ export function ContratosContent() {
           contratos={contratos}
           loading={isLoading}
           onRowClick={(c) => router.push(`/contratos/${c.id}`)}
+          sortField={filtros.sortBy}
+          sortOrder={filtros.sortOrder}
+          onSort={handleSort}
         />
 
         {/* Paginación */}
