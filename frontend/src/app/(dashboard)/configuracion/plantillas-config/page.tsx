@@ -309,7 +309,6 @@ export default function PlantillasConfigPage() {
               </Field>
               <Field label="Tipo impuesto">
                 <select className={selectCls} value={facturacion.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
-                  <option value="ninguno">Ninguno</option>
                   <option value="incluido">Impuestos incluidos</option>
                   <option value="mas_impuestos">Más impuestos</option>
                 </select>
