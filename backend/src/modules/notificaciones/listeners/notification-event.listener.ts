@@ -170,7 +170,7 @@ export class NotificationEventListener implements OnModuleInit {
       empresaId:  event.empresaId,
       contratoId: event.contratoId,
       clienteId:  event.clienteId,
-    });
+    }, JOB_OPTIONS.CONFIRMACION_PAGO);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -197,7 +197,7 @@ export class NotificationEventListener implements OnModuleInit {
       empresaId:  event.empresaId,
       contratoId: event.contratoId,
       clienteId:  event.clienteId,
-    });
+    }, JOB_OPTIONS.SUSPENSION);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -274,7 +274,7 @@ export class NotificationEventListener implements OnModuleInit {
       empresaId:  event.empresaId,
       contratoId: event.contratoId,
       clienteId:  event.clienteId,
-    });
+    }, JOB_OPTIONS.AVISO_PAGO);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -302,7 +302,7 @@ export class NotificationEventListener implements OnModuleInit {
       empresaId:  event.empresaId,
       contratoId: event.contratoId,
       clienteId:  event.clienteId,
-    });
+    }, JOB_OPTIONS.AVISO_PAGO);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -324,7 +324,7 @@ export class NotificationEventListener implements OnModuleInit {
         dias_restantes: event.dias_restantes,
       },
       empresaId:  event.empresaId,
-    });
+    }, JOB_OPTIONS.GASTO_RECURRENTE);
   }
 
   // ═══════════════════════════════════════════════════════════

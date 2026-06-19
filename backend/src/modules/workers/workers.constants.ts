@@ -164,8 +164,14 @@ export function calcularDelayGoteo(index: number): number {
 }
 
 // ─── Opciones de job por defecto ──────────────────────────
+// Prioridades Bull (menor número = mayor prioridad):
+//   1  → ALERTA          Monitoreo: router/antena caído/conectado
+//   2  → SUSPENSION      Servicio suspendido por deuda
+//   3  → AVISO_PAGO      Avisos de pago vencimiento (#1, #2, #3)
+//   4  → CONFIRMACION_PAGO  Pago registrado / confirmado
+//   5  → GASTO_RECURRENTE   Alertas de gastos recurrentes
+//  10  → NOTIFICACION    Resto (bienvenida, factura emitida, reactivación…)
 export const JOB_OPTIONS = {
-  // Alertas internas (ONU_OFFLINE, ALERTA_EGRESO): prioridad máxima
   ALERTA: {
     priority: 1,
     attempts: 3,
@@ -173,15 +179,44 @@ export const JOB_OPTIONS = {
     removeOnComplete: 200,
     removeOnFail:     500,
   },
-  // Jobs críticos (suspensión, reactivación): 3 reintentos con backoff exponencial
+  SUSPENSION: {
+    priority: 2,
+    attempts: 2,
+    backoff:  { type: 'fixed' as const, delay: 60_000 },
+    removeOnComplete: 200,
+    removeOnFail:     200,
+  },
+  AVISO_PAGO: {
+    priority: 3,
+    attempts: 2,
+    backoff:  { type: 'fixed' as const, delay: 60_000 },
+    removeOnComplete: 200,
+    removeOnFail:     200,
+  },
+  CONFIRMACION_PAGO: {
+    priority: 4,
+    attempts: 2,
+    backoff:  { type: 'fixed' as const, delay: 60_000 },
+    removeOnComplete: 200,
+    removeOnFail:     200,
+  },
+  GASTO_RECURRENTE: {
+    priority: 5,
+    attempts: 2,
+    backoff:  { type: 'fixed' as const, delay: 60_000 },
+    removeOnComplete: 200,
+    removeOnFail:     200,
+  },
+  // Jobs críticos de aprovisionamiento: 3 reintentos con backoff exponencial
   CRITICO: {
     attempts:  3,
     backoff:   { type: 'exponential' as const, delay: 30_000 },
     removeOnComplete: 500,
     removeOnFail:     1000,
   },
-  // Jobs de notificación: 2 reintentos, no crítico si falla
+  // Notificaciones informativas: bienvenida, factura emitida, reactivación, etc.
   NOTIFICACION: {
+    priority: 10,
     attempts:  2,
     backoff:   { type: 'fixed' as const, delay: 60_000 },
     removeOnComplete: 200,
