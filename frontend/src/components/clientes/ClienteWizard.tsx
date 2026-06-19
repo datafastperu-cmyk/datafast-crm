@@ -712,6 +712,7 @@ const S2_RECORDATORIO_DESPUES = Array.from({ length: 25 }, (_, i) => ({
   value: String(i + 1), label: i === 0 ? '1 Día Después' : `${i + 1} Días Después`,
 }));
 const DEF_FACT: FacturacionConfig = {
+  tipoComprobante: 'comprobante_interno',
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   plantillaAvisoFactura: '',
   esquemaImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
