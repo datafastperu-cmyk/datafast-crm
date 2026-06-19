@@ -47,17 +47,25 @@ interface Resumen {
 // ─── API ──────────────────────────────────────────────────────
 const api = {
   getResumen:     (): Promise<Resumen> =>
-    apiClient.get('/facturacion-config').then(r => r.data),
+    apiClient.get('/facturacion-config').then(r => {
+      const d = r.data.data;
+      if (d?.configuracion) {
+        d.configuracion.igvRate       = parseFloat(d.configuracion.igvRate)       || 0;
+        d.configuracion.montoReconexion = parseFloat(d.configuracion.montoReconexion) || 0;
+        d.configuracion.porcentajeMora  = parseFloat(d.configuracion.porcentajeMora)  || 0;
+      }
+      return d;
+    }),
   updateGlobal:   (data: Partial<ConfiguracionFacturacion>) =>
-    apiClient.patch('/facturacion-config/global', data).then(r => r.data),
+    apiClient.patch('/facturacion-config/global', data).then(r => r.data.data),
   crearTipo:      (data: Omit<ComprobanteConfig, 'id' | 'correlativoActual'>) =>
-    apiClient.post('/facturacion-config/comprobantes', data).then(r => r.data),
+    apiClient.post('/facturacion-config/comprobantes', data).then(r => r.data.data),
   actualizarTipo: (id: string, data: Partial<ComprobanteConfig>) =>
-    apiClient.patch(`/facturacion-config/comprobantes/${id}`, data).then(r => r.data),
+    apiClient.patch(`/facturacion-config/comprobantes/${id}`, data).then(r => r.data.data),
   eliminarTipo:   (id: string) =>
-    apiClient.delete(`/facturacion-config/comprobantes/${id}`).then(r => r.data),
+    apiClient.delete(`/facturacion-config/comprobantes/${id}`).then(r => r.data.data),
   setDefault:     (id: string) =>
-    apiClient.put(`/facturacion-config/comprobantes/${id}/default`).then(r => r.data),
+    apiClient.put(`/facturacion-config/comprobantes/${id}/default`).then(r => r.data.data),
 };
 
 // ─── Monedas LatAm ────────────────────────────────────────────
