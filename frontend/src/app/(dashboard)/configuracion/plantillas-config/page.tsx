@@ -14,7 +14,7 @@ const DEFAULT_FACTURACION: FacturacionConfig = {
   tipoComprobante: 'comprobante_interno',
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   plantillaAvisoFactura: '',
-  tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
+  esquemaImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
   aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
   impuesto1: 0,
 };
@@ -308,8 +308,8 @@ export default function PlantillasConfigPage() {
                 </select>
               </Field>
               {(facturacion.tipoComprobante ?? 'comprobante_interno') !== 'comprobante_interno' && (
-                <Field label="Tipo impuesto">
-                  <select className={selectCls} value={facturacion.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
+                <Field label="Esquema de impuesto">
+                  <select className={selectCls} value={facturacion.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
                     <option value="incluido">Impuestos incluidos</option>
                     <option value="mas_impuestos">Más impuestos</option>
                   </select>

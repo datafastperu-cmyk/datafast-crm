@@ -6,7 +6,7 @@ export interface FacturacionConfig {
   diaPago:          string;
   crearFactura:     string;
   plantillaAvisoFactura?: string;
-  tipoImpuesto:     string;
+  esquemaImpuesto:  string;
   diasGracia:       string;
   aplicarCorte:     string;
   aplicarMora:      boolean;

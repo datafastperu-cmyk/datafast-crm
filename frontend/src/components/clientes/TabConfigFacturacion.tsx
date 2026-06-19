@@ -14,7 +14,7 @@ import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantill
 const DEF_FACT: FacturacionConfig = {
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   plantillaAvisoFactura: '',
-  tipoImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
+  esquemaImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
   aplicarMora: false, montoMora: 0, aplicarReconexion: false, montoReconexion: 0,
   impuesto1: 0,
 };
@@ -263,8 +263,8 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 {plantillasMsg.map(p => <option key={p.codigo} value={p.codigo}>{p.nombre}</option>)}
               </select>
             </Field>
-            <Field label="Tipo impuesto">
-              <select className={selectCls} value={facturacion.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
+            <Field label="Esquema de impuesto">
+              <select className={selectCls} value={facturacion.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
                 <option value="ninguno">Ninguno</option>
                 <option value="incluido">Impuestos incluidos</option>
                 <option value="mas_impuestos">Más impuestos</option>
