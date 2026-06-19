@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException, 
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { NOTIFICATION_EVENTS } from '../notificaciones/events/notification.events';
 import * as crypto from 'crypto';
 import { ContratoRepository } from './repositories/contrato.repository';
 import { PlanesService } from '../planes/planes.service';
@@ -55,6 +57,7 @@ export class ContratosService {
     private readonly mikrotikSvc: MikrotikService,
     private readonly smartoltApi: SmartoltApiService,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly events: EventEmitter2,
   ) {}
 
   async create(dto: CreateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
@@ -462,6 +465,27 @@ export class ContratosService {
     await this.contratoRepo.update(id, upd);
     await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:anterior, estadoNuevo:dto.estado, motivo:dto.motivo, usuarioId:user.sub, automatico });
     await this.auditoria.logUpdate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:id, descripcion:`Estado: ${anterior} → ${dto.estado}`, req });
+
+    if (dto.estado === EstadoContrato.SUSPENDIDO) {
+      this.dataSource.query(
+        `SELECT cl.whatsapp, cl.telefono, cl.nombre_completo, em.razon_social AS empresa_nombre
+         FROM clientes cl JOIN empresas em ON em.id = $2
+         WHERE cl.id = $1 AND cl.deleted_at IS NULL`,
+        [contrato.clienteId, user.empresaId],
+      ).then(([cl]: any[]) => {
+        const tel = cl?.whatsapp || cl?.telefono;
+        if (!tel) return;
+        this.events.emit(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, {
+          telefono:      tel,
+          clienteNombre: cl.nombre_completo,
+          deudaTotal:    String(contrato.deudaTotal ?? 0),
+          nombreEmpresa: cl.empresa_nombre,
+          empresaId:     user.empresaId,
+          contratoId:    id,
+          clienteId:     contrato.clienteId,
+        });
+      }).catch((e: any) => this.logger.warn(`cambiarEstado: no se pudo emitir notif suspensión: ${e?.message}`));
+    }
 
     if (dto.estado === EstadoContrato.BAJA_DEFINITIVA) {
       await this.contratoRepo.softDelete(id, user.empresaId);
