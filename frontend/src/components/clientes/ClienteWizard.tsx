@@ -1043,6 +1043,10 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     : [];
 
   const onFormSubmit = async (data: S3) => {
+    if (data.routerId && !data.perfilId?.trim()) {
+      setError('perfilId', { message: 'Debes seleccionar un plan de internet' });
+      return;
+    }
     if (data.perfilId && !data.routerId?.trim()) {
       setError('routerId', { message: 'Debes seleccionar un router cuando se elige un plan de servicio' });
       return;
@@ -1283,7 +1287,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         <div className="space-y-4">
           <Section title="Plan de Internet" icon={Package}>
             {/* Perfil Internet */}
-            <Field label="Perfil Internet">
+            <Field label="Perfil Internet" error={s3Errors.perfilId?.message}>
               <select {...register('perfilId')} className={INPUT_CLS}>
                 <option value="">— Seleccionar plan —</option>
                 {planes.map((p: any) => (
@@ -1373,11 +1377,18 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
         </div>
       </div>
 
-      {/* Advertencia si no hay plan */}
+      {/* Advertencia / error si no hay plan */}
       {!perfilId && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-sm">
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg border text-sm ${
+          routerId
+            ? 'bg-red-50 border-red-300 dark:bg-red-950/20 dark:border-red-800 text-red-700 dark:text-red-400'
+            : 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400'
+        }`}>
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          Sin plan seleccionado, <strong>NO se creará el servicio de internet</strong> — el abonado quedará pendiente de activación.
+          {routerId
+            ? <><strong>Plan requerido:</strong> selecciona un plan de internet para continuar con el router configurado.</>
+            : <>Sin plan seleccionado, <strong>NO se creará el servicio de internet</strong> — el abonado quedará pendiente de activación.</>
+          }
         </div>
       )}
 
