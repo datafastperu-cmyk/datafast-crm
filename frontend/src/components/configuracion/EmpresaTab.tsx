@@ -24,11 +24,6 @@ const schema = z.object({
   telefonoInformativo:    z.string().optional(),
   email:                  z.string().email('Email inválido').optional().or(z.literal('')),
   websiteUrl:        z.string().url('URL inválida (ej: https://miisp.com)').optional().or(z.literal('')),
-  serieBoleta:       z.string().min(3),
-  serieFactura:      z.string().min(3),
-  igvRate:           z.coerce.number().min(0).max(1),
-  diasGraciaCorte:   z.coerce.number().int().min(0).max(30),
-  diaFacturacion:    z.coerce.number().int().min(1).max(28),
   dominio: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
@@ -49,10 +44,7 @@ export function EmpresaTab() {
     formState: { errors, isDirty },
   } = useForm<FormValues>({
     resolver:      zodResolver(schema),
-    defaultValues: {
-      igvRate: 0.18, diasGraciaCorte: 5, diaFacturacion: 1,
-      serieBoleta: 'B001', serieFactura: 'F001',
-    },
+    defaultValues: {},
   });
 
   useEffect(() => {
@@ -149,27 +141,6 @@ export function EmpresaTab() {
           </Field>
           <Field label="Sitio web" error={errors.websiteUrl?.message} span={2}>
             <input {...register('websiteUrl')} placeholder="https://datafast.pe" className={inp(!!errors.websiteUrl)} />
-          </Field>
-        </div>
-      </Section>
-
-      {/* Facturación */}
-      <Section title="Facturación y cobranza">
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Serie boleta" error={errors.serieBoleta?.message}>
-            <input {...register('serieBoleta')} placeholder="B001" className={cn(inp(!!errors.serieBoleta), 'font-mono')} />
-          </Field>
-          <Field label="Serie factura" error={errors.serieFactura?.message}>
-            <input {...register('serieFactura')} placeholder="F001" className={cn(inp(!!errors.serieFactura), 'font-mono')} />
-          </Field>
-          <Field label="Tasa IGV (0.18 = 18%)" error={errors.igvRate?.message}>
-            <input type="number" step="0.01" min="0" max="1" {...register('igvRate')} className={inp(!!errors.igvRate)} />
-          </Field>
-          <Field label="Día de facturación (1-28)" error={errors.diaFacturacion?.message}>
-            <input type="number" min={1} max={28} {...register('diaFacturacion')} className={inp(!!errors.diaFacturacion)} />
-          </Field>
-          <Field label="Días de gracia antes del corte" error={errors.diasGraciaCorte?.message}>
-            <input type="number" min={0} max={30} {...register('diasGraciaCorte')} className={inp(!!errors.diasGraciaCorte)} />
           </Field>
         </div>
       </Section>

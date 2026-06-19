@@ -17,8 +17,6 @@ export interface Empresa {
   igvRate:           number;
   diasGraciaCorte:   number;
   diaFacturacion:    number;
-  notifWhatsappVencimiento: boolean;
-  notifWhatsappCorte:       boolean;
   dominio?:          string;
   estado:            string;
 }
