@@ -1,11 +1,11 @@
 import {
-  IsString, IsUUID, IsOptional, IsEnum, IsNumber,
+  IsString, IsUUID, IsOptional, IsNumber,
   IsDateString, IsNotEmpty, Min, IsBoolean,
-  IsArray, ValidateNested, IsInt, MaxLength,
+  IsArray, ValidateNested, IsInt, MaxLength, IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
-import { TipoComprobante, EstadoFactura, ItemFactura } from '../entities/factura.entity';
+import { EstadoFactura, ItemFactura } from '../entities/factura.entity';
 import { PaginationDto } from '../../../common/dto/response.dto';
 
 // ─── Item ─────────────────────────────────────────────────────
@@ -31,9 +31,9 @@ export class CreateFacturaDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID()
   contratoId?: string;
 
-  @ApiPropertyOptional({ enum: TipoComprobante, default: TipoComprobante.BOLETA })
-  @IsOptional() @IsEnum(TipoComprobante)
-  tipoComprobante?: TipoComprobante;
+  @ApiPropertyOptional({ description: 'UUID del tipo de comprobante (ComprobanteConfig). Si omitido, se resuelve por jerarquía: cliente → empresa default' })
+  @IsOptional() @IsUUID()
+  comprobanteConfigId?: string;
 
   @ApiProperty({ example: '2024-01-01' }) @IsDateString()
   periodoInicio: string;
@@ -79,9 +79,9 @@ export class GenerarFacturasMensualesDto {
   @IsOptional() @IsUUID()
   contratoId?: string;
 
-  @ApiPropertyOptional({ default: TipoComprobante.BOLETA })
-  @IsOptional() @IsEnum(TipoComprobante)
-  tipoComprobante?: TipoComprobante;
+  @ApiPropertyOptional({ description: 'UUID del tipo de comprobante a usar. Si omitido, se resuelve por config de empresa' })
+  @IsOptional() @IsUUID()
+  comprobanteConfigId?: string;
 }
 
 // ─── Nota de crédito ─────────────────────────────────────────
@@ -104,9 +104,9 @@ export class UpdateFacturaDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID()
   contratoId?: string;
 
-  @ApiPropertyOptional({ enum: TipoComprobante })
-  @IsOptional() @IsEnum(TipoComprobante)
-  tipoComprobante?: TipoComprobante;
+  @ApiPropertyOptional({ description: 'Código del tipo de comprobante' })
+  @IsOptional() @IsString()
+  tipoComprobante?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsDateString()
   periodoInicio?: string;
@@ -159,9 +159,9 @@ export class FilterFacturaDto extends PaginationDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID()
   contratoId?: string;
 
-  @ApiPropertyOptional({ enum: TipoComprobante })
-  @IsOptional() @IsEnum(TipoComprobante)
-  tipoComprobante?: TipoComprobante;
+  @ApiPropertyOptional({ description: 'Código del tipo de comprobante' })
+  @IsOptional() @IsString()
+  tipoComprobante?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString()
   serie?: string;

@@ -22,7 +22,6 @@ import {
   PayloadGenerarFacturasEmpresa,
   PayloadGenerarFacturaContrato,
 } from './workers.constants';
-import { TipoComprobante } from '../facturacion/entities/factura.entity';
 
 // ─── Resultado de generación ──────────────────────────────────
 interface ResultadoGeneracion {

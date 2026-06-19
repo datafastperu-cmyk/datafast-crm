@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Factura, EstadoFactura, TipoComprobante } from '../entities/factura.entity';
+import { Factura, EstadoFactura } from '../entities/factura.entity';
 import { FilterFacturaDto } from '../dto/factura.dto';
 import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
 

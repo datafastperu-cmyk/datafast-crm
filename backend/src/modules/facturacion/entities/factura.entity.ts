@@ -1,14 +1,8 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
+import { ItemFacturaExtendido } from './comprobante-config.entity';
 
-export enum TipoComprobante {
-  BOLETA         = 'boleta',
-  FACTURA        = 'factura',
-  NOTA_CREDITO   = 'nota_credito',
-  NOTA_DEBITO    = 'nota_debito',
-  RECIBO_INTERNO = 'recibo_interno',
-}
-
+// ─── Estados de factura ───────────────────────────────────────
 export enum EstadoFactura {
   BORRADOR       = 'borrador',
   EMITIDA        = 'emitida',
@@ -19,13 +13,8 @@ export enum EstadoFactura {
   EN_COBRANZA    = 'en_cobranza',
 }
 
-export interface ItemFactura {
-  descripcion:    string;
-  cantidad:       number;
-  precioUnitario: number;
-  descuento?:     number;
-  subtotal:       number;
-}
+// Re-export para compatibilidad con código existente
+export type ItemFactura = ItemFacturaExtendido;
 
 // ─── Entidad principal ────────────────────────────────────────
 @Entity('facturas')
@@ -33,6 +22,7 @@ export interface ItemFactura {
 @Index(['empresaId', 'clienteId', 'fechaEmision'])
 @Index(['empresaId', 'fechaEmision'])
 @Index(['contratoId'])
+@Index(['comprobanteConfigId'])
 export class Factura extends BaseModel {
 
   @Column({ name: 'empresa_id' })
@@ -44,28 +34,33 @@ export class Factura extends BaseModel {
   @Column({ name: 'contrato_id', nullable: true })
   contratoId: string;
 
-  // ── Numeración SUNAT ──────────────────────────────────────
-  @Column({
-    name: 'tipo_comprobante',
-    type: 'enum',
-    enum: TipoComprobante,
-    default: TipoComprobante.BOLETA,
-  })
-  tipoComprobante: TipoComprobante;
+  // ── Tipo de comprobante ────────────────────────────────────
+  // FK al código del ComprobantesConfig activo al momento de emitir.
+  // Guardado como varchar (snapshot del código) para no perder
+  // trazabilidad si el tipo se renombra después.
+  @Column({ name: 'comprobante_config_id', nullable: true })
+  comprobanteConfigId: string;
+
+  // Snapshot del código para reportes y filtros rápidos sin JOIN
+  @Column({ name: 'tipo_comprobante', length: 30 })
+  tipoComprobante: string;
+
+  // Snapshot del nombre legible al momento de emisión
+  @Column({ name: 'tipo_comprobante_nombre', length: 100, nullable: true })
+  tipoComprobanteNombre: string;
+
+  // Snapshot: si tenía carga fiscal al emitir
+  @Column({ name: 'tiene_carga_fiscal', default: true })
+  tieneCargaFiscal: boolean;
 
   @Column({ length: 10 })
-  serie: string;           // 'B001', 'F001'
+  serie: string;
 
   @Column({ type: 'int' })
-  correlativo: number;     // 1, 2, 3...
+  correlativo: number;
 
   // numero_completo es columna generada en BD (serie || '-' || correlativo)
-  @Column({
-    name: 'numero_completo',
-    insert: false,
-    update: false,
-    nullable: true,
-  })
+  @Column({ name: 'numero_completo', insert: false, update: false, nullable: true })
   numeroCompleto: string;
 
   // ── Periodo facturado ────────────────────────────────────
@@ -85,15 +80,10 @@ export class Factura extends BaseModel {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   descuento: number;
 
-  // base_imponible = subtotal - descuento (columna generada en BD)
   @Column({
     name: 'base_imponible',
-    type: 'decimal',
-    precision: 12,
-    scale: 2,
-    insert: false,
-    update: false,
-    nullable: true,
+    type: 'decimal', precision: 12, scale: 2,
+    insert: false, update: false, nullable: true,
   })
   baseImponible: number;
 
@@ -103,37 +93,17 @@ export class Factura extends BaseModel {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   total: number;
 
-  @Column({
-    name: 'monto_pagado',
-    type: 'decimal',
-    precision: 12,
-    scale: 2,
-    default: 0,
-  })
+  @Column({ name: 'monto_pagado', type: 'decimal', precision: 12, scale: 2, default: 0 })
   montoPagado: number;
 
-  // saldo = total - monto_pagado (columna generada en BD)
-  @Column({
-    type: 'decimal',
-    precision: 12,
-    scale: 2,
-    insert: false,
-    update: false,
-    nullable: true,
-  })
+  @Column({ type: 'decimal', precision: 12, scale: 2, insert: false, update: false, nullable: true })
   saldo: number;
 
-  // ── Moneda ───────────────────────────────────────────────
+  // ── Moneda (snapshot de la config al momento de emisión) ─
   @Column({ length: 10, default: 'PEN' })
   moneda: string;
 
-  @Column({
-    name: 'tipo_cambio',
-    type: 'decimal',
-    precision: 8,
-    scale: 4,
-    default: 1.0,
-  })
+  @Column({ name: 'tipo_cambio', type: 'decimal', precision: 8, scale: 4, default: 1.0 })
   tipoCambio: number;
 
   // ── Estado y fechas ──────────────────────────────────────
@@ -150,6 +120,7 @@ export class Factura extends BaseModel {
   fechaPago: string;
 
   // ── Items detallados (JSONB) ──────────────────────────────
+  // Usa ItemFacturaExtendido: incluye tipoItem y aplicaIgvOverride
   @Column({ type: 'jsonb', default: '[]' })
   items: ItemFactura[];
 
@@ -189,7 +160,7 @@ export class Factura extends BaseModel {
   @Column({ name: 'anulada_por', nullable: true })
   anuladaPor: string;
 
-  // ── Flags de envío ────────────────────────────────────────
+  // ── Flags ─────────────────────────────────────────────────
   @Column({ name: 'generada_automaticamente', default: false })
   generadaAutomaticamente: boolean;
 
@@ -199,8 +170,6 @@ export class Factura extends BaseModel {
   @Column({ name: 'enviada_por_whatsapp', default: false })
   enviadaPorWhatsapp: boolean;
 
-  // ── Auditoría ────────────────────────────────────────────
   @Column({ name: 'created_by', nullable: true })
   createdBy: string;
-
 }

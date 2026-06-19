@@ -7,7 +7,6 @@ import { Queue } from 'bull';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { FacturacionService } from './facturacion.service';
-import { TipoComprobante } from './entities/factura.entity';
 
 export const FACTURACION_QUEUE = 'facturacion';
 
@@ -108,8 +107,9 @@ export class FacturacionWorker {
       tema:          'dark',
     } as any;
 
+    // El tipo de comprobante se resuelve automáticamente por jerarquía (cliente → empresa default)
     const resultado = await this.facturacionSvc.generarMensual(
-      { mes, anio, tipoComprobante: TipoComprobante.BOLETA },
+      { mes, anio },
       userSistema,
     );
 

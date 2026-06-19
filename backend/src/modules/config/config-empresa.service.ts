@@ -394,9 +394,9 @@ server {
 
     return {
       ultimaBoleta:        parseInt(boleta?.ultimo  ?? '0', 10),
-      serieBoleta:         boleta?.serie  ?? empresa.serieBoleta,
+      serieBoleta:         boleta?.serie  ?? 'B001',
       ultimaFactura:       parseInt(factura?.ultimo ?? '0', 10),
-      serieFactura:        factura?.serie ?? empresa.serieFactura,
+      serieFactura:        factura?.serie ?? 'F001',
       ultimoRecibo:        parseInt(recibo?.ultimo  ?? '0', 10),
       serieRecibo:         recibo?.serie  ?? 'R001',
       totalEmitidas:       parseInt(conteos[0]?.total_emitidas ?? '0', 10),

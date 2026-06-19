@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import PDFDocument from 'pdfkit';
-import { Factura, TipoComprobante, EstadoFactura } from './entities/factura.entity';
+import { Factura, EstadoFactura } from './entities/factura.entity';
 
 // ─── Datos de la empresa para el PDF ─────────────────────────
 export interface EmpresaPdfData {
@@ -148,7 +148,7 @@ export class PdfService {
       .fillAndStroke(this.colors.bgHeader, this.colors.primary);
 
     // Tipo de comprobante
-    const tipoLabel = this.getTipoLabel(factura.tipoComprobante);
+    const tipoLabel = factura.tipoComprobanteNombre?.toUpperCase() ?? factura.tipoComprobante?.toUpperCase() ?? 'COMPROBANTE';
     doc.fontSize(11)
       .fillColor(this.colors.primary)
       .font('Helvetica-Bold')
@@ -480,17 +480,6 @@ export class PdfService {
   }
 
   // ── UTILS ─────────────────────────────────────────────────
-  private getTipoLabel(tipo: TipoComprobante): string {
-    const labels: Record<TipoComprobante, string> = {
-      [TipoComprobante.BOLETA]:         'BOLETA DE VENTA ELECTRÓNICA',
-      [TipoComprobante.FACTURA]:        'FACTURA ELECTRÓNICA',
-      [TipoComprobante.NOTA_CREDITO]:   'NOTA DE CRÉDITO ELECTRÓNICA',
-      [TipoComprobante.NOTA_DEBITO]:    'NOTA DE DÉBITO ELECTRÓNICA',
-      [TipoComprobante.RECIBO_INTERNO]: 'RECIBO INTERNO',
-    };
-    return labels[tipo] || tipo.toUpperCase();
-  }
-
   private formatDate(dateStr: string | null | undefined): string {
     if (!dateStr) return '—';
     try {

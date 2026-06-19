@@ -35,26 +35,16 @@ export class Empresa {
   @Column({ type: 'varchar', length: 250, nullable: true })
   dominio: string | null;
 
-  @Column({ name: 'serie_boleta', length: 10, default: 'B001' })
-  serieBoleta: string;
-
-  @Column({ name: 'serie_factura', length: 10, default: 'F001' })
-  serieFactura: string;
-
-  @Column({ name: 'igv_rate', type: 'decimal', precision: 5, scale: 4, default: 0.18 })
-  igvRate: number;
+  // serie_boleta, serie_factura, igv_rate, moneda, tipo_comprobante_default
+  // fueron migrados a comprobantes_config y configuracion_facturacion.
+  // Se mantiene dia_facturacion y dias_gracia porque son operativos (cobranza),
+  // no de facturación fiscal.
 
   @Column({ name: 'dia_facturacion', type: 'smallint', default: 1 })
   diaFacturacion: number;
 
   @Column({ name: 'dias_gracia', type: 'smallint', default: 5 })
   diasGraciaCorte: number;
-
-  @Column({ name: 'moneda', type: 'varchar', length: 3, default: 'PEN' })
-  moneda: string;
-
-  @Column({ name: 'tipo_comprobante_default', type: 'varchar', length: 20, default: 'boleta' })
-  tipoComprobanteDefault: string;
 
   @Column({ default: 'activo' })
   estado: string;
