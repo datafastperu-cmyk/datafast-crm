@@ -15,7 +15,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('Configuración de Facturación')
 @ApiBearerAuth('JWT')
-@Controller('facturacion/config')
+@Controller('facturacion-config')
 export class ComprobantesConfigController {
   constructor(private readonly svc: ComprobantesConfigService) {}
 
