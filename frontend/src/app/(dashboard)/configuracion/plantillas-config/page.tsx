@@ -307,12 +307,14 @@ export default function PlantillasConfigPage() {
                   ))}
                 </select>
               </Field>
-              <Field label="Tipo impuesto">
-                <select className={selectCls} value={facturacion.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
-                  <option value="incluido">Impuestos incluidos</option>
-                  <option value="mas_impuestos">Más impuestos</option>
-                </select>
-              </Field>
+              {(facturacion.tipoComprobante ?? 'comprobante_interno') !== 'comprobante_interno' && (
+                <Field label="Tipo impuesto">
+                  <select className={selectCls} value={facturacion.tipoImpuesto} onChange={e => updateF('tipoImpuesto', e.target.value)}>
+                    <option value="incluido">Impuestos incluidos</option>
+                    <option value="mas_impuestos">Más impuestos</option>
+                  </select>
+                </Field>
+              )}
               <Field label="Días de gracia" note="*días tolerancia para aplicar corte">
                 <select className={selectCls} value={facturacion.diasGracia} onChange={e => updateF('diasGracia', e.target.value)}>
                   {DIAS_GRACIA_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
