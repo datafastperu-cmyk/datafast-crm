@@ -608,6 +608,7 @@ export class PagosService {
         empresaId:      pago.empresaId,
         contratoId:     pago.contratoId ?? undefined,
         clienteId:      pago.clienteId ?? undefined,
+        pagoId:         pago.id,
       });
       this.logger.log(`[PAGOS] Evento pago_recibido emitido para pago ${pago.id}`);
     } catch (err) {

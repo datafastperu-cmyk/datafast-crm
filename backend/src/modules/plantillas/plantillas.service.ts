@@ -84,6 +84,11 @@ export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenid
     contenido:
       '✅ {{empresa}}: El router *{{router_nombre}}* ha sido RECONECTADO exitosamente. Todo funciona con normalidad.',
   },
+  migracion_ftth: {
+    nombre: 'Migración FTTH Completada',
+    contenido:
+      '🎉 {{clienteNombre}}, su servicio ha sido migrado exitosamente a Fibra Óptica (FTTH). IP asignada: {{ip_ftth}}. Su conexión ahora es más rápida y estable. Ante cualquier consulta, comuníquese con nosotros.',
+  },
   datafast_alerta_egreso: {
     nombre: 'Alerta Egreso Recurrente (Interno)',
     contenido:
@@ -92,11 +97,8 @@ export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenid
 };
 
 // ─── Defaults por tipo ────────────────────────────────────────
-const DEFAULTS: Record<TipoPlantilla, Record<string, { nombre: string; contenido: string }>> = {
-  whatsapp: SYSTEM_DEFAULTS_WHATSAPP,
-
-  email: {
-    aviso_pago_01: {
+export const SYSTEM_DEFAULTS_EMAIL: Record<string, { nombre: string; contenido: string }> = {
+  aviso_pago_01: {
       nombre: 'Aviso de Pago #1',
       contenido:
         '<h2>Recordatorio de Pago</h2><p>Estimado/a <strong>{{nombre_completo}}</strong>,</p><p>Le recordamos que su factura N° <strong>{{numero_factura}}</strong> por el monto de <strong>S/ {{monto_factura}}</strong> vencerá el <strong>{{fecha_pago}}</strong>.</p><p>Por favor realice su pago a tiempo para evitar interrupciones en su servicio <strong>{{plan_contratado}}</strong>.</p><p>Gracias por su preferencia,<br><strong>{{empresa}}</strong><br>{{telefono_empresa}}</p>',
@@ -151,8 +153,11 @@ const DEFAULTS: Record<TipoPlantilla, Record<string, { nombre: string; contenido
       contenido:
         '<h2>✅ Pago Recibido</h2><p>Estimado/a <strong>{{nombre_completo}}</strong>,</p><p>Hemos recibido su pago de <strong>S/ {{monto_factura}}</strong> para la factura N° <strong>{{numero_factura}}</strong>.</p><p>¡Gracias por su puntualidad! Su servicio <strong>{{plan_contratado}}</strong> continúa activo.</p><p>Atentamente,<br><strong>{{empresa}}</strong></p>',
     },
-  },
+};
 
+const DEFAULTS: Record<TipoPlantilla, Record<string, { nombre: string; contenido: string }>> = {
+  whatsapp:  SYSTEM_DEFAULTS_WHATSAPP,
+  email:     SYSTEM_DEFAULTS_EMAIL,
   documento: {
     factura: {
       nombre: 'Factura / Comprobante',

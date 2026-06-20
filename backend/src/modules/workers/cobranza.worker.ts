@@ -828,6 +828,7 @@ export class CobranzaWorker {
           empresaId,
           contratoId,
           clienteId:      contratoInfo.cliente_id,
+          pagoId,
         } satisfies EventNotificacionPagoRecibido);
 
         this.logger.log(`[PAGO] 📨 Evento pago.recibido emitido → ${tel.substring(0, 9)}...`);

@@ -4,9 +4,8 @@ import { BullModule } from '@nestjs/bull';
 import { firstValueFrom } from 'rxjs';
 import { WhatsAppService }           from './services/whatsapp.service';
 import { GatewayMensajeriaService }  from './services/gateway-mensajeria.service';
-import { DatafastNativeStrategy }    from './services/datafast-native.strategy';
-import { CrmNativoModule }           from '../crm-nativo/crm-nativo.module';
 import { NotificationEventListener }  from './listeners/notification-event.listener';
+import { CircuitBreakerRegistry }     from '../../common/services/circuit-breaker.registry';
 import { QUEUES } from '../workers/workers.constants';
 
 @Injectable()
@@ -40,15 +39,14 @@ class EvolutionApiBootstrapService implements OnApplicationBootstrap {
   imports:   [
     HttpModule.register({ timeout: 15_000 }),
     BullModule.registerQueue({ name: QUEUES.NOTIFICACIONES }),
-    CrmNativoModule,
   ],
   providers: [
+    CircuitBreakerRegistry,
     WhatsAppService,
     GatewayMensajeriaService,
-    DatafastNativeStrategy,
     EvolutionApiBootstrapService,
     NotificationEventListener,
   ],
-  exports:   [WhatsAppService, GatewayMensajeriaService, DatafastNativeStrategy],
+  exports:   [WhatsAppService, GatewayMensajeriaService, CircuitBreakerRegistry],
 })
 export class NotificacionesModule {}

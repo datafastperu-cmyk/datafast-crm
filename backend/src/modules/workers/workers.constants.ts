@@ -6,7 +6,8 @@
 export const QUEUES = {
   COBRANZA:      'cobranza',       // Cortes, reactivaciones, prórrogas
   FACTURACION:   'facturacion',    // Generación masiva de facturas
-  NOTIFICACIONES:'notificaciones', // WhatsApp / email masivo
+  NOTIFICACIONES:'notificaciones', // Notificaciones individuales del sistema (eventos)
+  CAMPANAS:      'campanas',       // Campañas masivas con goteo — cola separada para no bloquear alertas críticas
   MIKROTIK:      'mikrotik-jobs',  // Operaciones Mikrotik encoladas
   GOOGLE_SYNC:   'google-sync',    // Sincronización Google Workspace
 } as const;

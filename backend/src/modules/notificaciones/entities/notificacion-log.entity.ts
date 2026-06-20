@@ -59,6 +59,12 @@ export class NotificacionLog {
   @Column({ name: 'error_detalle', type: 'text', nullable: true })
   errorDetalle: string | null;
 
+  @Column({ name: 'sent_at', type: 'timestamptz', nullable: true })
+  sentAt: Date | null;
+
+  @Column({ name: 'idempotency_key', type: 'varchar', length: 150, nullable: true, unique: true })
+  idempotencyKey: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Cron }         from '@nestjs/schedule';
 import { OnEvent }      from '@nestjs/event-emitter';
 import { InjectQueue }  from '@nestjs/bull';
 import { Queue }        from 'bull';
@@ -8,12 +9,14 @@ import { QUEUES, JOBS } from '../workers/workers.constants';
 import { GATEWAY_EVENTS } from '../sistema/sistema.service';
 
 const ESTADOS_REINTENTABLES = ['NO_ENVIADO', 'FALLIDO'];
-const DELAY_ENTRE_JOBS_MS   = 2_000; // 2s entre cada mensaje para no saturar el proveedor
-const LOTE_MAX              = 200;   // máximo de logs que se reencolan por disparo
+const DELAY_ENTRE_JOBS_MS   = 2_000;
+const LOTE_MAX              = 200;
 
 @Injectable()
 export class GatewayMonitorService implements OnModuleInit {
   private readonly logger = new Logger(GatewayMonitorService.name);
+
+  private isReconciling = false;
 
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
@@ -23,49 +26,77 @@ export class GatewayMonitorService implements OnModuleInit {
   // Al iniciar: si ya hay proveedor activo + mensajes pendientes → batch retry
   async onModuleInit(): Promise<void> {
     try {
-      const empresas = await this.ds.query<{ empresa_id: string }[]>(`
-        SELECT DISTINCT nl.empresa_id
-        FROM notificaciones_logs nl
-        JOIN empresas em ON em.id = nl.empresa_id
-        WHERE nl.estado_entrega = ANY($1)
-          AND nl.empresa_id IS NOT NULL
-          AND em.proveedor_activo IS NOT NULL
-          AND (
-            (em.proveedor_activo = 'META_GRAPH'                 AND em.meta_graph_activo       = true)
-            OR (em.proveedor_activo = 'TWILIO'                  AND em.twilio_activo            = true)
-            OR (em.proveedor_activo = 'VONAGE'                  AND em.vonage_activo            = true)
-            OR (em.proveedor_activo = 'CUSTOM_API'              AND em.custom_api_activo        = true)
-            OR (em.proveedor_activo = 'AUTOMATIZADO_VIP'        AND em.automatizado_vip_activo  = true)
-            OR (em.proveedor_activo = 'DATAFAST_MENSAJERIA_MASIVA' AND em.gateway_activo        = true)
-          )
-      `, [ESTADOS_REINTENTABLES]);
-
-      for (const { empresa_id } of empresas) {
-        const pendientes = await this.contarPendientes(empresa_id);
-        if (pendientes > 0) {
-          this.logger.log(`[Monitor] Startup: ${pendientes} mensajes pendientes para empresa ${empresa_id} — encolando batch`);
-          await this.encolarBatch(empresa_id);
-        }
-      }
+      await this.procesarEmpresasConPendientes('startup');
     } catch (err: any) {
       this.logger.warn(`[Monitor] Error en check de startup: ${err.message}`);
+    }
+  }
+
+  // Reconciliador periódico: reencola NO_ENVIADO/FALLIDO cada 15 minutos.
+  // Cubre el caso donde el proveedor se recuperó sin disparar PROVIDER_ACTIVATED
+  // (ej: reinicio del servicio externo, fix manual, circuit breaker reset).
+  @Cron('*/15 * * * *', { name: 'notif-reconciler' })
+  async reconciliarPendientes(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
+    if (this.isReconciling) {
+      this.logger.warn('[Monitor] Reconciliación en curso — ciclo omitido');
+      return;
+    }
+    this.isReconciling = true;
+    try {
+      await this.procesarEmpresasConPendientes('cron');
+    } catch (err: any) {
+      this.logger.error(`[Monitor] Error en reconciliación periódica: ${err.message}`);
+    } finally {
+      this.isReconciling = false;
     }
   }
 
   @OnEvent(GATEWAY_EVENTS.PROVIDER_ACTIVATED, { async: true })
   async onProviderActivated(payload: { empresaId: string; proveedor: string }): Promise<void> {
     const { empresaId, proveedor } = payload;
-    this.logger.log(`[Monitor] Proveedor ${proveedor} activado para empresa ${empresaId} — verificando mensajes pendientes`);
+    this.logger.log(`[Monitor] Proveedor ${proveedor} activado — empresa=${empresaId}`);
     try {
       const pendientes = await this.contarPendientes(empresaId);
       if (pendientes === 0) {
         this.logger.log(`[Monitor] Sin mensajes pendientes para empresa ${empresaId}`);
         return;
       }
-      this.logger.log(`[Monitor] ${pendientes} mensajes NO_ENVIADO/FALLIDO → iniciando batch retry`);
+      this.logger.log(`[Monitor] ${pendientes} mensajes pendientes → batch retry`);
       await this.encolarBatch(empresaId);
     } catch (err: any) {
-      this.logger.error(`[Monitor] Error en batch retry para empresa ${empresaId}: ${err.message}`);
+      this.logger.error(`[Monitor] Error en batch retry empresa=${empresaId}: ${err.message}`);
+    }
+  }
+
+  // ── Query compartida por startup y cron ───────────────────────────────
+  private async procesarEmpresasConPendientes(origen: string): Promise<void> {
+    const empresas = await this.ds.query<{ empresa_id: string }[]>(`
+      SELECT DISTINCT nl.empresa_id
+      FROM notificaciones_logs nl
+      JOIN empresas em ON em.id = nl.empresa_id
+      WHERE nl.estado_entrega = ANY($1)
+        AND nl.empresa_id IS NOT NULL
+        AND em.proveedor_activo IS NOT NULL
+        AND (
+          (em.proveedor_activo = 'META_GRAPH'                 AND em.meta_graph_activo       = true)
+          OR (em.proveedor_activo = 'TWILIO'                  AND em.twilio_activo            = true)
+          OR (em.proveedor_activo = 'VONAGE'                  AND em.vonage_activo            = true)
+          OR (em.proveedor_activo = 'CUSTOM_API'              AND em.custom_api_activo        = true)
+          OR (em.proveedor_activo = 'AUTOMATIZADO_VIP'        AND em.automatizado_vip_activo  = true)
+          OR (em.proveedor_activo = 'DATAFAST_MENSAJERIA_MASIVA' AND em.gateway_activo        = true)
+        )
+    `, [ESTADOS_REINTENTABLES]);
+
+    if (empresas.length === 0) return;
+
+    this.logger.log(`[Monitor][${origen}] ${empresas.length} empresa(s) con mensajes pendientes`);
+    for (const { empresa_id } of empresas) {
+      const pendientes = await this.contarPendientes(empresa_id);
+      if (pendientes > 0) {
+        this.logger.log(`[Monitor][${origen}] empresa=${empresa_id} → ${pendientes} pendientes — encolando batch`);
+        await this.encolarBatch(empresa_id);
+      }
     }
   }
 

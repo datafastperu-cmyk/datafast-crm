@@ -23,17 +23,20 @@ import {
   EventNotificacionEmisorConectado,
   EventNotificacionRouterCaido,
   EventNotificacionRouterConectado,
+  EventNotificacionMigracionFtth,
+  EventNotificacionFtthActivado,
 } from '../events/notification.events';
 
 // ─── Payload unificado para la cola Bull ──────────────────────
 export interface PayloadNotificacionEnvio {
-  logId?:       string;
-  telefono:     string;
-  tipo:         string;
-  variables:    Record<string, string>;
-  empresaId?:   string;
-  contratoId?:  string;
-  clienteId?:   string;
+  logId?:           string;
+  telefono:         string;
+  tipo:             string;
+  variables:        Record<string, string>;
+  empresaId?:       string;
+  contratoId?:      string;
+  clienteId?:       string;
+  idempotencyKey?:  string;  // si se proporciona, el INSERT usa ON CONFLICT DO NOTHING
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -99,12 +102,30 @@ export class NotificationEventListener implements OnModuleInit {
       return;
     }
     // 1. Registrar en notificaciones_logs con estado ENCOLADO
+    //    Si hay idempotencyKey: ON CONFLICT DO NOTHING evita duplicados atómicamente.
+    //    Si RETURNING no devuelve fila, el evento ya fue procesado → silencioso.
     let logId: string | undefined;
     try {
+      const ikey = payload.idempotencyKey ?? null;
       const [row] = await this.ds.query(`
-        INSERT INTO notificaciones_logs (empresa_id, contrato_id, cliente_id, telefono, tipo_template, estado_entrega)
-        VALUES ($1, $2, $3, $4, $5, 'ENCOLADO') RETURNING id
-      `, [payload.empresaId ?? null, payload.contratoId ?? null, payload.clienteId ?? null, payload.telefono.substring(0, 30), tipo]);
+        INSERT INTO notificaciones_logs
+          (empresa_id, contrato_id, cliente_id, telefono, tipo_template, estado_entrega, idempotency_key)
+        VALUES ($1, $2, $3, $4, $5, 'ENCOLADO', $6)
+        ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+        RETURNING id
+      `, [
+        payload.empresaId ?? null,
+        payload.contratoId ?? null,
+        payload.clienteId ?? null,
+        payload.telefono.substring(0, 30),
+        tipo,
+        ikey,
+      ]);
+
+      if (!row?.id && ikey) {
+        this.logger.log(`[EVENT] Notificación '${tipo}' duplicada omitida (idempotency_key=${ikey})`);
+        return; // ya procesada — no encolar
+      }
       logId = row?.id ?? undefined;
     } catch (dbErr: any) {
       this.logger.warn(`[EVENT] No se pudo crear log para ${tipo}: ${dbErr.message}`);
@@ -175,6 +196,9 @@ export class NotificationEventListener implements OnModuleInit {
       `[EVENT] 💰 Recibido PAGO_RECIBIDO → ${event.telefono?.substring(0, 9)}... ` +
       `| monto=${event.montoPago} | empresa=${event.empresaId}`,
     );
+    // Clave de idempotencia por pagoId (previene duplicado pagos.service + cobranza.worker)
+    const idempotencyKey = event.pagoId ? `pago_recibido:${event.pagoId}` : undefined;
+
     await this.encolar('pago_recibido', {
       telefono:    event.telefono,
       tipo:        'pago_recibido',
@@ -188,9 +212,10 @@ export class NotificationEventListener implements OnModuleInit {
         metodoPago:     event.metodoPago,
         saldoPendiente: event.saldoPendiente,
       },
-      empresaId:  event.empresaId,
-      contratoId: event.contratoId,
-      clienteId:  event.clienteId,
+      empresaId:       event.empresaId,
+      contratoId:      event.contratoId,
+      clienteId:       event.clienteId,
+      idempotencyKey,
     }, JOB_OPTIONS.CONFIRMACION_PAGO);
   }
 
@@ -431,5 +456,56 @@ export class NotificationEventListener implements OnModuleInit {
       variables: { router_nombre: event.routerNombre },
       empresaId: event.empresaId,
     }, JOB_OPTIONS.ALERTA);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // MIGRACIÓN FTTH
+  // ═══════════════════════════════════════════════════════════
+  @OnEvent(NOTIFICATION_EVENTS.MIGRACION_FTTH, { async: true })
+  async onMigracionFtth(event: EventNotificacionMigracionFtth): Promise<void> {
+    if (!event.telefono) return;
+    this.logger.log(
+      `[EVENT] 🔄 Recibido MIGRACION_FTTH → ${event.telefono.substring(0, 9)}... ` +
+      `| ip=${event.ipFtth} | empresa=${event.empresaId}`,
+    );
+    await this.encolar('migracion_ftth', {
+      telefono:   event.telefono,
+      tipo:       'migracion_ftth',
+      variables: {
+        clienteNombre: event.clienteNombre,
+        ip_ftth:       event.ipFtth,
+        ipFtth:        event.ipFtth,
+      },
+      empresaId: event.empresaId,
+      clienteId: event.clienteId,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // FTTH ACTIVADO (orquestador-ftth.service)
+  // ═══════════════════════════════════════════════════════════
+  @OnEvent(NOTIFICATION_EVENTS.FTTH_ACTIVADO, { async: true })
+  async onFtthActivado(event: EventNotificacionFtthActivado): Promise<void> {
+    if (!event.clienteTelefono) return;
+    this.logger.log(
+      `[EVENT] ⚡ Recibido FTTH_ACTIVADO → ${event.clienteTelefono.substring(0, 9)}... ` +
+      `| plan=${event.planNombre} | empresa=${event.empresaId}`,
+    );
+    await this.encolar('servicio_activado', {
+      telefono:   event.clienteTelefono,
+      tipo:       'servicio_activado',
+      variables: {
+        clienteNombre: event.clienteNombre,
+        planNombre:    event.planNombre,
+        ipAsignada:    event.ipAsignada,
+        usuarioPppoe:  event.usuarioPppoe,
+        ip_asignada:   event.ipAsignada,
+        usuario_pppoe: event.usuarioPppoe,
+        plan_nombre:   event.planNombre,
+      },
+      empresaId:  event.empresaId,
+      contratoId: event.contratoId,
+      clienteId:  event.clienteId,
+    });
   }
 }

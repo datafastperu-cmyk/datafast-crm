@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { HttpService }    from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -7,9 +7,10 @@ import { CACHE_MANAGER }    from '@nestjs/cache-manager';
 import { Cache }            from 'cache-manager';
 import { decrypt }          from '../../../common/utils/encryption.util';
 import { WhatsAppService, TipoNotificacion, WhatsAppParams } from './whatsapp.service';
-import { SYSTEM_DEFAULTS_WHATSAPP } from '../../plantillas/plantillas.service';
-import { DatafastNativeStrategy }          from './datafast-native.strategy';
+import { SYSTEM_DEFAULTS_WHATSAPP, SYSTEM_DEFAULTS_EMAIL } from '../../plantillas/plantillas.service';
 import { DatafastMensajeriaMasivaStrategy } from './datafast-mensajeria-masiva.strategy';
+import { SmtpStrategy, SMTP_ASUNTOS }       from './smtp.strategy';
+import { CircuitBreakerRegistry }           from '../../../common/services/circuit-breaker.registry';
 
 export type ProveedorActivo =
   | 'META_GRAPH'
@@ -17,8 +18,8 @@ export type ProveedorActivo =
   | 'VONAGE'
   | 'CUSTOM_API'
   | 'AUTOMATIZADO_VIP'
-  | 'DATAFAST_NATIVE'
-  | 'DATAFAST_MENSAJERIA_MASIVA';
+  | 'DATAFAST_MENSAJERIA_MASIVA'
+  | 'SMTP';
 
 export interface EnvioResult {
   enviado:    boolean;
@@ -198,7 +199,21 @@ const TIPO_A_CODIGO: Record<string, string> = {
   emisor_conectado:    'emisor_conectado',
   router_caido:        'router_caido',
   router_conectado:    'router_conectado',
+  // FTTH
+  migracion_ftth:      'migracion_ftth',
 };
+
+// Orden de intento de fallback cuando el proveedor primario falla con error transitorio.
+// Solo se usa el primero activo distinto al primario.
+const FALLBACK_ORDER: ProveedorActivo[] = [
+  'META_GRAPH',
+  'TWILIO',
+  'VONAGE',
+  'AUTOMATIZADO_VIP',
+  'CUSTOM_API',
+  'DATAFAST_MENSAJERIA_MASIVA',
+  'SMTP',
+];
 
 // ─── Config interna del gateway ───────────────────────────
 interface GwConfig {
@@ -210,23 +225,37 @@ interface GwConfig {
   limiteCaracteres:     number;
   codigoPais:           string;
   activo:               boolean;
+  activoMap:            Record<string, boolean>;
   whatsappNumeroOrigen: string;
+  // SMTP
+  smtpHost:      string;
+  smtpPort:      number;
+  smtpUsuario:   string;
+  smtpClave:     string;
+  smtpFromName:  string;
+  smtpFromEmail: string;
 }
 
 // ─────────────────────────────────────────────────────────────
 // GatewayMensajeriaService — Selecciona la estrategia activa
 // y delega el envío. Para META_GRAPH usa WhatsAppService.
 // ─────────────────────────────────────────────────────────────
+// Sentinel en Redis: la empresa no tiene plantilla personalizada para este código
+const TMPL_NO_CUSTOM = '__no_custom__';
+
 @Injectable()
 export class GatewayMensajeriaService {
   private readonly logger = new Logger(GatewayMensajeriaService.name);
 
+  // Estrategia singleton por empresa — evita re-descifrar credenciales en cada job
+  private readonly strategyCache = new Map<string, { instance: IMensajeriaStrategy; fingerprint: string }>();
+
   constructor(
     private readonly whatsapp: WhatsAppService,
     private readonly http:     HttpService,
+    private readonly cb:       CircuitBreakerRegistry,
     @InjectDataSource() private readonly ds:    DataSource,
     @Inject(CACHE_MANAGER)  private readonly cache: Cache,
-    @Optional() private readonly datafastNative: DatafastNativeStrategy,
   ) {}
 
   // ── Punto de entrada único para el worker ─────────────────
@@ -265,6 +294,7 @@ export class GatewayMensajeriaService {
     const config = await this.resolveConfig(params.empresaId);
     let resultado: EnvioResult;
     let noEnviado = false;
+    let proveedorUsado: string | null = config?.proveedor ?? null;
 
     // Verificar switch de activación antes de cualquier despacho
     if (!config) {
@@ -276,39 +306,25 @@ export class GatewayMensajeriaService {
       this.logger.warn(`[GW] Servicio inactivo para empresa ${params.empresaId} (proveedor=${config.proveedor})`);
       resultado  = { enviado: false, error: 'Servicio de mensajería inactivo' };
       noEnviado  = true;
-    } else if (config.proveedor === 'META_GRAPH') {
-      resultado = await this.whatsapp.enviar({ ...params, telefono: destino });
-      // WhatsApp retorna error de configuración cuando no hay token/phone_id
-      if (!resultado.enviado && resultado.error === 'WhatsApp no configurado') {
-        noEnviado = true;
-      }
     } else {
-      const texto = await this.resolveTexto(
-        params.empresaId,
-        params.tipo as string,
-        params.contratoId,
-        params.clienteId,
-        params.variables ?? {},
-      );
+      // Intento primario
+      const primario = await this.tryEnvio(config.proveedor, config, params, destino);
+      resultado  = primario.resultado;
+      noEnviado  = primario.noEnviado;
 
-      if (texto === null) {
-        this.logger.warn(`[GW] Sin plantilla para tipo='${params.tipo}' — notificación omitida`);
-        resultado = { enviado: false, error: `Sin plantilla configurada para '${params.tipo}'` };
-        noEnviado = true;
-      } else if (texto.length > config.limiteCaracteres) {
-        this.logger.warn(`[GW] Texto excede límite (${texto.length} > ${config.limiteCaracteres})`);
-        resultado = { enviado: false, error: `Texto excede límite de ${config.limiteCaracteres} caracteres` };
-      } else {
-        const strategy = this.buildStrategy(config);
-        if (!strategy) {
-          this.logger.warn(`[GW] ${config.proveedor} sin credenciales — notificación omitida`);
-          resultado  = { enviado: false, error: `${config.proveedor} sin credenciales configuradas` };
-          noEnviado  = true;
-        } else {
-          const telefono = this.normalizarTelefono(destino, config.codigoPais);
-          this.logger.log(`[GW] ${config.proveedor} → ${telefono} | ${params.tipo}`);
-          resultado = await strategy.enviarMensaje(telefono, texto, params.tipo as string);
-          if (config.pausa > 0) await this.sleep(config.pausa);
+      // Fallback: solo si el primario tuvo un fallo transitorio (no de configuración)
+      if (!resultado.enviado && !noEnviado) {
+        for (const candidato of FALLBACK_ORDER) {
+          if (candidato === config.proveedor) continue;
+          if (!config.activoMap[candidato])   continue;
+          this.logger.warn(
+            `[GW] Primario ${config.proveedor} falló → fallback a ${candidato} (empresa=${params.empresaId})`,
+          );
+          const fb = await this.tryEnvio(candidato, config, params, destino);
+          resultado = fb.resultado;
+          noEnviado = fb.noEnviado;
+          if (resultado.enviado) proveedorUsado = candidato;
+          break; // un solo intento de fallback
         }
       }
     }
@@ -317,7 +333,7 @@ export class GatewayMensajeriaService {
     if (logId) {
       try {
         let nuevoEstado: string;
-        const proveedorNombre = config?.proveedor ?? null;
+        const proveedorNombre = proveedorUsado;
         if (resultado.enviado) {
           nuevoEstado = 'ENVIADO';
           await this.ds.query(
@@ -344,6 +360,91 @@ export class GatewayMensajeriaService {
     }
 
     return resultado;
+  }
+
+  // ── Despacho para un proveedor concreto (reutilizado en primario y fallback) ──
+  private async tryEnvio(
+    proveedor: ProveedorActivo,
+    config: GwConfig,
+    params: WhatsAppParams,
+    destino: string,
+  ): Promise<{ resultado: EnvioResult; noEnviado: boolean }> {
+    let resultado: EnvioResult;
+    let noEnviado = false;
+
+    if (proveedor === 'META_GRAPH') {
+      const cbKey = `${params.empresaId ?? 'global'}:META_GRAPH`;
+      if (!this.cb.canProceed(cbKey)) {
+        this.logger.warn(`[GW] Circuit OPEN META_GRAPH empresa=${params.empresaId}`);
+        return { resultado: { enviado: false, error: 'Circuit breaker OPEN: META_GRAPH' }, noEnviado: true };
+      }
+      resultado = await this.whatsapp.enviar({ ...params, telefono: destino });
+      if (!resultado.enviado && resultado.error === 'WhatsApp no configurado') {
+        noEnviado = true;
+      } else if (resultado.enviado) {
+        this.cb.onSuccess(cbKey);
+      } else {
+        this.cb.onFailure(cbKey);
+      }
+
+    } else if (proveedor === 'SMTP') {
+      const emailDestino = await this.resolveClientEmail(params);
+      if (!emailDestino) {
+        return { resultado: { enviado: false, error: 'Sin email de cliente configurado' }, noEnviado: true };
+      }
+      const asunto = SMTP_ASUNTOS[params.tipo as string] ?? (params.tipo as string);
+      const textoEmail = await this.resolveTexto(
+        params.empresaId, params.tipo as string,
+        params.contratoId, params.clienteId, params.variables ?? {}, 'email',
+      );
+      if (textoEmail === null) {
+        return { resultado: { enviado: false, error: `Sin plantilla email para '${params.tipo}'` }, noEnviado: true };
+      }
+      const smtpConfig: GwConfig = { ...config, proveedor: 'SMTP' };
+      const strategy = this.buildStrategy(smtpConfig, params.empresaId);
+      if (!strategy) {
+        return { resultado: { enviado: false, error: 'SMTP sin credenciales configuradas' }, noEnviado: true };
+      }
+      const cbKey = `${params.empresaId ?? 'global'}:SMTP`;
+      if (!this.cb.canProceed(cbKey)) {
+        return { resultado: { enviado: false, error: 'Circuit breaker OPEN: SMTP' }, noEnviado: true };
+      }
+      this.logger.log(`[GW] SMTP → ${emailDestino} | ${params.tipo}`);
+      resultado = await strategy.enviarMensaje(emailDestino, textoEmail, asunto);
+      if (resultado.enviado) this.cb.onSuccess(cbKey); else this.cb.onFailure(cbKey);
+
+    } else {
+      const texto = await this.resolveTexto(
+        params.empresaId, params.tipo as string,
+        params.contratoId, params.clienteId, params.variables ?? {},
+      );
+      if (texto === null) {
+        return { resultado: { enviado: false, error: `Sin plantilla para '${params.tipo}'` }, noEnviado: true };
+      }
+      if (texto.length > config.limiteCaracteres) {
+        return { resultado: { enviado: false, error: `Texto excede límite ${config.limiteCaracteres}` }, noEnviado: true };
+      }
+      const gwConfig: GwConfig = { ...config, proveedor };
+      const strategy = this.buildStrategy(gwConfig, params.empresaId);
+      if (!strategy) {
+        return { resultado: { enviado: false, error: `${proveedor} sin credenciales configuradas` }, noEnviado: true };
+      }
+      const cbKey = `${params.empresaId ?? 'global'}:${proveedor}`;
+      if (!this.cb.canProceed(cbKey)) {
+        return { resultado: { enviado: false, error: `Circuit breaker OPEN: ${proveedor}` }, noEnviado: true };
+      }
+      const telefono = this.normalizarTelefono(destino, config.codigoPais);
+      this.logger.log(`[GW] ${proveedor} → ${telefono} | ${params.tipo}`);
+      resultado = await strategy.enviarMensaje(telefono, texto, params.tipo as string);
+      if (resultado.enviado) {
+        this.cb.onSuccess(cbKey);
+      } else {
+        this.cb.onFailure(cbKey);
+      }
+      if (config.pausa > 0) await this.sleep(config.pausa);
+    }
+
+    return { resultado, noEnviado };
   }
 
   // ── Enrutamiento dual: alertas internas → whatsapp_corporativo ──
@@ -389,7 +490,9 @@ export class GatewayMensajeriaService {
         const [row] = await this.ds.query(
           `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
                   gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
-                  meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo, automatizado_vip_activo,
+                  meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo,
+                  automatizado_vip_activo, smtp_activo,
+                  smtp_host, smtp_port, smtp_usuario, smtp_clave, smtp_from_name, smtp_from_email,
                   whatsapp_numero_origen
            FROM empresas WHERE id = $1`,
           [empresaId],
@@ -404,6 +507,7 @@ export class GatewayMensajeriaService {
           CUSTOM_API:                 row?.custom_api_activo       ?? false,
           AUTOMATIZADO_VIP:           row?.automatizado_vip_activo ?? false,
           DATAFAST_MENSAJERIA_MASIVA: row?.gateway_activo          ?? false,
+          SMTP:                       row?.smtp_activo             ?? false,
         };
         cached = (row && proveedor) ? {
           proveedor:            proveedor as ProveedorActivo,
@@ -414,7 +518,14 @@ export class GatewayMensajeriaService {
           limiteCaracteres:     row.gateway_limite_caracteres ?? 1000,
           codigoPais:           row.gateway_codigo_pais       ?? '+51',
           activo:               activoMap[proveedor] ?? false,
+          activoMap,
           whatsappNumeroOrigen: row.whatsapp_numero_origen    ?? '',
+          smtpHost:      row.smtp_host       ?? '',
+          smtpPort:      row.smtp_port       ?? 587,
+          smtpUsuario:   row.smtp_usuario    ?? '',
+          smtpClave:     row.smtp_clave      ?? '',
+          smtpFromName:  row.smtp_from_name  ?? '',
+          smtpFromEmail: row.smtp_from_email ?? '',
         } : null;
 
         try {
@@ -430,34 +541,65 @@ export class GatewayMensajeriaService {
     return cached;
   }
 
-  // ── Instanciar la estrategia con credenciales descifradas ─
-  private buildStrategy(config: GwConfig): IMensajeriaStrategy | null {
+  // ── Estrategia singleton por empresa ─────────────────────────
+  // La huella incluye proveedor + credenciales encriptadas: si cambian en BD,
+  // la próxima llamada creará una nueva instancia automáticamente.
+  private buildStrategy(config: GwConfig, empresaId?: string): IMensajeriaStrategy | null {
+    const fingerprint = `${config.proveedor}:${config.apiKey}:${config.apiSecret}:${config.clientId}:${config.smtpHost ?? ''}:${config.smtpUsuario ?? ''}:${config.smtpClave ?? ''}`;
+    const slotKey     = `${empresaId ?? '_global_'}:${config.proveedor}`;
+    const cached      = this.strategyCache.get(slotKey);
+    if (cached?.fingerprint === fingerprint) return cached.instance;
+
     let k = '';
     let s = '';
     try { k = config.apiKey    ? decrypt(config.apiKey)    : ''; } catch {}
     try { s = config.apiSecret ? decrypt(config.apiSecret) : ''; } catch {}
 
+    let instance: IMensajeriaStrategy | null = null;
     switch (config.proveedor) {
-      case 'TWILIO':           return (k && s) ? new TwilioStrategy(this.http, k, s, config.clientId)          : null;
-      case 'VONAGE':           return (k && s) ? new VonageStrategy(this.http, k, s, config.clientId)          : null;
-      case 'CUSTOM_API':       return (k && config.clientId) ? new CustomApiStrategy(this.http, k, s, config.clientId) : null;
-      case 'AUTOMATIZADO_VIP':         return k               ? new AutomatizadoVipStrategy(this.http, k, config.clientId) : null;
-      case 'DATAFAST_NATIVE':          return this.datafastNative ?? null;
+      case 'TWILIO':
+        instance = (k && s) ? new TwilioStrategy(this.http, k, s, config.clientId) : null;
+        break;
+      case 'VONAGE':
+        instance = (k && s) ? new VonageStrategy(this.http, k, s, config.clientId) : null;
+        break;
+      case 'CUSTOM_API':
+        instance = (k && config.clientId) ? new CustomApiStrategy(this.http, k, s, config.clientId) : null;
+        break;
+      case 'AUTOMATIZADO_VIP':
+        instance = k ? new AutomatizadoVipStrategy(this.http, k, config.clientId) : null;
+        break;
       case 'DATAFAST_MENSAJERIA_MASIVA': {
         const evoKey = k || process.env.EVOLUTION_API_KEY || '';
-        return evoKey ? new DatafastMensajeriaMasivaStrategy(
-          this.http,
-          evoKey,
-          config.clientId || 'datafast_masivos',
-          config.codigoPais,
+        instance = evoKey ? new DatafastMensajeriaMasivaStrategy(
+          this.http, evoKey, config.clientId || 'datafast_masivos', config.codigoPais,
         ) : null;
+        break;
       }
-      default:                         return null;
+      case 'SMTP': {
+        let smtpPass = '';
+        try { smtpPass = config.smtpClave ? decrypt(config.smtpClave) : ''; } catch {}
+        const secure = config.smtpPort === 465;
+        instance = (config.smtpHost && config.smtpUsuario && smtpPass)
+          ? new SmtpStrategy(config.smtpHost, config.smtpPort, secure, config.smtpUsuario, smtpPass, config.smtpFromName, config.smtpFromEmail)
+          : null;
+        break;
+      }
     }
+
+    if (instance) {
+      this.strategyCache.set(slotKey, { instance, fingerprint });
+      this.logger.log(`[GW] Estrategia ${config.proveedor} (re)creada — empresa=${slotKey}`);
+    }
+    return instance;
   }
 
   async invalidarCache(empresaId: string): Promise<void> {
     await this.cache.del(`gw:config:${empresaId}`).catch(() => {});
+    // Borrar todas las entradas de estrategia para esta empresa (formato: "{empresaId}:{proveedor}")
+    for (const key of this.strategyCache.keys()) {
+      if (key.startsWith(`${empresaId}:`)) this.strategyCache.delete(key);
+    }
   }
 
   private normalizarTelefono(tel: string, codigoPais = '+51'): string {
@@ -549,6 +691,7 @@ export class GatewayMensajeriaService {
     contratoId: string | undefined,
     clienteId: string | undefined,
     eventVars: Record<string, string>,
+    canalPlantilla: 'whatsapp' | 'email' = 'whatsapp',
   ): Promise<string | null> {
     const codigo = TIPO_A_CODIGO[tipo];
     if (!codigo) {
@@ -558,30 +701,79 @@ export class GatewayMensajeriaService {
 
     let contenido: string | null = null;
 
-    // 1. Plantilla personalizada de la empresa en BD
+    // 1. Plantilla personalizada — con caché Redis 10 min para evitar query por mensaje
     if (empresaId) {
+      const tmplKey = `tmpl:${empresaId}:${canalPlantilla}:${codigo}`;
       try {
-        const [plantilla] = await this.ds.query(
-          `SELECT contenido FROM plantillas_mensajes
-           WHERE empresa_id = $1 AND tipo = 'whatsapp' AND codigo = $2 AND activo = true AND deleted_at IS NULL`,
-          [empresaId, codigo],
-        );
-        if (plantilla?.contenido) contenido = plantilla.contenido;
-      } catch (err: any) {
-        this.logger.warn(`[GW] Error buscando plantilla ${codigo}: ${err.message}`);
+        const cached = await this.cache.get<string>(tmplKey);
+        if (cached !== undefined && cached !== null) {
+          // Hit: sentinel significa "no hay plantilla personalizada"
+          contenido = cached === TMPL_NO_CUSTOM ? null : cached;
+        } else {
+          // Miss: consultar BD y guardar resultado en caché
+          const [plantilla] = await this.ds.query(
+            `SELECT contenido FROM plantillas_mensajes
+             WHERE empresa_id = $1 AND tipo = $3 AND codigo = $2 AND activo = true AND deleted_at IS NULL`,
+            [empresaId, codigo, canalPlantilla],
+          );
+          contenido = plantilla?.contenido ?? null;
+          await this.cache.set(tmplKey, contenido ?? TMPL_NO_CUSTOM, 10 * 60 * 1000).catch(() => {});
+        }
+      } catch {
+        // Redis caído → consultar BD directamente sin cachear
+        try {
+          const [plantilla] = await this.ds.query(
+            `SELECT contenido FROM plantillas_mensajes
+             WHERE empresa_id = $1 AND tipo = $3 AND codigo = $2 AND activo = true AND deleted_at IS NULL`,
+            [empresaId, codigo, canalPlantilla],
+          );
+          contenido = plantilla?.contenido ?? null;
+        } catch (dbErr: any) {
+          this.logger.warn(`[GW] Error buscando plantilla ${codigo}: ${dbErr.message}`);
+        }
       }
     }
 
-    // 2. Fallback al sistema de plantillas por defecto
+    // 2. Fallback al sistema de plantillas por defecto (en memoria, sin query)
     if (!contenido) {
-      contenido = SYSTEM_DEFAULTS_WHATSAPP[codigo]?.contenido ?? null;
+      contenido = canalPlantilla === 'email'
+        ? (SYSTEM_DEFAULTS_EMAIL[codigo] ?? null)
+        : (SYSTEM_DEFAULTS_WHATSAPP[codigo]?.contenido ?? null);
     }
 
     if (!contenido) return null;
 
     // 3. Enriquecer con datos de BD y renderizar
     const vars = await this.resolveVariables(empresaId, contratoId, clienteId, eventVars);
-    return contenido.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '');
+    return contenido.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+      const value = vars[key];
+      if (value === undefined) {
+        this.logger.warn(`[GW] Variable '{{${key}}}' sin valor en plantilla '${codigo}' (tipo=${tipo})`);
+      }
+      return value ?? '';
+    });
+  }
+
+  private async resolveClientEmail(params: WhatsAppParams): Promise<string | null> {
+    try {
+      if (params.contratoId) {
+        const [row] = await this.ds.query(
+          `SELECT cl.email FROM contratos co JOIN clientes cl ON cl.id = co.cliente_id WHERE co.id = $1`,
+          [params.contratoId],
+        );
+        return row?.email ?? null;
+      }
+      if (params.clienteId) {
+        const [row] = await this.ds.query(
+          `SELECT email FROM clientes WHERE id = $1`,
+          [params.clienteId],
+        );
+        return row?.email ?? null;
+      }
+    } catch (err: any) {
+      this.logger.warn(`[GW] resolveClientEmail: ${err.message}`);
+    }
+    return null;
   }
 
   private sleep(seconds: number): Promise<void> {

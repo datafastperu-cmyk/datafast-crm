@@ -32,7 +32,7 @@ export class CampanasService implements OnModuleInit {
   constructor(
     @InjectDataSource()                    private readonly ds:    DataSource,
     @Inject(CACHE_MANAGER)                 private readonly cache: Cache,
-    @InjectQueue(QUEUES.NOTIFICACIONES)    private readonly queue: Queue,
+    @InjectQueue(QUEUES.CAMPANAS)          private readonly queue: Queue,
     private readonly moduleHealth: ModuleHealthService,
   ) {}
 

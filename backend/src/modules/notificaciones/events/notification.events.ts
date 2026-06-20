@@ -23,6 +23,9 @@ export const NOTIFICATION_EVENTS = {
   EMISOR_CONECTADO:     'notification.emisor.conectado',
   ROUTER_CAIDO:         'notification.router.caido',
   ROUTER_CONECTADO:     'notification.router.conectado',
+  // FTTH / Migración
+  MIGRACION_FTTH:       'notification.migracion_ftth',
+  FTTH_ACTIVADO:        'ftth.cliente.activado',
 } as const;
 
 // ─── Payloads tipados para cada evento ───────────────────────
@@ -47,6 +50,7 @@ export interface EventNotificacionPagoRecibido {
   empresaId:      string;
   contratoId?:    string;
   clienteId?:     string;
+  pagoId?:        string;  // clave de idempotencia — evita duplicado pagos.service + cobranza.worker
 }
 
 export interface EventNotificacionServicioSuspendido {
@@ -141,4 +145,23 @@ export interface EventNotificacionRouterCaido {
 export interface EventNotificacionRouterConectado {
   routerNombre: string;
   empresaId:    string;
+}
+
+export interface EventNotificacionMigracionFtth {
+  telefono:      string;
+  clienteNombre: string;
+  ipFtth:        string;
+  empresaId:     string;
+  clienteId?:    string;
+}
+
+export interface EventNotificacionFtthActivado {
+  clienteId:       string;
+  contratoId:      string;
+  empresaId:       string;
+  clienteNombre:   string;
+  clienteTelefono: string;
+  planNombre:      string;
+  ipAsignada:      string;
+  usuarioPppoe:    string;
 }
