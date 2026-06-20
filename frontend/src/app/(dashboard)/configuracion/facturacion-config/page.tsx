@@ -302,7 +302,7 @@ function GlobalConfigForm({
   onSave: (v: GlobalForm) => void;
   isPending: boolean;
 }) {
-  const { register, handleSubmit, watch, formState: { errors, isDirty } } = useForm<GlobalForm>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<GlobalForm>({
     resolver: zodResolver(globalSchema),
     defaultValues: {
       moneda:                          config.moneda,
@@ -347,8 +347,11 @@ function GlobalConfigForm({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Mora */}
           <div className="p-4 rounded-xl border border-border space-y-2">
-            <Toggle label="Mora → siguiente ciclo de facturación"
-              {...register('moraAcumulaSiguienteCiclo')} checked={watchMora} />
+            <Toggle
+              label="Mora → siguiente ciclo de facturación"
+              checked={watchMora}
+              onChange={() => setValue('moraAcumulaSiguienteCiclo', !watchMora, { shouldDirty: true })}
+            />
             <p className="text-[11px] text-muted-foreground pl-10">
               {watchMora
                 ? 'Se acumula y aparece en la factura del próximo mes.'
@@ -358,8 +361,11 @@ function GlobalConfigForm({
 
           {/* Reconexión */}
           <div className="p-4 rounded-xl border border-border space-y-2">
-            <Toggle label="Reconexión → siguiente ciclo de facturación"
-              {...register('reconexionAcumulaSiguienteCiclo')} checked={watchReconexion} />
+            <Toggle
+              label="Reconexión → siguiente ciclo de facturación"
+              checked={watchReconexion}
+              onChange={() => setValue('reconexionAcumulaSiguienteCiclo', !watchReconexion, { shouldDirty: true })}
+            />
             <p className="text-[11px] text-muted-foreground pl-10">
               {watchReconexion
                 ? 'Se acumula y aparece en la factura del próximo mes.'
@@ -370,7 +376,7 @@ function GlobalConfigForm({
       </Card>
 
       <div className="flex justify-end gap-3">
-        <button type="submit" disabled={isPending || !isDirty}
+        <button type="submit" disabled={isPending}
           className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg
                      bg-primary text-primary-foreground font-medium
                      hover:bg-primary/90 disabled:opacity-60 transition-colors">
