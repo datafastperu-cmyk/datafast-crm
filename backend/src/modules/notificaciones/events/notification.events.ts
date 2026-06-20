@@ -26,6 +26,8 @@ export const NOTIFICATION_EVENTS = {
   // FTTH / Migración
   MIGRACION_FTTH:       'notification.migracion_ftth',
   FTTH_ACTIVADO:        'ftth.cliente.activado',
+  // Infraestructura — Outbox
+  OUTBOX_RED_AGOTADO:   'notification.outbox_red.agotado',
 } as const;
 
 // ─── Payloads tipados para cada evento ───────────────────────
@@ -164,4 +166,12 @@ export interface EventNotificacionFtthActivado {
   planNombre:      string;
   ipAsignada:      string;
   usuarioPppoe:    string;
+}
+
+export interface EventOutboxRedAgotado {
+  contratoId:  string;
+  routerId:    string;
+  accion:      string;
+  ultimoError: string;
+  empresaId?:  string;
 }

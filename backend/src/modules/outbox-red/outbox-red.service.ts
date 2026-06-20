@@ -2,12 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { Cron }              from '@nestjs/schedule';
+import { EventEmitter2 }     from '@nestjs/event-emitter';
 
 import { FirewallService }   from '../mikrotik/services/firewall.service';
 import { PppoeService }      from '../mikrotik/services/pppoe.service';
+import { QueueService }      from '../mikrotik/services/queue.service';
 import { decrypt }           from '../../common/utils/encryption.util';
+import {
+  NOTIFICATION_EVENTS,
+  EventOutboxRedAgotado,
+} from '../notificaciones/events/notification.events';
 
-export type AccionRed = 'SUSPENDER' | 'REACTIVAR' | 'DESPROVISIONAR';
+export type AccionRed = 'SUSPENDER' | 'REACTIVAR' | 'DESPROVISIONAR' | 'PROVISIONAR';
 
 export interface PayloadSuspenderRed {
   ipAsignada:  string;
@@ -23,7 +29,19 @@ export interface PayloadReactivarRed {
 
 export interface PayloadDesprovisionarRed {
   contratoId:   string;
-  motivo:       string;   // razón por la que se encola (baja_definitiva, cortado, etc.)
+  motivo:       string;
+}
+
+export interface PayloadProvisionarRed {
+  contratoId:    string;
+  clienteId:     string;
+  usuarioPppoe:  string;
+  passwordPppoe: string;
+  ipAsignada:    string;
+  perfilPppoe:   string;
+  downloadMbps:  number;
+  uploadMbps:    number;
+  tipoQueue:     string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -39,6 +57,8 @@ export class OutboxRedService {
     @InjectDataSource()    private readonly ds:          DataSource,
     private readonly firewallSvc: FirewallService,
     private readonly pppoeSvc:    PppoeService,
+    private readonly queueSvc:    QueueService,
+    private readonly events:      EventEmitter2,
   ) {}
 
   /**
@@ -49,7 +69,7 @@ export class OutboxRedService {
     accion:     AccionRed,
     contratoId: string,
     routerId:   string,
-    payload:    PayloadSuspenderRed | PayloadReactivarRed | PayloadDesprovisionarRed,
+    payload:    PayloadSuspenderRed | PayloadReactivarRed | PayloadDesprovisionarRed | PayloadProvisionarRed,
   ): Promise<void> {
     await this.ds.query(`
       INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
@@ -70,18 +90,32 @@ export class OutboxRedService {
     await this.encolar('DESPROVISIONAR', contratoId, 'none', { contratoId, motivo });
   }
 
+  async encolarProvisionar(
+    contratoId: string,
+    routerId:   string,
+    payload:    PayloadProvisionarRed,
+  ): Promise<void> {
+    await this.encolar('PROVISIONAR', contratoId, routerId, payload);
+  }
+
   // ────────────────────────────────────────────────────────────
   // CRON — cada 5 minutos procesa hasta 10 comandos pendientes
   // ────────────────────────────────────────────────────────────
   @Cron('0 */5 * * * *')
   async procesarPendientes(): Promise<void> {
-    const pendientes = await this.ds.query<any[]>(`
-      SELECT id, contrato_id, router_id, accion, payload, intentos, max_intentos
-      FROM   comandos_red_pendientes
-      WHERE  estado = 'PENDIENTE' AND intentos < max_intentos
-      ORDER  BY creado_en
-      LIMIT  10
-    `);
+    // SELECT FOR UPDATE SKIP LOCKED: dos instancias PM2 nunca toman el mismo
+    // registro. SKIP LOCKED descarta filas bloqueadas por otra instancia en lugar
+    // de esperar, eliminando deadlocks y doble ejecución.
+    const pendientes = await this.ds.transaction(async (em) => {
+      return em.query<any[]>(`
+        SELECT id, contrato_id, router_id, accion, payload, intentos, max_intentos
+        FROM   comandos_red_pendientes
+        WHERE  estado = 'PENDIENTE' AND intentos < max_intentos
+        ORDER  BY creado_en
+        LIMIT  10
+        FOR UPDATE SKIP LOCKED
+      `);
+    });
 
     if (pendientes.length === 0) return;
 
@@ -153,6 +187,30 @@ export class OutboxRedService {
             await this.pppoeSvc.eliminar(creds, contratoRow.usuarioPppoe);
           }
         }
+      } else if (cmd.accion === 'PROVISIONAR') {
+        const p = payload as PayloadProvisionarRed;
+
+        // Paso A: PPPoE (upsert — idempotente si ya existía de un intento previo)
+        await this.pppoeSvc.crear(creds, {
+          name:          p.usuarioPppoe,
+          password:      p.passwordPppoe,
+          profile:       p.perfilPppoe || 'default',
+          service:       'pppoe',
+          remoteAddress: p.ipAsignada,
+          comment:       `DATAFAST:ClienteID:${p.clienteId}`,
+          disabled:      false,
+        });
+
+        // Paso B: Simple Queue (upsert — idempotente)
+        if (!p.tipoQueue || p.tipoQueue === 'simple_queue') {
+          await this.queueSvc.crearSimpleQueue(creds, {
+            name:         p.usuarioPppoe,
+            target:       `${p.ipAsignada}/32`,
+            maxLimitDown: p.downloadMbps,
+            maxLimitUp:   p.uploadMbps,
+            comment:      `DATAFAST:ClienteID:${p.clienteId}`,
+          });
+        }
       }
 
       await this.ds.query(`
@@ -178,6 +236,19 @@ export class OutboxRedService {
         this.logger.error(
           `[OutboxRed] ❌ AGOTADO → contrato=${cmd.contrato_id} accion=${cmd.accion} | ${err.message}`,
         );
+        // Obtener empresaId para enrutar la notificación
+        const [row] = await this.ds.query<any[]>(
+          `SELECT empresa_id FROM contratos WHERE id = $1 LIMIT 1`,
+          [cmd.contrato_id],
+        ).catch(() => [null]);
+
+        this.events.emit(NOTIFICATION_EVENTS.OUTBOX_RED_AGOTADO, {
+          contratoId:  cmd.contrato_id,
+          routerId:    cmd.router_id,
+          accion:      cmd.accion,
+          ultimoError: (err.message ?? 'Error desconocido').slice(0, 200),
+          empresaId:   row?.empresa_id ?? undefined,
+        } satisfies EventOutboxRedAgotado);
       } else {
         this.logger.warn(
           `[OutboxRed] Reintento ${nuevosIntentos}/${cmd.max_intentos} → contrato=${cmd.contrato_id}: ${err.message}`,

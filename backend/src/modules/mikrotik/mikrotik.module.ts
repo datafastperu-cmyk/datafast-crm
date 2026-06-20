@@ -2,6 +2,7 @@ import { Module }              from '@nestjs/common';
 import { TypeOrmModule }       from '@nestjs/typeorm';
 import { BullModule }          from '@nestjs/bull';
 import { MikrotikController }        from './mikrotik.controller';
+import { ReconciliacionWorker }      from './reconciliacion.worker';
 import { MikrotikService }           from './mikrotik.service';
 import { RouterConnectionPool }      from './services/connection-pool.service';
 import { PppoeService }              from './services/pppoe.service';
@@ -69,6 +70,9 @@ import { OpenvpnModule }             from '../openvpn/openvpn.module';
     VelocidadOrquestador,
     VelocidadWorker,
     VelocidadScheduler,
+
+    // Fase 6 — Reconciliación de drift BD↔hardware
+    ReconciliacionWorker,
   ],
   exports: [
     MikrotikService,

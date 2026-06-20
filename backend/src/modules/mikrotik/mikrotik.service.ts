@@ -706,63 +706,94 @@ export class MikrotikService implements OnModuleInit {
     const creds = await this.getCredentials(routerId, user.empresaId);
 
     this.logger.log(
-      `Provisionando cliente en ${creds.ip}: PPPoE=${dto.usuarioPppoe} | IP=${dto.ipAsignada} | ` +
-      `${dto.uploadMbps}/${dto.downloadMbps} Mbps`,
+      `[SAGA] Iniciando provisioning cliente ${dto.clienteId} en ${creds.ip}: ` +
+      `PPPoE=${dto.usuarioPppoe} | IP=${dto.ipAsignada} | ${dto.uploadMbps}/${dto.downloadMbps} Mbps`,
     );
 
-    // ── 1. Crear usuario PPPoE ─────────────────────────────
-    const ppppoeId = await this.pppoeSvc.crear(creds, {
-      name:          dto.usuarioPppoe,
-      password:      dto.passwordPppoe,
-      profile:       dto.perfilPppoe || 'default',
-      service:       'pppoe',
-      remoteAddress: dto.ipAsignada,
-      comment:       `DATAFAST:ClienteID:${dto.clienteId}`,
-      disabled:      false,
-    });
-
-    // ── 2. Crear Simple Queue (o PCQ si está configurado) ──
-    const hasQueue = dto.tipoQueue === 'simple_queue' || !dto.tipoQueue;
-    let queueId = '';
-
-    if (hasQueue) {
-      queueId = await this.queueSvc.crearSimpleQueue(creds, {
-        name:         dto.usuarioPppoe,
-        target:       `${dto.ipAsignada}/32`,
-        maxLimitDown: dto.downloadMbps,
-        maxLimitUp:   dto.uploadMbps,
-        burstLimitDown: dto.burstDownMbps,
-        burstLimitUp:   dto.burstUpMbps,
-        burstTimeDown:  dto.burstTiempoSegundos,
-        burstTimeUp:    dto.burstTiempoSegundos,
+    // ── PASO A: Crear usuario PPPoE ────────────────────────
+    let ppppoeId = '';
+    try {
+      ppppoeId = await this.pppoeSvc.crear(creds, {
+        name:          dto.usuarioPppoe,
+        password:      dto.passwordPppoe,
+        profile:       dto.perfilPppoe || 'default',
+        service:       'pppoe',
+        remoteAddress: dto.ipAsignada,
         comment:       `DATAFAST:ClienteID:${dto.clienteId}`,
+        disabled:      false,
       });
-    } else if (dto.tipoQueue === 'queue_tree' || dto.tipoQueue === 'pcq') {
-      // Verificar si PCQ está configurado, si no, configurarlo primero
-      const tienePcq = await this.queueSvc.tienePcqConfigurado(creds);
-      if (!tienePcq) {
-        await this.queueSvc.configurarPcqCompleto(creds, {
-          namePrefix:   'datafast',
-          downloadMbps: dto.downloadMbps * 10, // límite total del nodo
-          uploadMbps:   dto.uploadMbps * 10,
-        });
-      }
-      // El PCQ ya maneja el cliente automáticamente por IP
+    } catch (errA: any) {
+      // Paso A falló antes de crear nada en hardware: no hay que compensar
+      this.logger.error(`[SAGA] Paso A (PPPoE) falló para ${dto.clienteId}: ${errA.message}`);
+      throw errA;
     }
 
-    // ── 3. Asegurar que las reglas de control están activas ─
+    // ── PASO B: Crear Queue de velocidad ───────────────────
+    const hasSimpleQueue = dto.tipoQueue === 'simple_queue' || !dto.tipoQueue;
+    let queueId = '';
+
+    try {
+      if (hasSimpleQueue) {
+        queueId = await this.queueSvc.crearSimpleQueue(creds, {
+          name:           dto.usuarioPppoe,
+          target:         `${dto.ipAsignada}/32`,
+          maxLimitDown:   dto.downloadMbps,
+          maxLimitUp:     dto.uploadMbps,
+          burstLimitDown: dto.burstDownMbps,
+          burstLimitUp:   dto.burstUpMbps,
+          burstTimeDown:  dto.burstTiempoSegundos,
+          burstTimeUp:    dto.burstTiempoSegundos,
+          comment:        `DATAFAST:ClienteID:${dto.clienteId}`,
+        });
+      } else if (dto.tipoQueue === 'queue_tree' || dto.tipoQueue === 'pcq') {
+        const tienePcq = await this.queueSvc.tienePcqConfigurado(creds);
+        if (!tienePcq) {
+          await this.queueSvc.configurarPcqCompleto(creds, {
+            namePrefix:   'datafast',
+            downloadMbps: dto.downloadMbps * 10,
+            uploadMbps:   dto.uploadMbps * 10,
+          });
+        }
+      }
+    } catch (errB: any) {
+      // ── COMPENSACIÓN: Paso B falló → revertir Paso A ────
+      this.logger.error(
+        `[SAGA] Paso B (Queue) falló para ${dto.clienteId}: ${errB.message}. ` +
+        `Compensando: eliminando PPPoE ${dto.usuarioPppoe}...`,
+      );
+      try {
+        await this.pppoeSvc.eliminar(creds, dto.usuarioPppoe);
+        this.logger.log(`[SAGA] Compensación OK: PPPoE ${dto.usuarioPppoe} eliminado en ${creds.ip}`);
+      } catch (errComp: any) {
+        // Compensación también falló: PPPoE queda huérfano en el router.
+        // reparar() lo limpiará cuando el operador lo ejecute.
+        this.logger.error(
+          `[SAGA] Compensación FALLÓ para ${dto.usuarioPppoe} en ${creds.ip}: ${errComp.message}. ` +
+          `PPPoE huérfano — usar "Reparar" para limpiar.`,
+        );
+      }
+      throw new Error(
+        `Error al crear la cola de velocidad para ${dto.usuarioPppoe}: ${errB.message}. ` +
+        `El usuario PPPoE fue eliminado del router (compensación aplicada).`,
+      );
+    }
+
+    // ── PASO C: Reglas de firewall (idempotente, no requiere compensación) ──
     if (user.empresaId) {
       await this.firewallSvc.configurarReglasControl(creds).catch((err) =>
-        this.logger.warn(`No se pudieron verificar reglas firewall: ${err.message}`),
+        this.logger.warn(
+          `[SAGA] Paso C (Firewall) no crítico — se aplicará en el próximo poll: ${err.message}`,
+        ),
       );
     }
 
     await this.auditoria.log({
       empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
       accion: 'PROVISION', modulo: 'mikrotik', entidadId: dto.clienteId,
-      descripcion: `PPPoE ${dto.usuarioPppoe} provisionado en ${creds.ip} | IP: ${dto.ipAsignada}`,
+      descripcion: `[SAGA OK] PPPoE ${dto.usuarioPppoe} + Queue provisionados en ${creds.ip} | IP: ${dto.ipAsignada}`,
     });
 
+    this.logger.log(`[SAGA] Provisioning completado: ${dto.clienteId} en ${creds.ip}`);
     return { ppppoeId, queueId };
   }
 
