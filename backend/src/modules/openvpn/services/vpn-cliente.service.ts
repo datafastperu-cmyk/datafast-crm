@@ -19,17 +19,15 @@ import { generateToken, encrypt }       from '../../../common/utils/encryption.u
 import { Router, MetodoConexion, EstadoEquipo, VersionRouterOS } from '../../mikrotik/entities/router.entity';
 
 // ── Rutas del sistema VPN ─────────────────────────────────────
-const CA_CRT      = '/etc/openvpn/server/ca.crt';
-const CCD_DIR     = '/etc/openvpn/ccd';
-// IP pura para el campo connect-to del cliente OVPN (sin protocolo ni puerto)
-const VPS_IP      = process.env.VPN_SERVER_IP || process.env.APP_URL?.replace(/^https?:\/\//, '').split(':')[0] || '127.0.0.1';
-// Base URL completa para el endpoint de descarga del CA (incluye puerto en dev sin Nginx)
-const API_BASE    = (process.env.APP_URL || `http://${VPS_IP}`).replace(/\/$/, '');
-const VPN_PORT    = parseInt(process.env.VPN_SERVER_PORT || '1195', 10);
-// Máscara de subred para ifconfig-push en los archivos CCD.
-// Debe coincidir con la topología del servidor OpenVPN (subnet/net30).
-// Configurable via VPN_CCD_NETMASK para soportar /30 u otras topologías.
-const CCD_NETMASK = process.env.VPN_CCD_NETMASK || '255.255.255.0';
+const CA_CRT = '/etc/openvpn/server/ca.crt';
+const CCD_DIR = '/etc/openvpn/ccd';
+
+// Lazy getters: se evalúan en tiempo de llamada (no de carga de módulo),
+// garantizando que ConfigModule ya haya populado process.env desde .env.production.
+const getVpsIp      = () => process.env.VPN_SERVER_IP || process.env.APP_URL?.replace(/^https?:\/\//, '').split(':')[0] || '';
+const getApiBase    = () => (process.env.APP_URL || `http://${getVpsIp()}`).replace(/\/$/, '');
+const getVpnPort    = () => parseInt(process.env.VPN_SERVER_PORT || '1195', 10);
+const getCcdNetmask = () => process.env.VPN_CCD_NETMASK || '255.255.255.0';
 
 interface VpnConnectedClient {
   commonName:     string;
@@ -468,7 +466,7 @@ export class VpnClienteService {
   async escribirArchivoCcd(commonName: string, subnets: string[], vpnIp?: string): Promise<void> {
     const filePath = path.join(CCD_DIR, commonName);
     const lines: string[] = [];
-    if (vpnIp) lines.push(`ifconfig-push ${vpnIp} ${CCD_NETMASK}`);
+    if (vpnIp) lines.push(`ifconfig-push ${vpnIp} ${getCcdNetmask()}`);
     for (const sn of (subnets || []).filter(Boolean)) {
       const [ip, prefix] = sn.split('/');
       const mask = this._prefixToMask(parseInt(prefix ?? '24', 10));
@@ -895,7 +893,7 @@ export class VpnClienteService {
     const vpnUser   = cliente.vpnUsuario || '';
     const mac       = this._generarMac();
     const fetchPath = `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`;
-    const urlCa     = `${API_BASE}${fetchPath}/ca.crt`;
+    const urlCa     = `${getApiBase()}${fetchPath}/ca.crt`;
     const prefix    = `df-${cliente.nombreCert}`;
     return `{
 :local fCa "${prefix}-ca.crt"
@@ -908,7 +906,7 @@ export class VpnClienteService {
 :delay 3s
 /certificate import file-name=$fCa passphrase=""
 :delay 2s
-/interface ovpn-client add name=vpndatafast connect-to=${VPS_IP} port=${VPN_PORT} cipher=${cliente.cipher} auth=${cliente.authAlg} user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
+/interface ovpn-client add name=vpndatafast connect-to=${getVpsIp()} port=${getVpnPort()} cipher=${cliente.cipher} auth=${cliente.authAlg} user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
 :delay 1s
 /interface ovpn-client enable vpndatafast
 }`;
@@ -918,7 +916,7 @@ export class VpnClienteService {
     const vpnUser    = cliente.vpnUsuario || '';
     const mac        = this._generarMac();
     const fetchPath  = `/api/v1/openvpn/mikrotik-clients/certs/${cliente.tokenDescarga}`;
-    const urlCa      = `${API_BASE}${fetchPath}/ca.crt`;
+    const urlCa      = `${getApiBase()}${fetchPath}/ca.crt`;
     const prefix     = `df-${cliente.nombreCert}`;
     const verifyLine = cliente.verifyServerCert
       ? `\n/interface ovpn-client set vpndatafast verify-server-certificate=yes`
@@ -934,7 +932,7 @@ export class VpnClienteService {
 :delay 3s
 /certificate import file-name=$fCa passphrase=""
 :delay 2s
-/interface ovpn-client add cipher=${this._cipherForRos(cliente.cipher, 'v7')} auth=${cliente.authAlg} connect-to=${VPS_IP} port=${VPN_PORT} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
+/interface ovpn-client add cipher=${this._cipherForRos(cliente.cipher, 'v7')} auth=${cliente.authAlg} connect-to=${getVpsIp()} port=${getVpnPort()} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
 :delay 1s
 /interface ovpn-client enable vpndatafast
 }`;
