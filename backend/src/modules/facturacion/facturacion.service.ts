@@ -64,8 +64,12 @@ export class FacturacionService {
     const { serie, correlativo } =
       await this.comprobantesSvc.siguienteCorrelativo(comprobanteConfig.id);
 
+    const [emRow] = await this.ds.query<{ dias_gracia: string }[]>(
+      'SELECT dias_gracia FROM empresas WHERE id = $1 AND deleted_at IS NULL',
+      [user.empresaId],
+    );
     const fechaVencimiento =
-      dto.fechaVencimiento || this.calcularFechaVencimiento(5);
+      dto.fechaVencimiento || this.calcularFechaVencimiento(parseInt(emRow?.dias_gracia || '5', 10));
 
     const factura = this.facturaRepo.create({
       empresaId:            user.empresaId,
@@ -478,24 +482,41 @@ export class FacturacionService {
   async aplicarPago(
     facturaId: string, montoPago: number, empresaId: string, fechaPago: string,
   ): Promise<Factura> {
-    const factura = await this.findOne(facturaId, empresaId);
-    if (factura.estado === EstadoFactura.ANULADA)
-      throw new BadRequestException('No se puede aplicar un pago a una factura anulada');
-    if (factura.estado === EstadoFactura.PAGADA)
-      throw new BadRequestException('La factura ya está pagada');
+    // UPDATE atómico: elimina la race condition de leer-calcular-escribir.
+    // La condición del WHERE valida estado y que el monto no exceda el saldo
+    // pendiente (tolerancia de 1 centavo para redondeos de punto flotante).
+    const result = await this.ds.query<{ id: string; estado: string }[]>(`
+      UPDATE facturas
+      SET
+        monto_pagado = monto_pagado::numeric + $3::numeric,
+        estado = CASE
+          WHEN monto_pagado::numeric + $3::numeric >= total::numeric THEN 'pagada'
+          ELSE 'pagada_parcial'
+        END,
+        fecha_pago = CASE
+          WHEN monto_pagado::numeric + $3::numeric >= total::numeric THEN $4
+          ELSE fecha_pago
+        END
+      WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL
+        AND estado NOT IN ('pagada', 'anulada')
+        AND $3::numeric <= (total::numeric - monto_pagado::numeric + 0.01)
+      RETURNING id, estado
+    `, [facturaId, empresaId, montoPago, fechaPago]);
 
-    const nuevoMontoPagado = Number(factura.montoPagado) + montoPago;
-    const nuevoSaldo       = Number(factura.total) - nuevoMontoPagado;
-    const nuevoEstado      = nuevoSaldo <= 0 ? EstadoFactura.PAGADA : EstadoFactura.PAGADA_PARCIAL;
-
-    await this.facturaRepo.update(facturaId, {
-      montoPagado: nuevoMontoPagado,
-      estado:      nuevoEstado,
-      ...(nuevoEstado === EstadoFactura.PAGADA && { fechaPago }),
-    });
+    if (!result.length) {
+      const factura = await this.findOne(facturaId, empresaId);
+      if (factura.estado === EstadoFactura.ANULADA)
+        throw new BadRequestException('No se puede aplicar un pago a una factura anulada');
+      if (factura.estado === EstadoFactura.PAGADA)
+        throw new BadRequestException('La factura ya está completamente pagada');
+      const saldo = Number(factura.total) - Number(factura.montoPagado);
+      throw new BadRequestException(
+        `El monto S/ ${montoPago.toFixed(2)} excede el saldo pendiente S/ ${saldo.toFixed(2)}`,
+      );
+    }
 
     const actualizada = await this.findOne(facturaId, empresaId);
-    if (nuevoEstado === EstadoFactura.PAGADA) {
+    if (result[0].estado === EstadoFactura.PAGADA) {
       this.generarPdfAsync(actualizada, empresaId);
     }
     return actualizada;
@@ -553,10 +574,18 @@ export class FacturacionService {
 
     // Serie nota de crédito: 'NC-' + serie original
     const serieNc = `NC-${original.serie}`;
-    const [correlativoRow] = await this.ds.query(`
-      SELECT COALESCE(MAX(correlativo), 0) + 1 AS siguiente
-      FROM facturas WHERE empresa_id = $1 AND serie = $2 AND deleted_at IS NULL
-    `, [user.empresaId, serieNc]);
+    // Advisory lock por empresa+serie para garantizar correlativos únicos
+    // incluso bajo creación concurrente de notas de crédito.
+    const [correlativoRow] = await this.ds.transaction(async manager => {
+      await manager.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1))`,
+        [`nc_correlativo_${user.empresaId}_${serieNc}`],
+      );
+      return manager.query<{ siguiente: string }[]>(`
+        SELECT COALESCE(MAX(correlativo), 0) + 1 AS siguiente
+        FROM facturas WHERE empresa_id = $1 AND serie = $2 AND deleted_at IS NULL
+      `, [user.empresaId, serieNc]);
+    });
     const correlativoNc = parseInt(correlativoRow.siguiente, 10);
 
     const nc = this.facturaRepo.create({

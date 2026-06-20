@@ -130,18 +130,31 @@ export class PagosService {
 
       // PASO 4 — Si auto-verificado: actualizar factura y contrato dentro de la TX
       if (autoVerificado) {
-        const nuevaMontoPagado = Number(factura.montoPagado) + Number(dto.monto);
-        const nuevoEstadoFactura = nuevaMontoPagado >= Number(factura.total)
-          ? EstadoFactura.PAGADA
-          : EstadoFactura.PAGADA_PARCIAL;
+        // UPDATE atómico: evita la race condition leer-calcular-escribir.
+        // Si el monto excede el saldo, el WHERE lo rechaza y lanzamos error.
+        const result = await manager.query<{ id: string }[]>(`
+          UPDATE facturas
+          SET
+            monto_pagado = monto_pagado::numeric + $1::numeric,
+            estado = CASE
+              WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN 'pagada'
+              ELSE 'pagada_parcial'
+            END,
+            fecha_pago = CASE
+              WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN CURRENT_DATE
+              ELSE fecha_pago
+            END
+          WHERE id = $2 AND deleted_at IS NULL
+            AND estado NOT IN ('pagada', 'anulada')
+            AND $1::numeric <= (total::numeric - monto_pagado::numeric + 0.01)
+          RETURNING id
+        `, [dto.monto, factura.id]);
 
-        await manager.update(Factura, factura.id, {
-          montoPagado: nuevaMontoPagado,
-          estado:      nuevoEstadoFactura,
-          ...(nuevoEstadoFactura === EstadoFactura.PAGADA && {
-            fechaPago: new Date().toISOString().split('T')[0],
-          }),
-        });
+        if (!result.length) {
+          throw new BadRequestException(
+            `No se pudo aplicar el pago: la factura ya está pagada o el monto S/ ${dto.monto} excede el saldo`,
+          );
+        }
 
         // Reactivación automática si contrato suspendido por mora o manual
         if (
