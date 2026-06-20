@@ -27,14 +27,6 @@ export class ConfiguracionFacturacion extends BaseModel {
   @Column({ name: 'reconexion_acumula_siguiente_ciclo', default: true })
   reconexionAcumulaSiguienteCiclo: boolean;
 
-  // Monto fijo de reconexión (aplica IGV según tieneCargaFiscal del comprobante)
-  @Column({ name: 'monto_reconexion', type: 'decimal', precision: 10, scale: 2, default: 0 })
-  montoReconexion: number;
-
-  // Porcentaje de mora sobre el total de la deuda (0 = sin mora)
-  @Column({ name: 'porcentaje_mora', type: 'decimal', precision: 5, scale: 2, default: 0 })
-  porcentajeMora: number;
-
   @Column({ name: 'actualizado_por', nullable: true })
   actualizadoPor: string;
 }

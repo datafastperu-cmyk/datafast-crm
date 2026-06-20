@@ -5,6 +5,7 @@ import {
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
+
 export class CreateComprobanteConfigDto {
   @ApiProperty({ example: 'Factura', description: 'Nombre visible del tipo de comprobante' })
   @IsString() @IsNotEmpty() @MaxLength(100)
@@ -50,12 +51,4 @@ export class UpdateConfiguracionFacturacionDto {
   @ApiPropertyOptional({ example: true })
   @IsOptional() @IsBoolean()
   reconexionAcumulaSiguienteCiclo?: boolean;
-
-  @ApiPropertyOptional({ example: 0, description: 'Monto fijo de cargo por reconexión' })
-  @IsOptional() @IsNumber() @Min(0) @Type(() => Number)
-  montoReconexion?: number;
-
-  @ApiPropertyOptional({ example: 0, description: 'Porcentaje de mora sobre deuda (0 = sin mora)' })
-  @IsOptional() @IsNumber() @Min(0) @Max(100) @Type(() => Number)
-  porcentajeMora?: number;
 }

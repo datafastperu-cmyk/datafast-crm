@@ -32,8 +32,6 @@ interface ConfiguracionFacturacion {
   igvRate:                         number;
   moraAcumulaSiguienteCiclo:       boolean;
   reconexionAcumulaSiguienteCiclo: boolean;
-  montoReconexion:                 number;
-  porcentajeMora:                  number;
 }
 
 interface Resumen {
@@ -50,9 +48,7 @@ const api = {
     apiClient.get('/facturacion-config').then(r => {
       const d = r.data.data;
       if (d?.configuracion) {
-        d.configuracion.igvRate       = parseFloat(d.configuracion.igvRate)       || 0;
-        d.configuracion.montoReconexion = parseFloat(d.configuracion.montoReconexion) || 0;
-        d.configuracion.porcentajeMora  = parseFloat(d.configuracion.porcentajeMora)  || 0;
+        d.configuracion.igvRate = parseFloat(d.configuracion.igvRate) || 0;
       }
       return d;
     }),
@@ -95,8 +91,6 @@ const globalSchema = z.object({
   igvRate:                         z.coerce.number().int().min(0).max(100),
   moraAcumulaSiguienteCiclo:       z.boolean(),
   reconexionAcumulaSiguienteCiclo: z.boolean(),
-  montoReconexion:                 z.coerce.number().min(0),
-  porcentajeMora:                  z.coerce.number().min(0).max(100),
 });
 
 const tipoSchema = z.object({
@@ -315,12 +309,10 @@ function GlobalConfigForm({
       igvRate:                         Math.round(config.igvRate * 100),
       moraAcumulaSiguienteCiclo:       config.moraAcumulaSiguienteCiclo,
       reconexionAcumulaSiguienteCiclo: config.reconexionAcumulaSiguienteCiclo,
-      montoReconexion:                 config.montoReconexion,
-      porcentajeMora:                  config.porcentajeMora,
     },
   });
 
-  const watchMora      = watch('moraAcumulaSiguienteCiclo');
+  const watchMora       = watch('moraAcumulaSiguienteCiclo');
   const watchReconexion = watch('reconexionAcumulaSiguienteCiclo');
 
   return (
@@ -345,40 +337,34 @@ function GlobalConfigForm({
         </div>
       </Card>
 
-      <Card title="Cargos adicionales — Mora y Reconexión" icon={<AlertTriangle className="w-4 h-4" />}>
+      <Card title="Comportamiento de Mora y Reconexión" icon={<AlertTriangle className="w-4 h-4" />}>
         <p className="text-xs text-muted-foreground mb-4">
-          Cuando se activan, los cargos se acumulan y se incluyen como ítems en el próximo ciclo de facturación del cliente.
-          <strong className="text-foreground"> La mora nunca lleva IGV/IVA. La reconexión siempre lleva IGV/IVA.</strong>
+          Define <strong className="text-foreground">cuándo</strong> se cobra cada cargo al cliente.
+          Los montos se configuran por cliente en el wizard (paso 2).
+          <span className="block mt-1">Mora: inafecta de IGV/IVA · Reconexión: afecta a IGV/IVA.</span>
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Mora */}
-          <div className="p-4 rounded-xl border border-border space-y-3">
-            <Toggle label="Mora acumula en siguiente ciclo"
+          <div className="p-4 rounded-xl border border-border space-y-2">
+            <Toggle label="Mora → siguiente ciclo de facturación"
               {...register('moraAcumulaSiguienteCiclo')} checked={watchMora} />
-            {watchMora && (
-              <Field label="Porcentaje de mora sobre deuda (%)" error={errors.porcentajeMora?.message}>
-                <div className="relative w-32">
-                  <input type="number" step="0.01" min="0" max="100"
-                    {...register('porcentajeMora')} className={cn(inp(!!errors.porcentajeMora), 'pr-8')} />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-1">0 = sin cargo por mora</p>
-              </Field>
-            )}
+            <p className="text-[11px] text-muted-foreground pl-10">
+              {watchMora
+                ? 'Se acumula y aparece en la factura del próximo mes.'
+                : 'Se agrega como cargo adicional a la factura del mes en que se suspende.'}
+            </p>
           </div>
 
           {/* Reconexión */}
-          <div className="p-4 rounded-xl border border-border space-y-3">
-            <Toggle label="Reconexión acumula en siguiente ciclo"
+          <div className="p-4 rounded-xl border border-border space-y-2">
+            <Toggle label="Reconexión → siguiente ciclo de facturación"
               {...register('reconexionAcumulaSiguienteCiclo')} checked={watchReconexion} />
-            {watchReconexion && (
-              <Field label="Monto fijo de reconexión" error={errors.montoReconexion?.message}>
-                <input type="number" step="0.01" min="0"
-                  {...register('montoReconexion')} className={inp(!!errors.montoReconexion)} />
-                <p className="text-[11px] text-muted-foreground mt-1">0 = sin cargo de reconexión</p>
-              </Field>
-            )}
+            <p className="text-[11px] text-muted-foreground pl-10">
+              {watchReconexion
+                ? 'Se acumula y aparece en la factura del próximo mes.'
+                : 'Se agrega como cargo adicional a la factura del mes en que se suspende.'}
+            </p>
           </div>
         </div>
       </Card>

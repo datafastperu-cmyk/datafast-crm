@@ -248,8 +248,6 @@ export class ComprobantesConfigService {
     if (dto.igvRate           !== undefined) config.igvRate = dto.igvRate / 100; // frontend envía 18, guardamos 0.18
     if (dto.moraAcumulaSiguienteCiclo    !== undefined) config.moraAcumulaSiguienteCiclo = dto.moraAcumulaSiguienteCiclo;
     if (dto.reconexionAcumulaSiguienteCiclo !== undefined) config.reconexionAcumulaSiguienteCiclo = dto.reconexionAcumulaSiguienteCiclo;
-    if (dto.montoReconexion   !== undefined) config.montoReconexion = dto.montoReconexion;
-    if (dto.porcentajeMora    !== undefined) config.porcentajeMora = dto.porcentajeMora;
     config.actualizadoPor = user.sub;
 
     return repo.save(config);
