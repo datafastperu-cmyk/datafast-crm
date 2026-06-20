@@ -580,7 +580,10 @@ export class ClientesService {
       reactivar:  EstadoCliente.ACTIVO,
     };
     const nuevoEstado = estadoMap[dto.action];
-    const CHUNK = 20;
+    // Chunk de 10: evita saturar el connection pool de MikroTik con >10 sockets simultáneos.
+    // Pausa de 150 ms entre chunks: rate limiting suave para hardware con API lenta.
+    const CHUNK    = 10;
+    const PAUSE_MS = 150;
     let ok = 0, errors = 0;
 
     for (let i = 0; i < dto.ids.length; i += CHUNK) {
@@ -592,6 +595,9 @@ export class ClientesService {
       );
       ok     += settled.filter((r) => r.status === 'fulfilled').length;
       errors += settled.filter((r) => r.status === 'rejected').length;
+      if (i + CHUNK < dto.ids.length) {
+        await new Promise<void>((res) => setTimeout(res, PAUSE_MS));
+      }
     }
     return { ok, errors, total: dto.ids.length };
   }

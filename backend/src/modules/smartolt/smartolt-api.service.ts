@@ -79,6 +79,14 @@ export class SmartoltApiService implements OnModuleInit {
   private degraded      = false;
   private degradedReason: string | null = null;
 
+  // ── Circuit breaker ───────────────────────────────────────────
+  // Abre tras CB_THRESHOLD fallos de red consecutivos; se mantiene abierto
+  // CB_OPEN_MS y luego entra en HALF-OPEN (permite 1 petición de prueba).
+  private readonly CB_THRESHOLD = 3;
+  private readonly CB_OPEN_MS   = 60_000; // 60 segundos
+  private cbFailures   = 0;
+  private cbOpenAt: number | null = null;  // Date.now() cuando se abrió
+
   // Timeout generoso para SmartOLT (puede tardar al consultar OLTs remotas)
   private readonly TIMEOUT_MS = 30_000;
 
@@ -116,6 +124,39 @@ export class SmartoltApiService implements OnModuleInit {
       throw new ServiceUnavailableException(
         `Módulo SmartOLT no disponible: ${this.degradedReason ?? 'sin configuración o API inalcanzable'}`,
       );
+    }
+  }
+
+  // ── Circuit breaker ───────────────────────────────────────────
+  private checkCircuit(): void {
+    if (this.cbOpenAt === null) return;
+    const elapsed = Date.now() - this.cbOpenAt;
+    if (elapsed < this.CB_OPEN_MS) {
+      throw new ServiceUnavailableException(
+        `SmartOLT circuit breaker abierto — reintento en ${Math.ceil((this.CB_OPEN_MS - elapsed) / 1000)}s`,
+      );
+    }
+    // HALF-OPEN: dejamos pasar 1 petición de prueba sin resetear aún
+    this.logger.log('[SmartOLT CB] Entrando en HALF-OPEN — dejando pasar petición de prueba');
+  }
+
+  private onSuccess(): void {
+    if (this.cbFailures > 0 || this.cbOpenAt !== null) {
+      this.logger.log('[SmartOLT CB] Éxito — reseteando circuit breaker');
+    }
+    this.cbFailures = 0;
+    this.cbOpenAt   = null;
+  }
+
+  private onNetworkError(): void {
+    this.cbFailures++;
+    if (this.cbFailures >= this.CB_THRESHOLD) {
+      this.cbOpenAt = Date.now();
+      this.logger.error(
+        `[SmartOLT CB] Circuito ABIERTO tras ${this.cbFailures} fallos consecutivos — bloqueando ${this.CB_OPEN_MS / 1000}s`,
+      );
+    } else {
+      this.logger.warn(`[SmartOLT CB] Fallo de red ${this.cbFailures}/${this.CB_THRESHOLD}`);
     }
   }
 
@@ -369,10 +410,12 @@ export class SmartoltApiService implements OnModuleInit {
 
   private async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
     this.checkConfig();
+    this.checkCircuit();
     try {
       const res = await firstValueFrom(
         this.http.get<T>(`${this.baseUrl}${endpoint}`, this.getConfig(params)),
       );
+      this.onSuccess();
       return res.data;
     } catch (error) {
       this.handleHttpError(error, 'GET', endpoint);
@@ -381,10 +424,12 @@ export class SmartoltApiService implements OnModuleInit {
 
   private async post<T>(endpoint: string, body: any): Promise<T> {
     this.checkConfig();
+    this.checkCircuit();
     try {
       const res = await firstValueFrom(
         this.http.post<T>(`${this.baseUrl}${endpoint}`, body, this.getConfig()),
       );
+      this.onSuccess();
       return res.data;
     } catch (error) {
       this.handleHttpError(error, 'POST', endpoint);
@@ -393,10 +438,12 @@ export class SmartoltApiService implements OnModuleInit {
 
   private async put<T>(endpoint: string, body: any): Promise<T> {
     this.checkConfig();
+    this.checkCircuit();
     try {
       const res = await firstValueFrom(
         this.http.put<T>(`${this.baseUrl}${endpoint}`, body, this.getConfig()),
       );
+      this.onSuccess();
       return res.data;
     } catch (error) {
       this.handleHttpError(error, 'PUT', endpoint);
@@ -405,10 +452,12 @@ export class SmartoltApiService implements OnModuleInit {
 
   private async delete(endpoint: string): Promise<void> {
     this.checkConfig();
+    this.checkCircuit();
     try {
       await firstValueFrom(
         this.http.delete(`${this.baseUrl}${endpoint}`, this.getConfig()),
       );
+      this.onSuccess();
     } catch (error) {
       this.handleHttpError(error, 'DELETE', endpoint);
     }
@@ -437,9 +486,16 @@ export class SmartoltApiService implements OnModuleInit {
       );
     }
     if (!status) {
+      // Error de red / timeout — cuenta para el circuit breaker
+      this.onNetworkError();
       throw new ServiceUnavailableException(
         `SmartOLT no disponible: ${message}. Verifica SMARTOLT_URL.`,
       );
+    }
+
+    // Errores 5xx del servidor SmartOLT también contribuyen al circuit breaker
+    if (status >= 500) {
+      this.onNetworkError();
     }
 
     throw new ServiceUnavailableException(

@@ -7,7 +7,7 @@ import { FirewallService }   from '../mikrotik/services/firewall.service';
 import { PppoeService }      from '../mikrotik/services/pppoe.service';
 import { decrypt }           from '../../common/utils/encryption.util';
 
-export type AccionRed = 'SUSPENDER' | 'REACTIVAR';
+export type AccionRed = 'SUSPENDER' | 'REACTIVAR' | 'DESPROVISIONAR';
 
 export interface PayloadSuspenderRed {
   ipAsignada:  string;
@@ -19,6 +19,11 @@ export interface PayloadSuspenderRed {
 export interface PayloadReactivarRed {
   ipAsignada:  string;
   usuarioPppoe?: string;
+}
+
+export interface PayloadDesprovisionarRed {
+  contratoId:   string;
+  motivo:       string;   // razón por la que se encola (baja_definitiva, cortado, etc.)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -44,7 +49,7 @@ export class OutboxRedService {
     accion:     AccionRed,
     contratoId: string,
     routerId:   string,
-    payload:    PayloadSuspenderRed | PayloadReactivarRed,
+    payload:    PayloadSuspenderRed | PayloadReactivarRed | PayloadDesprovisionarRed,
   ): Promise<void> {
     await this.ds.query(`
       INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
@@ -55,6 +60,14 @@ export class OutboxRedService {
     this.logger.warn(
       `[OutboxRed] ${accion} encolado → contrato=${contratoId} router=${routerId}`,
     );
+  }
+
+  /**
+   * Encola desprovisión cuando la baja definitiva falla en hardware.
+   * Usa router_id = 'none' porque se re-consulta en ejecución.
+   */
+  async encolarDesprovisionar(contratoId: string, motivo: string): Promise<void> {
+    await this.encolar('DESPROVISIONAR', contratoId, 'none', { contratoId, motivo });
   }
 
   // ────────────────────────────────────────────────────────────
@@ -119,6 +132,26 @@ export class OutboxRedService {
         await this.firewallSvc.reactivarCliente(creds, payload.ipAsignada);
         if (payload.usuarioPppoe) {
           await this.pppoeSvc.setEstado(creds, payload.usuarioPppoe, false);
+        }
+      } else if (cmd.accion === 'DESPROVISIONAR') {
+        // Para DESPROVISIONAR: eliminar PPPoE secret o regla ARP del router
+        const [contratoRow] = await this.ds.query<any[]>(`
+          SELECT co.usuario_pppoe AS "usuarioPppoe",
+                 co.ip_asignada   AS "ipAsignada",
+                 co.mac_address   AS "macAddress",
+                 co.tipo_auth     AS "tipoAuth",
+                 ro.tipo_control  AS "tipoControl"
+          FROM contratos co
+          LEFT JOIN routers ro ON ro.id = co.router_id
+          WHERE co.id = $1
+        `, [cmd.contrato_id]).catch(() => [null]);
+
+        if (contratoRow) {
+          const rawTipo = contratoRow.tipoAuth ?? contratoRow.tipoControl ?? 'ninguna';
+          const tipo    = rawTipo === 'pppoe_addresslist' ? 'pppoe' : rawTipo;
+          if (tipo === 'pppoe' && contratoRow.usuarioPppoe) {
+            await this.pppoeSvc.eliminar(creds, contratoRow.usuarioPppoe);
+          }
         }
       }
 

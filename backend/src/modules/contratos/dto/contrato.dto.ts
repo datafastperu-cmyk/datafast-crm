@@ -220,6 +220,10 @@ export class CambiarEstadoContratoDto {
   @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(500)
   motivo?: string;
+
+  @ApiPropertyOptional({ description: 'Fuerza la transición omitiendo guardas de negocio (requiere rol ADMIN)' })
+  @IsOptional() @IsBoolean()
+  adminOverride?: boolean;
 }
 
 // ─── Prórroga ─────────────────────────────────────────────────

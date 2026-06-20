@@ -12,6 +12,8 @@ export enum EstadoContrato {
   PENDIENTE_ACTIVACION = 'pendiente_activacion',
   ACTIVO                = 'activo',
   SUSPENDIDO            = 'suspendido',
+  MOROSO                = 'moroso',    // deuda activa, aún con servicio (dentro de prorroga)
+  CORTADO               = 'cortado',   // sin servicio, deuda vencida (post-prorroga)
   BAJA_DEFINITIVA       = 'baja_definitiva',
 }
 
@@ -201,6 +203,18 @@ export class Contrato extends BaseModel {
 
   @Column({ name: 'aprovisionado_en', type: 'timestamptz', nullable: true })
   aprovisionadoEn: Date;
+
+  // ── Verificación post-provisioning (verify-after-write) ───
+  // True si la última verificación confirmó que el hardware tiene
+  // la configuración esperada. El reconciliador lo resetea si detecta divergencia.
+  @Column({ name: 'hardware_verificado', default: false })
+  hardwareVerificado: boolean;
+
+  @Column({ name: 'hardware_verificado_en', type: 'timestamptz', nullable: true })
+  hardwareVerificadoEn: Date;
+
+  @Column({ name: 'hardware_estado', length: 30, nullable: true, default: 'desconocido' })
+  hardwareEstado: string; // 'ok' | 'inconsistente' | 'desconocido' | 'sin_hardware'
 
   // ── Migración de servicio ─────────────────────────────────
   @Column({ name: 'en_migracion', default: false })

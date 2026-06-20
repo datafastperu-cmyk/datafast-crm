@@ -22,6 +22,9 @@ import { ArpService } from '../mikrotik/services/arp.service';
 import { FirewallService } from '../mikrotik/services/firewall.service';
 import { MikrotikService } from '../mikrotik/mikrotik.service';
 import { SmartoltApiService } from '../smartolt/smartolt-api.service';
+import { SagaLogService } from '../sagas/saga-log.service';
+import { SagaTipo } from '../sagas/entities/saga-log.entity';
+import { OutboxRedService } from '../outbox-red/outbox-red.service';
 
 export interface ActivarResultado {
   contrato:     Contrato;
@@ -35,9 +38,27 @@ const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
 
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_ACTIVACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.MOROSO, EstadoContrato.CORTADO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.MOROSO]:               [EstadoContrato.ACTIVO, EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.CORTADO]:              [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.BAJA_DEFINITIVA]:      [],
+};
+
+// Guardas de negocio por transición — condición que debe cumplirse además de la transición válida.
+// Se evalúan solo cuando !automatico && !adminOverride.
+type GuardaFn = (c: Contrato) => string | null; // null = pasa, string = mensaje de error
+
+const GUARDAS: Partial<Record<string, GuardaFn>> = {
+  [`${EstadoContrato.SUSPENDIDO}->${EstadoContrato.ACTIVO}`]:
+    (c) => c.deudaTotal > 0 ? `Deuda pendiente S/ ${Number(c.deudaTotal).toFixed(2)} — use adminOverride para forzar` : null,
+  [`${EstadoContrato.MOROSO}->${EstadoContrato.ACTIVO}`]:
+    (c) => c.deudaTotal > 0 ? `Deuda pendiente S/ ${Number(c.deudaTotal).toFixed(2)} — use adminOverride para forzar` : null,
+  [`${EstadoContrato.CORTADO}->${EstadoContrato.ACTIVO}`]:
+    (c) => c.deudaTotal > 0 ? `Deuda pendiente S/ ${Number(c.deudaTotal).toFixed(2)} — use adminOverride para forzar` : null,
+  [`${EstadoContrato.ACTIVO}->${EstadoContrato.SUSPENDIDO}`]:
+    (c) => (c.enProrroga && c.prorrogaHasta && new Date(c.prorrogaHasta) > new Date())
+      ? `Prórroga activa hasta ${c.prorrogaHasta} — use adminOverride para suspender antes` : null,
 };
 
 @Injectable()
@@ -56,6 +77,8 @@ export class ContratosService {
     private readonly firewallSvc: FirewallService,
     private readonly mikrotikSvc: MikrotikService,
     private readonly smartoltApi: SmartoltApiService,
+    private readonly sagaLog: SagaLogService,
+    private readonly outboxRed: OutboxRedService,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly events: EventEmitter2,
   ) {}
@@ -424,26 +447,69 @@ export class ContratosService {
   async cambiarEstado(id: string, dto: CambiarEstadoContratoDto, user: JwtPayload, automatico = false, req?: any): Promise<Contrato> {
     const contrato = await this.findOne(id, user.empresaId);
     const anterior = contrato.estado;
+
     if (!automatico) {
+      // Validar transición permitida
       const permitidos = TRANSICIONES[contrato.estado] ?? [];
       if (!permitidos.includes(dto.estado))
         throw new BadRequestException(`Transición ${anterior} → ${dto.estado} no permitida. Válidas: ${permitidos.join(', ') || 'ninguna'}`);
+
+      // Aplicar guarda de negocio (omitir si adminOverride = true)
+      if (!dto.adminOverride) {
+        const guardaKey = `${contrato.estado}->${dto.estado}`;
+        const guarda = GUARDAS[guardaKey];
+        if (guarda) {
+          const error = guarda(contrato);
+          if (error) throw new BadRequestException(error);
+        }
+      }
     }
     const upd: Partial<Contrato> = { estado:dto.estado, fechaEstado:new Date(), motivoEstado:dto.motivo, updatedBy:user.sub };
     if (dto.estado === EstadoContrato.BAJA_DEFINITIVA) {
+      const sagaBajaId = await this.sagaLog.iniciar(
+        SagaTipo.BAJA_DEFINITIVA, id, user.empresaId, user.sub, 4,
+      );
+
       upd.fechaBaja  = new Date().toISOString().split('T')[0];
       upd.motivoBaja = dto.motivo;
       upd.onuId      = null as any;
       upd.routerId   = null as any;
       upd.segmentoId = null as any;
       upd.ipAsignada = null as any;
-      if (contrato.segmentoId) await this.contratoRepo.liberarIp(id);
+
+      // S1: Liberar IP
+      const t1 = Date.now();
+      if (contrato.segmentoId) {
+        try { await this.contratoRepo.liberarIp(id); await this.sagaLog.registrarPaso(sagaBajaId, 1, 'liberar_ip', 'OK', undefined, Date.now() - t1); }
+        catch (e: any) { await this.sagaLog.registrarPaso(sagaBajaId, 1, 'liberar_ip', 'FAIL', e?.message, Date.now() - t1); }
+      } else { await this.sagaLog.registrarPaso(sagaBajaId, 1, 'liberar_ip', 'SKIPPED'); }
+
+      // S2: Desprovisionar OLT (soft — no bloquea baja)
+      const t2 = Date.now();
       await withTimeout(this.desaprovisionarOlt(id), 20000, 'desaprovision-olt')
-        .catch((e: any) => this.logger.warn(`cambiarEstado baja OLT: ${e?.message}`));
+        .then(() => this.sagaLog.registrarPaso(sagaBajaId, 2, 'desprovisionar_olt', 'OK', undefined, Date.now() - t2))
+        .catch((e: any) => { this.logger.warn(`cambiarEstado baja OLT: ${e?.message}`); return this.sagaLog.registrarPaso(sagaBajaId, 2, 'desprovisionar_olt', 'FAIL', e?.message, Date.now() - t2); });
+
+      // S3: Desprovisionar MikroTik (soft — no bloquea baja; reintento via outbox si falla)
+      const t3 = Date.now();
       await withTimeout(this.desaprovisionarMikrotik(id), 25000, 'desaprovision-mikrotik')
-        .catch((e: any) => this.logger.warn(`cambiarEstado baja MikroTik: ${e?.message}`));
+        .then(() => this.sagaLog.registrarPaso(sagaBajaId, 3, 'desprovisionar_mikrotik', 'OK', undefined, Date.now() - t3))
+        .catch(async (e: any) => {
+          this.logger.warn(`cambiarEstado baja MikroTik: ${e?.message}`);
+          await this.sagaLog.registrarPaso(sagaBajaId, 3, 'desprovisionar_mikrotik', 'FAIL', e?.message, Date.now() - t3);
+          // Encolar para reintento automático — el outbox reintenta cada 5 min hasta 12 veces
+          await this.outboxRed.encolarDesprovisionar(id, 'baja_definitiva_hardware_fallo').catch(() => void 0);
+        });
+
+      // S4: Eliminar de access list antena (soft)
+      const t4 = Date.now();
       await withTimeout(this.eliminarDeAccessListAntena(id), 15000, 'baja-antena')
-        .catch((e: any) => this.logger.warn(`cambiarEstado baja antena: ${e?.message}`));
+        .then(() => this.sagaLog.registrarPaso(sagaBajaId, 4, 'eliminar_antena_ap', 'OK', undefined, Date.now() - t4))
+        .catch((e: any) => { this.logger.warn(`cambiarEstado baja antena: ${e?.message}`); return this.sagaLog.registrarPaso(sagaBajaId, 4, 'eliminar_antena_ap', 'FAIL', e?.message, Date.now() - t4); });
+
+      // Completar saga aunque algunos pasos de hardware hayan fallado
+      // El reconciliador detectará hardware huérfano y lo limpiará
+      await this.sagaLog.completar(sagaBajaId);
 
       // Nota informativa con las credenciales de la última conexión
       const partes: string[] = [];
@@ -476,13 +542,14 @@ export class ContratosService {
         const tel = cl?.whatsapp || cl?.telefono;
         if (!tel) return;
         this.events.emit(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, {
-          telefono:      tel,
-          clienteNombre: cl.nombre_completo,
-          deudaTotal:    String(contrato.deudaTotal ?? 0),
-          nombreEmpresa: cl.empresa_nombre,
-          empresaId:     user.empresaId,
-          contratoId:    id,
-          clienteId:     contrato.clienteId,
+          telefono:         tel,
+          clienteNombre:    cl.nombre_completo,
+          deudaTotal:       String(contrato.deudaTotal ?? 0),
+          nombreEmpresa:    cl.empresa_nombre,
+          empresaId:        user.empresaId,
+          contratoId:       id,
+          clienteId:        contrato.clienteId,
+          aggregateVersion: contrato.version,  // versión optimista para deduplicación en consumidores
         });
       }).catch((e: any) => this.logger.warn(`cambiarEstado: no se pudo emitir notif suspensión: ${e?.message}`));
     }
@@ -511,79 +578,108 @@ export class ContratosService {
     if (c.estado !== EstadoContrato.PENDIENTE_ACTIVACION)
       throw new BadRequestException(`Solo se activan contratos PENDIENTE_ACTIVACION. Estado: ${c.estado}`);
 
-    // ── 1. Provisionar MikroTik ANTES de activar en BD ───────────────────────
-    // Si falla, el contrato nunca se marca ACTIVO → no hay estado inconsistente.
+    const sagaId = await this.sagaLog.iniciar(
+      SagaTipo.ACTIVAR_CONTRATO, id, user.empresaId, user.sub, 5,
+    );
+
+    // ── S1: Provisionar MikroTik ANTES de activar en BD ──────────────────────
+    // Si falla → fallar saga, el contrato permanece en PENDIENTE_ACTIVACION.
     let provisionadoOk = false;
     let provisionMotivoFallo: string | undefined;
+    const t1 = Date.now();
     try {
       const provResult = await this.provisionarMikrotik(id);
-      provisionadoOk = provResult.ok;
+      provisionadoOk    = provResult.ok;
       provisionMotivoFallo = provResult.motivo;
+      await this.sagaLog.registrarPaso(sagaId, 1, 'provision_mikrotik',
+        provisionadoOk ? 'OK' : 'SKIPPED', provisionMotivoFallo, Date.now() - t1);
     } catch (err: any) {
-      this.logger.error(`activar → ${id} | fallo de provisión MikroTik: ${err?.message}`);
-      // Registrar intento fallido en historial sin cambiar el estado del contrato
+      this.logger.error(`activar → ${id} | fallo MikroTik: ${err?.message}`);
+      await this.sagaLog.registrarPaso(sagaId, 1, 'provision_mikrotik', 'FAIL', err?.message, Date.now() - t1);
+      await this.sagaLog.fallar(sagaId, `Provisión MikroTik fallida: ${err?.message}`);
       await this.contratoRepo.guardarHistorial({
-        contratoId: id,
-        empresaId:  user.empresaId,
+        contratoId: id, empresaId: user.empresaId,
         estadoAnterior: EstadoContrato.PENDIENTE_ACTIVACION,
         estadoNuevo:    EstadoContrato.PENDIENTE_ACTIVACION,
-        motivo: `Intento de activación fallido — error MikroTik: ${err?.message}`,
+        motivo: `Intento fallido — MikroTik: ${err?.message} | sagaId: ${sagaId}`,
         usuarioId: user.sub,
-      }).catch(he => this.logger.error(`activar → historial intento fallido: ${he?.message}`));
+      }).catch(he => this.logger.error(`activar → historial fallido: ${he?.message}`));
       throw new BadRequestException(
         `No se pudo configurar el router MikroTik: ${err?.message}. ` +
         `El contrato permanece en PENDIENTE_ACTIVACION.`,
       );
     }
 
-    // ── 2. Registrar en la antena AP (soft — no bloquea la activación) ───────
+    // ── S2: Registrar en antena AP (soft — no bloquea la activación) ─────────
+    const t2 = Date.now();
     const antenaResult = await this.registrarEnAccessListAntena(id);
+    await this.sagaLog.registrarPaso(sagaId, 2, 'registro_antena_ap',
+      antenaResult.ok ? 'OK' : 'SKIPPED', antenaResult.advertencia, Date.now() - t2);
 
-    // ── 3. Activar el contrato en BD ahora que el hardware está configurado ───
+    // ── S3: Activar en BD ─────────────────────────────────────────────────────
+    const t3 = Date.now();
     await this.contratoRepo.update(id, {
       estado:           EstadoContrato.ACTIVO,
       fechaEstado:      new Date(),
       fechaInstalacion: new Date(),
       updatedBy:        user.sub,
     });
+    await this.sagaLog.registrarPaso(sagaId, 3, 'marcar_activo_bd', 'OK', undefined, Date.now() - t3);
 
-    // ── 4. Historial de activación ────────────────────────────────────────────
+    // ── S3b: Verify-after-write — confirmar que hardware aplicó provisión ─────
     const advertencias: string[] = [];
+    const tV = Date.now();
+    const verificado = await this.verificarProvisionHardware(id);
+    await this.contratoRepo.update(id, {
+      hardwareVerificado:   verificado,
+      hardwareVerificadoEn: new Date(),
+      hardwareEstado:       verificado ? 'ok' : 'inconsistente',
+    } as any);
+    await this.sagaLog.registrarPaso(sagaId, 4, 'verify_after_write',
+      verificado ? 'OK' : 'FAIL',
+      verificado ? undefined : 'Verificación post-provisión no confirmada',
+      Date.now() - tV,
+    );
+    if (!verificado) advertencias.push('Hardware: provisión no verificada — el reconciliador reintentará en 15 min');
+
     if (!provisionadoOk && provisionMotivoFallo) advertencias.push(`MikroTik sin provisión: ${provisionMotivoFallo}`);
     if (antenaResult.advertencia) advertencias.push(antenaResult.advertencia);
 
     const motivo = [
       'Instalación completada',
-      `Mikrotik: ${provisionadoOk ? 'OK' : 'sin provisión'}`,
+      `MikroTik: ${provisionadoOk ? 'OK' : 'sin provisión'}`,
       antenaResult.ok ? 'Antena AP: OK' : (antenaResult.advertencia ? 'Antena AP: ERROR' : null),
+      `sagaId: ${sagaId}`,
     ].filter(Boolean).join(' | ');
 
     await this.contratoRepo.guardarHistorial({
-      contratoId:     id,
-      empresaId:      user.empresaId,
+      contratoId: id, empresaId: user.empresaId,
       estadoAnterior: EstadoContrato.PENDIENTE_ACTIVACION,
       estadoNuevo:    EstadoContrato.ACTIVO,
-      motivo,
-      usuarioId:      user.sub,
-    }).catch(he => this.logger.error(`activar → guardarHistorial: ${he?.message}`));
+      motivo, usuarioId: user.sub,
+    }).catch(he => this.logger.error(`activar → historial: ${he?.message}`));
 
-    // ── 5. Promover cliente PENDIENTE_ACTIVACION → ACTIVO ────────────────────
+    // ── S5: Promover cliente → ACTIVO ─────────────────────────────────────────
+    const t5 = Date.now();
     try {
       await this.dataSource.query(
         `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
          WHERE id = $1 AND empresa_id = $2 AND estado = 'pendiente_activacion'`,
         [c.clienteId, user.empresaId, user.sub],
       );
+      await this.sagaLog.registrarPaso(sagaId, 5, 'promover_cliente_activo', 'OK', undefined, Date.now() - t5);
     } catch (e: any) {
-      // No revertir la activación del contrato, pero sí registrar y advertir
-      this.logger.error(`activar → cliente ${c.clienteId} | fallo al promover estado: ${e?.message}`);
-      advertencias.push(`Estado del abonado no pudo actualizarse a "activo" — actualízalo manualmente en su ficha.`);
+      this.logger.error(`activar → cliente ${c.clienteId} | fallo promover estado: ${e?.message}`);
+      await this.sagaLog.registrarPaso(sagaId, 5, 'promover_cliente_activo', 'FAIL', e?.message, Date.now() - t5);
+      advertencias.push(`Estado del abonado no pudo actualizarse a "activo" — actualízalo manualmente.`);
     }
 
+    await this.sagaLog.completar(sagaId);
+
     return {
-      contrato:     await this.findOne(id, user.empresaId),
-      mikrotikOk:   provisionadoOk,
-      antenaOk:     antenaResult.ok,
+      contrato:   await this.findOne(id, user.empresaId),
+      mikrotikOk: provisionadoOk,
+      antenaOk:   antenaResult.ok,
       advertencias,
     };
   }
@@ -666,6 +762,77 @@ export class ContratosService {
   // en MikroTik (modo heredado). Listos para inyectar comandos reales.
   // PM2 cluster guard: si se agregan crons aquí usar
   //   if (process.env.NODE_APP_INSTANCE !== '0') return true;
+
+  // ── Verify-after-write: confirma que el hardware tiene la config esperada ──
+  // Intenta verificar hasta 3 veces con 2s de espera entre intentos.
+  // Retorna true si el hardware confirmó el estado, false si no se pudo verificar.
+  // El timeout por intento es 10s para no bloquear el flujo de activación.
+  protected async verificarProvisionHardware(contratoId: string): Promise<boolean> {
+    const MAX_INTENTOS = 3;
+    const ESPERA_MS    = 2000;
+
+    for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
+      try {
+        const [row] = await this.dataSource.query<any[]>(`
+          SELECT
+            co.tipo_auth        AS "tipoAuth",
+            co.usuario_pppoe    AS "usuarioPppoe",
+            co.ip_asignada      AS "ipAsignada",
+            co.mac_address      AS "macAddress",
+            ro.tipo_control     AS "tipoControl",
+            ro.vpn_ip           AS "vpnIp",
+            ro.ip_gestion       AS "ipGestion",
+            ro.puerto_api       AS "puertoApi",
+            ro.puerto_api_ssl   AS "puertoApiSsl",
+            ro.usuario          AS "routerUsuario",
+            ro.password_cifrado AS "routerPassword",
+            ro.usar_ssl         AS "usarSsl",
+            ro.version_ros      AS "versionRos",
+            pl.crear_reglas_en_router AS "crearReglas"
+          FROM contratos co
+          LEFT JOIN routers ro ON ro.id = co.router_id
+          LEFT JOIN planes  pl ON pl.id = co.plan_id
+          WHERE co.id = $1
+        `, [contratoId]);
+
+        if (!row?.crearReglas || (!row.vpnIp && !row.ipGestion)) return true; // sin hardware que verificar
+
+        const rawTipo: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+        const tipoControl     = rawTipo === 'pppoe_addresslist' ? 'pppoe' : rawTipo;
+
+        const creds = {
+          id:              contratoId,
+          ip:              row.vpnIp || row.ipGestion,
+          port:            row.usarSsl ? (row.puertoApiSsl ?? 8729) : (row.puertoApi ?? 8728),
+          user:            row.routerUsuario ?? 'admin',
+          passwordCifrado: row.routerPassword ?? '',
+          useSsl:          row.usarSsl ?? false,
+          timeoutSec:      10,
+          version:         (row.versionRos ?? 'v6') as 'v6' | 'v7',
+        };
+
+        const existe = await this.pool.execute(creds, async (api) => {
+          if (tipoControl === 'pppoe' && row.usuarioPppoe) {
+            const secrets = await api.write('/ppp/secret/print', [`?name=${row.usuarioPppoe}`]);
+            return secrets.length > 0;
+          }
+          if ((tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') && row.ipAsignada) {
+            const arps = await api.write('/ip/arp/print', [`?address=${row.ipAsignada}`]);
+            return arps.length > 0;
+          }
+          return true; // tipo no verificable directamente
+        });
+
+        if (existe) return true;
+        if (intento < MAX_INTENTOS) await new Promise(r => setTimeout(r, ESPERA_MS));
+
+      } catch (err: any) {
+        this.logger.warn(`verificarProvisionHardware → ${contratoId} intento ${intento}/${MAX_INTENTOS}: ${err?.message}`);
+        if (intento < MAX_INTENTOS) await new Promise(r => setTimeout(r, ESPERA_MS));
+      }
+    }
+    return false;
+  }
 
   protected async provisionarMikrotik(contratoId: string): Promise<{ ok: boolean; motivo?: string }> {
     let row: any;

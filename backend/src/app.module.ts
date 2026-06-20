@@ -59,6 +59,8 @@ import { ProyectosInversionModule }    from './modules/proyectos-inversion/proye
 import { MensajeriaModule }            from './modules/mensajeria/mensajeria.module';
 import { SchemaGuardModule }           from './modules/schema-guard/schema-guard.module';
 import { MigracionModule }            from './modules/migracion/migracion.module';
+import { SagasModule }                from './modules/sagas/sagas.module';
+import { ReconciliadorModule }        from './modules/reconciliador/reconciliador.module';
 
 @Module({
   imports: [
@@ -197,6 +199,8 @@ import { MigracionModule }            from './modules/migracion/migracion.module
     MensajeriaModule,
     SchemaGuardModule,
     MigracionModule,
+    SagasModule,
+    ReconciliadorModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia

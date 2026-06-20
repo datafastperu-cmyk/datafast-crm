@@ -10,6 +10,8 @@ import { PlanesModule } from '../planes/planes.module';
 import { AuthModule } from '../auth/auth.module';
 import { MikrotikModule } from '../mikrotik/mikrotik.module';
 import { SmartoltModule } from '../smartolt/smartolt.module';
+import { SagasModule } from '../sagas/sagas.module';
+import { OutboxRedModule } from '../outbox-red/outbox-red.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { SmartoltModule } from '../smartolt/smartolt.module';
     AuthModule,
     MikrotikModule,
     SmartoltModule,
+    SagasModule,
+    OutboxRedModule,
   ],
   controllers: [ContratosController],
   providers: [ContratosService, IpPoolService, ContratoRepository],
