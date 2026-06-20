@@ -23,7 +23,7 @@ export class CargoPendiente extends BaseModel {
 
   // 'reconexion' → siempre aplica IGV
   // 'mora'       → nunca aplica IGV
-  @Column({ length: 20 })
+  @Column({ type: 'varchar', length: 20 })
   tipo: TipoItem;
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
