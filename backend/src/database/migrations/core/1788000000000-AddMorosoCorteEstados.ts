@@ -20,10 +20,16 @@ export class AddMorosoCorteEstados1788000000000 implements MigrationInterface {
   name = 'AddMorosoCorteEstados1788000000000';
 
   public async up(qr: QueryRunner): Promise<void> {
-    // 1. Eliminar vistas y índice que dependen del tipo
+    // 1. Eliminar vistas e índices parciales que referencian el tipo estado_contrato
+    //    (tanto en predicados WHERE como en columnas indexadas del tipo enum)
     await qr.query(`DROP VIEW IF EXISTS v_contratos_completos`);
     await qr.query(`DROP VIEW IF EXISTS v_resumen_clientes`);
     await qr.query(`DROP INDEX IF EXISTS idx_contratos_mora`);
+    // Estos 4 índices tienen predicados WHERE con ::estado_contrato y bloquean el ALTER TYPE
+    await qr.query(`DROP INDEX IF EXISTS uq_contratos_empresa_pppoe`);
+    await qr.query(`DROP INDEX IF EXISTS uq_contratos_empresa_mac`);
+    await qr.query(`DROP INDEX IF EXISTS uq_contratos_empresa_ip`);
+    await qr.query(`DROP INDEX IF EXISTS idx_contratos_cliente_tipo_servicio`);
 
     // 2. Convertir columnas a TEXT para poder alterar el tipo
     await qr.query(`ALTER TABLE contratos ALTER COLUMN estado DROP DEFAULT`);
@@ -50,12 +56,39 @@ export class AddMorosoCorteEstados1788000000000 implements MigrationInterface {
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_anterior TYPE estado_contrato USING estado_anterior::estado_contrato`);
     await qr.query(`ALTER TABLE contratos_historial ALTER COLUMN estado_nuevo TYPE estado_contrato USING estado_nuevo::estado_contrato`);
 
-    // 5. Recrear índice de mora (incluye moroso y cortado como estados con deuda)
+    // 5. Recrear todos los índices que dependen del tipo
     await qr.query(`
       CREATE INDEX idx_contratos_mora
         ON contratos USING btree (empresa_id, estado, deuda_total)
         WHERE estado IN ('activo', 'suspendido', 'moroso', 'cortado')
           AND deleted_at IS NULL
+    `);
+    await qr.query(`
+      CREATE UNIQUE INDEX uq_contratos_empresa_pppoe
+        ON contratos (empresa_id, usuario_pppoe)
+        WHERE usuario_pppoe IS NOT NULL
+          AND estado <> 'baja_definitiva'
+          AND deleted_at IS NULL
+    `);
+    await qr.query(`
+      CREATE UNIQUE INDEX uq_contratos_empresa_mac
+        ON contratos (empresa_id, mac_address)
+        WHERE mac_address IS NOT NULL
+          AND estado <> 'baja_definitiva'
+          AND deleted_at IS NULL
+    `);
+    await qr.query(`
+      CREATE UNIQUE INDEX uq_contratos_empresa_ip
+        ON contratos (empresa_id, ip_asignada)
+        WHERE ip_asignada IS NOT NULL
+          AND estado <> 'baja_definitiva'
+          AND deleted_at IS NULL
+    `);
+    await qr.query(`
+      CREATE INDEX idx_contratos_cliente_tipo_servicio
+        ON contratos (cliente_id, tipo_servicio)
+        WHERE deleted_at IS NULL
+          AND estado <> 'baja_definitiva'
     `);
 
     // 6. Recrear vistas
@@ -113,6 +146,10 @@ export class AddMorosoCorteEstados1788000000000 implements MigrationInterface {
     await qr.query(`DROP VIEW IF EXISTS v_contratos_completos`);
     await qr.query(`DROP VIEW IF EXISTS v_resumen_clientes`);
     await qr.query(`DROP INDEX IF EXISTS idx_contratos_mora`);
+    await qr.query(`DROP INDEX IF EXISTS uq_contratos_empresa_pppoe`);
+    await qr.query(`DROP INDEX IF EXISTS uq_contratos_empresa_mac`);
+    await qr.query(`DROP INDEX IF EXISTS uq_contratos_empresa_ip`);
+    await qr.query(`DROP INDEX IF EXISTS idx_contratos_cliente_tipo_servicio`);
 
     // Migrar moroso→suspendido, cortado→suspendido antes de eliminar los valores del enum
     await qr.query(`UPDATE contratos SET estado = 'suspendido' WHERE estado IN ('moroso', 'cortado')`);
@@ -134,6 +171,26 @@ export class AddMorosoCorteEstados1788000000000 implements MigrationInterface {
       CREATE INDEX idx_contratos_mora
         ON contratos USING btree (empresa_id, estado, deuda_total)
         WHERE estado IN ('activo', 'suspendido') AND deleted_at IS NULL
+    `);
+    await qr.query(`
+      CREATE UNIQUE INDEX uq_contratos_empresa_pppoe
+        ON contratos (empresa_id, usuario_pppoe)
+        WHERE usuario_pppoe IS NOT NULL AND estado <> 'baja_definitiva' AND deleted_at IS NULL
+    `);
+    await qr.query(`
+      CREATE UNIQUE INDEX uq_contratos_empresa_mac
+        ON contratos (empresa_id, mac_address)
+        WHERE mac_address IS NOT NULL AND estado <> 'baja_definitiva' AND deleted_at IS NULL
+    `);
+    await qr.query(`
+      CREATE UNIQUE INDEX uq_contratos_empresa_ip
+        ON contratos (empresa_id, ip_asignada)
+        WHERE ip_asignada IS NOT NULL AND estado <> 'baja_definitiva' AND deleted_at IS NULL
+    `);
+    await qr.query(`
+      CREATE INDEX idx_contratos_cliente_tipo_servicio
+        ON contratos (cliente_id, tipo_servicio)
+        WHERE deleted_at IS NULL AND estado <> 'baja_definitiva'
     `);
 
     await qr.query(`
