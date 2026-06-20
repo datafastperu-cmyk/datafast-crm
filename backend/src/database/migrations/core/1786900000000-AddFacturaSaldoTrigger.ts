@@ -23,12 +23,8 @@ export class AddFacturaSaldoTrigger1786900000000 implements MigrationInterface {
         EXECUTE FUNCTION fn_sync_factura_saldo();
     `);
 
-    // Sincronizar filas existentes
-    await queryRunner.query(`
-      UPDATE facturas
-      SET saldo = COALESCE(total, 0) - COALESCE(monto_pagado, 0)
-      WHERE deleted_at IS NULL
-    `);
+    // saldo es GENERATED ALWAYS AS (total - monto_pagado) STORED en el esquema existente;
+    // el trigger es redundante pero inofensivo. No actualizamos saldo manualmente.
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
