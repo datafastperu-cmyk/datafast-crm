@@ -737,7 +737,7 @@ export class GatewayMensajeriaService {
     // 2. Fallback al sistema de plantillas por defecto (en memoria, sin query)
     if (!contenido) {
       contenido = canalPlantilla === 'email'
-        ? (SYSTEM_DEFAULTS_EMAIL[codigo] ?? null)
+        ? (SYSTEM_DEFAULTS_EMAIL[codigo]?.contenido ?? null)
         : (SYSTEM_DEFAULTS_WHATSAPP[codigo]?.contenido ?? null);
     }
 
