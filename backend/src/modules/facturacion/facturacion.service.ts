@@ -54,6 +54,10 @@ export class FacturacionService {
     // Configuración global para saber igvRate y moneda
     const configGlobal = await this.comprobantesSvc.getConfiguracion(user.empresaId);
 
+    if (dto.periodoInicio >= dto.periodoFin) {
+      throw new BadRequestException('periodoFin debe ser posterior a periodoInicio');
+    }
+
     const { subtotal, descuento, igv, total, items } =
       await this.calcularMontos(dto, comprobanteConfig, configGlobal.igvRate);
 
@@ -190,7 +194,7 @@ export class FacturacionService {
         for (const cargo of cargosPendientes.items) {
           items.push(cargo);
           totalSubtotal += cargo.subtotal;
-          totalIgv      += cargo.igvItem;
+          totalIgv      += cargo.igvItem ?? 0;
           totalTotal    += cargo.total;
         }
 
@@ -229,17 +233,16 @@ export class FacturacionService {
           createdBy:               user.sub,
         });
 
-        const saved = await this.facturaRepo.save(factura);
-
-        // Marcar cargos pendientes como incluidos
-        if (cargosPendientes.ids.length) {
-          await this.ds.query(
-            `UPDATE cargos_pendientes
-             SET incluido_en_factura_id = $1, incluido_en = NOW()
-             WHERE id = ANY($2)`,
-            [saved.id, cargosPendientes.ids],
-          );
-        }
+        const saved = await this.ds.transaction(async (manager) => {
+          const f = await manager.save(factura);
+          if (cargosPendientes.ids.length) {
+            await manager.query(
+              `UPDATE cargos_pendientes SET incluido_en_factura_id = $1, incluido_en = NOW() WHERE id = ANY($2)`,
+              [f.id, cargosPendientes.ids],
+            );
+          }
+          return f;
+        });
 
         this.generarPdfAsync(saved, user.empresaId, {
           razonSocial: primer.empresa_nombre, ruc: primer.empresa_ruc,
@@ -341,7 +344,7 @@ export class FacturacionService {
         for (const cargo of cargosPendientes.items) {
           items.push(cargo);
           totalSubtotal += cargo.subtotal;
-          totalIgv      += cargo.igvItem;
+          totalIgv      += cargo.igvItem ?? 0;
           totalTotal    += cargo.total;
         }
 
@@ -367,14 +370,16 @@ export class FacturacionService {
           fechaVencimiento, moneda: configGlobal.moneda, generadaAutomaticamente: true,
         });
 
-        const saved = await this.facturaRepo.save(factura);
-
-        if (cargosPendientes.ids.length) {
-          await this.ds.query(
-            `UPDATE cargos_pendientes SET incluido_en_factura_id = $1, incluido_en = NOW() WHERE id = ANY($2)`,
-            [saved.id, cargosPendientes.ids],
-          );
-        }
+        const saved = await this.ds.transaction(async (manager) => {
+          const f = await manager.save(factura);
+          if (cargosPendientes.ids.length) {
+            await manager.query(
+              `UPDATE cargos_pendientes SET incluido_en_factura_id = $1, incluido_en = NOW() WHERE id = ANY($2)`,
+              [f.id, cargosPendientes.ids],
+            );
+          }
+          return f;
+        });
 
         this.generarPdfAsync(saved, empresaId, {
           razonSocial: primer.empresa_nombre, ruc: primer.empresa_ruc,

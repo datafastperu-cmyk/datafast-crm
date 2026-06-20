@@ -182,9 +182,11 @@ export class FacturaRepository {
     return qb;
   }
 
-  // ── Siguiente correlativo por serie ───────────────────────
+  /**
+   * @deprecated No tiene protección contra race conditions.
+   * Usar ComprobantesConfigService.siguienteCorrelativo() que usa UPDATE…RETURNING atómico.
+   */
   async siguienteCorrelativo(empresaId: string, serie: string): Promise<number> {
-    // Usar FOR UPDATE para evitar race conditions en generación masiva
     const result = await this.ds.query(`
       SELECT COALESCE(MAX(correlativo), 0) + 1 AS siguiente
       FROM facturas

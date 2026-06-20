@@ -49,24 +49,28 @@ export class FacturacionScheduler {
     `);
 
     const diaHoy = hoy.getDate();
+    const mes    = hoy.getMonth() + 1;
+    const anio   = hoy.getFullYear();
+    let   delaySlot = 0;
 
-    for (const emp of empresas) {
-      if (parseInt(emp.dia_facturacion, 10) === diaHoy) {
-        await this.queue.add('generar-mensual', {
-          empresaId: emp.id,
-          usuarioId: 'sistema',
-          mes:       hoy.getMonth() + 1,
-          anio:      hoy.getFullYear(),
-        } as GenerarMensualPayload, {
-          attempts:  3,
-          backoff:   { type: 'exponential', delay: 60_000 },
-          removeOnComplete: 100,
-          removeOnFail:     500,
-          // Delay de 1 segundo entre empresas para no saturar BD
-          delay: empresas.indexOf(emp) * 1000,
-        });
-        this.logger.log(`Facturación mensual encolada: empresa ${emp.id}`);
-      }
+    for (let i = 0; i < empresas.length; i++) {
+      const emp = empresas[i];
+      if (parseInt(emp.dia_facturacion, 10) !== diaHoy) continue;
+
+      const jobId = `gen-mensual-${emp.id}-${anio}-${String(mes).padStart(2, '0')}`;
+      await this.queue.add('generar-mensual', {
+        empresaId: emp.id,
+        usuarioId: 'sistema',
+        mes, anio,
+      } as GenerarMensualPayload, {
+        jobId,
+        attempts:  3,
+        backoff:   { type: 'exponential', delay: 60_000 },
+        removeOnComplete: 100,
+        removeOnFail:     500,
+        delay: delaySlot++ * 1000,
+      });
+      this.logger.log(`Facturación mensual encolada: empresa ${emp.id} | job: ${jobId}`);
     }
   }
 }
