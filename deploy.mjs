@@ -5,7 +5,7 @@ const COMMANDS = [
   'git -C /opt/datafast checkout -- installer/ 2>/dev/null || true',
   'cd /opt/datafast/backend && git pull origin main',
   'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc --noEmit 2>&1 | tail -5',
-  'pm2 stop datafast-backend 2>/dev/null; cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc --build && pm2 start datafast-backend',
+  'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=2048" node_modules/.bin/tsc --build && pm2 restart datafast-api-core datafast-worker-auxiliary',
   'cd /opt/datafast/frontend && git pull origin main',
   'cd /opt/datafast/frontend && NODE_OPTIONS="--max-old-space-size=1400" NEXT_TELEMETRY_DISABLED=1 npm run build 2>&1 | tail -10',
   'pm2 startOrRestart /opt/datafast/ecosystem.config.js --only datafast-frontend || pm2 restart datafast-frontend || true',
