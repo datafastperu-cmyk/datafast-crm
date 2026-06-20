@@ -55,6 +55,51 @@ auth, usuarios, licencia, clientes, contratos, planes, facturacion, pagos (caja 
 finanzas-opex, reportes, zonas, plantillas, config, schema-guard, auditoria.
 Si alguno de estos falla en init → el backend debe crashear para proteger el servidor anterior en PM2.
 
+## Portabilidad Multi-VPS — Regla Crítica de Configuración
+
+Este ERP se instala en múltiples servidores VPS con IPs y dominios distintos.
+**Ningún archivo del repositorio puede contener IPs, dominios o URLs de servidor hardcodeadas.**
+
+### Qué nunca hacer
+
+```typescript
+// ❌ MAL — amarrado a una instalación concreta
+const API_BASE = 'http://149.34.48.224:4000';
+const VPS_IP   = '149.34.48.224';
+```
+
+```javascript
+// ❌ MAL — ecosystem.config.js con IP fija
+env: { APP_URL: 'http://149.34.48.224:4000' }
+```
+
+### Qué hacer siempre
+
+```typescript
+// ✅ BIEN — leído de process.env en tiempo de llamada (no de carga de módulo)
+const getApiBase = () => (process.env.APP_URL || '').replace(/\/$/, '');
+const getVpsIp   = () => process.env.VPN_SERVER_IP || process.env.APP_URL?.replace(/^https?:\/\//, '').split(':')[0] || '';
+```
+
+**Reglas concretas:**
+
+1. **Variables de entorno, nunca literales.** Cualquier valor que cambie entre instalaciones (`APP_URL`, `VPN_SERVER_IP`, `VPN_SERVER_PORT`, dominio público, etc.) va en `.env.production` de cada VPS — nunca en código ni en `ecosystem.config.js`.
+
+2. **Lazy getters para constantes de módulo.** Las constantes top-level en servicios NestJS se evalúan al cargar el módulo, *antes* de que `ConfigModule` lea el `.env`. Si el valor viene de `process.env`, conviértelo en función: `const getFoo = () => process.env.FOO`.
+
+3. **`ecosystem.config.js` sin IPs.** Solo puede contener variables que no cambian entre servidores (`NODE_ENV`, `PORT`, `RUN_CRONS`, límites de memoria). Las vars de red van en `.env.production`.
+
+4. **Scripts generados dinámicamente.** Scripts MikroTik, comandos CLI, URLs de descarga y endpoints que se envían a hardware externo deben construirse llamando a los getters en tiempo de ejecución, no interpolando constantes de módulo.
+
+5. **`.env.example` como contrato.** Toda variable nueva que dependa del servidor debe documentarse en `.env.example` con un comentario que explique qué valor poner. Es la guía de instalación para un nuevo servidor.
+
+### Checklist antes de hacer commit con cualquier URL o IP
+
+- [ ] ¿El valor viene de `process.env`?
+- [ ] Si es una constante de módulo, ¿es un lazy getter (función)?
+- [ ] ¿`ecosystem.config.js` sigue sin IPs ni dominios?
+- [ ] ¿`.env.example` documenta la variable?
+
 ## Perfiles y Especialidades Obligatorias del Agente
 - **Al trabajar en `backend/src/`:** Asume el rol de **Ingeniero de Software Senior Especialista en NestJS y Arquitecturas de Microservicios** [INDEX]. Aplica patrones de inyección de dependencias estrictos, tipado fuerte de TypeScript, optimización de consultas TypeORM y manejo de excepciones robusto [INDEX].
 - **Al trabajar en scripts de red:** Asume el rol de **Ingeniero de Redes y Telecomunicaciones (Especialista MikroTik MTCNA/MTCRE y Redes WISP/FTTH)** [INDEX]. Prioriza la estabilidad de los sockets, control de concurrencia en la API de RouterOS y logs preventivos de fallos de conexión [INDEX].
