@@ -98,6 +98,28 @@ export class OutboxRedService {
     await this.encolar('PROVISIONAR', contratoId, routerId, payload);
   }
 
+  async getStatus(): Promise<{
+    pendientes: number;
+    agotados: number;
+    ejecutadosUltima1h: number;
+    ultimoEjecutadoEn: string | null;
+  }> {
+    const [row] = await this.ds.query<any[]>(`
+      SELECT
+        COUNT(*) FILTER (WHERE estado = 'PENDIENTE')                               AS pendientes,
+        COUNT(*) FILTER (WHERE estado = 'AGOTADO')                                 AS agotados,
+        COUNT(*) FILTER (WHERE estado = 'EJECUTADO' AND ejecutado_en > NOW() - INTERVAL '1 hour') AS ejecutados_ultima_1h,
+        MAX(ejecutado_en)                                                           AS ultimo_ejecutado_en
+      FROM comandos_red_pendientes
+    `);
+    return {
+      pendientes:          Number(row.pendientes),
+      agotados:            Number(row.agotados),
+      ejecutadosUltima1h:  Number(row.ejecutados_ultima_1h),
+      ultimoEjecutadoEn:   row.ultimo_ejecutado_en ?? null,
+    };
+  }
+
   // ────────────────────────────────────────────────────────────
   // CRON — cada 5 minutos procesa hasta 10 comandos pendientes
   // ────────────────────────────────────────────────────────────

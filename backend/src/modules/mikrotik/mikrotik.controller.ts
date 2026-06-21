@@ -396,4 +396,39 @@ export class MikrotikController {
     const result = await this.svc.pingDesdeRouter(id, user.empresaId, dto.destino);
     return StdResponse.ok(result);
   }
+
+  // ─── OBSERVABILIDAD — CIRCUIT BREAKER ────────────────────
+
+  @Get('routers/:id/circuit-breaker')
+  @RequirePermission('mikrotik:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({
+    summary: 'Estado del Circuit Breaker del router',
+    description:
+      'Retorna el estado actual del CB (CLOSED/OPEN/HALF_OPEN), ' +
+      'cantidad de fallos consecutivos y segundos hasta el próximo intento si está OPEN.',
+  })
+  @ApiParam({ name: 'id' })
+  async getCbState(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return StdResponse.ok(await this.svc.getCbDetail(id, user.empresaId));
+  }
+
+  @Post('routers/:id/circuit-breaker/reset')
+  @Roles('Administrador')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Resetear Circuit Breaker manualmente',
+    description: 'Fuerza la transición a CLOSED y limpia el contador de fallos.',
+  })
+  @ApiParam({ name: 'id' })
+  async resetCbState(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.svc.resetCb(id, user.empresaId);
+    return StdResponse.ok(null, 'Circuit breaker reseteado a CLOSED');
+  }
 }

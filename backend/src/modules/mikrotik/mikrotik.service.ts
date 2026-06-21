@@ -1437,4 +1437,16 @@ export class MikrotikService implements OnModuleInit {
       }
     }
   }
+
+  // ─── OBSERVABILIDAD ───────────────────────────────────────
+
+  async getCbDetail(routerId: string, empresaId: string) {
+    await this.findOne(routerId, empresaId); // valida pertenencia a empresa
+    return this.pool.getCbDetail(routerId);
+  }
+
+  async resetCb(routerId: string, empresaId: string): Promise<void> {
+    await this.findOne(routerId, empresaId);
+    this.pool.resetCb(routerId);
+  }
 }

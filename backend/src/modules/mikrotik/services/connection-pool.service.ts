@@ -179,6 +179,19 @@ export class RouterConnectionPool implements OnModuleDestroy {
     return this._getCb(routerId).state;
   }
 
+  getCbDetail(routerId: string): {
+    state: CbState;
+    failureCount: number;
+    secondsUntilHalfOpen: number | null;
+  } {
+    const cb = this._getCb(routerId);
+    const secondsUntilHalfOpen =
+      cb.state === 'OPEN'
+        ? Math.max(0, Math.round((CB_RESET_TIMEOUT_MS - (Date.now() - cb.openedAt)) / 1000))
+        : null;
+    return { state: cb.state, failureCount: cb.failureCount, secondsUntilHalfOpen };
+  }
+
   resetCb(routerId: string): void {
     this._cb.delete(routerId);
     this.logger.log(`[CB] Router ${routerId}: reset manual → CLOSED`);
