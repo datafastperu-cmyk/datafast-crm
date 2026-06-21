@@ -1464,6 +1464,36 @@ export class MikrotikService implements OnModuleInit {
 
   // ─── OBSERVABILIDAD ───────────────────────────────────────
 
+  async getDriftDetectado(empresaId: string, limit = 100): Promise<{
+    id: string;
+    contratoId: string;
+    routerNombre: string;
+    tipoDrift: string;
+    usuarioPppoe: string | null;
+    ipAsignada: string | null;
+    estado: string;
+    detectadoEn: string;
+    resueltoEn: string | null;
+  }[]> {
+    return this.ds.query<any[]>(`
+      SELECT
+        d.id::TEXT               AS id,
+        d.contrato_id::TEXT      AS "contratoId",
+        ro.nombre                AS "routerNombre",
+        d.tipo_drift             AS "tipoDrift",
+        d.usuario_pppoe          AS "usuarioPppoe",
+        d.ip_asignada            AS "ipAsignada",
+        d.estado                 AS estado,
+        d.detectado_en           AS "detectadoEn",
+        d.resuelto_en            AS "resueltoEn"
+      FROM drift_detectado d
+      JOIN routers ro ON ro.id = d.router_id
+      WHERE ro.empresa_id = $1
+      ORDER BY d.detectado_en DESC
+      LIMIT $2
+    `, [empresaId, limit]);
+  }
+
   async getCbDetail(routerId: string, empresaId: string) {
     await this.findOne(routerId, empresaId); // valida pertenencia a empresa
     return this.pool.getCbDetail(routerId);

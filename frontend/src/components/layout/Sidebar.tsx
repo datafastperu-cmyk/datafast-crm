@@ -11,7 +11,7 @@ import {
   UserCheck, Zap,
   Tv,
   ChevronRight, Gift, Trophy, Settings2,
-  Cpu,
+  Cpu, AlertTriangle,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -35,7 +35,8 @@ const NAV: NavEntry[] = [
       { href: '/red/redes-ipv4', label: 'Redes IPv4',       icon: Globe,    permiso: 'mikrotik:view'   },
 
       { href: '/red/cajas-nap',  label: 'Cajas NAP',        icon: Box,      permiso: 'mikrotik:view'   },
-      { href: '/red/mapa',       label: 'Mapa de Red',      icon: MapPin,   permiso: 'mikrotik:view'   },
+      { href: '/red/mapa',       label: 'Mapa de Red',      icon: MapPin,        permiso: 'mikrotik:view'   },
+      { href: '/red/drift',      label: 'Panel de Drift',   icon: AlertTriangle, permiso: 'mikrotik:view'   },
     ],
   },
 

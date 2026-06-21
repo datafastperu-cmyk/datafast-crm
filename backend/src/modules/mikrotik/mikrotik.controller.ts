@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Patch, Delete,
   Body, Param, Query, Req,
-  ParseUUIDPipe, HttpCode, HttpStatus,
+  ParseUUIDPipe, ParseIntPipe, HttpCode, HttpStatus,
   SetMetadata, Logger,
 } from '@nestjs/common';
 import {
@@ -395,6 +395,26 @@ export class MikrotikController {
   ) {
     const result = await this.svc.pingDesdeRouter(id, user.empresaId, dto.destino);
     return StdResponse.ok(result);
+  }
+
+  // ─── OBSERVABILIDAD — DRIFT ──────────────────────────────
+
+  @Get('drift')
+  @RequirePermission('mikrotik:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({
+    summary: 'Registros de drift detectado por el reconciliador',
+    description:
+      'Lista discrepancias entre el estado en BD y el hardware (PPPoE ausente, ' +
+      'bloqueo firewall ausente). El estado puede ser DETECTADO, ENCOLADO o RESUELTO.',
+  })
+  @ApiQuery({ name: 'limit', required: false, description: 'Máximo de registros (default 100)' })
+  async getDrift(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10) || 100, 500) : 100;
+    return StdResponse.ok(await this.svc.getDriftDetectado(user.empresaId, parsedLimit));
   }
 
   // ─── OBSERVABILIDAD — CIRCUIT BREAKER ────────────────────

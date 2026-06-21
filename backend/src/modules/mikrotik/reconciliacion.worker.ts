@@ -148,6 +148,12 @@ export class ReconciliacionWorker {
     );
 
     for (const co of faltantes) {
+      // Registrar en drift_detectado para visibilidad en el panel
+      await this.ds.query(`
+        INSERT INTO drift_detectado (contrato_id, router_id, tipo_drift, usuario_pppoe, ip_asignada, estado)
+        VALUES ($1, $2, 'PPPOE_AUSENTE', $3, $4, 'DETECTADO')
+      `, [co.id, router.id, co.usuarioPppoe, co.ipAsignada ?? null]);
+
       // No encolar si ya existe un PROVISIONAR PENDIENTE para este contrato
       const [yaEncolado] = await this.ds.query<any[]>(`
         SELECT id FROM comandos_red_pendientes
@@ -160,6 +166,10 @@ export class ReconciliacionWorker {
       if (yaEncolado) {
         this.logger.debug(
           `[RECONCIL] ${co.usuarioPppoe}: ya tiene PROVISIONAR pendiente — omitido`,
+        );
+        await this.ds.query(
+          `UPDATE drift_detectado SET estado = 'ENCOLADO' WHERE contrato_id = $1 AND tipo_drift = 'PPPOE_AUSENTE' AND estado = 'DETECTADO'`,
+          [co.id],
         );
         continue;
       }
@@ -186,6 +196,11 @@ export class ReconciliacionWorker {
         VALUES ($1, $2, 'PROVISIONAR', $3)
         ON CONFLICT (contrato_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
       `, [co.id, router.id, payload]);
+
+      await this.ds.query(
+        `UPDATE drift_detectado SET estado = 'ENCOLADO' WHERE contrato_id = $1 AND tipo_drift = 'PPPOE_AUSENTE' AND estado = 'DETECTADO'`,
+        [co.id],
+      );
 
       this.logger.warn(
         `[RECONCIL] ${router.nombre} → encolado PROVISIONAR para ${co.usuarioPppoe} (contrato ${co.id})`,
@@ -255,10 +270,20 @@ export class ReconciliacionWorker {
       });
 
       await this.ds.query(`
+        INSERT INTO drift_detectado (contrato_id, router_id, tipo_drift, usuario_pppoe, ip_asignada, estado)
+        VALUES ($1, $2, 'FIREWALL_AUSENTE', $3, $4, 'DETECTADO')
+      `, [co.id, router.id, co.usuarioPppoe ?? null, co.ipAsignada]);
+
+      await this.ds.query(`
         INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
         VALUES ($1, $2, 'SUSPENDER', $3)
         ON CONFLICT (contrato_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
       `, [co.id, router.id, payload]);
+
+      await this.ds.query(
+        `UPDATE drift_detectado SET estado = 'ENCOLADO' WHERE contrato_id = $1 AND tipo_drift = 'FIREWALL_AUSENTE' AND estado = 'DETECTADO'`,
+        [co.id],
+      );
 
       this.logger.warn(
         `[RECONCIL] ${router.nombre} → encolado SUSPENDER para IP ${co.ipAsignada} (contrato ${co.id})`,

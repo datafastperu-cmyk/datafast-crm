@@ -109,6 +109,18 @@ export interface TestConexionResult {
   rosVersion?:       string;
 }
 
+export interface DriftRecord {
+  id:            string;
+  contratoId:    string;
+  routerNombre:  string;
+  tipoDrift:     'PPPOE_AUSENTE' | 'FIREWALL_AUSENTE';
+  usuarioPppoe:  string | null;
+  ipAsignada:    string | null;
+  estado:        'DETECTADO' | 'ENCOLADO' | 'RESUELTO';
+  detectadoEn:   string;
+  resueltoEn:    string | null;
+}
+
 export const mikrotikApi = {
   listar: async (): Promise<Router[]> => {
     const { data } = await api.get('/mikrotik/routers');
@@ -169,6 +181,20 @@ export const mikrotikApi = {
 
   reparar: async (id: string): Promise<{ mensaje: string; procesados: number; morosos: number; advertencias?: string[] }> => {
     const { data } = await api.post(`/mikrotik/routers/${id}/reparar`);
+    return data.data;
+  },
+
+  getCbState: async (id: string): Promise<{ state: string; failureCount: number; secondsUntilHalfOpen: number | null }> => {
+    const { data } = await api.get(`/mikrotik/routers/${id}/circuit-breaker`);
+    return data.data;
+  },
+
+  resetCb: async (id: string): Promise<void> => {
+    await api.post(`/mikrotik/routers/${id}/circuit-breaker/reset`);
+  },
+
+  getDrift: async (limit = 100): Promise<DriftRecord[]> => {
+    const { data } = await api.get(`/mikrotik/drift?limit=${limit}`);
     return data.data;
   },
 };
