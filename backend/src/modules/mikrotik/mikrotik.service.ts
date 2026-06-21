@@ -68,9 +68,33 @@ export class MikrotikService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     try {
+      // Probe 1: tabla accesible en BD
       await this.ds.query(`SELECT 1 FROM routers LIMIT 0`);
+
+      // Probe 2: ping TCP al primer router online (timeout 3s)
+      // Si no hay ninguno, el módulo arranca OK igualmente.
+      const [primer] = await this.ds.query<any[]>(`
+        SELECT ip_gestion AS ip, vpn_ip AS "vpnIp",
+               puerto_api AS puerto, usar_ssl AS "usarSsl", puerto_api_ssl AS "puertoApiSsl"
+        FROM routers
+        WHERE estado = 'online' AND deleted_at IS NULL
+        LIMIT 1
+      `);
+
+      if (primer) {
+        const ip    = primer.vpnIp || primer.ip;
+        const port  = primer.usarSsl ? (primer.puertoApiSsl ?? 8729) : (primer.puerto ?? 8728);
+        await new Promise<void>((resolve, reject) => {
+          const s = net.createConnection({ host: ip, port }, resolve);
+          s.setTimeout(3000, () => { s.destroy(); reject(new Error(`TCP timeout ${ip}:${port}`)); });
+          s.on('error', reject);
+          s.on('connect', () => s.destroy());
+        });
+      }
+
       this.moduleHealth.registrar('mikrotik', 'ok');
     } catch (err: any) {
+      // Degraded pero NO crashear — otros módulos del core deben seguir operando
       this.degraded       = true;
       this.degradedReason = err.message;
       this.moduleHealth.registrar('mikrotik', 'degraded', err.message);
