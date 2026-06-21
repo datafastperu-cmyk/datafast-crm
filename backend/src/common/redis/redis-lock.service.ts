@@ -25,7 +25,7 @@ export class RedisLockService {
    */
   async acquire(key: string, ttlMs: number): Promise<string | null> {
     const token = randomUUID();
-    const result = await this.redis.set(key, token, 'NX', 'PX', ttlMs);
+    const result = await this.redis.set(key, token, 'PX', ttlMs, 'NX');
     return result === 'OK' ? token : null;
   }
 
