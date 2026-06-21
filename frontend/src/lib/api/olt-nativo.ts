@@ -142,6 +142,12 @@ export interface FirmwareJobResult {
   updatedAt:         string;
 }
 
+export interface TestConexionOltResult {
+  exitoso:    boolean;
+  mensaje:    string;
+  latenciaMs?: number;
+}
+
 // ─── API ──────────────────────────────────────────────────────
 
 export const oltNativoApi = {
@@ -246,5 +252,17 @@ export const oltNativoApi = {
       { params: { limit } },
     );
     return res.data.data ?? [];
+  },
+
+  testConexion: async (oltId: string): Promise<TestConexionOltResult> => {
+    const res = await api.post<ApiRespuesta<TestConexionOltResult>>(`/olt-nativo/${oltId}/test-conexion`);
+    return res.data.data;
+  },
+
+  testConexionDirecta: async (params: {
+    ip: string; puerto: number; usuario: string; password: string; marca: string; oltId?: string;
+  }): Promise<TestConexionOltResult> => {
+    const res = await api.post<ApiRespuesta<TestConexionOltResult>>('/olt-nativo/test-conexion-directa', params);
+    return res.data.data;
   },
 };

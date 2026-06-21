@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Cpu, Wifi, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Cpu, Wifi, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
+import { useToast } from '@/components/ui/toaster';
 import { OltFormModal } from '@/components/red/OltFormModal';
 import { cn } from '@/lib/utils';
 
@@ -29,9 +30,11 @@ const METODO_LABEL: Record<string, string> = {
 
 export default function OltsConfigPage() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [modalOpen, setModalOpen]     = useState(false);
   const [editing,   setEditing]       = useState<OltDispositivo | null>(null);
   const [deleteId,  setDeleteId]      = useState<string | null>(null);
+  const [testingId, setTestingId]     = useState<string | null>(null);
 
   const { data: olts = [], isLoading } = useQuery({
     queryKey: ['olts-config'],
@@ -49,6 +52,23 @@ export default function OltsConfigPage() {
 
   const openCreate = () => { setEditing(null); setModalOpen(true); };
   const openEdit   = (olt: OltDispositivo) => { setEditing(olt); setModalOpen(true); };
+
+  const handleTest = async (olt: OltDispositivo) => {
+    setTestingId(olt.id);
+    try {
+      const result = await oltNativoApi.testConexion(olt.id);
+      if (result.exitoso) {
+        toast(`${olt.nombre}: ${result.mensaje} (${result.latenciaMs}ms)`, { type: 'success' });
+      } else {
+        toast(`${olt.nombre}: ${result.mensaje}`, { type: 'error' });
+      }
+      qc.invalidateQueries({ queryKey: ['olts-config'] });
+    } catch {
+      toast(`Error al probar conexión con ${olt.nombre}`, { type: 'error' });
+    } finally {
+      setTestingId(null);
+    }
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -152,6 +172,16 @@ export default function OltsConfigPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleTest(olt); }}
+                        disabled={testingId !== null}
+                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-green-500 transition-colors disabled:opacity-50"
+                        title="Probar conexión SSH"
+                      >
+                        {testingId === olt.id
+                          ? <Loader2  className="w-3.5 h-3.5 animate-spin" />
+                          : <RefreshCw className="w-3.5 h-3.5" />}
+                      </button>
                       <button
                         onClick={() => openEdit(olt)}
                         className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"

@@ -212,6 +212,56 @@ export class OltNativoService implements OnModuleInit {
 
   // ─── CRUD básico ─────────────────────────────────────────────
 
+  // ────────────────────────────────────────────────────────────
+  // testConexion / testConexionDirecta
+  //
+  // Prueba la conectividad SSH a la OLT usando el endpoint
+  // discover-onus del microservicio Python como proxy.
+  // Nunca propaga excepciones — siempre devuelve { exitoso, mensaje }.
+  // ────────────────────────────────────────────────────────────
+  async testConexion(
+    oltId:     string,
+    empresaId: string,
+  ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> {
+    const olt = await this.findOlt(oltId, empresaId);
+    const pwd = this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
+    return this._probarSsh({ ip: olt.ipGestion, puerto: olt.puerto ?? 22, usuario: olt.usuarioAnclado, password: pwd, marca: olt.marca });
+  }
+
+  async testConexionDirecta(
+    empresaId: string,
+    params: { ip: string; puerto: number; usuario: string; password: string; marca: string; oltId?: string },
+  ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> {
+    let pwd = params.password;
+    if (!pwd && params.oltId) {
+      const olt = await this.findOlt(params.oltId, empresaId);
+      pwd = this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
+    }
+    return this._probarSsh({ ...params, password: pwd });
+  }
+
+  private async _probarSsh(
+    params: { ip: string; puerto: number; usuario: string; password: string; marca: string },
+  ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> {
+    const t0 = Date.now();
+    try {
+      const res = await this.automation.discoverOnus({
+        connection: { ip: params.ip, port: params.puerto, username: params.usuario, password: params.password, brand: params.marca.toLowerCase() },
+        slot: null,
+        port: null,
+      });
+      const latenciaMs = Date.now() - t0;
+      if (res.success) {
+        return { exitoso: true, mensaje: `Conexión SSH exitosa — ${res.total} ONU(s) no autorizadas`, latenciaMs };
+      }
+      return { exitoso: false, mensaje: res.error ?? 'Error al conectar con la OLT', latenciaMs };
+    } catch (e: any) {
+      const latenciaMs = Date.now() - t0;
+      const msg = e?.response?.data?.message || e?.message || 'Error desconocido';
+      return { exitoso: false, mensaje: msg, latenciaMs };
+    }
+  }
+
   async listar(empresaId: string): Promise<OltDispositivo[]> {
     return this.oltRepo.find({
       where: { empresaId, activo: true },

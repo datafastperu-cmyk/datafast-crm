@@ -161,6 +161,35 @@ export class OltNativoController {
   }
 
   // ────────────────────────────────────────────────────────────
+  // POST /olt-nativo/test-conexion-directa
+  // Prueba SSH con credenciales del formulario (antes de guardar)
+  // ────────────────────────────────────────────────────────────
+  @Post('test-conexion-directa')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Probar conexión SSH a la OLT con credenciales en crudo (pre-guardado)' })
+  async testConexionDirecta(
+    @Body() body: { ip: string; puerto: number; usuario: string; password: string; marca: string; oltId?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.testConexionDirecta(user.empresaId, body);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // POST /olt-nativo/:oltId/test-conexion
+  // Prueba SSH con credenciales almacenadas en BD
+  // ────────────────────────────────────────────────────────────
+  @Post(':oltId/test-conexion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Probar conexión SSH a una OLT guardada (usa credenciales en BD)' })
+  @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
+  async testConexion(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.testConexion(oltId, user.empresaId);
+  }
+
+  // ────────────────────────────────────────────────────────────
   // GET /olt-nativo/automation/health
   // Verifica que el microservicio Python esté en línea
   // ────────────────────────────────────────────────────────────

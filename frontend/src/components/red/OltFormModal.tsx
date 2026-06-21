@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Cpu, Eye, EyeOff } from 'lucide-react';
-import { oltNativoApi, type OltDispositivo, type CreateOltDto, type UpdateOltDto } from '@/lib/api/olt-nativo';
+import { X, Cpu, Eye, EyeOff, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { oltNativoApi, type OltDispositivo, type CreateOltDto, type UpdateOltDto, type TestConexionOltResult } from '@/lib/api/olt-nativo';
 import { mikrotikApi } from '@/lib/api/mikrotik';
 import { cn } from '@/lib/utils';
 import { Portal } from '@/components/ui/portal';
@@ -115,6 +115,8 @@ export function OltFormModal({ open, onClose, editing }: Props) {
   const [form, setForm]         = useState<FormData>(emptyForm);
   const [showPass, setShowPass] = useState(false);
   const [errors, setErrors]     = useState<Partial<Record<keyof FormData, string>>>({});
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
+  const [testResult, setTestResult] = useState<TestConexionOltResult | null>(null);
 
   const { data: routers = [] } = useQuery({
     queryKey: ['routers'],
@@ -127,6 +129,8 @@ export function OltFormModal({ open, onClose, editing }: Props) {
     setForm(editing ? fromOlt(editing) : emptyForm());
     setErrors({});
     setShowPass(false);
+    setTestStatus('idle');
+    setTestResult(null);
   }, [open, editing]);
 
   useEffect(() => {
@@ -163,6 +167,29 @@ export function OltFormModal({ open, onClose, editing }: Props) {
     if (!form.routerId)             errs.routerId      = 'Selecciona un Router';
     setErrors(errs);
     return Object.keys(errs).length === 0;
+  };
+
+  const handleTest = async () => {
+    if (!form.ipGestion.trim()) { alert('Ingresa la IP de gestión antes de probar'); return; }
+    if (!form.usuarioAnclado.trim()) { alert('Ingresa el usuario SSH antes de probar'); return; }
+    if (!form.contrasena && !editing) { alert('Ingresa la contraseña antes de probar'); return; }
+    setTestStatus('testing');
+    setTestResult(null);
+    try {
+      const result = await oltNativoApi.testConexionDirecta({
+        ip:       form.ipGestion.trim(),
+        puerto:   parseInt(form.puerto, 10) || 22,
+        usuario:  form.usuarioAnclado.trim(),
+        password: form.contrasena,
+        marca:    form.marca,
+        oltId:    editing?.id,
+      });
+      setTestResult(result);
+      setTestStatus(result.exitoso ? 'ok' : 'error');
+    } catch {
+      setTestResult({ exitoso: false, mensaje: 'Error al contactar el servidor' });
+      setTestStatus('error');
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -280,6 +307,43 @@ export function OltFormModal({ open, onClose, editing }: Props) {
                     </button>
                   </div>
                 </Field>
+              </div>
+
+              {/* Probar conexión */}
+              <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-3 mt-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5" /> Probar conexión SSH
+                </p>
+                <button
+                  type="button"
+                  onClick={handleTest}
+                  disabled={testStatus === 'testing'}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors border',
+                    testStatus === 'ok'      ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                    : testStatus === 'error' ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                                             : 'bg-muted text-foreground hover:bg-muted/70 border-border',
+                    testStatus === 'testing' && 'opacity-70 cursor-not-allowed',
+                  )}
+                >
+                  {testStatus === 'testing' ? <><Loader2      className="w-4 h-4 animate-spin" /> Probando…</>         :
+                   testStatus === 'ok'       ? <><CheckCircle2 className="w-4 h-4" />             Conexión exitosa</>  :
+                   testStatus === 'error'    ? <><XCircle      className="w-4 h-4" />             Reintentar</>        :
+                                               <><RefreshCw    className="w-4 h-4" />             Probar conexión</>}
+                </button>
+                {testResult && (
+                  <div className={cn(
+                    'rounded-lg px-4 py-3 text-sm border',
+                    testResult.exitoso
+                      ? 'bg-green-500/10 border-green-500/20 text-green-300'
+                      : 'bg-red-500/10 border-red-500/20 text-red-300',
+                  )}>
+                    <p className="font-medium">{testResult.mensaje}</p>
+                    {testResult.exitoso && testResult.latenciaMs != null && (
+                      <p className="text-xs mt-1 opacity-70">Latencia: {testResult.latenciaMs}ms</p>
+                    )}
+                  </div>
+                )}
               </div>
             </section>
 
