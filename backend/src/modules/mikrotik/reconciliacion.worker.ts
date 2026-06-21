@@ -5,6 +5,7 @@ import { DataSource }         from 'typeorm';
 
 import { RouterConnectionPool, RouterCredentials } from './services/connection-pool.service';
 import { PppoeService }       from './services/pppoe.service';
+import { FirewallService }    from './services/firewall.service';
 import { decrypt }            from '../../common/utils/encryption.util';
 
 // Corre cada 30 minutos, solo en instancia PM2 #0.
@@ -16,9 +17,10 @@ export class ReconciliacionWorker {
   private _running = false;
 
   constructor(
-    @InjectDataSource() private readonly ds:     DataSource,
-    private readonly pool:     RouterConnectionPool,
-    private readonly pppoeSvc: PppoeService,
+    @InjectDataSource() private readonly ds:          DataSource,
+    private readonly pool:         RouterConnectionPool,
+    private readonly pppoeSvc:    PppoeService,
+    private readonly firewallSvc: FirewallService,
   ) {}
 
   @Cron('0 */30 * * * *', { timeZone: 'America/Lima' })
@@ -187,6 +189,79 @@ export class ReconciliacionWorker {
 
       this.logger.warn(
         `[RECONCIL] ${router.nombre} → encolado PROVISIONAR para ${co.usuarioPppoe} (contrato ${co.id})`,
+      );
+    }
+
+    // Segunda verificación: drift de address-list firewall
+    await this._reconciliarFirewall(router, creds);
+  }
+
+  // Detecta clientes suspendidos en BD que no están en morosos_datafast del router.
+  // Sucede cuando el router se reinicia y pierde sus address-lists.
+  private async _reconciliarFirewall(router: any, creds: RouterCredentials): Promise<void> {
+    let morososEnRouter: Set<string>;
+    try {
+      const entries = await this.firewallSvc.listarMorosos(creds);
+      morososEnRouter = new Set(entries.map((e) => e.ip));
+    } catch (err: any) {
+      this.logger.warn(
+        `[RECONCIL] No se pudo leer address-list de ${router.nombre}: ${err.message}`,
+      );
+      return;
+    }
+
+    // Contratos suspendidos con IP asignada en este router
+    const suspendidos = await this.ds.query<any[]>(`
+      SELECT id, ip_asignada AS "ipAsignada", usuario_pppoe AS "usuarioPppoe",
+             cliente_id AS "clienteId"
+      FROM contratos
+      WHERE router_id   = $1
+        AND estado      = 'suspendido'
+        AND deleted_at  IS NULL
+        AND ip_asignada IS NOT NULL
+    `, [router.id]);
+
+    const faltantesFirewall = suspendidos.filter((c) => !morososEnRouter.has(c.ipAsignada));
+
+    if (!faltantesFirewall.length) {
+      this.logger.debug(
+        `[RECONCIL] ${router.nombre}: sin drift firewall (${suspendidos.length} suspendidos verificados OK)`,
+      );
+      return;
+    }
+
+    this.logger.warn(
+      `[RECONCIL] ${router.nombre}: ${faltantesFirewall.length} cliente(s) suspendido(s) sin bloqueo en firewall — encolando SUSPENDER`,
+    );
+
+    for (const co of faltantesFirewall) {
+      const [yaEncolado] = await this.ds.query<any[]>(`
+        SELECT id FROM comandos_red_pendientes
+        WHERE  contrato_id = $1
+          AND  accion      = 'SUSPENDER'
+          AND  estado      = 'PENDIENTE'
+        LIMIT 1
+      `, [co.id]);
+
+      if (yaEncolado) {
+        this.logger.debug(`[RECONCIL] ${co.ipAsignada}: ya tiene SUSPENDER pendiente — omitido`);
+        continue;
+      }
+
+      const payload = JSON.stringify({
+        ipAsignada:   co.ipAsignada,
+        usuarioPppoe: co.usuarioPppoe ?? undefined,
+        clienteId:    co.clienteId,
+      });
+
+      await this.ds.query(`
+        INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
+        VALUES ($1, $2, 'SUSPENDER', $3)
+        ON CONFLICT (contrato_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
+      `, [co.id, router.id, payload]);
+
+      this.logger.warn(
+        `[RECONCIL] ${router.nombre} → encolado SUSPENDER para IP ${co.ipAsignada} (contrato ${co.id})`,
       );
     }
   }
