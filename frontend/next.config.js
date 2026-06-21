@@ -1,4 +1,5 @@
-const path = require('path');
+const path    = require('path');
+const withPWA = require('@ducanh2912/next-pwa').default;
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -10,7 +11,7 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   eslint: {
-    ignoreDuringBuilds: false,  // ESLint DOES block build on errors
+    ignoreDuringBuilds: false,
   },
   webpack(config) {
     config.resolve.alias['@'] = path.join(__dirname, 'src');
@@ -46,4 +47,15 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+module.exports = withPWA({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: false,
+  reloadOnOnline: true,
+  workboxOptions: {
+    disableDevLogs: true,
+  },
+})(nextConfig);

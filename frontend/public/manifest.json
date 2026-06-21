@@ -1,0 +1,44 @@
+{
+  "name": "ErpDatafast ISP",
+  "short_name": "DataFast",
+  "description": "Sistema de gestión para proveedores de internet",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#3b82f6",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "lang": "es",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Clientes",
+      "url": "/clientes",
+      "description": "Gestionar clientes"
+    },
+    {
+      "name": "Monitoreo",
+      "url": "/monitoreo",
+      "description": "Ver estado de la red"
+    }
+  ]
+}

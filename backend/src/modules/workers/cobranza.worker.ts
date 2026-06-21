@@ -37,6 +37,7 @@ import {
   PayloadNotificacionCobro,
 } from './workers.constants';
 import { decrypt } from '../../common/utils/encryption.util';
+import { RedisLockService } from '../../common/redis/redis-lock.service';
 
 // ─────────────────────────────────────────────────────────────
 // CobranzaScheduler — Encola los jobs en los momentos correctos
@@ -384,6 +385,7 @@ export class CobranzaWorker {
     private readonly auditoria:      AuditoriaService,
     private readonly events:         EventEmitter,
     private readonly outboxSvc:      OutboxRedService,
+    private readonly redisLock:      RedisLockService,
     @InjectDataSource() private readonly ds: DataSource,
     @Inject('PROVISIONAMIENTO_PROVIDER') private readonly provisionamientoSvc: IProvisionamientoProvider,
   ) {}
@@ -416,39 +418,48 @@ export class CobranzaWorker {
     if (router) {
       const creds = this.buildCreds(routerId, router);
 
-      // ── 2. Agregar a Address List morosos ─────────────────
-      await job.progress(20);
-      try {
-        await this.firewallSvc.suspenderCliente(
-          creds, ipAsignada, clienteId,
-          `Mora S/ ${deudaTotal} — ${new Date().toLocaleDateString('es-PE')}`,
-        );
-        this.logger.log(`✓ IP ${ipAsignada} en lista morosos | router: ${router.ip_gestion}`);
-      } catch (err) {
-        mikrotikFallido = true;
-        errores.push(`Firewall: ${err.message}`);
-        this.logger.error(`✗ Error Address List ${ipAsignada}: ${err.message}`);
-      }
+      // Lock distribuido: evita que aprovisionamiento y cobranza actúen
+      // simultáneamente sobre el mismo router desde distintos procesos PM2.
+      await this.redisLock.withLock(`router:${routerId}`, 35_000, async () => {
+        // ── 2. Agregar a Address List morosos ───────────────
+        await job.progress(20);
+        try {
+          await this.firewallSvc.suspenderCliente(
+            creds, ipAsignada, clienteId,
+            `Mora S/ ${deudaTotal} — ${new Date().toLocaleDateString('es-PE')}`,
+          );
+          this.logger.log(`✓ IP ${ipAsignada} en lista morosos | router: ${router.ip_gestion}`);
+        } catch (err) {
+          mikrotikFallido = true;
+          errores.push(`Firewall: ${err.message}`);
+          this.logger.error(`✗ Error Address List ${ipAsignada}: ${err.message}`);
+        }
 
-      // ── 3. Desconectar sesión PPPoE activa ────────────────
-      await job.progress(40);
-      try {
-        await this.pppoeSvc.desconectarSesion(creds, usuarioPppoe);
-        this.logger.log(`✓ Sesión PPPoE desconectada: ${usuarioPppoe}`);
-      } catch (err) {
-        errores.push(`PPPoE disconnect: ${err.message}`);
-        this.logger.warn(`✗ No se pudo desconectar sesión ${usuarioPppoe}: ${err.message}`);
-      }
+        // ── 3. Desconectar sesión PPPoE activa ──────────────
+        await job.progress(40);
+        try {
+          await this.pppoeSvc.desconectarSesion(creds, usuarioPppoe);
+          this.logger.log(`✓ Sesión PPPoE desconectada: ${usuarioPppoe}`);
+        } catch (err) {
+          errores.push(`PPPoE disconnect: ${err.message}`);
+          this.logger.warn(`✗ No se pudo desconectar sesión ${usuarioPppoe}: ${err.message}`);
+        }
 
-      // ── 4. Deshabilitar PPPoE secret (impide reconexión) ──
-      try {
-        await this.pppoeSvc.setEstado(creds, usuarioPppoe, true);
-        this.logger.log(`✓ PPPoE secret deshabilitado: ${usuarioPppoe}`);
-      } catch (err) {
+        // ── 4. Deshabilitar PPPoE secret (impide reconexión) ─
+        try {
+          await this.pppoeSvc.setEstado(creds, usuarioPppoe, true);
+          this.logger.log(`✓ PPPoE secret deshabilitado: ${usuarioPppoe}`);
+        } catch (err) {
+          mikrotikFallido = true;
+          errores.push(`PPPoE disable: ${err.message}`);
+          this.logger.warn(`✗ No se pudo deshabilitar PPPoE ${usuarioPppoe}: ${err.message}`);
+        }
+      }).catch((lockErr) => {
+        // Si no adquirió el lock, loguear y continuar — el Outbox reintentará
         mikrotikFallido = true;
-        errores.push(`PPPoE disable: ${err.message}`);
-        this.logger.warn(`✗ No se pudo deshabilitar PPPoE ${usuarioPppoe}: ${err.message}`);
-      }
+        errores.push(`Lock router: ${lockErr.message}`);
+        this.logger.warn(`[SUSPENDER] No se adquirió lock para router ${routerId}: ${lockErr.message}`);
+      });
 
       // ── Outbox: reintento automático si el router no respondió ─
       if (mikrotikFallido) {

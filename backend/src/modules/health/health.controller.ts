@@ -7,12 +7,14 @@ import {
   DiskHealthIndicator,
 } from '@nestjs/terminus';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { HealthService } from './health.service';
 import { ModuleHealthService } from '../../common/services/module-health.service';
 
 @ApiTags('Sistema')
 @Controller()
+@SkipThrottle()
 export class HealthController {
   constructor(
     private readonly health:         HealthCheckService,

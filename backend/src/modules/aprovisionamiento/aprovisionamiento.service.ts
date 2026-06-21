@@ -3,6 +3,7 @@ import { InjectDataSource }                 from '@nestjs/typeorm';
 import { DataSource }                       from 'typeorm';
 import { EventEmitter2 }                    from '@nestjs/event-emitter';
 import { ModuleHealthService }              from '../../common/services/module-health.service';
+import { RedisLockService }               from '../../common/redis/redis-lock.service';
 
 import { WhatsAppService }        from '../notificaciones/services/whatsapp.service';
 import { PppoeService }           from '../mikrotik/services/pppoe.service';
@@ -75,9 +76,6 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
   private degraded      = false;
   private degradedReason: string | null = null;
 
-  // Semáforo por router: evita saturar el pool de sesiones RouterOS
-  private readonly routerSem = new Map<string, Promise<void>>();
-
   constructor(
     private readonly pppoeSvc:     PppoeService,
     private readonly queueSvc:     QueueService,
@@ -90,6 +88,7 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
     private readonly events:       EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
     private readonly moduleHealth: ModuleHealthService,
+    private readonly redisLock:    RedisLockService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -106,30 +105,15 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
   isDegraded():        boolean       { return this.degraded; }
   getDegradedReason(): string | null { return this.degradedReason; }
 
-  // Serializa llamadas al mismo router para evitar session limit exhaustion.
-  // Si el lock no se libera en ROUTER_LOCK_TIMEOUT_MS, lanza Error en lugar
-  // de bloquear indefinidamente (protección contra deadlocks por excepción no capturada).
+  // Serializa llamadas al mismo router vía Redis lock distribuido.
+  // Protege contra race conditions entre el proceso API y el worker de cobranza.
+  // TTL = timeout + 5s como margen de seguridad ante crashes sin finally.
   private async withRouterLock<T>(routerId: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.routerSem.get(routerId) ?? Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((res) => { release = res; });
-    this.routerSem.set(routerId, next);
-    try {
-      await Promise.race([
-        prev,
-        new Promise<never>((_, rej) =>
-          setTimeout(
-            () => rej(new Error(
-              `Router ${routerId}: timeout de ${ROUTER_LOCK_TIMEOUT_MS / 1_000}s esperando lock — otra operación en curso`,
-            )),
-            ROUTER_LOCK_TIMEOUT_MS,
-          ),
-        ),
-      ]);
-      return await fn();
-    } finally {
-      release();
-    }
+    return this.redisLock.withLock(
+      `router:${routerId}`,
+      ROUTER_LOCK_TIMEOUT_MS + 5_000,
+      fn,
+    );
   }
 
   // ────────────────────────────────────────────────────────────

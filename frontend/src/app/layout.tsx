@@ -20,7 +20,14 @@ export const metadata: Metadata = {
     default:  'CRM ISP DATAFAST',
   },
   description: 'Sistema de gestión para proveedores de internet',
-  icons:       { icon: '/favicon.ico' },
+  manifest:    '/manifest.json',
+  icons:       { icon: '/favicon.ico', apple: '/favicon.ico' },
+  appleWebApp: {
+    capable:        true,
+    statusBarStyle: 'default',
+    title:          'DataFast ISP',
+  },
+  formatDetection: { telephone: false },
 };
 
 export default function RootLayout({

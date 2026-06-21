@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
@@ -12,6 +12,7 @@ import { appConfig, databaseConfig, redisConfig, jwtConfig, validationSchema } f
 
 
 import { ModuleHealthModule }    from './common/module-health.module';
+import { RedisLockModule }      from './common/redis/redis.module';
 import { LicenciaGuard }         from './modules/licencia/licencia.guard';
 import { JwtAuthGuard }          from './common/guards/jwt-auth.guard';
 import { RolesGuard }            from './common/guards/roles.guard';
@@ -164,6 +165,7 @@ import { ReconciliadorModule }        from './modules/reconciliador/reconciliado
       inject: [ConfigService],
     }),
     ModuleHealthModule,  // global — inyectable en todos los módulos sin importar
+    RedisLockModule,     // global — locks distribuidos y CB para todos los módulos
     LicenciaModule,
     HealthModule,
     AuthModule,
@@ -206,6 +208,7 @@ import { ReconciliadorModule }        from './modules/reconciliador/reconciliado
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
     { provide: APP_GUARD,       useClass: JwtAuthGuard },
     { provide: APP_GUARD,       useClass: RolesGuard },
+    { provide: APP_GUARD,       useClass: ThrottlerGuard },  // ← Rate limiting global
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_INTERCEPTOR, useFactory: () => new TimeoutInterceptor(30000) },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
