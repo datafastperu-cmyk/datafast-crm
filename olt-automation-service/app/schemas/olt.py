@@ -28,6 +28,16 @@ class OltConnectionSchema(BaseModel):
         return v
 
 
+class TestConnectionRequest(BaseModel):
+    connection: OltConnectionSchema
+
+
+class TestConnectionResponse(BaseModel):
+    success:    bool
+    latency_ms: int | None = None
+    error:      str | None = None
+
+
 class OnuProvisionSchema(BaseModel):
     frame:         int = Field(..., ge=0, le=7,   description='Frame del chasis (0-7)')
     slot:          int = Field(..., ge=0, le=15,  description='Slot de la tarjeta de línea')

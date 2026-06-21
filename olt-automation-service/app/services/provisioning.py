@@ -1634,3 +1634,32 @@ def verify_onu(
             'temperature_c': None,
             'error':         str(exc),
         }
+
+
+def test_olt_connection(conn: OltConnectionSchema) -> dict[str, Any]:
+    """
+    Prueba de conectividad SSH liviana: abre sesión Netmiko, verifica que el
+    prompt sea reconocido y cierra sin ejecutar ningún comando.
+    Síncrono — llamar desde asyncio.to_thread() en main.py.
+    """
+    import time
+    params = _build_netmiko_params(conn)
+    t0 = time.monotonic()
+    try:
+        with ConnectHandler(**params):
+            pass
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        logger.info('test_olt_connection OK | %s latencia=%dms', conn.ip, latency_ms)
+        return {'success': True, 'latency_ms': latency_ms}
+    except NetmikoAuthenticationException as exc:
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        logger.warning('test_olt_connection auth fail | %s: %s', conn.ip, exc)
+        return {'success': False, 'latency_ms': latency_ms, 'error': 'Credenciales incorrectas'}
+    except NetmikoTimeoutException as exc:
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        logger.warning('test_olt_connection timeout | %s: %s', conn.ip, exc)
+        return {'success': False, 'latency_ms': latency_ms, 'error': 'Timeout de conexión SSH'}
+    except Exception as exc:
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        logger.warning('test_olt_connection error | %s: %s', conn.ip, exc)
+        return {'success': False, 'latency_ms': latency_ms, 'error': str(exc)}

@@ -317,6 +317,18 @@ export interface PythonVerifyOnuResponse {
   error?:        string;
 }
 
+// ─── Test Connection SSH ──────────────────────────────────────
+
+export interface PythonTestConexionRequest {
+  connection: PythonConnectionPayload;
+}
+
+export interface PythonTestConexionResponse {
+  success:    boolean;
+  latency_ms: number | null;
+  error?:     string;
+}
+
 // ─── Respuestas finales hacia el frontend ─────────────────────
 
 export interface ProvisionResult {

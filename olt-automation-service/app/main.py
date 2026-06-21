@@ -27,6 +27,8 @@ from app.schemas.olt import (
     OntFoundInfo,
     ProvisionRequest,
     ProvisionResponse,
+    TestConnectionRequest,
+    TestConnectionResponse,
     VerifyOnuRequest,
     VerifyOnuResponse,
 )
@@ -40,6 +42,7 @@ from app.services.provisioning import (
     get_batch_status,
     get_onu_metrics,
     provision_onu,
+    test_olt_connection,
     upgrade_firmware_onu,
     verify_onu,
 )
@@ -210,6 +213,23 @@ async def discover_onus_endpoint(body: DiscoverRequest) -> DiscoverResponse:
 
     onus = [OntFoundInfo(sn=o['sn'], slot=o['slot'], port=o['port']) for o in raw_onus]
     return DiscoverResponse(success=True, total=len(onus), onus=onus)
+
+
+@app.post(
+    '/api/v1/olt/test-connection',
+    response_model=TestConnectionResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Prueba de conectividad SSH liviana a una OLT (sin ejecutar comandos)',
+    description=(
+        'Abre una sesión SSH con Netmiko, verifica que el prompt sea reconocido '
+        'y cierra inmediatamente.  Nunca ejecuta comandos en la OLT.  '
+        'Siempre responde 200 — si hay fallo devuelve success=False con campo error.'
+    ),
+)
+async def test_connection_endpoint(body: TestConnectionRequest) -> TestConnectionResponse:
+    result = await asyncio.to_thread(test_olt_connection, body.connection)
+    return TestConnectionResponse(**result)
 
 
 @app.post(

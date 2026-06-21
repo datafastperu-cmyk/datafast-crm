@@ -19,6 +19,8 @@ import {
   PythonMetricsResponse,
   PythonProvisionRequest,
   PythonProvisionResponse,
+  PythonTestConexionRequest,
+  PythonTestConexionResponse,
   PythonVerifyOnuRequest,
   PythonVerifyOnuResponse,
 } from './dto/olt-nativo-ops.dto';
@@ -90,6 +92,16 @@ export class OltAutomationClient {
     this.logger.log(
       `← Python batch-status | success=${res.success} | total=${res.total}`,
     );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Prueba de conectividad SSH liviana (POST /api/v1/olt/test-connection)
+  // ────────────────────────────────────────────────────────────
+  async testConexionSsh(payload: PythonTestConexionRequest): Promise<PythonTestConexionResponse> {
+    this.logger.log(`→ Python test-connection | OLT=${payload.connection.ip}`);
+    const res = await this.post<PythonTestConexionResponse>('/api/v1/olt/test-connection', payload);
+    this.logger.log(`← Python test-connection | success=${res.success} latency=${res.latency_ms}ms`);
     return res;
   }
 

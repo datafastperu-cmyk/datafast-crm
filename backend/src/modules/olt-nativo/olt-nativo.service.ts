@@ -243,22 +243,17 @@ export class OltNativoService implements OnModuleInit {
   private async _probarSsh(
     params: { ip: string; puerto: number; usuario: string; password: string; marca: string },
   ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> {
-    const t0 = Date.now();
     try {
-      const res = await this.automation.discoverOnus({
+      const res = await this.automation.testConexionSsh({
         connection: { ip: params.ip, port: params.puerto, username: params.usuario, password: params.password, brand: params.marca.toLowerCase() },
-        slot: null,
-        port: null,
       });
-      const latenciaMs = Date.now() - t0;
       if (res.success) {
-        return { exitoso: true, mensaje: `Conexión SSH exitosa — ${res.total} ONU(s) no autorizadas`, latenciaMs };
+        return { exitoso: true, mensaje: 'Conexión SSH exitosa', latenciaMs: res.latency_ms ?? undefined };
       }
-      return { exitoso: false, mensaje: res.error ?? 'Error al conectar con la OLT', latenciaMs };
+      return { exitoso: false, mensaje: res.error ?? 'Error al conectar con la OLT', latenciaMs: res.latency_ms ?? undefined };
     } catch (e: any) {
-      const latenciaMs = Date.now() - t0;
       const msg = e?.response?.data?.message || e?.message || 'Error desconocido';
-      return { exitoso: false, mensaje: msg, latenciaMs };
+      return { exitoso: false, mensaje: msg };
     }
   }
 
