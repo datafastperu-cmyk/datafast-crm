@@ -10,6 +10,8 @@ import { AxiosRequestConfig } from 'axios';
 import {
   PythonBatchStatusRequest,
   PythonBatchStatusResponse,
+  PythonDeprovisionRequest,
+  PythonDeprovisionResponse,
   PythonDiscoverRequest,
   PythonDiscoverResponse,
   PythonFirmwareJobStatus,
@@ -17,6 +19,8 @@ import {
   PythonMetricsResponse,
   PythonProvisionRequest,
   PythonProvisionResponse,
+  PythonVerifyOnuRequest,
+  PythonVerifyOnuResponse,
 } from './dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -132,6 +136,36 @@ export class OltAutomationClient {
   // ────────────────────────────────────────────────────────────
   async getFirmwareJobStatus(jobId: string): Promise<PythonFirmwareJobStatus> {
     return this.get<PythonFirmwareJobStatus>(`/api/v1/olt/firmware-job/${jobId}`);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Desaprovisionar ONU (POST /api/v1/olt/deprovision)
+  // ────────────────────────────────────────────────────────────
+  async deprovision(payload: PythonDeprovisionRequest): Promise<PythonDeprovisionResponse> {
+    this.logger.log(
+      `→ Python deprovision | OLT=${payload.connection.ip} ` +
+      `slot=${payload.onu.slot} port=${payload.onu.port} onu_id=${payload.onu.onu_id}`,
+    );
+    const res = await this.post<PythonDeprovisionResponse>('/api/v1/olt/deprovision', payload);
+    this.logger.log(
+      `← Python deprovision | success=${res.success} | OLT=${res.olt_ip} | onu_id=${res.onu_id}`,
+    );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Verificar estado ONU post-aprovisionamiento (POST /api/v1/olt/verify-onu)
+  // ────────────────────────────────────────────────────────────
+  async verifyOnu(payload: PythonVerifyOnuRequest): Promise<PythonVerifyOnuResponse> {
+    this.logger.log(
+      `→ Python verify-onu | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
+    );
+    const res = await this.post<PythonVerifyOnuResponse>('/api/v1/olt/verify-onu', payload);
+    this.logger.log(
+      `← Python verify-onu | success=${res.success} | run_state=${res.run_state}`,
+    );
+    return res;
   }
 
   // ────────────────────────────────────────────────────────────

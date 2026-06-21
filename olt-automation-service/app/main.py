@@ -15,6 +15,8 @@ from app.routers.monitoring import router as monitoring_router
 from app.schemas.olt import (
     BatchStatusRequest,
     BatchStatusResponse,
+    DeprovisionRequest,
+    DeprovisionResponse,
     DiscoverRequest,
     DiscoverResponse,
     FirmwareJobProgress,
@@ -25,17 +27,21 @@ from app.schemas.olt import (
     OntFoundInfo,
     ProvisionRequest,
     ProvisionResponse,
+    VerifyOnuRequest,
+    VerifyOnuResponse,
 )
 from app.services.connection_pool import connection_pool
 from app.services.provisioning import (
     CommandError,
     ConnectionError,
     ProvisioningError,
+    deprovision_onu,
     discover_onus,
     get_batch_status,
     get_onu_metrics,
     provision_onu,
     upgrade_firmware_onu,
+    verify_onu,
 )
 
 # ── Job store en memoria (proceso único) ──────────────────────────
@@ -105,11 +111,12 @@ async def connection_error_handler(request: Request, exc: ConnectionError) -> JS
 @app.get('/api/v1/health', tags=['infra'])
 async def health() -> dict:
     return {
-        'status':       'healthy',
-        'service':      settings.app_name,
-        'version':      settings.app_version,
-        'active_locks': connection_pool.active_locks,
-        'total_olts':   connection_pool.lock_count(),
+        'status':         'healthy',
+        'service':        settings.app_name,
+        'version':        settings.app_version,
+        'active_locks':   connection_pool.active_locks,
+        'waiting_counts': connection_pool.waiting_count,
+        'total_olts':     connection_pool.lock_count(),
     }
 
 
@@ -231,6 +238,79 @@ async def batch_status_endpoint(body: BatchStatusRequest) -> BatchStatusResponse
 
     onus_out = [OnuStatusInfo(**o) for o in raw]
     return BatchStatusResponse(success=True, total=len(onus_out), onus=onus_out)
+
+
+@app.post(
+    '/api/v1/olt/deprovision',
+    response_model=DeprovisionResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Desaprovisionar ONU de una OLT (eliminar configuración)',
+)
+async def deprovision(body: DeprovisionRequest) -> DeprovisionResponse:
+    """
+    Envía los comandos de desaprovisionamiento a la OLT vía SSH.
+    Respeta el lock de concurrencia por OLT — las peticiones simultáneas se encolan.
+    """
+    olt_ip = body.connection.ip
+
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                deprovision_onu,
+                body.connection,
+                body.onu.slot,
+                body.onu.port,
+                body.onu.onu_id,
+                body.onu.service_port_id,
+                body.onu.rack,
+            )
+        except (ConnectionError, CommandError, ProvisioningError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(exc),
+            ) from exc
+
+    return DeprovisionResponse(
+        success=result['success'],
+        message='ONU desaprovisionada correctamente',
+        olt_ip=olt_ip,
+        onu_id=body.onu.onu_id,
+        details={k: v for k, v in result.items() if k != 'output'},
+    )
+
+
+@app.post(
+    '/api/v1/olt/verify-onu',
+    response_model=VerifyOnuResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Verificar estado de una ONU en la OLT (post-aprovisionamiento)',
+    description=(
+        'Consulta el estado de la ONU en la OLT vía SSH para confirmar que quedó online '
+        'tras el aprovisionamiento.  Siempre responde 200 — si hay fallo SSH retorna '
+        'success=False con campo error.'
+    ),
+)
+async def verify_onu_endpoint(body: VerifyOnuRequest) -> VerifyOnuResponse:
+    olt_ip = body.connection.ip
+
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                verify_onu,
+                body.connection,
+                body.slot,
+                body.port,
+                body.onu_id,
+            )
+        except (ConnectionError, CommandError) as exc:
+            return VerifyOnuResponse(
+                success=False,
+                error=str(exc),
+            )
+
+    return VerifyOnuResponse(**result)
 
 
 # ── Helpers de firmware ───────────────────────────────────────────

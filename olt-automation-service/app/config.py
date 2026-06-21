@@ -28,5 +28,10 @@ class Settings(BaseSettings):
     # Netmiko: reintentos ante caída de conexión
     ssh_max_retries: int = 2
 
+    # Timeout máximo esperando adquirir el lock por OLT (segundos).
+    # Si una operación ocupa el lock más de este tiempo, las peticiones
+    # en cola reciben 503 en lugar de esperar indefinidamente.
+    lock_acquire_timeout: int = 60
+
 
 settings = Settings()

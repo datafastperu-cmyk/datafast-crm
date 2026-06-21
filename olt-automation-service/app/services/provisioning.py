@@ -162,31 +162,45 @@ def _send_config_set(conn: OltConnectionSchema, commands: list[str]) -> str:
 
     exit_config_mode=False porque el flujo cierra con 'quit' y 'save',
     no con el 'return' implícito de Netmiko.
+
+    Reintenta hasta settings.ssh_max_retries veces ante timeout/error de red
+    con backoff exponencial (2s, 4s). Los errores de autenticación no se reintentan.
     """
+    import time as _time_cfg
     params = _build_netmiko_params(conn)
-    try:
-        with ConnectHandler(**params) as session:
-            output: str = session.send_config_set(
-                commands,
-                enter_config_mode=False,
-                exit_config_mode=False,
-                cmd_verify=False,       # no verificar echo de cada comando
-                read_timeout=settings.ssh_command_timeout,
-                strip_prompt=False,     # conservar prompts para detectar errores
-            )
-        return output
-    except NetmikoAuthenticationException as exc:
-        raise ConnectionError(
-            f'Autenticación SSH fallida en {conn.ip}:{conn.port}'
-        ) from exc
-    except NetmikoTimeoutException as exc:
-        raise ConnectionError(
-            f'Timeout de conexión SSH a {conn.ip}:{conn.port} — OLT no alcanzable'
-        ) from exc
-    except OSError as exc:
-        raise ConnectionError(
-            f'Error de red al conectar a {conn.ip}:{conn.port}: {exc}'
-        ) from exc
+    last_exc: Exception | None = None
+
+    for attempt in range(1, settings.ssh_max_retries + 1):
+        try:
+            with ConnectHandler(**params) as session:
+                output: str = session.send_config_set(
+                    commands,
+                    enter_config_mode=False,
+                    exit_config_mode=False,
+                    cmd_verify=False,
+                    read_timeout=settings.ssh_command_timeout,
+                    strip_prompt=False,
+                )
+            return output
+        except NetmikoAuthenticationException as exc:
+            # Auth failure: no reintentar — las credenciales no van a cambiar
+            raise ConnectionError(
+                f'Autenticación SSH fallida en {conn.ip}:{conn.port}'
+            ) from exc
+        except (NetmikoTimeoutException, OSError) as exc:
+            last_exc = exc
+            if attempt < settings.ssh_max_retries:
+                wait = attempt * 2
+                logger.warning(
+                    'SSH config_set intento %d/%d fallido en %s — reintentando en %ds: %s',
+                    attempt, settings.ssh_max_retries, conn.ip, wait, exc,
+                )
+                _time_cfg.sleep(wait)
+
+    raise ConnectionError(
+        f'Timeout/error de red en {conn.ip}:{conn.port} '
+        f'tras {settings.ssh_max_retries} intentos: {last_exc}'
+    )
 
 
 def _send_single_command(conn: OltConnectionSchema, command: str) -> str:
@@ -194,34 +208,50 @@ def _send_single_command(conn: OltConnectionSchema, command: str) -> str:
     Abre sesión SSH, envía un único comando de show/display y retorna
     la salida limpia.  Usa send_command() con expect_string calibrado
     para prompts de Huawei OLT (>, #, paréntesis de sub-modo).
+
+    Reintenta hasta settings.ssh_max_retries veces ante timeout de conexión
+    o error de red. ReadTimeout (respuesta lenta del comando) y errores de
+    autenticación no se reintentan.
     """
+    import time as _time_single
     params = _build_netmiko_params(conn)
-    try:
-        with ConnectHandler(**params) as session:
-            output: str = session.send_command(
-                command,
-                expect_string=r'[>#]',
-                read_timeout=settings.ssh_command_timeout,
-                strip_prompt=True,
-                strip_command=True,
-            )
-        return output
-    except NetmikoAuthenticationException as exc:
-        raise ConnectionError(
-            f'Autenticación SSH fallida en {conn.ip}:{conn.port}'
-        ) from exc
-    except NetmikoTimeoutException as exc:
-        raise ConnectionError(
-            f'Timeout SSH a {conn.ip}:{conn.port} — OLT no alcanzable'
-        ) from exc
-    except ReadTimeout as exc:
-        raise CommandError(
-            f'Timeout esperando respuesta al comando: {command!r}'
-        ) from exc
-    except OSError as exc:
-        raise ConnectionError(
-            f'Error de red al conectar a {conn.ip}:{conn.port}: {exc}'
-        ) from exc
+    last_exc: Exception | None = None
+
+    for attempt in range(1, settings.ssh_max_retries + 1):
+        try:
+            with ConnectHandler(**params) as session:
+                output: str = session.send_command(
+                    command,
+                    expect_string=r'[>#]',
+                    read_timeout=settings.ssh_command_timeout,
+                    strip_prompt=True,
+                    strip_command=True,
+                )
+            return output
+        except NetmikoAuthenticationException as exc:
+            raise ConnectionError(
+                f'Autenticación SSH fallida en {conn.ip}:{conn.port}'
+            ) from exc
+        except ReadTimeout as exc:
+            # Timeout de respuesta de la OLT — no es un problema de conexión,
+            # reintentar no ayuda; el comando quedó colgado en el equipo.
+            raise CommandError(
+                f'Timeout esperando respuesta al comando: {command!r}'
+            ) from exc
+        except (NetmikoTimeoutException, OSError) as exc:
+            last_exc = exc
+            if attempt < settings.ssh_max_retries:
+                wait = attempt * 2
+                logger.warning(
+                    'SSH single_command intento %d/%d fallido en %s — reintentando en %ds: %s',
+                    attempt, settings.ssh_max_retries, conn.ip, wait, exc,
+                )
+                _time_single.sleep(wait)
+
+    raise ConnectionError(
+        f'Timeout/error de red en {conn.ip}:{conn.port} '
+        f'tras {settings.ssh_max_retries} intentos: {last_exc}'
+    )
 
 
 def _open_multi_commands(
@@ -1304,3 +1334,303 @@ def get_onu_metrics(
             },
         }
     return handler(conn, onu)
+
+
+# ── Deprovision ONU ───────────────────────────────────────────
+
+def _check_deprovision_error(brand: OltBrand, context: str, output: str) -> None:
+    """
+    Delega en _check_cli_error (reutiliza los mismos patrones de error
+    de la marca).  Función separada por claridad semántica en logs.
+    """
+    _check_cli_error(brand, context, output)
+
+
+def deprovision_huawei_onu(
+    conn: OltConnectionSchema,
+    slot: int,
+    port: int,
+    onu_id: int,
+    service_port_id: int | None,
+) -> dict[str, Any]:
+    """
+    Elimina una ONU de una OLT Huawei MA5800/MA5600.
+
+    Orden CLI correcto:
+      1. `ont delete` — desvincula la ONU del puerto PON
+      2. `undo service-port` — elimina el servicio de datos del cliente
+
+    Si service_port_id es None, se omite el paso 2 (puede ocurrir si la
+    ONU nunca completó el aprovisionamiento completo).
+    """
+    if service_port_id is None:
+        logger.warning(
+            'deprovision_huawei_onu: service_port_id no provisto para slot=%d port=%d onu_id=%d'
+            ' en %s — se omitirá undo service-port',
+            slot, port, onu_id, conn.ip,
+        )
+
+    context: dict[str, Any] = {
+        'slot':            slot,
+        'port':            port,
+        'onu_id':          onu_id,
+        'service_port_id': service_port_id if service_port_id is not None else 0,
+    }
+
+    rendered = _render_commands(conn.brand, 'deprovision_onu.j2', context)
+    commands: list[str] = [
+        line.strip()
+        for line in rendered.strip().splitlines()
+        if line.strip() and not line.strip().startswith('{#')
+    ]
+
+    # Si no hay service_port_id, filtrar la línea 'undo service-port 0'
+    if service_port_id is None:
+        commands = [c for c in commands if not c.startswith('undo service-port')]
+
+    # Confirmación de save (igual que en provisioning)
+    try:
+        save_idx = commands.index('save')
+        commands.insert(save_idx + 1, 'y')
+    except ValueError:
+        pass
+
+    logger.info(
+        'Desaprovisionando ONU en Huawei %s slot=%d port=%d onu_id=%d service_port=%s',
+        conn.ip, slot, port, onu_id, service_port_id,
+    )
+
+    raw_output = _send_config_set(conn, commands)
+    _check_deprovision_error(conn.brand, 'deprovision_huawei_onu', raw_output)
+
+    logger.info(
+        'ONU slot=%d port=%d onu_id=%d eliminada correctamente de Huawei %s',
+        slot, port, onu_id, conn.ip,
+    )
+    return {
+        'success':         True,
+        'output':          raw_output,
+        'slot':            slot,
+        'port':            port,
+        'onu_id':          onu_id,
+        'service_port_id': service_port_id,
+    }
+
+
+def deprovision_zte_onu(
+    conn: OltConnectionSchema,
+    rack: int,
+    slot: int,
+    port: int,
+    onu_id: int,
+) -> dict[str, Any]:
+    """
+    Elimina una ONU de una OLT ZTE ZXA10 C300/C320.
+
+    El comando `no onu <onu_id>` dentro de la interfaz gpon-olt_R/S/P
+    es atómico: elimina la ONU y todos sus servicios asociados (tcont,
+    gemport, switchport, pon-onu-mng).
+    """
+    context: dict[str, Any] = {
+        'rack':   rack,
+        'slot':   slot,
+        'port':   port,
+        'onu_id': onu_id,
+    }
+
+    rendered = _render_commands(conn.brand, 'deprovision_onu.j2', context)
+    commands: list[str] = [
+        line.strip()
+        for line in rendered.strip().splitlines()
+        if line.strip() and not line.strip().startswith('{#')
+    ]
+
+    commands.extend(['end', 'write'])
+
+    logger.info(
+        'Desaprovisionando ONU en ZTE %s rack=%d slot=%d port=%d onu_id=%d',
+        conn.ip, rack, slot, port, onu_id,
+    )
+
+    raw_output = _send_config_set(conn, commands)
+    _check_deprovision_error(conn.brand, 'deprovision_zte_onu', raw_output)
+
+    logger.info(
+        'ONU rack=%d slot=%d port=%d onu_id=%d eliminada correctamente de ZTE %s',
+        rack, slot, port, onu_id, conn.ip,
+    )
+    return {
+        'success': True,
+        'output':  raw_output,
+        'rack':    rack,
+        'slot':    slot,
+        'port':    port,
+        'onu_id':  onu_id,
+    }
+
+
+def deprovision_onu(
+    conn: OltConnectionSchema,
+    slot: int,
+    port: int,
+    onu_id: int,
+    service_port_id: int | None = None,
+    rack: int = 0,
+) -> dict[str, Any]:
+    """
+    Dispatcher público de desaprovisionamiento.
+    Síncrono — llamar desde asyncio.to_thread() en main.py.
+    VSOL/CDATA no soportan desaprovisionamiento nativo SSH/SNMP en esta versión.
+    """
+    if conn.brand == OltBrand.HUAWEI:
+        return deprovision_huawei_onu(conn, slot, port, onu_id, service_port_id)
+    if conn.brand == OltBrand.ZTE:
+        return deprovision_zte_onu(conn, rack, slot, port, onu_id)
+    raise ProvisioningError(
+        f'Desaprovisionamiento nativo no implementado para marca "{conn.brand.value}". '
+        'Usa la API de SmartOLT para VSOL/CDATA.'
+    )
+
+
+# ── Verify ONU ────────────────────────────────────────────────
+
+def verify_huawei_onu(
+    conn: OltConnectionSchema,
+    slot: int,
+    port: int,
+    onu_id: int,
+) -> dict[str, Any]:
+    """
+    Consulta el estado operativo de una ONU en Huawei.
+    Comando: display ont info {port} {onu_id}
+    El comando aplica dentro del contexto `interface gpon 0/{slot}`.
+    Usa _send_single_command (sin enter_config_mode).
+    """
+    command = f'display ont info {port} {onu_id}'
+    # Contexto de interfaz necesario para Huawei; usamos send_config_set
+    # con dos comandos: entrar al modo de interfaz + consulta
+    context_commands = [
+        'config',
+        f'interface gpon 0/{slot}',
+        command,
+        'quit',
+        'quit',
+    ]
+    raw_output = _send_config_set(conn, context_commands)
+
+    rows = _parse_output(conn.brand, 'display_ont_info_single.textfsm', raw_output)
+    if not rows:
+        # Puede que la ONU no exista o esté offline — no es un error fatal
+        logger.warning(
+            'verify_huawei_onu: sin datos parseados para slot=%d port=%d onu_id=%d en %s',
+            slot, port, onu_id, conn.ip,
+        )
+        return {
+            'success':       True,
+            'run_state':     'unknown',
+            'rx_power_dbm':  None,
+            'tx_power_dbm':  None,
+            'temperature_c': None,
+        }
+
+    row = rows[0]
+    run_state_raw: str = (row.get('RunState') or 'unknown').lower()
+
+    rx_raw = row.get('RxPower')
+    tx_raw = row.get('TxPower')
+    t_raw  = row.get('Temp')
+
+    return {
+        'success':       True,
+        'run_state':     run_state_raw,
+        'rx_power_dbm':  float(rx_raw)  if rx_raw  else None,
+        'tx_power_dbm':  float(tx_raw)  if tx_raw  else None,
+        'temperature_c': int(t_raw)     if t_raw   else None,
+    }
+
+
+def verify_zte_onu(
+    conn: OltConnectionSchema,
+    rack: int,
+    slot: int,
+    port: int,
+    onu_id: int,
+) -> dict[str, Any]:
+    """
+    Consulta el estado operativo de una ONU en ZTE.
+    Comando: show gpon onu detail-info gpon-onu_R/S/P:onu_id
+    """
+    command = f'show gpon onu detail-info gpon-onu_{rack}/{slot}/{port}:{onu_id}'
+    raw_output = _send_single_command(conn, command)
+
+    rows = _parse_output(conn.brand, 'show_gpon_onu_detail.textfsm', raw_output)
+    if not rows:
+        logger.warning(
+            'verify_zte_onu: sin datos parseados para gpon-onu_%d/%d/%d:%d en %s',
+            rack, slot, port, onu_id, conn.ip,
+        )
+        return {
+            'success':       True,
+            'run_state':     'unknown',
+            'rx_power_dbm':  None,
+            'tx_power_dbm':  None,
+            'temperature_c': None,
+        }
+
+    row = rows[0]
+    run_state_raw: str = (row.get('RunState') or 'unknown')
+    # Normalizar estado ZTE a términos comunes
+    state_map = {
+        'working':     'online',
+        'not working': 'offline',
+        'ranging':     'offline',
+        'dyingasp':    'dyinggasp',
+        'fail':        'los',
+    }
+    run_state = state_map.get(run_state_raw.lower(), run_state_raw.lower())
+
+    rx_raw = row.get('RxPower')
+    tx_raw = row.get('TxPower')
+
+    return {
+        'success':       True,
+        'run_state':     run_state,
+        'rx_power_dbm':  float(rx_raw) if rx_raw else None,
+        'tx_power_dbm':  float(tx_raw) if tx_raw else None,
+        'temperature_c': None,  # ZTE no reporta temperatura en este comando
+    }
+
+
+def verify_onu(
+    conn: OltConnectionSchema,
+    slot: int,
+    port: int,
+    onu_id: int,
+    rack: int = 0,
+) -> dict[str, Any]:
+    """
+    Dispatcher público de verificación post-aprovisionamiento.
+    Síncrono — llamar desde asyncio.to_thread() en main.py.
+    Nunca propaga excepciones — retorna success=False con error en caso de fallo.
+    """
+    try:
+        if conn.brand == OltBrand.HUAWEI:
+            return verify_huawei_onu(conn, slot, port, onu_id)
+        if conn.brand == OltBrand.ZTE:
+            return verify_zte_onu(conn, rack, slot, port, onu_id)
+        return {
+            'success':   False,
+            'run_state': None,
+            'error':     f'Verificación no implementada para marca "{conn.brand.value}"',
+        }
+    except (ConnectionError, CommandError, ProvisioningError) as exc:
+        logger.warning('verify_onu falló para %s slot=%d port=%d onu_id=%d: %s',
+                       conn.ip, slot, port, onu_id, exc)
+        return {
+            'success':       False,
+            'run_state':     None,
+            'rx_power_dbm':  None,
+            'tx_power_dbm':  None,
+            'temperature_c': None,
+            'error':         str(exc),
+        }

@@ -179,3 +179,51 @@ class FirmwareJobStatus(BaseModel):
     progress:   list[FirmwareJobProgress]
     started_at: str
     updated_at: str
+
+
+# ─── Deprovision ONU ─────────────────────────────────────────
+
+class OnuDeprovisionSchema(BaseModel):
+    """Identificación de la ONU a desaprovisionar en la OLT."""
+    slot:            int = Field(..., ge=0, le=15,  description='Slot de la tarjeta de línea')
+    port:            int = Field(..., ge=0, le=15,  description='Puerto PON en la tarjeta')
+    onu_id:          int = Field(..., ge=1, le=128, description='ID de ONU en el puerto PON')
+    service_port_id: int | None = Field(
+        None, ge=1,
+        description='ID del service-port Huawei a eliminar. Requerido para OLTs Huawei.',
+    )
+    # ZTE requiere rack para el path de interfaz (habitualmente 0)
+    rack: int = Field(0, ge=0, le=7, description='Rack del chasis ZTE (normalmente 0)')
+
+
+class DeprovisionRequest(BaseModel):
+    """Cuerpo del endpoint POST /api/v1/olt/deprovision."""
+    connection: OltConnectionSchema
+    onu:        OnuDeprovisionSchema
+
+
+class DeprovisionResponse(BaseModel):
+    success:  bool
+    message:  str
+    olt_ip:   str
+    onu_id:   int
+    details:  dict | None = None
+
+
+# ─── Verify ONU ──────────────────────────────────────────────
+
+class VerifyOnuRequest(BaseModel):
+    """Cuerpo del endpoint POST /api/v1/olt/verify-onu."""
+    connection: OltConnectionSchema
+    slot:       int = Field(..., ge=0, le=15)
+    port:       int = Field(..., ge=0, le=15)
+    onu_id:     int = Field(..., ge=1, le=128)
+
+
+class VerifyOnuResponse(BaseModel):
+    success:       bool
+    run_state:     str | None = None   # 'online' | 'offline' | 'los' | 'unknown'
+    rx_power_dbm:  float | None = None
+    tx_power_dbm:  float | None = None
+    temperature_c: float | None = None
+    error:         str | None = None

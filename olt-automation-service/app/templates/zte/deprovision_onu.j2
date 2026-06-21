@@ -1,0 +1,7 @@
+{# ZTE ZXA10 C300/C320 — Desaprovisionamiento ONU GPON #}
+{# Variables requeridas: rack, slot, port, onu_id                         #}
+{# Orden: eliminar gestión ONU, luego la ONU del puerto PON               #}
+configure terminal
+interface gpon-olt_{{ rack }}/{{ slot }}/{{ port }}
+no onu {{ onu_id }}
+exit

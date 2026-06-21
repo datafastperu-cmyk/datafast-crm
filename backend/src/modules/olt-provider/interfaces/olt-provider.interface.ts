@@ -46,6 +46,16 @@ export interface ProvisionarOnuPayload {
   onuType?:        string;
 }
 
+// ─── Resultado de verificación post-aprovisionamiento ────────
+export interface OnuVerificacionResult {
+  online:        boolean;        // true = ONU reporta 'online' en la OLT
+  runState:      string | null;  // 'online' | 'offline' | 'los' | etc.
+  rxPowerDbm:    number | null;
+  txPowerDbm:    number | null;
+  temperatureC:  number | null;
+  error?:        string;
+}
+
 // ─── Contrato de todos los providers OLT ─────────────────────
 export interface IOltProvider {
   listarOnusNoAprovisionadas(olt: OltConexion): Promise<OnuNoAprovisionada[]>;
@@ -53,4 +63,7 @@ export interface IOltProvider {
   desaprovisionarOnu(olt: OltConexion, onuExternId: string): Promise<void>;
   suspenderOnu(olt: OltConexion, onuExternId: string): Promise<void>;
   reactivarOnu(olt: OltConexion, onuExternId: string): Promise<void>;
+  // Opcional: verificar estado de ONU en la OLT post-aprovisionamiento.
+  // Solo implementado por NativoSshProvider (SmartOLT tiene su propio monitoreo).
+  verificarOnu?(olt: OltConexion, slot: number, port: number, onuId: number): Promise<OnuVerificacionResult>;
 }

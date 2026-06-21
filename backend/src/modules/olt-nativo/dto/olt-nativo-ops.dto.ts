@@ -276,6 +276,47 @@ export interface OnuActivaInfo {
   estado:      string;
 }
 
+// ─── Deprovision ONU ─────────────────────────────────────────
+
+export interface PythonDeprovisionOnuPayload {
+  slot:            number;
+  port:            number;
+  onu_id:          number;
+  service_port_id: number | null;
+  rack:            number;
+}
+
+export interface PythonDeprovisionRequest {
+  connection: PythonConnectionPayload;
+  onu:        PythonDeprovisionOnuPayload;
+}
+
+export interface PythonDeprovisionResponse {
+  success:  boolean;
+  message:  string;
+  olt_ip:   string;
+  onu_id:   number;
+  details?: Record<string, unknown> | null;
+}
+
+// ─── Verify ONU ──────────────────────────────────────────────
+
+export interface PythonVerifyOnuRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+  port:       number;
+  onu_id:     number;
+}
+
+export interface PythonVerifyOnuResponse {
+  success:       boolean;
+  run_state:     string | null;
+  rx_power_dbm:  number | null;
+  tx_power_dbm:  number | null;
+  temperature_c: number | null;
+  error?:        string;
+}
+
 // ─── Respuestas finales hacia el frontend ─────────────────────
 
 export interface ProvisionResult {

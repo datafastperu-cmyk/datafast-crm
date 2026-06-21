@@ -1,0 +1,8 @@
+Value RunState (Working|Not\s+working|Ranging|Dyingasp|Fail)
+Value RxPower (-[0-9\.]+)
+Value TxPower ([0-9\.]+)
+
+Start
+  ^.*ONU\s+state\s*:\s+${RunState} -> Continue
+  ^.*Rx\s+power.*:\s+${RxPower} -> Continue
+  ^.*Tx\s+power.*:\s+${TxPower} -> Record

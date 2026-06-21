@@ -1,0 +1,9 @@
+{# Huawei MA5800/MA5600 — Desaprovisionamiento ONU GPON #}
+{# Variables requeridas: slot, port, onu_id, service_port_id              #}
+{# Orden: primero eliminar el service-port (IP/datos), luego la ONT       #}
+config
+interface gpon 0/{{ slot }}
+ont delete {{ port }} {{ onu_id }}
+quit
+undo service-port {{ service_port_id }}
+save

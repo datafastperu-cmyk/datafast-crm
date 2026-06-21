@@ -1,0 +1,10 @@
+Value RunState (online|offline|los|lcdg|dyinggasp|config-mismatch|deactivated|failed|auth-failed|unknown)
+Value RxPower (-[0-9\.]+)
+Value TxPower ([0-9\.]+)
+Value Temp ([0-9]+)
+
+Start
+  ^.*Run\s+state\s*:\s+${RunState} -> Continue
+  ^.*Rx optical power.*:\s+${RxPower} -> Continue
+  ^.*Tx optical power.*:\s+${TxPower} -> Continue
+  ^.*Laser temperature.*:\s+${Temp} -> Record

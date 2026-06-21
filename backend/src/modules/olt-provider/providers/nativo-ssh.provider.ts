@@ -1,11 +1,15 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { OltAutomationClient } from '../../olt-nativo/olt-automation.client';
-import { PythonConnectionPayload } from '../../olt-nativo/dto/olt-nativo-ops.dto';
+import {
+  PythonConnectionPayload,
+  PythonDeprovisionRequest,
+} from '../../olt-nativo/dto/olt-nativo-ops.dto';
 import {
   IOltProvider,
   OltConexion,
-  OnuNoAprovisionada,
   OnuAprovisionadaResult,
+  OnuNoAprovisionada,
+  OnuVerificacionResult,
   ProvisionarOnuPayload,
 } from '../interfaces/olt-provider.interface';
 
@@ -85,8 +89,11 @@ export class NativoSshProvider implements IOltProvider {
       `ONU aprovisionada vía SSH | OLT=${olt.ipGestion} | SN=${res.onu_sn} | slot=${slot} port=${port}`,
     );
 
+    // Formato: {ip}/{slot}/{port}/{onuId}/{servicePortId}
+    // servicePortId puede ser undefined para OLTs no-Huawei
+    const spId = payload.servicePortId ?? '';
     return {
-      externId: `${olt.ipGestion}/${slot}/${port}/${onuId}`,
+      externId: `${olt.ipGestion}/${slot}/${port}/${onuId}/${spId}`,
       serial:   res.onu_sn,
       ponPort:  payload.ponPort,
       estado:   'aprovisionada',
@@ -94,12 +101,66 @@ export class NativoSshProvider implements IOltProvider {
   }
 
   async desaprovisionarOnu(olt: OltConexion, onuExternId: string): Promise<void> {
-    // El microservicio Python no implementa desaprovisionamiento SSH todavía.
-    // Se registra como warning para tracking manual.
-    this.logger.warn(
-      `desaprovisionarOnu SSH no implementado — OLT=${olt.ipGestion} ONU=${onuExternId}. ` +
-      `Requiere desconfiguración manual en la OLT.`,
+    // Parsear externId: {ip}/{slot}/{port}/{onuId}/{servicePortId?}
+    // El IP puede tener dots pero no slashes, por eso el split es seguro.
+    const parts = onuExternId.split('/');
+    if (parts.length < 4) {
+      this.logger.warn(
+        `desaprovisionarOnu: externId con formato inválido "${onuExternId}" — omitiendo`,
+      );
+      return;
+    }
+
+    const slot           = parseInt(parts[1] ?? '0', 10);
+    const port           = parseInt(parts[2] ?? '0', 10);
+    const onuId          = parseInt(parts[3] ?? '0', 10);
+    const servicePortId  = parts[4] ? parseInt(parts[4], 10) : null;
+    const rack           = 0;  // Rack por defecto; Huawei no usa rack, ZTE suele ser 0
+
+    const reqPayload: PythonDeprovisionRequest = {
+      connection: this.buildConnection(olt),
+      onu: {
+        slot,
+        port,
+        onu_id:          onuId,
+        service_port_id: servicePortId,
+        rack,
+      },
+    };
+
+    const res = await this.oltClient.deprovision(reqPayload);
+    if (!res.success) {
+      throw new ServiceUnavailableException(
+        `Desaprovisionamiento SSH falló en OLT ${olt.ipGestion}: ${res.message}`,
+      );
+    }
+
+    this.logger.log(
+      `ONU desaprovisionada vía SSH | OLT=${olt.ipGestion} | externId=${onuExternId}`,
     );
+  }
+
+  async verificarOnu(
+    olt: OltConexion,
+    slot: number,
+    port: number,
+    onuId: number,
+  ): Promise<OnuVerificacionResult> {
+    const res = await this.oltClient.verifyOnu({
+      connection: this.buildConnection(olt),
+      slot,
+      port,
+      onu_id: onuId,
+    });
+
+    return {
+      online:       res.success && res.run_state === 'online',
+      runState:     res.run_state ?? null,
+      rxPowerDbm:   res.rx_power_dbm ?? null,
+      txPowerDbm:   res.tx_power_dbm ?? null,
+      temperatureC: res.temperature_c ?? null,
+      error:        res.error,
+    };
   }
 
   async suspenderOnu(olt: OltConexion, onuExternId: string): Promise<void> {

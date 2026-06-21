@@ -55,6 +55,9 @@ interface Ctx {
   oltMetodo?:        OltMetodoConexion;
 }
 
+// Máximo tiempo esperando el semáforo de un router (ms)
+const ROUTER_LOCK_TIMEOUT_MS = 30_000;
+
 // ─────────────────────────────────────────────────────────────
 // OrquestadorAprovisionamiento
 //
@@ -103,14 +106,26 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
   isDegraded():        boolean       { return this.degraded; }
   getDegradedReason(): string | null { return this.degradedReason; }
 
-  // Serializa llamadas al mismo router para evitar session limit exhaustion
+  // Serializa llamadas al mismo router para evitar session limit exhaustion.
+  // Si el lock no se libera en ROUTER_LOCK_TIMEOUT_MS, lanza Error en lugar
+  // de bloquear indefinidamente (protección contra deadlocks por excepción no capturada).
   private async withRouterLock<T>(routerId: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.routerSem.get(routerId) ?? Promise.resolve();
     let release!: () => void;
     const next = new Promise<void>((res) => { release = res; });
     this.routerSem.set(routerId, next);
     try {
-      await prev;
+      await Promise.race([
+        prev,
+        new Promise<never>((_, rej) =>
+          setTimeout(
+            () => rej(new Error(
+              `Router ${routerId}: timeout de ${ROUTER_LOCK_TIMEOUT_MS / 1_000}s esperando lock — otra operación en curso`,
+            )),
+            ROUTER_LOCK_TIMEOUT_MS,
+          ),
+        ),
+      ]);
       return await fn();
     } finally {
       release();
@@ -559,6 +574,11 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
 
       // ══════════════════════════════════════════════════════
       // PASO 5 — Detectar y aprovisionar ONU en la OLT
+      //
+      // Advisory lock por SN: pg_advisory_xact_lock garantiza que dos
+      // solicitudes concurrentes con el mismo serial no envíen comandos
+      // SSH simultáneos a la OLT (OLT puede corromper la ONU si recibe
+      // dos provisioning del mismo SN al mismo tiempo).
       // ══════════════════════════════════════════════════════
       {
         num: 5,
@@ -581,28 +601,59 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
             this.logger.log(`ONU detectada automáticamente: SN=${ctx.serialNumber}`);
           }
 
-          const partes    = dto.ponPort.split('/').map(Number);
-          const onuResult = await provider.aprovisionarOnu(ctx.oltConexion!, {
-            serial:       ctx.serialNumber,
-            ponPort:      dto.ponPort,
-            perfil:       dto.perfilSmartolt,
-            vlanId:       dto.vlanId,
-            vlanModo:     dto.vlanModo || 'access',
-            descripcion:  `${ctx.contrato.cliente_nombre} — ${ctx.contrato.numero_contrato}`,
-            frame:        0,
-            ponSlot:      partes[0] ?? undefined,
-            ponSubslot:   partes[1] ?? undefined,
-            ponPortNum:   partes[partes.length - 1] ?? undefined,
-          });
+          // Advisory lock transaccional por SN: se libera automáticamente al
+          // hacer commit/rollback. Previene aprovisionamiento doble concurrente.
+          const qrSn = this.ds.createQueryRunner();
+          await qrSn.connect();
+          await qrSn.startTransaction();
+          try {
+            await qrSn.query(
+              `SELECT pg_advisory_xact_lock(hashtext($1))`,
+              [`onu_sn_provision_${ctx.serialNumber}`],
+            );
 
-          ctx.smartoltOnuId    = onuResult.externId;
-          ctx.onuAprovisionada = true;
+            // Guardia de duplicado: si el SN ya está en BD y aprovisionado, abortar
+            const existentes: Array<{ id: string }> = await qrSn.query(
+              `SELECT id FROM onus WHERE serial_number = $1 AND deleted_at IS NULL LIMIT 1`,
+              [ctx.serialNumber],
+            );
+            if (existentes.length > 0) {
+              throw new Error(
+                `El serial ${ctx.serialNumber} ya está registrado en BD (ID=${existentes[0].id}). ` +
+                `Verifica que no esté aprovisionado en otro contrato.`,
+              );
+            }
+
+            const partes    = dto.ponPort.split('/').map(Number);
+            const onuResult = await provider.aprovisionarOnu(ctx.oltConexion!, {
+              serial:       ctx.serialNumber,
+              ponPort:      dto.ponPort,
+              perfil:       dto.perfilSmartolt,
+              vlanId:       dto.vlanId,
+              vlanModo:     dto.vlanModo || 'access',
+              descripcion:  `${ctx.contrato.cliente_nombre} — ${ctx.contrato.numero_contrato}`,
+              frame:        0,
+              ponSlot:      partes[0] ?? undefined,
+              ponSubslot:   partes[1] ?? undefined,
+              ponPortNum:   partes[partes.length - 1] ?? undefined,
+            });
+
+            ctx.smartoltOnuId    = onuResult.externId;
+            ctx.onuAprovisionada = true;
+
+            await qrSn.commitTransaction();
+          } catch (err) {
+            await qrSn.rollbackTransaction();
+            throw err;
+          } finally {
+            await qrSn.release();
+          }
 
           return {
-            detalle: `ONU aprovisionada | método=${ctx.oltMetodo} | SN=${ctx.serialNumber} | PON=${dto.ponPort} | VLAN=${dto.vlanId} | externId=${onuResult.externId}`,
+            detalle: `ONU aprovisionada | método=${ctx.oltMetodo} | SN=${ctx.serialNumber} | PON=${dto.ponPort} | VLAN=${dto.vlanId} | externId=${ctx.smartoltOnuId}`,
             datos: {
               serialNumber:  ctx.serialNumber,
-              smartoltOnuId: onuResult.externId,
+              smartoltOnuId: ctx.smartoltOnuId,
               ponPort:       dto.ponPort,
               vlanId:        dto.vlanId,
               metodo:        ctx.oltMetodo,
@@ -612,10 +663,66 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
       },
 
       // ══════════════════════════════════════════════════════
-      // PASO 7 — Registrar ONU en BD y asociar al contrato
+      // PASO 6 — Verificar ONU online en la OLT
+      //
+      // Paso NO bloqueante: si la verificación falla o la OLT no
+      // soporta el método, se registra una advertencia y se continúa.
+      // El motivo: la OLT puede tardar 30-60s en registrar la ONU
+      // como "online" aunque el comando SSH ya fue exitoso.
+      // El paso sirve para auditoría; el estado real se reconcilia
+      // por el cron de monitoreo (OltMonitoreoService).
       // ══════════════════════════════════════════════════════
       {
         num: 6,
+        nombre: 'Verificar ONU online en OLT',
+        fn: async (ctx) => {
+          const provider = this.oltFactory.get(ctx.oltMetodo!);
+          if (typeof provider.verificarOnu !== 'function') {
+            return { detalle: `Verificación no soportada para método ${ctx.oltMetodo} — omitida` };
+          }
+
+          // externId nativo: "{ip}/{slot}/{port}/{onuId}/{spId?}"
+          const extParts = (ctx.smartoltOnuId ?? '').split('/');
+          const slot  = parseInt(extParts[1] ?? '0', 10);
+          const port  = parseInt(extParts[2] ?? '0', 10);
+          const onuId = parseInt(extParts[3] ?? '1', 10);
+
+          try {
+            const verif = await provider.verificarOnu(ctx.oltConexion!, slot, port, onuId);
+            const estado = verif.online ? 'ONLINE' : (verif.runState ?? 'desconocido');
+
+            if (!verif.online) {
+              this.logger.warn(
+                `Verificación ONU: SN=${ctx.serialNumber} estado=${estado} ` +
+                `— puede tardar hasta 60s en registrarse como online en la OLT`,
+              );
+            }
+
+            return {
+              detalle: `Estado OLT: ${estado} | Rx=${verif.rxPowerDbm ?? 'N/A'} dBm | Tx=${verif.txPowerDbm ?? 'N/A'} dBm`,
+              datos: {
+                online:       verif.online,
+                runState:     verif.runState,
+                rxPowerDbm:   verif.rxPowerDbm,
+                txPowerDbm:   verif.txPowerDbm,
+                temperatureC: verif.temperatureC,
+              },
+            };
+          } catch (err: any) {
+            // Fallo de verificación no interrumpe el flujo
+            this.logger.warn(
+              `Verificación ONU falló (no bloquea): SN=${ctx.serialNumber} — ${err.message}`,
+            );
+            return { detalle: `Verificación falló (no bloqueante): ${err.message}` };
+          }
+        },
+      },
+
+      // ══════════════════════════════════════════════════════
+      // PASO 7 — Registrar ONU en BD y asociar al contrato
+      // ══════════════════════════════════════════════════════
+      {
+        num: 7,
         nombre: 'Registrar ONU en base de datos y asociar al contrato',
         fn: async (ctx) => {
           // Parsear PON port
@@ -677,7 +784,7 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
       // PASO 8 — Activar contrato y notificar al cliente
       // ══════════════════════════════════════════════════════
       {
-        num: 7,
+        num: 8,
         nombre: 'Activar contrato y notificar al cliente',
         fn: async (ctx) => {
           const detalles: string[] = [];
