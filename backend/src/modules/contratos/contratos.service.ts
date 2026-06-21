@@ -304,12 +304,16 @@ export class ContratosService {
     await this.contratoRepo.update(id, upd);
 
     // ── Responder inmediatamente; hardware en background ───────
+    // Capturar el tipoAuth ANTERIOR antes de que el update lo sobreescriba en BD,
+    // para que desaprovisionarMikrotik sepa qué tipo de regla eliminar del router.
+    const tipoAuthAnterior: string | undefined = (existing as any).tipoAuth ?? undefined;
+
     const contratoActualizado = await this.findOne(id, user.empresaId);
     await this.auditoria.logUpdate({ empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email, modulo: 'contratos', entidadId: id, descripcion: 'Actualización de servicio con re-provisión', req });
 
     setImmediate(async () => {
-      this.logger.log(`actualizarServicio background → iniciando re-provisión contrato ${id}`);
-      await withTimeout(this.desaprovisionarMikrotik(id), 25000, 'desaprovision')
+      this.logger.log(`actualizarServicio background → iniciando re-provisión contrato ${id} | tipoAuth anterior: ${tipoAuthAnterior ?? 'desconocido'}`);
+      await withTimeout(this.desaprovisionarMikrotik(id, tipoAuthAnterior), 25000, 'desaprovision')
         .catch((e: any) => this.logger.warn(`actualizarServicio desaprovision: ${e?.message}`));
       await withTimeout(this.provisionarMikrotik(id), 25000, 'provision')
         .catch((e: any) => this.logger.warn(`actualizarServicio provision: ${e?.message}`));
@@ -936,7 +940,7 @@ export class ContratosService {
     return { ok: true };
   }
 
-  async desaprovisionarMikrotik(contratoId: string): Promise<boolean> {
+  async desaprovisionarMikrotik(contratoId: string, tipoAuthAnterior?: string): Promise<boolean> {
     let row: any;
     try {
       const [r] = await this.dataSource.query<any[]>(`
@@ -981,7 +985,8 @@ export class ContratosService {
       version:         (row.versionRos ?? 'v6') as any,
     };
 
-    const _rawTipo2: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+    // tipoAuthAnterior tiene prioridad: evita usar el tipo ya actualizado en BD
+    const _rawTipo2: string = tipoAuthAnterior ?? row.tipoAuth ?? row.tipoControl ?? 'ninguna';
     const tipoControl: string = _rawTipo2 === 'pppoe_addresslist' ? 'pppoe' : _rawTipo2;
 
     try {
