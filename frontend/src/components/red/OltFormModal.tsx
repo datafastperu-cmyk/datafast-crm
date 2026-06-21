@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Cpu, Eye, EyeOff, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo, type CreateOltDto, type UpdateOltDto, type TestConexionOltResult } from '@/lib/api/olt-nativo';
 import { mikrotikApi } from '@/lib/api/mikrotik';
+import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 import { Portal } from '@/components/ui/portal';
 
@@ -118,6 +119,8 @@ export function OltFormModal({ open, onClose, editing }: Props) {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
   const [testResult, setTestResult] = useState<TestConexionOltResult | null>(null);
 
+  const { toast } = useToast();
+
   const { data: routers = [] } = useQuery({
     queryKey: ['routers'],
     queryFn:  mikrotikApi.listar,
@@ -170,9 +173,9 @@ export function OltFormModal({ open, onClose, editing }: Props) {
   };
 
   const handleTest = async () => {
-    if (!form.ipGestion.trim()) { alert('Ingresa la IP de gestión antes de probar'); return; }
-    if (!form.usuarioAnclado.trim()) { alert('Ingresa el usuario SSH antes de probar'); return; }
-    if (!form.contrasena && !editing) { alert('Ingresa la contraseña antes de probar'); return; }
+    if (!form.ipGestion.trim()) { toast('Ingresa la IP de gestión antes de probar', { type: 'error' }); return; }
+    if (!form.usuarioAnclado.trim()) { toast('Ingresa el usuario SSH antes de probar', { type: 'error' }); return; }
+    if (!form.contrasena && !editing) { toast('Ingresa la contraseña antes de probar', { type: 'error' }); return; }
     setTestStatus('testing');
     setTestResult(null);
     try {
