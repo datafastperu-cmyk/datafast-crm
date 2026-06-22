@@ -20,6 +20,7 @@ import { OltMonitoreoService }   from './olt-monitoreo.service';
 import { FirmwareService }       from './firmware.service';
 import { CircuitBreakerService }    from './services/circuit-breaker.service';
 import { OltProviderRegistry }      from './services/olt-provider-registry.service';
+import { OltAtomicLockService }     from './services/olt-atomic-lock.service';
 import { NativoSshProvider }        from './providers/nativo-ssh.provider';
 import { SmartoltProvider }         from './providers/smartolt.provider';
 import { AdminOltProvider }         from './providers/adminolt.provider';
@@ -62,6 +63,8 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
     AdminOltProvider,
     // Registro de proveedores (FASE F)
     OltProviderRegistry,
+    // Locks atómicos por ONU (FASE G)
+    OltAtomicLockService,
     // Servicios de dominio
     OltNativoService,
     OltMonitoreoService,
@@ -75,6 +78,7 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
     SmartoltProvider,
     AdminOltProvider,
     OltProviderRegistry,
+    OltAtomicLockService,
   ],
 })
 export class OltNativoModule {}
