@@ -22,6 +22,7 @@ import { CircuitBreakerService }    from './services/circuit-breaker.service';
 import { OltProviderRegistry }      from './services/olt-provider-registry.service';
 import { OltAtomicLockService }     from './services/olt-atomic-lock.service';
 import { OltIdempotencyService }    from './services/olt-idempotency.service';
+import { OltOperationRouter }       from './services/olt-operation-router.service';
 import { NativoSshProvider }        from './providers/nativo-ssh.provider';
 import { SmartoltProvider }         from './providers/smartolt.provider';
 import { AdminOltProvider }         from './providers/adminolt.provider';
@@ -68,6 +69,8 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
     OltAtomicLockService,
     // Idempotencia de operaciones (FASE H)
     OltIdempotencyService,
+    // Router central (FASE I)
+    OltOperationRouter,
     // Servicios de dominio
     OltNativoService,
     OltMonitoreoService,
@@ -83,6 +86,7 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
     OltProviderRegistry,
     OltAtomicLockService,
     OltIdempotencyService,
+    OltOperationRouter,
   ],
 })
 export class OltNativoModule {}
