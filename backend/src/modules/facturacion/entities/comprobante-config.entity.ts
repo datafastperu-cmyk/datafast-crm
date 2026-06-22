@@ -56,6 +56,11 @@ export class ComprobanteConfig extends BaseModel {
   @Column({ name: 'es_default', default: false })
   esDefault: boolean;
 
+  // Si true: el registro fue creado por el instalador del ERP y no puede eliminarse.
+  // El usuario puede editarlo pero no eliminarlo.
+  @Column({ name: 'es_protegido', default: false })
+  esProtegido: boolean;
+
   @Column({ default: true })
   activo: boolean;
 

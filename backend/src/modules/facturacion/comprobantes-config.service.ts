@@ -111,6 +111,12 @@ export class ComprobantesConfigService {
     });
     if (!config) throw new NotFoundException(`Tipo de comprobante ${id} no encontrado`);
 
+    if (config.esProtegido) {
+      throw new BadRequestException(
+        `El comprobante "${config.nombre}" es un comprobante de sistema y no puede eliminarse. Puede editarlo si necesita cambiar sus datos.`,
+      );
+    }
+
     // Verificar si algún cliente tiene este comprobante en su facturacion_config
     const [{ count }] = await this.ds.query(`
       SELECT COUNT(*)::int AS count

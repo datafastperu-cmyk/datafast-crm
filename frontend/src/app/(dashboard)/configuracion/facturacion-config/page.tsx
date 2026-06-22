@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Loader2, Plus, Pencil, Trash2, Star, StarOff,
   BadgeDollarSign, TrendingUp, FileCheck, Receipt,
-  CheckCircle2, XCircle, AlertTriangle,
+  CheckCircle2, XCircle, AlertTriangle, Lock,
 } from 'lucide-react';
 
 import { useToast } from '@/components/ui/toaster';
@@ -24,6 +24,7 @@ interface ComprobanteConfig {
   serie:            string;
   correlativoActual: number;
   esDefault:        boolean;
+  esProtegido:      boolean;
   activo:           boolean;
 }
 
@@ -251,11 +252,19 @@ export default function FacturacionConfigPage() {
                     className="p-1.5 rounded-lg hover:bg-muted transition-colors">
                     <Pencil className="w-4 h-4 text-muted-foreground" />
                   </button>
-                  <button
-                    onClick={() => setEliminando(t.id)}
-                    className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors">
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </button>
+                  {t.esProtegido ? (
+                    <span
+                      title="Comprobante de sistema — no se puede eliminar"
+                      className="p-1.5 rounded-lg cursor-not-allowed opacity-40">
+                      <Lock className="w-4 h-4 text-muted-foreground" />
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setEliminando(t.id)}
+                      className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors">
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
