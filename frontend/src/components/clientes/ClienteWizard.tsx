@@ -712,7 +712,7 @@ const S2_RECORDATORIO_DESPUES = Array.from({ length: 25 }, (_, i) => ({
   value: String(i + 1), label: i === 0 ? '1 Día Después' : `${i + 1} Días Después`,
 }));
 const DEF_FACT: FacturacionConfig = {
-  tipoComprobante: 'comprobante_interno',
+  comprobanteConfigId: '',
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   plantillaAvisoFactura: '',
   esquemaImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
@@ -739,6 +739,11 @@ function Step2Form({ initial, onBack, onNext }: {
   const { data: plantillasMsg = [] } = useQuery({
     queryKey: ['plantillas', 'whatsapp'],
     queryFn: () => plantillasApi.listar('whatsapp'),
+  });
+  const { data: comprobantes = [] } = useQuery({
+    queryKey: ['comprobantes-config'],
+    queryFn: facturacionApi.getComprobantes,
+    staleTime: 5 * 60 * 1000,
   });
 
   function cargarPlantilla(id: string) {
@@ -773,10 +778,11 @@ function Step2Form({ initial, onBack, onNext }: {
         {/* Facturación */}
         <Section title="Facturación" icon={CreditCard}>
           <Field label="Tipo de Comprobante">
-            <select className={INPUT_CLS} value={fact.tipoComprobante ?? 'comprobante_interno'} onChange={e => updateF('tipoComprobante', e.target.value)}>
-              <option value="comprobante_interno">COMPROBANTE INTERNO</option>
-              <option value="recibo">RECIBO</option>
-              <option value="factura">FACTURA</option>
+            <select className={INPUT_CLS} value={fact.comprobanteConfigId ?? ''} onChange={e => updateF('comprobanteConfigId', e.target.value)}>
+              <option value="">— Predeterminado de la empresa —</option>
+              {comprobantes.filter(c => c.activo).map(c => (
+                <option key={c.id} value={c.id}>{c.nombre.toUpperCase()}</option>
+              ))}
             </select>
           </Field>
           <Field label="Tipo">
@@ -801,7 +807,7 @@ function Step2Form({ initial, onBack, onNext }: {
               {plantillasMsg.map(p => <option key={p.id ?? p.codigo} value={p.id ?? p.codigo}>{p.nombre}</option>)}
             </select>
           </Field>
-          {(fact.tipoComprobante ?? 'comprobante_interno') !== 'comprobante_interno' && (
+          {comprobantes.find(c => c.id === fact.comprobanteConfigId)?.tieneCargaFiscal && (
             <Field label="Esquema de impuesto">
               <select className={INPUT_CLS} value={fact.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
                 <option value="incluido">Impuestos incluidos</option>

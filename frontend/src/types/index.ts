@@ -200,6 +200,7 @@ export interface Factura {
   numeroCompleto:   string;
   serie:            string;
   correlativo:      number;
+  comprobanteConfigId?: string;
   tipoComprobante:  string;
   clienteId:        string;
   contratoId?:      string;

@@ -2,7 +2,7 @@ import api from '@/lib/api';
 import type { ApiRespuesta } from '@/types';
 
 export interface FacturacionConfig {
-  tipoComprobante?:  string;
+  comprobanteConfigId?: string;
   tipo:              string;
   diaPago:           string;
   crearFactura:      string;

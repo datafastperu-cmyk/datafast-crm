@@ -1,6 +1,18 @@
 import api from '@/lib/api';
 import type { Factura, Pago, PaginaRespuesta, PaginaMeta, ApiRespuesta } from '@/types';
 
+// ─── Comprobante dinámico ─────────────────────────────────────
+export interface ComprobanteConfigItem {
+  id:               string;
+  nombre:           string;
+  codigo:           string;
+  tieneCargaFiscal: boolean;
+  serie:            string;
+  esDefault:        boolean;
+  esProtegido:      boolean;
+  activo:           boolean;
+}
+
 // ─── Filtros ──────────────────────────────────────────────────
 export interface FiltrosFactura {
   search?:      string;
@@ -50,9 +62,9 @@ export interface RegistrarPagoDto {
 }
 
 export interface UpdateFacturaDto {
-  contratoId?:       string;
-  tipoComprobante?:  'boleta' | 'factura' | 'recibo_interno';
-  periodoInicio?:    string;
+  contratoId?:          string;
+  comprobanteConfigId?: string;
+  periodoInicio?:       string;
   periodoFin?:       string;
   descripcion?:      string;
   fechaVencimiento?: string;
@@ -67,10 +79,10 @@ export interface UpdateFacturaDto {
 }
 
 export interface CreateFacturaDto {
-  clienteId:         string;
-  contratoId?:       string;
-  tipoComprobante?:  'boleta' | 'factura' | 'recibo_interno';
-  periodoInicio:     string;
+  clienteId:            string;
+  contratoId?:          string;
+  comprobanteConfigId?: string;
+  periodoInicio:        string;
   periodoFin:        string;
   descripcion?:      string;
   items?: {
@@ -155,6 +167,11 @@ export const facturacionApi = {
   anular: async (id: string, motivo: string): Promise<Factura> => {
     const res = await api.patch<ApiRespuesta<Factura>>(`/facturacion/${id}/anular`, { motivo });
     return res.data.data;
+  },
+
+  getComprobantes: async (): Promise<ComprobanteConfigItem[]> => {
+    const res = await api.get<ApiRespuesta<{ tiposComprobante: ComprobanteConfigItem[] }>>('/facturacion-config');
+    return res.data.data?.tiposComprobante ?? [];
   },
 
   generarMensual: async (dto: GenerarMensualDto): Promise<{ exitosas: number; errores: number }> => {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Loader2, FileText } from 'lucide-react';
 import { clientesApi } from '@/lib/api/clientes';
+import { facturacionApi } from '@/lib/api/facturacion';
 import { plantillasAbonadosApi } from '@/lib/api/plantillas-abonados';
 import { plantillasApi } from '@/lib/api/plantillas';
 import { useToast } from '@/components/ui/toaster';
@@ -12,7 +13,7 @@ import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantill
 
 // ── Defaults ──────────────────────────────────────────────────────
 const DEF_FACT: FacturacionConfig = {
-  tipoComprobante: 'comprobante_interno',
+  comprobanteConfigId: '',
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   plantillaAvisoFactura: '',
   esquemaImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
@@ -158,6 +159,11 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
     queryKey: ['plantillas', 'whatsapp'],
     queryFn: () => plantillasApi.listar('whatsapp'),
   });
+  const { data: comprobantes = [] } = useQuery({
+    queryKey: ['comprobantes-config'],
+    queryFn: facturacionApi.getComprobantes,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const [facturacion, setFact] = useState<FacturacionConfig>({ ...DEF_FACT });
   const [notificaciones, setNotif] = useState<NotificacionesConfig>({ ...DEF_NOTIF });
@@ -226,10 +232,11 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
           </div>
           <div className="px-4 py-3 space-y-0.5">
             <Field label="Tipo de Comprobante">
-              <select className={selectCls} value={facturacion.tipoComprobante ?? 'comprobante_interno'} onChange={e => updateF('tipoComprobante', e.target.value)}>
-                <option value="comprobante_interno">COMPROBANTE INTERNO</option>
-                <option value="recibo">RECIBO</option>
-                <option value="factura">FACTURA</option>
+              <select className={selectCls} value={facturacion.comprobanteConfigId ?? ''} onChange={e => updateF('comprobanteConfigId', e.target.value)}>
+                <option value="">— Predeterminado de la empresa —</option>
+                {comprobantes.filter(c => c.activo).map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre.toUpperCase()}</option>
+                ))}
               </select>
             </Field>
             <Field label="Tipo">
@@ -254,7 +261,7 @@ export function TabConfigFacturacion({ clienteId }: { clienteId: string }) {
                 {plantillasMsg.map(p => <option key={p.codigo} value={p.codigo}>{p.nombre}</option>)}
               </select>
             </Field>
-            {(facturacion.tipoComprobante ?? 'comprobante_interno') !== 'comprobante_interno' && (
+            {comprobantes.find(c => c.id === facturacion.comprobanteConfigId)?.tieneCargaFiscal && (
               <Field label="Esquema de impuesto">
                 <select className={selectCls} value={facturacion.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
                   <option value="incluido">Impuestos incluidos</option>

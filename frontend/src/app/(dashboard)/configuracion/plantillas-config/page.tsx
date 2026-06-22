@@ -6,12 +6,13 @@ import { Save, Plus, FileText, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toaster';
 import { plantillasAbonadosApi } from '@/lib/api/plantillas-abonados';
 import type { PlantillaAbonado, FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
+import { facturacionApi } from '@/lib/api/facturacion';
 import { plantillasApi } from '@/lib/api/plantillas';
 import { parseApiError } from '@/lib/utils';
 
 // ─── Defaults ────────────────────────────────────────────────────
 const DEFAULT_FACTURACION: FacturacionConfig = {
-  tipoComprobante: 'comprobante_interno',
+  comprobanteConfigId: '',
   tipo: 'prepago', diaPago: '01', crearFactura: 'desactivado',
   plantillaAvisoFactura: '',
   esquemaImpuesto: 'incluido', diasGracia: '0', aplicarCorte: 'desactivado',
@@ -132,6 +133,12 @@ export default function PlantillasConfigPage() {
     queryFn: () => plantillasApi.listar('whatsapp'),
   });
   const plantillasMsg = Array.isArray(rawPlantillasMsg) ? rawPlantillasMsg : [];
+
+  const { data: comprobantes = [] } = useQuery({
+    queryKey: ['comprobantes-config'],
+    queryFn: facturacionApi.getComprobantes,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const [selId, setSelId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -273,10 +280,11 @@ export default function PlantillasConfigPage() {
             </div>
             <div className="px-4 py-3 space-y-0.5">
               <Field label="Tipo de Comprobante">
-                <select className={selectCls} value={facturacion.tipoComprobante ?? 'comprobante_interno'} onChange={e => updateF('tipoComprobante', e.target.value)}>
-                  <option value="comprobante_interno">COMPROBANTE INTERNO</option>
-                  <option value="recibo">RECIBO</option>
-                  <option value="factura">FACTURA</option>
+                <select className={selectCls} value={facturacion.comprobanteConfigId ?? ''} onChange={e => updateF('comprobanteConfigId', e.target.value)}>
+                  <option value="">— Predeterminado de la empresa —</option>
+                  {comprobantes.filter(c => c.activo).map(c => (
+                    <option key={c.id} value={c.id}>{c.nombre.toUpperCase()}</option>
+                  ))}
                 </select>
               </Field>
               <Field label="Tipo">
@@ -307,7 +315,7 @@ export default function PlantillasConfigPage() {
                   ))}
                 </select>
               </Field>
-              {(facturacion.tipoComprobante ?? 'comprobante_interno') !== 'comprobante_interno' && (
+              {comprobantes.find(c => c.id === facturacion.comprobanteConfigId)?.tieneCargaFiscal && (
                 <Field label="Esquema de impuesto">
                   <select className={selectCls} value={facturacion.esquemaImpuesto} onChange={e => updateF('esquemaImpuesto', e.target.value)}>
                     <option value="incluido">Impuestos incluidos</option>

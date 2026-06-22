@@ -104,9 +104,9 @@ export class UpdateFacturaDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID()
   contratoId?: string;
 
-  @ApiPropertyOptional({ description: 'Código del tipo de comprobante' })
-  @IsOptional() @IsString()
-  tipoComprobante?: string;
+  @ApiPropertyOptional({ description: 'UUID del ComprobanteConfig a aplicar' })
+  @IsOptional() @IsUUID()
+  comprobanteConfigId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsDateString()
   periodoInicio?: string;

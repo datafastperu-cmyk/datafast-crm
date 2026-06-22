@@ -2413,9 +2413,13 @@ function ModalEditarFactura({
     return [{ descripcion: factura.descripcion ?? '', cantidad: 1, precioUnitario: Number(factura.subtotal ?? 0), descuento: 0 }];
   };
 
-  const [tipoComprobante, setTipoComprobante] = useState<'boleta' | 'factura' | 'recibo_interno'>(
-    (factura.tipoComprobante as any) ?? 'boleta',
-  );
+  const { data: comprobantes = [] } = useQuery({
+    queryKey: ['comprobantes-config'],
+    queryFn: facturacionApi.getComprobantes,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const [comprobanteConfigId, setComprobanteConfigId] = useState(factura.comprobanteConfigId ?? '');
   const [contratoId,      setContratoId]      = useState(factura.contratoId ?? '');
   const [periodoInicio,   setPeriodoInicio]   = useState(factura.periodoInicio ?? '');
   const [periodoFin,      setPeriodoFin]      = useState(factura.periodoFin ?? '');
@@ -2439,8 +2443,8 @@ function ModalEditarFactura({
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => facturacionApi.update(factura.id, {
-      contratoId:       contratoId || undefined,
-      tipoComprobante,
+      contratoId:          contratoId || undefined,
+      comprobanteConfigId: comprobanteConfigId || undefined,
       periodoInicio,
       periodoFin,
       descripcion:      descripcion || undefined,
@@ -2487,8 +2491,11 @@ function ModalEditarFactura({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Tipo comprobante</label>
-              <select value={tipoComprobante} onChange={e => setTipoComprobante(e.target.value as typeof tipoComprobante)} className={inputCls}>
-                {TIPO_COMPROBANTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              <select value={comprobanteConfigId} onChange={e => setComprobanteConfigId(e.target.value)} className={inputCls}>
+                <option value="">— Predeterminado empresa —</option>
+                {comprobantes.filter(c => c.activo).map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre.toUpperCase()}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -2655,11 +2662,6 @@ interface LineaItem {
   descuento:      number;
 }
 
-const TIPO_COMPROBANTE_OPTS = [
-  { value: 'boleta',         label: 'Boleta de venta' },
-  { value: 'factura',        label: 'Factura' },
-  { value: 'recibo_interno', label: 'Recibo interno' },
-] as const;
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -2680,7 +2682,13 @@ function ModalFacturaServicio({
 }) {
   const { toast } = useToast();
 
-  const [tipoComprobante, setTipoComprobante] = useState<'boleta' | 'factura' | 'recibo_interno'>('boleta');
+  const { data: comprobantes = [] } = useQuery({
+    queryKey: ['comprobantes-config'],
+    queryFn: facturacionApi.getComprobantes,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const [comprobanteConfigId, setComprobanteConfigId] = useState('');
   const [contratoId,      setContratoId]      = useState(contratos[0]?.id ?? '');
   const [periodoInicio,   setPeriodoInicio]   = useState(() => {
     const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
@@ -2715,8 +2723,8 @@ function ModalFacturaServicio({
     mutationFn: () => {
       const dto: CreateFacturaDto = {
         clienteId,
-        contratoId:      contratoId || undefined,
-        tipoComprobante,
+        contratoId:          contratoId || undefined,
+        comprobanteConfigId: comprobanteConfigId || undefined,
         periodoInicio,
         periodoFin,
         descripcion:     descripcion || undefined,
@@ -2761,8 +2769,11 @@ function ModalFacturaServicio({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Tipo comprobante</label>
-              <select value={tipoComprobante} onChange={e => setTipoComprobante(e.target.value as typeof tipoComprobante)} className={inputCls}>
-                {TIPO_COMPROBANTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              <select value={comprobanteConfigId} onChange={e => setComprobanteConfigId(e.target.value)} className={inputCls}>
+                <option value="">— Predeterminado empresa —</option>
+                {comprobantes.filter(c => c.activo).map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre.toUpperCase()}</option>
+                ))}
               </select>
             </div>
             <div>

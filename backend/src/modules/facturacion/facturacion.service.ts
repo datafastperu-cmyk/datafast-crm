@@ -660,6 +660,17 @@ export class FacturacionService {
     if (dto.descripcion      !== undefined) patch.descripcion      = dto.descripcion;
     if (dto.fechaVencimiento !== undefined) patch.fechaVencimiento = dto.fechaVencimiento;
 
+    if (dto.comprobanteConfigId !== undefined) {
+      const cfg = await this.ds.getRepository(ComprobanteConfig).findOne({
+        where: { id: dto.comprobanteConfigId, empresaId, deletedAt: null as any },
+      });
+      if (!cfg) throw new NotFoundException('Tipo de comprobante no encontrado');
+      patch.comprobanteConfigId   = cfg.id;
+      patch.tipoComprobante       = cfg.codigo;
+      patch.tipoComprobanteNombre = cfg.nombre;
+      patch.tieneCargaFiscal      = cfg.tieneCargaFiscal;
+    }
+
     if (dto.items !== undefined) {
       const configGlobal = await this.comprobantesSvc.getConfiguracion(empresaId);
       const igvRate      = Number(configGlobal.igvRate);
