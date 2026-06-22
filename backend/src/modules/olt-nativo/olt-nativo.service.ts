@@ -1,6 +1,6 @@
 import {
-  BadRequestException, Injectable, Logger, NotFoundException,
-  OnModuleInit, ServiceUnavailableException,
+  BadRequestException, Injectable, InternalServerErrorException,
+  Logger, NotFoundException, OnModuleInit, ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository }             from 'typeorm';
@@ -9,8 +9,10 @@ import { ModuleHealthService }                from '../../common/services/module
 import { OltDispositivo, OltMetodoConexion } from './entities/olt-dispositivo.entity';
 import { Onu, EstadoOnu }  from '../smartolt/entities/onu.entity';
 import { SmartoltApiService, ProvisionarOnuPayload } from '../smartolt/smartolt-api.service';
-import { OltAutomationClient } from './olt-automation.client';
-import { decrypt, encrypt }    from '../../common/utils/encryption.util';
+import { OltAutomationClient }   from './olt-automation.client';
+import { OltOperationRouter }    from './services/olt-operation-router.service';
+import { OltProvisionPayload, OltMetricasPayload } from './interfaces/olt-provider.interface';
+import { decrypt, encrypt }      from '../../common/utils/encryption.util';
 import {
   DiscoverResult,
   MetricasOnuResult,
@@ -53,6 +55,7 @@ export class OltNativoService implements OnModuleInit {
     private readonly smartoltApi:  SmartoltApiService,
     private readonly automation:   OltAutomationClient,
     private readonly moduleHealth: ModuleHealthService,
+    private readonly router:       OltOperationRouter,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -115,7 +118,37 @@ export class OltNativoService implements OnModuleInit {
 
     const olt = await this.findOlt(oltId, empresaId);
 
-    // ── Routing híbrido ───────────────────────────────────────
+    // ── Camino multi-proveedor (Router) ───────────────────────
+    const provisionPayload: OltProvisionPayload = {
+      sn:            dto.sn.toUpperCase(),
+      frame:         dto.frame ?? 0,
+      slot:          dto.slot,
+      port:          dto.port,
+      onuId:         dto.onuId,
+      vlan:          dto.vlan,
+      vlanGestion:   dto.vlanGestion,
+      profileSpeed:  dto.profileSpeed,
+      servicePortId: dto.servicePortId,
+      trafficIndex:  dto.trafficIndex,
+      onuType:       dto.onuType,
+    };
+
+    const routerRes = await this._tryRouter(() =>
+      this.router.provisionar(empresaId, oltId, provisionPayload, null),
+    );
+
+    if (routerRes !== null) {
+      return {
+        success:        routerRes.exitoso,
+        message:        routerRes.mensaje,
+        oltIp:          routerRes.datos?.oltIp ?? olt.ipGestion,
+        onuSn:          routerRes.datos?.onuSn ?? dto.sn,
+        metodoConexion: olt.metodoConexion,
+        details:        (routerRes.datos?.details as any) ?? null,
+      };
+    }
+
+    // ── Legacy (sin olt_proveedor_config aún) ─────────────────
     if (olt.metodoConexion === OltMetodoConexion.SMARTOLT_API) {
       return this.provisionarViaSmartolt(olt, dto);
     }
@@ -127,7 +160,6 @@ export class OltNativoService implements OnModuleInit {
       );
     }
 
-    // NATIVO_SSH → Python microservice
     return this.provisionarViaPython(olt, dto);
   }
 
@@ -147,8 +179,41 @@ export class OltNativoService implements OnModuleInit {
 
     const olt = await this.findOlt(oltId, empresaId);
 
+    // ── Camino multi-proveedor (Router) ───────────────────────
+    const metricasPayload: OltMetricasPayload = {
+      slot:  dto.slot,
+      port:  dto.port,
+      onuId: dto.onuId,
+      sn:    dto.sn,
+    };
+
+    const routerRes = await this._tryRouter(() =>
+      this.router.obtenerMetricas(empresaId, oltId, metricasPayload),
+    );
+
+    if (routerRes !== null) {
+      const d = routerRes.datos;
+      if (d?.metricsAvailable && dto.sn) {
+        await this.persistirMetricasOnu(
+          dto.sn, d.rxPowerDbm ?? null, d.txPowerDbm ?? null, d.temperatureC ?? null,
+        );
+      }
+      const status =
+        d?.alarm?.level === 'critical' ? 'offline' :
+        d?.alarm?.level === 'warning'  ? 'degraded' :
+        (d?.status ?? 'offline');
+      return {
+        status,
+        metricsAvailable: d?.metricsAvailable ?? false,
+        rxPowerDbm:       d?.rxPowerDbm,
+        txPowerDbm:       d?.txPowerDbm,
+        temperatureC:     d?.temperatureC,
+        alarm:            d?.alarm,
+      };
+    }
+
+    // ── Legacy ─────────────────────────────────────────────────
     if (olt.metodoConexion === OltMetodoConexion.SMARTOLT_API) {
-      // SmartOLT API tiene su propio endpoint de señal
       return this.metricasViaSmartolt(olt, dto);
     }
 
@@ -172,6 +237,16 @@ export class OltNativoService implements OnModuleInit {
 
     const olt = await this.findOlt(oltId, empresaId);
 
+    // Camino multi-proveedor (Router)
+    const routerRes = await this._tryRouter(() =>
+      this.router.descubrirOnus(empresaId, oltId, slot, port),
+    );
+    if (routerRes !== null) {
+      const onus = routerRes.datos ?? [];
+      return { success: routerRes.exitoso, total: onus.length, onus };
+    }
+
+    // Legacy: solo NATIVO_SSH
     if (olt.metodoConexion !== OltMetodoConexion.NATIVO_SSH) {
       this.logger.warn(
         `buscarOnusNoAutorizadas: OLT "${olt.nombre}" usa ${olt.metodoConexion} — ` +
@@ -224,6 +299,14 @@ export class OltNativoService implements OnModuleInit {
     empresaId: string,
   ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> {
     const olt = await this.findOlt(oltId, empresaId);
+
+    // Camino multi-proveedor (Router)
+    const routerRes = await this._tryRouter(() => this.router.testConexion(empresaId, oltId));
+    if (routerRes !== null) {
+      return { exitoso: routerRes.exitoso, mensaje: routerRes.mensaje, latenciaMs: routerRes.latenciaMs };
+    }
+
+    // Legacy: SSH directo sin configs
     const pwd = this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
     return this._probarSsh({ ip: olt.ipGestion, puerto: olt.puerto ?? 22, usuario: olt.usuarioAnclado, password: pwd, marca: olt.marca });
   }
@@ -501,6 +584,24 @@ export class OltNativoService implements OnModuleInit {
   }
 
   // ─── Helpers ──────────────────────────────────────────────────
+
+  // Ejecuta fn() a través del Router multi-proveedor.
+  // Retorna null si la OLT no tiene olt_proveedor_config activos
+  // (InternalServerErrorException del Router) → activar path legacy.
+  // Cualquier otra excepción se re-lanza para no silenciar errores reales.
+  private async _tryRouter<T>(fn: () => Promise<T>): Promise<T | null> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof InternalServerErrorException) {
+        this.logger.debug(
+          `[Router] Sin configs activas → usando path legacy. Detalle: ${err.message}`,
+        );
+        return null;
+      }
+      throw err;
+    }
+  }
 
   private async findOlt(id: string, empresaId: string): Promise<OltDispositivo> {
     const olt = await this.oltRepo.findOne({ where: { id, empresaId, activo: true } });
