@@ -13,11 +13,12 @@ import { Onu }                 from '../smartolt/entities/onu.entity';
 import { AlertaSistema }       from '../monitoreo/entities/alerta-sistema.entity';
 import { SmartoltModule }      from '../smartolt/smartolt.module';
 
-import { OltAutomationClient } from './olt-automation.client';
-import { OltNativoService }    from './olt-nativo.service';
-import { OltNativoController } from './olt-nativo.controller';
-import { OltMonitoreoService } from './olt-monitoreo.service';
-import { FirmwareService }     from './firmware.service';
+import { OltAutomationClient }   from './olt-automation.client';
+import { OltNativoService }      from './olt-nativo.service';
+import { OltNativoController }   from './olt-nativo.controller';
+import { OltMonitoreoService }   from './olt-monitoreo.service';
+import { FirmwareService }       from './firmware.service';
+import { CircuitBreakerService } from './services/circuit-breaker.service';
 
 @Module({
   imports: [
@@ -47,7 +48,15 @@ import { FirmwareService }     from './firmware.service';
     SmartoltModule,
   ],
   controllers: [OltNativoController],
-  providers:   [OltAutomationClient, OltNativoService, OltMonitoreoService, FirmwareService],
-  exports:     [OltNativoService, OltAutomationClient],
+  providers: [
+    // Infraestructura
+    OltAutomationClient,
+    CircuitBreakerService,
+    // Servicios de dominio
+    OltNativoService,
+    OltMonitoreoService,
+    FirmwareService,
+  ],
+  exports: [OltNativoService, OltAutomationClient, CircuitBreakerService],
 })
 export class OltNativoModule {}
