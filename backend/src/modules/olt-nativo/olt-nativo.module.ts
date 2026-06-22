@@ -5,6 +5,8 @@ import { MulterModule }     from '@nestjs/platform-express';
 import { memoryStorage }    from 'multer';
 
 import { OltDispositivo }      from './entities/olt-dispositivo.entity';
+import { OltProveedorConfig }  from './entities/olt-proveedor-config.entity';
+import { OltOperacionLog }     from './entities/olt-operacion-log.entity';
 import { MetricasOnuOptical }  from './entities/metricas-onu-optical.entity';
 import { HistorialFirmware }   from './entities/historial-firmware.entity';
 import { Onu }                 from '../smartolt/entities/onu.entity';
@@ -21,6 +23,8 @@ import { FirmwareService }     from './firmware.service';
   imports: [
     TypeOrmModule.forFeature([
       OltDispositivo,
+      OltProveedorConfig,
+      OltOperacionLog,
       Onu,
       MetricasOnuOptical,
       AlertaSistema,
