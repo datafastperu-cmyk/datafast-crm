@@ -23,6 +23,7 @@ import { OltProviderRegistry }      from './services/olt-provider-registry.servi
 import { OltAtomicLockService }     from './services/olt-atomic-lock.service';
 import { OltIdempotencyService }    from './services/olt-idempotency.service';
 import { OltOperationRouter }       from './services/olt-operation-router.service';
+import { OltHealthMonitorService }  from './services/olt-health-monitor.service';
 import { NativoSshProvider }        from './providers/nativo-ssh.provider';
 import { SmartoltProvider }         from './providers/smartolt.provider';
 import { AdminOltProvider }         from './providers/adminolt.provider';
@@ -71,6 +72,8 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
     OltIdempotencyService,
     // Router central (FASE I)
     OltOperationRouter,
+    // Health monitor (FASE J)
+    OltHealthMonitorService,
     // Servicios de dominio
     OltNativoService,
     OltMonitoreoService,
