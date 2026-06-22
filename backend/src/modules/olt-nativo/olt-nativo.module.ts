@@ -18,10 +18,11 @@ import { OltNativoService }      from './olt-nativo.service';
 import { OltNativoController }   from './olt-nativo.controller';
 import { OltMonitoreoService }   from './olt-monitoreo.service';
 import { FirmwareService }       from './firmware.service';
-import { CircuitBreakerService } from './services/circuit-breaker.service';
-import { NativoSshProvider }     from './providers/nativo-ssh.provider';
-import { SmartoltProvider }      from './providers/smartolt.provider';
-import { AdminOltProvider }      from './providers/adminolt.provider';
+import { CircuitBreakerService }    from './services/circuit-breaker.service';
+import { OltProviderRegistry }      from './services/olt-provider-registry.service';
+import { NativoSshProvider }        from './providers/nativo-ssh.provider';
+import { SmartoltProvider }         from './providers/smartolt.provider';
+import { AdminOltProvider }         from './providers/adminolt.provider';
 
 @Module({
   imports: [
@@ -59,6 +60,8 @@ import { AdminOltProvider }      from './providers/adminolt.provider';
     NativoSshProvider,
     SmartoltProvider,
     AdminOltProvider,
+    // Registro de proveedores (FASE F)
+    OltProviderRegistry,
     // Servicios de dominio
     OltNativoService,
     OltMonitoreoService,
@@ -71,6 +74,7 @@ import { AdminOltProvider }      from './providers/adminolt.provider';
     NativoSshProvider,
     SmartoltProvider,
     AdminOltProvider,
+    OltProviderRegistry,
   ],
 })
 export class OltNativoModule {}
