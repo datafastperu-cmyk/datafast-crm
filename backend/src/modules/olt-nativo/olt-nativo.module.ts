@@ -28,6 +28,51 @@ import { NativoSshProvider }        from './providers/nativo-ssh.provider';
 import { SmartoltProvider }         from './providers/smartolt.provider';
 import { AdminOltProvider }         from './providers/adminolt.provider';
 
+// ═══════════════════════════════════════════════════════════════════
+// OltNativoModule — ecosistema multi-proveedor OLT/ONU
+//
+// CAPAS (de infraestructura a dominio):
+//
+//  ┌─ Adaptadores de proveedor (IOltProvider) ──────────────────────┐
+//  │  NativoSshProvider → OltAutomationClient → Python/Netmiko/SSH  │
+//  │  SmartoltProvider  → HTTP REST (credenciales por OLT)          │
+//  │  AdminOltProvider  → HTTP REST (credenciales por OLT)          │
+//  └────────────────────────────────────────────────────────────────┘
+//            │ registrados en
+//            ▼
+//  ┌─ OltProviderRegistry ──────────────────────────────────────────┐
+//  │  Map<TipoProveedor, IOltProvider>  lookup O(1)                 │
+//  └────────────────────────────────────────────────────────────────┘
+//            │ usado por
+//            ▼
+//  ┌─ OltOperationRouter ───────────────────────────────────────────┐
+//  │  withLock → idempotency.execute → _iterar(circuit breaker)     │
+//  │  Operaciones mutantes : provisionar / desaprovisionar          │
+//  │  Operaciones lectura  : testConexion / descubrir / métricas    │
+//  └────────────────────────────────────────────────────────────────┘
+//            │ apoyado en
+//            ▼
+//  ┌─ Servicios de soporte ─────────────────────────────────────────┐
+//  │  CircuitBreakerService  — CLOSED/OPEN/HALF_OPEN por config     │
+//  │  OltAtomicLockService   — PG advisory locks por (OLT, ONU SN) │
+//  │  OltIdempotencyService  — SHA-1 key + olt_operacion_log       │
+//  │  OltHealthMonitorService— cron 5min, pLimit(5)                 │
+//  └────────────────────────────────────────────────────────────────┘
+//            │ accedido por
+//            ▼
+//  ┌─ Servicios de dominio ─────────────────────────────────────────┐
+//  │  OltNativoService   — API de negocio para el controller        │
+//  │  OltMonitoreoService— cron métricas ópticas ONUs               │
+//  │  FirmwareService    — upload/apply firmware a OLTs             │
+//  └────────────────────────────────────────────────────────────────┘
+//
+// EXPORTS PÚBLICOS (lo que otros módulos pueden inyectar):
+//   OltNativoService    — AprovisionamientoService, otros módulos
+//   OltOperationRouter  — punto de entrada al ecosistema multi-proveedor
+//   OltAutomationClient — acceso directo al microservicio Python si se necesita
+//   CircuitBreakerService — endpoints de admin para reset manual
+//   OltProviderRegistry — diagnóstico / admin
+// ═══════════════════════════════════════════════════════════════════
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -40,7 +85,7 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
       HistorialFirmware,
     ]),
 
-    // HTTP client para el microservicio Python
+    // HTTP compartido: OltAutomationClient + SmartoltProvider + AdminOltProvider
     HttpModule.register({
       timeout:      30_000,
       maxRedirects: 2,
@@ -53,43 +98,36 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
     // Multer en memoria — el buffer no toca disco hasta que FirmwareService lo escribe
     MulterModule.register({ storage: memoryStorage() }),
 
+    // SmartoltApiService (legacy) — usado por OltNativoService hasta FASE L
     SmartoltModule,
   ],
   controllers: [OltNativoController],
   providers: [
-    // Infraestructura
-    OltAutomationClient,
-    CircuitBreakerService,
-    // Adaptadores de proveedor (FASE E)
+    // ── Capa: Adaptadores de proveedor (FASE E) ──────────────
     NativoSshProvider,
     SmartoltProvider,
     AdminOltProvider,
-    // Registro de proveedores (FASE F)
+    // ── Capa: Infraestructura (FASE D, F, G, H) ──────────────
+    OltAutomationClient,
+    CircuitBreakerService,
     OltProviderRegistry,
-    // Locks atómicos por ONU (FASE G)
     OltAtomicLockService,
-    // Idempotencia de operaciones (FASE H)
     OltIdempotencyService,
-    // Router central (FASE I)
+    // ── Capa: Orquestación (FASE I, J) ───────────────────────
     OltOperationRouter,
-    // Health monitor (FASE J)
     OltHealthMonitorService,
-    // Servicios de dominio
+    // ── Capa: Dominio ─────────────────────────────────────────
     OltNativoService,
     OltMonitoreoService,
     FirmwareService,
   ],
+  // Solo exports que módulos externos realmente consumen
   exports: [
-    OltNativoService,
-    OltAutomationClient,
-    CircuitBreakerService,
-    NativoSshProvider,
-    SmartoltProvider,
-    AdminOltProvider,
-    OltProviderRegistry,
-    OltAtomicLockService,
-    OltIdempotencyService,
-    OltOperationRouter,
+    OltNativoService,       // módulos de aprovisionamiento, contratos, etc.
+    OltOperationRouter,     // punto de entrada multi-proveedor (FASE L en adelante)
+    OltAutomationClient,    // acceso Python directo si se necesita desde otro módulo
+    CircuitBreakerService,  // reset manual desde endpoints de administración
+    OltProviderRegistry,    // diagnóstico y listado de proveedores disponibles
   ],
 })
 export class OltNativoModule {}
