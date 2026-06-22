@@ -24,6 +24,7 @@ import {
   OnuActivaInfo,
   ProvisionarOnuNativaDto,
   ProvisionResult,
+  UpsertProveedorOltDto,
 } from './dto/olt-nativo-ops.dto';
 import { CreateOltDispositivoDto, UpdateOltDispositivoDto } from './dto/olt-dispositivo.dto';
 
@@ -197,6 +198,43 @@ export class OltNativoController {
   @ApiOperation({ summary: 'Verificar disponibilidad del microservicio Python de automatización' })
   async automationHealth() {
     return this.service['automation'].health();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  GESTIÓN DE PROVEEDORES MULTI-PROVEEDOR
+  // ═══════════════════════════════════════════════════════════════
+
+  @Get(':oltId/proveedores')
+  @ApiOperation({ summary: 'Listar configuraciones de proveedor para una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async listarProveedores(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.listarProveedores(oltId, user.empresaId);
+  }
+
+  @Post(':oltId/proveedores')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Crear o actualizar proveedor de una OLT (upsert por tipo)' })
+  @ApiParam({ name: 'oltId' })
+  async upsertProveedor(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: UpsertProveedorOltDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.upsertProveedor(oltId, user.empresaId, dto);
+  }
+
+  @Post('proveedores/:configId/reset-circuit')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Resetear circuit breaker de un proveedor a estado CLOSED' })
+  @ApiParam({ name: 'configId', description: 'UUID de OltProveedorConfig' })
+  async resetCircuit(
+    @Param('configId', ParseUUIDPipe) configId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    return this.service.resetCircuit(configId, user.empresaId);
   }
 
   // ═══════════════════════════════════════════════════════════════

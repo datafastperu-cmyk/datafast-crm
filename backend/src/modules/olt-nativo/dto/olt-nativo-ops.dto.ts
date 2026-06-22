@@ -1,5 +1,5 @@
 import {
-  IsInt, IsOptional, IsString, IsUUID,
+  IsBoolean, IsInt, IsOptional, IsString, IsUUID,
   Max, MaxLength, Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -347,4 +347,56 @@ export interface MetricasOnuResult {
   txPowerDbm?:      number | null;
   temperatureC?:    number | null;
   alarm?:           PythonAlarmInfo | null;
+}
+
+// ─── Proveedor Config DTOs ────────────────────────────────────
+
+export class UpsertProveedorOltDto {
+  @ApiProperty({ enum: ['nativo_ssh', 'nativo_snmp', 'smartolt', 'adminolt'] })
+  @IsString()
+  tipo: string;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional() @IsInt() @Min(1) @Max(99)
+  @Type(() => Number)
+  prioridad?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsBoolean()
+  activo?: boolean;
+
+  // ── Nativo SSH / SNMP ──────────────────────────────────────
+  @ApiPropertyOptional({ example: '10.0.50.2' })
+  @IsOptional() @IsString()
+  ip?: string;
+
+  @ApiPropertyOptional({ example: 22 })
+  @IsOptional() @IsInt() @Min(1) @Max(65535)
+  @Type(() => Number)
+  port?: number;
+
+  @ApiPropertyOptional({ example: 'admin' })
+  @IsOptional() @IsString()
+  username?: string;
+
+  @ApiPropertyOptional({ description: 'Contraseña en texto plano — se cifra antes de persistir' })
+  @IsOptional() @IsString()
+  password?: string;
+
+  @ApiPropertyOptional({ enum: ['huawei', 'zte', 'vsol', 'cdata'] })
+  @IsOptional() @IsString()
+  brand?: string;
+
+  // ── SmartOLT / AdminOLT ────────────────────────────────────
+  @ApiPropertyOptional({ example: 'https://app.smartolt.com' })
+  @IsOptional() @IsString()
+  baseUrl?: string;
+
+  @ApiPropertyOptional({ description: 'API Key en texto plano — se cifra antes de persistir' })
+  @IsOptional() @IsString()
+  apiKey?: string;
+
+  @ApiPropertyOptional({ example: 'olt-uuid-en-plataforma-externa' })
+  @IsOptional() @IsString()
+  oltIdExterno?: string;
 }

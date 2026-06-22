@@ -8,6 +8,7 @@ import { mikrotikApi } from '@/lib/api/mikrotik';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 import { Portal } from '@/components/ui/portal';
+import { ProveedoresTab } from './ProveedoresTab';
 
 interface Props {
   open:     boolean;
@@ -111,6 +112,8 @@ function toUpdateDto(f: FormData): UpdateOltDto {
   return base;
 }
 
+type ActiveTab = 'config' | 'proveedores';
+
 export function OltFormModal({ open, onClose, editing }: Props) {
   const qc = useQueryClient();
   const [form, setForm]         = useState<FormData>(emptyForm);
@@ -118,6 +121,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
   const [errors, setErrors]     = useState<Partial<Record<keyof FormData, string>>>({});
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
   const [testResult, setTestResult] = useState<TestConexionOltResult | null>(null);
+  const [activeTab, setActiveTab]   = useState<ActiveTab>('config');
 
   const { toast } = useToast();
 
@@ -134,6 +138,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
     setShowPass(false);
     setTestStatus('idle');
     setTestResult(null);
+    setActiveTab('config');
   }, [open, editing]);
 
   useEffect(() => {
@@ -236,8 +241,47 @@ export function OltFormModal({ open, onClose, editing }: Props) {
           </button>
         </div>
 
+        {/* Tabs — solo en modo edición */}
+        {isEdit && (
+          <div className="flex-shrink-0 flex border-b border-border px-5">
+            {(['config', 'proveedores'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+                  activeTab === tab
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {tab === 'config' ? 'Configuración' : 'Proveedores'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Tab: Proveedores */}
+        {isEdit && activeTab === 'proveedores' && (
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <ProveedoresTab oltId={editing!.id} />
+            </div>
+            <div className="flex-shrink-0 flex items-center justify-end px-5 py-4 border-t border-border bg-background rounded-b-2xl">
+              <button type="button" onClick={onClose}
+                className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-accent transition-colors text-foreground">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Body */}
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+        <form
+          onSubmit={handleSubmit}
+          className={cn('flex flex-col flex-1 min-h-0', isEdit && activeTab !== 'config' && 'hidden')}
+        >
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
 
             {/* Identificación */}

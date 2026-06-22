@@ -6,8 +6,9 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository }             from 'typeorm';
 import { ModuleHealthService }                from '../../common/services/module-health.service';
 
-import { OltDispositivo, OltMetodoConexion } from './entities/olt-dispositivo.entity';
-import { Onu, EstadoOnu }  from '../smartolt/entities/onu.entity';
+import { OltDispositivo, OltMetodoConexion }   from './entities/olt-dispositivo.entity';
+import { OltProveedorConfig, TipoProveedor }    from './entities/olt-proveedor-config.entity';
+import { Onu, EstadoOnu }                        from '../smartolt/entities/onu.entity';
 import { SmartoltApiService, ProvisionarOnuPayload } from '../smartolt/smartolt-api.service';
 import { OltAutomationClient }   from './olt-automation.client';
 import { OltOperationRouter }    from './services/olt-operation-router.service';
@@ -21,7 +22,9 @@ import {
   ProvisionResult,
   PythonDiscoverRequest,
   PythonProvisionRequest,
+  UpsertProveedorOltDto,
 } from './dto/olt-nativo-ops.dto';
+import { CircuitBreakerService } from './services/circuit-breaker.service';
 import { CreateOltDispositivoDto, UpdateOltDispositivoDto } from './dto/olt-dispositivo.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -49,6 +52,9 @@ export class OltNativoService implements OnModuleInit {
     @InjectRepository(OltDispositivo)
     private readonly oltRepo: Repository<OltDispositivo>,
 
+    @InjectRepository(OltProveedorConfig)
+    private readonly proveedorRepo: Repository<OltProveedorConfig>,
+
     @InjectRepository(Onu)
     private readonly onuRepo: Repository<Onu>,
 
@@ -56,6 +62,7 @@ export class OltNativoService implements OnModuleInit {
     private readonly automation:   OltAutomationClient,
     private readonly moduleHealth: ModuleHealthService,
     private readonly router:       OltOperationRouter,
+    private readonly breaker:      CircuitBreakerService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -373,6 +380,77 @@ export class OltNativoService implements OnModuleInit {
     const olt = await this.findOlt(id, empresaId);
     olt.activo = false;
     await this.oltRepo.save(olt);
+  }
+
+  // ─── Gestión de proveedores multi-proveedor ───────────────────
+
+  async listarProveedores(oltId: string, empresaId: string): Promise<OltProveedorConfig[]> {
+    this.assertNotDegraded();
+    await this.findOlt(oltId, empresaId);
+    return this.proveedorRepo.find({
+      where: { oltId, empresaId },
+      order: { prioridad: 'ASC' },
+    });
+  }
+
+  async upsertProveedor(
+    oltId:     string,
+    empresaId: string,
+    dto:       UpsertProveedorOltDto,
+  ): Promise<OltProveedorConfig> {
+    this.assertNotDegraded();
+    await this.findOlt(oltId, empresaId);
+
+    const tipo = dto.tipo as TipoProveedor;
+    const existing = await this.proveedorRepo.findOne({
+      where: { oltId, empresaId, tipo },
+    });
+
+    // Construir JSONB de credenciales según tipo
+    let credenciales: Record<string, unknown> = existing?.credenciales ?? {};
+
+    if (tipo === 'nativo_ssh' || tipo === 'nativo_snmp') {
+      if (dto.ip)       credenciales.ip       = dto.ip;
+      if (dto.port)     credenciales.port     = dto.port;
+      if (dto.username) credenciales.username = dto.username;
+      if (dto.brand)    credenciales.brand    = dto.brand;
+      if (dto.password) {
+        credenciales.password_cifrado = encrypt(dto.password);
+      }
+    } else {
+      // smartolt | adminolt
+      if (dto.baseUrl)      credenciales.base_url      = dto.baseUrl;
+      if (dto.oltIdExterno) credenciales.olt_id_externo = dto.oltIdExterno;
+      if (dto.apiKey) {
+        credenciales.api_key_cifrado = encrypt(dto.apiKey);
+      }
+    }
+
+    if (existing) {
+      existing.credenciales = credenciales;
+      if (dto.prioridad !== undefined) existing.prioridad = dto.prioridad;
+      if (dto.activo    !== undefined) existing.activo    = dto.activo;
+      return this.proveedorRepo.save(existing);
+    }
+
+    const nuevo = this.proveedorRepo.create({
+      oltId,
+      empresaId,
+      tipo,
+      prioridad:    dto.prioridad ?? 1,
+      activo:       dto.activo    ?? true,
+      credenciales,
+    });
+    return this.proveedorRepo.save(nuevo);
+  }
+
+  async resetCircuit(configId: string, empresaId: string): Promise<void> {
+    this.assertNotDegraded();
+    const config = await this.proveedorRepo.findOne({ where: { id: configId, empresaId } });
+    if (!config) {
+      throw new NotFoundException(`Configuración de proveedor ${configId} no encontrada`);
+    }
+    await this.breaker.resetForzado(configId);
   }
 
   // ────────────────────────────────────────────────────────────

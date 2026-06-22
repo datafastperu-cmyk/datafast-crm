@@ -148,6 +148,45 @@ export interface TestConexionOltResult {
   latenciaMs?: number;
 }
 
+// ─── Multi-proveedor ──────────────────────────────────────────
+
+export type TipoProveedor   = 'nativo_ssh' | 'nativo_snmp' | 'smartolt' | 'adminolt';
+export type CircuitEstado   = 'closed' | 'open' | 'half_open';
+export type HealthEstado    = 'ok' | 'degraded' | 'down' | 'unknown';
+
+export interface OltProveedorConfig {
+  id:                string;
+  empresaId:         string;
+  oltId:             string;
+  tipo:              TipoProveedor;
+  prioridad:         number;
+  activo:            boolean;
+  circuitEstado:     CircuitEstado;
+  circuitFallas:     number;
+  circuitAbiertoHasta?: string | null;
+  healthEstado:      HealthEstado;
+  healthLatenciaMs?: number | null;
+  ultimoHealth?:     string | null;
+  createdAt:         string;
+  updatedAt:         string;
+}
+
+export interface UpsertProveedorDto {
+  tipo:          TipoProveedor;
+  prioridad?:    number;
+  activo?:       boolean;
+  // nativo_ssh / nativo_snmp
+  ip?:           string;
+  port?:         number;
+  username?:     string;
+  password?:     string;
+  brand?:        string;
+  // smartolt / adminolt
+  baseUrl?:      string;
+  apiKey?:       string;
+  oltIdExterno?: string;
+}
+
 // ─── API ──────────────────────────────────────────────────────
 
 export const oltNativoApi = {
@@ -264,5 +303,21 @@ export const oltNativoApi = {
   }): Promise<TestConexionOltResult> => {
     const res = await api.post<ApiRespuesta<TestConexionOltResult>>('/olt-nativo/test-conexion-directa', params);
     return res.data.data;
+  },
+
+  // ── Multi-proveedor ──────────────────────────────────────────
+
+  listarProveedores: async (oltId: string): Promise<OltProveedorConfig[]> => {
+    const res = await api.get<ApiRespuesta<OltProveedorConfig[]>>(`/olt-nativo/${oltId}/proveedores`);
+    return res.data.data ?? [];
+  },
+
+  upsertProveedor: async (oltId: string, dto: UpsertProveedorDto): Promise<OltProveedorConfig> => {
+    const res = await api.post<ApiRespuesta<OltProveedorConfig>>(`/olt-nativo/${oltId}/proveedores`, dto);
+    return res.data.data;
+  },
+
+  resetCircuit: async (configId: string): Promise<void> => {
+    await api.post(`/olt-nativo/proveedores/${configId}/reset-circuit`);
   },
 };
