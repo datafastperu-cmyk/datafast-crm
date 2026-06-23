@@ -2,7 +2,7 @@ import {
   IsString, IsEmail, IsOptional, IsEnum, IsBoolean,
   IsNumber, MaxLength, IsArray, Min, Max,
   ValidateIf, Matches, IsNotEmpty, Length, ArrayMinSize,
-  IsUUID, IsDateString, IsInt, ValidateNested, IsDate,
+  IsUUID, IsDateString, IsInt, ValidateNested, IsDate, IsObject,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType, OmitType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
@@ -321,35 +321,17 @@ export class BulkActionClienteDto {
   motivo?: string;
 }
 
-// ─── Tipos estructurados para configuración de facturación ───
-export class FacturacionConfigDto {
-  @IsOptional() @IsString() tipoFacturacion?: string;
-  @IsOptional() @IsInt() @Min(1) @Max(28) @Type(() => Number) diaPago?: number;
-  @IsOptional() @IsInt() @Min(0) @Max(30) @Type(() => Number) diasGracia?: number;
-  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) moraDiaria?: number;
-  @IsOptional() @IsNumber() @Min(0) @Type(() => Number) cargoReconexion?: number;
-  @IsOptional() @IsString() plantillaFactura?: string;
-}
-
-export class NotificacionesConfigDto {
-  @IsOptional() @IsBoolean() enviarFactura?: boolean;
-  @IsOptional() @IsBoolean() recordatorioVencimiento?: boolean;
-  @IsOptional() @IsInt() @Min(1) @Max(30) @Type(() => Number) diasAntesRecordatorio?: number;
-  @IsOptional() @IsString() plantillaBienvenida?: string;
-  @IsOptional() @IsString() plantillaCorte?: string;
-  @IsOptional() @IsString() plantillaReconexion?: string;
-}
-
+// ─── Config de facturación libre (JSONB) ─────────────────────
+// Se guarda tal cual en la columna JSONB — no se validan campos internos
+// porque el esquema lo define el frontend y puede evolucionar sin migración.
 export class FacturacionConfigBodyDto {
   @IsOptional()
-  @ValidateNested()
-  @Type(() => FacturacionConfigDto)
-  facturacion?: FacturacionConfigDto;
+  @IsObject()
+  facturacion?: Record<string, any>;
 
   @IsOptional()
-  @ValidateNested()
-  @Type(() => NotificacionesConfigDto)
-  notificaciones?: NotificacionesConfigDto;
+  @IsObject()
+  notificaciones?: Record<string, any>;
 }
 
 // ─── Onboarding (wizard paso a paso) ─────────────────────────
