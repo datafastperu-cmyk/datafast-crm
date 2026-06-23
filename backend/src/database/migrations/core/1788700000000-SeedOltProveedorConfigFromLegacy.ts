@@ -21,14 +21,15 @@ export class SeedOltProveedorConfigFromLegacy1788700000000 implements MigrationI
   public async up(queryRunner: QueryRunner): Promise<void> {
 
     // Mapeo de metodo_conexion → proveedor_olt_tipo:
-    //   'smartolt_api' → 'smartolt'
-    //   'nativo_ssh'   → 'nativo_ssh'
-    //   'nativo_snmp'  → 'nativo_snmp'
+    //   'smartolt_api' → 'smartolt'   activo=FALSE (requiere base_url/api_key manual)
+    //   'nativo_ssh'   → 'nativo_ssh' activo=d.activo (credenciales copiadas desde legacy)
+    //   'nativo_snmp'  → 'nativo_snmp' activo=d.activo
     //
-    // Las credenciales SSH/SNMP se copian directamente desde la tabla
-    // de origen.  Los proveedores SmartOLT y AdminOLT requieren
-    // configuración adicional (base_url, api_key) que el operador
-    // carga manualmente desde /configuracion/olts → pestaña Proveedores.
+    // ⚠️  SmartOLT se inserta con activo=FALSE para evitar regresión:
+    //     sin base_url/api_key el Router fallaría y NO hay fallback al
+    //     path legacy (solo InternalServerErrorException dispara ese fallback).
+    //     El operador debe abrir /configuracion/olts → pestaña Proveedores,
+    //     completar las credenciales y activar la fila manualmente.
     await queryRunner.query(`
       INSERT INTO olt_proveedor_config
         (id, empresa_id, olt_id, tipo, prioridad, credenciales, activo)
@@ -51,21 +52,30 @@ export class SeedOltProveedorConfigFromLegacy1788700000000 implements MigrationI
           'snmp_community',    COALESCE(d.snmp_community, 'public'),
           'snmp_version',      d.snmp_version
         ),
-        d.activo
+        -- SmartOLT sin base_url/api_key → inactivo hasta configuración manual
+        CASE d.metodo_conexion
+          WHEN 'smartolt_api' THEN FALSE
+          ELSE d.activo
+        END
       FROM olt_dispositivos d
       WHERE d.deleted_at IS NULL
-        AND d.metodo_conexion IS NOT NULL
       ON CONFLICT (olt_id, tipo) DO NOTHING
     `);
 
-    // Reporte de filas insertadas (visible en logs de migración)
+    // Reporte de filas por tipo (visible en logs de migración)
     await queryRunner.query(`
       DO $$
       DECLARE
-        n INTEGER;
+        n_total    INTEGER;
+        n_ssh      INTEGER;
+        n_snmp     INTEGER;
+        n_smartolt INTEGER;
       BEGIN
-        SELECT COUNT(*) INTO n FROM olt_proveedor_config;
-        RAISE NOTICE 'olt_proveedor_config: % filas tras seed inicial', n;
+        SELECT COUNT(*)                                    INTO n_total    FROM olt_proveedor_config;
+        SELECT COUNT(*) FILTER (WHERE tipo = 'nativo_ssh')  INTO n_ssh      FROM olt_proveedor_config;
+        SELECT COUNT(*) FILTER (WHERE tipo = 'nativo_snmp') INTO n_snmp     FROM olt_proveedor_config;
+        SELECT COUNT(*) FILTER (WHERE tipo = 'smartolt')    INTO n_smartolt FROM olt_proveedor_config;
+        RAISE NOTICE 'olt_proveedor_config seed: % filas totales (nativo_ssh=%, nativo_snmp=%, smartolt=% — estos últimos inactivos, requieren config manual)', n_total, n_ssh, n_snmp, n_smartolt;
       END $$
     `);
   }
