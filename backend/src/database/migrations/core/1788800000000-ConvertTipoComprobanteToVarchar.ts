@@ -12,15 +12,26 @@ export class ConvertTipoComprobanteToVarchar1788800000000 implements MigrationIn
   name = 'ConvertTipoComprobanteToVarchar1788800000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
-    // Convertir la columna de enum a VARCHAR(30)
-    // USING hace el cast explícito de los valores existentes del enum a texto
+    // 1. Eliminar el DEFAULT que referencia el tipo enum
+    await queryRunner.query(`
+      ALTER TABLE facturas
+        ALTER COLUMN tipo_comprobante DROP DEFAULT
+    `);
+
+    // 2. Convertir la columna de enum a VARCHAR(30)
     await queryRunner.query(`
       ALTER TABLE facturas
         ALTER COLUMN tipo_comprobante TYPE VARCHAR(30)
         USING tipo_comprobante::TEXT
     `);
 
-    // Eliminar el tipo enum ahora que ninguna columna lo usa
+    // 3. Restaurar el default como string literal simple
+    await queryRunner.query(`
+      ALTER TABLE facturas
+        ALTER COLUMN tipo_comprobante SET DEFAULT 'boleta'
+    `);
+
+    // 4. Eliminar el tipo enum ahora que ninguna dependencia queda
     await queryRunner.query(`
       DROP TYPE IF EXISTS tipo_comprobante
     `);
