@@ -215,6 +215,14 @@ export interface TestProveedorResult {
   latenciaMs: number;
 }
 
+export type SmartoltLookupTipo = 'perfiles' | 'vlans' | 'zonas' | 'odbs' | 'tipos-onu';
+
+export interface SmartoltPerfil   { id: string | number; name: string; type: string; }
+export interface SmartoltVlan     { id: string | number; vlanId: number; description: string; oltId: string | number | null; }
+export interface SmartoltZona     { id: string | number; name: string; oltId: string | number | null; }
+export interface SmartoltOdb      { id: string | number; name: string; oltId: string | number | null; zoneId: string | number | null; }
+export interface SmartoltTipoOnu  { id: number; name: string; }
+
 // ─── API ──────────────────────────────────────────────────────
 
 export const oltNativoApi = {
@@ -367,5 +375,16 @@ export const oltNativoApi = {
       `/olt-nativo/proveedores/${configId}/test`,
     );
     return res.data.data;
+  },
+
+  smartoltLookup: async <T = unknown>(
+    configId: string,
+    tipo:     SmartoltLookupTipo,
+  ): Promise<T[]> => {
+    const res = await api.get<ApiRespuesta<T[]>>(
+      `/olt-nativo/smartolt/${configId}/lookup`,
+      { params: { tipo } },
+    );
+    return res.data.data ?? [];
   },
 };

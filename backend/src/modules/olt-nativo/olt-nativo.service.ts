@@ -12,7 +12,8 @@ import { Onu, EstadoOnu }                        from '../smartolt/entities/onu.
 import { SmartoltApiService, ProvisionarOnuPayload } from '../smartolt/smartolt-api.service';
 import { OltAutomationClient }   from './olt-automation.client';
 import { OltOperationRouter }    from './services/olt-operation-router.service';
-import { OltProvisionPayload, OltMetricasPayload } from './interfaces/olt-provider.interface';
+import { OltProvisionPayload, OltMetricasPayload, ProveedorCredenciales } from './interfaces/olt-provider.interface';
+import { SmartoltProvider }      from './providers/smartolt.provider';
 import { decrypt, encrypt }      from '../../common/utils/encryption.util';
 import {
   DiscoverResult,
@@ -58,11 +59,12 @@ export class OltNativoService implements OnModuleInit {
     @InjectRepository(Onu)
     private readonly onuRepo: Repository<Onu>,
 
-    private readonly smartoltApi:  SmartoltApiService,
-    private readonly automation:   OltAutomationClient,
-    private readonly moduleHealth: ModuleHealthService,
-    private readonly router:       OltOperationRouter,
-    private readonly breaker:      CircuitBreakerService,
+    private readonly smartoltApi:      SmartoltApiService,
+    private readonly automation:       OltAutomationClient,
+    private readonly moduleHealth:     ModuleHealthService,
+    private readonly router:           OltOperationRouter,
+    private readonly breaker:          CircuitBreakerService,
+    private readonly smartoltProvider: SmartoltProvider,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -473,6 +475,45 @@ export class OltNativoService implements OnModuleInit {
       mensaje:    result.mensaje,
       latenciaMs: result.latenciaMs ?? 0,
     };
+  }
+
+  // ─── Lookup SmartOLT ─────────────────────────────────────────
+  // Carga credenciales de una config específica y llama el endpoint de lookup.
+  async listarLookupSmartolt(
+    tipo:      'perfiles' | 'vlans' | 'zonas' | 'odbs' | 'tipos-onu',
+    configId:  string,
+    empresaId: string,
+  ): Promise<unknown[]> {
+    this.assertNotDegraded();
+
+    const config = await this.proveedorRepo.findOne({ where: { id: configId, empresaId } });
+    if (!config) {
+      throw new NotFoundException(`Configuración ${configId} no encontrada`);
+    }
+    if (config.tipo !== 'smartolt') {
+      throw new BadRequestException('Esta configuración no es de tipo smartolt');
+    }
+
+    const c = config.credenciales as Record<string, any>;
+    let apiKey: string | undefined;
+    if (c.api_key_cifrado) {
+      try   { apiKey = decrypt(c.api_key_cifrado); }
+      catch { throw new BadRequestException('No se pudo descifrar la API key SmartOLT'); }
+    }
+
+    const creds: ProveedorCredenciales = {
+      baseUrl:      c.base_url,
+      apiKey,
+      oltIdExterno: c.olt_id_externo,
+    };
+
+    switch (tipo) {
+      case 'perfiles':   return this.smartoltProvider.listarPerfiles(creds);
+      case 'vlans':      return this.smartoltProvider.listarVlans(creds);
+      case 'zonas':      return this.smartoltProvider.listarZonas(creds);
+      case 'odbs':       return this.smartoltProvider.listarOdbs(creds);
+      case 'tipos-onu':  return this.smartoltProvider.listarTiposOnu(creds);
+    }
   }
 
   async upsertProveedor(

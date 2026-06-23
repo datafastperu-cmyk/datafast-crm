@@ -238,6 +238,26 @@ export class OltNativoController {
     return this.service.testProveedorConexion(configId, user.empresaId);
   }
 
+  @Get('smartolt/:configId/lookup')
+  @ApiOperation({ summary: 'Listar datos de referencia SmartOLT: perfiles, vlans, zonas, odbs, tipos-onu' })
+  @ApiParam({ name: 'configId', description: 'UUID de OltProveedorConfig tipo smartolt' })
+  @ApiQuery({ name: 'tipo', enum: ['perfiles', 'vlans', 'zonas', 'odbs', 'tipos-onu'] })
+  async smartoltLookup(
+    @Param('configId', ParseUUIDPipe) configId: string,
+    @Query('tipo') tipo: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<unknown[]> {
+    const TIPOS = ['perfiles', 'vlans', 'zonas', 'odbs', 'tipos-onu'] as const;
+    if (!TIPOS.includes(tipo as any)) {
+      throw new BadRequestException(`tipo inválido: ${tipo}`);
+    }
+    return this.service.listarLookupSmartolt(
+      tipo as 'perfiles' | 'vlans' | 'zonas' | 'odbs' | 'tipos-onu',
+      configId,
+      user.empresaId,
+    );
+  }
+
   @Get(':oltId/proveedores')
   @ApiOperation({ summary: 'Listar configuraciones de proveedor para una OLT' })
   @ApiParam({ name: 'oltId' })

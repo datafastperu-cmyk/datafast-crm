@@ -62,10 +62,16 @@ export interface OltProvisionPayload {
   onuId:         number;
   vlan:          number;
   vlanGestion:   number;
-  profileSpeed:  string;
+  profileSpeed:  string;   // campo legacy nativo SSH
   servicePortId?: number;
   trafficIndex?:  number;
-  onuType?:       string;   // ZTE
+  onuType?:       string;  // ZTE nativo + SmartOLT onu_type ID
+  // SmartOLT / AdminOLT específicos
+  profileDown?:   string;  // nombre perfil descarga  (ej: "100M")
+  profileUp?:     string;  // nombre perfil subida     (ej: "100M")
+  zone?:          string;  // nombre zona SmartOLT     (ej: "Zone1")
+  odb?:           string;  // ODB ID (vacío = sin ODB)
+  onuMode?:       string;  // "bridge" | "router"
 }
 
 export interface OltDeprovisionPayload {

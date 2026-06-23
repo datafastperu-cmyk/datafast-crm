@@ -134,15 +134,26 @@ export class SmartoltProvider implements IOltProvider {
       const oltId   = creds.oltIdExterno ?? '';
       const ponPort = this.buildPonPort(payload.slot, payload.port);
 
-      const body = {
-        serial:      payload.sn.toUpperCase(),
-        olt_id:      oltId,
-        pon_port:    ponPort,
-        profile:     payload.profileSpeed,
-        vlan:        payload.vlan,
-        vlan_mode:   'access',
-        description: olt.nombre,
+      // Perfil de velocidad: SmartOLT requiere profile_down y profile_up separados.
+      // Si solo viene profileSpeed (campo legacy), usarlo para ambos.
+      const profileDown = payload.profileDown ?? payload.profileSpeed;
+      const profileUp   = payload.profileUp   ?? payload.profileSpeed;
+
+      const body: Record<string, unknown> = {
+        serial:       payload.sn.toUpperCase(),
+        olt_id:       oltId,
+        pon_port:     ponPort,
+        profile_down: profileDown,
+        profile_up:   profileUp,
+        vlan:         payload.vlan,
+        vlan_mode:    'access',
+        description:  olt.nombre,
       };
+
+      if (payload.zone)    body.zone     = payload.zone;
+      if (payload.odb)     body.odb      = payload.odb;
+      if (payload.onuType) body.onu_type = payload.onuType;
+      if (payload.onuMode) body.onu_mode = payload.onuMode;
 
       const result = await this.post<any>(creds, '/api/onu/provision', body);
 
@@ -245,6 +256,81 @@ export class SmartoltProvider implements IOltProvider {
       const msg = err?.response?.data?.message ?? err?.message ?? 'Error al descubrir ONUs en SmartOLT';
       return { exitoso: false, mensaje: msg, latenciaMs: Date.now() - t0, proveedor: this.tipo };
     }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Métodos de lookup — datos de referencia para el form de provisioning
+  //
+  // No son parte de IOltProvider porque son SmartOLT-específicos.
+  // Se exponen vía SmartoltLookupService → OltNativoController.
+  // Respuesta directa del array SmartOLT (sin wrapping de OltOperacionResult).
+  // ────────────────────────────────────────────────────────────
+
+  async listarPerfiles(creds: ProveedorCredenciales): Promise<Array<{
+    id:    string | number;
+    name:  string;
+    type:  'DOWN' | 'UP' | string;
+  }>> {
+    const raw = await this.get<any[]>(creds, '/api/profile');
+    return (raw ?? []).map((p) => ({
+      id:   p.id   ?? p.name,
+      name: p.name ?? String(p.id),
+      type: (p.type ?? p.tipo ?? '').toUpperCase(),
+    }));
+  }
+
+  async listarVlans(creds: ProveedorCredenciales): Promise<Array<{
+    id:          string | number;
+    vlanId:      number;
+    description: string;
+    oltId:       string | number | null;
+  }>> {
+    const raw = await this.get<any[]>(creds, '/api/vlan');
+    return (raw ?? []).map((v) => ({
+      id:          v.id,
+      vlanId:      Number(v.vlan_id ?? v.id),
+      description: v.description ?? v.name ?? String(v.vlan_id ?? v.id),
+      oltId:       v.olt_id ?? null,
+    }));
+  }
+
+  async listarZonas(creds: ProveedorCredenciales): Promise<Array<{
+    id:    string | number;
+    name:  string;
+    oltId: string | number | null;
+  }>> {
+    const raw = await this.get<any[]>(creds, '/api/zone');
+    return (raw ?? []).map((z) => ({
+      id:    z.id ?? z.name,
+      name:  z.name ?? String(z.id),
+      oltId: z.olt_id ?? null,
+    }));
+  }
+
+  async listarOdbs(creds: ProveedorCredenciales): Promise<Array<{
+    id:     string | number;
+    name:   string;
+    oltId:  string | number | null;
+    zoneId: string | number | null;
+  }>> {
+    const raw = await this.get<any[]>(creds, '/api/odb');
+    return (raw ?? []).map((o) => ({
+      id:     o.id,
+      name:   o.name ?? String(o.id),
+      oltId:  o.olt_id  ?? null,
+      zoneId: o.zone_id ?? null,
+    }));
+  }
+
+  async listarTiposOnu(creds: ProveedorCredenciales): Promise<Array<{
+    id:   number;
+    name: string;
+  }>> {
+    const raw = await this.get<any[]>(creds, '/api/onu_type');
+    return (raw ?? []).map((t) => ({
+      id:   Number(t.id),
+      name: t.name ?? String(t.id),
+    }));
   }
 
   // ────────────────────────────────────────────────────────────
