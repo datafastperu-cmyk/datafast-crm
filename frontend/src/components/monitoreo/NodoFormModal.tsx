@@ -9,6 +9,7 @@ import { useToast }          from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 import type { CreateDispositivoDto, ProbarConexionResult } from '@/lib/api/monitoreo';
 import { Portal } from '@/components/ui/portal';
+import { Switch } from '@/components/ui/Switch';
 
 const FABRICANTES = ['MikroTik', 'Ubiquiti', 'Huawei', 'Cisco', 'TP-Link', 'Cambium', 'Otro'];
 
@@ -277,15 +278,11 @@ export function NodoFormModal({ onClose, onSuccess }: Props) {
             )}
 
             <Row label="Monitoreo SNMP">
-              <button type="button" role="switch" aria-checked={form.snmpHabilitado}
-                onClick={() => set('snmpHabilitado', !form.snmpHabilitado)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                  form.snmpHabilitado ? 'bg-primary' : 'bg-muted-foreground/30'
-                }`}>
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                  form.snmpHabilitado ? 'translate-x-6' : 'translate-x-1'
-                }`} />
-              </button>
+              <Switch
+                checked={form.snmpHabilitado}
+                onChange={(v) => set('snmpHabilitado', v)}
+                label="Monitoreo SNMP"
+              />
             </Row>
 
             {form.snmpHabilitado && (

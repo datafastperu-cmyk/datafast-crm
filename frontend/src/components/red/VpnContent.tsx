@@ -356,7 +356,7 @@ export function VpnContent() {
                     <button
                       onClick={() => syncMut.mutate()}
                       disabled={syncMut.isPending}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+                      className="btn-soft-primary text-xs h-auto px-3 py-1.5"
                     >
                       {syncMut.isPending
                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />

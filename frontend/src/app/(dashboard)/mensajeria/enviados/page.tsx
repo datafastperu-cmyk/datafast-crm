@@ -235,22 +235,24 @@ export default function MensajesEnviadosPage() {
                         <p className="text-xs text-muted-foreground truncate">{desc}</p>
                       </div>
                       <button
-                        disabled={loading || !gwConfig}
-                        onClick={() => toggleNotifMut.mutate({ [key]: !enabled })}
-                        className={cn(
-                          'relative flex-shrink-0 w-10 h-5.5 rounded-full transition-colors focus:outline-none',
-                          'disabled:opacity-50',
-                          enabled ? 'bg-emerald-500' : 'bg-muted-foreground/30',
-                        )}
-                        style={{ height: '22px', width: '40px' }}
-                        title={enabled ? 'Desactivar' : 'Activar'}
+                        type="button"
                         role="switch"
                         aria-checked={enabled}
+                        disabled={loading || !gwConfig}
+                        onClick={() => toggleNotifMut.mutate({ [key]: !enabled })}
+                        title={enabled ? 'Desactivar' : 'Activar'}
+                        className={cn(
+                          'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent',
+                          'transition-colors duration-200 focus:outline-none',
+                          'focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                          'disabled:cursor-not-allowed disabled:opacity-40',
+                          enabled ? 'bg-primary' : 'bg-muted-foreground/35',
+                        )}
                       >
                         <span
                           className={cn(
-                            'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200',
-                            enabled ? 'translate-x-5' : 'translate-x-0.5',
+                            'inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200',
+                            enabled ? 'translate-x-5' : 'translate-x-0',
                           )}
                         />
                       </button>

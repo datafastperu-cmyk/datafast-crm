@@ -13,6 +13,7 @@ import { dispositivosApi as monitoreoApi } from '@/lib/api/monitoreo';
 import { mikrotikApi }               from '@/lib/api/mikrotik';
 import { useToast }                  from '@/components/ui/toaster';
 import { cn, parseApiError }         from '@/lib/utils';
+import { Switch }                    from '@/components/ui/Switch';
 import { Portal }                    from '@/components/ui/portal';
 
 // ─── Constantes ────────────────────────────────────────────────
@@ -409,25 +410,12 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
             {/* SNMP Toggle */}
             <Field label="Monitoreo SNMP">
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={monitoreoSnmp}
+                <Switch
+                  checked={monitoreoSnmp}
                   disabled={disabled}
-                  onClick={() => setValue('monitoreoSnmp', !monitoreoSnmp, { shouldValidate: false })}
-                  className={cn(
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 disabled:opacity-40',
-                    monitoreoSnmp ? 'bg-primary' : 'bg-muted-foreground/30',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform',
-                      monitoreoSnmp ? 'translate-x-6' : 'translate-x-1',
-                    )}
-                  />
-                </button>
+                  label="Monitoreo SNMP"
+                  onChange={(v) => setValue('monitoreoSnmp', v, { shouldValidate: false })}
+                />
                 <span className={cn('text-xs', monitoreoSnmp ? 'text-primary' : 'text-muted-foreground')}>
                   {monitoreoSnmp ? 'Activo' : 'Inactivo'}
                 </span>
