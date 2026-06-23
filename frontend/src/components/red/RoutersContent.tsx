@@ -1355,6 +1355,7 @@ export function RoutersContent() {
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => testConexion(r)} disabled={isTesting}
                           title="Probar conexión"
+                          aria-label={`Probar conexión de ${r.nombre}`}
                           className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-green-600 dark:hover:text-green-400 transition-colors disabled:opacity-50"
                         >
                           {isTesting
@@ -1364,6 +1365,7 @@ export function RoutersContent() {
                         </button>
                         <button onClick={() => handleSyncSubnets(r)} disabled={isSyncing}
                           title="Sincronizar redes LAN"
+                          aria-label={`Sincronizar subredes de ${r.nombre}`}
                           className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50"
                         >
                           {isSyncing
@@ -1375,6 +1377,7 @@ export function RoutersContent() {
                           onClick={() => setPendingRepair(r)}
                           disabled={isRepairing || (r.estado !== 'online' && r.estado !== 'degradado')}
                           title={(r.estado !== 'online' && r.estado !== 'degradado') ? 'El router debe estar online o degradado para reparar' : 'Reparar / Sincronizar router'}
+                          aria-label={`Reparar router ${r.nombre}`}
                           className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-amber-600 dark:hover:text-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isRepairing
@@ -1382,6 +1385,7 @@ export function RoutersContent() {
                             : <Wrench className="w-4 h-4" />}
                         </button>
                         <button onClick={() => openEdit(r)} title="Editar"
+                          aria-label={`Editar router ${r.nombre}`}
                           className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                         >
                           <Pencil className="w-4 h-4" />
@@ -1389,6 +1393,7 @@ export function RoutersContent() {
                         <button
                           onClick={() => handleDelete(r)}
                           title="Eliminar"
+                          aria-label={`Eliminar router ${r.nombre}`}
                           className="p-1.5 rounded-lg transition-colors hover:bg-muted text-muted-foreground/60 hover:text-red-600 dark:hover:text-red-400"
                         >
                           <Trash2 className="w-4 h-4" />

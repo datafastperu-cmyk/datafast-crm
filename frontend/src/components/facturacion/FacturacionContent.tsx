@@ -13,6 +13,7 @@ import { SortableHeader } from '@/components/ui/SortableHeader';
 import { useToast }   from '@/components/ui/toaster';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn, formatPEN, formatDate, parseApiError } from '@/lib/utils';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import type { Factura } from '@/types';
 
 const ESTADOS_TAB = [
@@ -199,7 +200,7 @@ export function FacturacionContent() {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-border px-4 gap-1 overflow-x-auto">
+        <ScrollableTabs className="flex border-b border-border px-4 gap-1">
           {ESTADOS_TAB.map(({ key, label }) => (
             <button
               key={key}
@@ -214,7 +215,7 @@ export function FacturacionContent() {
               {label}
             </button>
           ))}
-        </div>
+        </ScrollableTabs>
 
         {/* Tabla de facturas */}
         {isLoading ? (

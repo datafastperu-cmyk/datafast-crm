@@ -7,13 +7,15 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /** Formatear moneda peruana */
-export function formatPEN(amount: number): string {
+export function formatPEN(amount: number | null | undefined): string {
+  const n = Number(amount);
+  if (!isFinite(n)) return 'S/ 0.00';
   return new Intl.NumberFormat('es-PE', {
     style:                 'currency',
     currency:              'PEN',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(n);
 }
 
 /** Parsea un string de fecha sin perder un día por UTC midnight.

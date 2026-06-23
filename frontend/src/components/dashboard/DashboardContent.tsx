@@ -1,6 +1,6 @@
 'use client';
 
-import { useState }            from 'react';
+import { useState, useEffect } from 'react';
 import Link                    from 'next/link';
 import {
   Users, CreditCard, Wifi, AlertTriangle, Ticket,
@@ -233,9 +233,16 @@ function NodoStatusList({
 
 // ─── COMPONENT ───────────────────────────────────────────────
 export function DashboardContent() {
-  const [wsStats, setWsStats] = useState<WsEventDashboard | null>(null);
+  const [wsStats, setWsStats]         = useState<WsEventDashboard | null>(null);
+  const [showDisconnected, setShowDisconnected] = useState(false);
 
   const { conectado, alertas } = useMonitoreo({ onDashboard: setWsStats });
+
+  useEffect(() => {
+    if (conectado) { setShowDisconnected(false); return undefined; }
+    const t = setTimeout(() => setShowDisconnected(true), 5_000);
+    return () => clearTimeout(t);
+  }, [conectado]);
 
   const { data: liveStats } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -273,15 +280,17 @@ export function DashboardContent() {
           <h2 className="text-lg font-semibold text-foreground">Panel Principal</h2>
           <p className="text-sm text-muted-foreground">Operaciones en tiempo real · {new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long' })}</p>
         </div>
-        <div className={cn(
-          'flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border',
-          conectado
-            ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/8'
-            : 'text-muted-foreground border-border bg-muted',
-        )}>
-          <span className={cn('w-1.5 h-1.5 rounded-full', conectado ? 'bg-emerald-500 animate-pulse-dot' : 'bg-muted-foreground')} />
-          {conectado ? 'Conectado' : 'Reconectando...'}
-        </div>
+        {conectado ? (
+          <div className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border text-emerald-400 border-emerald-500/20 bg-emerald-500/8">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-dot" />
+            Conectado
+          </div>
+        ) : showDisconnected ? (
+          <div className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border text-muted-foreground border-border bg-muted">
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+            Reconectando...
+          </div>
+        ) : null}
       </div>
 
       {/* ── Row 1: KPI Cards ──────────────────────────────────── */}

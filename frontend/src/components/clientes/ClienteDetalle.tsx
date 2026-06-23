@@ -772,14 +772,14 @@ function FormRow({ label, required, error, children }: {
   );
 }
 
-const NOTIF_STYLES: Record<string, string> = {
-  blue:   'bg-blue-500',
-  orange: 'bg-orange-500',
-  teal:   'bg-teal-500',
-  purple: 'bg-purple-600',
-  red:    'bg-red-500',
-  indigo: 'bg-indigo-600',
-  pink:   'bg-pink-500',
+const NOTIF_STYLES: Record<string, { bg: string; icon: string; border: string }> = {
+  blue:   { bg: 'bg-blue-50   dark:bg-blue-950/30',   icon: 'text-blue-600   dark:text-blue-400',   border: 'border-blue-200   dark:border-blue-800/50'   },
+  orange: { bg: 'bg-orange-50 dark:bg-orange-950/30', icon: 'text-orange-600 dark:text-orange-400', border: 'border-orange-200 dark:border-orange-800/50' },
+  teal:   { bg: 'bg-teal-50   dark:bg-teal-950/30',   icon: 'text-teal-600   dark:text-teal-400',   border: 'border-teal-200   dark:border-teal-800/50'   },
+  purple: { bg: 'bg-purple-50 dark:bg-purple-950/30', icon: 'text-purple-600 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-800/50' },
+  red:    { bg: 'bg-red-50    dark:bg-red-950/30',    icon: 'text-red-600    dark:text-red-400',    border: 'border-red-200    dark:border-red-800/50'    },
+  indigo: { bg: 'bg-indigo-50 dark:bg-indigo-950/30', icon: 'text-indigo-600 dark:text-indigo-400', border: 'border-indigo-200 dark:border-indigo-800/50' },
+  pink:   { bg: 'bg-pink-50   dark:bg-pink-950/30',   icon: 'text-pink-600   dark:text-pink-400',   border: 'border-pink-200   dark:border-pink-800/50'   },
 };
 
 function NotifCard({
@@ -787,17 +787,18 @@ function NotifCard({
 }: {
   color: string; icon: React.ElementType; label: string; value: string; className?: string;
 }) {
+  const s = NOTIF_STYLES[color] ?? NOTIF_STYLES['blue'];
   return (
     <div className={cn(
-      'rounded-xl p-3 text-white flex flex-col gap-1',
-      NOTIF_STYLES[color] ?? 'bg-slate-500',
+      'rounded-xl p-3 flex flex-col gap-1 border',
+      s.bg, s.border,
       className,
     )}>
-      <div className="flex items-center gap-1.5">
-        <Icon className="w-3.5 h-3.5 opacity-80 flex-shrink-0" />
-        <span className="text-[11px] font-semibold opacity-90 leading-tight">{label}</span>
+      <div className={cn('flex items-center gap-1.5', s.icon)}>
+        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="text-[11px] font-semibold leading-tight uppercase tracking-wide">{label}</span>
       </div>
-      <p className="text-sm font-bold truncate">{value}</p>
+      <p className="text-sm font-bold text-foreground truncate">{value}</p>
     </div>
   );
 }

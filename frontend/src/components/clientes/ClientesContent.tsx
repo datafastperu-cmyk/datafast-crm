@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { Cliente } from '@/types';
 import { parseApiError } from '@/lib/utils';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 
 import { clientesApi, type FiltrosCliente } from '@/lib/api/clientes';
 import { ClientesTable }      from './ClientesTable';
@@ -422,7 +423,7 @@ export function ClientesContent() {
         )}
 
         {/* Status tabs */}
-        <div className="flex items-center gap-0.5 px-4 border-b border-border overflow-x-auto">
+        <ScrollableTabs className="flex items-center gap-0.5 px-4 border-b border-border">
           {ESTADO_TABS.map(({ key, label, color }) => {
             const active = (filtros.estado ?? '') === key;
             return (
@@ -446,7 +447,7 @@ export function ClientesContent() {
               </button>
             );
           })}
-        </div>
+        </ScrollableTabs>
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (

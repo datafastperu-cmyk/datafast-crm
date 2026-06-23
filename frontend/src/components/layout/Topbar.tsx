@@ -231,6 +231,7 @@ export function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           className="p-2 rounded-lg text-muted-foreground hover:text-foreground
                      hover:bg-muted transition-colors"
           title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+          aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
         >
           {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>

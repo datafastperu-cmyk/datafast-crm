@@ -63,7 +63,10 @@ export function ThemeCustomizer() {
     setMenuStyle('default');
   };
 
-  if (!isAuth || isPublic) return null;
+  const isProd = process.env.NODE_ENV === 'production'
+    && process.env.NEXT_PUBLIC_SHOW_DESIGN_PANEL !== 'true';
+
+  if (!isAuth || isPublic || isProd) return null;
 
   return (
     /*
