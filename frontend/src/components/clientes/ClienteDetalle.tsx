@@ -2155,7 +2155,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
               onClick={() => setShowModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-input hover:bg-accent transition-colors text-muted-foreground"
             >
-              <Plus className="w-3.5 h-3.5" /> Factura de servicios
+              <Plus className="w-3.5 h-3.5" /> Comprobante de Pago
             </button>
             <div className="ml-auto relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
