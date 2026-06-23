@@ -9,12 +9,18 @@ import {
 } from 'lucide-react';
 
 import { smartoltApi, type EstadoOnu } from '@/lib/api/smartolt';
-import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
+import {
+  oltNativoApi,
+  type OltConProveedorPrincipal,
+  type OltDispositivo,
+} from '@/lib/api/olt-nativo';
 import { FirmwarePanel } from './FirmwareUpgradeTab';
 import { cn } from '@/lib/utils';
 import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 
-const oltEstadoColors = {
+// ─── Constantes de color ──────────────────────────────────────
+
+const oltEstadoColors: Record<string, string> = {
   online:        'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   offline:       'bg-red-500/15 text-red-400 border-red-500/30',
   mantenimiento: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
@@ -39,13 +45,35 @@ const onuEstadoLabels: Record<EstadoOnu, string> = {
   reemplazada:      'Reemplazada',
 };
 
+const HEALTH_DOT: Record<string, string> = {
+  ok:      'bg-emerald-500',
+  degraded:'bg-yellow-400',
+  down:    'bg-red-500',
+  unknown: 'bg-gray-400',
+};
+
+const SECCION_BADGE: Record<string, { label: string; cls: string }> = {
+  nativo_ssh:  { label: 'SSH',      cls: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+  nativo_snmp: { label: 'SNMP',     cls: 'bg-teal-500/10 text-teal-400 border-teal-500/20' },
+  smartolt:    { label: 'SmartOLT', cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  adminolt:    { label: 'AdminOLT', cls: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
+};
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+function seccionDe(olt: OltConProveedorPrincipal): string {
+  return olt.proveedorPrincipal?.tipo ?? olt.metodoConexion ?? 'desconocido';
+}
+
 type TabKey = 'olts' | 'onus' | 'firmware';
 
+// ─── Componente principal ─────────────────────────────────────
+
 export function OltContent() {
-  const [tab, setTab]               = useState<TabKey>('olts');
-  const [selectedOlt, setOlt]       = useState<string>('');
+  const [tab, setTab]                   = useState<TabKey>('olts');
+  const [selectedOlt, setOlt]           = useState<string>('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoOnu | ''>('');
-  const [firmwareOlt, setFirmwareOlt] = useState<OltDispositivo | null>(null);
+  const [firmwareOlt, setFirmwareOlt]   = useState<OltDispositivo | null>(null);
   const [oltSortField, setOltSortField] = useState<string>('nombre');
   const [oltSortDir,   setOltSortDir]   = useState<'ASC' | 'DESC'>('ASC');
   const [onuSortField, setOnuSortField] = useState<string>('nombre');
@@ -66,6 +94,23 @@ export function OltContent() {
       : <ChevronDown className="w-3 h-3 text-primary flex-shrink-0" />;
   }
 
+  // ── Query: todas las OLTs (fuente unificada) ─────────────────
+  const { data: todasOlts = [], isLoading: loadingOlts, refetch: refetchOlts } = useQuery({
+    queryKey:  ['olt-todas'],
+    queryFn:   oltNativoApi.listarTodas,
+    staleTime: 30_000,
+    enabled:   tab === 'olts',
+  });
+
+  // ── Query: OLTs SmartOLT (para el filtro de ONUs) ────────────
+  const { data: smartoltOlts = [], refetch: refetchSmartoltOlts } = useQuery({
+    queryKey:  ['smartolt-olts'],
+    queryFn:   smartoltApi.listarOlts,
+    staleTime: 30_000,
+    enabled:   tab === 'onus',
+  });
+
+  // ── Query: OLTs nativas (para firmware) ──────────────────────
   const { data: oltNativas = [] } = useQuery({
     queryKey:  ['olt-nativas'],
     queryFn:   oltNativoApi.listar,
@@ -73,12 +118,7 @@ export function OltContent() {
     enabled:   tab === 'firmware',
   });
 
-  const { data: olts = [], isLoading: loadingOlts, refetch: refetchOlts } = useQuery({
-    queryKey:  ['smartolt-olts'],
-    queryFn:   smartoltApi.listarOlts,
-    staleTime: 30_000,
-  });
-
+  // ── Query: ONUs SmartOLT ─────────────────────────────────────
   const { data: onusResp, isLoading: loadingOnus, refetch: refetchOnus } = useQuery({
     queryKey:  ['smartolt-onus', selectedOlt, filtroEstado],
     queryFn:   () => smartoltApi.listarOnus({
@@ -90,34 +130,43 @@ export function OltContent() {
     enabled:   tab === 'onus',
   });
 
-  const rawOnus = (onusResp as any)?.data ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawOnus = ((onusResp as any)?.data as unknown[]) ?? [];
 
+  // ── Orden OLTs ───────────────────────────────────────────────
   const sortedOlts = useMemo(() => {
-    return [...olts].sort((a, b) => {
-      let av: any = (a as any)[oltSortField] ?? '';
-      let bv: any = (b as any)[oltSortField] ?? '';
-      if (typeof av === 'string') av = av.toLowerCase();
-      if (typeof bv === 'string') bv = bv.toLowerCase();
+    return [...todasOlts].sort((a, b) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const av = String(((a as any)[oltSortField]) ?? '').toLowerCase();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const bv = String(((b as any)[oltSortField]) ?? '').toLowerCase();
       if (av < bv) return oltSortDir === 'ASC' ? -1 : 1;
       if (av > bv) return oltSortDir === 'ASC' ?  1 : -1;
       return 0;
     });
-  }, [olts, oltSortField, oltSortDir]);
+  }, [todasOlts, oltSortField, oltSortDir]);
 
+  // ── Orden ONUs ───────────────────────────────────────────────
   const onus = useMemo(() => {
-    return [...rawOnus].sort((a: any, b: any) => {
-      let av: any = a[onuSortField] ?? '';
-      let bv: any = b[onuSortField] ?? '';
-      if (typeof av === 'string') av = av.toLowerCase();
-      if (typeof bv === 'string') bv = bv.toLowerCase();
+    return [...rawOnus].sort((a: unknown, b: unknown) => {
+      const ao = a as Record<string, unknown>;
+      const bo = b as Record<string, unknown>;
+      const av = String(ao[onuSortField] ?? '').toLowerCase();
+      const bv = String(bo[onuSortField] ?? '').toLowerCase();
       if (av < bv) return onuSortDir === 'ASC' ? -1 : 1;
       if (av > bv) return onuSortDir === 'ASC' ?  1 : -1;
       return 0;
     });
   }, [rawOnus, onuSortField, onuSortDir]);
 
-  const onlineCount  = olts.filter(o => o.estado === 'online').length;
-  const offlineCount = olts.filter(o => o.estado === 'offline').length;
+  // ── Stats ────────────────────────────────────────────────────
+  const onlineCount  = todasOlts.filter(o => o.estado === 'online').length;
+  const offlineCount = todasOlts.filter(o => o.estado === 'offline').length;
+
+  const handleRefresh = () => {
+    if (tab === 'olts')     refetchOlts();
+    if (tab === 'onus')     { refetchSmartoltOlts(); refetchOnus(); }
+  };
 
   return (
     <div className="space-y-5">
@@ -125,14 +174,14 @@ export function OltContent() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Red FTTH — OLTs</h2>
+          <h2 className="text-lg font-semibold text-foreground">OLTs — Vista Unificada</h2>
           <p className="text-sm text-muted-foreground">
-            {olts.length} OLTs · {onlineCount} online · {offlineCount} offline
+            {todasOlts.length} OLTs · {onlineCount} online · {offlineCount} offline
           </p>
         </div>
         <button
-          onClick={() => { refetchOlts(); refetchOnus(); }}
-          aria-label="Actualizar OLTs y ONUs"
+          onClick={handleRefresh}
+          aria-label="Actualizar"
           className="p-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
         >
           <RefreshCw className="w-4 h-4" />
@@ -142,9 +191,10 @@ export function OltContent() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total OLTs',   value: olts.length,   color: 'text-foreground' },
-          { label: 'Online',       value: onlineCount,   color: onlineCount > 0 ? 'text-emerald-500' : 'text-muted-foreground' },
-          { label: 'Offline',      value: offlineCount,  color: offlineCount > 0 ? 'text-red-500' : 'text-muted-foreground' },
+          { label: 'Total OLTs',   value: todasOlts.length,   color: 'text-foreground' },
+          { label: 'Online',       value: onlineCount,         color: onlineCount  > 0 ? 'text-emerald-500' : 'text-muted-foreground' },
+          { label: 'Offline',      value: offlineCount,        color: offlineCount > 0 ? 'text-red-500' : 'text-muted-foreground' },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           { label: 'Total ONUs',   value: (onusResp as any)?.meta?.total ?? '—', color: 'text-blue-500' },
         ].map(s => (
           <div key={s.label} className="bg-card border border-border rounded-xl p-4">
@@ -183,11 +233,15 @@ export function OltContent() {
             <div className="flex items-center justify-center py-12 text-muted-foreground">
               <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Cargando OLTs...
             </div>
-          ) : olts.length === 0 ? (
+          ) : todasOlts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
               <Radio className="w-10 h-10 opacity-30" />
-              <p className="text-sm">No hay OLTs registrados</p>
-              <p className="text-xs">Configura tus OLTs en Ajustes → Red FTTH</p>
+              <p className="text-sm">No hay OLTs registradas</p>
+              <p className="text-xs">
+                Agrega OLTs en{' '}
+                <a href="/configuracion/olts" className="text-primary hover:underline">Configuración → OLTs Nativas</a>
+                {' '}o en las secciones de SmartOLT / AdminOLT.
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -195,51 +249,97 @@ export function OltContent() {
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     {([
-                      { field: 'nombre',      label: 'OLT'          },
-                      { field: 'marca',       label: 'Marca / Modelo'},
-                      { field: 'ipGestion',   label: 'IP'            },
-                      { field: 'estado',      label: 'Estado'        },
-                      { field: 'smartoltId',  label: 'SmartOLT ID'   },
-                      { field: 'ultimoPing',  label: 'Último Ping'   },
+                      { field: 'nombre',    label: 'OLT'        },
+                      { field: '_seccion',  label: 'Sección'    },
+                      { field: 'ipGestion', label: 'IP Gestión' },
+                      { field: 'estado',    label: 'Estado'     },
+                      { field: '_health',   label: 'Health'     },
+                      { field: 'onusActivas', label: 'ONUs'     },
                     ] as const).map(({ field, label }) => (
-                      <th key={field} onClick={() => handleOltSort(field)} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer select-none group">
-                        <span className="inline-flex items-center gap-1">{label}<SortIcon field={field} sf={oltSortField} sd={oltSortDir} /></span>
+                      <th
+                        key={field}
+                        onClick={() => handleOltSort(field)}
+                        className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer select-none group"
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {label}
+                          <SortIcon field={field} sf={oltSortField} sd={oltSortDir} />
+                        </span>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {sortedOlts.map((olt) => (
-                    <tr
-                      key={olt.id}
-                      onClick={() => { setTab('onus'); setOlt(olt.id); }}
-                      className="hover:bg-accent/40 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{olt.nombre}</div>
-                        {olt.descripcion && (
-                          <div className="text-xs text-muted-foreground">{olt.descripcion}</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {olt.marca}{olt.modelo ? ` · ${olt.modelo}` : ''}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs">{olt.ipGestion ?? '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={cn(
-                          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border',
-                          oltEstadoColors[olt.estado] ?? oltEstadoColors.desconocido,
-                        )}>
-                          {olt.estado === 'online' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                          {olt.estado}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{olt.smartoltId ?? '—'}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {olt.ultimoPing ? new Date(olt.ultimoPing).toLocaleString('es-PE') : '—'}
-                      </td>
-                    </tr>
-                  ))}
+                  {sortedOlts.map((olt: OltConProveedorPrincipal) => {
+                    const sec = seccionDe(olt);
+                    const badge = SECCION_BADGE[sec];
+                    const pp = olt.proveedorPrincipal;
+                    return (
+                      <tr
+                        key={olt.id}
+                        className="hover:bg-accent/40 transition-colors"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-foreground">{olt.nombre}</div>
+                          {olt.modelo && (
+                            <div className="text-xs text-muted-foreground">
+                              {olt.marca.toUpperCase()} · {olt.modelo}
+                            </div>
+                          )}
+                          {!olt.modelo && (
+                            <div className="text-xs text-muted-foreground">{olt.marca.toUpperCase()}</div>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {badge ? (
+                            <span className={cn(
+                              'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border',
+                              badge.cls,
+                            )}>
+                              {badge.label}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 font-mono text-xs text-foreground">
+                          {olt.ipGestion ?? '—'}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className={cn(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border',
+                            oltEstadoColors[olt.estado] ?? oltEstadoColors.desconocido,
+                          )}>
+                            {olt.estado === 'online'
+                              ? <Wifi className="w-3 h-3" />
+                              : <WifiOff className="w-3 h-3" />}
+                            {olt.estado}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {pp ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn('w-2 h-2 rounded-full shrink-0', HEALTH_DOT[pp.healthEstado] ?? 'bg-gray-400')} />
+                              <span className="text-xs text-muted-foreground">{pp.healthEstado}</span>
+                              {pp.healthLatenciaMs !== null && (
+                                <span className="text-[10px] text-muted-foreground/60">{pp.healthLatenciaMs}ms</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/50">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 text-sm text-muted-foreground tabular-nums">
+                          {olt.onusActivas}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -247,18 +347,20 @@ export function OltContent() {
         </div>
       )}
 
-      {/* ONUs Table */}
+      {/* ONUs Table (SmartOLT) */}
       {tab === 'onus' && (
         <div className="space-y-3">
-          {/* Filters */}
+          <p className="text-xs text-muted-foreground">
+            ONUs reportadas por SmartOLT. Para OLTs nativas SSH/SNMP usa la sección de provisioning.
+          </p>
           <div className="flex gap-2">
             <select
               value={selectedOlt}
               onChange={(e) => setOlt(e.target.value)}
               className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              <option value="">Todas las OLTs</option>
-              {olts.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+              <option value="">Todas las OLTs SmartOLT</option>
+              {smartoltOlts.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
             </select>
             <select
               value={filtroEstado}
@@ -288,56 +390,69 @@ export function OltContent() {
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
                       {([
-                        { field: 'nombre',      label: 'Serial / Nombre' },
-                        { field: 'oltNombre',   label: 'OLT · Puerto'   },
-                        { field: 'clienteNombre', label: 'Cliente'       },
-                        { field: 'rxPower',     label: 'Rx Power'        },
-                        { field: 'estado',      label: 'Estado'          },
+                        { field: 'nombre',        label: 'Serial / Nombre' },
+                        { field: 'oltNombre',     label: 'OLT · Puerto'   },
+                        { field: 'clienteNombre', label: 'Cliente'         },
+                        { field: 'rxPower',       label: 'Rx Power'        },
+                        { field: 'estado',        label: 'Estado'          },
                       ] as const).map(({ field, label }) => (
-                        <th key={field} onClick={() => handleOnuSort(field)} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer select-none group">
-                          <span className="inline-flex items-center gap-1">{label}<SortIcon field={field} sf={onuSortField} sd={onuSortDir} /></span>
+                        <th
+                          key={field}
+                          onClick={() => handleOnuSort(field)}
+                          className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer select-none group"
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {label}
+                            <SortIcon field={field} sf={onuSortField} sd={onuSortDir} />
+                          </span>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {onus.map((onu: any) => (
-                      <tr key={onu.id} className="hover:bg-accent/40 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="font-mono text-xs">{onu.serialNumber}</div>
-                          {onu.nombre && <div className="text-xs text-muted-foreground mt-0.5">{onu.nombre}</div>}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">
-                          {onu.oltNombre ?? '—'}
-                          {onu.puertoOlt ? ` · ${onu.puertoOlt}` : ''}
-                        </td>
-                        <td className="px-4 py-3">
-                          {onu.clienteNombre ? (
-                            <div className="text-sm">{onu.clienteNombre}</div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Sin contrato</span>
-                          )}
-                          {onu.contratoNumero && (
-                            <div className="text-xs text-primary font-mono">{onu.contratoNumero}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {onu.rxPowerDbm != null ? (
+                    {onus.map((onu: unknown) => {
+                      const o = onu as Record<string, unknown>;
+                      return (
+                        <tr key={o.id as string} className="hover:bg-accent/40 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="font-mono text-xs">{String(o.serialNumber ?? '')}</div>
+                            {o.nombre && <div className="text-xs text-muted-foreground mt-0.5">{String(o.nombre)}</div>}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {String(o.oltNombre ?? '—')}
+                            {o.puertoOlt ? ` · ${String(o.puertoOlt)}` : ''}
+                          </td>
+                          <td className="px-4 py-3">
+                            {o.clienteNombre ? (
+                              <div className="text-sm">{String(o.clienteNombre)}</div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">Sin contrato</span>
+                            )}
+                            {o.contratoNumero && (
+                              <div className="text-xs text-primary font-mono">{String(o.contratoNumero)}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {o.rxPowerDbm != null ? (
+                              <span className={cn(
+                                'text-xs font-mono',
+                                Number(o.rxPowerDbm) < -27 ? 'text-red-400' : Number(o.rxPowerDbm) < -24 ? 'text-amber-400' : 'text-emerald-400',
+                              )}>
+                                {Number(o.rxPowerDbm).toFixed(1)} dBm
+                              </span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-3">
                             <span className={cn(
-                              'text-xs font-mono',
-                              onu.rxPowerDbm < -27 ? 'text-red-400' : onu.rxPowerDbm < -24 ? 'text-amber-400' : 'text-emerald-400',
+                              'inline-flex items-center px-2 py-0.5 rounded text-xs',
+                              onuEstadoColors[o.estado as EstadoOnu] ?? 'text-muted-foreground',
                             )}>
-                              {Number(onu.rxPowerDbm).toFixed(1)} dBm
+                              {onuEstadoLabels[o.estado as EstadoOnu] ?? String(o.estado ?? '')}
                             </span>
-                          ) : '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-xs', onuEstadoColors[onu.estado as EstadoOnu] ?? 'text-muted-foreground')}>
-                            {onuEstadoLabels[onu.estado as EstadoOnu] ?? onu.estado}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -345,6 +460,7 @@ export function OltContent() {
           </div>
         </div>
       )}
+
       {/* Firmware Tab */}
       {tab === 'firmware' && (
         <div className="space-y-4">

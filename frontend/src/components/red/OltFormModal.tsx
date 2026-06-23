@@ -18,9 +18,8 @@ interface Props {
 
 const MARCAS   = ['huawei', 'zte', 'vsol', 'cdata'] as const;
 const METODOS  = [
-  { value: 'nativo_ssh',   label: 'SSH Nativo' },
-  { value: 'smartolt_api', label: 'SmartOLT API' },
-  { value: 'nativo_snmp',  label: 'SNMP Nativo' },
+  { value: 'nativo_ssh',  label: 'SSH Nativo' },
+  { value: 'nativo_snmp', label: 'SNMP Nativo' },
 ] as const;
 
 type FormData = {

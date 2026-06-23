@@ -116,9 +116,9 @@ export default function OltsConfigPage() {
             <Cpu className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Configuración OLT</h1>
+            <h1 className="text-lg font-semibold text-foreground">OLTs Nativas (SSH / SNMP)</h1>
             <p className="text-sm text-muted-foreground">
-              {olts.length} equipo{olts.length !== 1 ? 's' : ''} registrado{olts.length !== 1 ? 's' : ''}
+              {olts.length} equipo{olts.length !== 1 ? 's' : ''} · acceso directo por SSH o SNMP
             </p>
           </div>
         </div>
