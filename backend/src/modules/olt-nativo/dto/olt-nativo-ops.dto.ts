@@ -1,5 +1,5 @@
 import {
-  IsBoolean, IsInt, IsOptional, IsString, IsUUID,
+  IsBoolean, IsInt, IsIP, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID,
   Max, MaxLength, Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -399,4 +399,107 @@ export class UpsertProveedorOltDto {
   @ApiPropertyOptional({ example: 'olt-uuid-en-plataforma-externa' })
   @IsOptional() @IsString()
   oltIdExterno?: string;
+}
+
+// ─── OLT Integración (SmartOLT / AdminOLT) ──────────────────
+
+export class CrearOltIntegracionDto {
+  @ApiProperty({ example: 'OLT Norte SmartOLT' })
+  @IsNotEmpty() @IsString() @MaxLength(150)
+  nombre: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(1000)
+  descripcion?: string;
+
+  @ApiProperty({ enum: ['huawei', 'zte', 'vsol', 'cdata'] })
+  @IsNotEmpty() @IsString()
+  marca: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(100)
+  modelo?: string;
+
+  @ApiProperty({ example: '10.0.50.10' })
+  @IsIP()
+  ipGestion: string;
+
+  @ApiProperty()
+  @IsUUID('4')
+  routerId: string;
+
+  @ApiPropertyOptional({ example: 2 })
+  @IsOptional() @IsInt() @Min(1) @Max(64) @Type(() => Number)
+  slotsTotales?: number;
+
+  @ApiPropertyOptional({ example: 8 })
+  @IsOptional() @IsInt() @Min(1) @Max(128) @Type(() => Number)
+  puertosPorSlot?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(200)
+  ubicacion?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsNumber() @Min(-90) @Max(90) @Type(() => Number)
+  latitud?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsNumber() @Min(-180) @Max(180) @Type(() => Number)
+  longitud?: number;
+
+  @ApiProperty({ example: 'https://app.smartolt.com' })
+  @IsNotEmpty() @IsString() @MaxLength(500)
+  baseUrl: string;
+
+  @ApiProperty({ description: 'API Key en texto plano — se cifra antes de persistir' })
+  @IsNotEmpty() @IsString() @MaxLength(500)
+  apiKey: string;
+
+  @ApiPropertyOptional({ example: 'olt-uuid-externo' })
+  @IsOptional() @IsString() @MaxLength(100)
+  oltIdExterno?: string;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional() @IsInt() @Min(1) @Max(99) @Type(() => Number)
+  prioridad?: number;
+}
+
+export interface ValidarIpResult {
+  disponible: boolean;
+  oltNombre?: string;
+  seccion?:   'nativo' | 'smartolt' | 'adminolt';
+}
+
+export interface OltConProveedorPrincipal {
+  id:                 string;
+  nombre:             string;
+  descripcion:        string | null;
+  marca:              string;
+  modelo:             string | null;
+  metodoConexion:     string;
+  ipGestion:          string;
+  puerto:             number;
+  slotsTotales:       number;
+  puertosPorSlot:     number;
+  vlanGestionDefecto: number | null;
+  estado:             string;
+  ultimoPing:         string | null;
+  onusActivas:        number;
+  ubicacion:          string | null;
+  latitud:            number | null;
+  longitud:           number | null;
+  activo:             boolean;
+  createdAt:          string;
+  updatedAt:          string;
+  proveedorPrincipal: {
+    id:               string;
+    tipo:             string;
+    prioridad:        number;
+    healthEstado:     string;
+    healthLatenciaMs: number | null;
+    ultimoHealth:     string | null;
+    circuitEstado:    string;
+    activo:           boolean;
+  } | null;
 }

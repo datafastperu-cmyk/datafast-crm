@@ -219,6 +219,63 @@ export interface TestProveedorResult {
 
 export type SmartoltLookupTipo = 'perfiles' | 'vlans' | 'zonas' | 'odbs' | 'tipos-onu';
 
+export interface CrearOltIntegracionDto {
+  nombre:         string;
+  descripcion?:   string;
+  marca:          'huawei' | 'zte' | 'vsol' | 'cdata';
+  modelo?:        string;
+  ipGestion:      string;
+  routerId:       string;
+  slotsTotales?:  number;
+  puertosPorSlot?: number;
+  ubicacion?:     string;
+  latitud?:       number;
+  longitud?:      number;
+  baseUrl:        string;
+  apiKey:         string;
+  oltIdExterno?:  string;
+  prioridad?:     number;
+}
+
+export interface ValidarIpResult {
+  disponible: boolean;
+  oltNombre?: string;
+  seccion?:   'nativo' | 'smartolt' | 'adminolt';
+}
+
+export interface OltConProveedorPrincipal {
+  id:                 string;
+  nombre:             string;
+  descripcion:        string | null;
+  marca:              string;
+  modelo:             string | null;
+  metodoConexion:     string;
+  ipGestion:          string;
+  puerto:             number;
+  slotsTotales:       number;
+  puertosPorSlot:     number;
+  vlanGestionDefecto: number | null;
+  estado:             string;
+  ultimoPing:         string | null;
+  onusActivas:        number;
+  ubicacion:          string | null;
+  latitud:            number | null;
+  longitud:           number | null;
+  activo:             boolean;
+  createdAt:          string;
+  updatedAt:          string;
+  proveedorPrincipal: {
+    id:               string;
+    tipo:             string;
+    prioridad:        number;
+    healthEstado:     string;
+    healthLatenciaMs: number | null;
+    ultimoHealth:     string | null;
+    circuitEstado:    string;
+    activo:           boolean;
+  } | null;
+}
+
 export interface SmartoltPerfil   { id: string | number; name: string; type: string; }
 export interface SmartoltVlan     { id: string | number; vlanId: number; description: string; oltId: string | number | null; }
 export interface SmartoltZona     { id: string | number; name: string; oltId: string | number | null; }
@@ -405,5 +462,28 @@ export const oltNativoApi = {
       { params: { tipo } },
     );
     return res.data.data ?? [];
+  },
+
+  validarIp: async (ip: string): Promise<ValidarIpResult> => {
+    const res = await api.get<ApiRespuesta<ValidarIpResult>>(
+      '/olt-nativo/validar-ip',
+      { params: { ip } },
+    );
+    return res.data.data;
+  },
+
+  listarTodas: async (): Promise<OltConProveedorPrincipal[]> => {
+    const res = await api.get<ApiRespuesta<OltConProveedorPrincipal[]>>('/olt-nativo/todas');
+    return res.data.data ?? [];
+  },
+
+  crearSmartolt: async (dto: CrearOltIntegracionDto): Promise<OltDispositivo> => {
+    const res = await api.post<ApiRespuesta<OltDispositivo>>('/olt-nativo/integraciones/smartolt', dto);
+    return res.data.data;
+  },
+
+  crearAdminolt: async (dto: CrearOltIntegracionDto): Promise<OltDispositivo> => {
+    const res = await api.post<ApiRespuesta<OltDispositivo>>('/olt-nativo/integraciones/adminolt', dto);
+    return res.data.data;
   },
 };

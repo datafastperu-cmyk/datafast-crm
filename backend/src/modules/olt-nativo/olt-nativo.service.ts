@@ -1,12 +1,12 @@
 import {
-  BadRequestException, Injectable, InternalServerErrorException,
+  BadRequestException, ConflictException, Injectable, InternalServerErrorException,
   Logger, NotFoundException, OnModuleInit, ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository }             from 'typeorm';
 import { ModuleHealthService }                from '../../common/services/module-health.service';
 
-import { OltDispositivo, OltMetodoConexion }   from './entities/olt-dispositivo.entity';
+import { OltDispositivo, OltMarca, OltMetodoConexion } from './entities/olt-dispositivo.entity';
 import { OltProveedorConfig, TipoProveedor }    from './entities/olt-proveedor-config.entity';
 import { Onu, EstadoOnu }                        from '../smartolt/entities/onu.entity';
 import { SmartoltApiService, ProvisionarOnuPayload } from '../smartolt/smartolt-api.service';
@@ -16,14 +16,17 @@ import { OltProvisionPayload, OltMetricasPayload, ProveedorCredenciales } from '
 import { SmartoltProvider }      from './providers/smartolt.provider';
 import { decrypt, encrypt }      from '../../common/utils/encryption.util';
 import {
+  CrearOltIntegracionDto,
   DiscoverResult,
   MetricasOnuResult,
   ObtenerMetricasDto,
+  OltConProveedorPrincipal,
   ProvisionarOnuNativaDto,
   ProvisionResult,
   PythonDiscoverRequest,
   PythonProvisionRequest,
   UpsertProveedorOltDto,
+  ValidarIpResult,
 } from './dto/olt-nativo-ops.dto';
 import { CircuitBreakerService } from './services/circuit-breaker.service';
 import { CreateOltDispositivoDto, UpdateOltDispositivoDto } from './dto/olt-dispositivo.dto';
@@ -351,7 +354,10 @@ export class OltNativoService implements OnModuleInit {
 
   async listar(empresaId: string): Promise<OltDispositivo[]> {
     return this.oltRepo.find({
-      where: { empresaId, activo: true },
+      where: [
+        { empresaId, activo: true, metodoConexion: OltMetodoConexion.NATIVO_SSH },
+        { empresaId, activo: true, metodoConexion: OltMetodoConexion.NATIVO_SNMP },
+      ],
       order: { nombre: 'ASC' },
     });
   }
@@ -361,6 +367,7 @@ export class OltNativoService implements OnModuleInit {
   }
 
   async crear(empresaId: string, dto: CreateOltDispositivoDto): Promise<OltDispositivo> {
+    await this._validarIpUnica(dto.ipGestion, empresaId);
     const { contrasena, ...rest } = dto;
     const contrasenaCifrada = encrypt(contrasena);
     const olt = this.oltRepo.create({ ...rest, empresaId, contrasenaCifrada });
@@ -369,6 +376,9 @@ export class OltNativoService implements OnModuleInit {
 
   async actualizar(id: string, empresaId: string, dto: UpdateOltDispositivoDto): Promise<OltDispositivo> {
     const olt = await this.findOlt(id, empresaId);
+    if (dto.ipGestion && dto.ipGestion !== olt.ipGestion) {
+      await this._validarIpUnica(dto.ipGestion, empresaId, id);
+    }
     const { contrasena, ...rest } = dto;
     if (contrasena) {
       olt.contrasenaCifrada = encrypt(contrasena);
@@ -932,6 +942,163 @@ export class OltNativoService implements OnModuleInit {
         `Verifica que ENCRYPTION_KEY no haya cambiado desde que se guardó.`,
       );
     }
+  }
+
+  // ─── IP Validation ────────────────────────────────────────────
+
+  private async _validarIpUnica(ip: string, empresaId: string, excludeId?: string): Promise<void> {
+    const rows = await this.ds.query<{ id: string; nombre: string }[]>(
+      `SELECT id, nombre FROM olt_dispositivos
+       WHERE empresa_id = $1 AND ip_gestion = $2::inet AND activo = true
+       ${excludeId ? 'AND id != $3' : ''}`,
+      excludeId ? [empresaId, ip, excludeId] : [empresaId, ip],
+    );
+    if (rows.length > 0) {
+      throw new ConflictException(
+        `La IP ${ip} ya está en uso por la OLT "${rows[0].nombre}". Cada OLT requiere una IP de gestión única.`,
+      );
+    }
+  }
+
+  async validarIp(ip: string, empresaId: string): Promise<ValidarIpResult> {
+    const rows = await this.ds.query<{ id: string; nombre: string; tipo: string | null }[]>(
+      `SELECT o.id, o.nombre,
+              (SELECT tipo FROM olt_proveedor_config
+               WHERE olt_id = o.id AND empresa_id = $1
+               ORDER BY prioridad ASC LIMIT 1) AS tipo
+       FROM olt_dispositivos o
+       WHERE o.empresa_id = $1 AND o.ip_gestion = $2::inet AND o.activo = true
+       LIMIT 1`,
+      [empresaId, ip],
+    );
+    if (!rows.length) return { disponible: true };
+    const r = rows[0];
+    const seccion: 'nativo' | 'smartolt' | 'adminolt' =
+      r.tipo === 'smartolt' ? 'smartolt'
+      : r.tipo === 'adminolt' ? 'adminolt'
+      : 'nativo';
+    return { disponible: false, oltNombre: r.nombre, seccion };
+  }
+
+  // ─── Creación transaccional OLT + proveedor ────────────────────
+
+  async crearConProveedor(
+    empresaId: string,
+    tipo: 'smartolt' | 'adminolt',
+    dto: CrearOltIntegracionDto,
+  ): Promise<OltDispositivo> {
+    this.assertNotDegraded();
+    await this._validarIpUnica(dto.ipGestion, empresaId);
+
+    const qr = this.ds.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      const apiKeyCifrada = encrypt(dto.apiKey);
+
+      const olt = this.oltRepo.create({
+        empresaId,
+        nombre:            dto.nombre,
+        descripcion:       dto.descripcion ?? null,
+        marca:             dto.marca as OltMarca,
+        modelo:            dto.modelo ?? null,
+        metodoConexion:    OltMetodoConexion.SMARTOLT_API,
+        ipGestion:         dto.ipGestion,
+        puerto:            80,
+        usuarioAnclado:    '',
+        contrasenaCifrada: '',
+        slotsTotales:      dto.slotsTotales  ?? 1,
+        puertosPorSlot:    dto.puertosPorSlot ?? 8,
+        routerId:          dto.routerId,
+        ubicacion:         dto.ubicacion  ?? null,
+        latitud:           dto.latitud    ?? null,
+        longitud:          dto.longitud   ?? null,
+      });
+      const oltGuardada = await qr.manager.save(OltDispositivo, olt);
+
+      const config = this.proveedorRepo.create({
+        empresaId,
+        oltId:        oltGuardada.id,
+        tipo:         tipo as TipoProveedor,
+        prioridad:    dto.prioridad ?? 1,
+        activo:       true,
+        credenciales: {
+          base_url:        dto.baseUrl,
+          api_key_cifrado: apiKeyCifrada,
+          olt_id_externo:  dto.oltIdExterno ?? null,
+        },
+      });
+      await qr.manager.save(OltProveedorConfig, config);
+
+      await qr.commitTransaction();
+      return oltGuardada;
+    } catch (e) {
+      await qr.rollbackTransaction();
+      throw e;
+    } finally {
+      await qr.release();
+    }
+  }
+
+  // ─── Listar TODAS las OLTs (para /red/olt) ────────────────────
+
+  async listarTodas(empresaId: string): Promise<OltConProveedorPrincipal[]> {
+    const rows = await this.ds.query<Array<Record<string, unknown>>>(
+      `SELECT
+         o.id, o.nombre, o.descripcion, o.marca, o.modelo,
+         o.metodo_conexion, o.ip_gestion, o.puerto,
+         o.slots_totales, o.puertos_por_slot, o.vlan_gestion_defecto,
+         o.estado, o.ultimo_ping, o.onus_activas,
+         o.ubicacion, o.latitud, o.longitud, o.activo,
+         o.created_at, o.updated_at,
+         c.id AS proveedor_id, c.tipo AS proveedor_tipo,
+         c.prioridad, c.health_estado, c.health_latencia_ms,
+         c.ultimo_health, c.circuit_estado, c.activo AS proveedor_activo
+       FROM olt_dispositivos o
+       LEFT JOIN LATERAL (
+         SELECT id, tipo, prioridad, health_estado, health_latencia_ms,
+                ultimo_health, circuit_estado, activo
+         FROM olt_proveedor_config
+         WHERE olt_id = o.id AND empresa_id = $1
+         ORDER BY prioridad ASC
+         LIMIT 1
+       ) c ON TRUE
+       WHERE o.empresa_id = $1 AND o.activo = true
+       ORDER BY o.nombre ASC`,
+      [empresaId],
+    );
+    return rows.map(r => ({
+      id:                 r.id as string,
+      nombre:             r.nombre as string,
+      descripcion:        (r.descripcion ?? null) as string | null,
+      marca:              r.marca as string,
+      modelo:             (r.modelo ?? null) as string | null,
+      metodoConexion:     r.metodo_conexion as string,
+      ipGestion:          r.ip_gestion as string,
+      puerto:             r.puerto as number,
+      slotsTotales:       r.slots_totales as number,
+      puertosPorSlot:     r.puertos_por_slot as number,
+      vlanGestionDefecto: (r.vlan_gestion_defecto ?? null) as number | null,
+      estado:             r.estado as string,
+      ultimoPing:         (r.ultimo_ping ?? null) as string | null,
+      onusActivas:        r.onus_activas as number,
+      ubicacion:          (r.ubicacion ?? null) as string | null,
+      latitud:            r.latitud != null ? Number(r.latitud) : null,
+      longitud:           r.longitud != null ? Number(r.longitud) : null,
+      activo:             r.activo as boolean,
+      createdAt:          r.created_at as string,
+      updatedAt:          r.updated_at as string,
+      proveedorPrincipal: r.proveedor_id ? {
+        id:               r.proveedor_id as string,
+        tipo:             r.proveedor_tipo as string,
+        prioridad:        r.prioridad as number,
+        healthEstado:     r.health_estado as string,
+        healthLatenciaMs: r.health_latencia_ms != null ? Number(r.health_latencia_ms) : null,
+        ultimoHealth:     (r.ultimo_health ?? null) as string | null,
+        circuitEstado:    r.circuit_estado as string,
+        activo:           r.proveedor_activo as boolean,
+      } : null,
+    }));
   }
 
   private async persistirMetricasOnu(

@@ -16,6 +16,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { OltNativoService }        from './olt-nativo.service';
 import { FirmwareService }         from './firmware.service';
 import {
+  CrearOltIntegracionDto,
   DiscoverOnusQueryDto,
   DiscoverResult,
   FirmwareJobResult,
@@ -47,6 +48,27 @@ export class OltNativoController {
     return this.service.listar(user.empresaId);
   }
 
+  // ── GET /olt-nativo/todas — todas las OLTs para /red/olt ─────
+  // Debe declararse ANTES de :oltId para que NestJS no parsee
+  // "todas" como UUID param.
+  @Get('todas')
+  @ApiOperation({ summary: 'Listar todas las OLTs con proveedor principal (para /red/olt)' })
+  async listarTodas(@CurrentUser() user: JwtPayload) {
+    return this.service.listarTodas(user.empresaId);
+  }
+
+  // ── GET /olt-nativo/validar-ip — check disponibilidad de IP ──
+  @Get('validar-ip')
+  @ApiOperation({ summary: 'Verificar si una IP de gestión está disponible en la empresa' })
+  @ApiQuery({ name: 'ip', description: 'IP a verificar (formato inet)' })
+  async validarIp(
+    @Query('ip') ip: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    if (!ip) throw new BadRequestException('Parámetro ip requerido');
+    return this.service.validarIp(ip, user.empresaId);
+  }
+
   @Get(':oltId')
   @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
   async findOne(
@@ -64,6 +86,26 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.crear(user.empresaId, dto);
+  }
+
+  // ── POST /olt-nativo/integraciones/smartolt ───────────────────
+  @Post('integraciones/smartolt')
+  @ApiOperation({ summary: 'Crear OLT vía SmartOLT (crea dispositivo + config de proveedor en una transacción)' })
+  async crearSmartolt(
+    @Body() dto: CrearOltIntegracionDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.crearConProveedor(user.empresaId, 'smartolt', dto);
+  }
+
+  // ── POST /olt-nativo/integraciones/adminolt ───────────────────
+  @Post('integraciones/adminolt')
+  @ApiOperation({ summary: 'Crear OLT vía AdminOLT (crea dispositivo + config de proveedor en una transacción)' })
+  async crearAdminolt(
+    @Body() dto: CrearOltIntegracionDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.crearConProveedor(user.empresaId, 'adminolt', dto);
   }
 
   @Put(':oltId')
