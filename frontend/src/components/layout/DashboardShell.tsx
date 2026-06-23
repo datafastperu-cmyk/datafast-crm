@@ -5,9 +5,19 @@ import { Sidebar }               from '@/components/layout/Sidebar';
 import { Topbar }                from '@/components/layout/Topbar';
 import { useInactivityLogout }   from '@/hooks/useInactivityLogout';
 import { UndoRedoProvider }      from '@/lib/contexts/undo-redo.context';
+import { configApi }             from '@/lib/api/configuracion';
+import { useEmpresaStore }       from '@/store/empresa.store';
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   useInactivityLogout();
+
+  const setMoneda = useEmpresaStore((s) => s.setMoneda);
+  useEffect(() => {
+    configApi.getEmpresa()
+      .then(e => { if (e?.moneda) setMoneda(e.moneda); })
+      .catch(() => {/* fallo silencioso — PEN es el default */});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {

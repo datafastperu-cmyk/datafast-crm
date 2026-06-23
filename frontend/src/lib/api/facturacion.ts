@@ -3,14 +3,15 @@ import type { Factura, Pago, PaginaRespuesta, PaginaMeta, ApiRespuesta } from '@
 
 // ─── Comprobante dinámico ─────────────────────────────────────
 export interface ComprobanteConfigItem {
-  id:               string;
-  nombre:           string;
-  codigo:           string;
-  tieneCargaFiscal: boolean;
-  serie:            string;
-  esDefault:        boolean;
-  esProtegido:      boolean;
-  activo:           boolean;
+  id:                string;
+  nombre:            string;
+  codigo:            string;
+  tieneCargaFiscal:  boolean;
+  serie:             string;
+  correlativoActual: number;
+  esDefault:         boolean;
+  esProtegido:       boolean;
+  activo:            boolean;
 }
 
 // ─── Filtros ──────────────────────────────────────────────────

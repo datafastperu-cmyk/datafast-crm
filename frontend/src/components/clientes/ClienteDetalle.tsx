@@ -34,7 +34,7 @@ import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
 import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
 import { useToast }                  from '@/components/ui/toaster';
-import { formatDate, formatPEN, cn, parseApiError } from '@/lib/utils';
+import { formatDate, formatPEN, cn, parseApiError, simboloMoneda, mesNombre } from '@/lib/utils';
 import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import type { Contrato, Factura, Pago } from '@/types';
 import { TIPO_SERVICIO_CONTRATO } from '@/lib/constants/service-types';
@@ -2705,6 +2705,39 @@ function ModalFacturaServicio({
   const [items,           setItems]           = useState<LineaItem[]>([
     { descripcion: 'Servicio de Internet', cantidad: 1, precioUnitario: 0, descuento: 0 },
   ]);
+  const [submitted, setSubmitted] = useState(false);
+
+  // ── Auto-fill desde contrato seleccionado ────────────────────
+  useEffect(() => {
+    const c = contratos.find(x => x.id === contratoId);
+    if (!c) return;
+
+    // Item[0]: descripcion desde planNombre + velocidad, precio desde precioFinal
+    const itemDesc = c.planNombre
+      ? c.planNombre
+      : c.velocidadBajada
+        ? `Internet ${c.velocidadBajada} Mbps`
+        : 'Servicio de Internet';
+
+    setItems(prev => prev.map((it, i) =>
+      i === 0 ? { ...it, descripcion: itemDesc, precioUnitario: c.precioFinal ?? 0 } : it,
+    ));
+
+    // Descripción general: "Servicio de Internet · Junio 2026"
+    if (periodoInicio) {
+      const [y, m] = periodoInicio.split('-');
+      setDescripcion(`Servicio de Internet · ${mesNombre(parseInt(m))} ${y}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contratoId]);
+
+  // Comprobante activo (seleccionado o default)
+  const comprobanteActivo = comprobanteConfigId
+    ? comprobantes.find(c => c.id === comprobanteConfigId)
+    : comprobantes.find(c => c.esDefault) ?? comprobantes[0];
+  const seriePreview = comprobanteActivo
+    ? `${comprobanteActivo.serie}-${String((comprobanteActivo.correlativoActual ?? 0) + 1).padStart(4, '0')}`
+    : null;
 
   // Totales
   const subtotalCalc = items.reduce((s, it) => {
@@ -2713,6 +2746,8 @@ function ModalFacturaServicio({
   }, 0);
   const igvCalc   = aplicaIgv ? subtotalCalc * 0.18 : 0;
   const totalCalc = subtotalCalc + igvCalc;
+
+  const simb = simboloMoneda();
 
   function addItem() {
     setItems(prev => [...prev, { descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0 }]);
@@ -2723,6 +2758,8 @@ function ModalFacturaServicio({
   function updateItem(idx: number, field: keyof LineaItem, value: string | number) {
     setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it));
   }
+
+  const formInvalid = items.some(it => !it.descripcion || it.precioUnitario <= 0);
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => {
@@ -2745,10 +2782,10 @@ function ModalFacturaServicio({
       return facturacionApi.create(dto);
     },
     onSuccess,
-    onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al crear factura', { type: 'error' }),
+    onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al crear comprobante', { type: 'error' }),
   });
 
-  const fmtS = (n: number) => n.toFixed(2);
+  const fmtS = (n: number) => `${simb} ${n.toFixed(2)}`;
   const inputCls = `w-full px-3 py-2 text-sm border border-input rounded-lg bg-background
                     text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
 
@@ -2780,6 +2817,14 @@ function ModalFacturaServicio({
                   <option key={c.id} value={c.id}>{c.nombre.toUpperCase()}</option>
                 ))}
               </select>
+              {seriePreview && (
+                <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono font-semibold text-[10px]">
+                    {seriePreview}
+                  </span>
+                  número estimado del próximo comprobante
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Contrato</label>
@@ -2877,8 +2922,12 @@ function ModalFacturaServicio({
                             min={0}
                             step={0.01}
                             onChange={e => updateItem(idx, 'precioUnitario', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded
-                                       focus:outline-none focus:ring-1 focus:ring-primary"
+                            className={cn(
+                              'w-full px-2 py-1 text-xs text-right bg-transparent rounded focus:outline-none focus:ring-1',
+                              submitted && it.precioUnitario <= 0
+                                ? 'border border-red-500 focus:ring-red-500'
+                                : 'border border-border focus:ring-primary',
+                            )}
                           />
                         </td>
                         <td className="px-2 py-1.5">
@@ -2960,15 +3009,15 @@ function ModalFacturaServicio({
             Cancelar
           </button>
           <button
-            disabled={isPending || items.some(it => !it.descripcion || it.precioUnitario <= 0)}
-            onClick={() => mutate()}
+            disabled={isPending || (submitted && items.some(it => !it.descripcion || it.precioUnitario <= 0))}
+            onClick={() => { setSubmitted(true); mutate(); }}
             className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg text-white
                        bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPending
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <FileText className="w-4 h-4" />}
-            Crear Factura
+            Emitir Comprobante
           </button>
         </div>
       </div>

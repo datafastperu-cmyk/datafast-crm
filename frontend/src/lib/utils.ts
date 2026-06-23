@@ -6,16 +6,33 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Formatear moneda peruana */
-export function formatPEN(amount: number | null | undefined): string {
+// ─── Moneda global ────────────────────────────────────────────
+// Inicializada en 'PEN'. DashboardShell la actualiza una vez
+// al cargar la config de empresa, sin necesidad de pasar props.
+let _monedaGlobal = 'PEN';
+
+export function setGlobalMoneda(m: string): void {
+  _monedaGlobal = m || 'PEN';
+}
+
+const _simboloMap: Record<string, string> = {
+  PEN: 'S/.', USD: '$', EUR: '€', GBP: '£',
+  COP: '$', MXN: '$', ARS: '$', CLP: '$', BOB: 'Bs.',
+};
+
+export function simboloMoneda(moneda?: string): string {
+  return _simboloMap[moneda ?? _monedaGlobal] ?? (moneda ?? _monedaGlobal);
+}
+
+/** Formatear monto con la moneda global (o la que se pase explícitamente) */
+export function formatPEN(amount: number | null | undefined, moneda?: string): string {
   const n = Number(amount);
-  if (!isFinite(n)) return 'S/ 0.00';
-  return new Intl.NumberFormat('es-PE', {
-    style:                 'currency',
-    currency:              'PEN',
+  const simbolo = simboloMoneda(moneda);
+  if (!isFinite(n)) return `${simbolo} 0.00`;
+  return `${simbolo} ${new Intl.NumberFormat('es-PE', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(n);
+  }).format(n)}`;
 }
 
 /** Parsea un string de fecha sin perder un día por UTC midnight.
