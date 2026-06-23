@@ -322,7 +322,7 @@ export function VpnContent() {
                           <tr key={c.commonName} className="border-b border-white/5 last:border-0">
                             <td className="py-2 pr-4 font-mono text-white">{c.commonName}</td>
                             <td className="py-2 pr-4 text-gray-300">{c.realAddress}</td>
-                            <td className="py-2 pr-4 text-primary font-mono">{c.vpnAddress}</td>
+                            <td className="py-2 pr-4 text-emerald-300 font-mono">{c.vpnAddress}</td>
                             <td className="py-2 pr-4 text-gray-400">{formatBytes(c.bytesReceived)}</td>
                             <td className="py-2 text-gray-400">{formatBytes(c.bytesSent)}</td>
                           </tr>
@@ -699,14 +699,14 @@ function StatusCard({
     <div className={cn(
       'rounded-xl border p-4 space-y-2',
       ok
-        ? 'bg-white/3 border-white/10'
-        : 'bg-red-500/5 border-red-500/20',
+        ? 'bg-muted/30 border-border'
+        : 'bg-destructive/5 border-destructive/20',
     )}>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-400">{label}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
         {icon}
       </div>
-      <div className="text-sm font-medium text-white truncate">{value}</div>
+      <div className="text-sm font-medium text-foreground truncate">{value}</div>
     </div>
   );
 }
