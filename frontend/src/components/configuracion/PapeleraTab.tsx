@@ -218,7 +218,7 @@ export function PapeleraTab() {
       {/* Modal confirmación eliminación permanente */}
       {confirmId && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+          <div role="dialog" aria-modal="true" aria-label="Confirmar acción" className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
                 <AlertTriangle className="w-5 h-5 text-destructive" />

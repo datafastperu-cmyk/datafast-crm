@@ -355,7 +355,7 @@ export function ContratoDetalle({ id }: { id: string }) {
       {/* Modal Prórroga */}
       {showProrroga && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+          <div role="dialog" aria-modal="true" aria-label="Acción de contrato" className="bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-sm">
             <h3 className="text-base font-semibold text-foreground mb-4">Aplicar Prórroga</h3>
             <p className="text-sm text-muted-foreground mb-4">
               Se extenderá el plazo sin suspender el servicio.
@@ -394,7 +394,7 @@ export function ContratoDetalle({ id }: { id: string }) {
       {/* ── Modal Confirmar Baja Definitiva ───────────────────── */}
       {showBaja && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-card border border-red-900/40 rounded-2xl shadow-2xl">
+          <div role="dialog" aria-modal="true" aria-label="Dar de baja contrato" className="w-full max-w-md bg-card border border-red-900/40 rounded-2xl shadow-2xl">
             <div className="px-5 py-4 border-b border-border flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
                 <Trash2 className="w-4 h-4 text-red-400" />

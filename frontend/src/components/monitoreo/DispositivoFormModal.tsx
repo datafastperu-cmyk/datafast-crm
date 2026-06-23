@@ -220,7 +220,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
     >
-      <div
+      <div role="dialog" aria-modal="true"
         className={cn(
           'relative bg-background border border-border rounded-2xl shadow-2xl',
           'w-full max-w-lg',

@@ -345,7 +345,7 @@ function SegmentoForm({
   return (
     <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg">
+      <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">

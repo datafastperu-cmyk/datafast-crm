@@ -215,7 +215,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
     >
-      <div className="relative w-full sm:max-w-2xl sm:mx-4 bg-background flex flex-col
+      <div role="dialog" aria-modal="true" className="relative w-full sm:max-w-2xl sm:mx-4 bg-background flex flex-col
                       h-[96dvh] sm:h-auto sm:max-h-[92vh]
                       rounded-t-2xl sm:rounded-2xl shadow-2xl
                       animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">

@@ -42,7 +42,7 @@ export function NuevoAbonadoModal({ open, onClose }: Props) {
     {/* Diálogo de confirmación de cierre */}
     {confirmClose && (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70">
-        <div className="bg-background rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4">
+        <div role="dialog" aria-modal="true" className="bg-background rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4">
           <div className="flex items-center gap-3 mb-3">
             <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
             <h3 className="font-semibold text-foreground">¿Descartar registro?</h3>

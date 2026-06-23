@@ -102,7 +102,7 @@ export function RouterDetailPanel({ router, onClose }: Props) {
     <div className="fixed inset-0 z-[100] flex justify-end">
       <div className="absolute inset-0 bg-black/40" />
 
-      <div
+      <div role="dialog" aria-modal="true"
         className="relative w-full max-w-lg bg-card border-l border-border flex flex-col h-full shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

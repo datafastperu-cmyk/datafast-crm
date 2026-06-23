@@ -55,7 +55,7 @@ export function LicenciaBloqueo({ razon, onLicenciaActivada }: Props) {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-sm">
-      <div className="w-full max-w-md mx-4">
+      <div role="dialog" aria-modal="true" className="w-full max-w-md mx-4">
 
         {/* Icono y título */}
         <div className="flex flex-col items-center mb-8 text-center">

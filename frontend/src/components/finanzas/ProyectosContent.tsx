@@ -274,7 +274,7 @@ export function ProyectosContent() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+          <div role="dialog" aria-modal="true" aria-label="Confirmar acción" className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold text-foreground">Nuevo proyecto de expansión</h3>
               <button

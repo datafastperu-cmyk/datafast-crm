@@ -156,7 +156,7 @@ function ConfirmDeleteOnu({
 }: { sn: string; oltNombre: string; isPending: boolean; onConfirm: () => void; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-zinc-900 border border-amber-700/40 rounded-2xl shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Provisionar ONU" className="w-full max-w-sm bg-zinc-900 border border-amber-700/40 rounded-2xl shadow-2xl">
         <div className="px-5 py-4 border-b border-zinc-700 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
             <AlertTriangle className="w-4 h-4 text-amber-400" />

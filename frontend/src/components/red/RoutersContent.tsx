@@ -91,7 +91,7 @@ function ScriptConexionDialog({ router, onClose }: { router: RouterType; onClose
   return (
     <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-card border border-border rounded-xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
+      <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-xl w-full max-w-2xl flex flex-col shadow-2xl max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
@@ -393,7 +393,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
   return (<Portal>
     <>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
+      <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
@@ -909,7 +909,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     {/* ─── Modal confirmación de migración ─────────────────── */}
     {migrarState === 'confirming' && router && (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
-        <div className="bg-card border border-border rounded-xl w-full max-w-lg shadow-2xl p-6 space-y-5">
+        <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-xl w-full max-w-lg shadow-2xl p-6 space-y-5">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
               <AlertTriangle className="w-5 h-5 text-amber-500" />
@@ -971,7 +971,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     {/* ─── Overlay migración en progreso ───────────────────── */}
     {migrarState === 'migrating' && (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
-        <div className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-8 text-center space-y-4">
+        <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-8 text-center space-y-4">
           <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
           <h3 className="font-semibold text-foreground text-base">Aplicando nueva configuración…</h3>
           <p className="text-sm text-muted-foreground">
@@ -985,7 +985,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     {/* ─── Resultado migración ──────────────────────────────── */}
     {(migrarState === 'done' || migrarState === 'error') && migrarResult && (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
-        <div className="bg-card border border-border rounded-xl w-full max-w-lg shadow-2xl p-6 space-y-5">
+        <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-xl w-full max-w-lg shadow-2xl p-6 space-y-5">
           <div className="flex items-start gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${migrarState === 'done' ? 'bg-green-500/15' : 'bg-destructive/15'}`}>
               {migrarState === 'done'
@@ -1447,7 +1447,7 @@ export function RoutersContent() {
       {pendingDelete && (
         <Portal>
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+          <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
             <p className="font-semibold text-foreground">Eliminar router</p>
             <p className="text-sm text-muted-foreground">
               ¿Eliminar <strong>{pendingDelete.nombre}</strong>? Esta acción no se puede deshacer.

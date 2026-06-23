@@ -240,7 +240,7 @@ export function ConfiguracionAlertas() {
       {/* Modal nueva regla */}
       {showForm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md
+          <div role="dialog" aria-modal="true" aria-label="Configurar alertas" className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md
                           max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
               <h3 className="text-base font-semibold text-foreground">Nueva regla de alerta</h3>

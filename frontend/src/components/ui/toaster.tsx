@@ -70,13 +70,19 @@ export function Toaster() {
               </ToastPrim.Description>
             )}
           </div>
-          <ToastPrim.Close className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors mt-0.5">
-            <X className="w-4 h-4" />
+          <ToastPrim.Close
+            className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+            aria-label="Cerrar notificación"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
           </ToastPrim.Close>
         </ToastPrim.Root>
       ))}
       <ToastPrim.Viewport
-        className="fixed bottom-4 right-4 flex flex-col gap-2 w-80 z-[9999]"
+        className="fixed bottom-4 right-4 flex flex-col gap-2 w-80 z-toast"
+        aria-live="polite"
+        aria-atomic="false"
+        aria-label="Notificaciones del sistema"
       />
     </ToastPrim.Provider>
   );

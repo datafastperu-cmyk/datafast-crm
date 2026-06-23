@@ -722,7 +722,7 @@ export function ClienteDetalle({ id }: { id: string }) {
     {/* ── Modal de confirmación de cambio de estado ──────────── */}
     {confirmModal && createPortal(
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-        <div className="bg-background rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4">
+        <div role="dialog" aria-modal="true" className="bg-background rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4">
           <div className="flex items-center gap-3 mb-3">
             <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
             <h3 className="font-semibold text-foreground">{confirmModal.title}</h3>
@@ -987,7 +987,7 @@ function ModalConfirmBaja({
 }: { contrato: Contrato; onConfirm: () => void; onClose: () => void; isPending: boolean }) {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-card border border-red-900/40 rounded-2xl shadow-2xl">
+      <div role="dialog" aria-modal="true" className="w-full max-w-md bg-card border border-red-900/40 rounded-2xl shadow-2xl">
         <div className="px-5 py-4 border-b border-border flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
             <Trash2 className="w-4 h-4 text-red-400" />
