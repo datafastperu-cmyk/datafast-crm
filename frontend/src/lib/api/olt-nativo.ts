@@ -207,6 +207,8 @@ export interface ProveedorConOlt {
   healthLatenciaMs: number | null;
   ultimoHealth:     string | null;
   tieneCredenciales: boolean;
+  baseUrl:          string | null;
+  oltIdExterno:     string | null;
 }
 
 export interface TestProveedorResult {

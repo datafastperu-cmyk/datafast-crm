@@ -426,12 +426,14 @@ export class OltNativoService implements OnModuleInit {
       health_latencia_ms: number | null;
       ultimo_health:     string | null;
       tiene_credenciales: boolean;
+      base_url:          string | null;
+      olt_id_externo:    string | null;
     }>>(`
       SELECT
         c.id,
         c.olt_id,
-        o.nombre   AS olt_nombre,
-        o.marca    AS olt_marca,
+        o.nombre              AS olt_nombre,
+        o.marca               AS olt_marca,
         c.tipo,
         c.prioridad,
         c.activo,
@@ -439,7 +441,9 @@ export class OltNativoService implements OnModuleInit {
         c.health_estado,
         c.health_latencia_ms,
         c.ultimo_health,
-        (c.credenciales ? 'api_key_cifrado') AS tiene_credenciales
+        (c.credenciales ? 'api_key_cifrado' AND c.credenciales ? 'base_url') AS tiene_credenciales,
+        (c.credenciales ->> 'base_url')       AS base_url,
+        (c.credenciales ->> 'olt_id_externo') AS olt_id_externo
       FROM olt_proveedor_config c
       JOIN olt_dispositivos     o ON o.id = c.olt_id
       WHERE c.empresa_id = $1
@@ -461,6 +465,8 @@ export class OltNativoService implements OnModuleInit {
       healthLatenciaMs: r.health_latencia_ms,
       ultimoHealth:     r.ultimo_health ?? null,
       tieneCredenciales: r.tiene_credenciales,
+      baseUrl:          r.base_url ?? null,
+      oltIdExterno:     r.olt_id_externo ?? null,
     }));
   }
 
