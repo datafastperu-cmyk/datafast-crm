@@ -221,7 +221,7 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
       className={cn(
         'relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent',
         'transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-        checked ? 'bg-primary' : 'bg-border',
+        checked ? 'bg-primary' : 'bg-muted-foreground/35',
       )}
     >
       <span className={cn(

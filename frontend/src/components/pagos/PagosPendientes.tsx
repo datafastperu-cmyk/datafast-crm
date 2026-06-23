@@ -156,9 +156,7 @@ export function PagosPendientes() {
                   <button
                     onClick={() => { setAprobando(p.id); aprobar(p.id); }}
                     disabled={aprobando && aprobandoId === p.id}
-                    className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg
-                               bg-green-600 text-white font-medium hover:bg-green-700
-                               disabled:opacity-60 transition-colors"
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg btn-primary font-medium disabled:opacity-60 transition-colors"
                   >
                     {aprobando && aprobandoId === p.id
                       ? <Loader2 className="w-3.5 h-3.5 animate-spin" />

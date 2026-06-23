@@ -15,6 +15,7 @@ import { MigracionWizardModal } from './MigracionWizardModal';
 import { RevertirFtthModal }    from './RevertirFtthModal';
 import { useToast }             from '@/components/ui/toaster';
 import { formatDate, formatDateTime, formatPEN, cn, parseApiError } from '@/lib/utils';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import type { Factura, HistorialEntry } from '@/types';
 
 const TABS = ['Información', 'Facturas', 'Historial'] as const;
@@ -113,7 +114,7 @@ export function ContratoDetalle({ id }: { id: string }) {
             <button
               onClick={() => setShowMig(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
-                         bg-violet-600 text-white font-medium hover:bg-violet-700 transition-colors"
+                         btn-primary font-medium transition-colors"
             >
               <Cable className="w-3.5 h-3.5" /> Migrar a FTTH
             </button>
@@ -262,17 +263,17 @@ export function ContratoDetalle({ id }: { id: string }) {
 
       {/* Tabs */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="flex border-b border-border px-4 gap-1">
+        <ScrollableTabs className="flex border-b border-border px-4 gap-1">
           {TABS.map((t) => (
             <button key={t} onClick={() => setTab(t)}
               className={cn(
-                'px-4 py-3 text-sm font-medium border-b-2 transition-colors',
+                'px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
                 tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
               )}>
               {t}
             </button>
           ))}
-        </div>
+        </ScrollableTabs>
 
         <div className="p-5">
 

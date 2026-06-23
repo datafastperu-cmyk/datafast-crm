@@ -670,12 +670,7 @@ export function GastosContent() {
               <button
                 onClick={handleGuardar}
                 disabled={(pendienteId ? pagarMut.isPending : crearMut.isPending) || form.monto <= 0}
-                className={cn(
-                  'flex-1 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50',
-                  pendienteId
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    : 'bg-primary hover:bg-primary/90 text-primary-foreground',
-                )}
+                className="flex-1 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {pendienteId
                   ? (pagarMut.isPending  ? 'Registrando...' : 'Confirmar Pago')

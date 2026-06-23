@@ -239,7 +239,7 @@ export function PapeleraTab() {
                 onClick={() => eliminar({ tabla: confirmTabla, id: confirmId })}
                 disabled={eliminando}
                 className="flex-1 flex items-center justify-center gap-2 py-2 text-sm rounded-lg
-                           bg-destructive text-white font-medium disabled:opacity-60 transition-colors">
+                           bg-destructive text-destructive-foreground font-medium disabled:opacity-60 transition-colors">
                 {eliminando && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Eliminar
               </button>

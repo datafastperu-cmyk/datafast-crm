@@ -9,7 +9,8 @@ import {
 import { cn } from '@/lib/utils';
 import type { Router as RouterType } from '@/lib/api/mikrotik';
 import { redesApi } from '@/lib/api/contratos';
-import { Portal }   from '@/components/ui/portal';
+import { Portal }         from '@/components/ui/portal';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 
 type PanelTab = 'hardware' | 'equipos' | 'segmentos';
 
@@ -128,13 +129,13 @@ export function RouterDetailPanel({ router, onClose }: Props) {
         </div>
 
         {/* ── Tabs ────────────────────────────────────────── */}
-        <div className="flex border-b border-border flex-shrink-0">
+        <ScrollableTabs className="flex border-b border-border flex-shrink-0">
           {tabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={cn(
-                'px-5 py-3 text-xs font-medium transition-colors border-b-2 -mb-px',
+                'px-5 py-3 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
                 tab === t.id
                   ? 'text-primary border-primary'
                   : 'text-muted-foreground border-transparent hover:text-foreground',
@@ -143,7 +144,7 @@ export function RouterDetailPanel({ router, onClose }: Props) {
               {t.label}
             </button>
           ))}
-        </div>
+        </ScrollableTabs>
 
         {/* ── Body ────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto p-5">

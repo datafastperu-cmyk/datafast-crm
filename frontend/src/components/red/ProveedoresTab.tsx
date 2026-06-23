@@ -227,12 +227,12 @@ export function ProveedoresTab({ oltId }: { oltId: string }) {
 
             {/* Activo */}
             <div className="flex items-end pb-1.5">
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                 <input
                   type="checkbox"
                   checked={form.activo ?? true}
                   onChange={(e) => setField('activo', e.target.checked)}
-                  className="rounded border-gray-300"
+                  className="rounded border-input"
                 />
                 Activo
               </label>

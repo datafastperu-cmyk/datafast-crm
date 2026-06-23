@@ -13,6 +13,7 @@ import { ReporteRed }       from './ReporteRed';
 import { reportesApi }      from '@/lib/api/configuracion';
 import { useToast }         from '@/components/ui/toaster';
 import { parseApiError, mesNombre, cn } from '@/lib/utils';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 
 const TABS = [
   { key: 'cobranza', label: 'Cobranza',  icon: TrendingUp },
@@ -127,13 +128,13 @@ export function ReportesContent() {
 
       {/* Tabs de reportes */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="flex border-b border-border">
+        <ScrollableTabs className="flex border-b border-border">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
               className={cn(
-                'flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 transition-colors',
+                'flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
                 tab === key
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -143,7 +144,7 @@ export function ReportesContent() {
               {label}
             </button>
           ))}
-        </div>
+        </ScrollableTabs>
 
         <div className="p-5">
           {tab === 'cobranza' && <ReporteCobranza filtros={filtros} />}
