@@ -16,6 +16,7 @@ import { monitoreoApi }  from '@/lib/api/monitoreo';
 import { useMonitoreo }  from '@/hooks/useMonitoreo';
 import { useToast }      from '@/components/ui/toaster';
 import { parseApiError, formatBps, formatPct, formatDateTime, cn } from '@/lib/utils';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import type { Nodo }     from '@/types';
 
 const TABS = ['Métricas', 'Interfaces SNMP', 'Alertas', 'Configuración'] as const;
@@ -208,7 +209,7 @@ export function NodoDetalle({ id }: { id: string }) {
 
       {/* Tabs */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="flex border-b border-border px-4 gap-1 overflow-x-auto">
+        <ScrollableTabs className="flex border-b border-border px-4 gap-1">
           {TABS.map((t) => (
             <button key={t} onClick={() => setTab(t)}
               className={cn(
@@ -218,7 +219,7 @@ export function NodoDetalle({ id }: { id: string }) {
               {t}
             </button>
           ))}
-        </div>
+        </ScrollableTabs>
 
         <div className="p-5 space-y-5">
 
@@ -365,9 +366,9 @@ export function NodoDetalle({ id }: { id: string }) {
                   <div key={a.id} className="flex items-start gap-3 p-3.5 rounded-xl border border-border">
                     <span className={cn(
                       'text-[10px] font-bold px-1.5 py-px rounded-full flex-shrink-0 mt-0.5',
-                      a.nivel === 'critical' ? 'bg-destructive text-destructive-foreground' :
-                      a.nivel === 'warning'  ? 'bg-orange-500 text-white' :
-                      a.nivel === 'recovery' ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground',
+                      a.nivel === 'critical' ? 'bg-destructive/15 text-destructive border border-destructive/25' :
+                      a.nivel === 'warning'  ? 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border border-orange-500/25' :
+                      a.nivel === 'recovery' ? 'bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/25' : 'bg-muted text-muted-foreground',
                     )}>
                       {a.nivel.toUpperCase()}
                     </span>

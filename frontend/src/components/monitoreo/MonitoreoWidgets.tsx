@@ -173,7 +173,7 @@ export function AlertasBanner({ alertas }: { alertas: Alerta[] }) {
           )}
           {warnings.length > 0 && (
             <span className="text-[10px] font-bold px-1.5 py-px rounded-full
-                             bg-orange-500 text-white">
+                             bg-orange-500/15 text-orange-700 dark:text-orange-400 border border-orange-500/25">
               {warnings.length} WARNING{warnings.length !== 1 ? 'S' : ''}
             </span>
           )}
@@ -189,8 +189,8 @@ export function AlertasBanner({ alertas }: { alertas: Alerta[] }) {
               <span className={cn(
                 'text-[10px] font-bold px-1.5 py-px rounded-full flex-shrink-0 mt-0.5',
                 a.nivel === 'critical'
-                  ? 'bg-destructive text-destructive-foreground'
-                  : 'bg-orange-500 text-white',
+                  ? 'bg-destructive/15 text-destructive border border-destructive/25'
+                  : 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border border-orange-500/25',
               )}>
                 {a.nivel.toUpperCase()}
               </span>

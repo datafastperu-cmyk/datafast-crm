@@ -35,6 +35,7 @@ import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
 import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
 import { useToast }                  from '@/components/ui/toaster';
 import { formatDate, formatPEN, cn, parseApiError } from '@/lib/utils';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import type { Contrato, Factura, Pago } from '@/types';
 import { TIPO_SERVICIO_CONTRATO } from '@/lib/constants/service-types';
 
@@ -350,31 +351,34 @@ export function ClienteDetalle({ id }: { id: string }) {
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
 
         {/* Tab bar */}
-        <div className="flex items-center border-b border-border overflow-x-auto scrollbar-none bg-muted/20">
-          {TABS.map(({ key, label, icon: Icon }) => {
-            const active = tab === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={cn(
-                  'flex items-center gap-1.5 px-4 py-3 text-xs font-medium whitespace-nowrap flex-shrink-0',
-                  'border-b-2 transition-all duration-150',
-                  active
-                    ? 'border-primary text-primary bg-card'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-card/60',
-                )}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            );
-          })}
+        <div className="flex items-center border-b border-border bg-muted/20">
+          <ScrollableTabs className="flex flex-1 min-w-0">
+            {TABS.map(({ key, label, icon: Icon }) => {
+              const active = tab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-4 py-3 text-xs font-medium whitespace-nowrap flex-shrink-0',
+                    'border-b-2 transition-all duration-150',
+                    active
+                      ? 'border-primary text-primary bg-card'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-card/60',
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              );
+            })}
+          </ScrollableTabs>
           <button
             ref={menuButtonRef}
             onClick={handleOpenMenu}
             title="Cambiar Estado de Cliente"
-            className="ml-auto px-3 py-3 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+            aria-label="Cambiar estado del cliente"
+            className="flex-shrink-0 px-3 py-3 text-muted-foreground hover:text-foreground transition-colors border-b-2 border-transparent"
           >
             <Wrench style={{ width: '1.125rem', height: '1.125rem' }} />
           </button>

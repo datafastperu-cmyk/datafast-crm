@@ -15,10 +15,10 @@ import { parseApiError, formatDateTime, cn } from '@/lib/utils';
 import type { Alerta }    from '@/types';
 
 const NIVEL_CFG: Record<string, { cls: string; label: string }> = {
-  critical: { cls: 'bg-destructive text-destructive-foreground',                label: 'CRÍTICA' },
-  warning:  { cls: 'bg-orange-500 text-white',                                  label: 'WARNING' },
-  recovery: { cls: 'bg-green-600 text-white',                                   label: 'RECOVERY' },
-  info:     { cls: 'bg-blue-500 text-white',                                    label: 'INFO' },
+  critical: { cls: 'bg-destructive/15 text-destructive border border-destructive/25',                                     label: 'CRÍTICA'  },
+  warning:  { cls: 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border border-orange-500/25',                   label: 'WARNING'  },
+  recovery: { cls: 'bg-green-500/15  text-green-700  dark:text-green-400  border border-green-500/25',                    label: 'RECOVERY' },
+  info:     { cls: 'bg-blue-500/15   text-blue-700   dark:text-blue-400   border border-blue-500/25',                     label: 'INFO'     },
 };
 
 const METRICA_LABELS: Record<string, string> = {

@@ -322,7 +322,7 @@ export function VpnContent() {
                           <tr key={c.commonName} className="border-b border-white/5 last:border-0">
                             <td className="py-2 pr-4 font-mono text-white">{c.commonName}</td>
                             <td className="py-2 pr-4 text-gray-300">{c.realAddress}</td>
-                            <td className="py-2 pr-4 text-green-400 font-mono">{c.vpnAddress}</td>
+                            <td className="py-2 pr-4 text-primary font-mono">{c.vpnAddress}</td>
                             <td className="py-2 pr-4 text-gray-400">{formatBytes(c.bytesReceived)}</td>
                             <td className="py-2 text-gray-400">{formatBytes(c.bytesSent)}</td>
                           </tr>

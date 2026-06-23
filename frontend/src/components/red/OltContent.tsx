@@ -12,6 +12,7 @@ import { smartoltApi, type EstadoOnu } from '@/lib/api/smartolt';
 import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
 import { FirmwarePanel } from './FirmwareUpgradeTab';
 import { cn } from '@/lib/utils';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 
 const oltEstadoColors = {
   online:        'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
@@ -131,6 +132,7 @@ export function OltContent() {
         </div>
         <button
           onClick={() => { refetchOlts(); refetchOnus(); }}
+          aria-label="Actualizar OLTs y ONUs"
           className="p-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
         >
           <RefreshCw className="w-4 h-4" />
@@ -153,7 +155,7 @@ export function OltContent() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border pb-0">
+      <ScrollableTabs className="flex gap-1 border-b border-border pb-0">
         {([
           ['olts',     'OLTs',     Server],
           ['onus',     'ONUs',     Signal],
@@ -172,7 +174,7 @@ export function OltContent() {
             <Icon className="w-4 h-4" />{label}
           </button>
         ))}
-      </div>
+      </ScrollableTabs>
 
       {/* OLTs Table */}
       {tab === 'olts' && (

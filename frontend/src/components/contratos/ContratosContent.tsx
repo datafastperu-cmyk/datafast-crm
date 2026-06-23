@@ -12,6 +12,7 @@ import { contratosApi, type FiltrosContrato } from '@/lib/api/contratos';
 import { ContratosTable }    from './ContratosTable';
 import { useDebounce }       from '@/hooks/useDebounce';
 import { cn, formatPEN }     from '@/lib/utils';
+import { ScrollableTabs }    from '@/components/ui/ScrollableTabs';
 
 const ESTADO_TABS = [
   { key: '',                     label: 'Todos',       icon: FileText },
@@ -144,7 +145,7 @@ export function ContratosContent() {
         </div>
 
         {/* Tabs de estado */}
-        <div className="flex border-b border-border px-4 gap-1">
+        <ScrollableTabs className="flex border-b border-border px-4 gap-1">
           {ESTADO_TABS.map(({ key, label }) => (
             <button
               key={key}
@@ -159,7 +160,7 @@ export function ContratosContent() {
               {label}
             </button>
           ))}
-        </div>
+        </ScrollableTabs>
 
         {/* Tabla */}
         <ContratosTable

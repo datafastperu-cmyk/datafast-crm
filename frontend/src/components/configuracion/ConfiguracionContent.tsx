@@ -10,6 +10,7 @@ import { LogsTab }       from './LogsTab';
 import { AuditoriaTab }  from './AuditoriaTab';
 import { PapeleraTab }   from './PapeleraTab';
 import { cn }            from '@/lib/utils';
+import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 
 const TABS = [
   { key: 'empresa',    label: 'Empresa',    icon: Building2   },
@@ -41,7 +42,7 @@ export function ConfiguracionContent() {
 
       {/* Tabs */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="flex border-b border-border overflow-x-auto">
+        <ScrollableTabs className="flex border-b border-border">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -57,7 +58,7 @@ export function ConfiguracionContent() {
               {label}
             </button>
           ))}
-        </div>
+        </ScrollableTabs>
 
         <div className="p-6">
           {tab === 'empresa'   && <EmpresaTab />}
