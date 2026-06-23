@@ -499,8 +499,7 @@ export function DispositivoFormModal({ onClose, onSuccess, dispositivoId }: Prop
                 type="submit"
                 disabled={disabled}
                 className={cn(
-                  'flex items-center gap-2 px-5 py-2 text-sm rounded-lg font-medium transition-all',
-                  'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30',
+                  'flex items-center gap-2 px-5 py-2 text-sm rounded-lg font-medium transition-all btn-primary',
                   'disabled:opacity-40 disabled:cursor-not-allowed',
                 )}
               >

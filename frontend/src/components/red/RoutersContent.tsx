@@ -498,7 +498,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                           onChange={() => set('versionRos', o.val)}
                           className="mt-0.5 accent-primary" />
                         <div>
-                          <div className={cn('text-sm font-medium', form.versionRos === o.val ? 'text-white' : 'text-foreground')}>
+                          <div className="text-sm font-medium text-foreground">
                             {o.label}
                           </div>
                           <div className="text-xs text-muted-foreground mt-0.5">{o.sub}</div>
@@ -584,7 +584,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                                 className={cn(
                                   'flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors',
                                   form.metodoConexion === o.val
-                                    ? 'border-primary/50 bg-primary/15 text-white'
+                                    ? 'border-primary/50 bg-primary/15 text-primary'
                                     : 'border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground',
                                 )}
                               >
@@ -1468,7 +1468,7 @@ export function RoutersContent() {
               <button
                 onClick={() => { deleteMut.mutate(pendingDelete.id); setPendingDelete(null); }}
                 disabled={deleteMut.isPending}
-                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors disabled:opacity-60"
+                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-60"
               >
                 Eliminar
               </button>
@@ -1514,7 +1514,7 @@ export function RoutersContent() {
               </button>
               <button
                 onClick={() => repararMut.mutate(pendingRepair.id)}
-                className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg font-medium bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+                className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg font-medium btn-primary transition-colors"
               >
                 <Wrench className="w-3.5 h-3.5" />
                 Reparar router

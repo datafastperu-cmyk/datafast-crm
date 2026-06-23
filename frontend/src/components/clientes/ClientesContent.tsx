@@ -171,19 +171,19 @@ export function ClientesContent() {
       titulo: 'Activar abonado',
       desc: 'El abonado quedará clasificado como activo en el sistema. Sus contratos no cambian de estado automáticamente.',
       boton: 'Activar',
-      color: 'bg-green-600 hover:bg-green-700',
+      color: 'bg-primary hover:bg-primary/90',
     },
     suspender: {
       titulo: 'Suspender abonado',
       desc: 'El abonado quedará clasificado como suspendido en el sistema. Sus contratos no cambian de estado automáticamente.',
       boton: 'Suspender',
-      color: 'bg-yellow-500 hover:bg-yellow-600',
+      color: 'bg-primary hover:bg-primary/90',
     },
     retirar: {
       titulo: 'Baja definitiva',
       desc: 'Se terminarán todos los contratos activos y se eliminará al abonado de los routers MikroTik. Se conservan facturas, pagos, tickets e historial.',
       boton: 'Dar de baja',
-      color: 'bg-orange-500 hover:bg-orange-600',
+      color: 'bg-primary hover:bg-primary/90',
     },
     eliminar: {
       titulo: 'Eliminar abonado',
@@ -570,7 +570,7 @@ export function ClientesContent() {
                 onClick={ejecutarAccion}
                 disabled={confirmPending}
                 className={cn(
-                  'flex-1 flex items-center justify-center gap-2 py-2 text-sm rounded-lg text-white font-medium transition-colors disabled:opacity-60',
+                  'flex-1 flex items-center justify-center gap-2 py-2 text-sm rounded-lg text-primary-foreground font-medium transition-colors disabled:opacity-60',
                   CONFIRM_CFG[accion.tipo].color,
                 )}
               >

@@ -402,12 +402,12 @@ export function ClienteDetalle({ id }: { id: string }) {
                       title: '¿Activar el abonado?',
                       body: 'El abonado quedará clasificado como activo. Sus contratos no cambian de estado automáticamente.',
                       confirmLabel: 'Activar',
-                      confirmClass: 'bg-green-500 hover:bg-green-600 text-white',
+                      confirmClass: 'bg-primary hover:bg-primary/90 text-primary-foreground',
                       onConfirm: () => cambiarEstado('activo'),
                     });
                   }}
                   className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                             text-xs font-bold bg-green-500 hover:bg-green-600 text-white
+                             text-xs font-bold btn-primary
                              transition-colors disabled:opacity-50"
                 >
                   <Power className="w-3.5 h-3.5" /> ACTIVAR
@@ -423,12 +423,12 @@ export function ClienteDetalle({ id }: { id: string }) {
                       title: '¿Suspender el abonado?',
                       body: 'El abonado quedará clasificado como suspendido. Sus contratos no cambian de estado automáticamente.',
                       confirmLabel: 'Suspender',
-                      confirmClass: 'bg-orange-500 hover:bg-orange-600 text-white',
+                      confirmClass: 'bg-primary hover:bg-primary/90 text-primary-foreground',
                       onConfirm: () => cambiarEstado('suspendido'),
                     });
                   }}
                   className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                             text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white
+                             text-xs font-bold btn-primary
                              transition-colors disabled:opacity-50"
                 >
                   <PauseCircle className="w-3.5 h-3.5" /> SUSPENDER
@@ -449,7 +449,7 @@ export function ClienteDetalle({ id }: { id: string }) {
                     });
                   }}
                   className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
-                             text-xs font-bold bg-red-500 hover:bg-red-600 text-white
+                             text-xs font-bold bg-destructive text-destructive-foreground hover:bg-destructive/90
                              transition-colors disabled:opacity-50"
                 >
                   <XCircle className="w-3.5 h-3.5" /> BAJA DEFINITIVA

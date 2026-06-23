@@ -462,7 +462,7 @@ export function FirmwareUpgradeTab({ olt }: Props) {
             <button
               onClick={() => upgradeMutation.mutate()}
               disabled={upgradeMutation.isPending}
-              className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 py-2.5 rounded-lg btn-primary text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {upgradeMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Iniciando…</>

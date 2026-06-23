@@ -23,8 +23,8 @@ function NivelBadge({ nivel }: { nivel: string }) {
     <span className={cn(
       'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
       nivel === 'CRITICA'
-        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-        : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+        ? 'bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30'
+        : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
     )}>
       {nivel === 'CRITICA' ? <AlertCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
       {nivel}
@@ -69,14 +69,14 @@ export function AlertasSistemaContent() {
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-white">Alertas del Sistema</h1>
-          <p className="text-sm text-zinc-400 mt-0.5">
+          <h1 className="text-xl font-semibold text-foreground">Alertas del Sistema</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {data?.total ?? 0} alerta{(data?.total ?? 0) !== 1 ? 's' : ''} · {tab === 'ACTIVA' ? 'activas' : 'resueltas'}
           </p>
         </div>
         <button
           onClick={() => refetch()}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground text-sm transition-colors"
         >
           <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
           Actualizar
@@ -88,23 +88,23 @@ export function AlertasSistemaContent() {
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1.5">
             <AlertCircle className="h-4 w-4 text-red-400" />
-            <span className="text-xs text-red-300">Críticas</span>
+            <span className="text-xs text-red-600 dark:text-red-300">Críticas</span>
           </div>
           <p className="text-2xl font-bold text-red-400">{critCount}</p>
         </div>
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1.5">
             <AlertTriangle className="h-4 w-4 text-amber-400" />
-            <span className="text-xs text-amber-300">Advertencias</span>
+            <span className="text-xs text-amber-600 dark:text-amber-300">Advertencias</span>
           </div>
           <p className="text-2xl font-bold text-amber-400">{warnCount}</p>
         </div>
         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1.5">
             <Shield className="h-4 w-4 text-emerald-400" />
-            <span className="text-xs text-emerald-300">Estado</span>
+            <span className="text-xs text-emerald-600 dark:text-emerald-300">Estado</span>
           </div>
-          <p className={cn('text-sm font-semibold mt-1', critCount > 0 ? 'text-red-400' : 'text-emerald-400')}>
+          <p className={cn('text-sm font-semibold mt-1', critCount > 0 ? 'text-red-500 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400')}>
             {critCount > 0 ? 'Atención requerida' : 'Sin críticas'}
           </p>
         </div>
@@ -112,14 +112,14 @@ export function AlertasSistemaContent() {
 
       {/* ── Tabs + filtro ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex border border-zinc-700 rounded-lg overflow-hidden">
+        <div className="flex border border-border rounded-lg overflow-hidden">
           {TABS.map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={cn(
                 'px-4 py-2 text-sm font-medium transition-colors',
-                tab === t ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                tab === t ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
               )}
             >
               {t === 'ACTIVA' ? 'Activas' : 'Resueltas'}
@@ -129,7 +129,7 @@ export function AlertasSistemaContent() {
         <select
           value={nivel}
           onChange={e => setNivel(e.target.value)}
-          className="px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-lg focus:outline-none focus:border-zinc-500"
+          className="px-3 py-2 text-sm bg-background border border-input text-foreground rounded-lg focus:outline-none focus:ring-1 focus:ring-ring"
         >
           {NIVEL_OPTIONS.map(n => (
             <option key={n} value={n}>{n === 'Todos' ? 'Todos los niveles' : n}</option>
@@ -139,15 +139,15 @@ export function AlertasSistemaContent() {
 
       {/* ── Lista de alertas ── */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-zinc-500 text-sm">
+        <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
           <RefreshCw className="h-5 w-5 animate-pulse mr-2" />
           Cargando alertas...
         </div>
       ) : alertas.length === 0 ? (
-        <div className="bg-zinc-800/40 border border-dashed border-zinc-700 rounded-xl p-12 text-center">
+        <div className="bg-muted/20 border border-dashed border-border rounded-xl p-12 text-center">
           <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-3" />
-          <p className="text-zinc-300 font-medium">Sin alertas {tab === 'ACTIVA' ? 'activas' : 'resueltas'}</p>
-          <p className="text-zinc-500 text-sm mt-1">
+          <p className="text-foreground font-medium">Sin alertas {tab === 'ACTIVA' ? 'activas' : 'resueltas'}</p>
+          <p className="text-muted-foreground text-sm mt-1">
             {tab === 'ACTIVA' ? 'Todos los dispositivos operan dentro de los umbrales' : 'No hay alertas resueltas con este filtro'}
           </p>
         </div>
@@ -157,7 +157,7 @@ export function AlertasSistemaContent() {
             <div
               key={a.id}
               className={cn(
-                'bg-zinc-800/60 border rounded-xl px-4 py-3 flex items-start gap-3',
+                'bg-card border rounded-xl px-4 py-3 flex items-start gap-3',
                 a.nivel === 'CRITICA' ? 'border-red-500/25' : 'border-amber-500/25',
               )}
             >
@@ -176,24 +176,24 @@ export function AlertasSistemaContent() {
                 <div className="flex items-center flex-wrap gap-1.5 mb-0.5">
                   <NivelBadge nivel={a.nivel} />
                   {a.categoria && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-700 text-zinc-300">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted text-foreground">
                       {a.categoria}
                     </span>
                   )}
                   {a.dispositivo && (
-                    <span className="text-xs text-zinc-400">
+                    <span className="text-xs text-muted-foreground">
                       {a.dispositivo.nombreEmisor} · {a.dispositivo.ipAddress}
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-zinc-200">{a.mensaje}</p>
+                <p className="text-sm text-foreground">{a.mensaje}</p>
                 {(a.valorDetectado ?? a.valorUmbral) && (
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    Detectado: <span className="text-zinc-300">{a.valorDetectado}</span>
-                    {a.valorUmbral && <> · Umbral: <span className="text-zinc-300">{a.valorUmbral}</span></>}
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Detectado: <span className="text-foreground">{a.valorDetectado}</span>
+                    {a.valorUmbral && <> · Umbral: <span className="text-foreground">{a.valorUmbral}</span></>}
                   </p>
                 )}
-                <div className="flex items-center gap-1 mt-1 text-xs text-zinc-500">
+                <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3" />
                   {formatDateTime(a.createdAt)}
                   {a.resueltoAt && (
@@ -207,7 +207,7 @@ export function AlertasSistemaContent() {
                 <button
                   onClick={() => resolver(a.id)}
                   disabled={resolviendo}
-                  className="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-600/30 transition-colors disabled:opacity-50"
+                  className="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 transition-colors disabled:opacity-50"
                 >
                   Resolver
                 </button>

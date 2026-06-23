@@ -178,7 +178,7 @@ export function ProveedoresTab({ oltId }: { oltId: string }) {
       {!showForm && (
         <button
           onClick={openNew}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="rounded-md btn-primary px-4 py-2 text-sm font-medium"
         >
           + Agregar proveedor
         </button>
@@ -339,7 +339,7 @@ export function ProveedoresTab({ oltId }: { oltId: string }) {
             <button
               onClick={() => upsertMut.mutate(form)}
               disabled={upsertMut.isPending}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
               {upsertMut.isPending ? 'Guardando…' : 'Guardar'}
             </button>

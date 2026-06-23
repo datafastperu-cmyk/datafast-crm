@@ -118,7 +118,7 @@ export function TiempoRealContent() {
           </button>
           <button
             onClick={() => setModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-primary text-sm font-medium transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
             Agregar
@@ -137,7 +137,7 @@ export function TiempoRealContent() {
             </span>
             <span className="text-xs text-muted-foreground">Total</span>
           </div>
-          <p className="text-2xl font-bold text-white">{dispositivos.length}</p>
+          <p className="text-2xl font-bold text-foreground">{dispositivos.length}</p>
           <p className="text-xs text-muted-foreground/60 mt-0.5">dispositivos</p>
         </div>
 
@@ -201,7 +201,7 @@ export function TiempoRealContent() {
           <p className="text-muted-foreground text-sm mt-1 mb-5">Agrega un router o antena para comenzar el monitoreo</p>
           <button
             onClick={() => setModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 btn-primary text-sm font-medium rounded-lg transition-colors"
           >
             <Plus className="h-4 w-4" />
             Agregar primer dispositivo
@@ -344,7 +344,7 @@ export function TiempoRealContent() {
               <button
                 onClick={() => eliminar(pendingDelete.id)}
                 disabled={eliminando}
-                className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg font-medium bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-40"
+                className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-40"
               >
                 {eliminando ? 'Eliminando…' : 'Eliminar'}
               </button>
