@@ -2693,6 +2693,14 @@ function ModalFacturaServicio({
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: configCliente } = useQuery({
+    queryKey: ['cliente-facturacion-config', clienteId],
+    queryFn: () => clientesApi.getFacturacionConfig(clienteId),
+    staleTime: 5 * 60 * 1000,
+  });
+  // 'incluido' = precio ya trae IGV (se extrae). 'mas_impuestos' = IGV se suma encima.
+  const esquemaIgv = (configCliente?.facturacion?.esquemaImpuesto as string | undefined) ?? 'incluido';
+
   const [periodoInicio,   setPeriodoInicio]   = useState(() => {
     const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
   });
@@ -2727,12 +2735,19 @@ function ModalFacturaServicio({
     ? `${comprobanteActivo.serie}-${String((comprobanteActivo.correlativoActual ?? 0) + 1).padStart(4, '0')}`
     : null;
 
-  // Totales
-  const subtotalCalc = items.reduce((s, it) => {
-    const base = it.cantidad * it.precioUnitario;
-    return s + base - (base * (it.descuento / 100));
+  // Totales — el cálculo varía según esquema de impuesto del cliente
+  const montoItems = items.reduce((s, it) => {
+    const bruto = it.cantidad * it.precioUnitario;
+    return s + bruto - (bruto * (it.descuento / 100));
   }, 0);
-  const igvCalc   = aplicaIgv ? subtotalCalc * 0.18 : 0;
+  // mas_impuestos: precio es base, IGV se suma encima
+  // incluido:      precio ya trae IGV, se extrae la parte fiscal
+  const subtotalCalc = aplicaIgv
+    ? (esquemaIgv === 'mas_impuestos' ? montoItems : montoItems / 1.18)
+    : montoItems;
+  const igvCalc   = aplicaIgv
+    ? (esquemaIgv === 'mas_impuestos' ? montoItems * 0.18 : montoItems - subtotalCalc)
+    : 0;
   const totalCalc = subtotalCalc + igvCalc;
 
   const simb = simboloMoneda();
@@ -2761,7 +2776,10 @@ function ModalFacturaServicio({
         items: items.map(it => ({
           descripcion:    it.descripcion,
           cantidad:       it.cantidad,
-          precioUnitario: it.precioUnitario,
+          // si el precio ya incluye IGV, enviamos la base extraída para que el backend calcule correctamente
+          precioUnitario: aplicaIgv && esquemaIgv === 'incluido'
+            ? it.precioUnitario / 1.18
+            : it.precioUnitario,
           descuento:      it.descuento || undefined,
         })),
       };
@@ -2924,7 +2942,9 @@ function ModalFacturaServicio({
             {aplicaIgv
               ? <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
-                  Carga fiscal (IGV 18%) según tipo de comprobante
+                  {esquemaIgv === 'mas_impuestos'
+                    ? 'IGV 18% añadido al precio del servicio'
+                    : 'IGV 18% incluido en el precio del servicio'}
                 </p>
               : <span />}
             <div className="text-right space-y-1 min-w-[200px]">
