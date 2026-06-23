@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Cpu, Wifi, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
-import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
+import { oltNativoApi, type OltDispositivo, type ProveedorResumen } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { OltFormModal } from '@/components/red/OltFormModal';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,33 @@ const METODO_LABEL: Record<string, string> = {
   nativo_snmp:  'SNMP Nativo',
 };
 
+const HEALTH_DOT: Record<string, string> = {
+  ok:       'bg-emerald-500',
+  degraded: 'bg-yellow-400',
+  down:     'bg-red-500',
+  unknown:  'bg-gray-400',
+};
+
+function ProveedorChips({ resumen }: { resumen: ProveedorResumen | undefined }) {
+  if (!resumen) {
+    return <span className="text-[11px] text-muted-foreground/50">—</span>;
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className={cn('w-2 h-2 rounded-full flex-shrink-0', HEALTH_DOT[resumen.worstHealth] ?? 'bg-gray-400')}
+        title={`Health: ${resumen.worstHealth}`}
+      />
+      <span className="text-[11px] text-muted-foreground">{resumen.totalActivo}</span>
+      {resumen.hasOpenCircuit && (
+        <span className="text-[10px] font-semibold px-1 py-0.5 rounded bg-red-500/15 text-red-400 leading-none" title="Circuit breaker abierto">
+          CB
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function OltsConfigPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -40,6 +67,15 @@ export default function OltsConfigPage() {
     queryKey: ['olts-config'],
     queryFn:  oltNativoApi.listar,
   });
+
+  const { data: resumenList = [] } = useQuery({
+    queryKey: ['olts-proveedores-resumen'],
+    queryFn:  oltNativoApi.resumenProveedores,
+    staleTime: 30_000,
+    enabled:   olts.length > 0,
+  });
+
+  const resumenMap = new Map(resumenList.map((r) => [r.oltId, r]));
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => oltNativoApi.eliminar(id),
@@ -123,6 +159,7 @@ export default function OltsConfigPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden lg:table-cell">Slots / Puertos</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden sm:table-cell">ONUs activas</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">Proveedores</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -169,6 +206,9 @@ export default function OltsConfigPage() {
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell text-muted-foreground">
                     {olt.onusActivas}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell">
+                    <ProveedorChips resumen={resumenMap.get(olt.id)} />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">

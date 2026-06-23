@@ -171,6 +171,13 @@ export interface OltProveedorConfig {
   updatedAt:         string;
 }
 
+export interface ProveedorResumen {
+  oltId:          string;
+  worstHealth:    HealthEstado;
+  hasOpenCircuit: boolean;
+  totalActivo:    number;
+}
+
 export interface UpsertProveedorDto {
   tipo:          TipoProveedor;
   prioridad?:    number;
@@ -319,5 +326,10 @@ export const oltNativoApi = {
 
   resetCircuit: async (configId: string): Promise<void> => {
     await api.post(`/olt-nativo/proveedores/${configId}/reset-circuit`);
+  },
+
+  resumenProveedores: async (): Promise<ProveedorResumen[]> => {
+    const res = await api.get<ApiRespuesta<ProveedorResumen[]>>('/olt-nativo/proveedores/resumen');
+    return res.data.data ?? [];
   },
 };

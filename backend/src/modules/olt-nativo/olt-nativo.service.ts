@@ -453,6 +453,42 @@ export class OltNativoService implements OnModuleInit {
     await this.breaker.resetForzado(configId);
   }
 
+  async resumenProveedores(empresaId: string): Promise<Array<{
+    oltId:          string;
+    worstHealth:    string;
+    hasOpenCircuit: boolean;
+    totalActivo:    number;
+  }>> {
+    this.assertNotDegraded();
+    const rows = await this.ds.query<Array<{
+      olt_id:           string;
+      worst_health:     string;
+      has_open_circuit: boolean;
+      total_activo:     string;
+    }>>(`
+      SELECT
+        olt_id,
+        CASE
+          WHEN bool_or(health_estado = 'down')     THEN 'down'
+          WHEN bool_or(health_estado = 'degraded') THEN 'degraded'
+          WHEN bool_or(health_estado = 'unknown')  THEN 'unknown'
+          ELSE 'ok'
+        END AS worst_health,
+        bool_or(circuit_estado = 'open') AS has_open_circuit,
+        COUNT(*)::int AS total_activo
+      FROM olt_proveedor_config
+      WHERE empresa_id = $1 AND activo = TRUE
+      GROUP BY olt_id
+    `, [empresaId]);
+
+    return rows.map((r) => ({
+      oltId:          r.olt_id,
+      worstHealth:    r.worst_health,
+      hasOpenCircuit: r.has_open_circuit,
+      totalActivo:    Number(r.total_activo),
+    }));
+  }
+
   // ────────────────────────────────────────────────────────────
   // PRIVADOS — flujos por driver
   // ────────────────────────────────────────────────────────────

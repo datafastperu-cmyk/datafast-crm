@@ -204,6 +204,14 @@ export class OltNativoController {
   //  GESTIÓN DE PROVEEDORES MULTI-PROVEEDOR
   // ═══════════════════════════════════════════════════════════════
 
+  // Debe declararse ANTES de :oltId/proveedores para que NestJS
+  // lo resuelva como ruta literal y no como param UUID.
+  @Get('proveedores/resumen')
+  @ApiOperation({ summary: 'Resumen de salud de proveedores por OLT (una sola query, sin N+1)' })
+  async resumenProveedores(@CurrentUser() user: JwtPayload) {
+    return this.service.resumenProveedores(user.empresaId);
+  }
+
   @Get(':oltId/proveedores')
   @ApiOperation({ summary: 'Listar configuraciones de proveedor para una OLT' })
   @ApiParam({ name: 'oltId' })
