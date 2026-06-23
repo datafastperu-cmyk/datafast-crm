@@ -2698,7 +2698,6 @@ function ModalFacturaServicio({
   });
   const [periodoFin,      setPeriodoFin]      = useState(endOfMonthStr);
   const [fechaVenc,       setFechaVenc]       = useState('');
-  const [aplicaIgv,       setAplicaIgv]       = useState(true);
   const [descripcion,     setDescripcion]     = useState('');
   const [items,           setItems]           = useState<LineaItem[]>([]);
   const [submitted, setSubmitted] = useState(false);
@@ -2723,6 +2722,7 @@ function ModalFacturaServicio({
 
   // Comprobante activo (siempre el predeterminado de empresa)
   const comprobanteActivo = comprobantes.find(c => c.esDefault) ?? comprobantes[0];
+  const aplicaIgv         = comprobanteActivo?.tieneCargaFiscal ?? false;
   const seriePreview = comprobanteActivo
     ? `${comprobanteActivo.serie}-${String((comprobanteActivo.correlativoActual ?? 0) + 1).padStart(4, '0')}`
     : null;
@@ -2919,26 +2919,14 @@ function ModalFacturaServicio({
             </div>
           </div>
 
-          {/* Totales + IGV */}
+          {/* Totales */}
           <div className="flex items-end justify-between gap-6">
-            {/* IGV toggle */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <div
-                onClick={() => setAplicaIgv(v => !v)}
-                className={cn(
-                  'relative w-9 h-5 rounded-full transition-colors',
-                  aplicaIgv ? 'bg-primary' : 'bg-muted',
-                )}
-              >
-                <div className={cn(
-                  'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
-                  aplicaIgv ? 'translate-x-4' : 'translate-x-0.5',
-                )} />
-              </div>
-              <span className="text-sm text-muted-foreground">Aplica IGV 18%</span>
-            </label>
-
-            {/* Totals */}
+            {aplicaIgv
+              ? <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
+                  Carga fiscal (IGV 18%) según tipo de comprobante
+                </p>
+              : <span />}
             <div className="text-right space-y-1 min-w-[200px]">
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>Subtotal</span>
