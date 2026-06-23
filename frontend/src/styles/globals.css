@@ -67,6 +67,17 @@ select option {
     --sidebar-width:          248px;
     --sidebar-collapsed:      64px;
     --topbar-height:          58px;
+
+    /* ── Escala tipográfica — tokens de tamaño ──────────────────────────── */
+    --text-xs:   0.6875rem;  /* 11px — badges, captions */
+    --text-sm:   0.8125rem;  /* 13px — labels, metadata */
+    --text-base: 0.9375rem;  /* 15px — body, tablas */
+    --text-md:   1.125rem;   /* 18px — subtítulos de sección */
+    --text-lg:   1.375rem;   /* 22px — títulos de página */
+    --text-xl:   1.75rem;    /* 28px — KPIs, métricas */
+
+    /* ── Touch targets mínimos WCAG 2.5.5 ──────────────────────────────── */
+    --touch-target: 44px;
   }
 
   /* ── Tema oscuro — Capas navy derivadas de #050D51 ─────────────────── */

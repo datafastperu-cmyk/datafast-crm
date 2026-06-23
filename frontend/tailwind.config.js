@@ -90,6 +90,46 @@ module.exports = {
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
 
+      /* ── Sistema de espaciado en grid de 4px ──────────────────────────── */
+      spacing: {
+        '0':  '0px',
+        '1':  '4px',
+        '2':  '8px',
+        '3':  '12px',
+        '4':  '16px',
+        '5':  '20px',
+        '6':  '24px',
+        '7':  '28px',
+        '8':  '32px',
+        '9':  '36px',
+        '10': '40px',
+        '11': '44px',  /* mínimo touch target WCAG 2.5.5 */
+        '12': '48px',
+        '14': '56px',  /* altura topbar */
+        '16': '64px',  /* sidebar colapsado */
+        '20': '80px',
+        '24': '96px',
+        '32': '128px',
+        '40': '160px',
+        '48': '192px',
+        '56': '224px',
+        '62': '248px', /* sidebar expandido */
+        '64': '256px',
+      },
+
+      /* ── Z-Index semánticos — único punto de verdad ────────────────────── */
+      zIndex: {
+        'base':     '0',
+        'raised':   '10',
+        'sticky':   '100',
+        'sidebar':  '200',
+        'topbar':   '300',
+        'dropdown': '400',
+        'modal':    '500',
+        'toast':    '600',
+        'tooltip':  '700',
+      },
+
       backdropBlur: {
         xs: '2px',
       },
