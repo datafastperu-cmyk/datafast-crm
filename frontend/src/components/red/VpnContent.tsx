@@ -192,7 +192,7 @@ export function VpnContent() {
             className={cn(
               'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors',
               tab === t.id
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
@@ -212,11 +212,11 @@ export function VpnContent() {
           ) : !status?.installed ? (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-5 text-sm">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-medium text-yellow-300 mb-1">OpenVPN no está instalado</p>
-                  <p className="text-yellow-400/80 text-xs">
-                    El instalador del sistema ejecuta <code className="bg-white/5 px-1 rounded">scripts/openvpn-setup.sh</code> automáticamente.
+                  <p className="font-medium text-yellow-700 dark:text-yellow-300 mb-1">OpenVPN no está instalado</p>
+                  <p className="text-yellow-600/80 dark:text-yellow-400/80 text-xs">
+                    El instalador del sistema ejecuta <code className="bg-muted/60 px-1 rounded">scripts/openvpn-setup.sh</code> automáticamente.
                     Si instalaste manualmente, ejecuta ese script en el VPS.
                   </p>
                 </div>
@@ -229,31 +229,31 @@ export function VpnContent() {
                 <StatusCard
                   label="Servicio"
                   value={status.serviceActive ? 'Activo' : 'Detenido'}
-                  icon={status.serviceActive ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <XCircle className="w-4 h-4 text-red-400" />}
+                  icon={status.serviceActive ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-red-500" />}
                   ok={status.serviceActive}
                 />
                 <StatusCard
                   label="Versión"
                   value={status.openvpnVersion || '—'}
-                  icon={<Server className="w-4 h-4 text-blue-400" />}
+                  icon={<Server className="w-4 h-4 text-blue-500" />}
                   ok
                 />
                 <StatusCard
                   label="Clientes conectados"
                   value={String(status.connectedClients.length)}
-                  icon={<Users className="w-4 h-4 text-purple-400" />}
+                  icon={<Users className="w-4 h-4 text-purple-500" />}
                   ok
                 />
                 <StatusCard
                   label="Interfaz TUN"
                   value={status.tunIp ? `tun0 — ${status.tunIp}` : (status.tunInterface ?? 'No disponible')}
-                  icon={<Router className="w-4 h-4 text-cyan-400" />}
+                  icon={<Router className="w-4 h-4 text-cyan-500" />}
                   ok={!!status.tunInterface}
                 />
               </div>
 
               {/* Info adicional */}
-              <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-4 grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+              <div className="bg-card border border-border rounded-xl p-4 grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
                 <InfoRow label="Puerto"      value={`${status.port}/${status.protocol.toUpperCase()}`} />
                 <InfoRow label="Red VPN"     value={status.network} />
                 <InfoRow label="IP servidor" value={status.serverIp || '—'} />
@@ -263,8 +263,8 @@ export function VpnContent() {
               </div>
 
               {/* Controles del servicio */}
-              <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-4">
-                <h3 className="text-xs font-medium text-gray-400 mb-3">Control del servicio</h3>
+              <div className="bg-card border border-border rounded-xl p-4">
+                <h3 className="text-xs font-medium text-muted-foreground mb-3">Control del servicio</h3>
                 <div className="flex flex-wrap gap-2">
                   <ServiceBtn
                     label="Iniciar"
@@ -292,7 +292,7 @@ export function VpnContent() {
                   />
                   <button
                     onClick={() => refetchStatus()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-white/5 rounded-lg transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground bg-muted/40 rounded-lg transition-colors"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     Actualizar
@@ -302,14 +302,14 @@ export function VpnContent() {
 
               {/* Clientes conectados ahora */}
               {status.connectedClients.length > 0 && (
-                <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-4">
-                  <h3 className="text-xs font-medium text-gray-400 mb-3">
+                <div className="bg-card border border-border rounded-xl p-4">
+                  <h3 className="text-xs font-medium text-muted-foreground mb-3">
                     Clientes conectados ahora ({status.connectedClients.length})
                   </h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-gray-500 border-b border-white/5">
+                        <tr className="text-muted-foreground/70 border-b border-border/40">
                           <th className="text-left pb-2 pr-4">Nombre</th>
                           <th className="text-left pb-2 pr-4">IP Real</th>
                           <th className="text-left pb-2 pr-4">IP VPN</th>
@@ -319,12 +319,12 @@ export function VpnContent() {
                       </thead>
                       <tbody>
                         {status.connectedClients.map((c) => (
-                          <tr key={c.commonName} className="border-b border-white/5 last:border-0">
-                            <td className="py-2 pr-4 font-mono text-white">{c.commonName}</td>
-                            <td className="py-2 pr-4 text-gray-300">{c.realAddress}</td>
-                            <td className="py-2 pr-4 text-emerald-300 font-mono">{c.vpnAddress}</td>
-                            <td className="py-2 pr-4 text-gray-400">{formatBytes(c.bytesReceived)}</td>
-                            <td className="py-2 text-gray-400">{formatBytes(c.bytesSent)}</td>
+                          <tr key={c.commonName} className="border-b border-border/40 last:border-0">
+                            <td className="py-2 pr-4 font-mono text-foreground">{c.commonName}</td>
+                            <td className="py-2 pr-4 text-muted-foreground">{c.realAddress}</td>
+                            <td className="py-2 pr-4 text-emerald-600 dark:text-emerald-400 font-mono">{c.vpnAddress}</td>
+                            <td className="py-2 pr-4 text-muted-foreground">{formatBytes(c.bytesReceived)}</td>
+                            <td className="py-2 text-muted-foreground">{formatBytes(c.bytesSent)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -346,9 +346,9 @@ export function VpnContent() {
             </div>
           ) : (
             <>
-              <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5 space-y-4">
+              <div className="bg-card border border-border rounded-xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-medium text-white text-sm flex items-center gap-2">
+                  <h2 className="font-medium text-foreground text-sm flex items-center gap-2">
                     <Server className="w-4 h-4 text-primary" />
                     Parámetros del servidor
                   </h2>
@@ -356,7 +356,7 @@ export function VpnContent() {
                     <button
                       onClick={() => syncMut.mutate()}
                       disabled={syncMut.isPending}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors disabled:opacity-50"
                     >
                       {syncMut.isPending
                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -368,35 +368,35 @@ export function VpnContent() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <label className="text-xs text-gray-400 mb-1 block">Nombre</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">Nombre</label>
                     <input
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={form.nombre}
                       onChange={(e) => set('nombre', e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">IP pública del VPS *</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">IP pública del VPS *</label>
                     <input
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={form.servidorIp}
                       onChange={(e) => set('servidorIp', e.target.value)}
                       placeholder="149.34.48.224"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Puerto</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">Puerto</label>
                     <input
                       type="number"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={form.puerto}
                       onChange={(e) => set('puerto', parseInt(e.target.value))}
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Protocolo</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">Protocolo</label>
                     <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={form.protocolo}
                       onChange={(e) => set('protocolo', e.target.value)}
                     >
@@ -405,9 +405,9 @@ export function VpnContent() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Dispositivo</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">Dispositivo</label>
                     <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={form.dispositivo}
                       onChange={(e) => set('dispositivo', e.target.value)}
                     >
@@ -416,18 +416,18 @@ export function VpnContent() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Red VPN</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">Red VPN</label>
                     <input
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={form.vpnNetwork}
                       onChange={(e) => set('vpnNetwork', e.target.value)}
                       placeholder="10.8.0.0"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Máscara VPN</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">Máscara VPN</label>
                     <input
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                      className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                       value={form.vpnNetmask}
                       onChange={(e) => set('vpnNetmask', e.target.value)}
                       placeholder="255.255.255.0"
@@ -438,7 +438,7 @@ export function VpnContent() {
                 {/* Certificados colapsables */}
                 <button
                   onClick={() => setShowCerts(!showCerts)}
-                  className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
+                  className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showCerts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   Certificados y claves PKI
@@ -454,10 +454,10 @@ export function VpnContent() {
                       { key: 'taKey',      label: 'TLS-Crypt Key (ta.key)' },
                     ].map(({ key, label }) => (
                       <div key={key}>
-                        <label className="text-xs text-gray-400 mb-1 block">{label}</label>
+                        <label className="text-xs text-muted-foreground mb-1 block">{label}</label>
                         <textarea
                           rows={3}
-                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-gray-300 focus:outline-none focus:border-primary/50 resize-none"
+                          className="w-full bg-background border border-input rounded-lg px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
                           value={(form as any)[key] ?? ''}
                           onChange={(e) => set(key as any, e.target.value)}
                           placeholder="-----BEGIN ..."
@@ -481,14 +481,14 @@ export function VpnContent() {
                     <>
                       <button
                         onClick={() => openvpnApi.downloadServerConf().catch(() => toast('Error al descargar', { type: 'error' }))}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white/10 text-white rounded-lg hover:bg-white/15 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors"
                       >
                         <Download className="w-4 h-4" />
                         server.conf
                       </button>
                       <button
                         onClick={() => openvpnApi.downloadInstrucciones().catch(() => toast('Error al descargar', { type: 'error' }))}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white/10 text-white rounded-lg hover:bg-white/15 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors"
                       >
                         <Download className="w-4 h-4" />
                         Instrucciones
@@ -500,8 +500,8 @@ export function VpnContent() {
 
               {/* Descarga por router (legacy inline) */}
               {config && routers.length > 0 && (
-                <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5">
-                  <h2 className="font-medium text-white text-sm flex items-center gap-2 mb-4">
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <h2 className="font-medium text-foreground text-sm flex items-center gap-2 mb-4">
                     <Router className="w-4 h-4 text-primary" />
                     .ovpn inline por router (certs de BD)
                   </h2>
@@ -509,13 +509,13 @@ export function VpnContent() {
                     {routers.map((r) => (
                       <div
                         key={r.id}
-                        className="flex items-center justify-between p-3 rounded-lg border border-white/10 hover:border-white/20 transition-colors"
+                        className="flex items-center justify-between p-3 rounded-lg border border-border hover:border-muted-foreground/40 transition-colors"
                       >
                         <div>
-                          <div className="text-sm font-medium text-white">{r.nombre}</div>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-sm font-medium text-foreground">{r.nombre}</div>
+                          <div className="text-xs text-muted-foreground">
                             {r.ipGestion}
-                            {r.vpnIp && <span className="ml-2 text-blue-400">VPN: {r.vpnIp}</span>}
+                            {r.vpnIp && <span className="ml-2 text-blue-600 dark:text-blue-400">VPN: {r.vpnIp}</span>}
                           </div>
                         </div>
                         <button
@@ -538,15 +538,15 @@ export function VpnContent() {
       {/* ── TAB: Certificados ────────────────────────────────────── */}
       {tab === 'clients' && (
         <div className="space-y-4">
-          <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5">
+          <div className="bg-card border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-medium text-white text-sm flex items-center gap-2">
+              <h2 className="font-medium text-foreground text-sm flex items-center gap-2">
                 <Key className="w-4 h-4 text-primary" />
                 Certificados de clientes
               </h2>
               <button
                 onClick={() => refetchClients()}
-                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Actualizar
@@ -556,7 +556,7 @@ export function VpnContent() {
             {/* Generar nuevo */}
             <div className="flex gap-2 mb-4">
               <input
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/50"
+                className="flex-1 bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="Nombre del cliente (ej: router-sucursal-norte)"
                 value={newClientName}
                 onChange={(e) => setNewClientName(e.target.value)}
@@ -609,7 +609,7 @@ export function VpnContent() {
                       <button
                         onClick={() => setPendingRevoke(name)}
                         disabled={revokeMut.isPending}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-500/10 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-500/20 transition-colors disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         Revocar
@@ -625,15 +625,15 @@ export function VpnContent() {
 
       {/* ── TAB: Logs ────────────────────────────────────────────── */}
       {tab === 'logs' && (
-        <div className="bg-[hsl(var(--sidebar-bg))] border border-white/10 rounded-xl p-5">
+        <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-medium text-white text-sm flex items-center gap-2">
+            <h2 className="font-medium text-foreground text-sm flex items-center gap-2">
               <Terminal className="w-4 h-4 text-primary" />
               Log del servidor OpenVPN
             </h2>
             <button
               onClick={() => refetchLogs()}
-              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               Actualizar
@@ -641,15 +641,15 @@ export function VpnContent() {
           </div>
 
           {loadingLogs ? (
-            <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="w-4 h-4 animate-spin" /> Cargando logs...
             </div>
           ) : !logs ? (
-            <p className="text-sm text-gray-500 text-center py-6">
+            <p className="text-sm text-muted-foreground/70 text-center py-6">
               Log no disponible. El servicio debe estar instalado y con logs activos.
             </p>
           ) : (
-            <pre className="text-xs font-mono text-gray-300 bg-black/30 rounded-lg p-4 overflow-x-auto max-h-[500px] overflow-y-auto leading-relaxed whitespace-pre-wrap">
+            <pre className="text-xs font-mono text-foreground/80 bg-muted/60 rounded-lg p-4 overflow-x-auto max-h-[500px] overflow-y-auto leading-relaxed whitespace-pre-wrap">
               {logs}
             </pre>
           )}
@@ -675,7 +675,7 @@ export function VpnContent() {
               <button
                 onClick={() => { revokeMut.mutate(pendingRevoke); setPendingRevoke(null); }}
                 disabled={revokeMut.isPending}
-                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-white hover:bg-destructive/90 transition-colors disabled:opacity-60"
+                className="flex-1 py-2 text-sm rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-60"
               >
                 Revocar
               </button>
@@ -714,8 +714,8 @@ function StatusCard({
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-gray-500 mb-0.5">{label}</div>
-      <div className="text-white font-mono">{value}</div>
+      <div className="text-muted-foreground/70 mb-0.5">{label}</div>
+      <div className="text-foreground font-mono">{value}</div>
     </div>
   );
 }
@@ -727,9 +727,9 @@ function ServiceBtn({
   disabled: boolean; loading: boolean; onClick: () => void;
 }) {
   const colors = {
-    green:  'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20',
-    red:    'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20',
-    yellow: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500/20',
+    green:  'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/25 hover:bg-green-500/20',
+    red:    'bg-red-500/10   text-red-700   dark:text-red-400   border-red-500/25   hover:bg-red-500/20',
+    yellow: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/25 hover:bg-yellow-500/20',
   };
   return (
     <button
