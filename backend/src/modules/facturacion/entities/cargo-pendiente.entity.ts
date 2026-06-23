@@ -18,7 +18,7 @@ export class CargoPendiente extends BaseModel {
   @Column({ name: 'cliente_id' })
   clienteId: string;
 
-  @Column({ name: 'contrato_id', nullable: true })
+  @Column({ name: 'contrato_id', type: 'uuid', nullable: true })
   contratoId: string | null;
 
   // 'reconexion' → siempre aplica IGV
@@ -39,12 +39,12 @@ export class CargoPendiente extends BaseModel {
 
   // null = pendiente de incluir en próxima factura
   // uuid = ya fue incluido en esa factura
-  @Column({ name: 'incluido_en_factura_id', nullable: true })
+  @Column({ name: 'incluido_en_factura_id', type: 'uuid', nullable: true })
   incluidoEnFacturaId: string | null;
 
   @Column({ name: 'incluido_en', type: 'timestamptz', nullable: true })
   incluidoEn: Date | null;
 
-  @Column({ name: 'generado_por', nullable: true })
+  @Column({ name: 'generado_por', type: 'uuid', nullable: true })
   generadoPor: string | null;
 }
