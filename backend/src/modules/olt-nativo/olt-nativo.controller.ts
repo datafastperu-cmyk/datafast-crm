@@ -4,6 +4,7 @@ import {
   Param, ParseUUIDPipe, Post, Put, Query,
   UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import { TipoProveedor } from './entities/olt-proveedor-config.entity';
 import { FileInterceptor }      from '@nestjs/platform-express';
 import { memoryStorage }        from 'multer';
 import {
@@ -210,6 +211,31 @@ export class OltNativoController {
   @ApiOperation({ summary: 'Resumen de salud de proveedores por OLT (una sola query, sin N+1)' })
   async resumenProveedores(@CurrentUser() user: JwtPayload) {
     return this.service.resumenProveedores(user.empresaId);
+  }
+
+  @Get('proveedores/por-tipo')
+  @ApiOperation({ summary: 'Listar todas las configs de un tipo de proveedor (smartolt, adminolt…)' })
+  @ApiQuery({ name: 'tipo', enum: ['nativo_ssh', 'nativo_snmp', 'smartolt', 'adminolt'] })
+  async listarPorTipo(
+    @Query('tipo') tipo: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const TIPOS: TipoProveedor[] = ['nativo_ssh', 'nativo_snmp', 'smartolt', 'adminolt'];
+    if (!TIPOS.includes(tipo as TipoProveedor)) {
+      throw new BadRequestException(`tipo inválido: ${tipo}`);
+    }
+    return this.service.listarPorTipo(tipo as TipoProveedor, user.empresaId);
+  }
+
+  @Post('proveedores/:configId/test')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Probar conectividad de una config de proveedor específica' })
+  @ApiParam({ name: 'configId', description: 'UUID de OltProveedorConfig' })
+  async testProveedor(
+    @Param('configId', ParseUUIDPipe) configId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs: number }> {
+    return this.service.testProveedorConexion(configId, user.empresaId);
   }
 
   @Get(':oltId/proveedores')

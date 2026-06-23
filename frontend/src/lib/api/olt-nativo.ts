@@ -194,6 +194,27 @@ export interface UpsertProveedorDto {
   oltIdExterno?: string;
 }
 
+export interface ProveedorConOlt {
+  id:               string;
+  oltId:            string;
+  oltNombre:        string;
+  oltMarca:         string;
+  tipo:             TipoProveedor;
+  prioridad:        number;
+  activo:           boolean;
+  circuitEstado:    CircuitEstado;
+  healthEstado:     HealthEstado;
+  healthLatenciaMs: number | null;
+  ultimoHealth:     string | null;
+  tieneCredenciales: boolean;
+}
+
+export interface TestProveedorResult {
+  exitoso:    boolean;
+  mensaje:    string;
+  latenciaMs: number;
+}
+
 // ─── API ──────────────────────────────────────────────────────
 
 export const oltNativoApi = {
@@ -331,5 +352,20 @@ export const oltNativoApi = {
   resumenProveedores: async (): Promise<ProveedorResumen[]> => {
     const res = await api.get<ApiRespuesta<ProveedorResumen[]>>('/olt-nativo/proveedores/resumen');
     return res.data.data ?? [];
+  },
+
+  listarPorTipo: async (tipo: TipoProveedor): Promise<ProveedorConOlt[]> => {
+    const res = await api.get<ApiRespuesta<ProveedorConOlt[]>>(
+      '/olt-nativo/proveedores/por-tipo',
+      { params: { tipo } },
+    );
+    return res.data.data ?? [];
+  },
+
+  testProveedor: async (configId: string): Promise<TestProveedorResult> => {
+    const res = await api.post<ApiRespuesta<TestProveedorResult>>(
+      `/olt-nativo/proveedores/${configId}/test`,
+    );
+    return res.data.data;
   },
 };

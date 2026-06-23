@@ -393,6 +393,88 @@ export class OltNativoService implements OnModuleInit {
     });
   }
 
+  async listarPorTipo(
+    tipo:      TipoProveedor,
+    empresaId: string,
+  ): Promise<Array<{
+    id:               string;
+    oltId:            string;
+    oltNombre:        string;
+    oltMarca:         string;
+    tipo:             TipoProveedor;
+    prioridad:        number;
+    activo:           boolean;
+    circuitEstado:    string;
+    healthEstado:     string;
+    healthLatenciaMs: number | null;
+    ultimoHealth:     string | null;
+    tieneCredenciales: boolean;
+  }>> {
+    this.assertNotDegraded();
+    const rows = await this.ds.query<Array<{
+      id:                string;
+      olt_id:            string;
+      olt_nombre:        string;
+      olt_marca:         string;
+      tipo:              string;
+      prioridad:         number;
+      activo:            boolean;
+      circuit_estado:    string;
+      health_estado:     string;
+      health_latencia_ms: number | null;
+      ultimo_health:     string | null;
+      tiene_credenciales: boolean;
+    }>>(`
+      SELECT
+        c.id,
+        c.olt_id,
+        o.nombre   AS olt_nombre,
+        o.marca    AS olt_marca,
+        c.tipo,
+        c.prioridad,
+        c.activo,
+        c.circuit_estado,
+        c.health_estado,
+        c.health_latencia_ms,
+        c.ultimo_health,
+        (c.credenciales ? 'api_key_cifrado') AS tiene_credenciales
+      FROM olt_proveedor_config c
+      JOIN olt_dispositivos     o ON o.id = c.olt_id
+      WHERE c.empresa_id = $1
+        AND c.tipo       = $2
+        AND o.deleted_at IS NULL
+      ORDER BY o.nombre, c.prioridad
+    `, [empresaId, tipo]);
+
+    return rows.map((r) => ({
+      id:               r.id,
+      oltId:            r.olt_id,
+      oltNombre:        r.olt_nombre,
+      oltMarca:         r.olt_marca,
+      tipo:             r.tipo as TipoProveedor,
+      prioridad:        r.prioridad,
+      activo:           r.activo,
+      circuitEstado:    r.circuit_estado,
+      healthEstado:     r.health_estado,
+      healthLatenciaMs: r.health_latencia_ms,
+      ultimoHealth:     r.ultimo_health ?? null,
+      tieneCredenciales: r.tiene_credenciales,
+    }));
+  }
+
+  async testProveedorConexion(
+    configId:  string,
+    empresaId: string,
+  ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs: number }> {
+    this.assertNotDegraded();
+    const result = await this.router.testConexionPorConfig(empresaId, configId);
+    return {
+      exitoso:    result.exitoso,
+      mensaje:    result.mensaje,
+      latenciaMs: result.latenciaMs ?? 0,
+    };
+  }
+
   async upsertProveedor(
     oltId:     string,
     empresaId: string,

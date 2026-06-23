@@ -85,6 +85,26 @@ export class OltOperationRouter {
     );
   }
 
+  // ── Test de un proveedor específico por configId ─────────────
+  async testConexionPorConfig(
+    empresaId: string,
+    configId:  string,
+  ): Promise<OltOperacionResult> {
+    const config = await this.configRepo.findOne({ where: { id: configId, empresaId } });
+    if (!config) {
+      throw new NotFoundException(`Configuración de proveedor ${configId} no encontrada`);
+    }
+
+    const olt = await this.oltRepo.findOne({
+      where: { id: config.oltId, deletedAt: IsNull() as any },
+    });
+    if (!olt) throw new NotFoundException(`OLT ${config.oltId} no encontrada`);
+
+    const provider = this.registry.get(config.tipo);
+    const creds    = this._buildCreds(config);
+    return provider.testConexion(olt, creds);
+  }
+
   // ── Descubrir ONUs — lectura, sin lock ───────────────────────
   async descubrirOnus(
     empresaId: string,
