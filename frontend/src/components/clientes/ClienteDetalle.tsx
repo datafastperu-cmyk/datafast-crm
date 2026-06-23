@@ -2693,8 +2693,6 @@ function ModalFacturaServicio({
     staleTime: 5 * 60 * 1000,
   });
 
-  const [comprobanteConfigId, setComprobanteConfigId] = useState('');
-  const [contratoId,      setContratoId]      = useState(contratos[0]?.id ?? '');
   const [periodoInicio,   setPeriodoInicio]   = useState(() => {
     const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
   });
@@ -2702,39 +2700,29 @@ function ModalFacturaServicio({
   const [fechaVenc,       setFechaVenc]       = useState('');
   const [aplicaIgv,       setAplicaIgv]       = useState(true);
   const [descripcion,     setDescripcion]     = useState('');
-  const [items,           setItems]           = useState<LineaItem[]>([
-    { descripcion: 'Servicio de Internet', cantidad: 1, precioUnitario: 0, descuento: 0 },
-  ]);
+  const [items,           setItems]           = useState<LineaItem[]>([]);
   const [submitted, setSubmitted] = useState(false);
 
-  // ── Auto-fill desde contrato seleccionado ────────────────────
+  // ── Auto-fill desde todos los servicios activos del abonado ──
   useEffect(() => {
-    const c = contratos.find(x => x.id === contratoId);
-    if (!c) return;
-
-    // Item[0]: descripcion desde planNombre + velocidad, precio desde precioFinal
-    const itemDesc = c.planNombre
-      ? c.planNombre
-      : c.velocidadBajada
-        ? `Internet ${c.velocidadBajada} Mbps`
-        : 'Servicio de Internet';
-
-    setItems(prev => prev.map((it, i) =>
-      i === 0 ? { ...it, descripcion: itemDesc, precioUnitario: c.precioFinal ?? 0 } : it,
-    ));
-
-    // Descripción general: "Servicio de Internet · Junio 2026"
-    if (periodoInicio) {
-      const [y, m] = periodoInicio.split('-');
-      setDescripcion(`Servicio de Internet · ${mesNombre(parseInt(m))} ${y}`);
+    const facturables = contratos.filter(c => c.estado !== 'baja_definitiva');
+    if (facturables.length > 0) {
+      setItems(facturables.map(c => ({
+        descripcion:    c.planNombre || (c.velocidadBajada ? `Internet ${c.velocidadBajada} Mbps` : 'Servicio de Internet'),
+        cantidad:       1,
+        precioUnitario: c.precioFinal ?? 0,
+        descuento:      c.descuentoPct ?? 0,
+      })));
+    } else {
+      setItems([{ descripcion: 'Servicio de Internet', cantidad: 1, precioUnitario: 0, descuento: 0 }]);
     }
+    const [y, m] = periodoInicio.split('-');
+    setDescripcion(`Servicio de Internet · ${mesNombre(parseInt(m))} ${y}`);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contratoId]);
+  }, []);
 
-  // Comprobante activo (seleccionado o default)
-  const comprobanteActivo = comprobanteConfigId
-    ? comprobantes.find(c => c.id === comprobanteConfigId)
-    : comprobantes.find(c => c.esDefault) ?? comprobantes[0];
+  // Comprobante activo (siempre el predeterminado de empresa)
+  const comprobanteActivo = comprobantes.find(c => c.esDefault) ?? comprobantes[0];
   const seriePreview = comprobanteActivo
     ? `${comprobanteActivo.serie}-${String((comprobanteActivo.correlativoActual ?? 0) + 1).padStart(4, '0')}`
     : null;
@@ -2765,8 +2753,6 @@ function ModalFacturaServicio({
     mutationFn: () => {
       const dto: CreateFacturaDto = {
         clienteId,
-        contratoId:          contratoId || undefined,
-        comprobanteConfigId: comprobanteConfigId || undefined,
         periodoInicio,
         periodoFin,
         descripcion:     descripcion || undefined,
@@ -2795,9 +2781,14 @@ function ModalFacturaServicio({
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Receipt className="w-5 h-5 text-primary" />
             <h2 className="text-base font-semibold">Nuevo Comprobante de Pago</h2>
+            {seriePreview && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded bg-primary/10 text-primary font-mono font-semibold text-[11px]">
+                {seriePreview}
+              </span>
+            )}
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-5 h-5" />
@@ -2807,39 +2798,7 @@ function ModalFacturaServicio({
         {/* Body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
-          {/* Row 1: tipo + contrato */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Tipo comprobante</label>
-              <select value={comprobanteConfigId} onChange={e => setComprobanteConfigId(e.target.value)} className={inputCls}>
-                <option value="">— Predeterminado empresa —</option>
-                {comprobantes.filter(c => c.activo).map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre.toUpperCase()}</option>
-                ))}
-              </select>
-              {seriePreview && (
-                <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono font-semibold text-[10px]">
-                    {seriePreview}
-                  </span>
-                  número estimado del próximo comprobante
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Contrato</label>
-              <select value={contratoId} onChange={e => setContratoId(e.target.value)} className={inputCls}>
-                <option value="">— Sin contrato —</option>
-                {contratos.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.numeroContrato} {c.planNombre ? `· ${c.planNombre}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Row 2: período + vencimiento */}
+          {/* Período + vencimiento */}
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Período inicio</label>
@@ -2983,17 +2942,17 @@ function ModalFacturaServicio({
             <div className="text-right space-y-1 min-w-[200px]">
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>Subtotal</span>
-                <span>S/. {fmtS(subtotalCalc)}</span>
+                <span>{fmtS(subtotalCalc)}</span>
               </div>
               {aplicaIgv && (
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>IGV (18%)</span>
-                  <span>S/. {fmtS(igvCalc)}</span>
+                  <span>{fmtS(igvCalc)}</span>
                 </div>
               )}
               <div className="flex justify-between text-base font-bold text-foreground border-t border-border pt-1">
                 <span>Total</span>
-                <span className="text-primary">S/. {fmtS(totalCalc)}</span>
+                <span className="text-primary">{fmtS(totalCalc)}</span>
               </div>
             </div>
           </div>
