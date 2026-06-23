@@ -331,6 +331,23 @@ export const oltNativoApi = {
     return res.data.data ?? [];
   },
 
+  verificarOnu: async (
+    oltId: string,
+    params: { slot: number; port: number; onuId: number },
+  ): Promise<{
+    exitoso: boolean;
+    runState: string | null;
+    rxPowerDbm: number | null;
+    txPowerDbm: number | null;
+    error: string | null;
+  }> => {
+    const res = await api.get(
+      `/olt-nativo/${oltId}/verify-onu`,
+      { params: { slot: params.slot, port: params.port, onuId: params.onuId } },
+    );
+    return res.data.data;
+  },
+
   testConexion: async (oltId: string): Promise<TestConexionOltResult> => {
     const res = await api.post<ApiRespuesta<TestConexionOltResult>>(`/olt-nativo/${oltId}/test-conexion`);
     return res.data.data;

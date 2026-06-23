@@ -1,7 +1,7 @@
 import {
   BadRequestException,
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
-  Param, ParseUUIDPipe, Post, Put, Query,
+  Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query,
   UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { TipoProveedor } from './entities/olt-proveedor-config.entity';
@@ -189,6 +189,26 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.testConexion(oltId, user.empresaId);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // GET /olt-nativo/:oltId/verify-onu
+  // Verifica el estado de una ONU post-aprovisionamiento vía SSH
+  // ────────────────────────────────────────────────────────────
+  @Get(':oltId/verify-onu')
+  @ApiOperation({ summary: 'Verificar estado ONU post-aprovisionamiento (SSH → OLT nativo)' })
+  @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
+  @ApiQuery({ name: 'slot',  type: Number })
+  @ApiQuery({ name: 'port',  type: Number })
+  @ApiQuery({ name: 'onuId', type: Number })
+  async verificarOnu(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Query('slot',  ParseIntPipe)  slot:  number,
+    @Query('port',  ParseIntPipe)  port:  number,
+    @Query('onuId', ParseIntPipe)  onuId: number,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.verificarOnu(oltId, user.empresaId, slot, port, onuId);
   }
 
   // ────────────────────────────────────────────────────────────

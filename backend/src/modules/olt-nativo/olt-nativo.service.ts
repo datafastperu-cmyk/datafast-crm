@@ -483,6 +483,70 @@ export class OltNativoService implements OnModuleInit {
     };
   }
 
+  // ─── Verificar estado ONU post-aprovisionamiento ─────────────
+  // Solo disponible para OLTs con proveedor nativo_ssh activo.
+  // No bloquea el flujo de provision — se llama de forma separada.
+  async verificarOnu(
+    oltId:     string,
+    empresaId: string,
+    slot:      number,
+    port:      number,
+    onuId:     number,
+  ): Promise<{
+    exitoso:    boolean;
+    runState:   string | null;
+    rxPowerDbm: number | null;
+    txPowerDbm: number | null;
+    error:      string | null;
+  }> {
+    this.assertNotDegraded();
+
+    const olt = await this.findOlt(oltId, empresaId);
+    const config = await this.proveedorRepo.findOne({
+      where: { oltId, empresaId, tipo: 'nativo_ssh' as TipoProveedor, activo: true },
+    });
+    if (!config) {
+      throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo configurado');
+    }
+
+    const c = config.credenciales as Record<string, unknown>;
+    let password = '';
+    if (c.password_cifrado) {
+      try   { password = decrypt(c.password_cifrado as string); }
+      catch { throw new BadRequestException('No se pudo descifrar la contraseña SSH'); }
+    }
+
+    try {
+      const res = await this.automation.verifyOnu({
+        connection: {
+          ip:       (c.ip       as string) || olt.ipGestion,
+          port:     ((c.port     as number) || olt.puerto) ?? 22,
+          username: (c.username as string) || olt.usuarioAnclado,
+          password,
+          brand:    ((c.brand   as string) || olt.marca).toLowerCase(),
+        },
+        slot,
+        port,
+        onu_id: onuId,
+      });
+      return {
+        exitoso:    res.success,
+        runState:   res.run_state    ?? null,
+        rxPowerDbm: res.rx_power_dbm ?? null,
+        txPowerDbm: res.tx_power_dbm ?? null,
+        error:      res.error        ?? null,
+      };
+    } catch (e: any) {
+      return {
+        exitoso:    false,
+        runState:   null,
+        rxPowerDbm: null,
+        txPowerDbm: null,
+        error:      e?.response?.data?.message ?? e?.message ?? 'Error al verificar ONU',
+      };
+    }
+  }
+
   // ─── Lookup SmartOLT ─────────────────────────────────────────
   // Carga credenciales de una config específica y llama el endpoint de lookup.
   async listarLookupSmartolt(
