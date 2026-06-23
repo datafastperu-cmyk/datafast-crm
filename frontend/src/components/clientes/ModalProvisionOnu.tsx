@@ -36,12 +36,12 @@ function snPrefixHint(marca: string, sn: string): string | null {
 }
 
 function rxColor(v: number | null | undefined): string {
-  if (v == null) return 'text-zinc-500';
-  return v < -30 ? 'text-red-400' : v < -28 ? 'text-amber-400' : 'text-emerald-400';
+  if (v == null) return 'text-muted-foreground';
+  return v < -30 ? 'text-red-600 dark:text-red-400' : v < -28 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400';
 }
 
 function rxBarColor(v: number | null | undefined): string {
-  if (v == null) return 'bg-zinc-600';
+  if (v == null) return 'bg-muted-foreground/30';
   return v < -30 ? 'bg-red-500' : v < -28 ? 'bg-amber-500' : 'bg-emerald-500';
 }
 
@@ -51,9 +51,9 @@ function rxBarPct(v: number | null | undefined): number {
 }
 
 function alarmClass(level: AlarmInfo['level']): string {
-  if (level === 'critical') return 'bg-red-500/10 border-red-500/30 text-red-400';
-  if (level === 'warning')  return 'bg-amber-500/10 border-amber-700/40 text-amber-400';
-  return 'bg-zinc-800 border-zinc-700 text-zinc-400';
+  if (level === 'critical') return 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400';
+  if (level === 'warning')  return 'bg-amber-500/10 border-amber-700/40 text-amber-600 dark:text-amber-400';
+  return 'bg-muted border-border text-muted-foreground';
 }
 
 // ─── Signal Panel ─────────────────────────────────────────────
@@ -61,14 +61,14 @@ function alarmClass(level: AlarmInfo['level']): string {
 function SignalPanel({ data, isLoading }: { data?: MetricasOnuResult; isLoading: boolean }) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-zinc-700 bg-zinc-800/30 p-4 animate-pulse">
-        <div className="h-3 w-24 bg-zinc-700 rounded mb-3" />
+      <div className="rounded-xl border border-border bg-muted/30 p-4 animate-pulse">
+        <div className="h-3 w-24 bg-muted-foreground/20 rounded mb-3" />
         <div className="grid grid-cols-3 gap-4">
           {[0, 1, 2].map(i => (
             <div key={i} className="space-y-2">
-              <div className="h-2.5 w-16 bg-zinc-700 rounded" />
-              <div className="h-7 w-20 bg-zinc-700 rounded" />
-              <div className="h-1.5 w-full bg-zinc-700 rounded-full" />
+              <div className="h-2.5 w-16 bg-muted-foreground/20 rounded" />
+              <div className="h-7 w-20 bg-muted-foreground/20 rounded" />
+              <div className="h-1.5 w-full bg-muted-foreground/20 rounded-full" />
             </div>
           ))}
         </div>
@@ -80,28 +80,28 @@ function SignalPanel({ data, isLoading }: { data?: MetricasOnuResult; isLoading:
 
   if (!data.metricsAvailable) {
     return (
-      <div className="rounded-xl border border-zinc-700 bg-zinc-800/20 p-4 flex items-center gap-3">
-        <WifiOff className="w-5 h-5 text-zinc-500 flex-shrink-0" />
+      <div className="rounded-xl border border-border bg-muted/20 p-4 flex items-center gap-3">
+        <WifiOff className="w-5 h-5 text-muted-foreground flex-shrink-0" />
         <div>
-          <p className="text-xs font-semibold text-zinc-400">ONU sin señal o no registrada en la OLT</p>
-          {data.alarm && <p className="text-[11px] text-zinc-500 mt-0.5">{data.alarm.message}</p>}
+          <p className="text-xs font-semibold text-muted-foreground">ONU sin señal o no registrada en la OLT</p>
+          {data.alarm && <p className="text-[11px] text-muted-foreground/70 mt-0.5">{data.alarm.message}</p>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-zinc-700 bg-zinc-800/30 p-4 space-y-3">
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Signal className="w-4 h-4 text-violet-400" />
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Señal Óptica</span>
+          <Signal className="w-4 h-4 text-violet-500 dark:text-violet-400" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Señal Óptica</span>
         </div>
         <span className={cn(
           'text-[10px] font-semibold px-2 py-0.5 rounded-full border',
           data.status === 'online'
-            ? 'text-emerald-400 border-emerald-700 bg-emerald-500/10'
-            : 'text-amber-400 border-amber-700 bg-amber-500/10',
+            ? 'text-emerald-600 dark:text-emerald-400 border-emerald-700 bg-emerald-500/10'
+            : 'text-amber-600 dark:text-amber-400 border-amber-700 bg-amber-500/10',
         )}>
           {data.status === 'online' ? 'Online' : 'Degradado'}
         </span>
@@ -109,12 +109,12 @@ function SignalPanel({ data, isLoading }: { data?: MetricasOnuResult; isLoading:
 
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <p className="text-[10px] text-zinc-500 uppercase mb-1">Rx 1490nm</p>
+          <p className="text-[10px] text-muted-foreground uppercase mb-1">Rx 1490nm</p>
           <p className={cn('text-xl font-mono font-bold', rxColor(data.rxPowerDbm))}>
             {data.rxPowerDbm?.toFixed(2) ?? '—'}
           </p>
-          <p className="text-[10px] text-zinc-600 mb-1.5">dBm</p>
-          <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+          <p className="text-[10px] text-muted-foreground/50 mb-1.5">dBm</p>
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
             <div
               className={cn('h-full rounded-full transition-all', rxBarColor(data.rxPowerDbm))}
               style={{ width: `${rxBarPct(data.rxPowerDbm)}%` }}
@@ -122,20 +122,20 @@ function SignalPanel({ data, isLoading }: { data?: MetricasOnuResult; isLoading:
           </div>
         </div>
         <div>
-          <p className="text-[10px] text-zinc-500 uppercase mb-1">Tx 1310nm</p>
-          <p className="text-xl font-mono font-bold text-zinc-300">
+          <p className="text-[10px] text-muted-foreground uppercase mb-1">Tx 1310nm</p>
+          <p className="text-xl font-mono font-bold text-foreground">
             {data.txPowerDbm?.toFixed(2) ?? '—'}
           </p>
-          <p className="text-[10px] text-zinc-600">dBm</p>
+          <p className="text-[10px] text-muted-foreground/50">dBm</p>
         </div>
         <div>
-          <p className="text-[10px] text-zinc-500 uppercase mb-1 flex items-center gap-1">
+          <p className="text-[10px] text-muted-foreground uppercase mb-1 flex items-center gap-1">
             <Thermometer className="w-3 h-3" /> Temp
           </p>
-          <p className="text-xl font-mono font-bold text-zinc-300">
+          <p className="text-xl font-mono font-bold text-foreground">
             {data.temperatureC ?? '—'}
           </p>
-          <p className="text-[10px] text-zinc-600">°C</p>
+          <p className="text-[10px] text-muted-foreground/50">°C</p>
         </div>
       </div>
 
@@ -156,35 +156,35 @@ function ConfirmDeleteOnu({
 }: { sn: string; oltNombre: string; isPending: boolean; onConfirm: () => void; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div role="dialog" aria-modal="true" aria-label="Provisionar ONU" className="w-full max-w-sm bg-zinc-900 border border-amber-700/40 rounded-2xl shadow-2xl">
-        <div className="px-5 py-4 border-b border-zinc-700 flex items-center gap-3">
+      <div role="dialog" aria-modal="true" aria-label="Provisionar ONU" className="w-full max-w-sm bg-card border border-amber-700/40 rounded-2xl shadow-2xl">
+        <div className="px-5 py-4 border-b border-border flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <AlertTriangle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-white">Desaprovisionar ONU</h2>
-            <p className="text-[11px] text-zinc-400">{sn} — {oltNombre}</p>
+            <h2 className="text-sm font-bold text-foreground">Desaprovisionar ONU</h2>
+            <p className="text-[11px] text-muted-foreground">{sn} — {oltNombre}</p>
           </div>
         </div>
         <div className="p-5 space-y-2">
-          <p className="text-sm text-zinc-300">
-            Se enviará el comando de <strong className="text-amber-400">eliminación</strong> a la OLT.
+          <p className="text-sm text-foreground/80">
+            Se enviará el comando de <strong className="text-amber-600 dark:text-amber-400">eliminación</strong> a la OLT.
           </p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted-foreground">
             La operación es reversible, pero requerirá un nuevo aprovisionamiento.
           </p>
         </div>
-        <div className="px-5 py-4 border-t border-zinc-700 flex items-center justify-end gap-3">
+        <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 text-zinc-300 transition-colors"
+            className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted text-foreground/80 transition-colors"
           >
             Cancelar
           </button>
           <button
             onClick={onConfirm}
             disabled={isPending}
-            className="px-5 py-2 text-sm font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="btn-primary px-5 py-2 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
             Desaprovisionar
@@ -200,13 +200,13 @@ function ConfirmDeleteOnu({
 function Field({ label, children, span2 }: { label: string; children: ReactNode; span2?: boolean }) {
   return (
     <div className={span2 ? 'col-span-2' : undefined}>
-      <label className="block text-[11px] text-zinc-400 mb-1">{label}</label>
+      <label className="block text-[11px] text-muted-foreground mb-1">{label}</label>
       {children}
     </div>
   );
 }
 
-const inputCls = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-violet-500 transition-colors';
+const inputCls = 'w-full bg-background border border-input rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors';
 
 // ─── Main Modal ────────────────────────────────────────────────
 
@@ -363,20 +363,20 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
     <Portal>
     <>
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
 
           {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-700 flex-shrink-0">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                <Zap className="w-4 h-4 text-violet-400" />
+                <Zap className="w-4 h-4 text-violet-500 dark:text-violet-400" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white">Aprovisionar / Monitorear ONU</h2>
-                <p className="text-[11px] text-zinc-400">Contrato {contrato.numeroContrato}</p>
+                <h2 className="text-sm font-bold text-foreground">Aprovisionar / Monitorear ONU</h2>
+                <p className="text-[11px] text-muted-foreground">Contrato {contrato.numeroContrato}</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
+            <button onClick={onClose} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -384,8 +384,8 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
           {/* Orange fallback banner */}
           {deleteFailed && (
             <div className="flex items-start gap-3 bg-orange-500/10 border-b border-orange-500/30 px-5 py-3 flex-shrink-0">
-              <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-orange-300">
+              <AlertTriangle className="w-4 h-4 text-orange-500 dark:text-orange-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-orange-700 dark:text-orange-300">
                 La ONU no pudo ser removida físicamente de la OLT. Los datos locales han sido
                 conservados para desaprovisionamiento manual.
               </p>
@@ -397,13 +397,13 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
 
             {/* OLT Selector */}
             <div>
-              <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">OLT de Destino</h3>
+              <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">OLT de Destino</h3>
               {oltsLoading ? (
                 <div className="space-y-2 animate-pulse">
-                  {[0, 1].map(i => <div key={i} className="h-12 bg-zinc-800 rounded-xl" />)}
+                  {[0, 1].map(i => <div key={i} className="h-12 bg-muted/40 rounded-xl" />)}
                 </div>
               ) : olts.length === 0 ? (
-                <p className="text-xs text-zinc-500 italic">No hay OLTs configuradas en el sistema.</p>
+                <p className="text-xs text-muted-foreground italic">No hay OLTs configuradas en el sistema.</p>
               ) : (
                 <div className="grid gap-2">
                   {olts.map((olt: OltDispositivo) => (
@@ -415,26 +415,26 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
                         'w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors',
                         selectedOltId === olt.id
                           ? 'border-violet-500/50 bg-violet-500/10'
-                          : 'border-zinc-700 hover:border-zinc-500 hover:bg-zinc-800/40',
+                          : 'border-border hover:border-input hover:bg-muted/40',
                       )}
                     >
                       <div className={cn(
                         'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0',
-                        selectedOltId === olt.id ? 'border-violet-500 bg-violet-500' : 'border-zinc-600',
+                        selectedOltId === olt.id ? 'border-violet-500 bg-violet-500' : 'border-muted-foreground/30',
                       )}>
                         {selectedOltId === olt.id && <div className="w-2 h-2 rounded-full bg-white" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-white truncate">{olt.nombre}</p>
-                        <p className="text-[11px] text-zinc-500">{olt.ipGestion} — {olt.marca.toUpperCase()} {olt.modelo ?? ''}</p>
+                        <p className="text-xs font-semibold text-foreground truncate">{olt.nombre}</p>
+                        <p className="text-[11px] text-muted-foreground">{olt.ipGestion} — {olt.marca.toUpperCase()} {olt.modelo ?? ''}</p>
                       </div>
                       <span className={cn(
                         'text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0',
                         olt.estado === 'online'
-                          ? 'text-emerald-400 border-emerald-700 bg-emerald-500/10'
+                          ? 'text-emerald-600 dark:text-emerald-400 border-emerald-700 bg-emerald-500/10'
                           : olt.estado === 'offline'
-                            ? 'text-red-400 border-red-800 bg-red-500/10'
-                            : 'text-zinc-500 border-zinc-700',
+                            ? 'text-red-600 dark:text-red-400 border-red-800 bg-red-500/10'
+                            : 'text-muted-foreground border-border',
                       )}>
                         {olt.estado}
                       </span>
@@ -447,7 +447,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
             {/* Signal Panel */}
             {metricsEnabled && (
               <div>
-                <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-2">Señal Actual</h3>
+                <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Señal Actual</h3>
                 <SignalPanel data={metrics} isLoading={metricsFetching} />
               </div>
             )}
@@ -455,19 +455,19 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
             {/* Form */}
             {selectedOlt && (
               <div>
-                <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wide mb-3">
+                <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                   Parámetros de Aprovisionamiento
                 </h3>
                 <div className="grid grid-cols-2 gap-3">
                   {/* SN field + Auto-Find scan button */}
                   <div className="col-span-2">
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] text-zinc-400">Serial Number (S/N)</label>
+                      <label className="text-[11px] text-muted-foreground">Serial Number (S/N)</label>
                       {snSelectMode && (
                         <button
                           type="button"
                           onClick={() => { setSnSelectMode(false); setSn(''); }}
-                          className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                         >
                           ⌨ Ingresar manual
                         </button>
@@ -504,8 +504,8 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
                         title="Escanear ONUs no autorizadas en el puerto seleccionado"
                         className={cn(
                           'flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors flex-shrink-0',
-                          'border-zinc-600 hover:border-violet-500 hover:bg-violet-500/10 hover:text-violet-400',
-                          'text-zinc-400 disabled:opacity-40 disabled:cursor-not-allowed',
+                          'border-input hover:border-violet-500 hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400',
+                          'text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed',
                         )}
                       >
                         {scanning
@@ -516,12 +516,12 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
                       </button>
                     </div>
                     {scanNoResults && (
-                      <p className="text-[10px] text-zinc-500 mt-1.5 flex items-center gap-1 animate-pulse">
+                      <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1 animate-pulse">
                         No se encontraron ONUs pendientes en este puerto.
                       </p>
                     )}
                     {snHint && !scanNoResults && (
-                      <p className="text-[10px] text-amber-400 mt-1 flex items-center gap-1">
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3 flex-shrink-0" />{snHint}
                       </p>
                     )}
@@ -578,12 +578,12 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
           </div>
 
           {/* Footer */}
-          <div className="px-5 py-4 border-t border-zinc-700 flex items-center justify-between flex-shrink-0">
+          <div className="px-5 py-4 border-t border-border flex items-center justify-between flex-shrink-0">
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={!metricsEnabled || !sn.trim()}
-              className="flex items-center gap-2 px-3 py-2 text-xs rounded-lg border border-zinc-700 hover:border-red-800 hover:bg-red-500/10 text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-3 py-2 text-xs rounded-lg border border-border hover:border-red-800 hover:bg-red-500/10 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5" />
               Quitar ONU
@@ -592,7 +592,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm rounded-lg border border-zinc-700 hover:bg-zinc-800 transition-colors text-zinc-300"
+                className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors text-foreground/80"
               >
                 Cancelar
               </button>
@@ -600,7 +600,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
                 type="button"
                 onClick={() => provisionar()}
                 disabled={!formValid || provIsPending}
-                className="px-5 py-2 text-sm font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="btn-primary px-5 py-2 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {provIsPending
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
