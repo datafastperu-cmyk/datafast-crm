@@ -292,7 +292,7 @@ export class ClientesService {
   // Solo ejecutable si el cliente está en BAJA_DEFINITIVA.
   // Limpia todos los datos relacionados en orden para respetar FK constraints:
   //   ordenes_trabajo → tickets (+comentarios CASCADE) → pagos → facturas
-  //   → contratos (+historial/consumo CASCADE) → cliente (+historial_estados CASCADE)
+  //   → notificaciones_logs (sin FK) → contratos (+historial/consumo CASCADE) → cliente
   // Las llamadas de red (MikroTik / antena) van ANTES de la transacción DB
   // para no mezclar I/O de red con la atomicidad de la transacción.
   async remove(id: string, user: JwtPayload, req?: any): Promise<void> {
@@ -333,30 +333,36 @@ export class ClientesService {
         [id],
       );
 
-      // 5. Contratos (RESTRICT → clientes)
+      // 5. Logs de notificaciones (cliente_id es UUID sin FK — no tiene ON DELETE)
+      await qr.query(
+        `DELETE FROM notificaciones_logs WHERE cliente_id = $1`,
+        [id],
+      );
+
+      // 6. Contratos (RESTRICT → clientes)
       //    contratos_historial y consumo_datos se borran en CASCADE.
       //    ips_asignadas.contrato_id queda en SET NULL (no bloquea).
-      //    notificaciones_logs.contrato_id queda en SET NULL.
+      //    notificaciones_logs.contrato_id queda en SET NULL para logs de otros clientes.
       await qr.query(
         `DELETE FROM contratos WHERE cliente_id = $1`,
         [id],
       );
 
-      // 6. Sincronización Google Contacts (varchar, no hay FK formal)
+      // 7. Sincronización Google Contacts (varchar, no hay FK formal)
       await qr.query(
         `DELETE FROM google_client_contacts WHERE cliente_id = $1`,
         [id],
       );
 
-      // 7. Limpiar auto-referencia referido_por antes del DELETE
+      // 8. Limpiar auto-referencia referido_por antes del DELETE
       await qr.query(
         `UPDATE clientes SET referido_por = NULL WHERE referido_por = $1`,
         [id],
       );
 
-      // 8. Eliminar el cliente
+      // 9. Eliminar el cliente
       //    clientes_historial_estados se borra en CASCADE.
-      //    notificaciones.cliente_id queda en SET NULL automáticamente.
+      //    cargos_pendientes.cliente_id se borra en CASCADE.
       await qr.query(
         `DELETE FROM clientes WHERE id = $1 AND empresa_id = $2`,
         [id, user.empresaId],
