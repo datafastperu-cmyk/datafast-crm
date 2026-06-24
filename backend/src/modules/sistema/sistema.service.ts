@@ -450,11 +450,12 @@ export class SistemaService {
               nl.tipo_template, nl.estado_entrega,
               nl.provider_message_id, nl.proveedor, nl.error_detalle, nl.created_at, nl.sent_at,
               co.numero_contrato,
-              COALESCE(cl.nombre_completo, cl2.nombre_completo) AS cliente_nombre
+              COALESCE(cl.nombre_completo, cl2.nombre_completo, em.razon_social, 'DATAFAST') AS cliente_nombre
        FROM notificaciones_logs nl
        LEFT JOIN contratos co  ON co.id  = nl.contrato_id AND co.deleted_at  IS NULL
        LEFT JOIN clientes  cl  ON cl.id  = co.cliente_id  AND cl.deleted_at  IS NULL
        LEFT JOIN clientes  cl2 ON cl2.id = nl.cliente_id  AND cl2.deleted_at IS NULL
+       LEFT JOIN empresas  em  ON em.id  = nl.empresa_id
        WHERE ${where}
        ORDER BY ${sortCol} ${sortDir}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,

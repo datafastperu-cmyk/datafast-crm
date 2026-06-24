@@ -253,6 +253,12 @@ export class ClientesService {
       await this.terminarContratosCliente(id, user, dto.motivo);
     }
 
+    // Cascada: al suspender, suspender todos los contratos activos del cliente
+    // Esto aplica los cambios al router MikroTik y emite notificación WhatsApp
+    if (dto.estado === EstadoCliente.SUSPENDIDO) {
+      await this.suspenderContratosCliente(id, user, dto.motivo);
+    }
+
     await this.clienteRepo.update(id, user.empresaId, {
       estado:      dto.estado,
       fechaEstado: new Date(),
@@ -417,6 +423,34 @@ export class ClientesService {
     }
 
     this.logger.log(`Baja definitiva cliente ${clienteId}: ${contratos.length} contrato(s) terminado(s)`);
+  }
+
+  // ── Suspender contratos al suspender el cliente ────────────
+  // Cambia todos los contratos activos del cliente a SUSPENDIDO
+  // para que ContratosService.cambiarEstado() aplique los cambios
+  // al router MikroTik y emita la notificación WhatsApp.
+  private async suspenderContratosCliente(clienteId: string, user: JwtPayload, motivo?: string): Promise<void> {
+    const contratos = await this.contratosSvc.findByCliente(clienteId, user.empresaId);
+    if (!contratos.length) return;
+
+    const motivoSuspension = `Suspensión de cliente${motivo ? `: ${motivo}` : ''}`;
+
+    for (const contrato of contratos) {
+      try {
+        if (contrato.estado === EstadoContrato.ACTIVO) {
+          await this.contratosSvc.cambiarEstado(
+            contrato.id,
+            { estado: EstadoContrato.SUSPENDIDO, motivo: motivoSuspension },
+            user,
+            true, // automatico = true, omite validación de transiciones
+          );
+        }
+      } catch (err) {
+        this.logger.error(`Error suspendiendo contrato ${contrato.id} al suspender cliente ${clienteId}: ${err.message}`);
+      }
+    }
+
+    this.logger.log(`Suspensión cliente ${clienteId}: ${contratos.length} contrato(s) suspendido(s)`);
   }
 
   // ── Historial de estados ──────────────────────────────────

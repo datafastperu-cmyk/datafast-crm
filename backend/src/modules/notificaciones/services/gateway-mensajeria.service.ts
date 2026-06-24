@@ -625,14 +625,21 @@ export class GatewayMensajeriaService {
         const [row] = await this.ds.query(`
           SELECT
             cl.nombre_completo       AS nombre_cliente,
+            cl.nombre_completo       AS nombre_completo,
             em.razon_social          AS empresa,
+            em.razon_social          AS empresa_nombre,
             em.telefono              AS telefono_empresa,
             pl.nombre                AS plan,
+            pl.nombre                AS plan_contratado,
             pl.velocidad_bajada::text AS velocidad_bajada,
             pl.velocidad_subida::text AS velocidad_subida,
             co.usuario_pppoe         AS usuario_pppoe,
             co.ip_asignada           AS ip_asignada,
-            co.numero_contrato       AS numero_contrato
+            co.numero_contrato       AS numero_contrato,
+            co.deuda_total::text     AS deuda_total,
+            co.deuda_total::text     AS monto,
+            co.meses_deuda::text     AS dias_vencidos,
+            co.meses_deuda::text     AS meses_deuda
           FROM contratos co
           JOIN clientes  cl ON cl.id = co.cliente_id
           JOIN empresas  em ON em.id = co.empresa_id
@@ -651,7 +658,9 @@ export class GatewayMensajeriaService {
       try {
         const [row] = await this.ds.query(`
           SELECT cl.nombre_completo AS nombre_cliente,
+                 cl.nombre_completo AS nombre_completo,
                  em.razon_social   AS empresa,
+                 em.razon_social   AS empresa_nombre,
                  em.telefono       AS telefono_empresa
           FROM clientes cl, empresas em
           WHERE cl.id = $1 AND em.id = $2
@@ -667,7 +676,8 @@ export class GatewayMensajeriaService {
     } else if (empresaId) {
       try {
         const [row] = await this.ds.query(
-          `SELECT razon_social AS empresa, telefono AS telefono_empresa FROM empresas WHERE id = $1`,
+          `SELECT razon_social AS empresa, razon_social AS empresa_nombre,
+                  telefono AS telefono_empresa FROM empresas WHERE id = $1`,
           [empresaId],
         );
         if (row) {
@@ -677,6 +687,47 @@ export class GatewayMensajeriaService {
         }
       } catch (err: any) {
         this.logger.warn(`[GW] resolveVariables empresaId=${empresaId}: ${err.message}`);
+      }
+    }
+
+    // Garantizar que siempre haya un valor para empresa
+    if (!base['empresa'])      base['empresa']      = 'DATAFAST';
+    if (!base['empresa_nombre']) base['empresa_nombre'] = 'DATAFAST';
+    if (!base['telefono_empresa']) base['telefono_empresa'] = '—';
+
+    // Alias: mapear nombres de variables comunes de eventos a los esperados por plantillas
+    // Esto permite que los templates usen {{monto}} aunque el evento envíe deudaTotal
+    const aliasMap: Record<string, string[]> = {
+      monto:             ['deudaTotal', 'deuda_total', 'monto_factura', 'montoPago', 'montoDeuda'],
+      deuda_total:       ['deudaTotal', 'monto'],
+      monto_factura:     ['montoTotal', 'monto'],
+      dias_vencidos:     ['diasVencido', 'meses_deuda'],
+      dias_vencimiento:  ['diasVencido'],
+      fecha_pago:        ['fechaVencimiento', 'fecha_vencimiento'],
+      plan_contratado:   ['planNombre', 'plan_nombre'],
+      usuario_pppoe:     ['usuarioPppoe'],
+      ip_asignada:       ['ipAsignada'],
+      nombre_completo:   ['nombre_cliente', 'clienteNombre'],
+      clienteNombre:     ['nombre_cliente', 'nombre_completo'],
+      empresa_nombre:    ['nombreEmpresa', 'empresa'],
+      telefono_empresa:  ['telefono'],
+      numero_factura:    ['facturaNumero'],
+      numero_cuenta:     ['numeroCuenta'],
+      link_pago:         ['linkPago'],
+      metodo_pago:       ['metodoPago'],
+      saldo_pendiente:   ['saldoPendiente'],
+      nodo_nombre:       ['nodoNombre'],
+      router_nombre:     ['routerNombre'],
+    };
+
+    // Para cada alias, si el destino no tiene valor pero el origen sí, copiarlo
+    for (const [target, sources] of Object.entries(aliasMap)) {
+      if (base[target]) continue; // ya tiene valor
+      for (const src of sources) {
+        if (eventVars[src]) {
+          base[target] = eventVars[src];
+          break;
+        }
       }
     }
 

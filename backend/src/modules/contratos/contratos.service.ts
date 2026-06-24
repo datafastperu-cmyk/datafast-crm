@@ -537,6 +537,64 @@ export class ContratosService {
     await this.auditoria.logUpdate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:id, descripcion:`Estado: ${anterior} → ${dto.estado}`, req });
 
     if (dto.estado === EstadoContrato.SUSPENDIDO) {
+      // ── Aplicar suspensión en MikroTik (firewall + PPPoE) ──────
+      // Similar a CobranzaWorker.processSuspenderContrato()
+      if (contrato.routerId && contrato.ipAsignada) {
+        setImmediate(async () => {
+          try {
+            const [router] = await this.dataSource.query<any[]>(`
+              SELECT vpn_ip AS "vpnIp", ip_gestion AS "ipGestion",
+                     usuario, password_cifrado AS "passwordCifrado",
+                     usar_ssl AS "usarSsl", puerto_api AS "puertoApi",
+                     puerto_api_ssl AS "puertoApiSsl", version_ros AS "versionRos",
+                     timeout_conexion AS "timeoutConexion"
+              FROM routers WHERE id = $1
+            `, [contrato.routerId]);
+
+            if (router) {
+              const creds = {
+                id:              contrato.routerId,
+                ip:              router.vpnIp || router.ipGestion,
+                port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
+                user:            router.usuario ?? 'admin',
+                passwordCifrado: router.passwordCifrado ?? '',
+                useSsl:          router.usarSsl ?? false,
+                timeoutSec:      router.timeoutConexion ?? 15,
+                version:         (router.versionRos === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
+              };
+
+              // 1. Agregar IP a address-list morosos
+              await this.firewallSvc.suspenderCliente(
+                creds,
+                contrato.ipAsignada,
+                contrato.clienteId,
+                `Suspensión manual — ${dto.motivo ?? 'sin motivo'} | ${new Date().toLocaleDateString('es-PE')}`,
+              );
+
+              // 2. Desconectar sesión PPPoE y deshabilitar secret
+              if (contrato.usuarioPppoe) {
+                await this.pppoeSvc.desconectarSesion(creds, contrato.usuarioPppoe);
+                await this.pppoeSvc.setEstado(creds, contrato.usuarioPppoe, true);
+              }
+
+              this.logger.log(`cambiarEstado → MikroTik suspendido: contrato ${id} | IP: ${contrato.ipAsignada}`);
+            }
+          } catch (err: any) {
+            this.logger.warn(`cambiarEstado → fallo MikroTik al suspender contrato ${id}: ${err?.message}`);
+            // Encolar para reintento automático via OutboxRed
+            if (contrato.routerId) {
+              await this.outboxRed.encolar('SUSPENDER', id, contrato.routerId, {
+                ipAsignada:  contrato.ipAsignada,
+                usuarioPppoe: contrato.usuarioPppoe,
+                clienteId:   contrato.clienteId,
+                deudaTotal:  Number(contrato.deudaTotal),
+              }).catch(() => void 0);
+            }
+          }
+        });
+      }
+
+      // ── Notificación WhatsApp ────────────────────────────────
       this.dataSource.query(
         `SELECT cl.whatsapp, cl.telefono, cl.nombre_completo, em.razon_social AS empresa_nombre
          FROM clientes cl JOIN empresas em ON em.id = $2
@@ -553,7 +611,7 @@ export class ContratosService {
           empresaId:        user.empresaId,
           contratoId:       id,
           clienteId:        contrato.clienteId,
-          aggregateVersion: contrato.version,  // versión optimista para deduplicación en consumidores
+          aggregateVersion: contrato.version,
         });
       }).catch((e: any) => this.logger.warn(`cambiarEstado: no se pudo emitir notif suspensión: ${e?.message}`));
     }
