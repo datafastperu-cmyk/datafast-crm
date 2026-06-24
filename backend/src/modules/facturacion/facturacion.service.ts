@@ -95,6 +95,7 @@ export class FacturacionService {
       createdBy:            user.sub,
     });
 
+    this.logger.log(`CREATE factura: serie="${serie}" correlativo=${correlativo} comprobante=${comprobanteConfig.id} (${comprobanteConfig.serie})`);
     const saved = await this.facturaRepo.save(factura);
     this.generarPdfAsync(saved, user.empresaId);
 
