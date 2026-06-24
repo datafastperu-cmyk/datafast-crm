@@ -130,16 +130,13 @@ export function OltContent() {
     enabled:   tab === 'onus',
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawOnus = ((onusResp as any)?.data as unknown[]) ?? [];
+  const rawOnus = ((onusResp as any)?.data as unknown[]) ?? []; // eslint-disable-line
 
   // ── Orden OLTs ───────────────────────────────────────────────
   const sortedOlts = useMemo(() => {
     return [...todasOlts].sort((a, b) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const av = String(((a as any)[oltSortField]) ?? '').toLowerCase();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const bv = String(((b as any)[oltSortField]) ?? '').toLowerCase();
+      const av = String(((a as any)[oltSortField]) ?? '').toLowerCase(); // eslint-disable-line
+      const bv = String(((b as any)[oltSortField]) ?? '').toLowerCase(); // eslint-disable-line
       if (av < bv) return oltSortDir === 'ASC' ? -1 : 1;
       if (av > bv) return oltSortDir === 'ASC' ?  1 : -1;
       return 0;
@@ -194,8 +191,7 @@ export function OltContent() {
           { label: 'Total OLTs',   value: todasOlts.length,   color: 'text-foreground' },
           { label: 'Online',       value: onlineCount,         color: onlineCount  > 0 ? 'text-emerald-500' : 'text-muted-foreground' },
           { label: 'Offline',      value: offlineCount,        color: offlineCount > 0 ? 'text-red-500' : 'text-muted-foreground' },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          { label: 'Total ONUs',   value: (onusResp as any)?.meta?.total ?? '—', color: 'text-blue-500' },
+          { label: 'Total ONUs',   value: (onusResp as any)?.meta?.total ?? '—', color: 'text-blue-500' }, // eslint-disable-line
         ].map(s => (
           <div key={s.label} className="bg-card border border-border rounded-xl p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{s.label}</p>
