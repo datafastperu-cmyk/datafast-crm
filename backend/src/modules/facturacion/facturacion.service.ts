@@ -811,7 +811,8 @@ export class FacturacionService {
     items: ItemFactura[] = [],
   ): { subtotal: number; descuento: number; igv: number; total: number; items: ItemFactura[] } {
     const baseImponible = Math.max(0, subtotal - descuento);
-    const igv   = aplicaIgv ? Math.round(baseImponible * igvRate * 100) / 100 : 0;
+    const rate = Number(igvRate) || 0.18;
+    const igv   = aplicaIgv ? Math.round(baseImponible * rate * 100) / 100 : 0;
     const total = Math.round((baseImponible + igv) * 100) / 100;
     return {
       subtotal: Math.round(subtotal  * 100) / 100,

@@ -2717,8 +2717,8 @@ function ModalFacturaServicio({
       setItems(facturables.map(c => ({
         descripcion:    c.planNombre || (c.velocidadBajada ? `Internet ${c.velocidadBajada} Mbps` : 'Servicio de Internet'),
         cantidad:       1,
-        precioUnitario: c.precioFinal ?? 0,
-        descuento:      c.descuentoPct ?? 0,
+        precioUnitario: Number(c.precioFinal ?? 0),
+        descuento:      0,
       })));
     } else {
       setItems([{ descripcion: 'Servicio de Internet', cantidad: 1, precioUnitario: 0, descuento: 0 }]);

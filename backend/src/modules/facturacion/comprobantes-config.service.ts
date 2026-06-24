@@ -220,7 +220,8 @@ export class ComprobantesConfigService {
     `, [comprobanteConfigId]);
 
     if (!row) throw new NotFoundException(`ComprobanteConfig ${comprobanteConfigId} no encontrado`);
-    return { serie: row.serie, correlativo: parseInt(row.correlativo, 10) };
+    const correlativo = parseInt(String(row.correlativo ?? 1), 10);
+    return { serie: row.serie, correlativo: Number.isNaN(correlativo) ? 1 : correlativo };
   }
 
   // ── Configuración global de facturación ──────────────────────
