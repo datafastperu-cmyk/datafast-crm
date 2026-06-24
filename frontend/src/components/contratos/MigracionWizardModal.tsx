@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   X, Loader2, CheckCircle2, AlertCircle, ArrowRight, SkipForward,
-  Wifi, Cable, Server, Network, RotateCcw, ScanLine, ChevronLeft,
+  Cable, Server, Network, RotateCcw, ScanLine, ChevronLeft,
   Radio,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -13,8 +13,7 @@ import { z } from 'zod';
 
 import { migracionApi, type MigracionResultado, type PasoMigracion } from '@/lib/api/migracion';
 import { redesApi } from '@/lib/api/contratos';
-import { smartoltApi } from '@/lib/api/smartolt';
-import { oltNativoApi } from '@/lib/api/olt-nativo';
+import { oltNativoApi, type OltConProveedorPrincipal } from '@/lib/api/olt-nativo';
 import { parseApiError, cn } from '@/lib/utils';
 
 // ── Schema ────────────────────────────────────────────────────
@@ -99,11 +98,8 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
   const [resultado, setResultado] = useState<MigracionResultado | null>(null);
 
   // ── Estado del paso scan ──────────────────────────────────────
-  const [scanTipoOlt, setScanTipoOlt]     = useState<'smartolt' | 'nativo'>('nativo');
-  const [scanOltId,   setScanOltId]       = useState('');
-  const [scanSlot,    setScanSlot]        = useState('');
-  const [scanPort,    setScanPort]        = useState('');
-  const [scanEnabled, setScanEnabled]     = useState(false);
+  const [scanOltId,   setScanOltId]   = useState('');
+  const [scanEnabled, setScanEnabled] = useState(false);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver:      zodResolver(schema),
@@ -119,15 +115,15 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
   const tipoOlt       = watch('tipoOlt');
   const routerFtthId  = watch('routerFtthId');
 
-  // OLT data
-  const { data: oltsSmartolt = [] } = useQuery({
-    queryKey: ['olts-smartolt'],
-    queryFn:  () => smartoltApi.listarOlts(),
+  // OLT data — lista unificada (nativo + smartolt)
+  const { data: oltsUnificadas = [] } = useQuery({
+    queryKey: ['olts-todas-migracion'],
+    queryFn:  () => oltNativoApi.listarTodas(),
   });
-  const { data: oltsNativos = [] } = useQuery({
-    queryKey: ['olts-nativo'],
-    queryFn:  () => oltNativoApi.listar(),
-  });
+
+  const selectedOlt: OltConProveedorPrincipal | undefined =
+    oltsUnificadas.find((o) => o.id === scanOltId);
+  const esNativo = selectedOlt?.metodoConexion === 'nativo_ssh';
 
   // Routers
   const { data: routers = [] } = useQuery({
@@ -152,22 +148,24 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
     refetch:   doScan,
     error:     scanError,
   } = useQuery({
-    queryKey:  ['discover-onus-migration', scanOltId, scanSlot, scanPort],
-    queryFn:   () => oltNativoApi.discoverOnus(
-      scanOltId,
-      scanSlot ? Number(scanSlot) : undefined,
-      scanPort ? Number(scanPort) : undefined,
-    ),
-    enabled:   scanEnabled && scanTipoOlt === 'nativo' && !!scanOltId,
+    queryKey:  ['discover-onus-migration', scanOltId],
+    queryFn:   () => oltNativoApi.discoverOnus(scanOltId, undefined, undefined),
+    enabled:   scanEnabled && esNativo && !!scanOltId,
     staleTime: 0,
   });
   const onusDescubiertas = discoverData?.onus ?? [];
 
   const handleSelectOnu = (onu: { sn: string; slot: number; port: number }) => {
-    setValue('tipoOlt',      scanTipoOlt);
-    setValue('oltNativoId',  scanOltId);
-    setValue('ponPort',      `0/${onu.slot}/${onu.port}`);
+    setValue('tipoOlt',     'nativo');
+    setValue('oltNativoId', scanOltId);
+    setValue('ponPort',     `0/${onu.slot}/${onu.port}`);
     setValue('serialNumber', onu.sn);
+    setFase('form');
+  };
+
+  const handleContinuarSmartolt = () => {
+    setValue('tipoOlt', 'smartolt');
+    setValue('oltId',   scanOltId);
     setFase('form');
   };
 
@@ -239,59 +237,27 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
           {/* ── PASO 1: ESCANEAR ONU ── */}
           {fase === 'scan' && (
             <div className="space-y-4">
-              {/* Tipo OLT */}
-              <Field label="Tipo de OLT">
-                <div className="flex gap-2">
-                  {([['nativo', 'Nativo SSH', Network], ['smartolt', 'SmartOLT API', Server]] as const).map(
-                    ([val, lbl, Icon]) => (
-                      <button key={val} type="button"
-                        onClick={() => { setScanTipoOlt(val); setScanOltId(''); setScanEnabled(false); }}
-                        className={cn(
-                          'flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm rounded-lg border transition-all',
-                          scanTipoOlt === val
-                            ? 'border-primary bg-primary/10 text-primary font-medium'
-                            : 'border-input bg-background text-foreground hover:bg-accent',
-                        )}
-                      >
-                        <Icon className="w-3.5 h-3.5" /> {lbl}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </Field>
-
               {/* OLT */}
-              <Field label={scanTipoOlt === 'nativo' ? 'OLT (SSH)' : 'OLT (SmartOLT)'}>
+              <Field label="OLT">
                 <select
                   value={scanOltId}
                   onChange={e => { setScanOltId(e.target.value); setScanEnabled(false); }}
                   className={INPUT_CLS}
                 >
                   <option value="">— Seleccionar OLT —</option>
-                  {(scanTipoOlt === 'nativo' ? oltsNativos : oltsSmartolt as any[]).map((o: any) => (
+                  {oltsUnificadas.map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.nombre}{o.ipGestion ? ` — ${o.ipGestion}` : ''}{o.modelo ? ` (${o.modelo})` : ''}
+                      {o.nombre}
+                      {o.ipGestion ? ` — ${o.ipGestion}` : ''}
+                      {o.modelo ? ` (${o.modelo})` : ''}
+                      {o.metodoConexion === 'nativo_ssh' ? ' · SSH' : ' · SmartOLT'}
                     </option>
                   ))}
                 </select>
               </Field>
 
-              {/* Filtro slot/port opcional (solo nativo) */}
-              {scanTipoOlt === 'nativo' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Slot (opcional)">
-                    <input value={scanSlot} onChange={e => setScanSlot(e.target.value)}
-                      placeholder="1" type="number" min={0} className={INPUT_CLS} />
-                  </Field>
-                  <Field label="Puerto PON (opcional)">
-                    <input value={scanPort} onChange={e => setScanPort(e.target.value)}
-                      placeholder="3" type="number" min={0} className={INPUT_CLS} />
-                  </Field>
-                </div>
-              )}
-
-              {/* Botón escanear */}
-              {scanTipoOlt === 'nativo' ? (
+              {/* Botón acción según tipo */}
+              {esNativo ? (
                 <button
                   type="button"
                   disabled={!scanOltId || scanning}
@@ -305,12 +271,16 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
                     : <><ScanLine className="w-4 h-4" /> Escanear ONUs</>
                   }
                 </button>
-              ) : (
-                <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 text-amber-700 dark:text-amber-400 text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  El escaneo automático no está disponible para SmartOLT API. Selecciona la OLT y continúa manualmente.
-                </div>
-              )}
+              ) : scanOltId ? (
+                <button
+                  type="button"
+                  onClick={handleContinuarSmartolt}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm rounded-lg
+                             bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+                >
+                  <ArrowRight className="w-4 h-4" /> Continuar
+                </button>
+              ) : null}
 
               {/* Error escaneo */}
               {scanError && (
@@ -403,55 +373,21 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
           {fase === 'form' && (
             <form id="migracion-form" onSubmit={handleSubmit((d) => mutate(d))} className="space-y-4">
 
-              {/* Tipo OLT */}
-              <Field label="Tipo de OLT">
-                <div className="flex gap-2">
-                  {([['smartolt', 'SmartOLT API', Server], ['nativo', 'Nativo SSH', Network]] as const).map(
-                    ([val, lbl, Icon]) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setValue('tipoOlt', val)}
-                        className={cn(
-                          'flex-1 flex items-center justify-center gap-2 py-2 px-3 text-sm rounded-lg border transition-all',
-                          tipoOlt === val
-                            ? 'border-primary bg-primary/10 text-primary font-medium'
-                            : 'border-input bg-background text-foreground hover:bg-accent',
-                        )}
-                      >
-                        <Icon className="w-3.5 h-3.5" /> {lbl}
-                      </button>
-                    ),
+              {/* Resumen OLT seleccionada */}
+              {selectedOlt && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border">
+                  {esNativo
+                    ? <Network className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                    : <Server  className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  }
+                  <span className="text-sm font-medium text-foreground">{selectedOlt.nombre}</span>
+                  {selectedOlt.ipGestion && (
+                    <span className="text-xs text-muted-foreground font-mono">{selectedOlt.ipGestion}</span>
                   )}
+                  <span className="ml-auto text-[11px] text-muted-foreground">
+                    {esNativo ? 'SSH Nativo' : 'SmartOLT API'}
+                  </span>
                 </div>
-              </Field>
-
-              {/* OLT SmartOLT */}
-              {tipoOlt === 'smartolt' && (
-                <Field label="OLT (SmartOLT)" error={errors.oltId?.message}>
-                  <select {...register('oltId')} className={INPUT_CLS}>
-                    <option value="">— Seleccionar OLT —</option>
-                    {(oltsSmartolt as any[]).map((o: any) => (
-                      <option key={o.id} value={o.id}>
-                        {o.nombre}{o.marca ? ` — ${o.marca}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              )}
-
-              {/* OLT Nativo */}
-              {tipoOlt === 'nativo' && (
-                <Field label="OLT Dispositivo (SSH)" error={errors.oltNativoId?.message}>
-                  <select {...register('oltNativoId')} className={INPUT_CLS}>
-                    <option value="">— Seleccionar OLT —</option>
-                    {(oltsNativos as any[]).map((o: any) => (
-                      <option key={o.id} value={o.id}>
-                        {o.nombre} — {o.ipGestion}{o.modelo ? ` (${o.modelo})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
               )}
 
               {/* Puerto PON */}
@@ -553,18 +489,10 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
               )}
             </div>
           ) : fase === 'scan' ? (
-            <div className="flex gap-3">
-              <button type="button" onClick={onClose}
-                className="flex-1 py-2.5 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
-                Cancelar
-              </button>
-              {scanTipoOlt === 'smartolt' && scanOltId && (
-                <button type="button" onClick={() => { setValue('tipoOlt', 'smartolt'); setValue('oltId', scanOltId); setFase('form'); }}
-                  className="flex-1 py-2.5 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
-                  <ArrowRight className="w-4 h-4" /> Continuar manual
-                </button>
-              )}
-            </div>
+            <button type="button" onClick={onClose}
+              className="w-full py-2.5 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
+              Cancelar
+            </button>
           ) : (
             <div className="flex gap-3">
               <button type="button" onClick={() => setFase('scan')}
