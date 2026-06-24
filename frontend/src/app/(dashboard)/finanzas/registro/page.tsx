@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientesApi }                           from '@/lib/api/clientes';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
+import { contratosApi }                           from '@/lib/api/contratos';
 import { promesasApi }                            from '@/lib/api/promesas';
 import type { PromesaRow, PromesaStats }           from '@/lib/api/promesas';
 import { useToast }                              from '@/components/ui/toaster';
@@ -357,13 +358,26 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
 
   const selectedFactura = facturas.find(f => f.id === facturaId);
 
+  // Cuando es promesa, cargar contratos del cliente para obtener el contratoId aunque
+  // la factura no lo tenga enlazado (contrato_id nullable en facturas)
+  const { data: contratosData } = useQuery({
+    queryKey: ['contratos-cliente-promesa', cliente.id],
+    queryFn:  () => contratosApi.list({ clienteId: cliente.id, limit: 10 }),
+    enabled:  esPromesa,
+    staleTime: 60_000,
+  });
+  const contratoParaPromesa = contratosData?.data.find(c =>
+    ['activo', 'moroso', 'cortado', 'suspendido'].includes(c.estado),
+  );
+
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
       if (esPromesa) {
-        if (!selectedFactura?.contratoId)
-          throw new Error('Selecciona un comprobante para asociar la promesa al contrato');
+        const contratoId = selectedFactura?.contratoId ?? contratoParaPromesa?.id;
+        if (!contratoId)
+          throw new Error('No se encontró un contrato activo para este cliente');
         return promesasApi.crear({
-          contratoId:       selectedFactura.contratoId,
+          contratoId,
           fechaVencimiento: fechaProrroga,
           motivo:           notas.trim() || 'Promesa de pago',
         });
