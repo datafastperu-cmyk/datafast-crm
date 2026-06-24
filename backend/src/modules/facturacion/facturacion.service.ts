@@ -61,8 +61,9 @@ export class FacturacionService {
     const { subtotal, descuento, igv, total, items } =
       await this.calcularMontos(dto, comprobanteConfig, configGlobal.igvRate);
 
-    const { serie, correlativo } =
+    const { correlativo } =
       await this.comprobantesSvc.siguienteCorrelativo(comprobanteConfig.id);
+    const serie = comprobanteConfig.serie;
 
     const [emRow] = await this.ds.query<{ dias_gracia: string }[]>(
       'SELECT dias_gracia FROM empresas WHERE id = $1 AND deleted_at IS NULL',
@@ -95,7 +96,6 @@ export class FacturacionService {
       createdBy:            user.sub,
     });
 
-    this.logger.log(`CREATE factura: serie="${serie}" correlativo=${correlativo} comprobante=${comprobanteConfig.id} (${comprobanteConfig.serie})`);
     const saved = await this.facturaRepo.save(factura);
     this.generarPdfAsync(saved, user.empresaId);
 
@@ -207,7 +207,8 @@ export class FacturacionService {
         totalIgv      = Math.round(totalIgv      * 100) / 100;
         totalTotal    = Math.round(totalTotal     * 100) / 100;
 
-        const { serie, correlativo } = await this.comprobantesSvc.siguienteCorrelativo(comprobante.id);
+        const { correlativo } = await this.comprobantesSvc.siguienteCorrelativo(comprobante.id);
+        const serie = comprobante.serie;
 
         const diaFact         = parseInt(primer.dia_facturacion || '1', 10);
         const vencimientoDate = new Date(anio, mes - 1, diaFact + diasGracia);
@@ -357,7 +358,8 @@ export class FacturacionService {
         totalIgv      = Math.round(totalIgv      * 100) / 100;
         totalTotal    = Math.round(totalTotal     * 100) / 100;
 
-        const { serie, correlativo } = await this.comprobantesSvc.siguienteCorrelativo(comprobante.id);
+        const { correlativo } = await this.comprobantesSvc.siguienteCorrelativo(comprobante.id);
+        const serie = comprobante.serie;
         const vencimientoDate  = new Date(anio, mes - 1, dia + diasGracia);
         const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
         const descripcion = grupo.length === 1

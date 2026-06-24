@@ -90,7 +90,7 @@ import { ReconciliadorModule }        from './modules/reconciliador/reconciliado
         migrationsRun:           true,
         migrationsTransactionMode: 'each',
         synchronize:          false,
-        logging:              ['error'],
+        logging:              false,
         extra:                {
           max: parseInt(process.env.DB_POOL_MAX, 10) || 15,
           min: parseInt(process.env.DB_POOL_MIN, 10) || 2,
