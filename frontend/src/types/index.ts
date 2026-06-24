@@ -218,6 +218,7 @@ export interface Factura {
   fechaPago?:       string;
   pdfUrl?:          string;
   generadaAutomaticamente: boolean;
+  tieneCargaFiscal?: boolean;
   // Campos denormalizados
   clienteNombre?:   string;
   items?:           FacturaItem[];
