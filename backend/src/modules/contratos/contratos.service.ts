@@ -471,6 +471,77 @@ export class ContratosService {
       }
     }
     const upd: Partial<Contrato> = { estado:dto.estado, fechaEstado:new Date(), motivoEstado:dto.motivo, updatedBy:user.sub };
+    if (dto.estado === EstadoContrato.ACTIVO && anterior === EstadoContrato.SUSPENDIDO) {
+      // ── Revertir suspensión en MikroTik (quitar de address-list + habilitar PPPoE) ──
+      // Similar a CobranzaWorker.handleReactivarContrato()
+      if (contrato.routerId && contrato.ipAsignada) {
+        setImmediate(async () => {
+          try {
+            const [router] = await this.dataSource.query<any[]>(`
+              SELECT vpn_ip AS "vpnIp", ip_gestion AS "ipGestion",
+                     usuario, password_cifrado AS "passwordCifrado",
+                     usar_ssl AS "usarSsl", puerto_api AS "puertoApi",
+                     puerto_api_ssl AS "puertoApiSsl", version_ros AS "versionRos",
+                     timeout_conexion AS "timeoutConexion"
+              FROM routers WHERE id = $1
+            `, [contrato.routerId]);
+
+            if (router) {
+              const creds = {
+                id:              contrato.routerId,
+                ip:              router.vpnIp || router.ipGestion,
+                port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
+                user:            router.usuario ?? 'admin',
+                passwordCifrado: router.passwordCifrado ?? '',
+                useSsl:          router.usarSsl ?? false,
+                timeoutSec:      router.timeoutConexion ?? 15,
+                version:         (router.versionRos === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
+              };
+
+              // 1. Quitar IP de address-list morosos
+              await this.firewallSvc.reactivarCliente(creds, contrato.ipAsignada);
+
+              // 2. Habilitar secreto PPPoE (disabled=false)
+              if (contrato.usuarioPppoe) {
+                await this.pppoeSvc.setEstado(creds, contrato.usuarioPppoe, false);
+              }
+
+              this.logger.log(`cambiarEstado → MikroTik reactivado: contrato ${id} | IP: ${contrato.ipAsignada}`);
+            }
+          } catch (err: any) {
+            this.logger.warn(`cambiarEstado → fallo MikroTik al reactivar contrato ${id}: ${err?.message}`);
+            // Encolar para reintento automático via OutboxRed
+            if (contrato.routerId) {
+              await this.outboxRed.encolar('REACTIVAR', id, contrato.routerId, {
+                ipAsignada:  contrato.ipAsignada,
+                usuarioPppoe: contrato.usuarioPppoe,
+                clienteId:   contrato.clienteId,
+                deudaTotal:  Number(contrato.deudaTotal),
+              }).catch(() => void 0);
+            }
+          }
+        });
+      }
+
+      // ── Notificación de reactivación ──────────────────────────
+      this.dataSource.query(
+        `SELECT cl.whatsapp, cl.telefono, cl.nombre_completo
+         FROM clientes cl WHERE cl.id = $1 AND cl.deleted_at IS NULL`,
+        [contrato.clienteId],
+      ).then(([cl]: any[]) => {
+        const tel = cl?.whatsapp || cl?.telefono;
+        if (!tel) return;
+        this.events.emit(NOTIFICATION_EVENTS.SERVICIO_REACTIVADO, {
+          telefono:      tel,
+          clienteNombre: cl.nombre_completo,
+          planNombre:    '',
+          empresaId:     user.empresaId,
+          contratoId:    id,
+          clienteId:     contrato.clienteId,
+        });
+      }).catch((e: any) => this.logger.warn(`cambiarEstado: no se pudo emitir notif reactivación: ${e?.message}`));
+    }
+
     if (dto.estado === EstadoContrato.BAJA_DEFINITIVA) {
       const sagaBajaId = await this.sagaLog.iniciar(
         SagaTipo.BAJA_DEFINITIVA, id, user.empresaId, user.sub, 4,
