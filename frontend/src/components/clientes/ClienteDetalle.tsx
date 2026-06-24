@@ -2728,8 +2728,11 @@ function ModalFacturaServicio({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Comprobante activo (siempre el predeterminado de empresa)
-  const comprobanteActivo = comprobantes.find(c => c.esDefault) ?? comprobantes[0];
+  // Comprobante activo: config individual del cliente → default empresa → primero activo
+  const clienteComprobanteId = configCliente?.facturacion?.comprobanteConfigId as string | undefined;
+  const comprobanteActivo = (clienteComprobanteId
+    ? comprobantes.find(c => c.id === clienteComprobanteId)
+    : undefined) ?? comprobantes.find(c => c.esDefault) ?? comprobantes[0];
   const aplicaIgv         = comprobanteActivo?.tieneCargaFiscal ?? false;
   const seriePreview = comprobanteActivo
     ? `${comprobanteActivo.serie}-${String((comprobanteActivo.correlativoActual ?? 0) + 1).padStart(4, '0')}`

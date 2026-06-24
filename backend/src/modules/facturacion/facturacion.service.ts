@@ -789,7 +789,7 @@ export class FacturacionService {
     comprobante: ComprobanteConfig,
     igvRate: number,
   ): Promise<{ subtotal: number; descuento: number; igv: number; total: number; items: ItemFactura[] }> {
-    const aplicaIgv = comprobante.tieneCargaFiscal && (dto.aplicaIgv !== false);
+    const aplicaIgv = comprobante.tieneCargaFiscal;
     let subtotal = 0;
     let items: ItemFactura[] = [];
 
