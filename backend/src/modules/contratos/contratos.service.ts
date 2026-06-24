@@ -24,7 +24,8 @@ import { MikrotikService } from '../mikrotik/mikrotik.service';
 import { SmartoltApiService } from '../smartolt/smartolt-api.service';
 import { SagaLogService } from '../sagas/saga-log.service';
 import { SagaTipo } from '../sagas/entities/saga-log.entity';
-import { OutboxRedService } from '../outbox-red/outbox-red.service';
+import { OutboxRedService }    from '../outbox-red/outbox-red.service';
+import { PromesasPagoService } from '../promesas-pago/promesas-pago.service';
 
 export interface ActivarResultado {
   contrato:     Contrato;
@@ -81,6 +82,7 @@ export class ContratosService {
     private readonly outboxRed: OutboxRedService,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly events: EventEmitter2,
+    private readonly promesasSvc: PromesasPagoService,
   ) {}
 
   async create(dto: CreateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
@@ -625,13 +627,11 @@ export class ContratosService {
   }
 
   async otorgarProrroga(id: string, dto: OtorgarProrrogaDto, user: JwtPayload, req?: any): Promise<Contrato> {
-    const c = await this.findOne(id, user.empresaId);
-    if (![EstadoContrato.ACTIVO, EstadoContrato.SUSPENDIDO].includes(c.estado))
-      throw new BadRequestException(`No se puede prorrogar contrato en estado ${c.estado}`);
-    if (new Date(dto.prorrogaHasta) <= new Date()) throw new BadRequestException('Fecha de prórroga debe ser futura');
-    // Solo actualiza fechas de gracia; el estado no cambia (Opción A)
-    await this.contratoRepo.update(id, { enProrroga:true, prorrogaHasta:dto.prorrogaHasta, prorrogaMotivo:dto.motivo, prorrogaOtorgadaPor:user.sub, updatedBy:user.sub });
-    await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:c.estado, estadoNuevo:c.estado, motivo:`Prórroga hasta ${dto.prorrogaHasta}: ${dto.motivo}`, usuarioId:user.sub });
+    // Delega a PromesasPagoService: persiste promesa, actualiza contrato y aplica en MikroTik
+    await this.promesasSvc.crear(
+      { contratoId: id, fechaVencimiento: dto.prorrogaHasta, motivo: dto.motivo },
+      user,
+    );
     return this.findOne(id, user.empresaId);
   }
 

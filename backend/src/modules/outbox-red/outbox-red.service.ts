@@ -13,7 +13,7 @@ import {
   EventOutboxRedAgotado,
 } from '../notificaciones/events/notification.events';
 
-export type AccionRed = 'SUSPENDER' | 'REACTIVAR' | 'DESPROVISIONAR' | 'PROVISIONAR';
+export type AccionRed = 'SUSPENDER' | 'REACTIVAR' | 'DESPROVISIONAR' | 'PROVISIONAR' | 'APLICAR_PRORROGA' | 'REVOCAR_PRORROGA';
 
 export interface PayloadSuspenderRed {
   ipAsignada:  string;
@@ -42,6 +42,19 @@ export interface PayloadProvisionarRed {
   downloadMbps:  number;
   uploadMbps:    number;
   tipoQueue:     string;
+}
+
+export interface PayloadAplicarProrroga {
+  promesaId:         string;
+  ipAsignada:        string;
+  usuarioPppoe?:     string;
+  contratoEstadoPrevio: string; // para saber si re-habilitar PPPoE
+}
+
+export interface PayloadRevocarProrroga {
+  promesaId:     string;
+  ipAsignada:    string;
+  usuarioPppoe?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -96,6 +109,22 @@ export class OutboxRedService {
     payload:    PayloadProvisionarRed,
   ): Promise<void> {
     await this.encolar('PROVISIONAR', contratoId, routerId, payload);
+  }
+
+  async encolarAplicarProrroga(
+    contratoId: string,
+    routerId:   string,
+    payload:    PayloadAplicarProrroga,
+  ): Promise<void> {
+    await this.encolar('APLICAR_PRORROGA', contratoId, routerId, payload);
+  }
+
+  async encolarRevocarProrroga(
+    contratoId: string,
+    routerId:   string,
+    payload:    PayloadRevocarProrroga,
+  ): Promise<void> {
+    await this.encolar('REVOCAR_PRORROGA', contratoId, routerId, payload);
   }
 
   async getStatus(): Promise<{
@@ -209,6 +238,48 @@ export class OutboxRedService {
             await this.pppoeSvc.eliminar(creds, contratoRow.usuarioPppoe);
           }
         }
+      } else if (cmd.accion === 'APLICAR_PRORROGA') {
+        const p = payload as PayloadAplicarProrroga;
+        await this.firewallSvc.aplicarProrroga(
+          creds,
+          p.ipAsignada,
+          `Promesa:${p.promesaId}`,
+        );
+        // Si el contrato estaba cortado, re-habilitar el secret PPPoE
+        if (p.usuarioPppoe && p.contratoEstadoPrevio === 'cortado') {
+          await this.pppoeSvc.setEstado(creds, p.usuarioPppoe, false);
+        }
+        // Marcar mikrotik_aplicado en la promesa
+        await this.ds.query(
+          `UPDATE promesas_pago SET mikrotik_aplicado = TRUE, mikrotik_aplicado_en = NOW()
+           WHERE id = $1`,
+          [p.promesaId],
+        ).catch(() => {});
+
+      } else if (cmd.accion === 'REVOCAR_PRORROGA') {
+        const p = payload as PayloadRevocarProrroga;
+        await this.firewallSvc.suspenderCliente(
+          creds,
+          p.ipAsignada,
+          cmd.contrato_id,
+          `Prorroga vencida — promesa:${p.promesaId}`,
+        );
+        if (p.usuarioPppoe) {
+          await this.pppoeSvc.desconectarSesion(creds, p.usuarioPppoe);
+          await this.pppoeSvc.setEstado(creds, p.usuarioPppoe, true);
+        }
+        // Marcar promesa como VENCIDA y contrato como CORTADO
+        await this.ds.query(
+          `UPDATE promesas_pago SET estado = 'vencida', mikrotik_aplicado = TRUE, mikrotik_aplicado_en = NOW()
+           WHERE id = $1`,
+          [p.promesaId],
+        ).catch(() => {});
+        await this.ds.query(
+          `UPDATE contratos SET estado = 'cortado', en_prorroga = FALSE, prorroga_hasta = NULL, fecha_estado = NOW()
+           WHERE id = $1`,
+          [cmd.contrato_id],
+        ).catch(() => {});
+
       } else if (cmd.accion === 'PROVISIONAR') {
         const p = payload as PayloadProvisionarRed;
 

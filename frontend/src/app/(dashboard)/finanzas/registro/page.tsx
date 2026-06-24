@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientesApi }                           from '@/lib/api/clientes';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
+import { promesasApi }                            from '@/lib/api/promesas';
 import { useToast }                              from '@/components/ui/toaster';
 import { cn }                                    from '@/lib/utils';
 import type { Cliente, Factura }                 from '@/types';
@@ -44,6 +45,7 @@ const TIPOS_PAGO = [
   { value: 'activar',   label: 'Registrar pago y Activar' },
   { value: 'registrar', label: 'Solo registrar' },
   { value: 'adelanto',  label: 'Registrar como adelanto' },
+  { value: 'promesa',   label: 'Promesa de pago' },
 ];
 
 const DIAS_MES = Array.from({ length: 31 }, (_, i) => ({
@@ -318,16 +320,25 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
 
   const today = new Date().toISOString().split('T')[0];
 
-  const [facturaId,   setFacturaId]   = useState<string>(pendientes[0]?.id ?? '');
-  const [metodoPago,  setMetodoPago]  = useState('efectivo');
-  const [numOp,       setNumOp]       = useState('');
-  const [notas,       setNotas]       = useState('');
-  const [tipoPago,    setTipoPago]    = useState('activar');
-  const [diaPago,     setDiaPago]     = useState('28');
-  const [impresion,   setImpresion]   = useState<'normal' | 'pos' | 'factura' | 'ninguna'>('normal');
-  const [monto,       setMonto]       = useState('');
-  const [fechaPago,   setFechaPago]   = useState(today);
-  const [voucherFile, setVoucherFile] = useState<File | null>(null);
+  const defaultFechaProrroga = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 5);
+    return d.toISOString().split('T')[0];
+  })();
+
+  const [facturaId,      setFacturaId]      = useState<string>(pendientes[0]?.id ?? '');
+  const [metodoPago,     setMetodoPago]     = useState('efectivo');
+  const [numOp,          setNumOp]          = useState('');
+  const [notas,          setNotas]          = useState('');
+  const [tipoPago,       setTipoPago]       = useState('activar');
+  const [diaPago,        setDiaPago]        = useState('28');
+  const [impresion,      setImpresion]      = useState<'normal' | 'pos' | 'factura' | 'ninguna'>('normal');
+  const [monto,          setMonto]          = useState('');
+  const [fechaPago,      setFechaPago]      = useState(today);
+  const [fechaProrroga,  setFechaProrroga]  = useState(defaultFechaProrroga);
+  const [voucherFile,    setVoucherFile]    = useState<File | null>(null);
+
+  const esPromesa = tipoPago === 'promesa';
 
   // Auto-fill monto from selected factura
   useEffect(() => {
@@ -345,6 +356,16 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
+      if (esPromesa) {
+        if (!selectedFactura?.contratoId)
+          throw new Error('Selecciona un comprobante para asociar la promesa al contrato');
+        return promesasApi.crear({
+          contratoId:       selectedFactura.contratoId,
+          fechaVencimiento: fechaProrroga,
+          motivo:           notas.trim() || 'Promesa de pago',
+        });
+      }
+
       const pago = await pagosApi.registrar({
         clienteId:       cliente.id,
         facturaId:       facturaId   || undefined,
@@ -365,14 +386,20 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
       }
       return pago;
     },
-    onSuccess: () => {
-      toast('Pago registrado correctamente', { type: 'success' });
+    onSuccess: (_data, _vars) => {
+      if (esPromesa) {
+        toast(`Promesa registrada — servicio habilitado hasta ${fechaProrroga}`, { type: 'success' });
+        qc.invalidateQueries({ queryKey: ['promesas-activas'] });
+      } else {
+        toast('Pago registrado correctamente', { type: 'success' });
+        qc.invalidateQueries({ queryKey: ['pagos-hoy'] });
+      }
       qc.invalidateQueries({ queryKey: ['facturas-cliente-pago', cliente.id] });
-      qc.invalidateQueries({ queryKey: ['pagos-hoy'] });
       onSuccess();
     },
     onError: (e: any) => {
-      toast(e?.response?.data?.message ?? 'Error al registrar el pago', { type: 'error' });
+      const msg = e?.response?.data?.message ?? e?.message ?? 'Error inesperado';
+      toast(msg, { type: 'error' });
     },
   });
 
@@ -407,47 +434,51 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           </select>
         </div>
 
-        {/* Comisión + N° Transacción */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-              Comisión S/.
-            </label>
-            <input type="number" defaultValue="0" min="0" step="0.01" className={inputCls} />
+        {/* Comisión + N° Transacción — oculto en promesa */}
+        {!esPromesa && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                Comisión S/.
+              </label>
+              <input type="number" defaultValue="0" min="0" step="0.01" className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                N° Transacción
+              </label>
+              <input
+                type="text"
+                value={numOp}
+                onChange={e => setNumOp(e.target.value)}
+                placeholder="Número de operación"
+                className={inputCls}
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-              N° Transacción
-            </label>
-            <input
-              type="text"
-              value={numOp}
-              onChange={e => setNumOp(e.target.value)}
-              placeholder="Número de operación"
-              className={inputCls}
-            />
-          </div>
-        </div>
+        )}
 
-        {/* Forma de Pago + Tipo de pago */}
+        {/* Forma de Pago — oculto en promesa · Forma de Registro */}
         <div className="grid grid-cols-2 gap-4">
-          <div>
+          {!esPromesa && (
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                Forma de Pago
+              </label>
+              <select
+                value={metodoPago}
+                onChange={e => setMetodoPago(e.target.value)}
+                className={inputCls}
+              >
+                {METODOS_PAGO.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className={esPromesa ? 'col-span-2' : ''}>
             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-              Forma de Pago
-            </label>
-            <select
-              value={metodoPago}
-              onChange={e => setMetodoPago(e.target.value)}
-              className={inputCls}
-            >
-              {METODOS_PAGO.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-              Tipo de pago
+              Forma de Registro
             </label>
             <select
               value={tipoPago}
@@ -461,56 +492,75 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           </div>
         </div>
 
-        {/* Día pago + Fecha pago */}
+        {/* Día pago + Fecha pago — o Fecha límite en promesa */}
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-              Día pago
-            </label>
-            <select
-              value={diaPago}
-              onChange={e => setDiaPago(e.target.value)}
-              className={inputCls}
-            >
-              {DIAS_MES.map(d => (
-                <option key={d.value} value={d.value}>{d.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-              Fecha de pago
-            </label>
-            <input
-              type="date"
-              value={fechaPago}
-              max={today}
-              onChange={e => setFechaPago(e.target.value)}
-              className={inputCls}
-            />
-          </div>
+          {esPromesa ? (
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                Fecha límite de pago
+              </label>
+              <input
+                type="date"
+                value={fechaProrroga}
+                min={(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })()}
+                onChange={e => setFechaProrroga(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Día pago
+                </label>
+                <select
+                  value={diaPago}
+                  onChange={e => setDiaPago(e.target.value)}
+                  className={inputCls}
+                >
+                  {DIAS_MES.map(d => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Fecha de pago
+                </label>
+                <input
+                  type="date"
+                  value={fechaPago}
+                  max={today}
+                  onChange={e => setFechaPago(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Total a pagar */}
-        <div className="pt-2">
-          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wide">
-            Total a pagar
-          </label>
-          <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded overflow-hidden w-48">
-            <span className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-sm font-semibold text-gray-500 border-r border-gray-300 dark:border-gray-600">
-              S/.
-            </span>
-            <input
-              type="number"
-              value={monto}
-              onChange={e => setMonto(e.target.value)}
-              step="0.01"
-              min="0"
-              className="flex-1 px-3 py-2 text-lg font-bold text-emerald-600 dark:text-emerald-400
-                         bg-white dark:bg-gray-800 focus:outline-none"
-            />
+        {/* Total a pagar — oculto en promesa */}
+        {!esPromesa && (
+          <div className="pt-2">
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium uppercase tracking-wide">
+              Total a pagar
+            </label>
+            <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded overflow-hidden w-48">
+              <span className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-sm font-semibold text-gray-500 border-r border-gray-300 dark:border-gray-600">
+                S/.
+              </span>
+              <input
+                type="number"
+                value={monto}
+                onChange={e => setMonto(e.target.value)}
+                step="0.01"
+                min="0"
+                className="flex-1 px-3 py-2 text-lg font-bold text-emerald-600 dark:text-emerald-400
+                           bg-white dark:bg-gray-800 focus:outline-none"
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── Right column ── */}
@@ -532,13 +582,15 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           />
         </div>
 
-        {/* Voucher */}
-        <div>
-          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-medium">
-            Comprobante / Voucher
-          </label>
-          <VoucherDropzone file={voucherFile} onChange={setVoucherFile} />
-        </div>
+        {/* Voucher — oculto en promesa */}
+        {!esPromesa && (
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-medium">
+              Comprobante / Voucher
+            </label>
+            <VoucherDropzone file={voucherFile} onChange={setVoucherFile} />
+          </div>
+        )}
 
         {/* Imprimir */}
         <div>
@@ -576,16 +628,21 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           </button>
           <button
             type="button"
-            disabled={isPending || !monto || parseFloat(monto) <= 0}
+            disabled={isPending || (!esPromesa && (!monto || parseFloat(monto) <= 0))}
             onClick={() => mutate()}
-            className="flex-1 px-4 py-2 text-sm font-semibold rounded text-white
-                       bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed
-                       flex items-center justify-center gap-2 transition-colors"
+            className={cn(
+              'flex-1 px-4 py-2 text-sm font-semibold rounded text-white',
+              'disabled:opacity-50 disabled:cursor-not-allowed',
+              'flex items-center justify-center gap-2 transition-colors',
+              esPromesa
+                ? 'bg-amber-500 hover:bg-amber-600'
+                : 'bg-blue-600 hover:bg-blue-700',
+            )}
           >
             {isPending
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <CheckCircle className="w-4 h-4" />}
-            Registrar pago
+            {esPromesa ? 'Registrar promesa' : 'Registrar pago'}
           </button>
         </div>
       </div>

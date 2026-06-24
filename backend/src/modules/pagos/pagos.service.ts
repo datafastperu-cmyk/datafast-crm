@@ -525,7 +525,7 @@ export class PagosService {
 
       // ── B. Si hay contrato, verificar si se saldó la deuda ─
       if (contratoId) {
-        await this.verificarYReactivarContrato(contratoId, empresaId, user);
+        await this.verificarYReactivarContrato(contratoId, empresaId, user, pago.id);
       }
 
     } catch (err) {
@@ -546,6 +546,7 @@ export class PagosService {
     contratoId: string,
     empresaId:  string,
     user:       JwtPayload,
+    pagoId?:    string,
   ): Promise<void> {
     // Recalcular deuda total del contrato
     const { deuda, meses } = await this.pagoRepo.calcularDeudaContrato(contratoId);
@@ -559,6 +560,12 @@ export class PagosService {
 
     // Si la deuda quedó en cero, verificar si el contrato está suspendido
     if (deuda <= 0) {
+      // Notificar a PromesasPagoService para marcar cumplimiento si hay una activa
+      this.events.emit('promesa.verificar_cumplimiento', {
+        contratoId,
+        pagoId: pagoId ?? '',
+        deuda,
+      });
       let contrato: any;
       try {
         contrato = await this.contratosSvc.findOne(contratoId, empresaId);

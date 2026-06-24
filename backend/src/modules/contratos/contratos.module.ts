@@ -11,7 +11,8 @@ import { AuthModule } from '../auth/auth.module';
 import { MikrotikModule } from '../mikrotik/mikrotik.module';
 import { SmartoltModule } from '../smartolt/smartolt.module';
 import { SagasModule } from '../sagas/sagas.module';
-import { OutboxRedModule } from '../outbox-red/outbox-red.module';
+import { OutboxRedModule }    from '../outbox-red/outbox-red.module';
+import { PromesasPagoModule } from '../promesas-pago/promesas-pago.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { OutboxRedModule } from '../outbox-red/outbox-red.module';
     SmartoltModule,
     SagasModule,
     OutboxRedModule,
+    PromesasPagoModule,
   ],
   controllers: [ContratosController],
   providers: [ContratosService, IpPoolService, ContratoRepository],
