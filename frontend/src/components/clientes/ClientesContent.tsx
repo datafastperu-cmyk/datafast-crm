@@ -65,8 +65,10 @@ export function ClientesContent() {
   };
 
   const queryResult = useQuery({
-    queryKey:  ['clientes', filtrosConSearch],
-    queryFn:   () => clientesApi.list(filtrosConSearch),
+    queryKey:        ['clientes', filtrosConSearch],
+    queryFn:         () => clientesApi.list(filtrosConSearch),
+    staleTime:       120_000,
+    placeholderData: (prev: any) => prev,
   } as any) as any;
   const { isLoading, isFetching, refetch } = queryResult;
   const data = queryResult.data as { data: any[]; meta: any } | undefined;

@@ -30,12 +30,9 @@ export async function paginate<T>(
 
   qb.orderBy(orderField, sortOrder);
 
-  // Contar total antes de aplicar paginación
-  const total = await qb.getCount();
-
-  // Aplicar paginación
+  // Datos + total en una sola query
   qb.skip(skip).take(limit);
-  const data = await qb.getMany();
+  const [data, total] = await qb.getManyAndCount();
 
   return { data, total, page, limit };
 }
