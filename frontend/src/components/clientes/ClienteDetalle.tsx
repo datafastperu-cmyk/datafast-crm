@@ -2424,14 +2424,28 @@ function ModalEditarFactura({
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: configCliente } = useQuery({
+    queryKey: ['cliente-facturacion-config', factura.clienteId],
+    queryFn: () => clientesApi.getFacturacionConfig(factura.clienteId),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [comprobanteConfigId, setComprobanteConfigId] = useState(factura.comprobanteConfigId ?? '');
   const [contratoId,      setContratoId]      = useState(factura.contratoId ?? '');
   const [periodoInicio,   setPeriodoInicio]   = useState(factura.periodoInicio ?? '');
   const [periodoFin,      setPeriodoFin]      = useState(factura.periodoFin ?? '');
   const [descripcion,     setDescripcion]     = useState(factura.descripcion ?? '');
   const [fechaVenc,       setFechaVenc]       = useState(factura.fechaVencimiento ?? '');
-  const [aplicaIgv,       setAplicaIgv]       = useState(Number(factura.igv ?? 0) > 0);
   const [items,           setItems]           = useState<LineaEdit[]>(initItems);
+
+  // IGV: derivado del comprobante seleccionado, no toggle manual
+  const igvRate = Number(configCliente?.facturacion?.igvRate ?? 0.18) || 0.18;
+  const comprobanteSeleccionado = comprobanteConfigId
+    ? comprobantes.find(c => c.id === comprobanteConfigId)
+    : comprobantes.find(c => c.id === factura.comprobanteConfigId);
+  const aplicaIgv = comprobanteSeleccionado?.tieneCargaFiscal ?? factura.tieneCargaFiscal ?? false;
+
+  const simb = simboloMoneda();
 
   function addItem()  { setItems(p => [...p, { descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0 }]); }
   function removeItem(idx: number) { setItems(p => p.filter((_, i) => i !== idx)); }
@@ -2443,8 +2457,8 @@ function ModalEditarFactura({
     const base = it.cantidad * it.precioUnitario;
     return acc + base - (base * (it.descuento / 100));
   }, 0);
-  const igvCalc   = aplicaIgv ? subtotalCalc * 0.18 : 0;
-  const totalCalc = subtotalCalc + igvCalc;
+  const igvCalc   = aplicaIgv ? Math.round(subtotalCalc * igvRate * 100) / 100 : 0;
+  const totalCalc = Math.round((subtotalCalc + igvCalc) * 100) / 100;
 
   const { mutate, isPending } = useMutation({
     mutationFn: () => facturacionApi.update(factura.id, {
@@ -2454,7 +2468,6 @@ function ModalEditarFactura({
       periodoFin,
       descripcion:      descripcion || undefined,
       fechaVencimiento: fechaVenc   || undefined,
-      aplicaIgv,
       items: items.map(it => ({
         descripcion:    it.descripcion,
         cantidad:       it.cantidad,
@@ -2467,7 +2480,7 @@ function ModalEditarFactura({
     onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al actualizar', { type: 'error' }),
   });
 
-  const fmtS    = (n: any) => Number(n ?? 0).toFixed(2);
+  const fmtS    = (n: any) => `${simb} ${Number(n ?? 0).toFixed(2)}`;
   const inputCls = `w-full px-3 py-2 text-sm border border-input rounded-lg bg-background
                     text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
 
@@ -2611,26 +2624,25 @@ function ModalEditarFactura({
 
           {/* Totales + IGV */}
           <div className="flex items-end justify-between gap-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <div
-                onClick={() => setAplicaIgv(v => !v)}
-                className={cn('relative w-9 h-5 rounded-full transition-colors', aplicaIgv ? 'bg-primary' : 'bg-muted')}
-              >
-                <div className={cn('absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform', aplicaIgv ? 'translate-x-4' : 'translate-x-0.5')} />
-              </div>
-              <span className="text-sm text-muted-foreground">Aplica IGV 18%</span>
-            </label>
+            <div className={cn(
+              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium',
+              aplicaIgv ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : 'bg-muted text-muted-foreground',
+            )}>
+              <span className={cn('w-1.5 h-1.5 rounded-full', aplicaIgv ? 'bg-emerald-500' : 'bg-muted-foreground')} />
+              {aplicaIgv ? `Aplica IGV ${Math.round(igvRate * 100)}%` : 'Sin IGV'}
+            </div>
             <div className="text-right space-y-1 min-w-[200px]">
               <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Subtotal</span><span>S/. {fmtS(subtotalCalc)}</span>
+                <span>Subtotal</span><span>{fmtS(subtotalCalc)}</span>
               </div>
               {aplicaIgv && (
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>IGV (18%)</span><span>S/. {fmtS(igvCalc)}</span>
+                  <span>IGV ({Math.round(igvRate * 100)}%)</span><span>{fmtS(igvCalc)}</span>
                 </div>
               )}
               <div className="flex justify-between text-base font-bold text-foreground border-t border-border pt-1">
-                <span>Total</span><span className="text-primary">S/. {fmtS(totalCalc)}</span>
+                <span>Total</span><span className="text-primary">{fmtS(totalCalc)}</span>
               </div>
             </div>
           </div>

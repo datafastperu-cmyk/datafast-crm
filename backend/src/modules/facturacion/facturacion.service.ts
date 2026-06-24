@@ -677,7 +677,7 @@ export class FacturacionService {
     if (dto.items !== undefined) {
       const configGlobal = await this.comprobantesSvc.getConfiguracion(empresaId);
       const igvRate      = Number(configGlobal.igvRate);
-      const aplicaIgv    = factura.tieneCargaFiscal;
+      const aplicaIgv    = patch.tieneCargaFiscal ?? factura.tieneCargaFiscal;
 
       const mappedItems: ItemFactura[] = dto.items.map(it => {
         const base = it.cantidad * it.precioUnitario;
