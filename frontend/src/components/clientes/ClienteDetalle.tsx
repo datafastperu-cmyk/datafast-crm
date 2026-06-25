@@ -1532,8 +1532,8 @@ function ServicioPanel({
   const tipoServicio    = watch('tipoServicio') as 'wisp' | 'ftth';
   const esFtth          = tipoServicio === 'ftth';
 
-  const { data: planes  = [] } = useQuery({ queryKey: ['planes'],        queryFn: planesApi.list });
-  const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: () => redesApi.listRouters() });
+  const { data: planes  = [] } = useQuery({ queryKey: ['planes'],                     queryFn: planesApi.list });
+  const { data: routers = [] } = useQuery({ queryKey: ['routers-list', tipoServicio], queryFn: () => redesApi.listRouters(tipoServicio) });
 
   // Router seleccionado — para derivar comportamiento de auth
   const tipoControlVal = watch('tipoControl' as any) as string | undefined;
@@ -1583,7 +1583,7 @@ function ServicioPanel({
     if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); setValue('nodoId', ''); }
   }, [routerId]);
   useEffect(() => {
-    if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); }
+    if (!editing) { setValue('routerId', ''); setValue('segmentoId', ''); setValue('ipManual', ''); }
   }, [tipoServicio]);
   useEffect(() => {
     if (!segmentoId || !segmentoCambio) return;

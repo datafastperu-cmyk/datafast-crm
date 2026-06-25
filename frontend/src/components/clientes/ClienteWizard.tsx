@@ -993,10 +993,11 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     setValue('conectadoAId', '');
   }, [routerId]);
 
-  // Al cambiar tipo de servicio: limpiar segmento e IP (pools no son compartidos)
+  // Al cambiar tipo de servicio: limpiar router, segmento e IP (la lista de routers cambia)
   useEffect(() => {
+    setValue('routerId',   '');
     setValue('segmentoId', '');
-    setValue('ipv4', '');
+    setValue('ipv4',       '');
   }, [tipoServicio]);
 
   const { data: nextIpData, isFetching: fetchingIp } = useQuery({
