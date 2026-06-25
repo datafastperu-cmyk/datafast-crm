@@ -37,7 +37,7 @@ import { useToast }                  from '@/components/ui/toaster';
 import { formatDate, formatPEN, cn, parseApiError, simboloMoneda, mesNombre } from '@/lib/utils';
 import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import type { Contrato, Factura, Pago } from '@/types';
-import { TIPO_SERVICIO_CONTRATO } from '@/lib/constants/service-types';
+import { AUTH_TYPES, TIPO_SERVICIO_CONTRATO } from '@/lib/constants/service-types';
 
 // ── Tabs ──────────────────────────────────────────────────────
 const TABS = [
@@ -1556,9 +1556,18 @@ function ServicioPanel({
     queryFn:  () => redesApi.listSegmentos(routerId!),
     enabled:  !!routerId,
   });
-  const segmentosFiltrados = (segmentos as any[]).filter(
+  // N1+N2 → segmentos del router filtrados por tipoServicio
+  const segmentosPorRouter = (segmentos as any[]).filter(
     (s: any) => !s.tipoServicio || s.tipoServicio === tipoServicio,
   );
+  // N3: authTypes disponibles según los segmentos cargados
+  const authTypesDisponibles = segmentosPorRouter.length > 0
+    ? AUTH_TYPES.filter(o => segmentosPorRouter.some((s: any) => s.authType === o.val))
+    : AUTH_TYPES;
+  // N4: segmentos filtrados además por authType seleccionado en N3
+  const segmentosFiltrados = tipoControlVal
+    ? segmentosPorRouter.filter((s: any) => !s.authType || s.authType === tipoControlVal)
+    : segmentosPorRouter;
   const segmentoCambio = editing ? segmentoId !== (e?.segmentoId ?? '') : !!segmentoId;
   const { data: nextIp, isFetching: fetchingIp } = useQuery({
     queryKey:  ['next-ip', segmentoId],
@@ -1601,6 +1610,13 @@ function ServicioPanel({
     setValue('segmentoId',        '');
     setValue('ipManual',          '');
   }, [tipoServicio]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // N3→N4: al cambiar tipoControl se limpia el segmento seleccionado
+  useEffect(() => {
+    if (!cascadeReady.current) return;
+    setValue('segmentoId', '');
+    setValue('ipManual',   '');
+  }, [tipoControlVal]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!segmentoId || !segmentoCambio) return;
     if (nextIp !== undefined) setValue('ipManual', nextIp ?? '');
@@ -1777,7 +1793,7 @@ function ServicioPanel({
                     disabled={!routerId}
                     className={cn(sp_input(), !routerId && 'opacity-50 cursor-not-allowed')}
                   >
-                    {SECURITY_OPTS_DETALLE.map((o) => (
+                    {authTypesDisponibles.map((o) => (
                       <option key={o.val} value={o.val}>{o.label}</option>
                     ))}
                   </select>

@@ -978,10 +978,19 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     queryFn:  () => redesApi.listSegmentos(routerId!),
     enabled:  !!routerId,
   });
-  const segmentos = segmentosRaw as any[];
-  const segmentosFiltrados = segmentos.filter(
+
+  // N1+N2 → segmentos del router filtrados por tipoServicio
+  const segmentosPorRouter = (segmentosRaw as any[]).filter(
     (s: any) => !s.tipoServicio || s.tipoServicio === tipoServicio,
   );
+  // N3: authTypes disponibles según los segmentos cargados (no mostrar opciones sin segmentos)
+  const authTypesDisponibles = segmentosPorRouter.length > 0
+    ? AUTH_TYPES.filter(o => segmentosPorRouter.some((s: any) => s.authType === o.val))
+    : AUTH_TYPES;
+  // N4: segmentos filtrados además por authType seleccionado en N3
+  const segmentosFiltrados = tipoControlVal
+    ? segmentosPorRouter.filter((s: any) => !s.authType || s.authType === tipoControlVal)
+    : segmentosPorRouter;
 
   // Antenas AP vinculadas al router seleccionado
   const { data: antenasAP = [] } = useQuery({
@@ -1006,6 +1015,13 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     setValue('segmentoId', '');
     setValue('ipv4',       '');
   }, [tipoServicio]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // N3→N4: al cambiar tipoControl se limpia el segmento seleccionado
+  useEffect(() => {
+    if (!cascadeReady.current) return;
+    setValue('segmentoId', '');
+    setValue('ipv4',       '');
+  }, [tipoControlVal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: nextIpData, isFetching: fetchingIp } = useQuery({
     queryKey:  ['next-ip', segmentoId],
@@ -1095,7 +1111,7 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               disabled={!routerId}
               className={cn(INPUT_CLS, !routerId && 'opacity-50 cursor-not-allowed')}
             >
-              {SECURITY_OPTS_ABONADO.map((o) => (
+              {authTypesDisponibles.map((o) => (
                 <option key={o.val} value={o.val}>{o.label}</option>
               ))}
             </select>
