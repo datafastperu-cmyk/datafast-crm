@@ -471,7 +471,7 @@ export class ContratosService {
       }
     }
     const upd: Partial<Contrato> = { estado:dto.estado, fechaEstado:new Date(), motivoEstado:dto.motivo, updatedBy:user.sub };
-    if (dto.estado === EstadoContrato.ACTIVO && anterior === EstadoContrato.SUSPENDIDO) {
+    if (dto.estado === EstadoContrato.ACTIVO && [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)) {
       // ── Revertir suspensión en MikroTik (quitar de address-list + habilitar PPPoE) ──
       // Similar a CobranzaWorker.handleReactivarContrato()
       if (contrato.routerId && contrato.ipAsignada) {

@@ -259,6 +259,12 @@ export class ClientesService {
       await this.suspenderContratosCliente(id, user, dto.motivo);
     }
 
+    // Cascada: al reactivar, reactivar contratos suspendidos/morosos/cortados
+    // ContratosService.cambiarEstado(ACTIVO) limpia MikroTik y notifica WhatsApp
+    if (dto.estado === EstadoCliente.ACTIVO && estadoAnterior === EstadoCliente.SUSPENDIDO) {
+      await this.reactivarContratosCliente(id, user, dto.motivo);
+    }
+
     await this.clienteRepo.update(id, user.empresaId, {
       estado:      dto.estado,
       fechaEstado: new Date(),
@@ -451,6 +457,35 @@ export class ClientesService {
     }
 
     this.logger.log(`Suspensión cliente ${clienteId}: ${contratos.length} contrato(s) suspendido(s)`);
+  }
+
+  private async reactivarContratosCliente(clienteId: string, user: JwtPayload, motivo?: string): Promise<void> {
+    const contratos = await this.contratosSvc.findByCliente(clienteId, user.empresaId);
+    if (!contratos.length) return;
+
+    const estadosReactivables = new Set<EstadoContrato>([
+      EstadoContrato.SUSPENDIDO,
+      EstadoContrato.MOROSO,
+      EstadoContrato.CORTADO,
+    ]);
+    const motivoReactivacion = `Reactivación de cliente${motivo ? `: ${motivo}` : ''}`;
+
+    for (const contrato of contratos) {
+      try {
+        if (estadosReactivables.has(contrato.estado)) {
+          await this.contratosSvc.cambiarEstado(
+            contrato.id,
+            { estado: EstadoContrato.ACTIVO, motivo: motivoReactivacion },
+            user,
+            true,
+          );
+        }
+      } catch (err) {
+        this.logger.error(`Error reactivando contrato ${contrato.id} al activar cliente ${clienteId}: ${err.message}`);
+      }
+    }
+
+    this.logger.log(`Reactivación cliente ${clienteId}: ${contratos.length} contrato(s) procesado(s)`);
   }
 
   // ── Historial de estados ──────────────────────────────────
