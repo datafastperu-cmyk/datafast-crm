@@ -1489,6 +1489,8 @@ function ServicioPanel({
   const { toast } = useToast();
   const [costoInstalacion, setCostoInstalacion]           = useState(false);
   const [montoCostoInstalacion, setMontoCostoInstalacion] = useState(0);
+  const cascadeReady = useRef(false);
+
   const {
     register, handleSubmit, watch, setValue, setError,
     formState: { errors, isSubmitting },
@@ -1579,12 +1581,26 @@ function ServicioPanel({
     if (editing && antenasAP.length > 0 && e?.antenaApId) setValue('antenaApId', e.antenaApId);
   }, [antenasAP]);
 
+  // Guard: efectos de cascada NO disparan en el primer render (evita borrar valores al abrir edición)
+  useEffect(() => { cascadeReady.current = true; }, []);
+
+  // N2→N3→N4: al cambiar router se limpian N3 y N4
   useEffect(() => {
-    if (!editing) { setValue('segmentoId', ''); setValue('ipManual', ''); setValue('nodoId', ''); }
-  }, [routerId]);
+    if (!cascadeReady.current) return;
+    setValue('tipoControl' as any, 'pppoe'); // resetear N3
+    setValue('segmentoId', '');
+    setValue('ipManual',   '');
+    setValue('nodoId',     '');
+  }, [routerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // N1→N2→N3→N4: al cambiar tipoServicio se limpian N2, N3 y N4
   useEffect(() => {
-    if (!editing) { setValue('routerId', ''); setValue('segmentoId', ''); setValue('ipManual', ''); }
-  }, [tipoServicio]);
+    if (!cascadeReady.current) return;
+    setValue('routerId',          '');
+    setValue('tipoControl' as any,'pppoe'); // resetear N3
+    setValue('segmentoId',        '');
+    setValue('ipManual',          '');
+  }, [tipoServicio]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!segmentoId || !segmentoCambio) return;
     if (nextIp !== undefined) setValue('ipManual', nextIp ?? '');

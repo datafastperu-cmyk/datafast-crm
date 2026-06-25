@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter }         from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver }       from '@hookform/resolvers/zod';
@@ -952,6 +952,10 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const tipoServicio     = watch('tipoServicio');
   const esFtth           = tipoServicio === 'ftth';
 
+  // Guard: los efectos de cascada NO deben disparar en el primer render
+  const cascadeReady = useRef(false);
+  useEffect(() => { cascadeReady.current = true; }, []);
+
   const { data: routers = [] } = useQuery({
     queryKey: ['routers-list', tipoServicio],
     queryFn:  () => redesApi.listRouters(tipoServicio),
@@ -986,19 +990,22 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     enabled:  !!routerId,
   });
 
-  // Al cambiar de router: limpiar segmento, IP y antena
+  // N1→N2→N3→N4: cada nivel limpia los niveles inferiores al cambiar
   useEffect(() => {
-    setValue('segmentoId', '');
-    setValue('ipv4', '');
-    setValue('conectadoAId', '');
-  }, [routerId]);
+    if (!cascadeReady.current) return;
+    setValue('segmentoId',  '');
+    setValue('ipv4',        '');
+    setValue('conectadoAId','');
+    setValue('tipoControl', 'pppoe'); // resetear N3
+  }, [routerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Al cambiar tipo de servicio: limpiar router, segmento e IP (la lista de routers cambia)
   useEffect(() => {
+    if (!cascadeReady.current) return;
     setValue('routerId',   '');
+    setValue('tipoControl','pppoe'); // resetear N3
     setValue('segmentoId', '');
     setValue('ipv4',       '');
-  }, [tipoServicio]);
+  }, [tipoServicio]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: nextIpData, isFetching: fetchingIp } = useQuery({
     queryKey:  ['next-ip', segmentoId],
