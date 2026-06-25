@@ -95,6 +95,14 @@ export class PagosService {
           where: { id: factura.contratoId },
         });
       }
+      // Fallback: facturas sin contratoId directo (mora generada sin vínculo explícito)
+      // → busca el contrato suspendido del cliente para poder reactivarlo al pagar
+      if (!contrato && factura.clienteId) {
+        contrato = await manager.findOne(Contrato, {
+          where: { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.SUSPENDIDO },
+          order: { fechaEstado: 'DESC' },
+        });
+      }
 
       // PASO 3 — Determinar estado inicial del pago
       // Auto-verificado si: MercadoPago (confirmación automática), Yape con OTP,
