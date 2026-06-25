@@ -84,6 +84,9 @@ if [[ -d "${INSTALL_DIR}/.git" ]]; then
     fi
     git -C "${INSTALL_DIR}" pull origin main >> "$LOG_FILE" 2>&1
     log "Código actualizado"
+    chmod +x "${INSTALL_DIR}/scripts/vpn-auth.sh" \
+             "${INSTALL_DIR}/scripts/vpn-client-connect.sh" \
+             "${INSTALL_DIR}/scripts/vpn-client-disconnect.sh" 2>/dev/null || true
 else
     err "El directorio ${INSTALL_DIR} no es un repositorio git. Reinstala el sistema."
 fi
