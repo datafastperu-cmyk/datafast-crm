@@ -188,6 +188,10 @@ export class SuspenderClienteDto {
   @ApiPropertyOptional({ example: 'mora' })
   @IsOptional() @IsString() @MaxLength(200)
   motivo?: string;
+
+  @ApiPropertyOptional({ example: 'Juan Pérez García' })
+  @IsOptional() @IsString() @MaxLength(200)
+  nombreCliente?: string;
 }
 
 // ─── Reactivar Cliente ────────────────────────────────────────

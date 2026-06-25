@@ -859,7 +859,7 @@ export class MikrotikService implements OnModuleInit {
     // 1. Agregar a Address List morosos
     await this.firewallSvc.suspenderCliente(
       creds, dto.ipAsignada, dto.clienteId,
-      `Mora - ${new Date().toLocaleDateString('es-PE')}`,
+      `Suspensión manual: ${dto.nombreCliente ?? dto.clienteId} | ${dto.motivo ?? 'mora'} | ${new Date().toLocaleDateString('es-PE')}`,
     );
 
     // 2. Desconectar sesión PPPoE activa si existe

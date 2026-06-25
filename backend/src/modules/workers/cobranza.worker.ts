@@ -105,9 +105,11 @@ export class CobranzaScheduler {
         co.meses_deuda,
         em.dias_gracia AS dias_gracia_corte,
         EXTRACT(DAY FROM (NOW() - COALESCE(co.fecha_ultimo_pago, co.fecha_inicio)::timestamptz))::int
-          AS dias_sin_pago
+          AS dias_sin_pago,
+        cl.nombre_completo AS nombre_cliente
       FROM contratos co
       JOIN empresas em ON em.id = co.empresa_id
+      JOIN clientes cl ON cl.id = co.cliente_id
       WHERE co.estado = 'activo'
         AND co.deuda_total > 0
         AND co.deleted_at IS NULL
@@ -126,14 +128,15 @@ export class CobranzaScheduler {
         await this.queue.add(
           JOBS.SUSPENDER_CONTRATO,
           {
-            contratoId:   c.contrato_id,
-            empresaId:    c.empresa_id,
-            clienteId:    c.cliente_id,
-            routerId:     c.router_id,
-            ipAsignada:   c.ip_asignada,
-            usuarioPppoe: c.usuario_pppoe,
-            deudaTotal:   parseFloat(c.deuda_total),
-            mesesDeuda:   parseInt(c.meses_deuda, 10),
+            contratoId:    c.contrato_id,
+            empresaId:     c.empresa_id,
+            clienteId:     c.cliente_id,
+            routerId:      c.router_id,
+            ipAsignada:    c.ip_asignada,
+            usuarioPppoe:  c.usuario_pppoe,
+            deudaTotal:    parseFloat(c.deuda_total),
+            mesesDeuda:    parseInt(c.meses_deuda, 10),
+            nombreCliente: c.nombre_cliente,
           } as PayloadSuspenderContrato,
           {
             ...JOB_OPTIONS.CRITICO,
@@ -399,7 +402,7 @@ export class CobranzaWorker {
   // ────────────────────────────────────────────────────────────
   @Process({ name: JOBS.SUSPENDER_CONTRATO, concurrency: 5 })
   async processSuspenderContrato(job: Job<PayloadSuspenderContrato>): Promise<any> {
-    const { contratoId, empresaId, clienteId, routerId, ipAsignada, usuarioPppoe, deudaTotal } = job.data;
+    const { contratoId, empresaId, clienteId, routerId, ipAsignada, usuarioPppoe, deudaTotal, nombreCliente } = job.data;
 
     this.logger.log(
       `[SUSPENDER] Contrato ${contratoId} | IP: ${ipAsignada} | Deuda: S/ ${deudaTotal}`,
@@ -426,7 +429,7 @@ export class CobranzaWorker {
         try {
           await this.firewallSvc.suspenderCliente(
             creds, ipAsignada, clienteId,
-            `Mora S/ ${deudaTotal} — ${new Date().toLocaleDateString('es-PE')}`,
+            `Suspensión automática: ${nombreCliente ?? clienteId} | S/ ${deudaTotal} — ${new Date().toLocaleDateString('es-PE')}`,
           );
           this.logger.log(`✓ IP ${ipAsignada} en lista morosos | router: ${router.ip_gestion}`);
         } catch (err) {
@@ -714,8 +717,10 @@ export class CobranzaWorker {
     // Obtener datos completos del contrato
     const [contrato] = await this.ds.query(`
       SELECT co.id, co.deuda_total, co.router_id,
-             co.ip_asignada, co.usuario_pppoe, co.meses_deuda, co.estado
+             co.ip_asignada, co.usuario_pppoe, co.meses_deuda, co.estado,
+             cl.nombre_completo AS nombre_cliente
       FROM contratos co
+      JOIN clientes cl ON cl.id = co.cliente_id
       WHERE co.id = $1 AND co.deleted_at IS NULL
     `, [contratoId]);
 
@@ -735,12 +740,13 @@ export class CobranzaWorker {
       contratoId,
       empresaId,
       clienteId,
-      routerId:     contrato.router_id,
-      ipAsignada:   contrato.ip_asignada,
-      usuarioPppoe: contrato.usuario_pppoe,
-      deudaTotal:   parseFloat(contrato.deuda_total),
-      mesesDeuda:   contrato.meses_deuda,
-      notificar:    true,
+      routerId:      contrato.router_id,
+      ipAsignada:    contrato.ip_asignada,
+      usuarioPppoe:  contrato.usuario_pppoe,
+      deudaTotal:    parseFloat(contrato.deuda_total),
+      mesesDeuda:    contrato.meses_deuda,
+      nombreCliente: contrato.nombre_cliente,
+      notificar:     true,
     } as PayloadSuspenderContrato);
 
     this.logger.log(

@@ -49,6 +49,7 @@ export interface PayloadAplicarProrroga {
   ipAsignada:        string;
   usuarioPppoe?:     string;
   contratoEstadoPrevio: string; // para saber si re-habilitar PPPoE
+  nombreCliente?:    string;
 }
 
 export interface PayloadRevocarProrroga {
@@ -243,7 +244,7 @@ export class OutboxRedService {
         await this.firewallSvc.aplicarProrroga(
           creds,
           p.ipAsignada,
-          `Promesa:${p.promesaId}`,
+          `Promesa: ${p.nombreCliente ?? p.promesaId} | ${new Date().toLocaleDateString('es-PE')}`,
         );
         // Si el contrato estaba cortado, re-habilitar el secret PPPoE
         if (p.usuarioPppoe && p.contratoEstadoPrevio === 'cortado') {

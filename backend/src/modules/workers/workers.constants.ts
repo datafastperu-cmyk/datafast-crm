@@ -63,6 +63,7 @@ export interface PayloadSuspenderContrato {
   usuarioPppoe:  string;
   deudaTotal:    number;
   mesesDeuda:    number;
+  nombreCliente?: string;
   notificar?:    boolean;
 }
 

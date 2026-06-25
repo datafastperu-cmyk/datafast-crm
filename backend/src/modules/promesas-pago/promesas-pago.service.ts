@@ -62,8 +62,10 @@ export class PromesasPagoService {
     const [contrato] = await this.ds.query<any[]>(`
       SELECT c.id, c.empresa_id, c.cliente_id, c.estado,
              c.ip_asignada, c.router_id, c.usuario_pppoe,
-             c.deuda_total, c.en_prorroga
+             c.deuda_total, c.en_prorroga,
+             cl.nombre_completo AS nombre_cliente
       FROM   contratos c
+      JOIN   clientes cl ON cl.id = c.cliente_id
       WHERE  c.id = $1 AND c.deleted_at IS NULL
     `, [dto.contratoId]);
 
@@ -140,7 +142,7 @@ export class PromesasPagoService {
         await this.firewallSvc.aplicarProrroga(
           creds,
           contrato.ip_asignada,
-          `Promesa:${promesa.id}`,
+          `Promesa: ${contrato.nombre_cliente ?? contrato.cliente_id} | ${new Date().toLocaleDateString('es-PE')}`,
         );
         // Si el contrato estaba CORTADO, re-habilitar PPPoE
         if (contrato.estado === 'cortado' && contrato.usuario_pppoe) {
@@ -163,6 +165,7 @@ export class PromesasPagoService {
           ipAsignada:           contrato.ip_asignada,
           usuarioPppoe:         contrato.usuario_pppoe || undefined,
           contratoEstadoPrevio: contrato.estado,
+          nombreCliente:        contrato.nombre_cliente,
         }).catch((e) => this.logger.error(`[Promesa] No se pudo encolar outbox: ${e.message}`));
       }
     } else {
@@ -292,7 +295,11 @@ export class PromesasPagoService {
       if (!p.ipClienteSnapshot || !p.routerIdSnapshot) continue;
       try {
         const creds = await this.buildCreds(p.routerIdSnapshot);
-        await this.firewallSvc.aplicarProrroga(creds, p.ipClienteSnapshot, `Promesa:${p.id}`);
+        const [cl] = await this.ds.query<any[]>('SELECT nombre_completo FROM clientes WHERE id = $1', [p.clienteId]);
+        await this.firewallSvc.aplicarProrroga(
+          creds, p.ipClienteSnapshot,
+          `Promesa: ${cl?.nombre_completo ?? p.clienteId} | ${new Date().toLocaleDateString('es-PE')}`,
+        );
         await this.repo.update(p.id, { mikrotikAplicado: true, mikrotikAplicadoEn: new Date() });
         this.logger.log(`[Promesa] Reintento MK exitoso — promesa=${p.id}`);
       } catch (err: any) {

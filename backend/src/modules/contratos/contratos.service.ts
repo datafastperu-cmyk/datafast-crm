@@ -615,14 +615,19 @@ export class ContratosService {
       if (contrato.routerId && contrato.ipAsignada) {
         setImmediate(async () => {
           try {
-            const [router] = await this.dataSource.query<any[]>(`
-              SELECT vpn_ip AS "vpnIp", ip_gestion AS "ipGestion",
-                     usuario, password_cifrado AS "passwordCifrado",
-                     usar_ssl AS "usarSsl", puerto_api AS "puertoApi",
-                     puerto_api_ssl AS "puertoApiSsl", version_ros AS "versionRos",
-                     timeout_conexion AS "timeoutConexion"
-              FROM routers WHERE id = $1
-            `, [contrato.routerId]);
+            const [[router], [cliente]] = await Promise.all([
+              this.dataSource.query<any[]>(`
+                SELECT vpn_ip AS "vpnIp", ip_gestion AS "ipGestion",
+                       usuario, password_cifrado AS "passwordCifrado",
+                       usar_ssl AS "usarSsl", puerto_api AS "puertoApi",
+                       puerto_api_ssl AS "puertoApiSsl", version_ros AS "versionRos",
+                       timeout_conexion AS "timeoutConexion"
+                FROM routers WHERE id = $1
+              `, [contrato.routerId]),
+              this.dataSource.query<any[]>(
+                `SELECT nombre_completo FROM clientes WHERE id = $1`, [contrato.clienteId],
+              ),
+            ]);
 
             if (router) {
               const creds = {
@@ -641,7 +646,7 @@ export class ContratosService {
                 creds,
                 contrato.ipAsignada,
                 contrato.clienteId,
-                `Suspensión manual — ${dto.motivo ?? 'sin motivo'} | ${new Date().toLocaleDateString('es-PE')}`,
+                `Suspensión manual: ${cliente?.nombre_completo ?? contrato.clienteId} | ${dto.motivo ?? 'sin motivo'} | ${new Date().toLocaleDateString('es-PE')}`,
               );
 
               // 2. Desconectar sesión PPPoE y deshabilitar secret
