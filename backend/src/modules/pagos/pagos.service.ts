@@ -137,8 +137,8 @@ export class PagosService {
           SET
             monto_pagado = monto_pagado::numeric + $1::numeric,
             estado = CASE
-              WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN 'pagada'
-              ELSE 'pagada_parcial'
+              WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN 'pagada'::estado_factura
+              ELSE 'pagada_parcial'::estado_factura
             END,
             fecha_pago = CASE
               WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN CURRENT_DATE
