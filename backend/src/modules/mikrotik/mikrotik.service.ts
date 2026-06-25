@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { ModuleHealthService } from '../../common/services/module-health.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository }       from 'typeorm';
+import { Repository, In }   from 'typeorm';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
@@ -197,9 +197,31 @@ export class MikrotikService implements OnModuleInit {
     return routerFinal;
   }
 
-  async findAll(empresaId: string): Promise<(Router & { contratosCount: number })[]> {
+  async findAll(empresaId: string, tipoServicio?: string): Promise<(Router & { contratosCount: number })[]> {
+    let routerIds: string[] | null = null;
+
+    if (tipoServicio) {
+      const rows: { router_id: string }[] = await this.ds.query(
+        `SELECT DISTINCT router_id
+         FROM segmentos_ipv4
+         WHERE empresa_id = $1
+           AND tipo_servicio = $2
+           AND activo = true
+           AND deleted_at IS NULL
+           AND router_id IS NOT NULL`,
+        [empresaId, tipoServicio],
+      );
+      routerIds = rows.map((r) => r.router_id);
+      if (!routerIds.length) return [];
+    }
+
     const routers = await this.routerRepo.find({
-      where: { empresaId, activo: true, deletedAt: null as any },
+      where: {
+        empresaId,
+        activo: true,
+        deletedAt: null as any,
+        ...(routerIds ? { id: In(routerIds) } : {}),
+      },
       order: { nombre: 'ASC' },
     });
     if (!routers.length) return [];

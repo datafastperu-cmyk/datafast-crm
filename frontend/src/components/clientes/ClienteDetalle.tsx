@@ -1533,7 +1533,7 @@ function ServicioPanel({
   const esFtth          = tipoServicio === 'ftth';
 
   const { data: planes  = [] } = useQuery({ queryKey: ['planes'],        queryFn: planesApi.list });
-  const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
+  const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: () => redesApi.listRouters() });
 
   // Router seleccionado — para derivar comportamiento de auth
   const tipoControlVal = watch('tipoControl' as any) as string | undefined;

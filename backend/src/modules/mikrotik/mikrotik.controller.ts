@@ -64,9 +64,13 @@ export class MikrotikController {
   @Get('routers')
   @RequirePermission('mikrotik:view')
   @SetMetadata('skipAudit', true)
-  @ApiOperation({ summary: 'Listar todos los routers de la empresa' })
-  async listarRouters(@CurrentUser() user: JwtPayload) {
-    return StdResponse.ok(await this.svc.findAll(user.empresaId));
+  @ApiOperation({ summary: 'Listar routers de la empresa, opcionalmente filtrados por tipo de servicio' })
+  @ApiQuery({ name: 'tipoServicio', required: false, enum: ['wisp', 'ftth', 'mixto'] })
+  async listarRouters(
+    @CurrentUser() user: JwtPayload,
+    @Query('tipoServicio') tipoServicio?: string,
+  ) {
+    return StdResponse.ok(await this.svc.findAll(user.empresaId, tipoServicio));
   }
 
   @Get('routers/:id')

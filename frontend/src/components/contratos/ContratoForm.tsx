@@ -18,6 +18,7 @@ import type { Plan }    from '@/types';
 const schema = z.object({
   clienteId:       z.string().uuid('Selecciona un cliente'),
   planId:          z.string().uuid('Selecciona un plan'),
+  tipoServicio:    z.enum(['wisp', 'ftth']).default('wisp'),
   routerId:        z.string().optional(),
   oltId:           z.string().optional(),
   segmentoId:      z.string().optional(),
@@ -62,6 +63,7 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
     resolver:      zodResolver(schema),
     defaultValues: {
       clienteId:       defClienteId ?? '',
+      tipoServicio:    'wisp' as const,
       fechaInicio:     hoy,
       diaFacturacion:  1,
       descuentoPct:    0,
@@ -70,8 +72,21 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
     },
   });
 
-  const planId    = watch('planId');
-  const clienteId = watch('clienteId');
+  const planId       = watch('planId');
+  const clienteId    = watch('clienteId');
+  const tipoServicio = watch('tipoServicio');
+  const routerId     = watch('routerId');
+
+  // Cascada nivel 1→2: cambiar tipoServicio limpia router y segmento
+  useEffect(() => {
+    setValue('routerId',   '', { shouldDirty: true });
+    setValue('segmentoId', '', { shouldDirty: true });
+  }, [tipoServicio]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cascada nivel 2→3: cambiar router limpia segmento
+  useEffect(() => {
+    setValue('segmentoId', '', { shouldDirty: true });
+  }, [routerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Datos remotos ─────────────────────────────────────────
   const { data: planes = [] } = useQuery({
@@ -80,8 +95,8 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
   });
 
   const { data: routers = [] } = useQuery({
-    queryKey: ['routers'],
-    queryFn:  redesApi.listRouters,
+    queryKey: ['routers', tipoServicio],
+    queryFn:  () => redesApi.listRouters(tipoServicio),
   });
 
   const { data: olts = [] } = useQuery({
@@ -89,10 +104,14 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
     queryFn:  redesApi.listOlts,
   });
 
-  const { data: segmentos = [] } = useQuery({
-    queryKey: ['segmentos'],
-    queryFn:  () => redesApi.listSegmentos(),
+  const { data: segmentosRaw = [] } = useQuery({
+    queryKey: ['segmentos-router', routerId],
+    queryFn:  () => redesApi.listSegmentos(routerId!),
+    enabled:  !!routerId,
   });
+  const segmentos = (segmentosRaw as any[]).filter(
+    (s: any) => !s.tipoServicio || s.tipoServicio === tipoServicio,
+  );
 
   // Buscar cliente para mostrar el nombre
   const { data: cliente } = useQuery({
@@ -226,7 +245,13 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
       {/* ── SECCIÓN 3: Red y aprovisionamiento ───────────── */}
       <Section title="Configuración de red">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Router Mikrotik">
+          <Field label="Tipo de servicio *">
+            <select {...register('tipoServicio')} className={input()}>
+              <option value="wisp">WISP (inalámbrico)</option>
+              <option value="ftth">FTTH (fibra óptica)</option>
+            </select>
+          </Field>
+          <Field label="Router MikroTik">
             <select {...register('routerId')} className={input()}>
               <option value="">— Sin asignar —</option>
               {routers.map((r) => (
@@ -247,11 +272,17 @@ export function ContratoForm({ clienteId: defClienteId, onSuccess }: Props) {
             </select>
           </Field>
           <Field label="Segmento IPv4 (pool de IPs)">
-            <select {...register('segmentoId')} className={input()}>
-              <option value="">— Asignar IP manualmente —</option>
-              {segmentos.map((s) => (
+            <select
+              {...register('segmentoId')}
+              className={input()}
+              disabled={!routerId}
+            >
+              <option value="">
+                {routerId ? '— Asignar IP manualmente —' : '— Selecciona un router primero —'}
+              </option>
+              {segmentos.map((s: any) => (
                 <option key={s.id} value={s.id}>
-                  {s.redCidr} ({s.nombre ?? ''})
+                  {s.redCidr} ({s.nombre ?? ''}) · {s.ipsDisponibles} libres
                 </option>
               ))}
             </select>

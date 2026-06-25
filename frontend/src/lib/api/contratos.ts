@@ -295,8 +295,10 @@ export interface OnusPendientes {
 
 // ─── Routers API (para selects) ───────────────────────────────
 export const redesApi = {
-  listRouters: async (): Promise<Router[]> => {
-    const res = await api.get<ApiRespuesta<Router[]>>('/mikrotik/routers');
+  listRouters: async (tipoServicio?: string): Promise<Router[]> => {
+    const res = await api.get<ApiRespuesta<Router[]>>('/mikrotik/routers', {
+      params: tipoServicio ? { tipoServicio } : {},
+    });
     return res.data.data ?? [];
   },
   listOlts: async (): Promise<Olt[]> => {

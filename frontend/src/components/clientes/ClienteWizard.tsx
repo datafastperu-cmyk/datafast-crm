@@ -947,18 +947,20 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
   const cajaNap          = watch('cajaNapId');
   const perfilId         = watch('perfilId');
   const conectadoAIdVal  = watch('conectadoAId');
+  const routerId         = watch('routerId');
+  const segmentoId       = watch('segmentoId');
+  const tipoServicio     = watch('tipoServicio');
+  const esFtth           = tipoServicio === 'ftth';
 
-  const { data: routers = [] } = useQuery({ queryKey: ['routers-list'], queryFn: redesApi.listRouters });
+  const { data: routers = [] } = useQuery({
+    queryKey: ['routers-list', tipoServicio],
+    queryFn:  () => redesApi.listRouters(tipoServicio),
+  });
 
   const { data: planesRaw = [] } = useQuery({ queryKey: ['planes-list'], queryFn: planesApi.list });
   const planes = (planesRaw as any[]).filter((p: any) => p.activo !== false);
 
   const planSeleccionado = planes.find((p: any) => p.id === perfilId) as any | undefined;
-
-  const routerId     = watch('routerId');
-  const segmentoId   = watch('segmentoId');
-  const tipoServicio = watch('tipoServicio');
-  const esFtth       = tipoServicio === 'ftth';
 
   // Router seleccionado — para derivar comportamiento de auth
   const tipoControlVal = watch('tipoControl');
