@@ -198,26 +198,29 @@ export class MikrotikService implements OnModuleInit {
   }
 
   async findAll(empresaId: string, tipoServicio?: string): Promise<(Router & { contratosCount: number })[]> {
-    // Siempre filtrar a routers con al menos un segmento IPv4 activo asignado
-    const segRows: { router_id: string }[] = await this.ds.query(
-      `SELECT DISTINCT router_id
-       FROM segmentos_ipv4
-       WHERE empresa_id = $1
-         AND activo = true
-         AND deleted_at IS NULL
-         AND router_id IS NOT NULL
-         ${tipoServicio ? 'AND tipo_servicio = $2' : ''}`,
-      tipoServicio ? [empresaId, tipoServicio] : [empresaId],
-    );
-    const routerIds = segRows.map((r) => r.router_id);
-    if (!routerIds.length) return [];
+    let routerIds: string[] | null = null;
+
+    if (tipoServicio) {
+      const segRows: { router_id: string }[] = await this.ds.query(
+        `SELECT DISTINCT router_id
+         FROM segmentos_ipv4
+         WHERE empresa_id = $1
+           AND activo = true
+           AND deleted_at IS NULL
+           AND router_id IS NOT NULL
+           AND tipo_servicio = $2`,
+        [empresaId, tipoServicio],
+      );
+      routerIds = segRows.map((r) => r.router_id);
+      if (!routerIds.length) return [];
+    }
 
     const routers = await this.routerRepo.find({
       where: {
         empresaId,
         activo: true,
         deletedAt: null as any,
-        id: In(routerIds),
+        ...(routerIds ? { id: In(routerIds) } : {}),
       },
       order: { nombre: 'ASC' },
     });
