@@ -188,8 +188,9 @@ function SegmentoRow({
             </button>
             <button
               onClick={onEliminar}
-              title="Eliminar segmento"
-              className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+              disabled={seg.ipsUsadas > 0}
+              title={seg.ipsUsadas > 0 ? `Eliminación bloqueada: ${seg.ipsUsadas} IP${seg.ipsUsadas > 1 ? 's' : ''} asignada${seg.ipsUsadas > 1 ? 's' : ''}` : 'Eliminar segmento'}
+              className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
             >
               <Trash2 className="w-4 h-4" />
             </button>
