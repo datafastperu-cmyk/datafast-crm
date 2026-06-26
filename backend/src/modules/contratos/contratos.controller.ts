@@ -108,14 +108,32 @@ export class ContratosController {
     @CurrentUser()     user: JwtPayload,
   ) {
     try {
+      // Normalizar el CIDR al address de red (ej: 192.168.5.1/24 → 192.168.5.0/24)
+      const cidrNorm = this.normalizarCidr(cidr);
+      if (!cidrNorm) return StdResponse.ok({ existe: null, redesEnRouter: [], error: 'CIDR inválido' });
+
       const router = await this.mikrotikSvc.findOne(routerId, user.empresaId);
-      const redesEnRouter = await this.subnetSvc.fetchSubnets(router);
-      const existe = redesEnRouter.includes(cidr);
-      return StdResponse.ok({ existe, redesEnRouter });
+      const resultado = await this.subnetSvc.verificarCidrEnRouter(router, cidrNorm);
+      return StdResponse.ok(resultado);
     } catch (e) {
-      // Router offline o credenciales erróneas — no bloqueamos, solo avisamos
       this.logger.warn(`check-cidr-en-router: ${e.message}`);
       return StdResponse.ok({ existe: null, redesEnRouter: [], error: e.message });
+    }
+  }
+
+  private normalizarCidr(cidr: string): string | null {
+    try {
+      const [ip, prefStr] = cidr.split('/');
+      const prefix = parseInt(prefStr, 10);
+      if (isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+      const parts = ip.split('.').map(Number);
+      if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return null;
+      const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+      const ipInt = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+      const net = (ipInt & mask) >>> 0;
+      return `${net >>> 24}.${(net >>> 16) & 0xFF}.${(net >>> 8) & 0xFF}.${net & 0xFF}/${prefix}`;
+    } catch {
+      return null;
     }
   }
 

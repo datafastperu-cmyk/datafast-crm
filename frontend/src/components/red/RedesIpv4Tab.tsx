@@ -341,7 +341,6 @@ function SegmentoForm({
   });
 
   const isPending  = creando || actualizando;
-  const canSubmit  = form.nombre.trim() && red.trim() && form.gateway.trim();
   const set        = (k: keyof typeof form, v: string) =>
     setForm((prev) => ({ ...prev, [k]: v }));
 
@@ -357,9 +356,13 @@ function SegmentoForm({
     queryKey: ['cidr-en-router', form.routerId, cidrActual],
     queryFn: () => redesApi.checkCidrEnRouter(form.routerId, cidrActual),
     enabled: !!form.routerId && redCompleta,
-    staleTime: 30_000,
+    staleTime: 10_000,
     retry: false,
   });
+
+  // Bloquear envío si la verificación está en curso o confirmó que la red no existe en el router
+  const bloqueadoPorRouter = !!form.routerId && redCompleta && (checkando || checkRouter?.existe === false);
+  const canSubmit  = form.nombre.trim() && red.trim() && form.gateway.trim() && !bloqueadoPorRouter;
 
   return (
     <Portal>
@@ -519,7 +522,7 @@ function SegmentoForm({
             disabled={isPending || !canSubmit}
             className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
           >
-            {isPending ? 'Guardando...' : esEdicion ? 'Guardar cambios' : 'Registrar'}
+            {isPending ? 'Guardando...' : checkando && form.routerId ? 'Verificando router...' : esEdicion ? 'Guardar cambios' : 'Registrar'}
           </button>
         </div>
       </div>

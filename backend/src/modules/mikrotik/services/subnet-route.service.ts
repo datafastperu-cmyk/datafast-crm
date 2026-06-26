@@ -107,6 +107,46 @@ export class SubnetRouteService implements OnApplicationBootstrap {
     }
   }
 
+  // Verifica si un CIDR específico está configurado en el router.
+  // A diferencia de fetchSubnets(), incluye VLAN e interfaces lógicas
+  // porque el pool de IPs puede vivir en cualquier tipo de interfaz.
+  async verificarCidrEnRouter(router: Router, cidrNormalizado: string): Promise<{
+    existe: boolean;
+    redesEnRouter: string[];
+  }> {
+    const creds = this.buildCreds(router);
+    const api   = await this.pool.connectDirect(creds);
+    try {
+      const addrs: any[] = await api.write('/ip/address/print');
+      const redesEnRouter: string[] = [];
+
+      for (const a of addrs) {
+        const ifaceLow: string = (a.interface ?? '').toLowerCase();
+        const address:  string = a.address ?? '';
+        if (!address.includes('/')) continue;
+
+        // Solo excluir túneles punto-a-punto (no VLANs — un ISP puede tener pools en VLANs)
+        const esTunel = ['ovpn', 'tun', 'l2tp', 'pptp', 'ppp', 'sstp', 'eoip', 'lo']
+          .some(p => ifaceLow.startsWith(p));
+        if (esTunel) continue;
+
+        const [ip, prefix] = address.split('/');
+        const prefixNum = parseInt(prefix, 10);
+        if (isNaN(prefixNum)) continue;
+
+        if (!PRIVATE.some(r => r.test(ip))) continue;
+
+        const network = this.toNetworkAddr(ip, prefixNum);
+        redesEnRouter.push(`${network}/${prefixNum}`);
+      }
+
+      const redesUnicas = [...new Set(redesEnRouter)];
+      return { existe: redesUnicas.includes(cidrNormalizado), redesEnRouter: redesUnicas };
+    } finally {
+      try { await api.close(); } catch {}
+    }
+  }
+
   // Aplica rutas en el VPS (ip route replace — idempotente)
   async applyVpsRoutes(gateway: string, subnets: string[]): Promise<void> {
     for (const subnet of subnets) {
