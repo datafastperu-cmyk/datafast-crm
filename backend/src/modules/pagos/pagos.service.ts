@@ -713,6 +713,7 @@ export class PagosService {
   ): Promise<void> {
     const pago = await this.findOne(id, empresaId);
     if (pago.conciliado) throw new BadRequestException('No se puede eliminar un pago conciliado');
+    if (pago.estado === EstadoPago.VERIFICADO) throw new BadRequestException('No se puede eliminar un pago verificado');
 
     await this.ds.transaction(async (manager) => {
       if (pago.estado === EstadoPago.VERIFICADO && pago.facturaId) {
