@@ -5,7 +5,7 @@ import { useRouter }             from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, RefreshCw, CheckCircle2,
-  Clock, AlertCircle, CreditCard, TrendingUp,
+  Clock, AlertCircle, CreditCard, TrendingUp, Trash2,
 } from 'lucide-react';
 
 import { pagosApi, type FiltrosPago } from '@/lib/api/facturacion';
@@ -77,6 +77,16 @@ export function PagosContent() {
       queryClient.invalidateQueries({ queryKey: ['pagos'] });
       setRechazando(null); setMotivo('');
       toast('Pago rechazado', { type: 'warning' });
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
+  const { mutate: eliminar } = useMutation({
+    mutationFn: (id: string) => pagosApi.eliminar(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pagos'] });
+      queryClient.invalidateQueries({ queryKey: ['pagos-resumen'] });
+      toast('Pago eliminado', { type: 'success' });
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
@@ -325,26 +335,40 @@ export function PagosContent() {
                   )}
                 </div>
 
-                {/* Acciones para pagos pendientes */}
-                {p.estado === 'pendiente_verificacion' && (
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                {/* Acciones */}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {p.estado === 'pendiente_verificacion' && (
+                    <>
+                      <button
+                        onClick={() => aprobar(p.id)}
+                        className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 dark:hover:bg-green-950/30 transition-colors"
+                        title="Aprobar"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setRechazando(p.id)}
+                        className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
+                        title="Rechazar"
+                      >
+                        <AlertCircle className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  {!p.conciliado && (
                     <button
-                      onClick={() => aprobar(p.id)}
-                      className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 dark:hover:bg-green-950/30
-                                 transition-colors"
-                      title="Aprobar"
+                      onClick={() => {
+                        if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
+                          eliminar(p.id);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      title="Eliminar"
                     >
-                      <CheckCircle2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={() => setRechazando(p.id)}
-                      className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
-                      title="Rechazar"
-                    >
-                      <AlertCircle className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
