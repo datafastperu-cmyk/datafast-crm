@@ -2385,8 +2385,8 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1">
-                            {(p as any).estado === 'verificado' || (p as any).conciliado ? (
-                              <span title="Pago verificado — no se puede editar ni eliminar" className="p-1.5 rounded text-muted-foreground/40 cursor-not-allowed">
+                            {(p as any).conciliado ? (
+                              <span title="Pago conciliado — no se puede editar ni eliminar" className="p-1.5 rounded text-muted-foreground/40 cursor-not-allowed">
                                 <Lock className="w-3.5 h-3.5" />
                               </span>
                             ) : (
