@@ -717,7 +717,14 @@ export class PagosService {
         await manager.query(
           `UPDATE facturas
               SET monto_pagado = GREATEST(0, monto_pagado - $1),
-                  updated_at   = NOW()
+                  updated_at   = NOW(),
+                  estado = CASE
+                    WHEN estado = 'anulada'::estado_factura THEN 'anulada'::estado_factura
+                    WHEN GREATEST(0, monto_pagado - $1) >= total THEN 'pagada'::estado_factura
+                    WHEN GREATEST(0, monto_pagado - $1) > 0     THEN 'pagada_parcial'::estado_factura
+                    WHEN fecha_vencimiento < CURRENT_DATE        THEN 'vencida'::estado_factura
+                    ELSE 'emitida'::estado_factura
+                  END
             WHERE id = $2 AND empresa_id = $3`,
           [pago.monto, pago.facturaId, empresaId],
         );
