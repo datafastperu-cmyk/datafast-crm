@@ -2777,14 +2777,12 @@ function ModalEditarPago({
   async function submit() {
     setLoading(true);
     try {
-      const registradoEnIso = fechaHora ? new Date(fechaHora).toISOString() : undefined;
       await pagosApi.actualizar(pago.id, {
-        metodoPago:      metodoPago     || undefined,
-        banco:           banco           || undefined,
-        fechaPago:       fechaPago       || undefined,
-        registradoEn:   registradoEnIso,
-        numeroOperacion: numeroOp        || undefined,
-        notas:           notas           || undefined,
+        metodoPago:      metodoPago  || undefined,
+        banco:           banco        || undefined,
+        fechaPago:       fechaPago    || undefined,
+        numeroOperacion: numeroOp     || undefined,
+        notas:           notas        || undefined,
       });
       onSuccess();
     } catch (err: any) {
@@ -2849,14 +2847,14 @@ function ModalEditarPago({
             />
           </div>
 
-          {/* Fecha y Hora del Registro — timestamp exacto del sistema */}
+          {/* Fecha y Hora del Registro — solo lectura, timestamp del sistema */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha y Hora del Registro</label>
             <input
               type="datetime-local"
               value={fechaHora}
-              onChange={(e) => setFechaHora(e.target.value)}
-              className={inputCls}
+              readOnly
+              className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-muted text-muted-foreground cursor-not-allowed"
             />
           </div>
 
