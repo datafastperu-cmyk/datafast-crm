@@ -108,9 +108,11 @@ export class PagosService {
       // Auto-verificado si: MercadoPago (confirmación automática), Yape con OTP,
       // o el cajero marca autoVerificar: true (pagos presenciales inmediatos).
       const esYapeConOtp   = metodoPagoEntity === MetodoPago.YAPE && !!dto.otpYape;
+      const puedeAutoverificar = user.roles.includes('Administrador')
+                              || user.permisos.includes('pagos:autoverificar');
       const autoVerificado = metodoPagoEntity === MetodoPago.MERCADOPAGO
                           || esYapeConOtp
-                          || dto.autoVerificar === true;
+                          || (dto.autoVerificar === true && puedeAutoverificar);
       const estadoInicial  = autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION;
 
       const pago = manager.create(Pago, {

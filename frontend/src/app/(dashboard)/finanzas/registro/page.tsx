@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useAuthStore } from '@/store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientesApi }                           from '@/lib/api/clientes';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
@@ -335,6 +336,8 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   const [numOp,          setNumOp]          = useState('');
   const [notas,          setNotas]          = useState('');
   const [tipoPago,       setTipoPago]       = useState('activar');
+  const puedeAutoverificar = useAuthStore(s => s.tienePermiso('pagos:autoverificar'));
+  const [autoVerificar,  setAutoVerificar]  = useState(true);
   const [diaPago,        setDiaPago]        = useState('28');
   const [impresion,      setImpresion]      = useState<'normal' | 'pos' | 'factura' | 'ninguna'>('normal');
   const [monto,          setMonto]          = useState('');
@@ -391,7 +394,7 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
         metodoPago,
         numeroOperacion: numOp  || undefined,
         notas:           notas  || undefined,
-        autoVerificar:   tipoPago === 'activar',
+        autoVerificar:   puedeAutoverificar && autoVerificar,
         fechaPago,
       });
       if (voucherFile) {
@@ -508,6 +511,34 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
             </select>
           </div>
         </div>
+
+        {/* Auto-verificar */}
+        {!esPromesa && (
+          <label className={cn(
+            'flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer select-none transition-colors',
+            puedeAutoverificar
+              ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
+              : 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50 cursor-not-allowed opacity-60',
+          )}>
+            <input
+              type="checkbox"
+              checked={puedeAutoverificar ? autoVerificar : false}
+              disabled={!puedeAutoverificar}
+              onChange={e => puedeAutoverificar && setAutoVerificar(e.target.checked)}
+              className="w-4 h-4 accent-emerald-600"
+            />
+            <div>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                Auto-verificar pago
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {puedeAutoverificar
+                  ? 'El pago quedará verificado y aplicado de inmediato'
+                  : 'Sin permiso — el pago quedará pendiente de verificación'}
+              </p>
+            </div>
+          </label>
+        )}
 
         {/* Día pago + Fecha pago — o Fecha límite en promesa */}
         <div className="grid grid-cols-2 gap-4">
