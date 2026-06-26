@@ -351,6 +351,16 @@ function SegmentoForm({
     (s) => s.redCidr === cidrActual && s.id !== segmento?.id,
   ), [segmentos, cidrActual, segmento?.id]);
 
+  // Verifica si el CIDR existe como red configurada en el router MikroTik
+  const redCompleta = red.trim().split('.').length === 4 && red.trim() !== '';
+  const { data: checkRouter, isFetching: checkando } = useQuery({
+    queryKey: ['cidr-en-router', form.routerId, cidrActual],
+    queryFn: () => redesApi.checkCidrEnRouter(form.routerId, cidrActual),
+    enabled: !!form.routerId && redCompleta,
+    staleTime: 30_000,
+    retry: false,
+  });
+
   return (
     <Portal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -440,6 +450,37 @@ function SegmentoForm({
               className={cn(inputCls(), 'font-mono')}
             />
           </FRow>
+
+          {/* Verificación del CIDR en el router MikroTik */}
+          {form.routerId && redCompleta && (
+            checkando ? (
+              <p className="text-xs text-muted-foreground px-1">Verificando red en el router...</p>
+            ) : checkRouter?.existe === false ? (
+              <div className="flex gap-2 p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800/50">
+                <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-red-700 dark:text-red-400 space-y-1">
+                  <p className="font-medium">Esta red no existe en el router MikroTik asignado.</p>
+                  <p>
+                    Debes crear primero la interfaz o dirección <span className="font-mono font-medium">{cidrActual}</span> en el
+                    router antes de registrar este segmento. De lo contrario, las IPs asignadas
+                    no serán enrutadas correctamente.
+                  </p>
+                  {checkRouter.redesEnRouter.length > 0 && (
+                    <p className="mt-1 text-red-600 dark:text-red-500">
+                      Redes detectadas en el router: <span className="font-mono">{checkRouter.redesEnRouter.join(', ')}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : checkRouter?.existe === null ? (
+              <div className="flex gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  No se pudo verificar el router (puede estar offline o sin VPN activa). Confirma manualmente que la red <span className="font-mono font-medium">{cidrActual}</span> existe antes de registrar.
+                </p>
+              </div>
+            ) : null
+          )}
 
           {/* Advertencia CIDR duplicado */}
           {conflictos.length > 0 && (

@@ -335,6 +335,13 @@ export const redesApi = {
     const res = await api.get<ApiRespuesta<{ ip: string | null }>>(`/contratos/segmentos/${id}/next-ip`);
     return res.data.data?.ip ?? null;
   },
+  checkCidrEnRouter: async (routerId: string, cidr: string): Promise<{ existe: boolean | null; redesEnRouter: string[]; error?: string }> => {
+    const res = await api.get<ApiRespuesta<{ existe: boolean | null; redesEnRouter: string[]; error?: string }>>(
+      '/contratos/segmentos/check-cidr-en-router',
+      { params: { routerId, cidr } },
+    );
+    return res.data.data;
+  },
   listAntenasAP: async (routerId: string): Promise<{ id: string; nombreEmisor: string; ipAddress: string; tipoEquipo: string; status: string }[]> => {
     const res = await api.get<ApiRespuesta<{ id: string; nombreEmisor: string; ipAddress: string; tipoEquipo: string; status: string }[]>>(
       `/contratos/routers/${routerId}/antenas-ap`,

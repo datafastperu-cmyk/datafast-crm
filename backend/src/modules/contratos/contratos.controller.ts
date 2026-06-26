@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Req, ParseUUIDPipe, HttpCode, HttpStatus, SetMetadata } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Req, ParseUUIDPipe, HttpCode, HttpStatus, SetMetadata, Logger } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { Request } from 'express';
 import * as net from 'net';
@@ -6,6 +6,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { ContratosService } from './contratos.service';
 import { IpPoolService } from './ip-pool.service';
+import { MikrotikService } from '../mikrotik/mikrotik.service';
+import { SubnetRouteService } from '../mikrotik/services/subnet-route.service';
 import { CreateContratoDto, UpdateContratoDto, FilterContratoDto, CambiarEstadoContratoDto, OtorgarProrrogaDto, CreateSegmentoDto } from './dto/contrato.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/decorators/roles.decorator';
@@ -15,9 +17,13 @@ const execAsync = promisify(exec);
 
 @ApiTags('Contratos') @ApiBearerAuth('JWT') @Controller('contratos')
 export class ContratosController {
+  private readonly logger = new Logger(ContratosController.name);
+
   constructor(
     private readonly svc: ContratosService,
     private readonly ipPool: IpPoolService,
+    private readonly mikrotikSvc: MikrotikService,
+    private readonly subnetSvc: SubnetRouteService,
   ) {}
 
   @Post() @RequirePermission('contratos:create')
@@ -89,6 +95,28 @@ export class ContratosController {
   async createSegmento(@Body() dto: CreateSegmentoDto, @CurrentUser() user: JwtPayload) {
     const seg = await this.ipPool.createSegmento({ ...dto, empresaId: user.empresaId });
     return StdResponse.ok(seg, 'Segmento creado correctamente');
+  }
+
+  // Ruta literal — DEBE ir antes de segmentos/:segId
+  @Get('segmentos/check-cidr-en-router') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Verifica si un CIDR existe como red configurada en el router MikroTik' })
+  @ApiQuery({ name: 'routerId', required: true })
+  @ApiQuery({ name: 'cidr',     required: true, description: 'Ej: 192.168.5.0/24' })
+  async checkCidrEnRouter(
+    @Query('routerId') routerId: string,
+    @Query('cidr')     cidr: string,
+    @CurrentUser()     user: JwtPayload,
+  ) {
+    try {
+      const router = await this.mikrotikSvc.findOne(routerId, user.empresaId);
+      const redesEnRouter = await this.subnetSvc.fetchSubnets(router);
+      const existe = redesEnRouter.includes(cidr);
+      return StdResponse.ok({ existe, redesEnRouter });
+    } catch (e) {
+      // Router offline o credenciales erróneas — no bloqueamos, solo avisamos
+      this.logger.warn(`check-cidr-en-router: ${e.message}`);
+      return StdResponse.ok({ existe: null, redesEnRouter: [], error: e.message });
+    }
   }
 
   @Get('segmentos/:segId') @RequirePermission('contratos:view') @SetMetadata('skipAudit', true)
