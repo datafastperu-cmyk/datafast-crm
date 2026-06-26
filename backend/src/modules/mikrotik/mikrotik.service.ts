@@ -1123,7 +1123,7 @@ export class MikrotikService implements OnModuleInit {
   private _connectionErrorMsg(msg: string): string {
     const m = msg.toLowerCase();
     if (m.includes('econnrefused'))                     return 'Puerto cerrado — verificar IP y puerto';
-    if (m.includes('timeout'))                          return 'Timeout — verificar IP, puerto y firewall del router';
+    if (m.includes('timeout') || m.includes('timed out') || m.includes('socktmout')) return 'Timeout — verificar IP, puerto y firewall del router';
     if (m.includes('login') || m.includes('wrong'))     return 'Autenticación fallida — verificar usuario y contraseña';
     if (m.includes('enotfound') || m.includes('ehostunreach')) return 'Host no encontrado — verificar IP o dominio';
     if (m.includes('pool exhausto'))                    return 'Pool saturado — intenta en unos segundos';

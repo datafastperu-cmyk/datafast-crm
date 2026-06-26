@@ -28,6 +28,7 @@ const getVpsIp      = () => process.env.VPN_SERVER_IP || process.env.APP_URL?.re
 const getApiBase    = () => (process.env.APP_URL || `http://${getVpsIp()}`).replace(/\/$/, '');
 const getVpnPort    = () => parseInt(process.env.VPN_SERVER_PORT || '1195', 10);
 const getCcdNetmask = () => process.env.VPN_CCD_NETMASK || '255.255.255.0';
+const getVpnSubnet  = () => process.env.VPN_SUBNET || '10.8.0.0/24';
 
 interface VpnConnectedClient {
   commonName:     string;
@@ -909,6 +910,7 @@ export class VpnClienteService {
 /interface ovpn-client add name=vpndatafast connect-to=${getVpsIp()} port=${getVpnPort()} cipher=${cliente.cipher} auth=${cliente.authAlg} user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes
 :delay 1s
 /interface ovpn-client enable vpndatafast
+${this._firewallApiBlock()}
 }`;
   }
 
@@ -935,6 +937,24 @@ export class VpnClienteService {
 /interface ovpn-client add cipher=${this._cipherForRos(cliente.cipher, 'v7')} auth=${cliente.authAlg} connect-to=${getVpsIp()} port=${getVpnPort()} name=vpndatafast user=${vpnUser} password=${pass} mac-address=${mac} disabled=yes${verifyLine}
 :delay 1s
 /interface ovpn-client enable vpndatafast
+${this._firewallApiBlock()}
 }`;
+  }
+
+  private _firewallApiBlock(): string {
+    const subnet = getVpnSubnet();
+    return `
+# Habilita servicio API y abre acceso desde la subred VPN
+:do { /ip service set api disabled=no } on-error={}
+:do {
+  :local n [:len [/ip firewall filter find chain=input protocol=tcp dst-port=8728 src-address=${subnet} action=accept]]
+  :if ($n = 0) do={
+    :if ([:len [/ip firewall filter find]] = 0) do={
+      /ip firewall filter add chain=input protocol=tcp dst-port=8728 src-address=${subnet} action=accept comment="VPS-API-access"
+    } else={
+      /ip firewall filter add chain=input protocol=tcp dst-port=8728 src-address=${subnet} action=accept comment="VPS-API-access" place-before=0
+    }
+  }
+} on-error={}`;
   }
 }
