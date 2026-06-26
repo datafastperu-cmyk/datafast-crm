@@ -166,16 +166,11 @@ export class PagosService {
           );
         }
 
-        // Reactivación automática si contrato suspendido por mora o manual
-        if (
-          contrato &&
-          contrato.estado === EstadoContrato.SUSPENDIDO
-        ) {
-          await manager.update(Contrato, contrato.id, {
-            estado:       EstadoContrato.ACTIVO,
-            fechaEstado:  new Date(),
-            motivoEstado: `Reactivación automática — pago S/ ${dto.monto} verificado`,
-          });
+        // Marcar para reactivación vía worker (el worker hace el UPDATE completo:
+        // deuda_total=0, meses_deuda=0, en_prorroga=false, fecha_vencimiento, historial).
+        // NO actualizar estado aquí dentro de la TX: el worker necesita encontrar
+        // estado='suspendido' para que su WHERE funcione y reset sea completo.
+        if (contrato && contrato.estado === EstadoContrato.SUSPENDIDO) {
           contratoParaReactivar = contrato;
         }
       }
