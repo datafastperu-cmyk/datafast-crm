@@ -18,7 +18,8 @@ import { memoryStorage } from 'multer';
 import { PagosService }   from './pagos.service';
 import {
   RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
-  FilterPagoDto, CrearPreferenciaDto, CreateCuentaBancariaDto,
+  ActualizarPagoDto, FilterPagoDto, CrearPreferenciaDto,
+  CreateCuentaBancariaDto,
 } from './dto/pago.dto';
 import { EstadoPago } from './entities/pago.entity';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -268,6 +269,35 @@ export class PagosController {
     @Req() req: Request,
   ) {
     return StdResponse.ok(await this.svc.conciliar(id, dto, user, req), 'Pago conciliado');
+  }
+
+  // ── PATCH /pagos/:id — Editar metadatos ──────────────────────
+  @Patch(':id')
+  @RequirePermission('pagos:update')
+  @ApiOperation({ summary: 'Editar metadatos de un pago (método, banco, fecha, N° operación, notas)' })
+  @ApiParam({ name: 'id' })
+  async actualizar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ActualizarPagoDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    const pago = await this.svc.actualizar(id, dto, user.empresaId, user, req);
+    return StdResponse.ok(pago, 'Pago actualizado');
+  }
+
+  // ── DELETE /pagos/:id — Eliminar pago ────────────────────────
+  @Delete(':id')
+  @RequirePermission('pagos:delete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar pago (revierte monto de la factura si estaba verificado)' })
+  @ApiParam({ name: 'id' })
+  async eliminar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    await this.svc.eliminar(id, user.empresaId, user, req);
   }
 
   // ── POST /pagos/:id/comprobante — Subir foto del voucher ─

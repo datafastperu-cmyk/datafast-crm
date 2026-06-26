@@ -2117,8 +2117,9 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
   const queryClient = useQueryClient();
   const [subTab, setSubTab]         = useState<FSubTab>('facturas');
   const [search, setSearch]         = useState('');
-  const [showModal, setShowModal]   = useState(false);
-  const [editando, setEditando]     = useState<Factura | null>(null);
+  const [showModal, setShowModal]     = useState(false);
+  const [editando, setEditando]       = useState<Factura | null>(null);
+  const [editandoPago, setEditandoPago] = useState<Pago | null>(null);
 
   const { data: facturas = [], isLoading: loadingF } = useQuery({
     queryKey: ['cliente-facturas', clienteId],
@@ -2148,6 +2149,15 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
       toast('Factura eliminada', { type: 'success' });
     },
     onError: () => toast('No se pudo eliminar la factura', { type: 'error' }),
+  });
+
+  const { mutate: eliminarPago } = useMutation({
+    mutationFn: (pagoId: string) => pagosApi.eliminar(pagoId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cliente-pagos', clienteId] });
+      toast('Transacción eliminada', { type: 'success' });
+    },
+    onError: (err: any) => toast(err?.response?.data?.message ?? 'No se pudo eliminar la transacción', { type: 'error' }),
   });
 
   const q         = search.toLowerCase();
@@ -2336,7 +2346,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
-                      {['FECHA', 'MONTO', 'MÉTODO', 'N° OPERACIÓN', 'ESTADO', 'NOTAS'].map((h) => (
+                      {['FECHA', 'MONTO', 'MÉTODO', 'N° OPERACIÓN', 'ESTADO', 'NOTAS', ''].map((h) => (
                         <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">
                           {h}
                         </th>
@@ -2372,6 +2382,28 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                         </td>
                         <td className="px-3 py-2.5 text-muted-foreground max-w-[200px] truncate">
                           {(p as any).notas ?? '—'}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setEditandoPago(p)}
+                              title="Editar"
+                              className="p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-muted-foreground hover:text-blue-600 transition-colors"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) {
+                                  eliminarPago(p.id);
+                                }
+                              }}
+                              title="Eliminar"
+                              className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2418,6 +2450,19 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
             setEditando(null);
             queryClient.invalidateQueries({ queryKey: ['cliente-facturas', clienteId] });
             toast('Factura actualizada', { type: 'success' });
+          }}
+        />
+      )}
+
+      {/* ── Modal editar transacción ──────────────────────────── */}
+      {editandoPago && (
+        <ModalEditarPago
+          pago={editandoPago}
+          onClose={() => setEditandoPago(null)}
+          onSuccess={() => {
+            setEditandoPago(null);
+            queryClient.invalidateQueries({ queryKey: ['cliente-pagos', clienteId] });
+            toast('Transacción actualizada', { type: 'success' });
           }}
         />
       )}
@@ -2695,6 +2740,160 @@ function ModalEditarFactura({
                        bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Guardar cambios
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ModalEditarPago ───────────────────────────────────────────
+function ModalEditarPago({
+  pago, onClose, onSuccess,
+}: {
+  pago:      Pago;
+  onClose:   () => void;
+  onSuccess: () => void;
+}) {
+  const { toast }                   = useToast();
+  const [metodoPago, setMetodoPago] = useState((pago as any).metodoPago ?? '');
+  const [banco, setBanco]           = useState((pago as any).banco ?? '');
+  const [fechaPago, setFechaPago]   = useState((pago as any).fechaPago ?? '');
+  const [numeroOp, setNumeroOp]     = useState((pago as any).numeroOperacion ?? '');
+  const [notas, setNotas]           = useState((pago as any).notas ?? '');
+  const [loading, setLoading]       = useState(false);
+
+  async function submit() {
+    setLoading(true);
+    try {
+      await pagosApi.actualizar(pago.id, {
+        metodoPago:      metodoPago  || undefined,
+        banco:           banco        || undefined,
+        fechaPago:       fechaPago    || undefined,
+        numeroOperacion: numeroOp     || undefined,
+        notas:           notas        || undefined,
+      });
+      onSuccess();
+    } catch (err: any) {
+      toast(err?.response?.data?.message ?? 'Error al actualizar la transacción', { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputCls = `w-full px-3 py-2 text-sm border border-input rounded-lg bg-background
+                    text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
+
+  const facturaNum = (pago as any).facturaNumero ?? (pago as any).facturaId?.slice(0, 8) ?? '';
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-sm bg-card border border-border rounded-xl shadow-2xl flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <h2 className="text-base font-semibold">Editar Transacción</h2>
+            {facturaNum && (
+              <p className="text-xs text-muted-foreground">Pago de la factura Nº {facturaNum}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-accent transition-colors text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto">
+
+          {/* Forma de pago */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Forma de pago</label>
+            <select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)} className={inputCls}>
+              <option value="">— Seleccionar —</option>
+              {METODOS_PAGO.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Detalle / banco */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Detalle forma pago</label>
+            <input
+              type="text"
+              value={banco}
+              onChange={(e) => setBanco(e.target.value)}
+              placeholder="Ej: BCP, Interbank, Yape..."
+              className={inputCls}
+            />
+          </div>
+
+          {/* Fecha */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha &amp; Hora</label>
+            <input
+              type="date"
+              value={fechaPago}
+              onChange={(e) => setFechaPago(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          {/* N° Operación */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">N° transacción</label>
+            <input
+              type="text"
+              value={numeroOp}
+              onChange={(e) => setNumeroOp(e.target.value)}
+              placeholder="Código de operación"
+              className={inputCls}
+            />
+          </div>
+
+          {/* Monto (solo lectura) */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Monto</label>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-2 text-sm bg-muted border border-input rounded-l-lg text-muted-foreground">S/.</span>
+              <input
+                type="text"
+                value={Number(pago.monto).toFixed(2)}
+                readOnly
+                className={`flex-1 px-3 py-2 text-sm border border-input rounded-r-lg bg-muted text-muted-foreground cursor-not-allowed`}
+              />
+            </div>
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Notas</label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              rows={3}
+              placeholder="Observaciones opcionales..."
+              className={`${inputCls} resize-none`}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-border flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={loading}
+            onClick={submit}
+            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             Guardar cambios
           </button>
         </div>

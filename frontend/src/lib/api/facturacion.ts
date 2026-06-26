@@ -266,6 +266,18 @@ export const pagosApi = {
     );
     return res.data.data.comprobanteUrl;
   },
+
+  actualizar: async (
+    id:  string,
+    dto: { metodoPago?: string; banco?: string; fechaPago?: string; numeroOperacion?: string; notas?: string },
+  ): Promise<Pago> => {
+    const res = await api.patch<ApiRespuesta<Pago>>(`/pagos/${id}`, dto);
+    return res.data.data;
+  },
+
+  eliminar: async (id: string): Promise<void> => {
+    await api.delete(`/pagos/${id}`);
+  },
 };
 
 // ─── Utilidades ───────────────────────────────────────────────

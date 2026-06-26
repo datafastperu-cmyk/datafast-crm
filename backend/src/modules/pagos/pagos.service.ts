@@ -22,7 +22,7 @@ import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity'
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto';
 import {
-  VerificarPagoDto, ConciliarPagoDto,
+  VerificarPagoDto, ConciliarPagoDto, ActualizarPagoDto,
   FilterPagoDto, CrearPreferenciaDto,
   CreateCuentaBancariaDto, ResumenCobranzaDto,
 } from './dto/pago.dto';
@@ -655,6 +655,71 @@ export class PagosService {
 
   async findByContrato(contratoId: string, empresaId: string): Promise<Pago[]> {
     return this.pagoRepo.findByContrato(contratoId, empresaId);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // EDITAR METADATOS DE UN PAGO (no cambia monto ni estado)
+  // ────────────────────────────────────────────────────────────
+  async actualizar(
+    id:        string,
+    dto:       ActualizarPagoDto,
+    empresaId: string,
+    user:      JwtPayload,
+    req?:      any,
+  ): Promise<Pago> {
+    const pago = await this.findOne(id, empresaId);
+    if (pago.conciliado) throw new BadRequestException('No se puede editar un pago conciliado');
+
+    const updates: Record<string, any> = {};
+    if (dto.metodoPago    !== undefined) updates.metodoPago     = dto.metodoPago;
+    if (dto.banco         !== undefined) updates.banco          = dto.banco;
+    if (dto.fechaPago     !== undefined) updates.fechaPago      = dto.fechaPago;
+    if (dto.numeroOperacion !== undefined) updates.numeroOperacion = dto.numeroOperacion;
+    if (dto.notas         !== undefined) updates.notas          = dto.notas;
+
+    if (Object.keys(updates).length === 0) return pago;
+
+    await this.pagoRepo.update(id, updates);
+
+    await this.auditoria.logUpdate({
+      empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+      modulo: 'pagos', entidadId: id,
+      descripcion: `Pago editado: S/ ${pago.monto} | ${pago.metodoPago}`, req,
+    });
+
+    return this.findOne(id, empresaId);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // ELIMINAR PAGO — revierte el monto de la factura si verificado
+  // ────────────────────────────────────────────────────────────
+  async eliminar(
+    id:        string,
+    empresaId: string,
+    user:      JwtPayload,
+    req?:      any,
+  ): Promise<void> {
+    const pago = await this.findOne(id, empresaId);
+    if (pago.conciliado) throw new BadRequestException('No se puede eliminar un pago conciliado');
+
+    await this.ds.transaction(async (manager) => {
+      if (pago.estado === EstadoPago.VERIFICADO && pago.facturaId) {
+        await manager.query(
+          `UPDATE facturas
+              SET monto_pagado = GREATEST(0, monto_pagado - $1),
+                  updated_at   = NOW()
+            WHERE id = $2 AND empresa_id = $3`,
+          [pago.monto, pago.facturaId, empresaId],
+        );
+      }
+      await manager.delete(Pago, id);
+    });
+
+    await this.auditoria.logDelete({
+      empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+      modulo: 'pagos', entidadId: id,
+      descripcion: `Pago eliminado: S/ ${pago.monto} | ${pago.metodoPago}`, req,
+    });
   }
 
   async findPendientes(empresaId: string): Promise<Pago[]> {

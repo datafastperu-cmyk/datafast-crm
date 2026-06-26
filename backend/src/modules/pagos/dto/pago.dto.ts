@@ -37,6 +37,31 @@ export class ConciliarPagoDto {
   notas?: string;
 }
 
+// ─── Editar metadatos de un pago ──────────────────────────────
+export class ActualizarPagoDto {
+  @ApiPropertyOptional({ enum: MetodoPago })
+  @IsOptional() @IsEnum(MetodoPago)
+  @Transform(({ value }) => (typeof value === 'string' ? value.toLowerCase() : value))
+  metodoPago?: MetodoPago;
+
+  @ApiPropertyOptional({ example: 'BCP' })
+  @IsOptional() @IsString() @MaxLength(100)
+  banco?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsDateString()
+  fechaPago?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(100)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  numeroOperacion?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(2000)
+  notas?: string;
+}
+
 // ─── Filtros de búsqueda ─────────────────────────────────────
 export class FilterPagoDto extends PaginationDto {
   @ApiPropertyOptional({ enum: EstadoPago })
