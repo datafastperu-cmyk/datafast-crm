@@ -2768,6 +2768,7 @@ function ModalEditarPago({
   const { toast }                     = useToast();
   const [metodoPago, setMetodoPago]   = useState(pago.metodoPago ?? '');
   const [banco, setBanco]             = useState(pago.banco ?? '');
+  const [fechaPago, setFechaPago]     = useState(pago.fechaPago ?? '');
   const [fechaHora, setFechaHora]     = useState(() => toDatetimeLocal(pago.registradoEn));
   const [numeroOp, setNumeroOp]       = useState(pago.numeroOperacion ?? '');
   const [notas, setNotas]             = useState(pago.notas ?? '');
@@ -2776,11 +2777,11 @@ function ModalEditarPago({
   async function submit() {
     setLoading(true);
     try {
-      // Convertir datetime-local a ISO para el backend
       const registradoEnIso = fechaHora ? new Date(fechaHora).toISOString() : undefined;
       await pagosApi.actualizar(pago.id, {
         metodoPago:      metodoPago     || undefined,
         banco:           banco           || undefined,
+        fechaPago:       fechaPago       || undefined,
         registradoEn:   registradoEnIso,
         numeroOperacion: numeroOp        || undefined,
         notas:           notas           || undefined,
@@ -2837,9 +2838,20 @@ function ModalEditarPago({
             </select>
           </div>
 
-          {/* Fecha & Hora — datetime del registro original */}
+          {/* Fecha de Pago — fecha consignada en /finanzas/registro */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha &amp; Hora</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha de Pago</label>
+            <input
+              type="date"
+              value={fechaPago}
+              onChange={(e) => setFechaPago(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          {/* Fecha y Hora del Registro — timestamp exacto del sistema */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha y Hora del Registro</label>
             <input
               type="datetime-local"
               value={fechaHora}
