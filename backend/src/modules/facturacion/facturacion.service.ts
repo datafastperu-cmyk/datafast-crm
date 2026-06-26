@@ -649,6 +649,10 @@ export class FacturacionService {
     if (factura.estado === EstadoFactura.ANULADA)
       throw new BadRequestException('No se puede editar una factura anulada');
 
+    const estadoConMontosBloqueados = [EstadoFactura.PAGADA, EstadoFactura.PAGADA_PARCIAL];
+    if (dto.items !== undefined && estadoConMontosBloqueados.includes(factura.estado))
+      throw new BadRequestException('No se pueden modificar los montos de una factura pagada');
+
     if (dto.version !== undefined && factura.version !== dto.version) {
       throw new ConflictException({
         code: 'CONCURRENCY_CONFLICT',

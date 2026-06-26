@@ -2532,6 +2532,8 @@ function ModalEditarFactura({
 
   const simb = simboloMoneda();
 
+  const montosReadonly = factura.estado === 'pagada' || factura.estado === 'pagada_parcial';
+
   function addItem()  { setItems(p => [...p, { descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0 }]); }
   function removeItem(idx: number) { setItems(p => p.filter((_, i) => i !== idx)); }
   function updateItem(idx: number, field: keyof LineaEdit, value: string | number) {
@@ -2646,9 +2648,11 @@ function ModalEditarFactura({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Conceptos</label>
-              <button onClick={addItem} className="flex items-center gap-1 text-xs text-primary hover:underline">
-                <Plus className="w-3.5 h-3.5" /> Agregar línea
-              </button>
+              {!montosReadonly && (
+                <button onClick={addItem} className="flex items-center gap-1 text-xs text-primary hover:underline">
+                  <Plus className="w-3.5 h-3.5" /> Agregar línea
+                </button>
+              )}
             </div>
             <div className="border border-border rounded-lg overflow-hidden">
               <table className="w-full text-sm">
@@ -2676,24 +2680,27 @@ function ModalEditarFactura({
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" value={it.cantidad} min={0.001} step={0.001}
+                            readOnly={montosReadonly}
                             onChange={e => updateItem(idx, 'cantidad', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1 text-xs text-center bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary" />
+                            className={cn("w-full px-2 py-1 text-xs text-center bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary", montosReadonly && "cursor-not-allowed opacity-60 select-none")} />
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" value={it.precioUnitario} min={0} step={0.01}
+                            readOnly={montosReadonly}
                             onChange={e => updateItem(idx, 'precioUnitario', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary" />
+                            className={cn("w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary", montosReadonly && "cursor-not-allowed opacity-60 select-none")} />
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" value={it.descuento} min={0} max={100} step={0.1}
+                            readOnly={montosReadonly}
                             onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary" />
+                            className={cn("w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary", montosReadonly && "cursor-not-allowed opacity-60 select-none")} />
                         </td>
                         <td className="px-3 py-1.5 text-right text-xs font-semibold text-foreground">
                           {fmtS(sub)}
                         </td>
                         <td className="px-2 py-1.5 text-center">
-                          {items.length > 1 && (
+                          {items.length > 1 && !montosReadonly && (
                             <button onClick={() => removeItem(idx)} className="text-muted-foreground hover:text-destructive transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
