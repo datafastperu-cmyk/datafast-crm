@@ -2385,24 +2385,32 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setEditandoPago(p)}
-                              title="Editar"
-                              className="p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-muted-foreground hover:text-blue-600 transition-colors"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (window.confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) {
-                                  eliminarPago(p.id);
-                                }
-                              }}
-                              title="Eliminar"
-                              className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {(p as any).estado === 'verificado' || (p as any).conciliado ? (
+                              <span title="Pago verificado — no se puede editar" className="p-1.5 rounded text-muted-foreground/40 cursor-not-allowed">
+                                <Lock className="w-3.5 h-3.5" />
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setEditandoPago(p)}
+                                title="Editar"
+                                className="p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 text-muted-foreground hover:text-blue-600 transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {!(p as any).conciliado && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) {
+                                    eliminarPago(p.id);
+                                  }
+                                }}
+                                title="Eliminar"
+                                className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
