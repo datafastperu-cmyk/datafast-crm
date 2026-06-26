@@ -258,14 +258,15 @@ export class IpPoolService {
   ): Promise<SegmentoIpv4> {
     const seg = await this.getSegmento(id, empresaId);
 
+    const ipsActivas = await this.ipRepo.count({ where: { segmentoId: id, activa: true } });
+    if (ipsActivas > 0) {
+      throw new ConflictException(
+        `No se puede editar el segmento: tiene ${ipsActivas} IP${ipsActivas > 1 ? 's' : ''} asignada${ipsActivas > 1 ? 's' : ''}. Libéralas antes de modificar la configuración.`,
+      );
+    }
+
     const update: Partial<SegmentoIpv4> = { ...data };
     if (data.redCidr && data.redCidr !== seg.redCidr) {
-      const ipsActivas = await this.ipRepo.count({ where: { segmentoId: id, activa: true } });
-      if (ipsActivas > 0) {
-        throw new ConflictException(
-          `No se puede cambiar el CIDR: el segmento tiene ${ipsActivas} IP${ipsActivas > 1 ? 's' : ''} activa${ipsActivas > 1 ? 's' : ''}. Libéralas antes de modificar la red.`,
-        );
-      }
       if (!isValidCidr(data.redCidr)) {
         throw new BadRequestException(`CIDR inválido: ${data.redCidr}`);
       }

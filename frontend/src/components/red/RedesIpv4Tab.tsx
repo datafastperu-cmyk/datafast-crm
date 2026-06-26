@@ -180,8 +180,9 @@ function SegmentoRow({
             </button>
             <button
               onClick={onEditar}
-              title="Editar segmento"
-              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors text-muted-foreground hover:text-blue-600"
+              disabled={seg.ipsUsadas > 0}
+              title={seg.ipsUsadas > 0 ? `Edición bloqueada: ${seg.ipsUsadas} IP${seg.ipsUsadas > 1 ? 's' : ''} asignada${seg.ipsUsadas > 1 ? 's' : ''}` : 'Editar segmento'}
+              className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors text-muted-foreground hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
             >
               <Pencil className="w-4 h-4" />
             </button>
