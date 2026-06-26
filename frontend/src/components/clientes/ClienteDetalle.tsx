@@ -2398,7 +2398,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {(p as any).estado === 'pendiente_verificacion' && !(p as any).conciliado && (
+                            {!(p as any).conciliado && (
                               <button
                                 onClick={() => {
                                   if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
