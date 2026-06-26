@@ -308,7 +308,13 @@ export class ClientesService {
   // Las llamadas de red (MikroTik / antena) van ANTES de la transacción DB
   // para no mezclar I/O de red con la atomicidad de la transacción.
   async remove(id: string, user: JwtPayload, req?: any): Promise<void> {
-    const cliente = await this.findOne(id, user.empresaId);
+    // Buscar sin filtrar deleted_at: permite hard-delete de clientes ya soft-deleted
+    const [clienteRaw] = await this.dataSource.query<Cliente[]>(
+      `SELECT * FROM clientes WHERE id = $1 AND empresa_id = $2 LIMIT 1`,
+      [id, user.empresaId],
+    );
+    if (!clienteRaw) throw new NotFoundException(`Cliente ${id} no encontrado`);
+    const cliente = clienteRaw;
 
     if (cliente.estado !== EstadoCliente.BAJA_DEFINITIVA) {
       throw new BadRequestException(
@@ -723,6 +729,9 @@ export class ClientesService {
             true,
           ).catch(e => this.logger.error(`onboarding rollback ip: ${e?.message}`));
         }
+        // Limpiar facturas y pagos del cliente antes del soft-delete para no dejar huérfanos
+        await this.dataSource.query(`DELETE FROM pagos    WHERE cliente_id = $1`, [cliente.id]).catch(() => {});
+        await this.dataSource.query(`DELETE FROM facturas WHERE cliente_id = $1`, [cliente.id]).catch(() => {});
         await this.clienteRepo.softDelete(cliente.id, user.empresaId).catch(() => {});
         throw err;
       }
