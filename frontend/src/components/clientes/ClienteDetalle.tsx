@@ -2104,10 +2104,10 @@ function FacturaBadge({ estado }: { estado: string }) {
 }
 
 // ── TabFacturacion ────────────────────────────────────────────
-type FSubTab = 'facturas' | 'transacciones' | 'saldos' | 'config';
+type FSubTab = 'facturas' | 'pagos' | 'saldos' | 'config';
 const F_SUBTABS: { key: FSubTab; label: string }[] = [
   { key: 'facturas',       label: 'Facturas'       },
-  { key: 'transacciones',  label: 'Transacciones'  },
+  { key: 'pagos',          label: 'Pagos'           },
   { key: 'saldos',         label: 'Saldos'         },
   { key: 'config',         label: 'Configuración'  },
 ];
@@ -2129,7 +2129,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
   const { data: pagos = [], isLoading: loadingP } = useQuery({
     queryKey: ['cliente-pagos', clienteId],
     queryFn:  () => pagosApi.getPorCliente(clienteId),
-    enabled:  subTab === 'transacciones',
+    enabled:  subTab === 'pagos',
   });
 
   const { mutate: anularFactura } = useMutation({
@@ -2155,9 +2155,9 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
     mutationFn: (pagoId: string) => pagosApi.eliminar(pagoId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cliente-pagos', clienteId] });
-      toast('Transacción eliminada', { type: 'success' });
+      toast('Pago eliminado', { type: 'success' });
     },
-    onError: (err: any) => toast(err?.response?.data?.message ?? 'No se pudo eliminar la transacción', { type: 'error' }),
+    onError: (err: any) => toast(err?.response?.data?.message ?? 'No se pudo eliminar el pago', { type: 'error' }),
   });
 
   const q         = search.toLowerCase();
@@ -2332,14 +2332,14 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
       )}
 
       {/* ── Transacciones ─────────────────────────────────────── */}
-      {subTab === 'transacciones' && (
+      {subTab === 'pagos' && (
         <div className="p-4">
           {loadingP ? (
             <div className="animate-pulse space-y-2">
               {[1, 2, 3].map((i) => <div key={i} className="h-10 rounded-lg bg-muted" />)}
             </div>
           ) : (pagos as Pago[]).length === 0 ? (
-            <PlaceholderTab icon={Receipt} title="Sin transacciones" desc="Los pagos de este cliente aparecerán aquí." />
+            <PlaceholderTab icon={Receipt} title="Sin pagos" desc="Los pagos de este cliente aparecerán aquí." />
           ) : (
             <div className="rounded-xl border border-border overflow-hidden">
               <div className="overflow-x-auto">
@@ -2401,7 +2401,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                             {!(p as any).conciliado && (
                               <button
                                 onClick={() => {
-                                  if (window.confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) {
+                                  if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
                                     eliminarPago(p.id);
                                   }
                                 }}
@@ -2470,7 +2470,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
           onSuccess={() => {
             setEditandoPago(null);
             queryClient.invalidateQueries({ queryKey: ['cliente-pagos', clienteId] });
-            toast('Transacción actualizada', { type: 'success' });
+            toast('Pago actualizado', { type: 'success' });
           }}
         />
       )}
@@ -2794,7 +2794,7 @@ function ModalEditarPago({
       });
       onSuccess();
     } catch (err: any) {
-      toast(err?.response?.data?.message ?? 'Error al actualizar la transacción', { type: 'error' });
+      toast(err?.response?.data?.message ?? 'Error al actualizar el pago', { type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -2812,7 +2812,7 @@ function ModalEditarPago({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold">Editar Transacción</h2>
+            <h2 className="text-base font-semibold">Editar Pago</h2>
             {facturaNum && (
               <p className="text-xs text-muted-foreground">Pago de la factura Nº {facturaNum}</p>
             )}

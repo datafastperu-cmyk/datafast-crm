@@ -90,7 +90,7 @@ export function PagosContent() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Transacciones</h2>
+          <h2 className="text-lg font-semibold text-foreground">Pagos</h2>
           <p className="text-sm text-muted-foreground">
             {resumen?.pendientesVerificar
               ? <span className="text-orange-600 font-medium">{resumen.pendientesVerificar} pagos pendientes de verificar</span>

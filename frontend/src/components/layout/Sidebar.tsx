@@ -73,7 +73,7 @@ const NAV: NavEntry[] = [
     items: [
       { href: '/facturacion',       label: 'Facturas',          icon: Receipt,    permiso: 'facturacion:view' },
       { href: '/finanzas/registro', label: 'Registrar Pago',    icon: DollarSign, permiso: 'pagos:view'       },
-      { href: '/pagos',             label: 'Transacciones',     icon: TrendingUp, permiso: 'pagos:view'       },
+      { href: '/pagos',             label: 'Pagos',             icon: TrendingUp, permiso: 'pagos:view'       },
       { href: '/finanzas/gastos',     label: 'Gastos / Ingresos',    icon: Wallet,  permiso: 'pagos:view'       },
       { href: '/finanzas/proyectos',  label: 'Proyectos Expansión',  icon: Target,  permiso: 'pagos:view'       },
       { href: '/reportes',          label: 'Reportes',          icon: BarChart2,  permiso: 'reportes:view'    },

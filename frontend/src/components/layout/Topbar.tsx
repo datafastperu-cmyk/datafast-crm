@@ -20,7 +20,7 @@ const LABELS: Record<string, string> = {
   clientes:      'Abonados',
   contratos:     'Contratos',
   facturacion:   'Facturación',
-  pagos:         'Transacciones',
+  pagos:         'Pagos',
   monitoreo:     'Monitoreo',
   red:           'Gestión de Red',
   servicios:     'Servicios',
