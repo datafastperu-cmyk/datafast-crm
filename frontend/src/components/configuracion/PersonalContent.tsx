@@ -84,6 +84,11 @@ function UsuariosTab() {
   const [nuevaPw, setNuevaPw]           = useState('');
   const [resetting, setResetting]       = useState(false);
   const [pendingDeleteUser, setPendingDeleteUser] = useState<UsuarioDetalle | null>(null);
+  const [editNombres, setEditNombres]     = useState('');
+  const [editApellidos, setEditApellidos] = useState('');
+  const [editEmail, setEditEmail]         = useState('');
+  const [editTelefono, setEditTelefono]   = useState('');
+  const [editRoles, setEditRoles]         = useState<string[]>([]);
 
   const { data: usuarios = [], isLoading } = useQuery({ queryKey: ['usuarios-admin'], queryFn: usuariosApi.list });
   const { data: roles    = [] }            = useQuery({ queryKey: ['roles-list'], queryFn: rolesApi.list });
@@ -115,6 +120,24 @@ function UsuariosTab() {
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['usuarios-admin'] }); toast('Usuario eliminado'); },
     onError:    (e) => toast(parseApiError(e), { type: 'error' }),
   });
+
+  const { mutate: actualizar, isPending: actualizando } = useMutation({
+    mutationFn: () => usuariosApi.update(editando!.id, {
+      nombres: editNombres, apellidos: editApellidos,
+      email: editEmail, telefono: editTelefono || undefined, roles: editRoles,
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['usuarios-admin'] }); toast('Usuario actualizado', { type: 'success' }); setEditando(null); },
+    onError:   (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
+  const abrirEditar = (u: UsuarioDetalle) => {
+    setEditando(u);
+    setEditNombres(u.nombres);
+    setEditApellidos(u.apellidos);
+    setEditEmail(u.email);
+    setEditTelefono(u.telefono ?? '');
+    setEditRoles(u.roles);
+  };
 
   const handleReset = async () => {
     if (!resetId || nuevaPw.length < 8) return;
@@ -187,6 +210,10 @@ function UsuariosTab() {
                 </div>
                 {/* Acciones */}
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  <button title="Editar usuario" onClick={() => abrirEditar(u)}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
                   <button title="Restablecer contraseña" onClick={() => setResetId(u.id)}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                     <Key className="w-3.5 h-3.5" />
@@ -297,6 +324,52 @@ function UsuariosTab() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal editar usuario */}
+      {editando && (
+        <Modal title="Editar usuario" onClose={() => setEditando(null)}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Fld label="Nombres *">
+                <input value={editNombres} onChange={(e) => setEditNombres(e.target.value)} className={inp()} placeholder="Juan" />
+              </Fld>
+              <Fld label="Apellidos *">
+                <input value={editApellidos} onChange={(e) => setEditApellidos(e.target.value)} className={inp()} placeholder="Pérez" />
+              </Fld>
+            </div>
+            <Fld label="Email *">
+              <input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} type="email" className={inp()} />
+            </Fld>
+            <Fld label="Teléfono">
+              <input value={editTelefono} onChange={(e) => setEditTelefono(e.target.value)} className={inp()} placeholder="+51 987 654 321" />
+            </Fld>
+            <Fld label="Roles *">
+              <div className="flex flex-wrap gap-2 mt-1">
+                {roleNames.map((r) => (
+                  <button key={r} type="button"
+                    onClick={() => setEditRoles((prev) => prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r])}
+                    className={cn('text-xs px-2.5 py-1 rounded-full font-medium border transition-all',
+                      editRoles.includes(r) ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-primary/50',
+                    )}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+              {editRoles.length === 0 && <p className="text-xs text-destructive mt-1">Selecciona al menos un rol</p>}
+            </Fld>
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setEditando(null)}
+                className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted">Cancelar</button>
+              <button
+                onClick={() => actualizar()}
+                disabled={actualizando || !editNombres.trim() || !editApellidos.trim() || !editEmail.trim() || editRoles.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 py-2 text-sm rounded-lg bg-primary text-primary-foreground disabled:opacity-60">
+                {actualizando && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Guardar cambios
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
