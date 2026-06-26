@@ -38,6 +38,7 @@ import { formatDate, formatPEN, cn, parseApiError, simboloMoneda, mesNombre } fr
 import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import type { Contrato, Factura, Pago } from '@/types';
 import { AUTH_TYPES, TIPO_SERVICIO_CONTRATO } from '@/lib/constants/service-types';
+import { useAuthStore } from '@/store/auth.store';
 
 // ── Tabs ──────────────────────────────────────────────────────
 const TABS = [
@@ -81,9 +82,9 @@ const INPUT = 'w-full px-3 py-2.5 text-sm rounded-lg border bg-background transi
 
 // ─────────────────────────────────────────────────────────────
 export function ClienteDetalle({ id }: { id: string }) {
-  const router      = useRouter();
-  const queryClient = useQueryClient();
-  const { toast }   = useToast();
+  const router        = useRouter();
+  const queryClient   = useQueryClient();
+  const { toast }     = useToast();
   const [tab, setTab]           = useState<TabKey>('resumen');
   const [reniecStatus, setReniecStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [reniecMsg, setReniecMsg]       = useState('');
@@ -2113,8 +2114,9 @@ const F_SUBTABS: { key: FSubTab; label: string }[] = [
 ];
 
 function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos: Contrato[] }) {
-  const { toast }   = useToast();
-  const queryClient = useQueryClient();
+  const { toast }         = useToast();
+  const queryClient       = useQueryClient();
+  const puedeEliminarPago = useAuthStore((s) => s.tienePermiso)('pagos:delete');
   const [subTab, setSubTab]         = useState<FSubTab>('facturas');
   const [search, setSearch]         = useState('');
   const [showModal, setShowModal]     = useState(false);
@@ -2398,7 +2400,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {!(p as any).conciliado && (
+                            {!(p as any).conciliado && puedeEliminarPago && (
                               <button
                                 onClick={() => {
                                   if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {

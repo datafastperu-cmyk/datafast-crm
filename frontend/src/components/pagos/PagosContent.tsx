@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { pagosApi, type FiltrosPago } from '@/lib/api/facturacion';
+import { useAuthStore }               from '@/store/auth.store';
 import { zonasApi }                   from '@/lib/api/zonas';
 import { mikrotikApi }                from '@/lib/api/mikrotik';
 import { useToast }    from '@/components/ui/toaster';
@@ -33,6 +34,8 @@ export function PagosContent() {
   const router      = useRouter();
   const queryClient = useQueryClient();
   const { toast }   = useToast();
+
+  const puedeEliminarPago = useAuthStore((s) => s.tienePermiso)('pagos:delete');
 
   const [filtros, setFiltros]   = useState<FiltrosPago>({ page: 1, limit: 25 });
   const [searchInput, setSearch] = useState('');
@@ -355,7 +358,7 @@ export function PagosContent() {
                       </button>
                     </>
                   )}
-                  {!p.conciliado && (
+                  {!p.conciliado && puedeEliminarPago && (
                     <button
                       onClick={() => {
                         if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
