@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Wifi, ChevronDown, X, Network, Pencil } from 'lucide-react';
+import { Plus, Trash2, Wifi, ChevronDown, X, Network, Pencil, AlertTriangle } from 'lucide-react';
 import { redesApi, type SegmentoIpv4, type CreateSegmentoDto, type DisponibilidadSegmento } from '@/lib/api/contratos';
 import type { Router } from '@/lib/api/mikrotik';
 import { useToast } from '@/components/ui/toaster';
@@ -63,6 +63,7 @@ export function RedesIpv4Tab() {
       {showForm && (
         <SegmentoForm
           routers={routers}
+          segmentos={segmentos}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); refresh(); }}
         />
@@ -72,6 +73,7 @@ export function RedesIpv4Tab() {
       {editando && (
         <SegmentoForm
           routers={routers}
+          segmentos={segmentos}
           segmento={editando}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); refresh(); }}
@@ -282,9 +284,10 @@ const CIDR_GRUPOS = [
 
 // ─── Form component (modal — create & edit) ──────────────────
 function SegmentoForm({
-  routers, segmento, onClose, onSaved,
+  routers, segmentos, segmento, onClose, onSaved,
 }: {
   routers:   Router[];
+  segmentos: SegmentoIpv4[];
   segmento?: SegmentoIpv4;   // undefined = crear | defined = editar
   onClose:   () => void;
   onSaved:   () => void;
@@ -341,6 +344,12 @@ function SegmentoForm({
   const canSubmit  = form.nombre.trim() && red.trim() && form.gateway.trim();
   const set        = (k: keyof typeof form, v: string) =>
     setForm((prev) => ({ ...prev, [k]: v }));
+
+  // Detecta si el CIDR ya existe en otro segmento (diferente id)
+  const cidrActual = `${red.trim()}/${prefix}`;
+  const conflictos = useMemo(() => segmentos.filter(
+    (s) => s.redCidr === cidrActual && s.id !== segmento?.id,
+  ), [segmentos, cidrActual, segmento?.id]);
 
   return (
     <Portal>
@@ -431,6 +440,30 @@ function SegmentoForm({
               className={cn(inputCls(), 'font-mono')}
             />
           </FRow>
+
+          {/* Advertencia CIDR duplicado */}
+          {conflictos.length > 0 && (
+            <div className="flex gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                <p className="font-medium">Este rango ya está asignado a otro segmento:</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {conflictos.map((c) => {
+                    const routerNombre = routers.find((r) => r.id === c.routerId)?.nombre;
+                    return (
+                      <li key={c.id}>
+                        <span className="font-mono">{c.redCidr}</span> — {c.nombre}
+                        {routerNombre && <span> (Router: <span className="font-medium">{routerNombre}</span>)</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="mt-1 text-amber-600 dark:text-amber-500">
+                  Si ambos routers comparten comunicación física o lógica entre sí, esto puede generar conflictos de enrutamiento.
+                </p>
+              </div>
+            </div>
+          )}
 
         </div>
 
