@@ -671,11 +671,21 @@ export class PagosService {
     if (pago.conciliado) throw new BadRequestException('No se puede editar un pago conciliado');
 
     const updates: Record<string, any> = {};
-    if (dto.metodoPago    !== undefined) updates.metodoPago     = dto.metodoPago;
-    if (dto.banco         !== undefined) updates.banco          = dto.banco;
-    if (dto.fechaPago     !== undefined) updates.fechaPago      = dto.fechaPago;
+    if (dto.metodoPago      !== undefined) updates.metodoPago      = dto.metodoPago;
+    if (dto.banco           !== undefined) updates.banco           = dto.banco;
+    if (dto.fechaPago       !== undefined) updates.fechaPago       = dto.fechaPago;
     if (dto.numeroOperacion !== undefined) updates.numeroOperacion = dto.numeroOperacion;
-    if (dto.notas         !== undefined) updates.notas          = dto.notas;
+    if (dto.notas           !== undefined) updates.notas           = dto.notas;
+    if (dto.registradoEn   !== undefined) {
+      const dt = new Date(dto.registradoEn);
+      if (!isNaN(dt.getTime())) {
+        updates.registradoEn = dt;
+        // Sincronizar fechaPago con la fecha del nuevo timestamp si no se envió por separado
+        if (dto.fechaPago === undefined) {
+          updates.fechaPago = dt.toISOString().slice(0, 10);
+        }
+      }
+    }
 
     if (Object.keys(updates).length === 0) return pago;
 

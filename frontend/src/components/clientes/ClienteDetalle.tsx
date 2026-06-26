@@ -2749,6 +2749,15 @@ function ModalEditarFactura({
 }
 
 // ── ModalEditarPago ───────────────────────────────────────────
+// Convierte ISO timestamp a formato "YYYY-MM-DDTHH:MM" para input datetime-local (hora local)
+function toDatetimeLocal(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function ModalEditarPago({
   pago, onClose, onSuccess,
 }: {
@@ -2756,23 +2765,25 @@ function ModalEditarPago({
   onClose:   () => void;
   onSuccess: () => void;
 }) {
-  const { toast }                   = useToast();
-  const [metodoPago, setMetodoPago] = useState((pago as any).metodoPago ?? '');
-  const [banco, setBanco]           = useState((pago as any).banco ?? '');
-  const [fechaPago, setFechaPago]   = useState((pago as any).fechaPago ?? '');
-  const [numeroOp, setNumeroOp]     = useState((pago as any).numeroOperacion ?? '');
-  const [notas, setNotas]           = useState((pago as any).notas ?? '');
-  const [loading, setLoading]       = useState(false);
+  const { toast }                     = useToast();
+  const [metodoPago, setMetodoPago]   = useState(pago.metodoPago ?? '');
+  const [banco, setBanco]             = useState(pago.banco ?? '');
+  const [fechaHora, setFechaHora]     = useState(() => toDatetimeLocal(pago.registradoEn));
+  const [numeroOp, setNumeroOp]       = useState(pago.numeroOperacion ?? '');
+  const [notas, setNotas]             = useState(pago.notas ?? '');
+  const [loading, setLoading]         = useState(false);
 
   async function submit() {
     setLoading(true);
     try {
+      // Convertir datetime-local a ISO para el backend
+      const registradoEnIso = fechaHora ? new Date(fechaHora).toISOString() : undefined;
       await pagosApi.actualizar(pago.id, {
-        metodoPago:      metodoPago  || undefined,
-        banco:           banco        || undefined,
-        fechaPago:       fechaPago    || undefined,
-        numeroOperacion: numeroOp     || undefined,
-        notas:           notas        || undefined,
+        metodoPago:      metodoPago     || undefined,
+        banco:           banco           || undefined,
+        registradoEn:   registradoEnIso,
+        numeroOperacion: numeroOp        || undefined,
+        notas:           notas           || undefined,
       });
       onSuccess();
     } catch (err: any) {
@@ -2785,7 +2796,7 @@ function ModalEditarPago({
   const inputCls = `w-full px-3 py-2 text-sm border border-input rounded-lg bg-background
                     text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
 
-  const facturaNum = (pago as any).facturaNumero ?? (pago as any).facturaId?.slice(0, 8) ?? '';
+  const facturaNum = (pago as any).facturaNumero ?? pago.facturaId?.slice(0, 8) ?? '';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -2818,25 +2829,21 @@ function ModalEditarPago({
             </select>
           </div>
 
-          {/* Detalle / banco */}
+          {/* Detalle forma pago — dropdown (próximamente con datos dinámicos) */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Detalle forma pago</label>
-            <input
-              type="text"
-              value={banco}
-              onChange={(e) => setBanco(e.target.value)}
-              placeholder="Ej: BCP, Interbank, Yape..."
-              className={inputCls}
-            />
+            <select value={banco} onChange={(e) => setBanco(e.target.value)} className={inputCls}>
+              <option value="">— Seleccionar —</option>
+            </select>
           </div>
 
-          {/* Fecha */}
+          {/* Fecha & Hora — datetime del registro original */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha &amp; Hora</label>
             <input
-              type="date"
-              value={fechaPago}
-              onChange={(e) => setFechaPago(e.target.value)}
+              type="datetime-local"
+              value={fechaHora}
+              onChange={(e) => setFechaHora(e.target.value)}
               className={inputCls}
             />
           </div>
@@ -2862,7 +2869,7 @@ function ModalEditarPago({
                 type="text"
                 value={Number(pago.monto).toFixed(2)}
                 readOnly
-                className={`flex-1 px-3 py-2 text-sm border border-input rounded-r-lg bg-muted text-muted-foreground cursor-not-allowed`}
+                className="flex-1 px-3 py-2 text-sm border border-input rounded-r-lg bg-muted text-muted-foreground cursor-not-allowed"
               />
             </div>
           </div>

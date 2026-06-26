@@ -269,7 +269,7 @@ export const pagosApi = {
 
   actualizar: async (
     id:  string,
-    dto: { metodoPago?: string; banco?: string; fechaPago?: string; numeroOperacion?: string; notas?: string },
+    dto: { metodoPago?: string; banco?: string; fechaPago?: string; registradoEn?: string; numeroOperacion?: string; notas?: string },
   ): Promise<Pago> => {
     const res = await api.patch<ApiRespuesta<Pago>>(`/pagos/${id}`, dto);
     return res.data.data;

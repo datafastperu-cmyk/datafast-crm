@@ -48,9 +48,13 @@ export class ActualizarPagoDto {
   @IsOptional() @IsString() @MaxLength(100)
   banco?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Fecha de pago (YYYY-MM-DD)' })
   @IsOptional() @IsDateString()
   fechaPago?: string;
+
+  @ApiPropertyOptional({ description: 'Fecha y hora exacta del registro (ISO 8601)' })
+  @IsOptional() @IsString()
+  registradoEn?: string;
 
   @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(100)
