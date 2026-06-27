@@ -615,7 +615,7 @@ export class ContratosService {
       dto.estado === EstadoContrato.ACTIVO &&
       [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)
     ) {
-      await this.dataSource.query(`
+      const [clienteActualizado] = await this.dataSource.query(`
         UPDATE clientes
         SET estado = 'activo', fecha_estado = NOW()
         WHERE id = $1
@@ -627,7 +627,24 @@ export class ContratosService {
               AND deleted_at IS NULL
               AND id != $2
           )
+        RETURNING id
       `, [contrato.clienteId, id]);
+
+      if (clienteActualizado) {
+        await this.dataSource.query(`
+          INSERT INTO clientes_historial_estados
+            (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+          VALUES ($1, $2, 'suspendido', 'activo', $3, $4, $5)
+        `, [
+          contrato.clienteId,
+          user.empresaId,
+          dto.motivo ?? `Reactivación de contrato ${id}`,
+          user.sub,
+          automatico ?? false,
+        ]).catch((e: any) =>
+          this.logger.warn?.(`contratos.cambiarEstado historial cliente: ${e.message}`),
+        );
+      }
     }
 
     if (dto.estado === EstadoContrato.SUSPENDIDO) {

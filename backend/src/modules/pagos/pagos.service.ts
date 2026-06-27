@@ -62,7 +62,7 @@ export class PagosService {
     const empresaId = user.empresaId;
     // El DTO ya usa los mismos valores lowercase que la entidad gracias al @Transform
     const metodoPagoEntity = dto.metodoPago as unknown as MetodoPago;
-    let contratoParaReactivar: Contrato | null = null;
+    const contratosParaReactivar: Contrato[] = [];
 
     // ── TRANSACCIÓN ACID ──────────────────────────────────────
     const savedPago = await this.ds.transaction(async (manager) => {
@@ -179,8 +179,25 @@ export class PagosService {
               AND f.deleted_at IS NULL
           `, [contrato.id, factura.clienteId]);
           if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
-            contratoParaReactivar = contrato;
+            if (factura.contratoId) {
+              // Factura vinculada a un contrato específico → solo ese
+              contratosParaReactivar.push(contrato);
+            } else {
+              // Factura unificada (contrato_id null) → reactivar TODOS los contratos suspendidos
+              const todos = await manager.find(Contrato, {
+                where: { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.SUSPENDIDO },
+              });
+              contratosParaReactivar.push(...todos);
+            }
           }
+        } else if (contrato && contrato.estado === EstadoContrato.PENDIENTE_ACTIVACION) {
+          this.logger.warn(
+            `[PAGO] Contrato ${contrato.id} en pendiente_activacion — pago S/${dto.monto} registrado, requiere activación manual`,
+          );
+        } else if (contrato && contrato.estado === EstadoContrato.BAJA_DEFINITIVA) {
+          this.logger.warn(
+            `[PAGO] Contrato ${contrato.id} en baja_definitiva — pago S/${dto.monto} registrado como solo registro contable`,
+          );
         }
       }
 
@@ -188,24 +205,25 @@ export class PagosService {
     });
     // ── FIN TRANSACCIÓN ───────────────────────────────────────
 
-    // PASO 5 — Encolar job de Mikrotik fuera de la TX (solo si commit fue exitoso)
-    if (contratoParaReactivar) {
+    // PASO 5 — Encolar jobs de MikroTik fuera de la TX (solo si commit fue exitoso)
+    for (const c of contratosParaReactivar) {
       const payload: PayloadReactivarContrato = {
-        contratoId: contratoParaReactivar.id,
-        empresaId:  contratoParaReactivar.empresaId,
-        clienteId:  contratoParaReactivar.clienteId,
-        routerId:   contratoParaReactivar.routerId,
-        ipAsignada: contratoParaReactivar.ipAsignada,
-        planNombre: contratoParaReactivar.planId, // resuelto en el worker
+        contratoId: c.id,
+        empresaId:  c.empresaId,
+        clienteId:  c.clienteId,
+        routerId:   c.routerId,
+        ipAsignada: c.ipAsignada,
+        planNombre: c.planId, // resuelto en el worker
         notificar:  true,
       };
       await this.cobranzaQueue.add(JOBS.REACTIVAR_CONTRATO, payload, {
+        jobId:    `reactivar:${c.id}`, // deduplicación: evita doble provisioning MikroTik
         attempts: 3,
         backoff:  { type: 'exponential', delay: 10_000 },
         removeOnComplete: 200,
         removeOnFail:     500,
       });
-      this.logger.log(`Job reactivar-contrato encolado para contrato ${contratoParaReactivar.id}`);
+      this.logger.log(`Job reactivar-contrato encolado para contrato ${c.id}`);
     }
 
     // Auditoría
@@ -540,6 +558,27 @@ export class PagosService {
       // ── B. Si hay contrato, verificar si se saldó la deuda ─
       if (contratoId) {
         await this.verificarYReactivarContrato(contratoId, empresaId, user, pago.id);
+      } else if (pago.clienteId) {
+        // Factura unificada (contrato_id null): verificar deuda total del cliente
+        // y reactivar TODOS los contratos suspendidos si quedaron en cero
+        const [deudaRow] = await this.ds.query(
+          `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
+           FROM facturas f
+           WHERE f.cliente_id = $1
+             AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+             AND f.deleted_at IS NULL`,
+          [pago.clienteId],
+        );
+        if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
+          const suspendidos: { id: string }[] = await this.ds.query(
+            `SELECT id FROM contratos
+             WHERE cliente_id = $1 AND empresa_id = $2 AND estado = 'suspendido' AND deleted_at IS NULL`,
+            [pago.clienteId, empresaId],
+          );
+          for (const { id: cId } of suspendidos) {
+            await this.verificarYReactivarContrato(cId, empresaId, user, pago.id);
+          }
+        }
       }
 
     } catch (err) {
@@ -603,9 +642,19 @@ export class PagosService {
           `🟢 Contrato REACTIVADO automáticamente: ${contratoId} | ` +
           `deuda saldada: S/ ${contrato.deudaTotal}`,
         );
-
-        // Nota: el módulo de notificaciones se encarga de avisar al cliente
-        // a través del sistema de eventos (ver gateway.module.ts)
+      } else if (contrato.estado === EstadoContrato.PENDIENTE_ACTIVACION) {
+        this.logger.warn(
+          `[REACTIVAR] Contrato ${contratoId} en pendiente_activacion — deuda saldada, ` +
+          `pago aplicado pero requiere activación manual por el operador`,
+        );
+        this.events.emit('contrato.pago_en_pendiente_activacion', {
+          contratoId, pagoId: pagoId ?? '', empresaId,
+        });
+      } else if (contrato.estado === EstadoContrato.BAJA_DEFINITIVA) {
+        this.logger.warn(
+          `[REACTIVAR] Contrato ${contratoId} en baja_definitiva — pago registrado, ` +
+          `sin reactivación (solo registro contable)`,
+        );
       }
     }
   }

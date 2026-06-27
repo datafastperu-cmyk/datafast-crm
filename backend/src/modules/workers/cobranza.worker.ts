@@ -690,7 +690,7 @@ export class CobranzaWorker {
     `, [contratoId, empresaId, estadoAnterior, `Reactivación automática por pago | Nuevo vencimiento: ${nuevaFechaStr}`]);
 
     // Sincronizar clientes.estado: si no quedan contratos suspendidos del cliente → activo
-    await this.ds.query(`
+    const [clienteActualizado] = await this.ds.query(`
       UPDATE clientes
       SET estado = 'activo', fecha_estado = NOW()
       WHERE id = $1
@@ -702,9 +702,25 @@ export class CobranzaWorker {
             AND deleted_at IS NULL
             AND id != $2
         )
-    `, [clienteId, contratoId]).catch((e: any) =>
-      this.logger.warn(`[REACTIVAR] No se pudo sincronizar clientes.estado: ${e.message}`),
-    );
+      RETURNING id
+    `, [clienteId, contratoId]).catch((e: any) => {
+      this.logger.warn(`[REACTIVAR] No se pudo sincronizar clientes.estado: ${e.message}`);
+      return [];
+    });
+
+    if (clienteActualizado) {
+      await this.ds.query(`
+        INSERT INTO clientes_historial_estados
+          (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+        VALUES ($1, $2, 'suspendido', 'activo', $3, NULL, true)
+      `, [
+        clienteId,
+        empresaId,
+        `Reactivación automática por pago | Contrato: ${contratoId}`,
+      ]).catch((e: any) =>
+        this.logger.warn(`[REACTIVAR] No se pudo insertar historial cliente: ${e.message}`),
+      );
+    }
 
     // ── 4. Notificar ───────────────────────────────────────
     await job.progress(85);
