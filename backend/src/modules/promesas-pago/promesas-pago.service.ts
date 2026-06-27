@@ -66,7 +66,8 @@ export class PromesasPagoService {
       SELECT c.id, c.empresa_id, c.cliente_id, c.estado,
              c.ip_asignada, c.router_id, c.usuario_pppoe,
              c.deuda_total, c.en_prorroga,
-             cl.nombre_completo AS nombre_cliente
+             cl.nombre_completo AS nombre_cliente,
+             cl.whatsapp, cl.telefono
       FROM   contratos c
       JOIN   clientes cl ON cl.id = c.cliente_id
       WHERE  c.id = $1 AND c.deleted_at IS NULL
@@ -219,6 +220,20 @@ export class PromesasPagoService {
       this.logger.warn(
         `[Promesa] Sin IP o router — promesa=${promesa.id} solo registrada en BD`,
       );
+    }
+
+    // Notificar al cliente sobre la prórroga concedida
+    const tel = contrato.whatsapp || contrato.telefono;
+    if (tel) {
+      this.events.emit(NOTIFICATION_EVENTS.PRORROGA_CONCEDIDA, {
+        telefono:      tel,
+        clienteNombre: contrato.nombre_cliente ?? '',
+        fechaProrroga: dto.fechaVencimiento,
+        montoDeuda:    String(Number(contrato.deuda_total || 0).toFixed(2)),
+        empresaId:     contrato.empresa_id,
+        contratoId:    dto.contratoId,
+        clienteId:     contrato.cliente_id,
+      });
     }
 
     return promesa;
