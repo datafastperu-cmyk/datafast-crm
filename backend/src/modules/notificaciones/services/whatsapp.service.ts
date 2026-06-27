@@ -8,7 +8,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource }       from 'typeorm';
 import { CACHE_MANAGER }    from '@nestjs/cache-manager';
 import { Cache }            from 'cache-manager';
-import { decrypt }          from '../../../common/utils/encryption.util';
+import { decrypt }              from '../../../common/utils/encryption.util';
+import { normalizarTelefono }  from '../../../common/utils/telefono.util';
 
 // ─── Tipos de notificación ────────────────────────────────────
 export enum TipoNotificacion {
@@ -144,7 +145,7 @@ export class WhatsAppService {
       return { enviado: false, error: `Template desconocido: ${params.tipo}` };
     }
 
-    const telefono = this.normalizarTelefono(params.telefono);
+    const telefono = normalizarTelefono(params.telefono);
     if (!telefono) {
       return { enviado: false, error: `Teléfono inválido: ${params.telefono}` };
     }
@@ -377,14 +378,4 @@ export class WhatsAppService {
     }];
   }
 
-  private normalizarTelefono(tel: string): string | null {
-    if (!tel) return null;
-    const clean = tel.replace(/[^\d+]/g, '');
-    if (clean.startsWith('+')) return clean.replace('+', '');
-    if (clean.startsWith('51')) return clean;
-    if (clean.startsWith('9') && clean.length === 9) return `51${clean}`;
-    if (clean.length === 9) return `51${clean}`;
-    if (clean.length >= 11) return clean;
-    return null;
-  }
 }

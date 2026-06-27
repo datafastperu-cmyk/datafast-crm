@@ -5,7 +5,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource }       from 'typeorm';
 import { CACHE_MANAGER }    from '@nestjs/cache-manager';
 import { Cache }            from 'cache-manager';
-import { decrypt }          from '../../../common/utils/encryption.util';
+import { decrypt }              from '../../../common/utils/encryption.util';
+import { normalizarTelefono }  from '../../../common/utils/telefono.util';
 import { WhatsAppService, TipoNotificacion, WhatsAppParams } from './whatsapp.service';
 import { SYSTEM_DEFAULTS_WHATSAPP, SYSTEM_DEFAULTS_EMAIL } from '../../plantillas/plantillas.service';
 import { DatafastMensajeriaMasivaStrategy } from './datafast-mensajeria-masiva.strategy';
@@ -435,7 +436,7 @@ export class GatewayMensajeriaService {
       if (!this.cb.canProceed(cbKey)) {
         return { resultado: { enviado: false, error: `Circuit breaker OPEN: ${proveedor}` }, noEnviado: true };
       }
-      const telefono = this.normalizarTelefono(destino, config.codigoPais);
+      const telefono = normalizarTelefono(destino, config.codigoPais) ?? destino;
       this.logger.log(`[GW] ${proveedor} → ${telefono} | ${params.tipo}`);
       resultado = await strategy.enviarMensaje(telefono, texto, params.tipo as string);
       if (resultado.enviado) {
@@ -603,15 +604,6 @@ export class GatewayMensajeriaService {
     for (const key of this.strategyCache.keys()) {
       if (key.startsWith(`${empresaId}:`)) this.strategyCache.delete(key);
     }
-  }
-
-  private normalizarTelefono(tel: string, codigoPais = '+51'): string {
-    const clean    = tel.replace(/[^\d+]/g, '');
-    const dialCode = codigoPais.replace('+', '');
-    if (clean.startsWith('+'))        return clean.replace('+', '');
-    if (clean.startsWith(dialCode))   return clean;
-    if (clean.length <= 10)           return `${dialCode}${clean}`;
-    return clean;
   }
 
   // ── Enriquece variables desde BD (contrato → cliente → plan → empresa) ──

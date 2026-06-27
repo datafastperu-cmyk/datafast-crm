@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { IMensajeriaStrategy, EnvioResult } from './gateway-mensajeria.service';
+import { normalizarTelefono } from '../../../common/utils/telefono.util';
 
 const EVOLUTION_BASE = process.env.EVOLUTION_API_URL ?? 'http://localhost:8080';
 
@@ -30,7 +31,7 @@ export class DatafastMensajeriaMasivaStrategy implements IMensajeriaStrategy {
   ) {}
 
   async enviarMensaje(telefono: string, texto: string, template: string): Promise<EnvioResult> {
-    const number = this.normalizarTelefono(telefono);
+    const number = normalizarTelefono(telefono, this.codigoPais) ?? telefono;
     const url    = `${EVOLUTION_BASE}/instance/sendTextMessage/${this.instanceName}`;
 
     try {
@@ -57,11 +58,5 @@ export class DatafastMensajeriaMasivaStrategy implements IMensajeriaStrategy {
     }
   }
 
-  private normalizarTelefono(tel: string): string {
-    const clean    = tel.replace(/[^\d]/g, '');
-    const dialCode = this.codigoPais.replace('+', '');
-    if (clean.startsWith(dialCode)) return clean;
-    if (clean.length <= 10)         return `${dialCode}${clean}`;
-    return clean;
-  }
 }
+
