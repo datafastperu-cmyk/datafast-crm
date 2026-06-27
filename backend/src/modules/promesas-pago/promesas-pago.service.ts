@@ -412,11 +412,12 @@ export class PromesasPagoService {
   // ────────────────────────────────────────────────────────────
   @Cron('* * * * *')
   async procesarVencidas(): Promise<void> {
-    const hoy = new Date().toISOString().split('T')[0];
+    const LOTE = 50;
+    const hoy  = new Date().toISOString().split('T')[0];
 
     const vencidas = await this.repo.find({
       where: { estado: EstadoPromesa.ACTIVA, fechaVencimiento: LessThan(hoy) },
-      take: 50,
+      take: LOTE,
     });
 
     if (vencidas.length === 0) return;
@@ -425,6 +426,13 @@ export class PromesasPagoService {
 
     for (const p of vencidas) {
       await this.ejecutarCorte(p);
+    }
+
+    // Si el lote estaba lleno puede haber más — procesar el siguiente lote sin esperar al cron
+    if (vencidas.length === LOTE) {
+      setImmediate(() => this.procesarVencidas().catch((e) =>
+        this.logger.warn(`[Promesa] Error en lote continuo: ${e.message}`),
+      ));
     }
   }
 
