@@ -48,6 +48,9 @@ export class SmtpStrategy implements IMensajeriaStrategy {
       auth:              { user: this.user, pass: this.pass },
       connectionTimeout: 15_000,
       socketTimeout:     15_000,
+      pool:              true,
+      maxConnections:    5,
+      maxMessages:       100,
     });
   }
 
