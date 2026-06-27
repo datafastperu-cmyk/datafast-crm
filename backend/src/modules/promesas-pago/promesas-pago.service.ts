@@ -439,8 +439,30 @@ export class PromesasPagoService {
         await this.repo.update(p.id, { mikrotikAplicado: true, mikrotikAplicadoEn: new Date() });
         this.logger.log(`[Promesa] Reintento MK exitoso — promesa=${p.id}`);
       } catch (err: any) {
+        const reintentoActual = (p.mikrotikReintentos ?? 0) + 1;
         await this.repo.increment({ id: p.id }, 'mikrotikReintentos', 1);
         await this.repo.update(p.id, { mikrotikUltimoError: err.message?.slice(0, 500) });
+
+        // Al agotar reintentos: escalar vía outbox (retries cada 5 min hasta 12 veces)
+        if (reintentoActual >= 5) {
+          this.logger.error(
+            `[Promesa] ESCALACIÓN — reintentos MikroTik agotados (${reintentoActual}) ` +
+            `promesa=${p.id} ip=${p.ipClienteSnapshot} router=${p.routerIdSnapshot}. ` +
+            `Encolando vía outbox.`,
+          );
+          await this.outboxSvc.encolarAplicarProrroga(
+            p.contratoId,
+            p.routerIdSnapshot!,
+            {
+              promesaId:            p.id,
+              ipAsignada:           p.ipClienteSnapshot!,
+              usuarioPppoe:         p.usuarioPppoeSnapshot ?? undefined,
+              contratoEstadoPrevio: p.contratoEstadoPrevio ?? 'activo',
+            },
+          ).catch((e: any) =>
+            this.logger.error(`[Promesa] No se pudo encolar outbox de escalación: ${e.message}`),
+          );
+        }
       }
     }
   }
