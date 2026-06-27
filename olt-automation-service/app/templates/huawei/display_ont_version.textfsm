@@ -1,0 +1,8 @@
+﻿Value OntVersion (.+?)
+Value SoftwareVersion (.+?)
+Value EquipmentId (.+?)
+
+Start
+  ^\s+Ont\s+Version\s*:\s+
+  ^\s+Ont\s+Software\s+Version\s*:\s+
+  ^\s+Ont\s+EquipmentID\s*:\s+

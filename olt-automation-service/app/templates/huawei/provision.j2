@@ -1,9 +1,15 @@
-{# Huawei MA5800/MA5600 — Aprovisionamiento ONU GPON (modo Internet/Routing) #}
-{# Variables requeridas: slot, port, onu_id, sn, vlan, service_port_id, traffic_index #}
+{# Huawei MA5800/MA5600 — Aprovisionamiento ONU GPON #}
+{# Modo perfil  (MA5800 best-practice): lineprofile_id + srvprofile_id definidos #}
+{# Modo legado  (traffic-table): solo vlan + traffic_index definidos              #}
 config
 interface gpon 0/{{ slot }}
+{% if lineprofile_id is defined and lineprofile_id %}
+ont add {{ port }} {{ onu_id }} sn-auth {{ sn }} omci ont-lineprofile-id {{ lineprofile_id }} ont-srvprofile-id {{ srvprofile_id }}{% if description is defined and description %} desc {{ description }}{% endif %}
+
+{% else %}
 ont add {{ port }} {{ onu_id }} sn-auth {{ sn }} omci vlan {{ vlan }}
 ont ipconfig {{ port }} {{ onu_id }} ip-index 0 dhcp vlan {{ vlan }}
+{% endif %}
 quit
 service-port {{ service_port_id }} vlan {{ vlan }} gpon 0/{{ slot }}/{{ port }} ont {{ onu_id }} gemport 1 user-vlan {{ vlan }} inbound traffic-table index {{ traffic_index }} outbound traffic-table index {{ traffic_index }}
 save

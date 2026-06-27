@@ -1,0 +1,7 @@
+﻿Value TrafficIndex (\d+)
+Value TrafficName (\S+)
+Value Cir (\d+)
+Value Pir (\d+)
+
+Start
+  ^\s+\s+\s+\s+ -> Record

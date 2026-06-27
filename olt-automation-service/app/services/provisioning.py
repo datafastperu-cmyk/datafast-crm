@@ -317,15 +317,24 @@ def provision_huawei_onu(
             'traffic_index es requerido para aprovisionar en OLTs Huawei'
         )
 
+    use_profile_mode = (
+        onu.lineprofile_id is not None and onu.srvprofile_id is not None
+    )
+
     context: dict[str, Any] = {
-        'slot':           onu.slot,
-        'port':           onu.port,
-        'onu_id':         onu.onu_id,
-        'sn':             onu.sn,
-        'vlan':           onu.vlan,
+        'slot':            onu.slot,
+        'port':            onu.port,
+        'onu_id':          onu.onu_id,
+        'sn':              onu.sn,
+        'vlan':            onu.vlan,
         'service_port_id': onu.service_port_id,
-        'traffic_index':  onu.traffic_index,
+        'traffic_index':   onu.traffic_index,
     }
+    if use_profile_mode:
+        context['lineprofile_id'] = onu.lineprofile_id
+        context['srvprofile_id']  = onu.srvprofile_id
+        if onu.description:
+            context['description'] = onu.description
 
     rendered = _render_commands(conn.brand, 'provision.j2', context)
 
@@ -1194,7 +1203,8 @@ def _filter_onus(
             continue
         if port is not None and p != port:
             continue
-        result.append({'sn': sn, 'slot': s, 'port': p})
+        ont_model = str(row.get('OntModel') or '').strip() or None
+        result.append({'sn': sn, 'slot': s, 'port': p, 'ont_model': ont_model})
     return result
 
 
@@ -1280,6 +1290,204 @@ def discover_onus(
             f'Marca "{conn.brand.value}" no soporta descubrimiento automático de ONUs'
         )
     return handler(conn, slot=slot, port=port)
+
+
+# ── Operaciones Huawei MA5800 — Perfiles, Reset, Topología, Versión ──────────
+
+def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
+    """
+    Consulta en una sola sesión SSH los tres tipos de perfiles de la MA5800:
+      display ont-lineprofile all   → line profiles (DBA + GEM mapping)
+      display ont-srvprofile all    → service profiles (tipo de servicio)
+      display traffic table all     → traffic tables (CIR/PIR para service-port)
+
+    Retorna dict con 'lineprofiles', 'srvprofiles' y 'traffic_tables'.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    cmds = [
+        'display ont-lineprofile all',
+        'display ont-srvprofile all',
+        'display traffic table all',
+    ]
+    try:
+        lp_raw, sp_raw, tt_raw = _open_multi_commands(conn, cmds)
+    except (ConnectionError, CommandError) as exc:
+        logger.warning('list_huawei_profiles: fallo SSH en %s — %s', conn.ip, exc)
+        return {
+            'success': False,
+            'error':   str(exc),
+            'lineprofiles':   [],
+            'srvprofiles':    [],
+            'traffic_tables': [],
+        }
+
+    def _parse_profiles(raw: str, fsm_name: str) -> list[dict[str, Any]]:
+        rows = _parse_output(conn.brand, fsm_name, raw)
+        result = []
+        for row in rows:
+            if 'raw' in row:
+                continue
+            try:
+                pid  = int(row.get('ProfileId') or -1)
+                name = str(row.get('ProfileName') or '').strip()
+            except (ValueError, TypeError):
+                continue
+            if pid < 0 or not name:
+                continue
+            result.append({'profile_id': pid, 'name': name})
+        return result
+
+    def _parse_traffic_tables(raw: str) -> list[dict[str, Any]]:
+        rows = _parse_output(conn.brand, 'display_traffic_table_all.textfsm', raw)
+        result = []
+        for row in rows:
+            if 'raw' in row:
+                continue
+            try:
+                idx  = int(row.get('TrafficIndex') or -1)
+                name = str(row.get('TrafficName')  or '').strip()
+                cir  = int(row.get('Cir') or 0)
+                pir  = int(row.get('Pir') or 0)
+            except (ValueError, TypeError):
+                continue
+            if idx < 0:
+                continue
+            result.append({'index': idx, 'name': name, 'cir_kbps': cir, 'pir_kbps': pir})
+        return result
+
+    lineprofiles   = _parse_profiles(lp_raw, 'display_ont_lineprofile_all.textfsm')
+    srvprofiles    = _parse_profiles(sp_raw, 'display_ont_srvprofile_all.textfsm')
+    traffic_tables = _parse_traffic_tables(tt_raw)
+
+    logger.info(
+        'list_huawei_profiles: %s → %d lineprofiles, %d srvprofiles, %d traffic-tables',
+        conn.ip, len(lineprofiles), len(srvprofiles), len(traffic_tables),
+    )
+    return {
+        'success':        True,
+        'lineprofiles':   lineprofiles,
+        'srvprofiles':    srvprofiles,
+        'traffic_tables': traffic_tables,
+    }
+
+
+def reset_huawei_onu(
+    conn:   OltConnectionSchema,
+    slot:   int,
+    port:   int,
+    onu_id: int,
+) -> dict[str, Any]:
+    """
+    Reinicia una ONU Huawei MA5800 vía comando 'ont reset'.
+
+    El comando pide confirmación "Are you sure? (y/n)[n]:" → insertar 'y'.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    commands = [
+        'config',
+        f'interface gpon 0/{slot}',
+        f'ont reset {port} {onu_id}',
+        'y',    # confirmación interactiva de MA5800
+        'quit',
+        'quit',
+    ]
+    logger.info(
+        'reset_huawei_onu: reiniciando ONU slot=%d port=%d onu_id=%d en %s',
+        slot, port, onu_id, conn.ip,
+    )
+    raw_output = _send_config_set(conn, commands)
+
+    # 'y' puede producir "Invalid input" si la versión no pide confirmación.
+    # Verificar que el propio 'ont reset' no reportó error (ignorar línea de 'y').
+    reset_output = raw_output
+    _check_cli_error(conn.brand, 'reset_huawei_onu', reset_output)
+
+    logger.info('reset_huawei_onu: ONU slot=%d port=%d onu_id=%d reiniciada en %s', slot, port, onu_id, conn.ip)
+    return {
+        'success': True,
+        'message': f'ONU slot={slot} port={port} onu_id={onu_id} reiniciada',
+        'slot':    slot,
+        'port':    port,
+        'onu_id':  onu_id,
+    }
+
+
+def display_huawei_board(conn: OltConnectionSchema) -> dict[str, Any]:
+    """
+    Consulta la topología física de la OLT Huawei: slots y tarjetas instaladas.
+    Comando: display board 0
+    Retorna lista de slots con board_name, status y contadores online/offline.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    try:
+        raw_output = _send_single_command(conn, 'display board 0')
+    except (ConnectionError, CommandError) as exc:
+        logger.warning('display_huawei_board: fallo en %s — %s', conn.ip, exc)
+        return {'success': False, 'error': str(exc), 'slots': []}
+
+    rows = _parse_output(conn.brand, 'display_board_0.textfsm', raw_output)
+    slots: list[dict[str, Any]] = []
+    for row in rows:
+        if 'raw' in row:
+            continue
+        try:
+            slot_id    = int(row.get('SlotId') or -1)
+            board_name = str(row.get('BoardName') or '').strip()
+            status     = str(row.get('Status')    or '').strip().lower()
+            oo_str     = str(row.get('OnlineOffline') or '-/-').strip()
+        except (ValueError, TypeError):
+            continue
+        if slot_id < 0 or not board_name:
+            continue
+        parts = oo_str.split('/')
+        online  = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 0
+        offline = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        slots.append({
+            'slot_id':      slot_id,
+            'board_name':   board_name,
+            'status':       status,
+            'online_onus':  online,
+            'offline_onus': offline,
+        })
+
+    logger.info('display_huawei_board: %s → %d slots', conn.ip, len(slots))
+    return {'success': True, 'slots': slots}
+
+
+def get_huawei_ont_version(
+    conn:   OltConnectionSchema,
+    slot:   int,
+    port:   int,
+    onu_id: int,
+) -> dict[str, Any]:
+    """
+    Consulta la versión de firmware de una ONU Huawei.
+    Comando: display ont version 0/slot/port onu_id
+    Retorna ont_version, software_version y equipment_id.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    command = f'display ont version 0/{slot}/{port} {onu_id}'
+    try:
+        raw_output = _send_single_command(conn, command)
+    except (ConnectionError, CommandError) as exc:
+        logger.warning('get_huawei_ont_version: fallo en %s — %s', conn.ip, exc)
+        return {'success': False, 'error': str(exc)}
+
+    rows = _parse_output(conn.brand, 'display_ont_version.textfsm', raw_output)
+    if not rows or 'raw' in rows[0]:
+        logger.warning(
+            'get_huawei_ont_version: sin datos para slot=%d port=%d onu_id=%d en %s',
+            slot, port, onu_id, conn.ip,
+        )
+        return {'success': False, 'error': 'Datos de versión no disponibles'}
+
+    row = rows[0]
+    return {
+        'success':          True,
+        'ont_version':      (str(row.get('OntVersion')      or '')).strip() or None,
+        'software_version': (str(row.get('SoftwareVersion') or '')).strip() or None,
+        'equipment_id':     (str(row.get('EquipmentId')     or '')).strip() or None,
+    }
 
 
 # ── Dispatchers públicos ──────────────────────────────────────
@@ -1501,51 +1709,69 @@ def verify_huawei_onu(
     onu_id: int,
 ) -> dict[str, Any]:
     """
-    Consulta el estado operativo de una ONU en Huawei.
-    Comando: display ont info {port} {onu_id}
-    El comando aplica dentro del contexto `interface gpon 0/{slot}`.
-    Usa _send_single_command (sin enter_config_mode).
-    """
-    command = f'display ont info {port} {onu_id}'
-    # Contexto de interfaz necesario para Huawei; usamos send_config_set
-    # con dos comandos: entrar al modo de interfaz + consulta
-    context_commands = [
-        'config',
-        f'interface gpon 0/{slot}',
-        command,
-        'quit',
-        'quit',
-    ]
-    raw_output = _send_config_set(conn, context_commands)
+    Consulta el estado operativo y métricas ópticas de una ONU Huawei MA5800.
 
-    rows = _parse_output(conn.brand, 'display_ont_info_single.textfsm', raw_output)
-    if not rows:
-        # Puede que la ONU no exista o esté offline — no es un error fatal
+    Abre UNA sesión SSH y ejecuta DOS comandos en secuencia:
+      display ont info 0/slot/port onu_id         → run_state + perfil vinculado
+      display ont optical-info 0/slot/port onu_id → Rx/Tx/Temperatura
+
+    Ambos comandos funcionan desde el modo exec sin entrar en config,
+    lo que reduce el overhead a un único handshake SSH.
+    """
+    info_cmd    = f'display ont info 0/{slot}/{port} {onu_id}'
+    optical_cmd = f'display ont optical-info 0/{slot}/{port} {onu_id}'
+
+    try:
+        info_raw, optical_raw = _open_multi_commands(conn, [info_cmd, optical_cmd])
+    except (ConnectionError, CommandError) as exc:
         logger.warning(
-            'verify_huawei_onu: sin datos parseados para slot=%d port=%d onu_id=%d en %s',
-            slot, port, onu_id, conn.ip,
+            'verify_huawei_onu: fallo SSH para slot=%d port=%d onu_id=%d en %s — %s',
+            slot, port, onu_id, conn.ip, exc,
         )
         return {
-            'success':       True,
-            'run_state':     'unknown',
+            'success':       False,
+            'run_state':     None,
             'rx_power_dbm':  None,
             'tx_power_dbm':  None,
             'temperature_c': None,
+            'error':         str(exc),
         }
 
-    row = rows[0]
-    run_state_raw: str = (row.get('RunState') or 'unknown').lower()
+    # ── Parsear estado de ONU ─────────────────────────────────
+    info_rows = _parse_output(conn.brand, 'display_ont_info_single.textfsm', info_raw)
+    if not info_rows or 'raw' in info_rows[0]:
+        logger.warning(
+            'verify_huawei_onu: sin datos de estado para slot=%d port=%d onu_id=%d en %s',
+            slot, port, onu_id, conn.ip,
+        )
+        run_state = 'unknown'
+    else:
+        run_state = (info_rows[0].get('RunState') or 'unknown').lower().strip()
 
-    rx_raw = row.get('RxPower')
-    tx_raw = row.get('TxPower')
-    t_raw  = row.get('Temp')
+    # ── Parsear métricas ópticas ──────────────────────────────
+    optical_rows = _parse_output(conn.brand, 'display_ont_optical_info.textfsm', optical_raw)
+    rx_power = tx_power = temperature = None
+    if optical_rows and 'raw' not in optical_rows[0]:
+        opt = optical_rows[0]
+        try:
+            rx_s = str(opt.get('RxPower') or '').strip()
+            tx_s = str(opt.get('TxPower') or '').strip()
+            tc_s = str(opt.get('Temp')    or '').strip()
+            if rx_s not in ('', '-', '--'):
+                rx_power    = float(rx_s)
+            if tx_s not in ('', '-', '--'):
+                tx_power    = float(tx_s)
+            if tc_s not in ('', '-', '--'):
+                temperature = int(float(tc_s))
+        except (ValueError, TypeError) as exc:
+            logger.warning('verify_huawei_onu: conversión óptica fallida — %s', exc)
 
     return {
         'success':       True,
-        'run_state':     run_state_raw,
-        'rx_power_dbm':  float(rx_raw)  if rx_raw  else None,
-        'tx_power_dbm':  float(tx_raw)  if tx_raw  else None,
-        'temperature_c': int(t_raw)     if t_raw   else None,
+        'run_state':     run_state,
+        'rx_power_dbm':  rx_power,
+        'tx_power_dbm':  tx_power,
+        'temperature_c': temperature,
     }
 
 

@@ -65,6 +65,21 @@ class OnuProvisionSchema(BaseModel):
         description='Tipo/modelo de ONU ZTE (ej: ZTE-F660, F601E, ZTE-F680). Requerido para OLTs ZTE.',
     )
 
+    # Huawei MA5800 — modo perfil (ont-lineprofile + ont-srvprofile)
+    lineprofile_id: int | None = Field(
+        None, ge=1,
+        description='ID del ont-lineprofile en la OLT Huawei MA5800 (modo perfil). '
+                    'Si se define junto con srvprofile_id, se usa modo perfil en vez de traffic-table directo.',
+    )
+    srvprofile_id: int | None = Field(
+        None, ge=1,
+        description='ID del ont-srvprofile en la OLT Huawei MA5800 (modo perfil).',
+    )
+    description: str | None = Field(
+        None, max_length=64,
+        description='Descripción libre de la ONU (se pasa al comando ont add como desc).',
+    )
+
     @field_validator('sn')
     @classmethod
     def validate_serial(cls, v: str) -> str:
@@ -149,9 +164,10 @@ class BatchStatusResponse(BaseModel):
 
 
 class OntFoundInfo(BaseModel):
-    sn:   str
-    slot: int
-    port: int
+    sn:        str
+    slot:      int
+    port:      int
+    ont_model: str | None = None
 
 
 class DiscoverResponse(BaseModel):
@@ -237,3 +253,81 @@ class VerifyOnuResponse(BaseModel):
     tx_power_dbm:  float | None = None
     temperature_c: float | None = None
     error:         str | None = None
+
+
+# ─── Perfiles MA5800 ──────────────────────────────────────────
+
+class OltProfileInfo(BaseModel):
+    profile_id: int
+    name:       str
+
+
+class OltTrafficTableInfo(BaseModel):
+    index:     int
+    name:      str
+    cir_kbps:  int | None = None
+    pir_kbps:  int | None = None
+
+
+class ListProfilesRequest(BaseModel):
+    connection: OltConnectionSchema
+
+
+class ListProfilesResponse(BaseModel):
+    success:        bool
+    lineprofiles:   list[OltProfileInfo]      = []
+    srvprofiles:    list[OltProfileInfo]      = []
+    traffic_tables: list[OltTrafficTableInfo] = []
+    error:          str | None = None
+
+
+# ─── ONT Reset ───────────────────────────────────────────────
+
+class OntResetRequest(BaseModel):
+    connection: OltConnectionSchema
+    slot:       int = Field(..., ge=0, le=15)
+    port:       int = Field(..., ge=0, le=15)
+    onu_id:     int = Field(..., ge=1, le=128)
+
+
+class OntResetResponse(BaseModel):
+    success: bool
+    message: str
+    error:   str | None = None
+
+
+# ─── Board Topology ──────────────────────────────────────────
+
+class BoardSlotInfo(BaseModel):
+    slot_id:      int
+    board_name:   str
+    status:       str
+    online_onus:  int
+    offline_onus: int
+
+
+class BoardTopologyRequest(BaseModel):
+    connection: OltConnectionSchema
+
+
+class BoardTopologyResponse(BaseModel):
+    success: bool
+    slots:   list[BoardSlotInfo] = []
+    error:   str | None = None
+
+
+# ─── ONT Version ─────────────────────────────────────────────
+
+class OntVersionRequest(BaseModel):
+    connection: OltConnectionSchema
+    slot:       int = Field(..., ge=0, le=15)
+    port:       int = Field(..., ge=0, le=15)
+    onu_id:     int = Field(..., ge=1, le=128)
+
+
+class OntVersionResponse(BaseModel):
+    success:          bool
+    ont_version:      str | None = None
+    software_version: str | None = None
+    equipment_id:     str | None = None
+    error:            str | None = None

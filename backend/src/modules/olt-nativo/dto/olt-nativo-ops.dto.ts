@@ -58,6 +58,19 @@ export class ProvisionarOnuNativaDto {
   @IsOptional() @IsInt() @Min(0) @Type(() => Number)
   trafficIndex?: number;
 
+  // ── Huawei MA5800 — modo perfil ───────────────────────────
+  @ApiPropertyOptional({ example: 2, description: 'ID del ont-lineprofile en la OLT MA5800 (modo perfil)' })
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
+  lineprofileId?: number;
+
+  @ApiPropertyOptional({ example: 1, description: 'ID del ont-srvprofile en la OLT MA5800 (modo perfil)' })
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
+  srvprofileId?: number;
+
+  @ApiPropertyOptional({ example: 'Cliente Residencial', description: 'Descripción libre para el comando ont add desc' })
+  @IsOptional() @IsString() @MaxLength(64)
+  description?: string;
+
   // ── ZTE-específicos ───────────────────────────────────────
   @ApiPropertyOptional({ example: 'ZTE-F660', description: 'Tipo/modelo de ONU para OLTs ZTE (ej: ZTE-F660, F601E)' })
   @IsOptional() @IsString() @MaxLength(50)
@@ -105,6 +118,9 @@ export interface PythonOnuPayload {
   service_port_id?: number;
   traffic_index?:  number;
   onu_type?:       string;   // ZTE
+  lineprofile_id?: number;   // Huawei MA5800 modo perfil
+  srvprofile_id?:  number;   // Huawei MA5800 modo perfil
+  description?:    string;   // Huawei MA5800 — desc en ont add
 }
 
 export interface PythonProvisionRequest {
@@ -154,9 +170,10 @@ export interface PythonDiscoverRequest {
 }
 
 export interface PythonOntFoundInfo {
-  sn:   string;
-  slot: number;
-  port: number;
+  sn:         string;
+  slot:       number;
+  port:       number;
+  ont_model?: string | null;
 }
 
 export interface PythonDiscoverResponse {
@@ -469,6 +486,90 @@ export interface ValidarIpResult {
   disponible: boolean;
   oltNombre?: string;
   seccion?:   'nativo' | 'smartolt' | 'adminolt';
+}
+
+// ─── Perfiles MA5800 ──────────────────────────────────────────
+
+export interface PythonProfileInfo {
+  profile_id: number;
+  name:       string;
+}
+
+export interface PythonTrafficTableInfo {
+  index:     number;
+  name:      string;
+  cir_kbps:  number | null;
+  pir_kbps:  number | null;
+}
+
+export interface PythonListProfilesRequest {
+  connection: PythonConnectionPayload;
+}
+
+export interface PythonListProfilesResponse {
+  success:        boolean;
+  lineprofiles:   PythonProfileInfo[];
+  srvprofiles:    PythonProfileInfo[];
+  traffic_tables: PythonTrafficTableInfo[];
+  error?:         string;
+}
+
+export interface OltPerfilesResult {
+  lineprofiles:   PythonProfileInfo[];
+  srvprofiles:    PythonProfileInfo[];
+  traffic_tables: PythonTrafficTableInfo[];
+}
+
+// ─── ONT Reset ───────────────────────────────────────────────
+
+export interface PythonOntResetRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+  port:       number;
+  onu_id:     number;
+}
+
+export interface PythonOntResetResponse {
+  success: boolean;
+  message: string;
+  error?:  string;
+}
+
+// ─── Board Topology ──────────────────────────────────────────
+
+export interface PythonBoardTopologyRequest {
+  connection: PythonConnectionPayload;
+}
+
+export interface PythonBoardSlotInfo {
+  slot_id:      number;
+  board_name:   string;
+  status:       string;
+  online_onus:  number;
+  offline_onus: number;
+}
+
+export interface PythonBoardTopologyResponse {
+  success: boolean;
+  slots:   PythonBoardSlotInfo[];
+  error?:  string;
+}
+
+// ─── ONT Version ─────────────────────────────────────────────
+
+export interface PythonOntVersionRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+  port:       number;
+  onu_id:     number;
+}
+
+export interface PythonOntVersionResponse {
+  success:          boolean;
+  ont_version:      string | null;
+  software_version: string | null;
+  equipment_id:     string | null;
+  error?:           string;
 }
 
 export interface OltConProveedorPrincipal {

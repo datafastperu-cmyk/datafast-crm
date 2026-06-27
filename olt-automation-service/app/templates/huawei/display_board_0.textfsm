@@ -1,0 +1,7 @@
+﻿Value SlotId (\d+)
+Value BoardName (\S+)
+Value Status (\S+)
+Value OnlineOffline (\S+/\S+)
+
+Start
+  ^\s+\s+\s+\s+\S+\s+\S+\s+ -> Record

@@ -354,6 +354,63 @@ export class OltNativoController {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  OPERACIONES MA5800: PERFILES, RESET, TOPOLOGÍA, VERSIÓN
+  // ═══════════════════════════════════════════════════════════════
+
+  @Get(':oltId/profiles')
+  @ApiOperation({ summary: 'Listar perfiles de la OLT Huawei MA5800 (lineprofile, srvprofile, traffic-table)' })
+  @ApiParam({ name: 'oltId' })
+  async listarPerfiles(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.listarPerfilesOlt(oltId, user.empresaId);
+  }
+
+  @Post(':oltId/ont-reset')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reiniciar una ONU en la OLT Huawei MA5800 (ont reset)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiQuery({ name: 'slot',  type: Number })
+  @ApiQuery({ name: 'port',  type: Number })
+  @ApiQuery({ name: 'onuId', type: Number })
+  async resetOnu(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Query('slot',  ParseIntPipe)  slot:  number,
+    @Query('port',  ParseIntPipe)  port:  number,
+    @Query('onuId', ParseIntPipe)  onuId: number,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.resetearOnu(oltId, user.empresaId, slot, port, onuId);
+  }
+
+  @Get(':oltId/board-topology')
+  @ApiOperation({ summary: 'Topología física de la OLT (slots y tarjetas instaladas — display board 0)' })
+  @ApiParam({ name: 'oltId' })
+  async boardTopology(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.topologiaBoard(oltId, user.empresaId);
+  }
+
+  @Get(':oltId/ont-version')
+  @ApiOperation({ summary: 'Versión de firmware de una ONU Huawei (display ont version)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiQuery({ name: 'slot',  type: Number })
+  @ApiQuery({ name: 'port',  type: Number })
+  @ApiQuery({ name: 'onuId', type: Number })
+  async ontVersion(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Query('slot',  ParseIntPipe)  slot:  number,
+    @Query('port',  ParseIntPipe)  port:  number,
+    @Query('onuId', ParseIntPipe)  onuId: number,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.versionOnt(oltId, user.empresaId, slot, port, onuId);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  FIRMWARE UPGRADE (OMCI)
   // ═══════════════════════════════════════════════════════════════
 

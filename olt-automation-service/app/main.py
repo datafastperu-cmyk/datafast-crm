@@ -15,6 +15,9 @@ from app.routers.monitoring import router as monitoring_router
 from app.schemas.olt import (
     BatchStatusRequest,
     BatchStatusResponse,
+    BoardTopologyRequest,
+    BoardTopologyResponse,
+    BoardSlotInfo,
     DeprovisionRequest,
     DeprovisionResponse,
     DiscoverRequest,
@@ -22,9 +25,15 @@ from app.schemas.olt import (
     FirmwareJobProgress,
     FirmwareJobStatus,
     FirmwareUpgradeRequest,
+    ListProfilesRequest,
+    ListProfilesResponse,
     MetricsResponse,
     OnuStatusInfo,
     OntFoundInfo,
+    OntResetRequest,
+    OntResetResponse,
+    OntVersionRequest,
+    OntVersionResponse,
     ProvisionRequest,
     ProvisionResponse,
     TestConnectionRequest,
@@ -39,9 +48,13 @@ from app.services.provisioning import (
     ProvisioningError,
     deprovision_onu,
     discover_onus,
+    display_huawei_board,
     get_batch_status,
+    get_huawei_ont_version,
     get_onu_metrics,
+    list_huawei_profiles,
     provision_onu,
+    reset_huawei_onu,
     test_olt_connection,
     upgrade_firmware_onu,
     verify_onu,
@@ -211,7 +224,10 @@ async def discover_onus_endpoint(body: DiscoverRequest) -> DiscoverResponse:
             logger.warning('discover_onus: fallo en %s — %s', olt_ip, exc)
             return DiscoverResponse(success=False, total=0, onus=[], error=str(exc))
 
-    onus = [OntFoundInfo(sn=o['sn'], slot=o['slot'], port=o['port']) for o in raw_onus]
+    onus = [
+        OntFoundInfo(sn=o['sn'], slot=o['slot'], port=o['port'], ont_model=o.get('ont_model'))
+        for o in raw_onus
+    ]
     return DiscoverResponse(success=True, total=len(onus), onus=onus)
 
 
@@ -421,6 +437,94 @@ async def firmware_upgrade_endpoint(
         'job_id':  job_id,
         'message': f'Proceso de transferencia iniciado en segundo plano para {len(body.onu_ids)} ONU(s).',
     }
+
+
+@app.post(
+    '/api/v1/olt/profiles',
+    response_model=ListProfilesResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Listar perfiles de la OLT Huawei MA5800 (lineprofile, srvprofile, traffic-table)',
+    description=(
+        'Abre UNA sesión SSH y ejecuta tres comandos de display para obtener los perfiles '
+        'disponibles en la OLT. Siempre responde 200 — si hay fallo SSH retorna success=False.'
+    ),
+)
+async def list_profiles_endpoint(body: ListProfilesRequest) -> ListProfilesResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        result = await asyncio.to_thread(list_huawei_profiles, body.connection)
+    if not result['success']:
+        return ListProfilesResponse(success=False, error=result.get('error'))
+    return ListProfilesResponse(
+        success=True,
+        lineprofiles=[{'profile_id': p['profile_id'], 'name': p['name']} for p in result['lineprofiles']],
+        srvprofiles=[{'profile_id': p['profile_id'], 'name': p['name']} for p in result['srvprofiles']],
+        traffic_tables=[
+            {'index': t['index'], 'name': t['name'], 'cir_kbps': t['cir_kbps'], 'pir_kbps': t['pir_kbps']}
+            for t in result['traffic_tables']
+        ],
+    )
+
+
+@app.post(
+    '/api/v1/olt/ont-reset',
+    response_model=OntResetResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Reiniciar una ONU Huawei MA5800 (ont reset)',
+)
+async def ont_reset_endpoint(body: OntResetRequest) -> OntResetResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                reset_huawei_onu, body.connection, body.slot, body.port, body.onu_id,
+            )
+        except (ConnectionError, CommandError, ProvisioningError) as exc:
+            return OntResetResponse(success=False, message='Fallo al reiniciar ONU', error=str(exc))
+    return OntResetResponse(success=result['success'], message=result['message'])
+
+
+@app.post(
+    '/api/v1/olt/board-topology',
+    response_model=BoardTopologyResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Topología física de la OLT Huawei (slots y tarjetas instaladas)',
+    description='Ejecuta display board 0 y retorna los slots activos con contadores de ONUs.',
+)
+async def board_topology_endpoint(body: BoardTopologyRequest) -> BoardTopologyResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        result = await asyncio.to_thread(display_huawei_board, body.connection)
+    if not result['success']:
+        return BoardTopologyResponse(success=False, error=result.get('error'))
+    slots = [BoardSlotInfo(**s) for s in result['slots']]
+    return BoardTopologyResponse(success=True, slots=slots)
+
+
+@app.post(
+    '/api/v1/olt/ont-version',
+    response_model=OntVersionResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Versión de firmware de una ONU Huawei (display ont version)',
+)
+async def ont_version_endpoint(body: OntVersionRequest) -> OntVersionResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        result = await asyncio.to_thread(
+            get_huawei_ont_version, body.connection, body.slot, body.port, body.onu_id,
+        )
+    if not result['success']:
+        return OntVersionResponse(success=False, error=result.get('error'))
+    return OntVersionResponse(
+        success=True,
+        ont_version=result.get('ont_version'),
+        software_version=result.get('software_version'),
+        equipment_id=result.get('equipment_id'),
+    )
 
 
 @app.get(

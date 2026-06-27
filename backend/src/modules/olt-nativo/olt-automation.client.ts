@@ -10,13 +10,21 @@ import { AxiosRequestConfig } from 'axios';
 import {
   PythonBatchStatusRequest,
   PythonBatchStatusResponse,
+  PythonBoardTopologyRequest,
+  PythonBoardTopologyResponse,
   PythonDeprovisionRequest,
   PythonDeprovisionResponse,
   PythonDiscoverRequest,
   PythonDiscoverResponse,
   PythonFirmwareJobStatus,
   PythonFirmwareUpgradeRequest,
+  PythonListProfilesRequest,
+  PythonListProfilesResponse,
   PythonMetricsResponse,
+  PythonOntResetRequest,
+  PythonOntResetResponse,
+  PythonOntVersionRequest,
+  PythonOntVersionResponse,
   PythonProvisionRequest,
   PythonProvisionResponse,
   PythonTestConexionRequest,
@@ -177,6 +185,52 @@ export class OltAutomationClient {
     this.logger.log(
       `← Python verify-onu | success=${res.success} | run_state=${res.run_state}`,
     );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Listar perfiles MA5800 (POST /api/v1/olt/profiles)
+  // ────────────────────────────────────────────────────────────
+  async listProfiles(payload: PythonListProfilesRequest): Promise<PythonListProfilesResponse> {
+    this.logger.log(`→ Python profiles | OLT=${payload.connection.ip}`);
+    const res = await this.post<PythonListProfilesResponse>('/api/v1/olt/profiles', payload);
+    this.logger.log(
+      `← Python profiles | lp=${res.lineprofiles?.length ?? 0} sp=${res.srvprofiles?.length ?? 0} tt=${res.traffic_tables?.length ?? 0}`,
+    );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Reiniciar ONU (POST /api/v1/olt/ont-reset)
+  // ────────────────────────────────────────────────────────────
+  async ontReset(payload: PythonOntResetRequest): Promise<PythonOntResetResponse> {
+    this.logger.log(
+      `→ Python ont-reset | OLT=${payload.connection.ip} slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
+    );
+    const res = await this.post<PythonOntResetResponse>('/api/v1/olt/ont-reset', payload);
+    this.logger.log(`← Python ont-reset | success=${res.success}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Topología de slots/tarjetas (POST /api/v1/olt/board-topology)
+  // ────────────────────────────────────────────────────────────
+  async boardTopology(payload: PythonBoardTopologyRequest): Promise<PythonBoardTopologyResponse> {
+    this.logger.log(`→ Python board-topology | OLT=${payload.connection.ip}`);
+    const res = await this.post<PythonBoardTopologyResponse>('/api/v1/olt/board-topology', payload);
+    this.logger.log(`← Python board-topology | slots=${res.slots?.length ?? 0}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Versión de firmware de una ONU (POST /api/v1/olt/ont-version)
+  // ────────────────────────────────────────────────────────────
+  async ontVersion(payload: PythonOntVersionRequest): Promise<PythonOntVersionResponse> {
+    this.logger.log(
+      `→ Python ont-version | OLT=${payload.connection.ip} slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
+    );
+    const res = await this.post<PythonOntVersionResponse>('/api/v1/olt/ont-version', payload);
+    this.logger.log(`← Python ont-version | success=${res.success} sw=${res.software_version}`);
     return res;
   }
 

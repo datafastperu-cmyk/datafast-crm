@@ -92,9 +92,10 @@ export interface OltMetricasPayload {
 // ─── Tipos de datos de retorno ────────────────────────────────
 
 export interface OltOnuEncontrada {
-  sn:   string;
-  slot: number;
-  port: number;
+  sn:         string;
+  slot:       number;
+  port:       number;
+  ont_model?: string | null;
 }
 
 export interface OltMetricasDatos {

@@ -192,9 +192,10 @@ export class NativoSshProvider implements IOltProvider {
 
       if (res.success) {
         const onus: OltOnuEncontrada[] = res.onus.map((o) => ({
-          sn:   o.sn,
-          slot: o.slot,
-          port: o.port,
+          sn:        o.sn,
+          slot:      o.slot,
+          port:      o.port,
+          ont_model: o.ont_model ?? null,
         }));
         return { exitoso: true, datos: onus, mensaje: `${onus.length} ONU(s) encontradas`, latenciaMs, proveedor: this.tipo };
       }

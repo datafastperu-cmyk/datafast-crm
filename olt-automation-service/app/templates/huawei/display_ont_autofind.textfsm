@@ -1,7 +1,10 @@
 Value Slot (\d+)
 Value Port (\d+)
 Value OnuSn ([A-Z0-9]{12,16})
+Value OntModel (.+?)
 
 Start
-  ^.*F/S/P\s+:\s+0/${Slot}/${Port} -> Continue
-  ^.*Ont SN\s+:\s+${OnuSn} -> Record
+  ^.*F/S/P\s+:\s+0/${Slot}/${Port}
+  ^.*Ont\s+SN\s*:\s+${OnuSn}
+  ^.*Ont\s+EquipmentID\s*:\s+${OntModel}
+  ^.*Ont\s+autofind\s+time\s*: -> Record

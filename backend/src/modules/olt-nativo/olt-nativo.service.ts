@@ -21,9 +21,14 @@ import {
   MetricasOnuResult,
   ObtenerMetricasDto,
   OltConProveedorPrincipal,
+  OltPerfilesResult,
   ProvisionarOnuNativaDto,
   ProvisionResult,
+  PythonBoardTopologyRequest,
   PythonDiscoverRequest,
+  PythonListProfilesRequest,
+  PythonOntResetRequest,
+  PythonOntVersionRequest,
   PythonProvisionRequest,
   UpsertProveedorOltDto,
   ValidarIpResult,
@@ -723,6 +728,9 @@ export class OltNativoService implements OnModuleInit {
         service_port_id: dto.servicePortId,
         traffic_index:   dto.trafficIndex,
         onu_type:        dto.onuType,
+        lineprofile_id:  dto.lineprofileId,
+        srvprofile_id:   dto.srvprofileId,
+        description:     dto.description,
       },
     };
 
@@ -898,6 +906,151 @@ export class OltNativoService implements OnModuleInit {
       );
       return { status: 'offline', metricsAvailable: false };
     }
+  }
+
+  // ─── Operaciones MA5800: perfiles, reset, topología, versión ──────────────
+
+  async listarPerfilesOlt(
+    oltId:     string,
+    empresaId: string,
+  ): Promise<OltPerfilesResult> {
+    this.assertNotDegraded();
+    const olt    = await this.findOlt(oltId, empresaId);
+    const config = await this.proveedorRepo.findOne({
+      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
+    });
+    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+
+    const c = config.credenciales as Record<string, unknown>;
+    const password = c.password_cifrado
+      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
+      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
+
+    const payload: PythonListProfilesRequest = {
+      connection: {
+        ip:       (c.ip as string)       || olt.ipGestion,
+        port:     ((c.port as number)    || olt.puerto) ?? 22,
+        username: (c.username as string) || olt.usuarioAnclado,
+        password,
+        brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
+      },
+    };
+    const res = await this.automation.listProfiles(payload);
+    if (!res.success) {
+      throw new ServiceUnavailableException(res.error ?? 'No se pudieron obtener los perfiles de la OLT');
+    }
+    return {
+      lineprofiles:   res.lineprofiles   ?? [],
+      srvprofiles:    res.srvprofiles    ?? [],
+      traffic_tables: res.traffic_tables ?? [],
+    };
+  }
+
+  async resetearOnu(
+    oltId:     string,
+    empresaId: string,
+    slot:      number,
+    port:      number,
+    onuId:     number,
+  ): Promise<{ exitoso: boolean; mensaje: string }> {
+    this.assertNotDegraded();
+    const olt    = await this.findOlt(oltId, empresaId);
+    const config = await this.proveedorRepo.findOne({
+      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
+    });
+    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+
+    const c = config.credenciales as Record<string, unknown>;
+    const password = c.password_cifrado
+      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
+      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
+
+    const payload: PythonOntResetRequest = {
+      connection: {
+        ip:       (c.ip as string)       || olt.ipGestion,
+        port:     ((c.port as number)    || olt.puerto) ?? 22,
+        username: (c.username as string) || olt.usuarioAnclado,
+        password,
+        brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
+      },
+      slot, port, onu_id: onuId,
+    };
+    const res = await this.automation.ontReset(payload);
+    return { exitoso: res.success, mensaje: res.message };
+  }
+
+  async topologiaBoard(
+    oltId:     string,
+    empresaId: string,
+  ): Promise<{ exitoso: boolean; slots: any[] }> {
+    this.assertNotDegraded();
+    const olt    = await this.findOlt(oltId, empresaId);
+    const config = await this.proveedorRepo.findOne({
+      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
+    });
+    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+
+    const c = config.credenciales as Record<string, unknown>;
+    const password = c.password_cifrado
+      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
+      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
+
+    const payload: PythonBoardTopologyRequest = {
+      connection: {
+        ip:       (c.ip as string)       || olt.ipGestion,
+        port:     ((c.port as number)    || olt.puerto) ?? 22,
+        username: (c.username as string) || olt.usuarioAnclado,
+        password,
+        brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
+      },
+    };
+    const res = await this.automation.boardTopology(payload);
+    return { exitoso: res.success, slots: res.slots ?? [] };
+  }
+
+  async versionOnt(
+    oltId:     string,
+    empresaId: string,
+    slot:      number,
+    port:      number,
+    onuId:     number,
+  ): Promise<{
+    exitoso:         boolean;
+    ontVersion:      string | null;
+    softwareVersion: string | null;
+    equipmentId:     string | null;
+    error:           string | null;
+  }> {
+    this.assertNotDegraded();
+    const olt    = await this.findOlt(oltId, empresaId);
+    const config = await this.proveedorRepo.findOne({
+      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
+    });
+    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+
+    const c = config.credenciales as Record<string, unknown>;
+    const password = c.password_cifrado
+      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
+      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
+
+    const payload: PythonOntVersionRequest = {
+      connection: {
+        ip:       (c.ip as string)       || olt.ipGestion,
+        port:     ((c.port as number)    || olt.puerto) ?? 22,
+        username: (c.username as string) || olt.usuarioAnclado,
+        password,
+        brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
+      },
+      slot, port, onu_id: onuId,
+    };
+    const res = await this.automation.ontVersion(payload);
+    return {
+      exitoso:         res.success,
+      ontVersion:      res.ont_version      ?? null,
+      softwareVersion: res.software_version ?? null,
+      equipmentId:     res.equipment_id     ?? null,
+      error:           res.error            ?? null,
+    };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────
