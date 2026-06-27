@@ -2587,12 +2587,12 @@ function ModalEditarFactura({
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Receipt className="w-5 h-5 text-primary" />
-            <div>
-              <h2 className="text-base font-semibold">Editar Factura</h2>
-              <p className="text-xs text-muted-foreground font-mono">{factura.numeroCompleto}</p>
-            </div>
+            <h2 className="text-base font-semibold">Editar Comprobante de Pago</h2>
+            <span className="inline-flex items-center px-2 py-0.5 rounded bg-primary/10 text-primary font-mono font-semibold text-[11px]">
+              {factura.numeroCompleto}
+            </span>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-5 h-5" />
@@ -2602,31 +2602,7 @@ function ModalEditarFactura({
         {/* Body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
 
-          {/* Row 1: tipo + contrato */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Tipo comprobante</label>
-              <select value={comprobanteConfigId} onChange={e => setComprobanteConfigId(e.target.value)} className={inputCls}>
-                <option value="">— Predeterminado empresa —</option>
-                {comprobantes.filter(c => c.activo).map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre.toUpperCase()}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Contrato</label>
-              <select value={contratoId} onChange={e => setContratoId(e.target.value)} className={inputCls}>
-                <option value="">— Sin contrato —</option>
-                {contratos.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.numeroContrato} {c.planNombre ? `· ${c.planNombre}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Row 2: período + vencimiento */}
+          {/* Período + vencimiento */}
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Período inicio</label>
@@ -2770,8 +2746,8 @@ function ModalEditarFactura({
           <button
             disabled={isPending}
             onClick={() => { setSubmitted(true); if (!items.some(it => !it.descripcion || it.precioUnitario <= 0)) mutate(); }}
-            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg text-white
-                       bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg
+                       bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Guardar cambios
