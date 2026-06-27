@@ -579,12 +579,18 @@ export class PagosService {
           [pago.clienteId],
         );
         if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
-          const suspendidos: { id: string }[] = await this.ds.query(
+          // Incluir contratos suspendidos/morosos/cortados (reactivación) Y contratos
+          // activos con prorroga vigente (cumplimiento de promesa sin cambio de estado).
+          const afectados: { id: string }[] = await this.ds.query(
             `SELECT id FROM contratos
-             WHERE cliente_id = $1 AND empresa_id = $2 AND estado = 'suspendido' AND deleted_at IS NULL`,
+             WHERE cliente_id = $1 AND empresa_id = $2 AND deleted_at IS NULL
+               AND (
+                 estado IN ('suspendido', 'moroso', 'cortado')
+                 OR (estado = 'activo' AND en_prorroga = TRUE)
+               )`,
             [pago.clienteId, empresaId],
           );
-          for (const { id: cId } of suspendidos) {
+          for (const { id: cId } of afectados) {
             await this.verificarYReactivarContrato(cId, empresaId, user, pago.id);
           }
         }
