@@ -230,12 +230,26 @@ export class PromesasPagoService {
     if (promesa.estado !== EstadoPromesa.ACTIVA)
       throw new BadRequestException(`Solo se puede cancelar una promesa ACTIVA (estado: ${promesa.estado})`);
 
-    await this.repo.update(id, {
-      estado:      EstadoPromesa.CANCELADA,
-      resueltaPor: user.sub,
-      resueltaEn:  new Date(),
-      motivo:      motivo || promesa.motivo,
-    });
+    // UPDATE atómico con WHERE estado = 'activa': evita race condition contra procesarVencidas().
+    // Si el cron movió la promesa a VENCIDA_PENDIENTE entre el findOne y aquí, RETURNING devuelve
+    // 0 filas y abortamos antes de tocar MikroTik o los contratos.
+    const [cancelada] = await this.ds.query<{ id: string }[]>(`
+      UPDATE promesas_pago
+      SET    estado       = 'cancelada',
+             resuelta_por = $1,
+             resuelta_en  = NOW(),
+             motivo       = $2
+      WHERE  id         = $3
+        AND  estado     = 'activa'
+        AND  empresa_id = $4
+      RETURNING id
+    `, [user.sub, motivo || promesa.motivo, id, user.empresaId]);
+
+    if (!cancelada) {
+      throw new ConflictException(
+        `La promesa ya fue procesada concurrentemente (estado: ${promesa.estado}). Recarga la página y reintenta.`,
+      );
+    }
 
     // Estados que requieren volver a bloquear al cancelar la promesa
     const estadosBloqueo = ['suspendido', 'moroso', 'cortado'];
