@@ -614,74 +614,102 @@ export class GatewayMensajeriaService {
     eventVars: Record<string, string>,
   ): Promise<Record<string, string>> {
     const base: Record<string, string> = {};
+    const TTL_MS = 120_000;
 
     if (contratoId) {
-      try {
-        const [row] = await this.ds.query(`
-          SELECT
-            cl.nombre_completo       AS nombre_cliente,
-            cl.nombre_completo       AS nombre_completo,
-            em.razon_social          AS empresa,
-            em.razon_social          AS empresa_nombre,
-            em.telefono              AS telefono_empresa,
-            pl.nombre                AS plan,
-            pl.nombre                AS plan_contratado,
-            pl.velocidad_bajada::text AS velocidad_bajada,
-            pl.velocidad_subida::text AS velocidad_subida,
-            co.usuario_pppoe         AS usuario_pppoe,
-            co.ip_asignada           AS ip_asignada,
-            co.numero_contrato       AS numero_contrato,
-            co.deuda_total::text     AS deuda_total,
-            co.deuda_total::text     AS monto,
-            co.meses_deuda::text     AS dias_vencidos,
-            co.meses_deuda::text     AS meses_deuda
-          FROM contratos co
-          JOIN clientes  cl ON cl.id = co.cliente_id
-          JOIN empresas  em ON em.id = co.empresa_id
-          LEFT JOIN planes pl ON pl.id = co.plan_id
-          WHERE co.id = $1
-        `, [contratoId]);
-        if (row) {
-          for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
-            if (v != null) base[k] = String(v);
+      const cacheKey = `vars:contrato:${contratoId}`;
+      const cached = await this.cache.get<Record<string, string>>(cacheKey);
+      if (cached) {
+        Object.assign(base, cached);
+      } else {
+        try {
+          const [row] = await this.ds.query(`
+            SELECT
+              cl.nombre_completo       AS nombre_cliente,
+              cl.nombre_completo       AS nombre_completo,
+              em.razon_social          AS empresa,
+              em.razon_social          AS empresa_nombre,
+              em.telefono              AS telefono_empresa,
+              pl.nombre                AS plan,
+              pl.nombre                AS plan_contratado,
+              pl.velocidad_bajada::text AS velocidad_bajada,
+              pl.velocidad_subida::text AS velocidad_subida,
+              co.usuario_pppoe         AS usuario_pppoe,
+              co.ip_asignada           AS ip_asignada,
+              co.numero_contrato       AS numero_contrato,
+              co.deuda_total::text     AS deuda_total,
+              co.deuda_total::text     AS monto,
+              co.meses_deuda::text     AS dias_vencidos,
+              co.meses_deuda::text     AS meses_deuda
+            FROM contratos co
+            JOIN clientes  cl ON cl.id = co.cliente_id
+            JOIN empresas  em ON em.id = co.empresa_id
+            LEFT JOIN planes pl ON pl.id = co.plan_id
+            WHERE co.id = $1
+          `, [contratoId]);
+          if (row) {
+            const fetched: Record<string, string> = {};
+            for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+              if (v != null) fetched[k] = String(v);
+            }
+            Object.assign(base, fetched);
+            await this.cache.set(cacheKey, fetched, TTL_MS);
           }
+        } catch (err: any) {
+          this.logger.warn(`[GW] resolveVariables contratoId=${contratoId}: ${err.message}`);
         }
-      } catch (err: any) {
-        this.logger.warn(`[GW] resolveVariables contratoId=${contratoId}: ${err.message}`);
       }
     } else if (clienteId && empresaId) {
-      try {
-        const [row] = await this.ds.query(`
-          SELECT cl.nombre_completo AS nombre_cliente,
-                 cl.nombre_completo AS nombre_completo,
-                 em.razon_social   AS empresa,
-                 em.razon_social   AS empresa_nombre,
-                 em.telefono       AS telefono_empresa
-          FROM clientes cl, empresas em
-          WHERE cl.id = $1 AND em.id = $2
-        `, [clienteId, empresaId]);
-        if (row) {
-          for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
-            if (v != null) base[k] = String(v);
+      const cacheKey = `vars:cliente:${clienteId}:${empresaId}`;
+      const cached = await this.cache.get<Record<string, string>>(cacheKey);
+      if (cached) {
+        Object.assign(base, cached);
+      } else {
+        try {
+          const [row] = await this.ds.query(`
+            SELECT cl.nombre_completo AS nombre_cliente,
+                   cl.nombre_completo AS nombre_completo,
+                   em.razon_social   AS empresa,
+                   em.razon_social   AS empresa_nombre,
+                   em.telefono       AS telefono_empresa
+            FROM clientes cl, empresas em
+            WHERE cl.id = $1 AND em.id = $2
+          `, [clienteId, empresaId]);
+          if (row) {
+            const fetched: Record<string, string> = {};
+            for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+              if (v != null) fetched[k] = String(v);
+            }
+            Object.assign(base, fetched);
+            await this.cache.set(cacheKey, fetched, TTL_MS);
           }
+        } catch (err: any) {
+          this.logger.warn(`[GW] resolveVariables clienteId=${clienteId}: ${err.message}`);
         }
-      } catch (err: any) {
-        this.logger.warn(`[GW] resolveVariables clienteId=${clienteId}: ${err.message}`);
       }
     } else if (empresaId) {
-      try {
-        const [row] = await this.ds.query(
-          `SELECT razon_social AS empresa, razon_social AS empresa_nombre,
-                  telefono AS telefono_empresa FROM empresas WHERE id = $1`,
-          [empresaId],
-        );
-        if (row) {
-          for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
-            if (v != null) base[k] = String(v);
+      const cacheKey = `vars:empresa:${empresaId}`;
+      const cached = await this.cache.get<Record<string, string>>(cacheKey);
+      if (cached) {
+        Object.assign(base, cached);
+      } else {
+        try {
+          const [row] = await this.ds.query(
+            `SELECT razon_social AS empresa, razon_social AS empresa_nombre,
+                    telefono AS telefono_empresa FROM empresas WHERE id = $1`,
+            [empresaId],
+          );
+          if (row) {
+            const fetched: Record<string, string> = {};
+            for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+              if (v != null) fetched[k] = String(v);
+            }
+            Object.assign(base, fetched);
+            await this.cache.set(cacheKey, fetched, TTL_MS);
           }
+        } catch (err: any) {
+          this.logger.warn(`[GW] resolveVariables empresaId=${empresaId}: ${err.message}`);
         }
-      } catch (err: any) {
-        this.logger.warn(`[GW] resolveVariables empresaId=${empresaId}: ${err.message}`);
       }
     }
 
