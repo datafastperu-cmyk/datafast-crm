@@ -580,6 +580,22 @@ export class CobranzaWorker {
 
       await job.progress(25);
 
+      // Deduplicación: si onPagoVerificado ya marcó la promesa como 'cumplida' y ejecutó
+      // MikroTik, saltamos las llamadas al router para evitar doble RTT y timeouts innecesarios.
+      const [promesaCumplida] = await this.ds.query<{ id: string }[]>(`
+        SELECT id FROM promesas_pago
+        WHERE  contrato_id = $1
+          AND  estado      = 'cumplida'
+          AND  resuelta_en >= NOW() - INTERVAL '5 minutes'
+        LIMIT  1
+      `, [contratoId]).catch(() => [] as { id: string }[]);
+
+      if (promesaCumplida) {
+        this.logger.debug(
+          `[REACTIVAR] Promesa ya resuelta por evento de pago — omitiendo MikroTik para ${contratoId}`,
+        );
+      } else {
+
       // ── 2. Quitar de Address Lists ─────────────────────
       try {
         await this.firewallSvc.reactivarCliente(creds, ipAsignada);
@@ -613,6 +629,8 @@ export class CobranzaWorker {
           ipAsignada, usuarioPppoe: conRow?.usuario_pppoe,
         }).catch(e => this.logger.error(`OutboxRed encolar REACTIVAR: ${e.message}`));
       }
+
+      } // cierre else (promesaCumplida)
 
       await job.progress(50);
     } else {
@@ -670,7 +688,8 @@ export class CobranzaWorker {
       return { contratoId, ipAsignada, errores, cancelado: true, deudaRestante };
     }
 
-    await this.ds.query(`
+    // RETURNING id para saber si realmente cambió de estado (evita historial fantasma).
+    const [contratoActualizado] = await this.ds.query<{ id: string }[]>(`
       UPDATE contratos SET
         estado = 'activo',
         fecha_estado = NOW(),
@@ -681,13 +700,16 @@ export class CobranzaWorker {
         deuda_total = 0,
         meses_deuda = 0
       WHERE id = $1 AND estado = 'suspendido'
+      RETURNING id
     `, [contratoId, nuevaFechaStr]);
 
-    await this.ds.query(`
-      INSERT INTO contratos_historial
-        (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
-      VALUES ($1, $2, $3, 'activo', $4, NULL, true)
-    `, [contratoId, empresaId, estadoAnterior, `Reactivación automática por pago | Nuevo vencimiento: ${nuevaFechaStr}`]);
+    if (contratoActualizado) {
+      await this.ds.query(`
+        INSERT INTO contratos_historial
+          (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+        VALUES ($1, $2, $3, 'activo', $4, NULL, true)
+      `, [contratoId, empresaId, estadoAnterior, `Reactivación automática por pago | Nuevo vencimiento: ${nuevaFechaStr}`]);
+    }
 
     // Sincronizar clientes.estado: si no quedan contratos suspendidos del cliente → activo
     const [clienteActualizado] = await this.ds.query(`

@@ -381,11 +381,18 @@ export class PromesasPagoService {
     });
     if (!promesa) return;
 
-    await this.repo.update(promesa.id, {
-      estado:              EstadoPromesa.CUMPLIDA,
-      resueltaEn:          new Date(),
-      pagoIdCumplimiento:  event.pagoId,
-    });
+    // UPDATE atómico: el WHERE estado guarda contra pagos concurrentes sobre la misma promesa.
+    // Si otro proceso la marcó 'cumplida' entre el findOne y aquí, RETURNING devuelve vacío.
+    const [marcada] = await this.ds.query<{ id: string }[]>(`
+      UPDATE promesas_pago
+      SET    estado              = 'cumplida',
+             resuelta_en         = NOW(),
+             pago_id_cumplimiento = $2
+      WHERE  id     = $1
+        AND  estado IN ('activa', 'vencida_pendiente')
+      RETURNING id
+    `, [promesa.id, event.pagoId || null]);
+    if (!marcada) return;
 
     await this.ds.query(`
       UPDATE contratos
@@ -403,7 +410,19 @@ export class PromesasPagoService {
         }
         this.logger.log(`[Promesa] Cumplida y reactivada — promesa=${promesa.id}`);
       } catch (err: any) {
-        this.logger.warn(`[Promesa] MikroTik falló en cumplimiento: ${err.message}`);
+        this.logger.warn(`[Promesa] MikroTik falló en cumplimiento — encolando outbox: ${err.message}`);
+        // La IP puede quedar en prorroga_datafast indefinidamente si no se reintenta.
+        await this.outboxSvc.encolar(
+          'REACTIVAR',
+          promesa.contratoId,
+          promesa.routerIdSnapshot,
+          {
+            ipAsignada:   promesa.ipClienteSnapshot,
+            usuarioPppoe: promesa.usuarioPppoeSnapshot || undefined,
+          },
+        ).catch((e: any) =>
+          this.logger.error(`[Promesa] No se pudo encolar REACTIVAR en outbox: ${e.message}`),
+        );
       }
     }
   }

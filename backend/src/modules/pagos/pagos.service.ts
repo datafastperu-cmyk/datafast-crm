@@ -622,12 +622,19 @@ export class PagosService {
 
     // Si la deuda quedó en cero, verificar si el contrato está suspendido
     if (deuda <= 0) {
-      // Notificar a PromesasPagoService para marcar cumplimiento si hay una activa
-      this.events.emit('promesa.verificar_cumplimiento', {
+      // Notificar a PromesasPagoService para marcar cumplimiento si hay una activa.
+      // emitAsync garantiza que la promesa quede 'cumplida' antes de cambiarEstado
+      // y que cualquier fallo del handler suba en lugar de perderse silenciosamente.
+      await this.events.emitAsync('promesa.verificar_cumplimiento', {
         contratoId,
         pagoId: pagoId ?? '',
         deuda,
-      });
+      }).catch((err: any) =>
+        this.logger.error(
+          `[PAGO] Error al notificar cumplimiento de promesa para contrato ${contratoId}: ${err.message}`,
+          err.stack,
+        ),
+      );
       let contrato: any;
       try {
         contrato = await this.contratosSvc.findOne(contratoId, empresaId);
