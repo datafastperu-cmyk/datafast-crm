@@ -120,14 +120,25 @@ export class PromesasPagoService {
         WHERE  id = $4
       `, [dto.fechaVencimiento, dto.motivo || 'Promesa de pago', user.sub, dto.contratoId]);
 
+      // Reactivar contrato suspendido manualmente durante el período de la promesa
+      if (contrato.estado === 'suspendido') {
+        await em.query(`
+          UPDATE contratos
+          SET    estado = 'activo', fecha_estado = NOW(), updated_at = NOW()
+          WHERE  id = $1
+        `, [dto.contratoId]);
+      }
+
+      const estadoNuevo = contrato.estado === 'suspendido' ? 'activo' : contrato.estado;
       await em.query(`
         INSERT INTO contratos_historial
           (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
-        VALUES ($1, $2, $3, $3, $4, $5, FALSE)
+        VALUES ($1, $2, $3, $4, $5, $6, FALSE)
       `, [
         dto.contratoId,
         contrato.empresa_id,
         contrato.estado,
+        estadoNuevo,
         `Promesa de pago hasta ${dto.fechaVencimiento}: ${dto.motivo || '—'}`,
         user.sub,
       ]);
@@ -139,13 +150,17 @@ export class PromesasPagoService {
     if (contrato.ip_asignada && contrato.router_id) {
       try {
         const creds = await this.buildCreds(contrato.router_id);
+        // Para suspendido: primero limpiar address-lists de bloqueo, luego aplicar prorroga
+        if (contrato.estado === 'suspendido') {
+          await this.firewallSvc.reactivarCliente(creds, contrato.ip_asignada);
+        }
         await this.firewallSvc.aplicarProrroga(
           creds,
           contrato.ip_asignada,
           `Promesa: ${contrato.nombre_cliente ?? contrato.cliente_id} | ${new Date().toLocaleDateString('es-PE')}`,
         );
-        // Si el contrato estaba CORTADO, re-habilitar PPPoE
-        if (contrato.estado === 'cortado' && contrato.usuario_pppoe) {
+        // Re-habilitar PPPoE para CORTADO o SUSPENDIDO
+        if (['cortado', 'suspendido'].includes(contrato.estado) && contrato.usuario_pppoe) {
           await this.pppoeSvc.setEstado(creds, contrato.usuario_pppoe, false);
         }
         await this.repo.update(promesa.id, {
