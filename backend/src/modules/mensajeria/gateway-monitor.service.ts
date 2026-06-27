@@ -77,6 +77,7 @@ export class GatewayMonitorService implements OnModuleInit {
       JOIN empresas em ON em.id = nl.empresa_id
       WHERE nl.estado_entrega = ANY($1)
         AND nl.empresa_id IS NOT NULL
+        AND nl.created_at >= NOW() - INTERVAL '7 days'
         AND em.proveedor_activo IS NOT NULL
         AND (
           (em.proveedor_activo = 'META_GRAPH'                 AND em.meta_graph_activo       = true)
@@ -103,7 +104,8 @@ export class GatewayMonitorService implements OnModuleInit {
   private async contarPendientes(empresaId: string): Promise<number> {
     const [row] = await this.ds.query<{ total: number }[]>(
       `SELECT COUNT(*)::int AS total FROM notificaciones_logs
-       WHERE empresa_id = $1 AND estado_entrega = ANY($2)`,
+       WHERE empresa_id = $1 AND estado_entrega = ANY($2)
+         AND created_at >= NOW() - INTERVAL '7 days'`,
       [empresaId, ESTADOS_REINTENTABLES],
     );
     return row?.total ?? 0;
@@ -116,43 +118,46 @@ export class GatewayMonitorService implements OnModuleInit {
       SELECT id, telefono, tipo_template, contrato_id
       FROM notificaciones_logs
       WHERE empresa_id = $1 AND estado_entrega = ANY($2)
+        AND created_at >= NOW() - INTERVAL '7 days'
       ORDER BY created_at ASC
       LIMIT $3
     `, [empresaId, ESTADOS_REINTENTABLES, LOTE_MAX]);
 
     if (logs.length === 0) return;
 
-    // Marcar como ENCOLADO antes de añadir a Bull para que /enviados refleje el estado correcto
-    const ids = logs.map(l => l.id);
-    await this.ds.query(
-      `UPDATE notificaciones_logs SET estado_entrega = 'ENCOLADO', error_detalle = NULL
-       WHERE id = ANY($1)`,
-      [ids],
-    );
-
-    // Añadir jobs escalonados para no saturar el proveedor
+    let encolados = 0;
     for (let i = 0; i < logs.length; i++) {
       const log = logs[i];
-      await this.queue.add(
-        JOBS.NOTIF_ENVIO,
-        {
-          telefono:   log.telefono,
-          tipo:       log.tipo_template,
-          variables:  {},
-          empresaId,
-          contratoId: log.contrato_id ?? undefined,
-          logId:      log.id,
-        },
-        {
-          delay:          i * DELAY_ENTRE_JOBS_MS,
-          attempts:       3,
-          backoff:        { type: 'exponential', delay: 10_000 },
-          removeOnComplete: 100,
-          removeOnFail:     500,
-        },
-      );
+      try {
+        await this.queue.add(
+          JOBS.NOTIF_ENVIO,
+          {
+            telefono:   log.telefono,
+            tipo:       log.tipo_template,
+            variables:  {},
+            empresaId,
+            contratoId: log.contrato_id ?? undefined,
+            logId:      log.id,
+          },
+          {
+            delay:            i * DELAY_ENTRE_JOBS_MS,
+            attempts:         3,
+            backoff:          { type: 'exponential', delay: 10_000 },
+            removeOnComplete: 100,
+            removeOnFail:     500,
+          },
+        );
+        // Marcar ENCOLADO solo si Bull aceptó el job
+        await this.ds.query(
+          `UPDATE notificaciones_logs SET estado_entrega = 'ENCOLADO', error_detalle = NULL WHERE id = $1`,
+          [log.id],
+        );
+        encolados++;
+      } catch (err: any) {
+        this.logger.error(`[Monitor] Error añadiendo job logId=${log.id}: ${err.message}`);
+      }
     }
 
-    this.logger.log(`[Monitor] Batch encolado: ${logs.length} mensajes para empresa ${empresaId} (escalonado ${DELAY_ENTRE_JOBS_MS}ms)`);
+    this.logger.log(`[Monitor] Batch encolado: ${encolados}/${logs.length} mensajes para empresa ${empresaId} (escalonado ${DELAY_ENTRE_JOBS_MS}ms)`);
   }
 }
