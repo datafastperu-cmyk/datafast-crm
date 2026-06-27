@@ -325,7 +325,7 @@ export class OltNativoService implements OnModuleInit {
 
     // Legacy: SSH directo sin configs
     const pwd = this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
-    return this._probarSsh({ ip: olt.ipGestion, puerto: olt.puerto ?? 23, usuario: olt.usuarioAnclado, password: pwd, marca: olt.marca });
+    return this._probarSsh({ ip: olt.ipGestion, puerto: olt.puerto ?? 22, usuario: olt.usuarioAnclado, password: pwd, marca: olt.marca });
   }
 
   async testConexionDirecta(
@@ -348,7 +348,7 @@ export class OltNativoService implements OnModuleInit {
         connection: { ip: params.ip, port: params.puerto, username: params.usuario, password: params.password, brand: params.marca.toLowerCase() },
       });
       if (res.success) {
-        return { exitoso: true, mensaje: 'Conexión Telnet exitosa', latenciaMs: res.latency_ms ?? undefined };
+        return { exitoso: true, mensaje: 'Conexión SSH exitosa', latenciaMs: res.latency_ms ?? undefined };
       }
       return { exitoso: false, mensaje: res.error ?? 'Error al conectar con la OLT', latenciaMs: res.latency_ms ?? undefined };
     } catch (e: any) {
@@ -535,7 +535,7 @@ export class OltNativoService implements OnModuleInit {
       const res = await this.automation.verifyOnu({
         connection: {
           ip:       (c.ip       as string) || olt.ipGestion,
-          port:     ((c.port     as number) || olt.puerto) ?? 23,
+          port:     ((c.port     as number) || olt.puerto) ?? 22,
           username: (c.username as string) || olt.usuarioAnclado,
           password,
           brand:    ((c.brand   as string) || olt.marca).toLowerCase(),
@@ -929,7 +929,7 @@ export class OltNativoService implements OnModuleInit {
     const payload: PythonListProfilesRequest = {
       connection: {
         ip:       (c.ip as string)       || olt.ipGestion,
-        port:     ((c.port as number)    || olt.puerto) ?? 23,
+        port:     ((c.port as number)    || olt.puerto) ?? 22,
         username: (c.username as string) || olt.usuarioAnclado,
         password,
         brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
@@ -968,7 +968,7 @@ export class OltNativoService implements OnModuleInit {
     const payload: PythonOntResetRequest = {
       connection: {
         ip:       (c.ip as string)       || olt.ipGestion,
-        port:     ((c.port as number)    || olt.puerto) ?? 23,
+        port:     ((c.port as number)    || olt.puerto) ?? 22,
         username: (c.username as string) || olt.usuarioAnclado,
         password,
         brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
@@ -998,7 +998,7 @@ export class OltNativoService implements OnModuleInit {
     const payload: PythonBoardTopologyRequest = {
       connection: {
         ip:       (c.ip as string)       || olt.ipGestion,
-        port:     ((c.port as number)    || olt.puerto) ?? 23,
+        port:     ((c.port as number)    || olt.puerto) ?? 22,
         username: (c.username as string) || olt.usuarioAnclado,
         password,
         brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
@@ -1036,7 +1036,7 @@ export class OltNativoService implements OnModuleInit {
     const payload: PythonOntVersionRequest = {
       connection: {
         ip:       (c.ip as string)       || olt.ipGestion,
-        port:     ((c.port as number)    || olt.puerto) ?? 23,
+        port:     ((c.port as number)    || olt.puerto) ?? 22,
         username: (c.username as string) || olt.usuarioAnclado,
         password,
         brand:    ((c.brand as string)   || olt.marca).toLowerCase(),

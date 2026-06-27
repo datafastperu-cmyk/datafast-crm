@@ -18,7 +18,7 @@ interface Props {
 
 const MARCAS   = ['huawei', 'zte', 'vsol', 'cdata'] as const;
 const METODOS  = [
-  { value: 'nativo_ssh',  label: 'Telnet Nativo' },
+  { value: 'nativo_ssh',  label: 'SSH Nativo' },
   { value: 'nativo_snmp', label: 'SNMP Nativo' },
 ] as const;
 
@@ -48,7 +48,7 @@ type FormData = {
 function emptyForm(): FormData {
   return {
     nombre: '', descripcion: '', marca: 'huawei', modelo: '',
-    metodoConexion: 'nativo_ssh', ipGestion: '', puerto: '23',
+    metodoConexion: 'nativo_ssh', ipGestion: '', puerto: '22',
     usuarioAnclado: '', contrasena: '',
     slotsTotales: '1', puertosPorSlot: '8',
     usarVlanGestion: false, vlanGestionDefecto: '',
@@ -67,7 +67,7 @@ function fromOlt(olt: OltDispositivo): FormData {
     modelo:                 olt.modelo ?? '',
     metodoConexion:         olt.metodoConexion,
     ipGestion:              olt.ipGestion,
-    puerto:                 String(olt.puerto ?? 23),
+    puerto:                 String(olt.puerto ?? 22),
     usuarioAnclado:         olt.usuarioAnclado,
     contrasena:             '',
     slotsTotales:           String(olt.slotsTotales ?? 1),
@@ -192,7 +192,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
     try {
       const result = await oltNativoApi.testConexionDirecta({
         ip:       form.ipGestion.trim(),
-        puerto:   parseInt(form.puerto, 10) || 23,
+        puerto:   parseInt(form.puerto, 10) || 22,
         usuario:  form.usuarioAnclado.trim(),
         password: form.contrasena,
         marca:    form.marca,
@@ -338,7 +338,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
                 </Field>
                 <Field label="Puerto" error={undefined}>
                   <input value={form.puerto} onChange={set('puerto')} type="number" min={1} max={65535}
-                    placeholder="23" className={inputCls()} />
+                    placeholder="22" className={inputCls()} />
                 </Field>
                 <Field label="Usuario *" error={errors.usuarioAnclado}>
                   <input value={form.usuarioAnclado} onChange={set('usuarioAnclado')} placeholder="admin"
@@ -365,7 +365,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
               {/* Probar conexión */}
               <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-3 mt-1">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5" /> Probar conexión Telnet
+                  <RefreshCw className="w-3.5 h-3.5" /> Probar conexión SSH
                 </p>
                 <button
                   type="button"

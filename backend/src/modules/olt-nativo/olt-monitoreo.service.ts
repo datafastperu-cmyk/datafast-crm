@@ -125,7 +125,7 @@ export class OltMonitoreoService {
     if (!onus.length) {
       try {
         const test = await this.automation.testConexionSsh({
-          connection: { ip: olt.ipGestion, port: olt.puerto ?? 23, username: olt.usuarioAnclado, password, brand: olt.marca },
+          connection: { ip: olt.ipGestion, port: olt.puerto ?? 22, username: olt.usuarioAnclado, password, brand: olt.marca },
         });
         await this.oltRepo.update(olt.id, {
           estado:     (test.success ? EstadoOlt.ONLINE : EstadoOlt.OFFLINE) as any,

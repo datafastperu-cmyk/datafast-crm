@@ -36,10 +36,12 @@ logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent.parent / 'templates'
 
-# huawei_telnet → HuaweiTelnet: telnet_login() matchea ">>User name:" del MA5800
-# huawei_olt_telnet tiene un bug en Netmiko 4.7 (apunta a HuaweiSmartAXSSH = SSH)
+# huawei_smartax → HuaweiSmartAX: clase SSH nativa para MA5600/MA5800.
+# Maneja session_preparation() (screen-length 0) y prompt detection
+# correctamente para SSH. huawei_telnet era la clase Telnet genérica
+# (no OLT-específica) que requería múltiples workarounds manuales.
 _NETMIKO_DEVICE_TYPE: dict[OltBrand, str] = {
-    OltBrand.HUAWEI: 'huawei_telnet',
+    OltBrand.HUAWEI: 'huawei_smartax',
     OltBrand.ZTE:    'zte_zxros',
     OltBrand.VSOL:   'linux',
     OltBrand.CDATA:  'linux',
@@ -91,11 +93,11 @@ class CommandError(ProvisioningError):
 
 def _huawei_enter_enable(session: Any, conn: OltConnectionSchema) -> None:
     """
-    Huawei MA5800/MA5600 vía Telnet: huawei_telnet hereda NoEnable, nunca
-    llama a 'enable' automáticamente. Tras el login el prompt es 'hostname>'
-    (user mode). 'display ont autofind' y comandos de config requieren '#'.
-    Esta función detecta el prompt, escala a privileged mode y deshabilita
-    la paginación para evitar que '{ <cr>||<K> }:' corte send_command.
+    Huawei MA5800/MA5600 vía SSH (huawei_smartax): si la cuenta SSH no tiene
+    privilege 15, el prompt inicial es 'hostname>' (user mode). Esta función
+    detecta el prompt, escala a privileged mode '#' y deshabilita la paginación.
+    Con huawei_smartax la clase base intenta esto en session_preparation(); este
+    helper es una defensa adicional para firmware que no lo maneje correctamente.
     """
     if conn.brand != OltBrand.HUAWEI:
         return
@@ -233,9 +235,9 @@ def _build_netmiko_params(conn: OltConnectionSchema) -> dict[str, Any]:
         'auth_timeout':         settings.ssh_auth_timeout,
         'banner_timeout':       settings.ssh_banner_timeout,
         'read_timeout_override': settings.ssh_command_timeout,
-        # Huawei VRP (MA5800/MA5600) no hace eco de los comandos de
-        # inicialización (screen-length 0 temporary) — sin este flag
-        # Netmiko falla con "Pattern not detected" en el handshake.
+        # Algunos firmware Huawei MA5800 no hacen eco de comandos de
+        # inicialización (screen-length 0 temporary). Con False, Netmiko
+        # no verifica el eco → evita "Pattern not detected" en handshake.
         'global_cmd_verify':    False,
         'session_log':          None,
     }

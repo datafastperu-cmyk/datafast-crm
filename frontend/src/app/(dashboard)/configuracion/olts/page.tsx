@@ -23,7 +23,7 @@ const ESTADO_COLOR: Record<string, string> = {
 };
 
 const METODO_LABEL: Record<string, string> = {
-  nativo_ssh:   'Telnet Nativo',
+  nativo_ssh:   'SSH Nativo',
   smartolt_api: 'SmartOLT API',
   nativo_snmp:  'SNMP Nativo',
 };
@@ -116,9 +116,9 @@ export default function OltsConfigPage() {
             <Cpu className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-foreground">OLTs Nativas (Telnet / SNMP)</h1>
+            <h1 className="text-lg font-semibold text-foreground">OLTs Nativas (SSH / SNMP)</h1>
             <p className="text-sm text-muted-foreground">
-              {olts.length} equipo{olts.length !== 1 ? 's' : ''} · acceso directo por Telnet o SNMP
+              {olts.length} equipo{olts.length !== 1 ? 's' : ''} · acceso directo por SSH o SNMP
             </p>
           </div>
         </div>
@@ -189,7 +189,7 @@ export default function OltsConfigPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-foreground">
                     {olt.ipGestion}
-                    {olt.puerto !== 23 && (
+                    {olt.puerto !== 22 && (
                       <span className="text-muted-foreground">:{olt.puerto}</span>
                     )}
                   </td>
@@ -216,7 +216,7 @@ export default function OltsConfigPage() {
                         onClick={(e) => { e.stopPropagation(); handleTest(olt); }}
                         disabled={testingId !== null}
                         className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-green-500 transition-colors disabled:opacity-50"
-                        title="Probar conexión Telnet"
+                        title="Probar conexión SSH"
                       >
                         {testingId === olt.id
                           ? <Loader2  className="w-3.5 h-3.5 animate-spin" />
