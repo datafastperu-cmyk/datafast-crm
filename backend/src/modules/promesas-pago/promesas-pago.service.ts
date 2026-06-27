@@ -500,6 +500,14 @@ export class PromesasPagoService {
       mikrotikAplicadoEn: new Date(),
       resueltaEn:        new Date(),
     });
+
+    // Leer estado real antes del UPDATE para el historial (no hardcodear 'moroso')
+    const [contratoActual] = await this.ds.query<{ estado: string }[]>(
+      `SELECT estado FROM contratos WHERE id = $1`,
+      [promesa.contratoId],
+    );
+    const estadoAnterior = contratoActual?.estado ?? promesa.contratoEstadoPrevio ?? 'moroso';
+
     await this.ds.query(`
       UPDATE contratos
       SET    estado        = 'cortado',
@@ -509,11 +517,12 @@ export class PromesasPagoService {
              updated_at     = NOW()
       WHERE  id = $1
     `, [promesa.contratoId]);
+
     await this.ds.query(`
       INSERT INTO contratos_historial
         (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico)
-      VALUES ($1, $2, 'moroso', 'cortado', 'Promesa de pago vencida — corte automático', TRUE)
-    `, [promesa.contratoId, promesa.empresaId]);
+      VALUES ($1, $2, $3, 'cortado', 'Promesa de pago vencida — corte automático', TRUE)
+    `, [promesa.contratoId, promesa.empresaId, estadoAnterior]);
   }
 
   // ────────────────────────────────────────────────────────────
