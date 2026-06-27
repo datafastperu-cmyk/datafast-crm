@@ -208,23 +208,70 @@ export class PromesasPagoService {
       motivo:      motivo || promesa.motivo,
     });
 
-    // Revertir MikroTik: quitar de prorroga_datafast
-    // (no cortamos el servicio — la cancelación es neutral en el router)
-    if (promesa.ipClienteSnapshot && promesa.routerIdSnapshot) {
-      try {
-        const creds = await this.buildCreds(promesa.routerIdSnapshot);
-        await this.firewallSvc.reactivarCliente(creds, promesa.ipClienteSnapshot);
-        this.logger.log(`[Promesa] Cancelada + reactivarCliente: ip=${promesa.ipClienteSnapshot}`);
-      } catch (err: any) {
-        this.logger.warn(`[Promesa] No se pudo limpiar firewall al cancelar: ${err.message}`);
-      }
+    // Estados que requieren volver a bloquear al cancelar la promesa
+    const estadosBloqueo = ['suspendido', 'moroso', 'cortado'];
+    const previo = promesa.contratoEstadoPrevio ?? 'activo';
+    const debeRebloquear = estadosBloqueo.includes(previo);
+    // Estado actual en BD: solo suspendido fue cambiado a 'activo' al crear la promesa
+    const estadoActualEnBd = previo === 'suspendido' ? 'activo' : previo;
+
+    // Limpiar flags de prorroga (siempre)
+    await this.ds.query(`
+      UPDATE contratos
+      SET    en_prorroga  = FALSE,
+             prorroga_hasta = NULL,
+             updated_at   = NOW()
+      WHERE  id = $1
+    `, [promesa.contratoId]);
+
+    // Restaurar estado suspendido (único caso que cambiamos en crear())
+    if (previo === 'suspendido') {
+      await this.ds.query(`
+        UPDATE contratos
+        SET    estado = 'suspendido', fecha_estado = NOW(), updated_at = NOW()
+        WHERE  id = $1
+      `, [promesa.contratoId]);
     }
 
     await this.ds.query(`
-      UPDATE contratos
-      SET    en_prorroga = FALSE, prorroga_hasta = NULL, updated_at = NOW()
-      WHERE  id = $1
-    `, [promesa.contratoId]);
+      INSERT INTO contratos_historial
+        (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+      VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+    `, [
+      promesa.contratoId,
+      promesa.empresaId,
+      estadoActualEnBd,
+      previo,
+      `Promesa cancelada: ${motivo || promesa.motivo}`,
+      user.sub,
+    ]);
+
+    // Revertir MikroTik
+    if (promesa.ipClienteSnapshot && promesa.routerIdSnapshot) {
+      try {
+        const creds = await this.buildCreds(promesa.routerIdSnapshot);
+        if (debeRebloquear) {
+          // Re-bloquear: agregar a morosos y quitar de prorroga
+          await this.firewallSvc.suspenderCliente(
+            creds,
+            promesa.ipClienteSnapshot,
+            promesa.contratoId,
+            `Cancelación de promesa: ${motivo || promesa.motivo}`,
+          );
+          // Deshabilitar PPPoE si era cortado
+          if (promesa.contratoEstadoPrevio === 'cortado' && promesa.usuarioPppoeSnapshot) {
+            await this.pppoeSvc.setEstado(creds, promesa.usuarioPppoeSnapshot, true);
+          }
+          this.logger.log(`[Promesa] Cancelada + re-bloqueado: ip=${promesa.ipClienteSnapshot} estado=${promesa.contratoEstadoPrevio}`);
+        } else {
+          // El contrato era activo antes — dejar libre (quitar prorroga)
+          await this.firewallSvc.reactivarCliente(creds, promesa.ipClienteSnapshot);
+          this.logger.log(`[Promesa] Cancelada + reactivarCliente: ip=${promesa.ipClienteSnapshot}`);
+        }
+      } catch (err: any) {
+        this.logger.warn(`[Promesa] No se pudo revertir firewall al cancelar: ${err.message}`);
+      }
+    }
 
     return this.repo.findOne({ where: { id } }) as Promise<PromesaPago>;
   }
