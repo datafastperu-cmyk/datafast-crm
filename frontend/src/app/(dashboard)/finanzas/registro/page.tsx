@@ -254,9 +254,14 @@ function TabRegistrar() {
       {cliente && (
         <div>
           <div className="bg-gray-900 text-white px-6 py-3 flex items-center gap-3">
-            <span className="text-sm font-bold tracking-wide uppercase">
+            <a
+              href={`/clientes/${cliente.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-bold tracking-wide uppercase hover:text-blue-300 transition-colors"
+            >
               {cliente.nombreCompleto}
-            </span>
+            </a>
             <span className={cn(
               'text-xs font-bold px-2 py-0.5 rounded text-white',
               ESTADO_COLOR[cliente.estado] ?? 'bg-gray-500',
