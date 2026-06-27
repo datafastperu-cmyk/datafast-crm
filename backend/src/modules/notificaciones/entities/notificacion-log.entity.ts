@@ -1,6 +1,6 @@
 import {
   Entity, PrimaryGeneratedColumn, Column,
-  CreateDateColumn, Index,
+  CreateDateColumn, UpdateDateColumn, Index,
 } from 'typeorm';
 
 export enum EstadoEntrega {
@@ -65,6 +65,12 @@ export class NotificacionLog {
   @Column({ name: 'idempotency_key', type: 'varchar', length: 150, nullable: true, unique: true })
   idempotencyKey: string | null;
 
+  @Column({ name: 'variables', type: 'jsonb', nullable: true })
+  variables: Record<string, string> | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 }

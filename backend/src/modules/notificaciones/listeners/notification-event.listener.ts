@@ -108,10 +108,11 @@ export class NotificationEventListener implements OnModuleInit {
     let logId: string | undefined;
     try {
       const ikey = payload.idempotencyKey ?? null;
+      const vars = payload.variables ? JSON.stringify(payload.variables) : null;
       const [row] = await this.ds.query(`
         INSERT INTO notificaciones_logs
-          (empresa_id, contrato_id, cliente_id, telefono, tipo_template, estado_entrega, idempotency_key)
-        VALUES ($1, $2, $3, $4, $5, 'ENCOLADO', $6)
+          (empresa_id, contrato_id, cliente_id, telefono, tipo_template, estado_entrega, idempotency_key, variables)
+        VALUES ($1, $2, $3, $4, $5, 'ENCOLADO', $6, $7)
         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
         RETURNING id
       `, [
@@ -121,6 +122,7 @@ export class NotificationEventListener implements OnModuleInit {
         payload.telefono.substring(0, 30),
         tipo,
         ikey,
+        vars,
       ]);
 
       if (!row?.id && ikey) {

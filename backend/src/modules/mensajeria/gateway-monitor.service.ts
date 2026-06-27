@@ -52,6 +52,27 @@ export class GatewayMonitorService implements OnModuleInit {
     }
   }
 
+  // Limpia logs EN_PROCESO con más de 10 min sin actualizar (worker crasheó o perdió el job)
+  @Cron('*/10 * * * *', { name: 'notif-orphan-cleanup' })
+  async limpiarHuerfanosEnProceso(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
+    try {
+      const rows = await this.ds.query<{ id: string }[]>(`
+        UPDATE notificaciones_logs
+        SET estado_entrega = 'NO_ENVIADO',
+            error_detalle  = 'Timeout: worker no respondió en 10 min'
+        WHERE estado_entrega = 'EN_PROCESO'
+          AND updated_at <= NOW() - INTERVAL '10 minutes'
+        RETURNING id
+      `);
+      if (rows.length > 0) {
+        this.logger.warn(`[Monitor] ${rows.length} log(s) EN_PROCESO rescatados a NO_ENVIADO`);
+      }
+    } catch (err: any) {
+      this.logger.error(`[Monitor] Error en cleanup EN_PROCESO: ${err.message}`);
+    }
+  }
+
   @OnEvent(GATEWAY_EVENTS.PROVIDER_ACTIVATED, { async: true })
   async onProviderActivated(payload: { empresaId: string; proveedor: string }): Promise<void> {
     const { empresaId, proveedor } = payload;
@@ -114,8 +135,9 @@ export class GatewayMonitorService implements OnModuleInit {
   private async encolarBatch(empresaId: string): Promise<void> {
     const logs = await this.ds.query<{
       id: string; telefono: string; tipo_template: string; contrato_id: string | null;
+      variables: Record<string, string> | null;
     }[]>(`
-      SELECT id, telefono, tipo_template, contrato_id
+      SELECT id, telefono, tipo_template, contrato_id, variables
       FROM notificaciones_logs
       WHERE empresa_id = $1 AND estado_entrega = ANY($2)
         AND created_at >= NOW() - INTERVAL '7 days'
@@ -134,7 +156,7 @@ export class GatewayMonitorService implements OnModuleInit {
           {
             telefono:   log.telefono,
             tipo:       log.tipo_template,
-            variables:  {},
+            variables:  log.variables ?? {},
             empresaId,
             contratoId: log.contrato_id ?? undefined,
             logId:      log.id,
