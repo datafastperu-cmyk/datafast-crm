@@ -6,7 +6,7 @@ import { InjectRepository }  from '@nestjs/typeorm';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { Repository, DataSource, LessThan, In } from 'typeorm';
 import { Cron }              from '@nestjs/schedule';
-import { OnEvent }           from '@nestjs/event-emitter';
+import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 
 import { PromesaPago, EstadoPromesa } from './entities/promesa-pago.entity';
 import { FirewallService }            from '../mikrotik/services/firewall.service';
@@ -14,6 +14,7 @@ import { PppoeService }               from '../mikrotik/services/pppoe.service';
 import { OutboxRedService }           from '../outbox-red/outbox-red.service';
 import { decrypt }                    from '../../common/utils/encryption.util';
 import { JwtPayload }                 from '../../common/decorators/current-user.decorator';
+import { NOTIFICATION_EVENTS }        from '../notificaciones/events/notification.events';
 
 export interface CrearPromesaDto {
   contratoId:       string;
@@ -41,6 +42,7 @@ export class PromesasPagoService {
     private readonly firewallSvc: FirewallService,
     private readonly pppoeSvc:    PppoeService,
     private readonly outboxSvc:   OutboxRedService,
+    private readonly events:      EventEmitter2,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -658,6 +660,34 @@ export class PromesasPagoService {
         this.logger.warn(`[Promesa] historial cliente en corte: ${e.message}`),
       );
     }
+
+    // Notificar al cliente que su servicio fue cortado por promesa vencida
+    setImmediate(async () => {
+      try {
+        const [row] = await this.ds.query<any[]>(`
+          SELECT cl.nombre_completo, cl.whatsapp, cl.telefono,
+                 cl.empresa_nombre, co.deuda_total
+          FROM   contratos co
+          JOIN   clientes  cl ON cl.id = co.cliente_id
+          WHERE  co.id = $1
+        `, [promesa.contratoId]);
+        if (!row) return;
+        const tel = row.whatsapp || row.telefono;
+        if (!tel) return;
+        this.events.emit(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, {
+          telefono:      tel,
+          clienteNombre: row.nombre_completo,
+          deudaTotal:    String(row.deuda_total ?? 0),
+          nombreEmpresa: row.empresa_nombre,
+          empresaId:     promesa.empresaId,
+          contratoId:    promesa.contratoId,
+          clienteId:     promesa.clienteId,
+          motivo:        'Promesa de pago vencida',
+        });
+      } catch (e: any) {
+        this.logger.warn(`[Promesa] No se pudo emitir notif corte: ${e.message}`);
+      }
+    });
   }
 
   // ────────────────────────────────────────────────────────────
