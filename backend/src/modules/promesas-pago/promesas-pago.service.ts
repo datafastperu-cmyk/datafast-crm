@@ -127,6 +127,35 @@ export class PromesasPagoService {
           SET    estado = 'activo', fecha_estado = NOW(), updated_at = NOW()
           WHERE  id = $1
         `, [dto.contratoId]);
+
+        // Sincronizar clientes.estado solo si no quedan otros contratos bloqueados
+        const [clienteActualizado] = await em.query<{ id: string }[]>(`
+          UPDATE clientes
+          SET    estado = 'activo', fecha_estado = NOW()
+          WHERE  id = $1
+            AND  estado = 'suspendido'
+            AND  NOT EXISTS (
+              SELECT 1 FROM contratos
+              WHERE  cliente_id = $1
+                AND  estado IN ('suspendido', 'moroso', 'cortado')
+                AND  deleted_at IS NULL
+                AND  id != $2
+            )
+          RETURNING id
+        `, [contrato.cliente_id, dto.contratoId]);
+
+        if (clienteActualizado) {
+          await em.query(`
+            INSERT INTO clientes_historial_estados
+              (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+            VALUES ($1, $2, 'suspendido', 'activo', $3, $4, FALSE)
+          `, [
+            contrato.cliente_id,
+            contrato.empresa_id,
+            `Promesa de pago hasta ${dto.fechaVencimiento}: ${dto.motivo || '—'}`,
+            user.sub,
+          ]);
+        }
       }
 
       const estadoNuevo = contrato.estado === 'suspendido' ? 'activo' : contrato.estado;
@@ -231,6 +260,37 @@ export class PromesasPagoService {
         SET    estado = 'suspendido', fecha_estado = NOW(), updated_at = NOW()
         WHERE  id = $1
       `, [promesa.contratoId]);
+
+      // Revertir clientes.estado a suspendido si no quedan contratos activos
+      const [clienteActualizado] = await this.ds.query<{ id: string }[]>(`
+        UPDATE clientes
+        SET    estado = 'suspendido', fecha_estado = NOW()
+        WHERE  id = $1
+          AND  estado = 'activo'
+          AND  NOT EXISTS (
+            SELECT 1 FROM contratos
+            WHERE  cliente_id = $1
+              AND  estado = 'activo'
+              AND  deleted_at IS NULL
+              AND  id != $2
+          )
+        RETURNING id
+      `, [promesa.clienteId, promesa.contratoId]).catch(() => []);
+
+      if (clienteActualizado) {
+        await this.ds.query(`
+          INSERT INTO clientes_historial_estados
+            (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+          VALUES ($1, $2, 'activo', 'suspendido', $3, $4, FALSE)
+        `, [
+          promesa.clienteId,
+          promesa.empresaId,
+          `Promesa cancelada: ${motivo || promesa.motivo}`,
+          user.sub,
+        ]).catch((e: any) =>
+          this.logger.warn(`[Promesa] historial cliente al cancelar: ${e.message}`),
+        );
+      }
     }
 
     await this.ds.query(`
@@ -523,6 +583,32 @@ export class PromesasPagoService {
         (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, automatico)
       VALUES ($1, $2, $3, 'cortado', 'Promesa de pago vencida — corte automático', TRUE)
     `, [promesa.contratoId, promesa.empresaId, estadoAnterior]);
+
+    // Sincronizar clientes.estado a suspendido si no quedan contratos activos
+    const [clienteActualizado] = await this.ds.query<{ id: string }[]>(`
+      UPDATE clientes
+      SET    estado = 'suspendido', fecha_estado = NOW()
+      WHERE  id = $1
+        AND  estado = 'activo'
+        AND  NOT EXISTS (
+          SELECT 1 FROM contratos
+          WHERE  cliente_id = $1
+            AND  estado = 'activo'
+            AND  deleted_at IS NULL
+            AND  id != $2
+        )
+      RETURNING id
+    `, [promesa.clienteId, promesa.contratoId]).catch(() => []);
+
+    if (clienteActualizado) {
+      await this.ds.query(`
+        INSERT INTO clientes_historial_estados
+          (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+        VALUES ($1, $2, 'activo', 'suspendido', 'Promesa de pago vencida — corte automático', NULL, TRUE)
+      `, [promesa.clienteId, promesa.empresaId]).catch((e: any) =>
+        this.logger.warn(`[Promesa] historial cliente en corte: ${e.message}`),
+      );
+    }
   }
 
   // ────────────────────────────────────────────────────────────
