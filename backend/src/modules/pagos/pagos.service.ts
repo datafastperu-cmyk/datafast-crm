@@ -170,7 +170,12 @@ export class PagosService {
         // deuda_total=0, meses_deuda=0, en_prorroga=false, fecha_vencimiento, historial).
         // Solo encolar si la deuda total quedó en cero tras este pago.
         // Cubre facturas con contrato_id directo y las sin vínculo (por cliente_id).
-        if (contrato && contrato.estado === EstadoContrato.SUSPENDIDO) {
+        const estadosReactivables = [
+          EstadoContrato.SUSPENDIDO,
+          EstadoContrato.CORTADO,
+          EstadoContrato.MOROSO,
+        ];
+        if (contrato && estadosReactivables.includes(contrato.estado)) {
           const [deudaRow] = await manager.query<{ deuda: string }[]>(`
             SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
             FROM facturas f
@@ -183,9 +188,13 @@ export class PagosService {
               // Factura vinculada a un contrato específico → solo ese
               contratosParaReactivar.push(contrato);
             } else {
-              // Factura unificada (contrato_id null) → reactivar TODOS los contratos suspendidos
+              // Factura unificada (contrato_id null) → reactivar TODOS los contratos bloqueados
               const todos = await manager.find(Contrato, {
-                where: { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.SUSPENDIDO },
+                where: [
+                  { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.SUSPENDIDO },
+                  { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.CORTADO },
+                  { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.MOROSO },
+                ],
               });
               contratosParaReactivar.push(...todos);
             }
@@ -626,7 +635,12 @@ export class PagosService {
         return; // Contrato no encontrado, ignorar
       }
 
-      if (contrato.estado === EstadoContrato.SUSPENDIDO) {
+      const estadosReactivables = [
+        EstadoContrato.SUSPENDIDO,
+        EstadoContrato.CORTADO,  // post-prorroga: MikroTik ya cortó pero deuda saldada → reactivar
+        EstadoContrato.MOROSO,   // deuda saldada antes del corte → normalizar a activo
+      ];
+      if (estadosReactivables.includes(contrato.estado)) {
         // ── REACTIVAR AUTOMÁTICAMENTE ─────────────────────
         await this.contratosSvc.cambiarEstado(
           contratoId,
@@ -639,7 +653,7 @@ export class PagosService {
         );
 
         this.logger.log(
-          `🟢 Contrato REACTIVADO automáticamente: ${contratoId} | ` +
+          `🟢 Contrato REACTIVADO automáticamente: ${contratoId} (${contrato.estado}) | ` +
           `deuda saldada: S/ ${contrato.deudaTotal}`,
         );
       } else if (contrato.estado === EstadoContrato.PENDIENTE_ACTIVACION) {
