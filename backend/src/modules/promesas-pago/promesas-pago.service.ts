@@ -251,12 +251,24 @@ export class PromesasPagoService {
       );
     }
 
-    // Estados que requieren volver a bloquear al cancelar la promesa
-    const estadosBloqueo = ['suspendido', 'moroso', 'cortado'];
     const previo = promesa.contratoEstadoPrevio ?? 'activo';
-    const debeRebloquear = estadosBloqueo.includes(previo);
-    // Estado actual en BD: solo suspendido fue cambiado a 'activo' al crear la promesa
-    const estadoActualEnBd = previo === 'suspendido' ? 'activo' : previo;
+
+    // Leer el estado REAL del contrato ahora mismo (puede diferir del snapshot si el admin
+    // lo cambió manualmente entre la creación de la promesa y esta cancelación).
+    const [contratoActual] = await this.ds.query<{ estado: string }[]>(
+      `SELECT estado FROM contratos WHERE id = $1 AND deleted_at IS NULL`,
+      [promesa.contratoId],
+    );
+    const estadoRealActual = contratoActual?.estado ?? previo;
+
+    // Re-bloquear en MikroTik si el contrato está actualmente en un estado bloqueante.
+    // Usar estadoRealActual, no el snapshot: si el admin reactivó manualmente, no re-bloqueamos.
+    const estadosBloqueo = ['suspendido', 'moroso', 'cortado'];
+    const debeRebloquear = estadosBloqueo.includes(estadoRealActual);
+
+    // estadoActualEnBd: si la promesa cambió el contrato de suspendido→activo, el BD dice 'activo';
+    // en cualquier otro caso el estado en BD sigue siendo el que tenía.
+    const estadoActualEnBd = estadoRealActual;
 
     // Limpiar flags de prorroga (siempre)
     await this.ds.query(`
@@ -267,8 +279,9 @@ export class PromesasPagoService {
       WHERE  id = $1
     `, [promesa.contratoId]);
 
-    // Restaurar estado suspendido (único caso que cambiamos en crear())
-    if (previo === 'suspendido') {
+    // Restaurar estado suspendido solo si la promesa efectivamente lo cambió a activo
+    // (previo='suspendido' + estadoRealActual='activo'). Si el admin ya lo cambió, no tocar.
+    if (previo === 'suspendido' && estadoRealActual === 'activo') {
       await this.ds.query(`
         UPDATE contratos
         SET    estado = 'suspendido', fecha_estado = NOW(), updated_at = NOW()
@@ -332,8 +345,8 @@ export class PromesasPagoService {
             promesa.contratoId,
             `Cancelación de promesa: ${motivo || promesa.motivo}`,
           );
-          // Deshabilitar PPPoE si era cortado
-          if (promesa.contratoEstadoPrevio === 'cortado' && promesa.usuarioPppoeSnapshot) {
+          // Deshabilitar PPPoE si el estado actual (real) es cortado
+          if (estadoRealActual === 'cortado' && promesa.usuarioPppoeSnapshot) {
             await this.pppoeSvc.setEstado(creds, promesa.usuarioPppoeSnapshot, true);
           }
           this.logger.log(`[Promesa] Cancelada + re-bloqueado: ip=${promesa.ipClienteSnapshot} estado=${promesa.contratoEstadoPrevio}`);
