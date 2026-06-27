@@ -11,6 +11,14 @@ export default function ErrorPage({
 }) {
   useEffect(() => {
     console.error('[RouteError]', error);
+    // Chunk obsoleto tras deploy → recargar una vez para obtener los nuevos hashes
+    if (error.message?.includes('Loading chunk') || error.message?.includes('ChunkLoadError')) {
+      const reloaded = sessionStorage.getItem('chunk-reload');
+      if (!reloaded) {
+        sessionStorage.setItem('chunk-reload', '1');
+        window.location.reload();
+      }
+    }
   }, [error]);
 
   return (
