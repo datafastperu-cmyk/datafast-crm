@@ -36,7 +36,7 @@ TEMPLATES_DIR = Path(__file__).parent.parent / 'templates'
 
 # Huawei VRP (MA5800/MA5600) — device_type correcto para OLTs Huawei
 _NETMIKO_DEVICE_TYPE: dict[OltBrand, str] = {
-    OltBrand.HUAWEI: 'huawei_vrp',
+    OltBrand.HUAWEI: 'huawei_vrp_telnet',
     OltBrand.ZTE:    'zte_zxros',
     OltBrand.VSOL:   'linux',
     OltBrand.CDATA:  'linux',

@@ -38,7 +38,7 @@ const EMPTY_FORM: UpsertProveedorDto = {
   prioridad:     1,
   activo:        true,
   ip:            '',
-  port:          22,
+  port:          23,
   username:      '',
   password:      '',
   brand:         'huawei',

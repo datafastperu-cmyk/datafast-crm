@@ -60,8 +60,8 @@ export class OltDispositivo extends BaseModel {
   @Column({ name: 'ip_gestion', type: 'inet' })
   ipGestion: string;   // IP privada dentro de la red VPN, ej: "10.0.50.2"
 
-  @Column({ type: 'int', default: 22 })
-  puerto: number;   // 22 para SSH | 161 para SNMP
+  @Column({ type: 'int', default: 23 })
+  puerto: number;   // 23 para Telnet | 161 para SNMP
 
   @Column({ name: 'usuario_anclado', length: 100 })
   usuarioAnclado: string;

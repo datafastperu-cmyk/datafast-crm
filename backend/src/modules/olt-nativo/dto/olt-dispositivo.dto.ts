@@ -40,9 +40,9 @@ export class CreateOltDispositivoDto {
   ipGestion: string;
 
   @ApiPropertyOptional({
-    example: 22,
-    description: 'Puerto de conexión: 22 para SSH, 161 para SNMP. Defecto: 22.',
-    default: 22,
+    example: 23,
+    description: 'Puerto de conexión: 23 para Telnet, 161 para SNMP. Defecto: 23.',
+    default: 23,
   })
   @IsOptional() @IsInt() @Min(1) @Max(65535) @Type(() => Number)
   puerto?: number;

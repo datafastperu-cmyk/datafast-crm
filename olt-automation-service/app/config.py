@@ -19,10 +19,10 @@ class Settings(BaseSettings):
     # Secreto compartido con el backend para autenticar llamadas internas
     internal_api_key: str = 'change-me-in-production'
 
-    # Timeouts SSH (segundos)
+    # Timeouts de conexión Netmiko (segundos) — aplican a Telnet y SSH
     ssh_connect_timeout: int = 30
     ssh_auth_timeout: int = 20
-    ssh_banner_timeout: int = 15
+    ssh_banner_timeout: int = 30
     ssh_command_timeout: int = 60
 
     # Netmiko: reintentos ante caída de conexión

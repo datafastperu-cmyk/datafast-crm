@@ -48,7 +48,7 @@ type FormData = {
 function emptyForm(): FormData {
   return {
     nombre: '', descripcion: '', marca: 'huawei', modelo: '',
-    metodoConexion: 'nativo_ssh', ipGestion: '', puerto: '22',
+    metodoConexion: 'nativo_ssh', ipGestion: '', puerto: '23',
     usuarioAnclado: '', contrasena: '',
     slotsTotales: '1', puertosPorSlot: '8',
     usarVlanGestion: false, vlanGestionDefecto: '',
@@ -67,7 +67,7 @@ function fromOlt(olt: OltDispositivo): FormData {
     modelo:                 olt.modelo ?? '',
     metodoConexion:         olt.metodoConexion,
     ipGestion:              olt.ipGestion,
-    puerto:                 String(olt.puerto ?? 22),
+    puerto:                 String(olt.puerto ?? 23),
     usuarioAnclado:         olt.usuarioAnclado,
     contrasena:             '',
     slotsTotales:           String(olt.slotsTotales ?? 1),
@@ -192,7 +192,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
     try {
       const result = await oltNativoApi.testConexionDirecta({
         ip:       form.ipGestion.trim(),
-        puerto:   parseInt(form.puerto, 10) || 22,
+        puerto:   parseInt(form.puerto, 10) || 23,
         usuario:  form.usuarioAnclado.trim(),
         password: form.contrasena,
         marca:    form.marca,
@@ -338,7 +338,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
                 </Field>
                 <Field label="Puerto" error={undefined}>
                   <input value={form.puerto} onChange={set('puerto')} type="number" min={1} max={65535}
-                    placeholder="22" className={inputCls()} />
+                    placeholder="23" className={inputCls()} />
                 </Field>
                 <Field label="Usuario SSH *" error={errors.usuarioAnclado}>
                   <input value={form.usuarioAnclado} onChange={set('usuarioAnclado')} placeholder="admin"
