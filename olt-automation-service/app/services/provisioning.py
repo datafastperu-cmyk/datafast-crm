@@ -12,6 +12,8 @@ Nota: las funciones públicas son SÍNCRONAS por diseño — Netmiko usa
 sockets bloqueantes. Invocarlas desde asyncio.to_thread() en main.py.
 """
 import logging
+import re
+import time as _time_read
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -92,7 +94,8 @@ def _huawei_enter_enable(session: Any, conn: OltConnectionSchema) -> None:
     Huawei MA5800/MA5600 vía Telnet: huawei_telnet hereda NoEnable, nunca
     llama a 'enable' automáticamente. Tras el login el prompt es 'hostname>'
     (user mode). 'display ont autofind' y comandos de config requieren '#'.
-    Esta función detecta el prompt y escala a privileged mode si es necesario.
+    Esta función detecta el prompt, escala a privileged mode y deshabilita
+    la paginación para evitar que '{ <cr>||<K> }:' corte send_command.
     """
     if conn.brand != OltBrand.HUAWEI:
         return
@@ -101,8 +104,85 @@ def _huawei_enter_enable(session: Any, conn: OltConnectionSchema) -> None:
         if prompt.strip().endswith('>'):
             session.send_command('enable', expect_string=r'[>#]', read_timeout=10)
             logger.debug('huawei_enter_enable: modo privilegiado activo en %s', conn.ip)
+        # Deshabilitar paginación — MA5800 muestra '{ <cr>||<K> }:' en outputs
+        # largos; ese prompt contiene '>' y rompe expect_string=r'[>#]'.
+        # send_command_timing no usa expect_string, así que no hay falso match.
+        try:
+            session.send_command_timing(
+                'screen-length 0 temporary',
+                delay_factor=1,
+                read_timeout=10,
+            )
+            logger.debug('huawei_enter_enable: paginación desactivada en %s', conn.ip)
+        except Exception:  # noqa: BLE001
+            pass
     except Exception as exc:  # noqa: BLE001
         logger.warning('huawei_enter_enable: no se pudo escalar modo en %s: %s', conn.ip, exc)
+
+
+# Patrón que coincide con el prompt real del OLT (hostname> o hostname#)
+# al final del último renglón. re.search con ^ ancla al inicio de la línea
+# candidata (tras rsplit), evitando falsos matches con '{ <cr>||<K> }:'.
+_HUAWEI_PROMPT_RE = re.compile(r'^\S+[>#]\s*$')
+
+
+def _send_huawei_confirmed(
+    session: Any,
+    command: str,
+    read_timeout: float,
+) -> str:
+    """
+    Envía un comando Huawei y maneja el prompt de confirmación
+    '{ <cr>||<K> }:' que el MA5800 muestra antes de ejecutar
+    comandos como 'display ont autofind all'.
+
+    Flujo:
+      1. Escribe el comando al canal.
+      2. Lee hasta encontrar '{ <cr>' (confirmación) o el prompt final.
+      3. Si hay confirmación → envía Enter → lee hasta el prompt final.
+      4. Limpia el echo del comando y el prompt del output retornado.
+    """
+    session.write_channel(command + '\r\n')
+
+    data = ''
+    confirmed = False
+    deadline = _time_read.monotonic() + read_timeout
+
+    while _time_read.monotonic() < deadline:
+        chunk = session.read_channel()
+        data += chunk
+
+        # Verificar el último renglón para detectar confirmación o prompt real.
+        last_line = data.rsplit('\n', 1)[-1].replace('\r', '').strip()
+
+        if not confirmed and '{ <cr>' in last_line:
+            # Responder a la confirmación con Enter y continuar leyendo.
+            session.write_channel('\r\n')
+            confirmed = True
+            continue
+
+        if _HUAWEI_PROMPT_RE.match(last_line):
+            break  # Prompt real encontrado — output completo.
+
+        _time_read.sleep(0.05)
+    else:
+        raise ReadTimeout(
+            f"Timeout esperando respuesta al comando Huawei: {command!r}"
+        )
+
+    # Limpiar echo del comando y prompt de las líneas devueltas.
+    cleaned: list[str] = []
+    for line in data.replace('\r', '').split('\n'):
+        stripped = line.strip()
+        if command in stripped:
+            continue
+        if '{ <cr>' in stripped:
+            continue
+        if _HUAWEI_PROMPT_RE.match(stripped):
+            continue
+        cleaned.append(line)
+    return '\n'.join(cleaned)
+
 
 def _render_commands(brand: OltBrand, template_name: str, context: dict[str, Any]) -> str:
     brand_dir = TEMPLATES_DIR / brand.value
@@ -246,7 +326,9 @@ def _send_single_command(conn: OltConnectionSchema, command: str) -> str:
                 _huawei_enter_enable(session, conn)
                 output: str = session.send_command(
                     command,
-                    expect_string=r'[>#]',
+                    # r'\S+[>#]\s*$' no hace match con '{ <cr>||<K> }:'
+                    # (el prompt de paginación Huawei que contiene '>').
+                    expect_string=r'\S+[>#]\s*$',
                     read_timeout=settings.ssh_command_timeout,
                     strip_prompt=True,
                     strip_command=True,
@@ -297,7 +379,7 @@ def _open_multi_commands(
             return [
                 session.send_command(
                     cmd,
-                    expect_string=r'[>#]',
+                    expect_string=r'\S+[>#]\s*$',
                     read_timeout=settings.ssh_command_timeout,
                     strip_prompt=True,
                     strip_command=True,
@@ -1217,7 +1299,8 @@ def _filter_onus(
         if 'raw' in row:
             continue
         try:
-            sn = str(row.get('OnuSn', '') or '').strip()
+            # MA5800 devuelve "HWTC-78CA0FAA" con dash — normalizar a "HWTC78CA0FAA"
+            sn = str(row.get('OnuSn', '') or '').strip().replace('-', '')
             s  = int(row.get('Slot', -1))
             p  = int(row.get('Port', -1))
         except (ValueError, TypeError):
@@ -1241,6 +1324,9 @@ def discover_huawei_onus(
     """
     Lista ONUs no autorizadas en OLT Huawei mediante 'display ont autofind all'.
 
+    El MA5800 muestra '{ <cr>||<K> }:' (confirmación pre-ejecución) antes de
+    devolver el output; usa _send_huawei_confirmed para manejarlo correctamente.
+
     Retorna lista de dicts [{'sn': ..., 'slot': ..., 'port': ...}].
     Si slot y/o port se especifican, filtra el resultado antes de retornar.
     Propaga ProvisioningError en caso de fallo SSH.
@@ -1248,9 +1334,22 @@ def discover_huawei_onus(
     command = 'display ont autofind all'
     logger.info('discover_huawei_onus: consultando ONUs pendientes en %s', conn.ip)
 
+    params = _build_netmiko_params(conn)
     try:
-        raw_output = _send_single_command(conn, command)
-    except (ConnectionError, CommandError) as exc:
+        with ConnectHandler(**params) as session:
+            _huawei_enter_enable(session, conn)
+            raw_output = _send_huawei_confirmed(
+                session, command, settings.ssh_command_timeout
+            )
+    except NetmikoAuthenticationException as exc:
+        raise ProvisioningError(
+            f'Autenticación fallida en Huawei {conn.ip}: {exc}'
+        ) from exc
+    except ReadTimeout as exc:
+        raise ProvisioningError(
+            f'Timeout consultando ONUs pendientes en Huawei {conn.ip}: {exc}'
+        ) from exc
+    except (NetmikoTimeoutException, OSError) as exc:
         raise ProvisioningError(
             f'No se pudo consultar ONUs pendientes en Huawei {conn.ip}: {exc}'
         ) from exc
