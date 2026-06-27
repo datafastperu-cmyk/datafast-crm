@@ -18,7 +18,7 @@ interface Props {
 
 const MARCAS   = ['huawei', 'zte', 'vsol', 'cdata'] as const;
 const METODOS  = [
-  { value: 'nativo_ssh',  label: 'SSH Nativo' },
+  { value: 'nativo_ssh',  label: 'Telnet Nativo' },
   { value: 'nativo_snmp', label: 'SNMP Nativo' },
 ] as const;
 
@@ -185,7 +185,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
 
   const handleTest = async () => {
     if (!form.ipGestion.trim()) { toast('Ingresa la IP de gestión antes de probar', { type: 'error' }); return; }
-    if (!form.usuarioAnclado.trim()) { toast('Ingresa el usuario SSH antes de probar', { type: 'error' }); return; }
+    if (!form.usuarioAnclado.trim()) { toast('Ingresa el usuario antes de probar', { type: 'error' }); return; }
     if (!form.contrasena && !editing) { toast('Ingresa la contraseña antes de probar', { type: 'error' }); return; }
     setTestStatus('testing');
     setTestResult(null);
@@ -340,7 +340,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
                   <input value={form.puerto} onChange={set('puerto')} type="number" min={1} max={65535}
                     placeholder="23" className={inputCls()} />
                 </Field>
-                <Field label="Usuario SSH *" error={errors.usuarioAnclado}>
+                <Field label="Usuario *" error={errors.usuarioAnclado}>
                   <input value={form.usuarioAnclado} onChange={set('usuarioAnclado')} placeholder="admin"
                     className={inputCls(errors.usuarioAnclado)} autoComplete="off" />
                 </Field>
@@ -350,7 +350,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
                     <input
                       value={form.contrasena} onChange={set('contrasena')}
                       type={showPass ? 'text' : 'password'}
-                      placeholder={isEdit ? 'Dejar vacío para mantener actual' : 'Contraseña SSH de la OLT'}
+                      placeholder={isEdit ? 'Dejar vacío para mantener actual' : 'Contraseña de la OLT'}
                       className={cn(inputCls(errors.contrasena), 'pr-10')}
                       autoComplete="new-password"
                     />
@@ -365,7 +365,7 @@ export function OltFormModal({ open, onClose, editing }: Props) {
               {/* Probar conexión */}
               <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-3 mt-1">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5" /> Probar conexión SSH
+                  <RefreshCw className="w-3.5 h-3.5" /> Probar conexión Telnet
                 </p>
                 <button
                   type="button"

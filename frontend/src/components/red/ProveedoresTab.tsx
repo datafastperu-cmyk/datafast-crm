@@ -25,7 +25,7 @@ const CIRCUIT_CHIP: Record<string, string> = {
 };
 
 const TIPO_LABEL: Record<TipoProveedor, string> = {
-  nativo_ssh:  'SSH Nativo',
+  nativo_ssh:  'Telnet Nativo',
   nativo_snmp: 'SNMP Nativo',
   smartolt:    'SmartOLT',
   adminolt:    'AdminOLT',
@@ -205,7 +205,7 @@ export function ProveedoresTab({ oltId }: { oltId: string }) {
                 disabled={!!editingId}
                 className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100"
               >
-                <option value="nativo_ssh">SSH Nativo</option>
+                <option value="nativo_ssh">Telnet Nativo</option>
                 <option value="nativo_snmp">SNMP Nativo</option>
                 <option value="smartolt">SmartOLT</option>
                 <option value="adminolt">AdminOLT</option>
@@ -253,7 +253,7 @@ export function ProveedoresTab({ oltId }: { oltId: string }) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Puerto SSH</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Puerto Telnet</label>
                 <input
                   type="number"
                   min={1}

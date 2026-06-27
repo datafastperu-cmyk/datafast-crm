@@ -348,7 +348,7 @@ export class OltNativoService implements OnModuleInit {
         connection: { ip: params.ip, port: params.puerto, username: params.usuario, password: params.password, brand: params.marca.toLowerCase() },
       });
       if (res.success) {
-        return { exitoso: true, mensaje: 'Conexión SSH exitosa', latenciaMs: res.latency_ms ?? undefined };
+        return { exitoso: true, mensaje: 'Conexión Telnet exitosa', latenciaMs: res.latency_ms ?? undefined };
       }
       return { exitoso: false, mensaje: res.error ?? 'Error al conectar con la OLT', latenciaMs: res.latency_ms ?? undefined };
     } catch (e: any) {
