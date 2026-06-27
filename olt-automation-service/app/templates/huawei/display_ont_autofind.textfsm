@@ -1,7 +1,7 @@
 Value Slot (\d+)
 Value Port (\d+)
 Value OnuSn ([A-Z]{4}-?[0-9A-F]{8})
-Value OntModel (.+?)
+Value OntModel (\S.*)
 
 Start
   # Formato bloque MA5800: F/S/P : frame/slot/port
