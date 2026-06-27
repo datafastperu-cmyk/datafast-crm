@@ -34,9 +34,10 @@ logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent.parent / 'templates'
 
-# huawei_olt_telnet es el device_type de Netmiko para MA5800/MA5600 vía Telnet
+# huawei_telnet → HuaweiTelnet: telnet_login() matchea ">>User name:" del MA5800
+# huawei_olt_telnet tiene un bug en Netmiko 4.7 (apunta a HuaweiSmartAXSSH = SSH)
 _NETMIKO_DEVICE_TYPE: dict[OltBrand, str] = {
-    OltBrand.HUAWEI: 'huawei_olt_telnet',
+    OltBrand.HUAWEI: 'huawei_telnet',
     OltBrand.ZTE:    'zte_zxros',
     OltBrand.VSOL:   'linux',
     OltBrand.CDATA:  'linux',
