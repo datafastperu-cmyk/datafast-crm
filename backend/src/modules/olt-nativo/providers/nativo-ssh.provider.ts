@@ -35,13 +35,13 @@ export class NativoSshProvider implements IOltProvider {
 
   // ── Helpers de construcción de payload ───────────────────────
 
-  private conn(creds: ProveedorCredenciales) {
+  private conn(creds: ProveedorCredenciales, olt?: OltDispositivo) {
     return {
       ip:       creds.ip       ?? '',
       port:     creds.port     ?? 22,
       username: creds.username ?? '',
       password: creds.password ?? '',
-      brand:    creds.brand    ?? '',
+      brand:    creds.brand    || olt?.marca || '',
     };
   }
 
@@ -49,12 +49,12 @@ export class NativoSshProvider implements IOltProvider {
   // testConexion — abre/cierra SSH sin ejecutar comandos
   // ────────────────────────────────────────────────────────────
   async testConexion(
-    _olt:  OltDispositivo,
+    olt:   OltDispositivo,
     creds: ProveedorCredenciales,
   ): Promise<OltOperacionResult> {
     const t0 = Date.now();
     try {
-      const res = await this.automation.testConexionSsh({ connection: this.conn(creds) });
+      const res = await this.automation.testConexionSsh({ connection: this.conn(creds, olt) });
       const latenciaMs = Date.now() - t0;
       if (res.success) {
         return { exitoso: true, mensaje: 'Conexión SSH exitosa', latenciaMs, proveedor: this.tipo };
@@ -86,7 +86,7 @@ export class NativoSshProvider implements IOltProvider {
     const t0 = Date.now();
     try {
       const res = await this.automation.provision({
-        connection: this.conn(creds),
+        connection: this.conn(creds, olt),
         onu: {
           frame:          payload.frame         ?? 0,
           slot:           payload.slot,
@@ -137,7 +137,7 @@ export class NativoSshProvider implements IOltProvider {
     const t0 = Date.now();
     try {
       const res = await this.automation.deprovision({
-        connection: this.conn(creds),
+        connection: this.conn(creds, olt),
         onu: {
           slot:            payload.slot,
           port:            payload.port,
@@ -175,7 +175,7 @@ export class NativoSshProvider implements IOltProvider {
   // descubrirOnus — ONUs no autorizadas en un slot/puerto o toda la OLT
   // ────────────────────────────────────────────────────────────
   async descubrirOnus(
-    _olt:  OltDispositivo,
+    olt:   OltDispositivo,
     creds: ProveedorCredenciales,
     slot?: number,
     port?: number,
@@ -183,7 +183,7 @@ export class NativoSshProvider implements IOltProvider {
     const t0 = Date.now();
     try {
       const res = await this.automation.discoverOnus({
-        connection: this.conn(creds),
+        connection: this.conn(creds, olt),
         slot:       slot ?? null,
         port:       port ?? null,
       });
@@ -215,7 +215,7 @@ export class NativoSshProvider implements IOltProvider {
   // obtenerMetricas — RxPower, TxPower, Temperatura en tiempo real
   // ────────────────────────────────────────────────────────────
   async obtenerMetricas(
-    _olt:    OltDispositivo,
+    olt:     OltDispositivo,
     creds:   ProveedorCredenciales,
     payload: OltMetricasPayload,
   ): Promise<OltOperacionResult<OltMetricasDatos>> {
@@ -223,7 +223,7 @@ export class NativoSshProvider implements IOltProvider {
     try {
       // getMetrics reutiliza PythonProvisionRequest; solo slot/port/onu_id importan
       const res = await this.automation.getMetrics({
-        connection: this.conn(creds),
+        connection: this.conn(creds, olt),
         onu: {
           frame:         0,
           slot:          payload.slot,

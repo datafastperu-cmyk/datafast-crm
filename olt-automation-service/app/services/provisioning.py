@@ -135,7 +135,11 @@ def _build_netmiko_params(conn: OltConnectionSchema) -> dict[str, Any]:
         'auth_timeout':         settings.ssh_auth_timeout,
         'banner_timeout':       settings.ssh_banner_timeout,
         'read_timeout_override': settings.ssh_command_timeout,
-        'session_log':          None,  # no volcar credenciales a disco
+        # Huawei VRP (MA5800/MA5600) no hace eco de los comandos de
+        # inicialización (screen-length 0 temporary) — sin este flag
+        # Netmiko falla con "Pattern not detected" en el handshake.
+        'global_cmd_verify':    False,
+        'session_log':          None,
     }
 
 
