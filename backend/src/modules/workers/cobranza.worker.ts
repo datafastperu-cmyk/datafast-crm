@@ -490,7 +490,7 @@ export class CobranzaWorker {
     await this.ds.query(`
       INSERT INTO contratos_historial
         (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
-      VALUES ($1, $2, 'activo', 'suspendido', $3, 'sistema', true)
+      VALUES ($1, $2, 'activo', 'suspendido', $3, NULL, true)
     `, [contratoId, empresaId, `Corte automático: deuda S/ ${deudaTotal}`]);
 
     // ── 6. Notificar al cliente ────────────────────────────
@@ -686,7 +686,7 @@ export class CobranzaWorker {
     await this.ds.query(`
       INSERT INTO contratos_historial
         (contrato_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
-      VALUES ($1, $2, $3, 'activo', $4, 'sistema', true)
+      VALUES ($1, $2, $3, 'activo', $4, NULL, true)
     `, [contratoId, empresaId, estadoAnterior, `Reactivación automática por pago | Nuevo vencimiento: ${nuevaFechaStr}`]);
 
     // Sincronizar clientes.estado: si no quedan contratos suspendidos del cliente → activo
