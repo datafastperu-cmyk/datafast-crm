@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent.parent / 'templates'
 
-# Huawei VRP (MA5800/MA5600) — device_type correcto para OLTs Huawei
+# huawei_olt_telnet es el device_type de Netmiko para MA5800/MA5600 vía Telnet
 _NETMIKO_DEVICE_TYPE: dict[OltBrand, str] = {
-    OltBrand.HUAWEI: 'huawei_vrp_telnet',
+    OltBrand.HUAWEI: 'huawei_olt_telnet',
     OltBrand.ZTE:    'zte_zxros',
     OltBrand.VSOL:   'linux',
     OltBrand.CDATA:  'linux',
