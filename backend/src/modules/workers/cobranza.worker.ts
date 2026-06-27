@@ -638,6 +638,38 @@ export class CobranzaWorker {
     nuevaFechaVenc.setMonth(nuevaFechaVenc.getMonth() + meses);
     const nuevaFechaStr = nuevaFechaVenc.toISOString().split('T')[0];
 
+    // Verificar deuda real antes de reactivar. Protege contra jobs encolados
+    // cuando el pago era parcial o quedan otras facturas pendientes.
+    // Cubre facturas con contrato_id directo y las sin vínculo (por cliente_id).
+    let deudaRestante  = 0;
+    let mesesRestantes = 0;
+    try {
+      const [deudaRow] = await this.ds.query(`
+        SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda,
+               COUNT(f.id)::INTEGER               AS meses
+        FROM facturas f
+        WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
+          AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+          AND f.deleted_at IS NULL
+      `, [contratoId, clienteId]);
+      deudaRestante  = parseFloat(deudaRow?.deuda ?? '0');
+      mesesRestantes = parseInt(deudaRow?.meses  ?? '0', 10);
+    } catch (e: any) {
+      this.logger.warn(`[REACTIVAR] No se pudo calcular deuda para ${contratoId}: ${e.message} — procediendo`);
+    }
+
+    if (deudaRestante > 0) {
+      await this.ds.query(
+        `UPDATE contratos SET deuda_total = $1, meses_deuda = $2 WHERE id = $3`,
+        [deudaRestante, mesesRestantes, contratoId],
+      ).catch(() => void 0);
+      this.logger.warn(
+        `[REACTIVAR] Cancelado: contrato ${contratoId} aún tiene deuda S/ ${deudaRestante} ` +
+        `en ${mesesRestantes} factura(s) — el servicio permanece suspendido`,
+      );
+      return { contratoId, ipAsignada, errores, cancelado: true, deudaRestante };
+    }
+
     await this.ds.query(`
       UPDATE contratos SET
         estado = 'activo',

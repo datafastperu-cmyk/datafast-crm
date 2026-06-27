@@ -168,10 +168,19 @@ export class PagosService {
 
         // Marcar para reactivación vía worker (el worker hace el UPDATE completo:
         // deuda_total=0, meses_deuda=0, en_prorroga=false, fecha_vencimiento, historial).
-        // NO actualizar estado aquí dentro de la TX: el worker necesita encontrar
-        // estado='suspendido' para que su WHERE funcione y reset sea completo.
+        // Solo encolar si la deuda total quedó en cero tras este pago.
+        // Cubre facturas con contrato_id directo y las sin vínculo (por cliente_id).
         if (contrato && contrato.estado === EstadoContrato.SUSPENDIDO) {
-          contratoParaReactivar = contrato;
+          const [deudaRow] = await manager.query<{ deuda: string }[]>(`
+            SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
+            FROM facturas f
+            WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
+              AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+              AND f.deleted_at IS NULL
+          `, [contrato.id, factura.clienteId]);
+          if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
+            contratoParaReactivar = contrato;
+          }
         }
       }
 
