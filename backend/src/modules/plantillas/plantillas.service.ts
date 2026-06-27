@@ -158,6 +158,36 @@ export const SYSTEM_DEFAULTS_EMAIL: Record<string, { nombre: string; contenido: 
       contenido:
         '<h2>✅ Pago Recibido</h2><p>Estimado/a <strong>{{nombre_completo}}</strong>,</p><p>Hemos recibido su pago de <strong>S/ {{monto_factura}}</strong> para la factura N° <strong>{{numero_factura}}</strong>.</p><p>¡Gracias por su puntualidad! Su servicio <strong>{{plan_contratado}}</strong> continúa activo.</p><p>Atentamente,<br><strong>{{empresa}}</strong></p>',
     },
+    reactivacion_servicio: {
+      nombre: 'Reactivación de Servicio',
+      contenido:
+        '<h2>✅ Servicio Reactivado</h2><p>Estimado/a <strong>{{nombre_completo}}</strong>,</p><p>Su servicio <strong>{{plan_contratado}}</strong> ha sido <strong>REACTIVADO</strong> exitosamente. Gracias por regularizar su pago.</p><p>Para consultas comuníquese al <strong>{{telefono_empresa}}</strong>.</p><p>Atentamente,<br><strong>{{empresa}}</strong></p>',
+    },
+    activacion_servicio: {
+      nombre: 'Activación de Servicio',
+      contenido:
+        '<h2>✅ Servicio Activado</h2><p>Estimado/a <strong>{{nombre_completo}}</strong>,</p><p>Su servicio <strong>{{plan_contratado}}</strong> ha sido <strong>ACTIVADO</strong>.</p><table border="1" cellpadding="8" style="border-collapse:collapse"><tr><th>Usuario PPPoE</th><td>{{usuario_pppoe}}</td></tr><tr><th>IP Asignada</th><td>{{ip_asignada}}</td></tr></table><p>Soporte técnico: <strong>{{telefono_empresa}}</strong>.</p><p><strong>{{empresa}}</strong></p>',
+    },
+    prorroga_concedida: {
+      nombre: 'Prórroga de Pago Concedida',
+      contenido:
+        '<h2>⏳ Prórroga de Pago Concedida</h2><p>Estimado/a <strong>{{nombre_completo}}</strong>,</p><p>Se le ha concedido una prórroga de pago. Su nueva fecha de vencimiento es <strong>{{fecha_vencimiento}}</strong>.</p><p>Deuda pendiente: <strong>S/ {{monto}}</strong>.</p><p>Por favor regularice antes de la nueva fecha para evitar el corte de su servicio.</p><p>Consultas: <strong>{{telefono_empresa}}</strong>.</p><p>Atentamente,<br><strong>{{empresa}}</strong></p>',
+    },
+    datafast_alerta_egreso: {
+      nombre: 'Alerta Egreso Recurrente (Interno)',
+      contenido:
+        '<h2>📊 Alerta de Gasto Recurrente</h2><p>Estimado Administrador,</p><p>Le recordamos que la obligación fija <strong>{{nombre_gasto}}</strong> de categoría <strong>{{categoria}}</strong> por un monto de <strong>S/ {{monto}}</strong> está próxima a vencer.</p><p>Días restantes: <strong>{{dias_restantes}}</strong>.</p><p>Por favor, procese el pago desde el ERP.</p><p><strong>{{empresa}}</strong></p>',
+    },
+    migracion_ftth: {
+      nombre: 'Migración FTTH Completada',
+      contenido:
+        '<h2>🎉 Migración a Fibra Óptica Completada</h2><p>Estimado/a <strong>{{nombre_completo}}</strong>,</p><p>Su servicio ha sido migrado exitosamente a <strong>Fibra Óptica (FTTH)</strong>.</p><p>IP asignada: <strong>{{ip_asignada}}</strong>.</p><p>Su conexión ahora es más rápida y estable. Ante cualquier consulta, comuníquese al <strong>{{telefono_empresa}}</strong>.</p><p>Atentamente,<br><strong>{{empresa}}</strong></p>',
+    },
+    outbox_red_agotado: {
+      nombre: 'Alerta Outbox Red Agotado (Interno)',
+      contenido:
+        '<h2>🚨 Alerta: Reintento de Red Agotado</h2><p>La acción <strong>{{accion}}</strong> en red ha agotado todos los reintentos automáticos y requiere <strong>intervención manual</strong>.</p><p>Último error: <code>{{ultimo_error}}</code></p><p>Por favor revise el módulo de Outbox desde el ERP.</p><p><strong>{{empresa}}</strong></p>',
+    },
 };
 
 const DEFAULTS: Record<TipoPlantilla, Record<string, { nombre: string; contenido: string }>> = {
