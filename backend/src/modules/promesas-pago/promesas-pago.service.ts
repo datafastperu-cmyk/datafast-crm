@@ -28,7 +28,7 @@ export interface EventPromesaVerificarCumplimiento {
   deuda:      number;
 }
 
-const MAX_DIAS_PRORROGA = 15;
+const getMaxDiasProrroga = () => parseInt(process.env.MAX_DIAS_PRORROGA ?? '15', 10);
 
 @Injectable()
 export class PromesasPagoService {
@@ -57,8 +57,9 @@ export class PromesasPagoService {
     const diasDiff = Math.ceil(
       (new Date(dto.fechaVencimiento).getTime() - Date.now()) / 86_400_000,
     );
-    if (diasDiff > MAX_DIAS_PRORROGA)
-      throw new BadRequestException(`Máximo ${MAX_DIAS_PRORROGA} días de prórroga`);
+    const maxDias = getMaxDiasProrroga();
+    if (diasDiff > maxDias)
+      throw new BadRequestException(`Máximo ${maxDias} días de prórroga`);
 
     // Cargar contrato con snapshot de datos de red
     const [contrato] = await this.ds.query<any[]>(`
