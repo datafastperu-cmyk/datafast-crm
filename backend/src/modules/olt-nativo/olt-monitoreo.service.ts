@@ -112,14 +112,28 @@ export class OltMonitoreoService {
       },
     });
 
-    if (!onus.length) return;
-
     // Descifrar contraseña — solo vive en memoria durante esta función
     let password: string;
     try {
       password = decrypt(olt.contrasenaCifrada);
     } catch {
       this.logger.error(`No se pudo descifrar credenciales de OLT "${olt.nombre}"`);
+      return;
+    }
+
+    // OLT sin ONUs aprovisionadas → test básico de conectividad para reflejar estado real
+    if (!onus.length) {
+      try {
+        const test = await this.automation.testConexionSsh({
+          connection: { ip: olt.ipGestion, port: olt.puerto ?? 23, username: olt.usuarioAnclado, password, brand: olt.marca },
+        });
+        await this.oltRepo.update(olt.id, {
+          estado:     (test.success ? EstadoOlt.ONLINE : EstadoOlt.OFFLINE) as any,
+          ...(test.success ? { ultimoPing: new Date() } : {}),
+        });
+      } catch (err: any) {
+        this.logger.warn(`pollOlt sin ONUs "${olt.nombre}": test falló — ${err.message}`);
+      }
       return;
     }
 
