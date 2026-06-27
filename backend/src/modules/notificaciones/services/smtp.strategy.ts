@@ -18,7 +18,8 @@ export const SMTP_ASUNTOS: Record<string, string> = {
   emisor_conectado:    'Nodo restaurado',
   router_caido:        'ALERTA: router fuera de línea',
   router_conectado:    'Router reconectado exitosamente',
-  migracion_ftth:      'Su servicio fue migrado a Fibra Óptica',
+  migracion_ftth:        'Su servicio fue migrado a Fibra Óptica',
+  outbox_red_agotado:    'ALERTA: reintento de red agotado',
 };
 
 // ─────────────────────────────────────────────────────────────

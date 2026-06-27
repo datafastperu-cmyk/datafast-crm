@@ -94,6 +94,11 @@ export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenid
     contenido:
       'Estimado Administrador, le recordamos que la obligación fija *{{nombre_gasto}}* de categoría *{{categoria}}* por un monto de *S/. {{monto}}* está próxima a vencer. Días restantes: *{{dias_restantes}}*. Por favor, procese el pago desde el ERP.',
   },
+  outbox_red_agotado: {
+    nombre: 'Alerta Outbox Red Agotado (Interno)',
+    contenido:
+      '🚨 ALERTA {{empresa}}: La acción *{{accion}}* en red agotó todos los reintentos. El equipo requiere intervención manual. Último error: {{ultimo_error}}. Revise el outbox desde el ERP.',
+  },
 };
 
 // ─── Defaults por tipo ────────────────────────────────────────

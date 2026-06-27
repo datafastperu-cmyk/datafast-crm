@@ -201,6 +201,8 @@ const TIPO_A_CODIGO: Record<string, string> = {
   router_conectado:    'router_conectado',
   // FTTH
   migracion_ftth:      'migracion_ftth',
+  // Infraestructura — Outbox agotado
+  outbox_red_agotado:  'outbox_red_agotado',
 };
 
 // Orden de intento de fallback cuando el proveedor primario falla con error transitorio.
@@ -457,6 +459,7 @@ export class GatewayMensajeriaService {
     'emisor_conectado',
     'router_caido',
     'router_conectado',
+    'outbox_red_agotado',
   ]);
 
   private async resolveDestino(params: WhatsAppParams): Promise<string> {

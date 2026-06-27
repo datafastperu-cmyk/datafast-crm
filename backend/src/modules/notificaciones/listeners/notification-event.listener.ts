@@ -25,6 +25,7 @@ import {
   EventNotificacionRouterConectado,
   EventNotificacionMigracionFtth,
   EventNotificacionFtthActivado,
+  EventOutboxRedAgotado,
 } from '../events/notification.events';
 
 // ─── Payload unificado para la cola Bull ──────────────────────
@@ -507,5 +508,25 @@ export class NotificationEventListener implements OnModuleInit {
       contratoId: event.contratoId,
       clienteId:  event.clienteId,
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // OUTBOX RED AGOTADO — alerta interna al WhatsApp corporativo
+  // ═══════════════════════════════════════════════════════════
+  @OnEvent(NOTIFICATION_EVENTS.OUTBOX_RED_AGOTADO, { async: true })
+  async onOutboxRedAgotado(event: EventOutboxRedAgotado): Promise<void> {
+    this.logger.warn(
+      `[EVENT] 🚨 Recibido OUTBOX_RED_AGOTADO → contrato=${event.contratoId} ` +
+      `| accion=${event.accion} | empresa=${event.empresaId ?? '?'}`,
+    );
+    await this.encolar('outbox_red_agotado', {
+      telefono:  '',  // destino resuelto como whatsapp_corporativo en GatewayMensajeriaService
+      tipo:      'outbox_red_agotado',
+      variables: {
+        accion:       event.accion,
+        ultimo_error: (event.ultimoError ?? '—').substring(0, 200),
+      },
+      empresaId: event.empresaId,
+    }, JOB_OPTIONS.ALERTA);
   }
 }
