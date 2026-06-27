@@ -87,6 +87,23 @@ class CommandError(ProvisioningError):
 
 # ── Helpers privados ──────────────────────────────────────────
 
+def _huawei_enter_enable(session: Any, conn: OltConnectionSchema) -> None:
+    """
+    Huawei MA5800/MA5600 vía Telnet: huawei_telnet hereda NoEnable, nunca
+    llama a 'enable' automáticamente. Tras el login el prompt es 'hostname>'
+    (user mode). 'display ont autofind' y comandos de config requieren '#'.
+    Esta función detecta el prompt y escala a privileged mode si es necesario.
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        return
+    try:
+        prompt = session.find_prompt()
+        if prompt.strip().endswith('>'):
+            session.send_command('enable', expect_string=r'[>#]', read_timeout=10)
+            logger.debug('huawei_enter_enable: modo privilegiado activo en %s', conn.ip)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('huawei_enter_enable: no se pudo escalar modo en %s: %s', conn.ip, exc)
+
 def _render_commands(brand: OltBrand, template_name: str, context: dict[str, Any]) -> str:
     brand_dir = TEMPLATES_DIR / brand.value
     env = Environment(
@@ -178,6 +195,7 @@ def _send_config_set(conn: OltConnectionSchema, commands: list[str]) -> str:
     for attempt in range(1, settings.ssh_max_retries + 1):
         try:
             with ConnectHandler(**params) as session:
+                _huawei_enter_enable(session, conn)
                 output: str = session.send_config_set(
                     commands,
                     enter_config_mode=False,
@@ -225,6 +243,7 @@ def _send_single_command(conn: OltConnectionSchema, command: str) -> str:
     for attempt in range(1, settings.ssh_max_retries + 1):
         try:
             with ConnectHandler(**params) as session:
+                _huawei_enter_enable(session, conn)
                 output: str = session.send_command(
                     command,
                     expect_string=r'[>#]',
@@ -274,6 +293,7 @@ def _open_multi_commands(
     params = _build_netmiko_params(conn)
     try:
         with ConnectHandler(**params) as session:
+            _huawei_enter_enable(session, conn)
             return [
                 session.send_command(
                     cmd,
