@@ -609,6 +609,27 @@ export class ContratosService {
     await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:anterior, estadoNuevo:dto.estado, motivo:dto.motivo, usuarioId:user.sub, automatico });
     await this.auditoria.logUpdate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:id, descripcion:`Estado: ${anterior} → ${dto.estado}`, req });
 
+    // Sincronizar clientes.estado cuando se reactiva un contrato suspendido.
+    // Solo pone 'activo' si el cliente no tiene otros contratos suspendidos.
+    if (
+      dto.estado === EstadoContrato.ACTIVO &&
+      [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)
+    ) {
+      await this.dataSource.query(`
+        UPDATE clientes
+        SET estado = 'activo', fecha_estado = NOW()
+        WHERE id = $1
+          AND estado = 'suspendido'
+          AND NOT EXISTS (
+            SELECT 1 FROM contratos
+            WHERE cliente_id = $1
+              AND estado IN ('suspendido', 'moroso', 'cortado')
+              AND deleted_at IS NULL
+              AND id != $2
+          )
+      `, [contrato.clienteId, id]);
+    }
+
     if (dto.estado === EstadoContrato.SUSPENDIDO) {
       // ── Aplicar suspensión en MikroTik (firewall + PPPoE) ──────
       // Similar a CobranzaWorker.processSuspenderContrato()
