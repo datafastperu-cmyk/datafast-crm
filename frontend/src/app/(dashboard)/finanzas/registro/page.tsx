@@ -419,7 +419,14 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
         toast('Pago registrado correctamente', { type: 'success' });
         qc.invalidateQueries({ queryKey: ['pagos-hoy'] });
       }
-      qc.invalidateQueries({ queryKey: ['facturas-cliente-pago', cliente.id] });
+      // Invalidar todas las vistas del cliente afectado para que refresquen sin Ctrl+F5
+      qc.invalidateQueries({ queryKey: ['facturas-cliente-pago',    cliente.id] });
+      qc.invalidateQueries({ queryKey: ['cliente-facturas',         cliente.id] });
+      qc.invalidateQueries({ queryKey: ['cliente-pagos',            cliente.id] });
+      qc.invalidateQueries({ queryKey: ['facturas-cliente-resumen', cliente.id] });
+      qc.invalidateQueries({ queryKey: ['cliente-contratos',        cliente.id] });
+      qc.invalidateQueries({ queryKey: ['cliente',                  cliente.id] });
+      qc.invalidateQueries({ queryKey: ['clientes'] });
       onSuccess();
     },
     onError: (e: any) => {

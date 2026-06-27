@@ -2156,7 +2156,11 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
   const { mutate: eliminarPago } = useMutation({
     mutationFn: (pagoId: string) => pagosApi.eliminar(pagoId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cliente-pagos', clienteId] });
+      queryClient.invalidateQueries({ queryKey: ['cliente-pagos',            clienteId] });
+      queryClient.invalidateQueries({ queryKey: ['cliente-facturas',         clienteId] });
+      queryClient.invalidateQueries({ queryKey: ['facturas-cliente-resumen', clienteId] });
+      queryClient.invalidateQueries({ queryKey: ['cliente-contratos',        clienteId] });
+      queryClient.invalidateQueries({ queryKey: ['cliente',                  clienteId] });
       toast('Pago eliminado', { type: 'success' });
     },
     onError: (err: any) => toast(err?.response?.data?.message ?? 'No se pudo eliminar el pago', { type: 'error' }),

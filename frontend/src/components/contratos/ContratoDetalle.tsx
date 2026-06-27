@@ -53,6 +53,11 @@ export function ContratoDetalle({ id }: { id: string }) {
   const invalida = () => {
     queryClient.invalidateQueries({ queryKey: ['contrato', id] });
     queryClient.invalidateQueries({ queryKey: ['contratos'] });
+    if (contrato?.clienteId) {
+      queryClient.invalidateQueries({ queryKey: ['cliente',                  contrato.clienteId] });
+      queryClient.invalidateQueries({ queryKey: ['cliente-contratos',        contrato.clienteId] });
+      queryClient.invalidateQueries({ queryKey: ['facturas-cliente-resumen', contrato.clienteId] });
+    }
   };
 
   const { mutate: cambiarEstado, isPending: cambiando } = useMutation({
