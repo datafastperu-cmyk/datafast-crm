@@ -34,6 +34,7 @@ type FormData = {
   contrasena:            string;
   slotsTotales:          string;
   puertosPorSlot:        string;
+  usarVlanGestion:       boolean;
   vlanGestionDefecto:    string;
   snmpCommunity:         string;
   snmpVersion:           string;
@@ -49,7 +50,8 @@ function emptyForm(): FormData {
     nombre: '', descripcion: '', marca: 'huawei', modelo: '',
     metodoConexion: 'nativo_ssh', ipGestion: '', puerto: '22',
     usuarioAnclado: '', contrasena: '',
-    slotsTotales: '1', puertosPorSlot: '8', vlanGestionDefecto: '',
+    slotsTotales: '1', puertosPorSlot: '8',
+    usarVlanGestion: false, vlanGestionDefecto: '',
     snmpCommunity: 'public', snmpVersion: '2',
     routerId: '', dispositivoMonitoreoId: '',
     ubicacion: '', latitud: '', longitud: '',
@@ -57,6 +59,7 @@ function emptyForm(): FormData {
 }
 
 function fromOlt(olt: OltDispositivo): FormData {
+  const vlan = olt.vlanGestionDefecto != null ? String(olt.vlanGestionDefecto) : '';
   return {
     nombre:                 olt.nombre,
     descripcion:            olt.descripcion ?? '',
@@ -69,7 +72,8 @@ function fromOlt(olt: OltDispositivo): FormData {
     contrasena:             '',
     slotsTotales:           String(olt.slotsTotales ?? 1),
     puertosPorSlot:         String(olt.puertosPorSlot ?? 8),
-    vlanGestionDefecto:     olt.vlanGestionDefecto != null ? String(olt.vlanGestionDefecto) : '',
+    usarVlanGestion:        olt.vlanGestionDefecto != null,
+    vlanGestionDefecto:     vlan,
     snmpCommunity:          olt.snmpCommunity ?? 'public',
     snmpVersion:            String(olt.snmpVersion ?? 2),
     routerId:               olt.routerId ?? '',
@@ -95,7 +99,7 @@ function toCreateDto(f: FormData): CreateOltDto {
   if (f.puerto)                       dto.puerto                = parseInt(f.puerto, 10);
   if (f.slotsTotales)                 dto.slotsTotales          = parseInt(f.slotsTotales, 10);
   if (f.puertosPorSlot)               dto.puertosPorSlot        = parseInt(f.puertosPorSlot, 10);
-  if (f.vlanGestionDefecto)           dto.vlanGestionDefecto    = parseInt(f.vlanGestionDefecto, 10);
+  if (f.usarVlanGestion && f.vlanGestionDefecto) dto.vlanGestionDefecto = parseInt(f.vlanGestionDefecto, 10);
   if (f.snmpCommunity.trim())         dto.snmpCommunity         = f.snmpCommunity.trim();
   if (f.snmpVersion)                  dto.snmpVersion           = parseInt(f.snmpVersion, 10);
   if (f.dispositivoMonitoreoId.trim()) dto.dispositivoMonitoreoId = f.dispositivoMonitoreoId.trim();
@@ -152,6 +156,9 @@ export function OltFormModal({ open, onClose, editing }: Props) {
     setForm((p) => ({ ...p, [field]: e.target.value }));
     setErrors((p) => ({ ...p, [field]: undefined }));
   };
+
+  const toggle = (field: keyof FormData) => () =>
+    setForm((p) => ({ ...p, [field]: !p[field] }));
 
   const mutation = useMutation({
     mutationFn: (data: CreateOltDto | UpdateOltDto) =>
@@ -405,10 +412,41 @@ export function OltFormModal({ open, onClose, editing }: Props) {
                   <input value={form.puertosPorSlot} onChange={set('puertosPorSlot')} type="number" min={1} max={128}
                     className={inputCls()} />
                 </Field>
-                <Field label="VLAN gestión" error={undefined}>
-                  <input value={form.vlanGestionDefecto} onChange={set('vlanGestionDefecto')} type="number"
-                    min={1} max={4094} placeholder="201" className={inputCls()} />
-                </Field>
+              </div>
+
+              {/* VLAN de administración — opcional */}
+              <div className="mt-3 rounded-xl border border-border p-3.5 space-y-3 bg-muted/10">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={form.usarVlanGestion}
+                    onClick={toggle('usarVlanGestion')}
+                    className={cn(
+                      'relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors border',
+                      form.usarVlanGestion
+                        ? 'bg-primary border-primary'
+                        : 'bg-muted border-border',
+                    )}
+                  >
+                    <span className={cn(
+                      'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform mt-0.5',
+                      form.usarVlanGestion ? 'translate-x-4' : 'translate-x-0.5',
+                    )} />
+                  </button>
+                  <span className="text-sm font-medium text-foreground">Usar VLAN de administración</span>
+                  <span className="text-xs text-muted-foreground">(desactivar si la OLT conecta directo por ETH sin VLAN)</span>
+                </label>
+                {form.usarVlanGestion && (
+                  <Field label="VLAN gestión (1-4094)" error={undefined}>
+                    <input
+                      value={form.vlanGestionDefecto}
+                      onChange={set('vlanGestionDefecto')}
+                      type="number" min={1} max={4094} placeholder="Ej: 201"
+                      className={inputCls()}
+                    />
+                  </Field>
+                )}
               </div>
             </section>
 
