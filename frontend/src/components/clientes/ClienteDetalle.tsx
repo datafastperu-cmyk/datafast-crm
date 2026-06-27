@@ -2524,9 +2524,11 @@ function ModalEditarFactura({
   const [descripcion,     setDescripcion]     = useState(factura.descripcion ?? '');
   const [fechaVenc,       setFechaVenc]       = useState(factura.fechaVencimiento ?? '');
   const [items,           setItems]           = useState<LineaEdit[]>(initItems);
+  const [submitted,       setSubmitted]       = useState(false);
 
   // IGV: derivado del comprobante seleccionado, no toggle manual
   const igvRate = Number(configCliente?.facturacion?.igvRate ?? 0.18) || 0.18;
+  const esquemaIgv = (configCliente?.facturacion?.esquemaImpuesto as string | undefined) ?? 'incluido';
   const comprobanteSeleccionado = comprobanteConfigId
     ? comprobantes.find(c => c.id === comprobanteConfigId)
     : comprobantes.find(c => c.id === factura.comprobanteConfigId);
@@ -2542,11 +2544,17 @@ function ModalEditarFactura({
     setItems(p => p.map((it, i) => i === idx ? { ...it, [field]: value } : it));
   }
 
-  const subtotalCalc = items.reduce((acc, it) => {
+  const montoItems = items.reduce((acc, it) => {
     const base = it.cantidad * it.precioUnitario;
     return acc + base - (base * (it.descuento / 100));
   }, 0);
-  const igvCalc   = aplicaIgv ? Math.round(subtotalCalc * igvRate * 100) / 100 : 0;
+  // Misma lógica que ModalFacturaServicio: respeta esquema incluido/mas_impuestos
+  const subtotalCalc = aplicaIgv
+    ? (esquemaIgv === 'mas_impuestos' ? montoItems : montoItems / (1 + igvRate))
+    : montoItems;
+  const igvCalc   = aplicaIgv
+    ? (esquemaIgv === 'mas_impuestos' ? montoItems * igvRate : montoItems - subtotalCalc)
+    : 0;
   const totalCalc = Math.round((subtotalCalc + igvCalc) * 100) / 100;
 
   const { mutate, isPending } = useMutation({
@@ -2690,7 +2698,12 @@ function ModalEditarFactura({
                           <input type="number" value={it.precioUnitario} min={0} step={0.01}
                             readOnly={montosReadonly}
                             onChange={e => updateItem(idx, 'precioUnitario', parseFloat(e.target.value) || 0)}
-                            className={cn("w-full px-2 py-1 text-xs text-right bg-transparent border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary", montosReadonly && "cursor-not-allowed opacity-60 select-none")} />
+                            className={cn(
+                              'w-full px-2 py-1 text-xs text-right bg-transparent rounded focus:outline-none focus:ring-1',
+                              montosReadonly ? 'border border-border cursor-not-allowed opacity-60 select-none' :
+                              submitted && it.precioUnitario <= 0 ? 'border border-red-500 focus:ring-red-500' :
+                              'border border-border focus:ring-primary',
+                            )} />
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" value={it.descuento} min={0} max={100} step={0.1}
@@ -2718,14 +2731,18 @@ function ModalEditarFactura({
 
           {/* Totales + IGV */}
           <div className="flex items-end justify-between gap-6">
-            <div className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium',
-              aplicaIgv ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                        : 'bg-muted text-muted-foreground',
-            )}>
-              <span className={cn('w-1.5 h-1.5 rounded-full', aplicaIgv ? 'bg-emerald-500' : 'bg-muted-foreground')} />
-              {aplicaIgv ? `Aplica IGV ${Math.round(igvRate * 100)}%` : 'Sin IGV'}
-            </div>
+            {aplicaIgv
+              ? <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
+                  {esquemaIgv === 'mas_impuestos'
+                    ? `IGV ${Math.round(igvRate * 100)}% añadido al precio del servicio`
+                    : `IGV ${Math.round(igvRate * 100)}% incluido en el precio del servicio`}
+                </p>
+              : <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" />
+                  Sin IGV
+                </p>
+            }
             <div className="text-right space-y-1 min-w-[200px]">
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>Subtotal</span><span>{fmtS(subtotalCalc)}</span>
@@ -2751,8 +2768,8 @@ function ModalEditarFactura({
             Cancelar
           </button>
           <button
-            disabled={isPending || items.some(it => !it.descripcion || it.precioUnitario <= 0)}
-            onClick={() => mutate()}
+            disabled={isPending}
+            onClick={() => { setSubmitted(true); if (!items.some(it => !it.descripcion || it.precioUnitario <= 0)) mutate(); }}
             className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg text-white
                        bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
