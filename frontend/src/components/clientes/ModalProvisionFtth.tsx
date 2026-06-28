@@ -410,10 +410,12 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                     <input type="number" value={frame} onChange={e => setFrame(e.target.value)} min={0} max={7} className={inputCls} />
                   </Field>
                   <Field label="Slot">
-                    <input type="number" value={slot} onChange={e => setSlot(e.target.value)} min={0} max={15} placeholder="1" className={inputCls} />
+                    <input type="number" value={slot} onChange={e => setSlot(e.target.value)} min={0} max={15} placeholder="1"
+                      readOnly={snSelectMode} className={cn(inputCls, snSelectMode && 'opacity-60 cursor-not-allowed bg-muted')} />
                   </Field>
                   <Field label="Puerto PON">
-                    <input type="number" value={port} onChange={e => setPort(e.target.value)} min={0} max={15} placeholder="3" className={inputCls} />
+                    <input type="number" value={port} onChange={e => setPort(e.target.value)} min={0} max={15} placeholder="3"
+                      readOnly={snSelectMode} className={cn(inputCls, snSelectMode && 'opacity-60 cursor-not-allowed bg-muted')} />
                   </Field>
                   <Field label="ONU ID">
                     <input type="number" value={onuId} onChange={e => setOnuId(e.target.value)} min={1} max={128} placeholder="4" className={inputCls} />
