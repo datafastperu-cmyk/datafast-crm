@@ -157,11 +157,11 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   // Scan ONUs
   const [snSelectMode,  setSnSelectMode]  = useState(false);
   const [scanNoResults, setScanNoResults] = useState(false);
-  const scanEnabled = !!selectedOltId && !isNaN(slotNum) && slotNum >= 0 && !isNaN(portNum) && portNum >= 0;
+  const scanEnabled = !!selectedOltId;
 
   const { data: scanData, isFetching: scanning, refetch: triggerScan } = useQuery({
-    queryKey:  ['discover-onus-ftth', selectedOltId, slotNum, portNum],
-    queryFn:   () => oltNativoApi.discoverOnus(selectedOltId, slotNum, portNum),
+    queryKey:  ['discover-onus-ftth', selectedOltId],
+    queryFn:   () => oltNativoApi.discoverOnus(selectedOltId),
     enabled:              false,
     staleTime:            0,
     gcTime:               0,
@@ -175,15 +175,13 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       setSnSelectMode(true);
       setScanNoResults(false);
       const first = scanData.onus[0];
-      if (!sn) {
-        setSn(first.sn);
-        setSlot(String(first.slot));
-        setPort(String(first.port));
-      }
+      setSn(first.sn);
+      setSlot(String(first.slot));
+      setPort(String(first.port));
     } else {
       setScanNoResults(true);
     }
-  }, [scanData, sn]);
+  }, [scanData]);
 
   useEffect(() => {
     if (!scanNoResults) return undefined;
@@ -194,7 +192,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   useEffect(() => {
     setSnSelectMode(false);
     setScanNoResults(false);
-  }, [selectedOltId, slot, port]);
+  }, [selectedOltId]);
 
   // Form validation
   const formValid = (
@@ -380,7 +378,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       {snSelectMode && scanData?.onus.length ? (
                         <select value={sn} onChange={e => {
                           const o = (scanData.onus as OntFoundInfo[]).find(x => x.sn === e.target.value);
-                          if (o) { setSn(o.sn); setSlot(String(o.slot)); setPort(String(o.port)); }
+                          if (o) { setSn(o.sn); setSlot(String(o.slot)); setPort(String(o.port)); setSnSelectMode(true); }
                         }} className={cn(inputCls, 'flex-1')}>
                           {(scanData.onus as OntFoundInfo[]).map(o => (
                             <option key={o.sn} value={o.sn}>{o.sn} — slot {o.slot} · port {o.port}</option>

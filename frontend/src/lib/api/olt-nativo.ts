@@ -363,12 +363,15 @@ export const oltNativoApi = {
 
   discoverOnus: async (
     oltId: string,
-    slot:  number,
-    port:  number,
+    slot?: number,
+    port?: number,
   ): Promise<DiscoverResult> => {
+    const params: Record<string, number> = {};
+    if (slot != null) params.slot = slot;
+    if (port != null) params.port = port;
     const res = await api.get<ApiRespuesta<DiscoverResult>>(
       `/olt-nativo/${oltId}/discover-onus`,
-      { params: { slot, port }, timeout: 65_000 },
+      { params, timeout: 65_000 },
     );
     return res.data.data;
   },
