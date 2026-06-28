@@ -11,5 +11,9 @@ switchport vlan {{ vlan }} tag vport 1
 exit
 pon-onu-mng gpon-onu_{{ rack }}/{{ slot }}/{{ port }}:{{ onu_id }}
 service INTERNET gemport 1 vlan {{ vlan }}
+{% if onu_mode is defined and onu_mode == 'bridge' %}
+wan-connection 1 mode bridge vlan {{ vlan }}
+{% else %}
 wan-connection 1 mode route profile {{ wan_profile }} vlan {{ vlan }}
+{% endif %}
 exit

@@ -1,5 +1,5 @@
 import {
-  IsBoolean, IsInt, IsIP, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID,
+  IsBoolean, IsIn, IsInt, IsIP, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID,
   Max, MaxLength, Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -75,6 +75,11 @@ export class ProvisionarOnuNativaDto {
   @ApiPropertyOptional({ example: 'ZTE-F660', description: 'Tipo/modelo de ONU para OLTs ZTE (ej: ZTE-F660, F601E)' })
   @IsOptional() @IsString() @MaxLength(50)
   onuType?: string;
+
+  // ── Modo de operación ─────────────────────────────────────
+  @ApiPropertyOptional({ example: 'bridge', description: '"bridge" (PPPoE externo, sin ont ipconfig) o "routing" (IPoE/DHCP en la ONU)' })
+  @IsOptional() @IsIn(['bridge', 'routing'])
+  onuMode?: string;
 }
 
 export class ObtenerMetricasDto {
@@ -121,6 +126,7 @@ export interface PythonOnuPayload {
   lineprofile_id?: number;   // Huawei MA5800 modo perfil
   srvprofile_id?:  number;   // Huawei MA5800 modo perfil
   description?:    string;   // Huawei MA5800 — desc en ont add
+  onu_mode?:       string;   // "bridge" | "routing"
 }
 
 export interface PythonProvisionRequest {

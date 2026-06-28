@@ -238,6 +238,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
   const [servicePortId, setServicePortId] = useState('');
   const [trafficIndex,  setTrafficIndex]  = useState('');
   const [onuType,       setOnuType]       = useState('');
+  const [onuMode,       setOnuMode]       = useState<'bridge' | 'routing'>('bridge');
 
   useEffect(() => {
     if (selectedOlt?.vlanGestionDefecto && !vlanGestion) {
@@ -346,6 +347,7 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
       servicePortId: servicePortId ? parseInt(servicePortId) : undefined,
       trafficIndex:  trafficIndex  ? parseInt(trafficIndex)  : undefined,
       onuType:       onuType.trim() || undefined,
+      onuMode,
     }),
     onSuccess: (res) => {
       toast(res.message ?? 'ONU aprovisionada correctamente', { type: 'success' });
@@ -550,6 +552,13 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
                   <Field label="Perfil de Velocidad" span2>
                     <input type="text" value={profileSpeed} onChange={e => setProfileSpeed(e.target.value)}
                       placeholder={isHuawei ? '100M-RESIDENCIAL' : 'RESIDENTIAL-100M'} className={inputCls} />
+                  </Field>
+
+                  <Field label="Modo ONU" span2>
+                    <select value={onuMode} onChange={e => setOnuMode(e.target.value as 'bridge' | 'routing')} className={inputCls}>
+                      <option value="bridge">Bridge — PPPoE externo (MikroTik)</option>
+                      <option value="routing">Routing — IPoE/DHCP en la ONU</option>
+                    </select>
                   </Field>
 
                   {isHuawei && (

@@ -444,6 +444,8 @@ def provision_huawei_onu(
         context['srvprofile_id']  = onu.srvprofile_id
         if onu.description:
             context['description'] = onu.description
+    if onu.onu_mode:
+        context['onu_mode'] = onu.onu_mode
 
     rendered = _render_commands(conn.brand, 'provision.j2', context)
 
@@ -618,6 +620,8 @@ def provision_zte_onu(
         'tcont_profile': onu.profile_speed,
         'wan_profile':   onu.profile_speed,
     }
+    if onu.onu_mode:
+        context['onu_mode'] = onu.onu_mode
 
     rendered = _render_commands(conn.brand, 'provision.j2', context)
 

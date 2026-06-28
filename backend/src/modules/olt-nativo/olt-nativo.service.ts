@@ -148,6 +148,7 @@ export class OltNativoService implements OnModuleInit {
       servicePortId: dto.servicePortId,
       trafficIndex:  dto.trafficIndex,
       onuType:       dto.onuType,
+      onuMode:       dto.onuMode,
     };
 
     const routerRes = await this._tryRouter(() =>
@@ -731,6 +732,7 @@ export class OltNativoService implements OnModuleInit {
         lineprofile_id:  dto.lineprofileId,
         srvprofile_id:   dto.srvprofileId,
         description:     dto.description,
+        onu_mode:        dto.onuMode,
       },
     };
 

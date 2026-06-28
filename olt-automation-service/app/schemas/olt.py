@@ -79,6 +79,18 @@ class OnuProvisionSchema(BaseModel):
         None, max_length=64,
         description='Descripción libre de la ONU (se pasa al comando ont add como desc).',
     )
+    onu_mode: str | None = Field(
+        None,
+        description='"bridge" (PPPoE externo, sin ont ipconfig) o "routing" (IPoE/DHCP en la ONU). '
+                    'Si no se especifica, el template usa bridge por defecto.',
+    )
+
+    @field_validator('onu_mode')
+    @classmethod
+    def validate_onu_mode(cls, v: str | None) -> str | None:
+        if v is not None and v not in ('bridge', 'routing'):
+            raise ValueError('onu_mode debe ser "bridge" o "routing"')
+        return v
 
     @field_validator('sn')
     @classmethod

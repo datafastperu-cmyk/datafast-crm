@@ -99,6 +99,7 @@ export class NativoSshProvider implements IOltProvider {
           service_port_id: payload.servicePortId,
           traffic_index:  payload.trafficIndex,
           onu_type:       payload.onuType,
+          onu_mode:       payload.onuMode,
         },
       });
 

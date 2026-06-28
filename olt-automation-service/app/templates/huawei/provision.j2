@@ -1,6 +1,7 @@
 {# Huawei MA5800/MA5600 — Aprovisionamiento ONU GPON #}
 {# Modo perfil  (MA5800 best-practice): lineprofile_id + srvprofile_id definidos #}
 {# Modo legado  (traffic-table): solo vlan + traffic_index definidos              #}
+{# onu_mode: "bridge" (PPPoE externo) | "routing" (IPoE/DHCP en ONU)            #}
 config
 interface gpon 0/{{ slot }}
 {% if lineprofile_id is defined and lineprofile_id %}
@@ -8,6 +9,8 @@ ont add {{ port }} {{ onu_id }} sn-auth {{ sn }} omci ont-lineprofile-id {{ line
 
 {% else %}
 ont add {{ port }} {{ onu_id }} sn-auth {{ sn }} omci vlan {{ vlan }}
+{% endif %}
+{% if onu_mode is defined and onu_mode == 'routing' %}
 ont ipconfig {{ port }} {{ onu_id }} ip-index 0 dhcp vlan {{ vlan }}
 {% endif %}
 quit
