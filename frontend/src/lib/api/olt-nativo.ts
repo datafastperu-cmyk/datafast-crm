@@ -317,7 +317,7 @@ export const oltNativoApi = {
   ): Promise<DiscoverResult> => {
     const res = await api.get<ApiRespuesta<DiscoverResult>>(
       `/olt-nativo/${oltId}/discover-onus`,
-      { params: { slot, port } },
+      { params: { slot, port }, timeout: 65_000 },
     );
     return res.data.data;
   },

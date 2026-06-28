@@ -273,9 +273,11 @@ export function ModalProvisionOnu({ contrato, onClose }: { contrato: Contrato; o
   const { data: scanData, isFetching: scanning, refetch: triggerScan } = useQuery({
     queryKey:  ['discover-onus', selectedOltId, slotNum, portNum],
     queryFn:   () => oltNativoApi.discoverOnus(selectedOltId, slotNum, portNum),
-    enabled:    false,
-    staleTime:  0,
-    gcTime:     0,
+    enabled:              false,
+    staleTime:            0,
+    gcTime:               0,
+    retry:                false,
+    refetchOnWindowFocus: false,
   });
 
   // React to scan results

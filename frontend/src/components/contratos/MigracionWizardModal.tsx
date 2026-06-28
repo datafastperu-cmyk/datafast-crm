@@ -152,6 +152,8 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
     queryFn:   () => oltNativoApi.discoverOnus(scanOltId, undefined, undefined),
     enabled:   scanEnabled && esNativo && !!scanOltId,
     staleTime: 0,
+    retry:                false,
+    refetchOnWindowFocus: false,
   });
   const onusDescubiertas = discoverData?.onus ?? [];
 
