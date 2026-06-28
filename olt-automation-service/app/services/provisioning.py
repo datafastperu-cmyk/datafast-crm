@@ -1990,28 +1990,49 @@ def verify_onu(
 
 def test_olt_connection(conn: OltConnectionSchema) -> dict[str, Any]:
     """
-    Prueba de conectividad SSH liviana: abre sesión Netmiko, verifica que el
-    prompt sea reconocido y cierra sin ejecutar ningún comando.
+    Prueba de conectividad SSH liviana usando Paramiko directamente.
+    Evita la session_preparation de Netmiko (que envía screen-length 0 temporary
+    y se traba en el prompt de confirmación { <cr>||<K> }: del MA5800).
     Síncrono — llamar desde asyncio.to_thread() en main.py.
     """
-    import time
-    params = _build_netmiko_params(conn)
-    t0 = time.monotonic()
+    import paramiko
+
+    t0 = _time_read.monotonic()
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        with ConnectHandler(**params):
-            pass
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        logger.info('test_olt_connection OK | %s latencia=%dms', conn.ip, latency_ms)
-        return {'success': True, 'latency_ms': latency_ms}
-    except NetmikoAuthenticationException as exc:
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        logger.warning('test_olt_connection auth fail | %s: %s', conn.ip, exc)
+        ssh.connect(
+            hostname=conn.ip,
+            port=conn.port,
+            username=conn.username,
+            password=conn.password,
+            timeout=15,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        chan = ssh.invoke_shell()
+        chan.settimeout(10)
+        data = b''
+        deadline = _time_read.monotonic() + 10
+        while _time_read.monotonic() < deadline:
+            if chan.recv_ready():
+                data += chan.recv(4096)
+                if b'>' in data or b'#' in data:
+                    break
+            _time_read.sleep(0.1)
+        chan.close()
+        ssh.close()
+        latency_ms = int((_time_read.monotonic() - t0) * 1000)
+        if b'>' in data or b'#' in data:
+            logger.info('test_olt_connection OK | %s latencia=%dms', conn.ip, latency_ms)
+            return {'success': True, 'latency_ms': latency_ms}
+        return {'success': False, 'latency_ms': latency_ms,
+                'error': 'Conexión establecida pero sin prompt reconocible'}
+    except paramiko.AuthenticationException:
+        latency_ms = int((_time_read.monotonic() - t0) * 1000)
+        logger.warning('test_olt_connection auth fail | %s', conn.ip)
         return {'success': False, 'latency_ms': latency_ms, 'error': 'Credenciales incorrectas'}
-    except NetmikoTimeoutException as exc:
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        logger.warning('test_olt_connection timeout | %s: %s', conn.ip, exc)
-        return {'success': False, 'latency_ms': latency_ms, 'error': 'Timeout de conexión SSH'}
-    except Exception as exc:
-        latency_ms = int((time.monotonic() - t0) * 1000)
+    except (paramiko.SSHException, OSError, TimeoutError) as exc:
+        latency_ms = int((_time_read.monotonic() - t0) * 1000)
         logger.warning('test_olt_connection error | %s: %s', conn.ip, exc)
         return {'success': False, 'latency_ms': latency_ms, 'error': str(exc)}
