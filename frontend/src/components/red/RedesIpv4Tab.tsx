@@ -352,18 +352,22 @@ function SegmentoForm({
     (s) => s.redCidr === cidrActual && s.id !== segmento?.id,
   ), [segmentos, cidrActual, segmento?.id]);
 
-  // Verifica si el CIDR existe como red configurada en el router MikroTik
-  const redCompleta = red.trim().split('.').length === 4 && red.trim() !== '';
+  // Verifica si el CIDR existe como red configurada en el router MikroTik.
+  // Solo aplica para amarre_ip_mac / amarre_ip_mac_dhcp: el ARP estático y el DHCP server
+  // requieren que la subred esté configurada como dirección local en el router.
+  // PPPoE NO lo necesita: el pool PPPoE asigna IPs directamente sin depender de una interfaz.
+  const redCompleta     = red.trim().split('.').length === 4 && red.trim() !== '';
+  const requiereVerif   = form.authType !== 'pppoe';
   const { data: checkRouter, isFetching: checkando } = useQuery({
     queryKey: ['cidr-en-router', form.routerId, cidrActual],
     queryFn: () => redesApi.checkCidrEnRouter(form.routerId, cidrActual),
-    enabled: !!form.routerId && redCompleta,
+    enabled: !!form.routerId && redCompleta && requiereVerif,
     staleTime: 10_000,
     retry: false,
   });
 
   // Bloquear envío si la verificación está en curso o confirmó que la red no existe en el router
-  const bloqueadoPorRouter = !!form.routerId && redCompleta && (checkando || checkRouter?.existe === false);
+  const bloqueadoPorRouter = requiereVerif && !!form.routerId && redCompleta && (checkando || checkRouter?.existe === false);
   const canSubmit  = form.nombre.trim() && red.trim() && form.gateway.trim() && !bloqueadoPorRouter;
 
   return (
@@ -456,8 +460,8 @@ function SegmentoForm({
             />
           </FRow>
 
-          {/* Verificación del CIDR en el router MikroTik */}
-          {form.routerId && redCompleta && (
+          {/* Verificación del CIDR en el router MikroTik — solo amarre IP/MAC */}
+          {requiereVerif && form.routerId && redCompleta && (
             checkando ? (
               <p className="text-xs text-muted-foreground px-1">Verificando red en el router...</p>
             ) : checkRouter?.existe === false ? (

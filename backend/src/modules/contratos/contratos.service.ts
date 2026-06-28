@@ -128,7 +128,11 @@ export class ContratosService {
             `Corrija la asignación en Red → Segmentos o seleccione el segmento correcto.`,
           );
         }
-        await this.verificarSubredEnRouter(dto.routerId, dto.segmentoId, user.empresaId);
+        // PPPoE asigna IPs desde un pool interno del servidor PPPoE, no desde una interfaz LAN.
+        // Solo amarre_ip_mac y amarre_ip_mac_dhcp requieren la subred configurada en el router.
+        if (authEfectivo !== 'pppoe' && authEfectivo !== 'ninguna') {
+          await this.verificarSubredEnRouter(dto.routerId, dto.segmentoId, user.empresaId);
+        }
       }
     }
 
