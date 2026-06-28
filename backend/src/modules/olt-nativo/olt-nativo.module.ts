@@ -9,6 +9,7 @@ import { OltProveedorConfig }  from './entities/olt-proveedor-config.entity';
 import { OltOperacionLog }     from './entities/olt-operacion-log.entity';
 import { MetricasOnuOptical }  from './entities/metricas-onu-optical.entity';
 import { HistorialFirmware }   from './entities/historial-firmware.entity';
+import { FtthOnuRegistro }    from './entities/ftth-onu-registro.entity';
 import { Onu }                 from '../smartolt/entities/onu.entity';
 import { AlertaSistema }       from '../monitoreo/entities/alerta-sistema.entity';
 import { SmartoltModule }      from '../smartolt/smartolt.module';
@@ -83,6 +84,7 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
       MetricasOnuOptical,
       AlertaSistema,
       HistorialFirmware,
+      FtthOnuRegistro,
     ]),
 
     // HTTP compartido: OltAutomationClient + SmartoltProvider + AdminOltProvider
