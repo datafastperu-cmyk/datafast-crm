@@ -29,6 +29,7 @@ import { NativoSshProvider }        from './providers/nativo-ssh.provider';
 import { SmartoltProvider }         from './providers/smartolt.provider';
 import { AdminOltProvider }         from './providers/adminolt.provider';
 import { ProvisionFtthService }     from './services/provision-ftth.service';
+import { FtthRecoveryCron }         from './cron/ftth-recovery.cron';
 
 // ═══════════════════════════════════════════════════════════════════
 // OltNativoModule — ecosistema multi-proveedor OLT/ONU
@@ -124,6 +125,7 @@ import { ProvisionFtthService }     from './services/provision-ftth.service';
     OltMonitoreoService,
     FirmwareService,
     ProvisionFtthService,
+    FtthRecoveryCron,
   ],
   // Solo exports que módulos externos realmente consumen
   exports: [

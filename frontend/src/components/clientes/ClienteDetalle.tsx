@@ -27,6 +27,7 @@ import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
+import { ModalProvisionFtth }                from './ModalProvisionFtth';
 import { MigracionWizardModal }               from '../contratos/MigracionWizardModal';
 import { RevertirFtthModal }                  from '../contratos/RevertirFtthModal';
 import { TabConfigFacturacion, calcularFechas, calcularFechaRecordatorio } from './TabConfigFacturacion';
@@ -1044,6 +1045,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
   const [editingContrato,  setEditingContrato]  = useState<Contrato | null>(null);
   const [confirmBaja,      setConfirmBaja]      = useState<Contrato | null>(null);
   const [onuContrato,      setOnuContrato]      = useState<Contrato | null>(null);
+  const [ftthContrato,     setFtthContrato]     = useState<Contrato | null>(null);
   const [migracionContrato,setMigracionContrato]= useState<Contrato | null>(null);
   const [revertirContrato, setRevertirContrato] = useState<Contrato | null>(null);
 
@@ -1210,7 +1212,16 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
-                      {c.estado === 'activo' && c.onuId && !c.aprovisionado && (
+                      {c.estado === 'activo' && (c as any).tipoServicio === 'ftth' && (
+                        <button
+                          onClick={() => setFtthContrato(c)}
+                          title="Aprovisionar ONU FTTH"
+                          className="p-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-muted-foreground hover:text-emerald-600 transition-colors"
+                        >
+                          <Zap className="w-3 h-3" />
+                        </button>
+                      )}
+                      {c.estado === 'activo' && c.onuId && !c.aprovisionado && (c as any).tipoServicio !== 'ftth' && (
                         <button
                           onClick={() => setOnuContrato(c)}
                           title="Aprovisionar ONU"
@@ -1379,6 +1390,13 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
         <ModalProvisionOnu
           contrato={onuContrato}
           onClose={() => setOnuContrato(null)}
+        />
+      )}
+
+      {ftthContrato && (
+        <ModalProvisionFtth
+          contrato={ftthContrato}
+          onClose={() => setFtthContrato(null)}
         />
       )}
 

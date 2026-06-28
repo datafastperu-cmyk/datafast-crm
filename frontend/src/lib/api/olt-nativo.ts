@@ -285,6 +285,56 @@ export interface SmartoltTipoOnu  { id: number; name: string; }
 
 // ─── API ──────────────────────────────────────────────────────
 
+// ─── FTTH tipos ───────────────────────────────────────────────
+
+export type FtthOnuEstado =
+  | 'pendiente' | 'gpon_registrado' | 'wan_inyectado' | 'activo'
+  | 'fallido_gpon' | 'fallido_wan' | 'desaprovisionando';
+
+export interface FtthOnuRegistro {
+  id:             string;
+  contratoId:     string;
+  oltId:          string;
+  frame:          number;
+  slot:           number;
+  port:           number;
+  onuId:          number;
+  sn:             string;
+  servicePortId:  number | null;
+  vlan:           number;
+  lineprofileId:  number | null;
+  srvprofileId:   number | null;
+  estado:         FtthOnuEstado;
+  intentosGpon:   number;
+  intentosWan:    number;
+  ultimoError:    string | null;
+  createdAt:      string;
+  updatedAt:      string;
+}
+
+export interface FtthProvisionDto {
+  contratoId:    string;
+  frame:         number;
+  slot:          number;
+  port:          number;
+  onuId:         number;
+  sn:            string;
+  servicePortId: number;
+  vlan:          number;
+  lineprofileId: number;
+  srvprofileId:  number;
+  description?:  string;
+}
+
+export interface FtthProvisionResult {
+  estado:     FtthOnuEstado;
+  registroId: string;
+  mensaje:    string;
+  error?:     string;
+}
+
+// ─── API ──────────────────────────────────────────────────────
+
 export const oltNativoApi = {
 
   listar: async (): Promise<OltDispositivo[]> => {
@@ -463,6 +513,33 @@ export const oltNativoApi = {
       { params: { tipo } },
     );
     return res.data.data ?? [];
+  },
+
+  // ── FTTH ──────────────────────────────────────────────────
+
+  ftthProvision: async (oltId: string, dto: FtthProvisionDto): Promise<FtthProvisionResult> => {
+    const res = await api.post<ApiRespuesta<FtthProvisionResult>>(
+      `/olt-nativo/${oltId}/ftth/provision`, dto, { timeout: 200_000 },
+    );
+    return res.data.data;
+  },
+
+  ftthReinjectWan: async (oltId: string, contratoId: string): Promise<FtthProvisionResult> => {
+    const res = await api.post<ApiRespuesta<FtthProvisionResult>>(
+      `/olt-nativo/${oltId}/ftth/reinject-wan`, { contratoId },
+    );
+    return res.data.data;
+  },
+
+  ftthEstado: async (contratoId: string): Promise<FtthOnuRegistro | null> => {
+    try {
+      const res = await api.get<ApiRespuesta<FtthOnuRegistro | null>>(
+        `/olt-nativo/ftth/estado/${contratoId}`,
+      );
+      return res.data.data ?? null;
+    } catch {
+      return null;
+    }
   },
 
   validarIp: async (ip: string): Promise<ValidarIpResult> => {
