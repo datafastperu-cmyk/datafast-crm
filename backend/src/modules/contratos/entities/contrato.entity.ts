@@ -216,13 +216,6 @@ export class Contrato extends BaseModel {
   @Column({ name: 'hardware_estado', length: 30, nullable: true, default: 'desconocido' })
   hardwareEstado: string; // 'ok' | 'inconsistente' | 'desconocido' | 'sin_hardware'
 
-  // ── Migración de servicio ─────────────────────────────────
-  @Column({ name: 'en_migracion', default: false })
-  enMigracion: boolean;
-
-  @Column({ name: 'migracion_iniciada_en', type: 'timestamptz', nullable: true })
-  migracionIniciadaEn: Date;
-
   // ── Red — campos adicionales ──────────────────────────────
   @Column({ name: 'excluir_firewall', default: false })
   excluirFirewall: boolean;

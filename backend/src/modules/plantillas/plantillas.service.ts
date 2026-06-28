@@ -84,11 +84,6 @@ export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenid
     contenido:
       '✅ {{empresa}}: El router *{{router_nombre}}* ha sido RECONECTADO exitosamente. Todo funciona con normalidad.',
   },
-  migracion_ftth: {
-    nombre: 'Migración FTTH Completada',
-    contenido:
-      '🎉 {{clienteNombre}}, su servicio ha sido migrado exitosamente a Fibra Óptica (FTTH). IP asignada: {{ip_ftth}}. Su conexión ahora es más rápida y estable. Ante cualquier consulta, comuníquese con nosotros.',
-  },
   datafast_alerta_egreso: {
     nombre: 'Alerta Egreso Recurrente (Interno)',
     contenido:
@@ -177,11 +172,6 @@ export const SYSTEM_DEFAULTS_EMAIL: Record<string, { nombre: string; contenido: 
       nombre: 'Alerta Egreso Recurrente (Interno)',
       contenido:
         '<h2>📊 Alerta de Gasto Recurrente</h2><p>Estimado Administrador,</p><p>Le recordamos que la obligación fija <strong>{{nombre_gasto}}</strong> de categoría <strong>{{categoria}}</strong> por un monto de <strong>S/ {{monto}}</strong> está próxima a vencer.</p><p>Días restantes: <strong>{{dias_restantes}}</strong>.</p><p>Por favor, procese el pago desde el ERP.</p><p><strong>{{empresa}}</strong></p>',
-    },
-    migracion_ftth: {
-      nombre: 'Migración FTTH Completada',
-      contenido:
-        '<h2>🎉 Migración a Fibra Óptica Completada</h2><p>Estimado/a <strong>{{nombre_completo}}</strong>,</p><p>Su servicio ha sido migrado exitosamente a <strong>Fibra Óptica (FTTH)</strong>.</p><p>IP asignada: <strong>{{ip_asignada}}</strong>.</p><p>Su conexión ahora es más rápida y estable. Ante cualquier consulta, comuníquese al <strong>{{telefono_empresa}}</strong>.</p><p>Atentamente,<br><strong>{{empresa}}</strong></p>',
     },
     outbox_red_agotado: {
       nombre: 'Alerta Outbox Red Agotado (Interno)',

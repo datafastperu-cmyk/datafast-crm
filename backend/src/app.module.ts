@@ -59,7 +59,6 @@ import { FinanzasOpexModule }          from './modules/finanzas-opex/finanzas-op
 import { ProyectosInversionModule }    from './modules/proyectos-inversion/proyectos-inversion.module';
 import { MensajeriaModule }            from './modules/mensajeria/mensajeria.module';
 import { SchemaGuardModule }           from './modules/schema-guard/schema-guard.module';
-import { MigracionModule }            from './modules/migracion/migracion.module';
 import { SagasModule }                from './modules/sagas/sagas.module';
 import { ReconciliadorModule }        from './modules/reconciliador/reconciliador.module';
 import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pago.module';
@@ -201,7 +200,6 @@ import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pag
     ProyectosInversionModule,
     MensajeriaModule,
     SchemaGuardModule,
-    MigracionModule,
     SagasModule,
     ReconciliadorModule,
     PromesasPagoModule,

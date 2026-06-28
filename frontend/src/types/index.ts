@@ -187,7 +187,6 @@ export interface Contrato {
   version?:        number;
   tipoServicio?:   'wisp' | 'ftth';
   tipoAuth?:       string;
-  enMigracion?:    boolean;
 }
 
 // ─── Facturas ─────────────────────────────────────────────────

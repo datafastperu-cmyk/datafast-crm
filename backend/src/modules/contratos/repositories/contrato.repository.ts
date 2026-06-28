@@ -61,7 +61,7 @@ export class ContratoRepository {
         co.caja_nap AS "cajaNap", co.puerto_nap AS "puertoNap",
         co.tipo_antena AS "tipoAntena", co.direccion_instalacion AS "direccionInstalacion",
         co.notas_instalacion AS "notasInstalacion", co.created_at AS "createdAt",
-        co.tipo_servicio AS "tipoServicio", co.en_migracion AS "enMigracion",
+        co.tipo_servicio AS "tipoServicio",
         pl.nombre AS "planNombre",
         pl.velocidad_bajada AS "velocidadBajada",
         pl.velocidad_subida AS "velocidadSubida",

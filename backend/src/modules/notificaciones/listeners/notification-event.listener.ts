@@ -23,7 +23,6 @@ import {
   EventNotificacionEmisorConectado,
   EventNotificacionRouterCaido,
   EventNotificacionRouterConectado,
-  EventNotificacionMigracionFtth,
   EventNotificacionFtthActivado,
   EventOutboxRedAgotado,
 } from '../events/notification.events';
@@ -459,29 +458,6 @@ export class NotificationEventListener implements OnModuleInit {
       variables: { router_nombre: event.routerNombre },
       empresaId: event.empresaId,
     }, JOB_OPTIONS.ALERTA);
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // MIGRACIÓN FTTH
-  // ═══════════════════════════════════════════════════════════
-  @OnEvent(NOTIFICATION_EVENTS.MIGRACION_FTTH, { async: true })
-  async onMigracionFtth(event: EventNotificacionMigracionFtth): Promise<void> {
-    if (!event.telefono) return;
-    this.logger.log(
-      `[EVENT] 🔄 Recibido MIGRACION_FTTH → ${event.telefono.substring(0, 9)}... ` +
-      `| ip=${event.ipFtth} | empresa=${event.empresaId}`,
-    );
-    await this.encolar('migracion_ftth', {
-      telefono:   event.telefono,
-      tipo:       'migracion_ftth',
-      variables: {
-        clienteNombre: event.clienteNombre,
-        ip_ftth:       event.ipFtth,
-        ipFtth:        event.ipFtth,
-      },
-      empresaId: event.empresaId,
-      clienteId: event.clienteId,
-    });
   }
 
   // ═══════════════════════════════════════════════════════════

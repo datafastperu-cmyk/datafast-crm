@@ -200,8 +200,6 @@ const TIPO_A_CODIGO: Record<string, string> = {
   emisor_conectado:    'emisor_conectado',
   router_caido:        'router_caido',
   router_conectado:    'router_conectado',
-  // FTTH
-  migracion_ftth:      'migracion_ftth',
   // Infraestructura — Outbox agotado
   outbox_red_agotado:  'outbox_red_agotado',
 };

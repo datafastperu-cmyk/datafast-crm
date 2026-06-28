@@ -6,13 +6,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Zap, WifiOff, Wifi, Clock,
   MoreVertical, Loader2, FileText, CreditCard,
-  Trash2, XCircle, Cable, Radio,
+  Trash2, XCircle,
 } from 'lucide-react';
 
 import { contratosApi }         from '@/lib/api/contratos';
 import { ContratoEstadoBadge }  from './ContratosTable';
-import { MigracionWizardModal } from './MigracionWizardModal';
-import { RevertirFtthModal }    from './RevertirFtthModal';
 import { useToast }             from '@/components/ui/toaster';
 import { formatDate, formatDateTime, formatPEN, cn, parseApiError } from '@/lib/utils';
 import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
@@ -30,9 +28,6 @@ export function ContratoDetalle({ id }: { id: string }) {
   const [prorrogaDias, setPD]   = useState(7);
   const [showProrroga, setShowP] = useState(false);
   const [showBaja, setShowBaja]      = useState(false);
-  const [showMigracion, setShowMig]     = useState(false);
-  const [showRevertir, setShowRevertir] = useState(false);
-
   const { data: contrato, isLoading } = useQuery({
     queryKey: ['contrato', id],
     queryFn:  () => contratosApi.getById(id),
@@ -111,36 +106,6 @@ export function ContratoDetalle({ id }: { id: string }) {
                          bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
             >
               <Zap className="w-3.5 h-3.5" /> Aprovisionar FTTH
-            </button>
-          )}
-
-          {/* Aprovisionar Onu (migración WISP → FTTH) */}
-          {esActivo && esWisp && !(contrato as any).enMigracion && (
-            <button
-              onClick={() => setShowMig(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
-                         btn-primary font-medium transition-colors"
-            >
-              <Cable className="w-3.5 h-3.5" /> Aprovisionar Onu
-            </button>
-          )}
-
-          {/* En migración badge */}
-          {(contrato as any).enMigracion && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
-                             bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-medium">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> En migración…
-            </span>
-          )}
-
-          {/* Revertir FTTH → WISP */}
-          {esActivo && esFtth && !(contrato as any).enMigracion && (
-            <button
-              onClick={() => setShowRevertir(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
-                         border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <Radio className="w-3.5 h-3.5" /> Revertir a WISP
             </button>
           )}
 
@@ -438,26 +403,6 @@ export function ContratoDetalle({ id }: { id: string }) {
         </div>
       )}
 
-      {/* ── Modal Migración WISP → FTTH ───────────────────────── */}
-      {showMigracion && (
-        <MigracionWizardModal
-          contratoId={id}
-          clienteId={contrato.clienteId}
-          onClose={() => setShowMig(false)}
-          onSuccess={() => { invalida(); setShowMig(false); }}
-        />
-      )}
-
-      {/* ── Modal Reversión FTTH → WISP ───────────────────────── */}
-      {showRevertir && (
-        <RevertirFtthModal
-          contratoId={id}
-          clienteId={contrato.clienteId}
-          numeroContrato={contrato.numeroContrato}
-          onClose={() => setShowRevertir(false)}
-          onSuccess={() => { invalida(); setShowRevertir(false); }}
-        />
-      )}
     </div>
   );
 }

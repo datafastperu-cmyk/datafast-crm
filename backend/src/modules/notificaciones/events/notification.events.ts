@@ -23,8 +23,7 @@ export const NOTIFICATION_EVENTS = {
   EMISOR_CONECTADO:     'notification.emisor.conectado',
   ROUTER_CAIDO:         'notification.router.caido',
   ROUTER_CONECTADO:     'notification.router.conectado',
-  // FTTH / Migración
-  MIGRACION_FTTH:       'notification.migracion_ftth',
+  // FTTH
   FTTH_ACTIVADO:        'ftth.cliente.activado',
   // Infraestructura — Outbox
   OUTBOX_RED_AGOTADO:   'notification.outbox_red.agotado',
@@ -147,14 +146,6 @@ export interface EventNotificacionRouterCaido {
 export interface EventNotificacionRouterConectado {
   routerNombre: string;
   empresaId:    string;
-}
-
-export interface EventNotificacionMigracionFtth {
-  telefono:      string;
-  clienteNombre: string;
-  ipFtth:        string;
-  empresaId:     string;
-  clienteId?:    string;
 }
 
 export interface EventNotificacionFtthActivado {
