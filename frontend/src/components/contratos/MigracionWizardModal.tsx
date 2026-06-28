@@ -5,7 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   X, Loader2, CheckCircle2, AlertCircle, ArrowRight, SkipForward,
   Cable, Server, Network, RotateCcw, ScanLine, ChevronLeft,
-  Radio,
+  Radio, Zap,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -366,6 +366,23 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
               {resultado.pasos.length > 0 && (
                 <div className="space-y-2">
                   {resultado.pasos.map((p) => <PasoRow key={p.paso} paso={p} />)}
+                </div>
+              )}
+
+              {/* Aviso siguiente paso FTTH */}
+              {resultado.exitoso && (
+                <div className="flex items-start gap-3 p-3 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40">
+                  <Zap className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                      Contrato migrado a FTTH
+                    </p>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
+                      Cierra este modal y usa el botón <strong>Aprovisionar FTTH</strong> (ícono{' '}
+                      <Zap className="inline w-3 h-3" /> verde) en el contrato para registrar la ONU en
+                      la OLT e inyectar el perfil WAN PPPoE.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

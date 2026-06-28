@@ -1221,15 +1221,6 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                           <Zap className="w-3 h-3" />
                         </button>
                       )}
-                      {c.estado === 'activo' && c.onuId && !c.aprovisionado && (c as any).tipoServicio !== 'ftth' && (
-                        <button
-                          onClick={() => setOnuContrato(c)}
-                          title="Aprovisionar ONU"
-                          className="p-1.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-muted-foreground hover:text-violet-600 transition-colors"
-                        >
-                          <Zap className="w-3 h-3" />
-                        </button>
-                      )}
                       {c.estado === 'pendiente_activacion' && (
                         <button
                           onClick={() => activar(c.id)}
