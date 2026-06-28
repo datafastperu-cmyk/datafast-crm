@@ -264,12 +264,24 @@ export class ContratosService {
       await qr.connect();
       await qr.startTransaction();
       try {
+        // Liberar IP vieja DENTRO de la TX: si falla el resto, el rollback la reactiva
         if (existing.ipAsignada && existing.segmentoId) {
-          await this.contratoRepo.liberarIp(id);
+          await qr.manager.update(IpAsignada, { contratoId: id, activa: true }, { activa: false, liberadaEn: new Date() });
         }
         newIp = dto.ipManual?.trim()
           ? dto.ipManual.trim()
           : await this.calcularNextIpDesdePool(qr, dto.segmentoId!, user.empresaId);
+
+        // Validar IP manual no ocupada si fue provista explícitamente
+        if (dto.ipManual?.trim()) {
+          const ocupada = await qr.manager.count(IpAsignada, {
+            where: { ipAddress: dto.ipManual.trim(), segmentoId: dto.segmentoId!, activa: true },
+          });
+          if (ocupada > 0) {
+            this.logger.warn(`Race condition: IP ${dto.ipManual} ya ocupada — asignando siguiente libre`);
+            newIp = await this.calcularNextIpDesdePool(qr, dto.segmentoId!, user.empresaId);
+          }
+        }
 
         await qr.manager.save(
           qr.manager.create(IpAsignada, {
@@ -294,9 +306,16 @@ export class ContratosService {
       await qr.connect();
       await qr.startTransaction();
       try {
-        newIp = dto.ipManual?.trim()
-          ? dto.ipManual.trim()
-          : await this.calcularNextIpDesdePool(qr, dto.segmentoId, user.empresaId);
+        if (dto.ipManual?.trim()) {
+          const ocupada = await qr.manager.count(IpAsignada, {
+            where: { ipAddress: dto.ipManual.trim(), segmentoId: dto.segmentoId, activa: true },
+          });
+          newIp = ocupada > 0
+            ? await this.calcularNextIpDesdePool(qr, dto.segmentoId, user.empresaId)
+            : dto.ipManual.trim();
+        } else {
+          newIp = await this.calcularNextIpDesdePool(qr, dto.segmentoId, user.empresaId);
+        }
 
         await qr.manager.save(
           qr.manager.create(IpAsignada, {
@@ -500,8 +519,8 @@ export class ContratosService {
     const upd: Partial<Contrato> = { estado:dto.estado, fechaEstado:new Date(), motivoEstado:dto.motivo, updatedBy:user.sub };
     if (dto.estado === EstadoContrato.ACTIVO && [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)) {
       // ── Revertir suspensión en MikroTik (quitar de address-list + habilitar PPPoE) ──
-      // Similar a CobranzaWorker.handleReactivarContrato()
-      if (contrato.routerId && contrato.ipAsignada) {
+      // Requiere solo routerId: el firewall necesita ipAsignada pero el secret PPPoE no.
+      if (contrato.routerId && (contrato.ipAsignada || contrato.usuarioPppoe)) {
         setImmediate(async () => {
           try {
             const [router] = await this.dataSource.query<any[]>(`
@@ -525,25 +544,26 @@ export class ContratosService {
                 version:         (router.versionRos === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
               };
 
-              // 1. Quitar IP de address-list morosos
-              await this.firewallSvc.reactivarCliente(creds, contrato.ipAsignada);
+              // 1. Quitar IP de address-list morosos (solo si tiene IP asignada)
+              if (contrato.ipAsignada) {
+                await this.firewallSvc.reactivarCliente(creds, contrato.ipAsignada);
+              }
 
-              // 2. Habilitar secreto PPPoE (disabled=false)
+              // 2. Habilitar secreto PPPoE (requiere solo usuarioPppoe, no IP)
               if (contrato.usuarioPppoe) {
                 await this.pppoeSvc.setEstado(creds, contrato.usuarioPppoe, false);
               }
 
-              this.logger.log(`cambiarEstado → MikroTik reactivado: contrato ${id} | IP: ${contrato.ipAsignada}`);
+              this.logger.log(`cambiarEstado → MikroTik reactivado: contrato ${id} | IP: ${contrato.ipAsignada ?? 'dinámica'}`);
             }
           } catch (err: any) {
             this.logger.warn(`cambiarEstado → fallo MikroTik al reactivar contrato ${id}: ${err?.message}`);
-            // Encolar para reintento automático via OutboxRed
             if (contrato.routerId) {
               await this.outboxRed.encolar('REACTIVAR', id, contrato.routerId, {
-                ipAsignada:  contrato.ipAsignada,
+                ipAsignada:   contrato.ipAsignada,
                 usuarioPppoe: contrato.usuarioPppoe,
-                clienteId:   contrato.clienteId,
-                deudaTotal:  Number(contrato.deudaTotal),
+                clienteId:    contrato.clienteId,
+                deudaTotal:   Number(contrato.deudaTotal),
               }).catch(() => void 0);
             }
           }
@@ -676,8 +696,8 @@ export class ContratosService {
 
     if (dto.estado === EstadoContrato.SUSPENDIDO) {
       // ── Aplicar suspensión en MikroTik (firewall + PPPoE) ──────
-      // Similar a CobranzaWorker.processSuspenderContrato()
-      if (contrato.routerId && contrato.ipAsignada) {
+      // Requiere solo routerId: firewall necesita ipAsignada pero secret PPPoE no.
+      if (contrato.routerId && (contrato.ipAsignada || contrato.usuarioPppoe)) {
         setImmediate(async () => {
           try {
             const [[router], [cliente]] = await Promise.all([
@@ -706,31 +726,32 @@ export class ContratosService {
                 version:         (router.versionRos === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
               };
 
-              // 1. Agregar IP a address-list morosos
-              await this.firewallSvc.suspenderCliente(
-                creds,
-                contrato.ipAsignada,
-                contrato.clienteId,
-                `Suspensión manual: ${cliente?.nombre_completo ?? contrato.clienteId} | ${dto.motivo ?? 'sin motivo'} | ${new Date().toLocaleDateString('es-PE')}`,
-              );
+              // 1. Agregar IP a address-list morosos (solo si tiene IP asignada)
+              if (contrato.ipAsignada) {
+                await this.firewallSvc.suspenderCliente(
+                  creds,
+                  contrato.ipAsignada,
+                  contrato.clienteId,
+                  `Suspensión manual: ${cliente?.nombre_completo ?? contrato.clienteId} | ${dto.motivo ?? 'sin motivo'} | ${new Date().toLocaleDateString('es-PE')}`,
+                );
+              }
 
-              // 2. Desconectar sesión PPPoE y deshabilitar secret
+              // 2. Desconectar sesión PPPoE y deshabilitar secret (requiere solo usuarioPppoe, no IP)
               if (contrato.usuarioPppoe) {
                 await this.pppoeSvc.desconectarSesion(creds, contrato.usuarioPppoe);
                 await this.pppoeSvc.setEstado(creds, contrato.usuarioPppoe, true);
               }
 
-              this.logger.log(`cambiarEstado → MikroTik suspendido: contrato ${id} | IP: ${contrato.ipAsignada}`);
+              this.logger.log(`cambiarEstado → MikroTik suspendido: contrato ${id} | IP: ${contrato.ipAsignada ?? 'dinámica'}`);
             }
           } catch (err: any) {
             this.logger.warn(`cambiarEstado → fallo MikroTik al suspender contrato ${id}: ${err?.message}`);
-            // Encolar para reintento automático via OutboxRed
             if (contrato.routerId) {
               await this.outboxRed.encolar('SUSPENDER', id, contrato.routerId, {
-                ipAsignada:  contrato.ipAsignada,
+                ipAsignada:   contrato.ipAsignada,
                 usuarioPppoe: contrato.usuarioPppoe,
-                clienteId:   contrato.clienteId,
-                deudaTotal:  Number(contrato.deudaTotal),
+                clienteId:    contrato.clienteId,
+                deudaTotal:   Number(contrato.deudaTotal),
               }).catch(() => void 0);
             }
           }
@@ -1204,7 +1225,7 @@ export class ContratosService {
         if (tipoControl === 'amarre_ip_mac_dhcp' && row.macAddress) {
           await this.pool.execute(creds, async (api) => {
             const leases = await api.write('/ip/dhcp-server/lease/print');
-            const macFmt = row.macAddress.toUpperCase().replace(/[^A-F0-9]/g, '').match(/.{2}/g)!.join(':');
+            const macFmt = row.macAddress.toUpperCase().replace(/[^A-F0-9]/g, '').match(/.{2}/g)?.join(':') ?? row.macAddress.toUpperCase();
             const match = leases.find((l: any) => (l['mac-address'] || '').toUpperCase() === macFmt);
             if (match) await api.write('/ip/dhcp-server/lease/remove', [`=.id=${match['.id']}`]);
           });

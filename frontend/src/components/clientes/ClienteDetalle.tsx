@@ -1561,10 +1561,13 @@ function ServicioPanel({
   const segmentosPorRouter = (segmentos as any[]).filter(
     (s: any) => !s.tipoServicio || s.tipoServicio === tipoServicio,
   );
-  // N3: authTypes disponibles según los segmentos cargados
-  const authTypesDisponibles = segmentosPorRouter.length > 0
-    ? AUTH_TYPES.filter(o => segmentosPorRouter.some((s: any) => s.authType === o.val))
-    : AUTH_TYPES;
+  // N3: authTypes disponibles según los segmentos cargados.
+  // Si ningún segmento tiene authType configurado, se muestran todos para no bloquear al operador.
+  const authTypesDisponibles = (() => {
+    if (segmentosPorRouter.length === 0) return AUTH_TYPES;
+    const filtrados = AUTH_TYPES.filter(o => segmentosPorRouter.some((s: any) => s.authType === o.val));
+    return filtrados.length > 0 ? filtrados : AUTH_TYPES;
+  })();
   // N4: segmentos filtrados además por authType seleccionado en N3
   const segmentosFiltrados = tipoControlVal
     ? segmentosPorRouter.filter((s: any) => !s.authType || s.authType === tipoControlVal)
@@ -1681,7 +1684,7 @@ function ServicioPanel({
       if (editing) {
         if (data.usuarioPppoe)       payload.usuarioPppoe       = data.usuarioPppoe;
         if (data.passwordPppoe)      payload.passwordPppoePlain = data.passwordPppoe;
-        if (segmentoCambio && data.segmentoId) {
+        if (data.segmentoId && (segmentoCambio || !e?.ipAsignada)) {
           payload.segmentoId = data.segmentoId;
           payload.ipManual   = data.ipManual || undefined;
         }
