@@ -121,7 +121,7 @@ export class OltAutomationClient {
       `→ Python discover-onus | OLT=${payload.connection.ip} ` +
       `slot=${payload.slot ?? '*'} port=${payload.port ?? '*'}`,
     );
-    const res = await this.post<PythonDiscoverResponse>('/api/v1/olt/discover-onus', payload);
+    const res = await this.post<PythonDiscoverResponse>('/api/v1/olt/discover-onus', payload, 90_000);
     this.logger.log(
       `← Python discover-onus | success=${res.success} | total=${res.total}`,
     );
@@ -260,11 +260,12 @@ export class OltAutomationClient {
     return { headers, timeout: this.TIMEOUT_MS };
   }
 
-  private async post<T>(endpoint: string, body: unknown): Promise<T> {
+  private async post<T>(endpoint: string, body: unknown, timeoutMs?: number): Promise<T> {
     this.checkConfig();
     try {
+      const cfg = timeoutMs ? { ...this.getConfig(), timeout: timeoutMs } : this.getConfig();
       const res = await firstValueFrom(
-        this.http.post<T>(`${this.baseUrl}${endpoint}`, body, this.getConfig()),
+        this.http.post<T>(`${this.baseUrl}${endpoint}`, body, cfg),
       );
       return res.data;
     } catch (error) {

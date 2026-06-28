@@ -1318,6 +1318,83 @@ def _filter_onus(
     return result
 
 
+def _paramiko_huawei_run(
+    conn:     OltConnectionSchema,
+    commands: list[str],
+    timeout:  float = 60.0,
+) -> str:
+    """
+    Abre una sesión SSH con Paramiko (invoke_shell) y ejecuta una lista de comandos
+    en la OLT Huawei, manejando el prompt de confirmación { <cr>||<K> }: y el
+    escalado a enable. Devuelve la salida acumulada de todos los comandos.
+
+    Evita completamente la session_preparation de Netmiko (que envía
+    screen-length 0 temporary y se traba en el prompt de confirmación del MA5800).
+    """
+    import paramiko
+
+    PROMPT_RE = re.compile(r'^\S+[>#]\s*$')
+    CONFIRM_RE = re.compile(r'\{\s*<cr>')
+
+    def _read_until_prompt(chan: 'paramiko.Channel', deadline: float) -> str:
+        buf = ''
+        while _time_read.monotonic() < deadline:
+            if chan.recv_ready():
+                buf += chan.recv(4096).decode('utf-8', errors='replace')
+                last = buf.rsplit('\n', 1)[-1].replace('\r', '').strip()
+                if CONFIRM_RE.search(last):
+                    chan.send('\r\n')
+                    continue
+                if PROMPT_RE.match(last):
+                    break
+            _time_read.sleep(0.05)
+        return buf
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        ssh.connect(
+            hostname=conn.ip, port=conn.port,
+            username=conn.username, password=conn.password,
+            timeout=15, look_for_keys=False, allow_agent=False,
+        )
+        chan = ssh.invoke_shell(width=200, height=50)
+        chan.settimeout(timeout)
+        deadline = _time_read.monotonic() + timeout
+
+        # Leer banner inicial hasta prompt
+        _read_until_prompt(chan, deadline)
+
+        # Escalar a enable si el prompt termina en >
+        chan.send('enable\r\n')
+        _time_read.sleep(0.1)
+        buf_enable = _read_until_prompt(chan, deadline)
+        if '>' in buf_enable and '#' not in buf_enable:
+            # requirió password de enable
+            chan.send((conn.password or '') + '\r\n')
+            _read_until_prompt(chan, deadline)
+
+        # screen-length 0 temporary — puede mostrar { <cr>||<K> }:
+        chan.send('screen-length 0 temporary\r\n')
+        _read_until_prompt(chan, deadline)
+
+        # Ejecutar cada comando y acumular salida
+        output_parts: list[str] = []
+        for cmd in commands:
+            chan.send(cmd + '\r\n')
+            part = _read_until_prompt(chan, deadline)
+            output_parts.append(part)
+
+        chan.close()
+        ssh.close()
+        return '\n'.join(output_parts)
+
+    except paramiko.AuthenticationException as exc:
+        raise ProvisioningError(f'Autenticación fallida en Huawei {conn.ip}') from exc
+    except (paramiko.SSHException, OSError, TimeoutError) as exc:
+        raise ProvisioningError(f'Error SSH en Huawei {conn.ip}: {exc}') from exc
+
+
 def discover_huawei_onus(
     conn: OltConnectionSchema,
     slot: int | None = None,
@@ -1325,33 +1402,18 @@ def discover_huawei_onus(
 ) -> list[dict[str, Any]]:
     """
     Lista ONUs no autorizadas en OLT Huawei mediante 'display ont autofind all'.
-
-    El MA5800 muestra '{ <cr>||<K> }:' (confirmación pre-ejecución) antes de
-    devolver el output; usa _send_huawei_confirmed para manejarlo correctamente.
-
-    Retorna lista de dicts [{'sn': ..., 'slot': ..., 'port': ...}].
-    Si slot y/o port se especifican, filtra el resultado antes de retornar.
-    Propaga ProvisioningError en caso de fallo SSH.
+    Usa Paramiko directo para evitar la session_preparation de Netmiko
+    (que se traba en el prompt { <cr>||<K> }: del MA5800).
     """
-    command = 'display ont autofind all'
     logger.info('discover_huawei_onus: consultando ONUs pendientes en %s', conn.ip)
 
-    params = _build_netmiko_params(conn)
     try:
-        with ConnectHandler(**params) as session:
-            _huawei_enter_enable(session, conn)
-            raw_output = _send_huawei_confirmed(
-                session, command, settings.ssh_command_timeout
-            )
-    except NetmikoAuthenticationException as exc:
-        raise ProvisioningError(
-            f'Autenticación fallida en Huawei {conn.ip}: {exc}'
-        ) from exc
-    except ReadTimeout as exc:
-        raise ProvisioningError(
-            f'Timeout consultando ONUs pendientes en Huawei {conn.ip}: {exc}'
-        ) from exc
-    except (NetmikoTimeoutException, OSError) as exc:
+        raw_output = _paramiko_huawei_run(
+            conn, ['display ont autofind all'], timeout=settings.ssh_command_timeout,
+        )
+    except ProvisioningError:
+        raise
+    except Exception as exc:
         raise ProvisioningError(
             f'No se pudo consultar ONUs pendientes en Huawei {conn.ip}: {exc}'
         ) from exc
