@@ -94,6 +94,7 @@ export interface ProvisionarOnuDto {
   servicePortId?: number;
   trafficIndex?:  number;
   onuType?:       string;
+  onuMode?:       'bridge' | 'routing';
 }
 
 export interface OntFoundInfo {
