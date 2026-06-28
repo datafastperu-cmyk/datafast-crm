@@ -25,6 +25,14 @@ from app.schemas.olt import (
     FirmwareJobProgress,
     FirmwareJobStatus,
     FirmwareUpgradeRequest,
+    FtthGponRequest,
+    FtthGponResponse,
+    FtthPollRequest,
+    FtthPollResponse,
+    FtthRollbackRequest,
+    FtthRollbackResponse,
+    FtthWanPppoeRequest,
+    FtthWanResponse,
     ListProfilesRequest,
     ListProfilesResponse,
     MetricsResponse,
@@ -52,9 +60,13 @@ from app.services.provisioning import (
     get_batch_status,
     get_huawei_ont_version,
     get_onu_metrics,
+    inject_wan_pppoe,
     list_huawei_profiles,
+    poll_onu_online,
+    provision_gpon_ftth,
     provision_onu,
     reset_huawei_onu,
+    rollback_gpon,
     test_olt_connection,
     upgrade_firmware_onu,
     verify_onu,
@@ -549,4 +561,97 @@ async def firmware_job_status(job_id: str) -> FirmwareJobStatus:
         progress   = [FirmwareJobProgress(**p) for p in job['progress']],
         started_at = job['started_at'],
         updated_at = job['updated_at'],
+    )
+
+
+# ── FTTH Two-Phase Provisioning ───────────────────────────────
+
+@app.post(
+    '/api/v1/olt/ftth/provision-gpon',
+    response_model=FtthGponResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Fase 1 FTTH: registrar ONU en la OLT (ont add + service-port)',
+)
+async def ftth_provision_gpon(body: FtthGponRequest) -> FtthGponResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                provision_gpon_ftth,
+                body.connection,
+                body.frame, body.slot, body.port, body.onu_id,
+                body.sn, body.service_port_id, body.vlan,
+                body.lineprofile_id, body.srvprofile_id,
+                body.description,
+            )
+        except ProvisioningError as exc:
+            return FtthGponResponse(success=False, error=str(exc))
+    return FtthGponResponse(success=True, sn=result['sn'], olt_ip=result['olt_ip'])
+
+
+@app.post(
+    '/api/v1/olt/ftth/rollback-gpon',
+    response_model=FtthRollbackResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Rollback Fase 1 FTTH: eliminar ont add + service-port de la OLT',
+)
+async def ftth_rollback_gpon(body: FtthRollbackRequest) -> FtthRollbackResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        result = await asyncio.to_thread(
+            rollback_gpon,
+            body.connection,
+            body.slot, body.port, body.onu_id, body.service_port_id,
+        )
+    return FtthRollbackResponse(success=result['success'], error=result.get('error'))
+
+
+@app.post(
+    '/api/v1/olt/ftth/poll-online',
+    response_model=FtthPollResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Fase 1b FTTH: esperar que la ONU aparezca online',
+)
+async def ftth_poll_online(body: FtthPollRequest) -> FtthPollResponse:
+    olt_ip = body.connection.ip
+    # poll_onu_online hace sleeps internos — no bloquea otras OLTs
+    async with connection_pool.acquire(olt_ip):
+        result = await asyncio.to_thread(
+            poll_onu_online,
+            body.connection,
+            body.slot, body.port, body.onu_id, body.max_wait,
+        )
+    return FtthPollResponse(
+        success   = result['success'],
+        run_state = result.get('run_state'),
+        timeout   = result.get('timeout', False),
+    )
+
+
+@app.post(
+    '/api/v1/olt/ftth/inject-wan-pppoe',
+    response_model=FtthWanResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Fase 2 FTTH: inyectar config PPPoE en la ONU vía OMCI',
+)
+async def ftth_inject_wan_pppoe(body: FtthWanPppoeRequest) -> FtthWanResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                inject_wan_pppoe,
+                body.connection,
+                body.slot, body.port, body.onu_id,
+                body.vlan, body.username, body.password,
+            )
+        except ProvisioningError as exc:
+            return FtthWanResponse(success=False, error=str(exc))
+    return FtthWanResponse(
+        success = True,
+        olt_ip  = result['olt_ip'],
+        onu_id  = result['onu_id'],
     )
