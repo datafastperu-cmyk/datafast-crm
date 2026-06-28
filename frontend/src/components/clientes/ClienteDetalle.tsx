@@ -1570,10 +1570,11 @@ function ServicioPanel({
     ? segmentosPorRouter.filter((s: any) => !s.authType || s.authType === tipoControlVal)
     : segmentosPorRouter;
   const segmentoCambio = editing ? segmentoId !== (e?.segmentoId ?? '') : !!segmentoId;
+  const necesitaIp = segmentoCambio || !watch('ipManual');
   const { data: nextIp, isFetching: fetchingIp } = useQuery({
-    queryKey:  ['next-ip', segmentoId],
+    queryKey:  ['next-ip', segmentoId, necesitaIp],
     queryFn:   () => redesApi.getNextIp(segmentoId!),
-    enabled:   !!segmentoId && segmentoCambio,
+    enabled:   !!segmentoId && necesitaIp,
     staleTime: 0,
   });
 
@@ -1853,9 +1854,9 @@ function ServicioPanel({
                               </span>
                             ) : nextIp ? (
                               <span className="flex items-center gap-1 text-[11px] text-emerald-500 font-medium">
-                                <CheckCircle2 className="w-3 h-3" /> {segmentoCambio ? 'Disponible' : 'Disponible'}
+                                <CheckCircle2 className="w-3 h-3" /> Disponible
                               </span>
-                            ) : segmentoId ? (
+                            ) : segmentoId && necesitaIp ? (
                               <span className="flex items-center gap-1 text-[11px] text-amber-500 font-medium">
                                 <AlertCircle className="w-3 h-3" /> Pool lleno
                               </span>
