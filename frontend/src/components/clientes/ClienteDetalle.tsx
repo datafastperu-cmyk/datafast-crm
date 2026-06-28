@@ -1238,7 +1238,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                         <button
                           onClick={() => c.estado === 'activo' && setMigracionContrato(c)}
                           disabled={c.estado !== 'activo'}
-                          title={c.estado === 'activo' ? 'Migrar a FTTH' : 'El contrato debe estar activo para migrar'}
+                          title={c.estado === 'activo' ? 'Aprovisionar Onu' : 'El contrato debe estar activo para aprovisionar'}
                           className="p-1.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-muted-foreground hover:text-violet-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                         >
                           <Cable className="w-3 h-3" />

@@ -114,14 +114,14 @@ export function ContratoDetalle({ id }: { id: string }) {
             </button>
           )}
 
-          {/* Migrar WISP → FTTH */}
+          {/* Aprovisionar Onu (migración WISP → FTTH) */}
           {esActivo && esWisp && !(contrato as any).enMigracion && (
             <button
               onClick={() => setShowMig(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
                          btn-primary font-medium transition-colors"
             >
-              <Cable className="w-3.5 h-3.5" /> Migrar a FTTH
+              <Cable className="w-3.5 h-3.5" /> Aprovisionar Onu
             </button>
           )}
 

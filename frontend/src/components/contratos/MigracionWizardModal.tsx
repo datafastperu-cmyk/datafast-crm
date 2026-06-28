@@ -214,7 +214,7 @@ export function MigracionWizardModal({ contratoId, clienteId, onClose, onSuccess
           <div className="flex items-center gap-2">
             <Cable className="w-5 h-5 text-primary" />
             <div>
-              <h2 className="text-base font-semibold text-foreground">Migrar WISP → FTTH</h2>
+              <h2 className="text-base font-semibold text-foreground">Aprovisionar Onu</h2>
               {fase !== 'result' && (
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className={cn('text-[11px] font-medium', fase === 'scan' ? 'text-primary' : 'text-muted-foreground')}>
