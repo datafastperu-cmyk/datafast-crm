@@ -16,6 +16,13 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { OltNativoService }        from './olt-nativo.service';
 import { FirmwareService }         from './firmware.service';
 import {
+  FtthProvisionResult,
+  ProvisionarFtthDto,
+  ProvisionFtthService,
+  ReinjectarWanDto,
+} from './services/provision-ftth.service';
+import { FtthOnuRegistro }         from './entities/ftth-onu-registro.entity';
+import {
   CrearOltIntegracionDto,
   DiscoverOnusQueryDto,
   DiscoverResult,
@@ -37,6 +44,7 @@ export class OltNativoController {
   constructor(
     private readonly service:   OltNativoService,
     private readonly firmware:  FirmwareService,
+    private readonly ftth:      ProvisionFtthService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -523,5 +531,40 @@ export class OltNativoController {
   ): Promise<FirmwareJobResult[]> {
     const n = limit ? parseInt(limit, 10) : 20;
     return this.firmware.listarHistorial(oltId, user.empresaId, n);
+  }
+
+  // ── FTTH Two-Phase Provisioning ───────────────────────────────
+
+  @Post(':oltId/ftth/provision')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aprovisionar ONU FTTH — Fase 1 (GPON) + poll + Fase 2 (WAN PPPoE)' })
+  @ApiParam({ name: 'oltId' })
+  async provisionarFtth(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: ProvisionarFtthDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<FtthProvisionResult> {
+    return this.ftth.provisionarFtth(oltId, user.empresaId, dto);
+  }
+
+  @Post(':oltId/ftth/reinject-wan')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Re-inyectar config WAN PPPoE en ONU FTTH ya registrada en GPON' })
+  @ApiParam({ name: 'oltId' })
+  async reinjectarWan(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: ReinjectarWanDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<FtthProvisionResult> {
+    return this.ftth.reinjectarWan(oltId, user.empresaId, dto);
+  }
+
+  @Get('ftth/estado/:contratoId')
+  @ApiOperation({ summary: 'Obtener estado de aprovisionamiento FTTH de un contrato' })
+  @ApiParam({ name: 'contratoId' })
+  async estadoFtth(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ): Promise<FtthOnuRegistro | null> {
+    return this.ftth.obtenerEstado(contratoId);
   }
 }

@@ -28,6 +28,7 @@ import { OltHealthMonitorService }  from './services/olt-health-monitor.service'
 import { NativoSshProvider }        from './providers/nativo-ssh.provider';
 import { SmartoltProvider }         from './providers/smartolt.provider';
 import { AdminOltProvider }         from './providers/adminolt.provider';
+import { ProvisionFtthService }     from './services/provision-ftth.service';
 
 // ═══════════════════════════════════════════════════════════════════
 // OltNativoModule — ecosistema multi-proveedor OLT/ONU
@@ -122,6 +123,7 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
     OltNativoService,
     OltMonitoreoService,
     FirmwareService,
+    ProvisionFtthService,
   ],
   // Solo exports que módulos externos realmente consumen
   exports: [
@@ -130,6 +132,7 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
     OltAutomationClient,    // acceso Python directo si se necesita desde otro módulo
     CircuitBreakerService,  // reset manual desde endpoints de administración
     OltProviderRegistry,    // diagnóstico y listado de proveedores disponibles
+    ProvisionFtthService,   // aprovisionamiento FTTH bifásico
   ],
 })
 export class OltNativoModule {}

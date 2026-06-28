@@ -18,6 +18,14 @@ import {
   PythonDiscoverResponse,
   PythonFirmwareJobStatus,
   PythonFirmwareUpgradeRequest,
+  PythonFtthGponRequest,
+  PythonFtthGponResponse,
+  PythonFtthPollRequest,
+  PythonFtthPollResponse,
+  PythonFtthRollbackRequest,
+  PythonFtthRollbackResponse,
+  PythonFtthWanPppoeRequest,
+  PythonFtthWanResponse,
   PythonListProfilesRequest,
   PythonListProfilesResponse,
   PythonMetricsResponse,
@@ -231,6 +239,68 @@ export class OltAutomationClient {
     );
     const res = await this.post<PythonOntVersionResponse>('/api/v1/olt/ont-version', payload);
     this.logger.log(`← Python ont-version | success=${res.success} sw=${res.software_version}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — Fase 1: registrar ONU GPON en la OLT
+  // ────────────────────────────────────────────────────────────
+  async ftthProvisionGpon(payload: PythonFtthGponRequest): Promise<PythonFtthGponResponse> {
+    this.logger.log(
+      `→ Python ftth/provision-gpon | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} sn=${payload.sn}`,
+    );
+    const res = await this.post<PythonFtthGponResponse>(
+      '/api/v1/olt/ftth/provision-gpon', payload, 60_000,
+    );
+    this.logger.log(`← ftth/provision-gpon | success=${res.success}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — Rollback GPON (eliminar ont + service-port)
+  // ────────────────────────────────────────────────────────────
+  async ftthRollbackGpon(payload: PythonFtthRollbackRequest): Promise<PythonFtthRollbackResponse> {
+    this.logger.log(
+      `→ Python ftth/rollback-gpon | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
+    );
+    const res = await this.post<PythonFtthRollbackResponse>(
+      '/api/v1/olt/ftth/rollback-gpon', payload, 30_000,
+    );
+    this.logger.log(`← ftth/rollback-gpon | success=${res.success}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — Fase 1b: esperar ONU online
+  // ────────────────────────────────────────────────────────────
+  async ftthPollOnline(payload: PythonFtthPollRequest): Promise<PythonFtthPollResponse> {
+    this.logger.log(
+      `→ Python ftth/poll-online | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} max_wait=${payload.max_wait}s`,
+    );
+    const res = await this.post<PythonFtthPollResponse>(
+      '/api/v1/olt/ftth/poll-online', payload, (payload.max_wait + 15) * 1_000,
+    );
+    this.logger.log(
+      `← ftth/poll-online | success=${res.success} run_state=${res.run_state} timeout=${res.timeout}`,
+    );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — Fase 2: inyectar config PPPoE vía OMCI
+  // ────────────────────────────────────────────────────────────
+  async ftthInjectWanPppoe(payload: PythonFtthWanPppoeRequest): Promise<PythonFtthWanResponse> {
+    this.logger.log(
+      `→ Python ftth/inject-wan-pppoe | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
+    );
+    const res = await this.post<PythonFtthWanResponse>(
+      '/api/v1/olt/ftth/inject-wan-pppoe', payload, 30_000,
+    );
+    this.logger.log(`← ftth/inject-wan-pppoe | success=${res.success}`);
     return res;
   }
 

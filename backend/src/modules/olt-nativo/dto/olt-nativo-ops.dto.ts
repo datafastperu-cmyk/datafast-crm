@@ -578,6 +578,74 @@ export interface PythonOntVersionResponse {
   error?:           string;
 }
 
+// ─── FTTH Two-Phase Provisioning ─────────────────────────────
+
+export interface PythonFtthGponRequest {
+  connection:      PythonConnectionPayload;
+  frame:           number;
+  slot:            number;
+  port:            number;
+  onu_id:          number;
+  sn:              string;
+  service_port_id: number;
+  vlan:            number;
+  lineprofile_id:  number;
+  srvprofile_id:   number;
+  description?:    string | null;
+}
+
+export interface PythonFtthGponResponse {
+  success: boolean;
+  sn?:     string | null;
+  olt_ip?: string | null;
+  error?:  string;
+}
+
+export interface PythonFtthRollbackRequest {
+  connection:      PythonConnectionPayload;
+  slot:            number;
+  port:            number;
+  onu_id:          number;
+  service_port_id: number | null;
+}
+
+export interface PythonFtthRollbackResponse {
+  success: boolean;
+  error?:  string;
+}
+
+export interface PythonFtthPollRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+  port:       number;
+  onu_id:     number;
+  max_wait:   number;
+}
+
+export interface PythonFtthPollResponse {
+  success:    boolean;
+  run_state?: string | null;
+  timeout:    boolean;
+  error?:     string;
+}
+
+export interface PythonFtthWanPppoeRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+  port:       number;
+  onu_id:     number;
+  vlan:       number;
+  username:   string;
+  password:   string;
+}
+
+export interface PythonFtthWanResponse {
+  success: boolean;
+  olt_ip?: string | null;
+  onu_id?: number | null;
+  error?:  string;
+}
+
 export interface OltConProveedorPrincipal {
   id:                 string;
   nombre:             string;
