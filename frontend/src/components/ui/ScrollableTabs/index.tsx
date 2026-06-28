@@ -25,10 +25,10 @@ export function ScrollableTabs({ children, className }: ScrollableTabsProps) {
   }, []);
 
   return (
-    <div className="relative">
+    <div className="relative flex-1 min-w-0">
       <div
         ref={ref}
-        className={cn('overflow-x-auto scrollbar-none', className)}
+        className={cn('overflow-x-auto scrollbar-none flex', className)}
       >
         {children}
       </div>
