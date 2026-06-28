@@ -1620,9 +1620,9 @@ function ServicioPanel({
     setValue('ipManual',   '');
   }, [tipoControlVal]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!segmentoId || !segmentoCambio) return;
+    if (!segmentoId || !necesitaIp) return;
     if (nextIp !== undefined) setValue('ipManual', nextIp ?? '');
-  }, [segmentoId, nextIp]);
+  }, [segmentoId, nextIp, necesitaIp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const planSel = (planes as any[]).find((p: any) => p.id === planId);
 

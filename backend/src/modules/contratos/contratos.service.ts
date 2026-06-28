@@ -288,6 +288,33 @@ export class ContratosService {
       } finally {
         await qr.release();
       }
+    } else if (dto.segmentoId && !existing.ipAsignada) {
+      // Mismo segmento pero contrato sin IP asignada → asignación inicial
+      const qr = this.dataSource.createQueryRunner();
+      await qr.connect();
+      await qr.startTransaction();
+      try {
+        newIp = dto.ipManual?.trim()
+          ? dto.ipManual.trim()
+          : await this.calcularNextIpDesdePool(qr, dto.segmentoId, user.empresaId);
+
+        await qr.manager.save(
+          qr.manager.create(IpAsignada, {
+            empresaId:  user.empresaId,
+            segmentoId: dto.segmentoId,
+            contratoId: id,
+            ipAddress:  newIp,
+            tipo:       'cliente',
+            activa:     true,
+          }),
+        );
+        await qr.commitTransaction();
+      } catch (err) {
+        await qr.rollbackTransaction();
+        throw err;
+      } finally {
+        await qr.release();
+      }
     }
 
     // ── Actualizar campos en BD ─────────────────────────────────
