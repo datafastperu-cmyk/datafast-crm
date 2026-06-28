@@ -2102,3 +2102,220 @@ def test_olt_connection(conn: OltConnectionSchema) -> dict[str, Any]:
         latency_ms = int((_time_read.monotonic() - t0) * 1000)
         logger.warning('test_olt_connection error | %s: %s', conn.ip, exc)
         return {'success': False, 'latency_ms': latency_ms, 'error': str(exc)}
+
+
+# ── FTTH Two-Phase Provisioning ───────────────────────────────
+#
+# Fase 1: provision_gpon_ftth   — ont add + service-port (sin WAN config)
+# Fase 1r: rollback_gpon        — undo service-port + undo ont add
+# Fase 1b: poll_onu_online      — espera que la ONU aparezca online (max 90s)
+# Fase 2: inject_wan_pppoe      — ont wan-config add vía OMCI (PPPoE client en ONU)
+#
+# Todas usan _paramiko_huawei_run (bypass Netmiko session_preparation).
+# ─────────────────────────────────────────────────────────────
+
+
+def provision_gpon_ftth(
+    conn:           OltConnectionSchema,
+    frame:          int,
+    slot:           int,
+    port:           int,
+    onu_id:         int,
+    sn:             str,
+    service_port_id: int,
+    vlan:           int,
+    lineprofile_id: int,
+    srvprofile_id:  int,
+    description:    str | None = None,
+) -> dict[str, Any]:
+    """
+    Fase 1 del aprovisionamiento FTTH nativo.
+    Registra la ONU en la OLT con lineprofile/srvprofile y crea el service-port.
+    NO configura WAN — eso es responsabilidad de inject_wan_pppoe (Fase 2).
+
+    Usa Paramiko directo para evitar el prompt de confirmación { <cr>||<K> }: del MA5800.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    logger.info(
+        'provision_gpon_ftth: OLT=%s slot=%d port=%d onu_id=%d sn=%s vlan=%d',
+        conn.ip, slot, port, onu_id, sn, vlan,
+    )
+
+    desc_part = f' desc "{description}"' if description else ''
+    cmds = [
+        f'config',
+        f'interface gpon 0/{slot}',
+        (
+            f'ont add {port} {onu_id} sn-auth {sn} omci '
+            f'ont-lineprofile-id {lineprofile_id} '
+            f'ont-srvprofile-id {srvprofile_id}'
+            f'{desc_part}'
+        ),
+        'quit',
+        (
+            f'service-port {service_port_id} vlan {vlan} '
+            f'gpon 0/{slot}/{port} ont {onu_id} gemport 1 '
+            f'user-vlan {vlan} '
+            f'inbound traffic-table index 0 '
+            f'outbound traffic-table index 0'
+        ),
+        'save',
+    ]
+
+    try:
+        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+    except ProvisioningError:
+        raise
+    except Exception as exc:
+        raise ProvisioningError(
+            f'provision_gpon_ftth falló en {conn.ip}: {exc}'
+        ) from exc
+
+    # Detectar errores conocidos de la CLI Huawei en la salida
+    error_patterns = [
+        'Error:', 'Failure:', 'ont add failed', 'service-port failed',
+        'already exists', 'ONT already',
+    ]
+    for pat in error_patterns:
+        if pat.lower() in raw.lower():
+            raise ProvisioningError(
+                f'CLI Huawei reportó error en {conn.ip}: '
+                + next(l for l in raw.splitlines() if pat.lower() in l.lower())
+            )
+
+    logger.info('provision_gpon_ftth OK | OLT=%s sn=%s service_port=%d', conn.ip, sn, service_port_id)
+    return {'success': True, 'sn': sn, 'olt_ip': conn.ip}
+
+
+def rollback_gpon(
+    conn:           OltConnectionSchema,
+    slot:           int,
+    port:           int,
+    onu_id:         int,
+    service_port_id: int | None,
+) -> dict[str, Any]:
+    """
+    Rollback de Fase 1: elimina el service-port y el ont add de la OLT.
+    Se ejecuta automáticamente si provision_gpon_ftth falla, y manualmente
+    cuando el operador desprovisionó un contrato FTTH.
+
+    No propaga excepciones — si el rollback también falla, lo registra y retorna
+    success=False para que el sistema lo marque como requiere_intervencion_manual.
+    """
+    logger.info(
+        'rollback_gpon: OLT=%s slot=%d port=%d onu_id=%d', conn.ip, slot, port, onu_id,
+    )
+    cmds: list[str] = []
+    if service_port_id is not None:
+        cmds += ['config', f'undo service-port {service_port_id}']
+    cmds += [
+        'config',
+        f'interface gpon 0/{slot}',
+        f'ont delete {port} {onu_id}',
+        'quit',
+        'save',
+    ]
+    try:
+        _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+        logger.info('rollback_gpon OK | OLT=%s onu_id=%d', conn.ip, onu_id)
+        return {'success': True}
+    except Exception as exc:
+        logger.error('rollback_gpon FALLO | OLT=%s: %s', conn.ip, exc)
+        return {'success': False, 'error': str(exc)}
+
+
+def poll_onu_online(
+    conn:     OltConnectionSchema,
+    slot:     int,
+    port:     int,
+    onu_id:   int,
+    max_wait: int = 90,
+    interval: int = 5,
+) -> dict[str, Any]:
+    """
+    Fase 1b: consulta display ont info 0/{slot}/{port} ont {onu_id} cada {interval}s
+    hasta que el run-state sea 'online' o se agote max_wait.
+
+    Retorna success=True + run_state cuando la ONU sube,
+    o success=False + timeout=True si no responde en max_wait segundos.
+    """
+    logger.info(
+        'poll_onu_online: OLT=%s slot=%d port=%d onu_id=%d max=%ds',
+        conn.ip, slot, port, onu_id, max_wait,
+    )
+    cmd    = f'display ont info 0/{slot}/{port} {onu_id}'
+    t_end  = _time_read.monotonic() + max_wait
+
+    while _time_read.monotonic() < t_end:
+        try:
+            raw = _paramiko_huawei_run(conn, [cmd], timeout=20)
+        except ProvisioningError as exc:
+            logger.warning('poll_onu_online query error: %s', exc)
+            _time_read.sleep(interval)
+            continue
+
+        for line in raw.splitlines():
+            low = line.lower()
+            if 'run state' in low or 'run-state' in low:
+                if 'online' in low:
+                    logger.info('poll_onu_online: ONU online | OLT=%s onu_id=%d', conn.ip, onu_id)
+                    return {'success': True, 'run_state': 'online'}
+                if any(s in low for s in ('offline', 'dying-gasp', 'los')):
+                    logger.info('poll_onu_online: ONU %s | OLT=%s', low.split()[-1], conn.ip)
+
+        _time_read.sleep(interval)
+
+    logger.warning('poll_onu_online: timeout %ds | OLT=%s onu_id=%d', max_wait, conn.ip, onu_id)
+    return {'success': False, 'timeout': True, 'run_state': 'unknown'}
+
+
+def inject_wan_pppoe(
+    conn:     OltConnectionSchema,
+    slot:     int,
+    port:     int,
+    onu_id:   int,
+    vlan:     int,
+    username: str,
+    password: str,
+) -> dict[str, Any]:
+    """
+    Fase 2: inyecta la configuración WAN PPPoE en la ONU vía OMCI desde la OLT.
+    El CLI del MA5800 envía los parámetros a la ONU mediante OMCI sin necesidad
+    de acceder directamente al dispositivo del cliente.
+
+    Requiere que la ONU esté online (ejecutar poll_onu_online primero).
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    logger.info(
+        'inject_wan_pppoe: OLT=%s slot=%d port=%d onu_id=%d vlan=%d user=%s',
+        conn.ip, slot, port, onu_id, vlan, username,
+    )
+    cmds = [
+        'config',
+        f'interface gpon 0/{slot}',
+        (
+            f'ont wan-config add {port} {onu_id} '
+            f'wan-type internet service-name INTERNET '
+            f'user-type pppoe vlan-mode mode-vlan vlan-id {vlan} '
+            f'username {username} password {password}'
+        ),
+        'quit',
+        'save',
+    ]
+    try:
+        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+    except ProvisioningError:
+        raise
+    except Exception as exc:
+        raise ProvisioningError(f'inject_wan_pppoe falló en {conn.ip}: {exc}') from exc
+
+    error_patterns = ['Error:', 'Failure:', 'wan-config failed', 'Command not found']
+    for pat in error_patterns:
+        if pat.lower() in raw.lower():
+            raise ProvisioningError(
+                f'CLI Huawei reportó error en WAN config {conn.ip}: '
+                + next((l for l in raw.splitlines() if pat.lower() in l.lower()), pat)
+            )
+
+    logger.info('inject_wan_pppoe OK | OLT=%s onu_id=%d user=%s', conn.ip, onu_id, username)
+    return {'success': True, 'olt_ip': conn.ip, 'onu_id': onu_id}

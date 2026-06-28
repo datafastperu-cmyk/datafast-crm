@@ -343,3 +343,75 @@ class OntVersionResponse(BaseModel):
     software_version: str | None = None
     equipment_id:     str | None = None
     error:            str | None = None
+
+
+# ─── FTTH Two-Phase Provisioning ─────────────────────────────
+
+class FtthGponRequest(BaseModel):
+    """Fase 1 del aprovisionamiento FTTH: registrar ONU en la OLT (GPON)."""
+    connection:      OltConnectionSchema
+    frame:           int = Field(0, ge=0, le=7)
+    slot:            int = Field(..., ge=0, le=15)
+    port:            int = Field(..., ge=0, le=15)
+    onu_id:          int = Field(..., ge=1, le=128)
+    sn:              str = Field(..., min_length=12, max_length=16)
+    service_port_id: int = Field(..., ge=1)
+    vlan:            int = Field(..., ge=1, le=4094)
+    lineprofile_id:  int = Field(..., ge=1)
+    srvprofile_id:   int = Field(..., ge=1)
+    description:     str | None = Field(None, max_length=64)
+
+
+class FtthGponResponse(BaseModel):
+    success: bool
+    sn:      str | None = None
+    olt_ip:  str | None = None
+    error:   str | None = None
+
+
+class FtthRollbackRequest(BaseModel):
+    """Deshacer el registro GPON de una ONU en la OLT."""
+    connection:      OltConnectionSchema
+    slot:            int = Field(..., ge=0, le=15)
+    port:            int = Field(..., ge=0, le=15)
+    onu_id:          int = Field(..., ge=1, le=128)
+    service_port_id: int | None = Field(None, ge=1)
+
+
+class FtthRollbackResponse(BaseModel):
+    success: bool
+    error:   str | None = None
+
+
+class FtthPollRequest(BaseModel):
+    """Fase 1b: esperar que la ONU aparezca online tras el registro GPON."""
+    connection: OltConnectionSchema
+    slot:       int = Field(..., ge=0, le=15)
+    port:       int = Field(..., ge=0, le=15)
+    onu_id:     int = Field(..., ge=1, le=128)
+    max_wait:   int = Field(90, ge=10, le=180)
+
+
+class FtthPollResponse(BaseModel):
+    success:   bool
+    run_state: str | None = None
+    timeout:   bool = False
+    error:     str | None = None
+
+
+class FtthWanPppoeRequest(BaseModel):
+    """Fase 2: inyectar configuración PPPoE en la ONU vía OMCI desde la OLT."""
+    connection: OltConnectionSchema
+    slot:       int = Field(..., ge=0, le=15)
+    port:       int = Field(..., ge=0, le=15)
+    onu_id:     int = Field(..., ge=1, le=128)
+    vlan:       int = Field(..., ge=1, le=4094)
+    username:   str = Field(..., min_length=1, max_length=64)
+    password:   str = Field(..., min_length=1, max_length=64)
+
+
+class FtthWanResponse(BaseModel):
+    success: bool
+    olt_ip:  str | None = None
+    onu_id:  int | None = None
+    error:   str | None = None
