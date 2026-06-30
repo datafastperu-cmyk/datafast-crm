@@ -39,6 +39,11 @@ export class ReinjectarWanDto {
   @IsUUID('4') contratoId: string;
 }
 
+export class CambiarVelocidadDto {
+  @IsUUID('4') contratoId:    string;
+  @IsInt() @Min(0) @Type(() => Number) trafficIndex: number;
+}
+
 export class DesaprovisionarFtthDto {
   @IsUUID('4') contratoId: string;
 }
@@ -703,5 +708,63 @@ export class ProvisionFtthService {
     await this.ftthRepo.update(registro.id, { estado: FtthOnuEstado.ACTIVO });
     this.logger.log(`FTTH rehabilitado | contrato=${contratoId} sn=${registro.sn}`);
     return { exitoso: true, mensaje: `ONU ${registro.sn} rehabilitada correctamente.` };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // cambiarVelocidad — actualiza traffic-table del service-port en caliente
+  // ────────────────────────────────────────────────────────────
+  async cambiarVelocidad(
+    oltId:     string,
+    empresaId: string,
+    dto:       CambiarVelocidadDto,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+
+    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId } });
+    if (!registro) {
+      throw new NotFoundException(`No hay registro FTTH para el contrato ${dto.contratoId}.`);
+    }
+    if (registro.estado !== FtthOnuEstado.ACTIVO && registro.estado !== FtthOnuEstado.SUSPENDIDO) {
+      throw new BadRequestException(
+        `Solo se puede cambiar la velocidad desde los estados "activo" o "suspendido". ` +
+        `Estado actual: "${registro.estado}".`,
+      );
+    }
+    if (registro.servicePortId == null) {
+      throw new BadRequestException('El registro FTTH no tiene service-port asignado.');
+    }
+
+    const olt      = await this._fetchOlt(oltId, empresaId);
+    const password = this._decryptOltPassword(olt);
+    const conn     = this._buildConn(olt, password);
+
+    let exitoso = false;
+    let error: string | undefined;
+    try {
+      const res = await this.automation.ftthChangeLineprofile({
+        connection:      conn,
+        slot:            registro.slot,
+        port:            registro.port,
+        onu_id:          registro.onuId,
+        service_port_id: registro.servicePortId,
+        traffic_index:   dto.trafficIndex,
+      });
+      exitoso = res.success;
+      error   = res.error;
+    } catch (err: any) {
+      error = err.message;
+      this.logger.error(`FTTH cambiarVelocidad SSH falló | contrato=${dto.contratoId} error=${err.message}`);
+    }
+
+    if (!exitoso) {
+      return { exitoso: false, mensaje: 'No se pudo cambiar la velocidad en la OLT.', error };
+    }
+
+    this.logger.log(
+      `FTTH velocidad cambiada | contrato=${dto.contratoId} sn=${registro.sn} traffic_index=${dto.trafficIndex}`,
+    );
+    return {
+      exitoso: true,
+      mensaje: `Velocidad actualizada correctamente. Traffic-table: ${dto.trafficIndex}.`,
+    };
   }
 }

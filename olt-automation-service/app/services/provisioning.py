@@ -2321,6 +2321,66 @@ def inject_wan_pppoe(
     return {'success': True, 'olt_ip': conn.ip, 'onu_id': onu_id}
 
 
+# ── Cambio de velocidad en caliente ───────────────────────────
+
+def change_lineprofile(
+    conn:            OltConnectionSchema,
+    slot:            int,
+    port:            int,
+    onu_id:          int,
+    service_port_id: int,
+    traffic_index:   int,
+) -> dict[str, Any]:
+    """
+    Cambia la velocidad de una ONU Huawei MA5800 en caliente modificando
+    el traffic-table vinculado al service-port.
+
+    NO cambia el ont-lineprofile (afectaría todas las ONUs del perfil).
+    Solo actualiza el inbound/outbound del service-port específico.
+
+    CLI:
+      config
+      service-port <id> traffic-table index <traffic_index> inbound traffic-table index <traffic_index>
+
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(
+            f'Cambio de velocidad en caliente no implementado para marca "{conn.brand.value}".'
+        )
+    logger.info(
+        'change_lineprofile: OLT=%s slot=%d port=%d onu_id=%d sp=%d traffic_idx=%d',
+        conn.ip, slot, port, onu_id, service_port_id, traffic_index,
+    )
+    cmds = [
+        'config',
+        (
+            f'service-port {service_port_id} '
+            f'traffic-table index {traffic_index} '
+            f'inbound traffic-table index {traffic_index}'
+        ),
+        'save',
+    ]
+    try:
+        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+    except ProvisioningError:
+        raise
+    except Exception as exc:
+        raise ProvisioningError(f'change_lineprofile falló en {conn.ip}: {exc}') from exc
+
+    _check_cli_error(conn.brand, 'change_lineprofile', raw)
+    logger.info(
+        'change_lineprofile OK | OLT=%s sp=%d traffic_index=%d',
+        conn.ip, service_port_id, traffic_index,
+    )
+    return {
+        'success':         True,
+        'message':         f'Velocidad actualizada: service-port={service_port_id} traffic-table={traffic_index}',
+        'service_port_id': service_port_id,
+        'traffic_index':   traffic_index,
+    }
+
+
 # ── Suspensión / Rehabilitación por service-port ──────────────
 
 def suspend_onu(

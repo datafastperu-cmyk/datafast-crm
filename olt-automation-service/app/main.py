@@ -51,6 +51,8 @@ from app.schemas.olt import (
     OntSuspendRequest,
     OntRehabilitateRequest,
     OntSuspendResponse,
+    ChangeLineprofileRequest,
+    ChangeLineprofileResponse,
 )
 from app.services.connection_pool import connection_pool
 from app.services.provisioning import (
@@ -70,6 +72,7 @@ from app.services.provisioning import (
     provision_onu,
     reset_huawei_onu,
     rollback_gpon,
+    change_lineprofile,
     suspend_onu,
     rehabilitate_onu,
     test_olt_connection,
@@ -704,3 +707,28 @@ async def ftth_rehabilitate_onu(body: OntRehabilitateRequest) -> OntSuspendRespo
         except ProvisioningError as exc:
             return OntSuspendResponse(success=False, message='Error al rehabilitar ONU', error=str(exc))
     return OntSuspendResponse(success=True, message=result['message'])
+
+
+@app.post(
+    '/api/v1/olt/ftth/change-lineprofile',
+    response_model=ChangeLineprofileResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Cambiar velocidad en caliente: actualiza traffic-table del service-port sin re-aprovisionar',
+)
+async def ftth_change_lineprofile(body: ChangeLineprofileRequest) -> ChangeLineprofileResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                change_lineprofile,
+                body.connection,
+                body.slot, body.port, body.onu_id, body.service_port_id, body.traffic_index,
+            )
+        except ProvisioningError as exc:
+            return ChangeLineprofileResponse(success=False, message='Error al cambiar velocidad', error=str(exc))
+    return ChangeLineprofileResponse(
+        success       = True,
+        message       = result['message'],
+        traffic_index = result['traffic_index'],
+    )

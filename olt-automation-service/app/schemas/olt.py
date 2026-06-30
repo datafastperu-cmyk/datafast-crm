@@ -417,6 +417,26 @@ class FtthWanResponse(BaseModel):
     error:   str | None = None
 
 
+# ─── Cambio de velocidad en caliente ─────────────────────────
+
+class ChangeLineprofileRequest(BaseModel):
+    """Cambia el traffic-table del service-port para modificar velocidad sin re-aprovisionar."""
+    connection:      OltConnectionSchema
+    slot:            int = Field(..., ge=0, le=15)
+    port:            int = Field(..., ge=0, le=15)
+    onu_id:          int = Field(..., ge=1, le=128)
+    service_port_id: int = Field(..., ge=1)
+    traffic_index:   int = Field(..., ge=0,
+                                 description='Índice del traffic-table de la OLT con la nueva velocidad.')
+
+
+class ChangeLineprofileResponse(BaseModel):
+    success:       bool
+    message:       str
+    traffic_index: int | None = None
+    error:         str | None = None
+
+
 # ─── Suspensión / Rehabilitación por service-port ─────────────
 
 class OntSuspendRequest(BaseModel):

@@ -16,6 +16,7 @@ import {
   type FtthOnuEstado,
   type OltPerfilesResult,
   type OltVlan,
+  type OltTrafficTable,
 } from '@/lib/api/olt-nativo';
 import type { Contrato } from '@/types';
 import { Portal } from '@/components/ui/portal';
@@ -46,7 +47,7 @@ function EstadoBadge({ estado }: { estado: FtthOnuEstado }) {
 
 // ─── Estado panel ─────────────────────────────────────────────
 
-function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando }: {
+function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando, trafficTables, onCambiarVelocidad, isCambiandoVelocidad }: {
   registro: FtthOnuRegistro;
   onReinject: () => void;
   isReinjectPending: boolean;
@@ -56,7 +57,11 @@ function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisiona
   isSuspendiendo: boolean;
   onRehabiliitar: () => void;
   isRehabilitando: boolean;
+  trafficTables: OltTrafficTable[];
+  onCambiarVelocidad: (trafficIndex: number) => void;
+  isCambiandoVelocidad: boolean;
 }) {
+  const [nuevoTrafficIndex, setNuevoTrafficIndex] = useState('');
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -90,6 +95,37 @@ function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisiona
           {isReinjectPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
           Re-inyectar WAN PPPoE
         </button>
+      )}
+      {(registro.estado === 'activo' || registro.estado === 'suspendido') && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Cambiar Velocidad</p>
+          <div className="flex gap-2">
+            {trafficTables.length > 0 ? (
+              <div className="relative flex-1">
+                <select value={nuevoTrafficIndex} onChange={e => setNuevoTrafficIndex(e.target.value)}
+                  className="w-full text-xs rounded-lg border border-input bg-background px-2.5 py-1.5 appearance-none pr-7">
+                  <option value="">— Traffic Table —</option>
+                  {trafficTables.map(t => (
+                    <option key={t.id} value={t.trafficId}>{t.trafficId} — {t.nombre}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+            ) : (
+              <input
+                type="number" value={nuevoTrafficIndex} onChange={e => setNuevoTrafficIndex(e.target.value)}
+                min={0} placeholder="Traffic index" className="flex-1 text-xs rounded-lg border border-input bg-background px-2.5 py-1.5"
+              />
+            )}
+            <button
+              onClick={() => { if (nuevoTrafficIndex !== '') onCambiarVelocidad(parseInt(nuevoTrafficIndex)); }}
+              disabled={isCambiandoVelocidad || nuevoTrafficIndex === ''}
+              className="px-3 py-1.5 rounded-lg border border-blue-700/50 bg-blue-500/5 text-blue-700 dark:text-blue-400 text-xs font-semibold hover:bg-blue-500/15 transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              {isCambiandoVelocidad ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Aplicar'}
+            </button>
+          </div>
+        </div>
       )}
       {registro.estado === 'activo' && (
         <button
@@ -187,6 +223,16 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     queryKey:  ['olt-vlans', selectedOltId],
     queryFn:   () => oltNativoApi.listarVlans(selectedOltId),
     enabled:   !!selectedOltId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  // Traffic tables para cambio de velocidad en caliente (Phase 5)
+  const oltIdParaTraffic = selectedOltId || estadoExistente?.oltId || '';
+  const { data: trafficTables = [] } = useQuery<OltTrafficTable[]>({
+    queryKey:  ['olt-traffic-tables', oltIdParaTraffic],
+    queryFn:   () => oltNativoApi.listarTrafficTables(oltIdParaTraffic),
+    enabled:   !!oltIdParaTraffic,
     staleTime: 5 * 60_000,
     retry: false,
   });
@@ -329,6 +375,27 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     },
   });
 
+  // Cambiar velocidad mutation
+  const { mutate: cambiarVelocidad, isPending: cambiandoVelocidad } = useMutation({
+    mutationFn: (trafficIndex: number) => oltNativoApi.ftthCambiarVelocidad(
+      selectedOltId || (estadoExistente?.oltId ?? ''),
+      contrato.id,
+      trafficIndex,
+    ),
+    onSuccess: (res) => {
+      if (res.exitoso) {
+        toast('Velocidad actualizada correctamente', { type: 'success' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+      } else {
+        toast(res.error ?? res.mensaje ?? 'No se pudo cambiar la velocidad', { type: 'error' });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast(msg ?? 'Error al cambiar la velocidad', { type: 'error' });
+    },
+  });
+
   // Provision mutation
   const { mutate: provisionar, isPending: provIsPending } = useMutation({
     mutationFn: () => oltNativoApi.ftthProvision(selectedOltId, {
@@ -405,6 +472,9 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   isSuspendiendo={suspendiendo}
                   onRehabiliitar={() => rehabilitar()}
                   isRehabilitando={rehabilitando}
+                  trafficTables={trafficTables}
+                  onCambiarVelocidad={(idx) => cambiarVelocidad(idx)}
+                  isCambiandoVelocidad={cambiandoVelocidad}
                 />
                 {yaActivo && (
                   <div className="flex items-center gap-2 mt-3 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-700/30">

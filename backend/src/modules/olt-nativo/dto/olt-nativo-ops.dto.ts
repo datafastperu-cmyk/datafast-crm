@@ -660,6 +660,22 @@ export interface PythonOntSuspendResponse {
   error?:  string;
 }
 
+export interface PythonChangeLineprofileRequest {
+  connection:      PythonConnectionPayload;
+  slot:            number;
+  port:            number;
+  onu_id:          number;
+  service_port_id: number;
+  traffic_index:   number;
+}
+
+export interface PythonChangeLineprofileResponse {
+  success:       boolean;
+  message:       string;
+  traffic_index: number | null;
+  error?:        string;
+}
+
 export interface OltConProveedorPrincipal {
   id:                 string;
   nombre:             string;

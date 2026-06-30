@@ -41,6 +41,8 @@ import {
   PythonVerifyOnuResponse,
   PythonOntSuspendRequest,
   PythonOntSuspendResponse,
+  PythonChangeLineprofileRequest,
+  PythonChangeLineprofileResponse,
 } from './dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -316,6 +318,16 @@ export class OltAutomationClient {
     );
     const res = await this.post<PythonOntSuspendResponse>('/api/v1/olt/ftth/suspend', payload, 30_000);
     this.logger.log(`← ftth/suspend | success=${res.success}`);
+    return res;
+  }
+
+  async ftthChangeLineprofile(payload: PythonChangeLineprofileRequest): Promise<PythonChangeLineprofileResponse> {
+    this.logger.log(
+      `→ Python ftth/change-lineprofile | OLT=${payload.connection.ip} ` +
+      `sp=${payload.service_port_id} traffic_index=${payload.traffic_index}`,
+    );
+    const res = await this.post<PythonChangeLineprofileResponse>('/api/v1/olt/ftth/change-lineprofile', payload, 30_000);
+    this.logger.log(`← ftth/change-lineprofile | success=${res.success}`);
     return res;
   }
 

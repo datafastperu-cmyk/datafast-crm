@@ -16,6 +16,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { OltNativoService }        from './olt-nativo.service';
 import { FirmwareService }         from './firmware.service';
 import {
+  CambiarVelocidadDto,
   DesaprovisionarFtthDto,
   FtthProvisionResult,
   ProvisionarFtthDto,
@@ -621,6 +622,18 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
     return this.ftth.desaprovisionar(oltId, user.empresaId, dto);
+  }
+
+  @Post(':oltId/ftth/cambiar-velocidad')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cambiar velocidad ONU en caliente — actualiza traffic-table del service-port' })
+  @ApiParam({ name: 'oltId' })
+  async cambiarVelocidadFtth(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: CambiarVelocidadDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+    return this.ftth.cambiarVelocidad(oltId, user.empresaId, dto);
   }
 
   @Post(':oltId/ftth/suspender')

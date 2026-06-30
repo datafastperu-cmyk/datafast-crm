@@ -618,6 +618,18 @@ export const oltNativoApi = {
 
   // ─── VLANs ───────────────────────────────────────────────────
 
+  ftthCambiarVelocidad: async (
+    oltId: string,
+    contratoId: string,
+    trafficIndex: number,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
+    const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
+      `/olt-nativo/${oltId}/ftth/cambiar-velocidad`,
+      { contratoId, trafficIndex },
+    );
+    return res.data.data;
+  },
+
   ftthSuspender: async (
     oltId: string,
     contratoId: string,
