@@ -783,6 +783,27 @@ export const oltNativoApi = {
 
   // ── Wizard agregar OLT nativa SSH ──────────────────────────────
 
+  // ── Health dashboard ───────────────────────────────────────
+  healthBoards: async (oltId: string): Promise<Array<{
+    slot: number; boardType: string | null; boardState: string | null;
+    onuCapacity: number | null; onusOnline: number | null;
+    onusOffline: number | null; onusTotal: number | null;
+    capturedAt: string;
+  }>> => {
+    const res = await api.get<ApiRespuesta<any[]>>(`/olt-nativo/${oltId}/health/boards`);
+    return res.data.data ?? [];
+  },
+
+  healthPom: async (oltId: string): Promise<Array<{
+    slot: number; port: number;
+    tempCelsius: number | null; txDbm: number | null; rxDbm: number | null;
+    voltageMv: number | null; laserMa: number | null;
+    pomState: string | null; capturedAt: string;
+  }>> => {
+    const res = await api.get<ApiRespuesta<any[]>>(`/olt-nativo/${oltId}/health/pom`);
+    return res.data.data ?? [];
+  },
+
   wizardTopologia: async (params: {
     ip: string; puerto: number; usuario: string; contrasena: string; marca: string;
   }): Promise<WizardTopologyResponse> => {

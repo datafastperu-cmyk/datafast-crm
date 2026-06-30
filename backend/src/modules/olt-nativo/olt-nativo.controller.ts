@@ -24,6 +24,7 @@ import {
   ReinjectarWanDto,
 } from './services/provision-ftth.service';
 import { WizardCommitDto } from './dto/olt-nativo-ops.dto';
+import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
 import {
   ConfigurarPoolDto,
   EstadoPool,
@@ -55,13 +56,14 @@ import { CreateOltDispositivoDto, UpdateOltDispositivoDto } from './dto/olt-disp
 export class OltNativoController {
 
   constructor(
-    private readonly service:   OltNativoService,
-    private readonly firmware:  FirmwareService,
-    private readonly ftth:      ProvisionFtthService,
-    private readonly pool:      OltServicePortPoolService,
+    private readonly service:       OltNativoService,
+    private readonly firmware:      FirmwareService,
+    private readonly ftth:          ProvisionFtthService,
+    private readonly pool:          OltServicePortPoolService,
     private readonly onuIdPool:     OltOnuIdPoolService,
     private readonly oltVlans:      OltVlanService,
     private readonly trafficTables: OltTrafficTableService,
+    private readonly healthDash:    OltHealthDashboardService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -464,6 +466,27 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.topologiaBoard(oltId, user.empresaId);
+  }
+
+  // ── Health dashboard — snapshots almacenados en BD ─────────────
+  @Get(':oltId/health/boards')
+  @ApiOperation({ summary: 'Últimos snapshots de boards almacenados (cron 5min)' })
+  @ApiParam({ name: 'oltId' })
+  async healthBoards(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.healthDash.latestBoards(oltId, user.empresaId);
+  }
+
+  @Get(':oltId/health/pom')
+  @ApiOperation({ summary: 'Últimos snapshots POM almacenados (cron 15min)' })
+  @ApiParam({ name: 'oltId' })
+  async healthPom(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.healthDash.latestPom(oltId, user.empresaId);
   }
 
   @Get(':oltId/ont-version')

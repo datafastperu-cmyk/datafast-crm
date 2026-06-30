@@ -19,6 +19,7 @@ import { OltHealthSnapshot } from './entities/olt-health-snapshot.entity';
 import { OltAlerta }         from './entities/olt-alerta.entity';
 import { OltVlanService }         from './services/olt-vlan.service';
 import { OltTrafficTableService } from './services/olt-traffic-table.service';
+import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
 import { Onu }                 from '../smartolt/entities/onu.entity';
 import { AlertaSistema }       from '../monitoreo/entities/alerta-sistema.entity';
 import { SmartoltModule }      from '../smartolt/smartolt.module';
@@ -148,6 +149,7 @@ import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
     OltOnuIdPoolService,
     OltVlanService,
     OltTrafficTableService,
+    OltHealthDashboardService,
     FtthRecoveryCron,
     OltHealthPollerCron,
   ],
