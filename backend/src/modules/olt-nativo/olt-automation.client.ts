@@ -43,6 +43,8 @@ import {
   PythonOntSuspendResponse,
   PythonChangeLineprofileRequest,
   PythonChangeLineprofileResponse,
+  PythonWizardTopologyRequest,
+  PythonWizardTopologyResponse,
 } from './dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -338,6 +340,21 @@ export class OltAutomationClient {
     );
     const res = await this.post<PythonOntSuspendResponse>('/api/v1/olt/ftth/rehabilitate', payload, 30_000);
     this.logger.log(`← ftth/rehabilitate | success=${res.success}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Wizard: topología completa (POST /api/v1/olt/wizard/topology)
+  // Una sesión SSH — boards, VLANs, traffic tables, perfiles
+  // ────────────────────────────────────────────────────────────
+  async wizardTopologia(payload: PythonWizardTopologyRequest): Promise<PythonWizardTopologyResponse> {
+    this.logger.log(`→ Python wizard/topology | OLT=${payload.connection.ip}`);
+    const res = await this.post<PythonWizardTopologyResponse>(
+      '/api/v1/olt/wizard/topology', payload, 60_000,
+    );
+    this.logger.log(
+      `← Python wizard/topology | success=${res.success} boards=${res.boards?.length ?? 0} vlans=${res.vlans?.length ?? 0}`,
+    );
     return res;
   }
 

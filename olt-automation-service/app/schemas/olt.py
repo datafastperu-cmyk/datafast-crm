@@ -463,3 +463,36 @@ class OntSuspendResponse(BaseModel):
     success: bool
     message: str
     error:   str | None = None
+
+
+# ─── Wizard: Topología completa ───────────────────────────────
+
+class WizardVlanInfo(BaseModel):
+    vlan_id: int
+    name:    str
+
+
+class WizardBoardInfo(BaseModel):
+    slot:         int
+    board_type:   str
+    state:        str
+    onu_count:    int
+    onu_capacity: int
+    online_onus:  int = 0
+    offline_onus: int = 0
+
+
+class WizardTopologyRequest(BaseModel):
+    connection: OltConnectionSchema
+
+
+class WizardTopologyResponse(BaseModel):
+    success:          bool
+    model:            str | None = None
+    firmware_version: str | None = None
+    boards:           list[WizardBoardInfo]       = []
+    vlans:            list[WizardVlanInfo]         = []
+    traffic_tables:   list[OltTrafficTableInfo]   = []
+    line_profiles:    list[OltProfileInfo]         = []
+    service_profiles: list[OltProfileInfo]         = []
+    error:            str | None = None

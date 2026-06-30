@@ -30,8 +30,10 @@ import {
   PythonOntResetRequest,
   PythonOntVersionRequest,
   PythonProvisionRequest,
+  PythonWizardTopologyResponse,
   UpsertProveedorOltDto,
   ValidarIpResult,
+  WizardCommitDto,
 } from './dto/olt-nativo-ops.dto';
 import { CircuitBreakerService } from './services/circuit-breaker.service';
 import { CreateOltDispositivoDto, UpdateOltDispositivoDto } from './dto/olt-dispositivo.dto';
@@ -1219,6 +1221,73 @@ export class OltNativoService implements OnModuleInit {
         activo:           r.proveedor_activo as boolean,
       } : null,
     }));
+  }
+
+  // ── Wizard: topología completa ────────────────────────────────
+
+  async wizardTopologia(
+    params: { ip: string; puerto: number; usuario: string; contrasena: string; marca: string },
+  ): Promise<PythonWizardTopologyResponse> {
+    return this.automation.wizardTopologia({
+      connection: {
+        ip:       params.ip,
+        port:     params.puerto,
+        username: params.usuario,
+        password: params.contrasena,
+        brand:    params.marca.toLowerCase(),
+      },
+    });
+  }
+
+  // ── Wizard: commit atómico OLT + proveedor SSH ─────────────────
+
+  async wizardCommit(
+    empresaId: string,
+    dto: WizardCommitDto,
+  ): Promise<{ oltId: string }> {
+    this.assertNotDegraded();
+    await this._validarIpUnica(dto.ipGestion, empresaId);
+
+    const qr = this.ds.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      const contrasenaCifrada = encrypt(dto.contrasena);
+
+      const olt = this.oltRepo.create({
+        empresaId,
+        nombre:            dto.nombre,
+        marca:             dto.marca.toLowerCase() as OltMarca,
+        modelo:            dto.modelo ?? null,
+        firmware:          dto.firmware ?? null,
+        zonaId:            dto.zonaId ?? null,
+        metodoConexion:    OltMetodoConexion.NATIVO_SSH,
+        ipGestion:         dto.ipGestion,
+        puerto:            dto.puerto,
+        usuarioAnclado:    dto.usuario,
+        contrasenaCifrada,
+        activo:            true,
+      });
+      const saved = await qr.manager.save(olt);
+
+      await qr.manager.save(OltProveedorConfig, {
+        oltId:          saved.id,
+        empresaId,
+        tipo:           'nativo_ssh' as TipoProveedor,
+        prioridad:      1,
+        activo:         true,
+        circuitEstado:  'closed',
+        circuitFallas:  0,
+      });
+
+      await qr.commitTransaction();
+      return { oltId: saved.id };
+    } catch (err) {
+      await qr.rollbackTransaction();
+      throw err;
+    } finally {
+      await qr.release();
+    }
   }
 
   private async persistirMetricasOnu(

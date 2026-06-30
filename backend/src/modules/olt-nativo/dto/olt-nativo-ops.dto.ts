@@ -708,3 +708,52 @@ export interface OltConProveedorPrincipal {
     activo:           boolean;
   } | null;
 }
+
+// ─── Wizard: Topología completa ───────────────────────────────
+
+export interface PythonWizardBoardInfo {
+  slot:         number;
+  board_type:   string;
+  state:        string;
+  onu_count:    number;
+  onu_capacity: number;
+  online_onus:  number;
+  offline_onus: number;
+}
+
+export interface PythonWizardVlanInfo {
+  vlan_id: number;
+  name:    string;
+}
+
+export interface PythonWizardTopologyRequest {
+  connection: PythonConnectionPayload;
+}
+
+export interface PythonWizardTopologyResponse {
+  success:          boolean;
+  model:            string | null;
+  firmware_version: string | null;
+  boards:           PythonWizardBoardInfo[];
+  vlans:            PythonWizardVlanInfo[];
+  traffic_tables:   PythonTrafficTableInfo[];
+  line_profiles:    PythonProfileInfo[];
+  service_profiles: PythonProfileInfo[];
+  error?:           string;
+}
+
+// ── Wizard Commit (NestJS side) ───────────────────────────────
+
+export interface WizardCommitDto {
+  nombre:        string;
+  ipGestion:     string;
+  puerto:        number;
+  usuario:       string;
+  contrasena:    string;
+  marca:         string;
+  modelo:        string;
+  firmware?:     string;
+  zonaId?:       string;
+  vlans?:        Array<{ vlan_id: number; nombre: string }>;
+  trafficTables?: Array<{ index: number; name: string; cir_kbps?: number; pir_kbps?: number }>;
+}

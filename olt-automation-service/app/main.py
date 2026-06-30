@@ -56,7 +56,15 @@ from app.schemas.olt import (
     OntSuspendResponse,
     ChangeLineprofileRequest,
     ChangeLineprofileResponse,
+    WizardTopologyRequest,
+    WizardTopologyResponse,
+    WizardBoardInfo,
+    WizardVlanInfo,
+    OltProfileInfo,
+    OltTrafficTableInfo,
 )
+from app.drivers import get_driver
+from app.drivers.base import UnsupportedBrandError, DriverNotImplementedError
 from app.services.connection_pool import connection_pool
 from app.services.provisioning import (
     CommandError,
@@ -761,4 +769,73 @@ async def ftth_change_lineprofile(body: ChangeLineprofileRequest) -> ChangeLinep
         success       = True,
         message       = result['message'],
         traffic_index = result['traffic_index'],
+    )
+
+
+# ── Wizard: topología completa ─────────────────────────────────
+
+@app.post(
+    '/api/v1/olt/wizard/topology',
+    response_model=WizardTopologyResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['wizard'],
+    summary='Obtener topología completa de la OLT (boards, VLANs, perfiles, traffic tables)',
+    description=(
+        'Usa el driver correspondiente a la marca para obtener en UNA sesión SSH '
+        'todos los datos de configuración de la OLT necesarios para el wizard. '
+        'Siempre responde 200 — si hay fallo SSH retorna success=False con campo error.'
+    ),
+)
+async def wizard_topology(body: WizardTopologyRequest) -> WizardTopologyResponse:
+    olt_ip = body.connection.ip
+
+    try:
+        driver = get_driver(body.connection.brand.value, body.connection)
+    except UnsupportedBrandError as exc:
+        return WizardTopologyResponse(success=False, error=str(exc))
+
+    async with connection_pool.acquire(olt_ip):
+        try:
+            topology = await asyncio.to_thread(driver.get_topology)
+        except Exception as exc:  # noqa: BLE001
+            logger.error('wizard_topology en %s: %s', olt_ip, exc)
+            return WizardTopologyResponse(success=False, error=str(exc))
+
+    boards = [
+        WizardBoardInfo(
+            slot         = b.slot,
+            board_type   = b.board_type,
+            state        = b.state,
+            onu_count    = b.onu_count,
+            onu_capacity = b.onu_capacity,
+            online_onus  = b.online_onus,
+            offline_onus = b.offline_onus,
+        )
+        for b in topology.boards
+    ]
+
+    vlans = [WizardVlanInfo(vlan_id=v.vlan_id, name=v.name) for v in topology.vlans]
+
+    traffic_tables = [
+        OltTrafficTableInfo(index=t.index, name=t.name, cir_kbps=t.cir_kbps, pir_kbps=t.pir_kbps)
+        for t in topology.traffic_tables
+    ]
+    line_profiles = [
+        OltProfileInfo(profile_id=p.get('profile_id', 0), name=p.get('name', ''))
+        for p in topology.line_profiles
+    ]
+    service_profiles = [
+        OltProfileInfo(profile_id=p.get('profile_id', 0), name=p.get('name', ''))
+        for p in topology.service_profiles
+    ]
+
+    return WizardTopologyResponse(
+        success          = True,
+        model            = topology.model,
+        firmware_version = topology.firmware_version,
+        boards           = boards,
+        vlans            = vlans,
+        traffic_tables   = traffic_tables,
+        line_profiles    = line_profiles,
+        service_profiles = service_profiles,
     )

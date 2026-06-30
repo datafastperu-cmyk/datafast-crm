@@ -23,6 +23,7 @@ import {
   ProvisionFtthService,
   ReinjectarWanDto,
 } from './services/provision-ftth.service';
+import { WizardCommitDto } from './dto/olt-nativo-ops.dto';
 import {
   ConfigurarPoolDto,
   EstadoPool,
@@ -240,6 +241,53 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.testConexionDirecta(user.empresaId, body);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // POST /olt-nativo/wizard/topology
+  // Obtener topología completa de la OLT con credenciales en crudo
+  // ────────────────────────────────────────────────────────────
+  @Post('wizard/topology')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Wizard OLT: obtener topología completa (boards, VLANs, perfiles, traffic tables)' })
+  async wizardTopologia(
+    @Body() body: { ip: string; puerto: number; usuario: string; contrasena: string; marca: string },
+    @CurrentUser() _user: JwtPayload,
+  ) {
+    return this.service.wizardTopologia(body);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // POST /olt-nativo/wizard/commit
+  // Transacción atómica: crea OLT + proveedor SSH + sincroniza
+  // VLANs y traffic tables en una sola llamada
+  // ────────────────────────────────────────────────────────────
+  @Post('wizard/commit')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Wizard OLT: commit atómico — crea OLT nativa + proveedor SSH + topología inicial' })
+  async wizardCommit(
+    @Body() dto: WizardCommitDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ oltId: string; vlans?: unknown; trafficTables?: unknown }> {
+    const { oltId } = await this.service.wizardCommit(user.empresaId, dto);
+
+    let vlansResult: unknown = null;
+    let trafficResult: unknown = null;
+
+    if (dto.vlans?.length) {
+      vlansResult = await this.oltVlans.sincronizarDesdeArray(oltId, user.empresaId, dto.vlans);
+    }
+    if (dto.trafficTables?.length) {
+      trafficResult = await this.trafficTables.sincronizarDesdeOlt(
+        oltId, user.empresaId,
+        dto.trafficTables.map(t => ({
+          index: t.index, name: t.name,
+          cir_kbps: t.cir_kbps ?? null, pir_kbps: t.pir_kbps ?? null,
+        })),
+      );
+    }
+
+    return { oltId, vlans: vlansResult ?? undefined, trafficTables: trafficResult ?? undefined };
   }
 
   // ────────────────────────────────────────────────────────────
