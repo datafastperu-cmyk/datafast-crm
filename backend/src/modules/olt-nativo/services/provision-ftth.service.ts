@@ -15,6 +15,7 @@ import { FtthOnuEstado, FtthOnuRegistro } from '../entities/ftth-onu-registro.en
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
+import { OltOnuIdPoolService }           from './olt-onu-id-pool.service';
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de entrada
@@ -24,8 +25,8 @@ export class ProvisionarFtthDto {
   @IsInt() @Min(0) @Max(7)   @Type(() => Number) frame:         number;
   @IsInt() @Min(0) @Max(15)  @Type(() => Number) slot:          number;
   @IsInt() @Min(0) @Max(15)  @Type(() => Number) port:          number;
-  @IsInt() @Min(1) @Max(128) @Type(() => Number) onuId:         number;
-  @IsString() @MaxLength(16)                     sn:            string;
+  @IsOptional() @IsInt() @Min(1) @Max(128) @Type(() => Number) onuId?:        number;
+  @IsString() @MaxLength(16)                                    sn:            string;
   @IsOptional() @IsInt() @Min(1) @Type(() => Number) servicePortId?: number;
   @IsInt() @Min(1) @Max(4094)@Type(() => Number) vlan:          number;
   @IsInt() @Min(1)           @Type(() => Number) lineprofileId: number;
@@ -34,6 +35,10 @@ export class ProvisionarFtthDto {
 }
 
 export class ReinjectarWanDto {
+  @IsUUID('4') contratoId: string;
+}
+
+export class DesaprovisionarFtthDto {
   @IsUUID('4') contratoId: string;
 }
 
@@ -75,6 +80,8 @@ export class ProvisionFtthService {
     private readonly automation: OltAutomationClient,
 
     private readonly poolService: OltServicePortPoolService,
+
+    private readonly onuIdPool: OltOnuIdPoolService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -138,7 +145,7 @@ export class ProvisionFtthService {
     const password = this._decryptOltPassword(olt);
     const conn     = this._buildConn(olt, password);
 
-    // 4. Resolver Service Port ID: pool (automático) o manual (bypass)
+    // 4. Resolver Service Port ID: pool automático o manual (bypass)
     const poolSvcPortId = await this.poolService.allocar(oltId, dto.contratoId);
     const servicePortId = poolSvcPortId ?? dto.servicePortId;
     if (servicePortId == null) {
@@ -147,9 +154,18 @@ export class ProvisionFtthService {
         `Configúralo desde la sección de OLT o ingresa el ID manualmente.`,
       );
     }
-    const usedPool = poolSvcPortId != null;
+    const usedSvcPool = poolSvcPortId != null;
 
-    // 5. Insertar lock atómico
+    // 5. Resolver ONU ID: pool automático (lazy init) o manual
+    const onuId = await this.onuIdPool.allocar(
+      oltId, empresaId, dto.slot, dto.port, dto.contratoId,
+    ).catch(async (err) => {
+      // Si falla el pool de ONU IDs, liberar service port antes de propagar
+      if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
+      throw err;
+    });
+
+    // 6. Insertar lock atómico
     const insertResult = await this.ds.query<{ id: string }[]>(
       `INSERT INTO ftth_onu_registro
          (id, empresa_id, contrato_id, olt_id, frame, slot, port, onu_id, sn,
@@ -163,30 +179,30 @@ export class ProvisionFtthService {
        RETURNING id`,
       [
         empresaId, dto.contratoId, oltId,
-        dto.frame, dto.slot, dto.port, dto.onuId, dto.sn.toUpperCase(),
+        dto.frame, dto.slot, dto.port, onuId, dto.sn.toUpperCase(),
         servicePortId, dto.vlan, dto.lineprofileId, dto.srvprofileId,
       ],
     );
 
     if (!insertResult.length) {
-      // Liberar el slot si lo tomamos del pool — otro proceso ganó la carrera
-      if (usedPool) await this.poolService.liberar(oltId, dto.contratoId);
+      // Otro proceso ganó la carrera — liberar ambos pools
+      if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
+      await this.onuIdPool.liberar(oltId, dto.contratoId);
       throw new ConflictException(
-        `Otro proceso ya está aprovisionando este contrato. ` +
-        `Intenta de nuevo en unos segundos.`,
+        `Otro proceso ya está aprovisionando este contrato. Intenta de nuevo en unos segundos.`,
       );
     }
 
     const registroId = insertResult[0].id;
 
     // ── Fase 1: GPON ──────────────────────────────────────────
-    this.logger.log(`FTTH Fase1 GPON | contrato=${dto.contratoId} sn=${dto.sn} onu_id=${dto.onuId} svcPort=${servicePortId}`);
+    this.logger.log(`FTTH Fase1 GPON | contrato=${dto.contratoId} sn=${dto.sn} onuId=${onuId} svcPort=${servicePortId}`);
     const gponRes = await this.automation.ftthProvisionGpon({
       connection:      conn,
       frame:           dto.frame,
       slot:            dto.slot,
       port:            dto.port,
-      onu_id:          dto.onuId,
+      onu_id:          onuId,
       sn:              dto.sn.toUpperCase(),
       service_port_id: servicePortId,
       vlan:            dto.vlan,
@@ -196,7 +212,8 @@ export class ProvisionFtthService {
     });
 
     if (!gponRes.success) {
-      if (usedPool) await this.poolService.liberar(oltId, dto.contratoId);
+      if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
+      await this.onuIdPool.liberar(oltId, dto.contratoId);
       await this.ftthRepo.update(registroId, {
         estado:        FtthOnuEstado.FALLIDO_GPON,
         lockedAt:      null,
@@ -217,20 +234,20 @@ export class ProvisionFtthService {
     });
 
     // ── Fase 1b: Poll online ──────────────────────────────────
-    this.logger.log(`FTTH Fase1b poll | contrato=${dto.contratoId} onu_id=${dto.onuId}`);
+    this.logger.log(`FTTH Fase1b poll | contrato=${dto.contratoId} onuId=${onuId}`);
     const pollRes = await this.automation.ftthPollOnline({
       connection: conn,
       slot:       dto.slot,
       port:       dto.port,
-      onu_id:     dto.onuId,
+      onu_id:     onuId,
       max_wait:   90,
     });
 
     if (!pollRes.success || pollRes.timeout) {
-      // ONU registrada pero nunca online — hacer rollback GPON y liberar pool
       this.logger.warn(`FTTH poll timeout | contrato=${dto.contratoId} → rollback GPON`);
-      await this._rollbackGpon(registroId, olt, password, dto, servicePortId);
-      if (usedPool) await this.poolService.liberar(oltId, dto.contratoId);
+      await this._rollbackGpon(registroId, olt, password, dto, servicePortId, onuId);
+      if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
+      await this.onuIdPool.liberar(oltId, dto.contratoId);
       return {
         estado:     FtthOnuEstado.FALLIDO_GPON,
         registroId,
@@ -249,7 +266,7 @@ export class ProvisionFtthService {
       connection: conn,
       slot:       dto.slot,
       port:       dto.port,
-      onu_id:     dto.onuId,
+      onu_id:     onuId,
       vlan:       dto.vlan,
       username:   pppoeUser,
       password:   pppoePass,
@@ -432,6 +449,7 @@ export class ProvisionFtthService {
     password:      string,
     dto:           ProvisionarFtthDto,
     servicePortId: number,
+    onuId:         number,
   ): Promise<void> {
     const conn = this._buildConn(olt, password);
     try {
@@ -439,7 +457,7 @@ export class ProvisionFtthService {
         connection:      conn,
         slot:            dto.slot,
         port:            dto.port,
-        onu_id:          dto.onuId,
+        onu_id:          onuId,
         service_port_id: servicePortId,
       });
     } catch (err: any) {
@@ -452,5 +470,96 @@ export class ProvisionFtthService {
       lockedAt:    null,
       ultimoError: 'ONU no apareció online — rollback GPON ejecutado',
     });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // desaprovisionar — eliminar ONU de la OLT y liberar recursos
+  //
+  // Permitido desde: activo, gpon_registrado, wan_inyectado
+  // Flujo: marcar desaprovisionando → rollback GPON SSH →
+  //        liberar pools (servicePort + onuId) → soft-delete registro
+  // ────────────────────────────────────────────────────────────
+  async desaprovisionar(
+    oltId:     string,
+    empresaId: string,
+    dto:       DesaprovisionarFtthDto,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+
+    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId } });
+    if (!registro) {
+      throw new NotFoundException(`No hay registro FTTH para el contrato ${dto.contratoId}.`);
+    }
+
+    const estadosPermitidos: FtthOnuEstado[] = [
+      FtthOnuEstado.ACTIVO,
+      FtthOnuEstado.GPON_REGISTRADO,
+      FtthOnuEstado.WAN_INYECTADO,
+    ];
+    if (!estadosPermitidos.includes(registro.estado)) {
+      throw new BadRequestException(
+        `No se puede desaprovisionar desde el estado "${registro.estado}". ` +
+        `Solo se permite desde: ${estadosPermitidos.join(', ')}.`,
+      );
+    }
+
+    // Marcar como en proceso (lock)
+    await this.ftthRepo.update(registro.id, {
+      estado:   FtthOnuEstado.DESAPROVISIONANDO,
+      lockedAt: new Date(),
+    });
+
+    const olt = await this._fetchOlt(oltId, empresaId);
+    const password = this._decryptOltPassword(olt);
+    const conn     = this._buildConn(olt, password);
+
+    // Ejecutar rollback GPON en la OLT
+    let rollbackOk = false;
+    let rollbackError: string | undefined;
+    try {
+      const res = await this.automation.ftthRollbackGpon({
+        connection:      conn,
+        slot:            registro.slot,
+        port:            registro.port,
+        onu_id:          registro.onuId,
+        service_port_id: registro.servicePortId,
+      });
+      rollbackOk   = res.success;
+      rollbackError = res.error;
+    } catch (err: any) {
+      rollbackError = err.message;
+      this.logger.error(
+        `FTTH desaprovisionar SSH falló | contrato=${dto.contratoId} error=${err.message}`,
+      );
+    }
+
+    if (!rollbackOk) {
+      // Revertir estado — el registro queda sin cambios para reintento manual
+      await this.ftthRepo.update(registro.id, {
+        estado:      registro.estado,
+        lockedAt:    null,
+        ultimoError: `Desaprovisionamiento falló: ${rollbackError ?? 'Error SSH'}`,
+      });
+      return {
+        exitoso: false,
+        mensaje: 'No se pudo eliminar la ONU de la OLT vía SSH. Verifica la conectividad.',
+        error:   rollbackError,
+      };
+    }
+
+    // SSH exitoso → liberar pools y eliminar registro
+    await Promise.all([
+      this.poolService.liberar(oltId, dto.contratoId),
+      this.onuIdPool.liberar(oltId, dto.contratoId),
+    ]);
+
+    await this.ftthRepo.softDelete(registro.id);
+
+    this.logger.log(
+      `FTTH desaprovisionado | contrato=${dto.contratoId} sn=${registro.sn} olt=${olt.ipGestion}`,
+    );
+    return {
+      exitoso: true,
+      mensaje: `ONU ${registro.sn} desaprovisionada correctamente. Recursos liberados.`,
+    };
   }
 }

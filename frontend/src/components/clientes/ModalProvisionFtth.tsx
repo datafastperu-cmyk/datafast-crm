@@ -4,7 +4,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X, Zap, Loader2, AlertTriangle, Search, CheckCircle2,
-  RefreshCw, WifiOff, Hash,
+  RefreshCw, WifiOff, Hash, Trash2, ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toaster';
@@ -14,6 +14,7 @@ import {
   type OntFoundInfo,
   type FtthOnuRegistro,
   type FtthOnuEstado,
+  type OltPerfilesResult,
 } from '@/lib/api/olt-nativo';
 import type { Contrato } from '@/types';
 import { Portal } from '@/components/ui/portal';
@@ -41,12 +42,12 @@ function EstadoBadge({ estado }: { estado: FtthOnuEstado }) {
 
 // ─── Estado panel ─────────────────────────────────────────────
 
-function EstadoPanel({ registro, oltId, contratoId, onReinject, isReinjectPending }: {
+function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisionar, isDesaprovisionandoPending }: {
   registro: FtthOnuRegistro;
-  oltId:    string;
-  contratoId: string;
   onReinject: () => void;
   isReinjectPending: boolean;
+  onDesaprovisionar: () => void;
+  isDesaprovisionandoPending: boolean;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -80,6 +81,16 @@ function EstadoPanel({ registro, oltId, contratoId, onReinject, isReinjectPendin
         >
           {isReinjectPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
           Re-inyectar WAN PPPoE
+        </button>
+      )}
+      {(registro.estado === 'activo' || registro.estado === 'gpon_registrado' || registro.estado === 'wan_inyectado') && (
+        <button
+          onClick={onDesaprovisionar}
+          disabled={isDesaprovisionandoPending}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-red-700/50 bg-red-500/5 text-red-700 dark:text-red-400 text-xs font-semibold hover:bg-red-500/15 transition-colors disabled:opacity-50"
+        >
+          {isDesaprovisionandoPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          {isDesaprovisionandoPending ? 'Desaprovisionando…' : 'Desaprovisionar ONU'}
         </button>
       )}
     </div>
@@ -129,11 +140,19 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const [frame,         setFrame]         = useState('0');
   const [slot,          setSlot]          = useState('');
   const [port,          setPort]          = useState('');
-  const [onuId,         setOnuId]         = useState('');
   const [vlan,          setVlan]          = useState('');
   const [lineprofileId, setLineprofileId] = useState('');
   const [srvprofileId,  setSrvprofileId]  = useState('');
   const [description,   setDescription]  = useState('');
+
+  // Perfiles OLT (Phase 4)
+  const { data: perfiles } = useQuery<OltPerfilesResult>({
+    queryKey:  ['olt-perfiles', selectedOltId],
+    queryFn:   () => oltNativoApi.listarPerfiles(selectedOltId),
+    enabled:   !!selectedOltId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
   const slotNum  = parseInt(slot);
   const portNum  = parseInt(port);
@@ -146,7 +165,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     setFrame(String(r.frame));
     setSlot(String(r.slot));
     setPort(String(r.port));
-    setOnuId(String(r.onuId));
     setVlan(String(r.vlan));
     if (r.lineprofileId) setLineprofileId(String(r.lineprofileId));
     if (r.srvprofileId)  setSrvprofileId(String(r.srvprofileId));
@@ -194,9 +212,49 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
 
   // Form validation
   const formValid = (
-    !!selectedOltId && !!sn.trim() && slot !== '' && port !== '' && onuId !== '' &&
+    !!selectedOltId && !!sn.trim() && slot !== '' && port !== '' &&
     !!vlan && !!lineprofileId && !!srvprofileId
   );
+
+  // Re-inyectar WAN mutation — declarado antes de usarlo en desaprovisionar callback
+  const { mutate: reinjectWan, isPending: reinjectPending } = useMutation({
+    mutationFn: () => oltNativoApi.ftthReinjectWan(selectedOltId, contrato.id),
+    onSuccess: (res) => {
+      if (res.estado === 'activo') {
+        toast('WAN PPPoE re-inyectada correctamente', { type: 'success' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+        qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
+        onClose();
+      } else {
+        toast(res.error ?? 'Re-inyección falló', { type: 'error' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast(msg ?? 'Error al re-inyectar WAN', { type: 'error' });
+    },
+  });
+
+  // Desaprovisionar mutation
+  const { mutate: desaprovisionar, isPending: desaprovisionandoPending } = useMutation({
+    mutationFn: () => oltNativoApi.ftthDesaprovisionar(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
+    onSuccess: (res) => {
+      if (res.exitoso) {
+        toast('ONU desaprovisionada correctamente', { type: 'success' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+        qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
+        onClose();
+      } else {
+        toast(res.error ?? res.mensaje ?? 'No se pudo desaprovisionar la ONU', { type: 'error' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast(msg ?? 'Error al desaprovisionar la ONU', { type: 'error' });
+    },
+  });
 
   // Provision mutation
   const { mutate: provisionar, isPending: provIsPending } = useMutation({
@@ -205,7 +263,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       frame:         parseInt(frame) || 0,
       slot:          slotNum,
       port:          portNum,
-      onuId:         parseInt(onuId),
       sn:            sn.trim().toUpperCase(),
       vlan:          parseInt(vlan),
       lineprofileId: parseInt(lineprofileId),
@@ -231,25 +288,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     },
   });
 
-  // Re-inject WAN mutation
-  const { mutate: reinjectWan, isPending: reinjectPending } = useMutation({
-    mutationFn: () => oltNativoApi.ftthReinjectWan(selectedOltId, contrato.id),
-    onSuccess: (res) => {
-      if (res.estado === 'activo') {
-        toast('WAN PPPoE re-inyectada correctamente', { type: 'success' });
-        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-        qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
-        onClose();
-      } else {
-        toast(res.error ?? 'Re-inyección falló', { type: 'error' });
-        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-      }
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast(msg ?? 'Error al re-inyectar WAN', { type: 'error' });
-    },
-  });
 
   const yaActivo = estadoExistente?.estado === 'activo';
 
@@ -286,10 +324,10 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                 <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Estado Actual</h3>
                 <EstadoPanel
                   registro={estadoExistente}
-                  oltId={selectedOltId}
-                  contratoId={contrato.id}
                   onReinject={() => reinjectWan()}
                   isReinjectPending={reinjectPending}
+                  onDesaprovisionar={() => desaprovisionar()}
+                  isDesaprovisionandoPending={desaprovisionandoPending}
                 />
                 {yaActivo && (
                   <div className="flex items-center gap-2 mt-3 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-700/30">
@@ -414,17 +452,40 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                     <input type="number" value={port} onChange={e => setPort(e.target.value)} min={0} max={15} placeholder="3"
                       readOnly={snSelectMode} className={cn(inputCls, snSelectMode && 'opacity-60 cursor-not-allowed bg-muted')} />
                   </Field>
-                  <Field label="ONU ID">
-                    <input type="number" value={onuId} onChange={e => setOnuId(e.target.value)} min={1} max={128} placeholder="4" className={inputCls} />
-                  </Field>
                   <Field label="VLAN Servicio">
                     <input type="number" value={vlan} onChange={e => setVlan(e.target.value)} min={1} max={4094} placeholder="201" className={inputCls} />
                   </Field>
                   <Field label="Lineprofile ID">
-                    <input type="number" value={lineprofileId} onChange={e => setLineprofileId(e.target.value)} min={1} placeholder="2" className={inputCls} />
+                    {perfiles?.lineprofiles?.length ? (
+                      <div className="relative">
+                        <select value={lineprofileId} onChange={e => setLineprofileId(e.target.value)}
+                          className={cn(inputCls, 'appearance-none pr-8')}>
+                          <option value="">— Seleccionar —</option>
+                          {perfiles.lineprofiles.map(p => (
+                            <option key={p.profile_id} value={p.profile_id}>{p.profile_id} — {p.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      </div>
+                    ) : (
+                      <input type="number" value={lineprofileId} onChange={e => setLineprofileId(e.target.value)} min={1} placeholder="2" className={inputCls} />
+                    )}
                   </Field>
                   <Field label="Srvprofile ID">
-                    <input type="number" value={srvprofileId} onChange={e => setSrvprofileId(e.target.value)} min={1} placeholder="1" className={inputCls} />
+                    {perfiles?.srvprofiles?.length ? (
+                      <div className="relative">
+                        <select value={srvprofileId} onChange={e => setSrvprofileId(e.target.value)}
+                          className={cn(inputCls, 'appearance-none pr-8')}>
+                          <option value="">— Seleccionar —</option>
+                          {perfiles.srvprofiles.map(p => (
+                            <option key={p.profile_id} value={p.profile_id}>{p.profile_id} — {p.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      </div>
+                    ) : (
+                      <input type="number" value={srvprofileId} onChange={e => setSrvprofileId(e.target.value)} min={1} placeholder="1" className={inputCls} />
+                    )}
                   </Field>
                   <Field label="Descripción (opcional)" span2>
                     <input type="text" value={description} onChange={e => setDescription(e.target.value)}
@@ -432,9 +493,15 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   </Field>
                 </div>
 
-                <div className="mt-1 flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
-                  <Hash className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>Service Port ID se asigna automáticamente del pool configurado en la OLT.</span>
+                <div className="mt-1 space-y-1.5">
+                  <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
+                    <Hash className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>Service Port ID se asigna automáticamente del pool configurado en la OLT.</span>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
+                    <Hash className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>ONU ID se asigna automáticamente del pool por puerto PON (1–128).</span>
+                  </div>
                 </div>
 
                 <div className="mt-2 flex items-start gap-2 rounded-lg border border-blue-700/30 bg-blue-500/5 px-3 py-2 text-[11px] text-blue-700 dark:text-blue-300">

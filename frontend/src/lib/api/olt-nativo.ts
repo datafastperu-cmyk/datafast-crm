@@ -317,13 +317,18 @@ export interface FtthProvisionDto {
   frame:          number;
   slot:           number;
   port:           number;
-  onuId:          number;
+  onuId?:         number;   // Opcional — auto-asignado del pool de ONU IDs
   sn:             string;
-  servicePortId?: number;   // Opcional: se auto-asigna del pool si está configurado
+  servicePortId?: number;   // Opcional — auto-asignado del pool si está configurado
   vlan:           number;
   lineprofileId:  number;
   srvprofileId:   number;
   description?:   string;
+}
+
+export interface OltPerfilesResult {
+  lineprofiles: Array<{ profile_id: number; name: string }>;
+  srvprofiles:  Array<{ profile_id: number; name: string }>;
 }
 
 export interface FtthProvisionResult {
@@ -530,6 +535,24 @@ export const oltNativoApi = {
   ftthReinjectWan: async (oltId: string, contratoId: string): Promise<FtthProvisionResult> => {
     const res = await api.post<ApiRespuesta<FtthProvisionResult>>(
       `/olt-nativo/${oltId}/ftth/reinject-wan`, { contratoId },
+    );
+    return res.data.data;
+  },
+
+  ftthDesaprovisionar: async (
+    oltId: string,
+    contratoId: string,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
+    const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
+      `/olt-nativo/${oltId}/ftth/desaprovisionar`, { contratoId },
+    );
+    return res.data.data;
+  },
+
+  listarPerfiles: async (oltId: string): Promise<OltPerfilesResult> => {
+    const res = await api.get<ApiRespuesta<OltPerfilesResult>>(
+      `/olt-nativo/${oltId}/profiles`,
+      { timeout: 30_000 },
     );
     return res.data.data;
   },

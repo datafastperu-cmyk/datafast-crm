@@ -16,6 +16,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { OltNativoService }        from './olt-nativo.service';
 import { FirmwareService }         from './firmware.service';
 import {
+  DesaprovisionarFtthDto,
   FtthProvisionResult,
   ProvisionarFtthDto,
   ProvisionFtthService,
@@ -26,6 +27,7 @@ import {
   EstadoPool,
   OltServicePortPoolService,
 } from './services/olt-service-port-pool.service';
+import { OltOnuIdPoolService } from './services/olt-onu-id-pool.service';
 import { FtthOnuRegistro }         from './entities/ftth-onu-registro.entity';
 import {
   CrearOltIntegracionDto,
@@ -51,6 +53,7 @@ export class OltNativoController {
     private readonly firmware:  FirmwareService,
     private readonly ftth:      ProvisionFtthService,
     private readonly pool:      OltServicePortPoolService,
+    private readonly onuIdPool: OltOnuIdPoolService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -600,6 +603,32 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<FtthProvisionResult> {
     return this.ftth.reinjectarWan(oltId, user.empresaId, dto);
+  }
+
+  @Post(':oltId/ftth/desaprovisionar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Desaprovisionar ONU FTTH — rollback GPON + liberar pools + soft-delete registro' })
+  @ApiParam({ name: 'oltId' })
+  async desaprovisionarFtth(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: DesaprovisionarFtthDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+    return this.ftth.desaprovisionar(oltId, user.empresaId, dto);
+  }
+
+  @Get(':oltId/onu-id-pool')
+  @ApiOperation({ summary: 'Estado del pool de ONU IDs para un puerto PON de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  @ApiQuery({ name: 'slot', type: Number })
+  @ApiQuery({ name: 'port', type: Number })
+  async onuIdPoolEstado(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Query('slot', ParseIntPipe)   slot:  number,
+    @Query('port', ParseIntPipe)   port:  number,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ total: number; libres: number; ocupados: number; inicializado: boolean }> {
+    return this.onuIdPool.obtenerEstado(oltId, user.empresaId, slot, port);
   }
 
   @Get('ftth/estado/:contratoId')
