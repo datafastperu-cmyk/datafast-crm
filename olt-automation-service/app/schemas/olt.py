@@ -482,6 +482,38 @@ class WizardBoardInfo(BaseModel):
     offline_onus: int = 0
 
 
+# ─── Health snapshot ────────────────────────────────────────────
+
+class HealthBoardInfo(BaseModel):
+    slot:         int
+    board_type:   str
+    state:        str
+    onu_count:    int
+    onu_capacity: int
+    online_onus:  int = 0
+    offline_onus: int = 0
+
+class HealthPomInfo(BaseModel):
+    slot:             int
+    port:             int
+    temp_celsius:     float | None = None
+    tx_dbm:           float | None = None
+    rx_dbm:           float | None = None
+    voltage_mv:       float | None = None
+    laser_ma:         float | None = None
+    state:            str   | None = None
+
+class HealthSnapshotRequest(BaseModel):
+    connection:  OltConnectionSchema
+    include_pom: bool = True
+
+class HealthSnapshotResponse(BaseModel):
+    success: bool
+    boards:  list[HealthBoardInfo] = []
+    pom:     list[HealthPomInfo]   = []
+    error:   str | None = None
+
+
 class WizardTopologyRequest(BaseModel):
     connection: OltConnectionSchema
 

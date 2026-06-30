@@ -45,6 +45,8 @@ import {
   PythonChangeLineprofileResponse,
   PythonWizardTopologyRequest,
   PythonWizardTopologyResponse,
+  PythonHealthSnapshotRequest,
+  PythonHealthSnapshotResponse,
 } from './dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -354,6 +356,16 @@ export class OltAutomationClient {
     );
     this.logger.log(
       `← Python wizard/topology | success=${res.success} boards=${res.boards?.length ?? 0} vlans=${res.vlans?.length ?? 0}`,
+    );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Health Snapshot (boards + POM opcional)
+  // ────────────────────────────────────────────────────────────
+  async healthSnapshot(payload: PythonHealthSnapshotRequest): Promise<PythonHealthSnapshotResponse> {
+    const res = await this.post<PythonHealthSnapshotResponse>(
+      '/api/v1/olt/health/snapshot', payload, 90_000,
     );
     return res;
   }

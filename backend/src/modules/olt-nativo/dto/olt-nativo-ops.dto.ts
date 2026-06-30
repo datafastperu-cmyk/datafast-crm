@@ -709,6 +709,41 @@ export interface OltConProveedorPrincipal {
   } | null;
 }
 
+// ─── Health Snapshot ──────────────────────────────────────────
+
+export interface PythonHealthBoardInfo {
+  slot:         number;
+  board_type:   string;
+  state:        string;
+  onu_count:    number;
+  onu_capacity: number;
+  online_onus:  number;
+  offline_onus: number;
+}
+
+export interface PythonHealthPomInfo {
+  slot:         number;
+  port:         number;
+  temp_celsius: number | null;
+  tx_dbm:       number | null;
+  rx_dbm:       number | null;
+  voltage_mv:   number | null;
+  laser_ma:     number | null;
+  state:        string | null;
+}
+
+export interface PythonHealthSnapshotRequest {
+  connection:  PythonConnectionPayload;
+  include_pom: boolean;
+}
+
+export interface PythonHealthSnapshotResponse {
+  success: boolean;
+  boards:  PythonHealthBoardInfo[];
+  pom:     PythonHealthPomInfo[];
+  error?:  string;
+}
+
 // ─── Wizard: Topología completa ───────────────────────────────
 
 export interface PythonWizardBoardInfo {

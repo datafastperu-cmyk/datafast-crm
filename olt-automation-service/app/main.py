@@ -62,6 +62,10 @@ from app.schemas.olt import (
     WizardVlanInfo,
     OltProfileInfo,
     OltTrafficTableInfo,
+    HealthSnapshotRequest,
+    HealthSnapshotResponse,
+    HealthBoardInfo,
+    HealthPomInfo,
 )
 from app.drivers import get_driver
 from app.drivers.base import UnsupportedBrandError, DriverNotImplementedError
@@ -770,6 +774,67 @@ async def ftth_change_lineprofile(body: ChangeLineprofileRequest) -> ChangeLinep
         message       = result['message'],
         traffic_index = result['traffic_index'],
     )
+
+
+# ── Health snapshot (boards + POM) ─────────────────────────────
+
+@app.post(
+    '/api/v1/olt/health/snapshot',
+    response_model=HealthSnapshotResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['health'],
+    summary='Snapshot de salud de la OLT: boards + POM opcional (multi-marca via driver)',
+    description=(
+        'Llama get_board_status() del driver correspondiente y opcionalmente get_all_pom(). '
+        'La falla de POM es no-fatal: si falla, retorna success=True con pom=[]. '
+        'Siempre responde 200 — si falla el board poll retorna success=False.'
+    ),
+)
+async def health_snapshot(body: HealthSnapshotRequest) -> HealthSnapshotResponse:
+    try:
+        driver = get_driver(body.connection.brand.value, body.connection)
+    except UnsupportedBrandError as exc:
+        return HealthSnapshotResponse(success=False, error=str(exc))
+
+    olt_ip = body.connection.ip
+
+    async with connection_pool.acquire(olt_ip):
+        try:
+            raw_boards = await asyncio.to_thread(driver.get_board_status)
+        except Exception as exc:  # noqa: BLE001
+            logger.error('health_snapshot boards en %s: %s', olt_ip, exc)
+            return HealthSnapshotResponse(success=False, error=str(exc))
+
+        raw_pom: list = []
+        if body.include_pom:
+            try:
+                raw_pom = await asyncio.to_thread(driver.get_all_pom)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning('health_snapshot POM en %s (no-fatal): %s', olt_ip, exc)
+
+    boards = [
+        HealthBoardInfo(
+            slot=b.slot, board_type=b.board_type, state=b.state,
+            onu_count=b.onu_count, onu_capacity=b.onu_capacity,
+            online_onus=b.online_onus, offline_onus=b.offline_onus,
+        )
+        for b in raw_boards
+    ]
+
+    pom = [
+        HealthPomInfo(
+            slot=p.slot, port=p.port,
+            temp_celsius=p.temperature_celsius,
+            tx_dbm=p.tx_power_dbm,
+            rx_dbm=p.rx_power_dbm,
+            voltage_mv=p.voltage_mv,
+            laser_ma=p.laser_current_ma,
+            state=p.state,
+        )
+        for p in raw_pom
+    ]
+
+    return HealthSnapshotResponse(success=True, boards=boards, pom=pom)
 
 
 # ── Wizard: topología completa ─────────────────────────────────
