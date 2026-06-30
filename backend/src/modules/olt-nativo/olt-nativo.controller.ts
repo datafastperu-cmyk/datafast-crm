@@ -28,6 +28,10 @@ import {
   OltServicePortPoolService,
 } from './services/olt-service-port-pool.service';
 import { OltOnuIdPoolService } from './services/olt-onu-id-pool.service';
+import { AgregarVlanDto, OltVlanService }         from './services/olt-vlan.service';
+import { OltTrafficTableService } from './services/olt-traffic-table.service';
+import { OltVlan }           from './entities/olt-vlan.entity';
+import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { FtthOnuRegistro }         from './entities/ftth-onu-registro.entity';
 import {
   CrearOltIntegracionDto,
@@ -53,7 +57,9 @@ export class OltNativoController {
     private readonly firmware:  FirmwareService,
     private readonly ftth:      ProvisionFtthService,
     private readonly pool:      OltServicePortPoolService,
-    private readonly onuIdPool: OltOnuIdPoolService,
+    private readonly onuIdPool:     OltOnuIdPoolService,
+    private readonly oltVlans:      OltVlanService,
+    private readonly trafficTables: OltTrafficTableService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -638,5 +644,93 @@ export class OltNativoController {
     @Param('contratoId', ParseUUIDPipe) contratoId: string,
   ): Promise<FtthOnuRegistro | null> {
     return this.ftth.obtenerEstado(contratoId);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // VLANs por OLT
+
+  @Get(':oltId/vlans')
+  @ApiOperation({ summary: 'Listar VLANs configuradas en una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async listarVlans(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltVlan[]> {
+    return this.oltVlans.listar(oltId, user.empresaId);
+  }
+
+  @Post(':oltId/vlans')
+  @ApiOperation({ summary: 'Agregar VLAN a una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async agregarVlan(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: AgregarVlanDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltVlan> {
+    return this.oltVlans.agregar(oltId, user.empresaId, dto);
+  }
+
+  @Delete(':oltId/vlans/:vlanId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar VLAN de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  @ApiParam({ name: 'vlanId', type: Number })
+  async eliminarVlan(
+    @Param('oltId', ParseUUIDPipe)  oltId:  string,
+    @Param('vlanId', ParseIntPipe)  vlanId: number,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    return this.oltVlans.eliminar(oltId, user.empresaId, vlanId);
+  }
+
+  @Post(':oltId/vlans/sincronizar')
+  @ApiOperation({ summary: 'Sincronizar VLANs desde array de configuración' })
+  @ApiParam({ name: 'oltId' })
+  async sincronizarVlans(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() body: { vlans: Array<{ vlan_id: number; nombre: string }> },
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ insertadas: number; omitidas: number }> {
+    return this.oltVlans.sincronizarDesdeArray(oltId, user.empresaId, body.vlans);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Traffic Tables por OLT
+
+  @Get(':oltId/traffic-tables')
+  @ApiOperation({ summary: 'Listar traffic tables configuradas en una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async listarTrafficTables(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltTrafficTable[]> {
+    return this.trafficTables.listar(oltId, user.empresaId);
+  }
+
+  @Post(':oltId/traffic-tables/sincronizar')
+  @ApiOperation({ summary: 'Sincronizar traffic tables desde OLT (usa endpoint de perfiles)' })
+  @ApiParam({ name: 'oltId' })
+  async sincronizarTrafficTables(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ insertadas: number; actualizadas: number }> {
+    const perfiles = await this.service.listarPerfilesOlt(oltId, user.empresaId);
+    const tablas = (perfiles.traffic_tables ?? []) as Array<{
+      index: number; name: string; cir_kbps?: number; pir_kbps?: number;
+    }>;
+    return this.trafficTables.sincronizarDesdeOlt(oltId, user.empresaId, tablas);
+  }
+
+  @Delete(':oltId/traffic-tables/:trafficId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar traffic table de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  @ApiParam({ name: 'trafficId', type: Number })
+  async eliminarTrafficTable(
+    @Param('oltId', ParseUUIDPipe)      oltId:     string,
+    @Param('trafficId', ParseIntPipe)   trafficId: number,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    return this.trafficTables.eliminar(oltId, user.empresaId, trafficId);
   }
 }

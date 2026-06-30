@@ -328,8 +328,32 @@ export interface FtthProvisionDto {
 }
 
 export interface OltPerfilesResult {
-  lineprofiles: Array<{ profile_id: number; name: string }>;
-  srvprofiles:  Array<{ profile_id: number; name: string }>;
+  lineprofiles:   Array<{ profile_id: number; name: string }>;
+  srvprofiles:    Array<{ profile_id: number; name: string }>;
+  traffic_tables?: Array<{ index: number; name: string; cir_kbps?: number; pir_kbps?: number }>;
+}
+
+export interface OltVlan {
+  id:          string;
+  oltId:       string;
+  empresaId:   string;
+  vlanId:      number;
+  nombre:      string;
+  descripcion: string | null;
+  createdAt:   string;
+  updatedAt:   string;
+}
+
+export interface OltTrafficTable {
+  id:        string;
+  oltId:     string;
+  empresaId: string;
+  trafficId: number;
+  nombre:    string;
+  cirKbps:   number | null;
+  pirKbps:   number | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface FtthProvisionResult {
@@ -589,6 +613,39 @@ export const oltNativoApi = {
 
   crearAdminolt: async (dto: CrearOltIntegracionDto): Promise<OltDispositivo> => {
     const res = await api.post<ApiRespuesta<OltDispositivo>>('/olt-nativo/integraciones/adminolt', dto);
+    return res.data.data;
+  },
+
+  // ─── VLANs ───────────────────────────────────────────────────
+
+  listarVlans: async (oltId: string): Promise<OltVlan[]> => {
+    const res = await api.get<ApiRespuesta<OltVlan[]>>(`/olt-nativo/${oltId}/vlans`);
+    return res.data.data ?? [];
+  },
+
+  agregarVlan: async (
+    oltId: string,
+    dto: { vlanId: number; nombre: string; descripcion?: string },
+  ): Promise<OltVlan> => {
+    const res = await api.post<ApiRespuesta<OltVlan>>(`/olt-nativo/${oltId}/vlans`, dto);
+    return res.data.data;
+  },
+
+  eliminarVlan: async (oltId: string, vlanId: number): Promise<void> => {
+    await api.delete(`/olt-nativo/${oltId}/vlans/${vlanId}`);
+  },
+
+  // ─── Traffic Tables ───────────────────────────────────────────
+
+  listarTrafficTables: async (oltId: string): Promise<OltTrafficTable[]> => {
+    const res = await api.get<ApiRespuesta<OltTrafficTable[]>>(`/olt-nativo/${oltId}/traffic-tables`);
+    return res.data.data ?? [];
+  },
+
+  sincronizarTrafficTables: async (oltId: string): Promise<{ insertadas: number; actualizadas: number }> => {
+    const res = await api.post<ApiRespuesta<{ insertadas: number; actualizadas: number }>>(
+      `/olt-nativo/${oltId}/traffic-tables/sincronizar`,
+    );
     return res.data.data;
   },
 };

@@ -15,6 +15,7 @@ import {
   type FtthOnuRegistro,
   type FtthOnuEstado,
   type OltPerfilesResult,
+  type OltVlan,
 } from '@/lib/api/olt-nativo';
 import type { Contrato } from '@/types';
 import { Portal } from '@/components/ui/portal';
@@ -152,6 +153,15 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const { data: perfiles } = useQuery<OltPerfilesResult>({
     queryKey:  ['olt-perfiles', selectedOltId],
     queryFn:   () => oltNativoApi.listarPerfiles(selectedOltId),
+    enabled:   !!selectedOltId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  // VLANs configuradas para la OLT (Phase 2)
+  const { data: vlans = [] } = useQuery<OltVlan[]>({
+    queryKey:  ['olt-vlans', selectedOltId],
+    queryFn:   () => oltNativoApi.listarVlans(selectedOltId),
     enabled:   !!selectedOltId,
     staleTime: 5 * 60_000,
     retry: false,
@@ -456,7 +466,20 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       readOnly={snSelectMode} className={cn(inputCls, snSelectMode && 'opacity-60 cursor-not-allowed bg-muted')} />
                   </Field>
                   <Field label="VLAN Servicio">
-                    <input type="number" value={vlan} onChange={e => setVlan(e.target.value)} min={1} max={4094} placeholder="201" className={inputCls} />
+                    {vlans.length > 0 ? (
+                      <div className="relative">
+                        <select value={vlan} onChange={e => setVlan(e.target.value)}
+                          className={cn(inputCls, 'appearance-none pr-8')}>
+                          <option value="">— Seleccionar VLAN —</option>
+                          {vlans.map(v => (
+                            <option key={v.id} value={v.vlanId}>{v.vlanId} — {v.nombre}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      </div>
+                    ) : (
+                      <input type="number" value={vlan} onChange={e => setVlan(e.target.value)} min={1} max={4094} placeholder="201" className={inputCls} />
+                    )}
                   </Field>
                   <Field label="Lineprofile ID">
                     {perfiles?.lineprofiles?.length ? (

@@ -13,6 +13,10 @@ import { FtthOnuRegistro }    from './entities/ftth-onu-registro.entity';
 import { FtthRollbackLog }   from './entities/ftth-rollback-log.entity';
 import { OltServicePortPool } from './entities/olt-service-port-pool.entity';
 import { OltOnuIdPool }      from './entities/olt-onu-id-pool.entity';
+import { OltVlan }           from './entities/olt-vlan.entity';
+import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
+import { OltVlanService }         from './services/olt-vlan.service';
+import { OltTrafficTableService } from './services/olt-traffic-table.service';
 import { Onu }                 from '../smartolt/entities/onu.entity';
 import { AlertaSistema }       from '../monitoreo/entities/alerta-sistema.entity';
 import { SmartoltModule }      from '../smartolt/smartolt.module';
@@ -95,6 +99,8 @@ import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
       FtthRollbackLog,
       OltServicePortPool,
       OltOnuIdPool,
+      OltVlan,
+      OltTrafficTable,
     ]),
 
     // HTTP compartido: OltAutomationClient + SmartoltProvider + AdminOltProvider
@@ -135,6 +141,8 @@ import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
     ProvisionFtthService,
     OltServicePortPoolService,
     OltOnuIdPoolService,
+    OltVlanService,
+    OltTrafficTableService,
     FtthRecoveryCron,
   ],
   // Solo exports que módulos externos realmente consumen
