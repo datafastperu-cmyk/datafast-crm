@@ -15,6 +15,8 @@ import { OltServicePortPool } from './entities/olt-service-port-pool.entity';
 import { OltOnuIdPool }      from './entities/olt-onu-id-pool.entity';
 import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
+import { OltHealthSnapshot } from './entities/olt-health-snapshot.entity';
+import { OltAlerta }         from './entities/olt-alerta.entity';
 import { OltVlanService }         from './services/olt-vlan.service';
 import { OltTrafficTableService } from './services/olt-traffic-table.service';
 import { Onu }                 from '../smartolt/entities/onu.entity';
@@ -101,6 +103,8 @@ import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
       OltOnuIdPool,
       OltVlan,
       OltTrafficTable,
+      OltHealthSnapshot,
+      OltAlerta,
     ]),
 
     // HTTP compartido: OltAutomationClient + SmartoltProvider + AdminOltProvider

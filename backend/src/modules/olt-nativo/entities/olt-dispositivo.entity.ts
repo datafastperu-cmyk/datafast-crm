@@ -119,6 +119,14 @@ export class OltDispositivo extends BaseModel {
   @Column({ name: 'onus_activas', type: 'int', default: 0 })
   onusActivas: number;
 
+  // ── Firmware detectado en test de conexión ────────────────
+  @Column({ length: 100, nullable: true })
+  firmware: string | null;
+
+  // ── Zona ERP vinculada (para cross-ref de contratos) ─────
+  @Column({ name: 'zona_id', type: 'uuid', nullable: true })
+  zonaId: string | null;
+
   // ── Ubicación geográfica ──────────────────────────────────
   @Column({ length: 200, nullable: true })
   ubicacion: string;
