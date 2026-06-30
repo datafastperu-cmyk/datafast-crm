@@ -97,8 +97,8 @@ export class OltDispositivo extends BaseModel {
 
   // Router MikroTik detrás del cual reside físicamente la OLT.
   // ON DELETE RESTRICT — no se puede borrar el router si tiene OLTs.
-  @Column({ name: 'router_id' })
-  routerId: string;
+  @Column({ name: 'router_id', type: 'uuid', nullable: true })
+  routerId: string | null;
 
   // Enlace opcional al módulo de telemetría pasiva.
   // ON DELETE SET NULL — si se borra el dispositivo de monitoreo, la OLT persiste.
