@@ -120,7 +120,7 @@ export class OltDispositivo extends BaseModel {
   onusActivas: number;
 
   // ── Firmware detectado en test de conexión ────────────────
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   firmware: string | null;
 
   // ── Zona ERP vinculada (para cross-ref de contratos) ─────
