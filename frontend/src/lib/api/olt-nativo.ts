@@ -618,6 +618,30 @@ export const oltNativoApi = {
 
   // ─── VLANs ───────────────────────────────────────────────────
 
+  ftthSuspender: async (
+    oltId: string,
+    contratoId: string,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
+    const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
+      `/olt-nativo/${oltId}/ftth/suspender`,
+      { contratoId },
+    );
+    return res.data.data;
+  },
+
+  ftthRehabilirar: async (
+    oltId: string,
+    contratoId: string,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
+    const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
+      `/olt-nativo/${oltId}/ftth/rehabilitar`,
+      { contratoId },
+    );
+    return res.data.data;
+  },
+
+  // ─── VLANs ───────────────────────────────────────────────────
+
   listarVlans: async (oltId: string): Promise<OltVlan[]> => {
     const res = await api.get<ApiRespuesta<OltVlan[]>>(`/olt-nativo/${oltId}/vlans`);
     return res.data.data ?? [];

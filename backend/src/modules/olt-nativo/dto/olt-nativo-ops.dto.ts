@@ -646,6 +646,20 @@ export interface PythonFtthWanResponse {
   error?:  string;
 }
 
+export interface PythonOntSuspendRequest {
+  connection:      PythonConnectionPayload;
+  slot:            number;
+  port:            number;
+  onu_id:          number;
+  service_port_id: number;
+}
+
+export interface PythonOntSuspendResponse {
+  success: boolean;
+  message: string;
+  error?:  string;
+}
+
 export interface OltConProveedorPrincipal {
   id:                 string;
   nombre:             string;

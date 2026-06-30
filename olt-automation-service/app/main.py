@@ -48,6 +48,9 @@ from app.schemas.olt import (
     TestConnectionResponse,
     VerifyOnuRequest,
     VerifyOnuResponse,
+    OntSuspendRequest,
+    OntRehabilitateRequest,
+    OntSuspendResponse,
 )
 from app.services.connection_pool import connection_pool
 from app.services.provisioning import (
@@ -67,6 +70,8 @@ from app.services.provisioning import (
     provision_onu,
     reset_huawei_onu,
     rollback_gpon,
+    suspend_onu,
+    rehabilitate_onu,
     test_olt_connection,
     upgrade_firmware_onu,
     verify_onu,
@@ -655,3 +660,47 @@ async def ftth_inject_wan_pppoe(body: FtthWanPppoeRequest) -> FtthWanResponse:
         olt_ip  = result['olt_ip'],
         onu_id  = result['onu_id'],
     )
+
+
+# ── Suspensión / Rehabilitación ──────────────────────────────────
+
+@app.post(
+    '/api/v1/olt/ftth/suspend',
+    response_model=OntSuspendResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Suspender ONU: desactiva ONT en la OLT Huawei sin eliminar config',
+)
+async def ftth_suspend_onu(body: OntSuspendRequest) -> OntSuspendResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                suspend_onu,
+                body.connection,
+                body.slot, body.port, body.onu_id, body.service_port_id,
+            )
+        except ProvisioningError as exc:
+            return OntSuspendResponse(success=False, message='Error al suspender ONU', error=str(exc))
+    return OntSuspendResponse(success=True, message=result['message'])
+
+
+@app.post(
+    '/api/v1/olt/ftth/rehabilitate',
+    response_model=OntSuspendResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Rehabilitar ONU: reactiva ONT en la OLT Huawei previamente suspendida',
+)
+async def ftth_rehabilitate_onu(body: OntRehabilitateRequest) -> OntSuspendResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                rehabilitate_onu,
+                body.connection,
+                body.slot, body.port, body.onu_id, body.service_port_id,
+            )
+        except ProvisioningError as exc:
+            return OntSuspendResponse(success=False, message='Error al rehabilitar ONU', error=str(exc))
+    return OntSuspendResponse(success=True, message=result['message'])

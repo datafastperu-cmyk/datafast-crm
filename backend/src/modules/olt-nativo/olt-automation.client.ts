@@ -39,6 +39,8 @@ import {
   PythonTestConexionResponse,
   PythonVerifyOnuRequest,
   PythonVerifyOnuResponse,
+  PythonOntSuspendRequest,
+  PythonOntSuspendResponse,
 } from './dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -301,6 +303,29 @@ export class OltAutomationClient {
       '/api/v1/olt/ftth/inject-wan-pppoe', payload, 30_000,
     );
     this.logger.log(`← ftth/inject-wan-pppoe | success=${res.success}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — Suspensión / Rehabilitación ONU
+  // ────────────────────────────────────────────────────────────
+  async ftthSuspendOnu(payload: PythonOntSuspendRequest): Promise<PythonOntSuspendResponse> {
+    this.logger.log(
+      `→ Python ftth/suspend | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} sp=${payload.service_port_id}`,
+    );
+    const res = await this.post<PythonOntSuspendResponse>('/api/v1/olt/ftth/suspend', payload, 30_000);
+    this.logger.log(`← ftth/suspend | success=${res.success}`);
+    return res;
+  }
+
+  async ftthRehabilitateOnu(payload: PythonOntSuspendRequest): Promise<PythonOntSuspendResponse> {
+    this.logger.log(
+      `→ Python ftth/rehabilitate | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} sp=${payload.service_port_id}`,
+    );
+    const res = await this.post<PythonOntSuspendResponse>('/api/v1/olt/ftth/rehabilitate', payload, 30_000);
+    this.logger.log(`← ftth/rehabilitate | success=${res.success}`);
     return res;
   }
 

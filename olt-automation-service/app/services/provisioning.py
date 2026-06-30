@@ -2319,3 +2319,103 @@ def inject_wan_pppoe(
 
     logger.info('inject_wan_pppoe OK | OLT=%s onu_id=%d user=%s', conn.ip, onu_id, username)
     return {'success': True, 'olt_ip': conn.ip, 'onu_id': onu_id}
+
+
+# ── Suspensión / Rehabilitación por service-port ──────────────
+
+def suspend_onu(
+    conn:            OltConnectionSchema,
+    slot:            int,
+    port:            int,
+    onu_id:          int,
+    service_port_id: int,
+) -> dict[str, Any]:
+    """
+    Suspende una ONU Huawei MA5800 desactivando su service-port.
+
+    Usa `ont deactivate` dentro de la interfaz GPON para cortar el acceso
+    a nivel de protocolo OMCI sin eliminar la configuración. El service-port
+    queda intacto en la OLT (no se hace undo service-port).
+
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(
+            f'Suspensión nativa no implementada para marca "{conn.brand.value}".'
+        )
+    logger.info(
+        'suspend_onu: OLT=%s slot=%d port=%d onu_id=%d service_port=%d',
+        conn.ip, slot, port, onu_id, service_port_id,
+    )
+    cmds = [
+        'config',
+        f'interface gpon 0/{slot}',
+        f'port {port} ont deactivate ontid {onu_id}',
+        'quit',
+        'save',
+    ]
+    try:
+        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+    except ProvisioningError:
+        raise
+    except Exception as exc:
+        raise ProvisioningError(f'suspend_onu falló en {conn.ip}: {exc}') from exc
+
+    _check_cli_error(conn.brand, 'suspend_onu', raw)
+    logger.info('suspend_onu OK | OLT=%s slot=%d port=%d onu_id=%d', conn.ip, slot, port, onu_id)
+    return {
+        'success':         True,
+        'message':         f'ONU {onu_id} suspendida en slot={slot} port={port}',
+        'olt_ip':          conn.ip,
+        'service_port_id': service_port_id,
+    }
+
+
+def rehabilitate_onu(
+    conn:            OltConnectionSchema,
+    slot:            int,
+    port:            int,
+    onu_id:          int,
+    service_port_id: int,
+) -> dict[str, Any]:
+    """
+    Rehabilita una ONU Huawei MA5800 previamente suspendida.
+
+    Usa `ont activate` para re-habilitar el protocolo OMCI.
+    La ONU volverá a negociar GPON y su service-port quedará activo.
+
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(
+            f'Rehabilitación nativa no implementada para marca "{conn.brand.value}".'
+        )
+    logger.info(
+        'rehabilitate_onu: OLT=%s slot=%d port=%d onu_id=%d service_port=%d',
+        conn.ip, slot, port, onu_id, service_port_id,
+    )
+    cmds = [
+        'config',
+        f'interface gpon 0/{slot}',
+        f'port {port} ont activate ontid {onu_id}',
+        'quit',
+        'save',
+    ]
+    try:
+        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+    except ProvisioningError:
+        raise
+    except Exception as exc:
+        raise ProvisioningError(f'rehabilitate_onu falló en {conn.ip}: {exc}') from exc
+
+    _check_cli_error(conn.brand, 'rehabilitate_onu', raw)
+    logger.info(
+        'rehabilitate_onu OK | OLT=%s slot=%d port=%d onu_id=%d',
+        conn.ip, slot, port, onu_id,
+    )
+    return {
+        'success':         True,
+        'message':         f'ONU {onu_id} rehabilitada en slot={slot} port={port}',
+        'olt_ip':          conn.ip,
+        'service_port_id': service_port_id,
+    }

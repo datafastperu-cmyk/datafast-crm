@@ -623,6 +623,30 @@ export class OltNativoController {
     return this.ftth.desaprovisionar(oltId, user.empresaId, dto);
   }
 
+  @Post(':oltId/ftth/suspender')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Suspender ONU FTTH — desactiva ONT en OLT Huawei sin eliminar service-port' })
+  @ApiParam({ name: 'oltId' })
+  async suspenderFtth(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body('contratoId') contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+    return this.ftth.suspender(oltId, user.empresaId, contratoId);
+  }
+
+  @Post(':oltId/ftth/rehabilitar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rehabilitar ONU FTTH — reactiva ONT previamente suspendida' })
+  @ApiParam({ name: 'oltId' })
+  async rehabilitarFtth(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body('contratoId') contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+    return this.ftth.rehabilitar(oltId, user.empresaId, contratoId);
+  }
+
   @Get(':oltId/onu-id-pool')
   @ApiOperation({ summary: 'Estado del pool de ONU IDs para un puerto PON de una OLT' })
   @ApiParam({ name: 'oltId' })

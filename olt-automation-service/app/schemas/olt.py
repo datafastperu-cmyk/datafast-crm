@@ -415,3 +415,31 @@ class FtthWanResponse(BaseModel):
     olt_ip:  str | None = None
     onu_id:  int | None = None
     error:   str | None = None
+
+
+# ─── Suspensión / Rehabilitación por service-port ─────────────
+
+class OntSuspendRequest(BaseModel):
+    """Desactiva (suspende) una ONU bloqueando su service-port."""
+    connection:      OltConnectionSchema
+    slot:            int = Field(..., ge=0, le=15)
+    port:            int = Field(..., ge=0, le=15)
+    onu_id:          int = Field(..., ge=1, le=128)
+    service_port_id: int = Field(..., ge=1,
+                                 description='ID del service-port a desactivar en la OLT Huawei.')
+
+
+class OntRehabilitateRequest(BaseModel):
+    """Reactiva una ONU previamente suspendida (rehabilita su service-port)."""
+    connection:      OltConnectionSchema
+    slot:            int = Field(..., ge=0, le=15)
+    port:            int = Field(..., ge=0, le=15)
+    onu_id:          int = Field(..., ge=1, le=128)
+    service_port_id: int = Field(..., ge=1,
+                                 description='ID del service-port a reactivar en la OLT Huawei.')
+
+
+class OntSuspendResponse(BaseModel):
+    success: bool
+    message: str
+    error:   str | None = None

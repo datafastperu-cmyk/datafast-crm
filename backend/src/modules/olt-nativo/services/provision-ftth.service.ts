@@ -600,4 +600,108 @@ export class ProvisionFtthService {
       mensaje: `ONU ${registro.sn} desaprovisionada correctamente. Recursos liberados.`,
     };
   }
+
+  // ────────────────────────────────────────────────────────────
+  // suspender — desactiva ONT en OLT sin eliminar service-port
+  // ────────────────────────────────────────────────────────────
+  async suspender(
+    oltId:     string,
+    empresaId: string,
+    contratoId: string,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+
+    const registro = await this.ftthRepo.findOne({ where: { contratoId } });
+    if (!registro) {
+      throw new NotFoundException(`No hay registro FTTH para el contrato ${contratoId}.`);
+    }
+    if (registro.estado !== FtthOnuEstado.ACTIVO) {
+      throw new BadRequestException(
+        `Solo se puede suspender desde el estado "activo". Estado actual: "${registro.estado}".`,
+      );
+    }
+    if (registro.servicePortId == null) {
+      throw new BadRequestException('El registro FTTH no tiene service-port asignado.');
+    }
+
+    const olt      = await this._fetchOlt(oltId, empresaId);
+    const password = this._decryptOltPassword(olt);
+    const conn     = this._buildConn(olt, password);
+
+    let exitoso = false;
+    let error: string | undefined;
+    try {
+      const res = await this.automation.ftthSuspendOnu({
+        connection:      conn,
+        slot:            registro.slot,
+        port:            registro.port,
+        onu_id:          registro.onuId,
+        service_port_id: registro.servicePortId,
+      });
+      exitoso = res.success;
+      error   = res.error;
+    } catch (err: any) {
+      error = err.message;
+      this.logger.error(`FTTH suspender SSH falló | contrato=${contratoId} error=${err.message}`);
+    }
+
+    if (!exitoso) {
+      return { exitoso: false, mensaje: 'No se pudo suspender la ONU en la OLT.', error };
+    }
+
+    await this.ftthRepo.update(registro.id, { estado: FtthOnuEstado.SUSPENDIDO });
+    this.logger.log(`FTTH suspendido | contrato=${contratoId} sn=${registro.sn}`);
+    return { exitoso: true, mensaje: `ONU ${registro.sn} suspendida correctamente.` };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // rehabilitar — reactiva ONT previamente suspendida
+  // ────────────────────────────────────────────────────────────
+  async rehabilitar(
+    oltId:     string,
+    empresaId: string,
+    contratoId: string,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+
+    const registro = await this.ftthRepo.findOne({ where: { contratoId } });
+    if (!registro) {
+      throw new NotFoundException(`No hay registro FTTH para el contrato ${contratoId}.`);
+    }
+    if (registro.estado !== FtthOnuEstado.SUSPENDIDO) {
+      throw new BadRequestException(
+        `Solo se puede rehabilitar desde el estado "suspendido". Estado actual: "${registro.estado}".`,
+      );
+    }
+    if (registro.servicePortId == null) {
+      throw new BadRequestException('El registro FTTH no tiene service-port asignado.');
+    }
+
+    const olt      = await this._fetchOlt(oltId, empresaId);
+    const password = this._decryptOltPassword(olt);
+    const conn     = this._buildConn(olt, password);
+
+    let exitoso = false;
+    let error: string | undefined;
+    try {
+      const res = await this.automation.ftthRehabilitateOnu({
+        connection:      conn,
+        slot:            registro.slot,
+        port:            registro.port,
+        onu_id:          registro.onuId,
+        service_port_id: registro.servicePortId,
+      });
+      exitoso = res.success;
+      error   = res.error;
+    } catch (err: any) {
+      error = err.message;
+      this.logger.error(`FTTH rehabilitar SSH falló | contrato=${contratoId} error=${err.message}`);
+    }
+
+    if (!exitoso) {
+      return { exitoso: false, mensaje: 'No se pudo rehabilitar la ONU en la OLT.', error };
+    }
+
+    await this.ftthRepo.update(registro.id, { estado: FtthOnuEstado.ACTIVO });
+    this.logger.log(`FTTH rehabilitado | contrato=${contratoId} sn=${registro.sn}`);
+    return { exitoso: true, mensaje: `ONU ${registro.sn} rehabilitada correctamente.` };
+  }
 }

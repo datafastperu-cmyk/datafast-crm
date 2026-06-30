@@ -46,12 +46,16 @@ function EstadoBadge({ estado }: { estado: FtthOnuEstado }) {
 
 // ─── Estado panel ─────────────────────────────────────────────
 
-function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisionar, isDesaprovisionandoPending }: {
+function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando }: {
   registro: FtthOnuRegistro;
   onReinject: () => void;
   isReinjectPending: boolean;
   onDesaprovisionar: () => void;
   isDesaprovisionandoPending: boolean;
+  onSuspender: () => void;
+  isSuspendiendo: boolean;
+  onRehabiliitar: () => void;
+  isRehabilitando: boolean;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -87,7 +91,27 @@ function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisiona
           Re-inyectar WAN PPPoE
         </button>
       )}
-      {(registro.estado === 'activo' || registro.estado === 'gpon_registrado' || registro.estado === 'wan_inyectado') && (
+      {registro.estado === 'activo' && (
+        <button
+          onClick={onSuspender}
+          disabled={isSuspendiendo}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-amber-700/50 bg-amber-500/5 text-amber-700 dark:text-amber-400 text-xs font-semibold hover:bg-amber-500/15 transition-colors disabled:opacity-50"
+        >
+          {isSuspendiendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <WifiOff className="w-3.5 h-3.5" />}
+          {isSuspendiendo ? 'Suspendiendo…' : 'Suspender ONU'}
+        </button>
+      )}
+      {registro.estado === 'suspendido' && (
+        <button
+          onClick={onRehabiliitar}
+          disabled={isRehabilitando}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-700/50 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 text-xs font-semibold hover:bg-emerald-500/15 transition-colors disabled:opacity-50"
+        >
+          {isRehabilitando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          {isRehabilitando ? 'Rehabilitando…' : 'Rehabilitar ONU'}
+        </button>
+      )}
+      {(registro.estado === 'activo' || registro.estado === 'gpon_registrado' || registro.estado === 'wan_inyectado' || registro.estado === 'suspendido') && (
         <button
           onClick={onDesaprovisionar}
           disabled={isDesaprovisionandoPending}
@@ -269,6 +293,42 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     },
   });
 
+  // Suspender mutation
+  const { mutate: suspender, isPending: suspendiendo } = useMutation({
+    mutationFn: () => oltNativoApi.ftthSuspender(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
+    onSuccess: (res) => {
+      if (res.exitoso) {
+        toast('ONU suspendida correctamente', { type: 'success' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+      } else {
+        toast(res.error ?? res.mensaje ?? 'No se pudo suspender la ONU', { type: 'error' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast(msg ?? 'Error al suspender la ONU', { type: 'error' });
+    },
+  });
+
+  // Rehabilitar mutation
+  const { mutate: rehabilitar, isPending: rehabilitando } = useMutation({
+    mutationFn: () => oltNativoApi.ftthRehabilirar(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
+    onSuccess: (res) => {
+      if (res.exitoso) {
+        toast('ONU rehabilitada correctamente', { type: 'success' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+      } else {
+        toast(res.error ?? res.mensaje ?? 'No se pudo rehabilitar la ONU', { type: 'error' });
+        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast(msg ?? 'Error al rehabilitar la ONU', { type: 'error' });
+    },
+  });
+
   // Provision mutation
   const { mutate: provisionar, isPending: provIsPending } = useMutation({
     mutationFn: () => oltNativoApi.ftthProvision(selectedOltId, {
@@ -341,6 +401,10 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   isReinjectPending={reinjectPending}
                   onDesaprovisionar={() => desaprovisionar()}
                   isDesaprovisionandoPending={desaprovisionandoPending}
+                  onSuspender={() => suspender()}
+                  isSuspendiendo={suspendiendo}
+                  onRehabiliitar={() => rehabilitar()}
+                  isRehabilitando={rehabilitando}
                 />
                 {yaActivo && (
                   <div className="flex items-center gap-2 mt-3 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-700/30">
