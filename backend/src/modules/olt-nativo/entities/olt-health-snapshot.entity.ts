@@ -56,16 +56,16 @@ export class OltHealthSnapshot {
   laserMa: number | null;
 
   // ok | warn | critical | unavailable
-  @Column({ name: 'pom_state', length: 20, nullable: true })
+  @Column({ name: 'pom_state', type: 'varchar', length: 20, nullable: true })
   pomState: string | null;
 
   // ── Board / Slot ───────────────────────────────────────────────
   // Ej: "GPBD", "GPON-8", "X2CS"
-  @Column({ name: 'board_type',  length: 30, nullable: true })
+  @Column({ name: 'board_type',  type: 'varchar', length: 30, nullable: true })
   boardType: string | null;
 
   // normal | fault | absent | standby
-  @Column({ name: 'board_state', length: 20, nullable: true })
+  @Column({ name: 'board_state', type: 'varchar', length: 20, nullable: true })
   boardState: string | null;
 
   // Capacidad máxima de ONUs para este slot

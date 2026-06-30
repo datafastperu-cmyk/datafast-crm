@@ -49,31 +49,31 @@ export class OltAlerta {
   empresaId: string;
 
   // critica | alta | media | baja
-  @Column({ length: 10 })
+  @Column({ type: 'varchar', length: 10 })
   severidad: AlertaSeveridad;
 
   // Tipo de alerta — define la regla que la generó
-  @Column({ length: 50 })
+  @Column({ type: 'varchar', length: 50 })
   tipo: AlertaTipo;
 
   @Column({ type: 'text' })
   mensaje: string;
 
   // activa | resuelta | silenciada
-  @Column({ length: 20, default: 'activa' })
+  @Column({ type: 'varchar', length: 20, default: 'activa' })
   estado: AlertaEstado;
 
   // onu | board | port | pool
-  @Column({ name: 'entidad_tipo', length: 20, nullable: true })
+  @Column({ name: 'entidad_tipo', type: 'varchar', length: 20, nullable: true })
   entidadTipo: string | null;
 
   // Referencia a la entidad afectada. Ej: "0/1/2", "slot:0", "pool:svc"
   // Usado por el índice UNIQUE de deduplicación
-  @Column({ name: 'entidad_ref', length: 50, nullable: true })
+  @Column({ name: 'entidad_ref', type: 'varchar', length: 50, nullable: true })
   entidadRef: string | null;
 
   // FK al contrato afectado (si aplica — onu_offline con contrato activo)
-  @Column({ name: 'contrato_id', nullable: true })
+  @Column({ name: 'contrato_id', type: 'varchar', nullable: true })
   contratoId: string | null;
 
   // Silenciar hasta esta fecha (mantenimientos programados)
