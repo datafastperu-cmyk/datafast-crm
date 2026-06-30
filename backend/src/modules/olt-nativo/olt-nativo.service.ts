@@ -1278,6 +1278,13 @@ export class OltNativoService implements OnModuleInit {
         activo:         true,
         circuitEstado:  'closed',
         circuitFallas:  0,
+        credenciales: {
+          ip:               dto.ipGestion,
+          port:             dto.puerto,
+          username:         dto.usuario,
+          password_cifrado: contrasenaCifrada,
+          brand:            dto.marca.toLowerCase(),
+        },
       });
 
       await qr.commitTransaction();

@@ -154,6 +154,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['olt-nativas'] });
       queryClient.invalidateQueries({ queryKey: ['olt-todas'] });
+      queryClient.invalidateQueries({ queryKey: ['olts-config'] });
       toast('OLT registrada', { description: `${nombre} agregada correctamente al sistema`, type: 'success' });
       handleClose();
     },
