@@ -30,7 +30,6 @@ from app.services.provisioning import (
     _build_netmiko_params,
     _huawei_enter_enable,
     _check_cli_error,
-    _parse_output,
     _open_multi_commands,
     deprovision_onu,
     discover_huawei_onus,
@@ -127,20 +126,7 @@ class HuaweiDriver(OltDriver):
         line_profiles    = self._parse_profiles_raw(lp_raw, 'display_ont_lineprofile_all.textfsm')
         service_profiles = self._parse_profiles_raw(sp_raw, 'display_ont_srvprofile_all.textfsm')
 
-        tt_rows = _parse_output(self._conn.brand, 'display_traffic_table_all.textfsm', tt_raw)
-        traffic_tables = []
-        for row in tt_rows:
-            if 'raw' in row:
-                continue
-            try:
-                traffic_tables.append(TrafficTableInfo(
-                    index    = int(row.get('TrafficIndex') or -1),
-                    name     = str(row.get('TrafficName') or '').strip(),
-                    cir_kbps = int(row.get('Cir') or 0) or None,
-                    pir_kbps = int(row.get('Pir') or 0) or None,
-                ))
-            except (ValueError, TypeError):
-                continue
+        traffic_tables = self._parse_traffic_tables(tt_raw)
 
         vlans = self._parse_vlans(vlan_raw)
 
@@ -315,26 +301,119 @@ class HuaweiDriver(OltDriver):
         except (ValueError, TypeError):
             return None
 
-    def _parse_profiles_raw(self, raw: str, fsm_name: str) -> list[dict]:
-        """Parsea lineprofile/srvprofile sin abrir nueva sesión SSH."""
-        rows = _parse_output(self._conn.brand, fsm_name, raw)
-        result = []
-        for row in rows:
-            if 'raw' in row:
+    def _parse_profiles_raw(self, raw: str, _fsm_name: str = '') -> list[dict]:
+        """
+        Parsea lineprofile/srvprofile con regex directo.
+        Formato MA5800-X7: bloques "Profile-Index : N / Profile-Name : name".
+        También soporta formato tabular como fallback.
+        """
+        result: list[dict] = []
+        # Bloque: Profile-Index : N ... Profile-Name : name
+        idx_matches  = list(re.finditer(r'Profile-[Ii]ndex\s*:\s*(\d+)', raw))
+        name_matches = list(re.finditer(r'Profile-[Nn]ame\s*:\s*(\S+)', raw))
+        if idx_matches and name_matches:
+            for m_idx in idx_matches:
+                pid = int(m_idx.group(1))
+                # nombre más cercano después del índice
+                following = [m for m in name_matches if m.start() > m_idx.start()]
+                if not following:
+                    continue
+                nm = following[0].group(1)
+                result.append({'profile_id': pid, 'name': nm})
+            if result:
+                return result
+        # Fallback tabular: "  N  name  ..."
+        for line in raw.splitlines():
+            parts = line.split()
+            if len(parts) < 2:
                 continue
             try:
-                pid  = int(row.get('ProfileId') or -1)
-                name = str(row.get('ProfileName') or '').strip()
+                pid = int(parts[0])
+                name = parts[1]
+                if pid >= 0 and name and not name.startswith('-'):
+                    result.append({'profile_id': pid, 'name': name})
             except (ValueError, TypeError):
                 continue
-            if pid < 0 or not name:
-                continue
-            result.append({'profile_id': pid, 'name': name})
         return result
 
     def _parse_boards(self, raw: str) -> list[BoardInfo]:
-        rows = _parse_output(self._conn.brand, 'display_board_0.textfsm', raw)
-        return self._parse_boards_from_rows(rows)
+        """
+        Parsea 'display board 0' con regex directo.
+        Formato MA5800-X7: "  N  BOARDNAME  STATUS  [sub0  sub1]  X/Y"
+        Slots vacíos ("-/-") se omiten automáticamente.
+        """
+        result: list[BoardInfo] = []
+        pattern = re.compile(
+            r'^\s{1,8}(\d{1,3})\s+([A-Za-z]\S*)\s+(\w+)'   # slot, board, status
+            r'(?:\s+\S+\s+\S+)?\s+'                          # SubType0/SubType1 opcionales
+            r'(\d+)/(\d+)',                                   # online/offline
+            re.MULTILINE,
+        )
+        for m in pattern.finditer(raw):
+            slot_id    = int(m.group(1))
+            board_name = m.group(2)
+            status     = m.group(3).lower()
+            online     = int(m.group(4))
+            offline    = int(m.group(5))
+            result.append(BoardInfo(
+                slot=slot_id, board_type=board_name, state=status,
+                onu_count=online + offline, onu_capacity=128,
+                online_onus=online, offline_onus=offline,
+            ))
+        return result
+
+    def _parse_traffic_tables(self, raw: str) -> list[TrafficTableInfo]:
+        """
+        Parsea 'display traffic table all' con regex directo.
+        Formato MA5800-X7: bloques "Traffic table name : X / Traffic table index : N / CIR / PIR".
+        """
+        result: list[TrafficTableInfo] = []
+        # Capturamos todos los campos y luego los emparejamos por bloque
+        name_matches  = list(re.finditer(r'Traffic table name\s*:\s*(\S+)', raw))
+        idx_matches   = list(re.finditer(r'Traffic table index\s*:\s*(\d+)', raw))
+        cir_matches   = list(re.finditer(r'CIR\S*\s*:\s*(\d+)', raw))
+        pir_matches   = list(re.finditer(r'PIR\S*\s*:\s*(\d+)', raw))
+
+        def _nearest_after(matches: list, pos: int):
+            following = [m for m in matches if m.start() > pos]
+            return following[0] if following else None
+
+        if name_matches:
+            for m_name in name_matches:
+                m_idx = _nearest_after(idx_matches, m_name.start())
+                m_cir = _nearest_after(cir_matches, m_name.start())
+                m_pir = _nearest_after(pir_matches, m_name.start())
+                # guardar hasta el comienzo del siguiente bloque
+                next_block = _nearest_after(name_matches, m_name.start())
+                boundary   = next_block.start() if next_block else len(raw)
+                try:
+                    idx  = int(m_idx.group(1)) if m_idx and m_idx.start() < boundary else -1
+                    cir  = int(m_cir.group(1)) if m_cir and m_cir.start() < boundary else 0
+                    pir  = int(m_pir.group(1)) if m_pir and m_pir.start() < boundary else 0
+                    name = m_name.group(1)
+                    if idx >= 0 and name:
+                        result.append(TrafficTableInfo(
+                            index=idx, name=name,
+                            cir_kbps=cir or None,
+                            pir_kbps=pir or None,
+                        ))
+                except (ValueError, TypeError):
+                    continue
+            return result
+
+        # Fallback tabular: primera columna índice, segunda nombre
+        for line in raw.splitlines():
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            try:
+                idx  = int(parts[0])
+                name = parts[1]
+                if idx >= 0 and name and not name.startswith('-'):
+                    result.append(TrafficTableInfo(index=idx, name=name, cir_kbps=None, pir_kbps=None))
+            except (ValueError, TypeError):
+                continue
+        return result
 
     def _parse_boards_from_dict(self, slots: list[dict]) -> list[BoardInfo]:
         result = []

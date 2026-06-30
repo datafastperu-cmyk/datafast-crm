@@ -215,7 +215,7 @@ def _parse_output(brand: OltBrand, fsm_name: str, raw_output: str) -> list[dict[
         logger.warning('TextFSM "%s" no encontrada — retornando raw', fsm_path)
         return [{'raw': raw_output}]
 
-    with open(fsm_path, encoding='utf-8') as fh:
+    with open(fsm_path, encoding='utf-8-sig') as fh:   # utf-8-sig strips BOM automáticamente
         fsm = textfsm.TextFSM(fh)
 
     rows = fsm.ParseText(raw_output)

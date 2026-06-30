@@ -1,7 +1,10 @@
-﻿Value SlotId (\d+)
+Value SlotId (\d+)
 Value BoardName (\S+)
 Value Status (\S+)
-Value OnlineOffline (\S+/\S+)
+Value OnlineOffline (\d+/\d+)
 
 Start
-  ^\s+\s+\s+\s+\S+\s+\S+\s+ -> Record
+  # MA5800: "    N  BOARD_NAME  STATUS  -  -  X/Y"  (6 cols)
+  ^\s+${SlotId}\s+${BoardName}\s+${Status}\s+\S+\s+\S+\s+${OnlineOffline} -> Record
+  # Compact: "    N  BOARD_NAME  STATUS  X/Y"  (4 cols)
+  ^\s+${SlotId}\s+${BoardName}\s+${Status}\s+${OnlineOffline} -> Record
