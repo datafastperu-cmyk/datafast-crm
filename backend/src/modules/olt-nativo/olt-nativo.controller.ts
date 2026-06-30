@@ -684,6 +684,41 @@ export class OltNativoController {
     return this.ftth.signalDashboard(oltId, user.empresaId);
   }
 
+  @Get(':oltId/ftth/reconciliar')
+  @ApiOperation({ summary: 'Reconciliar ERP vs OLT — detecta ONUs perdidas y huérfanas' })
+  @ApiParam({ name: 'oltId' })
+  async reconciliarFtth(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ftth.reconciliar(oltId, user.empresaId);
+  }
+
+  @Post(':oltId/wizard/inicializar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Wizard OLT: importa perfiles + traffic tables desde la OLT al ERP' })
+  @ApiParam({ name: 'oltId' })
+  async wizardInicializarOlt(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{
+    lineprofiles:   Array<{ profile_id: number; name: string }>;
+    srvprofiles:    Array<{ profile_id: number; name: string }>;
+    trafficTables:  { insertadas: number; actualizadas: number };
+    total:          number;
+  }> {
+    const perfiles = await this.service.listarPerfilesOlt(oltId, user.empresaId);
+    const trafficResult = await this.trafficTables.sincronizarDesdeOlt(
+      oltId, user.empresaId, perfiles.traffic_tables,
+    );
+    return {
+      lineprofiles:  perfiles.lineprofiles,
+      srvprofiles:   perfiles.srvprofiles,
+      trafficTables: trafficResult,
+      total:         perfiles.lineprofiles.length + perfiles.srvprofiles.length + perfiles.traffic_tables.length,
+    };
+  }
+
   @Get('ftth/estado/:contratoId')
   @ApiOperation({ summary: 'Obtener estado de aprovisionamiento FTTH de un contrato' })
   @ApiParam({ name: 'contratoId' })

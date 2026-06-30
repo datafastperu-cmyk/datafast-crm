@@ -697,4 +697,32 @@ export const oltNativoApi = {
     );
     return res.data.data;
   },
+
+  wizardInicializarOlt: async (oltId: string): Promise<{
+    lineprofiles:  Array<{ profile_id: number; name: string }>;
+    srvprofiles:   Array<{ profile_id: number; name: string }>;
+    trafficTables: { insertadas: number; actualizadas: number };
+    total:         number;
+  }> => {
+    const res = await api.post<ApiRespuesta<{
+      lineprofiles:  Array<{ profile_id: number; name: string }>;
+      srvprofiles:   Array<{ profile_id: number; name: string }>;
+      trafficTables: { insertadas: number; actualizadas: number };
+      total:         number;
+    }>>(`/olt-nativo/${oltId}/wizard/inicializar`, {}, { timeout: 60_000 });
+    return res.data.data;
+  },
+
+  ftthReconciliar: async (oltId: string): Promise<{
+    enErpNoEnOlt: FtthOnuRegistro[];
+    enOltNoEnErp: Array<{ sn: string; slot: number; port: number; ont_model?: string }>;
+    sincronizados: number;
+  }> => {
+    const res = await api.get<ApiRespuesta<{
+      enErpNoEnOlt: FtthOnuRegistro[];
+      enOltNoEnErp: Array<{ sn: string; slot: number; port: number; ont_model?: string }>;
+      sincronizados: number;
+    }>>(`/olt-nativo/${oltId}/ftth/reconciliar`, { timeout: 60_000 });
+    return res.data.data;
+  },
 };

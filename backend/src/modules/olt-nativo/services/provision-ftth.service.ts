@@ -804,4 +804,47 @@ export class ProvisionFtthService {
       signal:   signalMap.get(`${r.slot}:${r.port}:${r.onuId}`) ?? null,
     }));
   }
+
+  // ────────────────────────────────────────────────────────────
+  // reconciliar — compara ONUs en OLT real vs registros ERP
+  // ────────────────────────────────────────────────────────────
+  async reconciliar(
+    oltId:     string,
+    empresaId: string,
+  ): Promise<{
+    enErpNoEnOlt:  FtthOnuRegistro[];
+    enOltNoEnErp:  Array<{ sn: string; slot: number; port: number; ont_model?: string }>;
+    sincronizados: number;
+  }> {
+
+    const registros = await this.ftthRepo.find({
+      where: { oltId, empresaId, estado: FtthOnuEstado.ACTIVO },
+    });
+
+    const olt      = await this._fetchOlt(oltId, empresaId);
+    const password = this._decryptOltPassword(olt);
+    const conn     = this._buildConn(olt, password);
+
+    let oltOnus: Array<{ sn: string; slot: number; port: number; ont_model?: string }> = [];
+    try {
+      const discovered = await this.automation.discoverOnus({ connection: conn, slot: null, port: null });
+      oltOnus = discovered.onus ?? [];
+    } catch (err: any) {
+      this.logger.warn(`reconciliar discover falló | olt=${oltId}: ${err.message}`);
+    }
+
+    const oltSnSet  = new Set(oltOnus.map(o => o.sn.toUpperCase()));
+    const erpSnSet  = new Set(registros.map(r => r.sn.toUpperCase()));
+
+    const enErpNoEnOlt  = registros.filter(r => !oltSnSet.has(r.sn.toUpperCase()));
+    const enOltNoEnErp  = oltOnus.filter(o => !erpSnSet.has(o.sn.toUpperCase()));
+    const sincronizados = registros.length - enErpNoEnOlt.length;
+
+    this.logger.log(
+      `reconciliar | olt=${oltId} ERP=${registros.length} OLT=${oltOnus.length} ` +
+      `perdidos=${enErpNoEnOlt.length} huerfanos=${enOltNoEnErp.length}`,
+    );
+
+    return { enErpNoEnOlt, enOltNoEnErp, sincronizados };
+  }
 }
