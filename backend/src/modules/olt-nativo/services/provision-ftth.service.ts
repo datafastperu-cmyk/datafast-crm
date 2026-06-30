@@ -11,7 +11,8 @@ import {
 import { Type } from 'class-transformer';
 
 import { OltDispositivo }   from '../entities/olt-dispositivo.entity';
-import { FtthOnuEstado, FtthOnuRegistro } from '../entities/ftth-onu-registro.entity';
+import { FtthOnuEstado, FTTH_ESTADOS_FALLIDOS, FtthOnuRegistro } from '../entities/ftth-onu-registro.entity';
+import { FtthRollbackLog, RollbackMotivo } from '../entities/ftth-rollback-log.entity';
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
@@ -84,6 +85,28 @@ export class ProvisionFtthService {
     private readonly onuIdPool: OltOnuIdPoolService,
   ) {}
 
+  private async _logRollback(
+    empresaId:   string,
+    registroId:  string,
+    contratoId:  string,
+    oltId:       string,
+    motivo:      RollbackMotivo,
+    estadoPrevio: string,
+    sshExitoso:  boolean,
+    sshError?:   string,
+  ): Promise<void> {
+    try {
+      await this.ds.query(
+        `INSERT INTO ftth_rollback_log
+           (empresa_id, registro_id, contrato_id, olt_id, motivo, estado_previo, ssh_exitoso, ssh_error)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [empresaId, registroId, contratoId, oltId, motivo, estadoPrevio, sshExitoso, sshError ?? null],
+      );
+    } catch (e: any) {
+      this.logger.warn(`rollback log insert failed: ${e.message}`);
+    }
+  }
+
   // ────────────────────────────────────────────────────────────
   // provisionarFtth — flujo completo (lock → GPON → poll → WAN)
   // ────────────────────────────────────────────────────────────
@@ -102,10 +125,10 @@ export class ProvisionFtthService {
     });
 
     if (registroExistente) {
-      if (registroExistente.estado === FtthOnuEstado.ACTIVO) {
+      if (registroExistente.estado === FtthOnuEstado.ACTIVO || registroExistente.estado === FtthOnuEstado.SUSPENDIDO) {
         throw new ConflictException(
-          `El contrato ya tiene una ONU FTTH activa (SN: ${registroExistente.sn}). ` +
-          `Para reaprovisionar primero ejecuta el rollback.`,
+          `El contrato ya tiene una ONU FTTH ${registroExistente.estado} (SN: ${registroExistente.sn}). ` +
+          `Para reaprovisionar primero desaprovisiónala.`,
         );
       }
       if (
@@ -120,7 +143,6 @@ export class ProvisionFtthService {
             `(estado: ${registroExistente.estado}). Espera o espera al recovery automático.`,
           );
         }
-        // lockedAt > 10 min → recovery: marcar fallido y proceder
         this.logger.warn(
           `FTTH recovery: registro bloqueado > 10 min, forzando a fallido_gpon | ` +
           `contrato=${dto.contratoId} estado=${registroExistente.estado}`,
@@ -131,11 +153,8 @@ export class ProvisionFtthService {
           ultimoError: 'Recovery automático por lock expirado (> 10 min)',
         });
       }
-      // Si fallido → permitir reintento: borrar el registro para volver a crear
-      if (
-        registroExistente.estado === FtthOnuEstado.FALLIDO_GPON ||
-        registroExistente.estado === FtthOnuEstado.FALLIDO_WAN
-      ) {
+      // Si fallido (cualquier tipo) → permitir reintento
+      if (FTTH_ESTADOS_FALLIDOS.includes(registroExistente.estado)) {
         await this.ftthRepo.delete(registroExistente.id);
       }
     }
@@ -245,14 +264,24 @@ export class ProvisionFtthService {
 
     if (!pollRes.success || pollRes.timeout) {
       this.logger.warn(`FTTH poll timeout | contrato=${dto.contratoId} → rollback GPON`);
-      await this._rollbackGpon(registroId, olt, password, dto, servicePortId, onuId);
+      const rbErr = pollRes.error ?? 'Timeout de poll (90 s)';
+      const rbOk  = await this._rollbackGponWithLog(
+        empresaId, registroId, dto.contratoId, oltId,
+        olt, password, dto, servicePortId, onuId,
+        'timeout_online', FtthOnuEstado.GPON_REGISTRADO,
+      );
       if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
       await this.onuIdPool.liberar(oltId, dto.contratoId);
+      await this.ftthRepo.update(registroId, {
+        estado:      FtthOnuEstado.TIMEOUT_ONLINE,
+        lockedAt:    null,
+        ultimoError: `ONU no apareció online en 90 s. Rollback ${rbOk ? 'exitoso' : 'falló'}. ${rbErr}`,
+      });
       return {
-        estado:     FtthOnuEstado.FALLIDO_GPON,
+        estado:     FtthOnuEstado.TIMEOUT_ONLINE,
         registroId,
         mensaje:    'La ONU no apareció online en 90 s tras el registro GPON. Rollback ejecutado.',
-        error:      pollRes.error ?? 'Timeout de poll',
+        error:      rbErr,
       };
     }
 
@@ -443,33 +472,38 @@ export class ProvisionFtthService {
     };
   }
 
-  private async _rollbackGpon(
-    registroId:    string,
-    olt:           OltDispositivo,
-    password:      string,
-    dto:           ProvisionarFtthDto,
+  private async _rollbackGponWithLog(
+    empresaId:    string,
+    registroId:   string,
+    contratoId:   string,
+    oltId:        string,
+    olt:          OltDispositivo,
+    password:     string,
+    dto:          ProvisionarFtthDto,
     servicePortId: number,
-    onuId:         number,
-  ): Promise<void> {
+    onuId:        number,
+    motivo:       RollbackMotivo,
+    estadoPrevio: FtthOnuEstado,
+  ): Promise<boolean> {
     const conn = this._buildConn(olt, password);
+    let sshOk = false;
+    let sshErr: string | undefined;
     try {
-      await this.automation.ftthRollbackGpon({
+      const res = await this.automation.ftthRollbackGpon({
         connection:      conn,
         slot:            dto.slot,
         port:            dto.port,
         onu_id:          onuId,
         service_port_id: servicePortId,
       });
+      sshOk  = res.success;
+      sshErr = res.error;
     } catch (err: any) {
-      this.logger.error(
-        `FTTH rollback GPON falló | registroId=${registroId} error=${err.message}`,
-      );
+      sshErr = err.message;
+      this.logger.error(`FTTH rollback GPON falló | registroId=${registroId} err=${sshErr}`);
     }
-    await this.ftthRepo.update(registroId, {
-      estado:      FtthOnuEstado.FALLIDO_GPON,
-      lockedAt:    null,
-      ultimoError: 'ONU no apareció online — rollback GPON ejecutado',
-    });
+    await this._logRollback(empresaId, registroId, contratoId, oltId, motivo, estadoPrevio, sshOk, sshErr);
+    return sshOk;
   }
 
   // ────────────────────────────────────────────────────────────
@@ -523,7 +557,7 @@ export class ProvisionFtthService {
         onu_id:          registro.onuId,
         service_port_id: registro.servicePortId,
       });
-      rollbackOk   = res.success;
+      rollbackOk    = res.success;
       rollbackError = res.error;
     } catch (err: any) {
       rollbackError = err.message;
@@ -532,8 +566,13 @@ export class ProvisionFtthService {
       );
     }
 
+    await this._logRollback(
+      empresaId, registro.id, dto.contratoId, oltId,
+      'manual_desaprovisionar', registro.estado,
+      rollbackOk, rollbackError,
+    );
+
     if (!rollbackOk) {
-      // Revertir estado — el registro queda sin cambios para reintento manual
       await this.ftthRepo.update(registro.id, {
         estado:      registro.estado,
         lockedAt:    null,
@@ -546,7 +585,6 @@ export class ProvisionFtthService {
       };
     }
 
-    // SSH exitoso → liberar pools y eliminar registro
     await Promise.all([
       this.poolService.liberar(oltId, dto.contratoId),
       this.onuIdPool.liberar(oltId, dto.contratoId),

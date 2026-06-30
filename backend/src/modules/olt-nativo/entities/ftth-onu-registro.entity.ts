@@ -2,22 +2,32 @@ import { Entity, Column, Index } from 'typeorm';
 import { BaseModel } from '../../../common/entities/base.entity';
 
 export enum FtthOnuEstado {
-  PENDIENTE         = 'pendiente',
-  GPON_REGISTRADO   = 'gpon_registrado',
-  WAN_INYECTADO     = 'wan_inyectado',
-  ACTIVO            = 'activo',
-  FALLIDO_GPON      = 'fallido_gpon',
-  FALLIDO_WAN       = 'fallido_wan',
-  DESAPROVISIONANDO = 'desaprovisionando',
+  PENDIENTE              = 'pendiente',
+  GPON_REGISTRADO        = 'gpon_registrado',
+  WAN_INYECTADO          = 'wan_inyectado',
+  ACTIVO                 = 'activo',
+  FALLIDO_GPON           = 'fallido_gpon',
+  FALLIDO_WAN            = 'fallido_wan',
+  DESAPROVISIONANDO      = 'desaprovisionando',
+  TIMEOUT_ONLINE         = 'timeout_online',
+  FALLIDO_SERVICE_PORT   = 'fallido_service_port',
+  SUSPENDIDO             = 'suspendido',
 }
 
-// Estados en los que se considera que el registro "bloquea" un SN
 export const FTTH_ESTADOS_ACTIVOS: FtthOnuEstado[] = [
   FtthOnuEstado.PENDIENTE,
   FtthOnuEstado.GPON_REGISTRADO,
   FtthOnuEstado.WAN_INYECTADO,
   FtthOnuEstado.ACTIVO,
   FtthOnuEstado.DESAPROVISIONANDO,
+  FtthOnuEstado.SUSPENDIDO,
+];
+
+export const FTTH_ESTADOS_FALLIDOS: FtthOnuEstado[] = [
+  FtthOnuEstado.FALLIDO_GPON,
+  FtthOnuEstado.FALLIDO_WAN,
+  FtthOnuEstado.TIMEOUT_ONLINE,
+  FtthOnuEstado.FALLIDO_SERVICE_PORT,
 ];
 
 @Entity('ftth_onu_registro')

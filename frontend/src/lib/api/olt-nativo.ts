@@ -289,7 +289,8 @@ export interface SmartoltTipoOnu  { id: number; name: string; }
 
 export type FtthOnuEstado =
   | 'pendiente' | 'gpon_registrado' | 'wan_inyectado' | 'activo'
-  | 'fallido_gpon' | 'fallido_wan' | 'desaprovisionando';
+  | 'fallido_gpon' | 'fallido_wan' | 'desaprovisionando'
+  | 'timeout_online' | 'fallido_service_port' | 'suspendido';
 
 export interface FtthOnuRegistro {
   id:             string;

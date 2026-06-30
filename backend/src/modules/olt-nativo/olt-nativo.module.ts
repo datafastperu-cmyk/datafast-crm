@@ -10,6 +10,7 @@ import { OltOperacionLog }     from './entities/olt-operacion-log.entity';
 import { MetricasOnuOptical }  from './entities/metricas-onu-optical.entity';
 import { HistorialFirmware }   from './entities/historial-firmware.entity';
 import { FtthOnuRegistro }    from './entities/ftth-onu-registro.entity';
+import { FtthRollbackLog }   from './entities/ftth-rollback-log.entity';
 import { OltServicePortPool } from './entities/olt-service-port-pool.entity';
 import { OltOnuIdPool }      from './entities/olt-onu-id-pool.entity';
 import { Onu }                 from '../smartolt/entities/onu.entity';
@@ -91,6 +92,7 @@ import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
       AlertaSistema,
       HistorialFirmware,
       FtthOnuRegistro,
+      FtthRollbackLog,
       OltServicePortPool,
       OltOnuIdPool,
     ]),

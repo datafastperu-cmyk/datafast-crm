@@ -22,13 +22,16 @@ import { Portal } from '@/components/ui/portal';
 // ─── Estado badge ─────────────────────────────────────────────
 
 const ESTADO_META: Record<FtthOnuEstado, { label: string; cls: string }> = {
-  pendiente:         { label: 'Pendiente',          cls: 'text-muted-foreground border-border' },
-  gpon_registrado:   { label: 'GPON registrada',    cls: 'text-blue-600 dark:text-blue-400 border-blue-700 bg-blue-500/10' },
-  wan_inyectado:     { label: 'WAN inyectada',      cls: 'text-cyan-600 dark:text-cyan-400 border-cyan-700 bg-cyan-500/10' },
-  activo:            { label: 'Activo',              cls: 'text-emerald-600 dark:text-emerald-400 border-emerald-700 bg-emerald-500/10' },
-  fallido_gpon:      { label: 'Fallido GPON',       cls: 'text-red-600 dark:text-red-400 border-red-800 bg-red-500/10' },
-  fallido_wan:       { label: 'Fallido WAN',        cls: 'text-amber-600 dark:text-amber-400 border-amber-700 bg-amber-500/10' },
-  desaprovisionando: { label: 'Desaprovisionando',  cls: 'text-muted-foreground border-border' },
+  pendiente:             { label: 'Pendiente',            cls: 'text-muted-foreground border-border' },
+  gpon_registrado:       { label: 'GPON registrada',      cls: 'text-blue-600 dark:text-blue-400 border-blue-700 bg-blue-500/10' },
+  wan_inyectado:         { label: 'WAN inyectada',        cls: 'text-cyan-600 dark:text-cyan-400 border-cyan-700 bg-cyan-500/10' },
+  activo:                { label: 'Activo',                cls: 'text-emerald-600 dark:text-emerald-400 border-emerald-700 bg-emerald-500/10' },
+  fallido_gpon:          { label: 'Fallido GPON',         cls: 'text-red-600 dark:text-red-400 border-red-800 bg-red-500/10' },
+  fallido_wan:           { label: 'Fallido WAN',          cls: 'text-amber-600 dark:text-amber-400 border-amber-700 bg-amber-500/10' },
+  desaprovisionando:     { label: 'Desaprovisionando',    cls: 'text-muted-foreground border-border' },
+  timeout_online:        { label: 'Timeout online',       cls: 'text-orange-600 dark:text-orange-400 border-orange-700 bg-orange-500/10' },
+  fallido_service_port:  { label: 'Sin service port',     cls: 'text-red-600 dark:text-red-400 border-red-800 bg-red-500/10' },
+  suspendido:            { label: 'Suspendido',           cls: 'text-yellow-600 dark:text-yellow-400 border-yellow-700 bg-yellow-500/10' },
 };
 
 function EstadoBadge({ estado }: { estado: FtthOnuEstado }) {
