@@ -9,6 +9,7 @@ import { OltDispositivo }        from '../entities/olt-dispositivo.entity';
 import { OltProveedorConfig }    from '../entities/olt-proveedor-config.entity';
 import { OltHealthSnapshot }     from '../entities/olt-health-snapshot.entity';
 import { OltAutomationClient }   from '../olt-automation.client';
+import { OltAlertEngineService } from '../services/olt-alert-engine.service';
 
 // ─────────────────────────────────────────────────────────────
 // OltHealthPollerCron
@@ -43,6 +44,7 @@ export class OltHealthPollerCron {
     private readonly snapshotRepo:  Repository<OltHealthSnapshot>,
 
     private readonly automation:    OltAutomationClient,
+    private readonly alertEngine:   OltAlertEngineService,
   ) {}
 
   // ── Boards: cada 5 minutos ────────────────────────────────────
@@ -145,6 +147,11 @@ export class OltHealthPollerCron {
       const totalActivas = resp.boards.reduce((sum, b) => sum + b.onu_count, 0);
       await this.oltRepo.update(oltId, { onusActivas: totalActivas });
 
+      // Evaluar alertas de boards (no bloquea el poll si falla)
+      this.alertEngine.evalBoardAlerts(oltId, empresa, resp.boards).catch((e: Error) =>
+        this.logger.error(`Alert eval boards ${target.olt.nombre}: ${e.message}`),
+      );
+
       this.logger.debug(
         `Board poll OK ${target.olt.nombre}: ${resp.boards.length} slots, ${totalActivas} ONUs`,
       );
@@ -198,6 +205,11 @@ export class OltHealthPollerCron {
       }));
 
       await this.snapshotRepo.save(rows);
+
+      // Evaluar alertas de POM (no bloquea el poll si falla)
+      this.alertEngine.evalPomAlerts(oltId, empresa, resp.pom).catch((e: Error) =>
+        this.logger.error(`Alert eval POM ${target.olt.nombre}: ${e.message}`),
+      );
 
       this.logger.debug(
         `POM poll OK ${target.olt.nombre}: ${resp.pom.length} puertos`,

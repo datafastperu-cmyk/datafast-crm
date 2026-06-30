@@ -43,6 +43,7 @@ import { OltServicePortPoolService }  from './services/olt-service-port-pool.ser
 import { OltOnuIdPoolService }        from './services/olt-onu-id-pool.service';
 import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
 import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
+import { OltAlertEngineService }     from './services/olt-alert-engine.service';
 
 // ═══════════════════════════════════════════════════════════════════
 // OltNativoModule — ecosistema multi-proveedor OLT/ONU
@@ -150,6 +151,7 @@ import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
     OltVlanService,
     OltTrafficTableService,
     OltHealthDashboardService,
+    OltAlertEngineService,
     FtthRecoveryCron,
     OltHealthPollerCron,
   ],
