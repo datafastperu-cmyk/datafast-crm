@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery }   from '@tanstack/react-query';
 import {
   Radio, RefreshCw, Server, Signal,
-  Wifi, WifiOff, Upload,
+  Wifi, WifiOff, Upload, Activity,
   ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 
@@ -13,6 +13,7 @@ import {
   oltNativoApi,
   type OltConProveedorPrincipal,
   type OltDispositivo,
+  type FtthOnuRegistro,
 } from '@/lib/api/olt-nativo';
 import { FirmwarePanel } from './FirmwareUpgradeTab';
 import { cn } from '@/lib/utils';
@@ -65,7 +66,7 @@ function seccionDe(olt: OltConProveedorPrincipal): string {
   return olt.proveedorPrincipal?.tipo ?? olt.metodoConexion ?? 'desconocido';
 }
 
-type TabKey = 'olts' | 'onus' | 'firmware';
+type TabKey = 'olts' | 'onus' | 'firmware' | 'signal';
 
 // ─── Componente principal ─────────────────────────────────────
 
@@ -74,6 +75,7 @@ export function OltContent() {
   const [selectedOlt, setOlt]           = useState<string>('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoOnu | ''>('');
   const [firmwareOlt, setFirmwareOlt]   = useState<OltDispositivo | null>(null);
+  const [signalOltId, setSignalOltId]   = useState<string>('');
   const [oltSortField, setOltSortField] = useState<string>('nombre');
   const [oltSortDir,   setOltSortDir]   = useState<'ASC' | 'DESC'>('ASC');
   const [onuSortField, setOnuSortField] = useState<string>('nombre');
@@ -131,6 +133,15 @@ export function OltContent() {
   });
 
   const rawOnus = ((onusResp as any)?.data as unknown[]) ?? []; // eslint-disable-line
+
+  // ── Query: Signal dashboard FTTH ─────────────────────────────
+  const { data: signalData = [], isLoading: loadingSignal, refetch: refetchSignal } = useQuery({
+    queryKey:  ['ftth-signal', signalOltId],
+    queryFn:   () => oltNativoApi.ftthSignalDashboard(signalOltId),
+    enabled:   tab === 'signal' && !!signalOltId,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   // ── Orden OLTs ───────────────────────────────────────────────
   const sortedOlts = useMemo(() => {
@@ -205,6 +216,7 @@ export function OltContent() {
         {([
           ['olts',     'OLTs',     Server],
           ['onus',     'ONUs',     Signal],
+          ['signal',   'Señal FTTH', Activity],
           ['firmware', 'Firmware', Upload],
         ] as const).map(([key, label, Icon]) => (
           <button
@@ -454,6 +466,114 @@ export function OltContent() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Signal Dashboard FTTH */}
+      {tab === 'signal' && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <select
+              value={signalOltId}
+              onChange={e => setSignalOltId(e.target.value)}
+              className="px-3 py-2 text-sm bg-card border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">— Selecciona una OLT —</option>
+              {oltNativas.map((o: OltDispositivo) => (
+                <option key={o.id} value={o.id}>{o.nombre} ({o.ipGestion})</option>
+              ))}
+            </select>
+            {signalOltId && (
+              <button onClick={() => refetchSignal()} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5">
+                <RefreshCw className={cn('w-3.5 h-3.5', loadingSignal && 'animate-spin')} /> Actualizar
+              </button>
+            )}
+          </div>
+
+          {!signalOltId && (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+              <Activity className="w-10 h-10 opacity-30" />
+              <p className="text-sm">Selecciona una OLT para ver el dashboard de señal FTTH</p>
+            </div>
+          )}
+
+          {signalOltId && loadingSignal && (
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Consultando señal…
+            </div>
+          )}
+
+          {signalOltId && !loadingSignal && signalData.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+              <Activity className="w-8 h-8 opacity-30" />
+              <p className="text-sm">Sin ONUs FTTH activas en esta OLT</p>
+            </div>
+          )}
+
+          {signalData.length > 0 && (
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/30">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Serial</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Posición</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">VLAN</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Estado OLT</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Rx Power</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Tx Power</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Temp °C</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {signalData.map((item) => {
+                      const r   = item.registro;
+                      const sig = item.signal;
+                      const rxNum = sig?.rx_power_dbm ?? null;
+                      const rxCls = rxNum == null ? 'text-muted-foreground'
+                        : rxNum < -27 ? 'text-red-400' : rxNum < -24 ? 'text-amber-400' : 'text-emerald-400';
+                      return (
+                        <tr key={r.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-3 font-mono text-xs font-semibold">{r.sn}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                            {r.slot}/{r.port}/{r.onuId}
+                          </td>
+                          <td className="px-4 py-3 text-xs">{r.vlan}</td>
+                          <td className="px-4 py-3">
+                            {sig ? (
+                              <span className={cn(
+                                'inline-flex items-center px-2 py-0.5 rounded text-xs',
+                                sig.run_state === 'online'
+                                  ? 'bg-emerald-500/10 text-emerald-400'
+                                  : 'bg-red-500/10 text-red-400',
+                              )}>
+                                {sig.run_state}
+                              </span>
+                            ) : <span className="text-muted-foreground text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {rxNum != null
+                              ? <span className={cn('font-mono text-xs', rxCls)}>{rxNum.toFixed(1)} dBm</span>
+                              : <span className="text-muted-foreground text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {sig?.tx_power_dbm != null
+                              ? <span className="font-mono text-xs text-blue-400">{sig.tx_power_dbm.toFixed(1)} dBm</span>
+                              : <span className="text-muted-foreground text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {sig?.temperature_c != null
+                              ? <span className="font-mono text-xs">{sig.temperature_c.toFixed(0)} °C</span>
+                              : <span className="text-muted-foreground text-xs">—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

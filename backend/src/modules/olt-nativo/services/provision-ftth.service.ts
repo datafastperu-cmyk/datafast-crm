@@ -17,6 +17,7 @@ import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 import { OltOnuIdPoolService }           from './olt-onu-id-pool.service';
+import { PythonOnuStatusInfo }           from '../dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de entrada
@@ -766,5 +767,41 @@ export class ProvisionFtthService {
       exitoso: true,
       mensaje: `Velocidad actualizada correctamente. Traffic-table: ${dto.trafficIndex}.`,
     };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // signalDashboard — batch-poll de señal para todas las ONUs activas de una OLT
+  // ────────────────────────────────────────────────────────────
+  async signalDashboard(
+    oltId:     string,
+    empresaId: string,
+  ): Promise<Array<{ registro: FtthOnuRegistro; signal: PythonOnuStatusInfo | null }>> {
+
+    const registros = await this.ftthRepo.find({
+      where: { oltId, empresaId, estado: FtthOnuEstado.ACTIVO },
+    });
+    if (registros.length === 0) return [];
+
+    const olt      = await this._fetchOlt(oltId, empresaId);
+    const password = this._decryptOltPassword(olt);
+    const conn     = this._buildConn(olt, password);
+
+    const signalMap = new Map<string, PythonOnuStatusInfo>();
+    try {
+      const batch = await this.automation.batchStatus({
+        connection: conn,
+        onus: registros.map(r => ({ slot: r.slot, port: r.port, onu_id: r.onuId, sn: r.sn })),
+      });
+      for (const info of batch.onus) {
+        signalMap.set(`${info.slot}:${info.port}:${info.onu_id}`, info);
+      }
+    } catch (err: any) {
+      this.logger.warn(`signalDashboard batch-status falló | olt=${oltId}: ${err.message}`);
+    }
+
+    return registros.map(r => ({
+      registro: r,
+      signal:   signalMap.get(`${r.slot}:${r.port}:${r.onuId}`) ?? null,
+    }));
   }
 }

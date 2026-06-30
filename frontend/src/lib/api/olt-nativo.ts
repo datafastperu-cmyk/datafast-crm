@@ -678,6 +678,19 @@ export const oltNativoApi = {
     return res.data.data ?? [];
   },
 
+  ftthSignalDashboard: async (oltId: string): Promise<Array<{
+    registro: FtthOnuRegistro;
+    signal: {
+      run_state: string;
+      rx_power_dbm: number | null;
+      tx_power_dbm: number | null;
+      temperature_c: number | null;
+    } | null;
+  }>> => {
+    const res = await api.get<ApiRespuesta<any[]>>(`/olt-nativo/${oltId}/ftth/signal-dashboard`);
+    return res.data.data ?? [];
+  },
+
   sincronizarTrafficTables: async (oltId: string): Promise<{ insertadas: number; actualizadas: number }> => {
     const res = await api.post<ApiRespuesta<{ insertadas: number; actualizadas: number }>>(
       `/olt-nativo/${oltId}/traffic-tables/sincronizar`,

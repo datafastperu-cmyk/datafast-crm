@@ -674,6 +674,16 @@ export class OltNativoController {
     return this.onuIdPool.obtenerEstado(oltId, user.empresaId, slot, port);
   }
 
+  @Get(':oltId/ftth/signal-dashboard')
+  @ApiOperation({ summary: 'Dashboard de señal — batch-poll ONUs activas de una OLT FTTH' })
+  @ApiParam({ name: 'oltId' })
+  async signalDashboard(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ftth.signalDashboard(oltId, user.empresaId);
+  }
+
   @Get('ftth/estado/:contratoId')
   @ApiOperation({ summary: 'Obtener estado de aprovisionamiento FTTH de un contrato' })
   @ApiParam({ name: 'contratoId' })
