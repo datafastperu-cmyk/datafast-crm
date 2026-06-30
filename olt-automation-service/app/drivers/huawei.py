@@ -98,8 +98,9 @@ class HuaweiDriver(OltDriver):
 
     def get_topology(self) -> OltTopology:
         """
-        UNA sola sesión SSH — obtiene toda la topología en una secuencia de comandos.
-        No abre sesiones adicionales para version ni profiles (evita 3x overhead SSH).
+        UNA sola sesión SSH (Paramiko puro) — obtiene toda la topología.
+        Usa _paramiko_huawei_run con return_list=True para evitar el bug de
+        session_preparation de Netmiko en Huawei MA5800 (ReadTimeout en prompt).
         """
         cmds = [
             'display board 0',
@@ -109,10 +110,15 @@ class HuaweiDriver(OltDriver):
             'display vlan all',
         ]
         try:
-            board_raw, lp_raw, sp_raw, tt_raw, vlan_raw = _open_multi_commands(
+            outputs = _paramiko_huawei_run(
                 self._conn, cmds,
+                timeout=90.0,
+                return_list=True,
             )
-        except (ProvConnectionError, ProvCommandError) as exc:
+            board_raw, lp_raw, sp_raw, tt_raw, vlan_raw = outputs  # type: ignore[misc]
+        except ProvisioningError:
+            raise
+        except Exception as exc:
             raise ProvisioningError(
                 f'Error obteniendo topología de {self._conn.ip}: {exc}'
             ) from exc

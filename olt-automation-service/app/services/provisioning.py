@@ -1323,14 +1323,19 @@ def _filter_onus(
 
 
 def _paramiko_huawei_run(
-    conn:     OltConnectionSchema,
-    commands: list[str],
-    timeout:  float = 60.0,
-) -> str:
+    conn:        OltConnectionSchema,
+    commands:    list[str],
+    timeout:     float = 60.0,
+    return_list: bool  = False,
+) -> 'str | list[str]':
     """
     Abre una sesión SSH con Paramiko (invoke_shell) y ejecuta una lista de comandos
     en la OLT Huawei, manejando el prompt de confirmación { <cr>||<K> }: y el
-    escalado a enable. Devuelve la salida acumulada de todos los comandos.
+    escalado a enable.
+
+    return_list=False (default): retorna la salida acumulada de todos los comandos
+    como un único string (comportamiento original).
+    return_list=True: retorna una lista con la salida individual de cada comando.
 
     Evita completamente la session_preparation de Netmiko (que envía
     screen-length 0 temporary y se traba en el prompt de confirmación del MA5800).
@@ -1391,7 +1396,7 @@ def _paramiko_huawei_run(
 
         chan.close()
         ssh.close()
-        return '\n'.join(output_parts)
+        return output_parts if return_list else '\n'.join(output_parts)
 
     except paramiko.AuthenticationException as exc:
         raise ProvisioningError(f'Autenticación fallida en Huawei {conn.ip}') from exc
