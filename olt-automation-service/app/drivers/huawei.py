@@ -37,7 +37,6 @@ from app.services.provisioning import (
     display_huawei_board,
     get_bulk_metrics_huawei,
     inject_wan_pppoe,
-    list_huawei_profiles,
     provision_gpon_ftth,
     rehabilitate_onu,
     suspend_onu,
@@ -99,12 +98,8 @@ class HuaweiDriver(OltDriver):
 
     def get_topology(self) -> OltTopology:
         """
-        UNA sesión SSH — ejecuta en paralelo (secuencia única de comandos):
-          display board 0
-          display ont-lineprofile all
-          display ont-srvprofile all
-          display traffic table all
-          display vlan all
+        UNA sola sesión SSH — obtiene toda la topología en una secuencia de comandos.
+        No abre sesiones adicionales para version ni profiles (evita 3x overhead SSH).
         """
         cmds = [
             'display board 0',
@@ -122,20 +117,10 @@ class HuaweiDriver(OltDriver):
                 f'Error obteniendo topología de {self._conn.ip}: {exc}'
             ) from exc
 
-        # Boards
-        boards = self._parse_boards(board_raw)
+        boards           = self._parse_boards(board_raw)
+        line_profiles    = self._parse_profiles_raw(lp_raw, 'display_ont_lineprofile_all.textfsm')
+        service_profiles = self._parse_profiles_raw(sp_raw, 'display_ont_srvprofile_all.textfsm')
 
-        # Version (reutiliza test_connection para model/firmware)
-        tc = self.test_connection()
-        model    = tc.get('model')    or 'Huawei MA5x00'
-        firmware = tc.get('firmware') or ''
-
-        # Profiles
-        profiles_result = list_huawei_profiles(self._conn)
-        line_profiles    = profiles_result.get('lineprofiles', [])
-        service_profiles = profiles_result.get('srvprofiles', [])
-
-        # Traffic tables
         tt_rows = _parse_output(self._conn.brand, 'display_traffic_table_all.textfsm', tt_raw)
         traffic_tables = []
         for row in tt_rows:
@@ -151,12 +136,11 @@ class HuaweiDriver(OltDriver):
             except (ValueError, TypeError):
                 continue
 
-        # VLANs
         vlans = self._parse_vlans(vlan_raw)
 
         return OltTopology(
-            model            = model or 'Huawei MA5x00',
-            firmware_version = firmware,
+            model            = 'Huawei MA5x00',
+            firmware_version = '',
             boards           = boards,
             vlans            = vlans,
             traffic_tables   = traffic_tables,
@@ -324,6 +308,23 @@ class HuaweiDriver(OltDriver):
             return float(m.group(1))
         except (ValueError, TypeError):
             return None
+
+    def _parse_profiles_raw(self, raw: str, fsm_name: str) -> list[dict]:
+        """Parsea lineprofile/srvprofile sin abrir nueva sesión SSH."""
+        rows = _parse_output(self._conn.brand, fsm_name, raw)
+        result = []
+        for row in rows:
+            if 'raw' in row:
+                continue
+            try:
+                pid  = int(row.get('ProfileId') or -1)
+                name = str(row.get('ProfileName') or '').strip()
+            except (ValueError, TypeError):
+                continue
+            if pid < 0 or not name:
+                continue
+            result.append({'profile_id': pid, 'name': name})
+        return result
 
     def _parse_boards(self, raw: str) -> list[BoardInfo]:
         rows = _parse_output(self._conn.brand, 'display_board_0.textfsm', raw)
