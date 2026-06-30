@@ -333,7 +333,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
 
                 {!testMut.isPending && !testMut.isSuccess && (
                   <p className="text-sm text-muted-foreground">
-                    Presiona "Probar conexión" para verificar el acceso SSH antes de continuar.
+                    Presiona &quot;Probar conexión&quot; para verificar el acceso SSH antes de continuar.
                   </p>
                 )}
               </div>
