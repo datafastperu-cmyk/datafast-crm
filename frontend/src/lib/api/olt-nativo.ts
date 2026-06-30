@@ -313,17 +313,17 @@ export interface FtthOnuRegistro {
 }
 
 export interface FtthProvisionDto {
-  contratoId:    string;
-  frame:         number;
-  slot:          number;
-  port:          number;
-  onuId:         number;
-  sn:            string;
-  servicePortId: number;
-  vlan:          number;
-  lineprofileId: number;
-  srvprofileId:  number;
-  description?:  string;
+  contratoId:     string;
+  frame:          number;
+  slot:           number;
+  port:           number;
+  onuId:          number;
+  sn:             string;
+  servicePortId?: number;   // Opcional: se auto-asigna del pool si está configurado
+  vlan:           number;
+  lineprofileId:  number;
+  srvprofileId:   number;
+  description?:   string;
 }
 
 export interface FtthProvisionResult {

@@ -10,6 +10,7 @@ import { OltOperacionLog }     from './entities/olt-operacion-log.entity';
 import { MetricasOnuOptical }  from './entities/metricas-onu-optical.entity';
 import { HistorialFirmware }   from './entities/historial-firmware.entity';
 import { FtthOnuRegistro }    from './entities/ftth-onu-registro.entity';
+import { OltServicePortPool } from './entities/olt-service-port-pool.entity';
 import { Onu }                 from '../smartolt/entities/onu.entity';
 import { AlertaSistema }       from '../monitoreo/entities/alerta-sistema.entity';
 import { SmartoltModule }      from '../smartolt/smartolt.module';
@@ -28,8 +29,9 @@ import { OltHealthMonitorService }  from './services/olt-health-monitor.service'
 import { NativoSshProvider }        from './providers/nativo-ssh.provider';
 import { SmartoltProvider }         from './providers/smartolt.provider';
 import { AdminOltProvider }         from './providers/adminolt.provider';
-import { ProvisionFtthService }     from './services/provision-ftth.service';
-import { FtthRecoveryCron }         from './cron/ftth-recovery.cron';
+import { ProvisionFtthService }       from './services/provision-ftth.service';
+import { OltServicePortPoolService }  from './services/olt-service-port-pool.service';
+import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
 
 // ═══════════════════════════════════════════════════════════════════
 // OltNativoModule — ecosistema multi-proveedor OLT/ONU
@@ -87,6 +89,7 @@ import { FtthRecoveryCron }         from './cron/ftth-recovery.cron';
       AlertaSistema,
       HistorialFirmware,
       FtthOnuRegistro,
+      OltServicePortPool,
     ]),
 
     // HTTP compartido: OltAutomationClient + SmartoltProvider + AdminOltProvider
@@ -125,6 +128,7 @@ import { FtthRecoveryCron }         from './cron/ftth-recovery.cron';
     OltMonitoreoService,
     FirmwareService,
     ProvisionFtthService,
+    OltServicePortPoolService,
     FtthRecoveryCron,
   ],
   // Solo exports que módulos externos realmente consumen

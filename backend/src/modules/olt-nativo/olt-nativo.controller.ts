@@ -21,6 +21,11 @@ import {
   ProvisionFtthService,
   ReinjectarWanDto,
 } from './services/provision-ftth.service';
+import {
+  ConfigurarPoolDto,
+  EstadoPool,
+  OltServicePortPoolService,
+} from './services/olt-service-port-pool.service';
 import { FtthOnuRegistro }         from './entities/ftth-onu-registro.entity';
 import {
   CrearOltIntegracionDto,
@@ -45,6 +50,7 @@ export class OltNativoController {
     private readonly service:   OltNativoService,
     private readonly firmware:  FirmwareService,
     private readonly ftth:      ProvisionFtthService,
+    private readonly pool:      OltServicePortPoolService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -531,6 +537,43 @@ export class OltNativoController {
   ): Promise<FirmwareJobResult[]> {
     const n = limit ? parseInt(limit, 10) : 20;
     return this.firmware.listarHistorial(oltId, user.empresaId, n);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  POOL DE SERVICE PORT IDs
+  // ═══════════════════════════════════════════════════════════════
+
+  @Get(':oltId/service-port-pool')
+  @ApiOperation({ summary: 'Estado del pool de Service Port IDs para una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async poolEstado(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<EstadoPool> {
+    return this.pool.obtenerEstado(oltId, user.empresaId);
+  }
+
+  @Post(':oltId/service-port-pool/configurar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Configurar rango de Service Port IDs para el pool de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async poolConfigurar(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: ConfigurarPoolDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ insertados: number; omitidos: number }> {
+    return this.pool.configurarRango(oltId, user.empresaId, dto);
+  }
+
+  @Delete(':oltId/service-port-pool/libres')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Eliminar entradas libres del pool (para reconfigurar rango)' })
+  @ApiParam({ name: 'oltId' })
+  async poolLimpiarLibres(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ eliminados: number }> {
+    return this.pool.limpiarLibres(oltId, user.empresaId);
   }
 
   // ── FTTH Two-Phase Provisioning ───────────────────────────────

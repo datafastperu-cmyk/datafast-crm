@@ -1,6 +1,6 @@
 import {
   BadRequestException, ConflictException, Injectable, Logger,
-  NotFoundException, ServiceUnavailableException,
+  NotFoundException, ServiceUnavailableException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository }             from 'typeorm';
@@ -14,6 +14,7 @@ import { OltDispositivo }   from '../entities/olt-dispositivo.entity';
 import { FtthOnuEstado, FtthOnuRegistro } from '../entities/ftth-onu-registro.entity';
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
+import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de entrada
@@ -25,7 +26,7 @@ export class ProvisionarFtthDto {
   @IsInt() @Min(0) @Max(15)  @Type(() => Number) port:          number;
   @IsInt() @Min(1) @Max(128) @Type(() => Number) onuId:         number;
   @IsString() @MaxLength(16)                     sn:            string;
-  @IsInt() @Min(1)           @Type(() => Number) servicePortId: number;
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number) servicePortId?: number;
   @IsInt() @Min(1) @Max(4094)@Type(() => Number) vlan:          number;
   @IsInt() @Min(1)           @Type(() => Number) lineprofileId: number;
   @IsInt() @Min(1)           @Type(() => Number) srvprofileId:  number;
@@ -72,6 +73,8 @@ export class ProvisionFtthService {
     private readonly ftthRepo: Repository<FtthOnuRegistro>,
 
     private readonly automation: OltAutomationClient,
+
+    private readonly poolService: OltServicePortPoolService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -135,7 +138,18 @@ export class ProvisionFtthService {
     const password = this._decryptOltPassword(olt);
     const conn     = this._buildConn(olt, password);
 
-    // 4. Insertar lock atómico
+    // 4. Resolver Service Port ID: pool (automático) o manual (bypass)
+    const poolSvcPortId = await this.poolService.allocar(oltId, dto.contratoId);
+    const servicePortId = poolSvcPortId ?? dto.servicePortId;
+    if (servicePortId == null) {
+      throw new UnprocessableEntityException(
+        `No hay pool de Service Port IDs configurado para esta OLT. ` +
+        `Configúralo desde la sección de OLT o ingresa el ID manualmente.`,
+      );
+    }
+    const usedPool = poolSvcPortId != null;
+
+    // 5. Insertar lock atómico
     const insertResult = await this.ds.query<{ id: string }[]>(
       `INSERT INTO ftth_onu_registro
          (id, empresa_id, contrato_id, olt_id, frame, slot, port, onu_id, sn,
@@ -150,11 +164,13 @@ export class ProvisionFtthService {
       [
         empresaId, dto.contratoId, oltId,
         dto.frame, dto.slot, dto.port, dto.onuId, dto.sn.toUpperCase(),
-        dto.servicePortId, dto.vlan, dto.lineprofileId, dto.srvprofileId,
+        servicePortId, dto.vlan, dto.lineprofileId, dto.srvprofileId,
       ],
     );
 
     if (!insertResult.length) {
+      // Liberar el slot si lo tomamos del pool — otro proceso ganó la carrera
+      if (usedPool) await this.poolService.liberar(oltId, dto.contratoId);
       throw new ConflictException(
         `Otro proceso ya está aprovisionando este contrato. ` +
         `Intenta de nuevo en unos segundos.`,
@@ -164,7 +180,7 @@ export class ProvisionFtthService {
     const registroId = insertResult[0].id;
 
     // ── Fase 1: GPON ──────────────────────────────────────────
-    this.logger.log(`FTTH Fase1 GPON | contrato=${dto.contratoId} sn=${dto.sn} onu_id=${dto.onuId}`);
+    this.logger.log(`FTTH Fase1 GPON | contrato=${dto.contratoId} sn=${dto.sn} onu_id=${dto.onuId} svcPort=${servicePortId}`);
     const gponRes = await this.automation.ftthProvisionGpon({
       connection:      conn,
       frame:           dto.frame,
@@ -172,7 +188,7 @@ export class ProvisionFtthService {
       port:            dto.port,
       onu_id:          dto.onuId,
       sn:              dto.sn.toUpperCase(),
-      service_port_id: dto.servicePortId,
+      service_port_id: servicePortId,
       vlan:            dto.vlan,
       lineprofile_id:  dto.lineprofileId,
       srvprofile_id:   dto.srvprofileId,
@@ -180,6 +196,7 @@ export class ProvisionFtthService {
     });
 
     if (!gponRes.success) {
+      if (usedPool) await this.poolService.liberar(oltId, dto.contratoId);
       await this.ftthRepo.update(registroId, {
         estado:        FtthOnuEstado.FALLIDO_GPON,
         lockedAt:      null,
@@ -210,9 +227,10 @@ export class ProvisionFtthService {
     });
 
     if (!pollRes.success || pollRes.timeout) {
-      // ONU registrada pero nunca online — hacer rollback GPON
+      // ONU registrada pero nunca online — hacer rollback GPON y liberar pool
       this.logger.warn(`FTTH poll timeout | contrato=${dto.contratoId} → rollback GPON`);
-      await this._rollbackGpon(registroId, olt, password, dto);
+      await this._rollbackGpon(registroId, olt, password, dto, servicePortId);
+      if (usedPool) await this.poolService.liberar(oltId, dto.contratoId);
       return {
         estado:     FtthOnuEstado.FALLIDO_GPON,
         registroId,
@@ -409,10 +427,11 @@ export class ProvisionFtthService {
   }
 
   private async _rollbackGpon(
-    registroId: string,
-    olt: OltDispositivo,
-    password: string,
-    dto: ProvisionarFtthDto,
+    registroId:    string,
+    olt:           OltDispositivo,
+    password:      string,
+    dto:           ProvisionarFtthDto,
+    servicePortId: number,
   ): Promise<void> {
     const conn = this._buildConn(olt, password);
     try {
@@ -421,7 +440,7 @@ export class ProvisionFtthService {
         slot:            dto.slot,
         port:            dto.port,
         onu_id:          dto.onuId,
-        service_port_id: dto.servicePortId,
+        service_port_id: servicePortId,
       });
     } catch (err: any) {
       this.logger.error(

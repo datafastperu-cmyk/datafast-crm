@@ -4,7 +4,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X, Zap, Loader2, AlertTriangle, Search, CheckCircle2,
-  RefreshCw, WifiOff,
+  RefreshCw, WifiOff, Hash,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toaster';
@@ -131,7 +131,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const [port,          setPort]          = useState('');
   const [onuId,         setOnuId]         = useState('');
   const [vlan,          setVlan]          = useState('');
-  const [servicePortId, setServicePortId] = useState('');
   const [lineprofileId, setLineprofileId] = useState('');
   const [srvprofileId,  setSrvprofileId]  = useState('');
   const [description,   setDescription]  = useState('');
@@ -149,7 +148,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     setPort(String(r.port));
     setOnuId(String(r.onuId));
     setVlan(String(r.vlan));
-    if (r.servicePortId) setServicePortId(String(r.servicePortId));
     if (r.lineprofileId) setLineprofileId(String(r.lineprofileId));
     if (r.srvprofileId)  setSrvprofileId(String(r.srvprofileId));
   }, [estadoExistente]);
@@ -197,7 +195,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   // Form validation
   const formValid = (
     !!selectedOltId && !!sn.trim() && slot !== '' && port !== '' && onuId !== '' &&
-    !!vlan && !!servicePortId && !!lineprofileId && !!srvprofileId
+    !!vlan && !!lineprofileId && !!srvprofileId
   );
 
   // Provision mutation
@@ -209,7 +207,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       port:          portNum,
       onuId:         parseInt(onuId),
       sn:            sn.trim().toUpperCase(),
-      servicePortId: parseInt(servicePortId),
       vlan:          parseInt(vlan),
       lineprofileId: parseInt(lineprofileId),
       srvprofileId:  parseInt(srvprofileId),
@@ -423,9 +420,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   <Field label="VLAN Servicio">
                     <input type="number" value={vlan} onChange={e => setVlan(e.target.value)} min={1} max={4094} placeholder="201" className={inputCls} />
                   </Field>
-                  <Field label="Service Port ID">
-                    <input type="number" value={servicePortId} onChange={e => setServicePortId(e.target.value)} min={1} placeholder="1501" className={inputCls} />
-                  </Field>
                   <Field label="Lineprofile ID">
                     <input type="number" value={lineprofileId} onChange={e => setLineprofileId(e.target.value)} min={1} placeholder="2" className={inputCls} />
                   </Field>
@@ -438,7 +432,12 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   </Field>
                 </div>
 
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-blue-700/30 bg-blue-500/5 px-3 py-2 text-[11px] text-blue-700 dark:text-blue-300">
+                <div className="mt-1 flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
+                  <Hash className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Service Port ID se asigna automáticamente del pool configurado en la OLT.</span>
+                </div>
+
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-blue-700/30 bg-blue-500/5 px-3 py-2 text-[11px] text-blue-700 dark:text-blue-300">
                   <Zap className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                   <span>
                     Este proceso tarda ~2 min: registra la ONU en la OLT (GPON), espera que esté online,
