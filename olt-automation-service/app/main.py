@@ -9,6 +9,9 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+# Rutas públicas — no requieren X-Internal-Key
+_PUBLIC_PATHS = {'/api/v1/health', '/api/docs', '/openapi.json'}
+
 from app.config import settings
 from app.routers.mikrotik import router as mikrotik_router
 from app.routers.monitoring import router as monitoring_router
@@ -68,6 +71,7 @@ from app.services.provisioning import (
     inject_wan_pppoe,
     list_huawei_profiles,
     poll_onu_online,
+    single_poll_check,
     provision_gpon_ftth,
     provision_onu,
     reset_huawei_onu,
@@ -118,6 +122,21 @@ app.add_middleware(
     allow_methods=['GET', 'POST'],
     allow_headers=['*'],
 )
+
+
+@app.middleware('http')
+async def api_key_middleware(request: Request, call_next):
+    """Valida X-Internal-Key en todos los endpoints excepto salud y docs."""
+    if request.url.path in _PUBLIC_PATHS:
+        return await call_next(request)
+    key = request.headers.get('x-internal-key', '')
+    if key != settings.internal_api_key:
+        logger.warning('Llamada no autorizada desde %s a %s', request.client, request.url.path)
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={'error': 'Unauthorized — X-Internal-Key requerida'},
+        )
+    return await call_next(request)
 
 app.include_router(mikrotik_router)
 app.include_router(monitoring_router)
@@ -624,19 +643,30 @@ async def ftth_rollback_gpon(body: FtthRollbackRequest) -> FtthRollbackResponse:
     summary='Fase 1b FTTH: esperar que la ONU aparezca online',
 )
 async def ftth_poll_online(body: FtthPollRequest) -> FtthPollResponse:
-    olt_ip = body.connection.ip
-    # poll_onu_online hace sleeps internos — no bloquea otras OLTs
-    async with connection_pool.acquire(olt_ip):
-        result = await asyncio.to_thread(
-            poll_onu_online,
-            body.connection,
-            body.slot, body.port, body.onu_id, body.max_wait,
-        )
-    return FtthPollResponse(
-        success   = result['success'],
-        run_state = result.get('run_state'),
-        timeout   = result.get('timeout', False),
-    )
+    """
+    Adquiere el lock de OLT SOLO durante cada verificación SSH individual (< 2 s),
+    liberándolo entre intentos (sleep de 5 s sin lock).
+    Esto evita bloquear la OLT completa durante los 90 s del poll.
+    """
+    import time as _t
+    olt_ip   = body.connection.ip
+    interval = 5
+    t_end    = _t.monotonic() + body.max_wait
+
+    while _t.monotonic() < t_end:
+        async with connection_pool.acquire(olt_ip):
+            result = await asyncio.to_thread(
+                single_poll_check,
+                body.connection,
+                body.slot, body.port, body.onu_id,
+            )
+        if result.get('online'):
+            logger.info('poll_onu_online OK | OLT=%s onu_id=%d', olt_ip, body.onu_id)
+            return FtthPollResponse(success=True, run_state='online', timeout=False)
+        await asyncio.sleep(interval)
+
+    logger.warning('poll_onu_online timeout | OLT=%s onu_id=%d', olt_ip, body.onu_id)
+    return FtthPollResponse(success=False, run_state='unknown', timeout=True)
 
 
 @app.post(

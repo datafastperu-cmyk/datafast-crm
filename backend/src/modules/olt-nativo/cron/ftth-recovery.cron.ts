@@ -130,4 +130,42 @@ export class FtthRecoveryCron {
       ultimoError: motivo,
     });
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // Cada 30 min: libera IDs de pool que quedaron 'ocupado' sin
+  // registro FTTH asociado (crash entre allocar() e INSERT).
+  // ─────────────────────────────────────────────────────────────
+  @Cron('*/30 * * * *')
+  async limpiarIdsHuerfanos(): Promise<void> {
+    const [svcRes, onuRes] = await Promise.all([
+      this.ds.query<{ rowCount: number }>(
+        `UPDATE olt_service_port_pool
+         SET estado = 'libre', contrato_id = NULL, locked_at = NULL, updated_at = NOW()
+         WHERE estado = 'ocupado'
+           AND contrato_id IS NOT NULL
+           AND contrato_id NOT IN (
+             SELECT contrato_id FROM ftth_onu_registro WHERE deleted_at IS NULL
+           )`,
+      ),
+      this.ds.query<{ rowCount: number }>(
+        `UPDATE olt_onu_id_pool
+         SET estado = 'libre', contrato_id = NULL, updated_at = NOW()
+         WHERE estado = 'ocupado'
+           AND contrato_id IS NOT NULL
+           AND contrato_id NOT IN (
+             SELECT contrato_id FROM ftth_onu_registro WHERE deleted_at IS NULL
+           )
+           AND deleted_at IS NULL`,
+      ),
+    ]);
+
+    const svcLiberados = (svcRes as any)?.rowCount ?? 0;
+    const onuLiberados = (onuRes as any)?.rowCount ?? 0;
+
+    if (svcLiberados > 0 || onuLiberados > 0) {
+      this.logger.warn(
+        `Cleanup IDs huérfanos: ${svcLiberados} service-ports liberados, ${onuLiberados} onu-ids liberados`,
+      );
+    }
+  }
 }

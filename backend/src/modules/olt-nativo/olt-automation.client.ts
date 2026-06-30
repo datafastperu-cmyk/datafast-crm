@@ -363,7 +363,7 @@ export class OltAutomationClient {
       'Accept':       'application/json',
       'X-Service':    'DATAFAST-ERP',
     };
-    if (this.apiKey) headers['X-Internal-Key'] = this.apiKey;
+    headers['X-Internal-Key'] = this.apiKey;
     return { headers, timeout: this.TIMEOUT_MS };
   }
 

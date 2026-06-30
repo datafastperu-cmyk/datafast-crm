@@ -138,6 +138,7 @@ export class OltServicePortPoolService {
       return null;
     }
 
+    this.logger.warn(`Pool de Service Ports AGOTADO | olt=${oltId}`);
     throw new UnprocessableEntityException(
       `Pool de Service Port IDs agotado para esta OLT. ` +
       `Configura un rango más amplio desde el panel de la OLT.`,

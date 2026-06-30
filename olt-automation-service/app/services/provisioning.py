@@ -2269,6 +2269,34 @@ def poll_onu_online(
     return {'success': False, 'timeout': True, 'run_state': 'unknown'}
 
 
+def single_poll_check(
+    conn:   OltConnectionSchema,
+    slot:   int,
+    port:   int,
+    onu_id: int,
+) -> dict[str, Any]:
+    """
+    Comprobación única de estado ONU — abre conexión SSH, consulta run-state y cierra.
+    Diseñado para ser llamado repetidamente desde main.py con lock granular por intento,
+    liberando el lock entre verificaciones para no bloquear la OLT 90 segundos.
+    """
+    cmd = f'display ont info 0/{slot}/{port} {onu_id}'
+    try:
+        raw = _paramiko_huawei_run(conn, [cmd], timeout=20)
+    except ProvisioningError as exc:
+        logger.warning('single_poll_check error: %s', exc)
+        return {'online': False, 'error': str(exc)}
+
+    for line in raw.splitlines():
+        low = line.lower()
+        if ('run state' in low or 'run-state' in low) and 'online' in low:
+            return {'online': True}
+    return {'online': False}
+
+
+_PPPOE_SAFE_RE = re.compile(r'^[\w\-@\.]{1,64}$')
+
+
 def inject_wan_pppoe(
     conn:     OltConnectionSchema,
     slot:     int,
@@ -2286,6 +2314,16 @@ def inject_wan_pppoe(
     Requiere que la ONU esté online (ejecutar poll_onu_online primero).
     Síncrono — llamar desde asyncio.to_thread().
     """
+    if not _PPPOE_SAFE_RE.match(username):
+        raise ProvisioningError(
+            f'username PPPoE contiene caracteres no permitidos: {username!r}. '
+            'Solo se aceptan: letras, dígitos, -, @, .'
+        )
+    if not _PPPOE_SAFE_RE.match(password):
+        raise ProvisioningError(
+            'password PPPoE contiene caracteres no permitidos. '
+            'Solo se aceptan: letras, dígitos, -, @, .'
+        )
     logger.info(
         'inject_wan_pppoe: OLT=%s slot=%d port=%d onu_id=%d vlan=%d user=%s',
         conn.ip, slot, port, onu_id, vlan, username,

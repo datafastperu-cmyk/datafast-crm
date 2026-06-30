@@ -917,26 +917,10 @@ export class OltNativoService implements OnModuleInit {
     empresaId: string,
   ): Promise<OltPerfilesResult> {
     this.assertNotDegraded();
-    const olt    = await this.findOlt(oltId, empresaId);
-    const config = await this.proveedorRepo.findOne({
-      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
-    });
-    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+    const olt  = await this.findOlt(oltId, empresaId);
+    const conn = await this._buildNativeConn(oltId, empresaId, olt);
 
-    const c = config.credenciales as Record<string, unknown>;
-    const password = c.password_cifrado
-      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
-      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
-
-    const payload: PythonListProfilesRequest = {
-      connection: {
-        ip:       (c.ip as string)       || olt.ipGestion,
-        port:     ((c.port as number)    || olt.puerto) ?? 22,
-        username: (c.username as string) || olt.usuarioAnclado,
-        password,
-        brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
-      },
-    };
+    const payload: PythonListProfilesRequest = { connection: conn };
     const res = await this.automation.listProfiles(payload);
     if (!res.success) {
       throw new ServiceUnavailableException(res.error ?? 'No se pudieron obtener los perfiles de la OLT');
@@ -956,27 +940,10 @@ export class OltNativoService implements OnModuleInit {
     onuId:     number,
   ): Promise<{ exitoso: boolean; mensaje: string }> {
     this.assertNotDegraded();
-    const olt    = await this.findOlt(oltId, empresaId);
-    const config = await this.proveedorRepo.findOne({
-      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
-    });
-    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+    const olt  = await this.findOlt(oltId, empresaId);
+    const conn = await this._buildNativeConn(oltId, empresaId, olt);
 
-    const c = config.credenciales as Record<string, unknown>;
-    const password = c.password_cifrado
-      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
-      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
-
-    const payload: PythonOntResetRequest = {
-      connection: {
-        ip:       (c.ip as string)       || olt.ipGestion,
-        port:     ((c.port as number)    || olt.puerto) ?? 22,
-        username: (c.username as string) || olt.usuarioAnclado,
-        password,
-        brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
-      },
-      slot, port, onu_id: onuId,
-    };
+    const payload: PythonOntResetRequest = { connection: conn, slot, port, onu_id: onuId };
     const res = await this.automation.ontReset(payload);
     return { exitoso: res.success, mensaje: res.message };
   }
@@ -986,26 +953,10 @@ export class OltNativoService implements OnModuleInit {
     empresaId: string,
   ): Promise<{ exitoso: boolean; slots: any[] }> {
     this.assertNotDegraded();
-    const olt    = await this.findOlt(oltId, empresaId);
-    const config = await this.proveedorRepo.findOne({
-      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
-    });
-    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+    const olt  = await this.findOlt(oltId, empresaId);
+    const conn = await this._buildNativeConn(oltId, empresaId, olt);
 
-    const c = config.credenciales as Record<string, unknown>;
-    const password = c.password_cifrado
-      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
-      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
-
-    const payload: PythonBoardTopologyRequest = {
-      connection: {
-        ip:       (c.ip as string)       || olt.ipGestion,
-        port:     ((c.port as number)    || olt.puerto) ?? 22,
-        username: (c.username as string) || olt.usuarioAnclado,
-        password,
-        brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
-      },
-    };
+    const payload: PythonBoardTopologyRequest = { connection: conn };
     const res = await this.automation.boardTopology(payload);
     return { exitoso: res.success, slots: res.slots ?? [] };
   }
@@ -1024,27 +975,10 @@ export class OltNativoService implements OnModuleInit {
     error:           string | null;
   }> {
     this.assertNotDegraded();
-    const olt    = await this.findOlt(oltId, empresaId);
-    const config = await this.proveedorRepo.findOne({
-      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
-    });
-    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+    const olt  = await this.findOlt(oltId, empresaId);
+    const conn = await this._buildNativeConn(oltId, empresaId, olt);
 
-    const c = config.credenciales as Record<string, unknown>;
-    const password = c.password_cifrado
-      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
-      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
-
-    const payload: PythonOntVersionRequest = {
-      connection: {
-        ip:       (c.ip as string)       || olt.ipGestion,
-        port:     ((c.port as number)    || olt.puerto) ?? 22,
-        username: (c.username as string) || olt.usuarioAnclado,
-        password,
-        brand:    ((c.brand as string)   || olt.marca).toLowerCase(),
-      },
-      slot, port, onu_id: onuId,
-    };
+    const payload: PythonOntVersionRequest = { connection: conn, slot, port, onu_id: onuId };
     const res = await this.automation.ontVersion(payload);
     return {
       exitoso:         res.success,
@@ -1097,6 +1031,37 @@ export class OltNativoService implements OnModuleInit {
         `Verifica que ENCRYPTION_KEY no haya cambiado desde que se guardó.`,
       );
     }
+  }
+
+  // Extrae y descifra credenciales del proveedor nativo_ssh activo.
+  // Lanza BadRequestException si la OLT no tiene proveedor SSH configurado.
+  private async _buildNativeConn(
+    oltId:     string,
+    empresaId: string,
+    olt:       OltDispositivo,
+  ): Promise<{ ip: string; port: number; username: string; password: string; brand: string }> {
+    const config = await this.proveedorRepo.findOne({
+      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
+    });
+    if (!config) throw new BadRequestException('Esta OLT no tiene proveedor nativo_ssh activo');
+
+    const c        = config.credenciales as Record<string, unknown>;
+    const password = c.password_cifrado
+      ? this.decryptPassword(c.password_cifrado as string, olt.ipGestion)
+      : this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
+
+    return {
+      ip:       (c.ip       as string) || olt.ipGestion,
+      port:     ((c.port    as number) || olt.puerto)  ?? 22,
+      username: (c.username as string) || olt.usuarioAnclado,
+      password,
+      brand:    ((c.brand   as string) || olt.marca).toLowerCase(),
+    };
+  }
+
+  // Expone el health del cliente Python sin romper encapsulamiento.
+  async automationHealth(): Promise<unknown> {
+    return this.automation.health();
   }
 
   // ─── IP Validation ────────────────────────────────────────────

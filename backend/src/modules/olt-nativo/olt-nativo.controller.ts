@@ -284,7 +284,7 @@ export class OltNativoController {
   @Get('automation/health')
   @ApiOperation({ summary: 'Verificar disponibilidad del microservicio Python de automatización' })
   async automationHealth() {
-    return this.service['automation'].health();
+    return this.service.automationHealth();
   }
 
   // ═══════════════════════════════════════════════════════════════

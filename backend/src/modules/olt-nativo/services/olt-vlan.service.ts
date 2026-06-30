@@ -49,23 +49,34 @@ export class OltVlanService {
     await this.repo.remove(vlan);
   }
 
-  // Sincronización masiva desde array (resultado del listar perfiles de OLT)
+  // Sincronización masiva desde array (resultado del listar perfiles de OLT).
+  // UPSERT masivo: 1 query en lugar de N findOne + N save.
   async sincronizarDesdeArray(
     oltId:     string,
     empresaId: string,
     vlans:     Array<{ vlan_id: number; nombre: string }>,
   ): Promise<{ insertadas: number; omitidas: number }> {
-    let insertadas = 0;
-    let omitidas   = 0;
-    for (const v of vlans) {
-      try {
-        await this.agregar(oltId, empresaId, { vlanId: v.vlan_id, nombre: v.nombre });
-        insertadas++;
-      } catch {
-        omitidas++;
-      }
-    }
-    this.logger.log(`VLAN sync olt=${oltId}: ${insertadas} insertadas, ${omitidas} omitidas`);
+    if (vlans.length === 0) return { insertadas: 0, omitidas: 0 };
+
+    const ids    = vlans.map(v => v.vlan_id);
+    const names  = vlans.map(v => v.nombre);
+
+    const [row] = await this.repo.manager.query<[{ insertadas: string }]>(
+      `WITH upserted AS (
+         INSERT INTO olt_vlans
+           (id, olt_id, empresa_id, vlan_id, nombre, created_at, updated_at)
+         SELECT gen_random_uuid(), $1, $2, t.vid, t.name, NOW(), NOW()
+         FROM   unnest($3::int[], $4::text[]) AS t(vid, name)
+         ON CONFLICT (olt_id, vlan_id) DO NOTHING
+         RETURNING 1
+       )
+       SELECT COUNT(*) AS insertadas FROM upserted`,
+      [oltId, empresaId, ids, names],
+    );
+
+    const insertadas = Number(row.insertadas);
+    const omitidas   = vlans.length - insertadas;
+    this.logger.log(`VLAN sync olt=${oltId}: ${insertadas} insertadas, ${omitidas} omitidas (ya existían)`);
     return { insertadas, omitidas };
   }
 }

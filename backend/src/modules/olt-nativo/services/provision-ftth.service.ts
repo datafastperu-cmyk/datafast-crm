@@ -346,7 +346,7 @@ export class ProvisionFtthService {
     dto:       ReinjectarWanDto,
   ): Promise<FtthProvisionResult> {
 
-    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId } });
+    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId, empresaId } });
     if (!registro) {
       throw new NotFoundException(`No hay registro FTTH para el contrato ${dto.contratoId}.`);
     }
@@ -779,6 +779,7 @@ export class ProvisionFtthService {
 
     const registros = await this.ftthRepo.find({
       where: { oltId, empresaId, estado: FtthOnuEstado.ACTIVO },
+      take:  500,
     });
     if (registros.length === 0) return [];
 
@@ -825,24 +826,49 @@ export class ProvisionFtthService {
     const password = this._decryptOltPassword(olt);
     const conn     = this._buildConn(olt, password);
 
-    let oltOnus: Array<{ sn: string; slot: number; port: number; ont_model?: string }> = [];
-    try {
-      const discovered = await this.automation.discoverOnus({ connection: conn, slot: null, port: null });
-      oltOnus = discovered.onus ?? [];
-    } catch (err: any) {
-      this.logger.warn(`reconciliar discover falló | olt=${oltId}: ${err.message}`);
+    // ── enErpNoEnOlt: batchStatus sobre registros ERP activos ──────
+    // batchStatus consulta ONUs CONFIGURADAS en la OLT (no autofind).
+    // Si una ONU activa en ERP no responde señal → puede estar offline
+    // o eliminada de la OLT.
+    const enErpNoEnOlt: FtthOnuRegistro[] = [];
+    if (registros.length > 0) {
+      try {
+        const batch = await this.automation.batchStatus({
+          connection: conn,
+          onus: registros.map(r => ({ slot: r.slot, port: r.port, onu_id: r.onuId, sn: r.sn })),
+        });
+        const presenteEnOlt = new Set(
+          batch.onus
+            .filter(o => o.run_state !== null)
+            .map(o => `${o.slot}:${o.port}:${o.onu_id}`),
+        );
+        for (const r of registros) {
+          if (!presenteEnOlt.has(`${r.slot}:${r.port}:${r.onuId}`)) {
+            enErpNoEnOlt.push(r);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`reconciliar batchStatus falló | olt=${oltId}: ${err.message}`);
+      }
     }
 
-    const oltSnSet  = new Set(oltOnus.map(o => o.sn.toUpperCase()));
-    const erpSnSet  = new Set(registros.map(r => r.sn.toUpperCase()));
+    // ── enOltNoEnErp: discover ONUs no autorizadas en la OLT ───────
+    // ONUs detectadas por autofind = registradas físicamente pero sin
+    // configuración en la OLT → pendientes de provisioning en el ERP.
+    let enOltNoEnErp: Array<{ sn: string; slot: number; port: number; ont_model?: string }> = [];
+    const erpSnSet = new Set(registros.map(r => r.sn.toUpperCase()));
+    try {
+      const discovered = await this.automation.discoverOnus({ connection: conn, slot: null, port: null });
+      enOltNoEnErp = (discovered.onus ?? []).filter(o => !erpSnSet.has(o.sn.toUpperCase()));
+    } catch (err: any) {
+      this.logger.warn(`reconciliar discoverOnus falló | olt=${oltId}: ${err.message}`);
+    }
 
-    const enErpNoEnOlt  = registros.filter(r => !oltSnSet.has(r.sn.toUpperCase()));
-    const enOltNoEnErp  = oltOnus.filter(o => !erpSnSet.has(o.sn.toUpperCase()));
     const sincronizados = registros.length - enErpNoEnOlt.length;
 
     this.logger.log(
-      `reconciliar | olt=${oltId} ERP=${registros.length} OLT=${oltOnus.length} ` +
-      `perdidos=${enErpNoEnOlt.length} huerfanos=${enOltNoEnErp.length}`,
+      `reconciliar | olt=${oltId} ERP=${registros.length} ` +
+      `enErpNoEnOlt=${enErpNoEnOlt.length} enOltNoErp=${enOltNoEnErp.length}`,
     );
 
     return { enErpNoEnOlt, enOltNoEnErp, sincronizados };
