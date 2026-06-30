@@ -5,7 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Cpu, Wifi, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo, type ProveedorResumen } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
-import { OltFormModal } from '@/components/red/OltFormModal';
+import { OltFormModal }         from '@/components/red/OltFormModal';
+import { OltWizardNativoModal } from '@/components/red/OltWizardNativoModal';
 import { cn } from '@/lib/utils';
 
 const MARCA_COLOR: Record<string, string> = {
@@ -58,8 +59,9 @@ function ProveedorChips({ resumen }: { resumen: ProveedorResumen | undefined }) 
 export default function OltsConfigPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [modalOpen, setModalOpen]     = useState(false);
-  const [editing,   setEditing]       = useState<OltDispositivo | null>(null);
+  const [modalOpen,  setModalOpen]    = useState(false);
+  const [wizardOpen, setWizardOpen]   = useState(false);
+  const [editing,    setEditing]      = useState<OltDispositivo | null>(null);
   const [deleteId,  setDeleteId]      = useState<string | null>(null);
   const [testingId, setTestingId]     = useState<string | null>(null);
 
@@ -123,7 +125,7 @@ export default function OltsConfigPage() {
           </div>
         </div>
         <button
-          onClick={openCreate}
+          onClick={() => setWizardOpen(true)}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground
                      hover:bg-primary/90 transition-colors text-sm font-medium"
         >
@@ -245,10 +247,16 @@ export default function OltsConfigPage() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Wizard agregar OLT SSH nativa */}
+      <OltWizardNativoModal
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+      />
+
+      {/* Editar OLT (modal simple) */}
       <OltFormModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => { setModalOpen(false); setEditing(null); }}
         editing={editing}
       />
 

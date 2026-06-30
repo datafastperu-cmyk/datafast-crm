@@ -149,6 +149,61 @@ export interface TestConexionOltResult {
   latenciaMs?: number;
 }
 
+// ─── Wizard agregar OLT nativa SSH ───────────────────────────
+
+export interface WizardBoardInfo {
+  slot:         number;
+  board_type:   string;
+  state:        string;
+  onu_count:    number;
+  onu_capacity: number;
+  online_onus:  number;
+  offline_onus: number;
+}
+
+export interface WizardVlanInfo {
+  vlan_id: number;
+  name:    string;
+}
+
+export interface WizardTrafficTableInfo {
+  index:     number;
+  name:      string;
+  cir_kbps:  number | null;
+  pir_kbps:  number | null;
+}
+
+export interface WizardProfileInfo {
+  profile_id: number;
+  name:       string;
+}
+
+export interface WizardTopologyResponse {
+  success:          boolean;
+  model:            string | null;
+  firmware_version: string | null;
+  boards:           WizardBoardInfo[];
+  vlans:            WizardVlanInfo[];
+  traffic_tables:   WizardTrafficTableInfo[];
+  line_profiles:    WizardProfileInfo[];
+  service_profiles: WizardProfileInfo[];
+  error?:           string;
+}
+
+export interface WizardCommitPayload {
+  nombre:         string;
+  ipGestion:      string;
+  puerto:         number;
+  usuario:        string;
+  contrasena:     string;
+  marca:          string;
+  modelo:         string;
+  firmware?:      string;
+  zonaId?:        string;
+  vlans?:         Array<{ vlan_id: number; nombre: string }>;
+  trafficTables?: Array<{ index: number; name: string; cir_kbps?: number; pir_kbps?: number }>;
+}
+
 // ─── Multi-proveedor ──────────────────────────────────────────
 
 export type TipoProveedor   = 'nativo_ssh' | 'nativo_snmp' | 'smartolt' | 'adminolt';
@@ -723,6 +778,30 @@ export const oltNativoApi = {
       enOltNoEnErp: Array<{ sn: string; slot: number; port: number; ont_model?: string }>;
       sincronizados: number;
     }>>(`/olt-nativo/${oltId}/ftth/reconciliar`, { timeout: 60_000 });
+    return res.data.data;
+  },
+
+  // ── Wizard agregar OLT nativa SSH ──────────────────────────────
+
+  wizardTopologia: async (params: {
+    ip: string; puerto: number; usuario: string; contrasena: string; marca: string;
+  }): Promise<WizardTopologyResponse> => {
+    const res = await api.post<ApiRespuesta<WizardTopologyResponse>>(
+      '/olt-nativo/wizard/topology', params, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+
+  wizardCommit: async (dto: WizardCommitPayload): Promise<{
+    oltId: string;
+    vlans?: { insertadas: number; omitidas: number };
+    trafficTables?: { insertadas: number; actualizadas: number };
+  }> => {
+    const res = await api.post<ApiRespuesta<{
+      oltId: string;
+      vlans?: { insertadas: number; omitidas: number };
+      trafficTables?: { insertadas: number; actualizadas: number };
+    }>>('/olt-nativo/wizard/commit', dto, { timeout: 60_000 });
     return res.data.data;
   },
 };
