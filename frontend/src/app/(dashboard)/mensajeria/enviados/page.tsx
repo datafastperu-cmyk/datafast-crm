@@ -18,8 +18,12 @@ const LIMIT = 20;
 const TIPOS = [
   'pago_vence_hoy', 'pago_vencido', 'servicio_suspendido',
   'servicio_reactivado', 'servicio_activado', 'factura_emitida',
-  'pago_recibido', 'prorroga_concedida', 'bienvenida',
-  'onu_offline', 'mantenimiento',
+  'pago_recibido', 'prorroga_concedida', 'bienvenida', 'mantenimiento',
+  // Alertas internas (→ whatsapp_corporativo)
+  'alerta_egreso',
+  'router_caido', 'router_conectado',
+  'emisor_caido', 'emisor_conectado',
+  'outbox_red_agotado',
 ];
 
 const INPUT = [

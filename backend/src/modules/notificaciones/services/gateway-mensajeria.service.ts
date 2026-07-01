@@ -267,11 +267,27 @@ export class GatewayMensajeriaService {
       this.logger.warn(
         `[GW] Sin destino para ${params.tipo} (empresa=${params.empresaId}) — whatsapp_corporativo no configurado`,
       );
-      // Actualizar log a NO_ENVIADO si existe antes de salir
       if (params.logId) {
+        // Actualizar log pre-creado por encolar() → visible en /mensajeria/enviados
         await this.ds.query(
           `UPDATE notificaciones_logs SET estado_entrega = 'NO_ENVIADO', error_detalle = $1 WHERE id = $2`,
           ['Sin número de destino configurado', params.logId],
+        ).catch(() => {});
+      } else if (params.empresaId) {
+        // Log no fue pre-creado (encolar() falló en BD) → insertar ahora para garantizar visibilidad
+        await this.ds.query(
+          `INSERT INTO notificaciones_logs
+             (empresa_id, contrato_id, cliente_id, telefono, tipo_template, estado_entrega, error_detalle, variables)
+           VALUES ($1, $2, $3, $4, $5, 'NO_ENVIADO', $6, $7)`,
+          [
+            params.empresaId,
+            params.contratoId ?? null,
+            params.clienteId  ?? null,
+            (params.telefono ?? '').substring(0, 30),
+            params.tipo,
+            'Sin número de destino configurado — whatsapp_corporativo no configurado',
+            params.variables ? JSON.stringify(params.variables) : null,
+          ],
         ).catch(() => {});
       }
       return { enviado: false, error: 'Sin número destino configurado' };
