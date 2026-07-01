@@ -15,6 +15,13 @@ const ESTADO_COLOR: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
+const fmtUptime = (secs: number | null) => {
+  if (!secs) return null;
+  const d = Math.floor(secs / 86_400);
+  const h = Math.floor((secs % 86_400) / 3_600);
+  return d > 0 ? `${d}d ${h}h` : `${h}h`;
+};
+
 export function TabOnus({ oltId }: { oltId: string }) {
   const [page, setPage] = useState(1);
 
@@ -57,6 +64,8 @@ export function TabOnus({ oltId }: { oltId: string }) {
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground hidden sm:table-cell">ONU ID</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground hidden md:table-cell">VLAN</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Estado</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground hidden xl:table-cell">Run State</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground hidden xl:table-cell">Uptime</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground hidden lg:table-cell">Contrato ID</th>
             </tr>
           </thead>
@@ -76,6 +85,12 @@ export function TabOnus({ oltId }: { oltId: string }) {
                   )}>
                     {r.estado}
                   </span>
+                </td>
+                <td className="px-4 py-2.5 text-xs text-muted-foreground hidden xl:table-cell">
+                  {r.runState ?? '—'}
+                </td>
+                <td className="px-4 py-2.5 text-xs text-muted-foreground hidden xl:table-cell">
+                  {fmtUptime(r.uptimeSeconds) ?? '—'}
                 </td>
                 <td className="px-4 py-2.5 text-xs font-mono text-muted-foreground hidden lg:table-cell">
                   {r.contratoId ? `…${r.contratoId.slice(-8)}` : '—'}

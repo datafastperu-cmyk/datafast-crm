@@ -60,14 +60,15 @@ export interface UpdateOltDto extends Partial<CreateOltDto> {}
 // ─── Tipos nuevos: Detalle OLT (Etapa 1) ─────────────────────
 
 export interface OltBoard {
-  id:         string;
-  oltId:      string;
-  slot:       number;
-  boardType:  string;
-  estado:     string;
-  onuCount:   number;
-  createdAt:  string;
-  updatedAt:  string;
+  id:           string;
+  oltId:        string;
+  slot:         number;
+  boardType:    string;
+  estado:       string;
+  onuCount:     number;
+  portsPorSlot: number | null;
+  createdAt:    string;
+  updatedAt:    string;
 }
 
 export interface OltLineProfile {
@@ -108,17 +109,20 @@ export interface OltEventoLog {
 }
 
 export interface FtthRegistro {
-  id:          string;
-  oltId:       string;
-  contratoId:  string;
-  sn:          string;
-  slot:        number;
-  port:        number;
-  onuId:       number;
-  vlan:        number;
-  estado:      string;
-  createdAt:   string;
-  updatedAt:   string;
+  id:              string;
+  oltId:           string;
+  contratoId:      string;
+  sn:              string;
+  slot:            number;
+  port:            number;
+  onuId:           number;
+  vlan:            number;
+  estado:          string;
+  runState:        string | null;
+  firmwareVersion: string | null;
+  uptimeSeconds:   number | null;
+  createdAt:       string;
+  updatedAt:       string;
 }
 
 export interface PaginatedResult<T> {
@@ -468,6 +472,8 @@ export interface OltVlan {
   vlanId:      number;
   nombre:      string;
   descripcion: string | null;
+  origen:      'erp' | 'olt';
+  estado:      'active' | 'syncing' | 'error';
   createdAt:   string;
   updatedAt:   string;
 }
@@ -480,6 +486,9 @@ export interface OltTrafficTable {
   nombre:    string;
   cirKbps:   number | null;
   pirKbps:   number | null;
+  tipo:      'upstream' | 'downstream' | 'combinado';
+  origen:    'erp' | 'olt';
+  estado:    'active' | 'syncing' | 'error';
   createdAt: string;
   updatedAt: string;
 }
@@ -804,11 +813,64 @@ export const oltNativoApi = {
     await api.delete(`/olt-nativo/${oltId}/vlans/${vlanId}`);
   },
 
+  agregarVlanConCli: async (
+    oltId: string,
+    dto: { vlanId: number; nombre: string; descripcion?: string },
+  ): Promise<OltVlan> => {
+    const res = await api.post<ApiRespuesta<OltVlan>>(
+      `/olt-nativo/${oltId}/vlans/con-cli`, dto, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+
+  eliminarVlanConCli: async (oltId: string, vlanId: number): Promise<void> => {
+    await api.delete(`/olt-nativo/${oltId}/vlans/${vlanId}/con-cli`, { timeout: 60_000 });
+  },
+
+  editarVlanNombre: async (oltId: string, vlanId: number, nombre: string): Promise<OltVlan> => {
+    const res = await api.patch<ApiRespuesta<OltVlan>>(
+      `/olt-nativo/${oltId}/vlans/${vlanId}`, { nombre },
+    );
+    return res.data.data;
+  },
+
+  pullVlansDesdeOlt: async (oltId: string): Promise<{ insertadas: number; omitidas: number }> => {
+    const res = await api.post<ApiRespuesta<{ insertadas: number; omitidas: number }>>(
+      `/olt-nativo/${oltId}/vlans/pull-desde-olt`, {}, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+
   // ─── Traffic Tables ───────────────────────────────────────────
 
   listarTrafficTables: async (oltId: string): Promise<OltTrafficTable[]> => {
     const res = await api.get<ApiRespuesta<OltTrafficTable[]>>(`/olt-nativo/${oltId}/traffic-tables`);
     return res.data.data ?? [];
+  },
+
+  agregarTrafficTable: async (
+    oltId: string,
+    dto: { nombre: string; cirKbps: number; pirKbps: number; tipo?: string },
+  ): Promise<OltTrafficTable> => {
+    const res = await api.post<ApiRespuesta<OltTrafficTable>>(
+      `/olt-nativo/${oltId}/traffic-tables`, dto, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+
+  editarTrafficTable: async (
+    oltId: string,
+    trafficId: number,
+    dto: { nombre: string; cirKbps: number; pirKbps: number; tipo?: string },
+  ): Promise<OltTrafficTable> => {
+    const res = await api.patch<ApiRespuesta<OltTrafficTable>>(
+      `/olt-nativo/${oltId}/traffic-tables/${trafficId}`, dto, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+
+  eliminarTrafficTableConCli: async (oltId: string, trafficId: number): Promise<void> => {
+    await api.delete(`/olt-nativo/${oltId}/traffic-tables/${trafficId}/con-cli`, { timeout: 60_000 });
   },
 
   ftthSignalDashboard: async (oltId: string): Promise<Array<{

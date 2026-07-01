@@ -57,6 +57,12 @@ export function TabTarjetas({ oltId }: { oltId: string }) {
             <span className="text-muted-foreground">ONUs activas</span>
             <span className="font-semibold text-foreground">{board.onuCount}</span>
           </div>
+          {board.portsPorSlot != null && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Puertos/Slot</span>
+              <span className="font-semibold text-foreground">{board.portsPorSlot}</span>
+            </div>
+          )}
         </div>
       ))}
     </div>
