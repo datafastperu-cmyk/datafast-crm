@@ -1,10 +1,6 @@
 Value TrafficIndex (\d+)
-Value TrafficName (\S+)
 Value Cir (\d+)
 Value Pir (\d+)
 
 Start
-  ^\s*Traffic table index\s*:\s*${TrafficIndex}
-  ^\s*Traffic table name\s*:\s*${TrafficName}
-  ^\s*CIR\S*\s*:\s*${Cir}
-  ^\s*PIR\S*\s*:\s*${Pir} -> Record
+  ^\s+${TrafficIndex}\s+${Cir}\s+\d+\s+${Pir} -> Record

@@ -1578,9 +1578,13 @@ def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
                 continue
             try:
                 idx  = int(row.get('TrafficIndex') or -1)
-                name = str(row.get('TrafficName')  or '').strip()
-                cir  = int(row.get('Cir') or 0)
-                pir  = int(row.get('Pir') or 0)
+                # display traffic table ip from-index no incluye nombre;
+                # usar TrafficName si existe, sino construir desde índice.
+                name = str(row.get('TrafficName') or f'traffic-table-{idx}').strip()
+                cir_val = row.get('Cir') or '0'
+                pir_val = row.get('Pir') or '0'
+                cir  = int(cir_val) if str(cir_val).isdigit() else 0
+                pir  = int(pir_val) if str(pir_val).isdigit() else 0
             except (ValueError, TypeError):
                 continue
             if idx < 0:
