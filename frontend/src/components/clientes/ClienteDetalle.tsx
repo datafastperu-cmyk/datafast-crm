@@ -1073,6 +1073,10 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
   const { mutate: activar, isPending: activarPending, variables: activarId } = useMutation({
     mutationFn: (id: string) => contratosApi.activar(id),
     onSuccess: (result) => {
+      // Actualización síncrona del cache → badge cambia inmediatamente sin esperar refetch
+      queryClient.setQueryData(['cliente', clienteId], (old: any) =>
+        old ? { ...old, estado: 'activo' } : old,
+      );
       queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
       queryClient.invalidateQueries({ queryKey: ['cliente', clienteId] });
       const parts: string[] = [];
