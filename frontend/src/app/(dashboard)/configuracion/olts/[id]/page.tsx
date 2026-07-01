@@ -6,33 +6,43 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Cpu, RefreshCw, Loader2,
   Settings, Activity, Network, Layers, Users, Server, Zap,
+  Plug, Share2, Gauge, AlertTriangle,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { useOltSocket } from '@/hooks/useOltSocket';
 import { cn } from '@/lib/utils';
 
-// ── Tab imports (se crean en pasos 10-14) ───────────────────────
-import { TabDetalles }  from '@/components/olt/TabDetalles';
-import { TabEventos }   from '@/components/olt/TabEventos';
-import { TabVlans }     from '@/components/olt/TabVlans';
-import { TabProfiles }  from '@/components/olt/TabProfiles';
-import { TabOnus }      from '@/components/olt/TabOnus';
-import { TabTarjetas }  from '@/components/olt/TabTarjetas';
-import { TabFirmware }  from '@/components/olt/TabFirmware';
+// ── Tab imports ──────────────────────────────────────────────────
+import { TabDetalles }   from '@/components/olt/TabDetalles';
+import { TabEventos }    from '@/components/olt/TabEventos';
+import { TabVlans }      from '@/components/olt/TabVlans';
+import { TabProfiles }   from '@/components/olt/TabProfiles';
+import { TabOnus }       from '@/components/olt/TabOnus';
+import { TabTarjetas }   from '@/components/olt/TabTarjetas';
+import { TabFirmware }   from '@/components/olt/TabFirmware';
+import { ProveedoresTab } from '@/components/red/ProveedoresTab';
+import { TopologiaTab }   from '@/components/red/TopologiaTab';
+import { SaludTab }       from '@/components/red/SaludTab';
+import { PeligrosoTab }   from '@/components/red/PeligrosoTab';
 
 // ─── Tabs ────────────────────────────────────────────────────────
 
-type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'tarjetas' | 'firmware';
+type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'tarjetas' | 'firmware'
+           | 'proveedores' | 'topologia' | 'salud' | 'peligroso';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: 'detalles',  label: 'Detalles',   icon: <Settings  className="w-3.5 h-3.5" /> },
-  { id: 'tarjetas',  label: 'Tarjetas',   icon: <Layers    className="w-3.5 h-3.5" /> },
-  { id: 'vlans',     label: 'VLANs',      icon: <Network   className="w-3.5 h-3.5" /> },
-  { id: 'profiles',  label: 'Perfiles',   icon: <Server    className="w-3.5 h-3.5" /> },
-  { id: 'onus',      label: 'ONUs',       icon: <Users     className="w-3.5 h-3.5" /> },
-  { id: 'firmware',  label: 'Firmware',   icon: <Zap       className="w-3.5 h-3.5" /> },
-  { id: 'eventos',   label: 'Eventos',    icon: <Activity  className="w-3.5 h-3.5" /> },
+  { id: 'detalles',    label: 'Detalles',    icon: <Settings       className="w-3.5 h-3.5" /> },
+  { id: 'tarjetas',    label: 'Tarjetas',    icon: <Layers         className="w-3.5 h-3.5" /> },
+  { id: 'vlans',       label: 'VLANs',       icon: <Network        className="w-3.5 h-3.5" /> },
+  { id: 'profiles',    label: 'Perfiles',    icon: <Server         className="w-3.5 h-3.5" /> },
+  { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" /> },
+  { id: 'firmware',    label: 'Firmware',    icon: <Zap            className="w-3.5 h-3.5" /> },
+  { id: 'proveedores', label: 'Proveedores', icon: <Plug           className="w-3.5 h-3.5" /> },
+  { id: 'topologia',   label: 'Topología',   icon: <Share2         className="w-3.5 h-3.5" /> },
+  { id: 'salud',       label: 'Salud',       icon: <Gauge          className="w-3.5 h-3.5" /> },
+  { id: 'eventos',     label: 'Eventos',     icon: <Activity       className="w-3.5 h-3.5" /> },
+  { id: 'peligroso',   label: 'Peligroso',   icon: <AlertTriangle  className="w-3.5 h-3.5 text-red-400" /> },
 ];
 
 const MARCA_COLOR: Record<string, string> = {
@@ -215,13 +225,23 @@ export default function OltDetallePage() {
 
       {/* ── Tab content ─────────────────────────────────────────── */}
       <div>
-        {tab === 'detalles'  && <TabDetalles  olt={olt} oltId={id} />}
-        {tab === 'tarjetas'  && <TabTarjetas  oltId={id} />}
-        {tab === 'vlans'     && <TabVlans     oltId={id} />}
-        {tab === 'profiles'  && <TabProfiles  oltId={id} />}
-        {tab === 'onus'      && <TabOnus      oltId={id} />}
-        {tab === 'firmware'  && <TabFirmware  oltId={id} />}
-        {tab === 'eventos'   && <TabEventos   oltId={id} />}
+        {tab === 'detalles'    && <TabDetalles   olt={olt} oltId={id} />}
+        {tab === 'tarjetas'    && <TabTarjetas   oltId={id} />}
+        {tab === 'vlans'       && <TabVlans      oltId={id} />}
+        {tab === 'profiles'    && <TabProfiles   oltId={id} />}
+        {tab === 'onus'        && <TabOnus       oltId={id} />}
+        {tab === 'firmware'    && <TabFirmware   oltId={id} />}
+        {tab === 'proveedores' && <ProveedoresTab oltId={id} />}
+        {tab === 'topologia'   && <TopologiaTab  oltId={id} />}
+        {tab === 'salud'       && <SaludTab      oltId={id} />}
+        {tab === 'eventos'     && <TabEventos    oltId={id} />}
+        {tab === 'peligroso'   && (
+          <PeligrosoTab
+            oltId={id}
+            oltNombre={olt.nombre}
+            onDeleted={() => router.push('/configuracion/olts')}
+          />
+        )}
       </div>
     </div>
   );

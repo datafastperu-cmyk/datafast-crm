@@ -3,10 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Cpu, Wifi, AlertTriangle, RefreshCw, Loader2, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Cpu, Wifi, AlertTriangle, RefreshCw, Loader2, ChevronRight } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo, type ProveedorResumen } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
-import { OltFormModal }         from '@/components/red/OltFormModal';
 import { OltWizardNativoModal } from '@/components/red/OltWizardNativoModal';
 import { cn } from '@/lib/utils';
 
@@ -61,9 +60,7 @@ export default function OltsConfigPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [modalOpen,  setModalOpen]    = useState(false);
   const [wizardOpen, setWizardOpen]   = useState(false);
-  const [editing,    setEditing]      = useState<OltDispositivo | null>(null);
   const [deleteId,  setDeleteId]      = useState<string | null>(null);
   const [testingId, setTestingId]     = useState<string | null>(null);
 
@@ -89,9 +86,6 @@ export default function OltsConfigPage() {
       setDeleteId(null);
     },
   });
-
-  const openCreate = () => { setEditing(null); setModalOpen(true); };
-  const openEdit   = (olt: OltDispositivo) => { setEditing(olt); setModalOpen(true); };
 
   const handleTest = async (olt: OltDispositivo) => {
     setTestingId(olt.id);
@@ -147,7 +141,7 @@ export default function OltsConfigPage() {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Cpu className="w-12 h-12 text-muted-foreground/30 mb-3" />
           <p className="text-muted-foreground text-sm">No hay OLTs registradas</p>
-          <button onClick={openCreate} className="mt-4 text-sm text-primary hover:underline">
+          <button onClick={() => setWizardOpen(true)} className="mt-4 text-sm text-primary hover:underline">
             Agregar la primera OLT
           </button>
         </div>
@@ -229,13 +223,6 @@ export default function OltsConfigPage() {
                           : <RefreshCw className="w-3.5 h-3.5" />}
                       </button>
                       <button
-                        onClick={() => openEdit(olt)}
-                        className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                        title="Editar"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
                         onClick={() => setDeleteId(olt.id)}
                         className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                         title="Eliminar"
@@ -256,13 +243,6 @@ export default function OltsConfigPage() {
       <OltWizardNativoModal
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}
-      />
-
-      {/* Editar OLT (modal simple) */}
-      <OltFormModal
-        open={modalOpen}
-        onClose={() => { setModalOpen(false); setEditing(null); }}
-        editing={editing}
       />
 
       {/* Delete Confirm */}
