@@ -1509,21 +1509,29 @@ def discover_onus(
 
 def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
     """
-    Consulta los tres tipos de perfiles de la MA5800 con sesiones SSH independientes:
+    Consulta los tres tipos de perfiles de la MA5800 en UNA sola sesión Paramiko:
       display ont-lineprofile all   → line profiles (DBA + GEM mapping)
       display ont-srvprofile all    → service profiles (tipo de servicio)
       display traffic table all     → traffic tables (CIR/PIR para service-port)
 
-    Usa _send_single_command (3 sesiones separadas) en lugar de _open_multi_commands
-    para garantizar que screen-length 0 se aplique correctamente antes de cada
-    comando, evitando timeouts por paginación en outputs grandes.
+    Usa _paramiko_huawei_run (bypass Netmiko session_preparation) con return_list=True
+    para obtener la salida de cada comando individualmente. Netmiko session_preparation
+    interfiere con el canal en el MA5800 (prompt { <cr>||<K> }: no confirmado).
     Síncrono — llamar desde asyncio.to_thread().
     """
+    cmds = [
+        'display ont-lineprofile all',
+        'display ont-srvprofile all',
+        'display traffic table all',
+    ]
     try:
-        lp_raw = _send_single_command(conn, 'display ont-lineprofile all')
-        sp_raw = _send_single_command(conn, 'display ont-srvprofile all')
-        tt_raw = _send_single_command(conn, 'display traffic table all')
-    except (ConnectionError, CommandError) as exc:
+        parts = _paramiko_huawei_run(
+            conn, cmds,
+            timeout=float(settings.ssh_command_timeout),
+            return_list=True,
+        )
+        lp_raw, sp_raw, tt_raw = parts[0], parts[1], parts[2]
+    except ProvisioningError as exc:
         logger.warning('list_huawei_profiles: fallo SSH en %s — %s', conn.ip, exc)
         return {
             'success': False,
