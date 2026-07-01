@@ -17,6 +17,10 @@ import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltHealthSnapshot } from './entities/olt-health-snapshot.entity';
 import { OltAlerta }         from './entities/olt-alerta.entity';
+import { OltBoard }          from './entities/olt-board.entity';
+import { OltLineProfile }    from './entities/olt-line-profile.entity';
+import { OltServiceProfile } from './entities/olt-service-profile.entity';
+import { OltSyncJob }        from './entities/olt-sync-job.entity';
 import { OltVlanService }         from './services/olt-vlan.service';
 import { OltTrafficTableService } from './services/olt-traffic-table.service';
 import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
@@ -44,6 +48,7 @@ import { OltOnuIdPoolService }        from './services/olt-onu-id-pool.service';
 import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
 import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
 import { OltAlertEngineService }     from './services/olt-alert-engine.service';
+import { OltSyncService }            from './services/olt-sync.service';
 
 // ═══════════════════════════════════════════════════════════════════
 // OltNativoModule — ecosistema multi-proveedor OLT/ONU
@@ -108,6 +113,10 @@ import { OltAlertEngineService }     from './services/olt-alert-engine.service';
       OltTrafficTable,
       OltHealthSnapshot,
       OltAlerta,
+      OltBoard,
+      OltLineProfile,
+      OltServiceProfile,
+      OltSyncJob,
     ]),
 
     // HTTP compartido: OltAutomationClient + SmartoltProvider + AdminOltProvider
@@ -152,6 +161,7 @@ import { OltAlertEngineService }     from './services/olt-alert-engine.service';
     OltTrafficTableService,
     OltHealthDashboardService,
     OltAlertEngineService,
+    OltSyncService,
     FtthRecoveryCron,
     OltHealthPollerCron,
   ],
@@ -163,6 +173,7 @@ import { OltAlertEngineService }     from './services/olt-alert-engine.service';
     CircuitBreakerService,  // reset manual desde endpoints de administración
     OltProviderRegistry,    // diagnóstico y listado de proveedores disponibles
     ProvisionFtthService,   // aprovisionamiento FTTH bifásico
+    OltSyncService,         // sincronización asíncrona OLT → ERP
   ],
 })
 export class OltNativoModule {}

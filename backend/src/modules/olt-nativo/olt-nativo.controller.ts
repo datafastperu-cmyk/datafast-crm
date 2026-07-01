@@ -1,7 +1,7 @@
 import {
   BadRequestException,
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
-  Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query,
+  Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query,
   UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { TipoProveedor } from './entities/olt-proveedor-config.entity';
@@ -35,6 +35,12 @@ import { AgregarVlanDto, OltVlanService }         from './services/olt-vlan.serv
 import { OltTrafficTableService } from './services/olt-traffic-table.service';
 import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
+import { OltSyncService }    from './services/olt-sync.service';
+import { OltBoard }          from './entities/olt-board.entity';
+import { OltLineProfile }    from './entities/olt-line-profile.entity';
+import { OltServiceProfile } from './entities/olt-service-profile.entity';
+import { OltSyncJob }        from './entities/olt-sync-job.entity';
+import { OltOperacionLog }   from './entities/olt-operacion-log.entity';
 import { FtthOnuRegistro }         from './entities/ftth-onu-registro.entity';
 import {
   CrearOltIntegracionDto,
@@ -64,6 +70,7 @@ export class OltNativoController {
     private readonly oltVlans:      OltVlanService,
     private readonly trafficTables: OltTrafficTableService,
     private readonly healthDash:    OltHealthDashboardService,
+    private readonly sync:          OltSyncService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -885,5 +892,120 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     return this.trafficTables.eliminar(oltId, user.empresaId, trafficId);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  PÁGINA DE DETALLE: /configuracion/olts/[id]
+  // ═══════════════════════════════════════════════════════════════
+
+  /** PATCH parcial — formulario de edición de la página de detalle */
+  @Patch(':oltId')
+  @ApiOperation({ summary: 'Actualización parcial de OLT (PATCH)' })
+  @ApiParam({ name: 'oltId' })
+  async patchOlt(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: UpdateOltDispositivoDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.actualizar(oltId, user.empresaId, dto);
+  }
+
+  /** Tarjetas físicas detectadas en el último sync */
+  @Get(':oltId/boards')
+  @ApiOperation({ summary: 'Listar tarjetas (boards) detectadas en una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async listarBoards(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltBoard[]> {
+    return this.sync['boardRepo'].find({
+      where: { oltId, empresaId: user.empresaId },
+      order: { slot: 'ASC' },
+    });
+  }
+
+  /** Line profiles detectados en el último sync */
+  @Get(':oltId/line-profiles')
+  @ApiOperation({ summary: 'Listar line profiles detectados en una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async listarLineProfiles(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltLineProfile[]> {
+    return this.sync['lineProfileRepo'].find({
+      where: { oltId, empresaId: user.empresaId },
+      order: { profileId: 'ASC' },
+    });
+  }
+
+  /** Service profiles detectados en el último sync */
+  @Get(':oltId/service-profiles')
+  @ApiOperation({ summary: 'Listar service profiles detectados en una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async listarServiceProfiles(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltServiceProfile[]> {
+    return this.sync['srvProfileRepo'].find({
+      where: { oltId, empresaId: user.empresaId },
+      order: { profileId: 'ASC' },
+    });
+  }
+
+  /** Log de eventos (olt_operacion_log) paginado */
+  @Get(':oltId/eventos')
+  @ApiOperation({ summary: 'Log de operaciones de una OLT (paginado)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiQuery({ name: 'page',  required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async listarEventos(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Query('page')  page:  string | undefined,
+    @Query('limit') limit: string | undefined,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: OltOperacionLog[]; total: number }> {
+    const take = Math.min(parseInt(limit ?? '20', 10), 100);
+    const skip = (parseInt(page ?? '1', 10) - 1) * take;
+    return this.service.listarEventos(oltId, user.empresaId, take, skip);
+  }
+
+  /** ONUs FTTH aprovisionadas en esta OLT (cross-ref ERP) */
+  @Get(':oltId/ftth-registros')
+  @ApiOperation({ summary: 'ONUs FTTH aprovisionadas en esta OLT (registros ERP)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiQuery({ name: 'page',  required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async listarFtthRegistros(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Query('page')  page:  string | undefined,
+    @Query('limit') limit: string | undefined,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ data: FtthOnuRegistro[]; total: number }> {
+    const take = Math.min(parseInt(limit ?? '50', 10), 200);
+    const skip = (parseInt(page ?? '1', 10) - 1) * take;
+    return this.ftth.listarPorOlt(oltId, user.empresaId, take, skip);
+  }
+
+  /** Iniciar sincronización asíncrona OLT → ERP */
+  @Post(':oltId/sync')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Iniciar sincronización OLT → ERP (asíncrona, responde con jobId)' })
+  @ApiParam({ name: 'oltId' })
+  async iniciarSync(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ jobId: string }> {
+    return this.sync.iniciarSync(oltId, user.empresaId);
+  }
+
+  /** Estado del último (o activo) sync job */
+  @Get(':oltId/sync/status')
+  @ApiOperation({ summary: 'Estado del último job de sincronización de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async estadoSync(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltSyncJob | null> {
+    return this.sync.estadoSync(oltId, user.empresaId);
   }
 }

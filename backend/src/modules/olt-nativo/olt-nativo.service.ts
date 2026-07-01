@@ -1321,4 +1321,26 @@ export class OltNativoService implements OnModuleInit {
       );
     }
   }
+
+  // ── Log de eventos paginado (página de detalle OLT) ───────────
+
+  async listarEventos(
+    oltId: string, empresaId: string, take: number, skip: number,
+  ): Promise<{ data: any[]; total: number }> {
+    const [rows, total] = await Promise.all([
+      this.ds.query<any[]>(
+        `SELECT * FROM olt_operacion_log
+         WHERE olt_id = $1 AND empresa_id = $2
+         ORDER BY created_at DESC
+         LIMIT $3 OFFSET $4`,
+        [oltId, empresaId, take, skip],
+      ),
+      this.ds.query<{ count: string }[]>(
+        `SELECT COUNT(*) AS count FROM olt_operacion_log
+         WHERE olt_id = $1 AND empresa_id = $2`,
+        [oltId, empresaId],
+      ).then(r => parseInt(r[0].count, 10)),
+    ]);
+    return { data: rows, total };
+  }
 }

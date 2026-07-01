@@ -873,4 +873,16 @@ export class ProvisionFtthService {
 
     return { enErpNoEnOlt, enOltNoEnErp, sincronizados };
   }
+
+  async listarPorOlt(
+    oltId: string, empresaId: string, take: number, skip: number,
+  ): Promise<{ data: FtthOnuRegistro[]; total: number }> {
+    const [data, total] = await this.ftthRepo.findAndCount({
+      where: { oltId, empresaId },
+      order: { createdAt: 'DESC' },
+      take,
+      skip,
+    });
+    return { data, total };
+  }
 }
