@@ -59,7 +59,7 @@ type TabKey = 'olts' | 'onus';
 export function RedOltContent() {
   const qc = useQueryClient();
 
-  const [tab,          setTab]          = useState<TabKey>('olts');
+  const [tab,          setTab]          = useState<TabKey>('onus');
   const [oltSortField, setOltSortField] = useState('nombre');
   const [oltSortDir,   setOltSortDir]   = useState<'ASC' | 'DESC'>('ASC');
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
@@ -202,8 +202,8 @@ export function RedOltContent() {
       {/* Tabs */}
       <ScrollableTabs className="flex gap-1 border-b border-border pb-0">
         {([
-          ['olts', 'OLTs',  Server],
           ['onus', 'ONUs',  Signal],
+          ['olts', 'OLTs',  Server],
         ] as const).map(([key, label, Icon]) => (
           <button
             key={key}
