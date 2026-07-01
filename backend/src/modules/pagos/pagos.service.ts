@@ -677,6 +677,12 @@ export class PagosService {
         this.events.emit('contrato.pago_en_pendiente_activacion', {
           contratoId, pagoId: pagoId ?? '', empresaId,
         });
+      } else if (contrato.estado === EstadoContrato.ACTIVO && contrato.enProrroga) {
+        // Contrato activo con prórroga pagada → limpiar prórroga en BD y MikroTik
+        await this.contratosSvc.limpiarProrroga(contratoId, empresaId);
+        this.logger.log(
+          `🟢 Prórroga saldada: contrato ${contratoId} | IP removida de address-list prorroga`,
+        );
       } else if (contrato.estado === EstadoContrato.BAJA_DEFINITIVA) {
         this.logger.warn(
           `[REACTIVAR] Contrato ${contratoId} en baja_definitiva — pago registrado, ` +

@@ -801,6 +801,54 @@ export class ContratosService {
     return this.findOne(id, user.empresaId);
   }
 
+  // Limpia prórroga en BD y quita la IP de ADDRESS_LIST_PRORROGA en MikroTik.
+  // Llamado cuando se registra un pago que salda la deuda y el contrato sigue activo.
+  async limpiarProrroga(id: string, empresaId: string): Promise<void> {
+    const contrato = await this.findOne(id, empresaId);
+    if (!contrato.enProrroga) return;
+
+    await this.dataSource.query(`
+      UPDATE contratos
+      SET en_prorroga = false, prorroga_hasta = NULL, updated_at = NOW()
+      WHERE id = $1
+    `, [id]);
+
+    if (contrato.routerId && contrato.ipAsignada) {
+      setImmediate(async () => {
+        try {
+          const [router] = await this.dataSource.query<any[]>(`
+            SELECT vpn_ip AS "vpnIp", ip_gestion AS "ipGestion",
+                   usuario, password_cifrado AS "passwordCifrado",
+                   usar_ssl AS "usarSsl", puerto_api AS "puertoApi",
+                   puerto_api_ssl AS "puertoApiSsl", version_ros AS "versionRos",
+                   timeout_conexion AS "timeoutConexion"
+            FROM routers WHERE id = $1
+          `, [contrato.routerId]);
+
+          if (router) {
+            const creds = {
+              id:              contrato.routerId,
+              ip:              router.vpnIp || router.ipGestion,
+              port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
+              user:            router.usuario ?? 'admin',
+              passwordCifrado: router.passwordCifrado ?? '',
+              useSsl:          router.usarSsl ?? false,
+              timeoutSec:      router.timeoutConexion ?? 15,
+              version:         (router.versionRos === 'v7' ? 'v7' : 'v6') as 'v6' | 'v7',
+            };
+            await this.firewallSvc.reactivarCliente(creds, contrato.ipAsignada);
+            this.logger.log(`limpiarProrroga → IP ${contrato.ipAsignada} removida de address-list | contrato ${id}`);
+          }
+        } catch (err: any) {
+          this.logger.warn(`limpiarProrroga → fallo MikroTik contrato ${id}: ${err?.message}`);
+          await this.outboxRed.encolar('REACTIVAR', id, contrato.routerId!, {
+            ipAsignada: contrato.ipAsignada,
+          }).catch(() => void 0);
+        }
+      });
+    }
+  }
+
   async activar(id: string, user: JwtPayload, req?: any): Promise<ActivarResultado> {
     const c = await this.findOne(id, user.empresaId);
     if (c.estado !== EstadoContrato.PENDIENTE_ACTIVACION)
