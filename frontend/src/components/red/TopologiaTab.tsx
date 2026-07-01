@@ -163,7 +163,7 @@ function VlansSection({ oltId }: { oltId: string }) {
 
 // ─── Traffic Tables section ───────────────────────────────────
 
-function TrafficTablesSection({ oltId }: { oltId: string }) {
+export function TrafficTablesSection({ oltId }: { oltId: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -250,14 +250,3 @@ function TrafficTablesSection({ oltId }: { oltId: string }) {
   );
 }
 
-// ─── Main export ──────────────────────────────────────────────
-
-export function TopologiaTab({ oltId }: Props) {
-  return (
-    <div className="space-y-6">
-      <VlansSection oltId={oltId} />
-      <div className="border-t border-border" />
-      <TrafficTablesSection oltId={oltId} />
-    </div>
-  );
-}

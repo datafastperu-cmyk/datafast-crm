@@ -22,14 +22,14 @@ import { TabOnus }       from '@/components/olt/TabOnus';
 import { TabTarjetas }   from '@/components/olt/TabTarjetas';
 import { TabFirmware }   from '@/components/olt/TabFirmware';
 import { ProveedoresTab } from '@/components/red/ProveedoresTab';
-import { TopologiaTab }   from '@/components/red/TopologiaTab';
+import { TrafficTablesSection } from '@/components/red/TopologiaTab';
 import { SaludTab }       from '@/components/red/SaludTab';
 import { PeligrosoTab }   from '@/components/red/PeligrosoTab';
 
 // ─── Tabs ────────────────────────────────────────────────────────
 
 type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'tarjetas' | 'firmware'
-           | 'proveedores' | 'topologia' | 'salud' | 'peligroso';
+           | 'proveedores' | 'traffic' | 'salud' | 'peligroso';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'detalles',    label: 'Detalles',    icon: <Settings       className="w-3.5 h-3.5" /> },
@@ -39,7 +39,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" /> },
   { id: 'firmware',    label: 'Firmware',    icon: <Zap            className="w-3.5 h-3.5" /> },
   { id: 'proveedores', label: 'Proveedores', icon: <Plug           className="w-3.5 h-3.5" /> },
-  { id: 'topologia',   label: 'Topología',   icon: <Share2         className="w-3.5 h-3.5" /> },
+  { id: 'traffic',     label: 'Traffic Tables', icon: <Share2      className="w-3.5 h-3.5" /> },
   { id: 'salud',       label: 'Salud',       icon: <Gauge          className="w-3.5 h-3.5" /> },
   { id: 'eventos',     label: 'Eventos',     icon: <Activity       className="w-3.5 h-3.5" /> },
   { id: 'peligroso',   label: 'Peligroso',   icon: <AlertTriangle  className="w-3.5 h-3.5 text-red-400" /> },
@@ -232,7 +232,7 @@ export default function OltDetallePage() {
         {tab === 'onus'        && <TabOnus       oltId={id} />}
         {tab === 'firmware'    && <TabFirmware   oltId={id} />}
         {tab === 'proveedores' && <ProveedoresTab oltId={id} />}
-        {tab === 'topologia'   && <TopologiaTab  oltId={id} />}
+        {tab === 'traffic'     && <TrafficTablesSection oltId={id} />}
         {tab === 'salud'       && <SaludTab      oltId={id} />}
         {tab === 'eventos'     && <TabEventos    oltId={id} />}
         {tab === 'peligroso'   && (
