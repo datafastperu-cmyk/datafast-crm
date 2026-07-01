@@ -2,5 +2,5 @@ Value ProfileId (\d+)
 Value ProfileName (\S+)
 
 Start
-  ^Profile-Index\s*:\s*${ProfileId}
-  ^Profile-Name\s*:\s*${ProfileName} -> Record
+  ^\s*Profile-Index\s*:\s*${ProfileId}
+  ^\s*Profile-Name\s*:\s*${ProfileName} -> Record

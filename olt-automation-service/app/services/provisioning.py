@@ -1493,21 +1493,20 @@ def discover_onus(
 
 def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
     """
-    Consulta en una sola sesión SSH los tres tipos de perfiles de la MA5800:
+    Consulta los tres tipos de perfiles de la MA5800 con sesiones SSH independientes:
       display ont-lineprofile all   → line profiles (DBA + GEM mapping)
       display ont-srvprofile all    → service profiles (tipo de servicio)
       display traffic table all     → traffic tables (CIR/PIR para service-port)
 
-    Retorna dict con 'lineprofiles', 'srvprofiles' y 'traffic_tables'.
+    Usa _send_single_command (3 sesiones separadas) en lugar de _open_multi_commands
+    para garantizar que screen-length 0 se aplique correctamente antes de cada
+    comando, evitando timeouts por paginación en outputs grandes.
     Síncrono — llamar desde asyncio.to_thread().
     """
-    cmds = [
-        'display ont-lineprofile all',
-        'display ont-srvprofile all',
-        'display traffic table all',
-    ]
     try:
-        lp_raw, sp_raw, tt_raw = _open_multi_commands(conn, cmds)
+        lp_raw = _send_single_command(conn, 'display ont-lineprofile all')
+        sp_raw = _send_single_command(conn, 'display ont-srvprofile all')
+        tt_raw = _send_single_command(conn, 'display traffic table all')
     except (ConnectionError, CommandError) as exc:
         logger.warning('list_huawei_profiles: fallo SSH en %s — %s', conn.ip, exc)
         return {
