@@ -1360,6 +1360,10 @@ def _paramiko_huawei_run(
 
     PROMPT_RE = re.compile(r'^\S+[>#]\s*$')
     CONFIRM_RE = re.compile(r'\{\s*<cr>')
+    # Huawei MA5800 muestra "---- More ( Press 'Q' to break ) ----" cuando
+    # screen-length 0 no se aplicó o hay paginación activa en el comando.
+    # Responder con espacio (avanza página) hasta llegar al prompt final.
+    MORE_RE   = re.compile(r'----\s*[Mm]ore', re.IGNORECASE)
 
     def _read_until_prompt(chan: 'paramiko.Channel', deadline: float) -> str:
         buf = ''
@@ -1369,6 +1373,9 @@ def _paramiko_huawei_run(
                 last = buf.rsplit('\n', 1)[-1].replace('\r', '').strip()
                 if CONFIRM_RE.search(last):
                     chan.send('\r\n')
+                    continue
+                if MORE_RE.search(last):
+                    chan.send(' ')  # Espacio avanza una página en el pager Huawei
                     continue
                 if PROMPT_RE.match(last):
                     break
@@ -1519,12 +1526,15 @@ def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
     interfiere con el canal en el MA5800 (prompt { <cr>||<K> }: no confirmado).
     Síncrono — llamar desde asyncio.to_thread().
     """
+    # Los comandos de perfiles GPON se ejecutan en config mode.
+    # display traffic table ip opera en enable mode (#), después de quit.
+    # from-index 0 muestra todas las tablas desde el índice 0.
     cmds = [
         'config',
         'display ont-lineprofile gpon all',
         'display ont-srvprofile gpon all',
-        'display traffic table ip all',
         'quit',
+        'display traffic table ip from-index 0',
     ]
     try:
         parts = _paramiko_huawei_run(
@@ -1532,8 +1542,8 @@ def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
             timeout=float(settings.ssh_command_timeout),
             return_list=True,
         )
-        # parts[0]=config, parts[1]=lp, parts[2]=sp, parts[3]=tt, parts[4]=quit
-        lp_raw, sp_raw, tt_raw = parts[1], parts[2], parts[3]
+        # parts[0]=config, parts[1]=lp, parts[2]=sp, parts[3]=quit, parts[4]=tt
+        lp_raw, sp_raw, tt_raw = parts[1], parts[2], parts[4]
     except ProvisioningError as exc:
         logger.warning('list_huawei_profiles: fallo SSH en %s — %s', conn.ip, exc)
         return {
