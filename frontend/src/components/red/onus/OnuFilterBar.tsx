@@ -1,7 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery }     from '@tanstack/react-query';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Search, Download, X } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { zonasApi }     from '@/lib/api/zonas';

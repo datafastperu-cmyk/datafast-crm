@@ -322,7 +322,6 @@ export function RedOltContent() {
           <OnuBulkBar
             selected={selected}
             onClearAll={onClearAll}
-            empresaId=""
           />
           <OnuTable
             filters={filters}

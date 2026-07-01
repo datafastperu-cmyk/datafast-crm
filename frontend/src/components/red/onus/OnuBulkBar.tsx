@@ -5,12 +5,11 @@ import { redOnusApi }  from '@/lib/api/red-onus';
 import { RefreshCw, WifiOff, Wifi, X } from 'lucide-react';
 
 interface Props {
-  selected:    Set<string>;
-  onClearAll:  () => void;
-  empresaId:   string;
+  selected:   Set<string>;
+  onClearAll: () => void;
 }
 
-export function OnuBulkBar({ selected, onClearAll, empresaId }: Props) {
+export function OnuBulkBar({ selected, onClearAll }: Props) {
   const [confirm, setConfirm] = useState<'suspender' | 'rehabilitar' | null>(null);
   const qc = useQueryClient();
 
