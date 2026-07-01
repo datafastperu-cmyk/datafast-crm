@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, Cpu, Wifi, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Cpu, Wifi, AlertTriangle, RefreshCw, Loader2, ChevronRight } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo, type ProveedorResumen } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { OltFormModal }         from '@/components/red/OltFormModal';
@@ -57,6 +58,7 @@ function ProveedorChips({ resumen }: { resumen: ProveedorResumen | undefined }) 
 }
 
 export default function OltsConfigPage() {
+  const router = useRouter();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [modalOpen,  setModalOpen]    = useState(false);
@@ -168,7 +170,9 @@ export default function OltsConfigPage() {
             <tbody>
               {olts.map((olt) => (
                 <tr key={olt.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                  className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors cursor-pointer"
+                  onClick={() => router.push(`/configuracion/olts/${olt.id}`)}
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Wifi className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
@@ -212,10 +216,10 @@ export default function OltsConfigPage() {
                   <td className="px-4 py-3 hidden md:table-cell">
                     <ProveedorChips resumen={resumenMap.get(olt.id)} />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1 justify-end">
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleTest(olt); }}
+                        onClick={() => handleTest(olt)}
                         disabled={testingId !== null}
                         className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground/60 hover:text-green-500 transition-colors disabled:opacity-50"
                         title="Probar conexión SSH"
@@ -238,6 +242,7 @@ export default function OltsConfigPage() {
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 ml-1" />
                     </div>
                   </td>
                 </tr>

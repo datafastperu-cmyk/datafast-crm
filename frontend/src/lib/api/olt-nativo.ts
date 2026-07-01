@@ -496,6 +496,11 @@ export const oltNativoApi = {
     return res.data.data ?? [];
   },
 
+  findOne: async (oltId: string): Promise<OltDispositivo> => {
+    const res = await api.get<ApiRespuesta<OltDispositivo>>(`/olt-nativo/${oltId}`);
+    return res.data.data;
+  },
+
   crear: async (dto: CreateOltDto): Promise<OltDispositivo> => {
     const res = await api.post<ApiRespuesta<OltDispositivo>>('/olt-nativo', dto);
     return res.data.data;
