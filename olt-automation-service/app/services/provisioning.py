@@ -106,15 +106,11 @@ def _huawei_enter_enable(session: Any, conn: OltConnectionSchema) -> None:
         if prompt.strip().endswith('>'):
             session.send_command('enable', expect_string=r'[>#]', read_timeout=10)
             logger.debug('huawei_enter_enable: modo privilegiado activo en %s', conn.ip)
-        # Deshabilitar paginación — MA5800 muestra '{ <cr>||<K> }:' en outputs
-        # largos; ese prompt contiene '>' y rompe expect_string=r'[>#]'.
-        # send_command_timing no usa expect_string, así que no hay falso match.
+        # Deshabilitar paginación usando _send_huawei_confirmed para manejar
+        # correctamente el prompt { <cr>||<K> }: que MA5800 muestra como
+        # confirmación antes de aplicar screen-length 0 temporary.
         try:
-            session.send_command_timing(
-                'screen-length 0 temporary',
-                delay_factor=1,
-                read_timeout=10,
-            )
+            _send_huawei_confirmed(session, 'screen-length 0 temporary', 15)
             logger.debug('huawei_enter_enable: paginación desactivada en %s', conn.ip)
         except Exception:  # noqa: BLE001
             pass
@@ -134,33 +130,31 @@ def _send_huawei_confirmed(
     read_timeout: float,
 ) -> str:
     """
-    Envía un comando Huawei y maneja el prompt de confirmación
-    '{ <cr>||<K> }:' que el MA5800 muestra antes de ejecutar
-    comandos como 'display ont autofind all'.
+    Envía un comando Huawei y maneja el prompt de confirmación/paginación
+    '{ <cr>||<K> }:' que el MA5800 muestra. Soporta múltiples páginas:
+    cada vez que aparece '{ <cr>' en el último renglón, envía Enter para
+    continuar. Termina cuando encuentra el prompt real (hostname> o hostname#).
 
     Flujo:
       1. Escribe el comando al canal.
-      2. Lee hasta encontrar '{ <cr>' (confirmación) o el prompt final.
-      3. Si hay confirmación → envía Enter → lee hasta el prompt final.
+      2. Lee chunks en loop; si '{ <cr>' → envía Enter; si prompt real → break.
       4. Limpia el echo del comando y el prompt del output retornado.
     """
     session.write_channel(command + '\r\n')
 
     data = ''
-    confirmed = False
     deadline = _time_read.monotonic() + read_timeout
 
     while _time_read.monotonic() < deadline:
         chunk = session.read_channel()
         data += chunk
 
-        # Verificar el último renglón para detectar confirmación o prompt real.
+        # Verificar el último renglón para detectar paginación o prompt real.
         last_line = data.rsplit('\n', 1)[-1].replace('\r', '').strip()
 
-        if not confirmed and '{ <cr>' in last_line:
-            # Responder a la confirmación con Enter y continuar leyendo.
+        if '{ <cr>' in last_line:
+            # Paginación: responder con Enter y seguir leyendo (puede haber N páginas).
             session.write_channel('\r\n')
-            confirmed = True
             continue
 
         if _HUAWEI_PROMPT_RE.match(last_line):
@@ -326,15 +320,22 @@ def _send_single_command(conn: OltConnectionSchema, command: str) -> str:
         try:
             with ConnectHandler(**params) as session:
                 _huawei_enter_enable(session, conn)
-                output: str = session.send_command(
-                    command,
-                    # r'\S+[>#]\s*$' no hace match con '{ <cr>||<K> }:'
-                    # (el prompt de paginación Huawei que contiene '>').
-                    expect_string=r'\S+[>#]\s*$',
-                    read_timeout=settings.ssh_command_timeout,
-                    strip_prompt=True,
-                    strip_command=True,
-                )
+                # Para Huawei usar _send_huawei_confirmed que maneja correctamente
+                # el prompt de paginación { <cr>||<K> }: — send_command() de Netmiko
+                # falla porque ese prompt nunca coincide con expect_string r'\S+[>#]'
+                # y el OLT queda bloqueado esperando confirmación de página.
+                if conn.brand == OltBrand.HUAWEI:
+                    output = _send_huawei_confirmed(
+                        session, command, float(settings.ssh_command_timeout)
+                    )
+                else:
+                    output = session.send_command(
+                        command,
+                        expect_string=r'\S+[>#]\s*$',
+                        read_timeout=settings.ssh_command_timeout,
+                        strip_prompt=True,
+                        strip_command=True,
+                    )
             return output
         except NetmikoAuthenticationException as exc:
             raise ConnectionError(
@@ -375,9 +376,15 @@ def _open_multi_commands(
     Llamar desde asyncio.to_thread() en main.py.
     """
     params = _build_netmiko_params(conn)
+    timeout = float(settings.ssh_command_timeout)
     try:
         with ConnectHandler(**params) as session:
             _huawei_enter_enable(session, conn)
+            if conn.brand == OltBrand.HUAWEI:
+                return [
+                    _send_huawei_confirmed(session, cmd, timeout)
+                    for cmd in commands
+                ]
             return [
                 session.send_command(
                     cmd,
