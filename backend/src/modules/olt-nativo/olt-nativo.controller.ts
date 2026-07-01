@@ -32,7 +32,7 @@ import {
 } from './services/olt-service-port-pool.service';
 import { OltOnuIdPoolService } from './services/olt-onu-id-pool.service';
 import { AgregarVlanDto, OltVlanService }         from './services/olt-vlan.service';
-import { OltTrafficTableService } from './services/olt-traffic-table.service';
+import { AgregarTrafficTableDto, EditarTrafficTableDto, OltTrafficTableService } from './services/olt-traffic-table.service';
 import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltSyncService }    from './services/olt-sync.service';
@@ -820,7 +820,7 @@ export class OltNativoController {
   }
 
   @Post(':oltId/vlans')
-  @ApiOperation({ summary: 'Agregar VLAN a una OLT' })
+  @ApiOperation({ summary: 'Agregar VLAN a una OLT (solo BD, para imports masivos)' })
   @ApiParam({ name: 'oltId' })
   async agregarVlan(
     @Param('oltId', ParseUUIDPipe) oltId: string,
@@ -830,9 +830,21 @@ export class OltNativoController {
     return this.oltVlans.agregar(oltId, user.empresaId, dto);
   }
 
+  @Post(':oltId/vlans/con-cli')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Agregar VLAN con push a CLI (atómico: BD syncing → OLT → BD active)' })
+  @ApiParam({ name: 'oltId' })
+  async agregarVlanConCli(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: AgregarVlanDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltVlan> {
+    return this.oltVlans.agregarConCli(oltId, user.empresaId, dto);
+  }
+
   @Delete(':oltId/vlans/:vlanId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar VLAN de una OLT' })
+  @ApiOperation({ summary: 'Eliminar VLAN de una OLT (solo BD)' })
   @ApiParam({ name: 'oltId' })
   @ApiParam({ name: 'vlanId', type: Number })
   async eliminarVlan(
@@ -841,6 +853,44 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     return this.oltVlans.eliminar(oltId, user.empresaId, vlanId);
+  }
+
+  @Delete(':oltId/vlans/:vlanId/con-cli')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar VLAN con guard de integridad + CLI (guarded + atómico)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiParam({ name: 'vlanId', type: Number })
+  async eliminarVlanConCli(
+    @Param('oltId', ParseUUIDPipe)  oltId:  string,
+    @Param('vlanId', ParseIntPipe)  vlanId: number,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    return this.oltVlans.eliminarConCli(oltId, user.empresaId, vlanId);
+  }
+
+  @Patch(':oltId/vlans/:vlanId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Editar nombre de una VLAN (BD only)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiParam({ name: 'vlanId', type: Number })
+  async editarVlan(
+    @Param('oltId', ParseUUIDPipe)  oltId:  string,
+    @Param('vlanId', ParseIntPipe)  vlanId: number,
+    @Body('nombre') nombre: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltVlan> {
+    return this.oltVlans.editarNombre(oltId, user.empresaId, vlanId, nombre);
+  }
+
+  @Post(':oltId/vlans/pull-desde-olt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pull de VLANs desde hardware OLT → BD (sincronización bidireccional)' })
+  @ApiParam({ name: 'oltId' })
+  async pullVlansDesdeOlt(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ insertadas: number; omitidas: number }> {
+    return this.oltVlans.pullDesdeOlt(oltId, user.empresaId);
   }
 
   @Post(':oltId/vlans/sincronizar')
@@ -867,6 +917,32 @@ export class OltNativoController {
     return this.trafficTables.listar(oltId, user.empresaId);
   }
 
+  @Post(':oltId/traffic-tables')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Crear traffic table con push a CLI Huawei (atómico: CLI → BD)' })
+  @ApiParam({ name: 'oltId' })
+  async agregarTrafficTable(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: AgregarTrafficTableDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltTrafficTable> {
+    return this.trafficTables.agregarConCli(oltId, user.empresaId, dto);
+  }
+
+  @Patch(':oltId/traffic-tables/:trafficId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Editar traffic table con guard + CLI (guarded + atómico)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiParam({ name: 'trafficId', type: Number })
+  async editarTrafficTable(
+    @Param('oltId', ParseUUIDPipe)    oltId:     string,
+    @Param('trafficId', ParseIntPipe) trafficId: number,
+    @Body() dto: EditarTrafficTableDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<OltTrafficTable> {
+    return this.trafficTables.editarConCli(oltId, user.empresaId, trafficId, dto);
+  }
+
   @Post(':oltId/traffic-tables/sincronizar')
   @ApiOperation({ summary: 'Sincronizar traffic tables desde OLT (usa endpoint de perfiles)' })
   @ApiParam({ name: 'oltId' })
@@ -883,7 +959,7 @@ export class OltNativoController {
 
   @Delete(':oltId/traffic-tables/:trafficId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar traffic table de una OLT' })
+  @ApiOperation({ summary: 'Eliminar traffic table de una OLT (solo BD)' })
   @ApiParam({ name: 'oltId' })
   @ApiParam({ name: 'trafficId', type: Number })
   async eliminarTrafficTable(
@@ -892,6 +968,19 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     return this.trafficTables.eliminar(oltId, user.empresaId, trafficId);
+  }
+
+  @Delete(':oltId/traffic-tables/:trafficId/con-cli')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar traffic table con guard de integridad + CLI (guarded + atómico)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiParam({ name: 'trafficId', type: Number })
+  async eliminarTrafficTableConCli(
+    @Param('oltId', ParseUUIDPipe)    oltId:     string,
+    @Param('trafficId', ParseIntPipe) trafficId: number,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    return this.trafficTables.eliminarConCli(oltId, user.empresaId, trafficId);
   }
 
   // ═══════════════════════════════════════════════════════════════

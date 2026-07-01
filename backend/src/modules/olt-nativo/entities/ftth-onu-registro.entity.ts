@@ -95,6 +95,25 @@ export class FtthOnuRegistro extends BaseModel {
   @Column({ name: 'ultimo_error', type: 'text', nullable: true })
   ultimoError: string | null;
 
+  // ── Datos de salud/monitoreo (actualizados por cron batch-status) ──
+  @Column({ name: 'run_state', type: 'varchar', length: 20, nullable: true })
+  runState: string | null;
+
+  @Column({ name: 'last_online', type: 'timestamptz', nullable: true })
+  lastOnline: Date | null;
+
+  @Column({ name: 'firmware_version', type: 'varchar', length: 100, nullable: true })
+  firmwareVersion: string | null;
+
+  @Column({ name: 'equipment_id', type: 'varchar', length: 100, nullable: true })
+  equipmentId: string | null;
+
+  @Column({ name: 'uptime_seconds', type: 'bigint', nullable: true })
+  uptimeSeconds: number | null;
+
+  @Column({ name: 'traffic_table_id', type: 'int', nullable: true })
+  trafficTableId: number | null;
+
   // ── Helpers ───────────────────────────────────────────────
   get estaActivo(): boolean {
     return this.estado === FtthOnuEstado.ACTIVO;

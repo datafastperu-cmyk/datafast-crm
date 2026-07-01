@@ -47,6 +47,16 @@ import {
   PythonWizardTopologyResponse,
   PythonHealthSnapshotRequest,
   PythonHealthSnapshotResponse,
+  PythonVlanAddRequest,
+  PythonVlanAddResponse,
+  PythonVlanDeleteRequest,
+  PythonVlanDeleteResponse,
+  PythonTrafficTableAddRequest,
+  PythonTrafficTableAddResponse,
+  PythonTrafficTableDeleteRequest,
+  PythonTrafficTableDeleteResponse,
+  PythonTrafficTableEditRequest,
+  PythonTrafficTableEditResponse,
 } from './dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -367,6 +377,47 @@ export class OltAutomationClient {
     const res = await this.post<PythonHealthSnapshotResponse>(
       '/api/v1/olt/health/snapshot', payload, 90_000,
     );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // VLAN CLI (POST /api/v1/olt/vlan/add | /delete)
+  // ────────────────────────────────────────────────────────────
+  async vlanAdd(payload: PythonVlanAddRequest): Promise<PythonVlanAddResponse> {
+    this.logger.log(`→ Python vlan/add | OLT=${payload.connection.ip} vlan_id=${payload.vlan_id}`);
+    const res = await this.post<PythonVlanAddResponse>('/api/v1/olt/vlan/add', payload, 30_000);
+    this.logger.log(`← Python vlan/add | success=${res.success}`);
+    return res;
+  }
+
+  async vlanDelete(payload: PythonVlanDeleteRequest): Promise<PythonVlanDeleteResponse> {
+    this.logger.log(`→ Python vlan/delete | OLT=${payload.connection.ip} vlan_id=${payload.vlan_id}`);
+    const res = await this.post<PythonVlanDeleteResponse>('/api/v1/olt/vlan/delete', payload, 30_000);
+    this.logger.log(`← Python vlan/delete | success=${res.success}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Traffic Table CLI (POST /api/v1/olt/traffic-table/*)
+  // ────────────────────────────────────────────────────────────
+  async trafficTableAdd(payload: PythonTrafficTableAddRequest): Promise<PythonTrafficTableAddResponse> {
+    this.logger.log(`→ Python traffic-table/add | OLT=${payload.connection.ip} name=${payload.name}`);
+    const res = await this.post<PythonTrafficTableAddResponse>('/api/v1/olt/traffic-table/add', payload, 30_000);
+    this.logger.log(`← Python traffic-table/add | success=${res.success} index=${res.index}`);
+    return res;
+  }
+
+  async trafficTableDelete(payload: PythonTrafficTableDeleteRequest): Promise<PythonTrafficTableDeleteResponse> {
+    this.logger.log(`→ Python traffic-table/delete | OLT=${payload.connection.ip} index=${payload.index}`);
+    const res = await this.post<PythonTrafficTableDeleteResponse>('/api/v1/olt/traffic-table/delete', payload, 30_000);
+    this.logger.log(`← Python traffic-table/delete | success=${res.success}`);
+    return res;
+  }
+
+  async trafficTableEdit(payload: PythonTrafficTableEditRequest): Promise<PythonTrafficTableEditResponse> {
+    this.logger.log(`→ Python traffic-table/edit | OLT=${payload.connection.ip} index=${payload.index} name=${payload.name}`);
+    const res = await this.post<PythonTrafficTableEditResponse>('/api/v1/olt/traffic-table/edit', payload, 60_000);
+    this.logger.log(`← Python traffic-table/edit | success=${res.success} new_index=${res.new_index}`);
     return res;
   }
 

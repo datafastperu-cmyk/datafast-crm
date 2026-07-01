@@ -157,7 +157,7 @@ export class RedOnusService {
       LEFT JOIN LATERAL (
         SELECT rx_power_dbm, tx_power_dbm, timestamp
         FROM   metricas_onu_optical
-        WHERE  olt_dispositivo_id = r.olt_id
+        WHERE  onu_id = r.id
         ORDER  BY timestamp DESC
         LIMIT  1
       ) m ON TRUE
@@ -232,7 +232,7 @@ export class RedOnusService {
       LEFT JOIN LATERAL (
         SELECT rx_power_dbm, tx_power_dbm, timestamp
         FROM   metricas_onu_optical
-        WHERE  olt_dispositivo_id = r.olt_id
+        WHERE  onu_id = r.id
         ORDER  BY timestamp DESC
         LIMIT  1
       ) m ON TRUE

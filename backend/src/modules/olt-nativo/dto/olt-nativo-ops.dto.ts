@@ -548,11 +548,12 @@ export interface PythonBoardTopologyRequest {
 }
 
 export interface PythonBoardSlotInfo {
-  slot_id:      number;
-  board_name:   string;
-  status:       string;
-  online_onus:  number;
-  offline_onus: number;
+  slot_id:        number;
+  board_name:     string;
+  status:         string;
+  online_onus:    number;
+  offline_onus:   number;
+  ports_per_slot: number | null;
 }
 
 export interface PythonBoardTopologyResponse {
@@ -775,6 +776,70 @@ export interface PythonWizardTopologyResponse {
   line_profiles:    PythonProfileInfo[];
   service_profiles: PythonProfileInfo[];
   error?:           string;
+}
+
+// ─── VLAN CLI Operations ─────────────────────────────────────
+
+export interface PythonVlanAddRequest {
+  connection: PythonConnectionPayload;
+  vlan_id:    number;
+  name:       string;
+}
+
+export interface PythonVlanAddResponse {
+  success: boolean;
+  vlan_id: number | null;
+  error?:  string;
+}
+
+export interface PythonVlanDeleteRequest {
+  connection: PythonConnectionPayload;
+  vlan_id:    number;
+}
+
+export interface PythonVlanDeleteResponse {
+  success: boolean;
+  error?:  string;
+}
+
+// ─── Traffic Table CLI Operations ────────────────────────────
+
+export interface PythonTrafficTableAddRequest {
+  connection: PythonConnectionPayload;
+  name:       string;
+  cir_kbps:   number;
+  pir_kbps:   number;
+}
+
+export interface PythonTrafficTableAddResponse {
+  success: boolean;
+  index:   number | null;
+  name:    string | null;
+  error?:  string;
+}
+
+export interface PythonTrafficTableDeleteRequest {
+  connection: PythonConnectionPayload;
+  index:      number;
+}
+
+export interface PythonTrafficTableDeleteResponse {
+  success: boolean;
+  error?:  string;
+}
+
+export interface PythonTrafficTableEditRequest {
+  connection: PythonConnectionPayload;
+  index:      number;
+  name:       string;
+  cir_kbps:   number;
+  pir_kbps:   number;
+}
+
+export interface PythonTrafficTableEditResponse {
+  success:    boolean;
+  new_index:  number | null;
+  error?:     string;
 }
 
 // ── Wizard Commit (NestJS side) ───────────────────────────────

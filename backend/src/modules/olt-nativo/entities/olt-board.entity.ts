@@ -29,6 +29,9 @@ export class OltBoard {
   @Column({ name: 'onu_count', type: 'smallint', default: 0 })
   onuCount: number;
 
+  @Column({ name: 'ports_per_slot', type: 'smallint', nullable: true })
+  portsPorSlot: number | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
