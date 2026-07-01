@@ -23,6 +23,9 @@ export function TabDetalles({ olt, oltId }: Props) {
   const [modelo,      setModelo]      = useState(olt.modelo ?? '');
   const [estado,      setEstado]      = useState(olt.estado);
   const [ubicacion,   setUbicacion]   = useState(olt.ubicacion ?? '');
+  const [gps,         setGps]         = useState(
+    olt.latitud != null && olt.longitud != null ? `${olt.latitud}, ${olt.longitud}` : '',
+  );
   const [slots,       setSlots]       = useState(String(olt.slotsTotales));
   const [puertos,     setPuertos]     = useState(String(olt.puertosPorSlot));
   const [vlanMgmt,    setVlanMgmt]    = useState(String(olt.vlanGestionDefecto ?? ''));
@@ -38,12 +41,15 @@ export function TabDetalles({ olt, oltId }: Props) {
   });
 
   const handleSave = () => {
+    const gpsParts = gps.split(',').map(s => s.trim());
     const body: Record<string, unknown> = {
       nombre:             nombre.trim(),
       descripcion:        descripcion.trim() || null,
       modelo:             modelo.trim() || null,
       estado,
       ubicacion:          ubicacion.trim() || null,
+      latitud:            gpsParts[0] ? parseFloat(gpsParts[0]) : null,
+      longitud:           gpsParts[1] ? parseFloat(gpsParts[1]) : null,
       slotsTotales:       Number(slots) || olt.slotsTotales,
       puertosPorSlot:     Number(puertos) || olt.puertosPorSlot,
       vlanGestionDefecto: vlanMgmt ? Number(vlanMgmt) : null,
@@ -114,20 +120,31 @@ export function TabDetalles({ olt, oltId }: Props) {
           <input className={inputCls} type="number" min={1} max={4094} value={vlanMgmt} onChange={e => setVlanMgmt(e.target.value)} placeholder="Ej: 100" />
         </Field>
 
-        {/* Ubicación */}
-        <Field label="Ubicación">
-          <input className={inputCls} value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ej: Rack 2, Piso 3" />
+        {/* Dirección física */}
+        <Field label="Dirección física">
+          <input className={inputCls} value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ej: Av. Los Pinos 123, Zona Norte" />
+        </Field>
+
+        {/* Coordenadas GPS */}
+        <Field label="Coordenadas GPS">
+          <input
+            className={inputCls}
+            value={gps}
+            onChange={e => setGps(e.target.value)}
+            placeholder="-12.046374, -77.042793"
+          />
+          <p className="text-[10px] text-muted-foreground/60 mt-0.5">Formato: latitud, longitud</p>
         </Field>
 
         {/* Descripción */}
         <div className="md:col-span-2">
-          <Field label="Descripción">
+          <Field label="Descripción adicional">
             <textarea
               className={`${inputCls} resize-none`}
               rows={3}
               value={descripcion}
               onChange={e => setDescripcion(e.target.value)}
-              placeholder="Notas o descripción de la OLT..."
+              placeholder="Notas técnicas, rack, nodo, etc."
             />
           </Field>
         </div>
