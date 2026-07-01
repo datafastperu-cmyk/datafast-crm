@@ -240,25 +240,20 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                   </div>
 
                   {/* Coordenadas GPS */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">Latitud GPS</label>
-                      <input
-                        className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                        placeholder="-12.046374"
-                        value={form.latitud}
-                        onChange={e => set('latitud', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">Longitud GPS</label>
-                      <input
-                        className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                        placeholder="-77.042793"
-                        value={form.longitud}
-                        onChange={e => set('longitud', e.target.value)}
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Coordenadas GPS</label>
+                    <input
+                      className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      placeholder="-12.046374, -77.042793"
+                      value={form.latitud && form.longitud ? `${form.latitud}, ${form.longitud}` : form.latitud}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const parts = val.split(',').map(s => s.trim());
+                        set('latitud',  parts[0] ?? '');
+                        set('longitud', parts[1] ?? '');
+                      }}
+                    />
+                    <p className="text-[10px] text-muted-foreground/60 mt-0.5">Formato: latitud, longitud</p>
                   </div>
 
                   {/* Descripción adicional */}
