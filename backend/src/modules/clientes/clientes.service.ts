@@ -357,10 +357,24 @@ export class ClientesService {
         [id],
       );
 
-      // 6. Contratos (RESTRICT → clientes)
-      //    contratos_historial y consumo_datos se borran en CASCADE.
-      //    ips_asignadas.contrato_id queda en SET NULL (no bloquea).
-      //    notificaciones_logs.contrato_id queda en SET NULL para logs de otros clientes.
+      // 6a. Liberar IPs activas del cliente antes de borrar contratos.
+      //     Cubre el escenario donde liberarIp() falló en la saga de baja_definitiva
+      //     y quedaron registros con activa=true que bloquearían el pool permanentemente
+      //     al quedar contrato_id=NULL después del SET NULL de la FK.
+      await qr.query(
+        `UPDATE ips_asignadas ia
+         SET activa = false, liberada_en = NOW()
+         FROM contratos co
+         WHERE ia.contrato_id = co.id
+           AND co.cliente_id  = $1
+           AND ia.activa      = true`,
+        [id],
+      );
+
+      // 6b. Contratos (RESTRICT → clientes)
+      //     contratos_historial y consumo_datos se borran en CASCADE.
+      //     ips_asignadas.contrato_id queda en SET NULL (activa=false → no bloquea pool).
+      //     notificaciones_logs.contrato_id queda en SET NULL para logs de otros clientes.
       await qr.query(
         `DELETE FROM contratos WHERE cliente_id = $1`,
         [id],
