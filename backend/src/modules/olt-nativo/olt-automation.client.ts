@@ -362,7 +362,7 @@ export class OltAutomationClient {
   async wizardTopologia(payload: PythonWizardTopologyRequest): Promise<PythonWizardTopologyResponse> {
     this.logger.log(`→ Python wizard/topology | OLT=${payload.connection.ip}`);
     const res = await this.post<PythonWizardTopologyResponse>(
-      '/api/v1/olt/wizard/topology', payload, 60_000,
+      '/api/v1/olt/wizard/topology', payload, 150_000,
     );
     this.logger.log(
       `← Python wizard/topology | success=${res.success} boards=${res.boards?.length ?? 0} vlans=${res.vlans?.length ?? 0}`,

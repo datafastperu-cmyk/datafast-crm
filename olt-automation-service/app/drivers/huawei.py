@@ -101,20 +101,28 @@ class HuaweiDriver(OltDriver):
         Usa _paramiko_huawei_run con return_list=True para evitar el bug de
         session_preparation de Netmiko en Huawei MA5800 (ReadTimeout en prompt).
         """
+        # display ont-lineprofile/srvprofile gpon all requiere config mode.
+        # display traffic table ip from-index 0 y display board/vlan son global.
         cmds = [
-            'display board 0',
-            'display ont-lineprofile all',
-            'display ont-srvprofile all',
-            'display traffic table all',
-            'display vlan all',
+            'display board 0',                       # idx 0
+            'display vlan all',                      # idx 1
+            'config',                                # idx 2 (transición a config mode)
+            'display ont-lineprofile gpon all',      # idx 3
+            'display ont-srvprofile gpon all',       # idx 4
+            'quit',                                  # idx 5 (vuelve a global)
+            'display traffic table ip from-index 0', # idx 6
         ]
         try:
             outputs = _paramiko_huawei_run(
                 self._conn, cmds,
-                timeout=90.0,
+                timeout=120.0,
                 return_list=True,
             )
-            board_raw, lp_raw, sp_raw, tt_raw, vlan_raw = outputs  # type: ignore[misc]
+            board_raw = outputs[0]
+            vlan_raw  = outputs[1]
+            lp_raw    = outputs[3]
+            sp_raw    = outputs[4]
+            tt_raw    = outputs[6]
         except ProvisioningError:
             raise
         except Exception as exc:
@@ -364,26 +372,28 @@ class HuaweiDriver(OltDriver):
 
     def _parse_traffic_tables(self, raw: str) -> list[TrafficTableInfo]:
         """
-        Parsea 'display traffic table all' con regex directo.
-        Formato MA5800-X7: bloques "Traffic table name : X / Traffic table index : N / CIR / PIR".
+        Parsea la salida de 'display traffic table ip from-index 0'.
+        MA5800: formato tabular — columnas TID CIR CBS PIR PBS Priority ...
+        Fallback: bloques key-value (MA5600/MA5603 firmware antiguo).
         """
         result: list[TrafficTableInfo] = []
-        # Capturamos todos los campos y luego los emparejamos por bloque
-        name_matches  = list(re.finditer(r'Traffic table name\s*:\s*(\S+)', raw))
-        idx_matches   = list(re.finditer(r'Traffic table index\s*:\s*(\d+)', raw))
-        cir_matches   = list(re.finditer(r'CIR\S*\s*:\s*(\d+)', raw))
-        pir_matches   = list(re.finditer(r'PIR\S*\s*:\s*(\d+)', raw))
 
-        def _nearest_after(matches: list, pos: int):
-            following = [m for m in matches if m.start() > pos]
-            return following[0] if following else None
-
+        # Formato 1: key-value (firmware antiguo)
+        # "Traffic table name : X" + "Traffic table index : N" + "CIR : N" + "PIR : N"
+        name_matches = list(re.finditer(r'Traffic table name\s*:\s*(\S+)', raw))
         if name_matches:
+            idx_matches = list(re.finditer(r'Traffic table index\s*:\s*(\d+)', raw))
+            cir_matches = list(re.finditer(r'CIR\S*\s*:\s*(\d+)', raw))
+            pir_matches = list(re.finditer(r'PIR\S*\s*:\s*(\d+)', raw))
+
+            def _nearest_after(matches: list, pos: int):
+                following = [m for m in matches if m.start() > pos]
+                return following[0] if following else None
+
             for m_name in name_matches:
                 m_idx = _nearest_after(idx_matches, m_name.start())
                 m_cir = _nearest_after(cir_matches, m_name.start())
                 m_pir = _nearest_after(pir_matches, m_name.start())
-                # guardar hasta el comienzo del siguiente bloque
                 next_block = _nearest_after(name_matches, m_name.start())
                 boundary   = next_block.start() if next_block else len(raw)
                 try:
@@ -401,16 +411,23 @@ class HuaweiDriver(OltDriver):
                     continue
             return result
 
-        # Fallback tabular: primera columna índice, segunda nombre
-        for line in raw.splitlines():
+        # Formato 2: tabular MA5800 — TID CIR CBS PIR PBS Priority ...
+        # Las columnas con valor "off" se omiten (TID 6 en algunos firmwares)
+        for i, line in enumerate(raw.splitlines()):
             parts = line.split()
-            if len(parts) < 2:
+            if len(parts) < 4:
                 continue
             try:
-                idx  = int(parts[0])
-                name = parts[1]
-                if idx >= 0 and name and not name.startswith('-'):
-                    result.append(TrafficTableInfo(index=idx, name=name, cir_kbps=None, pir_kbps=None))
+                tid = int(parts[0])
+                cir = int(parts[1])   # col 1 = CIR
+                # parts[2] = CBS (ignorar)
+                pir = int(parts[3])   # col 3 = PIR
+                result.append(TrafficTableInfo(
+                    index=tid,
+                    name=f'traffic-table-{tid}',
+                    cir_kbps=cir if cir > 0 else None,
+                    pir_kbps=pir if pir > 0 else None,
+                ))
             except (ValueError, TypeError):
                 continue
         return result
