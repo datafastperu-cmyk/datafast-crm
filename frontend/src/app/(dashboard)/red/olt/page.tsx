@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { OltContent } from '@/components/red/OltContent';
+import { RedOltContent } from '@/components/red/RedOltContent';
 
 export const metadata: Metadata = { title: 'OLT — DataFast' };
 
 export default function OltPage() {
-  return <OltContent />;
+  return <RedOltContent />;
 }
