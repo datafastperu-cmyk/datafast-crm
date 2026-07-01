@@ -3,40 +3,38 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  CheckCircle2, ChevronRight, Cpu, Eye, EyeOff,
-  Loader2, Network, Server, X, XCircle, Zap,
+  CheckCircle2, ChevronRight, Eye, EyeOff,
+  Loader2, Network, Server, X, XCircle,
 } from 'lucide-react';
-import {
-  oltNativoApi,
-  type WizardTopologyResponse,
-  type WizardBoardInfo,
-} from '@/lib/api/olt-nativo';
+import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { Portal } from '@/components/ui/portal';
 import { cn } from '@/lib/utils';
 
-// ─── Tipos de estado interno del wizard ──────────────────────
+// ─── Tipos ────────────────────────────────────────────────────
 
-type Step = 1 | 2 | 3 | 4 | 5;
+type Step = 1 | 2 | 3;
 
-interface Credenciales {
-  ip:        string;
-  puerto:    number;
-  usuario:   string;
-  contrasena:string;
-  marca:     string;
+interface FormState {
+  // Identidad
+  nombre:     string;
+  marca:      string;
+  modelo:     string;
+  zonaId:     string;
+  // Conectividad
+  ip:         string;
+  puerto:     number;
+  usuario:    string;
+  contrasena: string;
 }
 
-const MARCAS = ['huawei', 'vsol'] as const;
+const MARCAS = ['huawei', 'zte', 'vsol', 'cdata'] as const;
 
-// ─── Helpers ──────────────────────────────────────────────────
-
-function boardEstadoColor(state: string): string {
-  if (state === 'normal' || state === 'active' || state === 'ok') return 'text-emerald-400';
-  if (state === 'fault' || state === 'error')                       return 'text-red-400';
-  if (state === 'absent')                                           return 'text-muted-foreground';
-  return 'text-amber-400';
-}
+const STEP_LABELS: Record<Step, string> = {
+  1: 'Identidad',
+  2: 'Conectividad',
+  3: 'Confirmar',
+};
 
 function StepDot({ n, current }: { n: number; current: number }) {
   const done   = current > n;
@@ -54,15 +52,7 @@ function StepDot({ n, current }: { n: number; current: number }) {
   );
 }
 
-const STEP_LABELS: Record<Step, string> = {
-  1: 'Credenciales',
-  2: 'Conexión',
-  3: 'Topología',
-  4: 'Configurar',
-  5: 'Confirmar',
-};
-
-// ─── Componente principal ─────────────────────────────────────
+// ─── Componente ───────────────────────────────────────────────
 
 interface Props {
   open:    boolean;
@@ -73,35 +63,32 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
   const queryClient = useQueryClient();
   const { toast }   = useToast();
 
-  const [step, setStep]           = useState<Step>(1);
-  const [showPwd, setShowPwd]     = useState(false);
-  const [creds, setCreds]         = useState<Credenciales>({
-    ip: '', puerto: 22, usuario: 'root', contrasena: '', marca: 'huawei',
-  });
-  const [connOk, setConnOk]       = useState(false);
-  const [connMsg, setConnMsg]     = useState('');
-  const [connModel, setConnModel] = useState('');
-  const [topology, setTopology]   = useState<WizardTopologyResponse | null>(null);
-  const [nombre, setNombre]       = useState('');
-  const [modelo, setModelo]       = useState('');
+  const [step, setStep]       = useState<Step>(1);
+  const [showPwd, setShowPwd] = useState(false);
+  const [connOk, setConnOk]   = useState(false);
+  const [connMsg, setConnMsg] = useState('');
 
-  // ── Step 2: test conexión ──────────────────────────────────
+  const [form, setForm] = useState<FormState>({
+    nombre: '', marca: 'huawei', modelo: '', zonaId: '',
+    ip: '', puerto: 22, usuario: 'root', contrasena: '',
+  });
+
+  function set<K extends keyof FormState>(k: K, v: FormState[K]) {
+    setForm(f => ({ ...f, [k]: v }));
+  }
+
+  // ── Step 2: test SSH ──────────────────────────────────────────
   const testMut = useMutation({
     mutationFn: () => oltNativoApi.testConexionDirecta({
-      ip:       creds.ip,
-      puerto:   creds.puerto,
-      usuario:  creds.usuario,
-      password: creds.contrasena,
-      marca:    creds.marca,
+      ip:       form.ip,
+      puerto:   form.puerto,
+      usuario:  form.usuario,
+      password: form.contrasena,
+      marca:    form.marca,
     }),
     onSuccess: (res) => {
-      if (res.exitoso) {
-        setConnOk(true);
-        setConnMsg(res.mensaje);
-      } else {
-        setConnOk(false);
-        setConnMsg(res.mensaje || 'No se pudo conectar con la OLT');
-      }
+      setConnOk(res.exitoso);
+      setConnMsg(res.mensaje || (res.exitoso ? 'Conexión SSH exitosa' : 'Conexión fallida'));
     },
     onError: () => {
       setConnOk(false);
@@ -109,53 +96,27 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
     },
   });
 
-  // ── Step 3: obtener topología ──────────────────────────────
-  const topoMut = useMutation({
-    mutationFn: () => oltNativoApi.wizardTopologia({
-      ip:         creds.ip,
-      puerto:     creds.puerto,
-      usuario:    creds.usuario,
-      contrasena: creds.contrasena,
-      marca:      creds.marca,
-    }),
-    onSuccess: (res) => {
-      if (res.success) {
-        setTopology(res);
-        if (res.model) setConnModel(res.model);
-        if (res.model && !modelo) setModelo(res.model);
-        setStep(4);
-      } else {
-        toast('Error al obtener topología', { description: res.error ?? 'Error desconocido', type: 'error' });
-      }
-    },
-    onError: (err: any) => {
-      toast('Error al obtener topología', { description: err?.message ?? '', type: 'error' });
-    },
-  });
-
-  // ── Step 5: commit ─────────────────────────────────────────
+  // ── Step 3: commit ────────────────────────────────────────────
   const commitMut = useMutation({
     mutationFn: () => oltNativoApi.wizardCommit({
-      nombre,
-      ipGestion:     creds.ip,
-      puerto:        creds.puerto,
-      usuario:       creds.usuario,
-      contrasena:    creds.contrasena,
-      marca:         creds.marca,
-      modelo:        modelo || connModel || creds.marca.toUpperCase(),
-      firmware:      topology?.firmware_version ?? undefined,
-      vlans:         topology?.vlans.map(v => ({ vlan_id: v.vlan_id, nombre: v.name })) ?? [],
-      trafficTables: topology?.traffic_tables.map(t => ({
-        index: t.index, name: t.name,
-        cir_kbps: t.cir_kbps ?? undefined,
-        pir_kbps: t.pir_kbps ?? undefined,
-      })) ?? [],
+      nombre:     form.nombre,
+      ipGestion:  form.ip,
+      puerto:     form.puerto,
+      usuario:    form.usuario,
+      contrasena: form.contrasena,
+      marca:      form.marca,
+      modelo:     form.modelo || form.marca.toUpperCase(),
+      zonaId:     form.zonaId || undefined,
+      // vlans y trafficTables se cargan post-registro vía OltSyncService
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['olt-nativas'] });
       queryClient.invalidateQueries({ queryKey: ['olt-todas'] });
       queryClient.invalidateQueries({ queryKey: ['olts-config'] });
-      toast('OLT registrada', { description: `${nombre} agregada correctamente al sistema`, type: 'success' });
+      toast('OLT registrada', {
+        description: `${form.nombre} agregada. Usa "Sincronizar" en la página de detalle para cargar perfiles y VLANs.`,
+        type: 'success',
+      });
       handleClose();
     },
     onError: (err: any) => {
@@ -167,28 +128,23 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
     setStep(1);
     setConnOk(false);
     setConnMsg('');
-    setConnModel('');
-    setTopology(null);
-    setNombre('');
-    setModelo('');
-    setCreds({ ip: '', puerto: 22, usuario: 'root', contrasena: '', marca: 'huawei' });
+    setForm({ nombre: '', marca: 'huawei', modelo: '', zonaId: '', ip: '', puerto: 22, usuario: 'root', contrasena: '' });
     onClose();
   }
 
   if (!open) return null;
 
-  const step1Valid = creds.ip.trim() && creds.usuario.trim() && creds.contrasena.trim();
+  const step1Valid = form.nombre.trim() !== '';
+  const step2Valid = form.ip.trim() && form.usuario.trim() && form.contrasena.trim();
 
   return (
     <Portal>
-      {/* Backdrop */}
       <div
         className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
         onClick={handleClose}
       >
-        {/* Modal */}
         <div
-          className="relative w-full max-w-2xl bg-background border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-lg bg-background border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]"
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
@@ -202,9 +158,9 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
             </button>
           </div>
 
-          {/* Progress steps */}
+          {/* Steps */}
           <div className="flex items-center gap-2 px-6 py-3 border-b border-border bg-muted/20">
-            {([1, 2, 3, 4, 5] as Step[]).map((n, i) => (
+            {([1, 2, 3] as Step[]).map((n, i) => (
               <div key={n} className="flex items-center gap-2">
                 <div className="flex flex-col items-center">
                   <StepDot n={n} current={step} />
@@ -215,7 +171,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                     {STEP_LABELS[n]}
                   </span>
                 </div>
-                {i < 4 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mb-3" />}
+                {i < 2 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mb-3" />}
               </div>
             ))}
           </div>
@@ -223,21 +179,60 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
           {/* Body */}
           <div className="flex-1 overflow-y-auto px-6 py-5">
 
-            {/* ── STEP 1: Credenciales ────────────────────────── */}
+            {/* ── STEP 1: Identidad ──────────────────────────────── */}
             {step === 1 && (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Ingresa los datos de acceso SSH a la OLT. La contraseña se cifra antes de guardarse.
+                  Define el nombre y la marca de la OLT. Los perfiles y VLANs se sincronizarán automáticamente después del registro.
                 </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Nombre de la OLT *</label>
+                    <input
+                      className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      placeholder="Ej: OLT-NORTE-01"
+                      value={form.nombre}
+                      onChange={e => set('nombre', e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Marca</label>
+                      <select
+                        className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        value={form.marca}
+                        onChange={e => set('marca', e.target.value)}
+                      >
+                        {MARCAS.map(m => (
+                          <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Modelo</label>
+                      <input
+                        className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        placeholder="Ej: MA5800-X7"
+                        value={form.modelo}
+                        onChange={e => set('modelo', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
+            {/* ── STEP 2: Conectividad + Test ───────────────────── */}
+            {step === 2 && (
+              <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 sm:col-span-1">
+                  <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">IP de gestión *</label>
                     <input
                       className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                       placeholder="192.168.1.1"
-                      value={creds.ip}
-                      onChange={e => setCreds(c => ({ ...c, ip: e.target.value }))}
+                      value={form.ip}
+                      onChange={e => { set('ip', e.target.value); setConnOk(false); setConnMsg(''); }}
                     />
                   </div>
                   <div>
@@ -245,16 +240,16 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                     <input
                       type="number"
                       className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                      value={creds.puerto}
-                      onChange={e => setCreds(c => ({ ...c, puerto: parseInt(e.target.value) || 22 }))}
+                      value={form.puerto}
+                      onChange={e => set('puerto', parseInt(e.target.value) || 22)}
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">Usuario *</label>
                     <input
                       className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                      value={creds.usuario}
-                      onChange={e => setCreds(c => ({ ...c, usuario: e.target.value }))}
+                      value={form.usuario}
+                      onChange={e => set('usuario', e.target.value)}
                     />
                   </div>
                   <div>
@@ -263,8 +258,8 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                       <input
                         type={showPwd ? 'text' : 'password'}
                         className="w-full px-3 py-2 pr-9 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                        value={creds.contrasena}
-                        onChange={e => setCreds(c => ({ ...c, contrasena: e.target.value }))}
+                        value={form.contrasena}
+                        onChange={e => { set('contrasena', e.target.value); setConnOk(false); setConnMsg(''); }}
                       />
                       <button
                         type="button"
@@ -275,178 +270,61 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                       </button>
                     </div>
                   </div>
-                  <div className="col-span-2 sm:col-span-1">
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">Marca</label>
-                    <select
-                      className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                      value={creds.marca}
-                      onChange={e => setCreds(c => ({ ...c, marca: e.target.value }))}
-                    >
-                      {MARCAS.map(m => (
-                        <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── STEP 2: Test conexión ───────────────────────── */}
-            {step === 2 && (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Network className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">IP:</span>
-                    <span className="font-mono text-foreground">{creds.ip}:{creds.puerto}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Cpu className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Marca:</span>
-                    <span className="font-medium capitalize">{creds.marca}</span>
-                  </div>
                 </div>
 
+                {/* Resultado del test */}
                 {testMut.isPending && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Estableciendo conexión SSH…
                   </div>
                 )}
-
-                {testMut.isSuccess && (
+                {testMut.isSuccess && connMsg && (
                   <div className={cn(
-                    'flex items-start gap-3 p-4 rounded-lg border',
+                    'flex items-start gap-3 p-3 rounded-lg border text-sm',
                     connOk
                       ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                       : 'bg-red-500/10 border-red-500/30 text-red-400',
                   )}>
                     {connOk
-                      ? <CheckCircle2 className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                      : <XCircle      className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                      ? <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      : <XCircle      className="w-4 h-4 mt-0.5 flex-shrink-0" />
                     }
-                    <div>
-                      <p className="font-medium text-sm">{connOk ? 'Conexión exitosa' : 'Conexión fallida'}</p>
-                      <p className="text-xs opacity-80 mt-0.5">{connMsg}</p>
-                    </div>
+                    <span>{connMsg}</span>
                   </div>
                 )}
-
-                {!testMut.isPending && !testMut.isSuccess && (
-                  <p className="text-sm text-muted-foreground">
-                    Presiona &quot;Probar conexión&quot; para verificar el acceso SSH antes de continuar.
+                {!testMut.isPending && !connMsg && (
+                  <p className="text-xs text-muted-foreground">
+                    Debes probar la conexión SSH antes de continuar.
                   </p>
                 )}
               </div>
             )}
 
-            {/* ── STEP 3: Topología ───────────────────────────── */}
+            {/* ── STEP 3: Resumen + Commit ──────────────────────── */}
             {step === 3 && (
               <div className="space-y-4">
-                {topoMut.isPending && (
-                  <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
-                    <Loader2 className="w-7 h-7 animate-spin text-primary" />
-                    <p className="text-sm">Leyendo topología de la OLT…</p>
-                    <p className="text-xs opacity-60">Boards, VLANs, perfiles y traffic tables</p>
-                  </div>
-                )}
-                {!topoMut.isPending && !topology && (
-                  <p className="text-sm text-muted-foreground">
-                    Se obtendrá la topología completa: boards, VLANs y traffic tables.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* ── STEP 4: Configurar ──────────────────────────── */}
-            {step === 4 && topology && (
-              <div className="space-y-5">
-                {/* Resumen de topología */}
-                <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Topología detectada
-                  </h3>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-muted/30 rounded p-2">
-                      <p className="text-lg font-bold text-foreground">{topology.boards.length}</p>
-                      <p className="text-[10px] text-muted-foreground">Boards</p>
-                    </div>
-                    <div className="bg-muted/30 rounded p-2">
-                      <p className="text-lg font-bold text-foreground">{topology.vlans.length}</p>
-                      <p className="text-[10px] text-muted-foreground">VLANs</p>
-                    </div>
-                    <div className="bg-muted/30 rounded p-2">
-                      <p className="text-lg font-bold text-foreground">{topology.traffic_tables.length}</p>
-                      <p className="text-[10px] text-muted-foreground">Traffic tables</p>
-                    </div>
-                  </div>
-                  {/* Lista de boards */}
-                  {topology.boards.length > 0 && (
-                    <div className="space-y-1">
-                      {topology.boards.map((b: WizardBoardInfo) => (
-                        <div key={b.slot} className="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
-                          <span className="text-muted-foreground">Slot {b.slot} — {b.board_type}</span>
-                          <div className="flex items-center gap-2">
-                            <span className={cn('font-medium', boardEstadoColor(b.state))}>{b.state}</span>
-                            <span className="text-muted-foreground">{b.onu_count} ONUs</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Formulario de nombre */}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">Nombre de la OLT *</label>
-                    <input
-                      className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                      placeholder="Ej: OLT-NORTE-01"
-                      value={nombre}
-                      onChange={e => setNombre(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">Modelo</label>
-                    <input
-                      className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                      placeholder={connModel || 'Ej: MA5800-X7'}
-                      value={modelo}
-                      onChange={e => setModelo(e.target.value)}
-                    />
-                  </div>
-                  {topology.firmware_version && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Zap className="w-3 h-3" />
-                      Firmware detectado: <span className="font-mono text-foreground">{topology.firmware_version}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ── STEP 5: Confirmar ───────────────────────────── */}
-            {step === 5 && (
-              <div className="space-y-4">
                 <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
-                  <h3 className="text-sm font-semibold text-emerald-400">Resumen de la OLT a registrar</h3>
-                  {[
-                    ['Nombre',   nombre],
-                    ['IP',       `${creds.ip}:${creds.puerto}`],
-                    ['Marca',    creds.marca.charAt(0).toUpperCase() + creds.marca.slice(1)],
-                    ['Modelo',   modelo || connModel || '—'],
-                    ['Firmware', topology?.firmware_version ?? '—'],
-                    ['VLANs',    `${topology?.vlans.length ?? 0} importadas`],
-                    ['Traffic tables', `${topology?.traffic_tables.length ?? 0} importadas`],
-                  ].map(([k, v]) => (
+                  <div className="flex items-center gap-2 mb-2">
+                    <Network className="w-4 h-4 text-emerald-400" />
+                    <span className="text-sm font-semibold text-emerald-400">OLT a registrar</span>
+                  </div>
+                  {([
+                    ['Nombre',  form.nombre],
+                    ['Marca',   form.marca.charAt(0).toUpperCase() + form.marca.slice(1)],
+                    ['Modelo',  form.modelo || '—'],
+                    ['IP',      `${form.ip}:${form.puerto}`],
+                    ['Usuario', form.usuario],
+                  ] as [string, string][]).map(([k, v]) => (
                     <div key={k} className="flex justify-between text-xs">
                       <span className="text-muted-foreground">{k}</span>
-                      <span className="font-medium text-foreground">{v}</span>
+                      <span className="font-medium text-foreground font-mono">{v}</span>
                     </div>
                   ))}
                 </div>
-
+                <p className="text-xs text-muted-foreground">
+                  Después del registro podrás sincronizar la OLT para importar VLANs, perfiles y tarjetas físicas automáticamente.
+                </p>
                 {commitMut.isPending && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -462,7 +340,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
             <button
               className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               onClick={step === 1 ? handleClose : () => setStep(s => (s - 1) as Step)}
-              disabled={commitMut.isPending || topoMut.isPending || testMut.isPending}
+              disabled={commitMut.isPending || testMut.isPending}
             >
               {step === 1 ? 'Cancelar' : '← Atrás'}
             </button>
@@ -473,21 +351,24 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                 <button
                   className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors"
                   disabled={!step1Valid}
-                  onClick={() => { setConnOk(false); setConnMsg(''); setStep(2); }}
+                  onClick={() => setStep(2)}
                 >
                   Continuar →
                 </button>
               )}
 
-              {/* Step 2: probar + avanzar */}
+              {/* Step 2: test + avanzar */}
               {step === 2 && (
                 <>
                   <button
                     className="px-4 py-2 text-sm rounded-md border border-border hover:bg-muted/40 transition-colors disabled:opacity-50"
-                    disabled={testMut.isPending}
-                    onClick={() => testMut.mutate()}
+                    disabled={!step2Valid || testMut.isPending}
+                    onClick={() => { setConnOk(false); setConnMsg(''); testMut.mutate(); }}
                   >
-                    {testMut.isPending ? <><Loader2 className="w-3 h-3 animate-spin inline mr-1" />Probando…</> : 'Probar conexión'}
+                    {testMut.isPending
+                      ? <><Loader2 className="w-3 h-3 animate-spin inline mr-1" />Probando…</>
+                      : 'Probar conexión'
+                    }
                   </button>
                   {connOk && (
                     <button
@@ -500,29 +381,8 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                 </>
               )}
 
-              {/* Step 3: cargar topología */}
-              {step === 3 && !topoMut.isPending && !topology && (
-                <button
-                  className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
-                  onClick={() => topoMut.mutate()}
-                >
-                  Cargar topología
-                </button>
-              )}
-
-              {/* Step 4 → 5 */}
-              {step === 4 && (
-                <button
-                  className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors"
-                  disabled={!nombre.trim()}
-                  onClick={() => setStep(5)}
-                >
-                  Revisar y confirmar →
-                </button>
-              )}
-
-              {/* Step 5: commit */}
-              {step === 5 && (
+              {/* Step 3: commit */}
+              {step === 3 && (
                 <button
                   className="px-4 py-2 text-sm rounded-md bg-emerald-600 text-white font-medium disabled:opacity-50 hover:bg-emerald-700 transition-colors flex items-center gap-2"
                   disabled={commitMut.isPending}

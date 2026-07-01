@@ -3,6 +3,7 @@ import { TypeOrmModule }    from '@nestjs/typeorm';
 import { HttpModule }       from '@nestjs/axios';
 import { MulterModule }     from '@nestjs/platform-express';
 import { memoryStorage }    from 'multer';
+import { AuthModule }       from '../auth/auth.module';
 
 import { OltDispositivo }      from './entities/olt-dispositivo.entity';
 import { OltProveedorConfig }  from './entities/olt-proveedor-config.entity';
@@ -49,6 +50,7 @@ import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
 import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
 import { OltAlertEngineService }     from './services/olt-alert-engine.service';
 import { OltSyncService }            from './services/olt-sync.service';
+import { OltGateway }                from './olt.gateway';
 
 // ═══════════════════════════════════════════════════════════════════
 // OltNativoModule — ecosistema multi-proveedor OLT/ONU
@@ -134,6 +136,9 @@ import { OltSyncService }            from './services/olt-sync.service';
 
     // SmartoltApiService (legacy) — usado por OltNativoService hasta FASE L
     SmartoltModule,
+
+    // JwtService para autenticación WebSocket en OltGateway
+    AuthModule,
   ],
   controllers: [OltNativoController],
   providers: [
@@ -162,6 +167,7 @@ import { OltSyncService }            from './services/olt-sync.service';
     OltHealthDashboardService,
     OltAlertEngineService,
     OltSyncService,
+    OltGateway,
     FtthRecoveryCron,
     OltHealthPollerCron,
   ],

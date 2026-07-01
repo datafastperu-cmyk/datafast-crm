@@ -57,6 +57,75 @@ export interface CreateOltDto {
 
 export interface UpdateOltDto extends Partial<CreateOltDto> {}
 
+// ─── Tipos nuevos: Detalle OLT (Etapa 1) ─────────────────────
+
+export interface OltBoard {
+  id:         string;
+  oltId:      string;
+  slot:       number;
+  boardType:  string;
+  estado:     string;
+  onuCount:   number;
+  createdAt:  string;
+  updatedAt:  string;
+}
+
+export interface OltLineProfile {
+  id:        string;
+  oltId:     string;
+  profileId: number;
+  nombre:    string;
+}
+
+export interface OltServiceProfile {
+  id:        string;
+  oltId:     string;
+  profileId: number;
+  nombre:    string;
+}
+
+export interface OltSyncJob {
+  id:           string;
+  oltId:        string;
+  estado:       'pending' | 'running' | 'completed' | 'failed';
+  progreso:     number;
+  resultado:    Record<string, unknown>;
+  error:        string | null;
+  iniciadoEn:   string;
+  completadoEn: string | null;
+}
+
+export interface OltEventoLog {
+  id:                   string;
+  oltId:                string;
+  onuSn:                string | null;
+  tipo:                 string;
+  estado:               string;
+  latenciaMs:           number | null;
+  proveedoresIntentados: string[];
+  payload?:             Record<string, unknown>;
+  createdAt:            string;
+}
+
+export interface FtthRegistro {
+  id:          string;
+  oltId:       string;
+  contratoId:  string;
+  sn:          string;
+  slot:        number;
+  port:        number;
+  onuId:       number;
+  vlan:        number;
+  estado:      string;
+  createdAt:   string;
+  updatedAt:   string;
+}
+
+export interface PaginatedResult<T> {
+  data:  T[];
+  total: number;
+}
+
 export interface AlarmInfo {
   level:   'warning' | 'critical' | 'error';
   message: string;
@@ -824,5 +893,55 @@ export const oltNativoApi = {
       trafficTables?: { insertadas: number; actualizadas: number };
     }>>('/olt-nativo/wizard/commit', dto, { timeout: 60_000 });
     return res.data.data;
+  },
+
+  // ── Detalle OLT: nuevos endpoints (Etapa 1) ──────────────────
+
+  patch: async (oltId: string, dto: Partial<CreateOltDto>): Promise<OltDispositivo> => {
+    const res = await api.patch<ApiRespuesta<OltDispositivo>>(`/olt-nativo/${oltId}`, dto);
+    return res.data.data;
+  },
+
+  getBoards: async (oltId: string): Promise<OltBoard[]> => {
+    const res = await api.get<ApiRespuesta<OltBoard[]>>(`/olt-nativo/${oltId}/boards`);
+    return res.data.data ?? [];
+  },
+
+  getLineProfiles: async (oltId: string): Promise<OltLineProfile[]> => {
+    const res = await api.get<ApiRespuesta<OltLineProfile[]>>(`/olt-nativo/${oltId}/line-profiles`);
+    return res.data.data ?? [];
+  },
+
+  getServiceProfiles: async (oltId: string): Promise<OltServiceProfile[]> => {
+    const res = await api.get<ApiRespuesta<OltServiceProfile[]>>(`/olt-nativo/${oltId}/service-profiles`);
+    return res.data.data ?? [];
+  },
+
+  getEventos: async (
+    oltId: string, page = 1, limit = 20,
+  ): Promise<PaginatedResult<OltEventoLog>> => {
+    const res = await api.get<ApiRespuesta<PaginatedResult<OltEventoLog>>>(
+      `/olt-nativo/${oltId}/eventos`, { params: { page, limit } },
+    );
+    return res.data.data ?? { data: [], total: 0 };
+  },
+
+  getFtthRegistros: async (
+    oltId: string, page = 1, limit = 50,
+  ): Promise<PaginatedResult<FtthRegistro>> => {
+    const res = await api.get<ApiRespuesta<PaginatedResult<FtthRegistro>>>(
+      `/olt-nativo/${oltId}/ftth-registros`, { params: { page, limit } },
+    );
+    return res.data.data ?? { data: [], total: 0 };
+  },
+
+  iniciarSync: async (oltId: string): Promise<{ jobId: string }> => {
+    const res = await api.post<ApiRespuesta<{ jobId: string }>>(`/olt-nativo/${oltId}/sync`);
+    return res.data.data;
+  },
+
+  getSyncStatus: async (oltId: string): Promise<OltSyncJob | null> => {
+    const res = await api.get<ApiRespuesta<OltSyncJob | null>>(`/olt-nativo/${oltId}/sync/status`);
+    return res.data.data ?? null;
   },
 };
