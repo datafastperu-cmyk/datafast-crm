@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation }   from '@tanstack/react-query';
+import { useQuery }   from '@tanstack/react-query';
 import {
   Radio, RefreshCw, Server, Signal,
-  Wifi, WifiOff, Upload, Activity,
+  Wifi, WifiOff, Activity,
   ChevronUp, ChevronDown, ChevronsUpDown,
-  Settings, ArrowLeftRight,
 } from 'lucide-react';
 
 import { smartoltApi, type EstadoOnu } from '@/lib/api/smartolt';
@@ -14,9 +13,7 @@ import {
   oltNativoApi,
   type OltConProveedorPrincipal,
   type OltDispositivo,
-  type FtthOnuRegistro,
 } from '@/lib/api/olt-nativo';
-import { FirmwarePanel } from './FirmwareUpgradeTab';
 import { cn } from '@/lib/utils';
 import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 
@@ -67,7 +64,7 @@ function seccionDe(olt: OltConProveedorPrincipal): string {
   return olt.proveedorPrincipal?.tipo ?? olt.metodoConexion ?? 'desconocido';
 }
 
-type TabKey = 'olts' | 'onus' | 'firmware' | 'signal' | 'wizard' | 'reconciliar';
+type TabKey = 'olts' | 'onus' | 'signal';
 
 // ─── Componente principal ─────────────────────────────────────
 
@@ -75,10 +72,7 @@ export function OltContent() {
   const [tab, setTab]                   = useState<TabKey>('olts');
   const [selectedOlt, setOlt]           = useState<string>('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoOnu | ''>('');
-  const [firmwareOlt, setFirmwareOlt]   = useState<OltDispositivo | null>(null);
-  const [signalOltId,      setSignalOltId]      = useState<string>('');
-  const [wizardOltId,      setWizardOltId]      = useState<string>('');
-  const [reconciliarOltId, setReconciliarOltId] = useState<string>('');
+  const [signalOltId, setSignalOltId]   = useState<string>('');
   const [oltSortField, setOltSortField] = useState<string>('nombre');
   const [oltSortDir,   setOltSortDir]   = useState<'ASC' | 'DESC'>('ASC');
   const [onuSortField, setOnuSortField] = useState<string>('nombre');
@@ -115,22 +109,12 @@ export function OltContent() {
     enabled:   tab === 'onus',
   });
 
-  // ── Query: OLTs nativas (firmware + wizard + reconciliar) ────
+  // ── Query: OLTs nativas (para selector del tab signal) ───────
   const { data: oltNativas = [] } = useQuery({
     queryKey:  ['olt-nativas'],
     queryFn:   oltNativoApi.listar,
     staleTime: 60_000,
-    enabled:   tab === 'firmware' || tab === 'wizard' || tab === 'reconciliar',
-  });
-
-  // ── Mutation: Wizard inicializar OLT ─────────────────────────
-  const wizardMut = useMutation({
-    mutationFn: (oltId: string) => oltNativoApi.wizardInicializarOlt(oltId),
-  });
-
-  // ── Mutation: Reconciliar ERP vs OLT ─────────────────────────
-  const reconciliarMut = useMutation({
-    mutationFn: (oltId: string) => oltNativoApi.ftthReconciliar(oltId),
+    enabled:   tab === 'signal',
   });
 
   // ── Query: ONUs SmartOLT ─────────────────────────────────────
@@ -227,12 +211,9 @@ export function OltContent() {
       {/* Tabs */}
       <ScrollableTabs className="flex gap-1 border-b border-border pb-0">
         {([
-          ['olts',        'OLTs',        Server],
-          ['onus',        'ONUs',        Signal],
-          ['signal',      'Señal FTTH',  Activity],
-          ['firmware',    'Firmware',    Upload],
-          ['wizard',      'Wizard OLT',  Settings],
-          ['reconciliar', 'Reconciliar', ArrowLeftRight],
+          ['olts',   'OLTs',       Server],
+          ['onus',   'ONUs',       Signal],
+          ['signal', 'Señal FTTH', Activity],
         ] as const).map(([key, label, Icon]) => (
           <button
             key={key}
@@ -592,302 +573,6 @@ export function OltContent() {
         </div>
       )}
 
-      {/* Wizard OLT Tab */}
-      {tab === 'wizard' && (
-        <div className="space-y-4">
-          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Settings className="w-4 h-4 text-primary" />
-                Wizard de Configuración OLT
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Importa line profiles, service profiles y traffic tables directamente desde la OLT al ERP.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <select
-                value={wizardOltId}
-                onChange={e => { setWizardOltId(e.target.value); wizardMut.reset(); }}
-                className="px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">— Selecciona una OLT —</option>
-                {oltNativas.map((o: OltDispositivo) => (
-                  <option key={o.id} value={o.id}>{o.nombre} ({o.ipGestion})</option>
-                ))}
-              </select>
-              <button
-                disabled={!wizardOltId || wizardMut.isPending}
-                onClick={() => wizardMut.mutate(wizardOltId)}
-                className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {wizardMut.isPending && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                Importar desde OLT
-              </button>
-            </div>
-
-            {wizardMut.isError && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                {(wizardMut.error as Error).message ?? 'Error al conectar con la OLT'}
-              </div>
-            )}
-
-            {wizardMut.isSuccess && wizardMut.data && (
-              <div className="space-y-3">
-                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
-                  Importación completada — {wizardMut.data.total} registros procesados
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="bg-muted/30 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Line Profiles</p>
-                    <p className="text-xl font-bold">{wizardMut.data.lineprofiles.length}</p>
-                    <ul className="mt-2 space-y-0.5 max-h-32 overflow-y-auto">
-                      {wizardMut.data.lineprofiles.map(p => (
-                        <li key={p.profile_id} className="text-xs text-muted-foreground font-mono">
-                          [{p.profile_id}] {p.name}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="bg-muted/30 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Service Profiles</p>
-                    <p className="text-xl font-bold">{wizardMut.data.srvprofiles.length}</p>
-                    <ul className="mt-2 space-y-0.5 max-h-32 overflow-y-auto">
-                      {wizardMut.data.srvprofiles.map(p => (
-                        <li key={p.profile_id} className="text-xs text-muted-foreground font-mono">
-                          [{p.profile_id}] {p.name}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="bg-muted/30 rounded-lg p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Traffic Tables</p>
-                    <p className="text-xl font-bold">
-                      {wizardMut.data.trafficTables.insertadas + wizardMut.data.trafficTables.actualizadas}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {wizardMut.data.trafficTables.insertadas} nuevas · {wizardMut.data.trafficTables.actualizadas} actualizadas
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Reconciliar ERP vs OLT Tab */}
-      {tab === 'reconciliar' && (
-        <div className="space-y-4">
-          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <ArrowLeftRight className="w-4 h-4 text-primary" />
-                Reconciliación ERP ↔ OLT
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Detecta ONUs que el ERP cree activas pero no están en la OLT, y ONUs en la OLT sin contrato en el ERP.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <select
-                value={reconciliarOltId}
-                onChange={e => { setReconciliarOltId(e.target.value); reconciliarMut.reset(); }}
-                className="px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">— Selecciona una OLT —</option>
-                {oltNativas.map((o: OltDispositivo) => (
-                  <option key={o.id} value={o.id}>{o.nombre} ({o.ipGestion})</option>
-                ))}
-              </select>
-              <button
-                disabled={!reconciliarOltId || reconciliarMut.isPending}
-                onClick={() => reconciliarMut.mutate(reconciliarOltId)}
-                className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {reconciliarMut.isPending && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                Iniciar reconciliación
-              </button>
-            </div>
-
-            {reconciliarMut.isError && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                {(reconciliarMut.error as Error).message ?? 'Error al reconciliar'}
-              </div>
-            )}
-
-            {reconciliarMut.isSuccess && reconciliarMut.data && (() => {
-              const d = reconciliarMut.data;
-              return (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-muted/30 rounded-lg p-3 text-center">
-                      <p className="text-xs text-muted-foreground">Sincronizados</p>
-                      <p className="text-2xl font-bold text-emerald-400">{d.sincronizados}</p>
-                    </div>
-                    <div className="bg-red-500/10 rounded-lg p-3 text-center">
-                      <p className="text-xs text-red-400">ERP sin OLT</p>
-                      <p className="text-2xl font-bold text-red-400">{d.enErpNoEnOlt.length}</p>
-                    </div>
-                    <div className="bg-amber-500/10 rounded-lg p-3 text-center">
-                      <p className="text-xs text-amber-400">OLT sin ERP</p>
-                      <p className="text-2xl font-bold text-amber-400">{d.enOltNoEnErp.length}</p>
-                    </div>
-                  </div>
-
-                  {d.enErpNoEnOlt.length > 0 && (
-                    <div className="bg-card border border-red-500/20 rounded-xl overflow-hidden">
-                      <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20">
-                        <p className="text-xs font-semibold text-red-400">
-                          ONUs en ERP sin presencia en OLT ({d.enErpNoEnOlt.length})
-                        </p>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b border-border">
-                              <th className="px-4 py-2 text-left text-muted-foreground">Serial</th>
-                              <th className="px-4 py-2 text-left text-muted-foreground">Slot/Port/ONU</th>
-                              <th className="px-4 py-2 text-left text-muted-foreground">Estado ERP</th>
-                              <th className="px-4 py-2 text-left text-muted-foreground">Contrato</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border">
-                            {d.enErpNoEnOlt.map((r: FtthOnuRegistro) => (
-                              <tr key={r.id} className="hover:bg-muted/20">
-                                <td className="px-4 py-2 font-mono font-semibold">{r.sn}</td>
-                                <td className="px-4 py-2 font-mono text-muted-foreground">
-                                  {r.slot}/{r.port}/{r.onuId}
-                                </td>
-                                <td className="px-4 py-2">
-                                  <span className="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">
-                                    {r.estado}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 text-muted-foreground font-mono text-[10px]">
-                                  {r.contratoId ?? '—'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {d.enOltNoEnErp.length > 0 && (
-                    <div className="bg-card border border-amber-500/20 rounded-xl overflow-hidden">
-                      <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
-                        <p className="text-xs font-semibold text-amber-400">
-                          ONUs en OLT sin registro en ERP ({d.enOltNoEnErp.length})
-                        </p>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b border-border">
-                              <th className="px-4 py-2 text-left text-muted-foreground">Serial</th>
-                              <th className="px-4 py-2 text-left text-muted-foreground">Slot/Port</th>
-                              <th className="px-4 py-2 text-left text-muted-foreground">Modelo</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border">
-                            {d.enOltNoEnErp.map((o, idx) => (
-                              <tr key={o.sn ?? idx} className="hover:bg-muted/20">
-                                <td className="px-4 py-2 font-mono font-semibold">{o.sn}</td>
-                                <td className="px-4 py-2 font-mono text-muted-foreground">
-                                  {o.slot}/{o.port}
-                                </td>
-                                <td className="px-4 py-2 text-muted-foreground">
-                                  {o.ont_model ?? '—'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {d.enErpNoEnOlt.length === 0 && d.enOltNoEnErp.length === 0 && (
-                    <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm text-center">
-                      ERP y OLT están sincronizados — {d.sincronizados} ONUs coinciden
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* Firmware Tab */}
-      {tab === 'firmware' && (
-        <div className="space-y-4">
-          {!firmwareOlt ? (
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-border bg-muted/20">
-                <p className="text-sm font-medium">Selecciona una OLT para actualizar firmware</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Solo OLTs con conexión NATIVO_SSH soportan actualización OMCI</p>
-              </div>
-              {oltNativas.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
-                  <Upload className="w-8 h-8 opacity-30" />
-                  <p className="text-sm">No hay OLTs nativas configuradas</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {oltNativas.map((o: OltDispositivo) => (
-                    <button
-                      key={o.id}
-                      onClick={() => setFirmwareOlt(o)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent/40 transition-colors"
-                    >
-                      <div className={cn(
-                        'w-2 h-2 rounded-full shrink-0',
-                        o.estado === 'online' ? 'bg-emerald-400' : 'bg-muted-foreground',
-                      )} />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{o.nombre}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {o.marca.toUpperCase()} · {o.ipGestion} · {o.metodoConexion}
-                        </p>
-                      </div>
-                      {o.metodoConexion === 'nativo_ssh' && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary">
-                          OMCI compatible
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setFirmwareOlt(null)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  ← Cambiar OLT
-                </button>
-                <span className="text-sm font-medium">{firmwareOlt.nombre}</span>
-                <span className="text-xs text-muted-foreground">{firmwareOlt.ipGestion}</span>
-              </div>
-              <div className="bg-card border border-border rounded-xl p-5">
-                <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
-                  <Upload className="w-4 h-4 text-primary" />
-                  Actualización de Firmware
-                </h3>
-                <FirmwarePanel olt={firmwareOlt} />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
