@@ -347,8 +347,9 @@ export class OltNativoService implements OnModuleInit {
     params: { ip: string; puerto: number; usuario: string; password: string; marca: string },
   ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> {
     try {
+      const ip = params.ip.includes('/') ? params.ip.split('/')[0] : params.ip;
       const res = await this.automation.testConexionSsh({
-        connection: { ip: params.ip, port: params.puerto, username: params.usuario, password: params.password, brand: params.marca.toLowerCase() },
+        connection: { ip, port: params.puerto, username: params.usuario, password: params.password, brand: params.marca.toLowerCase() },
       });
       if (res.success) {
         return { exitoso: true, mensaje: 'Conexión SSH exitosa', latenciaMs: res.latency_ms ?? undefined };
@@ -1279,7 +1280,7 @@ export class OltNativoService implements OnModuleInit {
         circuitEstado:  'closed',
         circuitFallas:  0,
         credenciales: {
-          ip:               dto.ipGestion,
+          ip:               dto.ipGestion.includes('/') ? dto.ipGestion.split('/')[0] : dto.ipGestion,
           port:             dto.puerto,
           username:         dto.usuario,
           password_cifrado: contrasenaCifrada,

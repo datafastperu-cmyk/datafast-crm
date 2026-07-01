@@ -432,7 +432,11 @@ export class OltAutomationClient {
   private handleHttpError(error: any, method: string, endpoint: string): never {
     const status  = error?.response?.status;
     const detail  = error?.response?.data;
-    const message = detail?.error || detail?.message || detail?.detail || error.message;
+    // FastAPI 422: detail es un array [{loc, msg, type}]
+    const rawDetail = detail?.error || detail?.message || detail?.detail;
+    const message = Array.isArray(rawDetail)
+      ? rawDetail.map((e: any) => `${e.loc?.slice(-1)[0] ?? 'campo'}: ${e.msg}`).join('; ')
+      : (rawDetail ?? error.message);
     const isNetworkError = !status;
 
     this.logger.error(

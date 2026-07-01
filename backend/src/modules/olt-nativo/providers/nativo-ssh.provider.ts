@@ -36,8 +36,11 @@ export class NativoSshProvider implements IOltProvider {
   // ── Helpers de construcción de payload ───────────────────────
 
   private conn(creds: ProveedorCredenciales, olt?: OltDispositivo) {
+    // PostgreSQL INET devuelve "10.0.0.1/32" — Python solo acepta "10.0.0.1"
+    const rawIp = creds.ip ?? olt?.ipGestion ?? '';
+    const ip    = rawIp.includes('/') ? rawIp.split('/')[0] : rawIp;
     return {
-      ip:       creds.ip       ?? '',
+      ip,
       port:     creds.port     ?? 22,
       username: creds.username ?? '',
       password: creds.password ?? '',
