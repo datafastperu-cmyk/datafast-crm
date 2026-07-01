@@ -22,7 +22,6 @@ export enum TipoNotificacion {
   PAGO_VENCIDO         = 'pago_vencido',
   PRORROGA_CONCEDIDA   = 'prorroga_concedida',
   BIENVENIDA           = 'bienvenida',
-  ONU_OFFLINE          = 'onu_offline',
   MANTENIMIENTO        = 'mantenimiento',
   ALERTA_EGRESO        = 'alerta_egreso',
 }
@@ -93,11 +92,6 @@ const TEMPLATES: Record<TipoNotificacion, {
     name:      'datafast_prorroga',
     language:  'es',
     paramKeys: ['clienteNombre', 'fechaProrroga', 'montoDeuda'],
-  },
-  [TipoNotificacion.ONU_OFFLINE]: {
-    name:      'datafast_onu_offline',
-    language:  'es',
-    paramKeys: ['clienteNombre', 'fechaHora'],
   },
   [TipoNotificacion.MANTENIMIENTO]: {
     name:      'datafast_mantenimiento',

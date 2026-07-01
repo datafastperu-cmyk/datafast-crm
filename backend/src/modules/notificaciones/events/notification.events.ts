@@ -15,7 +15,6 @@ export const NOTIFICATION_EVENTS = {
   PAGO_VENCE_HOY:       'notification.pago.vence.hoy',
   PAGO_VENCIDO:         'notification.pago.vencido',
   PRORROGA_CONCEDIDA:   'notification.prorroga.concedida',
-  ONU_OFFLINE:          'notification.onu.offline',
   MANTENIMIENTO:        'notification.mantenimiento',
   ALERTA_EGRESO:        'notification.alerta.egreso',
   // Monitoreo de infraestructura

@@ -452,7 +452,6 @@ export class GatewayMensajeriaService {
   // Los tipos internos no tienen telefono de cliente en el payload;
   // el destino es siempre el número corporativo de la empresa.
   private readonly TIPOS_INTERNOS = new Set<string>([
-    TipoNotificacion.ONU_OFFLINE,
     TipoNotificacion.ALERTA_EGRESO,
     'emisor_caido',
     'emisor_conectado',

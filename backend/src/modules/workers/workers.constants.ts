@@ -153,7 +153,6 @@ export interface PayloadMkReactivar {
 // ─── Matriz de prioridades por tipo de notificación ───────
 // Menor número = mayor prioridad en Bull
 export const JOB_PRIORITIES = {
-  ONU_OFFLINE:     1,   // Alerta interna crítica
   ALERTA_EGRESO:   1,   // Alerta interna crítica
   FACTURA_EMITIDA: 2,   // Transaccional
   PAGO_RECIBIDO:   2,   // Transaccional
