@@ -219,7 +219,7 @@ export class OltAutomationClient {
   // ────────────────────────────────────────────────────────────
   async listProfiles(payload: PythonListProfilesRequest): Promise<PythonListProfilesResponse> {
     this.logger.log(`→ Python profiles | OLT=${payload.connection.ip}`);
-    const res = await this.post<PythonListProfilesResponse>('/api/v1/olt/profiles', payload);
+    const res = await this.post<PythonListProfilesResponse>('/api/v1/olt/profiles', payload, 150_000);
     this.logger.log(
       `← Python profiles | lp=${res.lineprofiles?.length ?? 0} sp=${res.srvprofiles?.length ?? 0} tt=${res.traffic_tables?.length ?? 0}`,
     );
