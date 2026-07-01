@@ -9,6 +9,11 @@ export class RemoveMetaGraphTwilioVonage1783100000000 implements MigrationInterf
       WHERE proveedor_activo::text IN ('META_GRAPH', 'TWILIO', 'VONAGE')
     `);
 
+    // Eliminar default antes de cambiar el tipo (depende del enum actual)
+    await queryRunner.query(`
+      ALTER TABLE empresas ALTER COLUMN proveedor_activo DROP DEFAULT
+    `);
+
     // Cambiar columna a TEXT para poder recrear el enum
     await queryRunner.query(`
       ALTER TABLE empresas ALTER COLUMN proveedor_activo TYPE TEXT USING proveedor_activo::text
