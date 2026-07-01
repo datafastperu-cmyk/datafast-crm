@@ -17,15 +17,20 @@ type Step = 1 | 2 | 3;
 
 interface FormState {
   // Identidad
-  nombre:     string;
-  marca:      string;
-  modelo:     string;
-  zonaId:     string;
+  nombre:      string;
+  marca:       string;
+  modelo:      string;
+  zonaId:      string;
+  // Ubicación
+  ubicacion:   string;
+  latitud:     string;
+  longitud:    string;
+  descripcion: string;
   // Conectividad
-  ip:         string;
-  puerto:     number;
-  usuario:    string;
-  contrasena: string;
+  ip:          string;
+  puerto:      number;
+  usuario:     string;
+  contrasena:  string;
 }
 
 const MARCAS = ['huawei', 'zte', 'vsol', 'cdata'] as const;
@@ -70,6 +75,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
 
   const [form, setForm] = useState<FormState>({
     nombre: '', marca: 'huawei', modelo: '', zonaId: '',
+    ubicacion: '', latitud: '', longitud: '', descripcion: '',
     ip: '', puerto: 22, usuario: 'root', contrasena: '',
   });
 
@@ -99,15 +105,18 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
   // ── Step 3: commit ────────────────────────────────────────────
   const commitMut = useMutation({
     mutationFn: () => oltNativoApi.wizardCommit({
-      nombre:     form.nombre,
-      ipGestion:  form.ip,
-      puerto:     form.puerto,
-      usuario:    form.usuario,
-      contrasena: form.contrasena,
-      marca:      form.marca,
-      modelo:     form.modelo || form.marca.toUpperCase(),
-      zonaId:     form.zonaId || undefined,
-      // vlans y trafficTables se cargan post-registro vía OltSyncService
+      nombre:      form.nombre,
+      ipGestion:   form.ip,
+      puerto:      form.puerto,
+      usuario:     form.usuario,
+      contrasena:  form.contrasena,
+      marca:       form.marca,
+      modelo:      form.modelo || form.marca.toUpperCase(),
+      zonaId:      form.zonaId || undefined,
+      ubicacion:   form.ubicacion   || undefined,
+      latitud:     form.latitud     ? parseFloat(form.latitud)  : undefined,
+      longitud:    form.longitud    ? parseFloat(form.longitud) : undefined,
+      descripcion: form.descripcion || undefined,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['olt-nativas'] });
@@ -128,7 +137,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
     setStep(1);
     setConnOk(false);
     setConnMsg('');
-    setForm({ nombre: '', marca: 'huawei', modelo: '', zonaId: '', ip: '', puerto: 22, usuario: 'root', contrasena: '' });
+    setForm({ nombre: '', marca: 'huawei', modelo: '', zonaId: '', ubicacion: '', latitud: '', longitud: '', descripcion: '', ip: '', puerto: 22, usuario: 'root', contrasena: '' });
     onClose();
   }
 
@@ -217,6 +226,51 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                         onChange={e => set('modelo', e.target.value)}
                       />
                     </div>
+                  </div>
+
+                  {/* Dirección física */}
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Dirección física</label>
+                    <input
+                      className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      placeholder="Ej: Av. Los Pinos 123, Zona Norte"
+                      value={form.ubicacion}
+                      onChange={e => set('ubicacion', e.target.value)}
+                    />
+                  </div>
+
+                  {/* Coordenadas GPS */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Latitud GPS</label>
+                      <input
+                        className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        placeholder="-12.046374"
+                        value={form.latitud}
+                        onChange={e => set('latitud', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Longitud GPS</label>
+                      <input
+                        className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        placeholder="-77.042793"
+                        value={form.longitud}
+                        onChange={e => set('longitud', e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Descripción adicional */}
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Descripción adicional</label>
+                    <textarea
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                      placeholder="Notas técnicas, rack, nodo, etc."
+                      value={form.descripcion}
+                      onChange={e => set('descripcion', e.target.value)}
+                    />
                   </div>
                 </div>
               </div>
@@ -310,11 +364,14 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                     <span className="text-sm font-semibold text-emerald-400">OLT a registrar</span>
                   </div>
                   {([
-                    ['Nombre',  form.nombre],
-                    ['Marca',   form.marca.charAt(0).toUpperCase() + form.marca.slice(1)],
-                    ['Modelo',  form.modelo || '—'],
-                    ['IP',      `${form.ip}:${form.puerto}`],
-                    ['Usuario', form.usuario],
+                    ['Nombre',    form.nombre],
+                    ['Marca',     form.marca.charAt(0).toUpperCase() + form.marca.slice(1)],
+                    ['Modelo',    form.modelo || '—'],
+                    ['IP',        `${form.ip}:${form.puerto}`],
+                    ['Usuario',   form.usuario],
+                    ...(form.ubicacion  ? [['Dirección', form.ubicacion]]  : []),
+                    ...(form.latitud && form.longitud ? [['GPS', `${form.latitud}, ${form.longitud}`]] : []),
+                    ...(form.descripcion ? [['Descripción', form.descripcion]] : []),
                   ] as [string, string][]).map(([k, v]) => (
                     <div key={k} className="flex justify-between text-xs">
                       <span className="text-muted-foreground">{k}</span>

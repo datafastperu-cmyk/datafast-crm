@@ -269,6 +269,10 @@ export interface WizardCommitPayload {
   modelo:         string;
   firmware?:      string;
   zonaId?:        string;
+  ubicacion?:     string;
+  latitud?:       number;
+  longitud?:      number;
+  descripcion?:   string;
   vlans?:         Array<{ vlan_id: number; nombre: string }>;
   trafficTables?: Array<{ index: number; name: string; cir_kbps?: number; pir_kbps?: number }>;
 }
