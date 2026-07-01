@@ -359,9 +359,6 @@ export default function MensajesEnviadosPage() {
                 const isEliminando = eliminarMut.isPending && eliminarMut.variables === log.id;
 
                 const proveedorLabel: Record<string, string> = {
-                  META_GRAPH:                 'Meta',
-                  TWILIO:                     'Twilio',
-                  VONAGE:                     'Vonage',
                   CUSTOM_API:                 'Custom',
                   AUTOMATIZADO_VIP:           'VIP',
                   DATAFAST_MENSAJERIA_MASIVA: 'Masivo',

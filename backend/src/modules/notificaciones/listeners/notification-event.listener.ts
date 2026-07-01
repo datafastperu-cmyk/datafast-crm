@@ -169,11 +169,9 @@ export class NotificationEventListener implements OnModuleInit {
       telefono:    event.telefono,
       tipo:        'factura_emitida',
       variables: {
-        // snake_case para plantillas (no-META)
         numero_factura:    event.numeroFactura,
         monto:             event.montoTotal,
         fecha_vencimiento: event.fechaVencimiento,
-        // camelCase para META_GRAPH paramKeys
         clienteNombre:     event.clienteNombre,
         numeroFactura:     event.numeroFactura,
         montoTotal:        event.montoTotal,

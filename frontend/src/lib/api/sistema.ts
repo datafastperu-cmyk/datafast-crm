@@ -33,9 +33,6 @@ export interface ServerInfo {
 }
 
 export type ProveedorActivo =
-  | 'META_GRAPH'
-  | 'TWILIO'
-  | 'VONAGE'
   | 'CUSTOM_API'
   | 'AUTOMATIZADO_VIP'
   | 'DATAFAST_MENSAJERIA_MASIVA';
@@ -49,9 +46,6 @@ export interface GatewayConfig {
   limiteCaracteres:      number;
   codigoPais:            string;
   activo:                boolean;
-  metaGraphActivo:       boolean;
-  twilioActivo:          boolean;
-  vonageActivo:          boolean;
   customApiActivo:       boolean;
   automatizadoVipActivo: boolean;
   limiteDiarioMasivo:   number;
@@ -60,12 +54,6 @@ export interface GatewayConfig {
   notifPagoRecibidoActiva: boolean;
   notifProrrogaActiva:     boolean;
   notifSuspensionActiva:   boolean;
-}
-
-export interface WhatsAppConfig {
-  phoneId:    string | null;
-  businessId: string | null;
-  token:      string | null;
 }
 
 export interface NotifLog {
@@ -89,12 +77,6 @@ export const sistemaApi = {
   getUpdateLog: () => api.get<{ data: { log: string } }>('/admin/sistema/update-log').then(r => r.data.data.log),
   restart:      () => api.post('/admin/sistema/restart'),
   update:       () => api.post('/admin/sistema/update'),
-
-  getWhatsAppConfig: () =>
-    api.get<{ data: WhatsAppConfig }>('/admin/sistema/whatsapp-config').then(r => r.data.data),
-
-  updateWhatsAppConfig: (dto: { token?: string; phoneId?: string; businessId?: string }) =>
-    api.patch<{ data: WhatsAppConfig }>('/admin/sistema/whatsapp-config', dto).then(r => r.data.data),
 
   getNotifLogs: (params: { page?: number; limit?: number; estado?: string; tipo?: string; sortBy?: string; sortOrder?: 'ASC' | 'DESC' }) =>
     api.get<{ data: { items: NotifLog[]; total: number } }>('/admin/sistema/notif-logs', { params })

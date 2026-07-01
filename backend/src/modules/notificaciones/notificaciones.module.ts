@@ -2,7 +2,6 @@ import { Module, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/comm
 import { HttpModule, HttpService } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bull';
 import { firstValueFrom } from 'rxjs';
-import { WhatsAppService }           from './services/whatsapp.service';
 import { GatewayMensajeriaService }  from './services/gateway-mensajeria.service';
 import { NotificationEventListener }  from './listeners/notification-event.listener';
 import { CircuitBreakerRegistry }     from '../../common/services/circuit-breaker.registry';
@@ -42,11 +41,10 @@ class EvolutionApiBootstrapService implements OnApplicationBootstrap {
   ],
   providers: [
     CircuitBreakerRegistry,
-    WhatsAppService,
     GatewayMensajeriaService,
     EvolutionApiBootstrapService,
     NotificationEventListener,
   ],
-  exports:   [WhatsAppService, GatewayMensajeriaService, CircuitBreakerRegistry],
+  exports:   [GatewayMensajeriaService, CircuitBreakerRegistry],
 })
 export class NotificacionesModule {}

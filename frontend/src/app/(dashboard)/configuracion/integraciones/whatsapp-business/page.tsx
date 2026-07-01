@@ -58,29 +58,11 @@ type ProviderMeta = {
 };
 
 const PROVIDER_META: Record<ProveedorActivo, ProviderMeta> = {
-  META_GRAPH: {
-    display: 'Meta Graph API', color: 'emerald',
-    f1Label: 'Phone ID',             f1Ph: '123456789012345',   f1Hint: 'ID del número en Meta Business',
-    f2Label: 'Business Account ID',  f2Ph: '987654321098765',   f2Hint: 'ID de la cuenta (opcional)',
-    f3Label: 'Access Token',         f3Ph: 'EAABwzLixnjY...',   f3Hint: 'Token permanente — cifrado AES-256',
-  },
   AUTOMATIZADO_VIP: {
     display: 'AUTOMATIZADO.VIP', color: 'violet', hideSecret: true,
     f1Label: 'API Key / Token',  f1Ph: 'ak_live_...',   f1Hint: 'Token de autenticación',
     f2Label: '', f2Ph: '', f2Hint: '',
     f3Label: 'Instance ID',      f3Ph: 'inst_abc123',   f3Hint: 'ID de instancia en automatizado.vip',
-  },
-  TWILIO: {
-    display: 'Twilio', color: 'red',
-    f1Label: 'Account SID',   f1Ph: 'ACxxxxxxxxx',    f1Hint: 'Account SID — cifrado AES-256',
-    f2Label: 'Auth Token',    f2Ph: SENTINEL,          f2Hint: 'Auth Token — cifrado AES-256',
-    f3Label: 'From Number',   f3Ph: '+14155238886',    f3Hint: 'Número de origen',
-  },
-  VONAGE: {
-    display: 'Vonage (Nexmo)', color: 'violet',
-    f1Label: 'API Key',        f1Ph: 'a1b2c3d4',       f1Hint: 'API Key — cifrado AES-256',
-    f2Label: 'API Secret',     f2Ph: SENTINEL,          f2Hint: 'API Secret — cifrado AES-256',
-    f3Label: 'Sender Name',    f3Ph: 'DataFast',        f3Hint: 'Nombre alfanumérico remitente',
   },
   CUSTOM_API: {
     display: 'API Personalizada', color: 'amber',
@@ -117,9 +99,6 @@ const COLOR_PULSE: Record<string, string> = {
 
 interface FormValues {
   proveedor:             ProveedorActivo;
-  phoneId:               string;
-  businessId:            string;
-  token:                 string;
   apiKey:                string;
   apiSecret:             string;
   clientId:              string;
@@ -127,13 +106,10 @@ interface FormValues {
   limiteCaracteres:      number;
   codigoPais:            string;
   activo:                boolean;
-  metaGraphActivo:       boolean;
-  twilioActivo:          boolean;
-  vonageActivo:          boolean;
   customApiActivo:       boolean;
   automatizadoVipActivo: boolean;
   limiteDiarioMasivo:    number;
-  whatsappNumeroOrigen: string;
+  whatsappNumeroOrigen:  string;
 }
 
 // ─── Toggle helper ────────────────────────────────────────────────────────────
@@ -168,28 +144,18 @@ function GatewayConfigForm() {
   const [isSaving,     setIsSaving]     = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
 
-  const { data: gwData, isLoading: gwLoading } = useQuery({
+  const { data: gwData, isLoading } = useQuery({
     queryKey: ['gw-config'],
     queryFn:  sistemaApi.getGatewayConfig,
     staleTime: 60_000,
   });
 
-  const { data: waData, isLoading: waLoading } = useQuery({
-    queryKey: ['wa-config'],
-    queryFn:  sistemaApi.getWhatsAppConfig,
-    staleTime: 60_000,
-  });
-
-  const isLoading = gwLoading || waLoading;
-
   const { register, watch, reset, setValue, handleSubmit } = useForm<FormValues>({
     defaultValues: {
-      proveedor:             'META_GRAPH',
-      phoneId: '', businessId: '', token: '',
+      proveedor:             'AUTOMATIZADO_VIP',
       apiKey: '', apiSecret: '', clientId: '',
       pausa: 2, limiteCaracteres: 1000, codigoPais: '+51',
       activo: false,
-      metaGraphActivo: true, twilioActivo: false, vonageActivo: false,
       customApiActivo: false, automatizadoVipActivo: false,
       limiteDiarioMasivo: 500,
       whatsappNumeroOrigen: '',
@@ -203,53 +169,37 @@ function GatewayConfigForm() {
         proveedor:             gwData.proveedorActivo,
         apiKey:                '',
         apiSecret:             '',
-        clientId:              gwData.clientId  ?? '',
-        pausa:                 gwData.pausa             ?? (isMasivaP ? 12 : 2),
-        limiteCaracteres:      gwData.limiteCaracteres   ?? 1000,
+        clientId:              gwData.clientId              ?? '',
+        pausa:                 gwData.pausa                 ?? (isMasivaP ? 12 : 2),
+        limiteCaracteres:      gwData.limiteCaracteres       ?? 1000,
         codigoPais:            isMasivaP
           ? (gwData.codigoPais ?? '51').replace(/^\+/, '')
           : (gwData.codigoPais ?? '+51'),
-        activo:                gwData.activo             ?? false,
-        metaGraphActivo:       gwData.metaGraphActivo       ?? true,
-        twilioActivo:          gwData.twilioActivo          ?? false,
-        vonageActivo:          gwData.vonageActivo          ?? false,
+        activo:                gwData.activo                ?? false,
         customApiActivo:       gwData.customApiActivo       ?? false,
         automatizadoVipActivo: gwData.automatizadoVipActivo ?? false,
-        limiteDiarioMasivo:    gwData.limiteDiarioMasivo ?? 500,
-        phoneId:               waData?.phoneId    ?? '',
-        businessId:            waData?.businessId ?? '',
-        token:                 '',
-        whatsappNumeroOrigen: gwData.whatsappNumeroOrigen ?? '',
+        limiteDiarioMasivo:    gwData.limiteDiarioMasivo    ?? 500,
+        whatsappNumeroOrigen:  gwData.whatsappNumeroOrigen  ?? '',
       });
     }
-  }, [gwData, waData, reset]); // eslint-disable-line
+  }, [gwData, reset]); // eslint-disable-line
 
-  const proveedor              = watch('proveedor');
-  const activo                 = watch('activo');
-  const metaGraphActivo        = watch('metaGraphActivo');
-  const twilioActivo           = watch('twilioActivo');
-  const vonageActivo           = watch('vonageActivo');
-  const customApiActivo        = watch('customApiActivo');
-  const automatizadoVipActivo  = watch('automatizadoVipActivo');
-  const whatsappNumeroOrigen   = watch('whatsappNumeroOrigen');
-  const meta                   = PROVIDER_META[proveedor] ?? PROVIDER_META['META_GRAPH'];
-  const isMeta                 = proveedor === 'META_GRAPH';
-  const isMasiva               = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
+  const proveedor             = watch('proveedor');
+  const activo                = watch('activo');
+  const customApiActivo       = watch('customApiActivo');
+  const automatizadoVipActivo = watch('automatizadoVipActivo');
+  const whatsappNumeroOrigen  = watch('whatsappNumeroOrigen');
+  const meta                  = PROVIDER_META[proveedor] ?? PROVIDER_META['AUTOMATIZADO_VIP'];
+  const isMasiva              = proveedor === 'DATAFAST_MENSAJERIA_MASIVA';
 
   // Mapa proveedor → campo del formulario para el toggle de activación
   const ACTIVO_FIELD: Record<ProveedorActivo, keyof FormValues> = {
-    META_GRAPH:                 'metaGraphActivo',
-    TWILIO:                     'twilioActivo',
-    VONAGE:                     'vonageActivo',
     CUSTOM_API:                 'customApiActivo',
     AUTOMATIZADO_VIP:           'automatizadoVipActivo',
     DATAFAST_MENSAJERIA_MASIVA: 'activo',
   };
   const activoField   = ACTIVO_FIELD[proveedor];
   const ACTIVO_WATCH: Record<ProveedorActivo, boolean> = {
-    META_GRAPH:                 metaGraphActivo,
-    TWILIO:                     twilioActivo,
-    VONAGE:                     vonageActivo,
     CUSTOM_API:                 customApiActivo,
     AUTOMATIZADO_VIP:           automatizadoVipActivo,
     DATAFAST_MENSAJERIA_MASIVA: activo,
@@ -260,17 +210,11 @@ function GatewayConfigForm() {
   const masivaCanActivate = !!whatsappNumeroOrigen?.trim();
 
   // Credenciales válidas por proveedor (determina si se puede activar el switch)
-  const currentCredencialesValidas = isMeta
-    ? !!(waData?.phoneId && waData?.token)
-    : isMasiva
+  const currentCredencialesValidas = isMasiva
     ? !!gwData?.whatsappNumeroOrigen
     : !!gwData?.apiKeyStored;
 
-  const isConfigured = isMeta
-    ? !!(waData?.token)
-    : isMasiva
-    ? gwData?.activo
-    : gwData?.apiKeyStored;
+  const isConfigured = isMasiva ? gwData?.activo : gwData?.apiKeyStored;
 
   const cardColor = COLOR_BADGE[meta.color] ?? COLOR_BADGE.emerald;
   const iconCls   = COLOR_ICON[meta.color]  ?? COLOR_ICON.emerald;
@@ -293,25 +237,15 @@ function GatewayConfigForm() {
     try {
       const activoValue = values[ACTIVO_FIELD[values.proveedor]] as boolean;
 
-      if (values.proveedor === 'META_GRAPH') {
-        await sistemaApi.updateGatewayConfig({
-          proveedorActivo: 'META_GRAPH',
-          activo:          activoValue,
-        });
-        await sistemaApi.updateWhatsAppConfig({
-          phoneId:    values.phoneId    || undefined,
-          businessId: values.businessId || undefined,
-          token:      values.token ? values.token : undefined,
-        });
-      } else if (values.proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
+      if (values.proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
         await sistemaApi.updateGatewayConfig({
           proveedorActivo:      'DATAFAST_MENSAJERIA_MASIVA',
           activo:               activoValue,
-          pausa:                Number(values.pausa)            || 12,
-          limiteCaracteres:     Number(values.limiteCaracteres) || 1000,
-          codigoPais:           values.codigoPais || '51',
+          pausa:                Number(values.pausa)              || 12,
+          limiteCaracteres:     Number(values.limiteCaracteres)   || 1000,
+          codigoPais:           values.codigoPais                 || '51',
           limiteDiarioMasivo:   Number(values.limiteDiarioMasivo) || 500,
-          whatsappNumeroOrigen: values.whatsappNumeroOrigen || undefined,
+          whatsappNumeroOrigen: values.whatsappNumeroOrigen       || undefined,
         });
       } else {
         await sistemaApi.updateGatewayConfig({
@@ -324,7 +258,6 @@ function GatewayConfigForm() {
       }
 
       qc.invalidateQueries({ queryKey: ['gw-config'] });
-      qc.invalidateQueries({ queryKey: ['wa-config'] });
       toast('Configuración guardada correctamente', { type: 'success' });
     } catch (e) {
       toast(parseApiError(e), { type: 'error' });
@@ -339,10 +272,8 @@ function GatewayConfigForm() {
       <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
         <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', iconBgCls)}>
           {isMasiva
-            ? <Shield        className={cn('w-4 h-4', iconCls)} />
-            : isMeta
-            ? <MessageSquare className={cn('w-4 h-4', iconCls)} />
-            : <Zap           className={cn('w-4 h-4', iconCls)} />}
+            ? <Shield className={cn('w-4 h-4', iconCls)} />
+            : <Zap   className={cn('w-4 h-4', iconCls)} />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -375,10 +306,7 @@ function GatewayConfigForm() {
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-foreground">Proveedor de mensajería</label>
               <select {...register('proveedor')} className={cn(INPUT, 'cursor-pointer')}>
-                <option value="META_GRAPH">Meta Graph API (WhatsApp Business)</option>
                 <option value="AUTOMATIZADO_VIP">AUTOMATIZADO.VIP</option>
-                <option value="TWILIO">Twilio</option>
-                <option value="VONAGE">Vonage (Nexmo)</option>
                 <option value="CUSTOM_API">API Personalizada</option>
                 <option value="DATAFAST_MENSAJERIA_MASIVA">DATAFAST Mensajería Masiva (HTTP nativo)</option>
               </select>
@@ -387,36 +315,8 @@ function GatewayConfigForm() {
               </p>
             </div>
 
-            {/* ── META_GRAPH: credenciales ──────────────────────────────── */}
-            {isMeta && (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">{meta.f1Label} <span className="text-rose-500">*</span></label>
-                    <input type="text" placeholder={meta.f1Ph} {...register('phoneId')} className={INPUT} />
-                    <p className="text-[10px] text-muted-foreground">{meta.f1Hint}</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-foreground">{meta.f2Label} <span className="text-muted-foreground font-normal">(opcional)</span></label>
-                    <input type="text" placeholder={meta.f2Ph} {...register('businessId')} className={INPUT} />
-                    <p className="text-[10px] text-muted-foreground">{meta.f2Hint}</p>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">{meta.f3Label}</label>
-                  <div className="relative">
-                    <input type={showF1 ? 'text' : 'password'} placeholder={meta.f3Ph} {...register('token')} className={cn(INPUT, 'pr-10 font-mono text-xs')} />
-                    <button type="button" onClick={() => setShowF1(v => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                      {showF1 ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">{meta.f3Hint}</p>
-                </div>
-              </>
-            )}
-
-            {/* ── Otros proveedores (Twilio, Vonage, etc.) ─────────────── */}
-            {!isMeta && !isMasiva && (
+            {/* ── Credenciales (AUTOMATIZADO_VIP, CUSTOM_API) ──────────── */}
+            {!isMasiva && (
               <>
                 <div className={cn('grid grid-cols-1 gap-4', !meta.hideSecret && 'sm:grid-cols-2')}>
                   <div className="space-y-1.5">

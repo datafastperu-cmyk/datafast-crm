@@ -8,7 +8,7 @@ export class CrearCampanaDto {
   @IsString() @IsNotEmpty() @MaxLength(60)
   tipo: string;
 
-  @ApiPropertyOptional({ description: 'ID de plantilla WhatsApp (META_GRAPH)' })
+  @ApiPropertyOptional({ description: 'ID de plantilla personalizada del proveedor activo' })
   @IsString() @IsOptional()
   templateId?: string;
 

@@ -63,9 +63,7 @@ export const validationSchema = Joi.object({
   SMTP_PASS: Joi.string().allow('').optional(),
   SMTP_FROM_NAME: Joi.string().default('CRM ISP DATAFAST'),
   SMTP_FROM_EMAIL: Joi.string().email().allow('').optional(),
-  TWILIO_ACCOUNT_SID: Joi.string().allow('').optional(),
-  TWILIO_AUTH_TOKEN: Joi.string().allow('').optional(),
-  TWILIO_PHONE_NUMBER: Joi.string().allow('').optional(),
+
   TELEGRAM_BOT_TOKEN: Joi.string().allow('').optional(),
 
   // Negocio

@@ -21,18 +21,12 @@ export const GATEWAY_EVENTS = {
 } as const;
 
 export type ProveedorActivo =
-  | 'META_GRAPH'
-  | 'TWILIO'
-  | 'VONAGE'
   | 'CUSTOM_API'
   | 'AUTOMATIZADO_VIP'
   | 'DATAFAST_MENSAJERIA_MASIVA';
 
-// DATAFAST_NATIVE (whatsapp-web.js) es solo para el CRM interactivo —
-// no se acepta como proveedor del gateway de mensajería masiva.
 const PROVEEDORES_PUBLICOS = new Set<string>([
-  'META_GRAPH', 'TWILIO', 'VONAGE', 'CUSTOM_API',
-  'AUTOMATIZADO_VIP', 'DATAFAST_MENSAJERIA_MASIVA',
+  'CUSTOM_API', 'AUTOMATIZADO_VIP', 'DATAFAST_MENSAJERIA_MASIVA',
 ]);
 
 export interface CronHorarios {
@@ -344,67 +338,6 @@ export class SistemaService {
     return { ...nuevo, ejecutoHoy };
   }
 
-  // ─── WhatsApp config — leer ───────────────────────────────────
-
-  async getWhatsAppConfig(empresaId: string): Promise<{
-    phoneId:     string | null;
-    businessId:  string | null;
-    tokenExists: boolean;
-  }> {
-    const [row] = await this.ds.query(
-      `SELECT whatsapp_phone_id    AS phone_id,
-              whatsapp_business_id AS business_id,
-              whatsapp_token       AS token
-       FROM empresas WHERE id = $1`,
-      [empresaId],
-    );
-    return {
-      phoneId:     row?.phone_id    ?? null,
-      businessId:  row?.business_id ?? null,
-      tokenExists: !!row?.token,
-    };
-  }
-
-  // ─── WhatsApp config — actualizar ─────────────────────────────
-  // Regla del sentinel: si token llega vacío o como '***stored***'
-  // no se toca el valor cifrado existente en BD.
-
-  async updateWhatsAppConfig(
-    empresaId: string,
-    dto: { token?: string; phoneId?: string; businessId?: string },
-  ): Promise<{ phoneId: string | null; businessId: string | null; tokenExists: boolean }> {
-    const SENTINEL = '***stored***';
-
-    const setClauses: string[] = [];
-    const params: any[]        = [empresaId];
-
-    if (dto.phoneId !== undefined) {
-      params.push(dto.phoneId || null);
-      setClauses.push(`whatsapp_phone_id = $${params.length}`);
-    }
-
-    if (dto.businessId !== undefined) {
-      params.push(dto.businessId || null);
-      setClauses.push(`whatsapp_business_id = $${params.length}`);
-    }
-
-    if (dto.token && dto.token !== SENTINEL) {
-      params.push(encrypt(dto.token));
-      setClauses.push(`whatsapp_token = $${params.length}`);
-    }
-
-    if (setClauses.length > 0) {
-      await this.ds.query(
-        `UPDATE empresas SET ${setClauses.join(', ')} WHERE id = $1`,
-        params,
-      );
-      // Invalidar caché del WhatsAppService para forzar re-lectura
-      await this.cache.del(`wa:config:${empresaId}`).catch(() => {});
-    }
-
-    return this.getWhatsAppConfig(empresaId);
-  }
-
   // ─── Historial de notificaciones ─────────────────────────────
 
   async getNotifLogs(
@@ -476,9 +409,6 @@ export class SistemaService {
     limiteCaracteres:       number;
     codigoPais:             string;
     activo:                 boolean;
-    metaGraphActivo:        boolean;
-    twilioActivo:           boolean;
-    vonageActivo:           boolean;
     customApiActivo:        boolean;
     automatizadoVipActivo:  boolean;
     limiteDiarioMasivo:     number;
@@ -491,16 +421,13 @@ export class SistemaService {
     const [row] = await this.ds.query(
       `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
               gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
-              meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo, automatizado_vip_activo,
+              custom_api_activo, automatizado_vip_activo,
               gateway_masivo_limite_diario, whatsapp_numero_origen,
               notif_bienvenida_activa, notif_pago_recibido_activa, notif_prorroga_activa, notif_suspension_activa
        FROM empresas WHERE id = $1`,
       [empresaId],
     );
     const ACTIVO_MAP: Record<string, boolean> = {
-      META_GRAPH:                 row?.meta_graph_activo       ?? false,
-      TWILIO:                     row?.twilio_activo           ?? false,
-      VONAGE:                     row?.vonage_activo           ?? false,
       CUSTOM_API:                 row?.custom_api_activo       ?? false,
       AUTOMATIZADO_VIP:           row?.automatizado_vip_activo ?? false,
       DATAFAST_MENSAJERIA_MASIVA: row?.gateway_activo          ?? false,
@@ -515,9 +442,6 @@ export class SistemaService {
       limiteCaracteres:      row?.gateway_limite_caracteres       ?? 1000,
       codigoPais:            row?.gateway_codigo_pais             ?? '+51',
       activo:                proveedor ? (ACTIVO_MAP[proveedor] ?? false) : false,
-      metaGraphActivo:       row?.meta_graph_activo       ?? false,
-      twilioActivo:          row?.twilio_activo           ?? false,
-      vonageActivo:          row?.vonage_activo           ?? false,
       customApiActivo:       row?.custom_api_activo       ?? false,
       automatizadoVipActivo: row?.automatizado_vip_activo ?? false,
       limiteDiarioMasivo:    row?.gateway_masivo_limite_diario ?? 500,
@@ -551,7 +475,6 @@ export class SistemaService {
   ): Promise<{
     proveedorActivo: ProveedorActivo | null; apiKeyStored: boolean; apiSecretStored: boolean;
     clientId: string | null; pausa: number; limiteCaracteres: number; codigoPais: string; activo: boolean;
-    metaGraphActivo: boolean; twilioActivo: boolean; vonageActivo: boolean;
     customApiActivo: boolean; automatizadoVipActivo: boolean;
     limiteDiarioMasivo: number; whatsappNumeroOrigen: string | null;
     notifBienvenidaActiva: boolean; notifPagoRecibidoActiva: boolean;
@@ -567,9 +490,9 @@ export class SistemaService {
       const [prow] = await this.ds.query(
         'SELECT proveedor_activo FROM empresas WHERE id = $1', [empresaId],
       ).catch(() => [null]);
-      _targetProvider = prow?.proveedor_activo ?? 'META_GRAPH';
+      _targetProvider = prow?.proveedor_activo ?? 'DATAFAST_MENSAJERIA_MASIVA';
     }
-    const targetProvider = _targetProvider ?? 'META_GRAPH';
+    const targetProvider = _targetProvider ?? 'DATAFAST_MENSAJERIA_MASIVA';
 
     if (dto.proveedorActivo) {
       if (!PROVEEDORES_PUBLICOS.has(dto.proveedorActivo)) {
@@ -582,20 +505,12 @@ export class SistemaService {
     // Validar credenciales antes de activar el switch
     if (dto.activo === true) {
       const [current] = await this.ds.query(
-        `SELECT gateway_api_key, whatsapp_phone_id, whatsapp_token, whatsapp_numero_origen
-         FROM empresas WHERE id = $1`,
+        `SELECT gateway_api_key, whatsapp_numero_origen FROM empresas WHERE id = $1`,
         [empresaId],
       );
       const proveedor = targetProvider;
 
-      if (proveedor === 'META_GRAPH') {
-        // Requiere Phone ID + Access Token almacenados
-        if (!current?.whatsapp_phone_id || !current?.whatsapp_token) {
-          throw new BadRequestException(
-            'Configure el Phone ID y el Access Token de Meta Graph antes de activar el servicio.',
-          );
-        }
-      } else if (proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
+      if (proveedor === 'DATAFAST_MENSAJERIA_MASIVA') {
         // Credencial de MASIVA = número de origen WhatsApp.
         // Acepta el valor en DB o el que viene en este mismo request (evita chicken-and-egg).
         const numOrigen = current?.whatsapp_numero_origen || dto.whatsappNumeroOrigen?.trim();
@@ -605,7 +520,7 @@ export class SistemaService {
           );
         }
       } else {
-        // TWILIO, VONAGE, AUTOMATIZADO_VIP, CUSTOM_API requieren api_key almacenada o en este request
+        // AUTOMATIZADO_VIP, CUSTOM_API requieren api_key almacenada o en este request
         const hasStored = !!current?.gateway_api_key;
         const hasNewKey = !!(dto.apiKey && dto.apiKey !== SENTINEL);
         if (!hasStored && !hasNewKey) {
@@ -648,9 +563,6 @@ export class SistemaService {
 
     if (dto.activo !== undefined) {
       const ACTIVO_COL: Record<string, string> = {
-        META_GRAPH:                 'meta_graph_activo',
-        TWILIO:                     'twilio_activo',
-        VONAGE:                     'vonage_activo',
         CUSTOM_API:                 'custom_api_activo',
         AUTOMATIZADO_VIP:           'automatizado_vip_activo',
         DATAFAST_MENSAJERIA_MASIVA: 'gateway_activo',

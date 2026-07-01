@@ -5,7 +5,6 @@ import { EventEmitter2 }                    from '@nestjs/event-emitter';
 import { ModuleHealthService }              from '../../common/services/module-health.service';
 import { RedisLockService }               from '../../common/redis/redis-lock.service';
 
-import { WhatsAppService }        from '../notificaciones/services/whatsapp.service';
 import { PppoeService }           from '../mikrotik/services/pppoe.service';
 import { QueueService }           from '../mikrotik/services/queue.service';
 import { ArpService }             from '../mikrotik/services/arp.service';
@@ -84,7 +83,6 @@ export class OrquestadorAprovisionamientoService implements OnModuleInit {
     private readonly velocidadOrc: VelocidadOrquestador,
     private readonly smartoltApi:  SmartoltApiService,
     private readonly oltFactory:   OltProviderFactory,
-    private readonly whatsapp:     WhatsAppService,
     private readonly events:       EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
     private readonly moduleHealth: ModuleHealthService,

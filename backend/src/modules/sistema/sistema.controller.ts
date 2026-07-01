@@ -76,18 +76,6 @@ export class SistemaController {
     return ApiResponse.ok(horarios, 'Horarios actualizados');
   }
 
-  // ── GET /admin/sistema/whatsapp-config ───────────────────────
-  @Get('whatsapp-config')
-  @ApiOperation({ summary: 'Obtener configuración de WhatsApp Business' })
-  async getWhatsAppConfig(@CurrentUser() user: JwtPayload) {
-    const cfg = await this.sistema.getWhatsAppConfig(user.empresaId);
-    return ApiResponse.ok({
-      phoneId:    cfg.phoneId,
-      businessId: cfg.businessId,
-      token:      cfg.tokenExists ? '***stored***' : null,
-    });
-  }
-
   // ── GET /admin/sistema/notif-logs ────────────────────────────
   @Get('notif-logs')
   @ApiOperation({ summary: 'Historial de notificaciones enviadas' })
@@ -146,24 +134,6 @@ export class SistemaController {
     await this.sistema.eliminarNotifLog(id, user.empresaId);
   }
 
-  // ── PATCH /admin/sistema/whatsapp-config ─────────────────────
-  @Patch('whatsapp-config')
-  @ApiOperation({ summary: 'Actualizar token y Phone ID de WhatsApp Business' })
-  async updateWhatsAppConfig(
-    @Body() body: { token?: string; phoneId?: string; businessId?: string },
-    @CurrentUser() user: JwtPayload,
-  ) {
-    const cfg = await this.sistema.updateWhatsAppConfig(user.empresaId, body);
-    return ApiResponse.ok(
-      {
-        phoneId:    cfg.phoneId,
-        businessId: cfg.businessId,
-        token:      cfg.tokenExists ? '***stored***' : null,
-      },
-      'Configuración de WhatsApp actualizada',
-    );
-  }
-
   // ── GET /admin/sistema/gateway-config ────────────────────────
   @Get('gateway-config')
   @ApiOperation({ summary: 'Obtener proveedor de mensajería activo y credenciales' })
@@ -178,9 +148,6 @@ export class SistemaController {
       limiteCaracteres:       cfg.limiteCaracteres,
       codigoPais:             cfg.codigoPais,
       activo:                 cfg.activo,
-      metaGraphActivo:        cfg.metaGraphActivo,
-      twilioActivo:           cfg.twilioActivo,
-      vonageActivo:           cfg.vonageActivo,
       customApiActivo:        cfg.customApiActivo,
       automatizadoVipActivo:  cfg.automatizadoVipActivo,
       limiteDiarioMasivo:     cfg.limiteDiarioMasivo,
@@ -225,9 +192,6 @@ export class SistemaController {
         limiteCaracteres:       cfg.limiteCaracteres,
         codigoPais:             cfg.codigoPais,
         activo:                 cfg.activo,
-        metaGraphActivo:        cfg.metaGraphActivo,
-        twilioActivo:           cfg.twilioActivo,
-        vonageActivo:           cfg.vonageActivo,
         customApiActivo:        cfg.customApiActivo,
         automatizadoVipActivo:  cfg.automatizadoVipActivo,
         limiteDiarioMasivo:     cfg.limiteDiarioMasivo,

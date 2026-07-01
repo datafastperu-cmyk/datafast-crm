@@ -7,16 +7,13 @@ import { CACHE_MANAGER }    from '@nestjs/cache-manager';
 import { Cache }            from 'cache-manager';
 import { decrypt }              from '../../../common/utils/encryption.util';
 import { normalizarTelefono }  from '../../../common/utils/telefono.util';
-import { WhatsAppService, TipoNotificacion, WhatsAppParams } from './whatsapp.service';
+import { TipoNotificacion, WhatsAppParams } from './whatsapp.service';
 import { SYSTEM_DEFAULTS_WHATSAPP, SYSTEM_DEFAULTS_EMAIL } from '../../plantillas/plantillas.service';
 import { DatafastMensajeriaMasivaStrategy } from './datafast-mensajeria-masiva.strategy';
 import { SmtpStrategy, SMTP_ASUNTOS }       from './smtp.strategy';
 import { CircuitBreakerRegistry }           from '../../../common/services/circuit-breaker.registry';
 
 export type ProveedorActivo =
-  | 'META_GRAPH'
-  | 'TWILIO'
-  | 'VONAGE'
   | 'CUSTOM_API'
   | 'AUTOMATIZADO_VIP'
   | 'DATAFAST_MENSAJERIA_MASIVA'
@@ -37,77 +34,6 @@ export interface IMensajeriaStrategy {
   ): Promise<EnvioResult>;
 }
 
-
-// ─── Estrategia Twilio ────────────────────────────────────
-// accountSid → apiKey, authToken → apiSecret, fromNumber → clientId
-class TwilioStrategy implements IMensajeriaStrategy {
-  private readonly logger = new Logger('TwilioStrategy');
-  constructor(
-    private readonly http:       HttpService,
-    private readonly accountSid: string,
-    private readonly authToken:  string,
-    private readonly fromNumber: string,
-  ) {}
-
-  async enviarMensaje(telefono: string, texto: string): Promise<EnvioResult> {
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`;
-    try {
-      const res = await firstValueFrom(
-        this.http.post(
-          url,
-          new URLSearchParams({ To: `+${telefono}`, From: this.fromNumber, Body: texto }),
-          {
-            auth: { username: this.accountSid, password: this.authToken },
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 15_000,
-          },
-        ),
-      );
-      return { enviado: true, messageId: res.data?.sid };
-    } catch (err) {
-      const msg = err?.response?.data?.message || err.message;
-      this.logger.error(`Twilio: ${msg}`);
-      return { enviado: false, error: msg };
-    }
-  }
-}
-
-// ─── Estrategia Vonage ────────────────────────────────────
-// apiKey → apiKey, apiSecret → apiSecret, senderName → clientId
-class VonageStrategy implements IMensajeriaStrategy {
-  private readonly logger = new Logger('VonageStrategy');
-  constructor(
-    private readonly http:      HttpService,
-    private readonly apiKey:    string,
-    private readonly apiSecret: string,
-    private readonly from:      string,
-  ) {}
-
-  async enviarMensaje(telefono: string, texto: string): Promise<EnvioResult> {
-    try {
-      const res = await firstValueFrom(
-        this.http.post(
-          'https://rest.nexmo.com/sms/json',
-          {
-            api_key:    this.apiKey,
-            api_secret: this.apiSecret,
-            from:       this.from || 'DataFast',
-            to:         telefono,
-            text:       texto,
-          },
-          { timeout: 15_000 },
-        ),
-      );
-      const msg = res.data?.messages?.[0];
-      if (msg?.status === '0') return { enviado: true, messageId: msg['message-id'] };
-      return { enviado: false, error: msg?.['error-text'] || 'Vonage error' };
-    } catch (err) {
-      const msg = err?.response?.data?.['error-text'] || err.message;
-      this.logger.error(`Vonage: ${msg}`);
-      return { enviado: false, error: msg };
-    }
-  }
-}
 
 // ─── Estrategia AutomatizadoVIP ──────────────────────────
 // apiKey = Bearer token, clientId = instance/sender ID
@@ -207,9 +133,6 @@ const TIPO_A_CODIGO: Record<string, string> = {
 // Orden de intento de fallback cuando el proveedor primario falla con error transitorio.
 // Solo se usa el primero activo distinto al primario.
 const FALLBACK_ORDER: ProveedorActivo[] = [
-  'META_GRAPH',
-  'TWILIO',
-  'VONAGE',
   'AUTOMATIZADO_VIP',
   'CUSTOM_API',
   'DATAFAST_MENSAJERIA_MASIVA',
@@ -237,10 +160,6 @@ interface GwConfig {
   smtpFromEmail: string;
 }
 
-// ─────────────────────────────────────────────────────────────
-// GatewayMensajeriaService — Selecciona la estrategia activa
-// y delega el envío. Para META_GRAPH usa WhatsAppService.
-// ─────────────────────────────────────────────────────────────
 // Sentinel en Redis: la empresa no tiene plantilla personalizada para este código
 const TMPL_NO_CUSTOM = '__no_custom__';
 
@@ -252,9 +171,8 @@ export class GatewayMensajeriaService {
   private readonly strategyCache = new Map<string, { instance: IMensajeriaStrategy; fingerprint: string }>();
 
   constructor(
-    private readonly whatsapp: WhatsAppService,
-    private readonly http:     HttpService,
-    private readonly cb:       CircuitBreakerRegistry,
+    private readonly http:  HttpService,
+    private readonly cb:    CircuitBreakerRegistry,
     @InjectDataSource() private readonly ds:    DataSource,
     @Inject(CACHE_MANAGER)  private readonly cache: Cache,
   ) {}
@@ -389,22 +307,7 @@ export class GatewayMensajeriaService {
     let resultado: EnvioResult;
     let noEnviado = false;
 
-    if (proveedor === 'META_GRAPH') {
-      const cbKey = `${params.empresaId ?? 'global'}:META_GRAPH`;
-      if (!this.cb.canProceed(cbKey)) {
-        this.logger.warn(`[GW] Circuit OPEN META_GRAPH empresa=${params.empresaId}`);
-        return { resultado: { enviado: false, error: 'Circuit breaker OPEN: META_GRAPH' }, noEnviado: true };
-      }
-      resultado = await this.whatsapp.enviar({ ...params, telefono: destino });
-      if (!resultado.enviado && resultado.error === 'WhatsApp no configurado') {
-        noEnviado = true;
-      } else if (resultado.enviado) {
-        this.cb.onSuccess(cbKey);
-      } else {
-        this.cb.onFailure(cbKey);
-      }
-
-    } else if (proveedor === 'SMTP') {
+    if (proveedor === 'SMTP') {
       const emailDestino = await this.resolveClientEmail(params);
       if (!emailDestino) {
         return { resultado: { enviado: false, error: 'Sin email de cliente configurado' }, noEnviado: true };
@@ -507,8 +410,7 @@ export class GatewayMensajeriaService {
         const [row] = await this.ds.query(
           `SELECT proveedor_activo, gateway_api_key, gateway_api_secret, gateway_client_id,
                   gateway_pausa, gateway_limite_caracteres, gateway_codigo_pais, gateway_activo,
-                  meta_graph_activo, twilio_activo, vonage_activo, custom_api_activo,
-                  automatizado_vip_activo, smtp_activo,
+                  custom_api_activo, automatizado_vip_activo, smtp_activo,
                   smtp_host, smtp_port, smtp_usuario, smtp_clave, smtp_from_name, smtp_from_email,
                   whatsapp_numero_origen
            FROM empresas WHERE id = $1`,
@@ -518,9 +420,6 @@ export class GatewayMensajeriaService {
         // Si proveedor_activo es null, la empresa no configuró mensajería → null = sin config
         const proveedor: string | null = row?.proveedor_activo ?? null;
         const activoMap: Record<string, boolean> = {
-          META_GRAPH:                 row?.meta_graph_activo       ?? false,
-          TWILIO:                     row?.twilio_activo           ?? false,
-          VONAGE:                     row?.vonage_activo           ?? false,
           CUSTOM_API:                 row?.custom_api_activo       ?? false,
           AUTOMATIZADO_VIP:           row?.automatizado_vip_activo ?? false,
           DATAFAST_MENSAJERIA_MASIVA: row?.gateway_activo          ?? false,
@@ -574,12 +473,6 @@ export class GatewayMensajeriaService {
 
     let instance: IMensajeriaStrategy | null = null;
     switch (config.proveedor) {
-      case 'TWILIO':
-        instance = (k && s) ? new TwilioStrategy(this.http, k, s, config.clientId) : null;
-        break;
-      case 'VONAGE':
-        instance = (k && s) ? new VonageStrategy(this.http, k, s, config.clientId) : null;
-        break;
       case 'CUSTOM_API':
         instance = (k && config.clientId) ? new CustomApiStrategy(this.http, k, s, config.clientId) : null;
         break;

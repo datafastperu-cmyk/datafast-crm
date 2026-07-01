@@ -101,10 +101,7 @@ export class GatewayMonitorService implements OnModuleInit {
         AND nl.created_at >= NOW() - INTERVAL '7 days'
         AND em.proveedor_activo IS NOT NULL
         AND (
-          (em.proveedor_activo = 'META_GRAPH'                 AND em.meta_graph_activo       = true)
-          OR (em.proveedor_activo = 'TWILIO'                  AND em.twilio_activo            = true)
-          OR (em.proveedor_activo = 'VONAGE'                  AND em.vonage_activo            = true)
-          OR (em.proveedor_activo = 'CUSTOM_API'              AND em.custom_api_activo        = true)
+          (em.proveedor_activo = 'CUSTOM_API'                 AND em.custom_api_activo        = true)
           OR (em.proveedor_activo = 'AUTOMATIZADO_VIP'        AND em.automatizado_vip_activo  = true)
           OR (em.proveedor_activo = 'DATAFAST_MENSAJERIA_MASIVA' AND em.gateway_activo        = true)
         )
