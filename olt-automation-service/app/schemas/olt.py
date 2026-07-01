@@ -311,11 +311,12 @@ class OntResetResponse(BaseModel):
 # ─── Board Topology ──────────────────────────────────────────
 
 class BoardSlotInfo(BaseModel):
-    slot_id:      int
-    board_name:   str
-    status:       str
-    online_onus:  int
-    offline_onus: int
+    slot_id:       int
+    board_name:    str
+    status:        str
+    online_onus:   int
+    offline_onus:  int
+    ports_per_slot: int | None = None
 
 
 class BoardTopologyRequest(BaseModel):
@@ -512,6 +513,70 @@ class HealthSnapshotResponse(BaseModel):
     boards:  list[HealthBoardInfo] = []
     pom:     list[HealthPomInfo]   = []
     error:   str | None = None
+
+
+# ─── VLAN CLI Operations ────────────────────────────────────────
+
+class VlanAddRequest(BaseModel):
+    connection: OltConnectionSchema
+    vlan_id:    int = Field(..., ge=1, le=4094)
+    name:       str = Field(..., min_length=1, max_length=64)
+
+
+class VlanAddResponse(BaseModel):
+    success: bool
+    vlan_id: int | None = None
+    error:   str | None = None
+
+
+class VlanDeleteRequest(BaseModel):
+    connection: OltConnectionSchema
+    vlan_id:    int = Field(..., ge=1, le=4094)
+
+
+class VlanDeleteResponse(BaseModel):
+    success: bool
+    error:   str | None = None
+
+
+# ─── Traffic Table CLI Operations ──────────────────────────────
+
+class TrafficTableAddRequest(BaseModel):
+    connection: OltConnectionSchema
+    name:       str = Field(..., min_length=1, max_length=64)
+    cir_kbps:   int = Field(..., ge=64, le=10_000_000)
+    pir_kbps:   int = Field(..., ge=64, le=10_000_000)
+
+
+class TrafficTableAddResponse(BaseModel):
+    success: bool
+    index:   int | None = None
+    name:    str | None = None
+    error:   str | None = None
+
+
+class TrafficTableDeleteRequest(BaseModel):
+    connection: OltConnectionSchema
+    index:      int = Field(..., ge=0)
+
+
+class TrafficTableDeleteResponse(BaseModel):
+    success: bool
+    error:   str | None = None
+
+
+class TrafficTableEditRequest(BaseModel):
+    connection: OltConnectionSchema
+    index:      int = Field(..., ge=0)
+    name:       str = Field(..., min_length=1, max_length=64)
+    cir_kbps:   int = Field(..., ge=64, le=10_000_000)
+    pir_kbps:   int = Field(..., ge=64, le=10_000_000)
+
+
+class TrafficTableEditResponse(BaseModel):
+    success:   bool
+    new_index: int | None = None
+    error:     str | None = None
 
 
 class WizardTopologyRequest(BaseModel):

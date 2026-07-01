@@ -66,6 +66,16 @@ from app.schemas.olt import (
     HealthSnapshotResponse,
     HealthBoardInfo,
     HealthPomInfo,
+    VlanAddRequest,
+    VlanAddResponse,
+    VlanDeleteRequest,
+    VlanDeleteResponse,
+    TrafficTableAddRequest,
+    TrafficTableAddResponse,
+    TrafficTableDeleteRequest,
+    TrafficTableDeleteResponse,
+    TrafficTableEditRequest,
+    TrafficTableEditResponse,
 )
 from app.drivers import get_driver
 from app.drivers.base import UnsupportedBrandError, DriverNotImplementedError
@@ -94,6 +104,11 @@ from app.services.provisioning import (
     test_olt_connection,
     upgrade_firmware_onu,
     verify_onu,
+    add_vlan,
+    delete_vlan,
+    add_traffic_table,
+    delete_traffic_table,
+    edit_traffic_table,
 )
 
 # ── Job store en memoria (proceso único) ──────────────────────────
@@ -903,4 +918,111 @@ async def wizard_topology(body: WizardTopologyRequest) -> WizardTopologyResponse
         traffic_tables   = traffic_tables,
         line_profiles    = line_profiles,
         service_profiles = service_profiles,
+    )
+
+
+# ── VLAN CLI ──────────────────────────────────────────────────
+
+@app.post(
+    '/api/v1/olt/vlan/add',
+    response_model=VlanAddResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['vlan'],
+    summary='Crear una VLAN en la OLT Huawei MA5800 vía SSH CLI',
+)
+async def vlan_add(body: VlanAddRequest) -> VlanAddResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(add_vlan, body.connection, body.vlan_id, body.name)
+        except ProvisioningError as exc:
+            return VlanAddResponse(success=False, error=str(exc))
+    return VlanAddResponse(success=result['success'], vlan_id=result.get('vlan_id'), error=result.get('error'))
+
+
+@app.post(
+    '/api/v1/olt/vlan/delete',
+    response_model=VlanDeleteResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['vlan'],
+    summary='Eliminar una VLAN de la OLT Huawei MA5800 vía SSH CLI',
+)
+async def vlan_delete(body: VlanDeleteRequest) -> VlanDeleteResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(delete_vlan, body.connection, body.vlan_id)
+        except ProvisioningError as exc:
+            return VlanDeleteResponse(success=False, error=str(exc))
+    return VlanDeleteResponse(success=result['success'], error=result.get('error'))
+
+
+# ── Traffic Table CLI ─────────────────────────────────────────
+
+@app.post(
+    '/api/v1/olt/traffic-table/add',
+    response_model=TrafficTableAddResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['traffic-table'],
+    summary='Crear un traffic table en la OLT Huawei MA5800 vía SSH CLI',
+)
+async def traffic_table_add(body: TrafficTableAddRequest) -> TrafficTableAddResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                add_traffic_table, body.connection, body.name, body.cir_kbps, body.pir_kbps,
+            )
+        except ProvisioningError as exc:
+            return TrafficTableAddResponse(success=False, error=str(exc))
+    return TrafficTableAddResponse(
+        success = result['success'],
+        index   = result.get('index'),
+        name    = result.get('name'),
+        error   = result.get('error'),
+    )
+
+
+@app.post(
+    '/api/v1/olt/traffic-table/delete',
+    response_model=TrafficTableDeleteResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['traffic-table'],
+    summary='Eliminar un traffic table de la OLT Huawei MA5800 vía SSH CLI',
+)
+async def traffic_table_delete(body: TrafficTableDeleteRequest) -> TrafficTableDeleteResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(delete_traffic_table, body.connection, body.index)
+        except ProvisioningError as exc:
+            return TrafficTableDeleteResponse(success=False, error=str(exc))
+    return TrafficTableDeleteResponse(success=result['success'], error=result.get('error'))
+
+
+@app.post(
+    '/api/v1/olt/traffic-table/edit',
+    response_model=TrafficTableEditResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['traffic-table'],
+    summary='Editar un traffic table en la OLT Huawei MA5800 (delete + recreate)',
+    description=(
+        'Elimina el traffic table por índice y lo recrea con los nuevos parámetros. '
+        'Retorna new_index con el índice asignado tras la recreación. '
+        'El caller debe haber verificado que no hay ONUs en uso antes de llamar.'
+    ),
+)
+async def traffic_table_edit(body: TrafficTableEditRequest) -> TrafficTableEditResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                edit_traffic_table, body.connection, body.index, body.name, body.cir_kbps, body.pir_kbps,
+            )
+        except ProvisioningError as exc:
+            return TrafficTableEditResponse(success=False, error=str(exc))
+    return TrafficTableEditResponse(
+        success   = result['success'],
+        new_index = result.get('new_index'),
+        error     = result.get('error'),
     )

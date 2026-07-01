@@ -1687,6 +1687,175 @@ def get_huawei_ont_version(
     }
 
 
+# ── VLAN / Traffic-Table CLI ──────────────────────────────────
+
+def add_vlan(
+    conn:    OltConnectionSchema,
+    vlan_id: int,
+    name:    str,
+) -> dict[str, Any]:
+    """
+    Crea una VLAN en la OLT Huawei MA5800.
+    Comandos: config → vlan {id} smart → vlan desc {id} {name} → quit
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'add_vlan no implementado para marca: {conn.brand.value}')
+
+    safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', name)[:64]
+    commands = [
+        'config',
+        f'vlan {vlan_id} smart',
+        f'vlan desc {vlan_id} {safe_name}',
+        'quit',
+    ]
+    logger.info('add_vlan: vlan_id=%d name=%s en %s', vlan_id, safe_name, conn.ip)
+    try:
+        output = _send_config_set(conn, commands)
+        _check_cli_error(conn.brand, 'add_vlan', output)
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+    except (ConnectionError, ProvisioningError) as exc:
+        return {'success': False, 'error': str(exc)}
+    logger.info('add_vlan: VLAN %d creada en %s', vlan_id, conn.ip)
+    return {'success': True, 'vlan_id': vlan_id}
+
+
+def delete_vlan(
+    conn:    OltConnectionSchema,
+    vlan_id: int,
+) -> dict[str, Any]:
+    """
+    Elimina una VLAN de la OLT Huawei MA5800.
+    Comando: config → undo vlan {id} → quit
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'delete_vlan no implementado para marca: {conn.brand.value}')
+
+    commands = ['config', f'undo vlan {vlan_id}', 'quit']
+    logger.info('delete_vlan: vlan_id=%d en %s', vlan_id, conn.ip)
+    try:
+        output = _send_config_set(conn, commands)
+        _check_cli_error(conn.brand, 'delete_vlan', output)
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+    except (ConnectionError, ProvisioningError) as exc:
+        return {'success': False, 'error': str(exc)}
+    logger.info('delete_vlan: VLAN %d eliminada en %s', vlan_id, conn.ip)
+    return {'success': True}
+
+
+def add_traffic_table(
+    conn:     OltConnectionSchema,
+    name:     str,
+    cir_kbps: int,
+    pir_kbps: int,
+) -> dict[str, Any]:
+    """
+    Crea un traffic table en la OLT Huawei MA5800.
+    Tras crear, ejecuta display traffic table all para obtener el índice asignado.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'add_traffic_table no implementado para marca: {conn.brand.value}')
+
+    safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', name)[:64]
+    commands = [
+        'config',
+        (f'traffic table ip name {safe_name} cir {cir_kbps} pir {pir_kbps} '
+         f'priority 0 priority-policy local-setting'),
+        'quit',
+    ]
+    logger.info('add_traffic_table: name=%s cir=%d pir=%d en %s', safe_name, cir_kbps, pir_kbps, conn.ip)
+    try:
+        output = _send_config_set(conn, commands)
+        _check_cli_error(conn.brand, 'add_traffic_table', output)
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+    except (ConnectionError, ProvisioningError) as exc:
+        return {'success': False, 'error': str(exc)}
+
+    # Consultar índice asignado
+    try:
+        all_raw = _send_single_command(conn, 'display traffic table all')
+        rows    = _parse_output(conn.brand, 'display_traffic_table_all.textfsm', all_raw)
+        for row in rows:
+            if 'raw' in row:
+                continue
+            if str(row.get('TrafficName') or '').strip() == safe_name:
+                try:
+                    idx = int(row.get('TrafficIndex') or -1)
+                except (ValueError, TypeError):
+                    continue
+                if idx >= 0:
+                    logger.info('add_traffic_table: %s → index=%d en %s', safe_name, idx, conn.ip)
+                    return {'success': True, 'index': idx, 'name': safe_name}
+    except (ConnectionError, CommandError) as exc:
+        logger.warning('add_traffic_table: tabla creada pero no se pudo obtener índice en %s — %s', conn.ip, exc)
+
+    return {'success': True, 'index': None, 'name': safe_name}
+
+
+def delete_traffic_table(
+    conn:  OltConnectionSchema,
+    index: int,
+) -> dict[str, Any]:
+    """
+    Elimina un traffic table de la OLT Huawei MA5800 por índice.
+    Comando: config → undo traffic table ip index {index} → quit
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'delete_traffic_table no implementado para marca: {conn.brand.value}')
+
+    commands = ['config', f'undo traffic table ip index {index}', 'quit']
+    logger.info('delete_traffic_table: index=%d en %s', index, conn.ip)
+    try:
+        output = _send_config_set(conn, commands)
+        _check_cli_error(conn.brand, 'delete_traffic_table', output)
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+    except (ConnectionError, ProvisioningError) as exc:
+        return {'success': False, 'error': str(exc)}
+    logger.info('delete_traffic_table: index=%d eliminado en %s', index, conn.ip)
+    return {'success': True}
+
+
+def edit_traffic_table(
+    conn:     OltConnectionSchema,
+    index:    int,
+    name:     str,
+    cir_kbps: int,
+    pir_kbps: int,
+) -> dict[str, Any]:
+    """
+    Edita un traffic table Huawei MA5800: elimina por índice y lo recrea.
+    Huawei CLI no permite rename in-place; retorna el nuevo índice asignado.
+    Prerequisito: el caller (NestJS) debe haber verificado que no hay ONUs
+    en uso antes de llamar este endpoint.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'edit_traffic_table no implementado para marca: {conn.brand.value}')
+
+    del_result = delete_traffic_table(conn, index)
+    if not del_result['success']:
+        return {
+            'success': False,
+            'error':   f'Fallo al eliminar tabla index={index}: {del_result.get("error")}',
+        }
+
+    add_result = add_traffic_table(conn, name, cir_kbps, pir_kbps)
+    if not add_result['success']:
+        return {
+            'success': False,
+            'error':   f'Tabla eliminada pero fallo al recrear "{name}": {add_result.get("error")}',
+        }
+
+    return {'success': True, 'new_index': add_result.get('index')}
+
+
 # ── Dispatchers públicos ──────────────────────────────────────
 
 def provision_onu(
