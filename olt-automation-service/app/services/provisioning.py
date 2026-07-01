@@ -1520,9 +1520,11 @@ def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
     Síncrono — llamar desde asyncio.to_thread().
     """
     cmds = [
-        'display ont-lineprofile all',
-        'display ont-srvprofile all',
-        'display traffic table all',
+        'config',
+        'display ont-lineprofile gpon all',
+        'display ont-srvprofile gpon all',
+        'display traffic table ip all',
+        'quit',
     ]
     try:
         parts = _paramiko_huawei_run(
@@ -1530,7 +1532,8 @@ def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
             timeout=float(settings.ssh_command_timeout),
             return_list=True,
         )
-        lp_raw, sp_raw, tt_raw = parts[0], parts[1], parts[2]
+        # parts[0]=config, parts[1]=lp, parts[2]=sp, parts[3]=tt, parts[4]=quit
+        lp_raw, sp_raw, tt_raw = parts[1], parts[2], parts[3]
     except ProvisioningError as exc:
         logger.warning('list_huawei_profiles: fallo SSH en %s — %s', conn.ip, exc)
         return {
