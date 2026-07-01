@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Cpu, Wifi, AlertTriangle, RefreshCw, Loader2, ChevronRight } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, Trash2, Cpu, Wifi, RefreshCw, Loader2, ChevronRight } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo, type ProveedorResumen } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { OltWizardNativoModal } from '@/components/red/OltWizardNativoModal';
+import { DeleteOltModal }        from '@/components/red/DeleteOltModal';
 import { cn } from '@/lib/utils';
 
 const MARCA_COLOR: Record<string, string> = {
@@ -60,9 +61,9 @@ export default function OltsConfigPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [wizardOpen, setWizardOpen]   = useState(false);
-  const [deleteId,  setDeleteId]      = useState<string | null>(null);
-  const [testingId, setTestingId]     = useState<string | null>(null);
+  const [wizardOpen,  setWizardOpen]  = useState(false);
+  const [deleteOlt,   setDeleteOlt]   = useState<OltDispositivo | null>(null);
+  const [testingId,   setTestingId]   = useState<string | null>(null);
 
   const { data: olts = [], isLoading } = useQuery({
     queryKey: ['olts-config'],
@@ -77,15 +78,6 @@ export default function OltsConfigPage() {
   });
 
   const resumenMap = new Map(resumenList.map((r) => [r.oltId, r]));
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => oltNativoApi.eliminar(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['olt-nativas'] });
-      qc.invalidateQueries({ queryKey: ['olts-config'] });
-      setDeleteId(null);
-    },
-  });
 
   const handleTest = async (olt: OltDispositivo) => {
     setTestingId(olt.id);
@@ -223,7 +215,7 @@ export default function OltsConfigPage() {
                           : <RefreshCw className="w-3.5 h-3.5" />}
                       </button>
                       <button
-                        onClick={() => setDeleteId(olt.id)}
+                        onClick={() => setDeleteOlt(olt)}
                         className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                         title="Eliminar"
                       >
@@ -245,49 +237,13 @@ export default function OltsConfigPage() {
         onClose={() => setWizardOpen(false)}
       />
 
-      {/* Delete Confirm */}
-      {deleteId && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) setDeleteId(null); }}
-        >
-          <div className="bg-background rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4
-                          animate-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <AlertTriangle className="w-5 h-5 text-red-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground">Eliminar OLT</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Esta acción es reversible (soft delete). Las ONUs asociadas quedan sin OLT activa.
-                </p>
-              </div>
-            </div>
-            {deleteMutation.isError && (
-              <p className="text-xs text-red-500 mb-3">
-                {(deleteMutation.error as any)?.response?.data?.message ?? 'Error al eliminar'}
-              </p>
-            )}
-            <div className="flex gap-2.5 justify-end">
-              <button
-                onClick={() => setDeleteId(null)}
-                className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-accent transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => deleteMutation.mutate(deleteId)}
-                disabled={deleteMutation.isPending}
-                className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600
-                           transition-colors disabled:opacity-60"
-              >
-                {deleteMutation.isPending ? 'Eliminando…' : 'Eliminar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteOltModal
+        open={!!deleteOlt}
+        onClose={() => setDeleteOlt(null)}
+        oltId={deleteOlt?.id ?? ''}
+        oltNombre={deleteOlt?.nombre ?? ''}
+        onDeleted={() => setDeleteOlt(null)}
+      />
     </div>
   );
 }

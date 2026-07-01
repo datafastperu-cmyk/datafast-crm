@@ -24,12 +24,12 @@ import { TabFirmware }   from '@/components/olt/TabFirmware';
 import { ProveedoresTab } from '@/components/red/ProveedoresTab';
 import { TrafficTablesSection } from '@/components/red/TopologiaTab';
 import { SaludTab }       from '@/components/red/SaludTab';
-import { PeligrosoTab }   from '@/components/red/PeligrosoTab';
+import { DeleteOltModal }  from '@/components/red/DeleteOltModal';
 
 // ─── Tabs ────────────────────────────────────────────────────────
 
 type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'tarjetas' | 'firmware'
-           | 'proveedores' | 'traffic' | 'salud' | 'peligroso';
+           | 'proveedores' | 'traffic' | 'salud';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'detalles',    label: 'Detalles',    icon: <Settings       className="w-3.5 h-3.5" /> },
@@ -42,7 +42,6 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'traffic',     label: 'Traffic Tables', icon: <Share2      className="w-3.5 h-3.5" /> },
   { id: 'salud',       label: 'Salud',       icon: <Gauge          className="w-3.5 h-3.5" /> },
   { id: 'eventos',     label: 'Eventos',     icon: <Activity       className="w-3.5 h-3.5" /> },
-  { id: 'peligroso',   label: 'Peligroso',   icon: <AlertTriangle  className="w-3.5 h-3.5 text-red-400" /> },
 ];
 
 const MARCA_COLOR: Record<string, string> = {
@@ -66,7 +65,8 @@ export default function OltDetallePage() {
   const router      = useRouter();
   const qc          = useQueryClient();
   const { toast }   = useToast();
-  const [tab, setTab] = useState<TabId>('detalles');
+  const [tab,         setTab]         = useState<TabId>('detalles');
+  const [deleteOpen,  setDeleteOpen]  = useState(false);
 
   // ── OLT base ────────────────────────────────────────────────────
   const { data: olt, isLoading } = useQuery({
@@ -167,8 +167,17 @@ export default function OltDetallePage() {
           </div>
         </div>
 
-        {/* Botón Sincronizar */}
+        {/* Botones Sincronizar + Eliminar */}
         <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDeleteOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 text-red-400
+                       hover:bg-red-500/10 transition-colors text-sm font-medium"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            Eliminar OLT
+          </button>
           <button
             onClick={() => { resetSync(); syncMut.mutate(); }}
             disabled={isSyncing}
@@ -180,6 +189,7 @@ export default function OltDetallePage() {
               : <><RefreshCw className="w-4 h-4" />Sincronizar</>
             }
           </button>
+          </div>
           {/* Progress bar de sync */}
           {sync.fase === 'running' && (
             <div className="w-48">
@@ -235,14 +245,15 @@ export default function OltDetallePage() {
         {tab === 'traffic'     && <TrafficTablesSection oltId={id} />}
         {tab === 'salud'       && <SaludTab      oltId={id} />}
         {tab === 'eventos'     && <TabEventos    oltId={id} />}
-        {tab === 'peligroso'   && (
-          <PeligrosoTab
-            oltId={id}
-            oltNombre={olt.nombre}
-            onDeleted={() => router.push('/configuracion/olts')}
-          />
-        )}
       </div>
+
+      <DeleteOltModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        oltId={id}
+        oltNombre={olt.nombre}
+        onDeleted={() => router.push('/configuracion/olts')}
+      />
     </div>
   );
 }
