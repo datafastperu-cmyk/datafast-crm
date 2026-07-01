@@ -104,8 +104,17 @@ def _huawei_enter_enable(session: Any, conn: OltConnectionSchema) -> None:
     try:
         prompt = session.find_prompt()
         if prompt.strip().endswith('>'):
-            session.send_command('enable', expect_string=r'[>#]', read_timeout=10)
-            logger.debug('huawei_enter_enable: modo privilegiado activo en %s', conn.ip)
+            try:
+                session.send_command('enable', expect_string=r'[>#]', read_timeout=10)
+                logger.debug('huawei_enter_enable: modo privilegiado activo en %s', conn.ip)
+            except Exception:  # noqa: BLE001
+                # enable puede requerir password o no estar disponible.
+                # Enviamos \r\n para cancelar cualquier prompt pendiente (Password:)
+                # y limpiamos el canal para que el siguiente comando llegue limpio.
+                session.write_channel('\r\n')
+                _time_read.sleep(0.5)
+                session.clear_buffer()
+                logger.debug('huawei_enter_enable: enable falló — continuando en modo usuario en %s', conn.ip)
         # Deshabilitar paginación usando _send_huawei_confirmed para manejar
         # correctamente el prompt { <cr>||<K> }: que MA5800 muestra como
         # confirmación antes de aplicar screen-length 0 temporary.
