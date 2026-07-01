@@ -17,6 +17,7 @@ import {
   OltSyncResultPayload,
   OltSyncErrorPayload,
 } from './services/olt-sync.service';
+import { RED_ONU_SEÑAL, RED_BATCH_DONE } from '../red/red-onus.service';
 
 // ─────────────────────────────────────────────────────────────
 // OltGateway — WebSocket namespace /olt
@@ -119,5 +120,19 @@ export class OltGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server
       ?.to(`olt:${payload.oltId}`)
       .emit('olt:sync:error', payload);
+  }
+
+  // ── Eventos señal batch (RedModule) ──────────────────────────
+
+  @OnEvent(RED_ONU_SEÑAL)
+  onOnuSenal(payload: Record<string, unknown>): void {
+    const empresaId = payload.empresaId as string;
+    if (empresaId) this.server?.to(`empresa:${empresaId}`).emit('onu:señal', payload);
+  }
+
+  @OnEvent(RED_BATCH_DONE)
+  onBatchDone(payload: Record<string, unknown>): void {
+    const empresaId = payload.empresaId as string;
+    if (empresaId) this.server?.to(`empresa:${empresaId}`).emit('bulk:señal:completado', payload);
   }
 }
