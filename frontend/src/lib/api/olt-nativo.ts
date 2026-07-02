@@ -97,15 +97,16 @@ export interface OltSyncJob {
 }
 
 export interface OltEventoLog {
-  id:                   string;
-  oltId:                string;
-  onuSn:                string | null;
-  tipo:                 string;
-  estado:               string;
-  latenciaMs:           number | null;
+  id:                    string;
+  onuSn:                 string | null;
+  tipo:                  string;
+  estado:                string;
+  proveedorExitoso:      string | null;
   proveedoresIntentados: string[];
-  payload?:             Record<string, unknown>;
-  createdAt:            string;
+  errorMensaje:          string | null;
+  duracionMs:            number | null;
+  usuarioId:             string | null;
+  createdAt:             string;
 }
 
 export interface FtthRegistro {

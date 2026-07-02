@@ -1329,7 +1329,18 @@ export class OltNativoService implements OnModuleInit {
   ): Promise<{ data: any[]; total: number }> {
     const [rows, total] = await Promise.all([
       this.ds.query<any[]>(
-        `SELECT * FROM olt_operacion_log
+        `SELECT
+           id,
+           onu_sn              AS "onuSn",
+           tipo,
+           estado,
+           proveedor_exitoso   AS "proveedorExitoso",
+           proveedores_intentados AS "proveedoresIntentados",
+           error_mensaje       AS "errorMensaje",
+           duracion_ms         AS "duracionMs",
+           usuario_id          AS "usuarioId",
+           created_at          AS "createdAt"
+         FROM olt_operacion_log
          WHERE olt_id = $1 AND empresa_id = $2
          ORDER BY created_at DESC
          LIMIT $3 OFFSET $4`,
