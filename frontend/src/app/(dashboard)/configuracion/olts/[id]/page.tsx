@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Cpu, RefreshCw, Loader2,
-  Settings, Activity, Network, Layers, Users, Server, Zap,
+  Settings, Activity, Network, Users, Server, Zap,
   Plug, Share2, Gauge, AlertTriangle,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
@@ -19,7 +19,6 @@ import { TabEventos }    from '@/components/olt/TabEventos';
 import { TabVlans }      from '@/components/olt/TabVlans';
 import { TabProfiles }   from '@/components/olt/TabProfiles';
 import { TabOnus }       from '@/components/olt/TabOnus';
-import { TabTarjetas }   from '@/components/olt/TabTarjetas';
 import { TabFirmware }   from '@/components/olt/TabFirmware';
 import { ProveedoresTab } from '@/components/red/ProveedoresTab';
 import { TrafficTablesSection } from '@/components/red/TopologiaTab';
@@ -28,12 +27,11 @@ import { DeleteOltModal }  from '@/components/red/DeleteOltModal';
 
 // ─── Tabs ────────────────────────────────────────────────────────
 
-type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'tarjetas' | 'firmware'
+type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'firmware'
            | 'proveedores' | 'traffic' | 'salud';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'detalles',    label: 'Detalles',    icon: <Settings       className="w-3.5 h-3.5" /> },
-  { id: 'tarjetas',    label: 'Tarjetas',    icon: <Layers         className="w-3.5 h-3.5" /> },
   { id: 'vlans',       label: 'VLANs',       icon: <Network        className="w-3.5 h-3.5" /> },
   { id: 'profiles',    label: 'Perfiles',    icon: <Server         className="w-3.5 h-3.5" /> },
   { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" /> },
@@ -236,7 +234,6 @@ export default function OltDetallePage() {
       {/* ── Tab content ─────────────────────────────────────────── */}
       <div>
         {tab === 'detalles'    && <TabDetalles   olt={olt} oltId={id} />}
-        {tab === 'tarjetas'    && <TabTarjetas   oltId={id} />}
         {tab === 'vlans'       && <TabVlans      oltId={id} />}
         {tab === 'profiles'    && <TabProfiles   oltId={id} />}
         {tab === 'onus'        && <TabOnus       oltId={id} />}
