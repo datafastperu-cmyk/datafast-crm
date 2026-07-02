@@ -63,6 +63,7 @@ export class PagosService {
     // El DTO ya usa los mismos valores lowercase que la entidad gracias al @Transform
     const metodoPagoEntity = dto.metodoPago as unknown as MetodoPago;
     const contratosParaReactivar: Contrato[] = [];
+    const contratosEnProrroga:    string[]   = [];
 
     // ── TRANSACCIÓN ACID ──────────────────────────────────────
     const savedPago = await this.ds.transaction(async (manager) => {
@@ -199,6 +200,19 @@ export class PagosService {
               contratosParaReactivar.push(...todos);
             }
           }
+        } else if (contrato && contrato.estado === EstadoContrato.ACTIVO && contrato.enProrroga) {
+          // Contrato activo en prórroga: si la deuda queda en cero al pagar, marcar promesa cumplida
+          // y limpiar address-list prorroga en MikroTik. No reprovisionamos porque el servicio ya está activo.
+          const [deudaRow] = await manager.query<{ deuda: string }[]>(`
+            SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
+            FROM facturas f
+            WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
+              AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+              AND f.deleted_at IS NULL
+          `, [contrato.id, factura.clienteId]);
+          if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
+            contratosEnProrroga.push(contrato.id);
+          }
         } else if (contrato && contrato.estado === EstadoContrato.PENDIENTE_ACTIVACION) {
           this.logger.warn(
             `[PAGO] Contrato ${contrato.id} en pendiente_activacion — pago S/${dto.monto} registrado, requiere activación manual`,
@@ -233,6 +247,16 @@ export class PagosService {
         removeOnFail:     500,
       });
       this.logger.log(`Job reactivar-contrato encolado para contrato ${c.id}`);
+    }
+
+    // Contratos activos en prórroga que saldaron su deuda: cumplir promesa + limpiar MikroTik
+    for (const contratoId of contratosEnProrroga) {
+      this.verificarYReactivarContrato(contratoId, empresaId, user, savedPago.id)
+        .catch((err: any) =>
+          this.logger.error(
+            `[PAGO] Error al cumplir promesa de contrato en prorroga ${contratoId}: ${err.message}`,
+          ),
+        );
     }
 
     // Auditoría
