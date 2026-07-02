@@ -54,19 +54,88 @@ export class PagoRepository {
   // ── Listado paginado con filtros ───────────────────────────
   async findAllPaginated(
     empresaId: string,
-    filters: FilterPagoDto,
-  ): Promise<PaginatedResult<Pago>> {
-    const qb = this.buildFilterQuery(empresaId, filters);
-    return paginate(qb, filters, [
-      'registradoEn', 'fechaPago', 'monto', 'estado', 'metodoPago',
-    ]);
+    f: FilterPagoDto,
+  ): Promise<PaginatedResult<any>> {
+    const page   = f.page  ?? 1;
+    const limit  = f.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const conds: string[] = ['p.empresa_id = $1'];
+    const params: any[]   = [empresaId];
+    let   idx             = 2;
+
+    if (f.search)    { conds.push(`(p.numero_operacion ILIKE $${idx} OR p.banco ILIKE $${idx})`); params.push(`%${f.search}%`); idx++; }
+    if (f.estado)    { conds.push(`p.estado = $${idx++}`);        params.push(f.estado); }
+    if (f.metodoPago){ conds.push(`p.metodo_pago = $${idx++}`);   params.push(f.metodoPago); }
+    if (f.clienteId) { conds.push(`p.cliente_id = $${idx++}`);    params.push(f.clienteId); }
+    if (f.facturaId) { conds.push(`p.factura_id = $${idx++}`);    params.push(f.facturaId); }
+    if (f.contratoId){ conds.push(`p.contrato_id = $${idx++}`);   params.push(f.contratoId); }
+    if (f.cajeroId)  { conds.push(`p.cajero_id = $${idx++}`);     params.push(f.cajeroId); }
+    if (f.banco)     { conds.push(`p.banco ILIKE $${idx++}`);     params.push(`%${f.banco}%`); }
+    if (f.numeroOperacion) { conds.push(`p.numero_operacion ILIKE $${idx++}`); params.push(`%${f.numeroOperacion}%`); }
+    if (f.sectorId)  { conds.push(`cl.zona_id = $${idx++}`);      params.push(f.sectorId); }
+    if (f.routerId)  { conds.push(`co.router_id = $${idx++}`);    params.push(f.routerId); }
+    if (f.conciliado !== undefined) { conds.push(`p.conciliado = $${idx++}`); params.push(f.conciliado); }
+    if (f.soloHoy)   { conds.push(`p.fecha_pago = CURRENT_DATE`); }
+
+    const desde = f.fechaDesde || f.fechaInicio;
+    const hasta = f.fechaHasta || f.fechaFin;
+    if (desde) { conds.push(`p.fecha_pago >= $${idx++}`); params.push(desde); }
+    if (hasta) { conds.push(`p.fecha_pago <= $${idx++}`); params.push(hasta); }
+
+    const where = conds.join(' AND ');
+
+    const allowed: Record<string, string> = {
+      registradoEn: 'p.registrado_en',
+      fechaPago:    'p.fecha_pago',
+      monto:        'p.monto',
+      estado:       'p.estado',
+      metodoPago:   'p.metodo_pago',
+    };
+    const sortCol = allowed[f.sortBy ?? ''] ?? 'p.registrado_en';
+    const sortDir = f.sortOrder === 'ASC' ? 'ASC' : 'DESC';
+
+    const [countRow] = await this.ds.query(
+      `SELECT COUNT(*) AS total
+       FROM pagos p
+       LEFT JOIN clientes cl ON cl.id = p.cliente_id
+       LEFT JOIN contratos co ON co.id = p.contrato_id
+       WHERE ${where}`,
+      params,
+    );
+    const total = parseInt(countRow?.total ?? '0', 10);
+
+    const data = await this.ds.query(
+      `SELECT
+         p.id, p.empresa_id, p.cliente_id, p.factura_id, p.contrato_id,
+         p.monto, p.moneda, p.metodo_pago, p.banco, p.numero_operacion,
+         p.numero_cuenta, p.estado, p.verificado_por, p.verificado_en,
+         p.motivo_rechazo, p.comprobante_url, p.mp_payment_id, p.mp_status,
+         p.fecha_pago, p.registrado_en, p.cajero_id, p.notas,
+         p.conciliado, p.conciliado_en, p.conciliado_por, p.extracto_banco_ref,
+         p.created_at, p.updated_at,
+         COALESCE(
+           cl.nombre_completo,
+           NULLIF(TRIM(CONCAT_WS(' ', cl.nombres, cl.apellido_paterno, cl.apellido_materno)), '')
+         ) AS cliente_nombre,
+         f.numero_completo AS numero_comprobante
+       FROM pagos p
+       LEFT JOIN clientes cl ON cl.id = p.cliente_id
+       LEFT JOIN contratos co ON co.id = p.contrato_id
+       LEFT JOIN facturas f ON f.id = p.factura_id AND f.deleted_at IS NULL
+       WHERE ${where}
+       ORDER BY ${sortCol} ${sortDir}
+       LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...params, limit, offset],
+    );
+
+    return { data, total, page, limit };
   }
 
   buildFilterQuery(empresaId: string, f: FilterPagoDto): SelectQueryBuilder<Pago> {
     const qb = this.repo.createQueryBuilder('p')
       .where('p.empresa_id = :empresaId', { empresaId });
 
-    // JOINs opcionales — sólo se añaden si algún filtro los requiere
     const needsContrato = !!(f.routerId);
     const needsCliente  = !!(f.sectorId);
 

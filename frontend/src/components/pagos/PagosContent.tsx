@@ -311,7 +311,7 @@ export function PagosContent() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium text-foreground">
-                      {p.cliente_nombre ?? 'Cliente'}
+                      {p.cliente_nombre ?? p.clienteNombre ?? 'Sin nombre'}
                     </p>
                     <span className={cn(
                       'text-[10px] font-semibold px-1.5 py-px rounded-full',
@@ -321,6 +321,11 @@ export function PagosContent() {
                     )}>
                       {p.estado.replace(/_/g, ' ')}
                     </span>
+                    {p.numero_comprobante && (
+                      <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-px rounded">
+                        {p.numero_comprobante}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {p.metodoPago.replace(/_/g, ' ')}

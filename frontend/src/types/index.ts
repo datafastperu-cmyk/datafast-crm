@@ -256,9 +256,10 @@ export interface Pago {
   notas?:          string;
   comprobanteUrl?: string;
   conciliado:      boolean;
-  // Campos denormalizados (viene del backend o mock)
-  clienteNombre?:  string;
-  cliente_nombre?: string;
+  // Campos denormalizados (enriquecidos por el backend)
+  clienteNombre?:       string;
+  cliente_nombre?:      string;
+  numero_comprobante?:  string | null;
 }
 
 // ─── Monitoreo ────────────────────────────────────────────────
