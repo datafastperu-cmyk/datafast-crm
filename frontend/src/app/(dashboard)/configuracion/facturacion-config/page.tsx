@@ -576,8 +576,17 @@ function BancosCard() {
         }>
         <div className="divide-y divide-border">
           {bancos.map(b => (
-            <div key={b.id} className="flex items-center gap-3 py-2.5">
-              <span className="flex-1 text-sm text-foreground">{b.nombre}</span>
+            <div key={b.id} className="flex items-center gap-3 py-3">
+              <div className="flex-shrink-0 w-2 h-8 rounded-full bg-blue-400 dark:bg-blue-500" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">{b.nombre}</span>
+                  {b.esProtegido && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded
+                                     bg-muted text-muted-foreground">Sistema</span>
+                  )}
+                </div>
+              </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => setModal(b)}
                   className="p-1.5 rounded-lg hover:bg-muted transition-colors">
@@ -654,8 +663,17 @@ function FormasPagoCard() {
         }>
         <div className="divide-y divide-border">
           {formas.map(f => (
-            <div key={f.id} className="flex items-center gap-3 py-2.5">
-              <span className="flex-1 text-sm text-foreground">{f.nombre}</span>
+            <div key={f.id} className="flex items-center gap-3 py-3">
+              <div className="flex-shrink-0 w-2 h-8 rounded-full bg-emerald-400 dark:bg-emerald-500" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">{f.nombre}</span>
+                  {f.esProtegido && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded
+                                     bg-muted text-muted-foreground">Sistema</span>
+                  )}
+                </div>
+              </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => setModal(f)}
                   className="p-1.5 rounded-lg hover:bg-muted transition-colors">
