@@ -65,6 +65,20 @@ class TrafficTableInfo:
 
 
 @dataclass
+class PonPortInfo:
+    slot:         int
+    port:         int
+    port_type:    str         # 'GPON' | 'EPON' | 'XGS-PON'
+    admin_state:  str         # 'enabled' | 'disabled' | 'unknown'
+    oper_state:   str         # 'up' | 'down' | 'unknown'
+    autofind:     str         # 'autofind' | 'manual' | 'unknown'
+    onus_total:   int = 0
+    onus_online:  int = 0
+    onus_offline: int = 0
+    max_capacity: int = 128
+
+
+@dataclass
 class OltTopology:
     model: str
     firmware_version: str
@@ -121,6 +135,15 @@ class OltDriver(ABC):
     @abstractmethod
     def get_all_pom(self) -> list[PomData]:
         """POM de todos los puertos PON activos (itera get_board_status)."""
+
+    def get_pon_port_status(self, slot: int) -> list[PonPortInfo]:
+        """
+        Estado operativo de todos los puertos PON en un slot:
+        admin/oper state, ONUs online/offline.
+        Implementación opcional — retorna [] por defecto.
+        No es abstracto para no forzar implementación en drivers sin soporte.
+        """
+        return []
 
     @abstractmethod
     def get_ont_list(self, slot: int, port: int) -> list[OntInfo]:

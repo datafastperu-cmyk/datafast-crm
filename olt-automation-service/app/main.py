@@ -66,6 +66,9 @@ from app.schemas.olt import (
     HealthSnapshotResponse,
     HealthBoardInfo,
     HealthPomInfo,
+    PonPortsRequest,
+    PonPortsResponse,
+    PonPortInfoSchema,
     VlanAddRequest,
     VlanAddResponse,
     VlanDeleteRequest,
@@ -850,6 +853,54 @@ async def health_snapshot(body: HealthSnapshotRequest) -> HealthSnapshotResponse
     ]
 
     return HealthSnapshotResponse(success=True, boards=boards, pom=pom)
+
+
+# ── Health PON ports (estado por puerto PON) ───────────────────
+
+@app.post(
+    '/api/v1/olt/health/pon-ports',
+    response_model=PonPortsResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['health'],
+    summary='Estado operativo de los puertos PON en un slot (admin, oper, ONUs)',
+    description=(
+        'Llama get_pon_port_status(slot) del driver. '
+        'Una sola sesión SSH: display port state + display ont info summary por puerto. '
+        'Siempre responde 200 — si falla SSH retorna success=False con campo error.'
+    ),
+)
+async def health_pon_ports(body: PonPortsRequest) -> PonPortsResponse:
+    olt_ip = body.connection.ip
+
+    try:
+        driver = get_driver(body.connection.brand.value, body.connection)
+    except UnsupportedBrandError as exc:
+        return PonPortsResponse(success=False, slot=body.slot, error=str(exc))
+
+    async with connection_pool.acquire(olt_ip):
+        try:
+            raw_ports = await asyncio.to_thread(driver.get_pon_port_status, body.slot)
+        except Exception as exc:  # noqa: BLE001
+            logger.error('health_pon_ports slot %d en %s: %s', body.slot, olt_ip, exc)
+            return PonPortsResponse(success=False, slot=body.slot, error=str(exc))
+
+    ports = [
+        PonPortInfoSchema(
+            slot         = p.slot,
+            port         = p.port,
+            port_type    = p.port_type,
+            admin_state  = p.admin_state,
+            oper_state   = p.oper_state,
+            autofind     = p.autofind,
+            onus_total   = p.onus_total,
+            onus_online  = p.onus_online,
+            onus_offline = p.onus_offline,
+            max_capacity = p.max_capacity,
+        )
+        for p in raw_ports
+    ]
+
+    return PonPortsResponse(success=True, slot=body.slot, ports=ports)
 
 
 # ── Wizard: topología completa ─────────────────────────────────

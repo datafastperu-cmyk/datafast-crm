@@ -20,7 +20,7 @@ from typing import Any
 from app.schemas.olt import OltConnectionSchema
 from app.drivers.base import (
     BoardInfo, OltDriver, OltTopology, OntInfo,
-    PomData, TrafficTableInfo, VlanInfo,
+    PomData, PonPortInfo, TrafficTableInfo, VlanInfo,
 )
 from app.services.provisioning import (
     ConnectionError as ProvConnectionError,
@@ -220,6 +220,139 @@ class HuaweiDriver(OltDriver):
             for port in range(ports_count):
                 result.append(self.get_pom_data(board.slot, port))
         return result
+
+    # ── get_pon_port_status ───────────────────────────────────
+
+    def get_pon_port_status(self, slot: int) -> list[PonPortInfo]:
+        """
+        Obtiene estado operativo de todos los puertos PON del slot en una
+        sola sesión SSH: display port state + display ont info summary por
+        puerto. Se intentan MAX_GPON_PORTS=16 puertos; los que retornan
+        error en el output son ignorados por el parser.
+        """
+        MAX_GPON_PORTS = 16
+        cmds = [f'display port state 0/{slot}'] + [
+            f'display ont info summary 0/{slot}/{p}'
+            for p in range(MAX_GPON_PORTS)
+        ]
+        try:
+            outputs = _paramiko_huawei_run(
+                self._conn, cmds, timeout=90.0, return_list=True,
+            )
+        except ProvisioningError as exc:
+            logger.warning('get_pon_port_status slot %d en %s: %s', slot, self._conn.ip, exc)
+            return []
+
+        port_state_raw = outputs[0] if outputs else ''
+        port_basics    = self._parse_port_state(slot, port_state_raw)
+
+        if not port_basics:
+            logger.debug('get_pon_port_status slot %d: sin puertos parseados', slot)
+            return []
+
+        result: list[PonPortInfo] = []
+        for basic in port_basics:
+            port_idx = basic['port']
+            # outputs[1] = ont summary puerto 0, outputs[2] = puerto 1, etc.
+            ont_raw = outputs[1 + port_idx] if (1 + port_idx) < len(outputs) else ''
+            onus    = self._parse_ont_summary(slot, port_idx, ont_raw)
+            result.append(PonPortInfo(
+                slot         = slot,
+                port         = port_idx,
+                port_type    = basic.get('port_type',   'GPON'),
+                admin_state  = basic.get('admin_state', 'unknown'),
+                oper_state   = basic.get('oper_state',  'unknown'),
+                autofind     = basic.get('autofind',    'autofind'),
+                onus_total   = onus['total'],
+                onus_online  = onus['online'],
+                onus_offline = onus['offline'],
+                max_capacity = 128,
+            ))
+        return result
+
+    def _parse_port_state(self, slot: int, raw: str) -> list[dict]:
+        """
+        Parsea 'display port state 0/{slot}'.
+
+        Formato MA5800 (ejemplo):
+          Board  Port     PortType AdminStatus OperStatus  ...
+          0/ 1/ 0  GPON   Enable   Up          Autofind
+          0/ 1/ 1  GPON   Enable   Up          Autofind
+          ...
+
+        También maneja variantes donde los campos están en orden diferente.
+        Retorna lista de dicts con claves: port, port_type, admin_state,
+        oper_state, autofind.
+        """
+        result: list[dict] = []
+        # Líneas que empiezan con 0/ slot / port
+        port_re = re.compile(
+            r'0\s*/\s*' + str(slot) + r'\s*/\s*(\d+)'
+            r'[\s\S]{0,200}?'
+            r'(GPON|EPON|XGS-PON|XGPON)',
+            re.IGNORECASE,
+        )
+        admin_re   = re.compile(r'\b(Enable|Disable)\b',   re.IGNORECASE)
+        oper_re    = re.compile(r'\b(Up|Down)\b',           re.IGNORECASE)
+        auto_re    = re.compile(r'\b(Autofind|Manual)\b',  re.IGNORECASE)
+
+        for line in raw.splitlines():
+            line = line.strip()
+            m = re.match(r'0\s*/\s*' + str(slot) + r'\s*/\s*(\d+)', line)
+            if not m:
+                continue
+            port_num = int(m.group(1))
+            pt_m    = re.search(r'\b(GPON|EPON|XGS-PON|XGPON)\b', line, re.IGNORECASE)
+            ad_m    = admin_re.search(line)
+            op_m    = oper_re.search(line)
+            au_m    = auto_re.search(line)
+
+            result.append({
+                'port':        port_num,
+                'port_type':   (pt_m.group(1).upper() if pt_m else 'GPON'),
+                'admin_state': (ad_m.group(1).lower()  if ad_m else 'unknown'),
+                'oper_state':  (op_m.group(1).lower()  if op_m else 'unknown'),
+                'autofind':    (au_m.group(1).lower()  if au_m else 'autofind'),
+            })
+        return result
+
+    def _parse_ont_summary(self, slot: int, port: int, raw: str) -> dict:
+        """
+        Parsea 'display ont info summary 0/{slot}/{port}'.
+
+        Formato MA5800:
+          Port         Total  Online  Offline  ...
+          0/ 1/ 0        2      2       0       0
+
+        Retorna dict: total, online, offline.
+        """
+        default = {'total': 0, 'online': 0, 'offline': 0}
+        if not raw or '%' in raw[:30]:  # error de CLI ("% Unknown command")
+            return default
+
+        # Busca la línea con 0/slot/port seguida de números
+        row_re = re.compile(
+            r'0\s*/\s*' + str(slot) + r'\s*/\s*' + str(port) +
+            r'\s+(\d+)\s+(\d+)\s+(\d+)',
+        )
+        m = row_re.search(raw)
+        if m:
+            total   = int(m.group(1))
+            online  = int(m.group(2))
+            offline = int(m.group(3))
+            return {'total': total, 'online': online, 'offline': offline}
+
+        # Fallback: busca tres números enteros en la línea que no sea el header
+        for line in raw.splitlines():
+            nums = re.findall(r'\b(\d+)\b', line)
+            if len(nums) >= 3 and not re.search(r'port|total|online', line, re.IGNORECASE):
+                try:
+                    total, online, offline = int(nums[0]), int(nums[1]), int(nums[2])
+                    if total >= online + offline:
+                        return {'total': total, 'online': online, 'offline': offline}
+                except (ValueError, TypeError):
+                    continue
+        return default
 
     # ── get_ont_list ──────────────────────────────────────────
 

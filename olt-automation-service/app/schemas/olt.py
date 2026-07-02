@@ -515,6 +515,31 @@ class HealthSnapshotResponse(BaseModel):
     error:   str | None = None
 
 
+# ─── PON Port status ────────────────────────────────────────────
+
+class PonPortInfoSchema(BaseModel):
+    slot:         int
+    port:         int
+    port_type:    str = 'GPON'
+    admin_state:  str
+    oper_state:   str
+    autofind:     str = 'autofind'
+    onus_total:   int = 0
+    onus_online:  int = 0
+    onus_offline: int = 0
+    max_capacity: int = 128
+
+class PonPortsRequest(BaseModel):
+    connection: OltConnectionSchema
+    slot:       int
+
+class PonPortsResponse(BaseModel):
+    success: bool
+    slot:    int
+    ports:   list[PonPortInfoSchema] = []
+    error:   str | None = None
+
+
 # ─── VLAN CLI Operations ────────────────────────────────────────
 
 class VlanAddRequest(BaseModel):
