@@ -344,6 +344,13 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   const [fechaPago,      setFechaPago]      = useState(today);
   const [fechaProrroga,  setFechaProrroga]  = useState(defaultFechaProrroga);
   const [voucherFile,    setVoucherFile]    = useState<File | null>(null);
+  const [banco,          setBanco]          = useState('');
+
+  const { data: bancosOpciones = [] } = useQuery<{ id: string; nombre: string }[]>({
+    queryKey: ['bancos-isp'],
+    queryFn:  () => import('@/lib/api').then(m => m.default.get('/facturacion-config/bancos').then(r => r.data.data ?? [])),
+    staleTime: 5 * 60_000,
+  });
 
   const esPromesa = tipoPago === 'promesa';
 
@@ -396,6 +403,7 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
         notas:           notas  || undefined,
         autoVerificar:   puedeAutoverificar && autoVerificar,
         fechaPago,
+        banco:           banco || undefined,
       });
       if (voucherFile) {
         try {
@@ -563,18 +571,35 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
               />
             </div>
           ) : (
-            <div className="col-span-2">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                Fecha de pago
-              </label>
-              <input
-                type="date"
-                value={fechaPago}
-                max={today}
-                onChange={e => setFechaPago(e.target.value)}
-                className={inputCls}
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Seleccionar Banco
+                </label>
+                <select
+                  value={banco}
+                  onChange={e => setBanco(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">— Sin banco —</option>
+                  {bancosOpciones.map(b => (
+                    <option key={b.id} value={b.nombre}>{b.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Fecha de pago
+                </label>
+                <input
+                  type="date"
+                  value={fechaPago}
+                  max={today}
+                  onChange={e => setFechaPago(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+            </>
           )}
         </div>
 
