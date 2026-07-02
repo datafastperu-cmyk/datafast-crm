@@ -98,6 +98,9 @@ const globalSchema = z.object({
   igvRate:                         z.coerce.number().int().min(0).max(100),
   moraAcumulaSiguienteCiclo:       z.boolean(),
   reconexionAcumulaSiguienteCiclo: z.boolean(),
+}).refine(d => d.moneda !== d.moneda2, {
+  message: 'No puede ser igual a la moneda principal',
+  path: ['moneda2'],
 });
 
 const tipoSchema = z.object({
@@ -362,8 +365,8 @@ function GlobalConfigForm({
                 ))}
               </select>
             </Field>
-            <Field label="Segunda moneda">
-              <select {...register('moneda2')} className={inp()}>
+            <Field label="Segunda moneda" error={errors.moneda2?.message}>
+              <select {...register('moneda2')} className={inp(!!errors.moneda2)}>
                 {MONEDAS.map(m => (
                   <option key={m.code} value={m.code}>{m.label} — {m.pais}</option>
                 ))}
