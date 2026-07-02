@@ -347,22 +347,23 @@ class HuaweiDriver(OltDriver):
     def _parse_boards(self, raw: str) -> list[BoardInfo]:
         """
         Parsea 'display board 0' con regex directo.
-        Formato MA5800-X7: "  N  BOARDNAME  STATUS  [sub0  sub1]  X/Y"
-        Slots vacíos ("-/-") se omiten automáticamente.
+        Formato MA5800-X7: "  N  BOARDNAME  STATUS  [SubType0 SubType1]  [X/Y]"
+        El campo Online/Offline puede estar ausente (MA5800 con ciertos firmwares).
+        Slots vacíos (sin nombre de tarjeta) se omiten automáticamente.
         """
         result: list[BoardInfo] = []
+        # Online/Offline (X/Y) es opcional — no siempre aparece en display board 0
         pattern = re.compile(
-            r'^\s{1,8}(\d{1,3})\s+([A-Za-z]\S*)\s+(\w+)'   # slot, board, status
-            r'(?:\s+\S+\s+\S+)?\s+'                          # SubType0/SubType1 opcionales
-            r'(\d+)/(\d+)',                                   # online/offline
+            r'^\s{1,8}(\d{1,3})\s+([A-Za-z]\S*)\s+(\w[\w_]*)'  # slot, board, status
+            r'(?:.*?(\d+)/(\d+))?',                              # online/offline (opcional)
             re.MULTILINE,
         )
         for m in pattern.finditer(raw):
             slot_id    = int(m.group(1))
             board_name = m.group(2)
             status     = m.group(3).lower()
-            online     = int(m.group(4))
-            offline    = int(m.group(5))
+            online     = int(m.group(4)) if m.group(4) is not None else 0
+            offline    = int(m.group(5)) if m.group(5) is not None else 0
             result.append(BoardInfo(
                 slot=slot_id, board_type=board_name, state=status,
                 onu_count=online + offline, onu_capacity=128,
