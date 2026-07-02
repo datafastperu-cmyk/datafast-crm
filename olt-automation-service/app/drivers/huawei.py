@@ -225,13 +225,18 @@ class HuaweiDriver(OltDriver):
 
     def get_pon_port_status(self, slot: int) -> list[PonPortInfo]:
         """
-        Obtiene estado operativo de todos los puertos PON del slot en una
-        sola sesión SSH: display port state + display ont info summary por
-        puerto. Se intentan MAX_GPON_PORTS=16 puertos; los que retornan
-        error en el output son ignorados por el parser.
+        Obtiene estado operativo de todos los puertos PON del slot.
+
+        En MA5800 no existe 'display port state'; usamos solo
+        'display ont info summary 0/slot/port' por cada puerto (0-15).
+        El oper_state se deriva: total > 0 → 'up', si no → 'no-onus'.
+        admin_state siempre 'enabled' (no hay comando CLI directo accesible).
+
+        Una sola sesión SSH vía _paramiko_huawei_run con 16 comandos.
+        Puertos sin respuesta (error CLI o vacíos) se descartan.
         """
         MAX_GPON_PORTS = 16
-        cmds = [f'display port state 0/{slot}'] + [
+        cmds = [
             f'display ont info summary 0/{slot}/{p}'
             for p in range(MAX_GPON_PORTS)
         ]
@@ -243,116 +248,73 @@ class HuaweiDriver(OltDriver):
             logger.warning('get_pon_port_status slot %d en %s: %s', slot, self._conn.ip, exc)
             return []
 
-        port_state_raw = outputs[0] if outputs else ''
-        port_basics    = self._parse_port_state(slot, port_state_raw)
-
-        if not port_basics:
-            logger.debug('get_pon_port_status slot %d: sin puertos parseados', slot)
-            return []
-
         result: list[PonPortInfo] = []
-        for basic in port_basics:
-            port_idx = basic['port']
-            # outputs[1] = ont summary puerto 0, outputs[2] = puerto 1, etc.
-            ont_raw = outputs[1 + port_idx] if (1 + port_idx) < len(outputs) else ''
-            onus    = self._parse_ont_summary(slot, port_idx, ont_raw)
+        for port_idx in range(MAX_GPON_PORTS):
+            raw  = outputs[port_idx] if port_idx < len(outputs) else ''
+            onus = self._parse_ont_summary(slot, port_idx, raw)
+            if onus is None:
+                # Puerto no existe en este slot (error CLI "% Unknown command")
+                continue
+            total   = onus['total']
+            online  = onus['online']
+            offline = onus['offline']
             result.append(PonPortInfo(
                 slot         = slot,
                 port         = port_idx,
-                port_type    = basic.get('port_type',   'GPON'),
-                admin_state  = basic.get('admin_state', 'unknown'),
-                oper_state   = basic.get('oper_state',  'unknown'),
-                autofind     = basic.get('autofind',    'autofind'),
-                onus_total   = onus['total'],
-                onus_online  = onus['online'],
-                onus_offline = onus['offline'],
+                port_type    = 'GPON',
+                admin_state  = 'enabled',
+                oper_state   = 'up' if total > 0 else 'no-onus',
+                autofind     = 'autofind',
+                onus_total   = total,
+                onus_online  = online,
+                onus_offline = offline,
                 max_capacity = 128,
             ))
         return result
 
-    def _parse_port_state(self, slot: int, raw: str) -> list[dict]:
-        """
-        Parsea 'display port state 0/{slot}'.
-
-        Formato MA5800 (ejemplo):
-          Board  Port     PortType AdminStatus OperStatus  ...
-          0/ 1/ 0  GPON   Enable   Up          Autofind
-          0/ 1/ 1  GPON   Enable   Up          Autofind
-          ...
-
-        También maneja variantes donde los campos están en orden diferente.
-        Retorna lista de dicts con claves: port, port_type, admin_state,
-        oper_state, autofind.
-        """
-        result: list[dict] = []
-        # Líneas que empiezan con 0/ slot / port
-        port_re = re.compile(
-            r'0\s*/\s*' + str(slot) + r'\s*/\s*(\d+)'
-            r'[\s\S]{0,200}?'
-            r'(GPON|EPON|XGS-PON|XGPON)',
-            re.IGNORECASE,
-        )
-        admin_re   = re.compile(r'\b(Enable|Disable)\b',   re.IGNORECASE)
-        oper_re    = re.compile(r'\b(Up|Down)\b',           re.IGNORECASE)
-        auto_re    = re.compile(r'\b(Autofind|Manual)\b',  re.IGNORECASE)
-
-        for line in raw.splitlines():
-            line = line.strip()
-            m = re.match(r'0\s*/\s*' + str(slot) + r'\s*/\s*(\d+)', line)
-            if not m:
-                continue
-            port_num = int(m.group(1))
-            pt_m    = re.search(r'\b(GPON|EPON|XGS-PON|XGPON)\b', line, re.IGNORECASE)
-            ad_m    = admin_re.search(line)
-            op_m    = oper_re.search(line)
-            au_m    = auto_re.search(line)
-
-            result.append({
-                'port':        port_num,
-                'port_type':   (pt_m.group(1).upper() if pt_m else 'GPON'),
-                'admin_state': (ad_m.group(1).lower()  if ad_m else 'unknown'),
-                'oper_state':  (op_m.group(1).lower()  if op_m else 'unknown'),
-                'autofind':    (au_m.group(1).lower()  if au_m else 'autofind'),
-            })
-        return result
-
-    def _parse_ont_summary(self, slot: int, port: int, raw: str) -> dict:
+    def _parse_ont_summary(self, slot: int, port: int, raw: str) -> dict | None:
         """
         Parsea 'display ont info summary 0/{slot}/{port}'.
 
-        Formato MA5800:
-          Port         Total  Online  Offline  ...
-          0/ 1/ 0        2      2       0       0
+        Formato MA5800 (confirmado en producción):
+          In port 0/1/0, the total of ONTs are: 2, online: 2
 
-        Retorna dict: total, online, offline.
+        Retorna dict {total, online, offline}  o  None si el puerto no existe.
+        None indica error CLI (comando no reconocido o slot/port inválido).
         """
-        default = {'total': 0, 'online': 0, 'offline': 0}
-        if not raw or '%' in raw[:30]:  # error de CLI ("% Unknown command")
-            return default
+        if not raw:
+            return None
 
-        # Busca la línea con 0/slot/port seguida de números
+        # Puerto inválido (no existe en esta tarjeta)
+        if re.search(r'%\s*(Unknown command|Parameter error)', raw):
+            return None
+
+        # Formato MA5800: "In port 0/1/0, the total of ONTs are: 2, online: 2"
+        m = re.search(
+            r'total of ONTs are\s*:\s*(\d+)[,\s]+online\s*:\s*(\d+)',
+            raw, re.IGNORECASE,
+        )
+        if m:
+            total  = int(m.group(1))
+            online = int(m.group(2))
+            return {'total': total, 'online': online, 'offline': total - online}
+
+        # Formato alternativo tabular (MA5600/MA5603):
+        #   Port       Total  Online  Offline
+        #   0/ 1/ 0      2      2       0
         row_re = re.compile(
             r'0\s*/\s*' + str(slot) + r'\s*/\s*' + str(port) +
             r'\s+(\d+)\s+(\d+)\s+(\d+)',
         )
-        m = row_re.search(raw)
-        if m:
-            total   = int(m.group(1))
-            online  = int(m.group(2))
-            offline = int(m.group(3))
+        m2 = row_re.search(raw)
+        if m2:
+            total   = int(m2.group(1))
+            online  = int(m2.group(2))
+            offline = int(m2.group(3))
             return {'total': total, 'online': online, 'offline': offline}
 
-        # Fallback: busca tres números enteros en la línea que no sea el header
-        for line in raw.splitlines():
-            nums = re.findall(r'\b(\d+)\b', line)
-            if len(nums) >= 3 and not re.search(r'port|total|online', line, re.IGNORECASE):
-                try:
-                    total, online, offline = int(nums[0]), int(nums[1]), int(nums[2])
-                    if total >= online + offline:
-                        return {'total': total, 'online': online, 'offline': offline}
-                except (ValueError, TypeError):
-                    continue
-        return default
+        # Puerto existe pero sin ONUs (output vacío / header sin datos)
+        return {'total': 0, 'online': 0, 'offline': 0}
 
     # ── get_ont_list ──────────────────────────────────────────
 
