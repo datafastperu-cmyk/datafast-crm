@@ -293,4 +293,115 @@ export class ComprobantesConfigService {
       montoDeudaPendiente: parseFloat(monto_deuda || '0'),
     };
   }
+
+  // ── Bancos ────────────────────────────────────────────────────
+
+  async listarBancos(empresaId: string) {
+    const rows = await this.ds.query(
+      `SELECT id, nombre, es_protegido AS "esProtegido", activo
+       FROM bancos_isp
+       WHERE empresa_id = $1 AND deleted_at IS NULL
+       ORDER BY es_protegido DESC, nombre ASC`,
+      [empresaId],
+    );
+    if (rows.length === 0) {
+      await this.ds.query(
+        `INSERT INTO bancos_isp (empresa_id, nombre, es_protegido) VALUES ($1, 'Banco 01', true)`,
+        [empresaId],
+      );
+      return this.listarBancos(empresaId);
+    }
+    return rows;
+  }
+
+  async crearBanco(nombre: string, user: JwtPayload) {
+    const [row] = await this.ds.query(
+      `INSERT INTO bancos_isp (empresa_id, nombre)
+       VALUES ($1, $2)
+       RETURNING id, nombre, es_protegido AS "esProtegido", activo`,
+      [user.empresaId, nombre.trim()],
+    );
+    return row;
+  }
+
+  async actualizarBanco(id: string, nombre: string, user: JwtPayload) {
+    const [row] = await this.ds.query(
+      `UPDATE bancos_isp
+       SET nombre = $1, updated_at = NOW(), version = version + 1
+       WHERE id = $2 AND empresa_id = $3 AND deleted_at IS NULL
+       RETURNING id, nombre, es_protegido AS "esProtegido", activo`,
+      [nombre.trim(), id, user.empresaId],
+    );
+    if (!row) throw new NotFoundException('Banco no encontrado');
+    return row;
+  }
+
+  async eliminarBanco(id: string, user: JwtPayload): Promise<void> {
+    const rows = await this.ds.query(
+      `SELECT es_protegido FROM bancos_isp
+       WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+      [id, user.empresaId],
+    );
+    if (!rows.length) throw new NotFoundException('Banco no encontrado');
+    if (rows[0].es_protegido) {
+      throw new BadRequestException('Este banco es del sistema y no se puede eliminar');
+    }
+    await this.ds.query(`UPDATE bancos_isp SET deleted_at = NOW() WHERE id = $1`, [id]);
+  }
+
+  // ── Formas de pago ────────────────────────────────────────────
+
+  async listarFormasPago(empresaId: string) {
+    const rows = await this.ds.query(
+      `SELECT id, nombre, es_protegido AS "esProtegido", activo
+       FROM formas_pago_isp
+       WHERE empresa_id = $1 AND deleted_at IS NULL
+       ORDER BY es_protegido DESC, nombre ASC`,
+      [empresaId],
+    );
+    if (rows.length === 0) {
+      await this.ds.query(
+        `INSERT INTO formas_pago_isp (empresa_id, nombre, es_protegido)
+         VALUES ($1, 'Efectivo', true), ($1, 'Transferencia', true), ($1, 'Depósito', true)`,
+        [empresaId],
+      );
+      return this.listarFormasPago(empresaId);
+    }
+    return rows;
+  }
+
+  async crearFormaPago(nombre: string, user: JwtPayload) {
+    const [row] = await this.ds.query(
+      `INSERT INTO formas_pago_isp (empresa_id, nombre)
+       VALUES ($1, $2)
+       RETURNING id, nombre, es_protegido AS "esProtegido", activo`,
+      [user.empresaId, nombre.trim()],
+    );
+    return row;
+  }
+
+  async actualizarFormaPago(id: string, nombre: string, user: JwtPayload) {
+    const [row] = await this.ds.query(
+      `UPDATE formas_pago_isp
+       SET nombre = $1, updated_at = NOW(), version = version + 1
+       WHERE id = $2 AND empresa_id = $3 AND deleted_at IS NULL
+       RETURNING id, nombre, es_protegido AS "esProtegido", activo`,
+      [nombre.trim(), id, user.empresaId],
+    );
+    if (!row) throw new NotFoundException('Forma de pago no encontrada');
+    return row;
+  }
+
+  async eliminarFormaPago(id: string, user: JwtPayload): Promise<void> {
+    const rows = await this.ds.query(
+      `SELECT es_protegido FROM formas_pago_isp
+       WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+      [id, user.empresaId],
+    );
+    if (!rows.length) throw new NotFoundException('Forma de pago no encontrada');
+    if (rows[0].es_protegido) {
+      throw new BadRequestException('Esta forma de pago es del sistema y no se puede eliminar');
+    }
+    await this.ds.query(`UPDATE formas_pago_isp SET deleted_at = NOW() WHERE id = $1`, [id]);
+  }
 }

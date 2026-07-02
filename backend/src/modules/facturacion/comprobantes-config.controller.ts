@@ -86,4 +86,72 @@ export class ComprobantesConfigController {
   ) {
     return this.svc.eliminar(id, user);
   }
+
+  // ── Bancos ─────────────────────────────────────────────────────
+
+  @Get('bancos')
+  @ApiOperation({ summary: 'Listar bancos configurados' })
+  listarBancos(@CurrentUser() user: JwtPayload) {
+    return this.svc.listarBancos(user.empresaId);
+  }
+
+  @Post('bancos')
+  @Roles('Administrador')
+  @ApiOperation({ summary: 'Agregar banco' })
+  crearBanco(@Body('nombre') nombre: string, @CurrentUser() user: JwtPayload) {
+    return this.svc.crearBanco(nombre, user);
+  }
+
+  @Patch('bancos/:id')
+  @Roles('Administrador')
+  @ApiOperation({ summary: 'Editar banco' })
+  actualizarBanco(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('nombre') nombre: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.svc.actualizarBanco(id, nombre, user);
+  }
+
+  @Delete('bancos/:id')
+  @Roles('Administrador')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar banco (falla si es del sistema)' })
+  eliminarBanco(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.svc.eliminarBanco(id, user);
+  }
+
+  // ── Formas de pago ──────────────────────────────────────────────
+
+  @Get('formas-pago')
+  @ApiOperation({ summary: 'Listar formas de pago configuradas' })
+  listarFormasPago(@CurrentUser() user: JwtPayload) {
+    return this.svc.listarFormasPago(user.empresaId);
+  }
+
+  @Post('formas-pago')
+  @Roles('Administrador')
+  @ApiOperation({ summary: 'Agregar forma de pago' })
+  crearFormaPago(@Body('nombre') nombre: string, @CurrentUser() user: JwtPayload) {
+    return this.svc.crearFormaPago(nombre, user);
+  }
+
+  @Patch('formas-pago/:id')
+  @Roles('Administrador')
+  @ApiOperation({ summary: 'Editar forma de pago' })
+  actualizarFormaPago(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('nombre') nombre: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.svc.actualizarFormaPago(id, nombre, user);
+  }
+
+  @Delete('formas-pago/:id')
+  @Roles('Administrador')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar forma de pago (falla si es del sistema)' })
+  eliminarFormaPago(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.svc.eliminarFormaPago(id, user);
+  }
 }
