@@ -92,15 +92,20 @@ export class OltHealthMonitorService {
     const olts   = await this.oltRepo.findByIds(oltIds);
     const oltMap = new Map(olts.map((o) => [o.id, o]));
 
+    // Solo monitorear configs cuya OLT está activa (evita disparar SSH a entradas inactivas)
+    const activeConfigs = configs.filter((c) => oltMap.get(c.oltId)?.activo !== false);
+
+    if (activeConfigs.length === 0) return;
+
     this.logger.log(
-      `OltHealthMonitor: comprobando ${configs.length} configs en ${oltIds.length} OLTs`,
+      `OltHealthMonitor: ${activeConfigs.length} OLT(s) a procesar`,
     );
 
-    // pLimit(5) — ventana deslizante, nunca más de 5 checks concurrentes
-    const limit = pLimit(5);
+    // pLimit(3) — máx 3 OLTs concurrentes; evita saturar SSH cuando hay varias en la misma IP
+    const limit = pLimit(3);
 
     await Promise.all(
-      configs.map((config) =>
+      activeConfigs.map((config) =>
         limit(() => this._checkConfig(config, oltMap.get(config.oltId))),
       ),
     );
