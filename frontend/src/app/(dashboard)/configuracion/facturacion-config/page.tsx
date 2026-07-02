@@ -167,18 +167,6 @@ export default function FacturacionConfigPage() {
         </p>
       </div>
 
-      {/* ── Estadísticas ───────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <StatCard icon={<FileCheck className="w-4 h-4" />} label="Comprobantes activos"
-          value={String(data?.totalEmitidas ?? 0)} color="blue" />
-        <StatCard icon={<AlertTriangle className="w-4 h-4" />} label="Vencidos"
-          value={String(data?.totalVencidas ?? 0)}
-          color={data?.totalVencidas ? 'amber' : 'green'} />
-        <StatCard icon={<TrendingUp className="w-4 h-4" />} label="Deuda pendiente"
-          value={`${config?.moneda ?? 'PEN'} ${(data?.montoDeudaPendiente ?? 0).toFixed(2)}`}
-          color={data?.montoDeudaPendiente ? 'red' : 'green'} />
-      </div>
-
       {/* ── Tipos de Comprobante ────────────────────────────────── */}
       <Card title="Tipos de Comprobante de Pago" icon={<Receipt className="w-4 h-4" />}
         action={
