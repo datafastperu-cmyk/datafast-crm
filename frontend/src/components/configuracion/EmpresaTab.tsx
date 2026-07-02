@@ -76,7 +76,7 @@ export function EmpresaTab() {
   if (isLoading) return <div className="space-y-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-10 rounded-lg animate-pulse" />)}</div>;
 
   return (
-    <form onSubmit={handleSubmit((v) => guardar(v))} className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+    <form onSubmit={handleSubmit((v) => guardar(v))} className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
 
       {/* Categoría 1: Datos de la empresa */}
       <CategoryCard label="Datos de la empresa">
