@@ -592,6 +592,7 @@ export interface PythonFtthGponRequest {
   vlan:            number;
   lineprofile_id:  number;
   srvprofile_id:   number;
+  traffic_index?:  number | null;  // null = sin límite en OLT
   description?:    string | null;
 }
 

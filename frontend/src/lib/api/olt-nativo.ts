@@ -451,12 +451,13 @@ export interface FtthProvisionDto {
   frame:          number;
   slot:           number;
   port:           number;
-  onuId?:         number;   // Opcional — auto-asignado del pool de ONU IDs
+  onuId?:         number;
   sn:             string;
-  servicePortId?: number;   // Opcional — auto-asignado del pool si está configurado
+  servicePortId?: number;
   vlan:           number;
   lineprofileId:  number;
   srvprofileId:   number;
+  trafficIndex?:  number;   // Indefinida = sin límite en OLT (MikroTik controla)
   description?:   string;
 }
 
