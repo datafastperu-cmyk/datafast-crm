@@ -76,37 +76,37 @@ export function EmpresaTab() {
   if (isLoading) return <div className="space-y-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-10 rounded-lg animate-pulse" />)}</div>;
 
   return (
-    <form onSubmit={handleSubmit((v) => guardar(v))} className="space-y-6">
+    <form onSubmit={handleSubmit((v) => guardar(v))} className="space-y-4">
 
-      {/* Logo */}
-      <div className="flex items-center gap-5">
-        <div className={cn(
-          'w-20 h-20 rounded-2xl border-2 border-dashed border-border flex items-center justify-center overflow-hidden flex-shrink-0',
-          logoPreview ? 'border-transparent' : 'hover:border-primary transition-colors',
-        )}>
-          {logoPreview
-            ? <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
-            : <Building2 className="w-8 h-8 text-muted-foreground" />}
+      {/* Categoría 1: Datos de la empresa */}
+      <CategoryCard label="Datos de la empresa">
+        {/* Logo */}
+        <div className="flex items-center gap-5 pb-4 border-b border-border">
+          <div className={cn(
+            'w-20 h-20 rounded-2xl border-2 border-dashed border-border flex items-center justify-center overflow-hidden flex-shrink-0',
+            logoPreview ? 'border-transparent' : 'hover:border-primary transition-colors',
+          )}>
+            {logoPreview
+              ? <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
+              : <Building2 className="w-8 h-8 text-muted-foreground" />}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">Logo de la empresa</p>
+            <p className="text-xs text-muted-foreground mb-2">PNG o SVG · máx 2MB · recomendado 512×512px</p>
+            <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg
+                              border border-input bg-background hover:bg-muted cursor-pointer transition-colors">
+              <Upload className="w-3 h-3" /> Subir logo
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) subirLogo(f); }}
+              />
+            </label>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-medium text-foreground">Logo de la empresa</p>
-          <p className="text-xs text-muted-foreground mb-2">PNG o SVG · máx 2MB · recomendado 512×512px</p>
-          <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg
-                            border border-input bg-background hover:bg-muted cursor-pointer transition-colors">
-            <Upload className="w-3 h-3" /> Subir logo
-            <input
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) subirLogo(f); }}
-            />
-          </label>
-        </div>
-      </div>
 
-      {/* Datos legales */}
-      <Section title="Datos de la empresa">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 pt-2">
           <Field label="Razón social *" error={errors.razonSocial?.message} span={2}>
             <input {...register('razonSocial')} placeholder="DATAFAST S.A.C." className={inp(!!errors.razonSocial)} />
           </Field>
@@ -114,24 +114,12 @@ export function EmpresaTab() {
             <input {...register('ruc')} placeholder="20123456789" className={cn(inp(!!errors.ruc), 'font-mono')} maxLength={11} />
           </Field>
           <Field label="WhatsApp *" error={errors.whatsappCorporativo?.message}>
-            <input
-              {...register('whatsappCorporativo')}
-              placeholder="+51 900 000 000"
-              className={inp(!!errors.whatsappCorporativo)}
-            />
-            <p className="text-[11px] text-muted-foreground leading-snug mt-1">
-              Número que recibirá alertas internas de egresos y ONUs
-            </p>
+            <input {...register('whatsappCorporativo')} placeholder="+51 900 000 000" className={inp(!!errors.whatsappCorporativo)} />
+            <p className="text-[11px] text-muted-foreground leading-snug mt-1">Número que recibirá alertas internas de egresos y ONUs</p>
           </Field>
           <Field label="Teléfono Informativo">
-            <input
-              {...register('telefonoInformativo')}
-              placeholder="+51 073 123456"
-              className={inp()}
-            />
-            <p className="text-[11px] text-muted-foreground leading-snug mt-1">
-              Uso netamente informativo para contacto comercial de la empresa
-            </p>
+            <input {...register('telefonoInformativo')} placeholder="+51 073 123456" className={inp()} />
+            <p className="text-[11px] text-muted-foreground leading-snug mt-1">Uso netamente informativo para contacto comercial de la empresa</p>
           </Field>
           <Field label="Email" error={errors.email?.message} span={2}>
             <input {...register('email')} type="email" placeholder="contacto@datafast.pe" className={inp(!!errors.email)} />
@@ -143,10 +131,27 @@ export function EmpresaTab() {
             <input {...register('websiteUrl')} placeholder="https://datafast.pe" className={inp(!!errors.websiteUrl)} />
           </Field>
         </div>
-      </Section>
 
-      {/* Dominio + SSL */}
-      <Section title="Dominio y certificado HTTPS">
+        <div className="flex justify-end gap-3 pt-4 border-t border-border mt-2">
+          <button type="button" onClick={() => reset()}
+            className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
+            Restablecer
+          </button>
+          <button
+            type="submit"
+            disabled={isPending || !isDirty}
+            className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg
+                       bg-primary text-primary-foreground font-medium
+                       hover:bg-primary/90 disabled:opacity-60 transition-colors"
+          >
+            {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+            Guardar cambios
+          </button>
+        </div>
+      </CategoryCard>
+
+      {/* Categoría 2: Dominio y certificado SSL */}
+      <CategoryCard label="Dominio y certificado SSL">
         <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-4 mb-4">
           <div className="flex gap-2.5">
             <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
@@ -185,24 +190,8 @@ export function EmpresaTab() {
         </Field>
 
         <SslStatusCard />
-      </Section>
+      </CategoryCard>
 
-      <div className="flex justify-end gap-3 pt-2">
-        <button type="button" onClick={() => reset()}
-          className="px-4 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
-          Restablecer
-        </button>
-        <button
-          type="submit"
-          disabled={isPending || !isDirty}
-          className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg
-                     bg-primary text-primary-foreground font-medium
-                     hover:bg-primary/90 disabled:opacity-60 transition-colors"
-        >
-          {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-          Guardar cambios
-        </button>
-      </div>
     </form>
   );
 }
@@ -322,11 +311,13 @@ function SslStatusCard() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function CategoryCard({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-foreground pb-2 border-b border-border">{title}</h3>
-      {children}
+    <div className="rounded-xl border border-border bg-card">
+      <div className="px-6 py-3 border-b border-border">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+      </div>
+      <div className="p-6 space-y-4">{children}</div>
     </div>
   );
 }
