@@ -567,6 +567,7 @@ function BancosCard() {
   return (
     <>
       <Card title="Bancos" icon={<Building2 className="w-4 h-4" />}
+        subtitle="Opciones disponibles al registrar pagos."
         action={
           <button onClick={() => setModal('crear')}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg
@@ -654,6 +655,7 @@ function FormasPagoCard() {
   return (
     <>
       <Card title="Formas de Pago" icon={<CreditCard className="w-4 h-4" />}
+        subtitle="Opciones disponibles al registrar pagos."
         action={
           <button onClick={() => setModal('crear')}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg
@@ -800,15 +802,18 @@ function StatCard({ icon, label, value, color }: {
   );
 }
 
-function Card({ title, icon, children, action }: {
-  title: string; icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode;
+function Card({ title, icon, children, action, subtitle }: {
+  title: string; icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode; subtitle?: string;
 }) {
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">{icon}</span>
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+          </div>
         </div>
         {action}
       </div>
