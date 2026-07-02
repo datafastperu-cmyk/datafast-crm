@@ -354,7 +354,7 @@ function GlobalConfigForm({
               Guardar
             </button>
           }>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_120px] gap-4">
             <Field label="Moneda principal">
               <select {...register('moneda')} className={inp()}>
                 {MONEDAS.map(m => (
