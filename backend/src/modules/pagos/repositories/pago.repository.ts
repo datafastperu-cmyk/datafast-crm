@@ -107,18 +107,34 @@ export class PagoRepository {
 
     const data = await this.ds.query(
       `SELECT
-         p.id, p.empresa_id, p.cliente_id, p.factura_id, p.contrato_id,
-         p.monto, p.moneda, p.metodo_pago, p.banco, p.numero_operacion,
-         p.numero_cuenta, p.estado, p.verificado_por, p.verificado_en,
-         p.motivo_rechazo, p.comprobante_url, p.mp_payment_id, p.mp_status,
-         p.fecha_pago, p.registrado_en, p.cajero_id, p.notas,
-         p.conciliado, p.conciliado_en, p.conciliado_por, p.extracto_banco_ref,
-         p.created_at, p.updated_at,
+         p.id,
+         p.empresa_id        AS "empresaId",
+         p.cliente_id        AS "clienteId",
+         p.factura_id        AS "facturaId",
+         p.contrato_id       AS "contratoId",
+         p.monto, p.moneda, p.banco, p.estado, p.notas, p.conciliado,
+         p.metodo_pago       AS "metodoPago",
+         p.numero_operacion  AS "numeroOperacion",
+         p.numero_cuenta     AS "numeroCuenta",
+         p.verificado_por    AS "verificadoPor",
+         p.verificado_en     AS "verificadoEn",
+         p.motivo_rechazo    AS "motivoRechazo",
+         p.comprobante_url   AS "comprobanteUrl",
+         p.mp_payment_id     AS "mpPaymentId",
+         p.mp_status         AS "mpStatus",
+         p.fecha_pago        AS "fechaPago",
+         p.registrado_en     AS "registradoEn",
+         p.cajero_id         AS "cajeroId",
+         p.conciliado_en     AS "conciliadoEn",
+         p.conciliado_por    AS "conciliadoPor",
+         p.extracto_banco_ref AS "extractoBancoRef",
+         p.created_at        AS "createdAt",
+         p.updated_at        AS "updatedAt",
          COALESCE(
            cl.nombre_completo,
            NULLIF(TRIM(CONCAT_WS(' ', cl.nombres, cl.apellido_paterno, cl.apellido_materno)), '')
          ) AS cliente_nombre,
-         f.numero_completo AS numero_comprobante
+         f.numero_completo   AS numero_comprobante
        FROM pagos p
        LEFT JOIN clientes cl ON cl.id = p.cliente_id
        LEFT JOIN contratos co ON co.id = p.contrato_id
