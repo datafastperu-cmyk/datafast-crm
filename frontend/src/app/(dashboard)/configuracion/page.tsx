@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
-  Settings, Users, Mail, Receipt, FileCheck, CreditCard,
+  Building2, Users, Mail, Receipt, FileCheck, CreditCard,
   FileEdit, Globe, Upload, ArrowUpDown, Layout, MapPin,
   SlidersHorizontal, HardDrive, Clock,
   Terminal, Monitor, Server, Key, Plug, Cpu,
@@ -10,7 +10,7 @@ import {
 export const metadata: Metadata = { title: 'Ajustes' };
 
 const SECTIONS = [
-  { href: '/configuracion/general',                label: 'General',                  icon: Settings },
+  { href: '/configuracion/empresa',                label: 'Empresa',                  icon: Building2 },
   { href: '/configuracion/personal',               label: 'Gestión de Personal',      icon: Users },
   { href: '/configuracion/correo',                 label: 'Servidor de Correo',       icon: Mail },
   { href: '/configuracion/facturacion-config',     label: 'Facturación',              icon: Receipt },

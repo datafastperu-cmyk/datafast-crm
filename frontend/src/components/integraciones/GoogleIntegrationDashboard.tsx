@@ -463,8 +463,8 @@ function ConnectWizard({
                 <p className="font-semibold">Google no acepta direcciones IP como URI de redirección</p>
                 <p>
                   La URI de arriba contiene una IP. Antes de obtener las credenciales, configura un dominio en{' '}
-                  <a href="/configuracion/general" className="underline font-medium hover:text-amber-900">
-                    Configuración → General → Dominio del servidor
+                  <a href="/configuracion/empresa" className="underline font-medium hover:text-amber-900">
+                    Configuración → Empresa → Dominio del servidor
                   </a>.
                   Una vez guardado el dominio, la URI se actualizará automáticamente.
                 </p>
