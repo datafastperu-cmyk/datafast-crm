@@ -130,6 +130,7 @@ export class OltHealthPollerCron {
       // Snapshots por slot
       const rows = resp.boards.map((b) => this.snapshotRepo.create({
         oltId, empresaId: empresa, slot: b.slot, port: null,
+        snapshotType: 'board',
         boardType:    b.board_type,
         boardState:   b.state,
         onuCapacity:  b.onu_capacity,
@@ -194,6 +195,7 @@ export class OltHealthPollerCron {
 
       const rows = resp.pom.map((p) => this.snapshotRepo.create({
         oltId, empresaId: empresa, slot: p.slot, port: p.port,
+        snapshotType: 'pom',
         tempCelsius: p.temp_celsius,
         txDbm:       p.tx_dbm,
         rxDbm:       p.rx_dbm,

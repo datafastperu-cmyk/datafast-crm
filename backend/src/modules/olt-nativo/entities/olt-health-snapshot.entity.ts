@@ -32,7 +32,11 @@ export class OltHealthSnapshot {
   @Column({ name: 'empresa_id' })
   empresaId: string;
 
-  // null → snapshot de board completo; not null → snapshot de puerto PON
+  // 'board' | 'pom' | 'pon_port'
+  @Column({ name: 'snapshot_type', length: 20, default: 'board' })
+  snapshotType: 'board' | 'pom' | 'pon_port';
+
+  // null → board-level; not null → port-level (pom o pon_port)
   @Column({ type: 'smallint', nullable: true })
   slot: number | null;
 
@@ -84,6 +88,23 @@ export class OltHealthSnapshot {
 
   @Column({ name: 'onus_total',   type: 'smallint', nullable: true })
   onusTotal: number | null;
+
+  // ── Estado PON por puerto (snapshot_type = 'pon_port') ───────
+  // GPON | EPON | XGS-PON
+  @Column({ name: 'port_type',   type: 'varchar', length: 10,  nullable: true })
+  portType: string | null;
+
+  // enabled | disabled
+  @Column({ name: 'admin_state', type: 'varchar', length: 30,  nullable: true })
+  adminState: string | null;
+
+  // up | down
+  @Column({ name: 'oper_state',  type: 'varchar', length: 30,  nullable: true })
+  operState: string | null;
+
+  // autofind | manual
+  @Column({ name: 'autofind',    type: 'varchar', length: 20,  nullable: true })
+  autofind: string | null;
 
   // ── Meta ───────────────────────────────────────────────────────
   // raw | hour | day
