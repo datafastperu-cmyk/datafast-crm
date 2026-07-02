@@ -15,6 +15,20 @@ export interface BoardSnapshotDto {
   capturedAt:   string;
 }
 
+export interface PonPortSnapshotDto {
+  slot:        number;
+  port:        number;
+  portType:    string | null;
+  adminState:  string | null;
+  operState:   string | null;
+  autofind:    string | null;
+  onusOnline:  number | null;
+  onusOffline: number | null;
+  onusTotal:   number | null;
+  onuCapacity: number | null;
+  capturedAt:  string;
+}
+
 export interface PomSnapshotDto {
   slot:        number;
   port:        number;
@@ -63,18 +77,21 @@ export class OltHealthDashboardService {
     }));
   }
 
-  // Último snapshot POM por slot+port (port IS NOT NULL)
+  // Último snapshot POM por slot+port
   async latestPom(oltId: string, empresaId: string): Promise<PomSnapshotDto[]> {
     const rows = await this.snapshotRepo
       .createQueryBuilder('s')
-      .where('s.olt_id = :oltId AND s.empresa_id = :empresaId AND s.port IS NOT NULL', { oltId, empresaId })
+      .where(
+        's.olt_id = :oltId AND s.empresa_id = :empresaId AND s.snapshot_type = :type',
+        { oltId, empresaId, type: 'pom' },
+      )
       .andWhere(`s.captured_at = (
         SELECT MAX(s2.captured_at)
         FROM olt_health_snapshots s2
         WHERE s2.olt_id = s.olt_id
           AND s2.slot = s.slot
           AND s2.port = s.port
-          AND s2.port IS NOT NULL
+          AND s2.snapshot_type = 'pom'
       )`)
       .orderBy('s.slot', 'ASC')
       .addOrderBy('s.port', 'ASC')
@@ -89,6 +106,51 @@ export class OltHealthDashboardService {
       voltageMv:   r.voltageMv  !== null ? Number(r.voltageMv)   : null,
       laserMa:     r.laserMa    !== null ? Number(r.laserMa)     : null,
       pomState:    r.pomState,
+      capturedAt:  r.capturedAt.toISOString(),
+    }));
+  }
+
+  // Último snapshot de puertos PON por slot+port (snapshot_type = 'pon_port')
+  async latestPonPorts(
+    oltId:     string,
+    empresaId: string,
+    slot?:     number,
+  ): Promise<PonPortSnapshotDto[]> {
+    const qb = this.snapshotRepo
+      .createQueryBuilder('s')
+      .where(
+        's.olt_id = :oltId AND s.empresa_id = :empresaId AND s.snapshot_type = :type',
+        { oltId, empresaId, type: 'pon_port' },
+      )
+      .andWhere(`s.captured_at = (
+        SELECT MAX(s2.captured_at)
+        FROM olt_health_snapshots s2
+        WHERE s2.olt_id = s.olt_id
+          AND s2.slot = s.slot
+          AND s2.port = s.port
+          AND s2.snapshot_type = 'pon_port'
+      )`);
+
+    if (slot !== undefined) {
+      qb.andWhere('s.slot = :slot', { slot });
+    }
+
+    const rows = await qb
+      .orderBy('s.slot', 'ASC')
+      .addOrderBy('s.port', 'ASC')
+      .getMany();
+
+    return rows.map((r) => ({
+      slot:        r.slot!,
+      port:        r.port!,
+      portType:    r.portType,
+      adminState:  r.adminState,
+      operState:   r.operState,
+      autofind:    r.autofind,
+      onusOnline:  r.onusOnline,
+      onusOffline: r.onusOffline,
+      onusTotal:   r.onusTotal,
+      onuCapacity: r.onuCapacity,
       capturedAt:  r.capturedAt.toISOString(),
     }));
   }

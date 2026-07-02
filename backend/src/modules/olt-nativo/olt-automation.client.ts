@@ -57,6 +57,8 @@ import {
   PythonTrafficTableDeleteResponse,
   PythonTrafficTableEditRequest,
   PythonTrafficTableEditResponse,
+  PythonPonPortsRequest,
+  PythonPonPortsResponse,
 } from './dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -418,6 +420,22 @@ export class OltAutomationClient {
     this.logger.log(`→ Python traffic-table/edit | OLT=${payload.connection.ip} index=${payload.index} name=${payload.name}`);
     const res = await this.post<PythonTrafficTableEditResponse>('/api/v1/olt/traffic-table/edit', payload, 60_000);
     this.logger.log(`← Python traffic-table/edit | success=${res.success} new_index=${res.new_index}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // PON Port Health — estado operativo por puerto de un slot
+  // (POST /api/v1/olt/health/pon-ports)
+  // Timeout 120s: 16 comandos en 1 sesión SSH (~5s c/u)
+  // ────────────────────────────────────────────────────────────
+  async ponPorts(payload: PythonPonPortsRequest): Promise<PythonPonPortsResponse> {
+    this.logger.log(`→ Python health/pon-ports | OLT=${payload.connection.ip} slot=${payload.slot}`);
+    const res = await this.post<PythonPonPortsResponse>(
+      '/api/v1/olt/health/pon-ports', payload, 120_000,
+    );
+    this.logger.log(
+      `← Python health/pon-ports | success=${res.success} ports=${res.ports?.length ?? 0}`,
+    );
     return res;
   }
 

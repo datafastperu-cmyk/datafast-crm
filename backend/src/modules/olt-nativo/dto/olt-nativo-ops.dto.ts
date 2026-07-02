@@ -842,6 +842,32 @@ export interface PythonTrafficTableEditResponse {
   error?:     string;
 }
 
+// ── PON Port Health (POST /api/v1/olt/health/pon-ports) ──────
+export interface PythonPonPortInfo {
+  slot:         number;
+  port:         number;
+  port_type:    string;
+  admin_state:  string;
+  oper_state:   string;
+  autofind:     string;
+  onus_total:   number;
+  onus_online:  number;
+  onus_offline: number;
+  max_capacity: number;
+}
+
+export interface PythonPonPortsRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+}
+
+export interface PythonPonPortsResponse {
+  success: boolean;
+  slot:    number;
+  ports:   PythonPonPortInfo[];
+  error?:  string;
+}
+
 // ── Wizard Commit (NestJS side) ───────────────────────────────
 
 export interface WizardCommitDto {

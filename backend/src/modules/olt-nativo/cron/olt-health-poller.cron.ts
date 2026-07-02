@@ -32,6 +32,7 @@ export class OltHealthPollerCron {
   private readonly logger  = new Logger(OltHealthPollerCron.name);
   private _boardRunning    = false;
   private _pomRunning      = false;
+  private _ponPortRunning  = false;
 
   constructor(
     @InjectRepository(OltDispositivo)
@@ -85,6 +86,26 @@ export class OltHealthPollerCron {
     } finally {
       this._pomRunning = false;
       this.logger.log(`OltHealthPoller POM completado en ${Date.now() - t0}ms`);
+    }
+  }
+
+  // ── PON Ports: cada 15 min, offset +7 min (:07/:22/:37/:52) ──
+  @Cron('7-59/15 * * * *', { timeZone: 'America/Lima' })
+  async pollPonPorts(): Promise<void> {
+    if (!this._isPrimaryInstance()) return;
+    if (this._ponPortRunning) {
+      this.logger.warn('OltHealthPoller PON ports: vuelta anterior en curso — omitiendo');
+      return;
+    }
+    this._ponPortRunning = true;
+    const t0 = Date.now();
+    try {
+      await this._ejecutarPonPorts();
+    } catch (err: any) {
+      this.logger.error(`OltHealthPoller PON ports error: ${err.message}`);
+    } finally {
+      this._ponPortRunning = false;
+      this.logger.log(`OltHealthPoller PON ports completado en ${Date.now() - t0}ms`);
     }
   }
 
@@ -220,6 +241,87 @@ export class OltHealthPollerCron {
     } catch (err: any) {
       this.logger.error(`POM poll error ${target.olt.nombre}: ${err.message}`);
     }
+  }
+
+  // ── Implementación PON Ports ──────────────────────────────────
+  private async _ejecutarPonPorts(): Promise<void> {
+    const targets = await this._loadTargets();
+    if (targets.length === 0) return;
+    this.logger.log(`OltHealthPoller PON ports: ${targets.length} OLTs`);
+
+    // pLimit(2): cada OLT requiere hasta N sesiones SSH secuenciales (1 por slot)
+    const limit = pLimit(2);
+    await Promise.all(targets.map((t) => limit(() => this._pollOnePonPorts(t))));
+  }
+
+  private async _pollOnePonPorts(target: OltTarget): Promise<void> {
+    const gponSlots = await this._getGponSlots(target.olt.id);
+    if (gponSlots.length === 0) {
+      this.logger.debug(`PON ports: ${target.olt.nombre} sin slots GPON conocidos — omitiendo`);
+      return;
+    }
+
+    const now     = new Date();
+    const empresa = target.olt.empresaId;
+    const oltId   = target.olt.id;
+    const conn    = this._buildConnection(target);
+
+    for (const slot of gponSlots) {
+      try {
+        const resp = await this.automation.ponPorts({ connection: conn, slot });
+        if (!resp.success || !resp.ports?.length) {
+          this.logger.warn(
+            `PON ports fail ${target.olt.nombre} slot=${slot}: ${resp.error ?? 'sin puertos'}`,
+          );
+          continue;
+        }
+
+        const rows = resp.ports.map((p) => this.snapshotRepo.create({
+          oltId, empresaId: empresa,
+          slot:        p.slot,
+          port:        p.port,
+          snapshotType: 'pon_port',
+          portType:    p.port_type,
+          adminState:  p.admin_state,
+          operState:   p.oper_state,
+          autofind:    p.autofind,
+          onusOnline:  p.onus_online,
+          onusOffline: p.onus_offline,
+          onusTotal:   p.onus_total,
+          onuCapacity: p.max_capacity,
+          granularity: 'raw',
+          capturedAt:  now,
+          rawJson:     p as unknown as Record<string, unknown>,
+        }));
+
+        await this.snapshotRepo.save(rows);
+        this.logger.debug(
+          `PON ports OK ${target.olt.nombre} slot=${slot}: ${resp.ports.length} puertos`,
+        );
+      } catch (err: any) {
+        this.logger.error(`PON ports error ${target.olt.nombre} slot=${slot}: ${err.message}`);
+        // Continuar con el siguiente slot — no abortar la OLT
+      }
+    }
+  }
+
+  // Retorna slots con tarjetas GPON/XGS-PON según snapshots recientes (últimos 30 min)
+  private async _getGponSlots(oltId: string): Promise<number[]> {
+    const cutoff = new Date(Date.now() - 30 * 60 * 1_000);
+    const boards = await this.snapshotRepo
+      .createQueryBuilder('s')
+      .select(['s.slot', 's.boardType'])
+      .where(
+        's.olt_id = :oltId AND s.snapshot_type = :type AND s.captured_at > :cutoff',
+        { oltId, type: 'board', cutoff },
+      )
+      .getMany();
+
+    return [...new Set(
+      boards
+        .filter((b) => /^GP|^XP/i.test(b.boardType ?? ''))
+        .map((b) => b.slot!),
+    )];
   }
 
   // ── Helpers ───────────────────────────────────────────────────

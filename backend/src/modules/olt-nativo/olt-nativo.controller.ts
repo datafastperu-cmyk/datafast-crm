@@ -496,6 +496,19 @@ export class OltNativoController {
     return this.healthDash.latestPom(oltId, user.empresaId);
   }
 
+  @Get(':oltId/health/pon-ports')
+  @ApiOperation({ summary: 'Últimos snapshots de puertos PON almacenados (cron 15min)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiQuery({ name: 'slot', type: Number, required: false, description: 'Filtrar por slot GPON' })
+  async healthPonPorts(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Query('slot') slot: string | undefined,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const slotNum = slot !== undefined ? parseInt(slot, 10) : undefined;
+    return this.healthDash.latestPonPorts(oltId, user.empresaId, slotNum);
+  }
+
   @Get(':oltId/ont-version')
   @ApiOperation({ summary: 'Versión de firmware de una ONU Huawei (display ont version)' })
   @ApiParam({ name: 'oltId' })
