@@ -944,6 +944,21 @@ export const oltNativoApi = {
     return res.data.data ?? [];
   },
 
+  healthPonPorts: async (oltId: string, slot?: number): Promise<Array<{
+    slot: number; port: number;
+    portType: string | null; adminState: string | null;
+    operState: string | null; autofind: string | null;
+    onusOnline: number | null; onusOffline: number | null;
+    onusTotal: number | null; onuCapacity: number | null;
+    capturedAt: string;
+  }>> => {
+    const params = slot !== undefined ? { slot } : {};
+    const res = await api.get<ApiRespuesta<any[]>>(
+      `/olt-nativo/${oltId}/health/pon-ports`, { params },
+    );
+    return res.data.data ?? [];
+  },
+
   wizardTopologia: async (params: {
     ip: string; puerto: number; usuario: string; contrasena: string; marca: string;
   }): Promise<WizardTopologyResponse> => {
