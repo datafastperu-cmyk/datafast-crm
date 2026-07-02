@@ -54,8 +54,8 @@ const CATEGORIES = [
   },
   {
     label: 'Sistema',
-    iconBg: 'bg-slate-100 dark:bg-slate-800/60',
-    iconColor: 'text-slate-600 dark:text-slate-400',
+    iconBg: 'bg-rose-100 dark:bg-rose-950/60',
+    iconColor: 'text-rose-600 dark:text-rose-400',
     items: [
       { href: '/configuracion/correo',   label: 'Servidor de Correo', icon: Mail,     desc: 'Configuración SMTP para envío de emails' },
       { href: '/configuracion/backup',   label: 'Copia de Seguridad', icon: HardDrive,desc: 'Respaldo y restauración de la base de datos' },
