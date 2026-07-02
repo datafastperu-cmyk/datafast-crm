@@ -281,10 +281,6 @@ export default function FacturacionConfigPage() {
 
         {/* ── Columna derecha ────────────────────────────────────── */}
         <div className="space-y-4">
-          <div>
-            <h2 className="text-base font-semibold text-foreground mb-0.5">Bancos y Formas de pago</h2>
-            <p className="text-xs text-muted-foreground">Opciones disponibles al registrar pagos.</p>
-          </div>
           <BancosCard />
           <FormasPagoCard />
         </div>{/* fin columna derecha */}
