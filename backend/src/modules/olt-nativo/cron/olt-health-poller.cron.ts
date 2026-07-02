@@ -67,8 +67,9 @@ export class OltHealthPollerCron {
     }
   }
 
-  // ── POM: cada 15 minutos ──────────────────────────────────────
-  @Cron('*/15 * * * *', { timeZone: 'America/Lima' })
+  // ── POM: cada 15 minutos, offset +3 min respecto a boards ─────
+  // Se dispara en :03, :18, :33, :48 para no coincidir con boards
+  @Cron('3-59/15 * * * *', { timeZone: 'America/Lima' })
   async pollPom(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._pomRunning) {

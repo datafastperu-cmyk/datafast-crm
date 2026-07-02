@@ -151,12 +151,13 @@ class HuaweiDriver(OltDriver):
     # ── get_board_status ──────────────────────────────────────
 
     def get_board_status(self) -> list[BoardInfo]:
-        result = display_huawei_board(self._conn)
-        if not result.get('success'):
+        raw = _paramiko_huawei_run(self._conn, ['display board 0'], timeout=30.0)
+        boards = self._parse_boards(raw)
+        if not boards:
             raise ProvisioningError(
-                f"display_board falló en {self._conn.ip}: {result.get('error')}"
+                f"display_board falló en {self._conn.ip}: sin tarjetas parseadas"
             )
-        return self._parse_boards_from_dict(result['slots'])
+        return boards
 
     # ── get_pom_data ──────────────────────────────────────────
 
