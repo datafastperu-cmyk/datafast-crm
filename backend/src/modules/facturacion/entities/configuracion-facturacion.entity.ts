@@ -11,9 +11,13 @@ export class ConfiguracionFacturacion extends BaseModel {
   @Column({ name: 'empresa_id' })
   empresaId: string;
 
-  // Moneda: 'PEN', 'USD', 'COP', etc.
+  // Moneda primaria: 'PEN', 'USD', 'COP', etc.
   @Column({ length: 3, default: 'PEN' })
   moneda: string;
+
+  // Moneda secundaria (siempre subordinada a la primaria)
+  @Column({ length: 3, default: 'USD', name: 'moneda2' })
+  moneda2: string;
 
   // Tasa IGV/IVA como decimal: 0.18 = 18%
   @Column({ name: 'igv_rate', type: 'decimal', precision: 5, scale: 4, default: 0.18 })

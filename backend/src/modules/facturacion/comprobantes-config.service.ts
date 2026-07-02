@@ -251,7 +251,8 @@ export class ComprobantesConfigService {
       config = repo.create({ empresaId: user.empresaId });
     }
 
-    if (dto.moneda            !== undefined) config.moneda = dto.moneda;
+    if (dto.moneda            !== undefined) config.moneda  = dto.moneda;
+    if (dto.moneda2           !== undefined) config.moneda2 = dto.moneda2;
     if (dto.igvRate           !== undefined) config.igvRate = dto.igvRate / 100; // frontend envía 18, guardamos 0.18
     if (dto.moraAcumulaSiguienteCiclo    !== undefined) config.moraAcumulaSiguienteCiclo = dto.moraAcumulaSiguienteCiclo;
     if (dto.reconexionAcumulaSiguienteCiclo !== undefined) config.reconexionAcumulaSiguienteCiclo = dto.reconexionAcumulaSiguienteCiclo;

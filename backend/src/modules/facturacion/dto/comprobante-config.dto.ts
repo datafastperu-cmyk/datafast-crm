@@ -40,6 +40,10 @@ export class UpdateConfiguracionFacturacionDto {
   @IsOptional() @IsString() @MaxLength(3)
   moneda?: string;
 
+  @ApiPropertyOptional({ example: 'USD' })
+  @IsOptional() @IsString() @MaxLength(3)
+  moneda2?: string;
+
   @ApiPropertyOptional({ example: 18, description: 'Tasa IGV/IVA en porcentaje entero (18 = 18%)' })
   @IsOptional() @IsNumber() @Min(0) @Max(100) @Type(() => Number)
   igvRate?: number;

@@ -31,6 +31,7 @@ interface ComprobanteConfig {
 
 interface ConfiguracionFacturacion {
   moneda:                          string;
+  moneda2:                         string;
   igvRate:                         number;
   moraAcumulaSiguienteCiclo:       boolean;
   reconexionAcumulaSiguienteCiclo: boolean;
@@ -93,6 +94,7 @@ const MONEDAS = [
 // ─── Schemas ──────────────────────────────────────────────────
 const globalSchema = z.object({
   moneda:                          z.string().length(3),
+  moneda2:                         z.string().length(3),
   igvRate:                         z.coerce.number().int().min(0).max(100),
   moraAcumulaSiguienteCiclo:       z.boolean(),
   reconexionAcumulaSiguienteCiclo: z.boolean(),
@@ -323,6 +325,7 @@ function GlobalConfigForm({
     resolver: zodResolver(globalSchema),
     defaultValues: {
       moneda:                          config.moneda,
+      moneda2:                         config.moneda2 ?? 'USD',
       igvRate:                         Math.round(config.igvRate * 100),
       moraAcumulaSiguienteCiclo:       config.moraAcumulaSiguienteCiclo,
       reconexionAcumulaSiguienteCiclo: config.reconexionAcumulaSiguienteCiclo,
@@ -351,16 +354,23 @@ function GlobalConfigForm({
               Guardar
             </button>
           }>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Moneda del sistema">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Field label="Moneda principal">
               <select {...register('moneda')} className={inp()}>
                 {MONEDAS.map(m => (
                   <option key={m.code} value={m.code}>{m.label} — {m.pais}</option>
                 ))}
               </select>
             </Field>
+            <Field label="Segunda moneda">
+              <select {...register('moneda2')} className={inp()}>
+                {MONEDAS.map(m => (
+                  <option key={m.code} value={m.code}>{m.label} — {m.pais}</option>
+                ))}
+              </select>
+            </Field>
             <Field label="Tasa IGV / IVA (%)" error={errors.igvRate?.message}>
-              <div className="relative w-32">
+              <div className="relative">
                 <input type="number" step="1" min="0" max="100"
                   {...register('igvRate')} className={cn(inp(!!errors.igvRate), 'pr-8')} />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
