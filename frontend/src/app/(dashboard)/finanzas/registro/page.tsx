@@ -53,10 +53,6 @@ const TIPOS_PAGO = [
   { value: 'promesa',   label: 'Promesa de pago' },
 ];
 
-const DIAS_MES = Array.from({ length: 31 }, (_, i) => ({
-  value: String(i + 1),
-  label: `${i + 1} de cada mes`,
-}));
 
 const PENDIENTE_ESTADOS = new Set(['emitida', 'vencida', 'en_cobranza', 'pagada_parcial', 'borrador']);
 
@@ -343,7 +339,6 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   const [tipoPago,       setTipoPago]       = useState('activar');
   const puedeAutoverificar = useAuthStore(s => s.tienePermiso('pagos:autoverificar'));
   const [autoVerificar,  setAutoVerificar]  = useState(true);
-  const [diaPago,        setDiaPago]        = useState('28');
   const [impresion,      setImpresion]      = useState<'normal' | 'pos' | 'factura' | 'ninguna'>('normal');
   const [monto,          setMonto]          = useState('');
   const [fechaPago,      setFechaPago]      = useState(today);
@@ -568,34 +563,18 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
               />
             </div>
           ) : (
-            <>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                  Día pago
-                </label>
-                <select
-                  value={diaPago}
-                  onChange={e => setDiaPago(e.target.value)}
-                  className={inputCls}
-                >
-                  {DIAS_MES.map(d => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                  Fecha de pago
-                </label>
-                <input
-                  type="date"
-                  value={fechaPago}
-                  max={today}
-                  onChange={e => setFechaPago(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-            </>
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                Fecha de pago
+              </label>
+              <input
+                type="date"
+                value={fechaPago}
+                max={today}
+                onChange={e => setFechaPago(e.target.value)}
+                className={inputCls}
+              />
+            </div>
           )}
         </div>
 
