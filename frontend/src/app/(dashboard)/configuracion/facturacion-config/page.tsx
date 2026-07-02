@@ -605,10 +605,6 @@ function BancosCard() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-foreground">{b.nombre}</span>
-                  {b.esProtegido && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded
-                                     bg-muted text-muted-foreground">Sistema</span>
-                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -693,10 +689,6 @@ function FormasPagoCard() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-foreground">{f.nombre}</span>
-                  {f.esProtegido && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded
-                                     bg-muted text-muted-foreground">Sistema</span>
-                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1">
