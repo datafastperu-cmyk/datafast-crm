@@ -106,9 +106,9 @@ export function SaludTab({ oltId }: Props) {
   const boards = boardsQ.data ?? [];
   const poms   = pomQ.data   ?? [];
 
-  // Detectar slots con tarjetas GPON/XGS-PON desde los boards
+  // Detectar slots con tarjetas GPON: prefijo GP/XP (dedicadas) o patrón CG (combo Huawei)
   const gponSlots = boards
-    .filter((b) => /^GP|^XP/i.test(b.boardType ?? ''))
+    .filter((b) => /GP|CG|GPON/i.test(b.boardType ?? ''))
     .map((b) => b.slot)
     .sort((a, b) => a - b);
 

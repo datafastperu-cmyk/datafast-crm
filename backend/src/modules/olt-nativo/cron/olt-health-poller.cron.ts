@@ -317,9 +317,10 @@ export class OltHealthPollerCron {
       )
       .getMany();
 
+    // Detecta tarjetas GPON: prefijo GP/XP (dedicadas) o patrón CG (combo GE+GPON Huawei)
     return [...new Set(
       boards
-        .filter((b) => /^GP|^XP/i.test(b.boardType ?? ''))
+        .filter((b) => /GP|CG|GPON/i.test(b.boardType ?? ''))
         .map((b) => b.slot!),
     )];
   }
