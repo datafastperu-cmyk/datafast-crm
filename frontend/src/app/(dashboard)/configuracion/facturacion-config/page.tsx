@@ -317,6 +317,8 @@ function GlobalConfigForm({
   onSave: (v: GlobalForm) => void;
   isPending: boolean;
 }) {
+  const toast = useToast().toast;
+
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<GlobalForm>({
     resolver: zodResolver(globalSchema),
     defaultValues: {
@@ -330,27 +332,43 @@ function GlobalConfigForm({
   const watchMora       = watch('moraAcumulaSiguienteCiclo');
   const watchReconexion = watch('reconexionAcumulaSiguienteCiclo');
 
-  return (
-    <form onSubmit={handleSubmit(onSave)} className="space-y-5">
+  const { mutate: autoGuardar } = useMutation({
+    mutationFn: (partial: Partial<ConfiguracionFacturacion>) => api.updateGlobal(partial as Partial<ConfiguracionFacturacion>),
+    onSuccess: () => toast('Guardado', { type: 'success' }),
+    onError:   (e) => toast(parseApiError(e), { type: 'error' }),
+  });
 
-      <Card title="Moneda e impuestos" icon={<BadgeDollarSign className="w-4 h-4" />}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Moneda del sistema">
-            <select {...register('moneda')} className={inp()}>
-              {MONEDAS.map(m => (
-                <option key={m.code} value={m.code}>{m.label} — {m.pais}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Tasa IGV / IVA (%)" error={errors.igvRate?.message}>
-            <div className="relative w-32">
-              <input type="number" step="1" min="0" max="100"
-                {...register('igvRate')} className={cn(inp(!!errors.igvRate), 'pr-8')} />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-            </div>
-          </Field>
-        </div>
-      </Card>
+  return (
+    <div className="space-y-5">
+      <form onSubmit={handleSubmit(onSave)}>
+        <Card title="Moneda e impuestos" icon={<BadgeDollarSign className="w-4 h-4" />}
+          action={
+            <button type="submit" disabled={isPending}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg
+                         bg-primary text-primary-foreground font-medium
+                         hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              {isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+              Guardar
+            </button>
+          }>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Moneda del sistema">
+              <select {...register('moneda')} className={inp()}>
+                {MONEDAS.map(m => (
+                  <option key={m.code} value={m.code}>{m.label} — {m.pais}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Tasa IGV / IVA (%)" error={errors.igvRate?.message}>
+              <div className="relative w-32">
+                <input type="number" step="1" min="0" max="100"
+                  {...register('igvRate')} className={cn(inp(!!errors.igvRate), 'pr-8')} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+              </div>
+            </Field>
+          </div>
+        </Card>
+      </form>
 
       <Card title="Comportamiento de Mora y Reconexión" icon={<AlertTriangle className="w-4 h-4" />}>
         <p className="text-xs text-muted-foreground mb-4">
@@ -360,12 +378,15 @@ function GlobalConfigForm({
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Mora */}
           <div className="p-4 rounded-xl border border-border space-y-2">
             <Toggle
               label="Mora → siguiente ciclo de facturación"
               checked={watchMora}
-              onChange={() => setValue('moraAcumulaSiguienteCiclo', !watchMora, { shouldDirty: true })}
+              onChange={() => {
+                const nuevo = !watchMora;
+                setValue('moraAcumulaSiguienteCiclo', nuevo, { shouldDirty: true });
+                autoGuardar({ moraAcumulaSiguienteCiclo: nuevo });
+              }}
             />
             <p className="text-[11px] text-muted-foreground pl-10">
               {watchMora
@@ -374,12 +395,15 @@ function GlobalConfigForm({
             </p>
           </div>
 
-          {/* Reconexión */}
           <div className="p-4 rounded-xl border border-border space-y-2">
             <Toggle
               label="Reconexión → siguiente ciclo de facturación"
               checked={watchReconexion}
-              onChange={() => setValue('reconexionAcumulaSiguienteCiclo', !watchReconexion, { shouldDirty: true })}
+              onChange={() => {
+                const nuevo = !watchReconexion;
+                setValue('reconexionAcumulaSiguienteCiclo', nuevo, { shouldDirty: true });
+                autoGuardar({ reconexionAcumulaSiguienteCiclo: nuevo });
+              }}
             />
             <p className="text-[11px] text-muted-foreground pl-10">
               {watchReconexion
@@ -389,17 +413,7 @@ function GlobalConfigForm({
           </div>
         </div>
       </Card>
-
-      <div className="flex justify-end gap-3">
-        <button type="submit" disabled={isPending}
-          className="flex items-center gap-2 px-5 py-2 text-sm rounded-lg
-                     bg-primary text-primary-foreground font-medium
-                     hover:bg-primary/90 disabled:opacity-60 transition-colors">
-          {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-          Guardar cambios
-        </button>
-      </div>
-    </form>
+    </div>
   );
 }
 
