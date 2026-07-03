@@ -352,6 +352,10 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
     staleTime: 5 * 60_000,
   });
 
+  useEffect(() => {
+    if (bancosOpciones.length > 0 && !banco) setBanco(bancosOpciones[0].nombre);
+  }, [bancosOpciones]); // eslint-disable-line
+
   const esPromesa = tipoPago === 'promesa';
 
   // Auto-fill monto from selected factura
@@ -581,7 +585,6 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                   onChange={e => setBanco(e.target.value)}
                   className={inputCls}
                 >
-                  <option value="">— Sin banco —</option>
                   {bancosOpciones.map(b => (
                     <option key={b.id} value={b.nombre}>{b.nombre}</option>
                   ))}
