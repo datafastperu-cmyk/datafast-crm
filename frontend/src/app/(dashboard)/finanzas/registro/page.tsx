@@ -498,9 +498,9 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           </div>
         )}
 
-        {/* Forma de Pago — oculto en promesa · Forma de Registro */}
-        <div className="grid grid-cols-2 gap-4">
-          {!esPromesa && (
+        {/* Fila 1: Forma de Pago | Seleccionar Banco */}
+        {!esPromesa && (
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
                 Forma de Pago
@@ -515,22 +515,22 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                 ))}
               </select>
             </div>
-          )}
-          <div className={esPromesa ? 'col-span-2' : ''}>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-              Forma de Registro
-            </label>
-            <select
-              value={tipoPago}
-              onChange={e => setTipoPago(e.target.value)}
-              className={inputCls}
-            >
-              {TIPOS_PAGO.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                Seleccionar Banco
+              </label>
+              <select
+                value={banco}
+                onChange={e => setBanco(e.target.value)}
+                className={inputCls}
+              >
+                {bancosOpciones.map(b => (
+                  <option key={b.id} value={b.nombre}>{b.nombre}</option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Auto-verificar */}
         {!esPromesa && (
@@ -560,37 +560,35 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           </label>
         )}
 
-        {/* Día pago + Fecha pago — o Fecha límite en promesa */}
+        {/* Fila 2: Fecha de pago | Forma de Registro — o Fecha límite en promesa */}
         <div className="grid grid-cols-2 gap-4">
           {esPromesa ? (
-            <div className="col-span-2">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                Fecha límite de pago
-              </label>
-              <input
-                type="date"
-                value={fechaProrroga}
-                min={(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })()}
-                onChange={e => setFechaProrroga(e.target.value)}
-                className={inputCls}
-              />
-            </div>
-          ) : (
             <>
-              <div>
+              <div className="col-span-2">
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                  Seleccionar Banco
+                  Fecha límite de pago
                 </label>
-                <select
-                  value={banco}
-                  onChange={e => setBanco(e.target.value)}
+                <input
+                  type="date"
+                  value={fechaProrroga}
+                  min={(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })()}
+                  onChange={e => setFechaProrroga(e.target.value)}
                   className={inputCls}
-                >
-                  {bancosOpciones.map(b => (
-                    <option key={b.id} value={b.nombre}>{b.nombre}</option>
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Forma de Registro
+                </label>
+                <select value={tipoPago} onChange={e => setTipoPago(e.target.value)} className={inputCls}>
+                  {TIPOS_PAGO.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
               </div>
+            </>
+          ) : (
+            <>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
                   Fecha de pago
@@ -602,6 +600,16 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                   onChange={e => setFechaPago(e.target.value)}
                   className={inputCls}
                 />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Forma de Registro
+                </label>
+                <select value={tipoPago} onChange={e => setTipoPago(e.target.value)} className={inputCls}>
+                  {TIPOS_PAGO.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
               </div>
             </>
           )}
