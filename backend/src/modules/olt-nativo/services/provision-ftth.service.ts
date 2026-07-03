@@ -857,6 +857,21 @@ export class ProvisionFtthService {
       this.logger.warn(`signalDashboard batch-status falló | olt=${oltId}: ${err.message}`);
     }
 
+    // Persistir runState + lastOnline en BD para cada ONU que respondió
+    if (signalMap.size > 0) {
+      const now = new Date();
+      const updates = registros
+        .map(r => ({ r, info: signalMap.get(`${r.slot}:${r.port}:${r.onuId}`) }))
+        .filter((x): x is { r: FtthOnuRegistro; info: PythonOnuStatusInfo } => !!x.info);
+
+      await Promise.all(updates.map(({ r, info }) =>
+        this.ftthRepo.update(r.id, {
+          runState:   info.run_state ?? null,
+          lastOnline: info.run_state === 'online' ? now : r.lastOnline,
+        }),
+      ));
+    }
+
     return registros.map(r => ({
       registro: r,
       signal:   signalMap.get(`${r.slot}:${r.port}:${r.onuId}`) ?? null,
