@@ -2578,23 +2578,23 @@ def inject_wan_pppoe(
 # ── Cambio de velocidad en caliente ───────────────────────────
 
 def change_lineprofile(
-    conn:            OltConnectionSchema,
-    slot:            int,
-    port:            int,
-    onu_id:          int,
-    service_port_id: int,
-    traffic_index:   int,
+    conn:               OltConnectionSchema,
+    slot:               int,
+    port:               int,
+    onu_id:             int,
+    service_port_id:    int,
+    traffic_index_down: int,
+    traffic_index_up:   int,
 ) -> dict[str, Any]:
     """
     Cambia la velocidad de una ONU Huawei MA5800 en caliente modificando
     el traffic-table vinculado al service-port.
 
     NO cambia el ont-lineprofile (afectaría todas las ONUs del perfil).
-    Solo actualiza el inbound/outbound del service-port específico.
+    Solo actualiza el outbound (downstream) e inbound (upstream) del service-port.
 
-    CLI:
-      config
-      service-port <id> traffic-table index <traffic_index> inbound traffic-table index <traffic_index>
+    CLI Huawei:
+      service-port <id> traffic-table index <down> inbound traffic-table index <up>
 
     Síncrono — llamar desde asyncio.to_thread().
     """
@@ -2603,15 +2603,15 @@ def change_lineprofile(
             f'Cambio de velocidad en caliente no implementado para marca "{conn.brand.value}".'
         )
     logger.info(
-        'change_lineprofile: OLT=%s slot=%d port=%d onu_id=%d sp=%d traffic_idx=%d',
-        conn.ip, slot, port, onu_id, service_port_id, traffic_index,
+        'change_lineprofile: OLT=%s slot=%d port=%d onu_id=%d sp=%d down=%d up=%d',
+        conn.ip, slot, port, onu_id, service_port_id, traffic_index_down, traffic_index_up,
     )
     cmds = [
         'config',
         (
             f'service-port {service_port_id} '
-            f'traffic-table index {traffic_index} '
-            f'inbound traffic-table index {traffic_index}'
+            f'traffic-table index {traffic_index_down} '
+            f'inbound traffic-table index {traffic_index_up}'
         ),
         'save',
     ]
@@ -2624,14 +2624,18 @@ def change_lineprofile(
 
     _check_cli_error(conn.brand, 'change_lineprofile', raw)
     logger.info(
-        'change_lineprofile OK | OLT=%s sp=%d traffic_index=%d',
-        conn.ip, service_port_id, traffic_index,
+        'change_lineprofile OK | OLT=%s sp=%d down=%d up=%d',
+        conn.ip, service_port_id, traffic_index_down, traffic_index_up,
     )
     return {
-        'success':         True,
-        'message':         f'Velocidad actualizada: service-port={service_port_id} traffic-table={traffic_index}',
-        'service_port_id': service_port_id,
-        'traffic_index':   traffic_index,
+        'success':            True,
+        'message':            (
+            f'Velocidad actualizada: service-port={service_port_id} '
+            f'down={traffic_index_down} up={traffic_index_up}'
+        ),
+        'service_port_id':    service_port_id,
+        'traffic_index_down': traffic_index_down,
+        'traffic_index_up':   traffic_index_up,
     }
 
 

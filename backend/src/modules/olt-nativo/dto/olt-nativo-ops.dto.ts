@@ -664,19 +664,21 @@ export interface PythonOntSuspendResponse {
 }
 
 export interface PythonChangeLineprofileRequest {
-  connection:      PythonConnectionPayload;
-  slot:            number;
-  port:            number;
-  onu_id:          number;
-  service_port_id: number;
-  traffic_index:   number;
+  connection:         PythonConnectionPayload;
+  slot:               number;
+  port:               number;
+  onu_id:             number;
+  service_port_id:    number;
+  traffic_index_down: number;
+  traffic_index_up:   number;
 }
 
 export interface PythonChangeLineprofileResponse {
-  success:       boolean;
-  message:       string;
-  traffic_index: number | null;
-  error?:        string;
+  success:            boolean;
+  message:            string;
+  traffic_index_down: number | null;
+  traffic_index_up:   number | null;
+  error?:             string;
 }
 
 export interface OltConProveedorPrincipal {

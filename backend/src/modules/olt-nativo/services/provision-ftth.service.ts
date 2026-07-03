@@ -43,8 +43,9 @@ export class ReinjectarWanDto {
 }
 
 export class CambiarVelocidadDto {
-  @IsUUID('4') contratoId:    string;
-  @IsInt() @Min(0) @Type(() => Number) trafficIndex: number;
+  @IsUUID('4') contratoId:       string;
+  @IsInt() @Min(0) @Type(() => Number) trafficIndexDown: number;
+  @IsInt() @Min(0) @Type(() => Number) trafficIndexUp:   number;
 }
 
 export class DesaprovisionarFtthDto {
@@ -196,18 +197,20 @@ export class ProvisionFtthService {
     const insertResult = await this.ds.query<{ id: string }[]>(
       `INSERT INTO ftth_onu_registro
          (id, empresa_id, contrato_id, olt_id, frame, slot, port, onu_id, sn,
-          service_port_id, vlan, lineprofile_id, srvprofile_id, estado, locked_at,
-          intentos_gpon, intentos_wan, created_at, updated_at)
+          service_port_id, vlan, lineprofile_id, srvprofile_id,
+          traffic_index_down, traffic_index_up, description,
+          estado, locked_at, intentos_gpon, intentos_wan, created_at, updated_at)
        VALUES
          (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, 'pendiente', NOW(),
-          0, 0, NOW(), NOW())
+          $9, $10, $11, $12, $13, $14, $15,
+          'pendiente', NOW(), 0, 0, NOW(), NOW())
        ON CONFLICT (contrato_id) DO NOTHING
        RETURNING id`,
       [
         empresaId, dto.contratoId, oltId,
         dto.frame, dto.slot, dto.port, onuId, dto.sn.toUpperCase(),
         servicePortId, dto.vlan, dto.lineprofileId, dto.srvprofileId,
+        dto.trafficIndexDown ?? null, dto.trafficIndexUp ?? null, dto.description ?? null,
       ],
     );
 
@@ -746,12 +749,13 @@ export class ProvisionFtthService {
     let error: string | undefined;
     try {
       const res = await this.automation.ftthChangeLineprofile({
-        connection:      conn,
-        slot:            registro.slot,
-        port:            registro.port,
-        onu_id:          registro.onuId,
-        service_port_id: registro.servicePortId,
-        traffic_index:   dto.trafficIndex,
+        connection:         conn,
+        slot:               registro.slot,
+        port:               registro.port,
+        onu_id:             registro.onuId,
+        service_port_id:    registro.servicePortId,
+        traffic_index_down: dto.trafficIndexDown,
+        traffic_index_up:   dto.trafficIndexUp,
       });
       exitoso = res.success;
       error   = res.error;
@@ -764,12 +768,18 @@ export class ProvisionFtthService {
       return { exitoso: false, mensaje: 'No se pudo cambiar la velocidad en la OLT.', error };
     }
 
+    await this.ftthRepo.update(registro.id, {
+      trafficIndexDown: dto.trafficIndexDown,
+      trafficIndexUp:   dto.trafficIndexUp,
+    });
+
     this.logger.log(
-      `FTTH velocidad cambiada | contrato=${dto.contratoId} sn=${registro.sn} traffic_index=${dto.trafficIndex}`,
+      `FTTH velocidad cambiada | contrato=${dto.contratoId} sn=${registro.sn} ` +
+      `down=${dto.trafficIndexDown} up=${dto.trafficIndexUp}`,
     );
     return {
       exitoso: true,
-      mensaje: `Velocidad actualizada correctamente. Traffic-table: ${dto.trafficIndex}.`,
+      mensaje: `Velocidad actualizada. Down: ${dto.trafficIndexDown} / Up: ${dto.trafficIndexUp}.`,
     };
   }
 

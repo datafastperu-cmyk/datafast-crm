@@ -340,7 +340,7 @@ export class OltAutomationClient {
   async ftthChangeLineprofile(payload: PythonChangeLineprofileRequest): Promise<PythonChangeLineprofileResponse> {
     this.logger.log(
       `→ Python ftth/change-lineprofile | OLT=${payload.connection.ip} ` +
-      `sp=${payload.service_port_id} traffic_index=${payload.traffic_index}`,
+      `sp=${payload.service_port_id} down=${payload.traffic_index_down} up=${payload.traffic_index_up}`,
     );
     const res = await this.post<PythonChangeLineprofileResponse>('/api/v1/olt/ftth/change-lineprofile', payload, 30_000);
     this.logger.log(`← ftth/change-lineprofile | success=${res.success}`);

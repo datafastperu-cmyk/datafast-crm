@@ -785,14 +785,16 @@ async def ftth_change_lineprofile(body: ChangeLineprofileRequest) -> ChangeLinep
             result = await asyncio.to_thread(
                 change_lineprofile,
                 body.connection,
-                body.slot, body.port, body.onu_id, body.service_port_id, body.traffic_index,
+                body.slot, body.port, body.onu_id, body.service_port_id,
+                body.traffic_index_down, body.traffic_index_up,
             )
         except ProvisioningError as exc:
             return ChangeLineprofileResponse(success=False, message='Error al cambiar velocidad', error=str(exc))
     return ChangeLineprofileResponse(
-        success       = True,
-        message       = result['message'],
-        traffic_index = result['traffic_index'],
+        success            = True,
+        message            = result['message'],
+        traffic_index_down = result['traffic_index_down'],
+        traffic_index_up   = result['traffic_index_up'],
     )
 
 
