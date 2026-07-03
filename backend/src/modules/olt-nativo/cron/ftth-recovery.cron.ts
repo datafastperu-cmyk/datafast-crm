@@ -40,16 +40,20 @@ export class FtthRecoveryCron {
 
   @Cron('*/5 * * * *')
   async liberarBloqueados(): Promise<void> {
+    // UPDATE atómico: solo la instancia que gana el race obtiene las filas.
+    // locked_at se renueva a NOW() para que la condición `< NOW() - 10min`
+    // sea falsa para cualquier otra instancia que corra en paralelo.
     const bloqueados = await this.ds.query<{
       id: string; estado: string; olt_id: string;
       slot: number; port: number; onu_id: number; service_port_id: number | null;
     }[]>(
-      `SELECT id, estado, olt_id, slot, port, onu_id, service_port_id
-       FROM ftth_onu_registro
+      `UPDATE ftth_onu_registro
+       SET locked_at = NOW()
        WHERE locked_at IS NOT NULL
          AND locked_at < NOW() - INTERVAL '10 minutes'
          AND estado IN ('pendiente', 'gpon_registrado', 'wan_inyectado', 'desaprovisionando')
-         AND deleted_at IS NULL`,
+         AND deleted_at IS NULL
+       RETURNING id, estado, olt_id, slot, port, onu_id, service_port_id`,
     );
 
     if (!bloqueados.length) return;
