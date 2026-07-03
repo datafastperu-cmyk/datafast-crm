@@ -457,8 +457,9 @@ export interface FtthProvisionDto {
   vlan:           number;
   lineprofileId:  number;
   srvprofileId:   number;
-  trafficIndex?:  number;   // Indefinida = sin límite en OLT (MikroTik controla)
-  description?:   string;
+  trafficIndexDown?: number;  // outbound bajada; undefined = índice 0 sin límite
+  trafficIndexUp?:   number;  // inbound subida;  undefined = índice 0 sin límite
+  description?:      string;
 }
 
 export interface OltPerfilesResult {

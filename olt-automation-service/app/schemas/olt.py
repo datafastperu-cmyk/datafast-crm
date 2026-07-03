@@ -350,17 +350,19 @@ class OntVersionResponse(BaseModel):
 
 class FtthGponRequest(BaseModel):
     """Fase 1 del aprovisionamiento FTTH: registrar ONU en la OLT (GPON)."""
-    connection:      OltConnectionSchema
-    frame:           int = Field(0, ge=0, le=7)
-    slot:            int = Field(..., ge=0, le=15)
-    port:            int = Field(..., ge=0, le=15)
-    onu_id:          int = Field(..., ge=1, le=128)
-    sn:              str = Field(..., min_length=12, max_length=16)
-    service_port_id: int = Field(..., ge=1)
-    vlan:            int = Field(..., ge=1, le=4094)
-    lineprofile_id:  int = Field(..., ge=1)
-    srvprofile_id:   int = Field(..., ge=1)
-    description:     str | None = Field(None, max_length=64)
+    connection:         OltConnectionSchema
+    frame:              int = Field(0, ge=0, le=7)
+    slot:               int = Field(..., ge=0, le=15)
+    port:               int = Field(..., ge=0, le=15)
+    onu_id:             int = Field(..., ge=1, le=128)
+    sn:                 str = Field(..., min_length=12, max_length=16)
+    service_port_id:    int = Field(..., ge=1)
+    vlan:               int = Field(..., ge=1, le=4094)
+    lineprofile_id:     int = Field(..., ge=1)
+    srvprofile_id:      int = Field(..., ge=1)
+    traffic_index_down: int | None = Field(None, ge=0, description='Traffic-table outbound (bajada). None = índice 0 (sin límite).')
+    traffic_index_up:   int | None = Field(None, ge=0, description='Traffic-table inbound (subida). None = índice 0 (sin límite).')
+    description:        str | None = Field(None, max_length=64)
 
 
 class FtthGponResponse(BaseModel):

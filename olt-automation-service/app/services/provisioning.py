@@ -2330,17 +2330,19 @@ def test_olt_connection(conn: OltConnectionSchema) -> dict[str, Any]:
 
 
 def provision_gpon_ftth(
-    conn:           OltConnectionSchema,
-    frame:          int,
-    slot:           int,
-    port:           int,
-    onu_id:         int,
-    sn:             str,
-    service_port_id: int,
-    vlan:           int,
-    lineprofile_id: int,
-    srvprofile_id:  int,
-    description:    str | None = None,
+    conn:               OltConnectionSchema,
+    frame:              int,
+    slot:               int,
+    port:               int,
+    onu_id:             int,
+    sn:                 str,
+    service_port_id:    int,
+    vlan:               int,
+    lineprofile_id:     int,
+    srvprofile_id:      int,
+    traffic_index_down: int | None = None,
+    traffic_index_up:   int | None = None,
+    description:        str | None = None,
 ) -> dict[str, Any]:
     """
     Fase 1 del aprovisionamiento FTTH nativo.
@@ -2370,8 +2372,8 @@ def provision_gpon_ftth(
             f'service-port {service_port_id} vlan {vlan} '
             f'gpon 0/{slot}/{port} ont {onu_id} gemport 1 '
             f'user-vlan {vlan} '
-            f'inbound traffic-table index 0 '
-            f'outbound traffic-table index 0'
+            f'inbound traffic-table index {traffic_index_up or 0} '
+            f'outbound traffic-table index {traffic_index_down or 0}'
         ),
         'save',
     ]

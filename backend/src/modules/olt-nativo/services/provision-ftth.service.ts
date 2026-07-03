@@ -33,8 +33,9 @@ export class ProvisionarFtthDto {
   @IsInt() @Min(1) @Max(4094)@Type(() => Number) vlan:          number;
   @IsInt() @Min(1)           @Type(() => Number) lineprofileId: number;
   @IsInt() @Min(1)           @Type(() => Number) srvprofileId:  number;
-  @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndex?: number;
-  @IsOptional() @IsString() @MaxLength(64)        description?:  string;
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndexDown?: number;
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndexUp?:   number;
+  @IsOptional() @IsString() @MaxLength(64)            description?:      string;
 }
 
 export class ReinjectarWanDto {
@@ -234,8 +235,9 @@ export class ProvisionFtthService {
       vlan:            dto.vlan,
       lineprofile_id:  dto.lineprofileId,
       srvprofile_id:   dto.srvprofileId,
-      traffic_index:   dto.trafficIndex ?? null,
-      description:     dto.description ?? null,
+      traffic_index_down: dto.trafficIndexDown ?? null,
+      traffic_index_up:   dto.trafficIndexUp   ?? null,
+      description:        dto.description      ?? null,
     });
 
     if (!gponRes.success) {

@@ -640,6 +640,8 @@ async def ftth_provision_gpon(body: FtthGponRequest) -> FtthGponResponse:
                 body.frame, body.slot, body.port, body.onu_id,
                 body.sn, body.service_port_id, body.vlan,
                 body.lineprofile_id, body.srvprofile_id,
+                body.traffic_index_down,
+                body.traffic_index_up,
                 body.description,
             )
         except ProvisioningError as exc:

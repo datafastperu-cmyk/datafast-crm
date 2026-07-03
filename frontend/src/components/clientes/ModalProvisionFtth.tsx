@@ -207,7 +207,8 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const [vlan,          setVlan]          = useState('');
   const [lineprofileId, setLineprofileId] = useState('');
   const [srvprofileId,  setSrvprofileId]  = useState('');
-  const [trafficIndex,  setTrafficIndex]  = useState('');   // '' = Indefinida
+  const [trafficIndexDown, setTrafficIndexDown] = useState('');  // '' = Indefinida
+  const [trafficIndexUp,   setTrafficIndexUp]   = useState('');  // '' = Indefinida
   const [description,   setDescription]  = useState('');
 
   // Perfiles OLT (Phase 4)
@@ -408,8 +409,9 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       vlan:          parseInt(vlan),
       lineprofileId: parseInt(lineprofileId),
       srvprofileId:  parseInt(srvprofileId),
-      trafficIndex:  trafficIndex !== '' ? parseInt(trafficIndex) : undefined,
-      description:   description.trim() || undefined,
+      trafficIndexDown: trafficIndexDown !== '' ? parseInt(trafficIndexDown) : undefined,
+      trafficIndexUp:   trafficIndexUp   !== '' ? parseInt(trafficIndexUp)   : undefined,
+      description:      description.trim() || undefined,
     }),
     onSuccess: (res) => {
       if (res.estado === 'activo') {
@@ -649,19 +651,40 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       <input type="number" value={srvprofileId} onChange={e => setSrvprofileId(e.target.value)} min={1} placeholder="1" className={inputCls} />
                     )}
                   </Field>
-                  <Field label="Velocidad en OLT" span2>
+                  <Field label="Velocidad Bajada">
                     <div className="relative">
                       <select
-                        value={trafficIndex}
-                        onChange={e => setTrafficIndex(e.target.value)}
+                        value={trafficIndexDown}
+                        onChange={e => setTrafficIndexDown(e.target.value)}
                         className={cn(inputCls, 'appearance-none pr-8')}
                       >
-                        <option value="">Indefinida (MikroTik controla velocidad)</option>
-                        {trafficTables.map(t => (
-                          <option key={t.id} value={t.trafficId}>
-                            {t.trafficId} — {t.nombre}
-                          </option>
-                        ))}
+                        <option value="">Indefinida</option>
+                        {trafficTables
+                          .filter(t => t.tipo === 'downstream' || t.tipo === 'combinado')
+                          .map(t => (
+                            <option key={t.id} value={t.trafficId}>
+                              {t.trafficId} — {t.nombre}
+                            </option>
+                          ))}
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    </div>
+                  </Field>
+                  <Field label="Velocidad Subida">
+                    <div className="relative">
+                      <select
+                        value={trafficIndexUp}
+                        onChange={e => setTrafficIndexUp(e.target.value)}
+                        className={cn(inputCls, 'appearance-none pr-8')}
+                      >
+                        <option value="">Indefinida</option>
+                        {trafficTables
+                          .filter(t => t.tipo === 'upstream' || t.tipo === 'combinado')
+                          .map(t => (
+                            <option key={t.id} value={t.trafficId}>
+                              {t.trafficId} — {t.nombre}
+                            </option>
+                          ))}
                       </select>
                       <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                     </div>
