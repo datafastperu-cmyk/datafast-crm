@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientesApi }                           from '@/lib/api/clientes';
-import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
+import { facturacionApi, pagosApi } from '@/lib/api/facturacion';
 import apiClient from '@/lib/api';
 import { contratosApi }                           from '@/lib/api/contratos';
 import { promesasApi }                            from '@/lib/api/promesas';
@@ -13,7 +13,7 @@ import { useToast }                              from '@/components/ui/toaster';
 import { cn }                                    from '@/lib/utils';
 import type { Cliente, Factura }                 from '@/types';
 import {
-  CreditCard, ShoppingCart, CalendarDays,
+  CreditCard, CalendarDays,
   X, Printer, CheckCircle, Loader2,
   UploadCloud, AlertCircle, FileText,
   RefreshCw, Clock, Ban, Wifi, WifiOff,
@@ -34,17 +34,6 @@ const ESTADO_LABEL: Record<string, string> = {
 const ESTADO_COLOR: Record<string, string> = {
   pendiente_activacion: 'bg-blue-500', activo: 'bg-emerald-500',
   suspendido: 'bg-yellow-500', baja_definitiva: 'bg-gray-600',
-};
-
-const PAGO_BADGE: Record<string, string> = {
-  verificado:             'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  pendiente_verificacion: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  rechazado:              'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  devuelto:               'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
-};
-const PAGO_LABEL: Record<string, string> = {
-  verificado: 'VERIFICADO', pendiente_verificacion: 'PENDIENTE',
-  rechazado: 'RECHAZADO', devuelto: 'DEVUELTO',
 };
 
 const TIPOS_PAGO = [
@@ -95,7 +84,7 @@ function RadioDot({ checked, onChange }: { checked: boolean; onChange: () => voi
 /*  Main Page                                                         */
 /* ══════════════════════════════════════════════════════════════════ */
 export default function RegistroPagosPage() {
-  const [tab, setTab] = useState<'registrar' | 'hoy' | 'promesas'>('registrar');
+  const [tab, setTab] = useState<'registrar' | 'promesas'>('registrar');
 
   return (
     <div className="flex flex-col h-full min-h-screen">
@@ -104,11 +93,6 @@ export default function RegistroPagosPage() {
         <TabBtn active={tab === 'registrar'} onClick={() => setTab('registrar')}>
           <CreditCard className="w-4 h-4" />
           Registrar pago
-        </TabBtn>
-        <TabBtn active={tab === 'hoy'} onClick={() => setTab('hoy')}>
-          <ShoppingCart className="w-4 h-4" />
-          Pagos registrados
-          <span className="text-xs text-blue-500 dark:text-blue-400">(hoy)</span>
         </TabBtn>
         <TabBtn active={tab === 'promesas'} onClick={() => setTab('promesas')}>
           <CalendarDays className="w-4 h-4" />
@@ -119,7 +103,6 @@ export default function RegistroPagosPage() {
 
       <div className="flex-1 bg-gray-50 dark:bg-gray-950">
         {tab === 'registrar' && <TabRegistrar />}
-        {tab === 'hoy'       && <TabPagosHoy />}
         {tab === 'promesas'  && <TabPromesas />}
       </div>
     </div>
@@ -844,94 +827,6 @@ function VoucherDropzone({ file, onChange }: VoucherDropzoneProps) {
           <AlertCircle className="w-3 h-3 flex-shrink-0" />
           {error}
         </p>
-      )}
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════ */
-/*  Tab: Pagos Hoy                                                    */
-/* ══════════════════════════════════════════════════════════════════ */
-function TabPagosHoy() {
-  const { data, isLoading } = useQuery({
-    queryKey:       ['pagos-hoy'],
-    queryFn:        () => pagosApi.list({ soloHoy: true, limit: 200 }),
-    refetchInterval: 30_000,
-  });
-
-  const pagos     = data?.data ?? [];
-  const totalHoy  = pagos.reduce((s, p) => s + (+(p.monto ?? 0)), 0);
-
-  return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-          Pagos registrados hoy
-        </h2>
-        <div className="text-sm text-gray-500">
-          Total:{' '}
-          <strong className="text-emerald-600 dark:text-emerald-400">
-            S/. {fmt(totalHoy)}
-          </strong>
-          {' · '}
-          {pagos.length} pago{pagos.length !== 1 ? 's' : ''}
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-        </div>
-      ) : pagos.length === 0 ? (
-        <div className="text-center py-16 text-gray-400 text-sm">
-          No hay pagos registrados hoy
-        </div>
-      ) : (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-800 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-                <th className="px-4 py-2.5 text-left">Cliente</th>
-                <th className="px-4 py-2.5 text-left">Método</th>
-                <th className="px-4 py-2.5 text-left">N° Operación</th>
-                <th className="px-4 py-2.5 text-right">Monto</th>
-                <th className="px-4 py-2.5 text-center">Estado</th>
-                <th className="px-4 py-2.5 text-left">Hora</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {pagos.map(p => (
-                <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                  <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">
-                    {p.clienteNombre ?? p.cliente_nombre ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">
-                    {METODOS_PAGO.find(m => m.value === p.metodoPago)?.label ?? p.metodoPago}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-400">
-                    {p.numeroOperacion ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                    S/. {fmt(p.monto)}
-                  </td>
-                  <td className="px-4 py-2.5 text-center">
-                    <span className={cn(
-                      'text-[10px] font-bold px-1.5 py-0.5 rounded',
-                      PAGO_BADGE[p.estado] ?? 'bg-gray-100 text-gray-500',
-                    )}>
-                      {PAGO_LABEL[p.estado] ?? p.estado.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-400">
-                    {new Date(p.fechaPago).toLocaleTimeString('es-PE', {
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       )}
     </div>
   );
