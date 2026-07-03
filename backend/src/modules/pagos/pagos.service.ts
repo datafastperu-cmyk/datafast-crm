@@ -17,7 +17,7 @@ import { ContratosService }     from '../contratos/contratos.service';
 import { AuditoriaService }     from '../auth/auditoria.service';
 import { JwtPayload }           from '../../common/decorators/current-user.decorator';
 
-import { Pago, EstadoPago, MetodoPago, CuentaBancaria } from './entities/pago.entity';
+import { Pago, EstadoPago, CuentaBancaria } from './entities/pago.entity';
 import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto';
@@ -60,8 +60,6 @@ export class PagosService {
   ): Promise<Pago> {
     // Siempre usar la empresa del JWT — nunca confiar en el body para esto
     const empresaId = user.empresaId;
-    // El DTO ya usa los mismos valores lowercase que la entidad gracias al @Transform
-    const metodoPagoEntity = dto.metodoPago as unknown as MetodoPago;
     const contratosParaReactivar: Contrato[] = [];
     const contratosEnProrroga:    string[]   = [];
 
@@ -69,13 +67,15 @@ export class PagosService {
     const savedPago = await this.ds.transaction(async (manager) => {
 
       // PASO 1 — Idempotencia
-      const duplicado = await manager.findOne(Pago, {
-        where: { empresaId, metodoPago: metodoPagoEntity, numeroOperacion: dto.numeroOperacion },
-      });
+      const duplicado = dto.numeroOperacion
+        ? await manager.findOne(Pago, {
+            where: { empresaId, metodoPago: dto.metodoPago, numeroOperacion: dto.numeroOperacion },
+          })
+        : null;
       if (duplicado) {
         throw new ConflictException(
           `Ya existe un pago con el número de operación '${dto.numeroOperacion}' ` +
-          `(${metodoPagoEntity}). ID existente: ${duplicado.id}`,
+          `(${dto.metodoPago}). ID existente: ${duplicado.id}`,
         );
       }
 
@@ -108,10 +108,11 @@ export class PagosService {
       // PASO 3 — Determinar estado inicial del pago
       // Auto-verificado si: MercadoPago (confirmación automática), Yape con OTP,
       // o el cajero marca autoVerificar: true (pagos presenciales inmediatos).
-      const esYapeConOtp   = metodoPagoEntity === MetodoPago.YAPE && !!dto.otpYape;
+      const metodoLower    = dto.metodoPago?.toLowerCase() ?? '';
+      const esYapeConOtp   = metodoLower === 'yape' && !!dto.otpYape;
       const puedeAutoverificar = user.roles.includes('Administrador')
                               || user.permisos.includes('pagos:autoverificar');
-      const autoVerificado = metodoPagoEntity === MetodoPago.MERCADOPAGO
+      const autoVerificado = metodoLower === 'mercadopago'
                           || esYapeConOtp
                           || (dto.autoVerificar === true && puedeAutoverificar);
       const estadoInicial  = autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION;
@@ -123,8 +124,9 @@ export class PagosService {
         contratoId:      factura.contratoId ?? null,
         monto:           dto.monto,
         moneda:          'PEN',
-        metodoPago:      metodoPagoEntity,
-        numeroOperacion: dto.numeroOperacion,
+        metodoPago:      dto.metodoPago,
+        banco:           dto.banco ?? null,
+        numeroOperacion: dto.numeroOperacion ?? null,
         fechaPago:       dto.fechaPago ?? new Date().toISOString().split('T')[0],
         estado:          estadoInicial,
         cajeroId:        user.sub,
@@ -276,7 +278,7 @@ export class PagosService {
     }
 
     this.logger.log(
-      `Pago registrado: ${savedPago.id} | ${metodoPagoEntity} | S/ ${dto.monto} | ${savedPago.estado}`,
+      `Pago registrado: ${savedPago.id} | ${dto.metodoPago} | S/ ${dto.monto} | ${savedPago.estado}`,
     );
 
     return savedPago;
@@ -479,7 +481,7 @@ export class PagosService {
           contratoId,
           monto:           mpPayment.transaction_amount,
           moneda:          mpPayment.currency_id || 'PEN',
-          metodoPago:      MetodoPago.MERCADOPAGO,
+          metodoPago:      'mercadopago',
           mpPaymentId:     String(mpPayment.id),
           mpStatus:        mpPayment.status,
           mpPreferenceId:  mpPayment.preference_id,

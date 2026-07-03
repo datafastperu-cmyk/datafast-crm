@@ -1,7 +1,6 @@
 import {
   IsBoolean,
   IsDateString,
-  IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -10,30 +9,9 @@ import {
   IsUUID,
   Matches,
   Length,
+  MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-
-// Valores en minúsculas alineados 1:1 con el enum MetodoPago de la entidad.
-export enum MetodoPago {
-  EFECTIVO               = 'efectivo',
-  YAPE                   = 'yape',
-  PLIN                   = 'plin',
-  TRANSFERENCIA_BANCARIA = 'transferencia_bancaria',
-  DEPOSITO_BANCARIO      = 'deposito_bancario',
-  MERCADOPAGO            = 'mercadopago',
-  TARJETA_CREDITO        = 'tarjeta_credito',
-  TARJETA_DEBITO         = 'tarjeta_debito',
-  CHEQUE                 = 'cheque',
-  OTRO                   = 'otro',
-}
-
-// Normaliza casing y el alias legacy TRANSFERENCIA_MANUAL → transferencia_bancaria
-function normalizarMetodoPago(value: unknown): unknown {
-  if (typeof value !== 'string') return value;
-  const lower = value.toLowerCase();
-  if (lower === 'transferencia_manual') return MetodoPago.TRANSFERENCIA_BANCARIA;
-  return lower;
-}
 
 export class RegistrarPagoDto {
   @IsUUID('4')
@@ -44,14 +22,21 @@ export class RegistrarPagoDto {
   @IsPositive()
   monto: number;
 
-  @Transform(({ value }) => normalizarMetodoPago(value))
-  @IsEnum(MetodoPago)
-  metodoPago: MetodoPago;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  metodoPago: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  banco?: string;
+
+  @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @Length(3, 50)
-  numeroOperacion: string;
+  @Length(1, 50)
+  numeroOperacion?: string;
 
   @IsOptional()
   @IsString()

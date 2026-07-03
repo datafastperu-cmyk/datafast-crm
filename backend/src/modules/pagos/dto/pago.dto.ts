@@ -5,7 +5,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
-import { MetodoPago, EstadoPago } from '../entities/pago.entity';
+import { EstadoPago } from '../entities/pago.entity';
 import { PaginationDto } from '../../../common/dto/response.dto';
 
 // RegistrarPagoDto vive en registrar-pago.dto.ts — re-exportado para compatibilidad de imports
@@ -39,10 +39,9 @@ export class ConciliarPagoDto {
 
 // ─── Editar metadatos de un pago ──────────────────────────────
 export class ActualizarPagoDto {
-  @ApiPropertyOptional({ enum: MetodoPago })
-  @IsOptional() @IsEnum(MetodoPago)
-  @Transform(({ value }) => (typeof value === 'string' ? value.toLowerCase() : value))
-  metodoPago?: MetodoPago;
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(100)
+  metodoPago?: string;
 
   @ApiPropertyOptional({ example: 'BCP' })
   @IsOptional() @IsString() @MaxLength(100)
@@ -72,9 +71,9 @@ export class FilterPagoDto extends PaginationDto {
   @IsOptional() @IsEnum(EstadoPago)
   estado?: EstadoPago;
 
-  @ApiPropertyOptional({ enum: MetodoPago })
-  @IsOptional() @IsEnum(MetodoPago)
-  metodoPago?: MetodoPago;
+  @ApiPropertyOptional()
+  @IsOptional() @IsString()
+  metodoPago?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsUUID()
   clienteId?: string;
