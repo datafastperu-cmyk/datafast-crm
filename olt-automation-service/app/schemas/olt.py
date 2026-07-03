@@ -85,6 +85,15 @@ class OnuProvisionSchema(BaseModel):
                     'Si no se especifica, el template usa bridge por defecto.',
     )
 
+    @field_validator('description')
+    @classmethod
+    def sanitize_description(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if re.search(r'[\n\r\"\';\\]', v):
+            raise ValueError('description contiene caracteres no permitidos (\\n \\r " \' ; \\)')
+        return v
+
     @field_validator('onu_mode')
     @classmethod
     def validate_onu_mode(cls, v: str | None) -> str | None:
@@ -363,6 +372,15 @@ class FtthGponRequest(BaseModel):
     traffic_index_down: int | None = Field(None, ge=0, description='Traffic-table outbound (bajada). None = índice 0 (sin límite).')
     traffic_index_up:   int | None = Field(None, ge=0, description='Traffic-table inbound (subida). None = índice 0 (sin límite).')
     description:        str | None = Field(None, max_length=64)
+
+    @field_validator('description')
+    @classmethod
+    def sanitize_description(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if re.search(r'[\n\r\"\';\\]', v):
+            raise ValueError('description contiene caracteres no permitidos (\\n \\r " \' ; \\)')
+        return v
 
 
 class FtthGponResponse(BaseModel):
