@@ -9,7 +9,8 @@ import {
   Pencil, X, Save, Loader2, Lock,
 } from 'lucide-react';
 
-import { pagosApi, METODOS_PAGO, type FiltrosPago } from '@/lib/api/facturacion';
+import { pagosApi, type FiltrosPago } from '@/lib/api/facturacion';
+import apiClient from '@/lib/api';
 import { useAuthStore }               from '@/store/auth.store';
 import { zonasApi }                   from '@/lib/api/zonas';
 import { mikrotikApi }                from '@/lib/api/mikrotik';
@@ -544,6 +545,18 @@ function ModalEditarPago({
   const [notas, setNotas]           = useState(pago.notas ?? '');
   const [loading, setLoading]       = useState(false);
 
+  const { data: formasPago = [] } = useQuery<{ id: string; nombre: string }[]>({
+    queryKey: ['formas-pago-isp'],
+    queryFn:  () => apiClient.get('/facturacion-config/formas-pago').then(r => r.data.data ?? []),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: bancosOpciones = [] } = useQuery<{ id: string; nombre: string }[]>({
+    queryKey: ['bancos-isp'],
+    queryFn:  () => apiClient.get('/facturacion-config/bancos').then(r => r.data.data ?? []),
+    staleTime: 5 * 60_000,
+  });
+
   async function submit() {
     setLoading(true);
     try {
@@ -587,27 +600,34 @@ function ModalEditarPago({
         {/* Body */}
         <div className="px-5 py-4 space-y-4 overflow-y-auto">
 
-          {/* Forma de pago */}
+          {/* Forma de pago — lista dinámica */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Forma de pago</label>
             <select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)} className={inputCls}>
               <option value="">— Seleccionar —</option>
-              {METODOS_PAGO.map((m) => (
-                <option key={m.value} value={m.value}>{m.label}</option>
+              {formasPago.map((m) => (
+                <option key={m.id} value={m.nombre}>{m.nombre}</option>
               ))}
+              {/* Mantener el valor actual si no está en la lista dinámica */}
+              {metodoPago && !formasPago.some(m => m.nombre === metodoPago) && (
+                <option value={metodoPago}>{metodoPago}</option>
+              )}
             </select>
           </div>
 
-          {/* Banco */}
+          {/* Banco — lista dinámica */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Banco</label>
-            <input
-              type="text"
-              value={banco}
-              onChange={(e) => setBanco(e.target.value)}
-              placeholder="BCP, Interbank, BBVA…"
-              className={inputCls}
-            />
+            <select value={banco} onChange={(e) => setBanco(e.target.value)} className={inputCls}>
+              <option value="">— Sin banco —</option>
+              {bancosOpciones.map((b) => (
+                <option key={b.id} value={b.nombre}>{b.nombre}</option>
+              ))}
+              {/* Mantener el valor actual si no está en la lista dinámica */}
+              {banco && !bancosOpciones.some(b => b.nombre === banco) && (
+                <option value={banco}>{banco}</option>
+              )}
+            </select>
           </div>
 
           {/* Fecha de Pago */}
