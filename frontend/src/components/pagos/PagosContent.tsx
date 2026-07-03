@@ -6,9 +6,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, RefreshCw, CheckCircle2,
   Clock, AlertCircle, CreditCard, TrendingUp, Trash2,
+  Pencil, X, Save, Loader2, Lock,
 } from 'lucide-react';
 
-import { pagosApi, type FiltrosPago } from '@/lib/api/facturacion';
+import { pagosApi, METODOS_PAGO, type FiltrosPago } from '@/lib/api/facturacion';
 import { useAuthStore }               from '@/store/auth.store';
 import { zonasApi }                   from '@/lib/api/zonas';
 import { mikrotikApi }                from '@/lib/api/mikrotik';
@@ -38,6 +39,7 @@ export function PagosContent() {
   const puedeEliminarPago = useAuthStore((s) => s.tienePermiso)('pagos:delete');
 
   const [filtros, setFiltros]   = useState<FiltrosPago>({ page: 1, limit: 25 });
+  const [editandoPago, setEditandoPago] = useState<Pago | null>(null);
   const [searchInput, setSearch] = useState('');
   const searchDebounced          = useDebounce(searchInput, 400);
   const [rechazandoId, setRechazando] = useState<string | null>(null);
@@ -402,6 +404,19 @@ export function PagosContent() {
                             </button>
                           </>
                         )}
+                        {p.conciliado ? (
+                          <span title="Pago conciliado — no se puede editar" className="p-1.5 rounded text-muted-foreground/40 cursor-not-allowed">
+                            <Lock className="w-3.5 h-3.5" />
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setEditandoPago(p)}
+                            title="Editar"
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {!p.conciliado && puedeEliminarPago && (
                           <button
                             onClick={() => {
@@ -437,6 +452,19 @@ export function PagosContent() {
           </div>
         )}
       </div>
+
+      {/* Modal editar pago */}
+      {editandoPago && (
+        <ModalEditarPago
+          pago={editandoPago}
+          onClose={() => setEditandoPago(null)}
+          onSuccess={() => {
+            setEditandoPago(null);
+            queryClient.invalidateQueries({ queryKey: ['pagos'] });
+            toast('Pago actualizado', { type: 'success' });
+          }}
+        />
+      )}
 
       {/* Modal rechazo */}
       {rechazandoId && (
@@ -487,5 +515,180 @@ function Pag({ children, onClick, disabled, active }: PagProps) {
         active ? 'bg-primary text-primary-foreground border-primary' : 'border-input hover:bg-muted disabled:opacity-40')}>
       {children}
     </button>
+  );
+}
+
+// ── Helper ────────────────────────────────────────────────────
+function toDatetimeLocal(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ── ModalEditarPago ───────────────────────────────────────────
+function ModalEditarPago({
+  pago, onClose, onSuccess,
+}: {
+  pago:      Pago;
+  onClose:   () => void;
+  onSuccess: () => void;
+}) {
+  const { toast }                   = useToast();
+  const [metodoPago, setMetodoPago] = useState(pago.metodoPago ?? '');
+  const [banco, setBanco]           = useState(pago.banco ?? '');
+  const [fechaPago, setFechaPago]   = useState(pago.fechaPago ?? '');
+  const [fechaHora]                 = useState(() => toDatetimeLocal((pago as any).registradoEn));
+  const [numeroOp, setNumeroOp]     = useState(pago.numeroOperacion ?? '');
+  const [notas, setNotas]           = useState(pago.notas ?? '');
+  const [loading, setLoading]       = useState(false);
+
+  async function submit() {
+    setLoading(true);
+    try {
+      await pagosApi.actualizar(pago.id, {
+        metodoPago:      metodoPago  || undefined,
+        banco:           banco        || undefined,
+        fechaPago:       fechaPago    || undefined,
+        numeroOperacion: numeroOp     || undefined,
+        notas:           notas        || undefined,
+      });
+      onSuccess();
+    } catch (err: any) {
+      toast(err?.response?.data?.message ?? 'Error al actualizar el pago', { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputCls = `w-full px-3 py-2 text-sm border border-input rounded-lg bg-background
+                    text-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-colors`;
+
+  const facturaNum = (pago as any).facturaNumero ?? pago.facturaId?.slice(0, 8) ?? '';
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="w-full max-w-sm bg-card border border-border rounded-xl shadow-2xl flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <h2 className="text-base font-semibold">Editar Pago</h2>
+            {facturaNum && (
+              <p className="text-xs text-muted-foreground">Pago de la factura Nº {facturaNum}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-accent transition-colors text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto">
+
+          {/* Forma de pago */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Forma de pago</label>
+            <select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)} className={inputCls}>
+              <option value="">— Seleccionar —</option>
+              {METODOS_PAGO.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Banco */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Banco</label>
+            <input
+              type="text"
+              value={banco}
+              onChange={(e) => setBanco(e.target.value)}
+              placeholder="BCP, Interbank, BBVA…"
+              className={inputCls}
+            />
+          </div>
+
+          {/* Fecha de Pago */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha de Pago</label>
+            <input
+              type="date"
+              value={fechaPago}
+              onChange={(e) => setFechaPago(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          {/* Fecha y Hora del Registro — solo lectura */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha y Hora del Registro</label>
+            <input
+              type="datetime-local"
+              value={fechaHora}
+              readOnly
+              className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-muted text-muted-foreground cursor-not-allowed"
+            />
+          </div>
+
+          {/* N° Operación */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">N° transacción</label>
+            <input
+              type="text"
+              value={numeroOp}
+              onChange={(e) => setNumeroOp(e.target.value)}
+              placeholder="Código de operación"
+              className={inputCls}
+            />
+          </div>
+
+          {/* Monto (solo lectura) */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Monto</label>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-2 text-sm bg-muted border border-input rounded-l-lg text-muted-foreground">S/.</span>
+              <input
+                type="text"
+                value={Number(pago.monto).toFixed(2)}
+                readOnly
+                className="flex-1 px-3 py-2 text-sm border border-input rounded-r-lg bg-muted text-muted-foreground cursor-not-allowed"
+              />
+            </div>
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Notas</label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              rows={3}
+              placeholder="Observaciones opcionales..."
+              className={`${inputCls} resize-none`}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-border flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-accent transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={loading}
+            onClick={submit}
+            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Guardar cambios
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
