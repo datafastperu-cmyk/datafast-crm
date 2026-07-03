@@ -114,19 +114,20 @@ export class FtthOnuRegistro extends BaseModel {
   @Column({ name: 'traffic_table_id', type: 'int', nullable: true })
   trafficTableId: number | null;
 
-  // ── Helpers ───────────────────────────────────────────────
-  get estaActivo(): boolean {
-    return this.estado === FtthOnuEstado.ACTIVO;
-  }
+}
 
-  get estaFallido(): boolean {
-    return this.estado === FtthOnuEstado.FALLIDO_GPON ||
-           this.estado === FtthOnuEstado.FALLIDO_WAN;
-  }
+// ── Helpers (fuera de la clase para evitar get/set con SWC) ──────────
+export function ftthEstaActivo(r: FtthOnuRegistro): boolean {
+  return r.estado === FtthOnuEstado.ACTIVO;
+}
 
-  get necesitaRecovery(): boolean {
-    if (!this.lockedAt) return false;
-    const minutos = (Date.now() - this.lockedAt.getTime()) / 60_000;
-    return minutos > 10;
-  }
+export function ftthEstaFallido(r: FtthOnuRegistro): boolean {
+  return r.estado === FtthOnuEstado.FALLIDO_GPON ||
+         r.estado === FtthOnuEstado.FALLIDO_WAN;
+}
+
+export function ftthNecesitaRecovery(r: FtthOnuRegistro): boolean {
+  if (!r.lockedAt) return false;
+  const minutos = (Date.now() - r.lockedAt.getTime()) / 60_000;
+  return minutos > 10;
 }

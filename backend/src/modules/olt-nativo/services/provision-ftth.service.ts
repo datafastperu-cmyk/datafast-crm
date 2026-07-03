@@ -11,7 +11,7 @@ import {
 import { Type } from 'class-transformer';
 
 import { OltDispositivo }   from '../entities/olt-dispositivo.entity';
-import { FtthOnuEstado, FTTH_ESTADOS_FALLIDOS, FtthOnuRegistro } from '../entities/ftth-onu-registro.entity';
+import { FtthOnuEstado, FTTH_ESTADOS_FALLIDOS, FtthOnuRegistro, ftthNecesitaRecovery } from '../entities/ftth-onu-registro.entity';
 import { FtthRollbackLog, RollbackMotivo } from '../entities/ftth-rollback-log.entity';
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
@@ -145,7 +145,7 @@ export class ProvisionFtthService {
         registroExistente.estado === FtthOnuEstado.WAN_INYECTADO ||
         registroExistente.estado === FtthOnuEstado.DESAPROVISIONANDO
       ) {
-        if (!registroExistente.necesitaRecovery) {
+        if (!ftthNecesitaRecovery(registroExistente)) {
           throw new ConflictException(
             `Hay un aprovisionamiento en curso para este contrato ` +
             `(estado: ${registroExistente.estado}). Espera o espera al recovery automático.`,
