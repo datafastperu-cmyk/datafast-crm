@@ -334,7 +334,7 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   })();
 
   const [facturaId,      setFacturaId]      = useState<string>(pendientes[0]?.id ?? '');
-  const [metodoPago,     setMetodoPago]     = useState('efectivo');
+  const [metodoPago,     setMetodoPago]     = useState('');
   const [numOp,          setNumOp]          = useState('');
   const [notas,          setNotas]          = useState('');
   const [tipoPago,       setTipoPago]       = useState('activar');
@@ -353,9 +353,19 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
     staleTime: 5 * 60_000,
   });
 
+  const { data: formasPagoOpciones = [] } = useQuery<{ id: string; nombre: string }[]>({
+    queryKey: ['formas-pago-isp'],
+    queryFn:  () => apiClient.get('/facturacion-config/formas-pago').then(r => r.data.data ?? []),
+    staleTime: 5 * 60_000,
+  });
+
   useEffect(() => {
     if (bancosOpciones.length > 0 && !banco) setBanco(bancosOpciones[0].nombre);
   }, [bancosOpciones]); // eslint-disable-line
+
+  useEffect(() => {
+    if (formasPagoOpciones.length > 0 && !metodoPago) setMetodoPago(formasPagoOpciones[0].nombre);
+  }, [formasPagoOpciones]); // eslint-disable-line
 
   const esPromesa = tipoPago === 'promesa';
 
@@ -524,8 +534,8 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                 onChange={e => setMetodoPago(e.target.value)}
                 className={inputCls}
               >
-                {METODOS_PAGO.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
+                {formasPagoOpciones.map(f => (
+                  <option key={f.id} value={f.nombre}>{f.nombre}</option>
                 ))}
               </select>
             </div>
