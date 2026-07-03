@@ -832,13 +832,36 @@ export class ProvisionFtthService {
   async signalDashboard(
     oltId:     string,
     empresaId: string,
-  ): Promise<Array<{ registro: FtthOnuRegistro; signal: PythonOnuStatusInfo | null }>> {
+  ): Promise<Array<{
+    registro:      FtthOnuRegistro;
+    signal:        PythonOnuStatusInfo | null;
+    clienteNombre: string | null;
+    planNombre:    string | null;
+  }>> {
 
     const registros = await this.ftthRepo.find({
       where: { oltId, empresaId, estado: FtthOnuEstado.ACTIVO },
       take:  500,
     });
     if (registros.length === 0) return [];
+
+    // Obtener nombre de cliente y plan en una sola query para todos los contratos
+    const contratoIds = registros.map(r => r.contratoId);
+    const clienteRows = await this.ds.query<{
+      contrato_id:    string;
+      cliente_nombre: string;
+      plan_nombre:    string | null;
+    }[]>(
+      `SELECT co.id AS contrato_id,
+              cl.nombre_completo AS cliente_nombre,
+              pl.nombre AS plan_nombre
+       FROM contratos co
+       JOIN clientes cl ON cl.id = co.cliente_id
+       LEFT JOIN planes pl ON pl.id = co.plan_id
+       WHERE co.id = ANY($1) AND co.deleted_at IS NULL`,
+      [contratoIds],
+    );
+    const clienteMap = new Map(clienteRows.map(c => [c.contrato_id, c]));
 
     const olt      = await this._fetchOlt(oltId, empresaId);
     const password = this._decryptOltPassword(olt);
@@ -872,10 +895,15 @@ export class ProvisionFtthService {
       ));
     }
 
-    return registros.map(r => ({
-      registro: r,
-      signal:   signalMap.get(`${r.slot}:${r.port}:${r.onuId}`) ?? null,
-    }));
+    return registros.map(r => {
+      const cliente = clienteMap.get(r.contratoId);
+      return {
+        registro:      r,
+        signal:        signalMap.get(`${r.slot}:${r.port}:${r.onuId}`) ?? null,
+        clienteNombre: cliente?.cliente_nombre ?? null,
+        planNombre:    cliente?.plan_nombre    ?? null,
+      };
+    });
   }
 
   // ────────────────────────────────────────────────────────────

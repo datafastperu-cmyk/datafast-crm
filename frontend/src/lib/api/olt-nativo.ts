@@ -878,13 +878,15 @@ export const oltNativoApi = {
   },
 
   ftthSignalDashboard: async (oltId: string): Promise<Array<{
-    registro: FtthOnuRegistro;
+    registro:      FtthOnuRegistro;
     signal: {
-      run_state: string;
-      rx_power_dbm: number | null;
-      tx_power_dbm: number | null;
+      run_state:     string;
+      rx_power_dbm:  number | null;
+      tx_power_dbm:  number | null;
       temperature_c: number | null;
     } | null;
+    clienteNombre: string | null;
+    planNombre:    string | null;
   }>> => {
     const res = await api.get<ApiRespuesta<any[]>>(`/olt-nativo/${oltId}/ftth/signal-dashboard`);
     return res.data.data ?? [];
