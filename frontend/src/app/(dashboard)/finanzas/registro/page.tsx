@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientesApi }                           from '@/lib/api/clientes';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
+import apiClient from '@/lib/api';
 import { contratosApi }                           from '@/lib/api/contratos';
 import { promesasApi }                            from '@/lib/api/promesas';
 import type { PromesaRow, PromesaStats }           from '@/lib/api/promesas';
@@ -348,7 +349,7 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
 
   const { data: bancosOpciones = [] } = useQuery<{ id: string; nombre: string }[]>({
     queryKey: ['bancos-isp'],
-    queryFn:  () => import('@/lib/api').then(m => m.default.get('/facturacion-config/bancos').then(r => r.data.data ?? [])),
+    queryFn:  () => apiClient.get('/facturacion-config/bancos').then(r => r.data.data ?? []),
     staleTime: 5 * 60_000,
   });
 
