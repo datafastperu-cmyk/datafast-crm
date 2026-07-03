@@ -503,20 +503,6 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                Forma de Pago
-              </label>
-              <select
-                value={metodoPago}
-                onChange={e => setMetodoPago(e.target.value)}
-                className={inputCls}
-              >
-                {METODOS_PAGO.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
                 Seleccionar Banco
               </label>
               <select
@@ -526,6 +512,20 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
               >
                 {bancosOpciones.map(b => (
                   <option key={b.id} value={b.nombre}>{b.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                Forma de Pago
+              </label>
+              <select
+                value={metodoPago}
+                onChange={e => setMetodoPago(e.target.value)}
+                className={inputCls}
+              >
+                {METODOS_PAGO.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
                 ))}
               </select>
             </div>
