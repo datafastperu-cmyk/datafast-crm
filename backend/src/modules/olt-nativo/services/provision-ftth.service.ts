@@ -31,8 +31,8 @@ export class ProvisionarFtthDto {
   @IsString() @MaxLength(16)                                    sn:            string;
   @IsOptional() @IsInt() @Min(1) @Type(() => Number) servicePortId?: number;
   @IsInt() @Min(1) @Max(4094)@Type(() => Number) vlan:          number;
-  @IsInt() @Min(1)           @Type(() => Number) lineprofileId: number;
-  @IsInt() @Min(1)           @Type(() => Number) srvprofileId:  number;
+  @IsInt() @Min(0)           @Type(() => Number) lineprofileId: number;
+  @IsInt() @Min(0)           @Type(() => Number) srvprofileId:  number;
   @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndexDown?: number;
   @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndexUp?:   number;
   @IsOptional() @IsString() @MaxLength(64)            description?:      string;
