@@ -162,8 +162,38 @@ export class ProvisionFtthService {
           ultimoError: 'Recovery automático por lock expirado (> 10 min)',
         });
       }
-      // Si fallido (cualquier tipo) → permitir reintento
+      // Si fallido → reintentar. Los estados que implican ONU ya registrada en OLT
+      // requieren rollback GPON previo para no dejar ONTs huérfanas.
       if (FTTH_ESTADOS_FALLIDOS.includes(registroExistente.estado)) {
+        const necesitaRollback =
+          registroExistente.estado === FtthOnuEstado.FALLIDO_WAN ||
+          registroExistente.estado === FtthOnuEstado.TIMEOUT_ONLINE ||
+          registroExistente.estado === FtthOnuEstado.FALLIDO_SERVICE_PORT;
+
+        if (necesitaRollback) {
+          const oltPrevio = await this._fetchOlt(registroExistente.oltId, empresaId).catch(() => null);
+          if (oltPrevio) {
+            const pwPrevio = this._decryptOltPassword(oltPrevio);
+            const connPrevio = this._buildConn(oltPrevio, pwPrevio);
+            try {
+              await this.automation.ftthRollbackGpon({
+                connection:      connPrevio,
+                slot:            registroExistente.slot,
+                port:            registroExistente.port,
+                onu_id:          registroExistente.onuId,
+                service_port_id: registroExistente.servicePortId,
+              });
+              this.logger.warn(
+                `FTTH pre-retry rollback OK | contrato=${dto.contratoId} estado=${registroExistente.estado}`,
+              );
+            } catch (err: any) {
+              this.logger.error(
+                `FTTH pre-retry rollback falló (se procede de todos modos) | contrato=${dto.contratoId}: ${err.message}`,
+              );
+            }
+          }
+        }
+
         await this.ftthRepo.delete(registroExistente.id);
       }
     }
