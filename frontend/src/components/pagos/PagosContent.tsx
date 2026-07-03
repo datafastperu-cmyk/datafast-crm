@@ -289,10 +289,10 @@ export function PagosContent() {
           ))}
         </div>
 
-        {/* Lista de pagos */}
+        {/* Tabla de pagos */}
         {isLoading ? (
           <div className="p-6 space-y-3">
-            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-14 rounded-xl animate-pulse" />)}
+            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-10 rounded-xl animate-pulse" />)}
           </div>
         ) : !pagos.length ? (
           <div className="flex flex-col items-center justify-center py-14">
@@ -301,84 +301,126 @@ export function PagosContent() {
             <p className="text-xs text-muted-foreground mt-1">No hay pagos con los filtros actuales.</p>
           </div>
         ) : (
-          <div className="divide-y divide-border">
-            {pagos.map((p) => (
-              <div key={p.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/30 transition-colors">
-                {/* Método */}
-                <span className="text-xl flex-shrink-0">{METODO_EMOJI[p.metodoPago] ?? '•'}</span>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Fecha</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Cliente</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Método</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Banco</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">N° Operación</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Comprobante</th>
+                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Monto</th>
+                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Estado</th>
+                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {pagos.map((p) => (
+                  <tr key={p.id} className="hover:bg-muted/30 transition-colors">
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-medium text-foreground">
-                      {p.cliente_nombre ?? p.clienteNombre ?? 'Sin nombre'}
-                    </p>
-                    <span className={cn(
-                      'text-[10px] font-semibold px-1.5 py-px rounded-full',
-                      p.estado === 'verificado'    ? 'badge-activo'   :
-                      p.estado === 'rechazado'     ? 'badge-suspendido' :
-                      'badge-pendiente',
-                    )}>
-                      {p.estado.replace(/_/g, ' ')}
-                    </span>
-                    {p.numero_comprobante && (
-                      <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-px rounded">
-                        {p.numero_comprobante}
+                    {/* Fecha */}
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
+                      {formatDate(p.fechaPago)}
+                    </td>
+
+                    {/* Cliente */}
+                    <td className="px-4 py-3">
+                      <p className="text-sm font-medium text-foreground whitespace-nowrap">
+                        {p.cliente_nombre ?? p.clienteNombre ?? 'Sin nombre'}
+                      </p>
+                    </td>
+
+                    {/* Método */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="flex items-center gap-1.5">
+                        <span>{METODO_EMOJI[p.metodoPago] ?? '•'}</span>
+                        <span className="text-xs text-foreground capitalize">
+                          {p.metodoPago.replace(/_/g, ' ')}
+                        </span>
                       </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {p.metodoPago.replace(/_/g, ' ')}
-                    {p.banco && ` · ${p.banco}`}
-                    {p.numeroOperacion && <span className="font-mono ml-1">{p.numeroOperacion}</span>}
-                    {' · '}{formatDate(p.fechaPago)}
-                  </p>
-                </div>
+                    </td>
 
-                {/* Monto */}
-                <div className="text-right flex-shrink-0">
-                  <p className="text-sm font-bold text-foreground">{formatPEN(p.monto)}</p>
-                  {p.conciliado && (
-                    <p className="text-[10px] text-green-600">Conciliado ✓</p>
-                  )}
-                </div>
+                    {/* Banco */}
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-foreground">
+                      {p.banco ?? <span className="text-muted-foreground">—</span>}
+                    </td>
 
-                {/* Acciones */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {p.estado === 'pendiente_verificacion' && (
-                    <>
-                      <button
-                        onClick={() => aprobar(p.id)}
-                        className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 dark:hover:bg-green-950/30 transition-colors"
-                        title="Aprobar"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setRechazando(p.id)}
-                        className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
-                        title="Rechazar"
-                      >
-                        <AlertCircle className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
-                  {!p.conciliado && puedeEliminarPago && (
-                    <button
-                      onClick={() => {
-                        if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
-                          eliminar(p.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+                    {/* N° Operación */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {p.numeroOperacion
+                        ? <span className="font-mono text-xs text-foreground">{p.numeroOperacion}</span>
+                        : <span className="text-xs text-muted-foreground">—</span>
+                      }
+                    </td>
+
+                    {/* Comprobante */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {p.numero_comprobante
+                        ? <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{p.numero_comprobante}</span>
+                        : <span className="text-xs text-muted-foreground">—</span>
+                      }
+                    </td>
+
+                    {/* Monto */}
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <p className="text-sm font-bold text-foreground">{formatPEN(p.monto)}</p>
+                      {p.conciliado && <p className="text-[10px] text-green-600">Conciliado ✓</p>}
+                    </td>
+
+                    {/* Estado */}
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <span className={cn(
+                        'text-[10px] font-semibold px-2 py-0.5 rounded-full',
+                        p.estado === 'verificado'    ? 'badge-activo'   :
+                        p.estado === 'rechazado'     ? 'badge-suspendido' :
+                        'badge-pendiente',
+                      )}>
+                        {p.estado.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+
+                    {/* Acciones */}
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1">
+                        {p.estado === 'pendiente_verificacion' && (
+                          <>
+                            <button
+                              onClick={() => aprobar(p.id)}
+                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 dark:hover:bg-green-950/30 transition-colors"
+                              title="Aprobar"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setRechazando(p.id)}
+                              className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
+                              title="Rechazar"
+                            >
+                              <AlertCircle className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        {!p.conciliado && puedeEliminarPago && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
+                                eliminar(p.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
