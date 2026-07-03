@@ -394,7 +394,8 @@ export class ProvisionFtthService {
     }
 
     const contrato = await this._fetchContrato(dto.contratoId, empresaId);
-    const olt      = await this._fetchOlt(oltId, empresaId);
+    // Usar registro.oltId, no el oltId de URL — la ONU está en la OLT donde fue aprovisionada
+    const olt      = await this._fetchOlt(registro.oltId, empresaId);
     const password = this._decryptOltPassword(olt);
     const conn     = this._buildConn(olt, password);
 
