@@ -766,11 +766,12 @@ export const oltNativoApi = {
   ftthCambiarVelocidad: async (
     oltId: string,
     contratoId: string,
-    trafficIndex: number,
+    trafficIndexDown: number,
+    trafficIndexUp: number,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
     const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
       `/olt-nativo/${oltId}/ftth/cambiar-velocidad`,
-      { contratoId, trafficIndex },
+      { contratoId, trafficIndexDown, trafficIndexUp },
     );
     return res.data.data;
   },

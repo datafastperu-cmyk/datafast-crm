@@ -58,10 +58,14 @@ function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisiona
   onRehabiliitar: () => void;
   isRehabilitando: boolean;
   trafficTables: OltTrafficTable[];
-  onCambiarVelocidad: (trafficIndex: number) => void;
+  onCambiarVelocidad: (trafficIndexDown: number, trafficIndexUp: number) => void;
   isCambiandoVelocidad: boolean;
 }) {
-  const [nuevoTrafficIndex, setNuevoTrafficIndex] = useState('');
+  const [idxDown, setIdxDown] = useState('');
+  const [idxUp,   setIdxUp]   = useState('');
+  const downOpts = trafficTables.filter(t => t.tipo === 'downstream' || t.tipo === 'combinado');
+  const upOpts   = trafficTables.filter(t => t.tipo === 'upstream'   || t.tipo === 'combinado');
+  const canApply = idxDown !== '' && idxUp !== '';
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -99,32 +103,35 @@ function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisiona
       {(registro.estado === 'activo' || registro.estado === 'suspendido') && (
         <div className="space-y-1.5">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Cambiar Velocidad</p>
-          <div className="flex gap-2">
-            {trafficTables.length > 0 ? (
-              <div className="relative flex-1">
-                <select value={nuevoTrafficIndex} onChange={e => setNuevoTrafficIndex(e.target.value)}
-                  className="w-full text-xs rounded-lg border border-input bg-background px-2.5 py-1.5 appearance-none pr-7">
-                  <option value="">— Traffic Table —</option>
-                  {trafficTables.map(t => (
-                    <option key={t.id} value={t.trafficId}>{t.trafficId} — {t.nombre}</option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              </div>
-            ) : (
-              <input
-                type="number" value={nuevoTrafficIndex} onChange={e => setNuevoTrafficIndex(e.target.value)}
-                min={0} placeholder="Traffic index" className="flex-1 text-xs rounded-lg border border-input bg-background px-2.5 py-1.5"
-              />
-            )}
-            <button
-              onClick={() => { if (nuevoTrafficIndex !== '') onCambiarVelocidad(parseInt(nuevoTrafficIndex)); }}
-              disabled={isCambiandoVelocidad || nuevoTrafficIndex === ''}
-              className="px-3 py-1.5 rounded-lg border border-blue-700/50 bg-blue-500/5 text-blue-700 dark:text-blue-400 text-xs font-semibold hover:bg-blue-500/15 transition-colors disabled:opacity-50 whitespace-nowrap"
-            >
-              {isCambiandoVelocidad ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Aplicar'}
-            </button>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="relative">
+              <select value={idxDown} onChange={e => setIdxDown(e.target.value)}
+                className="w-full text-xs rounded-lg border border-input bg-background px-2.5 py-1.5 appearance-none pr-7">
+                <option value="">Bajada</option>
+                {(downOpts.length ? downOpts : trafficTables).map(t => (
+                  <option key={t.id} value={t.trafficId}>{t.trafficId} — {t.nombre}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            </div>
+            <div className="relative">
+              <select value={idxUp} onChange={e => setIdxUp(e.target.value)}
+                className="w-full text-xs rounded-lg border border-input bg-background px-2.5 py-1.5 appearance-none pr-7">
+                <option value="">Subida</option>
+                {(upOpts.length ? upOpts : trafficTables).map(t => (
+                  <option key={t.id} value={t.trafficId}>{t.trafficId} — {t.nombre}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            </div>
           </div>
+          <button
+            onClick={() => { if (canApply) onCambiarVelocidad(parseInt(idxDown), parseInt(idxUp)); }}
+            disabled={isCambiandoVelocidad || !canApply}
+            className="w-full px-3 py-1.5 rounded-lg border border-blue-700/50 bg-blue-500/5 text-blue-700 dark:text-blue-400 text-xs font-semibold hover:bg-blue-500/15 transition-colors disabled:opacity-50"
+          >
+            {isCambiandoVelocidad ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" /> : 'Aplicar Velocidad'}
+          </button>
         </div>
       )}
       {registro.estado === 'activo' && (
@@ -303,7 +310,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
 
   // Re-inyectar WAN mutation — declarado antes de usarlo en desaprovisionar callback
   const { mutate: reinjectWan, isPending: reinjectPending } = useMutation({
-    mutationFn: () => oltNativoApi.ftthReinjectWan(selectedOltId, contrato.id),
+    mutationFn: () => oltNativoApi.ftthReinjectWan(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
     onSuccess: (res) => {
       if (res.estado === 'activo') {
         toast('WAN PPPoE re-inyectada correctamente', { type: 'success' });
@@ -379,11 +386,13 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
 
   // Cambiar velocidad mutation
   const { mutate: cambiarVelocidad, isPending: cambiandoVelocidad } = useMutation({
-    mutationFn: (trafficIndex: number) => oltNativoApi.ftthCambiarVelocidad(
-      selectedOltId || (estadoExistente?.oltId ?? ''),
-      contrato.id,
-      trafficIndex,
-    ),
+    mutationFn: ({ trafficIndexDown, trafficIndexUp }: { trafficIndexDown: number; trafficIndexUp: number }) =>
+      oltNativoApi.ftthCambiarVelocidad(
+        selectedOltId || (estadoExistente?.oltId ?? ''),
+        contrato.id,
+        trafficIndexDown,
+        trafficIndexUp,
+      ),
     onSuccess: (res) => {
       if (res.exitoso) {
         toast('Velocidad actualizada correctamente', { type: 'success' });
@@ -477,7 +486,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   onRehabiliitar={() => rehabilitar()}
                   isRehabilitando={rehabilitando}
                   trafficTables={trafficTables}
-                  onCambiarVelocidad={(idx) => cambiarVelocidad(idx)}
+                  onCambiarVelocidad={(down, up) => cambiarVelocidad({ trafficIndexDown: down, trafficIndexUp: up })}
                   isCambiandoVelocidad={cambiandoVelocidad}
                 />
                 {yaActivo && (
