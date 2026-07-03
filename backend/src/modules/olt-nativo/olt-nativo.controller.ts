@@ -815,8 +815,9 @@ export class OltNativoController {
   @ApiParam({ name: 'contratoId' })
   async estadoFtth(
     @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<FtthOnuRegistro | null> {
-    return this.ftth.obtenerEstado(contratoId);
+    return this.ftth.obtenerEstado(contratoId, user.empresaId);
   }
 
   // ────────────────────────────────────────────────────────────

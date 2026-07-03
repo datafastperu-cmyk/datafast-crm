@@ -415,8 +415,8 @@ export class ProvisionFtthService {
   // ────────────────────────────────────────────────────────────
   // obtenerEstado — consultar el registro FTTH de un contrato
   // ────────────────────────────────────────────────────────────
-  async obtenerEstado(contratoId: string): Promise<FtthOnuRegistro | null> {
-    return this.ftthRepo.findOne({ where: { contratoId } });
+  async obtenerEstado(contratoId: string, empresaId: string): Promise<FtthOnuRegistro | null> {
+    return this.ftthRepo.findOne({ where: { contratoId, empresaId } });
   }
 
   // ────────────────────────────────────────────────────────────
@@ -532,9 +532,12 @@ export class ProvisionFtthService {
     dto:       DesaprovisionarFtthDto,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
 
-    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId } });
+    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId, empresaId } });
     if (!registro) {
       throw new NotFoundException(`No hay registro FTTH para el contrato ${dto.contratoId}.`);
+    }
+    if (registro.oltId !== oltId) {
+      throw new BadRequestException('La OLT indicada no coincide con el registro de aprovisionamiento.');
     }
 
     const estadosPermitidos: FtthOnuEstado[] = [
@@ -623,9 +626,12 @@ export class ProvisionFtthService {
     contratoId: string,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
 
-    const registro = await this.ftthRepo.findOne({ where: { contratoId } });
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
     if (!registro) {
       throw new NotFoundException(`No hay registro FTTH para el contrato ${contratoId}.`);
+    }
+    if (registro.oltId !== oltId) {
+      throw new BadRequestException('La OLT indicada no coincide con el registro de aprovisionamiento.');
     }
     if (registro.estado !== FtthOnuEstado.ACTIVO) {
       throw new BadRequestException(
@@ -675,9 +681,12 @@ export class ProvisionFtthService {
     contratoId: string,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
 
-    const registro = await this.ftthRepo.findOne({ where: { contratoId } });
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
     if (!registro) {
       throw new NotFoundException(`No hay registro FTTH para el contrato ${contratoId}.`);
+    }
+    if (registro.oltId !== oltId) {
+      throw new BadRequestException('La OLT indicada no coincide con el registro de aprovisionamiento.');
     }
     if (registro.estado !== FtthOnuEstado.SUSPENDIDO) {
       throw new BadRequestException(
@@ -727,9 +736,12 @@ export class ProvisionFtthService {
     dto:       CambiarVelocidadDto,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
 
-    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId } });
+    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId, empresaId } });
     if (!registro) {
       throw new NotFoundException(`No hay registro FTTH para el contrato ${dto.contratoId}.`);
+    }
+    if (registro.oltId !== oltId) {
+      throw new BadRequestException('La OLT indicada no coincide con el registro de aprovisionamiento.');
     }
     if (registro.estado !== FtthOnuEstado.ACTIVO && registro.estado !== FtthOnuEstado.SUSPENDIDO) {
       throw new BadRequestException(
