@@ -7,6 +7,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { JwtService }         from '@nestjs/jwt';
 import { ConfigService }      from '@nestjs/config';
 import { OnEvent }            from '@nestjs/event-emitter';
+import { InjectDataSource }   from '@nestjs/typeorm';
+import { DataSource }         from 'typeorm';
 import { Server, Socket }     from 'socket.io';
 import { JwtPayload }         from '../../common/decorators/current-user.decorator';
 import {
@@ -53,6 +55,8 @@ export class OltGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService:    JwtService,
     private readonly configService: ConfigService,
+    @InjectDataSource()
+    private readonly ds:            DataSource,
   ) {}
 
   handleConnection(client: Socket): void {
@@ -84,11 +88,21 @@ export class OltGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('olt:subscribe')
-  onSubscribe(
+  async onSubscribe(
     @MessageBody() data: { oltId: string },
     @ConnectedSocket() client: Socket,
-  ): void {
-    if (data?.oltId) client.join(`olt:${data.oltId}`);
+  ): Promise<void> {
+    if (!data?.oltId) return;
+    const user = (client as AuthSocket).user;
+    const rows = await this.ds.query<{ empresa_id: string }[]>(
+      `SELECT empresa_id FROM olt_dispositivos WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [data.oltId],
+    );
+    if (!rows.length || rows[0].empresa_id !== user?.empresaId) {
+      client.emit('error', { message: 'No autorizado para esta OLT', code: 'WS_OLT_FORBIDDEN' });
+      return;
+    }
+    client.join(`olt:${data.oltId}`);
   }
 
   @SubscribeMessage('olt:unsubscribe')
