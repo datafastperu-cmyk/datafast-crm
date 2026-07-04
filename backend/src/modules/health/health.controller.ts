@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Version, VERSION_NEUTRAL } from '@nestjs/common';
 import {
   HealthCheck,
   HealthCheckService,
@@ -27,6 +27,7 @@ export class HealthController {
 
   // ── GET /health — Health check completo (usado por Docker) ───
   @Get('health')
+  @Version(VERSION_NEUTRAL)
   @Public()
   @HealthCheck()
   @ApiOperation({ summary: 'Health check completo del sistema' })
@@ -55,6 +56,7 @@ export class HealthController {
 
   // ── GET /health/live — Liveness probe (¿está vivo el proceso?) ─
   @Get('health/live')
+  @Version(VERSION_NEUTRAL)
   @Public()
   @ApiOperation({ summary: 'Liveness probe (Kubernetes)' })
   liveness() {
@@ -68,6 +70,7 @@ export class HealthController {
 
   // ── GET /health/ready — Readiness probe (¿listo para tráfico?) ─
   @Get('health/ready')
+  @Version(VERSION_NEUTRAL)
   @Public()
   @HealthCheck()
   @ApiOperation({ summary: 'Readiness probe (Kubernetes)' })
@@ -80,6 +83,7 @@ export class HealthController {
 
   // ── GET /status — Estado detallado del sistema ───────────────
   @Get('status')
+  @Version(VERSION_NEUTRAL)
   @Public()
   @ApiOperation({ summary: 'Estado general del sistema (sin auth)' })
   async status() {
