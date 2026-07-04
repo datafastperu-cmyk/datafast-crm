@@ -15,7 +15,8 @@ export class TimeoutInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     // Más tiempo para endpoints de aprovisionamiento y reportes
     const req = context.switchToHttp().getRequest();
-    const longRunningPaths = ['/aprovisionamiento', '/provisioning', '/reportes', '/export', '/generar-mensual', '/discover-onus', '/wizard'];
+    // /olt-nativo: operaciones sobre OLT via SSH/VPN (sync, provision, traffic-tables) — lentas por hardware.
+    const longRunningPaths = ['/aprovisionamiento', '/provisioning', '/reportes', '/export', '/generar-mensual', '/discover-onus', '/wizard', '/olt-nativo'];
     const isLongRunning = longRunningPaths.some((p) =>
       req?.url?.includes(p),
     );

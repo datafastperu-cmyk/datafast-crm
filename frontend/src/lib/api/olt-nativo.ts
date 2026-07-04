@@ -896,7 +896,7 @@ export const oltNativoApi = {
 
   sincronizarTrafficTables: async (oltId: string): Promise<{ insertadas: number; actualizadas: number }> => {
     const res = await api.post<ApiRespuesta<{ insertadas: number; actualizadas: number }>>(
-      `/olt-nativo/${oltId}/traffic-tables/sincronizar`,
+      `/olt-nativo/${oltId}/traffic-tables/sincronizar`, undefined, { timeout: 120_000 },
     );
     return res.data.data;
   },
