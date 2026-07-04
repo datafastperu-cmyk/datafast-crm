@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Loader2 } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
+import { ServicePortPoolSection } from './ServicePortPoolSection';
 
 interface Props {
   olt:   OltDispositivo;
@@ -163,6 +164,9 @@ export function TabDetalles({ olt, oltId }: Props) {
           }
         </button>
       </div>
+
+      {/* Pool de Service Port IDs (asignación automática por el ERP) */}
+      <ServicePortPoolSection oltId={oltId} />
     </div>
   );
 }

@@ -209,7 +209,8 @@ export class ProvisionFtthService {
     if (servicePortId == null) {
       throw new UnprocessableEntityException(
         `No hay pool de Service Port IDs configurado para esta OLT. ` +
-        `Configúralo desde la sección de OLT o ingresa el ID manualmente.`,
+        `Configúralo en el detalle de la OLT (pestaña Detalles → Pool de Service Port IDs) ` +
+        `o ingresa el ID manualmente.`,
       );
     }
     const usedSvcPool = poolSvcPortId != null;

@@ -879,6 +879,30 @@ export const oltNativoApi = {
     await api.delete(`/olt-nativo/${oltId}/traffic-tables/${trafficId}/con-cli`, { timeout: 60_000 });
   },
 
+  // ── Service Port ID pool ──────────────────────────────────────
+  servicePortPoolEstado: async (oltId: string): Promise<{
+    total: number; libres: number; ocupados: number; rango?: { min: number; max: number };
+  }> => {
+    const res = await api.get<ApiRespuesta<{ total: number; libres: number; ocupados: number; rango?: { min: number; max: number } }>>(
+      `/olt-nativo/${oltId}/service-port-pool`,
+    );
+    return res.data.data;
+  },
+
+  configurarServicePortPool: async (oltId: string, dto: { inicio: number; fin: number }): Promise<{ creados: number }> => {
+    const res = await api.post<ApiRespuesta<{ creados: number }>>(
+      `/olt-nativo/${oltId}/service-port-pool/configurar`, dto,
+    );
+    return res.data.data;
+  },
+
+  limpiarServicePortPoolLibres: async (oltId: string): Promise<{ eliminados: number }> => {
+    const res = await api.delete<ApiRespuesta<{ eliminados: number }>>(
+      `/olt-nativo/${oltId}/service-port-pool/libres`,
+    );
+    return res.data.data;
+  },
+
   ftthSignalDashboard: async (oltId: string): Promise<Array<{
     registro:      FtthOnuRegistro;
     signal: {
