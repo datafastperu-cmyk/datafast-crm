@@ -301,6 +301,8 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
     return `${kbps} kbps`;
   };
 
+  const fmtBytes = (b: number | null) => (b == null ? '—' : `${b.toLocaleString()} B`);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -340,6 +342,8 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
                 <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Nombre</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">CIR</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">PIR</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">CBS</th>
+                <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">PBS</th>
                 <th className="px-3 py-2 w-16" />
               </tr>
             </thead>
@@ -353,6 +357,8 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
                   <td className="px-3 py-2 text-foreground">{t.nombre}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{fmtSpeed(t.cirKbps)}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{fmtSpeed(t.pirKbps)}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{fmtBytes(t.cbsBytes)}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{fmtBytes(t.pbsBytes)}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1 justify-end">
                       <button

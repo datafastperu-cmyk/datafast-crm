@@ -979,6 +979,7 @@ export class OltNativoController {
     const perfiles = await this.service.listarPerfilesOlt(oltId, user.empresaId);
     const tablas = (perfiles.traffic_tables ?? []) as Array<{
       index: number; name: string; cir_kbps?: number; pir_kbps?: number;
+      cbs_bytes?: number | null; pbs_bytes?: number | null;
     }>;
     return this.trafficTables.sincronizarDesdeOlt(oltId, user.empresaId, tablas);
   }

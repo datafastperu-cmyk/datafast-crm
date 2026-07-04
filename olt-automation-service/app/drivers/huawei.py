@@ -482,6 +482,8 @@ class HuaweiDriver(OltDriver):
             idx_matches = list(re.finditer(r'Traffic table index\s*:\s*(\d+)', raw))
             cir_matches = list(re.finditer(r'CIR\S*\s*:\s*(\d+)', raw))
             pir_matches = list(re.finditer(r'PIR\S*\s*:\s*(\d+)', raw))
+            cbs_matches = list(re.finditer(r'CBS\S*\s*:\s*(\d+)', raw))
+            pbs_matches = list(re.finditer(r'PBS\S*\s*:\s*(\d+)', raw))
 
             def _nearest_after(matches: list, pos: int):
                 following = [m for m in matches if m.start() > pos]
@@ -491,18 +493,24 @@ class HuaweiDriver(OltDriver):
                 m_idx = _nearest_after(idx_matches, m_name.start())
                 m_cir = _nearest_after(cir_matches, m_name.start())
                 m_pir = _nearest_after(pir_matches, m_name.start())
+                m_cbs = _nearest_after(cbs_matches, m_name.start())
+                m_pbs = _nearest_after(pbs_matches, m_name.start())
                 next_block = _nearest_after(name_matches, m_name.start())
                 boundary   = next_block.start() if next_block else len(raw)
                 try:
                     idx  = int(m_idx.group(1)) if m_idx and m_idx.start() < boundary else -1
                     cir  = int(m_cir.group(1)) if m_cir and m_cir.start() < boundary else 0
                     pir  = int(m_pir.group(1)) if m_pir and m_pir.start() < boundary else 0
+                    cbs  = int(m_cbs.group(1)) if m_cbs and m_cbs.start() < boundary else 0
+                    pbs  = int(m_pbs.group(1)) if m_pbs and m_pbs.start() < boundary else 0
                     name = m_name.group(1)
                     if idx >= 0 and name:
                         result.append(TrafficTableInfo(
                             index=idx, name=name,
                             cir_kbps=cir or None,
                             pir_kbps=pir or None,
+                            cbs_bytes=cbs or None,
+                            pbs_bytes=pbs or None,
                         ))
                 except (ValueError, TypeError):
                     continue
@@ -517,13 +525,16 @@ class HuaweiDriver(OltDriver):
             try:
                 tid = int(parts[0])
                 cir = int(parts[1])   # col 1 = CIR
-                # parts[2] = CBS (ignorar)
+                cbs = int(parts[2])   # col 2 = CBS (bytes)
                 pir = int(parts[3])   # col 3 = PIR
+                pbs = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0  # col 4 = PBS
                 result.append(TrafficTableInfo(
                     index=tid,
                     name=f'traffic-table-{tid}',
                     cir_kbps=cir if cir > 0 else None,
                     pir_kbps=pir if pir > 0 else None,
+                    cbs_bytes=cbs if cbs > 0 else None,
+                    pbs_bytes=pbs if pbs > 0 else None,
                 ))
             except (ValueError, TypeError):
                 continue

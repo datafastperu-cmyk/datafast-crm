@@ -247,11 +247,15 @@ export class OltSyncService implements OnModuleInit {
 
   private async _upsertTrafficTables(
     oltId: string, empresaId: string,
-    tables: { index: number; name: string; cir_kbps: number | null; pir_kbps: number | null }[],
+    tables: { index: number; name: string; cir_kbps: number | null; pir_kbps: number | null; cbs_bytes?: number | null; pbs_bytes?: number | null }[],
   ): Promise<void> {
     if (!tables.length) return;
     await this.trafficRepo.upsert(
-      tables.map(t => ({ oltId, empresaId, trafficId: t.index, nombre: t.name, cirKbps: t.cir_kbps, pirKbps: t.pir_kbps })),
+      tables.map(t => ({
+        oltId, empresaId, trafficId: t.index, nombre: t.name,
+        cirKbps: t.cir_kbps, pirKbps: t.pir_kbps,
+        cbsBytes: t.cbs_bytes ?? null, pbsBytes: t.pbs_bytes ?? null,
+      })),
       { conflictPaths: ['oltId', 'trafficId'], skipUpdateIfNoValuesChanged: true },
     );
   }

@@ -1583,13 +1583,21 @@ def list_huawei_profiles(conn: OltConnectionSchema) -> dict[str, Any]:
                 name = str(row.get('TrafficName') or f'traffic-table-{idx}').strip()
                 cir_val = row.get('Cir') or '0'
                 pir_val = row.get('Pir') or '0'
+                cbs_val = row.get('Cbs') or '0'
+                pbs_val = row.get('Pbs') or '0'
                 cir  = int(cir_val) if str(cir_val).isdigit() else 0
                 pir  = int(pir_val) if str(pir_val).isdigit() else 0
+                cbs  = int(cbs_val) if str(cbs_val).isdigit() else 0
+                pbs  = int(pbs_val) if str(pbs_val).isdigit() else 0
             except (ValueError, TypeError):
                 continue
             if idx < 0:
                 continue
-            result.append({'index': idx, 'name': name, 'cir_kbps': cir, 'pir_kbps': pir})
+            result.append({
+                'index': idx, 'name': name,
+                'cir_kbps': cir, 'pir_kbps': pir,
+                'cbs_bytes': cbs or None, 'pbs_bytes': pbs or None,
+            })
         return result
 
     lineprofiles   = _parse_profiles(lp_raw, 'display_ont_lineprofile_all.textfsm')

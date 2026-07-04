@@ -1,6 +1,9 @@
 Value TrafficIndex (\d+)
 Value Cir (\d+)
+Value Cbs (\d+)
 Value Pir (\d+)
+Value Pbs (\d+)
 
 Start
-  ^\s+${TrafficIndex}\s+${Cir}\s+\d+\s+${Pir} -> Record
+  ^\s+${TrafficIndex}\s+${Cir}\s+${Cbs}\s+${Pir}\s+${Pbs} -> Record
+  ^\s+${TrafficIndex}\s+${Cir}\s+${Cbs}\s+${Pir}\s* -> Record

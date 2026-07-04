@@ -62,6 +62,8 @@ class TrafficTableInfo:
     name: str
     cir_kbps: int | None
     pir_kbps: int | None
+    cbs_bytes: int | None = None
+    pbs_bytes: int | None = None
 
 
 @dataclass

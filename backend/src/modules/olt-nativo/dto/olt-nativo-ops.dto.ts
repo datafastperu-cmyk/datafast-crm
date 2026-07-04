@@ -506,6 +506,8 @@ export interface PythonTrafficTableInfo {
   name:      string;
   cir_kbps:  number | null;
   pir_kbps:  number | null;
+  cbs_bytes?: number | null;
+  pbs_bytes?: number | null;
 }
 
 export interface PythonListProfilesRequest {

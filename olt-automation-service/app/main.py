@@ -530,7 +530,8 @@ async def list_profiles_endpoint(body: ListProfilesRequest) -> ListProfilesRespo
         lineprofiles=[{'profile_id': p['profile_id'], 'name': p['name']} for p in result['lineprofiles']],
         srvprofiles=[{'profile_id': p['profile_id'], 'name': p['name']} for p in result['srvprofiles']],
         traffic_tables=[
-            {'index': t['index'], 'name': t['name'], 'cir_kbps': t['cir_kbps'], 'pir_kbps': t['pir_kbps']}
+            {'index': t['index'], 'name': t['name'], 'cir_kbps': t['cir_kbps'], 'pir_kbps': t['pir_kbps'],
+             'cbs_bytes': t.get('cbs_bytes'), 'pbs_bytes': t.get('pbs_bytes')}
             for t in result['traffic_tables']
         ],
     )
@@ -952,7 +953,8 @@ async def wizard_topology(body: WizardTopologyRequest) -> WizardTopologyResponse
     vlans = [WizardVlanInfo(vlan_id=v.vlan_id, name=v.name) for v in topology.vlans]
 
     traffic_tables = [
-        OltTrafficTableInfo(index=t.index, name=t.name, cir_kbps=t.cir_kbps, pir_kbps=t.pir_kbps)
+        OltTrafficTableInfo(index=t.index, name=t.name, cir_kbps=t.cir_kbps, pir_kbps=t.pir_kbps,
+                            cbs_bytes=t.cbs_bytes, pbs_bytes=t.pbs_bytes)
         for t in topology.traffic_tables
     ]
     line_profiles = [

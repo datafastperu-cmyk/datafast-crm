@@ -192,7 +192,7 @@ export class OltTrafficTableService {
   async sincronizarDesdeOlt(
     oltId:     string,
     empresaId: string,
-    tablas:    Array<{ index: number; name: string; cir_kbps?: number; pir_kbps?: number }>,
+    tablas:    Array<{ index: number; name: string; cir_kbps?: number; pir_kbps?: number; cbs_bytes?: number | null; pbs_bytes?: number | null }>,
   ): Promise<{ insertadas: number; actualizadas: number }> {
     if (tablas.length === 0) return { insertadas: 0, actualizadas: 0 };
 
@@ -200,19 +200,23 @@ export class OltTrafficTableService {
     const names  = tablas.map(t => t.name);
     const cirs   = tablas.map(t => t.cir_kbps ?? null);
     const pirs   = tablas.map(t => t.pir_kbps ?? null);
+    const cbss   = tablas.map(t => t.cbs_bytes ?? null);
+    const pbss   = tablas.map(t => t.pbs_bytes ?? null);
 
     const [row] = await this.repo.manager.query<[{ insertadas: string; actualizadas: string }]>(
       `WITH upserted AS (
          INSERT INTO olt_traffic_tables
-           (id, olt_id, empresa_id, traffic_id, nombre, cir_kbps, pir_kbps, origen, estado, created_at, updated_at)
+           (id, olt_id, empresa_id, traffic_id, nombre, cir_kbps, pir_kbps, cbs_bytes, pbs_bytes, origen, estado, created_at, updated_at)
          SELECT gen_random_uuid(), $1, $2,
-                t.idx, t.name, t.cir, t.pir, 'olt', 'active', NOW(), NOW()
-         FROM   unnest($3::int[], $4::text[], $5::int[], $6::int[])
-                AS t(idx, name, cir, pir)
+                t.idx, t.name, t.cir, t.pir, t.cbs, t.pbs, 'olt', 'active', NOW(), NOW()
+         FROM   unnest($3::int[], $4::text[], $5::int[], $6::int[], $7::int[], $8::int[])
+                AS t(idx, name, cir, pir, cbs, pbs)
          ON CONFLICT (olt_id, traffic_id) DO UPDATE
            SET nombre     = EXCLUDED.nombre,
                cir_kbps   = EXCLUDED.cir_kbps,
                pir_kbps   = EXCLUDED.pir_kbps,
+               cbs_bytes  = EXCLUDED.cbs_bytes,
+               pbs_bytes  = EXCLUDED.pbs_bytes,
                updated_at = NOW()
          RETURNING (xmax = 0) AS is_insert
        )
@@ -220,7 +224,7 @@ export class OltTrafficTableService {
          COUNT(*) FILTER (WHERE is_insert)      AS insertadas,
          COUNT(*) FILTER (WHERE NOT is_insert)  AS actualizadas
        FROM upserted`,
-      [oltId, empresaId, ids, names, cirs, pirs],
+      [oltId, empresaId, ids, names, cirs, pirs, cbss, pbss],
     );
 
     const insertadas   = Number(row.insertadas);
