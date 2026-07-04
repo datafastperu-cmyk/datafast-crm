@@ -125,7 +125,6 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:4000/api/v1/health"]
       start_period: 60s
     deploy:
-      replicas: 2                     # 2 réplicas para alta disponibilidad
       resources:
         limits:   { cpus: '1', memory: 1G }
         reservations: { memory: 256M }
@@ -161,8 +160,6 @@ services:
       resources:
         limits:   { cpus: '0.5', memory: 512M }
     expose: ["3000"]
-    networks:
-      - datafast-internal
 
   # ── Nginx + SSL ────────────────────────────────────────────────────
   nginx:
@@ -245,6 +242,11 @@ services:
       - "127.0.0.1:8080:8080"           # Sólo accesible desde el host (PM2 backend)
     volumes:
       - evolution-data:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       SERVER_URL:               http://localhost:8080
       AUTHENTICATION_API_KEY:   ${EVOLUTION_API_KEY:?EVOLUTION_API_KEY requerida}
@@ -255,6 +257,22 @@ services:
       DEL_INSTANCE:             "false"
       LOG_LEVEL:                WARN
       TZ:                       America/Lima
+      # ── Persistencia obligatoria (Evolution v2 no arranca sin BD) ──
+      DATABASE_ENABLED:              "true"
+      DATABASE_PROVIDER:             postgresql
+      DATABASE_CONNECTION_URI:       postgresql://${DB_USER:-datafast_db_user}:${DB_PASSWORD:?DB_PASSWORD requerida}@postgres:5432/${EVOLUTION_DB_NAME:-evolution}?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_exchange
+      DATABASE_SAVE_DATA_INSTANCE:   "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE:  "false"
+      DATABASE_SAVE_DATA_CONTACTS:   "false"
+      DATABASE_SAVE_DATA_CHATS:      "false"
+      # ── Caché en Redis compartido ──
+      CACHE_REDIS_ENABLED:        "true"
+      CACHE_REDIS_URI:            redis://:${REDIS_PASSWORD:?REDIS_PASSWORD requerida}@redis:6379/6
+      CACHE_REDIS_PREFIX_KEY:     evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED:        "false"
     healthcheck:
       <<: *hc-defaults
       test: ["CMD", "curl", "-sf", "http://localhost:8080/"]
