@@ -26,61 +26,6 @@ export class AprovisionamientoController {
 
   constructor(private readonly svc: OrquestadorAprovisionamientoService) {}
 
-  // ── POST /aprovisionamiento/ftth ──────────────────────────
-  @Post('ftth')
-  @RequirePermission('onu:provision')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: '🚀 Aprovisionar cliente FTTH — 8 pasos automáticos',
-    description: `
-Ejecuta secuencialmente los 8 pasos del flujo de aprovisionamiento FTTH:
-
-**PASO 1** — Valida el contrato, cliente, plan, router y OLT. Carga el contexto completo.
-
-**PASO 2** — Asigna la próxima IP disponible del pool IPv4, o usa \`ipManual\`. Si el contrato ya tiene IP, la reutiliza.
-
-**PASO 3** — Crea el usuario PPPoE en el router Mikrotik con IP remota fija apuntando a la IP asignada.
-
-**PASO 4** — Configura el control de velocidad: Simple Queue, Queue Tree individual o PCQ global según el plan.
-
-**PASO 5** — Verifica/crea las reglas de firewall para el sistema de suspensión por mora (Address Lists morosos/prórroga).
-
-**PASO 6** — Detecta la ONU en SmartOLT (automáticamente en el puerto PON, o por SN si se provee) y la aprovisiona con el perfil y VLAN del plan.
-
-**PASO 7** — Registra la ONU en la base de datos local y la asocia al contrato.
-
-**PASO 8** — Activa el contrato (estado → ACTIVO), envía WhatsApp de bienvenida al cliente y emite evento WebSocket.
-
-Si algún paso falla y \`rollbackEnError=true\`, se revierte automáticamente: elimina el PPPoE, elimina la provisión en SmartOLT y libera la IP al pool.
-    `,
-  })
-  @ApiResponse({
-    status:      200,
-    type:        AprovisionamientoResultadoDto,
-    description: 'Resultado detallado de los 8 pasos',
-  })
-  @ApiResponse({ status: 400, description: 'Validación fallida en algún paso' })
-  @ApiResponse({ status: 404, description: 'Contrato, router u OLT no encontrado' })
-  async aprovisionar(
-    @Body() dto: AprovisionarFtthDto,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<AprovisionamientoResultadoDto> {
-    this.logger.log(
-      `[FTTH] Solicitud de aprovisionamiento: contrato=${dto.contratoId} | por: ${user.email}`,
-    );
-
-    const resultado = await this.svc.ejecutar(dto, user);
-
-    // Log resumido del resultado
-    const resumen = resultado.exitoso
-      ? `✅ Exitoso en ${resultado.duracionTotalMs}ms`
-      : `❌ Fallido en paso ${resultado.pasosFallidos?.[0] || '?'} | rollback: ${resultado.rollbackEjecutado}`;
-
-    this.logger.log(`[FTTH] ${resumen} | contrato=${dto.contratoId}`);
-
-    return resultado;
-  }
-
   // ── POST /aprovisionamiento/rollback ──────────────────────
   @Post('rollback')
   @Roles('Administrador', 'Supervisor')

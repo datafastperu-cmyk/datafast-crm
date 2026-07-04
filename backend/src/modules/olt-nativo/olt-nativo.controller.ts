@@ -715,6 +715,18 @@ export class OltNativoController {
     return this.ftth.desaprovisionar(oltId, user.empresaId, dto);
   }
 
+  // Rollback de aprovisionamiento por contrato (resuelve la OLT del registro).
+  @Post('ftth/desaprovisionar-contrato/:contratoId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Desaprovisionar ONU FTTH por contrato (rollback canónico)' })
+  @ApiParam({ name: 'contratoId' })
+  async desaprovisionarFtthPorContrato(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+    return this.ftth.desaprovisionarPorContrato(contratoId, user.empresaId);
+  }
+
   @Post(':oltId/ftth/cambiar-velocidad')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cambiar velocidad ONU en caliente — actualiza traffic-table del service-port' })

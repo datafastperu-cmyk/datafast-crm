@@ -169,18 +169,12 @@ export const contratosApi = {
     return res.data.data;
   },
 
-  // ── Aprovisionamiento FTTH ──────────────────────────────────
-  aprovisionar: async (dto: AprovisionarDto): Promise<ResultadoAprovisionamiento> => {
-    const res = await api.post<ApiRespuesta<ResultadoAprovisionamiento>>(
-      '/aprovisionamiento/ftth', dto,
+  // ── Rollback de aprovisionamiento FTTH (canónico: desaprovisiona la ONU
+  //    de la OLT vía Path B, resolviendo la OLT desde el registro del contrato) ──
+  rollback: async (contratoId: string, _motivo?: string) => {
+    const res = await api.post<ApiRespuesta>(
+      `/olt-nativo/ftth/desaprovisionar-contrato/${contratoId}`,
     );
-    return res.data.data;
-  },
-
-  rollback: async (contratoId: string, motivo?: string) => {
-    const res = await api.post<ApiRespuesta>('/aprovisionamiento/rollback', {
-      contratoId, motivo, eliminarSmartolt: true, eliminarPppoe: true, liberarIp: true,
-    });
     return res.data.data;
   },
 

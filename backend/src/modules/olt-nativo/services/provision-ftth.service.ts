@@ -557,6 +557,20 @@ export class ProvisionFtthService {
   // Flujo: marcar desaprovisionando → rollback GPON SSH →
   //        liberar pools (servicePort + onuId) → soft-delete registro
   // ────────────────────────────────────────────────────────────
+  // Desaprovisiona resolviendo la OLT desde el registro FTTH del contrato.
+  // Punto de entrada canónico del "rollback de aprovisionamiento" por contrato,
+  // sin exigir el oltId al llamador (lo usa el botón Rollback de ContratoDetalle).
+  async desaprovisionarPorContrato(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+    if (!registro) {
+      throw new NotFoundException(`No hay registro FTTH para el contrato ${contratoId}.`);
+    }
+    return this.desaprovisionar(registro.oltId, empresaId, { contratoId });
+  }
+
   async desaprovisionar(
     oltId:     string,
     empresaId: string,
