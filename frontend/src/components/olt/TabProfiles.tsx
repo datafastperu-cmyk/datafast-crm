@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Server } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
+import { TrafficTablesSection } from '@/components/red/TopologiaTab';
 import { cn } from '@/lib/utils';
 
 type SubTab = 'line' | 'service' | 'traffic';
@@ -69,19 +70,8 @@ export function TabProfiles({ oltId }: { oltId: string }) {
               />
             )
           )}
-          {sub === 'traffic' && (
-            trafficTables.length === 0 ? <EmptyProfiles label="traffic tables" /> : (
-              <ProfileTable
-                headers={['Traffic ID', 'Nombre', 'CIR (kbps)', 'PIR (kbps)']}
-                rows={trafficTables.map(t => [
-                  String(t.trafficId),
-                  t.nombre,
-                  t.cirKbps != null ? String(t.cirKbps) : '—',
-                  t.pirKbps != null ? String(t.pirKbps) : '—',
-                ])}
-              />
-            )
-          )}
+          {/* Gestión completa (sincronizar/crear/editar/eliminar) — antes tab standalone */}
+          {sub === 'traffic' && <TrafficTablesSection oltId={oltId} />}
         </>
       )}
     </div>

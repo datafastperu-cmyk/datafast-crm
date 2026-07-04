@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Cpu, RefreshCw, Loader2,
   Settings, Activity, Network, Users, Server, Zap,
-  Plug, Share2, Gauge, AlertTriangle,
+  Plug, Gauge, AlertTriangle,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
@@ -21,14 +21,13 @@ import { TabProfiles }   from '@/components/olt/TabProfiles';
 import { TabOnus }       from '@/components/olt/TabOnus';
 import { TabFirmware }   from '@/components/olt/TabFirmware';
 import { ProveedoresTab } from '@/components/red/ProveedoresTab';
-import { TrafficTablesSection } from '@/components/red/TopologiaTab';
 import { SaludTab }       from '@/components/red/SaludTab';
 import { DeleteOltModal }  from '@/components/red/DeleteOltModal';
 
 // ─── Tabs ────────────────────────────────────────────────────────
 
 type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'firmware'
-           | 'proveedores' | 'traffic' | 'salud';
+           | 'proveedores' | 'salud';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'detalles',    label: 'Detalles',    icon: <Settings       className="w-3.5 h-3.5" /> },
@@ -37,7 +36,6 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" /> },
   { id: 'firmware',    label: 'Firmware',    icon: <Zap            className="w-3.5 h-3.5" /> },
   { id: 'proveedores', label: 'Proveedores', icon: <Plug           className="w-3.5 h-3.5" /> },
-  { id: 'traffic',     label: 'Traffic Tables', icon: <Share2      className="w-3.5 h-3.5" /> },
   { id: 'salud',       label: 'Salud',       icon: <Gauge          className="w-3.5 h-3.5" /> },
   { id: 'eventos',     label: 'Eventos',     icon: <Activity       className="w-3.5 h-3.5" /> },
 ];
@@ -239,7 +237,6 @@ export default function OltDetallePage() {
         {tab === 'onus'        && <TabOnus       oltId={id} />}
         {tab === 'firmware'    && <TabFirmware   oltId={id} />}
         {tab === 'proveedores' && <ProveedoresTab oltId={id} />}
-        {tab === 'traffic'     && <TrafficTablesSection oltId={id} />}
         {tab === 'salud'       && <SaludTab      oltId={id} />}
         {tab === 'eventos'     && <TabEventos    oltId={id} />}
       </div>
