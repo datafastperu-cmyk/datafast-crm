@@ -304,7 +304,9 @@ export function PagosContent() {
             <p className="text-xs text-muted-foreground mt-1">No hay pagos con los filtros actuales.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Tabla — solo desktop */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
@@ -438,6 +440,83 @@ export function PagosContent() {
               </tbody>
             </table>
           </div>
+
+          {/* Cards — solo móvil (evita scroll horizontal de 9 columnas) */}
+          <div className="md:hidden divide-y divide-border">
+            {pagos.map((p) => (
+              <div key={p.id} className="px-4 py-3.5 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">
+                      {p.cliente_nombre ?? p.clienteNombre ?? 'Sin nombre'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{formatDate(p.fechaPago)}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-bold text-foreground">{formatPEN(p.monto)}</p>
+                    {p.conciliado && <p className="text-[10px] text-green-600">Conciliado ✓</p>}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1 text-xs text-foreground capitalize">
+                    <span>{METODO_EMOJI[p.metodoPago] ?? '•'}</span>
+                    {p.metodoPago.replace(/_/g, ' ')}
+                  </span>
+                  {p.banco && <span className="text-xs text-muted-foreground">· {p.banco}</span>}
+                  {p.numeroOperacion && (
+                    <span className="font-mono text-[11px] text-muted-foreground">· {p.numeroOperacion}</span>
+                  )}
+                  <span className={cn(
+                    'text-[10px] font-semibold px-2 py-0.5 rounded-full ml-auto',
+                    p.estado === 'verificado'  ? 'badge-activo'      :
+                    p.estado === 'rechazado'   ? 'badge-suspendido'  :
+                    'badge-pendiente',
+                  )}>
+                    {p.estado.replace(/_/g, ' ')}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 pt-1">
+                  {p.estado === 'pendiente_verificacion' && (
+                    <>
+                      <button onClick={() => aprobar(p.id)} title="Aprobar"
+                        className="p-2 rounded-lg text-green-600 hover:bg-green-100 dark:hover:bg-green-950/30 transition-colors">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </button>
+                      <button onClick={() => setRechazando(p.id)} title="Rechazar"
+                        className="p-2 rounded-lg text-destructive hover:bg-destructive/10 transition-colors">
+                        <AlertCircle className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
+                  {p.conciliado ? (
+                    <span title="Pago conciliado — no se puede editar" className="p-2 rounded text-muted-foreground/40">
+                      <Lock className="w-4 h-4" />
+                    </span>
+                  ) : (
+                    <button onClick={() => setEditandoPago(p)} title="Editar"
+                      className="p-2 rounded-lg text-muted-foreground hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
+                  {!p.conciliado && puedeEliminarPago && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
+                          eliminar(p.id);
+                        }
+                      }}
+                      title="Eliminar"
+                      className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
 
         {/* Paginación */}
