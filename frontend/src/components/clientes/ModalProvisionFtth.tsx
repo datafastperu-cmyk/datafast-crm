@@ -217,6 +217,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const [trafficIndexDown, setTrafficIndexDown] = useState('');  // '' = Indefinida
   const [trafficIndexUp,   setTrafficIndexUp]   = useState('');  // '' = Indefinida
   const [description,   setDescription]  = useState('');
+  const [servicePortId, setServicePortId] = useState('');  // '' = usar pool automático
 
   // Perfiles OLT (Phase 4)
   const { data: perfiles } = useQuery<OltPerfilesResult>({
@@ -420,6 +421,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       srvprofileId:  parseInt(srvprofileId),
       trafficIndexDown: trafficIndexDown !== '' ? parseInt(trafficIndexDown) : undefined,
       trafficIndexUp:   trafficIndexUp   !== '' ? parseInt(trafficIndexUp)   : undefined,
+      servicePortId:    servicePortId    !== '' ? parseInt(servicePortId)    : undefined,
       description:      description.trim() || undefined,
     }),
     onSuccess: (res) => {
@@ -707,7 +709,20 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                 <div className="mt-1 space-y-1.5">
                   <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
                     <Hash className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>Service Port ID se asigna automáticamente del pool configurado en la OLT.</span>
+                    <div className="flex flex-1 items-center gap-2 flex-wrap">
+                      <span className="flex-1">
+                        Service Port ID — si hay pool configurado en la OLT se asigna automáticamente.
+                        Si no, ingresa el ID manualmente:
+                      </span>
+                      <input
+                        type="number"
+                        value={servicePortId}
+                        onChange={e => setServicePortId(e.target.value)}
+                        min={1}
+                        placeholder="Ej: 1501"
+                        className="w-28 rounded-md border border-violet-700/40 bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
                     <Hash className="w-3.5 h-3.5 flex-shrink-0" />
