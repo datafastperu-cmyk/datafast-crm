@@ -201,6 +201,62 @@ export class ReconciliadorService {
     };
   }
 
+  // ── Cron: divergencias ONU↔contrato (FTTH) cada 30 min ────────
+  // A nivel de conjunto (no por-fila): detecta y REPORTA, no corrige en caliente.
+  //  1) ONU aprovisionada cuyo contrato ya no está vigente (baja/eliminado).
+  //  2) Contrato FTTH activo sin ONU aprovisionada.
+  @Cron('0 */30 * * * *')
+  async reconciliarFtthOnu(): Promise<void> {
+    const inicio = Date.now();
+    const divergencias: string[] = [];
+    const estadosProvisionada = "('activo','suspendido','gpon_registrado','wan_inyectado')";
+    try {
+      // 1) ONUs físicas sin contrato vigente (huérfanas).
+      const huerfanas = await this.ds.query<any[]>(`
+        SELECT f.contrato_id, f.olt_id, f.sn, f.estado AS onu_estado,
+               co.estado AS contrato_estado
+        FROM   ftth_onu_registro f
+        LEFT   JOIN contratos co ON co.id = f.contrato_id
+        WHERE  f.estado IN ${estadosProvisionada}
+          AND (co.id IS NULL OR co.estado = 'baja_definitiva' OR co.deleted_at IS NOT NULL)
+      `);
+      for (const h of huerfanas) {
+        divergencias.push(
+          `ONU sin contrato vigente: sn=${h.sn} olt=${h.olt_id} contrato=${h.contrato_id} ` +
+          `(contrato=${h.contrato_estado ?? 'inexistente'}, onu=${h.onu_estado})`,
+        );
+      }
+
+      // 2) Contratos FTTH activos sin ONU aprovisionada.
+      const sinOnu = await this.ds.query<any[]>(`
+        SELECT co.id, co.numero_contrato
+        FROM   contratos co
+        WHERE  co.deleted_at IS NULL
+          AND  co.estado = 'activo'
+          AND  co.tipo_servicio = 'ftth'
+          AND  NOT EXISTS (
+                 SELECT 1 FROM ftth_onu_registro f
+                 WHERE f.contrato_id = co.id AND f.estado IN ${estadosProvisionada}
+               )
+      `);
+      for (const s of sinOnu) {
+        divergencias.push(`Contrato FTTH activo sin ONU: ${s.numero_contrato} (${s.id})`);
+      }
+
+      if (divergencias.length > 0) {
+        this.logger.warn(
+          `[Reconciliador FTTH] ${divergencias.length} divergencia(s) ONU↔contrato:\n  - ` +
+          divergencias.join('\n  - '),
+        );
+      } else {
+        this.logger.log('[Reconciliador FTTH] Sin divergencias ONU↔contrato');
+      }
+      await this.registrarLog(divergencias.length, 0, divergencias, Date.now() - inicio);
+    } catch (e: any) {
+      this.logger.error(`[Reconciliador FTTH] Error: ${e?.message}`);
+    }
+  }
+
   private async registrarLog(procesados: number, correcciones: number, errores: string[], durMs: number): Promise<void> {
     await this.ds.query(`
       INSERT INTO reconciliation_log (procesados, correcciones, errores, duracion_ms, ejecutado_en)
