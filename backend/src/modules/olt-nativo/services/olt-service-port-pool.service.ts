@@ -197,7 +197,7 @@ export class OltServicePortPoolService {
   // Soft-delete de todas las entradas libres para reconfigurar el rango.
   // Las entradas ocupadas se mantienen intactas.
   async limpiarLibres(oltId: string, empresaId: string): Promise<{ eliminados: number }> {
-    const rows = await this.ds.query<{ id: string }[]>(
+    const result: any = await this.ds.query(
       `UPDATE olt_service_port_pool
        SET deleted_at = NOW(),
            updated_at = NOW(),
@@ -209,7 +209,10 @@ export class OltServicePortPoolService {
        RETURNING id`,
       [oltId, empresaId],
     );
-    this.logger.log(`Pool limpiar libres | olt=${oltId} eliminados=${rows.length}`);
-    return { eliminados: rows.length };
+    // TypeORM/pg devuelve [filas, affectedCount] para UPDATE...RETURNING.
+    const filas = Array.isArray(result?.[0]) ? result[0] : result;
+    const eliminados = Array.isArray(filas) ? filas.length : Number(result?.[1]) || 0;
+    this.logger.log(`Pool limpiar libres | olt=${oltId} eliminados=${eliminados}`);
+    return { eliminados };
   }
 }
