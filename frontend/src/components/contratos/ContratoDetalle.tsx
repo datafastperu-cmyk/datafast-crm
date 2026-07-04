@@ -101,7 +101,7 @@ export function ContratoDetalle({ id }: { id: string }) {
           {/* Aprovisionar FTTH — solo disponible cuando MikroTik ya está configurado (estado activo) */}
           {esActivo && !contrato.aprovisionado && !esWisp && (
             <button
-              onClick={() => router.push(`/contratos/${id}/aprovisionar`)}
+              onClick={() => router.push(`/clientes/${contrato.clienteId}`)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
                          bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
             >

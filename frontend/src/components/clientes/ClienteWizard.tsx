@@ -464,10 +464,10 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
           </button>
           {resultado.contratoId && (
             <button
-              onClick={() => { onClose?.(); router.push(`/contratos/${resultado.contratoId}/aprovisionar`); }}
+              onClick={() => { onClose?.(); router.push(`/clientes/${resultado.clienteId}`); }}
               className="btn-primary"
             >
-              <Wifi className="w-4 h-4" /> Aprovisionar en MikroTik
+              <Wifi className="w-4 h-4" /> Activar servicio
             </button>
           )}
         </div>
