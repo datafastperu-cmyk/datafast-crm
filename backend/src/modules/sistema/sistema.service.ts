@@ -719,6 +719,10 @@ export class SistemaService {
     bienvenida:          'bienvenida',
     pago_recibido:       'confirmacion_pago',
     alerta_egreso:       'datafast_alerta_egreso',
+    router_caido:        'router_caido',
+    router_conectado:    'router_conectado',
+    emisor_caido:        'emisor_caido',
+    emisor_conectado:    'emisor_conectado',
   };
 
   // Formatea un valor Date o string de fecha a DD/MM/YYYY
@@ -734,12 +738,18 @@ export class SistemaService {
     tipo: string; telefono: string; cliente: string; texto: string;
   }> {
     const [log] = await this.ds.query(`
-      SELECT id, telefono, tipo_template, contrato_id, cliente_id
+      SELECT id, telefono, tipo_template, contrato_id, cliente_id, variables
       FROM notificaciones_logs
       WHERE id = $1 AND empresa_id = $2
     `, [logId, empresaId]);
 
     if (!log) throw new NotFoundException('Log no encontrado');
+
+    // Variables almacenadas en el log (para alertas internas sin cliente/contrato)
+    const logVars: Record<string, string> = (() => {
+      try { return typeof log.variables === 'string' ? JSON.parse(log.variables) : (log.variables ?? {}); }
+      catch { return {}; }
+    })();
 
     let row: any = null;
     if (log.contrato_id) {
@@ -778,6 +788,16 @@ export class SistemaService {
       `, [log.cliente_id, empresaId]);
     }
 
+    // Para alertas internas sin contrato/cliente, obtener datos de la empresa
+    let empresaRow: { empresa_nombre: string; empresa_telefono: string } | null = null;
+    if (!row) {
+      const [emp] = await this.ds.query(`
+        SELECT razon_social AS empresa_nombre, telefono_informativo AS empresa_telefono
+        FROM empresas WHERE id = $1
+      `, [empresaId]);
+      if (emp) empresaRow = emp;
+    }
+
     // Buscar plantilla en DB
     const codigoPlantilla = this.TIPO_A_PLANTILLA[log.tipo_template];
     let texto = '—';
@@ -796,6 +816,8 @@ export class SistemaService {
           ? parseFloat(row.factura_total).toFixed(2)
           : parseFloat(row?.deuda_total || '0').toFixed(2);
 
+        const empNombre   = row?.empresa_nombre   ?? empresaRow?.empresa_nombre   ?? '—';
+        const empTelefono = row?.empresa_telefono ?? empresaRow?.empresa_telefono ?? '—';
         const vars: Record<string, string> = {
           // nuevos nombres canónicos
           nombre_cliente:   row?.nombre_completo     ?? '—',
@@ -803,11 +825,16 @@ export class SistemaService {
           plan:             row?.plan_nombre         ?? '—',
           fecha_vencimiento: fechaVenc,
           numero_factura:   row?.factura_numero      ?? '—',
-          empresa:          row?.empresa_nombre      ?? '—',
-          telefono_empresa: row?.empresa_telefono    ?? '—',
+          empresa:          empNombre,
+          telefono_empresa: empTelefono,
           usuario_pppoe:    row?.usuario_pppoe       ?? '—',
           ip_asignada:      row?.ip_asignada         ?? '—',
           dias_vencidos:    String(row?.meses_deuda ?? 0),
+          // variables de monitoreo (router/emisor)
+          router_nombre:    logVars.router_nombre    ?? '—',
+          nodo_nombre:      logVars.nodo_nombre      ?? '—',
+          fecha:            logVars.fecha            ?? '—',
+          hora:             logVars.hora             ?? '—',
           // alias legados (para plantillas en DB con nombres anteriores)
           nombre_completo:  row?.nombre_completo     ?? '—',
           monto_factura:    montoFact,
@@ -832,10 +859,12 @@ export class SistemaService {
         const montoV = row?.factura_total
           ? parseFloat(row.factura_total).toFixed(2)
           : parseFloat(row?.deuda_total || '0').toFixed(2);
+        const sysEmpNombre   = row?.empresa_nombre   ?? empresaRow?.empresa_nombre   ?? '—';
+        const sysEmpTelefono = row?.empresa_telefono ?? empresaRow?.empresa_telefono ?? '—';
         const sysVars: Record<string, string> = {
           nombre_cliente:    row?.nombre_completo  ?? '—',
-          empresa:           row?.empresa_nombre   ?? '—',
-          telefono_empresa:  row?.empresa_telefono ?? '—',
+          empresa:           sysEmpNombre,
+          telefono_empresa:  sysEmpTelefono,
           plan:              row?.plan_nombre      ?? '—',
           usuario_pppoe:     row?.usuario_pppoe    ?? '—',
           ip_asignada:       row?.ip_asignada      ?? '—',
@@ -843,6 +872,11 @@ export class SistemaService {
           numero_factura:    row?.factura_numero   ?? '—',
           fecha_vencimiento: fechaV,
           dias_vencidos:     String(row?.meses_deuda ?? 0),
+          // variables de monitoreo (router/emisor)
+          router_nombre:     logVars.router_nombre ?? '—',
+          nodo_nombre:       logVars.nodo_nombre   ?? '—',
+          fecha:             logVars.fecha         ?? '—',
+          hora:              logVars.hora          ?? '—',
         };
         texto = defContenido.replace(/\{\{(\w+)\}\}/g, (_, key: string) => sysVars[key] ?? `{{${key}}}`);
       }

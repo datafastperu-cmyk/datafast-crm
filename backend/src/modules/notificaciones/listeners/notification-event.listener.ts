@@ -417,10 +417,15 @@ export class NotificationEventListener implements OnModuleInit {
   @OnEvent(NOTIFICATION_EVENTS.EMISOR_CAIDO, { async: true })
   async onEmisorCaido(event: EventNotificacionEmisorCaido): Promise<void> {
     this.logger.log(`[EVENT] ⚠️ EMISOR_CAIDO → nodo=${event.nodoNombre} | empresa=${event.empresaId}`);
+    const _now = new Date();
     await this.encolar('emisor_caido', {
       telefono:  '',
       tipo:      'emisor_caido',
-      variables: { nodo_nombre: event.nodoNombre },
+      variables: {
+        nodo_nombre: event.nodoNombre,
+        fecha: _now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        hora:  _now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      },
       empresaId: event.empresaId,
     }, JOB_OPTIONS.ALERTA);
   }
@@ -428,10 +433,15 @@ export class NotificationEventListener implements OnModuleInit {
   @OnEvent(NOTIFICATION_EVENTS.EMISOR_CONECTADO, { async: true })
   async onEmisorConectado(event: EventNotificacionEmisorConectado): Promise<void> {
     this.logger.log(`[EVENT] ✅ EMISOR_CONECTADO → nodo=${event.nodoNombre} | empresa=${event.empresaId}`);
+    const _now = new Date();
     await this.encolar('emisor_conectado', {
       telefono:  '',
       tipo:      'emisor_conectado',
-      variables: { nodo_nombre: event.nodoNombre },
+      variables: {
+        nodo_nombre: event.nodoNombre,
+        fecha: _now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        hora:  _now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      },
       empresaId: event.empresaId,
     }, JOB_OPTIONS.ALERTA);
   }
@@ -439,10 +449,15 @@ export class NotificationEventListener implements OnModuleInit {
   @OnEvent(NOTIFICATION_EVENTS.ROUTER_CAIDO, { async: true })
   async onRouterCaido(event: EventNotificacionRouterCaido): Promise<void> {
     this.logger.log(`[EVENT] ⚠️ ROUTER_CAIDO → router=${event.routerNombre} | empresa=${event.empresaId}`);
+    const _now = new Date();
     await this.encolar('router_caido', {
       telefono:  '',
       tipo:      'router_caido',
-      variables: { router_nombre: event.routerNombre },
+      variables: {
+        router_nombre: event.routerNombre,
+        fecha: _now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        hora:  _now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      },
       empresaId: event.empresaId,
     }, JOB_OPTIONS.ALERTA);
   }
@@ -450,10 +465,15 @@ export class NotificationEventListener implements OnModuleInit {
   @OnEvent(NOTIFICATION_EVENTS.ROUTER_CONECTADO, { async: true })
   async onRouterConectado(event: EventNotificacionRouterConectado): Promise<void> {
     this.logger.log(`[EVENT] ✅ ROUTER_CONECTADO → router=${event.routerNombre} | empresa=${event.empresaId}`);
+    const _now = new Date();
     await this.encolar('router_conectado', {
       telefono:  '',
       tipo:      'router_conectado',
-      variables: { router_nombre: event.routerNombre },
+      variables: {
+        router_nombre: event.routerNombre,
+        fecha: _now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        hora:  _now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      },
       empresaId: event.empresaId,
     }, JOB_OPTIONS.ALERTA);
   }

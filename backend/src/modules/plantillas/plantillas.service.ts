@@ -67,22 +67,22 @@ export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenid
   emisor_caido: {
     nombre: 'Emisor / Nodo Caído',
     contenido:
-      '⚠️ ALERTA {{empresa}}: El nodo *{{nodo_nombre}}* ha perdido conectividad. Estamos trabajando para restablecer el servicio. Disculpe los inconvenientes. Reportes: {{telefono_empresa}}.',
+      '⚠️ ALERTA {{empresa}}: El nodo *{{nodo_nombre}}* ha perdido conectividad a las {{hora}} del {{fecha}}. Estamos trabajando para restablecer el servicio. Disculpe los inconvenientes. Reportes: {{telefono_empresa}}.',
   },
   emisor_conectado: {
     nombre: 'Emisor / Nodo Restaurado',
     contenido:
-      '✅ {{empresa}}: El nodo *{{nodo_nombre}}* ha sido RESTAURADO exitosamente. El servicio está operativo. Gracias por su paciencia.',
+      '✅ {{empresa}}: El nodo *{{nodo_nombre}}* ha sido RESTAURADO a las {{hora}} del {{fecha}}. El servicio está operativo. Gracias por su paciencia.',
   },
   router_caido: {
     nombre: 'Router Caído',
     contenido:
-      '⚠️ ALERTA {{empresa}}: El router *{{router_nombre}}* está CAÍDO. Se está atendiendo la incidencia. Consultas: {{telefono_empresa}}.',
+      '⚠️ ALERTA {{empresa}}: El router *{{router_nombre}}* está CAÍDO desde las {{hora}} del {{fecha}}. Se está atendiendo la incidencia. Consultas: {{telefono_empresa}}.',
   },
   router_conectado: {
     nombre: 'Router Restaurado',
     contenido:
-      '✅ {{empresa}}: El router *{{router_nombre}}* ha sido RECONECTADO exitosamente. Todo funciona con normalidad.',
+      '✅ {{empresa}}: El router *{{router_nombre}}* ha sido RECONECTADO a las {{hora}} del {{fecha}}. Todo funciona con normalidad.',
   },
   datafast_alerta_egreso: {
     nombre: 'Alerta Egreso Recurrente (Interno)',
