@@ -590,18 +590,42 @@ export class ProvisionFtthService {
   // Flujo: marcar desaprovisionando → rollback GPON SSH →
   //        liberar pools (servicePort + onuId) → soft-delete registro
   // ────────────────────────────────────────────────────────────
-  // Desaprovisiona resolviendo la OLT desde el registro FTTH del contrato.
-  // Punto de entrada canónico del "rollback de aprovisionamiento" por contrato,
-  // sin exigir el oltId al llamador (lo usa el botón Rollback de ContratoDetalle).
+  // ── Wrappers "por contrato" (ciclo de vida ONU↔contrato) ──────────
+  // Resuelven la OLT desde el registro FTTH. Si el contrato no tiene ONU
+  // (WISP, o ya desaprovisionado), OMITEN sin error → los usa outbox-red para
+  // aplicar el ciclo de vida ONU de forma idempotente y resiliente, y el botón
+  // Rollback de ContratoDetalle.
   async desaprovisionarPorContrato(
     contratoId: string,
     empresaId:  string,
-  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string; skipped?: boolean }> {
     const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
     if (!registro) {
-      throw new NotFoundException(`No hay registro FTTH para el contrato ${contratoId}.`);
+      return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — desaprovisionar omitido.' };
     }
     return this.desaprovisionar(registro.oltId, empresaId, { contratoId });
+  }
+
+  async suspenderPorContrato(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string; skipped?: boolean }> {
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+    if (!registro) {
+      return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — suspender omitido.' };
+    }
+    return this.suspender(registro.oltId, empresaId, contratoId);
+  }
+
+  async rehabilitarPorContrato(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string; skipped?: boolean }> {
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+    if (!registro) {
+      return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — rehabilitar omitido.' };
+    }
+    return this.rehabilitar(registro.oltId, empresaId, contratoId);
   }
 
   async desaprovisionar(

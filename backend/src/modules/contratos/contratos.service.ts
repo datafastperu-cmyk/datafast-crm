@@ -618,6 +618,11 @@ export class ContratosService {
         .then(() => this.sagaLog.registrarPaso(sagaBajaId, 2, 'desprovisionar_olt', 'OK', undefined, Date.now() - t2))
         .catch((e: any) => { this.logger.warn(`cambiarEstado baja OLT: ${e?.message}`); return this.sagaLog.registrarPaso(sagaBajaId, 2, 'desprovisionar_olt', 'FAIL', e?.message, Date.now() - t2); });
 
+      // S2b: Desaprovisionar ONU nativa (FTTH/Path B) de forma resiliente vía outbox.
+      // Cubre el caso que desaprovisionarOlt() no maneja (ONU nativa sin SmartOLT ID):
+      // el outbox reintenta hasta que la OLT esté disponible; omite si no hay ONU FTTH.
+      await this.outboxRed.encolarDesaprovisionarOnu(id, user.empresaId).catch(() => void 0);
+
       // S3: Desprovisionar MikroTik (soft — no bloquea baja; reintento via outbox si falla)
       const t3 = Date.now();
       await withTimeout(this.desaprovisionarMikrotik(id), 25000, 'desaprovision-mikrotik')

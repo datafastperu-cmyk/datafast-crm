@@ -7,13 +7,21 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { FirewallService }   from '../mikrotik/services/firewall.service';
 import { PppoeService }      from '../mikrotik/services/pppoe.service';
 import { QueueService }      from '../mikrotik/services/queue.service';
+import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
 import { decrypt }           from '../../common/utils/encryption.util';
 import {
   NOTIFICATION_EVENTS,
   EventOutboxRedAgotado,
+  EventNotificacionServicioSuspendido,
+  EventNotificacionServicioReactivado,
 } from '../notificaciones/events/notification.events';
 
-export type AccionRed = 'SUSPENDER' | 'REACTIVAR' | 'DESPROVISIONAR' | 'PROVISIONAR' | 'APLICAR_PRORROGA' | 'REVOCAR_PRORROGA';
+export type AccionRed =
+  | 'SUSPENDER' | 'REACTIVAR' | 'DESPROVISIONAR' | 'PROVISIONAR'
+  | 'APLICAR_PRORROGA' | 'REVOCAR_PRORROGA'
+  // Ciclo de vida ONU (FTTH) — comandos independientes del corte MikroTik,
+  // cada uno con su propio reintento resiliente.
+  | 'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU';
 
 export interface PayloadSuspenderRed {
   ipAsignada:  string;
@@ -72,6 +80,7 @@ export class OutboxRedService {
     private readonly firewallSvc: FirewallService,
     private readonly pppoeSvc:    PppoeService,
     private readonly queueSvc:    QueueService,
+    private readonly ftthSvc:     ProvisionFtthService,
     private readonly events:      EventEmitter2,
   ) {}
 
@@ -126,6 +135,45 @@ export class OutboxRedService {
     payload:    PayloadRevocarProrroga,
   ): Promise<void> {
     await this.encolar('REVOCAR_PRORROGA', contratoId, routerId, payload);
+  }
+
+  // ── Ciclo de vida ONU (FTTH) ──────────────────────────────────
+  // Encola una acción sobre la ONU SOLO si el contrato tiene registro FTTH.
+  // router_id = 'none' (la OLT se resuelve en ejecución desde el registro).
+  private async encolarOnu(
+    accion:     'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU',
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<void> {
+    const [existe] = await this.ds.query(
+      `SELECT 1 FROM ftth_onu_registro WHERE contrato_id = $1 AND empresa_id = $2 LIMIT 1`,
+      [contratoId, empresaId],
+    ).catch(() => [null]);
+    if (!existe) return; // Contrato WISP o sin ONU — nada que hacer en la OLT.
+
+    await this.encolar(accion, contratoId, 'none', { empresaId } as any);
+    this.logger.warn(`[OutboxRed] ${accion} encolado → contrato=${contratoId}`);
+  }
+
+  // Escucha las transiciones de servicio que ya emiten cobranza y contratos,
+  // y encola el comando ONU independiente (reintento resiliente propio).
+  @OnEvent(NOTIFICATION_EVENTS.SERVICIO_SUSPENDIDO, { async: true })
+  async onServicioSuspendido(ev: EventNotificacionServicioSuspendido): Promise<void> {
+    if (ev.contratoId && ev.empresaId) {
+      await this.encolarOnu('SUSPENDER_ONU', ev.contratoId, ev.empresaId);
+    }
+  }
+
+  @OnEvent(NOTIFICATION_EVENTS.SERVICIO_REACTIVADO, { async: true })
+  async onServicioReactivado(ev: EventNotificacionServicioReactivado): Promise<void> {
+    if (ev.contratoId && ev.empresaId) {
+      await this.encolarOnu('REACTIVAR_ONU', ev.contratoId, ev.empresaId);
+    }
+  }
+
+  // Baja definitiva: se invoca desde contratos.service (no hay evento de baja).
+  async encolarDesaprovisionarOnu(contratoId: string, empresaId: string): Promise<void> {
+    await this.encolarOnu('DESAPROVISIONAR_ONU', contratoId, empresaId);
   }
 
   async getStatus(): Promise<{
@@ -204,6 +252,12 @@ export class OutboxRedService {
   // Ejecución individual
   // ────────────────────────────────────────────────────────────
   private async ejecutarComando(cmd: any): Promise<void> {
+    // Ciclo de vida ONU (FTTH): no usa router MikroTik, se resuelve por contrato.
+    if (cmd.accion === 'SUSPENDER_ONU' || cmd.accion === 'REACTIVAR_ONU' || cmd.accion === 'DESAPROVISIONAR_ONU') {
+      await this.ejecutarComandoOnu(cmd);
+      return;
+    }
+
     const [router] = await this.ds.query<any[]>(
       `SELECT ip_gestion, vpn_ip, usuario, password_cifrado,
               usar_ssl, puerto_api, puerto_api_ssl, version_ros, timeout_conexion
@@ -374,6 +428,45 @@ export class OutboxRedService {
           `[OutboxRed] Reintento ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${err.message}`,
         );
       }
+    }
+  }
+
+  // ── Ejecución de comandos de ciclo de vida ONU (FTTH) ─────────
+  // Mismo modelo de resiliencia que el resto del outbox: nunca se descarta;
+  // si la OLT está caída, queda PENDIENTE y reintenta (cron + trigger reconexión)
+  // hasta aplicarse. Si el contrato no tiene ONU, el wrapper omite → EJECUTADO.
+  private async ejecutarComandoOnu(cmd: any): Promise<void> {
+    const empresaId = (cmd.payload as any)?.empresaId as string;
+    try {
+      let res: { exitoso: boolean; mensaje: string; error?: string; skipped?: boolean };
+      if (cmd.accion === 'SUSPENDER_ONU') {
+        res = await this.ftthSvc.suspenderPorContrato(cmd.contrato_id, empresaId);
+      } else if (cmd.accion === 'REACTIVAR_ONU') {
+        res = await this.ftthSvc.rehabilitarPorContrato(cmd.contrato_id, empresaId);
+      } else {
+        res = await this.ftthSvc.desaprovisionarPorContrato(cmd.contrato_id, empresaId);
+      }
+
+      if (!res.exitoso) {
+        throw new Error(res.error ?? res.mensaje ?? 'Operación ONU fallida');
+      }
+
+      await this.ds.query(
+        `UPDATE comandos_red_pendientes SET estado = 'EJECUTADO', ejecutado_en = NOW() WHERE id = $1`,
+        [cmd.id],
+      );
+      this.logger.log(
+        `[OutboxRed] ✅ ${cmd.accion} → contrato=${cmd.contrato_id}${res.skipped ? ' (omitido: sin ONU FTTH)' : ''}`,
+      );
+    } catch (err: any) {
+      const nuevosIntentos = (cmd.intentos as number) + 1;
+      await this.ds.query(
+        `UPDATE comandos_red_pendientes SET intentos = $2, ultimo_error = $3 WHERE id = $1`,
+        [cmd.id, nuevosIntentos, err.message?.slice(0, 500)],
+      );
+      this.logger.warn(
+        `[OutboxRed] Reintento ONU ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${err.message}`,
+      );
     }
   }
 
