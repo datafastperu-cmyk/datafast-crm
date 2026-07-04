@@ -53,6 +53,11 @@ select option {
     --success-fg:             0 0% 100%;
     --warning:                36 82% 44%;
     --warning-fg:             24 9% 10%;
+
+    /* Texto de color sobre fondo tinte 10-12% (badges, alertas, chips) — WCAG AA */
+    --success-subtle-fg:      154 60% 29%;
+    --warning-subtle-fg:      36 82% 32%;
+    --destructive-subtle-fg:  4 68% 45%;
     --info:                   218 72% 44%;
     --info-fg:                0 0% 100%;
 
@@ -117,6 +122,11 @@ select option {
     --success-fg:             0 0% 98%;
     --warning:                36 72% 54%;
     --warning-fg:             24 9% 10%;
+
+    /* Texto de color sobre fondo tinte 10-12% (badges, alertas, chips) — WCAG AA */
+    --success-subtle-fg:      154 55% 44%;
+    --warning-subtle-fg:      36 72% 54%;
+    --destructive-subtle-fg:  10 60% 65%;
     --info:                   218 60% 54%;
     --info-fg:                0 0% 98%;
 
@@ -286,19 +296,19 @@ select option {
   /* usan CSS vars directamente para respetar light/dark automáticamente */
   .badge-activo {
     background: hsl(var(--success) / 0.12);
-    color: hsl(var(--success));
+    color: hsl(var(--success-subtle-fg));
     border: 1px solid hsl(var(--success) / 0.22);
     @apply text-xs font-medium px-2 py-0.5 rounded-md;
   }
   .badge-suspendido {
     background: hsl(var(--destructive) / 0.12);
-    color: hsl(var(--destructive));
+    color: hsl(var(--destructive-subtle-fg));
     border: 1px solid hsl(var(--destructive) / 0.22);
     @apply text-xs font-medium px-2 py-0.5 rounded-md;
   }
   .badge-moroso {
     background: hsl(var(--warning) / 0.12);
-    color: hsl(var(--warning));
+    color: hsl(var(--warning-subtle-fg));
     border: 1px solid hsl(var(--warning) / 0.22);
     @apply text-xs font-medium px-2 py-0.5 rounded-md;
   }
@@ -310,7 +320,7 @@ select option {
   }
   .badge-pendiente {
     background: hsl(var(--warning) / 0.10);
-    color: hsl(var(--warning));
+    color: hsl(var(--warning-subtle-fg));
     border: 1px solid hsl(var(--warning) / 0.20);
     @apply text-xs font-medium px-2 py-0.5 rounded-md;
   }
@@ -329,19 +339,19 @@ select option {
   .pill-online {
     @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full;
     background: hsl(var(--success)     / 0.10);
-    color:      hsl(var(--success));
+    color:      hsl(var(--success-subtle-fg));
     box-shadow: 0 0 0 1px hsl(var(--success) / 0.22);
   }
   .pill-offline {
     @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full;
     background: hsl(var(--destructive) / 0.10);
-    color:      hsl(var(--destructive));
+    color:      hsl(var(--destructive-subtle-fg));
     box-shadow: 0 0 0 1px hsl(var(--destructive) / 0.22);
   }
   .pill-warning {
     @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full;
     background: hsl(var(--warning)     / 0.10);
-    color:      hsl(var(--warning));
+    color:      hsl(var(--warning-subtle-fg));
     box-shadow: 0 0 0 1px hsl(var(--warning) / 0.22);
   }
   .pill-info {

@@ -77,6 +77,16 @@ module.exports = {
         },
       },
 
+      /* Rol de color por utilidad: la UTILIDAD text-* usa el tono "subtle"
+         (oscuro/legible sobre fondos claros o tintes 10-12%) para cumplir
+         WCAG AA en badges, alertas y chips. bg-* sigue usando el tono sólido
+         (botones), y text-*-foreground el texto sobre relleno sólido. */
+      textColor: {
+        success:     { DEFAULT: 'hsl(var(--success-subtle-fg))',     foreground: 'hsl(var(--success-fg))' },
+        warning:     { DEFAULT: 'hsl(var(--warning-subtle-fg))',     foreground: 'hsl(var(--warning-fg))' },
+        destructive: { DEFAULT: 'hsl(var(--destructive-subtle-fg))', foreground: 'hsl(var(--destructive-foreground))' },
+      },
+
       borderRadius: {
         lg:    'var(--radius)',
         md:    'calc(var(--radius) - 2px)',
