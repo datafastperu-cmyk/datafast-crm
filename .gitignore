@@ -10,6 +10,19 @@
 .env.staging
 *.env
 
+# ── Temporales de desarrollo / auditoria ──────────────────────
+__pycache__/
+*.pyc
+.playwright-mcp/
+*.BACKUP
+build-log-*.txt
+audit_*.png
+verify_*.png
+debug_*.png
+red_redes_*.png
+redes_*.png
+verificacion_*.png
+
 # ── SSL y certificados ────────────────────────────────────────
 nginx/ssl/live/
 nginx/ssl/*.crt
