@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { Cron }              from '@nestjs/schedule';
-import { EventEmitter2 }     from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 
 import { FirewallService }   from '../mikrotik/services/firewall.service';
 import { PppoeService }      from '../mikrotik/services/pppoe.service';
@@ -150,32 +150,54 @@ export class OutboxRedService {
     };
   }
 
+  // Guard anti-solapamiento: coalesce cron + eventos de reconexión concurrentes.
+  private _procesando = false;
+
   // ────────────────────────────────────────────────────────────
-  // CRON — cada 5 minutos procesa hasta 10 comandos pendientes
+  // CRON — cada 5 minutos: red de seguridad que barre la cola.
   // ────────────────────────────────────────────────────────────
   @Cron('0 */5 * * * *')
   async procesarPendientes(): Promise<void> {
-    // SELECT FOR UPDATE SKIP LOCKED: dos instancias PM2 nunca toman el mismo
-    // registro. SKIP LOCKED descarta filas bloqueadas por otra instancia en lugar
-    // de esperar, eliminando deadlocks y doble ejecución.
-    const pendientes = await this.ds.transaction(async (em) => {
-      return em.query<any[]>(`
-        SELECT id, contrato_id, router_id, accion, payload, intentos, max_intentos
-        FROM   comandos_red_pendientes
-        WHERE  estado = 'PENDIENTE' AND intentos < max_intentos
-        ORDER  BY creado_en
-        LIMIT  10
-        FOR UPDATE SKIP LOCKED
-      `);
-    });
-
-    if (pendientes.length === 0) return;
-
-    this.logger.log(`[OutboxRed] Procesando ${pendientes.length} comando(s) pendiente(s)`);
-
-    for (const cmd of pendientes) {
-      await this.ejecutarComando(cmd);
+    if (this._procesando) return;
+    this._procesando = true;
+    try {
+      // Barre la cola completa en lotes hasta vaciar lo procesable en esta pasada.
+      // Los comandos de routers aún caídos fallan y quedan PENDIENTE (nunca se descartan).
+      // SELECT FOR UPDATE SKIP LOCKED: dos instancias PM2 nunca toman el mismo registro.
+      let lote: any[];
+      do {
+        lote = await this.ds.transaction(async (em) => {
+          return em.query<any[]>(`
+            SELECT id, contrato_id, router_id, accion, payload, intentos, max_intentos
+            FROM   comandos_red_pendientes
+            WHERE  estado = 'PENDIENTE'
+            ORDER  BY creado_en
+            LIMIT  10
+            FOR UPDATE SKIP LOCKED
+          `);
+        });
+        if (lote.length > 0) {
+          this.logger.log(`[OutboxRed] Procesando ${lote.length} comando(s) pendiente(s)`);
+          for (const cmd of lote) {
+            await this.ejecutarComando(cmd);
+          }
+        }
+      } while (lote.length === 10);
+    } finally {
+      this._procesando = false;
     }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Trigger por evento — cuando un router recupera conectividad,
+  // aplica de inmediato sus comandos pendientes (latencia de segundos
+  // en vez de esperar al próximo cron). Cualquier router sirve de disparo:
+  // los comandos son idempotentes y cada uno re-consulta su propio router;
+  // los de routers aún caídos simplemente vuelven a quedar PENDIENTE.
+  // ────────────────────────────────────────────────────────────
+  @OnEvent(NOTIFICATION_EVENTS.ROUTER_CONECTADO, { async: true })
+  async onRouterReconectado(): Promise<void> {
+    await this.procesarPendientes();
   }
 
   // ────────────────────────────────────────────────────────────
@@ -317,20 +339,24 @@ export class OutboxRedService {
         `[OutboxRed] ✅ ${cmd.accion} ejecutado → contrato=${cmd.contrato_id} intento=${cmd.intentos + 1}`,
       );
     } catch (err: any) {
+      // Nunca se descarta: el comando queda PENDIENTE y se reintenta (cron cada 5 min
+      // + trigger inmediato al reconectar el router) hasta que se aplique en hardware.
+      // Un corte/reactivación es una obligación, no un "mejor esfuerzo": aunque el túnel
+      // VPN esté caído días, al volver el router los cambios se aplican automáticamente.
       const nuevosIntentos = (cmd.intentos as number) + 1;
-      const agotado        = nuevosIntentos >= cmd.max_intentos;
 
       await this.ds.query(`
         UPDATE comandos_red_pendientes
-        SET    intentos = $2, ultimo_error = $3, estado = $4
+        SET    intentos = $2, ultimo_error = $3
         WHERE  id = $1
-      `, [cmd.id, nuevosIntentos, err.message?.slice(0, 500), agotado ? 'AGOTADO' : 'PENDIENTE']);
+      `, [cmd.id, nuevosIntentos, err.message?.slice(0, 500)]);
 
-      if (agotado) {
+      // Notificación de visibilidad tras muchos reintentos (sigue reintentando).
+      if (nuevosIntentos === cmd.max_intentos) {
         this.logger.error(
-          `[OutboxRed] ❌ AGOTADO → contrato=${cmd.contrato_id} accion=${cmd.accion} | ${err.message}`,
+          `[OutboxRed] ⚠️ ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos → ` +
+          `contrato=${cmd.contrato_id} router=${cmd.router_id} (sigue reintentando) | ${err.message}`,
         );
-        // Obtener empresaId para enrutar la notificación
         const [row] = await this.ds.query<any[]>(
           `SELECT empresa_id FROM contratos WHERE id = $1 LIMIT 1`,
           [cmd.contrato_id],
@@ -345,7 +371,7 @@ export class OutboxRedService {
         } satisfies EventOutboxRedAgotado);
       } else {
         this.logger.warn(
-          `[OutboxRed] Reintento ${nuevosIntentos}/${cmd.max_intentos} → contrato=${cmd.contrato_id}: ${err.message}`,
+          `[OutboxRed] Reintento ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${err.message}`,
         );
       }
     }
