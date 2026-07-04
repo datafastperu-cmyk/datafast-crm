@@ -1,35 +1,18 @@
-import { Module }           from '@nestjs/common';
-import { TypeOrmModule }    from '@nestjs/typeorm';
-import { HttpModule }       from '@nestjs/axios';
+import { Module } from '@nestjs/common';
 
+import { AprovisionamientoController }   from './aprovisionamiento.controller';
+import { MockProvisionamientoProvider }  from './providers/mock-provisionamiento.provider';
+import { AuthModule }                    from '../auth/auth.module';
 
-import { AprovisionamientoController }        from './aprovisionamiento.controller';
-import { OrquestadorAprovisionamientoService } from './aprovisionamiento.service';
-import { MockProvisionamientoProvider }        from './providers/mock-provisionamiento.provider';
-
-import { NotificacionesModule } from '../notificaciones/notificaciones.module';
-import { AuthModule }            from '../auth/auth.module';
-import { MikrotikModule }     from '../mikrotik/mikrotik.module';
-import { SmartoltModule }     from '../smartolt/smartolt.module';
-import { OltProviderModule }  from '../olt-provider/olt-provider.module';
-
+// Tras retirar el Orquestador FTTH legacy (Path A), este módulo solo expone:
+//  - El endpoint de renotificación de bienvenida (emite el evento canónico).
+//  - El PROVISIONAMIENTO_PROVIDER (mock) que consume el worker de cobranza.
 @Module({
-  imports: [
-    HttpModule.register({ timeout: 15_000 }),
-    AuthModule,
-    MikrotikModule,
-    SmartoltModule,
-    OltProviderModule,
-    NotificacionesModule,
-  ],
+  imports: [AuthModule],
   controllers: [AprovisionamientoController],
   providers: [
-    OrquestadorAprovisionamientoService,
     { provide: 'PROVISIONAMIENTO_PROVIDER', useClass: MockProvisionamientoProvider },
   ],
-  exports: [
-    OrquestadorAprovisionamientoService,
-    'PROVISIONAMIENTO_PROVIDER',
-  ],
+  exports: ['PROVISIONAMIENTO_PROVIDER'],
 })
 export class AprovisionamientoModule {}

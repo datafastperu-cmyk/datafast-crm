@@ -1,22 +1,22 @@
 import {
-  Controller, Post, Body, Param,
+  Controller, Post, Param,
   ParseUUIDPipe, HttpCode, HttpStatus,
-  Logger, Get,
+  Logger,
 } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource }       from 'typeorm';
+import { EventEmitter2 }    from '@nestjs/event-emitter';
 import {
-  ApiTags, ApiBearerAuth, ApiOperation,
-  ApiResponse, ApiParam,
+  ApiTags, ApiBearerAuth, ApiOperation, ApiParam,
 } from '@nestjs/swagger';
 
-import { OrquestadorAprovisionamientoService } from './aprovisionamiento.service';
 import {
-  AprovisionarFtthDto,
-  RollbackAprovisionamientoDto,
-  AprovisionamientoResultadoDto,
-} from './aprovisionamiento.dto';
+  NOTIFICATION_EVENTS,
+  EventNotificacionBienvenida,
+} from '../notificaciones/events/notification.events';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
-import { RequirePermission, Roles } from '../../common/decorators/roles.decorator';
-import { ApiResponse as StdResponse }         from '../../common/dto/response.dto';
+import { RequirePermission }       from '../../common/decorators/roles.decorator';
+import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 
 @ApiTags('Aprovisionamiento FTTH')
 @ApiBearerAuth('JWT')
@@ -24,58 +24,26 @@ import { ApiResponse as StdResponse }         from '../../common/dto/response.dt
 export class AprovisionamientoController {
   private readonly logger = new Logger(AprovisionamientoController.name);
 
-  constructor(private readonly svc: OrquestadorAprovisionamientoService) {}
-
-  // ── POST /aprovisionamiento/rollback ──────────────────────
-  @Post('rollback')
-  @Roles('Administrador', 'Supervisor')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: '↩️ Rollback de aprovisionamiento',
-    description: `
-Revierte un aprovisionamiento realizado (total o parcialmente):
-
-1. Elimina la provisión de SmartOLT (si existe)
-2. Elimina el usuario PPPoE del Mikrotik
-3. Libera la IP al pool (ips_asignadas.activa = false)
-4. Desasocia la ONU del contrato en BD
-5. Revierte el estado del contrato a \`pendiente_activacion\`
-
-Útil cuando hay un error de instalación física o se necesita mover al cliente a otro nodo.
-    `,
-  })
-  async rollback(
-    @Body() dto: RollbackAprovisionamientoDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    this.logger.log(
-      `[ROLLBACK] Contrato: ${dto.contratoId} | motivo: ${dto.motivo} | por: ${user.email}`,
-    );
-
-    const resultado = await this.svc.ejecutarRollback(dto, undefined, user);
-
-    return StdResponse.ok(
-      resultado,
-      `Rollback completado: ${resultado.revertidos.length} acciones | ${resultado.errores.length} errores`,
-    );
-  }
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly events: EventEmitter2,
+  ) {}
 
   // ── POST /aprovisionamiento/notificar/:contratoId ─────────
   @Post('notificar/:contratoId')
   @RequirePermission('contratos:view')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Reenviar notificación WhatsApp al cliente',
-    description: 'Reenvía el mensaje de bienvenida al cliente del contrato indicado.',
+    summary: 'Reenviar notificación WhatsApp de bienvenida al cliente',
+    description: 'Reemite el evento BIENVENIDA para el contrato indicado.',
   })
   @ApiParam({ name: 'contratoId', description: 'UUID del contrato' })
   async renotificar(
     @Param('contratoId', ParseUUIDPipe) contratoId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    // Obtener datos del contrato para la notificación
-    const [row] = await this.svc['ds']?.query?.(`
-      SELECT cl.nombre_completo, cl.telefono, cl.whatsapp,
+    const [row] = await this.ds.query(`
+      SELECT cl.id AS cliente_id, cl.nombre_completo, cl.telefono, cl.whatsapp,
              pl.nombre AS plan_nombre, pl.velocidad_bajada, pl.velocidad_subida,
              co.usuario_pppoe
       FROM contratos co
@@ -88,17 +56,24 @@ Revierte un aprovisionamiento realizado (total o parcialmente):
       return StdResponse.ok({ enviado: false }, 'Contrato no encontrado');
     }
 
-    const whatsapp = this.svc['whatsapp'] as any;
-    const r = await whatsapp.notificarBienvenida({
-      telefono:        row.whatsapp || row.telefono,
+    const telefono = row.whatsapp || row.telefono;
+    if (!telefono) {
+      return StdResponse.ok({ enviado: false }, 'El cliente no tiene teléfono/WhatsApp registrado');
+    }
+
+    this.events.emit(NOTIFICATION_EVENTS.BIENVENIDA, {
+      telefono,
       clienteNombre:   row.nombre_completo,
       planNombre:      row.plan_nombre,
-      velocidadBajada: row.velocidad_bajada,
-      velocidadSubida: row.velocidad_subida,
+      velocidadBajada: String(row.velocidad_bajada ?? ''),
+      velocidadSubida: String(row.velocidad_subida ?? ''),
       usuarioPppoe:    row.usuario_pppoe,
       empresaId:       user.empresaId,
-    });
+      contratoId,
+      clienteId:       row.cliente_id,
+    } satisfies EventNotificacionBienvenida);
 
-    return StdResponse.ok(r, r.enviado ? 'WhatsApp enviado' : `No enviado: ${r.error}`);
+    this.logger.log(`[NOTIFICAR] BIENVENIDA reemitida | contrato=${contratoId} | por: ${user.email}`);
+    return StdResponse.ok({ enviado: true }, 'Notificación de bienvenida reenviada');
   }
 }
