@@ -16,6 +16,9 @@ export class OltTrafficTable {
   @Column({ type: 'varchar', length: 64 })       nombre:     string;
   @Column({ name: 'cir_kbps', type: 'int', nullable: true }) cirKbps: number | null;
   @Column({ name: 'pir_kbps', type: 'int', nullable: true }) pirKbps: number | null;
+  // Ráfagas en bytes (unidad nativa Huawei). Null = usar defaults de la OLT.
+  @Column({ name: 'cbs_bytes', type: 'int', nullable: true }) cbsBytes: number | null;
+  @Column({ name: 'pbs_bytes', type: 'int', nullable: true }) pbsBytes: number | null;
 
   @Column({ type: 'varchar', length: 20, default: 'combinado' })
   tipo: TrafficTableTipo;

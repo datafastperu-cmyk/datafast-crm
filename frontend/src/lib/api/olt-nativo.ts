@@ -489,6 +489,8 @@ export interface OltTrafficTable {
   nombre:    string;
   cirKbps:   number | null;
   pirKbps:   number | null;
+  cbsBytes:  number | null;
+  pbsBytes:  number | null;
   tipo:      'upstream' | 'downstream' | 'combinado';
   origen:    'erp' | 'olt';
   estado:    'active' | 'syncing' | 'error';
@@ -854,7 +856,7 @@ export const oltNativoApi = {
 
   agregarTrafficTable: async (
     oltId: string,
-    dto: { nombre: string; cirKbps: number; pirKbps: number; tipo?: string },
+    dto: { nombre: string; cirKbps: number; pirKbps: number; tipo?: string; cbsBytes?: number | null; pbsBytes?: number | null },
   ): Promise<OltTrafficTable> => {
     const res = await api.post<ApiRespuesta<OltTrafficTable>>(
       `/olt-nativo/${oltId}/traffic-tables`, dto, { timeout: 60_000 },
@@ -865,7 +867,7 @@ export const oltNativoApi = {
   editarTrafficTable: async (
     oltId: string,
     trafficId: number,
-    dto: { nombre: string; cirKbps: number; pirKbps: number; tipo?: string },
+    dto: { nombre: string; cirKbps: number; pirKbps: number; tipo?: string; cbsBytes?: number | null; pbsBytes?: number | null },
   ): Promise<OltTrafficTable> => {
     const res = await api.patch<ApiRespuesta<OltTrafficTable>>(
       `/olt-nativo/${oltId}/traffic-tables/${trafficId}`, dto, { timeout: 60_000 },

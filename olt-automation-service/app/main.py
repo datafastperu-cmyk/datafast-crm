@@ -1027,6 +1027,7 @@ async def traffic_table_add(body: TrafficTableAddRequest) -> TrafficTableAddResp
         try:
             result = await asyncio.to_thread(
                 add_traffic_table, body.connection, body.name, body.cir_kbps, body.pir_kbps,
+                body.cbs_bytes, body.pbs_bytes,
             )
         except ProvisioningError as exc:
             return TrafficTableAddResponse(success=False, error=str(exc))
@@ -1073,6 +1074,7 @@ async def traffic_table_edit(body: TrafficTableEditRequest) -> TrafficTableEditR
         try:
             result = await asyncio.to_thread(
                 edit_traffic_table, body.connection, body.index, body.name, body.cir_kbps, body.pir_kbps,
+                body.cbs_bytes, body.pbs_bytes,
             )
         except ProvisioningError as exc:
             return TrafficTableEditResponse(success=False, error=str(exc))

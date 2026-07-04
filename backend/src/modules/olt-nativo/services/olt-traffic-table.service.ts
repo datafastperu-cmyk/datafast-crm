@@ -16,6 +16,9 @@ export class AgregarTrafficTableDto {
   @IsInt() @Min(64) @Max(10_000_000) @Type(() => Number) cirKbps: number;
   @IsInt() @Min(64) @Max(10_000_000) @Type(() => Number) pirKbps: number;
   @IsOptional() @IsString()                        tipo?:    TrafficTableTipo;
+  // Ráfagas en bytes (unidad nativa Huawei). Opcionales.
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) cbsBytes?: number;
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) pbsBytes?: number;
 }
 
 export class EditarTrafficTableDto {
@@ -23,6 +26,8 @@ export class EditarTrafficTableDto {
   @IsInt() @Min(64) @Max(10_000_000) @Type(() => Number) cirKbps: number;
   @IsInt() @Min(64) @Max(10_000_000) @Type(() => Number) pirKbps: number;
   @IsOptional() @IsString()                        tipo?:    TrafficTableTipo;
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) cbsBytes?: number;
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) pbsBytes?: number;
 }
 
 @Injectable()
@@ -60,6 +65,8 @@ export class OltTrafficTableService {
       name:       dto.nombre,
       cir_kbps:   dto.cirKbps,
       pir_kbps:   dto.pirKbps,
+      cbs_bytes:  dto.cbsBytes ?? null,
+      pbs_bytes:  dto.pbsBytes ?? null,
     });
 
     if (!res.success) {
@@ -69,28 +76,28 @@ export class OltTrafficTableService {
       throw new ServiceUnavailableException(`OLT creó la tabla "${dto.nombre}" pero no retornó índice.`);
     }
 
+    const campos = {
+      nombre:   dto.nombre,
+      cirKbps:  dto.cirKbps,
+      pirKbps:  dto.pirKbps,
+      cbsBytes: dto.cbsBytes ?? null,
+      pbsBytes: dto.pbsBytes ?? null,
+      tipo:     dto.tipo ?? 'combinado' as const,
+      origen:   'erp' as const,
+      estado:   'active' as const,
+    };
+
     const existente = await this.repo.findOne({ where: { oltId, trafficId: res.index } });
     if (existente) {
-      await this.repo.update(existente.id, {
-        nombre:  dto.nombre,
-        cirKbps: dto.cirKbps,
-        pirKbps: dto.pirKbps,
-        tipo:    dto.tipo ?? 'combinado',
-        origen:  'erp',
-        estado:  'active',
-      });
-      return { ...existente, nombre: dto.nombre, cirKbps: dto.cirKbps, pirKbps: dto.pirKbps };
+      await this.repo.update(existente.id, campos);
+      return { ...existente, ...campos };
     }
 
     return this.repo.save(this.repo.create({
       oltId, empresaId,
       trafficId: res.index,
+      ...campos,
       nombre:    res.name ?? dto.nombre,
-      cirKbps:   dto.cirKbps,
-      pirKbps:   dto.pirKbps,
-      tipo:      dto.tipo ?? 'combinado',
-      origen:    'erp',
-      estado:    'active',
     }));
   }
 
@@ -120,6 +127,8 @@ export class OltTrafficTableService {
         name:       dto.nombre,
         cir_kbps:   dto.cirKbps,
         pir_kbps:   dto.pirKbps,
+        cbs_bytes:  dto.cbsBytes ?? null,
+        pbs_bytes:  dto.pbsBytes ?? null,
       });
     } catch (err: any) {
       await this.repo.update(tt.id, { estado: 'error' });
@@ -137,10 +146,12 @@ export class OltTrafficTableService {
       nombre:    dto.nombre,
       cirKbps:   dto.cirKbps,
       pirKbps:   dto.pirKbps,
+      cbsBytes:  dto.cbsBytes ?? null,
+      pbsBytes:  dto.pbsBytes ?? null,
       tipo:      dto.tipo ?? tt.tipo,
       estado:    'active',
     });
-    return { ...tt, trafficId: newTrafficId, nombre: dto.nombre, cirKbps: dto.cirKbps, pirKbps: dto.pirKbps, estado: 'active' };
+    return { ...tt, trafficId: newTrafficId, nombre: dto.nombre, cirKbps: dto.cirKbps, pirKbps: dto.pirKbps, cbsBytes: dto.cbsBytes ?? null, pbsBytes: dto.pbsBytes ?? null, estado: 'active' };
   }
 
   // ── Eliminar solo en BD ──────────────────────────────────────

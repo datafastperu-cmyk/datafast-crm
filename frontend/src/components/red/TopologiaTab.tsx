@@ -170,11 +170,18 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
   const [newNombre,  setNewNombre]  = useState('');
   const [newCir,     setNewCir]     = useState('');
   const [newPir,     setNewPir]     = useState('');
+  const [newTipo,    setNewTipo]    = useState<'downstream' | 'upstream' | 'combinado'>('combinado');
+  const [newCbs,     setNewCbs]     = useState('');
+  const [newPbs,     setNewPbs]     = useState('');
+  const [showAdv,    setShowAdv]    = useState(false);
   const [addErr,     setAddErr]     = useState('');
   const [editingTt,  setEditingTt]  = useState<OltTrafficTable | null>(null);
   const [editNombre, setEditNombre] = useState('');
   const [editCir,    setEditCir]    = useState('');
   const [editPir,    setEditPir]    = useState('');
+  const [editTipo,   setEditTipo]   = useState<'downstream' | 'upstream' | 'combinado'>('combinado');
+  const [editCbs,    setEditCbs]    = useState('');
+  const [editPbs,    setEditPbs]    = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const { data: tables = [], isLoading } = useQuery<OltTrafficTable[]>({
@@ -192,11 +199,11 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
   });
 
   const addMut = useMutation({
-    mutationFn: (dto: { nombre: string; cirKbps: number; pirKbps: number }) =>
+    mutationFn: (dto: { nombre: string; cirKbps: number; pirKbps: number; tipo?: string; cbsBytes?: number | null; pbsBytes?: number | null }) =>
       oltNativoApi.agregarTrafficTable(oltId, dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['olt-traffic-tables', oltId] });
-      setNewNombre(''); setNewCir(''); setNewPir(''); setAddErr('');
+      setNewNombre(''); setNewCir(''); setNewPir(''); setNewCbs(''); setNewPbs(''); setAddErr('');
       toast('Traffic table creada en OLT y ERP', { type: 'success' });
     },
     onError: (e: any) => // eslint-disable-line
@@ -204,7 +211,7 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
   });
 
   const editMut = useMutation({
-    mutationFn: ({ trafficId, dto }: { trafficId: number; dto: { nombre: string; cirKbps: number; pirKbps: number } }) =>
+    mutationFn: ({ trafficId, dto }: { trafficId: number; dto: { nombre: string; cirKbps: number; pirKbps: number; tipo?: string; cbsBytes?: number | null; pbsBytes?: number | null } }) =>
       oltNativoApi.editarTrafficTable(oltId, trafficId, dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['olt-traffic-tables', oltId] });
@@ -235,6 +242,24 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
     return Math.round(n);
   };
 
+  const parseBytes = (v: string): number | null => {
+    if (!v.trim()) return null;
+    const n = parseInt(v, 10);
+    return isNaN(n) || n < 0 ? null : n;
+  };
+
+  // Vista previa del comando Huawei generado (mismo orden que el driver Python).
+  const previewHuawei = (nombre: string, cir: string, pir: string, cbs: string, pbs: string): string => {
+    const safe = (nombre || '<nombre>').replace(/[^A-Za-z0-9_\-]/g, '_').slice(0, 64);
+    const c = parseKbps(cir) || 0;
+    const p = parseKbps(pir) || 0;
+    const cbsB = parseBytes(cbs);
+    const pbsB = parseBytes(pbs);
+    const cbsPart = cbsB != null ? `cbs ${cbsB} ` : '';
+    const pbsPart = pbsB != null ? `pbs ${pbsB} ` : '';
+    return `traffic table ip name ${safe} cir ${c} ${cbsPart}pir ${p} ${pbsPart}priority 0 priority-policy local-setting`;
+  };
+
   const validateAndAdd = () => {
     if (!newNombre.trim()) { setAddErr('Nombre requerido'); return; }
     const cir = parseKbps(newCir);
@@ -242,7 +267,10 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
     if (!newCir || isNaN(cir) || cir < 64) { setAddErr('CIR inválido (mín 64 kbps)'); return; }
     if (!newPir || isNaN(pir) || pir < 64) { setAddErr('PIR inválido (mín 64 kbps)'); return; }
     setAddErr('');
-    addMut.mutate({ nombre: newNombre.trim(), cirKbps: cir, pirKbps: pir });
+    addMut.mutate({
+      nombre: newNombre.trim(), cirKbps: cir, pirKbps: pir, tipo: newTipo,
+      cbsBytes: parseBytes(newCbs), pbsBytes: parseBytes(newPbs),
+    });
   };
 
   const startEdit = (t: OltTrafficTable) => {
@@ -250,6 +278,9 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
     setEditNombre(t.nombre);
     setEditCir(t.cirKbps != null ? String(t.cirKbps) : '');
     setEditPir(t.pirKbps != null ? String(t.pirKbps) : '');
+    setEditTipo(t.tipo ?? 'combinado');
+    setEditCbs(t.cbsBytes != null ? String(t.cbsBytes) : '');
+    setEditPbs(t.pbsBytes != null ? String(t.pbsBytes) : '');
   };
 
   const confirmEdit = () => {
@@ -257,7 +288,10 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
     const cir = parseKbps(editCir);
     const pir = parseKbps(editPir);
     if (isNaN(cir) || cir < 64 || isNaN(pir) || pir < 64) return;
-    editMut.mutate({ trafficId: editingTt.trafficId, dto: { nombre: editNombre.trim(), cirKbps: cir, pirKbps: pir } });
+    editMut.mutate({ trafficId: editingTt.trafficId, dto: {
+      nombre: editNombre.trim(), cirKbps: cir, pirKbps: pir, tipo: editTipo,
+      cbsBytes: parseBytes(editCbs), pbsBytes: parseBytes(editPbs),
+    } });
   };
 
   const fmtSpeed = (kbps: number | null) => {
@@ -358,17 +392,41 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
               placeholder="Nombre"
               className={inputCls()}
             />
+            <select
+              value={editTipo}
+              onChange={e => setEditTipo(e.target.value as typeof editTipo)}
+              className={cn(inputCls(), 'w-32')}
+              title="Dirección"
+            >
+              <option value="downstream">Descargar</option>
+              <option value="upstream">Subir</option>
+              <option value="combinado">Ambos</option>
+            </select>
             <input
               value={editCir}
               onChange={e => setEditCir(e.target.value)}
               placeholder="CIR kbps"
-              className={cn(inputCls(), 'w-32')}
+              className={cn(inputCls(), 'w-28')}
             />
             <input
               value={editPir}
               onChange={e => setEditPir(e.target.value)}
               placeholder="PIR kbps"
-              className={cn(inputCls(), 'w-32')}
+              className={cn(inputCls(), 'w-28')}
+            />
+            <input
+              value={editCbs}
+              onChange={e => setEditCbs(e.target.value)}
+              placeholder="CBS bytes"
+              className={cn(inputCls(), 'w-28')}
+              title="Committed Burst Size en bytes (vacío = default OLT)"
+            />
+            <input
+              value={editPbs}
+              onChange={e => setEditPbs(e.target.value)}
+              placeholder="PBS bytes"
+              className={cn(inputCls(), 'w-28')}
+              title="Peak Burst Size en bytes (vacío = default OLT)"
             />
             <button
               onClick={confirmEdit}
@@ -399,9 +457,19 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
           <input
             value={newNombre}
             onChange={e => { setNewNombre(e.target.value); setAddErr(''); }}
-            placeholder="Nombre"
+            placeholder="Nombre (ej. 100M)"
             className={inputCls(!!addErr)}
           />
+          <select
+            value={newTipo}
+            onChange={e => setNewTipo(e.target.value as typeof newTipo)}
+            className={cn(inputCls(), 'w-32')}
+            title="Dirección"
+          >
+            <option value="downstream">Descargar</option>
+            <option value="upstream">Subir</option>
+            <option value="combinado">Ambos</option>
+          </select>
           <input
             value={newCir}
             onChange={e => { setNewCir(e.target.value); setAddErr(''); }}
@@ -423,6 +491,39 @@ export function TrafficTablesSection({ oltId }: { oltId: string }) {
             {addMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
             Agregar
           </button>
+        </div>
+
+        <button
+          onClick={() => setShowAdv(v => !v)}
+          className="text-xs text-primary hover:underline flex items-center gap-1"
+        >
+          {showAdv ? '▾' : '▸'} Avanzado (ráfagas CBS/PBS)
+        </button>
+        {showAdv && (
+          <div className="flex gap-2 flex-wrap items-center">
+            <input
+              value={newCbs}
+              onChange={e => setNewCbs(e.target.value)}
+              placeholder="CBS bytes (opcional)"
+              className={cn(inputCls(), 'w-44')}
+              title="Committed Burst Size en bytes (unidad nativa Huawei). Vacío = default OLT."
+            />
+            <input
+              value={newPbs}
+              onChange={e => setNewPbs(e.target.value)}
+              placeholder="PBS bytes (opcional)"
+              className={cn(inputCls(), 'w-44')}
+              title="Peak Burst Size en bytes (unidad nativa Huawei). Vacío = default OLT."
+            />
+          </div>
+        )}
+
+        {/* Vista previa del comando Huawei */}
+        <div className="rounded-md bg-muted/40 border border-border px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Vista previa Huawei</p>
+          <code className="text-[11px] font-mono text-foreground break-all">
+            {previewHuawei(newNombre, newCir, newPir, newCbs, newPbs)}
+          </code>
         </div>
         {addErr && <p className="text-xs text-red-500">{addErr}</p>}
       </div>

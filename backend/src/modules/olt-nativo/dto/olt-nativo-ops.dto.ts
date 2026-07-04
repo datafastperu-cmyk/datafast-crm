@@ -813,6 +813,8 @@ export interface PythonTrafficTableAddRequest {
   name:       string;
   cir_kbps:   number;
   pir_kbps:   number;
+  cbs_bytes?: number | null;
+  pbs_bytes?: number | null;
 }
 
 export interface PythonTrafficTableAddResponse {
@@ -838,6 +840,8 @@ export interface PythonTrafficTableEditRequest {
   name:       string;
   cir_kbps:   number;
   pir_kbps:   number;
+  cbs_bytes?: number | null;
+  pbs_bytes?: number | null;
 }
 
 export interface PythonTrafficTableEditResponse {

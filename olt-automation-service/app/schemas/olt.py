@@ -594,6 +594,10 @@ class TrafficTableAddRequest(BaseModel):
     name:       str = Field(..., min_length=1, max_length=64)
     cir_kbps:   int = Field(..., ge=64, le=10_000_000)
     pir_kbps:   int = Field(..., ge=64, le=10_000_000)
+    # Ráfagas en bytes (unidad nativa Huawei). Opcionales: si None, se omiten
+    # del comando y la OLT usa sus defaults.
+    cbs_bytes:  int | None = Field(default=None, ge=0)
+    pbs_bytes:  int | None = Field(default=None, ge=0)
 
 
 class TrafficTableAddResponse(BaseModel):
@@ -619,6 +623,8 @@ class TrafficTableEditRequest(BaseModel):
     name:       str = Field(..., min_length=1, max_length=64)
     cir_kbps:   int = Field(..., ge=64, le=10_000_000)
     pir_kbps:   int = Field(..., ge=64, le=10_000_000)
+    cbs_bytes:  int | None = Field(default=None, ge=0)
+    pbs_bytes:  int | None = Field(default=None, ge=0)
 
 
 class TrafficTableEditResponse(BaseModel):

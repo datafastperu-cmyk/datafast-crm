@@ -1787,10 +1787,12 @@ def delete_vlan(
 
 
 def add_traffic_table(
-    conn:     OltConnectionSchema,
-    name:     str,
-    cir_kbps: int,
-    pir_kbps: int,
+    conn:      OltConnectionSchema,
+    name:      str,
+    cir_kbps:  int,
+    pir_kbps:  int,
+    cbs_bytes: int | None = None,
+    pbs_bytes: int | None = None,
 ) -> dict[str, Any]:
     """
     Crea un traffic table en la OLT Huawei MA5800.
@@ -1801,13 +1803,17 @@ def add_traffic_table(
         raise ProvisioningError(f'add_traffic_table no implementado para marca: {conn.brand.value}')
 
     safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', name)[:64]
+    # Orden Huawei: cir [cbs] pir [pbs] priority ... — cbs/pbs opcionales (bytes).
+    cbs_part = f'cbs {cbs_bytes} ' if cbs_bytes is not None else ''
+    pbs_part = f'pbs {pbs_bytes} ' if pbs_bytes is not None else ''
     commands = [
         'config',
-        (f'traffic table ip name {safe_name} cir {cir_kbps} pir {pir_kbps} '
-         f'priority 0 priority-policy local-setting'),
+        (f'traffic table ip name {safe_name} cir {cir_kbps} {cbs_part}'
+         f'pir {pir_kbps} {pbs_part}priority 0 priority-policy local-setting'),
         'quit',
     ]
-    logger.info('add_traffic_table: name=%s cir=%d pir=%d en %s', safe_name, cir_kbps, pir_kbps, conn.ip)
+    logger.info('add_traffic_table: name=%s cir=%d cbs=%s pir=%d pbs=%s en %s',
+                safe_name, cir_kbps, cbs_bytes, pir_kbps, pbs_bytes, conn.ip)
     try:
         output = _send_config_set(conn, commands)
         _check_cli_error(conn.brand, 'add_traffic_table', output)
@@ -1863,11 +1869,13 @@ def delete_traffic_table(
 
 
 def edit_traffic_table(
-    conn:     OltConnectionSchema,
-    index:    int,
-    name:     str,
-    cir_kbps: int,
-    pir_kbps: int,
+    conn:      OltConnectionSchema,
+    index:     int,
+    name:      str,
+    cir_kbps:  int,
+    pir_kbps:  int,
+    cbs_bytes: int | None = None,
+    pbs_bytes: int | None = None,
 ) -> dict[str, Any]:
     """
     Edita un traffic table Huawei MA5800: elimina por índice y lo recrea.
@@ -1886,7 +1894,7 @@ def edit_traffic_table(
             'error':   f'Fallo al eliminar tabla index={index}: {del_result.get("error")}',
         }
 
-    add_result = add_traffic_table(conn, name, cir_kbps, pir_kbps)
+    add_result = add_traffic_table(conn, name, cir_kbps, pir_kbps, cbs_bytes, pbs_bytes)
     if not add_result['success']:
         return {
             'success': False,
