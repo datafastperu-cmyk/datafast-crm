@@ -334,6 +334,23 @@ export class ProvisionFtthService {
     let   pppoePass = contrato.password_pppoe;
     try { pppoePass = decrypt(pppoePass); } catch { /* si no está cifrado, usar tal cual */ }
 
+    // Guarda de coherencia: el PPPoE del ONT (cliente) debe coincidir con el secret
+    // creado en el MikroTik (BRAS) durante la activación. Sin credenciales no tiene
+    // sentido inyectar la WAN — la ONU nunca autenticaría (peor caso silencioso).
+    if (!pppoeUser || !pppoePass) {
+      await this.ftthRepo.update(registroId, {
+        estado:      FtthOnuEstado.FALLIDO_WAN,
+        lockedAt:    null,
+        ultimoError: 'Contrato sin credenciales PPPoE. Active el servicio (crea el secret en el MikroTik) antes de aprovisionar la ONU.',
+      });
+      return {
+        estado:     FtthOnuEstado.FALLIDO_WAN,
+        registroId,
+        mensaje:    'GPON registrada, pero el contrato no tiene credenciales PPPoE. Active el servicio en el MikroTik y reintente con reinjectarWan.',
+        error:      'PPPOE_CREDENCIALES_AUSENTES',
+      };
+    }
+
     const wanRes = await this.automation.ftthInjectWanPppoe({
       connection: conn,
       slot:       dto.slot,
@@ -403,6 +420,22 @@ export class ProvisionFtthService {
 
     let pppoePass = contrato.password_pppoe;
     try { pppoePass = decrypt(pppoePass); } catch { /* no cifrado */ }
+
+    // Misma guarda de coherencia que provisionarFtth: sin credenciales PPPoE no
+    // se inyecta la WAN (la ONU nunca autenticaría contra el BRAS MikroTik).
+    if (!contrato.usuario_pppoe || !pppoePass) {
+      await this.ftthRepo.update(registro.id, {
+        estado:      FtthOnuEstado.FALLIDO_WAN,
+        lockedAt:    null,
+        ultimoError: 'Contrato sin credenciales PPPoE. Active el servicio en el MikroTik antes de reintentar la WAN.',
+      });
+      return {
+        estado:     FtthOnuEstado.FALLIDO_WAN,
+        registroId: registro.id,
+        mensaje:    'El contrato no tiene credenciales PPPoE. Active el servicio en el MikroTik y reintente.',
+        error:      'PPPOE_CREDENCIALES_AUSENTES',
+      };
+    }
 
     const wanRes = await this.automation.ftthInjectWanPppoe({
       connection: conn,
