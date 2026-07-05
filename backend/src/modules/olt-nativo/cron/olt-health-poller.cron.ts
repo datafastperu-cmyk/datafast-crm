@@ -48,10 +48,8 @@ export class OltHealthPollerCron {
     private readonly alertEngine:   OltAlertEngineService,
   ) {}
 
-  // ── Boards: cada 20 minutos ───────────────────────────────────
-  // (reducido de 5→20 min: las OLT Huawei tienen límite de sesiones SSH; un
-  //  poll agresivo compite con el aprovisionamiento y puede bloquear la cuenta)
-  @Cron('*/20 * * * *', { timeZone: 'America/Lima' })
+  // ── Boards: cada 5 minutos ────────────────────────────────────
+  @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
   async pollBoards(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._boardRunning) {
@@ -72,7 +70,7 @@ export class OltHealthPollerCron {
 
   // ── POM: cada 15 minutos, offset +3 min respecto a boards ─────
   // Se dispara en :03, :18, :33, :48 para no coincidir con boards
-  @Cron('11-59/30 * * * *', { timeZone: 'America/Lima' })
+  @Cron('3-59/15 * * * *', { timeZone: 'America/Lima' })
   async pollPom(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._pomRunning) {
@@ -92,7 +90,7 @@ export class OltHealthPollerCron {
   }
 
   // ── PON Ports: cada 15 min, offset +7 min (:07/:22/:37/:52) ──
-  @Cron('25-59/30 * * * *', { timeZone: 'America/Lima' })
+  @Cron('7-59/15 * * * *', { timeZone: 'America/Lima' })
   async pollPonPorts(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._ponPortRunning) {
