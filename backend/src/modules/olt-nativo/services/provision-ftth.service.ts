@@ -300,7 +300,7 @@ export class ProvisionFtthService {
         estado:        FtthOnuEstado.FALLIDO_GPON,
         lockedAt:      null,
         intentosGpon:  1,
-        ultimoError:   gponRes.error ?? 'Error desconocido en Fase 1 GPON',
+        ultimoError:   this._limpiar(gponRes.error) ?? 'Error desconocido en Fase 1 GPON',
       });
       return {
         estado:     FtthOnuEstado.FALLIDO_GPON,
@@ -326,7 +326,7 @@ export class ProvisionFtthService {
     });
 
     if (!pollRes.success || pollRes.timeout) {
-      const runState = pollRes.run_state ?? 'unknown';
+      const runState = this._limpiar(pollRes.run_state) ?? 'unknown';
       this.logger.warn(`FTTH poll timeout | contrato=${dto.contratoId} run_state=${runState} → rollback GPON`);
       const rbErr = pollRes.error ?? `Timeout de poll (150 s), último run-state: ${runState}`;
       const rbOk  = await this._rollbackGponWithLog(
@@ -387,7 +387,7 @@ export class ProvisionFtthService {
         estado:       FtthOnuEstado.FALLIDO_WAN,
         lockedAt:     null,
         intentosWan:  1,
-        ultimoError:  wanRes.error ?? 'Error desconocido en Fase 2 WAN',
+        ultimoError:  this._limpiar(wanRes.error) ?? 'Error desconocido en Fase 2 WAN',
       });
       return {
         estado:     FtthOnuEstado.FALLIDO_WAN,
@@ -473,7 +473,7 @@ export class ProvisionFtthService {
         estado:      FtthOnuEstado.FALLIDO_WAN,
         lockedAt:    null,
         intentosWan: registro.intentosWan + 1,
-        ultimoError: wanRes.error ?? 'Error re-inyección WAN',
+        ultimoError: this._limpiar(wanRes.error) ?? 'Error re-inyección WAN',
       });
       return {
         estado:     FtthOnuEstado.FALLIDO_WAN,
@@ -507,6 +507,15 @@ export class ProvisionFtthService {
   // ────────────────────────────────────────────────────────────
   // Helpers privados
   // ────────────────────────────────────────────────────────────
+
+  // Sanitiza texto proveniente del CLI de la OLT antes de persistirlo: la salida
+  // SSH puede traer bytes nulos (0x00) y control que Postgres rechaza en UTF-8.
+  private _limpiar(s?: string | null): string | null {
+    if (s == null) return null;
+    // eslint-disable-next-line no-control-regex
+    const clean = s.replace(new RegExp(String.fromCharCode(0), "g"), "").trim();
+    return clean.slice(0, 1000) || null;
+  }
 
   // Detecta si el error de la OLT indica que el service-port ya existe (colisión),
   // para disparar el auto-sanado. Conservador: exige contexto de service-port.
@@ -724,7 +733,7 @@ export class ProvisionFtthService {
       await this.ftthRepo.update(registro.id, {
         estado:      registro.estado,
         lockedAt:    null,
-        ultimoError: `Desaprovisionamiento falló: ${rollbackError ?? 'Error SSH'}`,
+        ultimoError: `Desaprovisionamiento falló: ${this._limpiar(rollbackError) ?? 'Error SSH'}`,
       });
       return {
         exitoso: false,
