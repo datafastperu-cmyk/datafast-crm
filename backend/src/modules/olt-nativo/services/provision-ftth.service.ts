@@ -297,13 +297,35 @@ export class ProvisionFtthService {
         gponRes = { success: false, error: err?.message ?? 'Error de comunicación con la OLT' };
       }
       if (gponRes.success) break;
-      // Solo auto-sanar si: el ID vino del pool, es colisión de service-port, y quedan intentos.
-      if (!usedSvcPool || intento >= 3 || !this._esColisionServicePort(gponRes.error)) break;
-      await this.poolService.marcarColision(oltId, servicePortId!);
-      const nuevo = await this.poolService.allocar(oltId, dto.contratoId);
-      if (nuevo == null) break; // pool agotado → sale con el fallo actual
-      servicePortId = nuevo;
-      await this.ftthRepo.update(registroId, { servicePortId: nuevo });
+
+      // Auto-sanado de colisión de service-port: reasignar del pool (hasta 3 veces).
+      if (usedSvcPool && intento < 3 && this._esColisionServicePort(gponRes.error)) {
+        await this.poolService.marcarColision(oltId, servicePortId!);
+        const nuevo = await this.poolService.allocar(oltId, dto.contratoId);
+        if (nuevo == null) break; // pool agotado → sale con el fallo actual
+        servicePortId = nuevo;
+        await this.ftthRepo.update(registroId, { servicePortId: nuevo });
+        continue;
+      }
+
+      // Lock transitorio de la OLT ("Currently operating conflicts with other user
+      // operations"): otra sesión (health-poller / auto-save de la OLT) tiene el
+      // config-lock. La ventana es breve → se limpia cualquier `ont add` parcial y se
+      // reintenta con backoff. Como la Fase 1 revierte limpio, reintentar es seguro.
+      if (intento < 3 && this._esLockTransitorio(gponRes.error)) {
+        await this.automation.ftthRollbackGpon({
+          connection: conn, slot: dto.slot, port: dto.port,
+          onu_id: onuId, service_port_id: servicePortId,
+        }).catch(() => { /* limpieza best-effort antes del reintento */ });
+        const espera = 4000 + intento * 4000; // 4s, 8s, 12s
+        this.logger.warn(
+          `FTTH Fase1 lock transitorio | contrato=${dto.contratoId} intento=${intento + 1} → reintento en ${espera}ms`,
+        );
+        await new Promise(r => setTimeout(r, espera));
+        continue;
+      }
+
+      break;
     }
 
     if (!gponRes.success) {
@@ -530,6 +552,14 @@ export class ProvisionFtthService {
     const e = error.toLowerCase();
     return /service.?port|service.?virtual.?port/.test(e)
         && /(exist|conflict|already|duplicad|been used|in use|repeat|existe|conflicto)/.test(e);
+  }
+
+  // Detecta el lock transitorio de la OLT (otra sesión tiene el config-lock).
+  // Es reintentable con backoff — la ventana de bloqueo es breve.
+  private _esLockTransitorio(error?: string): boolean {
+    if (!error) return false;
+    const e = error.toLowerCase();
+    return /conflicts with other user|please retry later|currently operating|being used by another|try again later|operating conflicts/.test(e);
   }
 
   private async _fetchContrato(contratoId: string, empresaId: string) {

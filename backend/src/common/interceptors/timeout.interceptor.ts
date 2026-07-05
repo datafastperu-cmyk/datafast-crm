@@ -21,7 +21,7 @@ export class TimeoutInterceptor implements NestInterceptor {
       req?.url?.includes(p),
     );
 
-    const timeoutDuration = isLongRunning ? 180000 : this.timeoutMs; // 3min vs 30s (provision FTTH ~2min)
+    const timeoutDuration = isLongRunning ? 240000 : this.timeoutMs; // 4min vs 30s (provision FTTH: GPON con reintentos por lock + poll 150s + WAN)
 
     return next.handle().pipe(
       timeout(timeoutDuration),
