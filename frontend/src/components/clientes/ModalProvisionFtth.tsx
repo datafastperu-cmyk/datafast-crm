@@ -662,6 +662,16 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       <input type="number" value={srvprofileId} onChange={e => setSrvprofileId(e.target.value)} min={1} placeholder="1" className={inputCls} />
                     )}
                   </Field>
+                  {(lineprofileId === '0' || srvprofileId === '0') && (
+                    <div className="col-span-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                      <span className="text-amber-600 text-sm leading-none mt-0.5">⚠</span>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Estás usando un perfil por defecto (índice <strong>0</strong>). Suelen estar vacíos (sin T-CONT/GEM),
+                        por lo que la ONU se registra en la OLT pero <strong>no llega a “online”</strong> y el aprovisionamiento
+                        hace rollback. Elige un perfil real (ej. uno que coincida con tu VLAN o el modelo de la ONT).
+                      </p>
+                    </div>
+                  )}
                   <Field label="Velocidad Bajada">
                     <div className="relative">
                       <select
