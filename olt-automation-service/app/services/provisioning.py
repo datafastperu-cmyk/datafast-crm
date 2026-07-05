@@ -517,7 +517,7 @@ def get_huawei_metrics(
       RxPower < -28 dBm → alarm warning
       RxPower < -30 dBm → alarm critical (ONU offline / fibra cortada)
     """
-    command = f'display ont optical-info 0/{onu.slot} {onu.port} {onu.onu_id}'
+    command = f'display ont optical-info 0 {onu.slot} {onu.port} {onu.onu_id}'
 
     # ── Enviar comando ────────────────────────────────────────
     try:
@@ -943,8 +943,8 @@ def get_bulk_metrics_huawei(
       display ont optical-info 0/slot/port all → Rx/Tx/temperatura
     """
     cmds = [
-        f'display ont info 0/{slot}/{port} all',
-        f'display ont optical-info 0/{slot}/{port} all',
+        f'display ont info 0 {slot} {port} all',
+        f'display ont optical-info 0 {slot} {port} all',
     ]
     status_raw, optical_raw = _open_multi_commands(conn, cmds)
 
@@ -2140,8 +2140,8 @@ def verify_huawei_onu(
     Ambos comandos funcionan desde el modo exec sin entrar en config,
     lo que reduce el overhead a un único handshake SSH.
     """
-    info_cmd    = f'display ont info 0/{slot}/{port} {onu_id}'
-    optical_cmd = f'display ont optical-info 0/{slot}/{port} {onu_id}'
+    info_cmd    = f'display ont info 0 {slot} {port} {onu_id}'
+    optical_cmd = f'display ont optical-info 0 {slot} {port} {onu_id}'
 
     try:
         info_raw, optical_raw = _open_multi_commands(conn, [info_cmd, optical_cmd])
@@ -2465,7 +2465,7 @@ def poll_onu_online(
     interval: int = 5,
 ) -> dict[str, Any]:
     """
-    Fase 1b: consulta display ont info 0/{slot}/{port} ont {onu_id} cada {interval}s
+    Fase 1b: consulta display ont info 0 {slot} {port} ont {onu_id} cada {interval}s
     hasta que el run-state sea 'online' o se agote max_wait.
 
     Retorna success=True + run_state cuando la ONU sube,
@@ -2475,7 +2475,7 @@ def poll_onu_online(
         'poll_onu_online: OLT=%s slot=%d port=%d onu_id=%d max=%ds',
         conn.ip, slot, port, onu_id, max_wait,
     )
-    cmd    = f'display ont info 0/{slot}/{port} {onu_id}'
+    cmd    = f'display ont info 0 {slot} {port} {onu_id}'
     t_end  = _time_read.monotonic() + max_wait
     last_state = 'unknown'   # último run-state observado (diagnóstico)
 
@@ -2519,7 +2519,7 @@ def single_poll_check(
     Diseñado para ser llamado repetidamente desde main.py con lock granular por intento,
     liberando el lock entre verificaciones para no bloquear la OLT 90 segundos.
     """
-    cmd = f'display ont info 0/{slot}/{port} {onu_id}'
+    cmd = f'display ont info 0 {slot} {port} {onu_id}'
     try:
         raw = _paramiko_huawei_run(conn, [cmd], timeout=20)
     except ProvisioningError as exc:
