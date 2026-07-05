@@ -73,6 +73,15 @@ export class FtthOnuRegistro extends BaseModel {
   @Column({ name: 'srvprofile_id', type: 'int', nullable: true })
   srvprofileId: number | null;
 
+  @Column({ name: 'traffic_index_down', type: 'int', nullable: true })
+  trafficIndexDown: number | null;
+
+  @Column({ name: 'traffic_index_up', type: 'int', nullable: true })
+  trafficIndexUp: number | null;
+
+  @Column({ name: 'description', type: 'varchar', length: 64, nullable: true })
+  description: string | null;
+
   // ── Máquina de estados ────────────────────────────────────
   @Column({
     type: 'enum',

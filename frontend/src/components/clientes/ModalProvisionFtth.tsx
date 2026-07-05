@@ -47,10 +47,8 @@ function EstadoBadge({ estado }: { estado: FtthOnuEstado }) {
 
 // ─── Estado panel ─────────────────────────────────────────────
 
-function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando, trafficTables, onCambiarVelocidad, isCambiandoVelocidad }: {
+function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando, trafficTables, onCambiarVelocidad, isCambiandoVelocidad }: {
   registro: FtthOnuRegistro;
-  onReinject: () => void;
-  isReinjectPending: boolean;
   onDesaprovisionar: () => void;
   isDesaprovisionandoPending: boolean;
   onSuspender: () => void;
@@ -89,16 +87,6 @@ function EstadoPanel({ registro, onReinject, isReinjectPending, onDesaprovisiona
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
           <span>{registro.ultimoError}</span>
         </div>
-      )}
-      {registro.estado === 'fallido_wan' && (
-        <button
-          onClick={onReinject}
-          disabled={isReinjectPending}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-cyan-700/50 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 text-xs font-semibold hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
-        >
-          {isReinjectPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          Re-inyectar WAN PPPoE
-        </button>
       )}
       {(registro.estado === 'activo' || registro.estado === 'suspendido') && (
         <div className="space-y-1.5">
@@ -309,26 +297,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     !!vlan && !!lineprofileId && !!srvprofileId
   );
 
-  // Re-inyectar WAN mutation — declarado antes de usarlo en desaprovisionar callback
-  const { mutate: reinjectWan, isPending: reinjectPending } = useMutation({
-    mutationFn: () => oltNativoApi.ftthReinjectWan(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
-    onSuccess: (res) => {
-      if (res.estado === 'activo') {
-        toast('WAN PPPoE re-inyectada correctamente', { type: 'success' });
-        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-        qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
-        onClose();
-      } else {
-        toast(res.error ?? 'Re-inyección falló', { type: 'error' });
-        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-      }
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast(msg ?? 'Error al re-inyectar WAN', { type: 'error' });
-    },
-  });
-
   // Desaprovisionar mutation
   const { mutate: desaprovisionar, isPending: desaprovisionandoPending } = useMutation({
     mutationFn: () => oltNativoApi.ftthDesaprovisionar(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
@@ -426,7 +394,12 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     }),
     onSuccess: (res) => {
       if (res.estado === 'activo') {
-        toast('ONU FTTH aprovisionada correctamente — GPON + WAN OK', { type: 'success' });
+        // Éxito. res.mensaje informa el detalle: "GPON + WAN OK" o, si la WAN no se
+        // pudo inyectar por incompatibilidad, la instrucción de configurarla manual.
+        toast('ONU FTTH aprovisionada correctamente', {
+          type: 'success',
+          description: res.mensaje,
+        });
         qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
         qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
         onClose();
@@ -479,8 +452,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                 <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Estado Actual</h3>
                 <EstadoPanel
                   registro={estadoExistente}
-                  onReinject={() => reinjectWan()}
-                  isReinjectPending={reinjectPending}
                   onDesaprovisionar={() => desaprovisionar()}
                   isDesaprovisionandoPending={desaprovisionandoPending}
                   onSuspender={() => suspender()}

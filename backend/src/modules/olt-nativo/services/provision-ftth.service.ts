@@ -128,6 +128,19 @@ export class ProvisionFtthService {
     // 1. Validar contrato
     const contrato = await this._fetchContrato(dto.contratoId, empresaId);
 
+    // 1b. Guarda temprana de credenciales PPPoE: sin ellas NO se toca la OLT ni la
+    // BD. Provisionar sin credenciales dejaría una ONU que nunca autenticaría contra
+    // el BRAS. Se valida antes de allocar pools o insertar el lock.
+    let pppoePass = contrato.password_pppoe;
+    try { pppoePass = decrypt(pppoePass); } catch { /* si no está cifrado, usar tal cual */ }
+    const pppoeUser = contrato.usuario_pppoe;
+    if (!pppoeUser || !pppoePass) {
+      throw new UnprocessableEntityException(
+        'El contrato no tiene credenciales PPPoE. Active el servicio (crea el secret en ' +
+        'el MikroTik) antes de aprovisionar la ONU.',
+      );
+    }
+
     // 2. Validar registro existente (re-intentable solo si fallido o inexistente)
     const registroExistente = await this.ftthRepo.findOne({
       where: { contratoId: dto.contratoId },
@@ -294,18 +307,24 @@ export class ProvisionFtthService {
     }
 
     if (!gponRes.success) {
+      // La Fase 1 puede fallar tras un `ont add` exitoso (p.ej. el service-port no
+      // se creó/verificó). Rollback obligatorio para no dejar ONTs huérfanas en la
+      // OLT que bloqueen el reintento con "The ONT ID has already existed".
+      const rbOk = await this._rollbackGponWithLog(
+        empresaId, registroId, dto.contratoId, oltId,
+        olt, password, dto, servicePortId, onuId,
+        'gpon_failed', FtthOnuEstado.PENDIENTE,
+      );
       if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
       await this.onuIdPool.liberar(oltId, dto.contratoId);
-      await this.ftthRepo.update(registroId, {
-        estado:        FtthOnuEstado.FALLIDO_GPON,
-        lockedAt:      null,
-        intentosGpon:  1,
-        ultimoError:   this._limpiar(gponRes.error) ?? 'Error desconocido en Fase 1 GPON',
-      });
+      // Atómico: si no se concluye, no queda NADA en el sistema. Se borra el registro
+      // (la ONU vuelve a autofind, la OLT quedó limpia por el rollback).
+      await this.ftthRepo.delete(registroId);
       return {
         estado:     FtthOnuEstado.FALLIDO_GPON,
         registroId,
-        mensaje:    'Fase 1 (GPON) falló. La ONU no fue registrada en la OLT.',
+        mensaje:    `Fase 1 (GPON) falló y se revirtió todo (rollback ${rbOk ? 'OK' : 'FALLÓ'}). ` +
+                    `${this._limpiar(gponRes.error) ?? ''}`.trim(),
         error:      gponRes.error,
       };
     }
@@ -336,41 +355,19 @@ export class ProvisionFtthService {
       );
       if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
       await this.onuIdPool.liberar(oltId, dto.contratoId);
-      await this.ftthRepo.update(registroId, {
-        estado:      FtthOnuEstado.TIMEOUT_ONLINE,
-        lockedAt:    null,
-        ultimoError: `ONU no apareció online en 150 s (último estado: ${runState}). Rollback ${rbOk ? 'exitoso' : 'falló'}.`,
-      });
+      // Atómico: rollback ya ejecutado, se borra el registro (no persiste nada).
+      await this.ftthRepo.delete(registroId);
       return {
         estado:     FtthOnuEstado.TIMEOUT_ONLINE,
         registroId,
-        mensaje:    `La ONU no apareció online en 150 s tras el registro GPON (estado: ${runState}). Rollback ejecutado.`,
+        mensaje:    `La ONU no apareció online en 150 s tras el registro GPON (estado: ${runState}). Rollback ejecutado, nada quedó registrado.`,
         error:      rbErr,
       };
     }
 
     // ── Fase 2: WAN PPPoE ─────────────────────────────────────
+    // Credenciales PPPoE ya validadas en la guarda temprana (paso 1b).
     this.logger.log(`FTTH Fase2 WAN | contrato=${dto.contratoId}`);
-    const pppoeUser = contrato.usuario_pppoe;
-    let   pppoePass = contrato.password_pppoe;
-    try { pppoePass = decrypt(pppoePass); } catch { /* si no está cifrado, usar tal cual */ }
-
-    // Guarda de coherencia: el PPPoE del ONT (cliente) debe coincidir con el secret
-    // creado en el MikroTik (BRAS) durante la activación. Sin credenciales no tiene
-    // sentido inyectar la WAN — la ONU nunca autenticaría (peor caso silencioso).
-    if (!pppoeUser || !pppoePass) {
-      await this.ftthRepo.update(registroId, {
-        estado:      FtthOnuEstado.FALLIDO_WAN,
-        lockedAt:    null,
-        ultimoError: 'Contrato sin credenciales PPPoE. Active el servicio (crea el secret en el MikroTik) antes de aprovisionar la ONU.',
-      });
-      return {
-        estado:     FtthOnuEstado.FALLIDO_WAN,
-        registroId,
-        mensaje:    'GPON registrada, pero el contrato no tiene credenciales PPPoE. Active el servicio en el MikroTik y reintente con reinjectarWan.',
-        error:      'PPPOE_CREDENCIALES_AUSENTES',
-      };
-    }
 
     const wanRes = await this.automation.ftthInjectWanPppoe({
       connection: conn,
@@ -383,16 +380,25 @@ export class ProvisionFtthService {
     });
 
     if (!wanRes.success) {
+      // GPON + service-port quedaron OK (verificados en Fase 1). La inyección WAN
+      // vía OMCI falló — típicamente por incompatibilidad de la ONU (marcas no-Huawei
+      // como ZTE F680). El aprovisionamiento se concluye EXITOSO (estado ACTIVO): la
+      // ONU tiene ruta de datos. "WAN manual" NO es un estado: es solo un mensaje
+      // informativo para el técnico instalador — la interfaz WAN/PPPoE se configura
+      // manualmente en la ONU. La nota queda en ultimoError para que se vea en el panel.
+      const notaWanManual =
+        `WAN no inyectada (incompatibilidad de la ONU). Configúrela manualmente en la ` +
+        `ONU — PPPoE usuario: ${pppoeUser} · clave: ${pppoePass}`;
       await this.ftthRepo.update(registroId, {
-        estado:       FtthOnuEstado.FALLIDO_WAN,
+        estado:       FtthOnuEstado.ACTIVO,
         lockedAt:     null,
         intentosWan:  1,
-        ultimoError:  this._limpiar(wanRes.error) ?? 'Error desconocido en Fase 2 WAN',
+        ultimoError:  this._limpiar(notaWanManual),
       });
       return {
-        estado:     FtthOnuEstado.FALLIDO_WAN,
+        estado:     FtthOnuEstado.ACTIVO,
         registroId,
-        mensaje:    'GPON OK pero la inyección WAN PPPoE falló. Puedes reintentar con reinjectarWan.',
+        mensaje:    `ONU aprovisionada (GPON + service-port OK). ${notaWanManual}`,
         error:      wanRes.error,
       };
     }

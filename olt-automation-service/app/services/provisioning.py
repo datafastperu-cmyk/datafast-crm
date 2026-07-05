@@ -2374,6 +2374,10 @@ def provision_gpon_ftth(
     )
 
     desc_part = f' desc "{description}"' if description else ''
+    # El último comando es una verificación: display service-port ... ont ...
+    # NO confiar en la ausencia de "Failure:" — el service-port puede fallar en
+    # silencio (dejando el ONT online sin ruta de datos y reportando "GPON OK"
+    # falsamente). Se verifica su existencia real antes de dar la fase por buena.
     cmds = [
         f'config',
         f'interface gpon 0/{slot}',
@@ -2391,11 +2395,14 @@ def provision_gpon_ftth(
             f'inbound traffic-table index {traffic_index_up or 0} '
             f'outbound traffic-table index {traffic_index_down or 0}'
         ),
+        f'display service-port port 0/{slot}/{port} ont {onu_id}',
         'save',
     ]
 
     try:
-        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+        parts = _paramiko_huawei_run(
+            conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
+        )
     except ProvisioningError:
         raise
     except Exception as exc:
@@ -2403,19 +2410,45 @@ def provision_gpon_ftth(
             f'provision_gpon_ftth falló en {conn.ip}: {exc}'
         ) from exc
 
-    # Detectar errores conocidos de la CLI Huawei en la salida
+    # parts alineado con cmds: [0]config [1]interface [2]ont-add [3]quit
+    # [4]service-port [5]display-verificación [6]save
+    raw_create = '\n'.join(parts[:5])
+    verify_out = parts[5] if len(parts) > 5 else ''
+
+    # 1) Errores explícitos de la CLI en la fase de creación (ont add + service-port).
     error_patterns = [
         'Error:', 'Failure:', 'ont add failed', 'service-port failed',
-        'already exists', 'ONT already',
+        'already exists', 'ONT already', 'has already existed',
+        'Too many parameters', 'Parameter error', 'Incomplete command',
+        'Unknown command', 'conflicts with',
     ]
     for pat in error_patterns:
-        if pat.lower() in raw.lower():
+        if pat.lower() in raw_create.lower():
+            linea = next(
+                (l for l in raw_create.splitlines() if pat.lower() in l.lower()), pat,
+            )
             raise ProvisioningError(
-                f'CLI Huawei reportó error en {conn.ip}: '
-                + next(l for l in raw.splitlines() if pat.lower() in l.lower())
+                f'CLI Huawei reportó error en {conn.ip}: {linea.strip()}'
             )
 
-    logger.info('provision_gpon_ftth OK | OLT=%s sn=%s service_port=%d', conn.ip, sn, service_port_id)
+    # 2) Verificación dura: el service-port DEBE existir tras la creación.
+    v = verify_out.lower()
+    creado = (
+        'no service virtual port' not in v
+        and 'does not exist' not in v
+        and ('gpon' in v or str(service_port_id) in verify_out)
+    )
+    if not creado:
+        raise ProvisioningError(
+            f'El service-port {service_port_id} no se creó en {conn.ip} '
+            f'(ont {slot}/{port}/{onu_id}). Salida creación: '
+            f'{raw_create[-400:].strip()} || Verificación: {verify_out[-200:].strip()}'
+        )
+
+    logger.info(
+        'provision_gpon_ftth OK verificado | OLT=%s sn=%s service_port=%d',
+        conn.ip, sn, service_port_id,
+    )
     return {'success': True, 'sn': sn, 'olt_ip': conn.ip}
 
 
