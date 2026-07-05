@@ -79,8 +79,6 @@ from app.schemas.olt import (
     TrafficTableDeleteResponse,
     TrafficTableEditRequest,
     TrafficTableEditResponse,
-    ServicePortIndicesRequest,
-    ServicePortIndicesResponse,
 )
 from app.drivers import get_driver
 from app.drivers.base import UnsupportedBrandError, DriverNotImplementedError
@@ -114,7 +112,6 @@ from app.services.provisioning import (
     add_traffic_table,
     delete_traffic_table,
     edit_traffic_table,
-    list_service_port_indices,
 )
 
 # ── Job store en memoria (proceso único) ──────────────────────────
@@ -1015,31 +1012,6 @@ async def vlan_delete(body: VlanDeleteRequest) -> VlanDeleteResponse:
         except ProvisioningError as exc:
             return VlanDeleteResponse(success=False, error=str(exc))
     return VlanDeleteResponse(success=result['success'], error=result.get('error'))
-
-
-# ── Service Ports (listar índices para sugerir rango de pool) ──
-
-@app.post(
-    '/api/v1/olt/service-ports/indices',
-    response_model=ServicePortIndicesResponse,
-    status_code=status.HTTP_200_OK,
-    tags=['service-port'],
-    summary='Listar índices de service-port existentes (sugerir rango de pool libre)',
-)
-async def service_port_indices(body: ServicePortIndicesRequest) -> ServicePortIndicesResponse:
-    olt_ip = body.connection.ip
-    async with connection_pool.acquire(olt_ip):
-        try:
-            result = await asyncio.to_thread(list_service_port_indices, body.connection)
-        except ProvisioningError as exc:
-            return ServicePortIndicesResponse(success=False, error=str(exc))
-    return ServicePortIndicesResponse(
-        success   = result['success'],
-        indices   = result.get('indices', []),
-        count     = result.get('count', 0),
-        max_index = result.get('max_index', 0),
-        error     = result.get('error'),
-    )
 
 
 # ── Traffic Table CLI ─────────────────────────────────────────

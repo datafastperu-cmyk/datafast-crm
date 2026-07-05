@@ -63,7 +63,8 @@ export function ServicePortPoolSection({ oltId }: { oltId: string }) {
       <p className="text-xs text-muted-foreground flex items-start gap-1.5">
         <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
         El ERP asigna automáticamente un Service Port ID de este rango a cada ONU aprovisionada y lleva el control.
-        Usa un rango <strong>libre en la OLT</strong> (que no choque con service-ports ya existentes).
+        Elige un rango amplio (ej. 1500–4000); si algún ID ya existe en la OLT, el ERP lo detecta y reasigna el
+        siguiente automáticamente durante la provisión.
       </p>
 
       {isLoading ? (

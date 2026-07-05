@@ -163,6 +163,27 @@ export class OltServicePortPoolService {
     this.logger.log(`Pool release | olt=${oltId} contrato=${contratoId}`);
   }
 
+  // ── marcarColision ────────────────────────────────────────────────
+  // El ID ya existe en la OLT (colisión): se marca ocupado sin contrato para
+  // que allocar nunca lo devuelva. Se usa en el auto-sanado de la provisión.
+  async marcarColision(oltId: string, servicePortId: number): Promise<void> {
+    await this.ds.query(
+      `UPDATE olt_service_port_pool
+       SET estado      = 'ocupado',
+           contrato_id = NULL,
+           locked_at   = NOW(),
+           updated_at  = NOW(),
+           version     = version + 1
+       WHERE olt_id          = $1
+         AND service_port_id = $2
+         AND deleted_at      IS NULL`,
+      [oltId, servicePortId],
+    );
+    this.logger.warn(
+      `Pool colisión | olt=${oltId} svcPort=${servicePortId} ya existe en la OLT — marcado no-usable`,
+    );
+  }
+
   // ── obtenerEstado ─────────────────────────────────────────────────
   async obtenerEstado(oltId: string, empresaId: string): Promise<EstadoPool> {
     const [s] = await this.ds.query<{

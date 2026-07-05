@@ -609,18 +609,6 @@ class TrafficTableAddResponse(BaseModel):
     error:   str | None = None
 
 
-class ServicePortIndicesRequest(BaseModel):
-    connection: OltConnectionSchema
-
-
-class ServicePortIndicesResponse(BaseModel):
-    success:   bool
-    indices:   list[int] = []
-    count:     int = 0
-    max_index: int = 0
-    error:     str | None = None
-
-
 class TrafficTableDeleteRequest(BaseModel):
     connection: OltConnectionSchema
     index:      int = Field(..., ge=0)

@@ -1794,35 +1794,6 @@ def delete_vlan(
     return {'success': True}
 
 
-def list_service_port_indices(conn: OltConnectionSchema) -> dict[str, Any]:
-    """
-    Lista los índices de service-port existentes en la OLT Huawei
-    (para sugerir un rango de pool libre sin colisiones).
-    Ejecuta 'display service-port all' y extrae la columna INDEX.
-    Síncrono — llamar desde asyncio.to_thread().
-    """
-    if conn.brand != OltBrand.HUAWEI:
-        return {'success': True, 'indices': []}
-    try:
-        raw = _send_single_command(conn, 'display service-port all')
-    except (ConnectionError, CommandError) as exc:
-        return {'success': False, 'error': str(exc), 'indices': []}
-
-    indices: set[int] = set()
-    for line in raw.splitlines():
-        parts = line.split()
-        # Las filas de datos empiezan con el INDEX (entero) y tienen varias columnas.
-        # Se descartan encabezados/resúmenes (primer token no entero o línea corta).
-        if len(parts) >= 5 and parts[0].isdigit():
-            try:
-                indices.add(int(parts[0]))
-            except ValueError:
-                continue
-    ordered = sorted(indices)
-    return {'success': True, 'indices': ordered, 'count': len(ordered),
-            'max_index': ordered[-1] if ordered else 0}
-
-
 def add_traffic_table(
     conn:      OltConnectionSchema,
     name:      str,

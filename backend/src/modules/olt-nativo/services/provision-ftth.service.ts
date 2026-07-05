@@ -205,7 +205,7 @@ export class ProvisionFtthService {
 
     // 4. Resolver Service Port ID: pool automático o manual (bypass)
     const poolSvcPortId = await this.poolService.allocar(oltId, dto.contratoId);
-    const servicePortId = poolSvcPortId ?? dto.servicePortId;
+    let   servicePortId = poolSvcPortId ?? dto.servicePortId;
     if (servicePortId == null) {
       throw new UnprocessableEntityException(
         `No hay pool de Service Port IDs configurado para esta OLT. ` +
@@ -256,23 +256,36 @@ export class ProvisionFtthService {
 
     const registroId = insertResult[0].id;
 
-    // ── Fase 1: GPON ──────────────────────────────────────────
-    this.logger.log(`FTTH Fase1 GPON | contrato=${dto.contratoId} sn=${dto.sn} onuId=${onuId} svcPort=${servicePortId}`);
-    const gponRes = await this.automation.ftthProvisionGpon({
-      connection:      conn,
-      frame:           dto.frame,
-      slot:            dto.slot,
-      port:            dto.port,
-      onu_id:          onuId,
-      sn:              dto.sn.toUpperCase(),
-      service_port_id: servicePortId,
-      vlan:            dto.vlan,
-      lineprofile_id:  dto.lineprofileId,
-      srvprofile_id:   dto.srvprofileId,
-      traffic_index_down: dto.trafficIndexDown ?? null,
-      traffic_index_up:   dto.trafficIndexUp   ?? null,
-      description:        dto.description      ?? null,
-    });
+    // ── Fase 1: GPON (con auto-sanado de colisión de service-port) ──
+    // Si el índice asignado por el pool ya existe en la OLT, se marca como
+    // no-usable y se reintenta con el siguiente del pool (hasta 3 veces).
+    let gponRes;
+    for (let intento = 0; ; intento++) {
+      this.logger.log(`FTTH Fase1 GPON | contrato=${dto.contratoId} sn=${dto.sn} onuId=${onuId} svcPort=${servicePortId} intento=${intento + 1}`);
+      gponRes = await this.automation.ftthProvisionGpon({
+        connection:      conn,
+        frame:           dto.frame,
+        slot:            dto.slot,
+        port:            dto.port,
+        onu_id:          onuId,
+        sn:              dto.sn.toUpperCase(),
+        service_port_id: servicePortId,
+        vlan:            dto.vlan,
+        lineprofile_id:  dto.lineprofileId,
+        srvprofile_id:   dto.srvprofileId,
+        traffic_index_down: dto.trafficIndexDown ?? null,
+        traffic_index_up:   dto.trafficIndexUp   ?? null,
+        description:        dto.description      ?? null,
+      });
+      if (gponRes.success) break;
+      // Solo auto-sanar si: el ID vino del pool, es colisión de service-port, y quedan intentos.
+      if (!usedSvcPool || intento >= 3 || !this._esColisionServicePort(gponRes.error)) break;
+      await this.poolService.marcarColision(oltId, servicePortId!);
+      const nuevo = await this.poolService.allocar(oltId, dto.contratoId);
+      if (nuevo == null) break; // pool agotado → sale con el fallo actual
+      servicePortId = nuevo;
+      await this.ftthRepo.update(registroId, { servicePortId: nuevo });
+    }
 
     if (!gponRes.success) {
       if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
@@ -487,6 +500,15 @@ export class ProvisionFtthService {
   // ────────────────────────────────────────────────────────────
   // Helpers privados
   // ────────────────────────────────────────────────────────────
+
+  // Detecta si el error de la OLT indica que el service-port ya existe (colisión),
+  // para disparar el auto-sanado. Conservador: exige contexto de service-port.
+  private _esColisionServicePort(error?: string): boolean {
+    if (!error) return false;
+    const e = error.toLowerCase();
+    return /service.?port|service.?virtual.?port/.test(e)
+        && /(exist|conflict|already|duplicad|been used|in use|repeat|existe|conflicto)/.test(e);
+  }
 
   private async _fetchContrato(contratoId: string, empresaId: string) {
     const rows = await this.ds.query<{
