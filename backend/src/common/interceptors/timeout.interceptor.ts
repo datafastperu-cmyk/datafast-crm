@@ -21,7 +21,7 @@ export class TimeoutInterceptor implements NestInterceptor {
       req?.url?.includes(p),
     );
 
-    const timeoutDuration = isLongRunning ? 120000 : this.timeoutMs; // 2min vs 30s
+    const timeoutDuration = isLongRunning ? 180000 : this.timeoutMs; // 3min vs 30s (provision FTTH ~2min)
 
     return next.handle().pipe(
       timeout(timeoutDuration),
