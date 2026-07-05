@@ -2389,9 +2389,12 @@ def provision_gpon_ftth(
         ),
         'quit',
         (
+            # Sintaxis MA5800 verificada: `user-vlan` requiere `multi-service` delante
+            # (sin el, la CLI devuelve "Too many parameters"). `tag-transform translate`
+            # replica la config que crea SmartOLT (S-VLAN=C-VLAN=vlan, traduccion 1:1).
             f'service-port {service_port_id} vlan {vlan} '
             f'gpon 0/{slot}/{port} ont {onu_id} gemport 1 '
-            f'user-vlan {vlan} '
+            f'multi-service user-vlan {vlan} tag-transform translate '
             f'inbound traffic-table index {traffic_index_up or 0} '
             f'outbound traffic-table index {traffic_index_down or 0}'
         ),
