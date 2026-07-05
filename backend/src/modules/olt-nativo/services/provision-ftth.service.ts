@@ -322,12 +322,13 @@ export class ProvisionFtthService {
       slot:       dto.slot,
       port:       dto.port,
       onu_id:     onuId,
-      max_wait:   90,
+      max_wait:   150,
     });
 
     if (!pollRes.success || pollRes.timeout) {
-      this.logger.warn(`FTTH poll timeout | contrato=${dto.contratoId} → rollback GPON`);
-      const rbErr = pollRes.error ?? 'Timeout de poll (90 s)';
+      const runState = pollRes.run_state ?? 'unknown';
+      this.logger.warn(`FTTH poll timeout | contrato=${dto.contratoId} run_state=${runState} → rollback GPON`);
+      const rbErr = pollRes.error ?? `Timeout de poll (150 s), último run-state: ${runState}`;
       const rbOk  = await this._rollbackGponWithLog(
         empresaId, registroId, dto.contratoId, oltId,
         olt, password, dto, servicePortId, onuId,
@@ -338,12 +339,12 @@ export class ProvisionFtthService {
       await this.ftthRepo.update(registroId, {
         estado:      FtthOnuEstado.TIMEOUT_ONLINE,
         lockedAt:    null,
-        ultimoError: `ONU no apareció online en 90 s. Rollback ${rbOk ? 'exitoso' : 'falló'}. ${rbErr}`,
+        ultimoError: `ONU no apareció online en 150 s (último estado: ${runState}). Rollback ${rbOk ? 'exitoso' : 'falló'}.`,
       });
       return {
         estado:     FtthOnuEstado.TIMEOUT_ONLINE,
         registroId,
-        mensaje:    'La ONU no apareció online en 90 s tras el registro GPON. Rollback ejecutado.',
+        mensaje:    `La ONU no apareció online en 150 s tras el registro GPON (estado: ${runState}). Rollback ejecutado.`,
         error:      rbErr,
       };
     }

@@ -2477,6 +2477,7 @@ def poll_onu_online(
     )
     cmd    = f'display ont info 0/{slot}/{port} {onu_id}'
     t_end  = _time_read.monotonic() + max_wait
+    last_state = 'unknown'   # último run-state observado (diagnóstico)
 
     while _time_read.monotonic() < t_end:
         try:
@@ -2489,16 +2490,22 @@ def poll_onu_online(
         for line in raw.splitlines():
             low = line.lower()
             if 'run state' in low or 'run-state' in low:
+                # Capturar el valor tras los ':' para diagnóstico (offline/initial/etc.)
+                if ':' in line:
+                    last_state = line.split(':', 1)[1].strip().lower() or last_state
                 if 'online' in low:
                     logger.info('poll_onu_online: ONU online | OLT=%s onu_id=%d', conn.ip, onu_id)
                     return {'success': True, 'run_state': 'online'}
                 if any(s in low for s in ('offline', 'dying-gasp', 'los')):
-                    logger.info('poll_onu_online: ONU %s | OLT=%s', low.split()[-1], conn.ip)
+                    logger.info('poll_onu_online: ONU %s | OLT=%s', last_state, conn.ip)
 
         _time_read.sleep(interval)
 
-    logger.warning('poll_onu_online: timeout %ds | OLT=%s onu_id=%d', max_wait, conn.ip, onu_id)
-    return {'success': False, 'timeout': True, 'run_state': 'unknown'}
+    logger.warning(
+        'poll_onu_online: timeout %ds | OLT=%s onu_id=%d | ultimo run-state observado=%r',
+        max_wait, conn.ip, onu_id, last_state,
+    )
+    return {'success': False, 'timeout': True, 'run_state': last_state}
 
 
 def single_poll_check(
