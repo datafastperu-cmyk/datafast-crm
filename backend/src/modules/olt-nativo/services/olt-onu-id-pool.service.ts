@@ -83,7 +83,7 @@ export class OltOnuIdPoolService {
     }
 
     // Asignación atómica: FOR UPDATE SKIP LOCKED garantiza cero colisiones
-    const [allocated] = await this.ds.query<{ onu_id: number }[]>(
+    const result: any = await this.ds.query(
       `UPDATE olt_onu_id_pool
        SET estado      = 'ocupado',
            contrato_id = $1,
@@ -105,8 +105,11 @@ export class OltOnuIdPoolService {
        RETURNING onu_id`,
       [contratoId, oltId, slot, port],
     );
+    // TypeORM devuelve [filas, affectedCount] en UPDATE...RETURNING.
+    const filas = Array.isArray(result?.[0]) ? result[0] : result;
+    const allocated = filas?.[0] as { onu_id: number } | undefined;
 
-    if (allocated) {
+    if (allocated?.onu_id != null) {
       this.logger.log(
         `ONU ID alloc | olt=${oltId} ${slot}/${port} contrato=${contratoId} onuId=${allocated.onu_id}`,
       );

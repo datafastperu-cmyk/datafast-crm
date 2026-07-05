@@ -96,7 +96,7 @@ export class OltServicePortPoolService {
     }
 
     // Asignación atómica: FOR UPDATE SKIP LOCKED garantiza cero colisiones bajo carga concurrente
-    const [allocated] = await this.ds.query<{ service_port_id: number }[]>(
+    const result: any = await this.ds.query(
       `UPDATE olt_service_port_pool
        SET estado      = 'ocupado',
            contrato_id = $1,
@@ -116,8 +116,11 @@ export class OltServicePortPoolService {
        RETURNING service_port_id`,
       [contratoId, oltId],
     );
+    // TypeORM devuelve [filas, affectedCount] en UPDATE...RETURNING.
+    const filas = Array.isArray(result?.[0]) ? result[0] : result;
+    const allocated = filas?.[0] as { service_port_id: number } | undefined;
 
-    if (allocated) {
+    if (allocated?.service_port_id != null) {
       this.logger.log(
         `Pool alloc | olt=${oltId} contrato=${contratoId} svcPort=${allocated.service_port_id}`,
       );
