@@ -259,24 +259,30 @@ export class ProvisionFtthService {
     // ── Fase 1: GPON (con auto-sanado de colisión de service-port) ──
     // Si el índice asignado por el pool ya existe en la OLT, se marca como
     // no-usable y se reintenta con el siguiente del pool (hasta 3 veces).
-    let gponRes;
+    let gponRes: { success: boolean; error?: string };
     for (let intento = 0; ; intento++) {
       this.logger.log(`FTTH Fase1 GPON | contrato=${dto.contratoId} sn=${dto.sn} onuId=${onuId} svcPort=${servicePortId} intento=${intento + 1}`);
-      gponRes = await this.automation.ftthProvisionGpon({
-        connection:      conn,
-        frame:           dto.frame,
-        slot:            dto.slot,
-        port:            dto.port,
-        onu_id:          onuId,
-        sn:              dto.sn.toUpperCase(),
-        service_port_id: servicePortId,
-        vlan:            dto.vlan,
-        lineprofile_id:  dto.lineprofileId,
-        srvprofile_id:   dto.srvprofileId,
-        traffic_index_down: dto.trafficIndexDown ?? null,
-        traffic_index_up:   dto.trafficIndexUp   ?? null,
-        description:        dto.description      ?? null,
-      });
+      try {
+        gponRes = await this.automation.ftthProvisionGpon({
+          connection:      conn,
+          frame:           dto.frame,
+          slot:            dto.slot,
+          port:            dto.port,
+          onu_id:          onuId,
+          sn:              dto.sn.toUpperCase(),
+          service_port_id: servicePortId,
+          vlan:            dto.vlan,
+          lineprofile_id:  dto.lineprofileId,
+          srvprofile_id:   dto.srvprofileId,
+          traffic_index_down: dto.trafficIndexDown ?? null,
+          traffic_index_up:   dto.trafficIndexUp   ?? null,
+          description:        dto.description      ?? null,
+        });
+      } catch (err: any) {
+        // El cliente lanza en errores HTTP (422/503/timeout). Se trata como fallo
+        // para no dejar el registro atascado en 'pendiente' con el lock puesto.
+        gponRes = { success: false, error: err?.message ?? 'Error de comunicación con la OLT' };
+      }
       if (gponRes.success) break;
       // Solo auto-sanar si: el ID vino del pool, es colisión de service-port, y quedan intentos.
       if (!usedSvcPool || intento >= 3 || !this._esColisionServicePort(gponRes.error)) break;
