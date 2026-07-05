@@ -14,7 +14,9 @@ interface Props {
 }
 
 export function OnuSenalBadge({ calidad, rx }: Props) {
-  const { label, cls } = CONFIG[calidad];
+  // Fallback defensivo: si el backend envía un valor de calidad desconocido
+  // (null, vacío o uno nuevo), no romper el render — degradar a "sin_datos".
+  const { label, cls } = CONFIG[calidad] ?? CONFIG.sin_datos;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium ${cls}`}>
       {label}
