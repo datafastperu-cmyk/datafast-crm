@@ -170,6 +170,15 @@ export class MonitoreoWorkerService implements OnModuleInit {
     }
   }
 
+  // ─── Resetear contador de fallos para un dispositivo ─────────
+  // Útil cuando se actualizan credenciales/IP/puerto o se resetea el CB manualmente
+  // para que el próximo fallo no marque OFFLINE inmediatamente sino que pase
+  // por REVERIFICANDO primero.
+  resetFailCount(deviceId: string): void {
+    this.failCount.set(deviceId, 0);
+    this.logger.log(`resetFailCount: contador de fallos reiniciado para ${deviceId}`);
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // SONDEO INMEDIATO (llamado externamente al registrar un dispositivo)
   // ═══════════════════════════════════════════════════════════════

@@ -309,6 +309,15 @@ export class OutboxRedService {
         `, [cmd.contrato_id]).catch(() => [null]);
 
         if (contratoRow) {
+          // Limpiar address-lists morosos/prorroga (evita IPs huérfanas en el router)
+          if (contratoRow.ipAsignada) {
+            try {
+              await this.firewallSvc.reactivarCliente(creds, contratoRow.ipAsignada);
+            } catch (e: any) {
+              this.logger.warn(`[OutboxRed] DESPROVISIONAR address-list error: ${e?.message}`);
+            }
+          }
+
           const rawTipo = contratoRow.tipoAuth ?? contratoRow.tipoControl ?? 'ninguna';
           const tipo    = rawTipo === 'pppoe_addresslist' ? 'pppoe' : rawTipo;
           if (tipo === 'pppoe' && contratoRow.usuarioPppoe) {

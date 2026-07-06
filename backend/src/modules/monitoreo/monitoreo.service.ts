@@ -444,13 +444,44 @@ export class MonitoreoService {
     }
 
     await this.dispoRepo.save(d);
-    // Forzar sondeo inmediato para reflejar cambios de credenciales sin esperar el cron
+
+    // Reset Circuit Breaker y pool para este dispositivo:
+    // Si el CB estaba OPEN (tras 3 fallos), el sondeo inmediato fallaría sin reset.
+    // Al actualizar credenciales/IP/puerto el error previo ya no es relevante.
+    await this.pool.invalidate(id).catch(() => {});
+    this.logger.log(`updateDispositivo: CB y pool reseteados para ${id} (${d.nombreEmisor})`);
+
+    // Forzar sondeo inmediato para reflejar cambios sin esperar el cron
     this.worker.sondearInmediato(d).catch((err) =>
       this.logger.warn(`Sondeo inmediato tras update fallido para ${d.id}: ${err.message}`),
     );
+
     // S1: no exponer contrasenaCifrada en la respuesta
     const { contrasenaCifrada: _pw, ...safe } = d;
     return StdResponse.ok(safe);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // POST /monitoreo/dispositivos/:id/reparar-cb
+  // Resetea manualmente el Circuit Breaker de un dispositivo
+  // ═══════════════════════════════════════════════════════════════
+  async resetCbDispositivo(id: string, empresaId: string): Promise<StdResponse<{ status: string }>> {
+    const d = await this.dispoRepo.findOne({ where: { id, empresaId, deletedAt: IsNull() } });
+    if (!d) throw new NotFoundException(`Dispositivo ${id} no encontrado`);
+
+    // Invalidar pool (cierra conexiones y resetea CB via invalidate → resetCb)
+    await this.pool.invalidate(id);
+
+    // Resetear contador de fallos en el worker para que no marque OFFLINE inmediatamente
+    this.worker.resetFailCount(id);
+
+    // Forzar sondeo inmediato
+    this.worker.sondearInmediato(d).catch((err) =>
+      this.logger.warn(`Sondeo inmediato tras reset CB fallido para ${d.id}: ${err.message}`),
+    );
+
+    this.logger.log(`resetCbDispositivo: ${id} (${d.nombreEmisor}) — CB reiniciado, sondeo forzado`);
+    return StdResponse.ok({ status: 'ok' });
   }
 
   // ═══════════════════════════════════════════════════════════════

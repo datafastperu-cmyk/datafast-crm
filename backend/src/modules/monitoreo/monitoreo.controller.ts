@@ -100,6 +100,17 @@ export class MonitoreoController {
     return this.monitoreoSvc.repararAntenaAP(id, user.empresaId);
   }
 
+  // ── POST /monitoreo/dispositivos/:id/reparar-cb ─────────────
+  @Post('dispositivos/:id/reparar-cb')
+  @RequirePermission('monitoring:manage')
+  @ApiOperation({ summary: 'Resetear Circuit Breaker para forzar reconexión inmediata' })
+  resetCbDispositivo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.monitoreoSvc.resetCbDispositivo(id, user.empresaId);
+  }
+
   // ── DELETE /monitoreo/dispositivos/:id ───────────────────────
   @Delete('dispositivos/:id')
   @RequirePermission('monitoring:manage')

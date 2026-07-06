@@ -1267,6 +1267,18 @@ export class ContratosService {
     const tipoControl: string = _rawTipo2 === 'pppoe_addresslist' ? 'pppoe' : _rawTipo2;
 
     try {
+      // ── S0: Limpiar address-lists morosos/prorroga antes de eliminar reglas ──
+      // La IP puede estar en morosos_datafast (suspendido) o prorroga_datafast (prórroga).
+      // Si no se limpia aquí, la IP queda huérfana en el router cuando se elimina el cliente.
+      if (row.ipAsignada) {
+        try {
+          await this.firewallSvc.reactivarCliente(creds, row.ipAsignada);
+          this.logger.log(`desaprovisionarMikrotik → ${contratoId} | address-lists limpiadas: ${row.ipAsignada}`);
+        } catch (e: any) {
+          this.logger.warn(`desaprovisionarMikrotik → ${contratoId} | error limpiando address-lists: ${e?.message}`);
+        }
+      }
+
       if (tipoControl === 'pppoe' && row.usuarioPppoe) {
         await this.pppoeSvc.eliminar(creds, row.usuarioPppoe);
         this.logger.log(`desaprovisionarMikrotik → ${contratoId} | PPPoE eliminado: ${row.usuarioPppoe}`);
