@@ -11,7 +11,7 @@ import {
 import { Type } from 'class-transformer';
 
 import { OltDispositivo }   from '../entities/olt-dispositivo.entity';
-import { FtthOnuEstado, FTTH_ESTADOS_FALLIDOS, FtthOnuRegistro, ftthNecesitaRecovery } from '../entities/ftth-onu-registro.entity';
+import { FtthOnuEstado, FtthOnuRegistro, ftthNecesitaRecovery } from '../entities/ftth-onu-registro.entity';
 import { FtthRollbackLog, RollbackMotivo } from '../entities/ftth-rollback-log.entity';
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
@@ -147,68 +147,50 @@ export class ProvisionFtthService {
     });
 
     if (registroExistente) {
+      // Una ONU aprovisionada exige desaprovisionar primero (protege el servicio activo).
       if (registroExistente.estado === FtthOnuEstado.ACTIVO || registroExistente.estado === FtthOnuEstado.SUSPENDIDO) {
         throw new ConflictException(
           `El contrato ya tiene una ONU FTTH ${registroExistente.estado} (SN: ${registroExistente.sn}). ` +
           `Para reaprovisionar primero desaprovisiónala.`,
         );
       }
-      if (
+
+      // Aprovisionamiento en curso con lock vigente (< umbral de recovery) → no pisar.
+      const enCurso =
         registroExistente.estado === FtthOnuEstado.PENDIENTE ||
         registroExistente.estado === FtthOnuEstado.GPON_REGISTRADO ||
         registroExistente.estado === FtthOnuEstado.WAN_INYECTADO ||
-        registroExistente.estado === FtthOnuEstado.DESAPROVISIONANDO
-      ) {
-        if (!ftthNecesitaRecovery(registroExistente)) {
-          throw new ConflictException(
-            `Hay un aprovisionamiento en curso para este contrato ` +
-            `(estado: ${registroExistente.estado}). Espera o espera al recovery automático.`,
-          );
-        }
-        this.logger.warn(
-          `FTTH recovery: registro bloqueado > 10 min, forzando a fallido_gpon | ` +
-          `contrato=${dto.contratoId} estado=${registroExistente.estado}`,
+        registroExistente.estado === FtthOnuEstado.DESAPROVISIONANDO;
+      if (enCurso && !ftthNecesitaRecovery(registroExistente)) {
+        throw new ConflictException(
+          `Hay un aprovisionamiento en curso para este contrato ` +
+          `(estado: ${registroExistente.estado}). Espera unos segundos o al recovery automático.`,
         );
-        await this.ftthRepo.update(registroExistente.id, {
-          estado:    FtthOnuEstado.FALLIDO_GPON,
-          lockedAt:  null,
-          ultimoError: 'Recovery automático por lock expirado (> 10 min)',
+      }
+
+      // Re-aprovisionable: fallido, o en-curso con lock expirado (recovery). En ambos
+      // casos se hace rollback GPON best-effort (por si dejó ONT/service-port en la OLT)
+      // y se BORRA el registro — atómico: nada persiste, y el INSERT posterior no choca.
+      this.logger.warn(
+        `FTTH pre-retry: limpiando registro previo | contrato=${dto.contratoId} estado=${registroExistente.estado}`,
+      );
+      const oltPrevio = await this._fetchOlt(registroExistente.oltId, empresaId).catch(() => null);
+      if (oltPrevio) {
+        const pwPrevio   = this._decryptOltPassword(oltPrevio);
+        const connPrevio = this._buildConn(oltPrevio, pwPrevio);
+        await this.automation.ftthRollbackGpon({
+          connection:      connPrevio,
+          slot:            registroExistente.slot,
+          port:            registroExistente.port,
+          onu_id:          registroExistente.onuId,
+          service_port_id: registroExistente.servicePortId,
+        }).catch((err: any) => {
+          this.logger.error(
+            `FTTH pre-retry rollback falló (se procede de todos modos) | contrato=${dto.contratoId}: ${err.message}`,
+          );
         });
       }
-      // Si fallido → reintentar. Los estados que implican ONU ya registrada en OLT
-      // requieren rollback GPON previo para no dejar ONTs huérfanas.
-      if (FTTH_ESTADOS_FALLIDOS.includes(registroExistente.estado)) {
-        const necesitaRollback =
-          registroExistente.estado === FtthOnuEstado.FALLIDO_WAN ||
-          registroExistente.estado === FtthOnuEstado.TIMEOUT_ONLINE ||
-          registroExistente.estado === FtthOnuEstado.FALLIDO_SERVICE_PORT;
-
-        if (necesitaRollback) {
-          const oltPrevio = await this._fetchOlt(registroExistente.oltId, empresaId).catch(() => null);
-          if (oltPrevio) {
-            const pwPrevio = this._decryptOltPassword(oltPrevio);
-            const connPrevio = this._buildConn(oltPrevio, pwPrevio);
-            try {
-              await this.automation.ftthRollbackGpon({
-                connection:      connPrevio,
-                slot:            registroExistente.slot,
-                port:            registroExistente.port,
-                onu_id:          registroExistente.onuId,
-                service_port_id: registroExistente.servicePortId,
-              });
-              this.logger.warn(
-                `FTTH pre-retry rollback OK | contrato=${dto.contratoId} estado=${registroExistente.estado}`,
-              );
-            } catch (err: any) {
-              this.logger.error(
-                `FTTH pre-retry rollback falló (se procede de todos modos) | contrato=${dto.contratoId}: ${err.message}`,
-              );
-            }
-          }
-        }
-
-        await this.ftthRepo.delete(registroExistente.id);
-      }
+      await this.ftthRepo.delete(registroExistente.id);
     }
 
     // 3. Obtener OLT y construir conexión Python
