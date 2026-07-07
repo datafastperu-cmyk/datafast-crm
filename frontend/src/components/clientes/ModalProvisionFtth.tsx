@@ -47,7 +47,7 @@ function EstadoBadge({ estado }: { estado: FtthOnuEstado }) {
 
 // ─── Estado panel ─────────────────────────────────────────────
 
-function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando }: {
+function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando, onReset, isReiniciando }: {
   registro: FtthOnuRegistro;
   onDesaprovisionar: () => void;
   isDesaprovisionandoPending: boolean;
@@ -55,61 +55,63 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
   isSuspendiendo: boolean;
   onRehabiliitar: () => void;
   isRehabilitando: boolean;
+  onReset: () => void;
+  isReiniciando: boolean;
 }) {
+  const btnCls = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50';
+  const canDesaprov = registro.estado === 'activo' || registro.estado === 'gpon_registrado' || registro.estado === 'wan_inyectado' || registro.estado === 'suspendido';
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+    <div className="rounded-xl border border-border bg-card p-3 space-y-2.5">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado ONU FTTH</span>
         <EstadoBadge estado={registro.estado} />
       </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
         <span className="text-muted-foreground">Serial Number</span>
         <span className="font-mono font-semibold">{registro.sn}</span>
         <span className="text-muted-foreground">Posición</span>
-        <span className="font-mono">frame {registro.frame} · slot {registro.slot} · port {registro.port} · ONU {registro.onuId}</span>
+        <span className="font-mono">f{registro.frame} · s{registro.slot} · p{registro.port} · ONU {registro.onuId}</span>
         <span className="text-muted-foreground">VLAN</span>
         <span className="font-mono">{registro.vlan}</span>
-        <span className="text-muted-foreground">Intentos GPON</span>
-        <span>{registro.intentosGpon}</span>
-        <span className="text-muted-foreground">Intentos WAN</span>
-        <span>{registro.intentosWan}</span>
+        <span className="text-muted-foreground">Intentos GPON / WAN</span>
+        <span>{registro.intentosGpon} / {registro.intentosWan}</span>
       </div>
       {registro.ultimoError && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-700/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-700/40 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
           <span>{registro.ultimoError}</span>
         </div>
       )}
-      {registro.estado === 'activo' && (
-        <button
-          onClick={onSuspender}
-          disabled={isSuspendiendo}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-amber-700/50 bg-amber-500/5 text-amber-700 dark:text-amber-400 text-xs font-semibold hover:bg-amber-500/15 transition-colors disabled:opacity-50"
-        >
-          {isSuspendiendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <WifiOff className="w-3.5 h-3.5" />}
-          {isSuspendiendo ? 'Suspendiendo…' : 'Suspender ONU'}
-        </button>
-      )}
-      {registro.estado === 'suspendido' && (
-        <button
-          onClick={onRehabiliitar}
-          disabled={isRehabilitando}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-emerald-700/50 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 text-xs font-semibold hover:bg-emerald-500/15 transition-colors disabled:opacity-50"
-        >
-          {isRehabilitando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          {isRehabilitando ? 'Rehabilitando…' : 'Rehabilitar ONU'}
-        </button>
-      )}
-      {(registro.estado === 'activo' || registro.estado === 'gpon_registrado' || registro.estado === 'wan_inyectado' || registro.estado === 'suspendido') && (
-        <button
-          onClick={onDesaprovisionar}
-          disabled={isDesaprovisionandoPending}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-red-700/50 bg-red-500/5 text-red-700 dark:text-red-400 text-xs font-semibold hover:bg-red-500/15 transition-colors disabled:opacity-50"
-        >
-          {isDesaprovisionandoPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-          {isDesaprovisionandoPending ? 'Desaprovisionando…' : 'Desaprovisionar ONU'}
-        </button>
-      )}
+      <div className="flex gap-2">
+        {registro.estado === 'activo' && (
+          <button onClick={onReset} disabled={isReiniciando}
+            className={cn(btnCls, 'border-sky-700/50 bg-sky-500/5 text-sky-700 dark:text-sky-400 hover:bg-sky-500/15')}>
+            {isReiniciando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Reiniciar
+          </button>
+        )}
+        {registro.estado === 'activo' && (
+          <button onClick={onSuspender} disabled={isSuspendiendo}
+            className={cn(btnCls, 'border-amber-700/50 bg-amber-500/5 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15')}>
+            {isSuspendiendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <WifiOff className="w-3.5 h-3.5" />}
+            Suspender
+          </button>
+        )}
+        {registro.estado === 'suspendido' && (
+          <button onClick={onRehabiliitar} disabled={isRehabilitando}
+            className={cn(btnCls, 'border-emerald-700/50 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15')}>
+            {isRehabilitando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Rehabilitar
+          </button>
+        )}
+        {canDesaprov && (
+          <button onClick={onDesaprovisionar} disabled={isDesaprovisionandoPending}
+            className={cn(btnCls, 'border-red-700/50 bg-red-500/5 text-red-700 dark:text-red-400 hover:bg-red-500/15')}>
+            {isDesaprovisionandoPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            Desaprovisionar
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -425,7 +427,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
             {/* Estado existente */}
             {estadoLoading ? (
@@ -441,23 +443,15 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   isSuspendiendo={suspendiendo}
                   onRehabiliitar={() => rehabilitar()}
                   isRehabilitando={rehabilitando}
+                  onReset={() => resetOnu()}
+                  isReiniciando={reiniciandoOnu}
                 />
-                {estadoExistente.estado === 'activo' && (
-                  <button
-                    onClick={() => resetOnu()}
-                    disabled={reiniciandoOnu}
-                    className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-amber-700/50 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold hover:bg-amber-500/20 transition-colors disabled:opacity-50"
-                  >
-                    {reiniciandoOnu ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                    {reiniciandoOnu ? 'Reiniciando ONU…' : 'Reiniciar ONU (reset)'}
-                  </button>
-                )}
                 {yaActivo && (
-                  <div className="flex items-start gap-2 mt-3 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-700/30">
+                  <div className="flex items-start gap-2 mt-2.5 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-700/30">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-emerald-700 dark:text-emerald-300">
                       ONU aprovisionada. Los campos de abajo muestran su configuración actual — edítalos y usa
-                      <strong> Re-Aprovisionar</strong> para re-aplicar TODO (GPON + service-port + WAN) con los datos actuales.
+                      <strong> Re-Aprovisionar</strong> para re-aplicar TODO (GPON + service-port + WAN).
                     </p>
                   </div>
                 )}
