@@ -158,11 +158,12 @@ export class ProvisionFtthService {
     });
 
     if (registroExistente) {
-      // Una ONU aprovisionada exige desaprovisionar primero (protege el servicio activo).
-      if (registroExistente.estado === FtthOnuEstado.ACTIVO || registroExistente.estado === FtthOnuEstado.SUSPENDIDO) {
+      // Una ONU SUSPENDIDA debe rehabilitarse antes de re-aprovisionar (no bypassear el
+      // corte). Una ONU ACTIVA SÍ se puede re-aprovisionar ("Re-Aprovisionar" del modal):
+      // se hace rollback + provisión fresca con los datos actuales + inyección WAN.
+      if (registroExistente.estado === FtthOnuEstado.SUSPENDIDO) {
         throw new ConflictException(
-          `El contrato ya tiene una ONU FTTH ${registroExistente.estado} (SN: ${registroExistente.sn}). ` +
-          `Para reaprovisionar primero desaprovisiónala.`,
+          `La ONU está SUSPENDIDA (SN: ${registroExistente.sn}). Rehabilítala antes de re-aprovisionar.`,
         );
       }
 

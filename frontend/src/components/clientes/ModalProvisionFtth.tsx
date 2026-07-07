@@ -449,6 +449,18 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     },
   });
 
+  // Reiniciar (reset) ONU
+  const { mutate: resetOnu, isPending: reiniciandoOnu } = useMutation({
+    mutationFn: () => oltNativoApi.ftthResetOnu(
+      estadoExistente!.oltId, estadoExistente!.slot, estadoExistente!.port, estadoExistente!.onuId,
+    ),
+    onSuccess: () => toast('ONU reiniciada — puede tardar ~1 min en volver online', { type: 'success' }),
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast(msg ?? 'Error al reiniciar la ONU', { type: 'error' });
+    },
+  });
+
 
   // Cierre del wizard: si el aprovisionamiento NO concluyó, se limpia todo (OLT + BD)
   // vía ftthCancelar (el backend ignora ONUs ya activas/suspendidas). Fire-and-forget.
@@ -511,6 +523,16 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   onCambiarVelocidad={(down, up) => cambiarVelocidad({ trafficIndexDown: down, trafficIndexUp: up })}
                   isCambiandoVelocidad={cambiandoVelocidad}
                 />
+                {estadoExistente.estado === 'activo' && (
+                  <button
+                    onClick={() => resetOnu()}
+                    disabled={reiniciandoOnu}
+                    className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-amber-700/50 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {reiniciandoOnu ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    {reiniciandoOnu ? 'Reiniciando ONU…' : 'Reiniciar ONU (reset)'}
+                  </button>
+                )}
                 {estadoExistente.estado === 'activo' && estadoExistente.wanMode === 'routing' && (
                   <button
                     onClick={() => actualizarWan()}
@@ -522,10 +544,11 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   </button>
                 )}
                 {yaActivo && (
-                  <div className="flex items-center gap-2 mt-3 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-700/30">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                  <div className="flex items-start gap-2 mt-3 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-700/30">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                      La ONU ya está aprovisionada y activa. Para reaprovisionar, primero ejecuta un rollback desde el panel de OLT.
+                      ONU aprovisionada. Los campos de abajo muestran su configuración actual — edítalos y usa
+                      <strong> Re-Aprovisionar</strong> para re-aplicar TODO (GPON + service-port + WAN) con los datos actuales.
                     </p>
                   </div>
                 )}
@@ -533,7 +556,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
             ) : null}
 
             {/* Selector OLT */}
-            {!yaActivo && (
+            {(
               <div>
                 <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">OLT de Destino</h3>
                 {oltsLoading ? (
@@ -583,7 +606,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
             )}
 
             {/* Formulario FTTH */}
-            {selectedOlt && !yaActivo && (
+            {selectedOlt && (
               <div>
                 <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                   Parámetros GPON
@@ -799,30 +822,20 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
           </div>
 
           {/* Footer */}
-          {!yaActivo && (
-            <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
-              <button type="button" onClick={handleClose}
-                className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors text-foreground/80">
-                Cancelar
-              </button>
-              <button type="button" onClick={() => provisionar()}
-                disabled={!formValid || provIsPending || !selectedOltId}
-                className="btn-primary px-5 py-2 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2">
-                {provIsPending
-                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Aprovisionando…</>
-                  : <><Zap className="w-3.5 h-3.5" /> Aprovisionar FTTH</>
-                }
-              </button>
-            </div>
-          )}
-          {yaActivo && (
-            <div className="px-5 py-4 border-t border-border flex justify-end flex-shrink-0">
-              <button onClick={onClose}
-                className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors text-foreground/80">
-                Cerrar
-              </button>
-            </div>
-          )}
+          <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
+            <button type="button" onClick={handleClose}
+              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors text-foreground/80">
+              {yaActivo ? 'Cerrar' : 'Cancelar'}
+            </button>
+            <button type="button" onClick={() => provisionar()}
+              disabled={!formValid || provIsPending || !selectedOltId}
+              className="btn-primary px-5 py-2 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2">
+              {provIsPending
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {yaActivo ? 'Re-Aprovisionando…' : 'Aprovisionando…'}</>
+                : <><Zap className="w-3.5 h-3.5" /> {yaActivo ? 'Re-Aprovisionar' : 'Aprovisionar FTTH'}</>
+              }
+            </button>
+          </div>
         </div>
       </div>
     </>

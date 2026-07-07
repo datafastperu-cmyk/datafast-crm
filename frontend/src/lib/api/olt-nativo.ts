@@ -706,6 +706,13 @@ export const oltNativoApi = {
     return res.data.data;
   },
 
+  ftthResetOnu: async (oltId: string, slot: number, port: number, onuId: number): Promise<{ exitoso?: boolean; mensaje?: string }> => {
+    const res = await api.post<ApiRespuesta<{ exitoso?: boolean; mensaje?: string }>>(
+      `/olt-nativo/${oltId}/ont-reset`, {}, { params: { slot, port, onuId }, timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+
   ftthActualizarWan: async (contratoId: string): Promise<{ actualizado: boolean; mensaje: string; error?: string; skipped?: boolean }> => {
     const res = await api.post<ApiRespuesta<{ actualizado: boolean; mensaje: string; error?: string; skipped?: boolean }>>(
       `/olt-nativo/ftth/actualizar-wan/${contratoId}`, {}, { timeout: 120_000 },
