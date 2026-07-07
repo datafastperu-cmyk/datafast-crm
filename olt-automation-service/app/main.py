@@ -30,6 +30,8 @@ from app.schemas.olt import (
     FirmwareUpgradeRequest,
     FtthGponRequest,
     FtthGponResponse,
+    FtthOntIdsRequest,
+    FtthOntIdsResponse,
     FtthPollRequest,
     FtthPollResponse,
     FtthRollbackRequest,
@@ -94,6 +96,7 @@ from app.services.provisioning import (
     get_huawei_ont_version,
     get_onu_metrics,
     inject_wan_pppoe,
+    list_configured_ont_ids,
     list_huawei_profiles,
     poll_onu_online,
     single_poll_check,
@@ -672,6 +675,25 @@ async def ftth_rollback_gpon(body: FtthRollbackRequest) -> FtthRollbackResponse:
             body.slot, body.port, body.onu_id, body.service_port_id,
         )
     return FtthRollbackResponse(success=result['success'], error=result.get('error'))
+
+
+@app.post(
+    '/api/v1/olt/ftth/ont-ids',
+    response_model=FtthOntIdsResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Listar ONT-IDs configurados en un puerto (incl. SmartOLT) para evitar colisiones',
+)
+async def ftth_ont_ids(body: FtthOntIdsRequest) -> FtthOntIdsResponse:
+    async with connection_pool.acquire(body.connection.ip):
+        try:
+            ids = await asyncio.to_thread(
+                list_configured_ont_ids, body.connection, body.slot, body.port,
+            )
+        except ProvisioningError as exc:
+            logger.warning('ftth_ont_ids FALLO | OLT=%s %d/%d: %s', body.connection.ip, body.slot, body.port, exc)
+            return FtthOntIdsResponse(ont_ids=[])
+    return FtthOntIdsResponse(ont_ids=ids)
 
 
 @app.post(

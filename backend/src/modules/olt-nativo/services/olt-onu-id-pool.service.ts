@@ -139,6 +139,48 @@ export class OltOnuIdPoolService {
     this.logger.log(`ONU ID release | olt=${oltId} contrato=${contratoId}`);
   }
 
+  // ── sincronizarOcupacionOlt ───────────────────────────────────────
+  // Marca como ocupados los ONT-IDs que YA existen en la OLT (incluidas las ONUs
+  // creadas por SmartOLT/AdminOLT, ausentes de nuestra BD). Sin esto, en un puerto
+  // compartido el pool asignaría un ID en colisión y el aprovisionamiento fallaría
+  // con "The ONT ID has already existed". Idempotente: inicializa el pool si hace
+  // falta y solo toca las entradas 'libre' (no pisa contratos ya asignados).
+  async sincronizarOcupacionOlt(
+    oltId:     string,
+    empresaId: string,
+    slot:      number,
+    port:      number,
+    ontIds:    number[],
+  ): Promise<number> {
+    if (!ontIds.length) return 0;
+
+    // Init idempotente del pool del puerto (1–128).
+    await this.ds.query(
+      `INSERT INTO olt_onu_id_pool
+         (id, empresa_id, olt_id, slot, port, onu_id, estado, created_at, updated_at, version)
+       SELECT gen_random_uuid(), $1, $2, $3, $4, gs.onu_id, 'libre', NOW(), NOW(), 1
+       FROM   generate_series(1, 128) AS gs(onu_id)
+       ON CONFLICT (olt_id, slot, port, onu_id) DO NOTHING`,
+      [empresaId, oltId, slot, port],
+    );
+
+    const result: any = await this.ds.query(
+      `UPDATE olt_onu_id_pool
+       SET estado='ocupado', contrato_id=NULL, locked_at=NOW(), updated_at=NOW(), version=version+1
+       WHERE olt_id=$1 AND slot=$2 AND port=$3
+         AND onu_id = ANY($4::int[])
+         AND estado='libre' AND deleted_at IS NULL
+       RETURNING onu_id`,
+      [oltId, slot, port, ontIds],
+    );
+    const filas = Array.isArray(result?.[0]) ? result[0] : result;
+    const marcados = Array.isArray(filas) ? filas.length : 0;
+    this.logger.log(
+      `ONU ID sync OLT | olt=${oltId} ${slot}/${port} ocupados en OLT=${ontIds.length} marcados=${marcados}`,
+    );
+    return marcados;
+  }
+
   // ── marcarColision ────────────────────────────────────────────────
   // El ONU-ID ya existe en la OLT (colisión): típicamente una ONU creada por
   // SmartOLT/AdminOLT fuera de nuestra BD, que el pool creía libre. Se marca ocupado

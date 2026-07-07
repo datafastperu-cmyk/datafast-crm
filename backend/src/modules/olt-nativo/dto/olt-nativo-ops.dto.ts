@@ -614,6 +614,16 @@ export interface PythonFtthRollbackRequest {
   service_port_id: number | null;
 }
 
+export interface PythonFtthOntIdsRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+  port:       number;
+}
+
+export interface PythonFtthOntIdsResponse {
+  ont_ids: number[];
+}
+
 export interface PythonFtthRollbackResponse {
   success: boolean;
   error?:  string;

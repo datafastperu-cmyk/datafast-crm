@@ -23,6 +23,8 @@ import {
   PythonFtthPollRequest,
   PythonFtthPollResponse,
   PythonFtthRollbackRequest,
+  PythonFtthOntIdsRequest,
+  PythonFtthOntIdsResponse,
   PythonFtthRollbackResponse,
   PythonFtthWanPppoeRequest,
   PythonFtthWanResponse,
@@ -290,6 +292,23 @@ export class OltAutomationClient {
     );
     this.logger.log(`← ftth/rollback-gpon | success=${res.success}`);
     return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — listar ONT-IDs configurados en un puerto (incl. SmartOLT)
+  // ────────────────────────────────────────────────────────────
+  async ftthOntIds(payload: PythonFtthOntIdsRequest): Promise<number[]> {
+    try {
+      const res = await this.post<PythonFtthOntIdsResponse>(
+        '/api/v1/olt/ftth/ont-ids', payload, 40_000,
+      );
+      return res.ont_ids ?? [];
+    } catch (err: any) {
+      // No bloquear el aprovisionamiento si la consulta falla — el auto-sanado
+      // de colisión queda como red de seguridad.
+      this.logger.warn(`← ftth/ont-ids falló (se continúa): ${err.message}`);
+      return [];
+    }
   }
 
   // ────────────────────────────────────────────────────────────

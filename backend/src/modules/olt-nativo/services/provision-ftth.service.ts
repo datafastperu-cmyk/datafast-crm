@@ -224,6 +224,18 @@ export class ProvisionFtthService {
     }
     const usedSvcPool = poolSvcPortId != null;
 
+    // 4b. Sincronizar la ocupación REAL de ONT-IDs en la OLT (incluye ONUs de
+    // SmartOLT/AdminOLT ausentes de nuestra BD). Así el pool asigna directo el primer
+    // ID libre en vez de colisionar 1-por-1 con las ONUs existentes del puerto.
+    const ontIdsEnOlt = await this.automation.ftthOntIds({
+      connection: conn, slot: dto.slot, port: dto.port,
+    });
+    if (ontIdsEnOlt.length) {
+      await this.onuIdPool.sincronizarOcupacionOlt(
+        oltId, empresaId, dto.slot, dto.port, ontIdsEnOlt,
+      );
+    }
+
     // 5. Resolver ONU ID: pool automático (lazy init) o manual.
     // `let` porque el auto-sanado de colisión de ONT-ID puede reasignarlo (p.ej. si
     // el ID ya existe en la OLT por una ONU creada por SmartOLT, fuera de nuestra BD).

@@ -406,6 +406,17 @@ class FtthRollbackResponse(BaseModel):
     error:   str | None = None
 
 
+class FtthOntIdsRequest(BaseModel):
+    """Listar los ONT-IDs ya configurados en un puerto PON (incl. los de SmartOLT)."""
+    connection: OltConnectionSchema
+    slot:       int = Field(..., ge=0, le=15)
+    port:       int = Field(..., ge=0, le=15)
+
+
+class FtthOntIdsResponse(BaseModel):
+    ont_ids: list[int] = []
+
+
 class FtthPollRequest(BaseModel):
     """Fase 1b: esperar que la ONU aparezca online tras el registro GPON."""
     connection: OltConnectionSchema

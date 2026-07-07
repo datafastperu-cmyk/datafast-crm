@@ -2540,6 +2540,43 @@ def rollback_gpon(
     }
 
 
+def list_configured_ont_ids(
+    conn: OltConnectionSchema,
+    slot: int,
+    port: int,
+) -> list[int]:
+    """
+    Lista los ONT-IDs ya configurados en un puerto PON Huawei (`display ont info
+    <port> all`). Incluye TODAS las ONUs registradas en la OLT — también las creadas
+    por SmartOLT/AdminOLT fuera de nuestra BD. Se usa para que el pool de ONU-ID no
+    asigne un ID en colisión al aprovisionar en un puerto compartido.
+    """
+    try:
+        parts = _paramiko_huawei_run(
+            conn,
+            ['config', f'interface gpon 0/{slot}', f'display ont info {port} all'],
+            timeout=settings.ssh_command_timeout, return_list=True,
+        )
+    except Exception as exc:
+        raise ProvisioningError(
+            f'No se pudieron listar los ONT-IDs de {conn.ip} puerto {slot}/{port}: {exc}'
+        ) from exc
+
+    out = parts[-1] if parts else ''
+    # Filas tipo: "  0/ 1/8    4  4857544...  active  online  ..."
+    fsp_re = re.compile(rf'0/\s*{slot}\s*/\s*{port}\s+(\d+)\s')
+    ids: set[int] = set()
+    for line in out.splitlines():
+        m = fsp_re.search(line)
+        if m:
+            ids.add(int(m.group(1)))
+    logger.info(
+        'list_configured_ont_ids | OLT=%s %d/%d → %d ONTs (%s)',
+        conn.ip, slot, port, len(ids), sorted(ids)[:10],
+    )
+    return sorted(ids)
+
+
 def poll_onu_online(
     conn:     OltConnectionSchema,
     slot:     int,
