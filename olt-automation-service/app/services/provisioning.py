@@ -2569,7 +2569,12 @@ def single_poll_check(
     return {'online': False}
 
 
-_PPPOE_SAFE_RE = re.compile(r'^[\w\-@\.]{1,64}$')
+# Usuario PPPoE: alfanumérico + separadores comunes.
+_PPPOE_USER_RE = re.compile(r'^[\w\-@\.]{1,64}$')
+# La clave va entre comillas dobles en el CLI → se prohíben la comilla doble (0x22)
+# y los caracteres de control (romperían el comando / permitirían inyección). Se
+# permite el resto de imprimibles ASCII (las claves PPPoE suelen tener símbolos).
+_PPPOE_PASS_RE = re.compile(r'^[\x20-\x21\x23-\x7e]{1,128}$')
 
 
 def inject_wan_pppoe(
@@ -2582,55 +2587,79 @@ def inject_wan_pppoe(
     password: str,
 ) -> dict[str, Any]:
     """
-    Fase 2: inyecta la configuración WAN PPPoE en la ONU vía OMCI desde la OLT.
-    El CLI del MA5800 envía los parámetros a la ONU mediante OMCI sin necesidad
-    de acceder directamente al dispositivo del cliente.
+    Fase 2 (modo routing): inyecta la WAN PPPoE en la ONU vía OMCI desde el MA5800.
+
+    Sintaxis verificada contra la config que genera SmartOLT en este firmware
+    (MA5800 V100R018) — el modelo es por `ont ipconfig` (donde van las credenciales
+    PPPoE) + `ont internet-config` + `ont wan-config ... profile-id 0` +
+    `ont policy-route-config`. El antiguo `ont wan-config add ... username/password`
+    NO existe en este firmware.
 
     Requiere que la ONU esté online (ejecutar poll_onu_online primero).
     Síncrono — llamar desde asyncio.to_thread().
     """
-    if not _PPPOE_SAFE_RE.match(username):
+    if not _PPPOE_USER_RE.match(username):
         raise ProvisioningError(
             f'username PPPoE contiene caracteres no permitidos: {username!r}. '
             'Solo se aceptan: letras, dígitos, -, @, .'
         )
-    if not _PPPOE_SAFE_RE.match(password):
+    if not _PPPOE_PASS_RE.match(password):
         raise ProvisioningError(
-            'password PPPoE contiene caracteres no permitidos. '
-            'Solo se aceptan: letras, dígitos, -, @, .'
+            'password PPPoE inválida: contiene comillas dobles o caracteres de control, '
+            'o excede 128 caracteres.'
         )
     logger.info(
         'inject_wan_pppoe: OLT=%s slot=%d port=%d onu_id=%d vlan=%d user=%s',
         conn.ip, slot, port, onu_id, vlan, username,
     )
-    cmds = [
+    core_cmds = [
         'config',
         f'interface gpon 0/{slot}',
         (
-            f'ont wan-config add {port} {onu_id} '
-            f'wan-type internet service-name INTERNET '
-            f'user-type pppoe vlan-mode mode-vlan vlan-id {vlan} '
-            f'username {username} password {password}'
+            f'ont ipconfig {port} {onu_id} ip-index 1 pppoe vlan {vlan} priority 0 '
+            f'user-account username "{username}" password "{password}"'
         ),
-        'quit',
-        'save',
+        f'ont internet-config {port} {onu_id} ip-index 1',
+        f'ont wan-config {port} {onu_id} ip-index 1 profile-id 0',
+        f'ont policy-route-config {port} {onu_id} profile-id 0',
     ]
+    # Rutas de los puertos LAN (modo routing). Best-effort: una ONU con menos de 4
+    # puertos ETH devolverá error en los inexistentes — no debe abortar la inyección.
+    route_cmds = [f'ont port route {port} {onu_id} eth {i} enable' for i in range(1, 5)]
+    verify_cmd = f'display ont wan-info {port} {onu_id}'   # 2-arg: contexto interface
+    cmds = core_cmds + route_cmds + [verify_cmd, 'quit', 'save']
+
     try:
-        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+        parts = _paramiko_huawei_run(
+            conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
+        )
     except ProvisioningError:
         raise
     except Exception as exc:
         raise ProvisioningError(f'inject_wan_pppoe falló en {conn.ip}: {exc}') from exc
 
-    error_patterns = ['Error:', 'Failure:', 'wan-config failed', 'Command not found']
+    # Errores solo en los comandos CORE (config..policy-route) — no en las rutas eth.
+    core_out = '\n'.join(parts[:len(core_cmds)])
+    error_patterns = [
+        'Error:', 'Failure:', 'Parameter error', 'Too many parameters',
+        'Unknown command', 'Incomplete command', 'conflicts with', 'does not exist',
+    ]
     for pat in error_patterns:
-        if pat.lower() in raw.lower():
+        if pat.lower() in core_out.lower():
+            linea = next((l for l in core_out.splitlines() if pat.lower() in l.lower()), pat)
             raise ProvisioningError(
-                f'CLI Huawei reportó error en WAN config {conn.ip}: '
-                + next((l for l in raw.splitlines() if pat.lower() in l.lower()), pat)
+                f'CLI Huawei reportó error en WAN config {conn.ip}: {linea.strip()}'
             )
 
-    logger.info('inject_wan_pppoe OK | OLT=%s onu_id=%d user=%s', conn.ip, onu_id, username)
+    # Verificación dura: el wan-info de la ONU debe reflejar la WAN PPPoE configurada.
+    verify_out = parts[len(core_cmds) + len(route_cmds)] if len(parts) > (len(core_cmds) + len(route_cmds)) else ''
+    if 'pppoe' not in verify_out.lower():
+        raise ProvisioningError(
+            f'La WAN PPPoE no quedó configurada en {conn.ip} (ont {slot}/{port}/{onu_id}). '
+            f'Verificación: {verify_out[-300:].strip()}'
+        )
+
+    logger.info('inject_wan_pppoe OK verificado | OLT=%s onu_id=%d user=%s', conn.ip, onu_id, username)
     return {'success': True, 'olt_ip': conn.ip, 'onu_id': onu_id}
 
 
