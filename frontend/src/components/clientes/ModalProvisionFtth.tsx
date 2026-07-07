@@ -413,9 +413,26 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
         qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
       }
     },
-    onError: (err: unknown) => {
+    onError: async (err: unknown) => {
+      // El aprovisionamiento es un proceso largo (~40s). Si el cliente pierde la
+      // respuesta (red/navegador) aunque el backend SÍ concluya, verificamos el estado
+      // REAL antes de mostrar error — evita el falso "Error al aprovisionar".
+      try {
+        const est = await oltNativoApi.ftthEstado(contrato.id);
+        if (est?.estado === 'activo') {
+          toast('ONU FTTH aprovisionada correctamente', {
+            type: 'success',
+            description: 'La ONU quedó activa (la respuesta se perdió en el cliente).',
+          });
+          qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+          qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
+          onClose();
+          return;
+        }
+      } catch { /* si la verificación falla, se muestra el error normal */ }
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast(msg ?? 'Error al aprovisionar la ONU FTTH', { type: 'error' });
+      qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
     },
   });
 
