@@ -646,6 +646,12 @@ async def ftth_provision_gpon(body: FtthGponRequest) -> FtthGponResponse:
                 body.description,
             )
         except ProvisioningError as exc:
+            # Loguear el error CLI real: sin esto el fallo de Fase 1 se devolvia en
+            # el body sin quedar en el log, imposibilitando el diagnostico.
+            logger.warning(
+                'ftth_provision_gpon FALLO | OLT=%s slot=%d port=%d onu_id=%d sn=%s: %s',
+                olt_ip, body.slot, body.port, body.onu_id, body.sn, exc,
+            )
             return FtthGponResponse(success=False, error=str(exc))
     return FtthGponResponse(success=True, sn=result['sn'], olt_ip=result['olt_ip'])
 
