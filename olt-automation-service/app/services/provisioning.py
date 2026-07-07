@@ -2399,8 +2399,11 @@ def provision_gpon_ftth(
             f'outbound traffic-table index {traffic_index_down or 0}'
         ),
         f'display service-port port 0/{slot}/{port} ont {onu_id}',
-        'save',
     ]
+    # NOTA: el `save` se ejecuta SOLO al final si la verificación pasa. Guardar en cada
+    # intento (incl. los que fallan por colisión/lock) dejaba a la OLT guardando en
+    # segundo plano ("takes several minutes"), y ese guardado en curso hacía que la
+    # siguiente operación de config diera "Currently operating conflicts" — una cascada.
 
     try:
         parts = _paramiko_huawei_run(
@@ -2414,7 +2417,7 @@ def provision_gpon_ftth(
         ) from exc
 
     # parts alineado con cmds: [0]config [1]interface [2]ont-add [3]quit
-    # [4]service-port [5]display-verificación [6]save
+    # [4]service-port [5]display-verificación
     raw_create = '\n'.join(parts[:5])
     verify_out = parts[5] if len(parts) > 5 else ''
 
@@ -2447,6 +2450,12 @@ def provision_gpon_ftth(
             f'(ont {slot}/{port}/{onu_id}). Salida creación: '
             f'{raw_create[-400:].strip()} || Verificación: {verify_out[-200:].strip()}'
         )
+
+    # Solo aquí (verificación OK) se persiste. Un único save por provisión exitosa.
+    try:
+        _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)
+    except Exception as exc:
+        logger.warning('provision_gpon_ftth: save falló (config en running) OLT=%s: %s', conn.ip, exc)
 
     logger.info(
         'provision_gpon_ftth OK verificado | OLT=%s sn=%s service_port=%d',
@@ -2484,12 +2493,15 @@ def rollback_gpon(
         pre: list[str] = ['config']
         if service_port_id is not None:
             pre += [f'undo service-port {service_port_id}']
+        # Sin `save` en el loop: guardar en cada reintento dejaba la OLT guardando en
+        # segundo plano y provocaba "Currently operating conflicts" en el siguiente
+        # comando. El `ont delete` es efectivo en running-config al instante; se persiste
+        # con un único save al confirmar el borrado.
         cmds = pre + [
             f'interface gpon 0/{slot}',
             f'ont delete {port} {onu_id}',
             verify_cmd,
             'quit',
-            'save',
         ]
         try:
             parts = _paramiko_huawei_run(
@@ -2503,6 +2515,10 @@ def rollback_gpon(
 
         verify_out = parts[len(pre) + 2] if len(parts) > (len(pre) + 2) else ''
         if 'does not exist' in verify_out.lower():
+            try:
+                _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)
+            except Exception:
+                pass  # el delete ya está en running-config
             logger.info('rollback_gpon OK verificado | OLT=%s onu_id=%d intento=%d', conn.ip, onu_id, attempt + 1)
             return {'success': True}
 
@@ -2659,7 +2675,8 @@ def inject_wan_pppoe(
     # puertos ETH devolverá error en los inexistentes — no debe abortar la inyección.
     route_cmds = [f'ont port route {port} {onu_id} eth {i} enable' for i in range(1, 5)]
     verify_cmd = f'display ont wan-info {port} {onu_id}'   # 2-arg: contexto interface
-    cmds = core_cmds + route_cmds + [verify_cmd, 'quit', 'save']
+    # Sin `save` en el batch: se persiste solo al final si la WAN quedó verificada.
+    cmds = core_cmds + route_cmds + [verify_cmd, 'quit']
 
     try:
         parts = _paramiko_huawei_run(
@@ -2690,6 +2707,11 @@ def inject_wan_pppoe(
             f'La WAN PPPoE no quedó configurada en {conn.ip} (ont {slot}/{port}/{onu_id}). '
             f'Verificación: {verify_out[-300:].strip()}'
         )
+
+    try:
+        _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)
+    except Exception as exc:
+        logger.warning('inject_wan_pppoe: save falló (config en running) OLT=%s: %s', conn.ip, exc)
 
     logger.info('inject_wan_pppoe OK verificado | OLT=%s onu_id=%d user=%s', conn.ip, onu_id, username)
     return {'success': True, 'olt_ip': conn.ip, 'onu_id': onu_id}
