@@ -2473,23 +2473,55 @@ def rollback_gpon(
     logger.info(
         'rollback_gpon: OLT=%s slot=%d port=%d onu_id=%d', conn.ip, slot, port, onu_id,
     )
-    cmds: list[str] = []
-    if service_port_id is not None:
-        cmds += ['config', f'undo service-port {service_port_id}']
-    cmds += [
-        'config',
-        f'interface gpon 0/{slot}',
-        f'ont delete {port} {onu_id}',
-        'quit',
-        'save',
-    ]
-    try:
-        _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
-        logger.info('rollback_gpon OK | OLT=%s onu_id=%d', conn.ip, onu_id)
-        return {'success': True}
-    except Exception as exc:
-        logger.error('rollback_gpon FALLO | OLT=%s: %s', conn.ip, exc)
-        return {'success': False, 'error': str(exc)}
+    # Verificación dura + reintento: NO basta con que SSH no lance excepción. El
+    # `ont delete` puede fallar en silencio (lock de otra sesión tipo SmartOLT, o el
+    # bug de espacios de VRP) y dejar el ONT en la OLT mientras el sistema cree que
+    # se borró → huérfano. Se verifica con `display ont info` que el ONT ya no exista,
+    # reintentando ante bloqueos transitorios.
+    verify_cmd = f'display ont info {port} {onu_id}'
+    last_err: str | None = None
+    for attempt in range(3):
+        pre: list[str] = ['config']
+        if service_port_id is not None:
+            pre += [f'undo service-port {service_port_id}']
+        cmds = pre + [
+            f'interface gpon 0/{slot}',
+            f'ont delete {port} {onu_id}',
+            verify_cmd,
+            'quit',
+            'save',
+        ]
+        try:
+            parts = _paramiko_huawei_run(
+                conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
+            )
+        except Exception as exc:
+            last_err = str(exc)
+            logger.error('rollback_gpon SSH FALLO | OLT=%s intento=%d: %s', conn.ip, attempt + 1, exc)
+            _time_read.sleep(3)
+            continue
+
+        verify_out = parts[len(pre) + 2] if len(parts) > (len(pre) + 2) else ''
+        if 'does not exist' in verify_out.lower():
+            logger.info('rollback_gpon OK verificado | OLT=%s onu_id=%d intento=%d', conn.ip, onu_id, attempt + 1)
+            return {'success': True}
+
+        raw = '\n'.join(parts)
+        last_err = next(
+            (l.strip() for l in raw.splitlines()
+             if any(k in l.lower() for k in ('failure', 'conflicts', 'error', 'parameter'))),
+            verify_out[-150:].strip() or 'el ONT sigue presente',
+        )
+        logger.warning(
+            'rollback_gpon NO verificado | OLT=%s onu_id=%d intento=%d: %s',
+            conn.ip, onu_id, attempt + 1, last_err,
+        )
+        _time_read.sleep(3)
+
+    return {
+        'success': False,
+        'error': f'El ONT {slot}/{port}/{onu_id} sigue en la OLT tras 3 intentos de ont delete: {last_err}',
+    }
 
 
 def poll_onu_online(
