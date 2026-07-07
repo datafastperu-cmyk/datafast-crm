@@ -2712,46 +2712,57 @@ def inject_wan_pppoe(
     # puertos ETH devolverá error en los inexistentes — no debe abortar la inyección.
     route_cmds = [f'ont port route {port} {onu_id} eth {i} enable' for i in range(1, 5)]
     verify_cmd = f'display ont wan-info {port} {onu_id}'   # 2-arg: contexto interface
-    # Sin `save` en el batch: se persiste solo al final si la WAN quedó verificada.
-    cmds = core_cmds + route_cmds + [verify_cmd, 'quit']
-
-    try:
-        parts = _paramiko_huawei_run(
-            conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
-        )
-    except ProvisioningError:
-        raise
-    except Exception as exc:
-        raise ProvisioningError(f'inject_wan_pppoe falló en {conn.ip}: {exc}') from exc
-
-    # Errores solo en los comandos CORE (config..policy-route) — no en las rutas eth.
-    core_out = '\n'.join(parts[:len(core_cmds)])
     error_patterns = [
         'Error:', 'Failure:', 'Parameter error', 'Too many parameters',
         'Unknown command', 'Incomplete command', 'conflicts with', 'does not exist',
     ]
-    for pat in error_patterns:
-        if pat.lower() in core_out.lower():
-            linea = next((l for l in core_out.splitlines() if pat.lower() in l.lower()), pat)
-            raise ProvisioningError(
-                f'CLI Huawei reportó error en WAN config {conn.ip}: {linea.strip()}'
+    n_verify = len(core_cmds) + len(route_cmds)
+
+    # Reintento (hasta 3×): el comando largo `ont ipconfig` falla de forma intermitente
+    # por el bug de espacios de VRP, o porque la ONU acaba de subir y el canal OMCI aún
+    # no está listo. Se reintenta el bloque completo con espera. Sin `save` salvo al
+    # verificar OK (evita el guardado en background que causa "conflicts").
+    last_detail = ''
+    for attempt in range(3):
+        cmds = core_cmds + route_cmds + [verify_cmd, 'quit']
+        try:
+            parts = _paramiko_huawei_run(
+                conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
             )
+        except Exception as exc:
+            last_detail = str(exc)
+            logger.warning('inject_wan_pppoe intento %d SSH falló | OLT=%s: %s', attempt + 1, conn.ip, exc)
+            _time_read.sleep(4)
+            continue
 
-    # Verificación dura: el wan-info de la ONU debe reflejar la WAN PPPoE configurada.
-    verify_out = parts[len(core_cmds) + len(route_cmds)] if len(parts) > (len(core_cmds) + len(route_cmds)) else ''
-    if 'pppoe' not in verify_out.lower():
-        raise ProvisioningError(
-            f'La WAN PPPoE no quedó configurada en {conn.ip} (ont {slot}/{port}/{onu_id}). '
-            f'Verificación: {verify_out[-300:].strip()}'
+        core_out = '\n'.join(parts[:len(core_cmds)])
+        err_line = next(
+            (l.strip() for pat in error_patterns for l in core_out.splitlines()
+             if pat.lower() in l.lower()),
+            None,
         )
+        verify_out = parts[n_verify] if len(parts) > n_verify else ''
+        # Verificación específica: PPPoE + la VLAN de gestión = la nuestra (distingue de
+        # una config WAN previa de la ONU con otra VLAN).
+        vlan_ok = re.search(rf'vlan\s*:\s*{vlan}\b', verify_out, re.IGNORECASE) is not None
+        if not err_line and 'pppoe' in verify_out.lower() and vlan_ok:
+            try:
+                _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)
+            except Exception as exc:
+                logger.warning('inject_wan_pppoe: save falló (config en running) OLT=%s: %s', conn.ip, exc)
+            logger.info(
+                'inject_wan_pppoe OK verificado | OLT=%s onu_id=%d user=%s intento=%d',
+                conn.ip, onu_id, username, attempt + 1,
+            )
+            return {'success': True, 'olt_ip': conn.ip, 'onu_id': onu_id}
 
-    try:
-        _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)
-    except Exception as exc:
-        logger.warning('inject_wan_pppoe: save falló (config en running) OLT=%s: %s', conn.ip, exc)
+        last_detail = err_line or f'wan-info sin PPPoE/VLAN {vlan}: {verify_out[-200:].strip()}'
+        logger.warning('inject_wan_pppoe intento %d no verificado | OLT=%s: %s', attempt + 1, conn.ip, last_detail)
+        _time_read.sleep(4)
 
-    logger.info('inject_wan_pppoe OK verificado | OLT=%s onu_id=%d user=%s', conn.ip, onu_id, username)
-    return {'success': True, 'olt_ip': conn.ip, 'onu_id': onu_id}
+    raise ProvisioningError(
+        f'La WAN PPPoE no se aplicó en {conn.ip} (ont {slot}/{port}/{onu_id}) tras 3 intentos: {last_detail}'
+    )
 
 
 # ── Cambio de velocidad en caliente ───────────────────────────

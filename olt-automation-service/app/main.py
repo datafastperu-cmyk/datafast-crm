@@ -748,6 +748,10 @@ async def ftth_inject_wan_pppoe(body: FtthWanPppoeRequest) -> FtthWanResponse:
                 body.vlan, body.username, body.password,
             )
         except ProvisioningError as exc:
+            logger.warning(
+                'ftth_inject_wan FALLO | OLT=%s slot=%d port=%d onu_id=%d: %s',
+                olt_ip, body.slot, body.port, body.onu_id, exc,
+            )
             return FtthWanResponse(success=False, error=str(exc))
     return FtthWanResponse(
         success = True,
