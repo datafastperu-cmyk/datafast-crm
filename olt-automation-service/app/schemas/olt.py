@@ -434,14 +434,19 @@ class FtthPollResponse(BaseModel):
 
 
 class FtthWanPppoeRequest(BaseModel):
-    """Fase 2: inyectar configuración PPPoE en la ONU vía OMCI desde la OLT."""
+    """Fase 2: inyectar la WAN en la ONU vía OMCI. Soporta pppoe/static/dhcp."""
     connection: OltConnectionSchema
     slot:       int = Field(..., ge=0, le=15)
     port:       int = Field(..., ge=0, le=15)
     onu_id:     int = Field(..., ge=1, le=128)
     vlan:       int = Field(..., ge=1, le=4094)
-    username:   str = Field(..., min_length=1, max_length=64)
-    password:   str = Field(..., min_length=1, max_length=64)
+    mode:       str = Field('pppoe', description='pppoe | static | dhcp')
+    username:   'str | None' = Field(None, max_length=64)
+    password:   'str | None' = Field(None, max_length=128)
+    ip_address: 'str | None' = Field(None, max_length=45)
+    mask:       'str | None' = Field(None, max_length=45)
+    gateway:    'str | None' = Field(None, max_length=45)
+    pri_dns:    'str | None' = Field(None, max_length=45)
 
 
 class FtthWanResponse(BaseModel):

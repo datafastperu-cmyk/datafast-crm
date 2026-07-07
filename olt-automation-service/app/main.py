@@ -744,8 +744,9 @@ async def ftth_inject_wan_pppoe(body: FtthWanPppoeRequest) -> FtthWanResponse:
             result = await asyncio.to_thread(
                 inject_wan_pppoe,
                 body.connection,
-                body.slot, body.port, body.onu_id,
-                body.vlan, body.username, body.password,
+                body.slot, body.port, body.onu_id, body.vlan,
+                body.username, body.password, body.mode,
+                body.ip_address, body.mask, body.gateway, body.pri_dns,
             )
         except ProvisioningError as exc:
             logger.warning(

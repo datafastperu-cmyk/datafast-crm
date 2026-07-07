@@ -645,13 +645,18 @@ export interface PythonFtthPollResponse {
 }
 
 export interface PythonFtthWanPppoeRequest {
-  connection: PythonConnectionPayload;
-  slot:       number;
-  port:       number;
-  onu_id:     number;
-  vlan:       number;
-  username:   string;
-  password:   string;
+  connection:  PythonConnectionPayload;
+  slot:        number;
+  port:        number;
+  onu_id:      number;
+  vlan:        number;
+  mode?:       'pppoe' | 'static' | 'dhcp';
+  username?:   string | null;
+  password?:   string | null;
+  ip_address?: string | null;
+  mask?:       string | null;
+  gateway?:    string | null;
+  pri_dns?:    string | null;
 }
 
 export interface PythonFtthWanResponse {

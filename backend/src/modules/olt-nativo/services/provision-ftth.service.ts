@@ -17,7 +17,7 @@ import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 import { OltOnuIdPoolService }           from './olt-onu-id-pool.service';
-import { PythonOnuStatusInfo }           from '../dto/olt-nativo-ops.dto';
+import { PythonOnuStatusInfo, PythonFtthWanPppoeRequest } from '../dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de entrada
@@ -133,17 +133,14 @@ export class ProvisionFtthService {
     // 1. Validar contrato
     const contrato = await this._fetchContrato(dto.contratoId, empresaId);
 
-    // 1b. Guarda temprana de credenciales PPPoE: sin ellas NO se toca la OLT ni la
-    // BD. Provisionar sin credenciales dejaría una ONU que nunca autenticaría contra
-    // el BRAS. Se valida antes de allocar pools o insertar el lock.
-    let pppoePass = contrato.password_pppoe;
-    try { pppoePass = decrypt(pppoePass); } catch { /* si no está cifrado, usar tal cual */ }
-    const pppoeUser = contrato.usuario_pppoe;
-    if (!pppoeUser || !pppoePass) {
-      throw new UnprocessableEntityException(
-        'El contrato no tiene credenciales PPPoE. Active el servicio (crea el secret en ' +
-        'el MikroTik) antes de aprovisionar la ONU.',
-      );
+    // 1b. Guarda temprana: en modo ROUTING se validan los datos del método de auth del
+    // contrato (pppoe→credenciales, amarre_ip_mac→IP+máscara, dhcp→nada) ANTES de tocar
+    // la OLT/BD. En bridge no se inyecta WAN → no aplica (el PPPoE lo hace el router).
+    if (dto.wanMode === 'routing') {
+      const chk = this._buildWanInject(contrato, {
+        slot: dto.slot, port: dto.port, onuId: dto.onuId ?? 1, vlan: dto.vlan,
+      });
+      if (chk.error) throw new UnprocessableEntityException(chk.error);
     }
 
     // 2a. Purgar cualquier registro soft-deleted (desaprovisionado) del contrato.
@@ -434,30 +431,30 @@ export class ProvisionFtthService {
       };
     }
 
-    // ── Fase 2: WAN PPPoE (modo routing) ──────────────────────
-    // Credenciales PPPoE ya validadas en la guarda temprana (paso 1b).
-    this.logger.log(`FTTH Fase2 WAN (routing) | contrato=${dto.contratoId}`);
+    // ── Fase 2: WAN (modo routing) según el método de auth del contrato ──
+    // pppoe → PPPoE · amarre_ip_mac → static · amarre_ip_mac_dhcp → dhcp.
+    this.logger.log(`FTTH Fase2 WAN (routing) | contrato=${dto.contratoId} auth=${contrato.tipo_auth ?? 'pppoe'}`);
+    const wanInject = this._buildWanInject(contrato, { slot: dto.slot, port: dto.port, onuId, vlan: dto.vlan });
+    if (wanInject.error) {
+      await this.ftthRepo.update(registroId, {
+        estado: FtthOnuEstado.ACTIVO, lockedAt: null, intentosWan: 1,
+        ultimoError: this._limpiar(wanInject.error),
+      });
+      return {
+        estado: FtthOnuEstado.ACTIVO, registroId,
+        mensaje: `ONU aprovisionada (GPON + service-port OK). WAN pendiente: ${wanInject.error}`,
+      };
+    }
 
-    const wanRes = await this.automation.ftthInjectWanPppoe({
-      connection: conn,
-      slot:       dto.slot,
-      port:       dto.port,
-      onu_id:     onuId,
-      vlan:       dto.vlan,
-      username:   pppoeUser,
-      password:   pppoePass,
-    });
+    const wanRes = await this.automation.ftthInjectWanPppoe({ connection: conn, ...wanInject.payload! });
 
     if (!wanRes.success) {
-      // GPON + service-port quedaron OK (verificados en Fase 1). La inyección WAN
-      // vía OMCI falló — típicamente por incompatibilidad de la ONU (marcas no-Huawei
-      // como ZTE F680). El aprovisionamiento se concluye EXITOSO (estado ACTIVO): la
-      // ONU tiene ruta de datos. "WAN manual" NO es un estado: es solo un mensaje
-      // informativo para el técnico instalador — la interfaz WAN/PPPoE se configura
-      // manualmente en la ONU. La nota queda en ultimoError para que se vea en el panel.
+      // GPON + service-port OK (verificados). La inyección WAN falló (incompatibilidad
+      // de la ONU o enlace). El aprovisionamiento concluye EXITOSO (ACTIVO); la WAN se
+      // configura manualmente. La nota queda en ultimoError para verla en el panel.
       const notaWanManual =
-        `WAN no inyectada (incompatibilidad de la ONU). Configúrela manualmente en la ` +
-        `ONU — PPPoE usuario: ${pppoeUser} · clave: ${pppoePass}`;
+        `WAN (${wanInject.payload!.mode}) no inyectada — configúrela manualmente en la ONU. ` +
+        `${this._limpiar(wanRes.error) ?? ''}`.trim();
       await this.ftthRepo.update(registroId, {
         estado:       FtthOnuEstado.ACTIVO,
         lockedAt:     null,
@@ -619,14 +616,25 @@ export class ProvisionFtthService {
 
   private async _fetchContrato(contratoId: string, empresaId: string) {
     const rows = await this.ds.query<{
-      estado: string;
-      tipo_servicio: string;
-      usuario_pppoe: string;
-      password_pppoe: string;
+      estado:         string;
+      tipo_servicio:  string;
+      tipo_auth:      string | null;
+      usuario_pppoe:  string | null;
+      password_pppoe: string | null;
+      ip_asignada:    string | null;
+      mask:           string | null;
+      gateway:        string | null;
+      dns_primario:   string | null;
     }[]>(
-      `SELECT estado, tipo_servicio, usuario_pppoe, password_pppoe
-       FROM contratos
-       WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+      `SELECT c.estado, c.tipo_servicio, c.tipo_auth,
+              c.usuario_pppoe, c.password_pppoe,
+              host(c.ip_asignada)       AS ip_asignada,
+              host(netmask(s.red_cidr)) AS mask,
+              host(s.gateway)           AS gateway,
+              host(s.dns_primario)      AS dns_primario
+       FROM   contratos c
+       LEFT JOIN segmentos_ipv4 s ON s.id = c.segmento_id
+       WHERE  c.id = $1 AND c.empresa_id = $2 AND c.deleted_at IS NULL`,
       [contratoId, empresaId],
     );
     if (!rows.length) {
@@ -643,12 +651,39 @@ export class ProvisionFtthService {
         `El contrato debe estar ACTIVO para aprovisionar (estado actual: "${c.estado}").`,
       );
     }
-    if (!c.usuario_pppoe) {
-      throw new BadRequestException(
-        `El contrato no tiene usuario PPPoE configurado. Configúralo antes de aprovisionar.`,
-      );
-    }
+    // La validación de credenciales/IP depende del método de auth → _buildWanInject.
     return c;
+  }
+
+  // Construye el payload de inyección WAN según el método de autenticación del contrato.
+  // Retorna { error } si faltan datos requeridos para ese método.
+  private _buildWanInject(
+    c:  { tipo_auth: string | null; usuario_pppoe: string | null; password_pppoe: string | null;
+          ip_asignada: string | null; mask: string | null; gateway: string | null; dns_primario: string | null },
+    r:  { slot: number; port: number; onuId: number; vlan: number },
+  ): { payload?: Omit<PythonFtthWanPppoeRequest, 'connection'>; error?: string } {
+    const auth = (c.tipo_auth ?? 'pppoe').toLowerCase();
+    const base = { slot: r.slot, port: r.port, onu_id: r.onuId, vlan: r.vlan };
+
+    if (auth === 'pppoe') {
+      let pass = c.password_pppoe ?? '';
+      try { pass = decrypt(pass); } catch { /* no cifrado */ }
+      if (!c.usuario_pppoe || !pass) {
+        return { error: 'El contrato PPPoE no tiene credenciales. Active el servicio (secret en el MikroTik).' };
+      }
+      return { payload: { ...base, mode: 'pppoe', username: c.usuario_pppoe, password: pass } };
+    }
+    if (auth === 'amarre_ip_mac') {
+      if (!c.ip_asignada || !c.mask) {
+        return { error: 'Amarre IP/MAC sin IP o máscara. Asigna una IP de un segmento con CIDR válido.' };
+      }
+      return { payload: { ...base, mode: 'static', ip_address: c.ip_asignada, mask: c.mask,
+                          gateway: c.gateway ?? undefined, pri_dns: c.dns_primario ?? undefined } };
+    }
+    if (auth === 'amarre_ip_mac_dhcp') {
+      return { payload: { ...base, mode: 'dhcp' } };
+    }
+    return { error: `Método de autenticación "${auth}" no soportado para inyección WAN.` };
   }
 
   private async _fetchOlt(oltId: string, empresaId: string): Promise<OltDispositivo> {
@@ -805,26 +840,20 @@ export class ProvisionFtthService {
       };
     }
 
-    const contrato = await this._fetchContrato(contratoId, empresaId);
-    let pppoePass = contrato.password_pppoe;
-    try { pppoePass = decrypt(pppoePass); } catch { /* no cifrado */ }
-    if (!contrato.usuario_pppoe || !pppoePass) {
-      return { actualizado: false, mensaje: 'El contrato no tiene credenciales PPPoE.' };
+    const contrato  = await this._fetchContrato(contratoId, empresaId);
+    const wanInject = this._buildWanInject(contrato, registro);
+    if (wanInject.error) {
+      return { actualizado: false, mensaje: wanInject.error };
     }
 
     const olt  = await this._fetchOlt(registro.oltId, empresaId);
     const conn = this._buildConn(olt, this._decryptOltPassword(olt));
 
-    this.logger.log(`FTTH actualizarWan | contrato=${contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId}`);
-    const wanRes = await this.automation.ftthInjectWanPppoe({
-      connection: conn,
-      slot:       registro.slot,
-      port:       registro.port,
-      onu_id:     registro.onuId,
-      vlan:       registro.vlan,
-      username:   contrato.usuario_pppoe,
-      password:   pppoePass,
-    });
+    this.logger.log(
+      `FTTH actualizarWan | contrato=${contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId} ` +
+      `auth=${contrato.tipo_auth ?? 'pppoe'} mode=${wanInject.payload!.mode}`,
+    );
+    const wanRes = await this.automation.ftthInjectWanPppoe({ connection: conn, ...wanInject.payload! });
 
     if (!wanRes.success) {
       await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(wanRes.error) });
@@ -836,8 +865,8 @@ export class ProvisionFtthService {
     }
 
     await this.ftthRepo.update(registro.id, { ultimoError: null });
-    this.logger.log(`FTTH actualizarWan OK | contrato=${contratoId} user=${contrato.usuario_pppoe}`);
-    return { actualizado: true, mensaje: 'WAN actualizada en la ONU con las credenciales actuales.' };
+    this.logger.log(`FTTH actualizarWan OK | contrato=${contratoId} mode=${wanInject.payload!.mode}`);
+    return { actualizado: true, mensaje: `WAN actualizada en la ONU (${wanInject.payload!.mode}) con la config actual del contrato.` };
   }
 
   async suspenderPorContrato(

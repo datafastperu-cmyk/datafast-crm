@@ -2660,50 +2660,66 @@ _PPPOE_USER_RE = re.compile(r'^[\w\-@\.]{1,64}$')
 # y los caracteres de control (romperían el comando / permitirían inyección). Se
 # permite el resto de imprimibles ASCII (las claves PPPoE suelen tener símbolos).
 _PPPOE_PASS_RE = re.compile(r'^[\x20-\x21\x23-\x7e]{1,128}$')
+_IPV4_RE = re.compile(r'^(\d{1,3}\.){3}\d{1,3}$')
 
 
 def inject_wan_pppoe(
-    conn:     OltConnectionSchema,
-    slot:     int,
-    port:     int,
-    onu_id:   int,
-    vlan:     int,
-    username: str,
-    password: str,
+    conn:       OltConnectionSchema,
+    slot:       int,
+    port:       int,
+    onu_id:     int,
+    vlan:       int,
+    username:   'str | None' = None,
+    password:   'str | None' = None,
+    mode:       str = 'pppoe',
+    ip_address: 'str | None' = None,
+    mask:       'str | None' = None,
+    gateway:    'str | None' = None,
+    pri_dns:    'str | None' = None,
 ) -> dict[str, Any]:
     """
-    Fase 2 (modo routing): inyecta la WAN PPPoE en la ONU vía OMCI desde el MA5800.
+    Fase 2 (modo routing): inyecta la WAN en la ONU vía OMCI desde el MA5800.
 
-    Sintaxis verificada contra la config que genera SmartOLT en este firmware
-    (MA5800 V100R018) — el modelo es por `ont ipconfig` (donde van las credenciales
-    PPPoE) + `ont internet-config` + `ont wan-config ... profile-id 0` +
-    `ont policy-route-config`. El antiguo `ont wan-config add ... username/password`
-    NO existe en este firmware.
-
-    Requiere que la ONU esté online (ejecutar poll_onu_online primero).
-    Síncrono — llamar desde asyncio.to_thread().
+    Soporta los 3 métodos de autenticación del abonado (parámetro `mode`), mapeados a
+    `ont ipconfig` (sintaxis verificada en MA5800 V100R018):
+      - 'pppoe'  → ... pppoe vlan <v> priority 0 user-account username "<u>" password "<p>"
+      - 'static' → ... static ip-address <ip> mask <m> [gateway <gw>] [pri-dns <d>] vlan <v>
+      - 'dhcp'   → ... dhcp vlan <v>
+    El resto (internet-config + wan-config profile-id 0 + policy-route + rutas eth) es
+    común. Requiere ONU online. Síncrono — llamar desde asyncio.to_thread().
     """
-    if not _PPPOE_USER_RE.match(username):
-        raise ProvisioningError(
-            f'username PPPoE contiene caracteres no permitidos: {username!r}. '
-            'Solo se aceptan: letras, dígitos, -, @, .'
+    mode = (mode or 'pppoe').lower()
+    if mode == 'pppoe':
+        if not username or not _PPPOE_USER_RE.match(username):
+            raise ProvisioningError(f'username PPPoE inválido: {username!r}.')
+        if not password or not _PPPOE_PASS_RE.match(password):
+            raise ProvisioningError('password PPPoE inválida (comillas dobles/control o >128).')
+        ipcfg = (
+            f'ont ipconfig {port} {onu_id} ip-index 1 pppoe vlan {vlan} priority 0 '
+            f'user-account username "{username}" password "{password}"'
         )
-    if not _PPPOE_PASS_RE.match(password):
-        raise ProvisioningError(
-            'password PPPoE inválida: contiene comillas dobles o caracteres de control, '
-            'o excede 128 caracteres.'
+    elif mode == 'static':
+        if not (_IPV4_RE.match(ip_address or '') and _IPV4_RE.match(mask or '')):
+            raise ProvisioningError('modo static requiere ip-address y mask IPv4 válidos.')
+        gw_part  = f' gateway {gateway}' if gateway and _IPV4_RE.match(gateway) else ''
+        dns_part = f' pri-dns {pri_dns}' if pri_dns and _IPV4_RE.match(pri_dns) else ''
+        ipcfg = (
+            f'ont ipconfig {port} {onu_id} ip-index 1 static '
+            f'ip-address {ip_address} mask {mask}{gw_part}{dns_part} vlan {vlan}'
         )
+    elif mode == 'dhcp':
+        ipcfg = f'ont ipconfig {port} {onu_id} ip-index 1 dhcp vlan {vlan}'
+    else:
+        raise ProvisioningError(f'modo WAN no soportado: {mode!r} (pppoe|static|dhcp).')
+
     logger.info(
-        'inject_wan_pppoe: OLT=%s slot=%d port=%d onu_id=%d vlan=%d user=%s',
-        conn.ip, slot, port, onu_id, vlan, username,
+        'inject_wan: OLT=%s slot=%d port=%d onu_id=%d vlan=%d mode=%s',
+        conn.ip, slot, port, onu_id, vlan, mode,
     )
     core_cmds = [
         'config',
         f'interface gpon 0/{slot}',
-        (
-            f'ont ipconfig {port} {onu_id} ip-index 1 pppoe vlan {vlan} priority 0 '
-            f'user-account username "{username}" password "{password}"'
-        ),
+        ipcfg,
         f'ont internet-config {port} {onu_id} ip-index 1',
         f'ont wan-config {port} {onu_id} ip-index 1 profile-id 0',
         f'ont policy-route-config {port} {onu_id} profile-id 0',
@@ -2745,23 +2761,25 @@ def inject_wan_pppoe(
         # Verificación específica: PPPoE + la VLAN de gestión = la nuestra (distingue de
         # una config WAN previa de la ONU con otra VLAN).
         vlan_ok = re.search(rf'vlan\s*:\s*{vlan}\b', verify_out, re.IGNORECASE) is not None
-        if not err_line and 'pppoe' in verify_out.lower() and vlan_ok:
+        # El wan-info muestra "IPv4 access type: PPPoE/DHCP/Static" — verificamos el modo.
+        mode_ok = mode in verify_out.lower()
+        if not err_line and mode_ok and vlan_ok:
             try:
                 _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)
             except Exception as exc:
-                logger.warning('inject_wan_pppoe: save falló (config en running) OLT=%s: %s', conn.ip, exc)
+                logger.warning('inject_wan: save falló (config en running) OLT=%s: %s', conn.ip, exc)
             logger.info(
-                'inject_wan_pppoe OK verificado | OLT=%s onu_id=%d user=%s intento=%d',
-                conn.ip, onu_id, username, attempt + 1,
+                'inject_wan OK verificado | OLT=%s onu_id=%d mode=%s intento=%d',
+                conn.ip, onu_id, mode, attempt + 1,
             )
             return {'success': True, 'olt_ip': conn.ip, 'onu_id': onu_id}
 
-        last_detail = err_line or f'wan-info sin PPPoE/VLAN {vlan}: {verify_out[-200:].strip()}'
-        logger.warning('inject_wan_pppoe intento %d no verificado | OLT=%s: %s', attempt + 1, conn.ip, last_detail)
+        last_detail = err_line or f'wan-info sin {mode}/VLAN {vlan}: {verify_out[-200:].strip()}'
+        logger.warning('inject_wan intento %d no verificado | OLT=%s: %s', attempt + 1, conn.ip, last_detail)
         _time_read.sleep(4)
 
     raise ProvisioningError(
-        f'La WAN PPPoE no se aplicó en {conn.ip} (ont {slot}/{port}/{onu_id}) tras 3 intentos: {last_detail}'
+        f'La WAN ({mode}) no se aplicó en {conn.ip} (ont {slot}/{port}/{onu_id}) tras 3 intentos: {last_detail}'
     )
 
 
