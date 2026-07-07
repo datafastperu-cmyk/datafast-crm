@@ -373,6 +373,12 @@ export class ContratosService {
         .catch((e: any) => this.logger.warn(`actualizarServicio antena remove: ${e?.message}`));
       await withTimeout(this.registrarEnAccessListAntena(id), 15000, 'antena-register')
         .catch((e: any) => this.logger.warn(`actualizarServicio antena register: ${e?.message}`));
+      // FTTH: si cambiaron las credenciales PPPoE, re-inyectar la WAN en la ONU (modo
+      // routing). Resiliente vía outbox; omite si es bridge o el contrato no tiene ONU.
+      if (dto.usuarioPppoe || dto.passwordPppoePlain) {
+        await this.outboxRed.encolarActualizarWanOnu(id, user.empresaId)
+          .catch((e: any) => this.logger.warn(`actualizarServicio WAN ONU: ${e?.message}`));
+      }
       this.logger.log(`actualizarServicio background → re-provisión completada contrato ${id}`);
     });
 

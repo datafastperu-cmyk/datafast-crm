@@ -779,6 +779,67 @@ export class ProvisionFtthService {
     return { cancelado: true, mensaje: 'Aprovisionamiento cancelado — no quedó nada registrado.' };
   }
 
+  // ── actualizarWan ─────────────────────────────────────────────────
+  // Re-inyecta la WAN PPPoE en la ONU con las credenciales ACTUALES del contrato.
+  // Idempotente (`ont ipconfig ip-index 1` modifica la config existente). Se dispara
+  // automáticamente al cambiar las credenciales PPPoE del contrato, y también manual.
+  // Solo aplica a ONUs en modo ROUTING (en bridge la WAN vive en el router del cliente).
+  async actualizarWan(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ actualizado: boolean; mensaje: string; error?: string; skipped?: boolean }> {
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+    if (!registro) {
+      return { actualizado: false, skipped: true, mensaje: 'Contrato sin ONU FTTH — actualizar WAN omitido.' };
+    }
+    if (registro.wanMode !== 'routing') {
+      return {
+        actualizado: false, skipped: true,
+        mensaje: 'ONU en modo bridge — la WAN/PPPoE la maneja el router del cliente (BRAS), no la ONU.',
+      };
+    }
+    if (registro.estado !== FtthOnuEstado.ACTIVO) {
+      return {
+        actualizado: false, skipped: true,
+        mensaje: `Estado "${registro.estado}": la WAN se actualiza solo en ONUs activas.`,
+      };
+    }
+
+    const contrato = await this._fetchContrato(contratoId, empresaId);
+    let pppoePass = contrato.password_pppoe;
+    try { pppoePass = decrypt(pppoePass); } catch { /* no cifrado */ }
+    if (!contrato.usuario_pppoe || !pppoePass) {
+      return { actualizado: false, mensaje: 'El contrato no tiene credenciales PPPoE.' };
+    }
+
+    const olt  = await this._fetchOlt(registro.oltId, empresaId);
+    const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+
+    this.logger.log(`FTTH actualizarWan | contrato=${contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId}`);
+    const wanRes = await this.automation.ftthInjectWanPppoe({
+      connection: conn,
+      slot:       registro.slot,
+      port:       registro.port,
+      onu_id:     registro.onuId,
+      vlan:       registro.vlan,
+      username:   contrato.usuario_pppoe,
+      password:   pppoePass,
+    });
+
+    if (!wanRes.success) {
+      await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(wanRes.error) });
+      return {
+        actualizado: false,
+        mensaje: 'No se pudo actualizar la WAN en la ONU. Reintenta o revisa el enlace.',
+        error: wanRes.error,
+      };
+    }
+
+    await this.ftthRepo.update(registro.id, { ultimoError: null });
+    this.logger.log(`FTTH actualizarWan OK | contrato=${contratoId} user=${contrato.usuario_pppoe}`);
+    return { actualizado: true, mensaje: 'WAN actualizada en la ONU con las credenciales actuales.' };
+  }
+
   async suspenderPorContrato(
     contratoId: string,
     empresaId:  string,

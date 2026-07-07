@@ -21,7 +21,7 @@ export type AccionRed =
   | 'APLICAR_PRORROGA' | 'REVOCAR_PRORROGA'
   // Ciclo de vida ONU (FTTH) — comandos independientes del corte MikroTik,
   // cada uno con su propio reintento resiliente.
-  | 'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU';
+  | 'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU' | 'ACTUALIZAR_WAN_ONU';
 
 export interface PayloadSuspenderRed {
   ipAsignada:  string;
@@ -141,7 +141,7 @@ export class OutboxRedService {
   // Encola una acción sobre la ONU SOLO si el contrato tiene registro FTTH.
   // router_id = 'none' (la OLT se resuelve en ejecución desde el registro).
   private async encolarOnu(
-    accion:     'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU',
+    accion:     'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU' | 'ACTUALIZAR_WAN_ONU',
     contratoId: string,
     empresaId:  string,
   ): Promise<void> {
@@ -174,6 +174,13 @@ export class OutboxRedService {
   // Baja definitiva: se invoca desde contratos.service (no hay evento de baja).
   async encolarDesaprovisionarOnu(contratoId: string, empresaId: string): Promise<void> {
     await this.encolarOnu('DESAPROVISIONAR_ONU', contratoId, empresaId);
+  }
+
+  // Cambio de credenciales PPPoE del contrato → re-inyectar la WAN en la ONU (routing).
+  // Se invoca desde contratos.service.update. Resiliente: reintenta hasta que la OLT
+  // esté disponible; omite si el contrato no tiene ONU FTTH o está en modo bridge.
+  async encolarActualizarWanOnu(contratoId: string, empresaId: string): Promise<void> {
+    await this.encolarOnu('ACTUALIZAR_WAN_ONU', contratoId, empresaId);
   }
 
   async getStatus(): Promise<{
@@ -253,7 +260,8 @@ export class OutboxRedService {
   // ────────────────────────────────────────────────────────────
   private async ejecutarComando(cmd: any): Promise<void> {
     // Ciclo de vida ONU (FTTH): no usa router MikroTik, se resuelve por contrato.
-    if (cmd.accion === 'SUSPENDER_ONU' || cmd.accion === 'REACTIVAR_ONU' || cmd.accion === 'DESAPROVISIONAR_ONU') {
+    if (cmd.accion === 'SUSPENDER_ONU' || cmd.accion === 'REACTIVAR_ONU' ||
+        cmd.accion === 'DESAPROVISIONAR_ONU' || cmd.accion === 'ACTUALIZAR_WAN_ONU') {
       await this.ejecutarComandoOnu(cmd);
       return;
     }
@@ -452,6 +460,10 @@ export class OutboxRedService {
         res = await this.ftthSvc.suspenderPorContrato(cmd.contrato_id, empresaId);
       } else if (cmd.accion === 'REACTIVAR_ONU') {
         res = await this.ftthSvc.rehabilitarPorContrato(cmd.contrato_id, empresaId);
+      } else if (cmd.accion === 'ACTUALIZAR_WAN_ONU') {
+        const r = await this.ftthSvc.actualizarWan(cmd.contrato_id, empresaId);
+        // 'skipped' (bridge / sin ONU) cuenta como exitoso: no hay nada que aplicar.
+        res = { exitoso: r.actualizado || !!r.skipped, mensaje: r.mensaje, error: r.error, skipped: r.skipped };
       } else {
         res = await this.ftthSvc.desaprovisionarPorContrato(cmd.contrato_id, empresaId);
       }

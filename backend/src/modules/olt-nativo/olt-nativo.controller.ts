@@ -727,6 +727,17 @@ export class OltNativoController {
     return this.ftth.desaprovisionarPorContrato(contratoId, user.empresaId);
   }
 
+  @Post('ftth/actualizar-wan/:contratoId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Actualizar la WAN PPPoE de la ONU con las credenciales actuales del contrato' })
+  @ApiParam({ name: 'contratoId' })
+  async actualizarWanFtth(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ actualizado: boolean; mensaje: string; error?: string; skipped?: boolean }> {
+    return this.ftth.actualizarWan(contratoId, user.empresaId);
+  }
+
   @Post('ftth/cancelar/:contratoId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancelar aprovisionamiento FTTH en curso — limpia todo (OLT + BD)' })
