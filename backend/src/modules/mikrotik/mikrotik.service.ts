@@ -1027,6 +1027,10 @@ export class MikrotikService implements OnModuleInit {
         identityRouteros: identity,
       });
 
+      // Resetear contador de fallos del cron: la prueba manual confirmó conectividad,
+      // el router debe recibir la gracia de 2 fallos consecutivos de nuevo.
+      this._pollFailCount.delete(routerId);
+
       this.inyectarReglasMorososAsync(router);
 
       return { exitoso: true, mensaje: `Conectado a "${identity}" en ${latencia}ms`, latenciaMs: latencia };
