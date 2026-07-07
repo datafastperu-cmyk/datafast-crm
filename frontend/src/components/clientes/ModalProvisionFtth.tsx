@@ -420,6 +420,22 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   });
 
 
+  // Cierre del wizard: si el aprovisionamiento NO concluyó, se limpia todo (OLT + BD)
+  // vía ftthCancelar (el backend ignora ONUs ya activas/suspendidas). Fire-and-forget.
+  const handleClose = () => {
+    const est = estadoExistente?.estado;
+    const enProceso = !!est && est !== 'activo' && est !== 'suspendido';
+    if (enProceso || provIsPending) {
+      oltNativoApi.ftthCancelar(contrato.id)
+        .then(() => {
+          qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+          qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
+        })
+        .catch(() => { /* best-effort — el recovery/reconciliador es la red de seguridad */ });
+    }
+    onClose();
+  };
+
   const yaActivo = estadoExistente?.estado === 'activo';
 
   return (
@@ -439,7 +455,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                 <p className="text-[11px] text-muted-foreground">Contrato {contrato.numeroContrato}</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={handleClose} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -745,7 +761,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
           {/* Footer */}
           {!yaActivo && (
             <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
-              <button type="button" onClick={onClose}
+              <button type="button" onClick={handleClose}
                 className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors text-foreground/80">
                 Cancelar
               </button>

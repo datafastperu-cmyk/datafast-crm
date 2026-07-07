@@ -727,6 +727,17 @@ export class OltNativoController {
     return this.ftth.desaprovisionarPorContrato(contratoId, user.empresaId);
   }
 
+  @Post('ftth/cancelar/:contratoId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancelar aprovisionamiento FTTH en curso — limpia todo (OLT + BD)' })
+  @ApiParam({ name: 'contratoId' })
+  async cancelarFtth(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ cancelado: boolean; mensaje: string }> {
+    return this.ftth.cancelarFtth(contratoId, user.empresaId);
+  }
+
   @Post(':oltId/ftth/cambiar-velocidad')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cambiar velocidad ONU en caliente — actualiza traffic-table del service-port' })

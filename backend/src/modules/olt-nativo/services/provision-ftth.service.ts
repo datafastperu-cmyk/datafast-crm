@@ -736,6 +736,49 @@ export class ProvisionFtthService {
     return this.desaprovisionar(registro.oltId, empresaId, { contratoId });
   }
 
+  // ── cancelarFtth ──────────────────────────────────────────────────
+  // Cierre/cancelación del wizard de aprovisionamiento: si el proceso NO concluyó,
+  // se borra TODO (rollback en la OLT + liberar pools + borrar registro), dejando el
+  // contrato como si nunca se hubiera iniciado. Una ONU ya ACTIVA/SUSPENDIDA no se
+  // toca (esa se retira con Desaprovisionar). Idempotente.
+  async cancelarFtth(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ cancelado: boolean; mensaje: string }> {
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+    if (!registro) {
+      return { cancelado: false, mensaje: 'No hay aprovisionamiento por cancelar.' };
+    }
+    if (registro.estado === FtthOnuEstado.ACTIVO || registro.estado === FtthOnuEstado.SUSPENDIDO) {
+      return {
+        cancelado: false,
+        mensaje: 'La ONU ya está aprovisionada; para retirarla usa Desaprovisionar.',
+      };
+    }
+
+    // Rollback best-effort en la OLT (borra ont add + service-port si alcanzaron a crearse).
+    const olt = await this._fetchOlt(registro.oltId, empresaId).catch(() => null);
+    if (olt) {
+      const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+      await this.automation.ftthRollbackGpon({
+        connection:      conn,
+        slot:            registro.slot,
+        port:            registro.port,
+        onu_id:          registro.onuId,
+        service_port_id: registro.servicePortId,
+      }).catch((err: any) => {
+        this.logger.error(`FTTH cancelar rollback falló | contrato=${contratoId}: ${err.message}`);
+      });
+    }
+
+    await this.poolService.liberar(registro.oltId, contratoId).catch(() => { /* best-effort */ });
+    await this.onuIdPool.liberar(registro.oltId, contratoId).catch(() => { /* best-effort */ });
+    await this.ftthRepo.delete(registro.id);
+
+    this.logger.warn(`FTTH cancelado | contrato=${contratoId} estado_previo=${registro.estado}`);
+    return { cancelado: true, mensaje: 'Aprovisionamiento cancelado — no quedó nada registrado.' };
+  }
+
   async suspenderPorContrato(
     contratoId: string,
     empresaId:  string,
