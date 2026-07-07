@@ -208,6 +208,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     setSlot(String(r.slot));
     setPort(String(r.port));
     setVlan(String(r.vlan));
+    if (r.servicePortId != null) setServicePortId(String(r.servicePortId));
     if (r.lineprofileId) setLineprofileId(String(r.lineprofileId));
     if (r.srvprofileId)  setSrvprofileId(String(r.srvprofileId));
     if (r.wanMode)       setWanMode(r.wanMode);
