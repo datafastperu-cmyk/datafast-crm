@@ -124,7 +124,7 @@ export class OltAutomationClient {
     this.logger.log(
       `→ Python batch-status | OLT=${payload.connection.ip} | ONUs=${payload.onus.length}`,
     );
-    const res = await this.post<PythonBatchStatusResponse>('/api/v1/olt/batch-status', payload);
+    const res = await this.post<PythonBatchStatusResponse>('/api/v1/olt/batch-status', payload, 90_000);
     this.logger.log(
       `← Python batch-status | success=${res.success} | total=${res.total}`,
     );

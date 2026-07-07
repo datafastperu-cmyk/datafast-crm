@@ -121,11 +121,14 @@ export class OltMonitoreoService {
       return;
     }
 
+    // Normalizar IP: quitar notación CIDR si la tiene ("10.x.x.x/24" → "10.x.x.x")
+    const ipOlt = olt.ipGestion.includes('/') ? olt.ipGestion.split('/')[0] : olt.ipGestion;
+
     // OLT sin ONUs aprovisionadas → test básico de conectividad para reflejar estado real
     if (!onus.length) {
       try {
         const test = await this.automation.testConexionSsh({
-          connection: { ip: olt.ipGestion, port: olt.puerto ?? 22, username: olt.usuarioAnclado, password, brand: olt.marca },
+          connection: { ip: ipOlt, port: olt.puerto ?? 22, username: olt.usuarioAnclado, password, brand: olt.marca },
         });
         await this.oltRepo.update(olt.id, {
           estado:     (test.success ? EstadoOlt.ONLINE : EstadoOlt.OFFLINE) as any,
@@ -151,7 +154,7 @@ export class OltMonitoreoService {
 
     const req: PythonBatchStatusRequest = {
       connection: {
-        ip:       olt.ipGestion,
+        ip:       ipOlt,
         port:     olt.puerto,
         username: olt.usuarioAnclado,
         password,
