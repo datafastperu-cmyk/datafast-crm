@@ -146,7 +146,16 @@ export class ProvisionFtthService {
       );
     }
 
-    // 2. Validar registro existente (re-intentable solo si fallido o inexistente)
+    // 2a. Purgar cualquier registro soft-deleted (desaprovisionado) del contrato.
+    // `desaprovisionar` usa softDelete → deja la fila con deleted_at set. findOne la
+    // ignora, pero la constraint unique(contrato_id) la sigue contando y haría chocar
+    // el INSERT del re-aprovisionamiento ("otro proceso ya está aprovisionando").
+    await this.ds.query(
+      `DELETE FROM ftth_onu_registro WHERE contrato_id = $1 AND deleted_at IS NOT NULL`,
+      [dto.contratoId],
+    );
+
+    // 2b. Validar registro existente vigente (re-intentable solo si fallido o inexistente)
     const registroExistente = await this.ftthRepo.findOne({
       where: { contratoId: dto.contratoId },
     });
