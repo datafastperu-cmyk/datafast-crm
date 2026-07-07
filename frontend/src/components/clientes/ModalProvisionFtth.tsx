@@ -436,19 +436,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     },
   });
 
-  // Actualizar WAN (re-inyectar credenciales PPPoE actuales en la ONU — modo routing)
-  const { mutate: actualizarWan, isPending: actualizandoWan } = useMutation({
-    mutationFn: () => oltNativoApi.ftthActualizarWan(contrato.id),
-    onSuccess: (res) => {
-      toast(res.mensaje, { type: res.actualizado ? 'success' : 'warning' });
-      qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast(msg ?? 'Error al actualizar la WAN', { type: 'error' });
-    },
-  });
-
   // Reiniciar (reset) ONU
   const { mutate: resetOnu, isPending: reiniciandoOnu } = useMutation({
     mutationFn: () => oltNativoApi.ftthResetOnu(
@@ -531,16 +518,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   >
                     {reiniciandoOnu ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                     {reiniciandoOnu ? 'Reiniciando ONU…' : 'Reiniciar ONU (reset)'}
-                  </button>
-                )}
-                {estadoExistente.estado === 'activo' && estadoExistente.wanMode === 'routing' && (
-                  <button
-                    onClick={() => actualizarWan()}
-                    disabled={actualizandoWan}
-                    className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-cyan-700/50 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 text-xs font-semibold hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
-                  >
-                    {actualizandoWan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                    {actualizandoWan ? 'Actualizando WAN…' : 'Actualizar WAN (re-inyectar credenciales PPPoE)'}
                   </button>
                 )}
                 {yaActivo && (

@@ -620,6 +620,7 @@ export class ProvisionFtthService {
       estado:         string;
       tipo_servicio:  string;
       tipo_auth:      string | null;
+      vlan_id:        number | null;
       usuario_pppoe:  string | null;
       password_pppoe: string | null;
       ip_asignada:    string | null;
@@ -627,7 +628,7 @@ export class ProvisionFtthService {
       gateway:        string | null;
       dns_primario:   string | null;
     }[]>(
-      `SELECT c.estado, c.tipo_servicio, c.tipo_auth,
+      `SELECT c.estado, c.tipo_servicio, c.tipo_auth, c.vlan_id,
               c.usuario_pppoe, c.password_pppoe,
               host(c.ip_asignada)       AS ip_asignada,
               host(netmask(s.red_cidr)) AS mask,
@@ -842,6 +843,19 @@ export class ProvisionFtthService {
     }
 
     const contrato  = await this._fetchContrato(contratoId, empresaId);
+
+    // Si la VLAN del servicio cambió (p.ej. cambio de método → otro segmento con otra
+    // VLAN), re-inyectar la WAN sola no basta: el service-port de la OLT sigue en la
+    // VLAN vieja. Requiere Re-Aprovisionar (rehace service-port + WAN). Se evita
+    // inyectar con la VLAN incorrecta.
+    if (contrato.vlan_id != null && contrato.vlan_id !== registro.vlan) {
+      return {
+        actualizado: false, skipped: true,
+        mensaje: `La VLAN del servicio cambió (${registro.vlan} → ${contrato.vlan_id}). ` +
+                 `Usa "Re-Aprovisionar" para actualizar el service-port y la WAN.`,
+      };
+    }
+
     const wanInject = this._buildWanInject(contrato, registro);
     if (wanInject.error) {
       return { actualizado: false, mensaje: wanInject.error };
