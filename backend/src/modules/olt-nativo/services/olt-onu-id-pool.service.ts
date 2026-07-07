@@ -139,6 +139,30 @@ export class OltOnuIdPoolService {
     this.logger.log(`ONU ID release | olt=${oltId} contrato=${contratoId}`);
   }
 
+  // ── marcarColision ────────────────────────────────────────────────
+  // El ONU-ID ya existe en la OLT (colisión): típicamente una ONU creada por
+  // SmartOLT/AdminOLT fuera de nuestra BD, que el pool creía libre. Se marca ocupado
+  // sin contrato para que `allocar` nunca lo devuelva. Se usa en el auto-sanado.
+  async marcarColision(oltId: string, slot: number, port: number, onuId: number): Promise<void> {
+    await this.ds.query(
+      `UPDATE olt_onu_id_pool
+       SET estado      = 'ocupado',
+           contrato_id = NULL,
+           locked_at   = NOW(),
+           updated_at  = NOW(),
+           version     = version + 1
+       WHERE olt_id     = $1
+         AND slot       = $2
+         AND port       = $3
+         AND onu_id     = $4
+         AND deleted_at IS NULL`,
+      [oltId, slot, port, onuId],
+    );
+    this.logger.warn(
+      `ONU ID colisión | olt=${oltId} ${slot}/${port} onuId=${onuId} ya existe en la OLT — marcado no-usable`,
+    );
+  }
+
   // ── obtenerEstado ─────────────────────────────────────────────────
   async obtenerEstado(
     oltId:     string,

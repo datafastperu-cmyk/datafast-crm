@@ -224,8 +224,10 @@ export class ProvisionFtthService {
     }
     const usedSvcPool = poolSvcPortId != null;
 
-    // 5. Resolver ONU ID: pool automático (lazy init) o manual
-    const onuId = await this.onuIdPool.allocar(
+    // 5. Resolver ONU ID: pool automático (lazy init) o manual.
+    // `let` porque el auto-sanado de colisión de ONT-ID puede reasignarlo (p.ej. si
+    // el ID ya existe en la OLT por una ONU creada por SmartOLT, fuera de nuestra BD).
+    let onuId = await this.onuIdPool.allocar(
       oltId, empresaId, dto.slot, dto.port, dto.contratoId,
     ).catch(async (err) => {
       // Si falla el pool de ONU IDs, liberar service port antes de propagar
@@ -302,6 +304,24 @@ export class ProvisionFtthService {
         if (nuevo == null) break; // pool agotado → sale con el fallo actual
         servicePortId = nuevo;
         await this.ftthRepo.update(registroId, { servicePortId: nuevo });
+        continue;
+      }
+
+      // Auto-sanado de colisión de ONT-ID: el ID ya existe en la OLT (típicamente una
+      // ONU creada por SmartOLT/AdminOLT que no está en nuestra BD, por lo que el pool
+      // la creía libre). Se marca ese ONU-ID como no-usable y se reasigna el siguiente.
+      // El `ont add` falló → no hay ONT parcial, no hace falta rollback.
+      if (intento < 5 && this._esColisionOntId(gponRes.error)) {
+        await this.onuIdPool.marcarColision(oltId, dto.slot, dto.port, onuId);
+        const nuevoOnu = await this.onuIdPool.allocar(
+          oltId, empresaId, dto.slot, dto.port, dto.contratoId,
+        ).catch(() => null);
+        if (nuevoOnu == null) break; // puerto PON al máximo
+        onuId = nuevoOnu;
+        await this.ftthRepo.update(registroId, { onuId: nuevoOnu });
+        this.logger.warn(
+          `FTTH Fase1 colisión ONT-ID | contrato=${dto.contratoId} → reintento con onuId=${nuevoOnu}`,
+        );
         continue;
       }
 
@@ -567,6 +587,14 @@ export class ProvisionFtthService {
     const e = error.toLowerCase();
     return /service.?port|service.?virtual.?port/.test(e)
         && /(exist|conflict|already|duplicad|been used|in use|repeat|existe|conflicto)/.test(e);
+  }
+
+  // Detecta la colisión de ONT-ID: el ID ya existe en la OLT (p.ej. ONU de SmartOLT
+  // fuera de nuestra BD). Se auto-sana reasignando el siguiente ONU-ID libre.
+  private _esColisionOntId(error?: string): boolean {
+    if (!error) return false;
+    const e = error.toLowerCase();
+    return /ont.?id.*(already|exist)|has already existed|the ont id already/.test(e);
   }
 
   // Detecta el lock transitorio de la OLT (otra sesión tiene el config-lock).
