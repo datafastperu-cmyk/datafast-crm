@@ -48,8 +48,11 @@ export class OltHealthPollerCron {
     private readonly alertEngine:   OltAlertEngineService,
   ) {}
 
-  // ── Boards: cada 5 minutos ────────────────────────────────────
-  @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
+  // ── Boards: cada 30 minutos (:00/:30) ─────────────────────────
+  // Frecuencia reducida para no saturar el límite de sesiones SSH del MA5800
+  // (que causaba "Reenter times reached upper limit" y "Currently operating
+  // conflicts" al competir con aprovisionamientos). Los boards cambian rara vez.
+  @Cron('0,30 * * * *', { timeZone: 'America/Lima' })
   async pollBoards(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._boardRunning) {
@@ -68,9 +71,8 @@ export class OltHealthPollerCron {
     }
   }
 
-  // ── POM: cada 15 minutos, offset +3 min respecto a boards ─────
-  // Se dispara en :03, :18, :33, :48 para no coincidir con boards
-  @Cron('3-59/15 * * * *', { timeZone: 'America/Lima' })
+  // ── POM: cada 30 minutos (:10/:40), escalonado tras boards ────
+  @Cron('10,40 * * * *', { timeZone: 'America/Lima' })
   async pollPom(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._pomRunning) {
@@ -89,8 +91,8 @@ export class OltHealthPollerCron {
     }
   }
 
-  // ── PON Ports: cada 15 min, offset +7 min (:07/:22/:37/:52) ──
-  @Cron('7-59/15 * * * *', { timeZone: 'America/Lima' })
+  // ── PON Ports: cada 30 min (:20/:50), escalonado ─────────────
+  @Cron('20,50 * * * *', { timeZone: 'America/Lima' })
   async pollPonPorts(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._ponPortRunning) {
