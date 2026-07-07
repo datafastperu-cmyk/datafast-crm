@@ -352,22 +352,29 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       }
     },
     onError: async (err: unknown) => {
-      // El aprovisionamiento es un proceso largo (~40s). Si el cliente pierde la
-      // respuesta (red/navegador) aunque el backend SÍ concluya, verificamos el estado
-      // REAL antes de mostrar error — evita el falso "Error al aprovisionar".
-      try {
-        const est = await oltNativoApi.ftthEstado(contrato.id);
+      // El aprovisionamiento es largo (~70s). Si el cliente pierde la respuesta, o si
+      // este request colisionó con otro en curso (ConflictException "aprovisionamiento
+      // en curso"), el backend puede seguir trabajando. Sondeamos el estado REAL hasta
+      // que resuelva a 'activo' (éxito) o 'fallido_*' (error real) — evita el falso
+      // "Error al aprovisionar" cuando la ONU en realidad sí quedó activa.
+      const enProceso = (e?: string) =>
+        e === 'pendiente' || e === 'gpon_registrado' || e === 'wan_inyectado' || e === 'desaprovisionando';
+      for (let i = 0; i < 30; i++) {  // ~90s máx (30 × 3s)
+        let est: { estado?: string } | null = null;
+        try { est = await oltNativoApi.ftthEstado(contrato.id); } catch { /* reintenta */ }
         if (est?.estado === 'activo') {
           toast('ONU FTTH aprovisionada correctamente', {
             type: 'success',
-            description: 'La ONU quedó activa (la respuesta se perdió en el cliente).',
+            description: 'La ONU quedó activa.',
           });
           qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
           qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
           onClose();
           return;
         }
-      } catch { /* si la verificación falla, se muestra el error normal */ }
+        if (est && !enProceso(est.estado)) break;  // fallido / suspendido → error real
+        await new Promise(r => setTimeout(r, 3000));
+      }
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast(msg ?? 'Error al aprovisionar la ONU FTTH', { type: 'error' });
       qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
