@@ -82,6 +82,11 @@ export class FtthOnuRegistro extends BaseModel {
   @Column({ name: 'description', type: 'varchar', length: 64, nullable: true })
   description: string | null;
 
+  // Modo WAN: 'bridge' (PPPoE en router cliente, sin inyección OMCI) o
+  // 'routing' (PPPoE inyectado en la ONU vía OMCI). Default 'bridge'.
+  @Column({ name: 'wan_mode', type: 'varchar', length: 10, default: 'bridge' })
+  wanMode: string;
+
   // ── Máquina de estados ────────────────────────────────────
   @Column({
     type: 'enum',

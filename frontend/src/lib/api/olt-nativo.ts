@@ -438,6 +438,7 @@ export interface FtthOnuRegistro {
   vlan:           number;
   lineprofileId:  number | null;
   srvprofileId:   number | null;
+  wanMode?:       'bridge' | 'routing';
   estado:         FtthOnuEstado;
   intentosGpon:   number;
   intentosWan:    number;
@@ -460,6 +461,7 @@ export interface FtthProvisionDto {
   trafficIndexDown?: number;  // outbound bajada; undefined = índice 0 sin límite
   trafficIndexUp?:   number;  // inbound subida;  undefined = índice 0 sin límite
   description?:      string;
+  wanMode?:          'bridge' | 'routing';  // bridge = PPPoE en router cliente (default)
 }
 
 export interface OltPerfilesResult {

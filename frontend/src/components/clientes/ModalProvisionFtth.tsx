@@ -206,6 +206,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const [trafficIndexUp,   setTrafficIndexUp]   = useState('');  // '' = Indefinida
   const [description,   setDescription]  = useState('');
   const [servicePortId, setServicePortId] = useState('');  // '' = usar pool automático
+  const [wanMode,       setWanMode]      = useState<'bridge' | 'routing'>('bridge');
 
   // Perfiles OLT (Phase 4)
   const { data: perfiles } = useQuery<OltPerfilesResult>({
@@ -249,6 +250,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     setVlan(String(r.vlan));
     if (r.lineprofileId) setLineprofileId(String(r.lineprofileId));
     if (r.srvprofileId)  setSrvprofileId(String(r.srvprofileId));
+    if (r.wanMode)       setWanMode(r.wanMode);
   }, [estadoExistente]);
 
   // Scan ONUs
@@ -391,6 +393,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       trafficIndexUp:   trafficIndexUp   !== '' ? parseInt(trafficIndexUp)   : undefined,
       servicePortId:    servicePortId    !== '' ? parseInt(servicePortId)    : undefined,
       description:      description.trim() || undefined,
+      wanMode,
     }),
     onSuccess: (res) => {
       if (res.estado === 'activo') {
@@ -601,6 +604,16 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       <input type="number" value={vlan} onChange={e => setVlan(e.target.value)} min={1} max={4094} placeholder="201" className={inputCls} />
                     )}
                   </Field>
+                  <Field label="Modo ONU" span2>
+                    <div className="relative">
+                      <select value={wanMode} onChange={e => setWanMode(e.target.value as 'bridge' | 'routing')}
+                        className={cn(inputCls, 'appearance-none pr-8')}>
+                        <option value="bridge">Bridge — PPPoE en el router del cliente (sin inyección WAN)</option>
+                        <option value="routing">Routing — PPPoE inyectado en la ONU (OMCI)</option>
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    </div>
+                  </Field>
                   <Field label="Lineprofile ID">
                     {perfiles?.lineprofiles?.length ? (
                       <div className="relative">
@@ -714,8 +727,15 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                 <div className="mt-2 flex items-start gap-2 rounded-lg border border-blue-700/30 bg-blue-500/5 px-3 py-2 text-[11px] text-blue-700 dark:text-blue-300">
                   <Zap className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                   <span>
-                    Este proceso tarda ~2 min: registra la ONU en la OLT (GPON), espera que esté online,
-                    luego inyecta las credenciales PPPoE <strong>{(contrato as any).usuarioPppoe ?? '—'}</strong> vía OMCI.
+                    {wanMode === 'routing' ? (
+                      <>Registra la ONU en la OLT (GPON), espera que esté online, luego inyecta las
+                        credenciales PPPoE <strong>{(contrato as any).usuarioPppoe ?? '—'}</strong> en
+                        la ONU vía OMCI (modo routing).</>
+                    ) : (
+                      <>Registra la ONU en la OLT (GPON + service-port) en <strong>modo bridge</strong>:
+                        la ONU va transparente y el PPPoE lo maneja el router del cliente contra el BRAS.
+                        No se inyecta WAN en la ONU.</>
+                    )}
                   </span>
                 </div>
               </div>

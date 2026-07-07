@@ -5,7 +5,7 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository }             from 'typeorm';
 import {
-  IsInt, IsOptional, IsString, IsUUID,
+  IsIn, IsInt, IsOptional, IsString, IsUUID,
   Max, MaxLength, Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -36,6 +36,11 @@ export class ProvisionarFtthDto {
   @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndexDown?: number;
   @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndexUp?:   number;
   @IsOptional() @IsString() @MaxLength(64)            description?:      string;
+  // Modo WAN de la ONU:
+  //  - 'bridge'  → ONU transparente; el PPPoE lo hace el router del cliente (BRAS).
+  //                El OLT solo hace GPON + service-port. NO se inyecta WAN por OMCI.
+  //  - 'routing' → la ONU corre PPPoE (WAN inyectada por OMCI en modo perfil).
+  @IsOptional() @IsIn(['bridge', 'routing'])          wanMode?:          string;
 }
 
 export class ReinjectarWanDto {
@@ -220,15 +225,16 @@ export class ProvisionFtthService {
     });
 
     // 6. Insertar lock atómico
+    const wanMode = dto.wanMode === 'routing' ? 'routing' : 'bridge';
     const insertResult = await this.ds.query<{ id: string }[]>(
       `INSERT INTO ftth_onu_registro
          (id, empresa_id, contrato_id, olt_id, frame, slot, port, onu_id, sn,
           service_port_id, vlan, lineprofile_id, srvprofile_id,
-          traffic_index_down, traffic_index_up, description,
+          traffic_index_down, traffic_index_up, description, wan_mode,
           estado, locked_at, intentos_gpon, intentos_wan, created_at, updated_at)
        VALUES
          (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, $13, $14, $15,
+          $9, $10, $11, $12, $13, $14, $15, $16,
           'pendiente', NOW(), 0, 0, NOW(), NOW())
        ON CONFLICT (contrato_id) DO NOTHING
        RETURNING id`,
@@ -236,7 +242,7 @@ export class ProvisionFtthService {
         empresaId, dto.contratoId, oltId,
         dto.frame, dto.slot, dto.port, onuId, dto.sn.toUpperCase(),
         servicePortId, dto.vlan, dto.lineprofileId, dto.srvprofileId,
-        dto.trafficIndexDown ?? null, dto.trafficIndexUp ?? null, dto.description ?? null,
+        dto.trafficIndexDown ?? null, dto.trafficIndexUp ?? null, dto.description ?? null, wanMode,
       ],
     );
 
@@ -369,9 +375,27 @@ export class ProvisionFtthService {
       };
     }
 
-    // ── Fase 2: WAN PPPoE ─────────────────────────────────────
+    // ── Modo BRIDGE: sin inyección WAN ────────────────────────
+    // La ONU va transparente; el PPPoE lo hace el router del cliente contra el BRAS
+    // MikroTik. El OLT ya tiene GPON + service-port → el aprovisionamiento concluye
+    // EXITOSO aquí, sin tocar la WAN de la ONU.
+    if (wanMode !== 'routing') {
+      await this.ftthRepo.update(registroId, {
+        estado:      FtthOnuEstado.ACTIVO,
+        lockedAt:    null,
+        ultimoError: null,
+      });
+      return {
+        estado:  FtthOnuEstado.ACTIVO,
+        registroId,
+        mensaje: 'ONU aprovisionada (modo bridge). GPON + service-port OK. ' +
+                 'El PPPoE lo maneja el router del cliente contra el BRAS.',
+      };
+    }
+
+    // ── Fase 2: WAN PPPoE (modo routing) ──────────────────────
     // Credenciales PPPoE ya validadas en la guarda temprana (paso 1b).
-    this.logger.log(`FTTH Fase2 WAN | contrato=${dto.contratoId}`);
+    this.logger.log(`FTTH Fase2 WAN (routing) | contrato=${dto.contratoId}`);
 
     const wanRes = await this.automation.ftthInjectWanPppoe({
       connection: conn,
