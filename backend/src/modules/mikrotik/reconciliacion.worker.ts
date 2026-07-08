@@ -97,7 +97,7 @@ export class ReconciliacionWorker {
       passwordCifrado: router.passwordCifrado ?? '',
       useSsl:          router.usarSsl ?? false,
       timeoutSec:      Math.min(router.timeoutConexion ?? 10, 15),
-      version:         router.versionRos === 'v7' ? 'v7' : 'v6',
+      version:         'v7',
     };
 
     // Leer todos los PPPoE secrets que existen actualmente en el router

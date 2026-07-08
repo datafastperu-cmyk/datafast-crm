@@ -199,9 +199,9 @@ export class InterfaceService {
     try {
       const recursos = await this.getRecursos(creds);
       const version  = recursos.version || '';
-      return version.startsWith('7') ? 'v7' : 'v6';
+      return 'v7';
     } catch {
-      return 'v6'; // Asumir v6 como fallback
+      return 'v7';
     }
   }
 

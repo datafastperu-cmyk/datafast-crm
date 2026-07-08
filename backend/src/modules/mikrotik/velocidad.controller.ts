@@ -238,7 +238,7 @@ export class VelocidadController {
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
       timeoutSec:      router.timeoutConexion || 10,
-      version:         router.versionRos === 'v7' ? 'v7' : 'v6',
+      version:         'v7',
     };
   }
 }

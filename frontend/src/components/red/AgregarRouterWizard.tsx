@@ -67,7 +67,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const [nombre,      setNombre]      = useState('');
   const [ubicacion,   setUbicacion]   = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [versionRos,  setVersionRos]  = useState<'v6' | 'v7' | ''>('');
+  const [versionRos,  setVersionRos]  = useState<'v7'>('v7');
 
   // Paso 2 — conexión
   const [tipoConexion, setTipoConexion] = useState<TipoConexion>('api');
@@ -213,10 +213,6 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
 
   const handleGenerarVpn = async () => {
     if (generatingVpnRef.current) return;
-    if (!versionRos) {
-      toast('Selecciona la versión RouterOS en el paso 1', { type: 'error' });
-      return;
-    }
     generatingVpnRef.current = true;
     setVpnSubStep('generating');
     try {
@@ -467,29 +463,20 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
               </div>
 
               <div>
-                <label className={labelCls}>Versión de RouterOS *</label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Necesaria para generar el script de configuración VPN correcto.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
+                <label className={labelCls}>Versión de RouterOS</label>
+                <div className="grid grid-cols-1 gap-2">
                   {[
-                    { val: 'v6' as const, label: 'RouterOS v6.x', sub: 'Legacy — CCR, RB, hAP (pre-2021)' },
-                    { val: 'v7' as const, label: 'RouterOS v7.x', sub: 'Moderno — CHR, CCR2xxx, hEX S…'  },
+                    { val: 'v7' as const, label: 'RouterOS v7.x', sub: 'Moderno — CHR, CCR2xxx, hEX S, RB5009…' },
                   ].map((o) => (
                     <label key={o.val}
-                      className={cn(
-                        'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                        versionRos === o.val
-                          ? 'border-primary/60 bg-primary/10'
-                          : 'border-border hover:border-muted-foreground/30 hover:bg-muted/20',
-                      )}
+                      className="flex items-start gap-3 p-3 rounded-lg border border-primary/60 bg-primary/10 cursor-default"
                     >
                       <input type="radio" name="versionRos" value={o.val}
-                        checked={versionRos === o.val}
-                        onChange={() => setVersionRos(o.val)}
+                        checked={true}
+                        readOnly
                         className="mt-0.5 accent-primary" />
                       <div>
-                        <div className={cn('text-sm font-medium', versionRos === o.val ? 'text-foreground' : 'text-foreground')}>
+                        <div className="text-sm font-medium text-foreground">
                           {o.label}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">{o.sub}</div>

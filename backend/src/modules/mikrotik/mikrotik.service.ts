@@ -439,7 +439,7 @@ export class MikrotikService implements OnModuleInit {
       passwordCifrado: router.passwordCifrado ?? '',
       useSsl:          router.usarSsl ?? false,
       timeoutSec:      20,
-      version:         router.versionRos as any ?? 'v6',
+      version:         'v7',
     };
 
     const contratos = await this.ds.query<any[]>(`
@@ -648,7 +648,7 @@ export class MikrotikService implements OnModuleInit {
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
       timeoutSec:      timeoutOverrideSec ?? router.timeoutConexion ?? 10,
-      version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+      version:         'v7',
     };
   }
 
@@ -735,7 +735,7 @@ export class MikrotikService implements OnModuleInit {
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl ?? false,
       timeoutSec:      10,
-      version:         (router.versionRos as 'v6' | 'v7') ?? 'v6',
+      version:         'v7',
     };
     await this.queueSvc.actualizarVelocidadQueue(creds, dto.nombreQueue, dto.downloadMbps, dto.uploadMbps);
   }
@@ -951,9 +951,7 @@ export class MikrotikService implements OnModuleInit {
       uptimeSegundos:   recursos.uptimeSeconds,
       versionFirmware:  recursos.version,
       identityRouteros: await this.ifaceSvc.getIdentity(creds).catch(() => ''),
-      versionRos:       recursos.version?.startsWith('7')
-        ? VersionRouterOS.V7
-        : VersionRouterOS.V6,
+      versionRos:       VersionRouterOS.V7,
     });
 
     return {
@@ -1094,7 +1092,7 @@ export class MikrotikService implements OnModuleInit {
       passwordCifrado: resolvedPassword,
       useSsl,
       timeoutSec:      dto.timeoutConexion ?? 10,
-      version:         dto.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+      version:         'v7',
     };
 
     let api: any = null;
@@ -1108,7 +1106,7 @@ export class MikrotikService implements OnModuleInit {
 
       const latencia = Date.now() - inicio;
       const version  = res?.version || '';
-      const rosVer   = version.startsWith('7') ? 'v7' : 'v6';
+      const rosVer   = 'v7';
 
       return {
         exitoso:           true,
@@ -1212,7 +1210,7 @@ export class MikrotikService implements OnModuleInit {
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
       timeoutSec:      router.timeoutConexion || 15,
-      version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+      version:         'v7',
     };
 
     this.firewallSvc.configurarReglasControl(creds)
@@ -1255,7 +1253,7 @@ export class MikrotikService implements OnModuleInit {
           passwordCifrado: router.passwordCifrado,
           useSsl:          router.usarSsl,
           timeoutSec:      Math.min(router.timeoutConexion || 10, 8),
-          version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+          version:         'v7',
         };
 
         const esPppoe = router.tipoControl === TipoControl.PPPOE;
@@ -1354,13 +1352,13 @@ export class MikrotikService implements OnModuleInit {
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
       timeoutSec:      router.timeoutConexion || 10,
-      version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+      version:         'v7',
     };
 
     return this.ifaceSvc.getRecursos(creds)
       .then((recursos) => {
         const version    = recursos.version || '';
-        const rosVersion = version.startsWith('7') ? VersionRouterOS.V7 : VersionRouterOS.V6;
+        const rosVersion = VersionRouterOS.V7;
         return this.routerRepo.update(router.id, {
           versionRos: rosVersion,
           estado:     EstadoEquipo.ONLINE,
@@ -1394,7 +1392,7 @@ export class MikrotikService implements OnModuleInit {
       passwordCifrado: router.passwordCifrado ?? '',
       useSsl:          router.usarSsl ?? false,
       timeoutSec:      20,
-      version:         router.versionRos as any ?? 'v6',
+      version:         'v7',
     };
 
     // Pre-flight: verificar conectividad antes de comenzar la migración.

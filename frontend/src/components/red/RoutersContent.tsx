@@ -59,8 +59,7 @@ const ESTADO_COLORS: Record<string, string> = {
 };
 
 const VERSION_ROS_OPTS = [
-  { val: 'v6', label: 'RouterOS v6.x', sub: 'Legacy — CCR, RB, hAP (pre-2021)' },
-  { val: 'v7', label: 'RouterOS v7.x', sub: 'Moderno — CHR, CCR2xxx, hEX S…'  },
+  { val: 'v7', label: 'RouterOS v7.x', sub: 'Moderno — CHR, CCR2xxx, hEX S, RB5009…' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -232,7 +231,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     usarSsl:         router?.usarSsl         ?? false,
     timeoutConexion: router?.timeoutConexion  ?? 10,
     reintentos:      router?.reintentos       ?? 3,
-    versionRos:      router?.versionRos      ?? 'desconocida',
+    versionRos:      (router?.versionRos && router.versionRos !== 'v6' ? router.versionRos : 'v7') as any,
     tipoControl:            router?.tipoControl            ?? 'ninguna',
     tipoControlVelocidad:   router?.tipoControlVelocidad   ?? 'ninguno',
     controlaAutenticacion:  router?.controlaAutenticacion  ?? true,

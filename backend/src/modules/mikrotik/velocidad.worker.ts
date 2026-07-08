@@ -115,7 +115,7 @@ export class VelocidadWorker {
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
       timeoutSec:      router.timeoutConexion || 10,
-      version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+      version:         'v7',
     };
 
     const resultado = await this.orquestador.sincronizarVelocidades(creds, routerId);
@@ -158,7 +158,7 @@ export class VelocidadWorker {
       passwordCifrado: router.passwordCifrado,
       useSsl:          router.usarSsl,
       timeoutSec:      router.timeoutConexion || 10,
-      version:         router.versionRos === VersionRouterOS.V7 ? 'v7' : 'v6',
+      version:         'v7',
     };
 
     const resultado = await this.orquestador.cambiarVelocidadPlan(

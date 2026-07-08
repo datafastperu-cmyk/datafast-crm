@@ -439,7 +439,7 @@ export class MikrotikUserService {
       passwordCifrado: (router as any).passwordCifrado,
       useSsl:          (router as any).usarSsl,
       timeoutSec:      (router as any).timeoutConexion || 10,
-      version:         (router as any).versionRos === 'v7' ? 'v7' : 'v6',
+      version:         'v7',
     };
   }
 
