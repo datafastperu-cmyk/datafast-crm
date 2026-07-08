@@ -32,10 +32,52 @@ function processQueue(error: any, token: string | null) {
   failedQueue = [];
 }
 
+// ─── Refresh centralizado del access token ────────────────────
+// Un único punto para renovar el token, usado tanto por el request interceptor
+// (renovación proactiva en frío) como por el response interceptor (recuperación
+// tras 401). Si ya hay un refresh en curso, encola y resuelve con el mismo token
+// para evitar múltiples llamadas simultáneas a /auth/refresh.
+async function refreshAccessToken(): Promise<string> {
+  if (isRefreshing) {
+    return new Promise<string>((resolve, reject) => {
+      failedQueue.push({ resolve, reject });
+    });
+  }
+  isRefreshing = true;
+  const refreshToken = Cookies.get('refresh_token');
+  if (!refreshToken) {
+    isRefreshing = false;
+    clearAuthCookies();
+    redirectToLogin();
+    throw new Error('NO_REFRESH_TOKEN');
+  }
+  try {
+    const res = await axios.post(`${BASE_URL}/api/v1/auth/refresh`, { refreshToken });
+    const { accessToken, refreshToken: newRefresh } = res.data.data;
+    setAuthCookies(accessToken, newRefresh);
+    processQueue(null, accessToken);
+    return accessToken;
+  } catch (err) {
+    processQueue(err, null);
+    clearAuthCookies();
+    redirectToLogin();
+    throw err;
+  } finally {
+    isRefreshing = false;
+  }
+}
+
 // ─── Interceptor REQUEST: adjuntar access token ───────────────
 api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = Cookies.get('access_token');
+  async (config: InternalAxiosRequestConfig) => {
+    let token = Cookies.get('access_token');
+    // Carga en frío: el access_token expira a los 15 min pero el refresh_token dura
+    // 7 días. Si falta el access_token pero hay refresh_token, renovamos ANTES de
+    // enviar el request — así el primer fetch ya lleva credenciales y no dispara el
+    // 401→refresh→retry que ensuciaba la consola al arrancar la app.
+    if (!token && Cookies.get('refresh_token') && !config.url?.includes('/auth/')) {
+      try { token = await refreshAccessToken(); } catch { /* redirect ya disparado */ }
+    }
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -74,47 +116,13 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/login')) {
-      // Si ya se está haciendo refresh, encolar esta petición
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          return api(originalRequest);
-        });
-      }
-
       originalRequest._retry = true;
-      isRefreshing = true;
-
-      const refreshToken = Cookies.get('refresh_token');
-
-      if (!refreshToken) {
-        // No hay refresh token → redirigir al login
-        clearAuthCookies();
-        redirectToLogin();
-        return Promise.reject(error);
-      }
-
       try {
-        const res = await axios.post(`${BASE_URL}/api/v1/auth/refresh`, {
-          refreshToken,
-        });
-
-        const { accessToken, refreshToken: newRefresh } = res.data.data;
-        setAuthCookies(accessToken, newRefresh);
-
-        processQueue(null, accessToken);
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        const token = await refreshAccessToken();
+        originalRequest.headers.Authorization = `Bearer ${token}`;
         return api(originalRequest);
-
       } catch (refreshError) {
-        processQueue(refreshError, null);
-        clearAuthCookies();
-        redirectToLogin();
         return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
       }
     }
 
