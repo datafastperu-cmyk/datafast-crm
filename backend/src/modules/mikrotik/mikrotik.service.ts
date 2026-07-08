@@ -48,6 +48,7 @@ export class MikrotikService implements OnModuleInit {
   // Contador de fallos consecutivos de poll por router (en memoria).
   // 1 fallo → REVERIFICANDO (puede ser transitorio), 2+ fallos → OFFLINE real.
   private readonly _pollFailCount = new Map<string, number>();
+  private          _pollRunning   = false;
 
   constructor(
     @InjectRepository(Router)
@@ -1226,6 +1227,11 @@ export class MikrotikService implements OnModuleInit {
   @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
   async pollRouterMetrics(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
+    if (this._pollRunning) {
+      this.logger.warn('[POLL] Vuelta anterior aún en curso — omitiendo ciclo');
+      return;
+    }
+    this._pollRunning = true;
 
     let routers: Router[];
     try {
@@ -1323,9 +1329,13 @@ export class MikrotikService implements OnModuleInit {
       }
     };
 
-    const CHUNK = 4;
-    for (let i = 0; i < routers.length; i += CHUNK) {
-      await Promise.allSettled(routers.slice(i, i + CHUNK).map(pollOne));
+    try {
+      const CHUNK = 4;
+      for (let i = 0; i < routers.length; i += CHUNK) {
+        await Promise.allSettled(routers.slice(i, i + CHUNK).map(pollOne));
+      }
+    } finally {
+      this._pollRunning = false;
     }
   }
 

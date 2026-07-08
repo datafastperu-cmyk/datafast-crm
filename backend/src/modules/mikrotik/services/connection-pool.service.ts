@@ -346,7 +346,18 @@ export class RouterConnectionPool implements OnModuleDestroy {
       try {
         api = await this.acquire(creds, channel);
 
-        const result = await fn(api);
+        // Wrap fn(api) con timeout explícito.
+        // node-routeros destruye el socket al timeout pero NO rechaza los
+        // Promises pendientes de api.write() — quedan colgados indefinidamente.
+        // Si no ponemos este race, execute() cuelga y el try/catch nunca actúa,
+        // causando "Excepción no capturada" y reinicio de PM2.
+        const CMD_TIMEOUT_MS = (creds.timeoutSec + 5) * 1000;
+        const result = await Promise.race([
+          fn(api),
+          new Promise<never>((_, rej) =>
+            setTimeout(() => rej(new Error(`Timeout de comando en ${creds.ip} (${CMD_TIMEOUT_MS / 1000}s)`)), CMD_TIMEOUT_MS),
+          ),
+        ]);
         this.release(creds.id, api, channel);
         released = true;
 
