@@ -94,6 +94,14 @@ export class OltNativoController {
     return this.service.listarTodas(user.empresaId);
   }
 
+  // ── GET /olt-nativo/onus-inventario — inventario de ONUs de TODAS las OLTs ──
+  // Debe declararse ANTES de :oltId (no es un UUID). Read-model, sin SSH.
+  @Get('onus-inventario')
+  @ApiOperation({ summary: 'Inventario de ONUs de todas las OLTs de la empresa (read-model)' })
+  async onusInventarioGlobal(@CurrentUser() user: JwtPayload) {
+    return this.sync.inventarioGlobal(user.empresaId);
+  }
+
   // ── GET /olt-nativo/validar-ip — check disponibilidad de IP ──
   @Get('validar-ip')
   @ApiOperation({ summary: 'Verificar si una IP de gestión está disponible en la empresa' })

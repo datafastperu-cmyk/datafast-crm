@@ -24,6 +24,7 @@ import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import { OnuFilterBar }   from '@/components/red/onus/OnuFilterBar';
 import { OnuBulkBar }     from '@/components/red/onus/OnuBulkBar';
 import { OnuTable }       from '@/components/red/onus/OnuTable';
+import { OnuInventarioUnificado } from '@/components/red/onus/OnuInventarioUnificado';
 
 // ─── Constants ────────────────────────────────────────────────
 
@@ -131,6 +132,7 @@ export function RedOltContent() {
   const { toast } = useToast();
 
   const [tab,          setTab]          = useState<TabKey>('onus');
+  const [onuVista,     setOnuVista]     = useState<'inventario' | 'aprovisionadas'>('inventario');
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [wizardNativoOpen, setWizardNativoOpen] = useState(false);
   const [crearProveedorTipo, setCrearProveedorTipo] = useState<'smartolt' | 'adminolt' | null>(null);
@@ -491,28 +493,52 @@ export function RedOltContent() {
         </div>
       )}
 
-      {/* ── Tab: ONUs (unificado ERP) ────────────────────────── */}
+      {/* ── Tab: ONUs ────────────────────────────────────────── */}
       {tab === 'onus' && (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <OnuFilterBar
-            filters={filters}
-            onChange={(f) => { setFilters(f); setSelected(new Set()); }}
-            totalOnus={onuTotal}
-          />
-          <OnuBulkBar
-            selected={selected}
-            onClearAll={onClearAll}
-          />
-          <OnuTable
-            filters={filters}
-            selected={selected}
-            onToggle={onToggle}
-            onSelectAll={onSelectAll}
-            onClearAll={onClearAll}
-            onSenalUpdate={handleSenalUpdate}
-            liveSenales={liveSenales}
-            onTotalChange={setOnuTotal}
-          />
+        <div className="space-y-3">
+          {/* Sub-toggle: inventario completo (todas las OLTs) vs aprovisionadas (ERP) */}
+          <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
+            {([
+              ['inventario',  'Todas (inventario)'],
+              ['aprovisionadas', 'Aprovisionadas'],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setOnuVista(key)}
+                className={cn(
+                  'px-3 py-1.5 rounded-md font-medium transition-colors',
+                  onuVista === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {onuVista === 'inventario' ? (
+            <div className="bg-card border border-border rounded-xl p-3">
+              <OnuInventarioUnificado />
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <OnuFilterBar
+                filters={filters}
+                onChange={(f) => { setFilters(f); setSelected(new Set()); }}
+                totalOnus={onuTotal}
+              />
+              <OnuBulkBar selected={selected} onClearAll={onClearAll} />
+              <OnuTable
+                filters={filters}
+                selected={selected}
+                onToggle={onToggle}
+                onSelectAll={onSelectAll}
+                onClearAll={onClearAll}
+                onSenalUpdate={handleSenalUpdate}
+                liveSenales={liveSenales}
+                onTotalChange={setOnuTotal}
+              />
+            </div>
+          )}
         </div>
       )}
 

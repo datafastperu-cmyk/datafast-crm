@@ -161,6 +161,33 @@ export class OltSyncService implements OnModuleInit {
   }
 
   /**
+   * Inventario GLOBAL de ONUs (todas las OLTs de la empresa) desde el read-model.
+   * Una sola query, sin SSH. Incluye el nombre de la OLT. La UI filtra en cliente.
+   */
+  async inventarioGlobal(empresaId: string): Promise<Array<Record<string, unknown>>> {
+    return this.ds.query(
+      `SELECT i.olt_id       AS "oltId",
+              o.nombre        AS "oltNombre",
+              i.slot, i.port,
+              i.onu_id        AS "onuId",
+              i.sn,
+              i.estado_operativo AS "estadoOperativo",
+              i.rx_power_dbm  AS "rxPowerDbm",
+              i.sin_contrato  AS "sinContrato",
+              i.contrato_id   AS "contratoId",
+              i.numero_contrato AS "numeroContrato",
+              i.cliente,
+              i.origen,
+              i.snapshot_at   AS "snapshotAt"
+         FROM olt_onu_inventario i
+         JOIN olt_dispositivos o ON o.id = i.olt_id
+        WHERE i.empresa_id = $1
+        ORDER BY o.nombre ASC, i.slot ASC, i.port ASC, i.onu_id ASC NULLS LAST`,
+      [empresaId],
+    );
+  }
+
+  /**
    * Drift ERP↔OLT calculado 100% del read-model (sin SSH): compara el inventario
    * observado (olt_onu_inventario) contra el estado deseado (contratos + registros).
    */

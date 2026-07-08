@@ -479,6 +479,23 @@ export interface InventarioResult {
   snapshotAt: string | null;
 }
 
+export interface OnuInventarioGlobalItem {
+  oltId:           string;
+  oltNombre:       string;
+  slot:            number;
+  port:            number;
+  onuId:           number | null;
+  sn:              string;
+  estadoOperativo: OnuClasificada['estadoOperativo'];
+  rxPowerDbm:      number | null;
+  sinContrato:     boolean;
+  contratoId:      string | null;
+  numeroContrato:  string | null;
+  cliente:         string | null;
+  origen:          'configurada' | 'autofind';
+  snapshotAt:      string;
+}
+
 export interface DriftResult {
   enErpNoEnOlt: Array<{
     contratoId: string; sn: string; slot: number; port: number;
@@ -1157,6 +1174,11 @@ export const oltNativoApi = {
   getInventario: async (oltId: string): Promise<InventarioResult> => {
     const res = await api.get<ApiRespuesta<InventarioResult>>(`/olt-nativo/${oltId}/inventario`);
     return res.data.data ?? { onus: [], drift: null, snapshotAt: null };
+  },
+
+  getInventarioGlobal: async (): Promise<OnuInventarioGlobalItem[]> => {
+    const res = await api.get<ApiRespuesta<OnuInventarioGlobalItem[]>>('/olt-nativo/onus-inventario');
+    return res.data.data ?? [];
   },
 
   getDrift: async (oltId: string): Promise<DriftResult> => {
