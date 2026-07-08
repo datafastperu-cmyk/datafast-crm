@@ -436,6 +436,8 @@ export interface FtthOnuRegistro {
   sn:             string;
   servicePortId:  number | null;
   vlan:           number;
+  trafficIndexDown: number | null;
+  trafficIndexUp:   number | null;
   lineprofileId:  number | null;
   srvprofileId:   number | null;
   wanMode?:       'bridge' | 'routing';

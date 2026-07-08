@@ -129,6 +129,10 @@ function Field({ label, children, span2 }: { label: string; children: ReactNode;
 
 const inputCls = 'w-full bg-background border border-input rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors';
 
+// PIR en kbps → etiqueta legible en Mbps (velocidad tope real de la traffic-table)
+const fmtVel = (pirKbps: number | null): string =>
+  pirKbps == null ? 'sin límite' : `${(pirKbps / 1024).toFixed(pirKbps >= 10240 ? 0 : 1)} Mbps`;
+
 // ─── Main Modal ────────────────────────────────────────────────
 
 export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; onClose: () => void }) {
@@ -209,6 +213,8 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     setPort(String(r.port));
     setVlan(String(r.vlan));
     if (r.servicePortId != null) setServicePortId(String(r.servicePortId));
+    if (r.trafficIndexDown != null) setTrafficIndexDown(String(r.trafficIndexDown));
+    if (r.trafficIndexUp   != null) setTrafficIndexUp(String(r.trafficIndexUp));
     if (r.lineprofileId) setLineprofileId(String(r.lineprofileId));
     if (r.srvprofileId)  setSrvprofileId(String(r.srvprofileId));
     if (r.wanMode)       setWanMode(r.wanMode);
@@ -255,9 +261,13 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   }, [selectedOltId]);
 
   // Form validation
+  // Velocidad Bajada/Subida OBLIGATORIAS: dejarlas vacías aplicaba traffic-table
+  // index 0, que en OLTs ya provisionadas por SmartOLT puede ser una tabla con tope
+  // (ej. 1024/2048 kbps) → la ONU quedaba capada a ~2 Mbps de forma silenciosa.
   const formValid = (
     !!selectedOltId && !!sn.trim() && slot !== '' && port !== '' &&
-    !!vlan && !!lineprofileId && !!srvprofileId
+    !!vlan && !!lineprofileId && !!srvprofileId &&
+    trafficIndexDown !== '' && trafficIndexUp !== ''
   );
 
   // Desaprovisionar mutation
@@ -653,12 +663,12 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                         onChange={e => setTrafficIndexDown(e.target.value)}
                         className={cn(inputCls, 'appearance-none pr-8')}
                       >
-                        <option value="">Indefinida</option>
+                        <option value="">— Elegir (obligatorio) —</option>
                         {trafficTables
                           .filter(t => t.tipo === 'downstream' || t.tipo === 'combinado')
                           .map(t => (
                             <option key={t.id} value={t.trafficId}>
-                              {t.trafficId} — {t.nombre}
+                              {t.trafficId} — {fmtVel(t.pirKbps)}
                             </option>
                           ))}
                       </select>
@@ -672,12 +682,12 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                         onChange={e => setTrafficIndexUp(e.target.value)}
                         className={cn(inputCls, 'appearance-none pr-8')}
                       >
-                        <option value="">Indefinida</option>
+                        <option value="">— Elegir (obligatorio) —</option>
                         {trafficTables
                           .filter(t => t.tipo === 'upstream' || t.tipo === 'combinado')
                           .map(t => (
                             <option key={t.id} value={t.trafficId}>
-                              {t.trafficId} — {t.nombre}
+                              {t.trafficId} — {fmtVel(t.pirKbps)}
                             </option>
                           ))}
                       </select>
