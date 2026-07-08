@@ -12,7 +12,7 @@ import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import * as net from 'net';
 
-import { Router, VersionRouterOS, EstadoEquipo, TipoControl, TipoControlVelocidad, MetodoConexion } from './entities/router.entity';
+import { Router, VersionRouterOS, EstadoEquipo, MetodoConexion } from './entities/router.entity';
 import { RouterConnectionPool, RouterCredentials } from './services/connection-pool.service';
 import { PppoeService, CreatePppoeParams }         from './services/pppoe.service';
 import { QueueService, QueueParams }               from './services/queue.service';
@@ -648,11 +648,10 @@ export class MikrotikService implements OnModuleInit {
         ]);
       }
 
-      // 2. Si el control incluye DHCP lease, también agregar en DHCP Server > Leases
-      if (
-        router.tipoControl === TipoControl.AMARRE_IP_MAC_DHCP ||
-        dto.dhcpServer
-      ) {
+      // 2. Si el control incluye DHCP lease, también agregar en DHCP Server > Leases.
+      // El modo de control ya no vive en el router (se quitó el control centralizado):
+      // el llamador envía dhcpServer cuando el contrato usa amarre_ip_mac_dhcp.
+      if (dto.dhcpServer) {
         const server = dto.dhcpServer || 'dhcp1';
         const leaseExistente = await api.write('/ip/dhcp-server/lease/print', [
           `?address=${dto.ip}`,
@@ -1224,12 +1223,11 @@ export class MikrotikService implements OnModuleInit {
           version:         'v7',
         };
 
-        const esPppoe = router.tipoControl === TipoControl.PPPOE;
+        // El control ya no se categoriza por router: contamos sesiones PPPoE en
+        // todos (best-effort). Un router sin PPPoE devuelve 0 sin error.
         const [recursos, sesionesCount] = await Promise.all([
           this.ifaceSvc.getRecursos(creds, 'monitoreo'),
-          esPppoe
-            ? this.pppoeSvc.contarSesionesActivas(creds, 'monitoreo').catch(() => 0)
-            : Promise.resolve(0),
+          this.pppoeSvc.contarSesionesActivas(creds, 'monitoreo').catch(() => 0),
         ]);
 
         const memoriaUsoPct = recursos.freeMemory && recursos.totalMemory
