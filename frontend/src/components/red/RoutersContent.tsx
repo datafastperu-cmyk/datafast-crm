@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Router, Plus, Pencil, Trash2, Wifi, WifiOff,
@@ -17,7 +17,7 @@ import { parseApiError, cn } from '@/lib/utils';
 import { Portal } from '@/components/ui/portal';
 import type {
   Router as RouterType, CreateRouterDto,
-  MetodoConexion, TestConexionResult, TipoControl, TipoControlVelocidad,
+  MetodoConexion, TestConexionResult,
 } from '@/lib/api/mikrotik';
 import { AgregarRouterWizard } from './AgregarRouterWizard';
 import { RouterDetailPanel }  from './RouterDetailPanel';
@@ -35,19 +35,6 @@ const METODO_CONFIG: Record<MetodoConexion, {
   snmp:       { label: 'SNMP',       icon: Radio,    desc: 'Solo monitoreo SNMP — verificación TCP',       defaultPort: 161,  defaultSsl: false },
   vpn_tunnel: { label: 'VPN Tunnel', icon: Shield,   desc: 'Conecta a través de VPN usando IP VPN + API', defaultPort: 8728, defaultSsl: false },
 };
-
-const TIPO_CONTROL_OPTS = [
-  { val: 'pppoe',  label: 'PPPoE'                       },
-  { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
-  { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
-];
-
-const TIPO_VELOCIDAD_OPTS = [
-  { val: 'colas_simples',     label: 'Colas Simples'                         },
-  { val: 'pcq_addresslist',   label: 'PCQ + AddressList'                     },
-  { val: 'dhcp_lease_queues', label: 'DHCP Leases (Colas Simples Dinámicas)' },
-  { val: 'ninguno',           label: 'Ninguno'                               },
-];
 
 const ESTADO_COLORS: Record<string, string> = {
   online:        'text-green-600 dark:text-green-400',
@@ -170,37 +157,10 @@ interface RouterModalProps {
   onSaved: () => void;
 }
 
-type MigrarState = 'idle' | 'confirming' | 'migrating' | 'done' | 'error';
-
-interface MigrarResult {
-  total: number;
-  ok: number;
-  errores: Array<{ contratoId: string; numero: string; error: string }>;
-}
-
-const LABEL_CONTROL: Record<string, string> = {
-  ninguna:           'Sin autenticación',
-  pppoe: 'PPPoE',
-  amarre_ip_mac:     'Amarre IP/MAC',
-  amarre_ip_mac_dhcp:'Amarre IP/MAC + DHCP Leases',
-};
-
-const LABEL_VELOCIDAD: Record<string, string> = {
-  ninguno:           'Sin control',
-  colas_simples:     'Colas Simples',
-  pcq_addresslist:   'PCQ + AddressList',
-  dhcp_lease_queues: 'DHCP Leases (Colas Dinámicas)',
-};
-
 function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
   const { toast } = useToast();
   const [tab, setTab] = useState<ModalTab>('ident');
   const [saving, setSaving] = useState(false);
-
-  // ─── Estado migración ─────────────────────────────────────
-  const [migrarState,  setMigrarState]  = useState<MigrarState>('idle');
-  const [migrarResult, setMigrarResult] = useState<MigrarResult | null>(null);
-  const pendingSaveRef = useRef<(() => Promise<void>) | null>(null);
 
   // ─── Estado del test de conexión ──────────────────────────
   type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
@@ -228,9 +188,6 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     timeoutConexion: router?.timeoutConexion  ?? 10,
     reintentos:      router?.reintentos       ?? 3,
     versionRos:      (router?.versionRos && router.versionRos !== 'v6' ? router.versionRos : 'v7') as any,
-    tipoControl:            router?.tipoControl            ?? 'ninguna',
-    tipoControlVelocidad:   router?.tipoControlVelocidad   ?? 'ninguno',
-    controlaAutenticacion:  router?.controlaAutenticacion  ?? true,
     autoConfigurarQueues:   router?.autoConfigurarQueues   ?? true,
     autoConfigurarPppoe:    router?.autoConfigurarPppoe    ?? true,
     autoConfigurarFirewall: router?.autoConfigurarFirewall ?? true,
@@ -239,11 +196,11 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
 
   const isDirty = !router || form.password !== '' || (
     ['nombre','descripcion','ubicacion','modelo','zona','ipGestion','vpnIp','usuario',
-     'metodoConexion','versionRos','tipoControl','tipoControlVelocidad','snmpCommunity'] as const
+     'metodoConexion','versionRos','snmpCommunity'] as const
   ).some((k) => (form as any)[k] !== ((router as any)[k] ?? '')) ||
   (['puertoApi','puertoApiSsl','puertoSsh','timeoutConexion','reintentos'] as const)
     .some((k) => Number(form[k]) !== Number(router[k])) ||
-  (['usarSsl','controlaAutenticacion'] as const)
+  (['usarSsl'] as const)
     .some((k) => Boolean(form[k]) !== Boolean(router[k]));
 
   const CONNECTION_FIELDS = new Set(['ipGestion','vpnIp','puertoApi','puertoApiSsl','puertoSsh','usuario','password','usarSsl','metodoConexion','versionRos','timeoutConexion']);
@@ -327,20 +284,10 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
     if (!form.usuario.trim()) { setTab('conn'); toast('El usuario es obligatorio', { type: 'error' }); return; }
     if (!router && !form.password) { setTab('conn'); toast('La contraseña es obligatoria al crear un router', { type: 'error' }); return; }
 
-    // Si es edición, detectar cambios en control/velocidad
-    if (router) {
-      const cambioControl   = form.tipoControl          !== router.tipoControl;
-      const cambioVelocidad = form.tipoControlVelocidad !== router.tipoControlVelocidad;
-      if (cambioControl || cambioVelocidad) {
-        pendingSaveRef.current = () => doSave(router.tipoControl, cambioControl);
-        setMigrarState('confirming');
-        return;
-      }
-    }
-    await doSave(null, false);
+    await doSave();
   };
 
-  const doSave = async (oldTipoControl: string | null, needsMigration: boolean) => {
+  const doSave = async () => {
     setSaving(true);
     try {
       const dto = { ...form };
@@ -348,31 +295,14 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
 
       if (router) {
         await mikrotikApi.actualizar(router.id, dto);
+        toast('Router actualizado correctamente', { type: 'success' });
       } else {
         await mikrotikApi.crear(dto);
         toast('Router registrado correctamente', { type: 'success' });
-        onSaved(); onClose(); return;
       }
-
-      if (needsMigration && oldTipoControl) {
-        setMigrarState('migrating');
-        setSaving(false);
-        try {
-          const result = await mikrotikApi.migrarClientes(router!.id, oldTipoControl);
-          setMigrarResult(result);
-          setMigrarState(result.errores.length === 0 ? 'done' : 'error');
-          onSaved();
-        } catch (err) {
-          setMigrarResult({ total: 0, ok: 0, errores: [{ contratoId: '', numero: '', error: parseApiError(err) }] });
-          setMigrarState('error');
-        }
-      } else {
-        toast('Router actualizado correctamente', { type: 'success' });
-        onSaved(); onClose();
-      }
+      onSaved(); onClose();
     } catch (err) {
       toast(parseApiError(err), { type: 'error' });
-      setMigrarState('idle');
     } finally {
       setSaving(false);
     }
@@ -763,66 +693,11 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
           {tab === 'config' && (
             <div className="space-y-5">
 
-              {/* Toggle: controla autenticación */}
-              <div className="flex items-start justify-between gap-4 p-4 rounded-xl border border-border bg-muted/10">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5 text-primary" />
-                    Permitir que el Router Controle la Autenticación de los Abonados
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {form.controlaAutenticacion
-                      ? 'Todos los abonados usan el método definido abajo.'
-                      : 'Cada abonado configura su propia autenticación al registrarse.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => set('controlaAutenticacion', !form.controlaAutenticacion)}
-                  className={cn(
-                    'relative flex-shrink-0 w-10 h-6 rounded-full transition-colors',
-                    form.controlaAutenticacion ? 'bg-primary' : 'bg-muted-foreground/30',
-                  )}
-                >
-                  <span className={cn(
-                    'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
-                    form.controlaAutenticacion ? 'translate-x-4' : 'translate-x-0.5',
-                  )} />
-                </button>
-              </div>
-
-              {/* Control de Seguridad — solo si el router controla auth */}
-              {form.controlaAutenticacion && (
-                <div>
-                  <p className={sectionHdr}>
-                    <Shield className="w-3.5 h-3.5" />
-                    Autenticación y Control Abonado
-                  </p>
-                  <select className={cn(inputCls, 'cursor-pointer')}
-                    value={form.tipoControl ?? 'ninguna'}
-                    onChange={(e) => set('tipoControl', e.target.value)}
-                  >
-                    {TIPO_CONTROL_OPTS.map((o) => (
-                      <option key={o.val} value={o.val} className="bg-gray-900">{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Control de velocidad */}
-              <div>
-                <p className={sectionHdr}>
-                  <Network className="w-3.5 h-3.5" />
-                  Control de velocidad
+              <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/10">
+                <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-blue-300">
+                  La autenticación y el control de velocidad se configuran individualmente en cada abonado al momento de registrar el servicio.
                 </p>
-                <select className={cn(inputCls, 'cursor-pointer')}
-                  value={form.tipoControlVelocidad ?? 'ninguno'}
-                  onChange={(e) => set('tipoControlVelocidad', e.target.value)}
-                >
-                  {TIPO_VELOCIDAD_OPTS.map((o) => (
-                    <option key={o.val} value={o.val} className="bg-gray-900">{o.label}</option>
-                  ))}
-                </select>
               </div>
             </div>
           )}
@@ -881,124 +756,6 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
       <ScriptConexionDialog router={router} onClose={() => setShowScript(false)} />
     )}
 
-    {/* ─── Modal confirmación de migración ─────────────────── */}
-    {migrarState === 'confirming' && router && (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
-        <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-xl w-full max-w-lg shadow-2xl p-6 space-y-5">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground text-base">Cambio de configuración detectado</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Este cambio se aplicará a <strong>todos los clientes activos</strong> conectados al router <strong>{router.nombre}</strong>.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-muted/40 rounded-lg p-4 space-y-2 text-sm">
-            {form.tipoControl !== router.tipoControl && (
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-muted-foreground">Autenticación:</span>
-                <span className="font-medium line-through text-destructive/70">{LABEL_CONTROL[router.tipoControl] ?? router.tipoControl}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-medium text-primary">{LABEL_CONTROL[form.tipoControl] ?? form.tipoControl}</span>
-              </div>
-            )}
-            {form.tipoControlVelocidad !== router.tipoControlVelocidad && (
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-muted-foreground">Velocidad:</span>
-                <span className="font-medium line-through text-destructive/70">{LABEL_VELOCIDAD[router.tipoControlVelocidad] ?? router.tipoControlVelocidad}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-medium text-primary">{LABEL_VELOCIDAD[form.tipoControlVelocidad] ?? form.tipoControlVelocidad}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
-            Las reglas anteriores de cada cliente serán <strong>eliminadas</strong> del router y se crearán las nuevas según la configuración seleccionada. Este proceso puede tomar tiempo dependiendo de la cantidad de clientes.
-          </div>
-
-          <div className="flex gap-3 justify-end pt-1">
-            <button
-              onClick={() => { setMigrarState('idle'); }}
-              className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={() => {
-                setMigrarState('idle');
-                if (pendingSaveRef.current) pendingSaveRef.current();
-              }}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              Aceptar y aplicar cambios
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {/* ─── Overlay migración en progreso ───────────────────── */}
-    {migrarState === 'migrating' && (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
-        <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl p-8 text-center space-y-4">
-          <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
-          <h3 className="font-semibold text-foreground text-base">Aplicando nueva configuración…</h3>
-          <p className="text-sm text-muted-foreground">
-            Eliminando reglas anteriores e inyectando la nueva configuración en el router Mikrotik para todos los clientes activos.
-            Te avisaremos cuando termine el proceso.
-          </p>
-        </div>
-      </div>
-    )}
-
-    {/* ─── Resultado migración ──────────────────────────────── */}
-    {(migrarState === 'done' || migrarState === 'error') && migrarResult && (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
-        <div role="dialog" aria-modal="true" className="bg-card border border-border rounded-xl w-full max-w-lg shadow-2xl p-6 space-y-5">
-          <div className="flex items-start gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${migrarState === 'done' ? 'bg-green-500/15' : 'bg-destructive/15'}`}>
-              {migrarState === 'done'
-                ? <CheckCircle2 className="w-5 h-5 text-green-500" />
-                : <XCircle      className="w-5 h-5 text-destructive" />}
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground text-base">
-                {migrarState === 'done' ? 'Migración completada exitosamente' : 'Migración completada con errores'}
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                {migrarResult.ok}/{migrarResult.total} clientes actualizados correctamente.
-                {migrarResult.errores.length > 0 && ` ${migrarResult.errores.length} con error.`}
-              </p>
-            </div>
-          </div>
-
-          {migrarResult.errores.length > 0 && (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 space-y-1 max-h-40 overflow-y-auto">
-              {migrarResult.errores.map((e, i) => (
-                <div key={i} className="text-xs text-destructive">
-                  <span className="font-medium">{e.numero || e.contratoId}:</span> {e.error}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
   </>
     </Portal>);
 }

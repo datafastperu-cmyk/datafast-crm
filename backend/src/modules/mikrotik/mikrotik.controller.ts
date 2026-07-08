@@ -15,7 +15,7 @@ import {
   CreateRouterDto, UpdateRouterDto,
   ProvisionarClienteDto, SuspenderClienteDto,
   ReactivarClienteDto, DhcpBindingDto,
-  ActualizarQueueDto, MigrarClientesDto,
+  ActualizarQueueDto,
   PingDto, AmareIpMacDto,
   TestConexionDirectaDto,
 } from './dto/mikrotik.dto';
@@ -95,22 +95,6 @@ export class MikrotikController {
     @CurrentUser() user: JwtPayload,
   ) {
     return StdResponse.ok(await this.svc.updateRouter(id, dto, user), 'Router actualizado');
-  }
-
-  @Post('routers/:id/migrar-clientes')
-  @RequirePermission('mikrotik:manage')
-  @ApiOperation({ summary: 'Re-provisionar todos los clientes activos del router con el nuevo tipo_control' })
-  @ApiParam({ name: 'id' })
-  async migrarClientesRouter(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: MigrarClientesDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    const result = await this.svc.migrarClientesRouter(id, dto.oldTipoControl, user.empresaId);
-    const msg = result.errores.length === 0
-      ? `Migración completada: ${result.ok}/${result.total} clientes actualizados correctamente.`
-      : `Migración completada con errores: ${result.ok}/${result.total} OK, ${result.errores.length} fallidos.`;
-    return StdResponse.ok(result, msg);
   }
 
   @Delete('routers/:id')

@@ -35,12 +35,9 @@ export interface Router {
   uptimeSegundos?:  number;
   uptimeStr?:       string;
   totalSesionesPppoe?: number;
-  tipoControl:             TipoControl;
-  tipoControlVelocidad:   TipoControlVelocidad;
   autoConfigurarQueues:   boolean;
   autoConfigurarPppoe:    boolean;
   autoConfigurarFirewall: boolean;
-  controlaAutenticacion:  boolean;
   snmpCommunity:    string;
   subnetsLocales?:  string[];
   activo:           boolean;
@@ -66,12 +63,9 @@ export interface CreateRouterDto {
   timeoutConexion?: number;
   reintentos?:     number;
   versionRos?:     VersionRouterOS;
-  tipoControl?:            TipoControl;
-  tipoControlVelocidad?:  TipoControlVelocidad;
   autoConfigurarQueues?:   boolean;
   autoConfigurarPppoe?:    boolean;
   autoConfigurarFirewall?: boolean;
-  controlaAutenticacion?:  boolean;
   snmpCommunity?:  string;
   latitud?:        number;
   longitud?:       number;
@@ -158,14 +152,6 @@ export const mikrotikApi = {
 
   testConexionDirecta: async (dto: TestConexionDto): Promise<TestConexionResult> => {
     const { data } = await api.post('/mikrotik/test-connection', dto);
-    return data.data;
-  },
-
-  migrarClientes: async (
-    id: string,
-    oldTipoControl: string,
-  ): Promise<{ total: number; ok: number; errores: Array<{ contratoId: string; numero: string; error: string }> }> => {
-    const { data } = await api.post(`/mikrotik/routers/${id}/migrar-clientes`, { oldTipoControl });
     return data.data;
   },
 

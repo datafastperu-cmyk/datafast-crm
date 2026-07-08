@@ -190,29 +190,6 @@ export class Router extends BaseModel {
   @Column({ type: 'smallint', default: 3 })
   reintentos: number;
 
-  // ── Control de seguridad ──────────────────────────────────
-  @Column({
-    name: 'tipo_control',
-    type: 'enum',
-    enum: TipoControl,
-    default: TipoControl.NINGUNA,
-  })
-  tipoControl: TipoControl;
-
-  // ── Control de velocidad ───────────────────────────────────
-  @Column({
-    name: 'tipo_control_velocidad',
-    type: 'enum',
-    enum: TipoControlVelocidad,
-    default: TipoControlVelocidad.NINGUNO,
-  })
-  tipoControlVelocidad: TipoControlVelocidad;
-
-  // Si true: la autenticación de abonados se define aquí (nivel router).
-  // Si false: cada abonado define su propio tipo de autenticación al registrarse.
-  @Column({ name: 'controla_autenticacion', default: true })
-  controlaAutenticacion: boolean;
-
   @Column({ default: true })
   activo: boolean;
 }

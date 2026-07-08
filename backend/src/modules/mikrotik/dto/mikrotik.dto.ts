@@ -6,7 +6,7 @@ import {
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  MetodoConexion, VersionRouterOS, TipoControl, TipoControlVelocidad,
+  MetodoConexion, VersionRouterOS,
 } from '../entities/router.entity';
 
 // ─── Crear Router ─────────────────────────────────────────────
@@ -75,14 +75,6 @@ export class CreateRouterDto {
   @IsOptional() @IsIP()
   vpnIp?: string;
 
-  @ApiPropertyOptional({ enum: TipoControl, default: TipoControl.NINGUNA })
-  @IsOptional() @IsEnum(TipoControl)
-  tipoControl?: TipoControl;
-
-  @ApiPropertyOptional({ enum: TipoControlVelocidad, default: TipoControlVelocidad.NINGUNO })
-  @IsOptional() @IsEnum(TipoControlVelocidad)
-  tipoControlVelocidad?: TipoControlVelocidad;
-
   @ApiPropertyOptional({ default: 'public' })
   @IsOptional() @IsString() @MaxLength(100)
   snmpCommunity?: string;
@@ -115,9 +107,6 @@ export class CreateRouterDto {
   @IsOptional() @IsString() @MaxLength(100)
   vpnClienteId?: string;
 
-  @ApiPropertyOptional({ default: true, description: 'Si true: la autenticación se define a nivel router. Si false: cada abonado define su propia autenticación.' })
-  @IsOptional() @IsBoolean()
-  controlaAutenticacion?: boolean;
 }
 
 export class UpdateRouterDto extends PartialType(CreateRouterDto) {}
@@ -236,13 +225,6 @@ export class ActualizarQueueDto {
   @ApiProperty({ example: 15 })
   @IsInt() @Min(1) @Max(10000) @Type(() => Number)
   uploadMbps: number;
-}
-
-// ─── Migrar Clientes ──────────────────────────────────────────
-export class MigrarClientesDto {
-  @ApiProperty({ enum: TipoControl, description: 'Tipo de control anterior que se reemplaza' })
-  @IsEnum(TipoControl)
-  oldTipoControl: TipoControl;
 }
 
 // ─── Amarre IP-MAC (ARP estático + opcionalmente DHCP lease) ─────

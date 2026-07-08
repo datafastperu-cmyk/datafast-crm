@@ -231,7 +231,6 @@ export function RouterDetailPanel({ router, onClose }: Props) {
                   { label: 'Latencia',   value: router.latenciaMs != null ? `${router.latenciaMs}ms` : null },
                   { label: 'Zona',       value: router.zona },
                   { label: 'Ubicación',  value: router.ubicacion },
-                  { label: 'Tipo ctrl',  value: router.tipoControl !== 'ninguna' ? router.tipoControl : null },
                 ].filter((r) => r.value).map((row) => (
                   <div key={row.label} className="flex items-start justify-between gap-2 text-xs">
                     <span className="text-muted-foreground flex-shrink-0">{row.label}</span>

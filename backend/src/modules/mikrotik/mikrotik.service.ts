@@ -292,7 +292,7 @@ export class MikrotikService implements OnModuleInit {
     // Re-sincronizar subnets si cambió la IP de gestión/VPN
     if (dto.ipGestion || dto.vpnIp) this.syncSubnetsAsync(updated);
     // Re-inyectar solo cuando cambia algo que afecta la conectividad o las reglas
-    if (dto.ipGestion || dto.vpnIp || rawPass || dto.tipoControl) {
+    if (dto.ipGestion || dto.vpnIp || rawPass) {
       this.inyectarReglasMorososAsync(updated);
     }
     return updated;
@@ -496,10 +496,7 @@ export class MikrotikService implements OnModuleInit {
       );
     }
 
-    this.logger.log(
-      `[REPARAR] ${router.nombre} — ${contratos.length} contratos, ` +
-      `tipoControl=${router.tipoControl}, controlaAutenticacion=${router.controlaAutenticacion}`,
-    );
+    this.logger.log(`[REPARAR] ${router.nombre} — ${contratos.length} contratos`);
 
     let ok = 0;
     const errores:      string[] = [];
@@ -513,27 +510,10 @@ export class MikrotikService implements OnModuleInit {
     });
 
     for (const co of contratos) {
-      // ── Auth efectiva que DEBE tener este contrato en el MikroTik ─────────
-      const targetAuth: string = router.controlaAutenticacion
-        ? router.tipoControl
-        : (co.tipoAuth ?? 'ninguna');
+      // ── Auth efectiva de este contrato: siempre la del propio abonado ─────
+      const targetAuth: string = co.tipoAuth ?? 'ninguna';
 
-      // ── Auth obsoleta que puede haber quedado en el MikroTik ──────────────
-      // Solo limpiamos si conocemos con certeza qué fue provisionado antes Y
-      // la familia de autenticación cambia (evitar borrar reglas que el nuevo
-      // tipo también necesita, ej: amarre_ip_mac → amarre_ip_mac_dhcp ambos usan ARP).
-      const staleAuth: string | null = (() => {
-        if (router.controlaAutenticacion && co.tipoAuth && co.tipoAuth !== targetAuth) {
-          // Transición false→true: cada abonado tenía auth individual, ahora el router controla.
-          return co.tipoAuth;
-        }
-        if (!router.controlaAutenticacion && co.tipoAuth && co.tipoAuth !== router.tipoControl) {
-          // Transición true→false: el router controlaba con tipoControl, ahora cada abonado
-          // tiene su propio tipoAuth distinto al anterior tipoControl del router.
-          return router.tipoControl;
-        }
-        return null;
-      })();
+      const staleAuth: string | null = null;
 
       // Familias: 'pppoe' | 'mac' | 'none'
       const authFamily = (a: string) =>
@@ -559,14 +539,9 @@ export class MikrotikService implements OnModuleInit {
         camposFaltantes.push('macAddress');
 
       if (camposFaltantes.length > 0) {
-        // No se puede provisionar pero tampoco hay riesgo de dejar al abonado sin reglas.
-        // Si el router ahora controla auth, limpiamos tipo_auth en BD para no reintentar indefinidamente.
         const aviso = `${co.numeroContrato}: sin ${camposFaltantes.join(', ')} para ${targetAuth} — omitido`;
         advertencias.push(aviso);
         this.logger.warn(`[REPARAR] ${aviso}`);
-        if (router.controlaAutenticacion && co.tipoAuth) {
-          await this.ds.query(`UPDATE contratos SET tipo_auth = NULL WHERE id = $1`, [co.id]);
-        }
         ok++;
         continue;
       }
@@ -588,13 +563,6 @@ export class MikrotikService implements OnModuleInit {
             advertencias.push(aviso);
             this.logger.warn(`[REPARAR] ${aviso}`);
           }
-        }
-
-        // 3. Limpiar tipo_auth en BD SOLO tras éxito en MikroTik.
-        //    Si hubo fallo en MikroTik (catch externo), tipo_auth se conserva
-        //    y el próximo reparar podrá reintentar este contrato.
-        if (router.controlaAutenticacion && co.tipoAuth) {
-          await this.ds.query(`UPDATE contratos SET tipo_auth = NULL WHERE id = $1`, [co.id]);
         }
 
         ok++;
@@ -1370,78 +1338,6 @@ export class MikrotikService implements OnModuleInit {
         // Si no responde al registrar, queda en DESCONOCIDO; el cron actualizará.
         this.logger.warn(`No se pudo detectar versión en ${router.vpnIp || router.ipGestion} al registrar: ${err.message}`);
       });
-  }
-
-  // ────────────────────────────────────────────────────────────
-  // MIGRACIÓN MASIVA DE CLIENTES AL CAMBIAR tipo_control
-  // ────────────────────────────────────────────────────────────
-
-  async migrarClientesRouter(
-    routerId:       string,
-    oldTipoControl: string,
-    empresaId:      string,
-  ): Promise<{ total: number; ok: number; errores: Array<{ contratoId: string; numero: string; error: string }> }> {
-    const router = await this.findOne(routerId, empresaId);
-    const newTipoControl = router.tipoControl;
-
-    const creds: RouterCredentials = {
-      id:              router.id,
-      ip:              router.vpnIp || router.ipGestion,
-      port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
-      user:            router.usuario ?? 'admin',
-      passwordCifrado: router.passwordCifrado ?? '',
-      useSsl:          router.usarSsl ?? false,
-      timeoutSec:      20,
-      version:         'v7',
-    };
-
-    // Pre-flight: verificar conectividad antes de comenzar la migración.
-    // Sin esto, un fallo a mitad deja algunos contratos migrados y otros no.
-    try {
-      await this.pool.execute(creds, async (api) => {
-        await api.write('/system/identity/print');
-      });
-    } catch (err: any) {
-      throw new BadRequestException(
-        `No se puede conectar al router "${router.nombre}" ` +
-        `(${creds.ip}:${creds.port}) — verifica el túnel VPN antes de migrar. ` +
-        `Detalle: ${err.message}`,
-      );
-    }
-
-    const contratos = await this.ds.query<any[]>(`
-      SELECT co.id, co.numero_contrato AS "numeroContrato",
-             co.usuario_pppoe AS "usuarioPppoe", co.password_pppoe AS "passwordPppoe",
-             co.ip_asignada AS "ipAsignada", co.mac_address AS "macAddress",
-             cl.nombre_completo AS "nombreCompleto",
-             pl.ppp_profile AS "pppProfile"
-      FROM contratos co
-      JOIN clientes cl ON cl.id = co.cliente_id
-      LEFT JOIN planes pl ON pl.id = co.plan_id
-      WHERE co.router_id = $1
-        AND co.empresa_id = $2
-        AND co.estado IN ('activo','suspendido')
-        AND co.deleted_at IS NULL
-    `, [routerId, empresaId]);
-
-    const errores: Array<{ contratoId: string; numero: string; error: string }> = [];
-    let ok = 0;
-
-    for (const co of contratos) {
-      try {
-        // 1. Crear reglas del nuevo tipo (si falla, las viejas permanecen intactas)
-        await this.crearReglasControl(creds, co, newTipoControl);
-        // 2. Limpiar reglas del tipo anterior (solo si la creación fue exitosa)
-        await this.limpiarReglasControl(creds, co, oldTipoControl);
-        ok++;
-        this.logger.log(`migrarClientes → contrato ${co.numeroContrato}: ${oldTipoControl} → ${newTipoControl} OK`);
-      } catch (err: any) {
-        errores.push({ contratoId: co.id, numero: co.numeroContrato, error: err?.message ?? 'Error desconocido' });
-        this.logger.warn(`migrarClientes → contrato ${co.numeroContrato}: ERROR — ${err?.message}`);
-      }
-    }
-
-    return { total: contratos.length, ok, errores };
   }
 
   private async limpiarReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {

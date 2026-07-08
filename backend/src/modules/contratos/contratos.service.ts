@@ -103,12 +103,12 @@ export class ContratosService {
 
     if (dto.routerId) {
       const [router] = await this.dataSource.query<any[]>(
-        `SELECT tipo_control AS "tipoControl", controla_autenticacion AS "controlaAutenticacion", nombre FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+        `SELECT nombre FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
         [dto.routerId, user.empresaId],
       );
       if (!router) throw new BadRequestException('Router no encontrado');
 
-      const authEfectivo = router.controlaAutenticacion ? router.tipoControl : (dto.tipoAuth ?? 'ninguna');
+      const authEfectivo = dto.tipoAuth ?? 'ninguna';
       const requiereMac  = authEfectivo === 'amarre_ip_mac' || authEfectivo === 'amarre_ip_mac_dhcp';
       if (requiereMac && !dto.macAddress?.trim()) {
         throw new BadRequestException(
@@ -464,14 +464,15 @@ export class ContratosService {
 
       if (effectiveRouterId) {
         const [router] = await this.dataSource.query<any[]>(
-          `SELECT tipo_control AS "tipoControl", nombre FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+          `SELECT nombre FROM routers WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
           [effectiveRouterId, user.empresaId],
         );
         if (router) {
-          const requiereMac = router.tipoControl === 'amarre_ip_mac' || router.tipoControl === 'amarre_ip_mac_dhcp';
+          const effectiveTipoAuth = dto.tipoAuth ?? (existing as any).tipoAuth ?? 'ninguna';
+          const requiereMac = effectiveTipoAuth === 'amarre_ip_mac' || effectiveTipoAuth === 'amarre_ip_mac_dhcp';
           if (requiereMac && !effectiveMac?.trim()) {
             throw new BadRequestException(
-              `El router "${router.nombre}" usa autenticación por Amarre IP/MAC. La dirección MAC es obligatoria.`,
+              `El tipo de autenticación Amarre IP/MAC requiere dirección MAC.`,
             );
           }
           if (effectiveSegmentoId) {
@@ -1068,7 +1069,6 @@ export class ContratosService {
             co.usuario_pppoe    AS "usuarioPppoe",
             co.ip_asignada      AS "ipAsignada",
             co.mac_address      AS "macAddress",
-            ro.tipo_control     AS "tipoControl",
             ro.vpn_ip           AS "vpnIp",
             ro.ip_gestion       AS "ipGestion",
             ro.puerto_api       AS "puertoApi",
@@ -1086,7 +1086,7 @@ export class ContratosService {
 
         if (!row?.crearReglas || (!row.vpnIp && !row.ipGestion)) return true; // sin hardware que verificar
 
-        const rawTipo: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+        const rawTipo: string = row.tipoAuth ?? 'ninguna';
         const tipoControl     = rawTipo === 'pppoe_addresslist' ? 'pppoe' : rawTipo;
 
         const creds = {
@@ -1135,7 +1135,6 @@ export class ContratosService {
           co.mac_address         AS "macAddress",
           co.tipo_auth           AS "tipoAuth",
           cl.nombre_completo     AS "nombreCompleto",
-          ro.tipo_control        AS "tipoControl",
           ro.vpn_ip              AS "vpnIp",
           ro.ip_gestion          AS "ipGestion",
           ro.puerto_api          AS "puertoApi",
@@ -1186,8 +1185,7 @@ export class ContratosService {
       version:         (row.versionRos ?? 'v6') as any,
     };
 
-    // co.tipo_auth tiene prioridad sobre ro.tipo_control (auth por abonado desde Task 2)
-    const _rawTipo: string = row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+    const _rawTipo: string = row.tipoAuth ?? 'ninguna';
     const tipoControl: string = _rawTipo === 'pppoe_addresslist' ? 'pppoe' : _rawTipo;
 
     // Fix 1: tipo efectivo NINGUNA → error explícito, no fallo silencioso
@@ -1235,7 +1233,6 @@ export class ContratosService {
           co.ip_asignada         AS "ipAsignada",
           co.mac_address         AS "macAddress",
           co.tipo_auth           AS "tipoAuth",
-          ro.tipo_control        AS "tipoControl",
           ro.vpn_ip              AS "vpnIp",
           ro.ip_gestion          AS "ipGestion",
           ro.puerto_api          AS "puertoApi",
@@ -1271,7 +1268,7 @@ export class ContratosService {
     };
 
     // tipoAuthAnterior tiene prioridad: evita usar el tipo ya actualizado en BD
-    const _rawTipo2: string = tipoAuthAnterior ?? row.tipoAuth ?? row.tipoControl ?? 'ninguna';
+    const _rawTipo2: string = tipoAuthAnterior ?? row.tipoAuth ?? 'ninguna';
     const tipoControl: string = _rawTipo2 === 'pppoe_addresslist' ? 'pppoe' : _rawTipo2;
 
     try {

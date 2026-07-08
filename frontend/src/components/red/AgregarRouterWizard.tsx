@@ -16,21 +16,6 @@ import { parseApiError, cn } from '@/lib/utils';
 import type { TestConexionResult } from '@/lib/api/mikrotik';
 import type { VpnCliente, VersionRos } from '@/lib/api/vpn';
 
-// ─── Opciones ─────────────────────────────────────────────────────────────────
-
-const SECURITY_OPTS = [
-  { val: 'pppoe',  label: 'PPPoE'                       },
-  { val: 'amarre_ip_mac',      label: 'Amarre IP/MAC'               },
-  { val: 'amarre_ip_mac_dhcp', label: 'Amarre IP/MAC + DHCP Leases' },
-] as const;
-
-const SPEED_OPTS = [
-  { val: 'colas_simples',     label: 'Colas Simples'                          },
-  { val: 'pcq_addresslist',   label: 'PCQ + AddressList'                      },
-  { val: 'dhcp_lease_queues', label: 'DHCP Leases (Colas Simples Dinámicas)'  },
-  { val: 'ninguno',           label: 'Ninguno'                                },
-] as const;
-
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type Step         = 1 | 2 | 3;
@@ -92,11 +77,6 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   // Test de conexión
   const [testStatus, setTestStatus] = useState<TestStatus>('idle');
   const [testResult, setTestResult] = useState<TestConexionResult | null>(null);
-
-  // Paso 3
-  const [tipoControl,           setTipoControl]           = useState('amarre_ip_mac');
-  const [tipoControlVelocidad,  setTipoControlVelocidad]  = useState('colas_simples');
-  const [controlaAutenticacion, setControlaAutenticacion] = useState(true);
 
   const [saving,         setSaving]         = useState(false);
   const [routerGuardado, setRouterGuardado] = useState(false);
@@ -369,9 +349,6 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         puertoSsh,
         usarSsl:              tipoConexion === 'api_ssl' ? usarSsl : false,
         metodoConexion:       tipoConexion,
-        tipoControl:          tipoControl          as any,
-        tipoControlVelocidad: tipoControlVelocidad as any,
-        controlaAutenticacion,
         vpnClienteId:         tipoConexion === 'vpn_tunnel' ? vpnCliente?.id : undefined,
       });
       toast('Router registrado correctamente', { type: 'success' });
@@ -812,74 +789,14 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
             </div>
           )}
 
-          {/* ── Paso 3: Control ──────────────────────────────────────── */}
+          {/* ── Paso 3: Resumen ──────────────────────────────────────── */}
           {step === 3 && (
             <div className="space-y-6">
-              <p className="text-xs text-muted-foreground">
-                Define qué controles se aplicarán al provisionar clientes en este router.
-                No tienen efecto inmediato — se activan al agregar un cliente nuevo.
-              </p>
-
-              {/* Toggle: controla autenticación */}
-              <div className="flex items-start justify-between gap-4 p-4 rounded-xl border border-border bg-muted/10">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5 text-primary" />
-                    Permitir que el Router Controle la Autenticación de los Abonados
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {controlaAutenticacion
-                      ? 'Todos los abonados de este router usarán el mismo método de autenticación definido abajo.'
-                      : 'Cada abonado podrá configurar su propio método de autenticación al registrarse.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setControlaAutenticacion((v) => !v)}
-                  className={cn(
-                    'relative flex-shrink-0 w-10 h-6 rounded-full transition-colors',
-                    controlaAutenticacion ? 'bg-primary' : 'bg-muted-foreground/30',
-                  )}
-                >
-                  <span className={cn(
-                    'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
-                    controlaAutenticacion ? 'translate-x-4' : 'translate-x-0.5',
-                  )} />
-                </button>
-              </div>
-
-              {/* Control de seguridad — solo visible cuando el router controla auth */}
-              {controlaAutenticacion && (
-                <div>
-                  <label className={labelCls}>
-                    <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Autenticación y Control Abonado</span>
-                  </label>
-                  <select
-                    value={tipoControl}
-                    onChange={(e) => setTipoControl(e.target.value)}
-                    className={inputCls}
-                  >
-                    {SECURITY_OPTS.map((o) => (
-                      <option key={o.val} value={o.val}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Control de velocidad */}
-              <div>
-                <label className={labelCls}>
-                  <span className="flex items-center gap-1.5"><Gauge className="w-3.5 h-3.5" /> Control de velocidad</span>
-                </label>
-                <select
-                  value={tipoControlVelocidad}
-                  onChange={(e) => setTipoControlVelocidad(e.target.value)}
-                  className={inputCls}
-                >
-                  {SPEED_OPTS.map((o) => (
-                    <option key={o.val} value={o.val}>{o.label}</option>
-                  ))}
-                </select>
+              <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/10">
+                <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-blue-300">
+                  La autenticación y el control de velocidad se configuran individualmente en cada abonado al momento de registrar el servicio.
+                </p>
               </div>
 
               {/* Resumen */}
