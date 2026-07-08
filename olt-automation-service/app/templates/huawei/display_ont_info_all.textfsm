@@ -6,4 +6,6 @@ Value ConfigState (\S+)
 Value MatchState (\S+)
 
 Start
-  ^\s+\d+/\s*\d+/\s*\d+\s+${OnuId}\s+${Sn}\s+${ControlFlag}\s+${RunState}\s+${ConfigState}\s+${MatchState} -> Record
+  # ^.*? tolera basura inicial (códigos de escape del pager "---- More"/[37D) que
+  # aparecen pegados a la fila justo tras un salto de página, evitando perder esa ONU.
+  ^.*?\d+/\s*\d+/\s*\d+\s+${OnuId}\s+${Sn}\s+${ControlFlag}\s+${RunState}\s+${ConfigState}\s+${MatchState} -> Record
