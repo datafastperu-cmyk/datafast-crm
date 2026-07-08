@@ -1,69 +1,87 @@
 import {
-  Injectable, Logger, NotFoundException, OnModuleInit,
-  BadRequestException, ConflictException, InternalServerErrorException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ModuleHealthService } from '../../common/services/module-health.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In }   from 'typeorm';
-import { InjectDataSource }  from '@nestjs/typeorm';
-import { DataSource }        from 'typeorm';
+import { Repository, In } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import * as net from 'net';
 
-import { Router, VersionRouterOS, EstadoEquipo, MetodoConexion } from './entities/router.entity';
-import { RouterConnectionPool, RouterCredentials } from './services/connection-pool.service';
-import { PppoeService, CreatePppoeParams }         from './services/pppoe.service';
-import { QueueService, QueueParams }               from './services/queue.service';
-import { FirewallService }                          from './services/firewall.service';
-import { ArpService }                              from './services/arp.service';
-import { InterfaceService }                        from './services/interface.service';
-import { SubnetRouteService }                      from './services/subnet-route.service';
-import { AuditoriaService }                        from '../auth/auditoria.service';
-import { VpnClienteService }                       from '../openvpn/services/vpn-cliente.service';
-import { JwtPayload }                              from '../../common/decorators/current-user.decorator';
-import { encrypt, decrypt }                        from '../../common/utils/encryption.util';
+import {
+  Router,
+  VersionRouterOS,
+  EstadoEquipo,
+  MetodoConexion,
+} from './entities/router.entity';
+import {
+  RouterConnectionPool,
+  RouterCredentials,
+} from './services/connection-pool.service';
+import { PppoeService, CreatePppoeParams } from './services/pppoe.service';
+import { QueueService, QueueParams } from './services/queue.service';
+import { FirewallService } from './services/firewall.service';
+import { ArpService } from './services/arp.service';
+import { InterfaceService } from './services/interface.service';
+import { SubnetRouteService } from './services/subnet-route.service';
+import { AuditoriaService } from '../auth/auditoria.service';
+import { VpnClienteService } from '../openvpn/services/vpn-cliente.service';
+import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { encrypt, decrypt } from '../../common/utils/encryption.util';
 
 import {
-  CreateRouterDto, UpdateRouterDto, ProvisionarClienteDto,
-  SuspenderClienteDto, ReactivarClienteDto, AmareIpMacDto,
-  TestConexionDirectaDto, ActualizarQueueDto,
+  CreateRouterDto,
+  UpdateRouterDto,
+  ProvisionarClienteDto,
+  SuspenderClienteDto,
+  ReactivarClienteDto,
+  AmareIpMacDto,
+  TestConexionDirectaDto,
+  ActualizarQueueDto,
 } from './dto/mikrotik.dto';
 
 import { NOTIFICATION_EVENTS } from '../notificaciones/events/notification.events';
 
 // ─── Evento emitido al suspender/reactivar ────────────────────
-export const EVENT_CLIENTE_SUSPENDIDO  = 'mikrotik.cliente.suspendido';
-export const EVENT_CLIENTE_REACTIVADO  = 'mikrotik.cliente.reactivado';
+export const EVENT_CLIENTE_SUSPENDIDO = 'mikrotik.cliente.suspendido';
+export const EVENT_CLIENTE_REACTIVADO = 'mikrotik.cliente.reactivado';
 
 @Injectable()
 export class MikrotikService implements OnModuleInit {
   private readonly logger = new Logger(MikrotikService.name);
   private readonly reglasOk = new Set<string>();
 
-  private degraded      = false;
+  private degraded = false;
   private degradedReason: string | null = null;
 
   // Contador de fallos consecutivos de poll por router (en memoria).
   // 1 fallo → REVERIFICANDO (puede ser transitorio), 2+ fallos → OFFLINE real.
   private readonly _pollFailCount = new Map<string, number>();
-  private          _pollRunning   = false;
+  private _pollRunning = false;
 
   constructor(
     @InjectRepository(Router)
-    private readonly routerRepo:  Repository<Router>,
-    private readonly pool:        RouterConnectionPool,
-    private readonly pppoeSvc:    PppoeService,
-    private readonly queueSvc:    QueueService,
+    private readonly routerRepo: Repository<Router>,
+    private readonly pool: RouterConnectionPool,
+    private readonly pppoeSvc: PppoeService,
+    private readonly queueSvc: QueueService,
     private readonly firewallSvc: FirewallService,
-    private readonly arpSvc:      ArpService,
-    private readonly ifaceSvc:    InterfaceService,
-    private readonly subnetSvc:   SubnetRouteService,
-    private readonly auditoria:   AuditoriaService,
-    private readonly events:      EventEmitter,
+    private readonly arpSvc: ArpService,
+    private readonly ifaceSvc: InterfaceService,
+    private readonly subnetSvc: SubnetRouteService,
+    private readonly auditoria: AuditoriaService,
+    private readonly events: EventEmitter,
     @InjectDataSource() private readonly ds: DataSource,
-    private readonly vpnSvc:      VpnClienteService,
+    private readonly vpnSvc: VpnClienteService,
     private readonly moduleHealth: ModuleHealthService,
   ) {}
 
@@ -83,11 +101,16 @@ export class MikrotikService implements OnModuleInit {
       `);
 
       if (primer) {
-        const ip    = primer.vpnIp || primer.ip;
-        const port  = primer.usarSsl ? (primer.puertoApiSsl ?? 8729) : (primer.puerto ?? 8728);
+        const ip = primer.vpnIp || primer.ip;
+        const port = primer.usarSsl
+          ? (primer.puertoApiSsl ?? 8729)
+          : (primer.puerto ?? 8728);
         await new Promise<void>((resolve, reject) => {
           const s = net.createConnection({ host: ip, port }, resolve);
-          s.setTimeout(3000, () => { s.destroy(); reject(new Error(`TCP timeout ${ip}:${port}`)); });
+          s.setTimeout(3000, () => {
+            s.destroy();
+            reject(new Error(`TCP timeout ${ip}:${port}`));
+          });
           s.on('error', reject);
           s.on('connect', () => s.destroy());
         });
@@ -96,14 +119,18 @@ export class MikrotikService implements OnModuleInit {
       this.moduleHealth.registrar('mikrotik', 'ok');
     } catch (err: any) {
       // Degraded pero NO crashear — otros módulos del core deben seguir operando
-      this.degraded       = true;
+      this.degraded = true;
       this.degradedReason = err.message;
       this.moduleHealth.registrar('mikrotik', 'degraded', err.message);
     }
   }
 
-  isDegraded():        boolean       { return this.degraded; }
-  getDegradedReason(): string | null { return this.degradedReason; }
+  isDegraded(): boolean {
+    return this.degraded;
+  }
+  getDegradedReason(): string | null {
+    return this.degradedReason;
+  }
 
   private assertNotDegraded(): void {
     if (this.degraded) {
@@ -122,10 +149,16 @@ export class MikrotikService implements OnModuleInit {
 
     // Validar unicidad de IP de gestión
     const existePorIp = await this.routerRepo.findOne({
-      where: { ipGestion: dto.ipGestion, empresaId: user.empresaId, deletedAt: null as any },
+      where: {
+        ipGestion: dto.ipGestion,
+        empresaId: user.empresaId,
+        deletedAt: null as any,
+      },
     });
     if (existePorIp) {
-      throw new BadRequestException(`La IP de gestión ${dto.ipGestion} ya está registrada en esta empresa`);
+      throw new BadRequestException(
+        `La IP de gestión ${dto.ipGestion} ya está registrada en esta empresa`,
+      );
     }
 
     // Validar unicidad de nombre
@@ -142,7 +175,9 @@ export class MikrotikService implements OnModuleInit {
         where: { vpnIp: dto.vpnIp, empresaId: user.empresaId, deletedAt: null as any },
       });
       if (existePorVpnIp) {
-        throw new BadRequestException(`La IP VPN ${dto.vpnIp} ya está registrada en esta empresa`);
+        throw new BadRequestException(
+          `La IP VPN ${dto.vpnIp} ya está registrada en esta empresa`,
+        );
       }
     }
 
@@ -151,7 +186,7 @@ export class MikrotikService implements OnModuleInit {
       ...dtoRest,
       passwordCifrado,
       empresaId: user.empresaId,
-      estado:    EstadoEquipo.DESCONOCIDO,
+      estado: EstadoEquipo.DESCONOCIDO,
     });
     const saved = await this.routerRepo.save(router);
 
@@ -160,24 +195,38 @@ export class MikrotikService implements OnModuleInit {
         // Vincular cert del wizard directamente — evita generar un cert UUID huérfano.
         // Pasamos usuarioId para asegurar que el cert pertenece al operador que abrió el wizard.
         try {
-          await this.vpnSvc.vincularCertWizardARouter(dto.vpnClienteId, saved.id, user.empresaId, user.sub);
+          await this.vpnSvc.vincularCertWizardARouter(
+            dto.vpnClienteId,
+            saved.id,
+            user.empresaId,
+            user.sub,
+          );
         } catch (e: any) {
-          this.logger.error(`[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`);
+          this.logger.error(
+            `[VPN-CCD] vincular wizard cert router ${saved.id}: ${e.message}`,
+          );
           await this.routerRepo.softDelete(saved.id);
           throw new InternalServerErrorException(
             `Router creado pero falló la configuración VPN: ${e.message}. El registro fue revertido.`,
           );
         }
       } else {
-        this.vpnSvc.generarParaRouter(await this.findOne(saved.id, user.empresaId)).catch(e =>
-          this.logger.error(`[VPN-CCD] generarParaRouter falló para router ${saved.id} — vpnCommonName quedará null hasta el próximo "Reparar": ${e.message}`)
-        );
+        this.vpnSvc
+          .generarParaRouter(await this.findOne(saved.id, user.empresaId))
+          .catch((e) =>
+            this.logger.error(
+              `[VPN-CCD] generarParaRouter falló para router ${saved.id} — vpnCommonName quedará null hasta el próximo "Reparar": ${e.message}`,
+            ),
+          );
       }
     }
 
     await this.auditoria.logCreate({
-      empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
-      modulo: 'mikrotik', entidadId: saved.id,
+      empresaId: user.empresaId,
+      usuarioId: user.sub,
+      usuarioEmail: user.email,
+      modulo: 'mikrotik',
+      entidadId: saved.id,
       descripcion: `Router creado: ${dto.nombre} (${dto.ipGestion})`,
     });
 
@@ -198,7 +247,10 @@ export class MikrotikService implements OnModuleInit {
     return routerFinal;
   }
 
-  async findAll(empresaId: string, tipoServicio?: string): Promise<(Router & { contratosCount: number })[]> {
+  async findAll(
+    empresaId: string,
+    tipoServicio?: string,
+  ): Promise<(Router & { contratosCount: number })[]> {
     let routerIds: string[] | null = null;
 
     if (tipoServicio) {
@@ -238,24 +290,38 @@ export class MikrotikService implements OnModuleInit {
     );
 
     const countMap = new Map(rows.map((r) => [r.router_id, Number(r.count)]));
-    return routers.map((r) => Object.assign(r, { contratosCount: countMap.get(r.id) ?? 0 }));
+    return routers.map((r) =>
+      Object.assign(r, { contratosCount: countMap.get(r.id) ?? 0 }),
+    );
   }
 
   async findOne(id: string, empresaId: string): Promise<Router> {
-    const r = await this.routerRepo.findOne({ where: { id, empresaId, deletedAt: null as any } });
+    const r = await this.routerRepo.findOne({
+      where: { id, empresaId, deletedAt: null as any },
+    });
     if (!r) throw new NotFoundException(`Router ${id} no encontrado`);
     return r;
   }
 
-  async updateRouter(id: string, dto: UpdateRouterDto, user: JwtPayload): Promise<Router> {
+  async updateRouter(
+    id: string,
+    dto: UpdateRouterDto,
+    user: JwtPayload,
+  ): Promise<Router> {
     await this.findOne(id, user.empresaId);
 
     if (dto.ipGestion) {
       const existePorIp = await this.routerRepo.findOne({
-        where: { ipGestion: dto.ipGestion, empresaId: user.empresaId, deletedAt: null as any },
+        where: {
+          ipGestion: dto.ipGestion,
+          empresaId: user.empresaId,
+          deletedAt: null as any,
+        },
       });
       if (existePorIp && existePorIp.id !== id) {
-        throw new BadRequestException(`La IP de gestión ${dto.ipGestion} ya está registrada en esta empresa`);
+        throw new BadRequestException(
+          `La IP de gestión ${dto.ipGestion} ya está registrada en esta empresa`,
+        );
       }
     }
     if (dto.nombre) {
@@ -271,7 +337,9 @@ export class MikrotikService implements OnModuleInit {
         where: { vpnIp: dto.vpnIp, empresaId: user.empresaId, deletedAt: null as any },
       });
       if (existePorVpnIp && existePorVpnIp.id !== id) {
-        throw new BadRequestException(`La IP VPN ${dto.vpnIp} ya está registrada en esta empresa`);
+        throw new BadRequestException(
+          `La IP VPN ${dto.vpnIp} ya está registrada en esta empresa`,
+        );
       }
     }
 
@@ -338,15 +406,25 @@ export class MikrotikService implements OnModuleInit {
     ]);
 
     const bloqueadores: string[] = [];
-    if (Number(countContratos)    > 0) bloqueadores.push(`${countContratos} abonado(s) con servicio activo`);
-    if (Number(countDispositivos) > 0) bloqueadores.push(`${countDispositivos} equipo(s) monitoreado(s) (antenas, cámaras u otros)`);
-    if (Number(countOlts)         > 0) bloqueadores.push(`${countOlts} OLT(s) registrada(s) con este router como cabecera`);
-    if (Number(countIpsActivas)   > 0) bloqueadores.push(`${countIpsActivas} IP(s) activa(s) en segmentos de red del router`);
+    if (Number(countContratos) > 0)
+      bloqueadores.push(`${countContratos} abonado(s) con servicio activo`);
+    if (Number(countDispositivos) > 0)
+      bloqueadores.push(
+        `${countDispositivos} equipo(s) monitoreado(s) (antenas, cámaras u otros)`,
+      );
+    if (Number(countOlts) > 0)
+      bloqueadores.push(
+        `${countOlts} OLT(s) registrada(s) con este router como cabecera`,
+      );
+    if (Number(countIpsActivas) > 0)
+      bloqueadores.push(
+        `${countIpsActivas} IP(s) activa(s) en segmentos de red del router`,
+      );
 
     if (bloqueadores.length > 0) {
       throw new BadRequestException(
         `No es posible eliminar este router porque tiene: ${bloqueadores.join(' y ')}. ` +
-        `Reasigna o elimina estos elementos antes de continuar.`,
+          `Reasigna o elimina estos elementos antes de continuar.`,
       );
     }
 
@@ -394,12 +472,12 @@ export class MikrotikService implements OnModuleInit {
     }
 
     await this.auditoria.log({
-      empresaId:   user.empresaId,
-      usuarioId:   user.sub,
+      empresaId: user.empresaId,
+      usuarioId: user.sub,
       usuarioEmail: user.email,
-      accion:      'DELETE',
-      modulo:      'mikrotik',
-      entidadId:   id,
+      accion: 'DELETE',
+      modulo: 'mikrotik',
+      entidadId: id,
       descripcion: `Router eliminado: ${router.nombre} (${router.ipGestion})`,
     });
   }
@@ -416,33 +494,41 @@ export class MikrotikService implements OnModuleInit {
   //   comment en cada regla: "Datafast - Contrato #<id>"
   // ════════════════════════════════════════════════════════════
   async repararRouter(
-    routerId:  string,
+    routerId: string,
     empresaId: string,
-  ): Promise<{ mensaje: string; procesados: number; morosos: number; advertencias: string[] }> {
+  ): Promise<{
+    mensaje: string;
+    procesados: number;
+    morosos: number;
+    advertencias: string[];
+  }> {
     const router = await this.findOne(routerId, empresaId);
 
     // Si la configuración VPN inicial falló (vpnCommonName quedó null), regenerar ahora
     if (router.metodoConexion === MetodoConexion.VPN_TUNNEL && !router.vpnCommonName) {
-      this.logger.warn(`[VPN] Router ${routerId} sin vpnCommonName — regenerando VPN antes de reparar`);
+      this.logger.warn(
+        `[VPN] Router ${routerId} sin vpnCommonName — regenerando VPN antes de reparar`,
+      );
       await this.vpnSvc.generarParaRouter(router);
       // Recargar solo los campos VPN actualizados para no contaminar la entidad tracked
       const fresh = await this.findOne(routerId, empresaId);
       router.vpnCommonName = fresh.vpnCommonName;
-      router.vpnIp         = fresh.vpnIp;
+      router.vpnIp = fresh.vpnIp;
     }
 
     const creds: RouterCredentials = {
-      id:              router.id,
-      ip:              router.vpnIp || router.ipGestion,
-      port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
-      user:            router.usuario ?? 'admin',
+      id: router.id,
+      ip: router.vpnIp || router.ipGestion,
+      port: router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
+      user: router.usuario ?? 'admin',
       passwordCifrado: router.passwordCifrado ?? '',
-      useSsl:          router.usarSsl ?? false,
-      timeoutSec:      20,
-      version:         'v7',
+      useSsl: router.usarSsl ?? false,
+      timeoutSec: 20,
+      version: 'v7',
     };
 
-    const contratos = await this.ds.query<any[]>(`
+    const contratos = await this.ds.query<any[]>(
+      `
       SELECT co.id, co.numero_contrato AS "numeroContrato",
              co.usuario_pppoe AS "usuarioPppoe", co.password_pppoe AS "passwordPppoe",
              co.ip_asignada AS "ipAsignada", co.mac_address AS "macAddress",
@@ -457,11 +543,11 @@ export class MikrotikService implements OnModuleInit {
         AND co.empresa_id = $2
         AND co.estado IN ('activo','suspendido')
         AND co.deleted_at IS NULL
-    `, [routerId, empresaId]);
+    `,
+      [routerId, empresaId],
+    );
 
-    const morososCount = contratos.filter(
-      (c) => c.estado === 'suspendido',
-    ).length;
+    const morososCount = contratos.filter((c) => c.estado === 'suspendido').length;
 
     // Pre-flight: verificar conectividad antes de procesar ningún contrato
     try {
@@ -475,38 +561,42 @@ export class MikrotikService implements OnModuleInit {
       try {
         sesionKilled = await this.vpnSvc.matarSesionImpostora(routerId, empresaId);
       } catch (vpnErr: any) {
-        this.logger.warn(`[VPN] Error al verificar sesión impostora para ${routerId}: ${vpnErr.message}`);
+        this.logger.warn(
+          `[VPN] Error al verificar sesión impostora para ${routerId}: ${vpnErr.message}`,
+        );
       }
       if (sesionKilled) {
         throw new BadRequestException(
           `Sesión VPN del router "${router.nombre}" estaba ocupada por un dispositivo no autorizado. ` +
-          `La sesión del impostor ha sido cerrada. ` +
-          `El router legítimo debería reconectar en los próximos 15 segundos. ` +
-          `Espere y vuelva a intentar "Reparar".`,
+            `La sesión del impostor ha sido cerrada. ` +
+            `El router legítimo debería reconectar en los próximos 15 segundos. ` +
+            `Espere y vuelva a intentar "Reparar".`,
         );
       }
       throw new BadRequestException(
         `No se puede conectar al router "${router.nombre}" ` +
-        `(${router.vpnIp || router.ipGestion}:${creds.port}). ` +
-        `Configure el router antes de reparar: ` +
-        `(1) verifique que el túnel VPN esté activo, ` +
-        `(2) habilite la API de RouterOS en el puerto ${creds.port}, ` +
-        `(3) configure WAN, LAN y el servidor PPPoE. ` +
-        `Detalle: ${err.message}`,
+          `(${router.vpnIp || router.ipGestion}:${creds.port}). ` +
+          `Configure el router antes de reparar: ` +
+          `(1) verifique que el túnel VPN esté activo, ` +
+          `(2) habilite la API de RouterOS en el puerto ${creds.port}, ` +
+          `(3) configure WAN, LAN y el servidor PPPoE. ` +
+          `Detalle: ${err.message}`,
       );
     }
 
     this.logger.log(`[REPARAR] ${router.nombre} — ${contratos.length} contratos`);
 
     let ok = 0;
-    const errores:      string[] = [];
+    const errores: string[] = [];
     const advertencias: string[] = [];
 
     // Asegurar reglas globales de firewall (drop morosos / accept prorroga)
     await this.firewallSvc.configurarReglasControl(creds).catch((err) => {
       this.reglasOk.delete(router.id);
       advertencias.push(`Reglas de firewall: ${err?.message ?? 'error desconocido'}`);
-      this.logger.warn(`[REPARAR] No se pudieron configurar reglas firewall en ${creds.ip}: ${err?.message}`);
+      this.logger.warn(
+        `[REPARAR] No se pudieron configurar reglas firewall en ${creds.ip}: ${err?.message}`,
+      );
     });
 
     for (const co of contratos) {
@@ -517,9 +607,11 @@ export class MikrotikService implements OnModuleInit {
 
       // Familias: 'pppoe' | 'mac' | 'none'
       const authFamily = (a: string) =>
-        a === 'pppoe' ? 'pppoe'
-        : (a === 'amarre_ip_mac' || a === 'amarre_ip_mac_dhcp') ? 'mac'
-        : 'none';
+        a === 'pppoe'
+          ? 'pppoe'
+          : a === 'amarre_ip_mac' || a === 'amarre_ip_mac_dhcp'
+            ? 'mac'
+            : 'none';
 
       // Si stale y target son de la misma familia no limpiamos: la operación crear
       // ya escribe sobre las mismas entradas (idempotente) y limpiar borraría lo que
@@ -533,9 +625,15 @@ export class MikrotikService implements OnModuleInit {
       const camposFaltantes: string[] = [];
       if (targetAuth === 'pppoe' && !co.usuarioPppoe)
         camposFaltantes.push('usuarioPppoe');
-      if ((targetAuth === 'amarre_ip_mac' || targetAuth === 'amarre_ip_mac_dhcp') && !co.ipAsignada)
+      if (
+        (targetAuth === 'amarre_ip_mac' || targetAuth === 'amarre_ip_mac_dhcp') &&
+        !co.ipAsignada
+      )
         camposFaltantes.push('ipAsignada');
-      if ((targetAuth === 'amarre_ip_mac' || targetAuth === 'amarre_ip_mac_dhcp') && !co.macAddress)
+      if (
+        (targetAuth === 'amarre_ip_mac' || targetAuth === 'amarre_ip_mac_dhcp') &&
+        !co.macAddress
+      )
         camposFaltantes.push('macAddress');
 
       if (camposFaltantes.length > 0) {
@@ -570,13 +668,15 @@ export class MikrotikService implements OnModuleInit {
           `[REPARAR] ${co.numeroContrato}: ${staleAuth ?? '—'} → ${targetAuth} OK`,
         );
       } catch (err: any) {
-        const esConexion = /timed out|econnrefused|econnreset|socket|no se pudo conectar/i
-          .test(err?.message ?? '');
+        const esConexion =
+          /timed out|econnrefused|econnreset|socket|no se pudo conectar/i.test(
+            err?.message ?? '',
+          );
         if (esConexion) {
           throw new BadRequestException(
             `Conexión perdida con "${router.nombre}" al procesar ${co.numeroContrato} ` +
-            `(${ok} de ${contratos.length} procesados antes del fallo). ` +
-            `Verifique el túnel VPN y reintente. Detalle: ${err.message}`,
+              `(${ok} de ${contratos.length} procesados antes del fallo). ` +
+              `Verifique el túnel VPN y reintente. Detalle: ${err.message}`,
           );
         }
         errores.push(`${co.numeroContrato}: ${err?.message ?? 'error desconocido'}`);
@@ -585,9 +685,10 @@ export class MikrotikService implements OnModuleInit {
       }
     }
 
-    const msg = errores.length === 0
-      ? `Reparación completada para "${router.nombre}". ${ok}/${contratos.length} contratos procesados.`
-      : `Reparación con ${errores.length} error(es). ${ok}/${contratos.length} OK. Errores: ${errores.slice(0, 3).join('; ')}`;
+    const msg =
+      errores.length === 0
+        ? `Reparación completada para "${router.nombre}". ${ok}/${contratos.length} contratos procesados.`
+        : `Reparación con ${errores.length} error(es). ${ok}/${contratos.length} OK. Errores: ${errores.slice(0, 3).join('; ')}`;
 
     return { mensaje: msg, procesados: ok, morosos: morososCount, advertencias };
   }
@@ -603,20 +704,24 @@ export class MikrotikService implements OnModuleInit {
   }
 
   // ── Construir credenciales para el pool ───────────────────
-  private async getCredentials(routerId: string, empresaId: string, timeoutOverrideSec?: number): Promise<RouterCredentials> {
+  private async getCredentials(
+    routerId: string,
+    empresaId: string,
+    timeoutOverrideSec?: number,
+  ): Promise<RouterCredentials> {
     const router = await this.findOne(routerId, empresaId);
-    const port   = router.usarSsl ? router.puertoApiSsl : router.puertoApi;
+    const port = router.usarSsl ? router.puertoApiSsl : router.puertoApi;
     // Si el router tiene VPN configurada, conectar por esa IP
     const ip = router.vpnIp || router.ipGestion;
     return {
-      id:              router.id,
+      id: router.id,
       ip,
       port,
-      user:            router.usuario,
+      user: router.usuario,
       passwordCifrado: router.passwordCifrado,
-      useSsl:          router.usarSsl,
-      timeoutSec:      timeoutOverrideSec ?? router.timeoutConexion ?? 10,
-      version:         'v7',
+      useSsl: router.usarSsl,
+      timeoutSec: timeoutOverrideSec ?? router.timeoutConexion ?? 10,
+      version: 'v7',
     };
   }
 
@@ -625,11 +730,11 @@ export class MikrotikService implements OnModuleInit {
   // ────────────────────────────────────────────────────────────
   async aplicarAmareIpMac(
     routerId: string,
-    dto:      AmareIpMacDto,
-    user:     JwtPayload,
+    dto: AmareIpMacDto,
+    user: JwtPayload,
   ): Promise<{ arp: boolean; dhcp: boolean }> {
     const router = await this.findOne(routerId, user.empresaId);
-    const creds  = await this.getCredentials(routerId, user.empresaId);
+    const creds = await this.getCredentials(routerId, user.empresaId);
     const comment = `DATAFAST:${dto.clienteId ? `ClienteID:${dto.clienteId}` : dto.hostname || dto.ip}`;
 
     let dhcpAdded = false;
@@ -671,11 +776,13 @@ export class MikrotikService implements OnModuleInit {
     });
 
     await this.auditoria.log({
-      empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
-      accion:       'AMARRE_IP_MAC',
-      modulo:       'mikrotik',
-      entidadId:    dto.clienteId || routerId,
-      descripcion:  `Amarre IP ${dto.ip} ↔ MAC ${dto.mac} en ${creds.ip}${dhcpAdded ? ' + DHCP lease' : ''}`,
+      empresaId: user.empresaId,
+      usuarioId: user.sub,
+      usuarioEmail: user.email,
+      accion: 'AMARRE_IP_MAC',
+      modulo: 'mikrotik',
+      entidadId: dto.clienteId || routerId,
+      descripcion: `Amarre IP ${dto.ip} ↔ MAC ${dto.mac} en ${creds.ip}${dhcpAdded ? ' + DHCP lease' : ''}`,
     });
 
     return { arp: true, dhcp: dhcpAdded };
@@ -685,9 +792,9 @@ export class MikrotikService implements OnModuleInit {
   // ACTUALIZAR QUEUE DE UN CLIENTE
   // ────────────────────────────────────────────────────────────
   async actualizarQueue(
-    routerId:   string,
-    dto:        ActualizarQueueDto,
-    empresaId:  string,
+    routerId: string,
+    dto: ActualizarQueueDto,
+    empresaId: string,
   ): Promise<void> {
     this.assertNotDegraded();
     const router = await this.findOne(routerId, empresaId);
@@ -695,16 +802,21 @@ export class MikrotikService implements OnModuleInit {
       throw new BadRequestException(`Router ${routerId} no tiene contraseña configurada`);
     }
     const creds: RouterCredentials = {
-      id:              router.id,
-      ip:              router.vpnIp || router.ipGestion,
-      port:            router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
-      user:            router.usuario ?? 'admin',
+      id: router.id,
+      ip: router.vpnIp || router.ipGestion,
+      port: router.usarSsl ? (router.puertoApiSsl ?? 8729) : (router.puertoApi ?? 8728),
+      user: router.usuario ?? 'admin',
       passwordCifrado: router.passwordCifrado,
-      useSsl:          router.usarSsl ?? false,
-      timeoutSec:      10,
-      version:         'v7',
+      useSsl: router.usarSsl ?? false,
+      timeoutSec: 10,
+      version: 'v7',
     };
-    await this.queueSvc.actualizarVelocidadQueue(creds, dto.nombreQueue, dto.downloadMbps, dto.uploadMbps);
+    await this.queueSvc.actualizarVelocidadQueue(
+      creds,
+      dto.nombreQueue,
+      dto.downloadMbps,
+      dto.uploadMbps,
+    );
   }
 
   // ────────────────────────────────────────────────────────────
@@ -713,32 +825,34 @@ export class MikrotikService implements OnModuleInit {
   // ────────────────────────────────────────────────────────────
   async provisionarCliente(
     routerId: string,
-    dto:      ProvisionarClienteDto,
-    user:     JwtPayload,
+    dto: ProvisionarClienteDto,
+    user: JwtPayload,
   ): Promise<{ ppppoeId: string; queueId: string }> {
     this.assertNotDegraded();
     const creds = await this.getCredentials(routerId, user.empresaId);
 
     this.logger.log(
       `[SAGA] Iniciando provisioning cliente ${dto.clienteId} en ${creds.ip}: ` +
-      `PPPoE=${dto.usuarioPppoe} | IP=${dto.ipAsignada} | ${dto.uploadMbps}/${dto.downloadMbps} Mbps`,
+        `PPPoE=${dto.usuarioPppoe} | IP=${dto.ipAsignada} | ${dto.uploadMbps}/${dto.downloadMbps} Mbps`,
     );
 
     // ── PASO A: Crear usuario PPPoE ────────────────────────
     let ppppoeId = '';
     try {
       ppppoeId = await this.pppoeSvc.crear(creds, {
-        name:          dto.usuarioPppoe,
-        password:      dto.passwordPppoe,
-        profile:       dto.perfilPppoe || 'default',
-        service:       'pppoe',
+        name: dto.usuarioPppoe,
+        password: dto.passwordPppoe,
+        profile: dto.perfilPppoe || 'default',
+        service: 'pppoe',
         remoteAddress: dto.ipAsignada,
-        comment:       `DATAFAST:ClienteID:${dto.clienteId}`,
-        disabled:      false,
+        comment: `DATAFAST:ClienteID:${dto.clienteId}`,
+        disabled: false,
       });
     } catch (errA: any) {
       // Paso A falló antes de crear nada en hardware: no hay que compensar
-      this.logger.error(`[SAGA] Paso A (PPPoE) falló para ${dto.clienteId}: ${errA.message}`);
+      this.logger.error(
+        `[SAGA] Paso A (PPPoE) falló para ${dto.clienteId}: ${errA.message}`,
+      );
       throw errA;
     }
 
@@ -749,23 +863,23 @@ export class MikrotikService implements OnModuleInit {
     try {
       if (hasSimpleQueue) {
         queueId = await this.queueSvc.crearSimpleQueue(creds, {
-          name:           dto.usuarioPppoe,
-          target:         `${dto.ipAsignada}/32`,
-          maxLimitDown:   dto.downloadMbps,
-          maxLimitUp:     dto.uploadMbps,
+          name: dto.usuarioPppoe,
+          target: `${dto.ipAsignada}/32`,
+          maxLimitDown: dto.downloadMbps,
+          maxLimitUp: dto.uploadMbps,
           burstLimitDown: dto.burstDownMbps,
-          burstLimitUp:   dto.burstUpMbps,
-          burstTimeDown:  dto.burstTiempoSegundos,
-          burstTimeUp:    dto.burstTiempoSegundos,
-          comment:        `DATAFAST:ClienteID:${dto.clienteId}`,
+          burstLimitUp: dto.burstUpMbps,
+          burstTimeDown: dto.burstTiempoSegundos,
+          burstTimeUp: dto.burstTiempoSegundos,
+          comment: `DATAFAST:ClienteID:${dto.clienteId}`,
         });
       } else if (dto.tipoQueue === 'queue_tree' || dto.tipoQueue === 'pcq') {
         const tienePcq = await this.queueSvc.tienePcqConfigurado(creds);
         if (!tienePcq) {
           await this.queueSvc.configurarPcqCompleto(creds, {
-            namePrefix:   'datafast',
+            namePrefix: 'datafast',
             downloadMbps: dto.downloadMbps * 10,
-            uploadMbps:   dto.uploadMbps * 10,
+            uploadMbps: dto.uploadMbps * 10,
           });
         }
       }
@@ -773,37 +887,45 @@ export class MikrotikService implements OnModuleInit {
       // ── COMPENSACIÓN: Paso B falló → revertir Paso A ────
       this.logger.error(
         `[SAGA] Paso B (Queue) falló para ${dto.clienteId}: ${errB.message}. ` +
-        `Compensando: eliminando PPPoE ${dto.usuarioPppoe}...`,
+          `Compensando: eliminando PPPoE ${dto.usuarioPppoe}...`,
       );
       try {
         await this.pppoeSvc.eliminar(creds, dto.usuarioPppoe);
-        this.logger.log(`[SAGA] Compensación OK: PPPoE ${dto.usuarioPppoe} eliminado en ${creds.ip}`);
+        this.logger.log(
+          `[SAGA] Compensación OK: PPPoE ${dto.usuarioPppoe} eliminado en ${creds.ip}`,
+        );
       } catch (errComp: any) {
         // Compensación también falló: PPPoE queda huérfano en el router.
         // reparar() lo limpiará cuando el operador lo ejecute.
         this.logger.error(
           `[SAGA] Compensación FALLÓ para ${dto.usuarioPppoe} en ${creds.ip}: ${errComp.message}. ` +
-          `PPPoE huérfano — usar "Reparar" para limpiar.`,
+            `PPPoE huérfano — usar "Reparar" para limpiar.`,
         );
       }
       throw new Error(
         `Error al crear la cola de velocidad para ${dto.usuarioPppoe}: ${errB.message}. ` +
-        `El usuario PPPoE fue eliminado del router (compensación aplicada).`,
+          `El usuario PPPoE fue eliminado del router (compensación aplicada).`,
       );
     }
 
     // ── PASO C: Reglas de firewall (idempotente, no requiere compensación) ──
     if (user.empresaId) {
-      await this.firewallSvc.configurarReglasControl(creds).catch((err) =>
-        this.logger.warn(
-          `[SAGA] Paso C (Firewall) no crítico — se aplicará en el próximo poll: ${err.message}`,
-        ),
-      );
+      await this.firewallSvc
+        .configurarReglasControl(creds)
+        .catch((err) =>
+          this.logger.warn(
+            `[SAGA] Paso C (Firewall) no crítico — se aplicará en el próximo poll: ${err.message}`,
+          ),
+        );
     }
 
     await this.auditoria.log({
-      empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
-      accion: 'PROVISION', modulo: 'mikrotik', entidadId: dto.clienteId,
+      empresaId: user.empresaId,
+      usuarioId: user.sub,
+      usuarioEmail: user.email,
+      accion: 'PROVISION',
+      modulo: 'mikrotik',
+      entidadId: dto.clienteId,
       descripcion: `[SAGA OK] PPPoE ${dto.usuarioPppoe} + Queue provisionados en ${creds.ip} | IP: ${dto.ipAsignada}`,
     });
 
@@ -818,40 +940,52 @@ export class MikrotikService implements OnModuleInit {
   // ────────────────────────────────────────────────────────────
   async suspenderCliente(
     routerId: string,
-    dto:      SuspenderClienteDto,
-    user:     JwtPayload,
+    dto: SuspenderClienteDto,
+    user: JwtPayload,
   ): Promise<void> {
     this.assertNotDegraded();
     const creds = await this.getCredentials(routerId, user.empresaId);
 
     // 1. Agregar a Address List morosos
     await this.firewallSvc.suspenderCliente(
-      creds, dto.ipAsignada, dto.clienteId,
+      creds,
+      dto.ipAsignada,
+      dto.clienteId,
       `Suspensión manual: ${dto.nombreCliente ?? dto.clienteId} | ${dto.motivo ?? 'mora'} | ${new Date().toLocaleDateString('es-PE')}`,
     );
 
     // 2. Desconectar sesión PPPoE activa si existe
     if (dto.usuarioPppoe) {
-      await this.pppoeSvc.desconectarSesion(creds, dto.usuarioPppoe).catch((err) =>
-        this.logger.warn(`No se pudo desconectar sesión ${dto.usuarioPppoe}: ${err.message}`),
-      );
+      await this.pppoeSvc
+        .desconectarSesion(creds, dto.usuarioPppoe)
+        .catch((err) =>
+          this.logger.warn(
+            `No se pudo desconectar sesión ${dto.usuarioPppoe}: ${err.message}`,
+          ),
+        );
     }
 
     // 3. Emitir evento para notificación al cliente
     this.events.emit(EVENT_CLIENTE_SUSPENDIDO, {
       clienteId: dto.clienteId,
       empresaId: user.empresaId,
-      ip:        dto.ipAsignada,
+      ip: dto.ipAsignada,
       routerId,
     });
 
     await this.auditoria.log({
-      empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
-      accion: 'SUSPEND', modulo: 'mikrotik', entidadId: dto.clienteId,
+      empresaId: user.empresaId,
+      usuarioId: user.sub,
+      usuarioEmail: user.email,
+      accion: 'SUSPEND',
+      modulo: 'mikrotik',
+      entidadId: dto.clienteId,
       descripcion: `IP ${dto.ipAsignada} suspendida en ${creds.ip} | Motivo: ${dto.motivo || 'mora'}`,
     });
 
-    this.logger.log(`Cliente suspendido: ${dto.clienteId} | IP: ${dto.ipAsignada} | router: ${creds.ip}`);
+    this.logger.log(
+      `Cliente suspendido: ${dto.clienteId} | IP: ${dto.ipAsignada} | router: ${creds.ip}`,
+    );
   }
 
   // ────────────────────────────────────────────────────────────
@@ -861,8 +995,8 @@ export class MikrotikService implements OnModuleInit {
   // ────────────────────────────────────────────────────────────
   async reactivarCliente(
     routerId: string,
-    dto:      ReactivarClienteDto,
-    user:     JwtPayload,
+    dto: ReactivarClienteDto,
+    user: JwtPayload,
   ): Promise<void> {
     this.assertNotDegraded();
     const creds = await this.getCredentials(routerId, user.empresaId);
@@ -874,13 +1008,17 @@ export class MikrotikService implements OnModuleInit {
     this.events.emit(EVENT_CLIENTE_REACTIVADO, {
       clienteId: dto.clienteId,
       empresaId: user.empresaId,
-      ip:        dto.ipAsignada,
+      ip: dto.ipAsignada,
       routerId,
     });
 
     await this.auditoria.log({
-      empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
-      accion: 'REACTIVATE', modulo: 'mikrotik', entidadId: dto.clienteId,
+      empresaId: user.empresaId,
+      usuarioId: user.sub,
+      usuarioEmail: user.email,
+      accion: 'REACTIVATE',
+      modulo: 'mikrotik',
+      entidadId: dto.clienteId,
       descripcion: `IP ${dto.ipAsignada} reactivada en ${creds.ip}`,
     });
 
@@ -891,15 +1029,18 @@ export class MikrotikService implements OnModuleInit {
   // INFORMACIÓN EN TIEMPO REAL
   // ────────────────────────────────────────────────────────────
 
-  async getEstadoRouter(routerId: string, empresaId: string): Promise<{
-    router:      Router;
-    recursos:    any;
-    interfaces:  any[];
+  async getEstadoRouter(
+    routerId: string,
+    empresaId: string,
+  ): Promise<{
+    router: Router;
+    recursos: any;
+    interfaces: any[];
     sesionesActivas: number;
-    version:     string;
+    version: string;
   }> {
     const router = await this.findOne(routerId, empresaId);
-    const creds  = await this.getCredentials(routerId, empresaId);
+    const creds = await this.getCredentials(routerId, empresaId);
 
     const [recursos, interfaces, sesionesActivas] = await Promise.all([
       this.ifaceSvc.getRecursos(creds, 'monitoreo'),
@@ -909,24 +1050,24 @@ export class MikrotikService implements OnModuleInit {
 
     // Actualizar estado en BD
     await this.routerRepo.update(routerId, {
-      estado:           EstadoEquipo.ONLINE,
-      ultimoPing:       new Date(),
-      cpuUsoPct:        recursos.cpuLoad,
-      memoriaUsoPct:    recursos.freeMemory
+      estado: EstadoEquipo.ONLINE,
+      ultimoPing: new Date(),
+      cpuUsoPct: recursos.cpuLoad,
+      memoriaUsoPct: recursos.freeMemory
         ? Math.round((1 - recursos.freeMemory / recursos.totalMemory) * 100)
         : null,
-      uptimeSegundos:   recursos.uptimeSeconds,
-      versionFirmware:  recursos.version,
+      uptimeSegundos: recursos.uptimeSeconds,
+      versionFirmware: recursos.version,
       identityRouteros: await this.ifaceSvc.getIdentity(creds).catch(() => ''),
-      versionRos:       VersionRouterOS.V7,
+      versionRos: VersionRouterOS.V7,
     });
 
     return {
-      router:          await this.findOne(routerId, empresaId),
+      router: await this.findOne(routerId, empresaId),
       recursos,
       interfaces,
       sesionesActivas,
-      version:         recursos.version,
+      version: recursos.version,
     };
   }
 
@@ -956,13 +1097,17 @@ export class MikrotikService implements OnModuleInit {
   }
 
   async getTrafico(routerId: string, empresaId: string, iface?: string): Promise<any[]> {
-    const creds     = await this.getCredentials(routerId, empresaId);
+    const creds = await this.getCredentials(routerId, empresaId);
     const interfaces = await this.ifaceSvc.listarInterfaces(creds);
-    const target    = iface || interfaces[0]?.name || 'ether1';
+    const target = iface || interfaces[0]?.name || 'ether1';
     return this.ifaceSvc.monitorearInterface(creds, target, 5);
   }
 
-  async pingDesdeRouter(routerId: string, empresaId: string, destino: string): Promise<any> {
+  async pingDesdeRouter(
+    routerId: string,
+    empresaId: string,
+    destino: string,
+  ): Promise<any> {
     const creds = await this.getCredentials(routerId, empresaId);
     return this.ifaceSvc.ping(creds, destino);
   }
@@ -974,11 +1119,16 @@ export class MikrotikService implements OnModuleInit {
   }
 
   // ── Testar conexión al router ─────────────────────────────
-  async testConexion(routerId: string, empresaId: string): Promise<{
-    exitoso: boolean; mensaje: string; latenciaMs?: number;
+  async testConexion(
+    routerId: string,
+    empresaId: string,
+  ): Promise<{
+    exitoso: boolean;
+    mensaje: string;
+    latenciaMs?: number;
   }> {
     const router = await this.findOne(routerId, empresaId);
-    const creds  = await this.getCredentials(routerId, empresaId);
+    const creds = await this.getCredentials(routerId, empresaId);
     const inicio = Date.now();
 
     try {
@@ -987,7 +1137,7 @@ export class MikrotikService implements OnModuleInit {
       const latencia = Date.now() - inicio;
 
       await this.routerRepo.update(routerId, {
-        estado:    EstadoEquipo.ONLINE,
+        estado: EstadoEquipo.ONLINE,
         ultimoPing: new Date(),
         latenciaMs: latencia,
         identityRouteros: identity,
@@ -999,8 +1149,11 @@ export class MikrotikService implements OnModuleInit {
 
       this.inyectarReglasMorososAsync(router);
 
-      return { exitoso: true, mensaje: `Conectado a "${identity}" en ${latencia}ms`, latenciaMs: latencia };
-
+      return {
+        exitoso: true,
+        mensaje: `Conectado a "${identity}" en ${latencia}ms`,
+        latenciaMs: latencia,
+      };
     } catch (error) {
       await this.routerRepo.update(routerId, { estado: EstadoEquipo.OFFLINE });
       return { exitoso: false, mensaje: `No se pudo conectar: ${error.message}` };
@@ -1011,7 +1164,10 @@ export class MikrotikService implements OnModuleInit {
   // TEST DE CONEXIÓN DIRECTA (antes de guardar el router)
   // ────────────────────────────────────────────────────────────
 
-  async testConexionDirecta(dto: TestConexionDirectaDto, empresaId?: string): Promise<{
+  async testConexionDirecta(
+    dto: TestConexionDirectaDto,
+    empresaId?: string,
+  ): Promise<{
     exitoso: boolean;
     mensaje: string;
     latenciaMs?: number;
@@ -1030,19 +1186,23 @@ export class MikrotikService implements OnModuleInit {
       ipLower.startsWith('169.254.') ||
       ipLower === '::1'
     ) {
-      throw new BadRequestException(`La IP "${dto.ip}" no es un destino válido para un router`);
+      throw new BadRequestException(
+        `La IP "${dto.ip}" no es un destino válido para un router`,
+      );
     }
 
     // ── Resolver contraseña: sentinel '***stored***' → leer de BD ─
     let resolvedPassword = dto.password ?? '';
     if ((!resolvedPassword || resolvedPassword === '***stored***') && dto.routerId) {
       if (!empresaId) throw new BadRequestException('Empresa no identificada');
-      const stored = await this.routerRepo.findOne({ where: { id: dto.routerId, empresaId } });
+      const stored = await this.routerRepo.findOne({
+        where: { id: dto.routerId, empresaId },
+      });
       if (stored) resolvedPassword = stored.passwordCifrado;
     }
 
-    const inicio  = Date.now();
-    const metodo  = dto.metodoConexion || MetodoConexion.API;
+    const inicio = Date.now();
+    const metodo = dto.metodoConexion || MetodoConexion.API;
 
     // SSH / SNMP: solo verificar accesibilidad TCP
     if (metodo === MetodoConexion.SSH || metodo === MetodoConexion.SNMP) {
@@ -1050,16 +1210,16 @@ export class MikrotikService implements OnModuleInit {
     }
 
     // API / API_SSL / VPN_TUNNEL: autenticar con RouterOS API
-    const useSsl   = dto.usarSsl ?? (metodo === MetodoConexion.API_SSL);
+    const useSsl = dto.usarSsl ?? metodo === MetodoConexion.API_SSL;
     const tempCreds: RouterCredentials = {
-      id:              `temp-${Date.now()}`,
-      ip:              dto.ip,
-      port:            dto.puerto,
-      user:            dto.usuario,
+      id: `temp-${Date.now()}`,
+      ip: dto.ip,
+      port: dto.puerto,
+      user: dto.usuario,
       passwordCifrado: resolvedPassword,
       useSsl,
-      timeoutSec:      dto.timeoutConexion ?? 10,
-      version:         'v7',
+      timeoutSec: dto.timeoutConexion ?? 10,
+      version: 'v7',
     };
 
     let api: any = null;
@@ -1072,40 +1232,51 @@ export class MikrotikService implements OnModuleInit {
       ]);
 
       const latencia = Date.now() - inicio;
-      const version  = res?.version || '';
-      const rosVer   = 'v7';
+      const version = res?.version || '';
+      const rosVer = 'v7';
 
       return {
-        exitoso:           true,
-        mensaje:           `Conectado: "${ident?.name || 'router'}" | RouterOS ${version} | ${latencia}ms`,
-        latenciaMs:        latencia,
-        versionDetectada:  version,
+        exitoso: true,
+        mensaje: `Conectado: "${ident?.name || 'router'}" | RouterOS ${version} | ${latencia}ms`,
+        latenciaMs: latencia,
+        versionDetectada: version,
         identityDetectada: ident?.name || '',
-        rosVersion:        rosVer,
+        rosVersion: rosVer,
       };
     } catch (err: any) {
       return { exitoso: false, mensaje: this._connectionErrorMsg(err.message || '') };
     } finally {
-      if (api) try { api.close?.(); } catch { /* ignore */ }
+      if (api)
+        try {
+          api.close?.();
+        } catch {
+          /* ignore */
+        }
     }
   }
 
   private _connectionErrorMsg(msg: string): string {
     const m = msg.toLowerCase();
-    if (m.includes('econnrefused'))                     return 'Puerto cerrado — verificar IP y puerto';
-    if (m.includes('timeout') || m.includes('timed out') || m.includes('socktmout')) return 'Timeout — verificar IP, puerto y firewall del router';
-    if (m.includes('login') || m.includes('wrong'))     return 'Autenticación fallida — verificar usuario y contraseña';
-    if (m.includes('enotfound') || m.includes('ehostunreach')) return 'Host no encontrado — verificar IP o dominio';
-    if (m.includes('pool exhausto'))                    return 'Pool saturado — intenta en unos segundos';
+    if (m.includes('econnrefused')) return 'Puerto cerrado — verificar IP y puerto';
+    if (m.includes('timeout') || m.includes('timed out') || m.includes('socktmout'))
+      return 'Timeout — verificar IP, puerto y firewall del router';
+    if (m.includes('login') || m.includes('wrong'))
+      return 'Autenticación fallida — verificar usuario y contraseña';
+    if (m.includes('enotfound') || m.includes('ehostunreach'))
+      return 'Host no encontrado — verificar IP o dominio';
+    if (m.includes('pool exhausto')) return 'Pool saturado — intenta en unos segundos';
     return msg;
   }
 
   private _tcpCheck(
-    host: string, port: number, timeoutSec: number, inicio: number,
+    host: string,
+    port: number,
+    timeoutSec: number,
+    inicio: number,
   ): Promise<{ exitoso: boolean; mensaje: string; latenciaMs?: number }> {
     return new Promise((resolve) => {
       const socket = new net.Socket();
-      const timer  = setTimeout(() => {
+      const timer = setTimeout(() => {
         socket.destroy();
         resolve({ exitoso: false, mensaje: `Timeout al conectar a ${host}:${port}` });
       }, timeoutSec * 1000);
@@ -1114,7 +1285,11 @@ export class MikrotikService implements OnModuleInit {
         clearTimeout(timer);
         socket.destroy();
         const ms = Date.now() - inicio;
-        resolve({ exitoso: true, mensaje: `Puerto ${port} accesible en ${ms}ms`, latenciaMs: ms });
+        resolve({
+          exitoso: true,
+          mensaje: `Puerto ${port} accesible en ${ms}ms`,
+          latenciaMs: ms,
+        });
       });
 
       socket.on('error', (err: Error) => {
@@ -1138,9 +1313,11 @@ export class MikrotikService implements OnModuleInit {
     if (router.metodoConexion === MetodoConexion.VPN_TUNNEL) {
       const routerFresh = await this.findOne(routerId, router.empresaId);
       routerFresh.subnetsLocales = subnets;
-      await this.vpnSvc.sincronizarCcdYReconectar(routerFresh).catch(e =>
-        this.logger.warn(`[VPN-CCD] sync error ${router.nombre}: ${e.message}`)
-      );
+      await this.vpnSvc
+        .sincronizarCcdYReconectar(routerFresh)
+        .catch((e) =>
+          this.logger.warn(`[VPN-CCD] sync error ${router.nombre}: ${e.message}`),
+        );
     }
 
     this.logger.log(`Subnets sincronizados: ${router.nombre} → [${subnets.join(', ')}]`);
@@ -1148,7 +1325,8 @@ export class MikrotikService implements OnModuleInit {
   }
 
   private syncSubnetsAsync(router: Router): void {
-    this.subnetSvc.fetchSubnets(router)
+    this.subnetSvc
+      .fetchSubnets(router)
       .then(async (subnets) => {
         await this.routerRepo.update(router.id, { subnetsLocales: subnets });
         const gw = router.vpnIp || router.ipGestion;
@@ -1156,33 +1334,43 @@ export class MikrotikService implements OnModuleInit {
         // CCD + reconexión también en el auto-sync (creación/actualización de router)
         if (router.metodoConexion === MetodoConexion.VPN_TUNNEL) {
           const routerFresh = { ...router, subnetsLocales: subnets } as Router;
-          this.vpnSvc.sincronizarCcdYReconectar(routerFresh).catch(
-            e => this.logger.warn(`[VPN-CCD] auto-sync CCD ${router.nombre}: ${e.message}`)
-          );
+          this.vpnSvc
+            .sincronizarCcdYReconectar(routerFresh)
+            .catch((e) =>
+              this.logger.warn(`[VPN-CCD] auto-sync CCD ${router.nombre}: ${e.message}`),
+            );
         }
         this.logger.log(`Subnets auto-sync: ${router.nombre} → [${subnets.join(', ')}]`);
       })
-      .catch(e => this.logger.warn(`Error auto-sync subnets ${router.nombre}: ${e.message}`));
+      .catch((e) =>
+        this.logger.warn(`Error auto-sync subnets ${router.nombre}: ${e.message}`),
+      );
   }
 
   // ── Inyectar regla morosos de forma asíncrona ─────────────
   private inyectarReglasMorososAsync(router: Router): void {
-    const ip   = router.vpnIp || router.ipGestion;
+    const ip = router.vpnIp || router.ipGestion;
     const port = router.usarSsl ? router.puertoApiSsl : router.puertoApi;
     const creds: RouterCredentials = {
-      id:              router.id,
+      id: router.id,
       ip,
       port,
-      user:            router.usuario,
+      user: router.usuario,
       passwordCifrado: router.passwordCifrado,
-      useSsl:          router.usarSsl,
-      timeoutSec:      router.timeoutConexion || 15,
-      version:         'v7',
+      useSsl: router.usarSsl,
+      timeoutSec: router.timeoutConexion || 15,
+      version: 'v7',
     };
 
-    this.firewallSvc.configurarReglasControl(creds)
-      .then(() => { this.reglasOk.add(router.id); this.logger.log(`Reglas de control aplicadas: ${ip}`); })
-      .catch((err) => this.logger.warn(`No se pudieron aplicar reglas en ${ip}: ${err.message}`));
+    this.firewallSvc
+      .configurarReglasControl(creds)
+      .then(() => {
+        this.reglasOk.add(router.id);
+        this.logger.log(`Reglas de control aplicadas: ${ip}`);
+      })
+      .catch((err) =>
+        this.logger.warn(`No se pudieron aplicar reglas en ${ip}: ${err.message}`),
+      );
   }
 
   // ────────────────────────────────────────────────────────────
@@ -1191,7 +1379,11 @@ export class MikrotikService implements OnModuleInit {
   // ────────────────────────────────────────────────────────────
   @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
   async pollRouterMetrics(): Promise<void> {
-    if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
+    if (
+      process.env.NODE_APP_INSTANCE !== undefined &&
+      process.env.NODE_APP_INSTANCE !== '0'
+    )
+      return;
     if (this._pollRunning) {
       this.logger.warn('[POLL] Vuelta anterior aún en curso — omitiendo ciclo');
       return;
@@ -1203,7 +1395,9 @@ export class MikrotikService implements OnModuleInit {
       routers = await this.routerRepo.find({
         where: { activo: true, deletedAt: null as any },
       });
-    } catch { return; }
+    } catch {
+      return;
+    }
 
     const pollOne = async (router: Router): Promise<void> => {
       // El CB del proceso worker es independiente del API. testConexion() resetea el CB
@@ -1213,14 +1407,14 @@ export class MikrotikService implements OnModuleInit {
 
       try {
         const creds: RouterCredentials = {
-          id:              router.id,
-          ip:              router.vpnIp || router.ipGestion,
-          port:            router.usarSsl ? router.puertoApiSsl : router.puertoApi,
-          user:            router.usuario,
+          id: router.id,
+          ip: router.vpnIp || router.ipGestion,
+          port: router.usarSsl ? router.puertoApiSsl : router.puertoApi,
+          user: router.usuario,
           passwordCifrado: router.passwordCifrado,
-          useSsl:          router.usarSsl,
-          timeoutSec:      Math.min(router.timeoutConexion || 10, 8),
-          version:         'v7',
+          useSsl: router.usarSsl,
+          timeoutSec: Math.min(router.timeoutConexion || 10, 8),
+          version: 'v7',
         };
 
         // El control ya no se categoriza por router: contamos sesiones PPPoE en
@@ -1230,9 +1424,10 @@ export class MikrotikService implements OnModuleInit {
           this.pppoeSvc.contarSesionesActivas(creds, 'monitoreo').catch(() => 0),
         ]);
 
-        const memoriaUsoPct = recursos.freeMemory && recursos.totalMemory
-          ? Math.round((1 - recursos.freeMemory / recursos.totalMemory) * 100)
-          : null;
+        const memoriaUsoPct =
+          recursos.freeMemory && recursos.totalMemory
+            ? Math.round((1 - recursos.freeMemory / recursos.totalMemory) * 100)
+            : null;
 
         const uptimeSec = recursos.uptimeSeconds ?? 0;
         const d = Math.floor(uptimeSec / 86400);
@@ -1241,13 +1436,13 @@ export class MikrotikService implements OnModuleInit {
         const uptimeStr = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m`;
 
         await this.routerRepo.update(router.id, {
-          estado:             EstadoEquipo.ONLINE,
-          ultimoPing:         new Date(),
-          cpuUsoPct:          recursos.cpuLoad ?? null,
+          estado: EstadoEquipo.ONLINE,
+          ultimoPing: new Date(),
+          cpuUsoPct: recursos.cpuLoad ?? null,
           memoriaUsoPct,
-          uptimeSegundos:     uptimeSec || null,
-          uptimeStr:          uptimeSec ? uptimeStr : null,
-          versionFirmware:    recursos.version ?? router.versionFirmware,
+          uptimeSegundos: uptimeSec || null,
+          uptimeStr: uptimeSec ? uptimeStr : null,
+          versionFirmware: recursos.version ?? router.versionFirmware,
           totalSesionesPppoe: sesionesCount,
         });
 
@@ -1259,14 +1454,22 @@ export class MikrotikService implements OnModuleInit {
         if (prevFailsOnRecovery >= 2) {
           this.events.emit(NOTIFICATION_EVENTS.ROUTER_CONECTADO, {
             routerNombre: router.nombre,
-            empresaId:    router.empresaId,
+            empresaId: router.empresaId,
           });
         }
 
         if (!this.reglasOk.has(router.id)) {
-          this.firewallSvc.configurarReglasControl(creds)
-            .then(() => { this.reglasOk.add(router.id); this.logger.log(`Reglas de control (poll) aplicadas: ${creds.ip}`); })
-            .catch((err) => this.logger.warn(`No se pudieron aplicar reglas en ${creds.ip}: ${err.message}`));
+          this.firewallSvc
+            .configurarReglasControl(creds)
+            .then(() => {
+              this.reglasOk.add(router.id);
+              this.logger.log(`Reglas de control (poll) aplicadas: ${creds.ip}`);
+            })
+            .catch((err) =>
+              this.logger.warn(
+                `No se pudieron aplicar reglas en ${creds.ip}: ${err.message}`,
+              ),
+            );
         }
       } catch {
         const prevFails = (this._pollFailCount.get(router.id) ?? 0) + 1;
@@ -1275,23 +1478,27 @@ export class MikrotikService implements OnModuleInit {
         if (prevFails === 1) {
           // Primer fallo: puede ser un timeout transitorio — no declarar OFFLINE aún
           await this.routerRepo.update(router.id, { estado: EstadoEquipo.REVERIFICANDO });
-          this.logger.warn(`[POLL] ${router.nombre} (${router.vpnIp || router.ipGestion}): fallo transitorio #${prevFails} → REVERIFICANDO`);
+          this.logger.warn(
+            `[POLL] ${router.nombre} (${router.vpnIp || router.ipGestion}): fallo transitorio #${prevFails} → REVERIFICANDO`,
+          );
         } else {
           // Segundo fallo o más: OFFLINE confirmado
           await this.routerRepo.update(router.id, {
-            estado:             EstadoEquipo.OFFLINE,
-            cpuUsoPct:          null,
-            memoriaUsoPct:      null,
+            estado: EstadoEquipo.OFFLINE,
+            cpuUsoPct: null,
+            memoriaUsoPct: null,
             totalSesionesPppoe: 0,
           });
           this.reglasOk.delete(router.id);
-          this.logger.warn(`[POLL] ${router.nombre} (${router.vpnIp || router.ipGestion}): fallo #${prevFails} → OFFLINE`);
+          this.logger.warn(
+            `[POLL] ${router.nombre} (${router.vpnIp || router.ipGestion}): fallo #${prevFails} → OFFLINE`,
+          );
 
           // Emitir alerta solo en la transición (fallo #2), no en cada ciclo siguiente
           if (prevFails === 2) {
             this.events.emit(NOTIFICATION_EVENTS.ROUTER_CAIDO, {
               routerNombre: router.nombre,
-              empresaId:    router.empresaId,
+              empresaId: router.empresaId,
             });
           }
         }
@@ -1311,37 +1518,43 @@ export class MikrotikService implements OnModuleInit {
   // ── Detectar versión RouterOS (retorna Promise para poder awaitar con timeout) ──
   private detectarVersionAsync(router: Router): Promise<void> {
     const creds: RouterCredentials = {
-      id:              router.id,
-      ip:              router.vpnIp || router.ipGestion,
-      port:            router.usarSsl ? router.puertoApiSsl : router.puertoApi,
-      user:            router.usuario,
+      id: router.id,
+      ip: router.vpnIp || router.ipGestion,
+      port: router.usarSsl ? router.puertoApiSsl : router.puertoApi,
+      user: router.usuario,
       passwordCifrado: router.passwordCifrado,
-      useSsl:          router.usarSsl,
-      timeoutSec:      router.timeoutConexion || 10,
-      version:         'v7',
+      useSsl: router.usarSsl,
+      timeoutSec: router.timeoutConexion || 10,
+      version: 'v7',
     };
 
-    return this.ifaceSvc.getRecursos(creds)
+    return this.ifaceSvc
+      .getRecursos(creds)
       .then((recursos) => {
-        const version    = recursos.version || '';
+        const version = recursos.version || '';
         const rosVersion = VersionRouterOS.V7;
         return this.routerRepo.update(router.id, {
           versionRos: rosVersion,
-          estado:     EstadoEquipo.ONLINE,
+          estado: EstadoEquipo.ONLINE,
           ultimoPing: new Date(),
         });
       })
       .then(() => {})
       .catch((err) => {
         // Si no responde al registrar, queda en DESCONOCIDO; el cron actualizará.
-        this.logger.warn(`No se pudo detectar versión en ${router.vpnIp || router.ipGestion} al registrar: ${err.message}`);
+        this.logger.warn(
+          `No se pudo detectar versión en ${router.vpnIp || router.ipGestion} al registrar: ${err.message}`,
+        );
       });
   }
 
-  private async limpiarReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
+  private async limpiarReglasControl(
+    creds: RouterCredentials,
+    co: any,
+    tipoControl: string,
+  ): Promise<void> {
     if (tipoControl === 'pppoe') {
       if (co.usuarioPppoe) await this.pppoeSvc.eliminar(creds, co.usuarioPppoe);
-
     } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
       if (co.ipAsignada) {
         await this.pool.execute(creds, async (api) => {
@@ -1351,9 +1564,16 @@ export class MikrotikService implements OnModuleInit {
       }
       if (tipoControl === 'amarre_ip_mac_dhcp' && co.macAddress) {
         await this.pool.execute(creds, async (api) => {
-          const macFmt = co.macAddress.toUpperCase().replace(/[^A-F0-9]/g, '').match(/.{2}/g)?.join(':') ?? co.macAddress.toUpperCase();
+          const macFmt =
+            co.macAddress
+              .toUpperCase()
+              .replace(/[^A-F0-9]/g, '')
+              .match(/.{2}/g)
+              ?.join(':') ?? co.macAddress.toUpperCase();
           // Filtrar en RouterOS API directamente, evitando cargar todos los leases en Node
-          const matches = await api.write('/ip/dhcp-server/lease/print', [`?mac-address=${macFmt}`]);
+          const matches = await api.write('/ip/dhcp-server/lease/print', [
+            `?mac-address=${macFmt}`,
+          ]);
           for (const m of matches) {
             await api.write('/ip/dhcp-server/lease/remove', [`=.id=${m['.id']}`]);
           }
@@ -1362,30 +1582,48 @@ export class MikrotikService implements OnModuleInit {
     }
   }
 
-  async crearReglasControl(creds: RouterCredentials, co: any, tipoControl: string): Promise<void> {
+  async crearReglasControl(
+    creds: RouterCredentials,
+    co: any,
+    tipoControl: string,
+  ): Promise<void> {
     const comment = `DATAFAST:${co.nombreCompleto}`;
     if (tipoControl === 'pppoe') {
       // Fix 3: error explícito en lugar de return silencioso
-      if (!co.usuarioPppoe) throw new Error('El contrato no tiene usuario PPPoE asignado');
+      if (!co.usuarioPppoe)
+        throw new Error('El contrato no tiene usuario PPPoE asignado');
       const password = co.passwordPppoe ? decrypt(co.passwordPppoe) : '';
       await this.pppoeSvc.crear(creds, {
-        name: co.usuarioPppoe, password,
+        name: co.usuarioPppoe,
+        password,
         profile: co.pppProfile ?? 'default',
         service: 'pppoe',
         remoteAddress: co.ipAsignada || undefined,
-        comment, disabled: false,
+        comment,
+        disabled: false,
       });
     } else if (tipoControl === 'amarre_ip_mac' || tipoControl === 'amarre_ip_mac_dhcp') {
       // Fix 3: error explícito en lugar de return silencioso
-      if (!co.ipAsignada || !co.macAddress) throw new Error(`Amarre IP/MAC requiere IP (${co.ipAsignada ?? 'sin asignar'}) y MAC (${co.macAddress ?? 'sin asignar'})`);
+      if (!co.ipAsignada || !co.macAddress)
+        throw new Error(
+          `Amarre IP/MAC requiere IP (${co.ipAsignada ?? 'sin asignar'}) y MAC (${co.macAddress ?? 'sin asignar'})`,
+        );
       const iface = await this.arpSvc.detectarInterface(creds, co.ipAsignada);
       if (!iface) throw new Error(`No se encontró interfaz para ${co.ipAsignada}`);
-      await this.arpSvc.crearArpEstatico(creds, co.ipAsignada, co.macAddress, iface, comment);
+      await this.arpSvc.crearArpEstatico(
+        creds,
+        co.ipAsignada,
+        co.macAddress,
+        iface,
+        comment,
+      );
       if (tipoControl === 'amarre_ip_mac_dhcp') {
         try {
           await this.firewallSvc.crearDhcpBinding(creds, {
-            macAddress: co.macAddress, ipAddress: co.ipAsignada,
-            hostname: co.nombreCompleto, comment,
+            macAddress: co.macAddress,
+            ipAddress: co.ipAsignada,
+            hostname: co.nombreCompleto,
+            comment,
           });
         } catch (dhcpErr) {
           await this.arpSvc.eliminarArpEstatico(creds, co.ipAsignada).catch(() => {});
@@ -1397,18 +1635,24 @@ export class MikrotikService implements OnModuleInit {
 
   // ─── OBSERVABILIDAD ───────────────────────────────────────
 
-  async getDriftDetectado(empresaId: string, limit = 100): Promise<{
-    id: string;
-    contratoId: string;
-    routerNombre: string;
-    tipoDrift: string;
-    usuarioPppoe: string | null;
-    ipAsignada: string | null;
-    estado: string;
-    detectadoEn: string;
-    resueltoEn: string | null;
-  }[]> {
-    return this.ds.query<any[]>(`
+  async getDriftDetectado(
+    empresaId: string,
+    limit = 100,
+  ): Promise<
+    {
+      id: string;
+      contratoId: string;
+      routerNombre: string;
+      tipoDrift: string;
+      usuarioPppoe: string | null;
+      ipAsignada: string | null;
+      estado: string;
+      detectadoEn: string;
+      resueltoEn: string | null;
+    }[]
+  > {
+    return this.ds.query<any[]>(
+      `
       SELECT
         d.id::TEXT               AS id,
         d.contrato_id::TEXT      AS "contratoId",
@@ -1424,7 +1668,9 @@ export class MikrotikService implements OnModuleInit {
       WHERE ro.empresa_id = $1
       ORDER BY d.detectado_en DESC
       LIMIT $2
-    `, [empresaId, limit]);
+    `,
+      [empresaId, limit],
+    );
   }
 
   async getCbDetail(routerId: string, empresaId: string) {
