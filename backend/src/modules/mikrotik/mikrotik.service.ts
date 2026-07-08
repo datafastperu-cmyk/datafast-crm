@@ -1241,6 +1241,11 @@ export class MikrotikService implements OnModuleInit {
     } catch { return; }
 
     const pollOne = async (router: Router): Promise<void> => {
+      // El CB del proceso worker es independiente del API. testConexion() resetea el CB
+      // del API pero no el del worker, dejando el CB del worker abierto indefinidamente.
+      // El cron tiene su propia lógica de tolerancia (_pollFailCount) — el CB es redundante.
+      this.pool.resetCb(router.id);
+
       try {
         const creds: RouterCredentials = {
           id:              router.id,
