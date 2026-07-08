@@ -1422,13 +1422,20 @@ def _paramiko_huawei_run(
             output_parts.append(part)
 
         chan.close()
-        ssh.close()
         return output_parts if return_list else '\n'.join(output_parts)
 
     except paramiko.AuthenticationException as exc:
         raise ProvisioningError(f'Autenticación fallida en Huawei {conn.ip}') from exc
     except (paramiko.SSHException, OSError, TimeoutError) as exc:
         raise ProvisioningError(f'Error SSH en Huawei {conn.ip}: {exc}') from exc
+    finally:
+        # SIEMPRE cerrar: en el camino de error, no cerrar dejaba la sesión SSH
+        # colgada en la OLT hasta su idle-timeout, saturando el límite de sesiones
+        # concurrentes del MA5800 ("Reenter times have reached the upper limit").
+        try:
+            ssh.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def discover_huawei_onus(
@@ -2321,7 +2328,6 @@ def test_olt_connection(conn: OltConnectionSchema) -> dict[str, Any]:
                     break
             _time_read.sleep(0.1)
         chan.close()
-        ssh.close()
         latency_ms = int((_time_read.monotonic() - t0) * 1000)
         if b'>' in data or b'#' in data:
             logger.info('test_olt_connection OK | %s latencia=%dms', conn.ip, latency_ms)
@@ -2336,6 +2342,13 @@ def test_olt_connection(conn: OltConnectionSchema) -> dict[str, Any]:
         latency_ms = int((_time_read.monotonic() - t0) * 1000)
         logger.warning('test_olt_connection error | %s: %s', conn.ip, exc)
         return {'success': False, 'latency_ms': latency_ms, 'error': str(exc)}
+    finally:
+        # Cerrar siempre — no cerrar en el camino de error dejaba sesiones colgadas
+        # en la OLT hasta el idle-timeout (satura el límite de sesiones concurrentes).
+        try:
+            ssh.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ── FTTH Two-Phase Provisioning ───────────────────────────────
