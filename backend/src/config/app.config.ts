@@ -51,6 +51,10 @@ export const validationSchema = Joi.object({
   SMARTOLT_TOKEN: Joi.string().allow('').optional(),
   OLT_AUTOMATION_SERVICE_URL: Joi.string().uri().default('http://127.0.0.1:8001').optional(),
   OLT_AUTOMATION_INTERNAL_KEY: Joi.string().allow('').optional(),
+  // TR-069 / ACS (GenieACS NBI). Vacío = módulo degradado (sin ACS).
+  GENIEACS_NBI_URL:  Joi.string().uri().allow('').optional(),
+  GENIEACS_NBI_USER: Joi.string().allow('').optional(),
+  GENIEACS_NBI_PASS: Joi.string().allow('').optional(),
   MP_ACCESS_TOKEN: Joi.string().allow('').optional(),
   MP_WEBHOOK_SECRET: Joi.string().allow('').optional(),
   MP_SANDBOX: Joi.boolean().default(true),
@@ -151,6 +155,13 @@ export const appConfig = registerAs('app', () => ({
   oltAutomation: {
     url:            process.env.OLT_AUTOMATION_SERVICE_URL || 'http://127.0.0.1:8001',
     internalApiKey: process.env.OLT_AUTOMATION_INTERNAL_KEY || '',
+  },
+
+  // TR-069 / ACS — GenieACS Northbound Interface (REST). Vacío → módulo degradado.
+  genieacs: {
+    nbiUrl: process.env.GENIEACS_NBI_URL || '',
+    user:   process.env.GENIEACS_NBI_USER || '',
+    pass:   process.env.GENIEACS_NBI_PASS || '',
   },
 }));
 
