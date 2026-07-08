@@ -321,7 +321,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
 
   // ── Navegación ─────────────────────────────────────────────────────────────
 
-  const canProceedStep1 = nombre.trim().length > 0 && versionRos !== '';
+  const canProceedStep1 = nombre.trim().length > 0;
   const vpnIpValida     = !!vpnIp && vpnIp.trim().length > 0 && vpnIp !== '0.0.0.0';
   const canProceedStep2 = testStatus === 'ok' && (tipoConexion !== 'vpn_tunnel' || vpnIpValida);
   // Bloquear cambio de modo una vez que el script VPN fue generado (directriz: un script por wizard)
@@ -329,7 +329,6 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
 
   const goStep2 = () => {
     if (!nombre.trim()) { toast('El nombre del router es obligatorio', { type: 'error' }); return; }
-    if (!versionRos)    { toast('Selecciona la versión de RouterOS',   { type: 'error' }); return; }
     setStep(2);
   };
 
