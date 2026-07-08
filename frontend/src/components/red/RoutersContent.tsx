@@ -409,7 +409,7 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                 <div className="col-span-2 flex items-start gap-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/10">
                   <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
                   <p className="text-xs text-blue-300">
-                    Este ERP solo es compatible con routers MikroTik que ejecuten <strong>RouterOS v7</strong>.
+                    Este ERP es compatible con routers MikroTik que ejecuten <strong>RouterOS v7 o superior</strong>.
                   </p>
                 </div>
               </div>
