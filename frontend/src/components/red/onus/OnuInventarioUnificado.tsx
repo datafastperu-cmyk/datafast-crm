@@ -18,6 +18,14 @@ const EST: Record<OnuClasificada['estadoOperativo'], { label: string; cls: strin
 };
 const ESTADOS = Object.keys(EST) as OnuClasificada['estadoOperativo'][];
 
+// Señal FTTH (RxPower óptico en la ONU) → calidad por umbrales GPON.
+function senalFtth(rx: number | null): { txt: string; cls: string } {
+  if (rx == null) return { txt: '— sin datos', cls: 'text-muted-foreground' };
+  if (rx >= -23)  return { txt: `${rx} dBm`, cls: 'text-emerald-400' };   // buena
+  if (rx >= -27)  return { txt: `${rx} dBm`, cls: 'text-amber-400' };     // marginal
+  return { txt: `${rx} dBm`, cls: 'text-red-400' };                      // crítica
+}
+
 export function OnuInventarioUnificado() {
   const { data = [], isLoading } = useQuery({
     queryKey: ['olt-inventario-global'],
@@ -89,22 +97,26 @@ export function OnuInventarioUnificado() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-muted/60 backdrop-blur">
               <tr className="border-b border-border text-[11px] text-muted-foreground">
-                <th className="text-left px-3 py-2 font-semibold">OLT</th>
-                <th className="text-left px-3 py-2 font-semibold">F/S/P</th>
+                <th className="text-left px-3 py-2 font-semibold">Cliente</th>
                 <th className="text-left px-3 py-2 font-semibold">SN</th>
+                <th className="text-left px-3 py-2 font-semibold">F/S/P</th>
                 <th className="text-left px-3 py-2 font-semibold">Estado</th>
-                <th className="text-left px-3 py-2 font-semibold hidden md:table-cell">RxPower</th>
-                <th className="text-left px-3 py-2 font-semibold">Contrato / Cliente</th>
+                <th className="text-left px-3 py-2 font-semibold">OLT</th>
+                <th className="text-left px-3 py-2 font-semibold">Señal FTTH</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((o, i) => {
                 const e = EST[o.estadoOperativo] ?? EST.offline;
+                const s = senalFtth(o.rxPowerDbm);
                 return (
                   <tr key={`${o.oltId}-${o.sn}-${i}`} className="border-b border-border last:border-0 hover:bg-muted/10">
-                    <td className="px-3 py-2 text-xs">{o.oltNombre}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground font-mono">0/{o.slot}/{o.port}{o.onuId != null ? ` · ${o.onuId}` : ''}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {o.cliente ?? <span className="text-muted-foreground">—</span>}
+                      {o.numeroContrato && <div className="text-[10px] text-muted-foreground font-mono">{o.numeroContrato}</div>}
+                    </td>
                     <td className="px-3 py-2 font-mono text-xs">{o.sn}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground font-mono">0/{o.slot}/{o.port}{o.onuId != null ? ` · ${o.onuId}` : ''}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={cn('inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border', e.cls)}>
@@ -115,10 +127,8 @@ export function OnuInventarioUnificado() {
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground hidden md:table-cell">{o.rxPowerDbm != null ? `${o.rxPowerDbm} dBm` : '—'}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {o.numeroContrato ? <span><span className="font-mono">{o.numeroContrato}</span>{o.cliente ? ` · ${o.cliente}` : ''}</span> : (o.cliente ?? '—')}
-                    </td>
+                    <td className="px-3 py-2 text-xs">{o.oltNombre}</td>
+                    <td className={cn('px-3 py-2 text-xs font-medium', s.cls)}>{s.txt}</td>
                   </tr>
                 );
               })}

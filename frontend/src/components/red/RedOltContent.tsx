@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery, useQueryClient }  from '@tanstack/react-query';
-import { io, Socket }                from 'socket.io-client';
+import { useQuery }  from '@tanstack/react-query';
 import {
   Radio, RefreshCw, Server, Signal,
   Wifi, WifiOff, Plus, Cpu, Cloud, ChevronRight, X,
@@ -16,14 +15,8 @@ import { useToast } from '@/components/ui/toaster';
 import { OltWizardNativoModal } from '@/components/red/OltWizardNativoModal';
 import { CrearOltModal } from '@/components/red/CrearOltModal';
 import { DeleteOltModal } from '@/components/red/DeleteOltModal';
-import { type OnuFilters, type CalidadSenal }  from '@/lib/api/red-onus';
-import type { LiveSenalMap }                  from '@/components/red/onus/OnuTable';
-import { getAccessToken } from '@/lib/api';
 import { cn }             from '@/lib/utils';
 import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
-import { OnuFilterBar }   from '@/components/red/onus/OnuFilterBar';
-import { OnuBulkBar }     from '@/components/red/onus/OnuBulkBar';
-import { OnuTable }       from '@/components/red/onus/OnuTable';
 import { OnuInventarioUnificado } from '@/components/red/onus/OnuInventarioUnificado';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -116,23 +109,15 @@ function SelectorProveedorModal({
   );
 }
 
-function getWsUrl(): string {
-  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
-  if (typeof window === 'undefined') return 'http://localhost:4000';
-  return `${window.location.protocol}//${window.location.host}`;
-}
-
 type TabKey = 'olts' | 'onus';
 
 // ─── Component ────────────────────────────────────────────────
 
 export function RedOltContent() {
-  const qc = useQueryClient();
   const router = useRouter();
   const { toast } = useToast();
 
   const [tab,          setTab]          = useState<TabKey>('onus');
-  const [onuVista,     setOnuVista]     = useState<'inventario' | 'aprovisionadas'>('inventario');
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [wizardNativoOpen, setWizardNativoOpen] = useState(false);
   const [crearProveedorTipo, setCrearProveedorTipo] = useState<'smartolt' | 'adminolt' | null>(null);
@@ -188,68 +173,6 @@ export function RedOltContent() {
   });
   const [oltSortField, setOltSortField] = useState('nombre');
   const [oltSortDir,   setOltSortDir]   = useState<'ASC' | 'DESC'>('ASC');
-  const [selected,     setSelected]     = useState<Set<string>>(new Set());
-  const [liveSenales,  setLiveSenales]  = useState<LiveSenalMap>(new Map());
-  const [onuTotal,     setOnuTotal]     = useState(0);
-
-  const [filters, setFilters] = useState<OnuFilters>({ page: 1, limit: 50 });
-
-  // ── WebSocket /olt namespace para eventos batch señal ────────
-  const socketRef = useRef<Socket | null>(null);
-
-  useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return undefined;
-
-    const socket = io(`${getWsUrl()}/olt`, {
-      auth:                 { token },
-      transports:           ['websocket', 'polling'],
-      reconnection:         true,
-      reconnectionDelay:    3000,
-      reconnectionAttempts: 5,
-    });
-
-    socketRef.current = socket;
-
-    socket.on('onu:señal', (payload: {
-      sn: string; rxPower: number | null; txPower: number | null;
-      temperatura: number | null; calidadSenal: CalidadSenal;
-    }) => {
-      setLiveSenales(prev => {
-        const next = new Map(prev);
-        next.set(payload.sn, {
-          rxPower:     payload.rxPower,
-          txPower:     payload.txPower,
-          temperatura: payload.temperatura,
-          calidadSenal: payload.calidadSenal,
-        });
-        return next;
-      });
-    });
-
-    socket.on('bulk:señal:completado', () => {
-      qc.invalidateQueries({ queryKey: ['red-onus'] });
-    });
-
-    return () => {
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Señal update callback (from individual row refresh) ──────
-  const handleSenalUpdate = useCallback((
-    sn: string, rx: number | null, tx: number | null, temp: number | null,
-  ) => {
-    const calidad: CalidadSenal = rx == null ? 'sin_datos'
-      : rx >= -23 ? 'buena'
-      : rx >= -27 ? 'marginal' : 'critica';
-    setLiveSenales(prev => {
-      const next = new Map(prev);
-      next.set(sn, { rxPower: rx, txPower: tx, temperatura: temp, calidadSenal: calidad });
-      return next;
-    });
-  }, []);
 
   // ── Sort handlers OLTs ───────────────────────────────────────
   function handleOltSort(field: string) {
@@ -285,11 +208,6 @@ export function RedOltContent() {
   const onlineCount  = todasOlts.filter(o => o.estado === 'online').length;
   const offlineCount = todasOlts.filter(o => o.estado === 'offline').length;
 
-  // ── Selection helpers ────────────────────────────────────────
-  const onToggle    = useCallback((sn: string) => setSelected(s => { const n = new Set(s); n.has(sn) ? n.delete(sn) : n.add(sn); return n; }), []);
-  const onSelectAll = useCallback((sns: string[]) => setSelected(new Set(sns)), []);
-  const onClearAll  = useCallback(() => setSelected(new Set()), []);
-
   return (
     <div className="space-y-5">
 
@@ -311,12 +229,11 @@ export function RedOltContent() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Total OLTs', value: todasOlts.length,  color: 'text-foreground' },
           { label: 'Online',     value: onlineCount,         color: onlineCount  > 0 ? 'text-emerald-500' : 'text-muted-foreground' },
           { label: 'Offline',    value: offlineCount,        color: offlineCount > 0 ? 'text-red-500' : 'text-muted-foreground' },
-          { label: 'Total ONUs', value: onuTotal || '—',    color: 'text-blue-500' },
         ].map(s => (
           <div key={s.label} className="bg-card border border-border rounded-xl p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{s.label}</p>
@@ -493,52 +410,10 @@ export function RedOltContent() {
         </div>
       )}
 
-      {/* ── Tab: ONUs ────────────────────────────────────────── */}
+      {/* ── Tab: ONUs (listado único de todas las OLTs) ──────── */}
       {tab === 'onus' && (
-        <div className="space-y-3">
-          {/* Sub-toggle: inventario completo (todas las OLTs) vs aprovisionadas (ERP) */}
-          <div className="inline-flex rounded-lg border border-border p-0.5 text-xs">
-            {([
-              ['inventario',  'Todas (inventario)'],
-              ['aprovisionadas', 'Aprovisionadas'],
-            ] as const).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setOnuVista(key)}
-                className={cn(
-                  'px-3 py-1.5 rounded-md font-medium transition-colors',
-                  onuVista === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {onuVista === 'inventario' ? (
-            <div className="bg-card border border-border rounded-xl p-3">
-              <OnuInventarioUnificado />
-            </div>
-          ) : (
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <OnuFilterBar
-                filters={filters}
-                onChange={(f) => { setFilters(f); setSelected(new Set()); }}
-                totalOnus={onuTotal}
-              />
-              <OnuBulkBar selected={selected} onClearAll={onClearAll} />
-              <OnuTable
-                filters={filters}
-                selected={selected}
-                onToggle={onToggle}
-                onSelectAll={onSelectAll}
-                onClearAll={onClearAll}
-                onSenalUpdate={handleSenalUpdate}
-                liveSenales={liveSenales}
-                onTotalChange={setOnuTotal}
-              />
-            </div>
-          )}
+        <div className="bg-card border border-border rounded-xl p-3">
+          <OnuInventarioUnificado />
         </div>
       )}
 
