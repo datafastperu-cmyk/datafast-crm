@@ -60,7 +60,9 @@ export class OltMonitoreoService {
   // ────────────────────────────────────────────────────────────────
   // CRON — cada 5 minutos, solo instancia PM2 #0
   // ────────────────────────────────────────────────────────────────
-  @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
+  // Minutos 2,7,12,…,57 — disjuntos del health-poller (0,10,20,30,40,50) y del
+  // ftth-recovery (4,9,…,59) para no abrir sesiones SSH a la misma OLT a la vez.
+  @Cron('2-59/5 * * * *', { timeZone: 'America/Lima' })
   async pollOltMetrics(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 

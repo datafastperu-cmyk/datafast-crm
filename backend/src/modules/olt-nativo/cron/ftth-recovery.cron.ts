@@ -38,7 +38,9 @@ export class FtthRecoveryCron {
     private readonly automation: OltAutomationClient,
   ) {}
 
-  @Cron('*/5 * * * *')
+  // Minutos 4,9,…,59 — disjuntos del health-poller (x0) y del monitoreo (2,7,…)
+  // para no colisionar sesiones SSH sobre la misma OLT.
+  @Cron('4-59/5 * * * *')
   async liberarBloqueados(): Promise<void> {
     // UPDATE atómico: solo la instancia que gana el race obtiene las filas.
     // locked_at se renueva a NOW() para que la condición `< NOW() - 10min`

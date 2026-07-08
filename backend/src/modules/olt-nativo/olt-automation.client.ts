@@ -504,17 +504,44 @@ export class OltAutomationClient {
     return { headers, timeout: this.TIMEOUT_MS };
   }
 
+  // Mutex por-OLT: serializa TODA operación SSH hacia una misma OLT a través de
+  // todo el backend (crons de monitoreo/health/recovery + requests de usuario).
+  // El MA5800 limita las sesiones SSH concurrentes por usuario ("Reenter times
+  // have reached the upper limit"); sin esta serialización, varios crons que caen
+  // en el mismo minuto abren sesiones simultáneas y saturan la tabla de sesiones
+  // de la OLT, provocando fallos de auth en cascada.
+  private readonly oltTails = new Map<string, Promise<void>>();
+
+  private async withOltLock<T>(ip: string, fn: () => Promise<T>): Promise<T> {
+    const prevTail = this.oltTails.get(ip) ?? Promise.resolve();
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((res) => { releaseGate = res; });
+    const newTail = prevTail.then(() => gate);
+    this.oltTails.set(ip, newTail);
+    await prevTail.catch(() => { /* el error del anterior no es nuestro */ });
+    try {
+      return await fn();
+    } finally {
+      releaseGate();
+      if (this.oltTails.get(ip) === newTail) this.oltTails.delete(ip);
+    }
+  }
+
   private async post<T>(endpoint: string, body: unknown, timeoutMs?: number): Promise<T> {
     this.checkConfig();
-    try {
-      const cfg = timeoutMs ? { ...this.getConfig(), timeout: timeoutMs } : this.getConfig();
-      const res = await firstValueFrom(
-        this.http.post<T>(`${this.baseUrl}${endpoint}`, body, cfg),
-      );
-      return res.data;
-    } catch (error) {
-      this.handleHttpError(error, 'POST', endpoint);
-    }
+    const ip = (body as { connection?: { ip?: string } })?.connection?.ip;
+    const exec = async (): Promise<T> => {
+      try {
+        const cfg = timeoutMs ? { ...this.getConfig(), timeout: timeoutMs } : this.getConfig();
+        const res = await firstValueFrom(
+          this.http.post<T>(`${this.baseUrl}${endpoint}`, body, cfg),
+        );
+        return res.data;
+      } catch (error) {
+        this.handleHttpError(error, 'POST', endpoint);
+      }
+    };
+    return ip ? this.withOltLock(ip, exec) : exec();
   }
 
   private async get<T>(endpoint: string): Promise<T> {
