@@ -13,7 +13,7 @@ import {
 import { oltNativoApi, type OltConProveedorPrincipal } from '@/lib/api/olt-nativo';
 import { mikrotikApi } from '@/lib/api/mikrotik';
 import { OltWizardNativoModal } from '@/components/red/OltWizardNativoModal';
-import { CrearOltModal } from '@/components/red/IntegracionProveedorPage';
+import { CrearOltModal } from '@/components/red/CrearOltModal';
 import { type OnuFilters, type CalidadSenal }  from '@/lib/api/red-onus';
 import type { LiveSenalMap }                  from '@/components/red/onus/OnuTable';
 import { getAccessToken } from '@/lib/api';
