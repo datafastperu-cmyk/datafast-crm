@@ -58,7 +58,7 @@ function SelectorProveedorModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSelect: (t: ProveedorTipo) => void;
+  onSelect: (_tipo: ProveedorTipo) => void;
 }) {
   if (!open) return null;
   const opciones: Array<{
