@@ -7,13 +7,15 @@ import { io, Socket }                from 'socket.io-client';
 import {
   Radio, RefreshCw, Server, Signal,
   Wifi, WifiOff, Plus, Cpu, Cloud, ChevronRight, X,
-  ChevronUp, ChevronDown, ChevronsUpDown,
+  ChevronUp, ChevronDown, ChevronsUpDown, Trash2, Zap, Loader2,
 } from 'lucide-react';
 
 import { oltNativoApi, type OltConProveedorPrincipal } from '@/lib/api/olt-nativo';
 import { mikrotikApi } from '@/lib/api/mikrotik';
+import { useToast } from '@/components/ui/toaster';
 import { OltWizardNativoModal } from '@/components/red/OltWizardNativoModal';
 import { CrearOltModal } from '@/components/red/CrearOltModal';
+import { DeleteOltModal } from '@/components/red/DeleteOltModal';
 import { type OnuFilters, type CalidadSenal }  from '@/lib/api/red-onus';
 import type { LiveSenalMap }                  from '@/components/red/onus/OnuTable';
 import { getAccessToken } from '@/lib/api';
@@ -126,11 +128,56 @@ type TabKey = 'olts' | 'onus';
 export function RedOltContent() {
   const qc = useQueryClient();
   const router = useRouter();
+  const { toast } = useToast();
 
   const [tab,          setTab]          = useState<TabKey>('onus');
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [wizardNativoOpen, setWizardNativoOpen] = useState(false);
   const [crearProveedorTipo, setCrearProveedorTipo] = useState<'smartolt' | 'adminolt' | null>(null);
+  const [testingId, setTestingId]   = useState<string | null>(null);
+  const [syncingId, setSyncingId]   = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; nombre: string } | null>(null);
+
+  // Probar conexión SSH a la OLT y reflejar el estado real.
+  const probarConexion = async (olt: OltConProveedorPrincipal) => {
+    setTestingId(olt.id);
+    try {
+      const r = await oltNativoApi.testConexion(olt.id);
+      toast(
+        r.exitoso
+          ? `Conexión OK con "${olt.nombre}"${r.latenciaMs ? ` (${r.latenciaMs}ms)` : ''}`
+          : `Sin conexión con "${olt.nombre}": ${r.mensaje}`,
+        { type: r.exitoso ? 'success' : 'error' },
+      );
+      refetchOlts();
+    } catch {
+      toast('Error al probar la conexión', { type: 'error' });
+    } finally {
+      setTestingId(null);
+    }
+  };
+
+  // Fuerza la reconciliación bidireccional ERP↔OLT:
+  //  - ftthReconciliar: detecta/importa ONUs (aprovisionadas o no) que difieren entre BD y OLT.
+  //  - iniciarSync: re-lee perfiles, VLANs y traffic-tables de la OLT hacia el ERP.
+  const sincronizar = async (olt: OltConProveedorPrincipal) => {
+    setSyncingId(olt.id);
+    try {
+      const rec = await oltNativoApi.ftthReconciliar(olt.id);
+      await oltNativoApi.iniciarSync(olt.id);
+      toast(
+        `Sincronización de "${olt.nombre}" iniciada. ONUs: ${rec.sincronizados} sincronizadas · ` +
+        `${rec.enErpNoEnOlt.length} solo en ERP · ${rec.enOltNoEnErp.length} solo en OLT. ` +
+        `Perfiles/VLANs se actualizan en segundo plano.`,
+        { type: 'success' },
+      );
+      refetchOlts();
+    } catch {
+      toast('Error al sincronizar la OLT', { type: 'error' });
+    } finally {
+      setSyncingId(null);
+    }
+  };
 
   const { data: routers = [] } = useQuery({
     queryKey: ['routers-lista'],
@@ -348,13 +395,19 @@ export function RedOltContent() {
                         </span>
                       </th>
                     ))}
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider select-none">
+                      Acciones
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {sortedOlts.map((olt: OltConProveedorPrincipal) => {
-                    const sec   = seccionDe(olt);
-                    const badge = SECCION_BADGE[sec];
-                    const pp    = olt.proveedorPrincipal;
+                    const sec    = seccionDe(olt);
+                    const badge  = SECCION_BADGE[sec];
+                    const pp     = olt.proveedorPrincipal;
+                    const nativo = sec.startsWith('nativo');
+                    const testing = testingId === olt.id;
+                    const syncing = syncingId === olt.id;
                     return (
                       <tr
                         key={olt.id}
@@ -396,6 +449,37 @@ export function RedOltContent() {
                           ) : <span className="text-xs text-muted-foreground/50">—</span>}
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground tabular-nums">{olt.onusActivas}</td>
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            {nativo && (
+                              <>
+                                <button
+                                  onClick={() => probarConexion(olt)}
+                                  disabled={testing}
+                                  title="Probar conexión"
+                                  className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-sky-400 hover:border-sky-700/50 hover:bg-sky-500/10 transition-colors disabled:opacity-50"
+                                >
+                                  {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                                </button>
+                                <button
+                                  onClick={() => sincronizar(olt)}
+                                  disabled={syncing}
+                                  title="Sincronizar información ERP ↔ OLT (perfiles y ONUs)"
+                                  className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-emerald-400 hover:border-emerald-700/50 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                                >
+                                  <RefreshCw className={cn('w-3.5 h-3.5', syncing && 'animate-spin')} />
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => setDeleteTarget({ id: olt.id, nombre: olt.nombre })}
+                              title="Eliminar OLT"
+                              className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-red-400 hover:border-red-700/50 hover:bg-red-500/10 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -455,6 +539,13 @@ export function RedOltContent() {
           onSaved={() => { setCrearProveedorTipo(null); refetchOlts(); }}
         />
       )}
+      <DeleteOltModal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        oltId={deleteTarget?.id ?? ''}
+        oltNombre={deleteTarget?.nombre ?? ''}
+        onDeleted={() => { setDeleteTarget(null); refetchOlts(); }}
+      />
     </div>
   );
 }
