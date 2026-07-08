@@ -95,11 +95,14 @@ export class OutboxRedService {
     routerId:   string,
     payload:    PayloadSuspenderRed | PayloadReactivarRed | PayloadDesprovisionarRed | PayloadProvisionarRed,
   ): Promise<void> {
+    // 'none' = sentinela de acciones ONU (la OLT se resuelve en ejecución desde el
+    // registro, no hay router MikroTik). router_id es uuid → se persiste NULL.
+    const routerIdVal = routerId && routerId !== 'none' ? routerId : null;
     await this.ds.query(`
       INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (contrato_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
-    `, [contratoId, routerId, accion, JSON.stringify(payload)]);
+    `, [contratoId, routerIdVal, accion, JSON.stringify(payload)]);
 
     this.logger.warn(
       `[OutboxRed] ${accion} encolado → contrato=${contratoId} router=${routerId}`,
