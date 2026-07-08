@@ -2581,6 +2581,72 @@ def list_configured_ont_ids(
     return sorted(ids)
 
 
+def _bulk_metrics_paramiko_huawei(
+    conn: OltConnectionSchema,
+    slot: int,
+    port: int,
+) -> list[dict[str, Any]]:
+    """
+    Igual que get_bulk_metrics_huawei pero usando el helper Paramiko (_paramiko_huawei_run)
+    en lugar del path Netmiko. Netmiko se traba en el pager `{ <cr>||<K> }:` / `---- More`
+    del MA5800 y genera "Timeout en respuesta a comandos bulk". Paramiko lo maneja bien.
+    UNA sesión SSH en contexto interface-gpon: info all + optical-info all.
+    """
+    cmds = [
+        'config', f'interface gpon 0/{slot}',
+        f'display ont info {port} all',
+        f'display ont optical-info {port} all',
+        'quit',
+    ]
+    parts = _paramiko_huawei_run(
+        conn, cmds, timeout=max(90.0, settings.ssh_command_timeout), return_list=True,
+    )
+    status_raw  = parts[2] if len(parts) > 2 else ''
+    optical_raw = parts[3] if len(parts) > 3 else ''
+
+    status_rows  = _parse_output(conn.brand, 'display_ont_info_all.textfsm',    status_raw)
+    optical_rows = _parse_output(conn.brand, 'display_ont_optical_all.textfsm', optical_raw)
+
+    optical_map: dict[int, dict[str, Any]] = {}
+    for row in optical_rows:
+        if 'raw' in row:
+            continue
+        try:
+            oid  = int(row.get('OnuId')   or 0)
+            rx_s = str(row.get('RxPower')  or '').strip()
+            tx_s = str(row.get('TxPower')  or '').strip()
+            tc_s = str(row.get('TempC')    or '').strip()
+            optical_map[oid] = {
+                'rx_power_dbm':  float(rx_s) if rx_s not in ('', '-', '--') else None,
+                'tx_power_dbm':  float(tx_s) if tx_s not in ('', '-', '--') else None,
+                'temperature_c': float(tc_s) if tc_s not in ('', '-', '--') else None,
+            }
+        except (ValueError, TypeError):
+            continue
+
+    result: list[dict[str, Any]] = []
+    for row in status_rows:
+        if 'raw' in row:
+            continue
+        try:
+            oid = int(row.get('OnuId')     or 0)
+            sn  = str(row.get('Sn')        or '').strip() or None
+            run = str(row.get('RunState')  or 'unknown').lower()
+            ctl = str(row.get('ControlFlag') or '').strip().lower() or None
+            cfg = str(row.get('ConfigState') or '').strip().lower() or None
+            opt = optical_map.get(oid, {})
+            result.append({
+                'slot': slot, 'port': port, 'onu_id': oid, 'sn': sn,
+                'run_state': run, 'control_flag': ctl, 'config_state': cfg,
+                'rx_power_dbm':  opt.get('rx_power_dbm'),
+                'tx_power_dbm':  opt.get('tx_power_dbm'),
+                'temperature_c': opt.get('temperature_c'),
+            })
+        except (ValueError, TypeError):
+            continue
+    return result
+
+
 def get_onu_down_causes_huawei(
     conn: OltConnectionSchema,
     slot: int,
@@ -2659,7 +2725,7 @@ def classify_port_onus_huawei(
     Retorna {onus:[...], autofind:[...]}. El estado operativo ya viene resuelto;
     el cruce con contrato lo hace el backend (tiene la BD).
     """
-    metrics = get_bulk_metrics_huawei(conn, slot, port)
+    metrics = _bulk_metrics_paramiko_huawei(conn, slot, port)
     offline_ids = [
         m['onu_id'] for m in metrics
         if (m.get('run_state') or '').lower() != 'online'
