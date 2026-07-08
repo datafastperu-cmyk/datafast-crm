@@ -35,26 +35,7 @@ const INTEGRATIONS = [
     logo:     'M',
     logoCls:  'bg-blue-500/10 text-blue-500',
   },
-  {
-    id:       'smartolt',
-    name:     'SmartOLT',
-    description: 'Gestión de OLTs y ONUs FTTH vía API REST',
-    href:     '/configuracion/integraciones/smartolt',
-    badge:    'Configurar',
-    badgeCls: 'bg-purple-500/10 text-purple-500',
-    logo:     'S',
-    logoCls:  'bg-purple-500/10 text-purple-500',
-  },
-  {
-    id:       'adminolt',
-    name:     'AdminOLT',
-    description: 'Gestión de OLTs y ONUs FTTH vía AdminOLT API',
-    href:     '/configuracion/integraciones/adminolt',
-    badge:    'Configurar',
-    badgeCls: 'bg-sky-500/10 text-sky-500',
-    logo:     'A',
-    logoCls:  'bg-sky-500/10 text-sky-500',
-  },
+  // SmartOLT y AdminOLT se gestionan ahora en Red → OLT / GPON (crear + credenciales por OLT).
   {
     id:       'mercadopago',
     name:     'MercadoPago',

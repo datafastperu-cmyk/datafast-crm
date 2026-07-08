@@ -11,7 +11,9 @@ import {
 } from 'lucide-react';
 
 import { oltNativoApi, type OltConProveedorPrincipal } from '@/lib/api/olt-nativo';
+import { mikrotikApi } from '@/lib/api/mikrotik';
 import { OltWizardNativoModal } from '@/components/red/OltWizardNativoModal';
+import { CrearOltModal } from '@/components/red/IntegracionProveedorPage';
 import { type OnuFilters, type CalidadSenal }  from '@/lib/api/red-onus';
 import type { LiveSenalMap }                  from '@/components/red/onus/OnuTable';
 import { getAccessToken } from '@/lib/api';
@@ -48,11 +50,6 @@ function seccionDe(olt: OltConProveedorPrincipal): string {
   return olt.proveedorPrincipal?.tipo ?? olt.metodoConexion ?? 'desconocido';
 }
 
-function esNativo(olt: OltConProveedorPrincipal): boolean {
-  const s = seccionDe(olt);
-  return s === 'nativo_ssh' || s === 'nativo_snmp';
-}
-
 // ─── Modal selector de proveedor ──────────────────────────────
 type ProveedorTipo = 'nativo' | 'smartolt' | 'adminolt';
 
@@ -68,8 +65,8 @@ function SelectorProveedorModal({
     tipo: ProveedorTipo; label: string; desc: string; Icon: typeof Cpu; disabled: boolean;
   }> = [
     { tipo: 'nativo',   label: 'Aprovisionamiento Nativo', desc: 'Control directo por SSH/SNMP (Huawei, ZTE, V-SOL, C-Data).', Icon: Cpu,   disabled: false },
-    { tipo: 'smartolt', label: 'SmartOLT',                 desc: 'Integración con la API de SmartOLT.',                       Icon: Cloud, disabled: true  },
-    { tipo: 'adminolt', label: 'AdminOLT',                 desc: 'Integración con la API de AdminOLT.',                       Icon: Cloud, disabled: true  },
+    { tipo: 'smartolt', label: 'SmartOLT',                 desc: 'Integración con la API de SmartOLT.',                       Icon: Cloud, disabled: false },
+    { tipo: 'adminolt', label: 'AdminOLT',                 desc: 'Integración con la API de AdminOLT.',                       Icon: Cloud, disabled: false },
   ];
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
@@ -133,6 +130,13 @@ export function RedOltContent() {
   const [tab,          setTab]          = useState<TabKey>('onus');
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [wizardNativoOpen, setWizardNativoOpen] = useState(false);
+  const [crearProveedorTipo, setCrearProveedorTipo] = useState<'smartolt' | 'adminolt' | null>(null);
+
+  const { data: routers = [] } = useQuery({
+    queryKey: ['routers-lista'],
+    queryFn:  () => mikrotikApi.listar(),
+    enabled:  crearProveedorTipo !== null,
+  });
   const [oltSortField, setOltSortField] = useState('nombre');
   const [oltSortDir,   setOltSortDir]   = useState<'ASC' | 'DESC'>('ASC');
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
@@ -298,7 +302,7 @@ export function RedOltContent() {
         <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            Gestión de OLTs de todos los proveedores. Las OLTs nativas abren su detalle al hacer clic.
+            Gestión de OLTs de todos los proveedores. Haz clic en una OLT para abrir su detalle.
           </p>
           <button
             onClick={() => setSelectorOpen(true)}
@@ -351,20 +355,16 @@ export function RedOltContent() {
                     const sec   = seccionDe(olt);
                     const badge = SECCION_BADGE[sec];
                     const pp    = olt.proveedorPrincipal;
-                    const nativo = esNativo(olt);
                     return (
                       <tr
                         key={olt.id}
-                        onClick={nativo ? () => router.push(`/red/olt/${olt.id}`) : undefined}
-                        className={cn(
-                          'transition-colors',
-                          nativo ? 'hover:bg-accent/40 cursor-pointer' : 'hover:bg-accent/20',
-                        )}
+                        onClick={() => router.push(`/red/olt/${olt.id}`)}
+                        className="transition-colors hover:bg-accent/40 cursor-pointer"
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div className="font-medium text-foreground">{olt.nombre}</div>
-                            {nativo && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />}
+                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {olt.marca.toUpperCase()}{olt.modelo ? ` · ${olt.modelo}` : ''}
@@ -439,7 +439,7 @@ export function RedOltContent() {
         onSelect={(tipo) => {
           setSelectorOpen(false);
           if (tipo === 'nativo') setWizardNativoOpen(true);
-          // smartolt / adminolt: diferidos (opciones deshabilitadas en el modal)
+          else setCrearProveedorTipo(tipo);
         }}
       />
       {/* El wizard invalida ['olt-todas'] al crear → la lista se refresca sola. */}
@@ -447,6 +447,14 @@ export function RedOltContent() {
         open={wizardNativoOpen}
         onClose={() => { setWizardNativoOpen(false); refetchOlts(); }}
       />
+      {crearProveedorTipo && (
+        <CrearOltModal
+          tipo={crearProveedorTipo}
+          routers={routers}
+          onClose={() => setCrearProveedorTipo(null)}
+          onSaved={() => { setCrearProveedorTipo(null); refetchOlts(); }}
+        />
+      )}
     </div>
   );
 }

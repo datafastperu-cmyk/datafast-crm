@@ -97,7 +97,7 @@ const FORM_INIT: CrearOltIntegracionDto & { _marcaKey: string } = {
   _marcaKey:     'huawei',
 };
 
-function CrearOltModal({ tipo, routers, onClose, onSaved }: CrearOltModalProps) {
+export function CrearOltModal({ tipo, routers, onClose, onSaved }: CrearOltModalProps) {
   const { toast } = useToast();
   const [form, setForm]     = useState({ ...FORM_INIT, routerId: routers[0]?.id ?? '' });
   const [saving, setSaving] = useState(false);

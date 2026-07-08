@@ -29,12 +29,12 @@ import { DeleteOltModal }  from '@/components/red/DeleteOltModal';
 type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'firmware'
            | 'proveedores' | 'salud';
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+const TABS: { id: TabId; label: string; icon: React.ReactNode; soloNativo?: boolean }[] = [
   { id: 'detalles',    label: 'Detalles',    icon: <Settings       className="w-3.5 h-3.5" /> },
-  { id: 'vlans',       label: 'VLANs',       icon: <Network        className="w-3.5 h-3.5" /> },
-  { id: 'profiles',    label: 'Perfiles',    icon: <Server         className="w-3.5 h-3.5" /> },
-  { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" /> },
-  { id: 'firmware',    label: 'Firmware',    icon: <Zap            className="w-3.5 h-3.5" /> },
+  { id: 'vlans',       label: 'VLANs',       icon: <Network        className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'profiles',    label: 'Perfiles',    icon: <Server         className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'firmware',    label: 'Firmware',    icon: <Zap            className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'proveedores', label: 'Proveedores', icon: <Plug           className="w-3.5 h-3.5" /> },
   { id: 'salud',       label: 'Salud',       icon: <Gauge          className="w-3.5 h-3.5" /> },
   { id: 'eventos',     label: 'Eventos',     icon: <Activity       className="w-3.5 h-3.5" /> },
@@ -110,6 +110,12 @@ export default function OltDetallePage() {
   }
 
   const isSyncing = sync.fase === 'running' || syncMut.isPending;
+
+  // OLTs de proveedor externo (SmartOLT/AdminOLT) no exponen las operaciones SSH
+  // nativas (VLANs, perfiles, ONUs en vivo, firmware): se ocultan esas tabs.
+  const esNativo = (olt.metodoConexion ?? '').startsWith('nativo');
+  const tabsVisibles = TABS.filter(t => esNativo || !t.soloNativo);
+  const tabActual = tabsVisibles.some(t => t.id === tab) ? tab : 'detalles';
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5">
@@ -212,13 +218,13 @@ export default function OltDetallePage() {
 
       {/* ── Tabs ────────────────────────────────────────────────── */}
       <div className="flex gap-1 border-b border-border pb-0 overflow-x-auto">
-        {TABS.map(t => (
+        {tabsVisibles.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={cn(
               'flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md whitespace-nowrap transition-colors border-b-2 -mb-px',
-              tab === t.id
+              tabActual === t.id
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
             )}
@@ -231,14 +237,14 @@ export default function OltDetallePage() {
 
       {/* ── Tab content ─────────────────────────────────────────── */}
       <div>
-        {tab === 'detalles'    && <TabDetalles   olt={olt} oltId={id} />}
-        {tab === 'vlans'       && <TabVlans      oltId={id} />}
-        {tab === 'profiles'    && <TabProfiles   oltId={id} />}
-        {tab === 'onus'        && <TabOnus       oltId={id} />}
-        {tab === 'firmware'    && <TabFirmware   oltId={id} />}
-        {tab === 'proveedores' && <ProveedoresTab oltId={id} />}
-        {tab === 'salud'       && <SaludTab      oltId={id} />}
-        {tab === 'eventos'     && <TabEventos    oltId={id} />}
+        {tabActual === 'detalles'    && <TabDetalles   olt={olt} oltId={id} />}
+        {tabActual === 'vlans'       && <TabVlans      oltId={id} />}
+        {tabActual === 'profiles'    && <TabProfiles   oltId={id} />}
+        {tabActual === 'onus'        && <TabOnus       oltId={id} />}
+        {tabActual === 'firmware'    && <TabFirmware   oltId={id} />}
+        {tabActual === 'proveedores' && <ProveedoresTab oltId={id} />}
+        {tabActual === 'salud'       && <SaludTab      oltId={id} />}
+        {tabActual === 'eventos'     && <TabEventos    oltId={id} />}
       </div>
 
       <DeleteOltModal

@@ -1,17 +1,6 @@
-import type { Metadata } from 'next';
-import { Wifi } from 'lucide-react';
-import { IntegracionProveedorPage } from '@/components/red/IntegracionProveedorPage';
+// La gestión de AdminOLT se unificó en Red → OLT / GPON (crear + credenciales por OLT).
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'AdminOLT — Integración' };
-
-export default function AdminOltIntegracionPage() {
-  return (
-    <IntegracionProveedorPage
-      tipo="adminolt"
-      titulo="AdminOLT"
-      descripcion="Gestión de OLTs y ONUs FTTH vía API REST de AdminOLT"
-      colorCls="bg-sky-500/15 text-sky-400"
-      icono={<Wifi className="w-5 h-5" />}
-    />
-  );
+export default function AdminOltIntegracionRedirect() {
+  redirect('/red/olt');
 }
