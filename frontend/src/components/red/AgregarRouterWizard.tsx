@@ -266,8 +266,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
           metodoConexion: 'vpn_tunnel',
           versionRos:     'v7',
         });
-        if (result.exitoso && result.versionDetectada && !result.versionDetectada.startsWith('7')) {
-          setTestResult({ ...result, exitoso: false, mensaje: `RouterOS ${result.versionDetectada} no es compatible. Actualiza el router a v7 para continuar.` });
+        if (result.exitoso && result.versionDetectada && parseInt(result.versionDetectada) < 7) {
+          setTestResult({ ...result, exitoso: false, mensaje: `RouterOS ${result.versionDetectada} no es compatible. Se requiere v7 o superior para continuar.` });
           setTestStatus('error');
         } else {
           setTestResult(result);
