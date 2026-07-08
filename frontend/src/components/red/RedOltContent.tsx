@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient }  from '@tanstack/react-query';
 import { io, Socket }                from 'socket.io-client';
 import {
   Radio, RefreshCw, Server, Signal,
-  Wifi, WifiOff,
+  Wifi, WifiOff, Plus, Cpu, Cloud, ChevronRight, X,
   ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 
 import { oltNativoApi, type OltConProveedorPrincipal } from '@/lib/api/olt-nativo';
+import { OltWizardNativoModal } from '@/components/red/OltWizardNativoModal';
 import { type OnuFilters, type CalidadSenal }  from '@/lib/api/red-onus';
 import type { LiveSenalMap }                  from '@/components/red/onus/OnuTable';
 import { getAccessToken } from '@/lib/api';
@@ -46,6 +48,74 @@ function seccionDe(olt: OltConProveedorPrincipal): string {
   return olt.proveedorPrincipal?.tipo ?? olt.metodoConexion ?? 'desconocido';
 }
 
+function esNativo(olt: OltConProveedorPrincipal): boolean {
+  const s = seccionDe(olt);
+  return s === 'nativo_ssh' || s === 'nativo_snmp';
+}
+
+// ─── Modal selector de proveedor ──────────────────────────────
+type ProveedorTipo = 'nativo' | 'smartolt' | 'adminolt';
+
+function SelectorProveedorModal({
+  open, onClose, onSelect,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (t: ProveedorTipo) => void;
+}) {
+  if (!open) return null;
+  const opciones: Array<{
+    tipo: ProveedorTipo; label: string; desc: string; Icon: typeof Cpu; disabled: boolean;
+  }> = [
+    { tipo: 'nativo',   label: 'Aprovisionamiento Nativo', desc: 'Control directo por SSH/SNMP (Huawei, ZTE, V-SOL, C-Data).', Icon: Cpu,   disabled: false },
+    { tipo: 'smartolt', label: 'SmartOLT',                 desc: 'Integración con la API de SmartOLT.',                       Icon: Cloud, disabled: true  },
+    { tipo: 'adminolt', label: 'AdminOLT',                 desc: 'Integración con la API de AdminOLT.',                       Icon: Cloud, disabled: true  },
+  ];
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="text-sm font-semibold">Agregar OLT — elegir proveedor</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-2">
+          {opciones.map(({ tipo, label, desc, Icon, disabled }) => (
+            <button
+              key={tipo}
+              onClick={() => !disabled && onSelect(tipo)}
+              disabled={disabled}
+              className={cn(
+                'w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors',
+                disabled
+                  ? 'border-border bg-muted/20 opacity-60 cursor-not-allowed'
+                  : 'border-border hover:border-primary/50 hover:bg-primary/5',
+              )}
+            >
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Icon className="w-4.5 h-4.5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{label}</span>
+                  {disabled && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
+                      Próximamente
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+              </div>
+              {!disabled && <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function getWsUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
   if (typeof window === 'undefined') return 'http://localhost:4000';
@@ -58,8 +128,11 @@ type TabKey = 'olts' | 'onus';
 
 export function RedOltContent() {
   const qc = useQueryClient();
+  const router = useRouter();
 
   const [tab,          setTab]          = useState<TabKey>('onus');
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [wizardNativoOpen, setWizardNativoOpen] = useState(false);
   const [oltSortField, setOltSortField] = useState('nombre');
   const [oltSortDir,   setOltSortDir]   = useState<'ASC' | 'DESC'>('ASC');
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
@@ -222,6 +295,18 @@ export function RedOltContent() {
 
       {/* ── Tab: OLTs ───────────────────────────────────────── */}
       {tab === 'olts' && (
+        <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            Gestión de OLTs de todos los proveedores. Las OLTs nativas abren su detalle al hacer clic.
+          </p>
+          <button
+            onClick={() => setSelectorOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" /> Agregar OLT
+          </button>
+        </div>
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           {loadingOlts ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground">
@@ -231,10 +316,9 @@ export function RedOltContent() {
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
               <Radio className="w-10 h-10 opacity-30" />
               <p className="text-sm">No hay OLTs registradas</p>
-              <p className="text-xs">
-                Agrega OLTs en{' '}
-                <a href="/configuracion/olts" className="text-primary hover:underline">Configuración → OLTs Nativas</a>.
-              </p>
+              <button onClick={() => setSelectorOpen(true)} className="mt-1 text-sm text-primary hover:underline">
+                Agregar la primera OLT
+              </button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -267,10 +351,21 @@ export function RedOltContent() {
                     const sec   = seccionDe(olt);
                     const badge = SECCION_BADGE[sec];
                     const pp    = olt.proveedorPrincipal;
+                    const nativo = esNativo(olt);
                     return (
-                      <tr key={olt.id} className="hover:bg-accent/40 transition-colors">
+                      <tr
+                        key={olt.id}
+                        onClick={nativo ? () => router.push(`/red/olt/${olt.id}`) : undefined}
+                        className={cn(
+                          'transition-colors',
+                          nativo ? 'hover:bg-accent/40 cursor-pointer' : 'hover:bg-accent/20',
+                        )}
+                      >
                         <td className="px-4 py-3">
-                          <div className="font-medium text-foreground">{olt.nombre}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium text-foreground">{olt.nombre}</div>
+                            {nativo && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />}
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             {olt.marca.toUpperCase()}{olt.modelo ? ` · ${olt.modelo}` : ''}
                           </div>
@@ -309,6 +404,7 @@ export function RedOltContent() {
             </div>
           )}
         </div>
+        </div>
       )}
 
       {/* ── Tab: ONUs (unificado ERP) ────────────────────────── */}
@@ -336,7 +432,21 @@ export function RedOltContent() {
         </div>
       )}
 
-
+      {/* ── Modales: selector proveedor + wizard nativo ──────── */}
+      <SelectorProveedorModal
+        open={selectorOpen}
+        onClose={() => setSelectorOpen(false)}
+        onSelect={(tipo) => {
+          setSelectorOpen(false);
+          if (tipo === 'nativo') setWizardNativoOpen(true);
+          // smartolt / adminolt: diferidos (opciones deshabilitadas en el modal)
+        }}
+      />
+      {/* El wizard invalida ['olt-todas'] al crear → la lista se refresca sola. */}
+      <OltWizardNativoModal
+        open={wizardNativoOpen}
+        onClose={() => { setWizardNativoOpen(false); refetchOlts(); }}
+      />
     </div>
   );
 }

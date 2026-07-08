@@ -49,7 +49,7 @@ const CATEGORIES = [
     iconColor: 'text-cyan-600 dark:text-cyan-400',
     items: [
       { href: '/configuracion/integraciones', label: 'Integraciones',     icon: Plug, desc: 'Google, MikroTik, OLT y pasarelas de pago' },
-      { href: '/configuracion/olts',          label: 'Configuración OLT', icon: Cpu,  desc: 'Gestión de OLTs y ONUs FTTH' },
+      { href: '/red/olt',                     label: 'Gestión de OLTs',   icon: Cpu,  desc: 'Unificada en Red → OLT / GPON' },
     ],
   },
   {

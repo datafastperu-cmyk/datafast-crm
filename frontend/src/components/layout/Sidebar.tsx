@@ -11,7 +11,7 @@ import {
   UserCheck, Zap,
   Tv,
   ChevronRight, Gift, Trophy, Settings2,
-  Cpu, AlertTriangle,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -117,7 +117,7 @@ const NAV: NavEntry[] = [
     id: 'ajustes', label: 'Configuración', icon: Settings,
     items: [
       { href: '/configuracion',       label: 'Ajustes',           icon: Settings, permiso: 'sistema:config' },
-      { href: '/configuracion/olts',  label: 'Configuración OLT', icon: Cpu,      permiso: 'sistema:config' },
+      // Gestión de OLTs unificada en Red → OLT / GPON.
     ],
   },
 ];
