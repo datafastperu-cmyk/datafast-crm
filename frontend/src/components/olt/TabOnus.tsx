@@ -1,10 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Loader2, Users, ChevronLeft, ChevronRight, Radio, Wifi, WifiOff, PowerOff, Unplug, Ban, HelpCircle, AlertCircle } from 'lucide-react';
+import { Loader2, Users, ChevronLeft, ChevronRight, Radio, Wifi, WifiOff, PowerOff, Unplug, Ban, HelpCircle, AlertCircle, Database, RefreshCw, Clock } from 'lucide-react';
 import { oltNativoApi, type OnuClasificada } from '@/lib/api/olt-nativo';
+import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
+
+const fmtRel = (iso: string | null): string => {
+  if (!iso) return 'nunca';
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (min < 1)  return 'hace un momento';
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  return `hace ${Math.floor(h / 24)} d`;
+};
 
 const ESTADO_COLOR: Record<string, string> = {
   activo:      'bg-emerald-500/10 text-emerald-400',
@@ -31,6 +42,154 @@ const fmtUptime = (secs: number | null) => {
   const h = Math.floor((secs % 86_400) / 3_600);
   return d > 0 ? `${d}d ${h}h` : `${h}h`;
 };
+
+// ── Inventario (snapshot read-model, lectura instantánea de BD) ─────
+function InventarioSnapshot({ oltId }: { oltId: string }) {
+  const { toast } = useToast();
+  const [syncing, setSyncing] = useState(false);
+
+  const inv = useQuery({
+    queryKey: ['olt-inventario', oltId],
+    queryFn:  () => oltNativoApi.getInventario(oltId),
+    enabled:  !!oltId,
+  });
+
+  // Mientras hay un sync en curso, sondeamos su estado; al completarse refrescamos
+  // el snapshot. El sync es asíncrono (job en 2do plano) — no bloquea la UI.
+  const syncStatus = useQuery({
+    queryKey:       ['olt-sync-status', oltId],
+    queryFn:        () => oltNativoApi.getSyncStatus(oltId),
+    enabled:        syncing,
+    refetchInterval: syncing ? 3000 : false,
+  });
+  useEffect(() => {
+    if (!syncing) return;
+    const st = syncStatus.data;
+    if (st && st.estado !== 'running' && st.estado !== 'pending') {
+      setSyncing(false);
+      inv.refetch();
+      toast(st.estado === 'completed' ? 'Inventario actualizado desde la OLT' : 'La sincronización terminó con errores',
+        { type: st.estado === 'completed' ? 'success' : 'error' });
+    }
+  }, [syncStatus.data, syncing]); // eslint-disable-line
+
+  const startSync = async () => {
+    try {
+      await oltNativoApi.iniciarSync(oltId);
+      setSyncing(true);
+      toast('Sincronización iniciada — inventariando ONUs y perfiles (~1-2 min)…', { type: 'success' });
+    } catch {
+      toast('Error al iniciar la sincronización', { type: 'error' });
+    }
+  };
+
+  const onus  = inv.data?.onus ?? [];
+  const drift = inv.data?.drift ?? {};
+  const resumen = onus.reduce<Record<string, number>>((acc, o) => {
+    acc[o.estadoOperativo] = (acc[o.estadoOperativo] ?? 0) + 1; return acc;
+  }, {});
+  const progreso = syncStatus.data?.progreso ?? 0;
+
+  return (
+    <div className="rounded-xl border border-border p-3 space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Database className="w-4 h-4 text-primary" />
+        <span className="text-sm font-semibold">Inventario de ONUs (snapshot)</span>
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Clock className="w-3 h-3" /> {fmtRel(inv.data?.snapshotAt ?? null)}
+        </span>
+        <button
+          onClick={startSync}
+          disabled={syncing}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-60"
+        >
+          {syncing
+            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sincronizando… {progreso}%</>
+            : <><RefreshCw className="w-3.5 h-3.5" /> Sincronizar ahora</>}
+        </button>
+      </div>
+
+      {/* Resumen de drift */}
+      <div className="flex items-center gap-2 flex-wrap text-[11px]">
+        <span className="px-1.5 py-0.5 rounded border border-border bg-muted/40 font-semibold">
+          {(drift.onusInventario as number) ?? onus.length} ONUs
+        </span>
+        {(Object.keys(ESTADO_VIVO) as OnuClasificada['estadoOperativo'][])
+          .filter(k => resumen[k])
+          .map(k => (
+            <span key={k} className={cn('px-1.5 py-0.5 rounded border font-semibold', ESTADO_VIVO[k].cls)}>
+              {ESTADO_VIVO[k].label}: {resumen[k]}
+            </span>
+          ))}
+        {!!drift.onusSinContrato && (
+          <span className="px-1.5 py-0.5 rounded border border-fuchsia-700/40 bg-fuchsia-500/10 text-fuchsia-400 font-semibold">
+            Sin contrato: {drift.onusSinContrato as number}
+          </span>
+        )}
+        {!!drift.onusEnErpNoEnOlt && (
+          <span className="px-1.5 py-0.5 rounded border border-red-700/40 bg-red-500/10 text-red-400 font-semibold">
+            Solo en ERP: {drift.onusEnErpNoEnOlt as number}
+          </span>
+        )}
+      </div>
+
+      {inv.isLoading ? (
+        <div className="flex items-center justify-center py-8 text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin mr-2" /> Cargando inventario…
+        </div>
+      ) : onus.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-4 text-center">
+          Sin inventario aún. Pulsa <strong>Sincronizar ahora</strong> para leer las ONUs de la OLT.
+        </p>
+      ) : (
+        <div className="rounded-lg border border-border overflow-x-auto max-h-[420px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-muted/60 backdrop-blur">
+              <tr className="border-b border-border text-[11px] text-muted-foreground">
+                <th className="text-left px-3 py-2 font-semibold">F/S/P</th>
+                <th className="text-left px-3 py-2 font-semibold">SN</th>
+                <th className="text-left px-3 py-2 font-semibold">Estado</th>
+                <th className="text-left px-3 py-2 font-semibold hidden md:table-cell">RxPower</th>
+                <th className="text-left px-3 py-2 font-semibold">Contrato / Cliente</th>
+              </tr>
+            </thead>
+            <tbody>
+              {onus.map((o, i) => {
+                const est = ESTADO_VIVO[o.estadoOperativo] ?? ESTADO_VIVO.offline;
+                return (
+                  <tr key={`${o.sn}-${i}`} className="border-b border-border last:border-0 hover:bg-muted/10">
+                    <td className="px-3 py-2 text-xs text-muted-foreground font-mono">0/{o.slot}/{o.port}{o.onuId != null ? ` · ${o.onuId}` : ''}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{o.sn}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={cn('inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border', est.cls)}>
+                          <est.Icon className="w-3 h-3" /> {est.label}
+                        </span>
+                        {o.sinContrato && o.estadoOperativo !== 'no_aprovisionada' && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-fuchsia-700/40 bg-fuchsia-500/10 text-fuchsia-400">
+                            Sin contrato
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground hidden md:table-cell">
+                      {o.rxPowerDbm != null ? `${o.rxPowerDbm} dBm` : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {o.numeroContrato ? (
+                        <span><span className="font-mono">{o.numeroContrato}</span>{o.cliente ? ` · ${o.cliente}` : ''}</span>
+                      ) : (o.cliente ?? '—')}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Estado en vivo por puerto (consulta directa a la OLT) ─────
 function EstadoVivoPorPuerto({ oltId }: { oltId: string }) {
@@ -159,6 +318,7 @@ export function TabOnus({ oltId }: { oltId: string }) {
 
   return (
     <div className="space-y-4">
+      <InventarioSnapshot oltId={oltId} />
       <EstadoVivoPorPuerto oltId={oltId} />
 
       {isLoading ? (

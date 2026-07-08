@@ -450,6 +450,35 @@ export interface ClasificarOnusResult {
   error?:  string;
 }
 
+export interface OnuInventarioItem {
+  slot:            number;
+  port:            number;
+  onuId:           number | null;
+  sn:              string;
+  estadoOperativo: OnuClasificada['estadoOperativo'];
+  controlFlag:     string | null;
+  runState:        string | null;
+  rxPowerDbm:      number | null;
+  sinContrato:     boolean;
+  contratoId:      string | null;
+  numeroContrato:  string | null;
+  cliente:         string | null;
+  origen:          'configurada' | 'autofind';
+  snapshotAt:      string;
+}
+
+export interface InventarioResult {
+  onus:  OnuInventarioItem[];
+  drift: {
+    onusInventario?:       number;
+    onusSinContrato?:      number;
+    onusNoAprovisionadas?: number;
+    onusEnErpNoEnOlt?:     number;
+    [k: string]: unknown;
+  } | null;
+  snapshotAt: string | null;
+}
+
 export interface FtthOnuRegistro {
   id:             string;
   contratoId:     string;
@@ -1110,6 +1139,11 @@ export const oltNativoApi = {
       `/olt-nativo/${oltId}/onus`, { params: { slot, port }, timeout: 200_000 },
     );
     return res.data.data;
+  },
+
+  getInventario: async (oltId: string): Promise<InventarioResult> => {
+    const res = await api.get<ApiRespuesta<InventarioResult>>(`/olt-nativo/${oltId}/inventario`);
+    return res.data.data ?? { onus: [], drift: null, snapshotAt: null };
   },
 
   iniciarSync: async (oltId: string): Promise<{ jobId: string }> => {
