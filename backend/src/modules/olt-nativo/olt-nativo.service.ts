@@ -753,6 +753,20 @@ export class OltNativoService implements OnModuleInit {
       return this.proveedorRepo.save(existing);
     }
 
+    // Regla: una OLT admite UN SOLO proveedor, fijado al registrarla. No se puede
+    // agregar un segundo proveedor de otro tipo (evita fuentes de verdad en conflicto
+    // sobre el mismo OLT físico). Solo se permite editar las credenciales del existente.
+    const otro = await this.proveedorRepo.findOne({
+      where: { oltId, empresaId, activo: true },
+    });
+    if (otro) {
+      throw new ConflictException(
+        `La OLT ya tiene un proveedor (${otro.tipo}). Cada OLT admite un solo proveedor, ` +
+        `fijado al registrarla. Edita sus credenciales, o elimina y vuelve a crear la OLT ` +
+        `para cambiar de proveedor.`,
+      );
+    }
+
     const nuevo = this.proveedorRepo.create({
       oltId,
       empresaId,

@@ -171,17 +171,23 @@ export function ProveedoresTab({ oltId }: { oltId: string }) {
       )}
 
       {proveedores.length === 0 && !showForm && (
-        <p className="text-sm text-gray-400">No hay proveedores configurados para esta OLT.</p>
+        <p className="text-sm text-gray-400">Esta OLT aún no tiene proveedor configurado.</p>
       )}
 
-      {/* Botón agregar */}
-      {!showForm && (
+      {/* Cada OLT admite un solo proveedor (fijado al registrarla): el botón para
+          agregar solo aparece si no hay ninguno; con uno existente, solo se edita. */}
+      {!showForm && proveedores.length === 0 && (
         <button
           onClick={openNew}
           className="rounded-md btn-primary px-4 py-2 text-sm font-medium"
         >
-          + Agregar proveedor
+          + Configurar proveedor
         </button>
+      )}
+      {!showForm && proveedores.length > 0 && (
+        <p className="text-xs text-gray-400">
+          Esta OLT admite un solo proveedor. Para cambiarlo, elimina y vuelve a crear la OLT.
+        </p>
       )}
 
       {/* Formulario inline */}
