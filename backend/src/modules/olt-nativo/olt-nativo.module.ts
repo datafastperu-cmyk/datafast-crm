@@ -22,6 +22,7 @@ import { OltBoard }          from './entities/olt-board.entity';
 import { OltLineProfile }    from './entities/olt-line-profile.entity';
 import { OltServiceProfile } from './entities/olt-service-profile.entity';
 import { OltSyncJob }        from './entities/olt-sync-job.entity';
+import { OltOnuInventario }  from './entities/olt-onu-inventario.entity';
 import { OltVlanService }         from './services/olt-vlan.service';
 import { OltTrafficTableService } from './services/olt-traffic-table.service';
 import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
@@ -119,6 +120,7 @@ import { OltGateway }                from './olt.gateway';
       OltLineProfile,
       OltServiceProfile,
       OltSyncJob,
+      OltOnuInventario,
     ]),
 
     // HTTP compartido: OltAutomationClient + SmartoltProvider + AdminOltProvider

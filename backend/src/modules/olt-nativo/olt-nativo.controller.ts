@@ -1172,4 +1172,15 @@ export class OltNativoController {
   ): Promise<OltSyncJob | null> {
     return this.sync.estadoSync(oltId, user.empresaId);
   }
+
+  /** Inventario observado de ONUs (read-model) + resumen de drift del último sync */
+  @Get(':oltId/inventario')
+  @ApiOperation({ summary: 'Inventario de ONUs de la OLT (snapshot del reconcile) + drift' })
+  @ApiParam({ name: 'oltId' })
+  async inventarioOnus(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.sync.inventario(oltId, user.empresaId);
+  }
 }

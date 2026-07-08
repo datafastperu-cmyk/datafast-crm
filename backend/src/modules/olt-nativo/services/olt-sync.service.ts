@@ -1,8 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { InjectRepository }  from '@nestjs/typeorm';
-import { Repository }        from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { EventEmitter2 }     from '@nestjs/event-emitter';
 
+import { OltOnuInventario }  from '../entities/olt-onu-inventario.entity';
 import { OltDispositivo }    from '../entities/olt-dispositivo.entity';
 import { OltProveedorConfig } from '../entities/olt-proveedor-config.entity';
 import { OltBoard }          from '../entities/olt-board.entity';
@@ -83,6 +84,12 @@ export class OltSyncService implements OnModuleInit {
     @InjectRepository(OltTrafficTable)
     private readonly trafficRepo: Repository<OltTrafficTable>,
 
+    @InjectRepository(OltOnuInventario)
+    private readonly inventarioRepo: Repository<OltOnuInventario>,
+
+    @InjectDataSource()
+    private readonly ds: DataSource,
+
     private readonly automation:   OltAutomationClient,
     private readonly moduleHealth: ModuleHealthService,
     private readonly events:       EventEmitter2,
@@ -129,6 +136,30 @@ export class OltSyncService implements OnModuleInit {
     });
   }
 
+  /**
+   * Inventario observado (read-model) de la OLT + resumen de drift del último sync.
+   * La UI lee de aquí (instantáneo) en vez de SSH en vivo.
+   */
+  async inventario(oltId: string, empresaId: string): Promise<{
+    onus:  OltOnuInventario[];
+    drift: Record<string, unknown> | null;
+    snapshotAt: Date | null;
+  }> {
+    const onus = await this.inventarioRepo.find({
+      where: { oltId, empresaId },
+      order: { slot: 'ASC', port: 'ASC', onuId: 'ASC' },
+    });
+    const ultimoJob = await this.syncJobRepo.findOne({
+      where: { oltId, empresaId, estado: 'completed' as SyncJobEstado },
+      order: { completadoEn: 'DESC' },
+    });
+    return {
+      onus,
+      drift: (ultimoJob?.resultado as Record<string, unknown>) ?? null,
+      snapshotAt: onus[0]?.snapshotAt ?? null,
+    };
+  }
+
   // ── Ejecución interna ─────────────────────────────────────────
 
   private async _ejecutarSync(jobId: string, oltId: string, empresaId: string): Promise<void> {
@@ -168,10 +199,16 @@ export class OltSyncService implements OnModuleInit {
       await this._upsertServiceProfiles(oltId, empresaId, topo.service_profiles ?? []);
 
       // 7. Persistir traffic tables
-      emit(90, 'Guardando traffic-tables…');
+      emit(85, 'Guardando traffic-tables…');
       await this._upsertTrafficTables(oltId, empresaId, topo.traffic_tables ?? []);
 
-      // 8. Completar job
+      // 8. Inventario de ONUs (estado observado) + drift contra el ERP
+      emit(90, 'Inventariando ONUs…');
+      const drift = await this._snapshotOnus(
+        oltId, empresaId, conn, (topo.boards ?? []).map(b => b.slot),
+      );
+
+      // 9. Completar job
       const resultado: Record<string, unknown> = {
         boards:           (topo.boards ?? []).length,
         vlans:            (topo.vlans  ?? []).length,
@@ -180,6 +217,10 @@ export class OltSyncService implements OnModuleInit {
         trafficTables:    (topo.traffic_tables   ?? []).length,
         firmware:         topo.firmware_version ?? null,
         modelo:           topo.model ?? null,
+        onusInventario:      drift.total,
+        onusSinContrato:     drift.sinContrato,
+        onusNoAprovisionadas: drift.noAprovisionadas,
+        onusEnErpNoEnOlt:    drift.enErpNoEnOlt,
       };
 
       await this.syncJobRepo.update(jobId, {
@@ -284,5 +325,119 @@ export class OltSyncService implements OnModuleInit {
       password,
       brand:    ((c.brand    as string) || olt.marca).toLowerCase(),
     };
+  }
+
+  // ── Inventario de ONUs (estado observado) + drift ─────────────
+  // Recorre solo los puertos PON con ONUs (summary por slot), clasifica cada uno,
+  // y persiste un snapshot completo en olt_onu_inventario (delete + insert por OLT).
+  // Devuelve contadores de drift contra el estado deseado (contratos del ERP).
+  private async _snapshotOnus(
+    oltId:     string,
+    empresaId: string,
+    conn:      { ip: string; port: number; username: string; password: string; brand: string },
+    slots:     number[],
+  ): Promise<{ total: number; sinContrato: number; noAprovisionadas: number; enErpNoEnOlt: number }> {
+    // Estado deseado: SN (sufijo 8 hex único) → contrato. La OLT reporta el SN crudo
+    // (48575443994E1BA5) y la BD la forma de vendedor (HWTC994E1BA5): comparten sufijo.
+    const norm = (sn?: string | null): string =>
+      (sn ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(-8);
+
+    const rows: Array<{ sn: string; contrato_id: string; numero_contrato: string; cliente: string }> =
+      await this.ds.query(
+        `SELECT r.sn, r.contrato_id, c.numero_contrato,
+                COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente
+           FROM ftth_onu_registro r
+           JOIN contratos c ON c.id = r.contrato_id
+           LEFT JOIN clientes cl ON cl.id = c.cliente_id
+          WHERE r.deleted_at IS NULL AND r.olt_id = $1`,
+        [oltId],
+      );
+    const contratoPorSn = new Map(rows.map(r => [norm(r.sn), r]));
+
+    const snapshotAt   = new Date();
+    const snObservados = new Set<string>();
+    const filas        = new Map<string, Partial<OltOnuInventario>>(); // dedupe por slot:port:sn
+    const slotsUnicos  = [...new Set(slots.length ? slots : [1])];
+
+    for (const slot of slotsUnicos) {
+      let puertos: number[] = [];
+      try {
+        const res = await this.automation.ponPorts({ connection: conn, slot });
+        puertos = (res.ports ?? []).filter(p => p.onus_total > 0).map(p => p.port);
+      } catch (e) {
+        this.logger.warn(`_snapshotOnus ponPorts slot=${slot}: ${(e as Error).message}`);
+        continue;
+      }
+
+      for (const port of puertos) {
+        let clasif;
+        try {
+          clasif = await this.automation.clasificarOnus({ connection: conn, slot, port });
+        } catch (e) {
+          this.logger.warn(`_snapshotOnus classify ${slot}/${port}: ${(e as Error).message}`);
+          continue;
+        }
+        if (!clasif.success) continue;
+
+        for (const o of clasif.onus) {
+          if (!o.sn) continue;
+          const match = contratoPorSn.get(norm(o.sn));
+          snObservados.add(norm(o.sn));
+          filas.set(`${slot}:${port}:${o.sn}`, {
+            empresaId, oltId, slot, port,
+            onuId: o.onu_id, sn: o.sn,
+            estadoOperativo: o.estado_operativo ?? 'offline',
+            controlFlag: o.control_flag, runState: o.run_state,
+            rxPowerDbm: o.rx_power_dbm,
+            sinContrato: !match,
+            contratoId: match?.contrato_id ?? null,
+            numeroContrato: match?.numero_contrato ?? null,
+            cliente: match?.cliente ?? null,
+            origen: 'configurada',
+            snapshotAt,
+          });
+        }
+        for (const a of clasif.autofind) {
+          if (!a.sn) continue;
+          snObservados.add(norm(a.sn));
+          const s = a.slot ?? slot, p = a.port ?? port;
+          filas.set(`${s}:${p}:${a.sn}`, {
+            empresaId, oltId, slot: s, port: p,
+            onuId: null, sn: a.sn,
+            estadoOperativo: 'no_aprovisionada',
+            controlFlag: null, runState: null, rxPowerDbm: null,
+            sinContrato: true, contratoId: null, numeroContrato: null,
+            cliente: a.model ?? null,
+            origen: 'autofind',
+            snapshotAt,
+          });
+        }
+      }
+    }
+
+    const inventario = [...filas.values()];
+
+    // Persistir snapshot: reemplaza el inventario de esta OLT de forma atómica.
+    await this.ds.transaction(async (tx) => {
+      await tx.getRepository(OltOnuInventario).delete({ oltId });
+      if (inventario.length) {
+        await tx.getRepository(OltOnuInventario).insert(inventario);
+      }
+    });
+
+    // Drift: ONUs con contrato activo en el ERP que NO se observaron en la OLT.
+    let enErpNoEnOlt = 0;
+    for (const snNorm of contratoPorSn.keys()) {
+      if (!snObservados.has(snNorm)) enErpNoEnOlt++;
+    }
+    const sinContrato      = inventario.filter(i => i.origen === 'configurada' && i.sinContrato).length;
+    const noAprovisionadas = inventario.filter(i => i.origen === 'autofind').length;
+
+    this.logger.log(
+      `_snapshotOnus | olt=${oltId} observadas=${inventario.length} sinContrato=${sinContrato} ` +
+      `noAprov=${noAprovisionadas} enErpNoEnOlt=${enErpNoEnOlt}`,
+    );
+
+    return { total: inventario.length, sinContrato, noAprovisionadas, enErpNoEnOlt };
   }
 }
