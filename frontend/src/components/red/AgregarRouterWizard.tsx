@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Router, X, ChevronRight, ChevronLeft, Network, Shield, CheckCircle2,
-  XCircle, Loader2, Copy, Check, RefreshCw, Wifi, Key, Gauge, Eye, EyeOff, Settings, Lock,
+  XCircle, Loader2, Copy, Check, RefreshCw, Wifi, Key, Gauge, Eye, EyeOff, Settings, Lock, Info,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -67,7 +67,6 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const [nombre,      setNombre]      = useState('');
   const [ubicacion,   setUbicacion]   = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [versionRos,  setVersionRos]  = useState<'v7'>('v7');
 
   // Paso 2 — conexión
   const [tipoConexion, setTipoConexion] = useState<TipoConexion>('api');
@@ -220,7 +219,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         nombre,
         ubicacion:        ubicacion   || undefined,
         descripcion:      descripcion || undefined,
-        versionRos:       versionRos as VersionRos,
+        versionRos:       'v7' as VersionRos,
         usarCertificados: false,
       });
       setVpnCliente(result.cliente);
@@ -285,10 +284,15 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
           usuario,
           password,
           metodoConexion: 'vpn_tunnel',
-          versionRos:     (versionRos as any) || 'desconocida',
+          versionRos:     'v7',
         });
-        setTestResult(result);
-        setTestStatus(result.exitoso ? 'ok' : 'error');
+        if (result.exitoso && result.versionDetectada && !result.versionDetectada.startsWith('7')) {
+          setTestResult({ ...result, exitoso: false, mensaje: `RouterOS ${result.versionDetectada} no es compatible. Actualiza el router a v7 para continuar.` });
+          setTestStatus('error');
+        } else {
+          setTestResult(result);
+          setTestStatus(result.exitoso ? 'ok' : 'error');
+        }
       } catch (err) {
         setTestResult({ exitoso: false, mensaje: parseApiError(err) });
         setTestStatus('error');
@@ -309,10 +313,15 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         usuario,
         password,
         metodoConexion: tipoConexion,
-        versionRos:     (versionRos as any) || 'desconocida',
+        versionRos:     'v7',
       });
-      setTestResult(result);
-      setTestStatus(result.exitoso ? 'ok' : 'error');
+      if (result.exitoso && result.versionDetectada && !result.versionDetectada.startsWith('7')) {
+        setTestResult({ ...result, exitoso: false, mensaje: `RouterOS ${result.versionDetectada} no es compatible. Actualiza el router a v7 para continuar.` });
+        setTestStatus('error');
+      } else {
+        setTestResult(result);
+        setTestStatus(result.exitoso ? 'ok' : 'error');
+      }
     } catch (err) {
       setTestResult({ exitoso: false, mensaje: parseApiError(err) });
       setTestStatus('error');
@@ -350,7 +359,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         nombre,
         ubicacion:            ubicacion   || undefined,
         descripcion:          descripcion || undefined,
-        versionRos:           (versionRos as any) || 'desconocida',
+        versionRos:           'v7',
         ipGestion:            ip,
         vpnIp:                tipoConexion === 'vpn_tunnel' ? vpnIp : undefined,
         usuario,
@@ -461,28 +470,12 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                   placeholder="Notas técnicas, observaciones…" />
               </div>
 
-              <div>
-                <label className={labelCls}>Versión de RouterOS</label>
-                <div className="grid grid-cols-1 gap-2">
-                  {[
-                    { val: 'v7' as const, label: 'RouterOS v7.x', sub: 'Moderno — CHR, CCR2xxx, hEX S, RB5009…' },
-                  ].map((o) => (
-                    <label key={o.val}
-                      className="flex items-start gap-3 p-3 rounded-lg border border-primary/60 bg-primary/10 cursor-default"
-                    >
-                      <input type="radio" name="versionRos" value={o.val}
-                        checked={true}
-                        readOnly
-                        className="mt-0.5 accent-primary" />
-                      <div>
-                        <div className="text-sm font-medium text-foreground">
-                          {o.label}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{o.sub}</div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/10">
+                <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-blue-300">
+                  Este ERP solo es compatible con routers MikroTik que ejecuten <strong>RouterOS v7</strong>.
+                  La versión se verificará automáticamente al comprobar la conexión en el siguiente paso.
+                </p>
               </div>
             </div>
           )}
@@ -893,7 +886,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
               <div className="bg-muted/20 rounded-xl border border-border p-4 space-y-1.5 text-xs text-muted-foreground">
                 <p className="text-foreground font-medium text-sm mb-2">{nombre}</p>
                 {ubicacion && <p><span className="text-muted-foreground">Ubicación: </span>{ubicacion}</p>}
-                <p><span className="text-muted-foreground">RouterOS: </span>{versionRos.toUpperCase()}</p>
+                <p><span className="text-muted-foreground">RouterOS: </span>V7</p>
                 <p>
                   <span className="text-muted-foreground">Conexión: </span>
                   {tipoConexion === 'vpn_tunnel'

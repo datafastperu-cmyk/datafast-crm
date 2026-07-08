@@ -4,7 +4,7 @@ import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Router, Plus, Pencil, Trash2, Wifi, WifiOff,
-  RefreshCw, CheckCircle2, XCircle, Loader2, AlertTriangle,
+  RefreshCw, CheckCircle2, XCircle, Loader2, AlertTriangle, Info,
   Lock, Shield, Network, Terminal, Radio,
   Key, Settings, ChevronRight, Activity, Cpu, MemoryStick,
   Copy, Check, Users, FileCode, Globe, Eye, EyeOff, Wrench,
@@ -57,10 +57,6 @@ const ESTADO_COLORS: Record<string, string> = {
   reverificando: 'text-blue-600 dark:text-blue-400',
   desconocido:   'text-muted-foreground',
 };
-
-const VERSION_ROS_OPTS = [
-  { val: 'v7', label: 'RouterOS v7.x', sub: 'Moderno — CHR, CCR2xxx, hEX S, RB5009…' },
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -480,31 +476,11 @@ function RouterModal({ router, onClose, onSaved }: RouterModalProps) {
                     placeholder="Descripción, notas técnicas, observaciones…"
                   />
                 </div>
-                <div className="col-span-2">
-                  <label className={labelCls}>Versión RouterOS</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {VERSION_ROS_OPTS.map((o) => (
-                      <label key={o.val}
-                        className={cn(
-                          'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
-                          form.versionRos === o.val
-                            ? 'border-primary/60 bg-primary/10'
-                            : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30',
-                        )}
-                      >
-                        <input type="radio" name="versionRos" value={o.val}
-                          checked={form.versionRos === o.val}
-                          onChange={() => set('versionRos', o.val)}
-                          className="mt-0.5 accent-primary" />
-                        <div>
-                          <div className="text-sm font-medium text-foreground">
-                            {o.label}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-0.5">{o.sub}</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                <div className="col-span-2 flex items-start gap-3 p-3 rounded-lg border border-blue-500/30 bg-blue-500/10">
+                  <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                  <p className="text-xs text-blue-300">
+                    Este ERP solo es compatible con routers MikroTik que ejecuten <strong>RouterOS v7</strong>.
+                  </p>
                 </div>
               </div>
             </div>
