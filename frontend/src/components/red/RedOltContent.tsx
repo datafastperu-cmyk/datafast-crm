@@ -157,23 +157,23 @@ export function RedOltContent() {
     }
   };
 
-  // Fuerza la reconciliación bidireccional ERP↔OLT:
-  //  - ftthReconciliar: detecta/importa ONUs (aprovisionadas o no) que difieren entre BD y OLT.
-  //  - iniciarSync: re-lee perfiles, VLANs y traffic-tables de la OLT hacia el ERP.
+  // Fuerza la re-lectura de la OLT hacia el ERP (perfiles, VLANs, traffic-tables,
+  // boards). Es fire-and-forget: iniciarSync devuelve un jobId al instante y el
+  // trabajo corre en segundo plano (progreso visible en el detalle de la OLT).
+  // La reconciliación de ONUs (aprovisionadas / sin aprovisionar) se hace en el
+  // detalle → tab ONUs, que además clasifica su estado en vivo.
   const sincronizar = async (olt: OltConProveedorPrincipal) => {
     setSyncingId(olt.id);
     try {
-      const rec = await oltNativoApi.ftthReconciliar(olt.id);
       await oltNativoApi.iniciarSync(olt.id);
       toast(
-        `Sincronización de "${olt.nombre}" iniciada. ONUs: ${rec.sincronizados} sincronizadas · ` +
-        `${rec.enErpNoEnOlt.length} solo en ERP · ${rec.enOltNoEnErp.length} solo en OLT. ` +
-        `Perfiles/VLANs se actualizan en segundo plano.`,
+        `Sincronización de "${olt.nombre}" iniciada — perfiles, VLANs y tablas de tráfico ` +
+        `se actualizan desde la OLT en segundo plano.`,
         { type: 'success' },
       );
       refetchOlts();
     } catch {
-      toast('Error al sincronizar la OLT', { type: 'error' });
+      toast('Error al iniciar la sincronización', { type: 'error' });
     } finally {
       setSyncingId(null);
     }
@@ -464,7 +464,7 @@ export function RedOltContent() {
                                 <button
                                   onClick={() => sincronizar(olt)}
                                   disabled={syncing}
-                                  title="Sincronizar información ERP ↔ OLT (perfiles y ONUs)"
+                                  title="Sincronizar desde la OLT (perfiles, VLANs, tablas de tráfico)"
                                   className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-emerald-400 hover:border-emerald-700/50 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
                                 >
                                   <RefreshCw className={cn('w-3.5 h-3.5', syncing && 'animate-spin')} />
