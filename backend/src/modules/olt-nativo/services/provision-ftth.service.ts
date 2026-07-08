@@ -1258,6 +1258,42 @@ export class ProvisionFtthService {
   // ────────────────────────────────────────────────────────────
   // reconciliar — compara ONUs en OLT real vs registros ERP
   // ────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────
+  // reaplicar — re-aprovisiona una ONU usando los datos ya guardados en su
+  // registro FTTH. Es el push ERP→OLT de drift: cuando el ERP tiene la ONU
+  // (contrato + registro) pero la OLT no (se perdió conexión, o la ONU se borró
+  // en la OLT), re-corre provisionarFtth con los parámetros persistidos.
+  // Se invoca desde el outbox (REAPROVISIONAR_ONU) con reintentos.
+  // ────────────────────────────────────────────────────────────
+  async reaplicar(contratoId: string, empresaId: string): Promise<FtthProvisionResult> {
+    const reg = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+    if (!reg) {
+      throw new NotFoundException('No hay registro FTTH para este contrato — no se puede re-aplicar.');
+    }
+    if (reg.lineprofileId == null || reg.srvprofileId == null) {
+      throw new BadRequestException(
+        'El registro no tiene perfiles GPON guardados — re-aprovisiona desde el modal del contrato.',
+      );
+    }
+    const dto: ProvisionarFtthDto = {
+      contratoId,
+      frame:            reg.frame,
+      slot:             reg.slot,
+      port:             reg.port,
+      onuId:            reg.onuId ?? undefined,
+      sn:               reg.sn,
+      servicePortId:    reg.servicePortId ?? undefined,
+      vlan:             reg.vlan,
+      lineprofileId:    reg.lineprofileId,
+      srvprofileId:     reg.srvprofileId,
+      trafficIndexDown: reg.trafficIndexDown ?? undefined,
+      trafficIndexUp:   reg.trafficIndexUp ?? undefined,
+      wanMode:          reg.wanMode ?? undefined,
+    };
+    this.logger.log(`reaplicar | contrato=${contratoId} olt=${reg.oltId} sn=${reg.sn}`);
+    return this.provisionarFtth(reg.oltId, empresaId, dto);
+  }
+
   async reconciliar(
     oltId:     string,
     empresaId: string,

@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Cpu, RefreshCw, Loader2,
   Settings, Activity, Network, Users, Server, Zap,
-  Plug, Gauge, AlertTriangle,
+  Plug, Gauge, AlertTriangle, GitCompareArrows,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
@@ -19,6 +19,7 @@ import { TabEventos }    from '@/components/olt/TabEventos';
 import { TabVlans }      from '@/components/olt/TabVlans';
 import { TabProfiles }   from '@/components/olt/TabProfiles';
 import { TabOnus }       from '@/components/olt/TabOnus';
+import { TabDrift }      from '@/components/olt/TabDrift';
 import { TabFirmware }   from '@/components/olt/TabFirmware';
 import { ProveedoresTab } from '@/components/red/ProveedoresTab';
 import { SaludTab }       from '@/components/red/SaludTab';
@@ -26,7 +27,7 @@ import { DeleteOltModal }  from '@/components/red/DeleteOltModal';
 
 // ─── Tabs ────────────────────────────────────────────────────────
 
-type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'firmware'
+type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'drift' | 'firmware'
            | 'proveedores' | 'salud';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; soloNativo?: boolean }[] = [
@@ -34,6 +35,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; soloNativo?: bool
   { id: 'vlans',       label: 'VLANs',       icon: <Network        className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'profiles',    label: 'Perfiles',    icon: <Server         className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'drift',       label: 'Drift',       icon: <GitCompareArrows className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'firmware',    label: 'Firmware',    icon: <Zap            className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'proveedores', label: 'Proveedores', icon: <Plug           className="w-3.5 h-3.5" /> },
   { id: 'salud',       label: 'Salud',       icon: <Gauge          className="w-3.5 h-3.5" /> },
@@ -241,6 +243,7 @@ export default function OltDetallePage() {
         {tabActual === 'vlans'       && <TabVlans      oltId={id} />}
         {tabActual === 'profiles'    && <TabProfiles   oltId={id} />}
         {tabActual === 'onus'        && <TabOnus       oltId={id} />}
+        {tabActual === 'drift'       && <TabDrift      oltId={id} />}
         {tabActual === 'firmware'    && <TabFirmware   oltId={id} />}
         {tabActual === 'proveedores' && <ProveedoresTab oltId={id} />}
         {tabActual === 'salud'       && <SaludTab      oltId={id} />}

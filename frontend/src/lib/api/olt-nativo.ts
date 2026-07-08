@@ -479,6 +479,19 @@ export interface InventarioResult {
   snapshotAt: string | null;
 }
 
+export interface DriftResult {
+  enErpNoEnOlt: Array<{
+    contratoId: string; sn: string; slot: number; port: number;
+    numeroContrato: string | null; cliente: string | null;
+  }>;
+  sinContrato: Array<{
+    sn: string; slot: number; port: number; onuId: number | null;
+    estadoOperativo: string; rxPowerDbm: number | null;
+  }>;
+  noAprovisionadas: Array<{ sn: string; slot: number; port: number }>;
+  snapshotAt: string | null;
+}
+
 export interface FtthOnuRegistro {
   id:             string;
   contratoId:     string;
@@ -1144,6 +1157,18 @@ export const oltNativoApi = {
   getInventario: async (oltId: string): Promise<InventarioResult> => {
     const res = await api.get<ApiRespuesta<InventarioResult>>(`/olt-nativo/${oltId}/inventario`);
     return res.data.data ?? { onus: [], drift: null, snapshotAt: null };
+  },
+
+  getDrift: async (oltId: string): Promise<DriftResult> => {
+    const res = await api.get<ApiRespuesta<DriftResult>>(`/olt-nativo/${oltId}/drift`);
+    return res.data.data ?? { enErpNoEnOlt: [], sinContrato: [], noAprovisionadas: [], snapshotAt: null };
+  },
+
+  reaplicarDrift: async (oltId: string, contratoId: string): Promise<{ encolado: boolean }> => {
+    const res = await api.post<ApiRespuesta<{ encolado: boolean }>>(
+      `/olt-nativo/${oltId}/drift/reaplicar/${contratoId}`,
+    );
+    return res.data.data;
   },
 
   iniciarSync: async (oltId: string): Promise<{ jobId: string }> => {

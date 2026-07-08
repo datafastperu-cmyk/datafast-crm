@@ -160,6 +160,48 @@ export class OltSyncService implements OnModuleInit {
     };
   }
 
+  /**
+   * Drift ERP↔OLT calculado 100% del read-model (sin SSH): compara el inventario
+   * observado (olt_onu_inventario) contra el estado deseado (contratos + registros).
+   */
+  async drift(oltId: string, empresaId: string): Promise<{
+    enErpNoEnOlt:     Array<{ contratoId: string; sn: string; slot: number; port: number; numeroContrato: string | null; cliente: string | null }>;
+    sinContrato:      Array<{ sn: string; slot: number; port: number; onuId: number | null; estadoOperativo: string; rxPowerDbm: number | null }>;
+    noAprovisionadas: Array<{ sn: string; slot: number; port: number }>;
+    snapshotAt:       Date | null;
+  }> {
+    const norm = (sn?: string | null): string =>
+      (sn ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(-8);
+
+    const inv = await this.inventarioRepo.find({ where: { oltId, empresaId } });
+    const observados = new Set(inv.map(i => norm(i.sn)));
+
+    const sinContrato = inv
+      .filter(i => i.origen === 'configurada' && i.sinContrato)
+      .map(i => ({ sn: i.sn, slot: i.slot, port: i.port, onuId: i.onuId, estadoOperativo: i.estadoOperativo, rxPowerDbm: i.rxPowerDbm }));
+
+    const noAprovisionadas = inv
+      .filter(i => i.origen === 'autofind')
+      .map(i => ({ sn: i.sn, slot: i.slot, port: i.port }));
+
+    // Estado deseado: registros ACTIVO en el ERP que NO se observaron en la OLT.
+    const registros: Array<{ contrato_id: string; sn: string; slot: number; port: number; numero_contrato: string | null; cliente: string | null }> =
+      await this.ds.query(
+        `SELECT r.contrato_id, r.sn, r.slot, r.port, c.numero_contrato,
+                COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente
+           FROM ftth_onu_registro r
+           JOIN contratos c ON c.id = r.contrato_id
+           LEFT JOIN clientes cl ON cl.id = c.cliente_id
+          WHERE r.deleted_at IS NULL AND r.olt_id = $1 AND r.empresa_id = $2 AND r.estado = 'activo'`,
+        [oltId, empresaId],
+      );
+    const enErpNoEnOlt = registros
+      .filter(r => !observados.has(norm(r.sn)))
+      .map(r => ({ contratoId: r.contrato_id, sn: r.sn, slot: r.slot, port: r.port, numeroContrato: r.numero_contrato, cliente: r.cliente }));
+
+    return { enErpNoEnOlt, sinContrato, noAprovisionadas, snapshotAt: inv[0]?.snapshotAt ?? null };
+  }
+
   // ── Ejecución interna ─────────────────────────────────────────
 
   private async _ejecutarSync(jobId: string, oltId: string, empresaId: string): Promise<void> {

@@ -4,6 +4,7 @@ import {
   Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query,
   UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import { EventEmitter2 }        from '@nestjs/event-emitter';
 import { TipoProveedor } from './entities/olt-proveedor-config.entity';
 import { FileInterceptor }      from '@nestjs/platform-express';
 import { memoryStorage }        from 'multer';
@@ -72,6 +73,7 @@ export class OltNativoController {
     private readonly trafficTables: OltTrafficTableService,
     private readonly healthDash:    OltHealthDashboardService,
     private readonly sync:          OltSyncService,
+    private readonly events:        EventEmitter2,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -1182,5 +1184,31 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.sync.inventario(oltId, user.empresaId);
+  }
+
+  /** Drift ERP↔OLT calculado del read-model (sin SSH): discrepancias por categoría */
+  @Get(':oltId/drift')
+  @ApiOperation({ summary: 'Drift ERP↔OLT: en-ERP-no-en-OLT, sin-contrato, no-aprovisionadas' })
+  @ApiParam({ name: 'oltId' })
+  async driftOlt(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.sync.drift(oltId, user.empresaId);
+  }
+
+  /** Re-aplicar (push ERP→OLT) una ONU en drift: encola REAPROVISIONAR_ONU vía outbox */
+  @Post(':oltId/drift/reaplicar/:contratoId')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Encolar re-aprovisionamiento de una ONU (push ERP→OLT resiliente)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiParam({ name: 'contratoId' })
+  async reaplicarDrift(
+    @Param('oltId', ParseUUIDPipe) _oltId: string,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ encolado: boolean }> {
+    this.events.emit('ftth.drift.reaplicar', { contratoId, empresaId: user.empresaId });
+    return { encolado: true };
   }
 }
