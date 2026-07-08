@@ -425,6 +425,31 @@ export type FtthOnuEstado =
   | 'fallido_gpon' | 'fallido_wan' | 'desaprovisionando'
   | 'timeout_online' | 'fallido_service_port' | 'suspendido';
 
+export interface OnuClasificada {
+  onuId:           number | null;
+  sn:              string | null;
+  estadoOperativo: 'online' | 'apagada' | 'ruptura_fibra' | 'desactivada' | 'offline' | 'no_aprovisionada';
+  controlFlag:     string | null;
+  runState:        string | null;
+  configState:     string | null;
+  downCause:       string | null;
+  dyingGaspTime:   string | null;
+  rxPowerDbm:      number | null;
+  txPowerDbm:      number | null;
+  sinContrato:     boolean;
+  contratoId:      string | null;
+  numeroContrato:  string | null;
+  cliente:         string | null;
+}
+
+export interface ClasificarOnusResult {
+  success: boolean;
+  slot:    number;
+  port:    number;
+  onus:    OnuClasificada[];
+  error?:  string;
+}
+
 export interface FtthOnuRegistro {
   id:             string;
   contratoId:     string;
@@ -1076,6 +1101,15 @@ export const oltNativoApi = {
       `/olt-nativo/${oltId}/ftth-registros`, { params: { page, limit } },
     );
     return res.data.data ?? { data: [], total: 0 };
+  },
+
+  clasificarOnus: async (
+    oltId: string, slot: number, port: number,
+  ): Promise<ClasificarOnusResult> => {
+    const res = await api.get<ApiRespuesta<ClasificarOnusResult>>(
+      `/olt-nativo/${oltId}/onus`, { params: { slot, port }, timeout: 200_000 },
+    );
+    return res.data.data;
   },
 
   iniciarSync: async (oltId: string): Promise<{ jobId: string }> => {

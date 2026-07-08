@@ -70,6 +70,10 @@ from app.schemas.olt import (
     HealthPomInfo,
     PonPortsRequest,
     PonPortsResponse,
+    ClassifyOnusRequest,
+    ClassifyOnusResponse,
+    ClassifiedOnu,
+    AutofindOnu,
     PonPortInfoSchema,
     VlanAddRequest,
     VlanAddResponse,
@@ -89,6 +93,7 @@ from app.services.provisioning import (
     CommandError,
     ConnectionError,
     ProvisioningError,
+    classify_port_onus_huawei,
     deprovision_onu,
     discover_onus,
     display_huawei_board,
@@ -939,6 +944,62 @@ async def health_pon_ports(body: PonPortsRequest) -> PonPortsResponse:
     ]
 
     return PonPortsResponse(success=True, slot=body.slot, ports=ports)
+
+
+@app.post(
+    '/api/v1/olt/onus/classify',
+    response_model=ClassifyOnusResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['health'],
+    summary='Clasifica el estado de todas las ONUs de un puerto PON',
+    description=(
+        'Combina display ont info all + detalle de las offline (down cause) + '
+        'autofind. Devuelve el estado operativo resuelto por ONU: '
+        'online | apagada | ruptura_fibra | desactivada | offline, más las ONUs '
+        'físicas sin aprovisionar (autofind). Solo Huawei por ahora. '
+        'Siempre responde 200 — si falla SSH retorna success=False con error.'
+    ),
+)
+async def classify_onus(body: ClassifyOnusRequest) -> ClassifyOnusResponse:
+    olt_ip = body.connection.ip
+    if body.connection.brand.value != 'huawei':
+        return ClassifyOnusResponse(
+            success=False, slot=body.slot, port=body.port,
+            error=f'Clasificación de ONUs no implementada para marca: {body.connection.brand.value}',
+        )
+    async with connection_pool.acquire(olt_ip):
+        try:
+            data = await asyncio.to_thread(
+                classify_port_onus_huawei, body.connection, body.slot, body.port,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error('classify_onus %d/%d en %s: %s', body.slot, body.port, olt_ip, exc)
+            return ClassifyOnusResponse(
+                success=False, slot=body.slot, port=body.port, error=str(exc),
+            )
+
+    onus = [
+        ClassifiedOnu(
+            onu_id           = o['onu_id'],
+            sn               = o.get('sn'),
+            run_state        = o.get('run_state'),
+            control_flag     = o.get('control_flag'),
+            config_state     = o.get('config_state'),
+            estado_operativo = o.get('estado_operativo', 'offline'),
+            down_cause       = o.get('down_cause'),
+            dying_gasp_time  = o.get('dying_gasp_time'),
+            rx_power_dbm     = o.get('rx_power_dbm'),
+            tx_power_dbm     = o.get('tx_power_dbm'),
+        )
+        for o in data.get('onus', [])
+    ]
+    autofind = [
+        AutofindOnu(sn=a.get('sn'), slot=a.get('slot'), port=a.get('port'), model=a.get('ont_model'))
+        for a in data.get('autofind', [])
+    ]
+    return ClassifyOnusResponse(
+        success=True, slot=body.slot, port=body.port, onus=onus, autofind=autofind,
+    )
 
 
 # ── Wizard: topología completa ─────────────────────────────────

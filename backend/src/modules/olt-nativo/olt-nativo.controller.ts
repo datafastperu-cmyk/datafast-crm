@@ -45,6 +45,7 @@ import { FtthOnuRegistro }         from './entities/ftth-onu-registro.entity';
 import {
   CrearOltIntegracionDto,
   DiscoverOnusQueryDto,
+  ClasificarOnusQueryDto,
   DiscoverResult,
   FirmwareJobResult,
   IniciarFirmwareUpgradeDto,
@@ -236,6 +237,31 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<DiscoverResult> {
     return this.service.buscarOnusNoAutorizadas(oltId, user.empresaId, dto.slot, dto.port);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // GET /olt-nativo/:oltId/onus?slot=&port=
+  //
+  // Clasifica el estado de TODAS las ONUs de un puerto PON, cruzado con
+  // contratos: online | apagada | ruptura_fibra | desactivada | offline |
+  // no_aprovisionada, + bandera sinContrato.
+  // ────────────────────────────────────────────────────────────
+  @Get(':oltId/onus')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Clasificar estado de las ONUs de un puerto PON',
+    description:
+      'Combina display ont info + detalle de las offline (down cause) + autofind, ' +
+      'y cruza los seriales con los contratos FTTH para marcar las ONUs sin contrato.',
+  })
+  @ApiParam({ name: 'oltId', description: 'UUID de la OltDispositivo' })
+  @ApiResponse({ status: 200, description: 'Lista de ONUs clasificadas (puede ser vacía)' })
+  async clasificarOnus(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Query() dto: ClasificarOnusQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.clasificarOnus(oltId, user.empresaId, dto.slot, dto.port);
   }
 
   // ────────────────────────────────────────────────────────────

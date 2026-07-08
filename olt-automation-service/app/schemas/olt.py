@@ -665,3 +665,40 @@ class WizardTopologyResponse(BaseModel):
     line_profiles:    list[OltProfileInfo]         = []
     service_profiles: list[OltProfileInfo]         = []
     error:            str | None = None
+
+
+# ── Clasificación de estados de ONUs por puerto ───────────────
+
+class ClassifyOnusRequest(BaseModel):
+    connection: OltConnectionSchema
+    slot:       int = Field(..., ge=0, le=16)
+    port:       int = Field(..., ge=0, le=63)
+
+
+class ClassifiedOnu(BaseModel):
+    onu_id:           int
+    sn:               str | None = None
+    run_state:        str | None = None
+    control_flag:     str | None = None
+    config_state:     str | None = None
+    estado_operativo: str              # online|apagada|ruptura_fibra|desactivada|offline
+    down_cause:       str | None = None
+    dying_gasp_time:  str | None = None
+    rx_power_dbm:     float | None = None
+    tx_power_dbm:     float | None = None
+
+
+class AutofindOnu(BaseModel):
+    slot:   int | None = None
+    port:   int | None = None
+    sn:     str | None = None
+    model:  str | None = None
+
+
+class ClassifyOnusResponse(BaseModel):
+    success:  bool
+    slot:     int
+    port:     int
+    onus:     list[ClassifiedOnu] = []
+    autofind: list[AutofindOnu]   = []
+    error:    str | None = None

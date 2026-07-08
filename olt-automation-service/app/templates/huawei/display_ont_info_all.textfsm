@@ -1,6 +1,9 @@
 Value OnuId (\d+)
 Value Sn ([A-Z0-9]{12,16})
-Value RunState (online|offline|los|lcdg|dyinggasp|config-mismatch|deactivated|failed|auth-failed)
+Value ControlFlag (active|deactivated)
+Value RunState (online|offline)
+Value ConfigState (\S+)
+Value MatchState (\S+)
 
 Start
-  ^\s+\d+/\s*\d+/\s*\d+\s+${OnuId}\s+${Sn}\s+\S+\s+${RunState} -> Record
+  ^\s+\d+/\s*\d+/\s*\d+\s+${OnuId}\s+${Sn}\s+${ControlFlag}\s+${RunState}\s+${ConfigState}\s+${MatchState} -> Record

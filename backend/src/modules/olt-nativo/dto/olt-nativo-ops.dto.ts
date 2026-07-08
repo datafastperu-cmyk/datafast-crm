@@ -169,6 +169,16 @@ export class DiscoverOnusQueryDto {
   port?: number;
 }
 
+export class ClasificarOnusQueryDto {
+  @ApiProperty({ example: 1, description: 'Slot de la tarjeta PON (0-16)' })
+  @IsInt() @Min(0) @Max(16) @Type(() => Number)
+  slot: number;
+
+  @ApiProperty({ example: 8, description: 'Puerto PON (0-63)' })
+  @IsInt() @Min(0) @Max(63) @Type(() => Number)
+  port: number;
+}
+
 export interface PythonDiscoverRequest {
   connection: PythonConnectionPayload;
   slot:       number | null;
@@ -891,6 +901,42 @@ export interface PythonPonPortsResponse {
   slot:    number;
   ports:   PythonPonPortInfo[];
   error?:  string;
+}
+
+// ── Clasificación de ONUs (POST /api/v1/olt/onus/classify) ────
+export interface PythonClassifyOnusRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+  port:       number;
+}
+
+export interface PythonClassifiedOnu {
+  onu_id:           number;
+  sn:               string | null;
+  run_state:        string | null;
+  control_flag:     string | null;
+  config_state:     string | null;
+  estado_operativo: string;   // online|apagada|ruptura_fibra|desactivada|offline
+  down_cause:       string | null;
+  dying_gasp_time:  string | null;
+  rx_power_dbm:     number | null;
+  tx_power_dbm:     number | null;
+}
+
+export interface PythonAutofindOnu {
+  slot:  number | null;
+  port:  number | null;
+  sn:    string | null;
+  model: string | null;
+}
+
+export interface PythonClassifyOnusResponse {
+  success:  boolean;
+  slot:     number;
+  port:     number;
+  onus:     PythonClassifiedOnu[];
+  autofind: PythonAutofindOnu[];
+  error?:   string;
 }
 
 // ── Wizard Commit (NestJS side) ───────────────────────────────

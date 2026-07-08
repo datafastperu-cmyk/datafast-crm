@@ -977,6 +977,8 @@ def get_bulk_metrics_huawei(
             oid = int(row.get('OnuId')     or 0)
             sn  = str(row.get('Sn')        or '').strip() or None
             run = str(row.get('RunState')  or 'unknown').lower()
+            ctl = str(row.get('ControlFlag') or '').strip().lower() or None
+            cfg = str(row.get('ConfigState') or '').strip().lower() or None
             opt = optical_map.get(oid, {})
             result.append({
                 'slot':          slot,
@@ -984,6 +986,8 @@ def get_bulk_metrics_huawei(
                 'onu_id':        oid,
                 'sn':            sn,
                 'run_state':     run,
+                'control_flag':  ctl,
+                'config_state':  cfg,
                 'rx_power_dbm':  opt.get('rx_power_dbm'),
                 'tx_power_dbm':  opt.get('tx_power_dbm'),
                 'temperature_c': opt.get('temperature_c'),
@@ -2575,6 +2579,115 @@ def list_configured_ont_ids(
         conn.ip, slot, port, len(ids), sorted(ids)[:10],
     )
     return sorted(ids)
+
+
+def get_onu_down_causes_huawei(
+    conn: OltConnectionSchema,
+    slot: int,
+    port: int,
+    onu_ids: list[int],
+) -> dict[int, dict[str, str | None]]:
+    """
+    Para un conjunto de ONUs OFFLINE, consulta el detalle y extrae la causa de
+    caída (`Last down cause`) y la marca de dying-gasp (`Last dying gasp time`).
+    Permite distinguir "ONU apagada" (dying-gasp/power) de "ruptura de fibra"
+    (LOS/LOF/pérdida de señal). UNA sola sesión SSH con N comandos de detalle.
+    """
+    if not onu_ids:
+        return {}
+    ids = onu_ids[:64]  # cota defensiva: evita sesiones gigantes en puertos saturados
+    cmds = [f'display ont info 0 {slot} {port} {oid}' for oid in ids]
+    try:
+        outs = _paramiko_huawei_run(
+            conn, cmds, timeout=max(90.0, settings.ssh_command_timeout), return_list=True,
+        )
+    except Exception as exc:
+        logger.warning('get_onu_down_causes_huawei %d/%d en %s: %s', slot, port, conn.ip, exc)
+        return {}
+
+    cause_re = re.compile(r'Last down cause\s*:\s*([^\r\n]+)', re.IGNORECASE)
+    gasp_re  = re.compile(r'Last dying gasp time\s*:\s*([^\r\n]+)', re.IGNORECASE)
+    result: dict[int, dict[str, str | None]] = {}
+    for oid, raw in zip(ids, outs):
+        mc = cause_re.search(raw or '')
+        mg = gasp_re.search(raw or '')
+        cause = mc.group(1).strip() if mc else None
+        gasp  = mg.group(1).strip() if mg else None
+        result[oid] = {
+            'down_cause':      None if cause in (None, '-', '') else cause,
+            'dying_gasp_time': None if gasp  in (None, '-', '') else gasp,
+        }
+    return result
+
+
+def _map_estado_operativo(
+    control_flag: str | None,
+    run_state:    str | None,
+    down_cause:   str | None,
+    dying_gasp:   str | None,
+) -> str:
+    """
+    Traduce los campos crudos de la OLT a un estado operativo único:
+      desactivada | online | apagada | ruptura_fibra | offline
+    (El cruce con contrato/BD y "no_aprovisionada" se resuelve fuera —
+    aquí solo se clasifica lo que la OLT reporta del enlace físico.)
+    """
+    if (control_flag or '').lower() == 'deactivated':
+        return 'desactivada'
+    if (run_state or '').lower() == 'online':
+        return 'online'
+    # offline / unknown → precisar causa
+    cause = (down_cause or '').lower()
+    if dying_gasp or 'dying' in cause or 'power' in cause:
+        return 'apagada'
+    if any(k in cause for k in ('los', 'lof', 'signal', 'sf')):
+        return 'ruptura_fibra'
+    return 'offline'
+
+
+def classify_port_onus_huawei(
+    conn: OltConnectionSchema,
+    slot: int,
+    port: int,
+) -> dict[str, Any]:
+    """
+    Clasifica TODAS las ONUs de un puerto PON Huawei combinando:
+      - `display ont info 0/slot/port all`   → estado/control/óptica por ONU
+      - detalle de las OFFLINE                → down cause (apagada vs fibra)
+      - `display ont autofind`                → ONUs físicas sin aprovisionar
+
+    Retorna {onus:[...], autofind:[...]}. El estado operativo ya viene resuelto;
+    el cruce con contrato lo hace el backend (tiene la BD).
+    """
+    metrics = get_bulk_metrics_huawei(conn, slot, port)
+    offline_ids = [
+        m['onu_id'] for m in metrics
+        if (m.get('run_state') or '').lower() != 'online'
+        and (m.get('control_flag') or '').lower() != 'deactivated'
+    ]
+    causes = get_onu_down_causes_huawei(conn, slot, port, offline_ids)
+
+    onus: list[dict[str, Any]] = []
+    for m in metrics:
+        c = causes.get(m['onu_id'], {})
+        estado = _map_estado_operativo(
+            m.get('control_flag'), m.get('run_state'),
+            c.get('down_cause'), c.get('dying_gasp_time'),
+        )
+        onus.append({
+            **m,
+            'down_cause':       c.get('down_cause'),
+            'dying_gasp_time':  c.get('dying_gasp_time'),
+            'estado_operativo': estado,
+        })
+
+    try:
+        autofind = discover_huawei_onus(conn, slot=slot, port=port)
+    except Exception as exc:
+        logger.warning('classify_port_onus_huawei autofind %d/%d en %s: %s', slot, port, conn.ip, exc)
+        autofind = []
+
+    return {'onus': onus, 'autofind': autofind}
 
 
 def poll_onu_online(

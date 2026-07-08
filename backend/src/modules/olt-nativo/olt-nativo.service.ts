@@ -26,6 +26,7 @@ import {
   ProvisionResult,
   PythonBoardTopologyRequest,
   PythonDiscoverRequest,
+  PythonClassifyOnusRequest,
   PythonListProfilesRequest,
   PythonOntResetRequest,
   PythonOntVersionRequest,
@@ -303,6 +304,113 @@ export class OltNativoService implements OnModuleInit {
       );
       return { success: false, total: 0, onus: [] };
     }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // clasificarOnus — estado de todas las ONUs de un puerto PON,
+  // cruzado con contratos/clientes de la BD.
+  //
+  // estado_operativo (de la OLT): online | apagada | ruptura_fibra |
+  //   desactivada | offline | no_aprovisionada (autofind).
+  // sinContrato: la ONU existe en la OLT pero su SN no cruza con ningún
+  //   registro FTTH vigente (típico de ONUs creadas por SmartOLT/AdminOLT).
+  // ────────────────────────────────────────────────────────────
+  async clasificarOnus(
+    oltId:     string,
+    empresaId: string,
+    slot:      number,
+    port:      number,
+  ): Promise<{
+    success: boolean;
+    slot:    number;
+    port:    number;
+    onus:    Array<Record<string, unknown>>;
+    error?:  string;
+  }> {
+    const olt = await this.oltRepo.findOne({ where: { id: oltId, empresaId } });
+    if (!olt) throw new NotFoundException('OLT no encontrada');
+
+    if (olt.metodoConexion !== OltMetodoConexion.NATIVO_SSH) {
+      return { success: false, slot, port, onus: [], error: `OLT usa ${olt.metodoConexion}; solo NATIVO_SSH soporta clasificación.` };
+    }
+
+    const password = this.decryptPassword(olt.contrasenaCifrada, olt.ipGestion);
+    const payload: PythonClassifyOnusRequest = {
+      connection: { ip: olt.ipGestion, port: olt.puerto, username: olt.usuarioAnclado, password, brand: olt.marca },
+      slot,
+      port,
+    };
+
+    let res: Awaited<ReturnType<OltAutomationClient['clasificarOnus']>>;
+    try {
+      res = await this.automation.clasificarOnus(payload);
+    } catch (error) {
+      this.logger.warn(`clasificarOnus | OLT=${olt.nombre}: ${(error as Error).message}`);
+      return { success: false, slot, port, onus: [], error: (error as Error).message };
+    }
+    if (!res.success) return { success: false, slot, port, onus: [], error: res.error };
+
+    // Mapa SN→contrato. Se indexa por los últimos 8 hex (parte única del SN),
+    // porque la OLT reporta el SN crudo (48575443994E1BA5) y la BD lo guarda en
+    // forma de vendedor (HWTC994E1BA5) — ambos comparten el sufijo 994E1BA5.
+    const norm = (sn?: string | null): string =>
+      (sn ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(-8);
+
+    const rows: Array<{ sn: string; contrato_id: string; numero_contrato: string; cliente: string; registro_estado: string }> =
+      await this.ds.query(
+        `SELECT r.sn, r.contrato_id, c.numero_contrato,
+                COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente,
+                r.estado AS registro_estado
+           FROM ftth_onu_registro r
+           JOIN contratos c ON c.id = r.contrato_id
+           LEFT JOIN clientes cl ON cl.id = c.cliente_id
+          WHERE r.deleted_at IS NULL AND r.olt_id = $1`,
+        [oltId],
+      );
+    const contratoPorSn = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) contratoPorSn.set(norm(row.sn), row);
+
+    const onus = res.onus.map((o) => {
+      const match = contratoPorSn.get(norm(o.sn));
+      return {
+        onuId:           o.onu_id,
+        sn:              o.sn,
+        estadoOperativo: o.estado_operativo,
+        controlFlag:     o.control_flag,
+        runState:        o.run_state,
+        configState:     o.config_state,
+        downCause:       o.down_cause,
+        dyingGaspTime:   o.dying_gasp_time,
+        rxPowerDbm:      o.rx_power_dbm,
+        txPowerDbm:      o.tx_power_dbm,
+        sinContrato:     !match,
+        contratoId:      match?.contrato_id ?? null,
+        numeroContrato:  match?.numero_contrato ?? null,
+        cliente:         match?.cliente ?? null,
+      };
+    });
+
+    // ONUs físicas sin aprovisionar (autofind): nunca tienen contrato.
+    for (const a of res.autofind) {
+      onus.push({
+        onuId:           null,
+        sn:              a.sn,
+        estadoOperativo: 'no_aprovisionada',
+        controlFlag:     null,
+        runState:        null,
+        configState:     null,
+        downCause:       null,
+        dyingGaspTime:   null,
+        rxPowerDbm:      null,
+        txPowerDbm:      null,
+        sinContrato:     true,
+        contratoId:      null,
+        numeroContrato:  null,
+        cliente:         a.model ?? null,
+      });
+    }
+
+    return { success: true, slot, port, onus };
   }
 
   // ─── CRUD básico ─────────────────────────────────────────────

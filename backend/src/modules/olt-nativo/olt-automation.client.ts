@@ -61,6 +61,8 @@ import {
   PythonTrafficTableEditResponse,
   PythonPonPortsRequest,
   PythonPonPortsResponse,
+  PythonClassifyOnusRequest,
+  PythonClassifyOnusResponse,
 } from './dto/olt-nativo-ops.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -454,6 +456,24 @@ export class OltAutomationClient {
     );
     this.logger.log(
       `← Python health/pon-ports | success=${res.success} ports=${res.ports?.length ?? 0}`,
+    );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Clasificación de estados de ONUs de un puerto
+  // (POST /api/v1/olt/onus/classify)
+  // Timeout 180s: info all + detalle de cada offline + autofind en 1-3 sesiones
+  // ────────────────────────────────────────────────────────────
+  async clasificarOnus(payload: PythonClassifyOnusRequest): Promise<PythonClassifyOnusResponse> {
+    this.logger.log(
+      `→ Python onus/classify | OLT=${payload.connection.ip} ${payload.slot}/${payload.port}`,
+    );
+    const res = await this.post<PythonClassifyOnusResponse>(
+      '/api/v1/olt/onus/classify', payload, 180_000,
+    );
+    this.logger.log(
+      `← Python onus/classify | success=${res.success} onus=${res.onus?.length ?? 0} autofind=${res.autofind?.length ?? 0}`,
     );
     return res;
   }
