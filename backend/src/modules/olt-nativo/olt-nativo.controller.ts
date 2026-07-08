@@ -332,6 +332,11 @@ export class OltNativoController {
       );
     }
 
+    // Auto-reconcile inicial (fire-and-forget): al integrar una OLT nueva se lanza
+    // un sync completo que puebla también el inventario de ONUs, para que aparezca
+    // en el tab ONUs sin acción manual. Corre en 2do plano; no bloquea la respuesta.
+    this.sync.iniciarSync(oltId, user.empresaId).catch(() => { /* el job registra su propio error */ });
+
     return { oltId, vlans: vlansResult ?? undefined, trafficTables: trafficResult ?? undefined };
   }
 
