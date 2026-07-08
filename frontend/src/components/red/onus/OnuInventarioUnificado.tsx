@@ -1,11 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Loader2, Wifi, WifiOff, PowerOff, Unplug, Ban, HelpCircle, Search,
+  Eye, RotateCcw, ArrowUpFromLine,
 } from 'lucide-react';
-import { oltNativoApi, type OnuClasificada } from '@/lib/api/olt-nativo';
+import { oltNativoApi, type OnuClasificada, type OnuInventarioGlobalItem } from '@/lib/api/olt-nativo';
+import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 
 const EST: Record<OnuClasificada['estadoOperativo'], { label: string; cls: string; Icon: typeof Wifi }> = {
@@ -27,10 +29,26 @@ function senalFtth(rx: number | null): { txt: string; cls: string } {
 }
 
 export function OnuInventarioUnificado() {
+  const { toast } = useToast();
   const { data = [], isLoading } = useQuery({
     queryKey: ['olt-inventario-global'],
     queryFn:  oltNativoApi.getInventarioGlobal,
     staleTime: 30_000,
+  });
+
+  // Reiniciar ONU (reset físico vía OLT). Requiere onuId (ONU configurada).
+  const resetMut = useMutation({
+    mutationFn: (o: OnuInventarioGlobalItem) => oltNativoApi.ftthResetOnu(o.oltId, o.slot, o.port, o.onuId as number),
+    onSuccess: () => toast('ONU reiniciada — puede tardar ~1 min en volver online', { type: 'success' }),
+    onError:   () => toast('No se pudo reiniciar la ONU', { type: 'error' }),
+  });
+
+  // Resincronizar: re-aplica los datos del ERP hacia la ONU (GPON + service-port + WAN)
+  // de forma resiliente vía outbox. Requiere contrato vinculado.
+  const resyncMut = useMutation({
+    mutationFn: (o: OnuInventarioGlobalItem) => oltNativoApi.reaplicarDrift(o.oltId, o.contratoId as string),
+    onSuccess: () => toast('Resincronización encolada — se re-aplicará la configuración a la ONU.', { type: 'success' }),
+    onError:   () => toast('No se pudo encolar la resincronización', { type: 'error' }),
   });
 
   const [q, setQ]     = useState('');
@@ -103,6 +121,7 @@ export function OnuInventarioUnificado() {
                 <th className="text-left px-3 py-2 font-semibold">Estado</th>
                 <th className="text-left px-3 py-2 font-semibold">OLT</th>
                 <th className="text-left px-3 py-2 font-semibold">Señal FTTH</th>
+                <th className="text-right px-3 py-2 font-semibold">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -129,6 +148,37 @@ export function OnuInventarioUnificado() {
                     </td>
                     <td className="px-3 py-2 text-xs">{o.oltNombre}</td>
                     <td className={cn('px-3 py-2 text-xs font-medium', s.cls)}>{s.txt}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => toast('Detalle de la ONU — próximamente', { type: 'default' })}
+                          title="Ver detalle"
+                          className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => resetMut.mutate(o)}
+                          disabled={o.onuId == null || (resetMut.isPending && resetMut.variables === o)}
+                          title={o.onuId == null ? 'ONU sin aprovisionar (no reiniciable)' : 'Reiniciar ONU (reset)'}
+                          className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-sky-400 hover:border-sky-700/50 hover:bg-sky-500/10 transition-colors disabled:opacity-40"
+                        >
+                          {resetMut.isPending && resetMut.variables === o
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <RotateCcw className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => resyncMut.mutate(o)}
+                          disabled={!o.contratoId || (resyncMut.isPending && resyncMut.variables === o)}
+                          title={!o.contratoId ? 'Sin contrato en el ERP (nada que resincronizar)' : 'Resincronizar datos ERP → ONU'}
+                          className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-emerald-400 hover:border-emerald-700/50 hover:bg-emerald-500/10 transition-colors disabled:opacity-40"
+                        >
+                          {resyncMut.isPending && resyncMut.variables === o
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <ArrowUpFromLine className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
