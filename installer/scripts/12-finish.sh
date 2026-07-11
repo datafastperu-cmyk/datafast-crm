@@ -30,13 +30,13 @@ run_upgrade() {
     show_completion
 }
 
-# ── Preparación automática (sin interacción) ──────────────────
-# NO solicita ningún dato al usuario.
-# Todos los valores se detectan o usan valores por defecto seguros.
+# ── Preparación de configuración ──────────────────────────────
+# Detecta el tipo de servidor (VPS / local) y la dirección con que
+# se accederá al ERP. En modo interactivo permite confirmar/corregir;
+# en modo desatendido (UNATTENDED=true, sin TTY o timeout) usa la
+# dirección autodetectada. Las credenciales se generan siempre solas.
 _prepare_config() {
-    # Detectar IP pública del servidor
-    PUBLIC_IP=$(hostname -I | awk '{print $1}')
-    [[ -z "$PUBLIC_IP" ]] && PUBLIC_IP=$(curl -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || echo "127.0.0.1")
+    _detect_server_address
 
     # Empresa — usar defaults, el ISP los configura desde el panel después de instalar
     EMPRESA_NOMBRE="${EMPRESA_NOMBRE:-DATAFAST Internet S.A.C.}"
@@ -53,10 +53,69 @@ _prepare_config() {
 
     _generate_secrets
 
-    export PUBLIC_IP EMPRESA_NOMBRE EMPRESA_RUC ADMIN_EMAIL ADMIN_PASSWORD
+    export PUBLIC_IP SERVER_TYPE EMPRESA_NOMBRE EMPRESA_RUC ADMIN_EMAIL ADMIN_PASSWORD
     export DOMINIO_FRONTEND DOMINIO_BACKEND
 
-    _log "INFO" "Configuración automática: empresa=${EMPRESA_NOMBRE} | ip=${PUBLIC_IP}"
+    _log "INFO" "Configuración: tipo=${SERVER_TYPE} | direccion=${PUBLIC_IP} | empresa=${EMPRESA_NOMBRE}"
+}
+
+# ── Detección de dirección del servidor (VPS vs local) ────────
+# ¿Es privada la IP? (RFC1918 + CGNAT 100.64/10 + loopback)
+_is_private_ip() {
+    case "$1" in
+        10.*|192.168.*|127.*) return 0 ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) return 0 ;;
+        100.6[4-9].*|100.[7-9][0-9].*|100.1[0-1][0-9].*|100.12[0-7].*) return 0 ;; # 100.64.0.0/10 CGNAT
+        *) return 1 ;;
+    esac
+}
+
+_detect_server_address() {
+    # IP local primaria (la que el server tiene en su interfaz)
+    local local_ip;  local_ip=$(hostname -I | awk '{print $1}')
+    # IP pública real vista desde internet (vacía si no hay salida / CGNAT bloquea)
+    local public_ip; public_ip=$(curl -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || echo "")
+
+    local detected="" tipo=""
+    if [[ -n "$public_ip" && "$public_ip" == "$local_ip" ]]; then
+        # La interfaz tiene la IP pública directa → VPS clásico
+        detected="$public_ip"; tipo="VPS (IP pública directa)"
+    elif [[ -n "$public_ip" && -n "$local_ip" ]] && _is_private_ip "$local_ip"; then
+        # Interfaz privada pero hay IP pública distinta → VPS tras NAT o server tras router.
+        # Caso ambiguo: por defecto usamos la LAN (siempre enlazable y válida para acceso
+        # en la misma red); el admin de un VPS-NAT puede corregir a la pública en el prompt.
+        detected="$local_ip"; tipo="servidor local / red interna (IP LAN ${local_ip}; pública detectada ${public_ip})"
+    elif [[ -n "$local_ip" ]]; then
+        # Sin IP pública consultable (CGNAT que bloquea salida o red aislada) → usar LAN
+        detected="$local_ip"; tipo="servidor local / CGNAT (IP LAN)"
+    else
+        detected="127.0.0.1"; tipo="desconocido (sin interfaz detectada)"
+    fi
+
+    # Prompt interactivo — solo si hay TTY y no se forzó modo desatendido
+    if [[ "${UNATTENDED:-false}" != "true" && -e /dev/tty ]]; then
+        local respuesta=""
+        {
+            echo ""
+            echo "  ┌─ Dirección de acceso al ERP ──────────────────────────────"
+            echo "  │ Detectado: ${detected}"
+            echo "  │ Tipo:      ${tipo}"
+            [[ -n "$public_ip" && "$public_ip" != "$detected" ]] && \
+            echo "  │ Pública:   ${public_ip}  (usar esta si es un VPS accesible desde internet)"
+            echo "  │"
+            echo "  │ Enter = usar '${detected}'  |  o escribe otra IP/dominio (30s)"
+            echo "  └────────────────────────────────────────────────────────────"
+            printf "  > "
+        } > /dev/tty
+        read -r -t 30 respuesta < /dev/tty || true
+        [[ -n "$respuesta" ]] && detected="$respuesta"
+    fi
+
+    # PUBLIC_IP es la dirección de acceso (IP o hostname). Para HTTPS con dominios
+    # separados (api.x.com / x.com) se pre-setean DOMINIO_BACKEND/DOMINIO_FRONTEND
+    # como variables de entorno antes de instalar; el prompt cubre el caso IP/host simple.
+    PUBLIC_IP="$detected"
+    SERVER_TYPE="$tipo"
 }
 
 _generate_secrets() {

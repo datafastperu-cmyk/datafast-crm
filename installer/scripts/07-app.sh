@@ -409,7 +409,8 @@ _setup_evolution_api() {
 
 # ── Variables de entorno ───────────────────────────────────────
 _write_backend_env() {
-    local ip; ip=$(hostname -I | awk '{print $1}')
+    # Dirección elegida en _prepare_config (VPS pública, LAN local o dominio)
+    local ip; ip="${PUBLIC_IP:-$(hostname -I | awk '{print $1}')}"
     local frontend_url="http://${ip}"
     [[ -n "${DOMINIO_FRONTEND:-}" ]] && frontend_url="https://${DOMINIO_FRONTEND}"
     local api_url="http://${ip}:4000"
@@ -459,7 +460,8 @@ ENVEOF
 }
 
 _write_frontend_env() {
-    local ip; ip=$(hostname -I | awk '{print $1}')
+    # Dirección elegida en _prepare_config (VPS pública, LAN local o dominio)
+    local ip; ip="${PUBLIC_IP:-$(hostname -I | awk '{print $1}')}"
     local api_url="http://${ip}:4000"
     [[ -n "${DOMINIO_BACKEND:-}" ]] && api_url="https://${DOMINIO_BACKEND}"
 
