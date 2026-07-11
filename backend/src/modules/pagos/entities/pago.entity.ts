@@ -52,12 +52,8 @@ export class Pago {
   moneda: string;
 
   // ── Método ───────────────────────────────────────────────
-  @Column({
-    name: 'metodo_pago',
-    type: 'enum',
-    enum: MetodoPago,
-  })
-  metodoPago: MetodoPago;
+  @Column({ name: 'metodo_pago', length: 100 })
+  metodoPago: string;
 
   @Column({ length: 100, nullable: true })
   banco: string;   // BCP, Interbank, BBVA, Scotiabank, BanBif...
