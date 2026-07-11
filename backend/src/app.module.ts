@@ -40,6 +40,7 @@ import { PlanesModule }           from './modules/planes/planes.module';
 import { AprovisionamientoModule } from './modules/aprovisionamiento/aprovisionamiento.module';
 import { MikrotikModule }         from './modules/mikrotik/mikrotik.module';
 import { SmartoltModule }         from './modules/smartolt/smartolt.module';
+import { XuiModule }              from './modules/xui/xui.module';
 import { WorkersModule }          from './modules/workers/workers.module';
 import { OpenvpnModule }          from './modules/openvpn/openvpn.module';
 import { PlantillasModule }       from './modules/plantillas/plantillas.module';
@@ -182,6 +183,7 @@ import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pag
     AprovisionamientoModule,
     MikrotikModule,
     SmartoltModule,
+    XuiModule,
     WorkersModule,
     OpenvpnModule,
     PlantillasModule,

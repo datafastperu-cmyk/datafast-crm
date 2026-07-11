@@ -16,7 +16,7 @@ import {
   LayoutGrid, RefreshCcw, Maximize2, Minus, Phone, Package,
   Network, Lock, Navigation, Server, MapPin, User, ChevronRight,
   MoreVertical, CheckCircle2, Clock, AlertTriangle, Zap,
-  Power, PauseCircle, RefreshCw, Bell,
+  Power, PauseCircle, RefreshCw, Bell, Tv,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -24,6 +24,7 @@ import {
 
 import { clientesApi }                          from '@/lib/api/clientes';
 import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
+import { xuiApi, type XuiLine, type EditarXuiLineDto } from '@/lib/api/xui';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { TabOnuRouter }                        from './TabOnuRouter';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
@@ -1039,11 +1040,23 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
   const [q2, setQ2] = useState('');
   const [q3, setQ3] = useState('');
   const [q4, setQ4] = useState('');
+  const [q5, setQ5] = useState('');
   const [showPanel,        setShowPanel]        = useState(false);
   const [editingContrato,  setEditingContrato]  = useState<Contrato | null>(null);
   const [confirmBaja,      setConfirmBaja]      = useState<Contrato | null>(null);
   const [onuContrato,      setOnuContrato]      = useState<Contrato | null>(null);
   const [ftthContrato,     setFtthContrato]     = useState<Contrato | null>(null);
+  const [editingXuiLine,   setEditingXuiLine]   = useState<XuiLine | null>(null);
+
+  const { data: xuiLines = [] } = useQuery({
+    queryKey: ['cliente-xui-lines', clienteId],
+    queryFn:  () => xuiApi.listarPorCliente(clienteId),
+    refetchInterval: 20_000,
+  });
+  const xuiLinesFiltered = xuiLines.filter(l =>
+    !q5 || l.usuario.toLowerCase().includes(q5.toLowerCase()),
+  );
+  const contratoPorId = new Map(contratos.map(c => [c.id, c]));
 
   // IPs a monitorear: contratos activos/suspendidos con IP asignada
   const ipsMonitoreo = contratos
@@ -1281,6 +1294,67 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
         <SvcPagination total={0} />
       </div>
 
+      {/* ── Servicios IPTV ─────────────────────────────────────── */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <SvcSectionHeader title="Servicios IPTV" icon={Tv} />
+        <SvcToolbar count={xuiLinesFiltered.length} search={q5} onSearch={setQ5} />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/20">
+                <SvcTh>SERVICIO</SvcTh>
+                <SvcTh>USUARIO</SvcTh>
+                <SvcTh>BOUQUET(S)</SvcTh>
+                <SvcTh>MÁX. CONEXIONES</SvcTh>
+                <SvcTh>CANAL ACTUAL</SvcTh>
+                <SvcTh>ESTADO</SvcTh>
+                <SvcTh>ACCIONES</SvcTh>
+              </tr>
+            </thead>
+            <tbody>
+              {xuiLinesFiltered.length === 0 ? (
+                <EmptyRow cols={7} icon={Tv} msg="Ningún registro disponible" />
+              ) : xuiLinesFiltered.map((l) => (
+                <tr key={l.id} className="border-b border-border/60 hover:bg-muted/10">
+                  <td className="px-3 py-2">{contratoPorId.get(l.contratoId)?.numeroContrato ?? '—'}</td>
+                  <td className="px-3 py-2 font-mono">{l.usuario}</td>
+                  <td className="px-3 py-2">{l.bouquetIds.length}</td>
+                  <td className="px-3 py-2">{l.maxConexiones}</td>
+                  <td className="px-3 py-2">{l.canalActual ?? '—'}</td>
+                  <td className="px-3 py-2">
+                    {l.estadoSync === 'error' ? (
+                      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                        <AlertTriangle className="w-3 h-3" /> Error de sync
+                      </span>
+                    ) : l.estadoSync === 'pendiente_creacion' ? (
+                      <span className="text-amber-600 dark:text-amber-400">Sincronizando…</span>
+                    ) : l.conectado ? (
+                      <span className="text-emerald-600 dark:text-emerald-400">● Conectado</span>
+                    ) : (
+                      <span className="text-muted-foreground">● Desconectado</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <button onClick={() => setEditingXuiLine(l)} className="text-muted-foreground hover:text-foreground">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <SvcPagination total={xuiLinesFiltered.length} />
+      </div>
+
+      {editingXuiLine && (
+        <XuiLineEditModal
+          line={editingXuiLine}
+          clienteId={clienteId}
+          onClose={() => setEditingXuiLine(null)}
+        />
+      )}
+
       {/* ── Equipos Asignados ─────────────────────────────────── */}
       <div className="border border-border rounded-xl overflow-hidden">
         <SvcSectionHeader title="Equipos Asignados" icon={Radio} />
@@ -1441,6 +1515,102 @@ function _SvcSectionUnused({ title, icon: Icon, children }: { title: string; ico
       </div>
       <div className="px-4 py-3 space-y-3">{children}</div>
     </div>
+  );
+}
+
+// ── Modal de edición de un line IPTV (bouquets, máx. conexiones) ──
+// Sin opción de eliminar: la baja de un line es siempre automática,
+// disparada por el cambio de plan del contrato dueño (ver contratos.service.ts).
+function XuiLineEditModal({
+  line, clienteId, onClose,
+}: {
+  line: XuiLine;
+  clienteId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { toast }    = useToast();
+  const [bouquetIds, setBouquetIds]       = useState<number[]>(line.bouquetIds);
+  const [maxConexiones, setMaxConexiones] = useState(line.maxConexiones);
+
+  const { data: bouquets = [] } = useQuery({
+    queryKey: ['xui-bouquets'],
+    queryFn:  xuiApi.listarBouquets,
+    staleTime: 5 * 60_000,
+  });
+
+  const { mutate: guardar, isPending } = useMutation({
+    mutationFn: (dto: EditarXuiLineDto) => xuiApi.editarLine(line.id, dto),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cliente-xui-lines', clienteId] });
+      toast('Line IPTV actualizado', { type: 'success' });
+      onClose();
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
+  });
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="bg-background border border-border rounded-xl shadow-xl w-full max-w-md p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">Editar servicio IPTV — {line.usuario}</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Máx. conexiones</label>
+          <input
+            type="number" min={1} max={50}
+            value={maxConexiones}
+            onChange={(e) => setMaxConexiones(Number(e.target.value))}
+            className="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Bouquets</label>
+          <div className="flex flex-wrap gap-2 p-2 rounded-md border border-border max-h-40 overflow-y-auto">
+            {bouquets.map((b) => {
+              const seleccionado = bouquetIds.includes(b.id);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setBouquetIds(seleccionado
+                    ? bouquetIds.filter((id) => id !== b.id)
+                    : [...bouquetIds, b.id])}
+                  className={cn(
+                    'px-2 py-1 rounded-full text-xs border transition-colors',
+                    seleccionado
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted text-muted-foreground border-border hover:bg-muted/70',
+                  )}
+                >
+                  {b.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs rounded-md border border-border text-muted-foreground">
+            Cancelar
+          </button>
+          <button
+            disabled={isPending}
+            onClick={() => guardar({ bouquetIds, maxConexiones })}
+            className="px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground disabled:opacity-50 flex items-center gap-1"
+          >
+            {isPending && <Loader2 className="w-3 h-3 animate-spin" />} Guardar
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

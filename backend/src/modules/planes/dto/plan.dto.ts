@@ -1,4 +1,4 @@
-import { IsString,IsNumber,IsEnum,IsBoolean,IsOptional,IsNotEmpty,Min,Max,MaxLength,IsInt,ValidateIf } from 'class-validator';
+import { IsString,IsNumber,IsEnum,IsBoolean,IsOptional,IsNotEmpty,Min,Max,MaxLength,IsInt,IsArray,ValidateIf } from 'class-validator';
 import { ApiProperty,ApiPropertyOptional,PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { TipoPlan,TipoQueue,AccionAlLimite } from '../entities/plan.entity';
@@ -34,6 +34,7 @@ export class CreatePlanDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Type(()=>Number) velocidadPostLimite?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() cuentaIptv?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(5) @Type(()=>Number) sesionesIptv?: number;
+  @ApiPropertyOptional({ type:[Number], description:'IDs de bouquet de XUI ONE seleccionados para este plan' }) @IsOptional() @IsArray() @IsInt({ each:true }) xuiBouquetIds?: number[];
   @ApiPropertyOptional() @IsOptional() @IsBoolean() activo?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() visibleEnPortal?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Type(()=>Number) ordenDisplay?: number;

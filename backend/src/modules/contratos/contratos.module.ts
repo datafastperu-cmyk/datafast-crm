@@ -10,6 +10,7 @@ import { PlanesModule } from '../planes/planes.module';
 import { AuthModule } from '../auth/auth.module';
 import { MikrotikModule } from '../mikrotik/mikrotik.module';
 import { SmartoltModule } from '../smartolt/smartolt.module';
+import { XuiModule } from '../xui/xui.module';
 import { SagasModule } from '../sagas/sagas.module';
 import { OutboxRedModule }    from '../outbox-red/outbox-red.module';
 import { PromesasPagoModule } from '../promesas-pago/promesas-pago.module';
@@ -21,6 +22,7 @@ import { PromesasPagoModule } from '../promesas-pago/promesas-pago.module';
     AuthModule,
     MikrotikModule,
     SmartoltModule,
+    XuiModule,
     SagasModule,
     OutboxRedModule,
     PromesasPagoModule,

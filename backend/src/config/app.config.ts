@@ -163,6 +163,9 @@ export const appConfig = registerAs('app', () => ({
     user:   process.env.GENIEACS_NBI_USER || '',
     pass:   process.env.GENIEACS_NBI_PASS || '',
   },
+
+  // XUI ONE (panel IPTV) — configuración movida a BD (tabla xui_servidores,
+  // editable desde /iptv → Servidores). Ver xui-servidores.service.ts.
 }));
 
 export type AppConfig = ReturnType<typeof appConfig>;

@@ -22,6 +22,7 @@ import { ArpService } from '../mikrotik/services/arp.service';
 import { FirewallService } from '../mikrotik/services/firewall.service';
 import { MikrotikService } from '../mikrotik/mikrotik.service';
 import { SmartoltApiService } from '../smartolt/smartolt-api.service';
+import { XuiLinesService } from '../xui/xui-lines.service';
 import { SagaLogService } from '../sagas/saga-log.service';
 import { SagaTipo } from '../sagas/entities/saga-log.entity';
 import { OutboxRedService }    from '../outbox-red/outbox-red.service';
@@ -78,6 +79,7 @@ export class ContratosService {
     private readonly firewallSvc: FirewallService,
     private readonly mikrotikSvc: MikrotikService,
     private readonly smartoltApi: SmartoltApiService,
+    private readonly xuiLinesSvc: XuiLinesService,
     private readonly sagaLog: SagaLogService,
     private readonly outboxRed: OutboxRedService,
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -245,6 +247,15 @@ export class ContratosService {
       [dto.clienteId],
     );
 
+    // Alta automática de line IPTV si el plan lo trae habilitado — no bloquea
+    // ni revierte la creación del contrato si XUI falla (módulo degradable).
+    if (plan?.cuentaIptv) {
+      setImmediate(() => {
+        this.xuiLinesSvc.crearLineParaContrato(saved.id, user.empresaId)
+          .catch((e: any) => this.logger.warn(`XUI crearLineParaContrato (contrato ${saved.id}): ${e?.message}`));
+      });
+    }
+
     return saved;
   }
 
@@ -362,6 +373,29 @@ export class ContratosService {
 
     const contratoActualizado = await this.findOne(id, user.empresaId);
     await this.auditoria.logUpdate({ empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email, modulo: 'contratos', entidadId: id, descripcion: 'Actualización de servicio con re-provisión', req });
+
+    // ── Alta/baja automática de line IPTV si cambió el plan ────
+    // Evalúa siempre a nivel de ESTE contrato — otros servicios del mismo
+    // cliente (otros contratos) son independientes y no se tocan.
+    if (dto.planId && dto.planId !== existing.planId) {
+      const [planViejo] = await this.dataSource.query<any[]>(
+        `SELECT cuenta_iptv AS "cuentaIptv" FROM planes WHERE id = $1`, [existing.planId],
+      );
+      const [planNuevo] = await this.dataSource.query<any[]>(
+        `SELECT cuenta_iptv AS "cuentaIptv" FROM planes WHERE id = $1`, [dto.planId],
+      );
+      if (planViejo?.cuentaIptv && !planNuevo?.cuentaIptv) {
+        setImmediate(() => {
+          this.xuiLinesSvc.eliminarLineDeContrato(id, user.empresaId)
+            .catch((e: any) => this.logger.warn(`XUI eliminarLineDeContrato (contrato ${id}): ${e?.message}`));
+        });
+      } else if (!planViejo?.cuentaIptv && planNuevo?.cuentaIptv) {
+        setImmediate(() => {
+          this.xuiLinesSvc.crearLineParaContrato(id, user.empresaId)
+            .catch((e: any) => this.logger.warn(`XUI crearLineParaContrato (contrato ${id}): ${e?.message}`));
+        });
+      }
+    }
 
     setImmediate(async () => {
       this.logger.log(`actualizarServicio background → iniciando re-provisión contrato ${id} | tipoAuth anterior: ${tipoAuthAnterior ?? 'desconocido'}`);

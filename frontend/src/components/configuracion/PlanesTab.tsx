@@ -10,6 +10,7 @@ import {
   Loader2, Wifi, X, AlertTriangle, ArrowDown, ArrowUp,
 } from 'lucide-react';
 import { planesApi } from '@/lib/api/contratos';
+import { xuiApi } from '@/lib/api/xui';
 import api from '@/lib/api';
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError, formatPEN, cn } from '@/lib/utils';
@@ -33,6 +34,7 @@ const schema = z.object({
   addresslist:          z.string().optional(),
   crearCuentaIptv:      z.boolean().default(false),
   sesionesIptv:         z.coerce.number().int().min(1).max(5).default(1),
+  xuiBouquetIds:        z.array(z.number()).default([]),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -54,7 +56,7 @@ const DEFAULTS: FormValues = {
   noCrearReglas: false, velocidadBajada: 0, velocidadSubida: 0,
   velocidadGarantizada: 10, burstKbps: 0, burstUmbral: 0,
   burstTiempo: 0, prioridad: 8, addresslist: '',
-  crearCuentaIptv: false, sesionesIptv: 1,
+  crearCuentaIptv: false, sesionesIptv: 1, xuiBouquetIds: [],
 };
 
 function planToForm(p: Plan): FormValues {
@@ -74,6 +76,7 @@ function planToForm(p: Plan): FormValues {
     addresslist:          p.addresslist ?? '',
     crearCuentaIptv:      p.cuentaIptv ?? false,
     sesionesIptv:         p.sesionesIptv ?? 1,
+    xuiBouquetIds:        (p as any).xuiBouquetIds ?? [],
   };
 }
 
@@ -95,6 +98,7 @@ function formToPayload(v: FormValues) {
     addresslist:          v.addresslist,
     cuentaIptv:           v.crearCuentaIptv,
     sesionesIptv:         v.crearCuentaIptv ? v.sesionesIptv : null,
+    xuiBouquetIds:        v.crearCuentaIptv ? v.xuiBouquetIds : [],
   };
 }
 
@@ -214,6 +218,14 @@ export function PlanesTab() {
 
   const noCrearReglas    = watch('noCrearReglas');
   const crearCuentaIptv  = watch('crearCuentaIptv');
+  const xuiBouquetIds    = watch('xuiBouquetIds');
+
+  const { data: bouquets = [], isLoading: cargandoBouquets } = useQuery({
+    queryKey: ['xui-bouquets'],
+    queryFn:  xuiApi.listarBouquets,
+    enabled:  crearCuentaIptv,
+    staleTime: 5 * 60 * 1000,
+  });
   const descarga         = watch('velocidadBajada');
   const subida        = watch('velocidadSubida');
   const limitAt       = watch('velocidadGarantizada');
@@ -501,6 +513,52 @@ export function PlanesTab() {
                     </div>
                   )}
                 </div>
+                {crearCuentaIptv && (
+                  <div className="space-y-1">
+                    <label className="text-sm text-foreground">Bouquets (XUI ONE)</label>
+                    {cargandoBouquets ? (
+                      <p className="text-xs text-muted-foreground">Cargando bouquets…</p>
+                    ) : bouquets.length === 0 ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Sin bouquets disponibles — verifica la conexión con XUI ONE.
+                      </p>
+                    ) : (
+                      <Controller
+                        name="xuiBouquetIds"
+                        control={control}
+                        render={({ field }) => (
+                          <div className="flex flex-wrap gap-2 p-2 rounded-md border border-border max-h-40 overflow-y-auto">
+                            {bouquets.map((b) => {
+                              const seleccionado = field.value?.includes(b.id);
+                              return (
+                                <button
+                                  key={b.id}
+                                  type="button"
+                                  onClick={() => field.onChange(
+                                    seleccionado
+                                      ? field.value.filter((id: number) => id !== b.id)
+                                      : [...(field.value ?? []), b.id],
+                                  )}
+                                  className={cn(
+                                    'px-2 py-1 rounded-full text-xs border transition-colors',
+                                    seleccionado
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-muted text-muted-foreground border-border hover:bg-muted/70',
+                                  )}
+                                >
+                                  {b.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      />
+                    )}
+                    {xuiBouquetIds?.length === 0 && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">* Selecciona al menos un bouquet para este plan</p>
+                    )}
+                  </div>
+                )}
                 <p className="text-[11px] text-amber-600 dark:text-amber-400">* Se creará cuenta IPTV al contratar</p>
               </div>
 
