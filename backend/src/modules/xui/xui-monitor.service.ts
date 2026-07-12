@@ -87,6 +87,21 @@ export class XuiMonitorService {
           estadoSync:      EstadoSyncXuiLine.ERROR,
           ultimoErrorSync: 'no existe en XUI',
         });
+        continue;
+      }
+
+      // Reconciliar habilitado/deshabilitado: si alguien lo cambió
+      // directo en el panel XUI (fuera del ERP), lo corrige acá.
+      if (remoto.enabled !== line.habilitado) {
+        try {
+          if (line.habilitado) await this.xuiApi.enableLine(line.xuiLineId);
+          else                 await this.xuiApi.disableLine(line.xuiLineId);
+          this.logger.warn(
+            `[XUI reconciliación] line ${line.id} desfasado (XUI enabled=${remoto.enabled}, ERP habilitado=${line.habilitado}) — corregido`,
+          );
+        } catch (err: any) {
+          this.logger.warn(`[XUI reconciliación] no se pudo corregir habilitado en line ${line.id}: ${err.message}`);
+        }
       }
     }
   }

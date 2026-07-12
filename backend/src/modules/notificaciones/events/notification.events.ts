@@ -26,6 +26,8 @@ export const NOTIFICATION_EVENTS = {
   FTTH_ACTIVADO:        'ftth.cliente.activado',
   // Infraestructura — Outbox
   OUTBOX_RED_AGOTADO:   'notification.outbox_red.agotado',
+  // IPTV — XUI ONE
+  IPTV_LINE_CREADA:     'notification.iptv.line.creada',
 } as const;
 
 // ─── Payloads tipados para cada evento ───────────────────────
@@ -156,6 +158,16 @@ export interface EventNotificacionFtthActivado {
   planNombre:      string;
   ipAsignada:      string;
   usuarioPppoe:    string;
+}
+
+export interface EventNotificacionIptvLineCreada {
+  telefono:      string;
+  clienteNombre: string;
+  usuario:       string;
+  password:      string;
+  empresaId:     string;
+  contratoId?:   string;
+  clienteId?:    string;
 }
 
 export interface EventOutboxRedAgotado {

@@ -152,6 +152,8 @@ export default function IPTVPage() {
                       ? <span className="pill-offline">Error sync</span>
                       : l.estadoSync === 'pendiente_creacion'
                       ? <span className="pill-offline">Sincronizando…</span>
+                      : !l.habilitado
+                      ? <span className="pill-offline">Deshabilitado</span>
                       : l.conectado
                       ? <span className="pill-online">Conectado</span>
                       : <span className="text-xs text-muted-foreground">Desconectado</span>}

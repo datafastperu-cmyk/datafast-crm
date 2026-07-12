@@ -1328,6 +1328,10 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       </span>
                     ) : l.estadoSync === 'pendiente_creacion' ? (
                       <span className="text-amber-600 dark:text-amber-400">Sincronizando…</span>
+                    ) : !l.habilitado ? (
+                      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                        <AlertTriangle className="w-3 h-3" /> Deshabilitado
+                      </span>
                     ) : l.conectado ? (
                       <span className="text-emerald-600 dark:text-emerald-400">● Conectado</span>
                     ) : (

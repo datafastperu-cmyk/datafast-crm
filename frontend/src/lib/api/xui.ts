@@ -17,6 +17,7 @@ export interface XuiLine {
   bouquetIds:         number[];
   maxConexiones:      number;
   activo:             boolean;
+  habilitado:         boolean;
   estadoSync:         EstadoSyncXuiLine;
   ultimoErrorSync:    string | null;
   canalActual:        string | null;

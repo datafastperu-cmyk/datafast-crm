@@ -617,6 +617,10 @@ export class ContratosService {
         });
       }
 
+      // ── Re-habilitar line IPTV (XUI ONE), simétrico a MikroTik ──
+      this.xuiLinesSvc.habilitarLineDeContrato(id, user.empresaId)
+        .catch((e: any) => this.logger.warn(`cambiarEstado → XUI habilitarLine: ${e?.message}`));
+
       // ── Notificación de reactivación ──────────────────────────
       this.dataSource.query(
         `SELECT cl.whatsapp, cl.telefono, cl.nombre_completo
@@ -638,7 +642,7 @@ export class ContratosService {
 
     if (dto.estado === EstadoContrato.BAJA_DEFINITIVA) {
       const sagaBajaId = await this.sagaLog.iniciar(
-        SagaTipo.BAJA_DEFINITIVA, id, user.empresaId, user.sub, 4,
+        SagaTipo.BAJA_DEFINITIVA, id, user.empresaId, user.sub, 5,
       );
 
       upd.fechaBaja  = new Date().toISOString().split('T')[0];
@@ -682,6 +686,12 @@ export class ContratosService {
       await withTimeout(this.eliminarDeAccessListAntena(id), 15000, 'baja-antena')
         .then(() => this.sagaLog.registrarPaso(sagaBajaId, 4, 'eliminar_antena_ap', 'OK', undefined, Date.now() - t4))
         .catch((e: any) => { this.logger.warn(`cambiarEstado baja antena: ${e?.message}`); return this.sagaLog.registrarPaso(sagaBajaId, 4, 'eliminar_antena_ap', 'FAIL', e?.message, Date.now() - t4); });
+
+      // S5: Eliminar line IPTV (XUI ONE) — soft, no bloquea la baja
+      const t5 = Date.now();
+      await withTimeout(this.xuiLinesSvc.eliminarLineDeContrato(id, user.empresaId), 15000, 'eliminar-line-iptv')
+        .then(() => this.sagaLog.registrarPaso(sagaBajaId, 5, 'eliminar_line_iptv', 'OK', undefined, Date.now() - t5))
+        .catch((e: any) => { this.logger.warn(`cambiarEstado baja XUI: ${e?.message}`); return this.sagaLog.registrarPaso(sagaBajaId, 5, 'eliminar_line_iptv', 'FAIL', e?.message, Date.now() - t5); });
 
       // Completar saga aunque algunos pasos de hardware hayan fallado
       // El reconciliador detectará hardware huérfano y lo limpiará
@@ -809,6 +819,10 @@ export class ContratosService {
           }
         });
       }
+
+      // ── Deshabilitar line IPTV (XUI ONE), simétrico a MikroTik ──
+      this.xuiLinesSvc.deshabilitarLineDeContrato(id, user.empresaId)
+        .catch((e: any) => this.logger.warn(`cambiarEstado → XUI deshabilitarLine: ${e?.message}`));
 
       // ── Notificación WhatsApp ────────────────────────────────
       this.dataSource.query(

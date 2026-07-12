@@ -46,6 +46,11 @@ export class XuiLine extends BaseModel {
   @Column({ default: true })
   activo: boolean;
 
+  // Último estado deseado por el ERP (enable/disable) — independiente de
+  // estadoSync, que gobierna solo creación/eliminación del recurso.
+  @Column({ default: true })
+  habilitado: boolean;
+
   // ── Máquina de estados de sincronización con XUI ────────────
   @Column({
     name: 'estado_sync',

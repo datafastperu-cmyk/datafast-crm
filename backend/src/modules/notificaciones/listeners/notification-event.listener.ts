@@ -25,6 +25,7 @@ import {
   EventNotificacionRouterConectado,
   EventNotificacionFtthActivado,
   EventOutboxRedAgotado,
+  EventNotificacionIptvLineCreada,
 } from '../events/notification.events';
 
 // ─── Payload unificado para la cola Bull ──────────────────────
@@ -499,6 +500,29 @@ export class NotificationEventListener implements OnModuleInit {
         ip_asignada:   event.ipAsignada,
         usuario_pppoe: event.usuarioPppoe,
         plan_nombre:   event.planNombre,
+      },
+      empresaId:  event.empresaId,
+      contratoId: event.contratoId,
+      clienteId:  event.clienteId,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // IPTV — credenciales del line XUI ONE recién sincronizado
+  // ═══════════════════════════════════════════════════════════
+  @OnEvent(NOTIFICATION_EVENTS.IPTV_LINE_CREADA, { async: true })
+  async onIptvLineCreada(event: EventNotificacionIptvLineCreada): Promise<void> {
+    if (!event.telefono) return;
+    this.logger.log(
+      `[EVENT] ⚡ Recibido IPTV_LINE_CREADA → ${event.telefono.substring(0, 9)}... | empresa=${event.empresaId}`,
+    );
+    await this.encolar('iptv_credenciales', {
+      telefono:  event.telefono,
+      tipo:      'iptv_credenciales',
+      variables: {
+        clienteNombre: event.clienteNombre,
+        usuario:       event.usuario,
+        password:      event.password,
       },
       empresaId:  event.empresaId,
       contratoId: event.contratoId,

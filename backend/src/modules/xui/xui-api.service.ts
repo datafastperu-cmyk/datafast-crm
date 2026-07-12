@@ -222,6 +222,16 @@ export class XuiApiService implements OnModuleInit {
     await this.delete(`/api/line/${xuiLineId}`);
   }
 
+  async enableLine(xuiLineId: string): Promise<void> {
+    this.assertNotDegraded();
+    await this.put(`/api/line/${xuiLineId}`, { enabled: 1 });
+  }
+
+  async disableLine(xuiLineId: string): Promise<void> {
+    this.assertNotDegraded();
+    await this.put(`/api/line/${xuiLineId}`, { enabled: 0 });
+  }
+
   async getLine(xuiLineId: string): Promise<XuiLineRemote | null> {
     try {
       const res = await this.get<any>(`/api/line/${xuiLineId}`);
