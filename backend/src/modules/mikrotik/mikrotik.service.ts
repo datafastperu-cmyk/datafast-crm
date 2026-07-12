@@ -128,9 +128,11 @@ export class MikrotikService implements OnModuleInit {
       this.moduleHealth.registrar('mikrotik', 'degraded', err.message);
     }
 
-    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
-    const job = new CronJob('*/5 * * * *', () => this.pollRouterMetrics(), null, true, tz);
-    this.schedulerRegistry.addCronJob('mikrotik-poll-metrics', job);
+    if (process.env.RUN_CRONS === 'true') {
+      const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+      const job = new CronJob('*/5 * * * *', () => this.pollRouterMetrics(), null, true, tz);
+      this.schedulerRegistry.addCronJob('mikrotik-poll-metrics', job);
+    }
   }
 
   isDegraded(): boolean {

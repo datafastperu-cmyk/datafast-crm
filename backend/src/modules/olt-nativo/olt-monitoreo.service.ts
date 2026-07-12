@@ -62,6 +62,7 @@ export class OltMonitoreoService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const job = new CronJob('2-59/5 * * * *', () => this.pollOltMetrics(), null, true, tz);
     this.schedulerRegistry.addCronJob('olt-monitoreo-poll-metrics', job);

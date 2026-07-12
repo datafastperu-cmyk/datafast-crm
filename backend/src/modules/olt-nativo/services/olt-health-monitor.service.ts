@@ -54,6 +54,7 @@ export class OltHealthMonitorService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const job = new CronJob('*/5 * * * *', () => this.checkAll(), null, true, tz);
     this.schedulerRegistry.addCronJob('olt-health-monitor-check-all', job);

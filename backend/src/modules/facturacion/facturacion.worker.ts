@@ -32,6 +32,7 @@ export class FacturacionScheduler implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const job = new CronJob('5 0 * * *', () => this.scheduleDailyJobs(), null, true, tz);
     this.schedulerRegistry.addCronJob('facturacion-schedule-daily-jobs', job);

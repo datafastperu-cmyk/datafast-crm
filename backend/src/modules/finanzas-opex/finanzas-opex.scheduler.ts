@@ -18,6 +18,7 @@ export class FinanzasOpexScheduler implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const job = new CronJob('0 7 * * *', () => this.generarPendientesRecurrentes(), null, true, tz);
     this.schedulerRegistry.addCronJob('generar-pendientes-opex', job);

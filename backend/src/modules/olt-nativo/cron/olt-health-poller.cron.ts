@@ -53,6 +53,7 @@ export class OltHealthPollerCron implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const jobs: Array<[string, string, () => Promise<void>]> = [
       ['olt-health-poller-boards',       '0,30 * * * *', () => this.pollBoards()],

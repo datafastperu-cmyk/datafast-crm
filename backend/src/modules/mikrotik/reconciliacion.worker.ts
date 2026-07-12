@@ -28,6 +28,7 @@ export class ReconciliacionWorker implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const job = new CronJob('0 */30 * * * *', () => this.reconciliar(), null, true, tz);
     this.schedulerRegistry.addCronJob('mikrotik-reconciliacion', job);

@@ -70,9 +70,11 @@ export class BackupService implements OnModuleInit {
       );
     }
 
-    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
-    const job = new CronJob('* * * * *', () => this.cronBackupDiario(), null, true, tz);
-    this.schedulerRegistry.addCronJob('auto-backup-diario', job);
+    if (process.env.RUN_CRONS === 'true') {
+      const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+      const job = new CronJob('* * * * *', () => this.cronBackupDiario(), null, true, tz);
+      this.schedulerRegistry.addCronJob('auto-backup-diario', job);
+    }
   }
 
   private get appDir(): string {

@@ -58,6 +58,7 @@ export class VpnClienteService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const job = new CronJob('0 */10 * * * *', () => this.limpiarWizardsAbandonados(), null, true, tz);
     this.schedulerRegistry.addCronJob('vpn-cleanup-abandonados', job);

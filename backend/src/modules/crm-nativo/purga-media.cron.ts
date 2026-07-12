@@ -21,6 +21,7 @@ export class PurgaMediaCron implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const job = new CronJob('0 2 * * *', () => this.ejecutar(), null, true, tz);
     this.schedulerRegistry.addCronJob('purga-media-crm', job);

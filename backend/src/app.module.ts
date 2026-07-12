@@ -154,7 +154,11 @@ import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pag
       maxListeners: 30,
       ignoreErrors: false,
     }),
-    ...(process.env.RUN_CRONS === 'true' ? [ScheduleModule.forRoot()] : []),
+    // Siempre registrado: SchedulerRegistry debe existir en todos los procesos
+    // (varios servicios que la inyectan también se cargan en datafast-api-core,
+    // no solo en el worker). Registrar el módulo no ejecuta ningún job por sí
+    // solo — cada servicio decide con RUN_CRONS si realmente agrega el cron.
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
       imports:    [ConfigModule],
       useFactory: () => ({

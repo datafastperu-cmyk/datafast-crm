@@ -30,6 +30,7 @@ export class MantenimientoService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
     const job = new CronJob('0 3 * * *', () => this.ejecutarMantenimientoDiario(), null, true, tz);
     this.schedulerRegistry.addCronJob('mantenimiento-diario', job);
