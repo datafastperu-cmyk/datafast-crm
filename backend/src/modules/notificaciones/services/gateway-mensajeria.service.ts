@@ -128,6 +128,8 @@ const TIPO_A_CODIGO: Record<string, string> = {
   router_conectado:    'router_conectado',
   // Infraestructura — Outbox agotado
   outbox_red_agotado:  'outbox_red_agotado',
+  // IPTV — XUI ONE
+  iptv_credenciales:   'iptv_credenciales',
 };
 
 // Orden de intento de fallback cuando el proveedor primario falla con error transitorio.

@@ -12,7 +12,8 @@ import { PlantillaAbonado, FacturacionConfig, NotificacionesConfig } from './ent
 // Variables de evento: {{monto}}, {{numero_factura}},
 // {{fecha_vencimiento}}, {{dias_vencidos}}, {{numero_cuenta}},
 // {{metodo_pago}}, {{saldo_pendiente}}, {{link_pago}},
-// {{nombre_gasto}}, {{categoria}}, {{dias_restantes}}
+// {{nombre_gasto}}, {{categoria}}, {{dias_restantes}},
+// {{usuario}}, {{password}} (credenciales IPTV)
 export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenido: string }> = {
   aviso_pago_01: {
     nombre: 'Aviso de Pago #1',
@@ -93,6 +94,11 @@ export const SYSTEM_DEFAULTS_WHATSAPP: Record<string, { nombre: string; contenid
     nombre: 'Alerta Outbox Red Agotado (Interno)',
     contenido:
       '🚨 ALERTA {{empresa}}: La acción *{{accion}}* en red agotó todos los reintentos. El equipo requiere intervención manual. Último error: {{ultimo_error}}. Revise el outbox desde el ERP.',
+  },
+  iptv_credenciales: {
+    nombre: 'Credenciales de Servicio IPTV',
+    contenido:
+      '📺 {{nombre_cliente}}, su servicio IPTV ya está activo. Usuario: {{usuario}} | Contraseña: {{password}}. Guarde estos datos para configurar su aplicación o decodificador. Soporte: {{telefono_empresa}}. {{empresa}}.',
   },
 };
 
