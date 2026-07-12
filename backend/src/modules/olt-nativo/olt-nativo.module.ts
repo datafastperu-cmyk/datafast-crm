@@ -12,6 +12,7 @@ import { MetricasOnuOptical }  from './entities/metricas-onu-optical.entity';
 import { HistorialFirmware }   from './entities/historial-firmware.entity';
 import { FtthOnuRegistro }    from './entities/ftth-onu-registro.entity';
 import { FtthRollbackLog }   from './entities/ftth-rollback-log.entity';
+import { ContratoOnuConfig } from './entities/contrato-onu-config.entity';
 import { OltServicePortPool } from './entities/olt-service-port-pool.entity';
 import { OltOnuIdPool }      from './entities/olt-onu-id-pool.entity';
 import { OltVlan }           from './entities/olt-vlan.entity';
@@ -110,6 +111,7 @@ import { OltGateway }                from './olt.gateway';
       HistorialFirmware,
       FtthOnuRegistro,
       FtthRollbackLog,
+      ContratoOnuConfig,
       OltServicePortPool,
       OltOnuIdPool,
       OltVlan,
