@@ -7,12 +7,13 @@ const baseDesired = (): DesiredConfiguration => ({
   wifi:     { enabled: true, ssid: 'S', password: 'P', ssid5g: 'S5', password5g: 'P5' },
   internet: { enabled: true, type: 'pppoe', username: 'u', password: 'p' },
   voip:     { enabled: true, user: 'vu', password: 'vp' },
+  onuAdmin: { enabled: true, user: 'admin', password: 'AdminPwd#1' },
 });
 
 const profile = (caps: Partial<DeviceProfile['capabilities']>): DeviceProfile => ({
   vendor: 'V', model: 'M', match: { productClass: 'M' }, bootstrap_method: 'DHCP_OPTION_43',
   parameter_map: 'm', provision: 'p',
-  capabilities: { pppoe: true, wifi_2g: true, wifi_5g: true, voip: true, ...caps },
+  capabilities: { pppoe: true, wifi_2g: true, wifi_5g: true, voip: true, onu_admin_credentials: true, ...caps },
 });
 
 describe('filterByCapabilities', () => {
@@ -44,6 +45,16 @@ describe('filterByCapabilities', () => {
   it('sin pppoe: deshabilita internet PPPoE', () => {
     const out = filterByCapabilities(baseDesired(), profile({ pppoe: false }));
     expect(out.internet?.enabled).toBe(false);
+  });
+
+  it('modelo completo: mantiene credenciales admin de la ONU', () => {
+    const out = filterByCapabilities(baseDesired(), profile({}));
+    expect(out.onuAdmin?.enabled).toBe(true);
+  });
+
+  it('sin onu_admin_credentials: deshabilita la gestión de credenciales admin', () => {
+    const out = filterByCapabilities(baseDesired(), profile({ onu_admin_credentials: false }));
+    expect(out.onuAdmin?.enabled).toBe(false);
   });
 
   it('no muta la configuración de entrada (inmutable)', () => {

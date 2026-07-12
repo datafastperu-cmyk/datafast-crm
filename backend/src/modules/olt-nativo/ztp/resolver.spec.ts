@@ -43,6 +43,22 @@ describe('resolve (Resolver)', () => {
     expect(plan.writes.some((w) => w.key.startsWith('wifi'))).toBe(false);
   });
 
+  it('onuAdmin: emite writes de credenciales admin de la ONU con la ruta X_HW_WebUserInfo.2', () => {
+    const plan = resolve('dev', desired({ onuAdmin: { enabled: true, user: 'soporte', password: 'S3creta#9' } }),
+      HUAWEI_EG8145V5, HUAWEI_IGD_V1);
+    const u = plan.writes.find((w) => w.key === 'onu_admin.user');
+    const p = plan.writes.find((w) => w.key === 'onu_admin.password');
+    expect(u?.candidates[0]).toContain('X_HW_WebUserInfo.2.UserName');
+    expect(u?.value).toBe('soporte');
+    expect(p?.candidates[0]).toContain('X_HW_WebUserInfo.2.Password');
+    expect(p?.value).toBe('S3creta#9');
+  });
+
+  it('onuAdmin deshabilitado: no genera writes de credenciales admin', () => {
+    const plan = resolve('dev', desired({ onuAdmin: { enabled: false } }), HUAWEI_EG8145V5, HUAWEI_IGD_V1);
+    expect(plan.writes.some((w) => w.key.startsWith('onu_admin'))).toBe(false);
+  });
+
   it('propaga device, profile y metadata.revision', () => {
     const plan = resolve('dev-99', desired(), HUAWEI_EG8145V5, HUAWEI_IGD_V1);
     expect(plan.device).toBe('dev-99');

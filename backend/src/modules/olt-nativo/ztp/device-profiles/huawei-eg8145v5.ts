@@ -20,5 +20,7 @@ export const HUAWEI_EG8145V5: DeviceProfile = {
     vlan_per_service: true,
     voip: true,
     iptv_multicast: true,
+    // Rutas X_HW_WebUserInfo/X_HW_CLIUserInfo verificadas writable en vivo (2026-07-12).
+    onu_admin_credentials: true,
   },
 };

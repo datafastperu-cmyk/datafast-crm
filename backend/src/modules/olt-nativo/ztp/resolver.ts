@@ -57,6 +57,12 @@ export function resolve(
     push('voip.proxy',     desired.voip.proxy);
   }
 
+  // Credenciales de acceso admin de la ONU (login del propio equipo)
+  if (desired.onuAdmin?.enabled) {
+    push('onu_admin.user',     desired.onuAdmin.user);
+    push('onu_admin.password', desired.onuAdmin.password);
+  }
+
   return {
     device:  deviceId,
     profile: `${profile.vendor}_${profile.model}`,

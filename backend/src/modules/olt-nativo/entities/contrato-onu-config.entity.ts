@@ -59,6 +59,17 @@ export class ContratoOnuConfig extends BaseModel {
   @Column({ name: 'voip_password', type: 'text', nullable: true })
   voipPassword: string | null;
 
+  // ── Credenciales de acceso admin de la ONU (login del propio equipo) ──
+  @Column({ name: 'onu_admin_enabled', type: 'boolean', default: false })
+  onuAdminEnabled: boolean;
+
+  @Column({ name: 'onu_admin_user', type: 'varchar', length: 64, nullable: true })
+  onuAdminUser: string | null;
+
+  /** Cifrada. */
+  @Column({ name: 'onu_admin_password', type: 'text', nullable: true })
+  onuAdminPassword: string | null;
+
   // ── Control del pipeline ──
   /** Activación del aprovisionamiento TR-069. false por defecto (seguridad). */
   @Column({ name: 'provisioning_enabled', type: 'boolean', default: false })

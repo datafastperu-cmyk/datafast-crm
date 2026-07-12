@@ -45,6 +45,12 @@ export interface DesiredConfiguration {
     registrar?: string;
     proxy?:     string;
   };
+  /** Credenciales de acceso administrativo de la propia ONU (login web/CLI del equipo). */
+  onuAdmin?: {
+    enabled:   boolean;
+    user?:     string;
+    password?: string;
+  };
 }
 
 // ── Contrato 2: DeviceProfile ──────────────────────────────────────────────
@@ -73,6 +79,8 @@ export interface DeviceProfile {
     vlan_per_service?: boolean;
     voip?:             boolean;
     iptv_multicast?:   boolean;
+    /** ¿El modelo permite gestionar sus credenciales de acceso admin por TR-069? */
+    onu_admin_credentials?: boolean;
   };
 }
 

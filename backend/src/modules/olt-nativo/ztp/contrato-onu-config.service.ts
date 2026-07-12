@@ -17,6 +17,9 @@ export class UpsertOnuConfigDto {
   @IsOptional() @IsBoolean() voipEnabled?: boolean;
   @IsOptional() @IsString() @MaxLength(64) voipUser?: string;
   @IsOptional() @IsString() @MaxLength(64) voipPassword?: string;
+  @IsOptional() @IsBoolean() onuAdminEnabled?: boolean;
+  @IsOptional() @IsString() @MaxLength(64) onuAdminUser?: string;
+  @IsOptional() @IsString() @MinLength(6) @MaxLength(64) onuAdminPassword?: string;
 }
 
 // Genera una clave fuerte (12 chars, sin ambiguos) con complejidad garantizada
@@ -78,6 +81,9 @@ export class ContratoOnuConfigService {
     if (dto.voipEnabled    !== undefined) row.voipEnabled    = dto.voipEnabled;
     if (dto.voipUser       !== undefined) row.voipUser       = dto.voipUser;
     if (dto.voipPassword   !== undefined) row.voipPassword   = encrypt(dto.voipPassword);
+    if (dto.onuAdminEnabled  !== undefined) row.onuAdminEnabled  = dto.onuAdminEnabled;
+    if (dto.onuAdminUser     !== undefined) row.onuAdminUser     = dto.onuAdminUser;
+    if (dto.onuAdminPassword !== undefined) row.onuAdminPassword = encrypt(dto.onuAdminPassword);
 
     row.revision = (row.revision ?? 0) + 1;
     const saved = await this.repo.save(row);

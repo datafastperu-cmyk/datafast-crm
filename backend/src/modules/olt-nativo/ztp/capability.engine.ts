@@ -37,5 +37,10 @@ export function filterByCapabilities(
     out.voip.enabled = false;
   }
 
+  // Credenciales de acceso admin de la ONU
+  if (out.onuAdmin?.enabled && !caps.onu_admin_credentials) {
+    out.onuAdmin.enabled = false;
+  }
+
   return out;
 }
