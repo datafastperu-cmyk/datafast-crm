@@ -57,10 +57,14 @@ export function resolve(
     push('voip.proxy',     desired.voip.proxy);
   }
 
-  // Credenciales de acceso admin de la ONU (login del propio equipo)
+  // Credenciales de acceso de la ONU (cuentas web admin/usuario y CLI root del propio equipo)
   if (desired.onuAdmin?.enabled) {
-    push('onu_admin.user',     desired.onuAdmin.user);
-    push('onu_admin.password', desired.onuAdmin.password);
+    push('onu_admin.user',       desired.onuAdmin.user);
+    push('onu_admin.password',   desired.onuAdmin.password);
+    push('onu_webuser.user',     desired.onuAdmin.webUser);
+    push('onu_webuser.password', desired.onuAdmin.webUserPassword);
+    push('onu_cli.user',         desired.onuAdmin.cliUser);
+    push('onu_cli.password',     desired.onuAdmin.cliPassword);
   }
 
   return {

@@ -45,11 +45,18 @@ export interface DesiredConfiguration {
     registrar?: string;
     proxy?:     string;
   };
-  /** Credenciales de acceso administrativo de la propia ONU (login web/CLI del equipo). */
+  /** Credenciales de acceso de la propia ONU (login web/CLI del equipo). */
   onuAdmin?: {
     enabled:   boolean;
+    /** Cuenta ADMIN web (telecomadmin). */
     user?:     string;
     password?: string;
+    /** Cuenta USUARIO web (limitada). */
+    webUser?:         string;
+    webUserPassword?: string;
+    /** Cuenta CLI/Telnet root. */
+    cliUser?:     string;
+    cliPassword?: string;
   };
 }
 

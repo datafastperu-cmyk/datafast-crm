@@ -70,6 +70,22 @@ export class ContratoOnuConfig extends BaseModel {
   @Column({ name: 'onu_admin_password', type: 'text', nullable: true })
   onuAdminPassword: string | null;
 
+  // Cuenta USUARIO web (limitada)
+  @Column({ name: 'onu_webuser_user', type: 'varchar', length: 64, nullable: true })
+  onuWebUser: string | null;
+
+  /** Cifrada. */
+  @Column({ name: 'onu_webuser_password', type: 'text', nullable: true })
+  onuWebUserPassword: string | null;
+
+  // Cuenta CLI/Telnet root
+  @Column({ name: 'onu_cli_user', type: 'varchar', length: 64, nullable: true })
+  onuCliUser: string | null;
+
+  /** Cifrada. */
+  @Column({ name: 'onu_cli_password', type: 'text', nullable: true })
+  onuCliPassword: string | null;
+
   // ── Control del pipeline ──
   /** Activación del aprovisionamiento TR-069. false por defecto (seguridad). */
   @Column({ name: 'provisioning_enabled', type: 'boolean', default: false })

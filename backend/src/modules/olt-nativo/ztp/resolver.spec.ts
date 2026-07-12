@@ -54,6 +54,23 @@ describe('resolve (Resolver)', () => {
     expect(p?.value).toBe('S3creta#9');
   });
 
+  it('onuAdmin: cuentas usuario web (.1) y CLI root (Eproot) con sus rutas', () => {
+    const plan = resolve('dev', desired({ onuAdmin: {
+      enabled: true, webUser: 'cliente', webUserPassword: 'Web#1234', cliUser: 'root', cliPassword: 'Cli#1234',
+    } }), HUAWEI_EG8145V5, HUAWEI_IGD_V1);
+    expect(plan.writes.find((w) => w.key === 'onu_webuser.user')?.candidates[0]).toContain('X_HW_WebUserInfo.1.UserName');
+    expect(plan.writes.find((w) => w.key === 'onu_webuser.password')?.value).toBe('Web#1234');
+    expect(plan.writes.find((w) => w.key === 'onu_cli.user')?.candidates[0]).toContain('X_HW_CLIUserInfo.1.Username');
+    expect(plan.writes.find((w) => w.key === 'onu_cli.password')?.candidates[0]).toContain('X_HW_CLIUserInfo.1.Userpassword');
+  });
+
+  it('onuAdmin: solo emite las cuentas con valor (las vacías se omiten)', () => {
+    const plan = resolve('dev', desired({ onuAdmin: { enabled: true, user: 'a', password: 'Admin#12' } }),
+      HUAWEI_EG8145V5, HUAWEI_IGD_V1);
+    expect(plan.writes.some((w) => w.key.startsWith('onu_webuser'))).toBe(false);
+    expect(plan.writes.some((w) => w.key.startsWith('onu_cli'))).toBe(false);
+  });
+
   it('onuAdmin deshabilitado: no genera writes de credenciales admin', () => {
     const plan = resolve('dev', desired({ onuAdmin: { enabled: false } }), HUAWEI_EG8145V5, HUAWEI_IGD_V1);
     expect(plan.writes.some((w) => w.key.startsWith('onu_admin'))).toBe(false);

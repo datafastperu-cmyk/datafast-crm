@@ -31,10 +31,15 @@ export const HUAWEI_IGD_V1: ParameterMap = {
     'voip.number':    ['InternetGatewayDevice.Services.VoiceService.1.VoiceProfile.1.Line.1.DirectoryNumber'],
     'voip.registrar': ['InternetGatewayDevice.Services.VoiceService.1.VoiceProfile.1.SIP.RegistrarServer'],
     'voip.proxy':     ['InternetGatewayDevice.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServer'],
-    // Credenciales de acceso admin de la ONU. X_HW_WebUserInfo.2 = cuenta admin (Epadmin/telecomadmin);
-    // .1 = cuenta usuario. Rutas verificadas writable en vivo (EG8145V5 V5R020C10S195, 2026-07-12).
+    // Credenciales de acceso de la ONU. Rutas verificadas writable en vivo (EG8145V5 V5R020C10S195,
+    // 2026-07-12). X_HW_WebUserInfo.2 = admin web (Epadmin/telecomadmin); .1 = usuario web;
+    // X_HW_CLIUserInfo.1 = root CLI/Telnet (Eproot; el campo de clave es 'Userpassword').
     'onu_admin.user':     ['InternetGatewayDevice.UserInterface.X_HW_WebUserInfo.2.UserName'],
     'onu_admin.password': ['InternetGatewayDevice.UserInterface.X_HW_WebUserInfo.2.Password'],
+    'onu_webuser.user':     ['InternetGatewayDevice.UserInterface.X_HW_WebUserInfo.1.UserName'],
+    'onu_webuser.password': ['InternetGatewayDevice.UserInterface.X_HW_WebUserInfo.1.Password'],
+    'onu_cli.user':     ['InternetGatewayDevice.UserInterface.X_HW_CLIUserInfo.1.Username'],
+    'onu_cli.password': ['InternetGatewayDevice.UserInterface.X_HW_CLIUserInfo.1.Userpassword'],
   },
   discovery: {
     ppp: {

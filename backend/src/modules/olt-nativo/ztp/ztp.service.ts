@@ -95,8 +95,16 @@ export class ZtpProvisioningService {
       voip: cfg.voipEnabled && !!cfg.voipUser
         ? { enabled: true, user: cfg.voipUser, password: this._dec(cfg.voipPassword) }
         : { enabled: false },
-      onuAdmin: cfg.onuAdminEnabled && !!cfg.onuAdminUser
-        ? { enabled: true, user: cfg.onuAdminUser, password: this._dec(cfg.onuAdminPassword) }
+      onuAdmin: cfg.onuAdminEnabled
+        ? {
+            enabled: true,
+            user:     cfg.onuAdminUser ?? undefined,
+            password: this._dec(cfg.onuAdminPassword),
+            webUser:         cfg.onuWebUser ?? undefined,
+            webUserPassword: this._dec(cfg.onuWebUserPassword),
+            cliUser:         cfg.onuCliUser ?? undefined,
+            cliPassword:     this._dec(cfg.onuCliPassword),
+          }
         : { enabled: false },
     };
   }

@@ -20,6 +20,10 @@ export class UpsertOnuConfigDto {
   @IsOptional() @IsBoolean() onuAdminEnabled?: boolean;
   @IsOptional() @IsString() @MaxLength(64) onuAdminUser?: string;
   @IsOptional() @IsString() @MinLength(6) @MaxLength(64) onuAdminPassword?: string;
+  @IsOptional() @IsString() @MaxLength(64) onuWebUser?: string;
+  @IsOptional() @IsString() @MinLength(6) @MaxLength(64) onuWebUserPassword?: string;
+  @IsOptional() @IsString() @MaxLength(64) onuCliUser?: string;
+  @IsOptional() @IsString() @MinLength(6) @MaxLength(64) onuCliPassword?: string;
 }
 
 // Genera una clave fuerte (12 chars, sin ambiguos) con complejidad garantizada
@@ -84,6 +88,10 @@ export class ContratoOnuConfigService {
     if (dto.onuAdminEnabled  !== undefined) row.onuAdminEnabled  = dto.onuAdminEnabled;
     if (dto.onuAdminUser     !== undefined) row.onuAdminUser     = dto.onuAdminUser;
     if (dto.onuAdminPassword !== undefined) row.onuAdminPassword = encrypt(dto.onuAdminPassword);
+    if (dto.onuWebUser         !== undefined) row.onuWebUser         = dto.onuWebUser;
+    if (dto.onuWebUserPassword !== undefined) row.onuWebUserPassword = encrypt(dto.onuWebUserPassword);
+    if (dto.onuCliUser         !== undefined) row.onuCliUser         = dto.onuCliUser;
+    if (dto.onuCliPassword     !== undefined) row.onuCliPassword     = encrypt(dto.onuCliPassword);
 
     row.revision = (row.revision ?? 0) + 1;
     const saved = await this.repo.save(row);
