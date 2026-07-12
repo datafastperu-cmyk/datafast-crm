@@ -5,6 +5,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { IsInt, Min } from 'class-validator';
 import { Type } from 'class-transformer';
+import { CanalServicePort } from '../entities/olt-service-port-pool.entity';
 
 // ─── DTOs ─────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ export class OltServicePortPoolService {
     oltId:     string,
     empresaId: string,
     dto:       ConfigurarPoolDto,
+    canal:     CanalServicePort = 'datos',
   ): Promise<{ insertados: number; omitidos: number }> {
     if (dto.fin < dto.inicio) {
       throw new UnprocessableEntityException(
@@ -55,18 +57,18 @@ export class OltServicePortPoolService {
 
     const rows = await this.ds.query<{ service_port_id: number }[]>(
       `INSERT INTO olt_service_port_pool
-         (id, empresa_id, olt_id, service_port_id, estado, created_at, updated_at, version)
-       SELECT gen_random_uuid(), $1, $2, svc_id, 'libre', NOW(), NOW(), 1
+         (id, empresa_id, olt_id, canal, service_port_id, estado, created_at, updated_at, version)
+       SELECT gen_random_uuid(), $1, $2, $4, svc_id, 'libre', NOW(), NOW(), 1
        FROM   unnest($3::int[]) AS svc_id
-       ON CONFLICT (olt_id, service_port_id) DO NOTHING
+       ON CONFLICT (olt_id, canal, service_port_id) DO NOTHING
        RETURNING service_port_id`,
-      [empresaId, oltId, ids],
+      [empresaId, oltId, ids, canal],
     );
 
     const insertados = rows.length;
     const omitidos   = ids.length - insertados;
     this.logger.log(
-      `Pool config | olt=${oltId} rango=${dto.inicio}–${dto.fin} ` +
+      `Pool config | olt=${oltId} canal=${canal} rango=${dto.inicio}–${dto.fin} ` +
       `insertados=${insertados} omitidos=${omitidos}`,
     );
     return { insertados, omitidos };
@@ -76,21 +78,26 @@ export class OltServicePortPoolService {
   // Asigna atómicamente el siguiente service_port_id libre.
   // Retorna null → pool sin configurar (modo bypass: DTO debe traer servicePortId).
   // Lanza UnprocessableEntityException si pool configurado pero agotado.
-  async allocar(oltId: string, contratoId: string): Promise<number | null> {
+  async allocar(
+    oltId: string,
+    contratoId: string,
+    canal: CanalServicePort = 'datos',
+  ): Promise<number | null> {
     // Reutilizar si ya hay slot ocupado para este contrato (flujo de reintento)
     const [existing] = await this.ds.query<{ service_port_id: number }[]>(
       `SELECT service_port_id
        FROM   olt_service_port_pool
        WHERE  olt_id      = $1
          AND  contrato_id = $2
+         AND  canal       = $3
          AND  estado      = 'ocupado'
          AND  deleted_at  IS NULL
        LIMIT  1`,
-      [oltId, contratoId],
+      [oltId, contratoId, canal],
     );
     if (existing) {
       this.logger.log(
-        `Pool reuse | olt=${oltId} contrato=${contratoId} svcPort=${existing.service_port_id}`,
+        `Pool reuse | olt=${oltId} canal=${canal} contrato=${contratoId} svcPort=${existing.service_port_id}`,
       );
       return existing.service_port_id;
     }
@@ -107,6 +114,7 @@ export class OltServicePortPoolService {
          SELECT id
          FROM   olt_service_port_pool
          WHERE  olt_id     = $2
+           AND  canal      = $3
            AND  estado     = 'libre'
            AND  deleted_at IS NULL
          ORDER  BY service_port_id ASC
@@ -114,7 +122,7 @@ export class OltServicePortPoolService {
          FOR UPDATE SKIP LOCKED
        )
        RETURNING service_port_id`,
-      [contratoId, oltId],
+      [contratoId, oltId, canal],
     );
     // TypeORM devuelve [filas, affectedCount] en UPDATE...RETURNING.
     const filas = Array.isArray(result?.[0]) ? result[0] : result;
@@ -122,18 +130,19 @@ export class OltServicePortPoolService {
 
     if (allocated?.service_port_id != null) {
       this.logger.log(
-        `Pool alloc | olt=${oltId} contrato=${contratoId} svcPort=${allocated.service_port_id}`,
+        `Pool alloc | olt=${oltId} canal=${canal} contrato=${contratoId} svcPort=${allocated.service_port_id}`,
       );
       return allocated.service_port_id;
     }
 
-    // ¿El pool existe para esta OLT o está en modo bypass?
+    // ¿El pool existe para esta OLT/canal o está en modo bypass?
     const [{ total }] = await this.ds.query<{ total: string }[]>(
       `SELECT COUNT(*)::text AS total
        FROM   olt_service_port_pool
        WHERE  olt_id    = $1
+         AND  canal     = $2
          AND  deleted_at IS NULL`,
-      [oltId],
+      [oltId, canal],
     );
 
     if (Number(total) === 0) {
@@ -141,16 +150,20 @@ export class OltServicePortPoolService {
       return null;
     }
 
-    this.logger.warn(`Pool de Service Ports AGOTADO | olt=${oltId}`);
+    this.logger.warn(`Pool de Service Ports AGOTADO | olt=${oltId} canal=${canal}`);
     throw new UnprocessableEntityException(
-      `Pool de Service Port IDs agotado para esta OLT. ` +
+      `Pool de Service Port IDs (canal ${canal}) agotado para esta OLT. ` +
       `Configura un rango más amplio desde el panel de la OLT.`,
     );
   }
 
   // ── liberar ───────────────────────────────────────────────────────
   // Devuelve un service port al pool (rollback de GPON fallido).
-  async liberar(oltId: string, contratoId: string): Promise<void> {
+  async liberar(
+    oltId: string,
+    contratoId: string,
+    canal: CanalServicePort = 'datos',
+  ): Promise<void> {
     await this.ds.query(
       `UPDATE olt_service_port_pool
        SET estado      = 'libre',
@@ -160,16 +173,21 @@ export class OltServicePortPoolService {
            version     = version + 1
        WHERE olt_id      = $1
          AND contrato_id = $2
+         AND canal       = $3
          AND deleted_at  IS NULL`,
-      [oltId, contratoId],
+      [oltId, contratoId, canal],
     );
-    this.logger.log(`Pool release | olt=${oltId} contrato=${contratoId}`);
+    this.logger.log(`Pool release | olt=${oltId} canal=${canal} contrato=${contratoId}`);
   }
 
   // ── marcarColision ────────────────────────────────────────────────
   // El ID ya existe en la OLT (colisión): se marca ocupado sin contrato para
   // que allocar nunca lo devuelva. Se usa en el auto-sanado de la provisión.
-  async marcarColision(oltId: string, servicePortId: number): Promise<void> {
+  async marcarColision(
+    oltId: string,
+    servicePortId: number,
+    canal: CanalServicePort = 'datos',
+  ): Promise<void> {
     await this.ds.query(
       `UPDATE olt_service_port_pool
        SET estado      = 'ocupado',
@@ -179,16 +197,21 @@ export class OltServicePortPoolService {
            version     = version + 1
        WHERE olt_id          = $1
          AND service_port_id = $2
+         AND canal           = $3
          AND deleted_at      IS NULL`,
-      [oltId, servicePortId],
+      [oltId, servicePortId, canal],
     );
     this.logger.warn(
-      `Pool colisión | olt=${oltId} svcPort=${servicePortId} ya existe en la OLT — marcado no-usable`,
+      `Pool colisión | olt=${oltId} canal=${canal} svcPort=${servicePortId} ya existe en la OLT — marcado no-usable`,
     );
   }
 
   // ── obtenerEstado ─────────────────────────────────────────────────
-  async obtenerEstado(oltId: string, empresaId: string): Promise<EstadoPool> {
+  async obtenerEstado(
+    oltId: string,
+    empresaId: string,
+    canal: CanalServicePort = 'datos',
+  ): Promise<EstadoPool> {
     const [s] = await this.ds.query<{
       total:    string;
       libres:   string;
@@ -205,8 +228,9 @@ export class OltServicePortPoolService {
        FROM  olt_service_port_pool
        WHERE olt_id     = $1
          AND empresa_id = $2
+         AND canal      = $3
          AND deleted_at IS NULL`,
-      [oltId, empresaId],
+      [oltId, empresaId, canal],
     );
 
     return {
@@ -220,7 +244,11 @@ export class OltServicePortPoolService {
   // ── limpiarLibres ─────────────────────────────────────────────────
   // Soft-delete de todas las entradas libres para reconfigurar el rango.
   // Las entradas ocupadas se mantienen intactas.
-  async limpiarLibres(oltId: string, empresaId: string): Promise<{ eliminados: number }> {
+  async limpiarLibres(
+    oltId: string,
+    empresaId: string,
+    canal: CanalServicePort = 'datos',
+  ): Promise<{ eliminados: number }> {
     const result: any = await this.ds.query(
       `UPDATE olt_service_port_pool
        SET deleted_at = NOW(),
@@ -228,15 +256,16 @@ export class OltServicePortPoolService {
            version    = version + 1
        WHERE olt_id     = $1
          AND empresa_id = $2
+         AND canal      = $3
          AND estado     = 'libre'
          AND deleted_at IS NULL
        RETURNING id`,
-      [oltId, empresaId],
+      [oltId, empresaId, canal],
     );
     // TypeORM/pg devuelve [filas, affectedCount] para UPDATE...RETURNING.
     const filas = Array.isArray(result?.[0]) ? result[0] : result;
     const eliminados = Array.isArray(filas) ? filas.length : Number(result?.[1]) || 0;
-    this.logger.log(`Pool limpiar libres | olt=${oltId} eliminados=${eliminados}`);
+    this.logger.log(`Pool limpiar libres | olt=${oltId} canal=${canal} eliminados=${eliminados}`);
     return { eliminados };
   }
 }

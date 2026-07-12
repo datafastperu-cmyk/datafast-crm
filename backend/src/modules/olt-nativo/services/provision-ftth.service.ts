@@ -63,7 +63,8 @@ export class DesaprovisionarFtthDto {
 export class BootstrapTr069Dto {
   @IsUUID('4') contratoId: string;
   @IsInt() @Min(1) @Max(4094) @Type(() => Number) mgmtVlan:          number;
-  @IsInt() @Min(1)            @Type(() => Number) mgmtServicePortId: number;
+  // Opcional: si se omite, se asigna del pool de gestión (canal 'gestion') de la OLT.
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number) mgmtServicePortId?: number;
   @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndex?:  number;
   @IsOptional() @IsInt() @Min(0) @Max(7) @Type(() => Number) priority?: number;
 }
@@ -611,9 +612,23 @@ export class ProvisionFtthService {
     const olt  = await this._fetchOlt(oltId, empresaId);
     const conn = this._buildConn(olt, this._decryptOltPassword(olt));
 
+    // Asignación del service-port de GESTIÓN desde el pool (canal 'gestion').
+    // Si el pool no está configurado (allocar → null) se exige el ID manual en el DTO.
+    const asignadoDelPool = dto.mgmtServicePortId == null;
+    let   mgmtServicePortId = dto.mgmtServicePortId ?? null;
+    if (asignadoDelPool) {
+      mgmtServicePortId = await this.poolService.allocar(oltId, dto.contratoId, 'gestion');
+      if (mgmtServicePortId == null) {
+        throw new UnprocessableEntityException(
+          'No hay pool de gestión configurado para esta OLT y no se indicó mgmtServicePortId. ' +
+          'Configura el rango del canal "gestion" o envía el ID manualmente.',
+        );
+      }
+    }
+
     this.logger.log(
       `FTTH bootstrapTr069 | contrato=${dto.contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId} ` +
-      `mgmtVlan=${dto.mgmtVlan} svcPort=${dto.mgmtServicePortId}`,
+      `mgmtVlan=${dto.mgmtVlan} svcPort=${mgmtServicePortId}${asignadoDelPool ? ' (pool gestion)' : ''}`,
     );
 
     let res: { success: boolean; error?: string };
@@ -624,7 +639,7 @@ export class ProvisionFtthService {
         port:                 registro.port,
         onu_id:               registro.onuId,
         mgmt_vlan:            dto.mgmtVlan,
-        mgmt_service_port_id: dto.mgmtServicePortId,
+        mgmt_service_port_id: mgmtServicePortId!,
         traffic_index:        dto.trafficIndex ?? 0,
         priority:             dto.priority ?? 2,
       });
@@ -633,6 +648,10 @@ export class ProvisionFtthService {
     }
 
     if (!res.success) {
+      // Devolver el service-port de gestión al pool si lo tomamos nosotros (rollback).
+      if (asignadoDelPool) {
+        await this.poolService.liberar(oltId, dto.contratoId, 'gestion').catch(() => { /* best-effort */ });
+      }
       await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(res.error) });
       return {
         exitoso: false,
@@ -889,6 +908,7 @@ export class ProvisionFtthService {
     }
 
     await this.poolService.liberar(registro.oltId, contratoId).catch(() => { /* best-effort */ });
+    await this.poolService.liberar(registro.oltId, contratoId, 'gestion').catch(() => { /* best-effort */ });
     await this.onuIdPool.liberar(registro.oltId, contratoId).catch(() => { /* best-effort */ });
     await this.ftthRepo.delete(registro.id);
 

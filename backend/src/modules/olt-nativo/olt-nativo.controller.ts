@@ -723,6 +723,40 @@ export class OltNativoController {
     return this.pool.limpiarLibres(oltId, user.empresaId);
   }
 
+  // ── Pool de GESTIÓN (canal 'gestion') — service-ports del bootstrap TR-069 ──
+  @Get(':oltId/mgmt-port-pool')
+  @ApiOperation({ summary: 'Estado del pool de gestión (service-ports TR-069) de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async mgmtPoolEstado(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<EstadoPool> {
+    return this.pool.obtenerEstado(oltId, user.empresaId, 'gestion');
+  }
+
+  @Post(':oltId/mgmt-port-pool/configurar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Configurar rango de service-ports del pool de gestión de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async mgmtPoolConfigurar(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: ConfigurarPoolDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ insertados: number; omitidos: number }> {
+    return this.pool.configurarRango(oltId, user.empresaId, dto, 'gestion');
+  }
+
+  @Delete(':oltId/mgmt-port-pool/libres')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Eliminar entradas libres del pool de gestión (reconfigurar rango)' })
+  @ApiParam({ name: 'oltId' })
+  async mgmtPoolLimpiarLibres(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ eliminados: number }> {
+    return this.pool.limpiarLibres(oltId, user.empresaId, 'gestion');
+  }
+
   // ── FTTH Two-Phase Provisioning ───────────────────────────────
 
   @Post(':oltId/ftth/provision')
