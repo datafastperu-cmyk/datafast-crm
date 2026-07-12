@@ -140,7 +140,7 @@ export class ZtpProvisioningService {
   async provisionContract(
     contratoId: string,
     empresaId:  string,
-  ): Promise<{ ok: boolean; skipped?: boolean; deviceId?: string; applied?: number; skippedWrites?: string[]; mensaje: string }> {
+  ): Promise<{ ok: boolean; skipped?: boolean; deviceId?: string; applied?: number; total?: number; fallidas?: string[]; mensaje: string }> {
     const cfg = await this.configRepo.findOne({ where: { contratoId, empresaId } });
     if (!cfg) {
       throw new NotFoundException(`El contrato ${contratoId} no tiene config de ONU (contrato_onu_config).`);
@@ -184,12 +184,15 @@ export class ZtpProvisioningService {
     const plan = await this.buildExecutionPlan(contratoId, empresaId, deviceId, runtime);
     const res  = await this.driver.applyExecutionPlan(plan, pmap);
 
+    const fallidas = res.results.filter((r) => !r.ok);
     return {
-      ok: true, deviceId,
+      ok: fallidas.length === 0,
+      deviceId,
       applied: res.applied,
-      skippedWrites: res.skipped,
-      mensaje: `Plan aplicado a ${deviceId}: ${res.applied} escrituras encoladas` +
-               (res.skipped.length ? ` (omitidas por descubrimiento: ${res.skipped.join(', ')})` : '') + '.',
+      total: plan.writes.length,
+      fallidas: fallidas.map((r) => `${r.key}(${r.fault ?? r.reason})`),
+      mensaje: `Plan aplicado a ${deviceId}: ${res.applied}/${plan.writes.length} escrituras` +
+               (fallidas.length ? ` — fallaron: ${fallidas.map((r) => r.key).join(', ')}` : ' (todas OK)') + '.',
     };
   }
 }

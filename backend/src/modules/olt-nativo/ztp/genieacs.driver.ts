@@ -80,42 +80,82 @@ export class GenieAcsDriver {
     return out;
   }
 
-  /** Aplica el ExecutionPlan al device por NBI. Devuelve resumen (aplicadas/omitidas). */
+  private _sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /** Sustituye placeholders {name} en una ruta usando el mapa de descubrimiento. */
+  private _fill(path: string, disc: Record<string, string>): string | null {
+    let bad = false;
+    const out = path.replace(/\{(\w+)\}/g, (_m, name: string) => {
+      const v = disc[name];
+      if (v == null) { bad = true; return `{${name}}`; }
+      return v;
+    });
+    return bad ? null : out;
+  }
+
+  /**
+   * Aplica el ExecutionPlan por NBI, POR ESCRITURA, iterando la priority-list de rutas
+   * candidatas: prueba la 1ª; si genera un fault CWMP (p.ej. `cwmp.9003 Invalid arguments`,
+   * verificado en EG8145V5 con KeyPassphrase), borra el fault+task y prueba la siguiente.
+   * Detección de fault por canal `task_<id>` (comportamiento observado en GenieACS).
+   */
   async applyExecutionPlan(
     plan: ExecutionPlan,
     pmap: ParameterMap,
-  ): Promise<{ applied: number; skipped: string[]; queued: boolean }> {
+  ): Promise<{
+    applied: number;
+    results: Array<{ key: string; ok: boolean; path?: string; fault?: string; reason?: string }>;
+  }> {
     const disc = await this.resolveDiscovery(plan.device, pmap);
-
-    const paramValues: Array<[string, unknown, string?]> = [];
-    const skipped: string[] = [];
+    const results: Array<{ key: string; ok: boolean; path?: string; fault?: string; reason?: string }> = [];
 
     for (const w of plan.writes) {
-      // Ruta primaria del write; sustituir placeholders {name}.
-      let unresolved = false;
-      const path = w.candidates[0].replace(/\{(\w+)\}/g, (_m, name: string) => {
-        const v = disc[name];
-        if (v == null) { unresolved = true; return `{${name}}`; }
-        return v;
-      });
-      if (unresolved) { skipped.push(w.key); continue; }
-      paramValues.push([path, w.value]);
+      const candidates = w.candidates
+        .map((c) => this._fill(c, disc))
+        .filter((c): c is string => c !== null);
+
+      if (candidates.length === 0) {
+        results.push({ key: w.key, ok: false, reason: 'placeholder-no-resuelto' });
+        continue;
+      }
+
+      let done = false;
+      let lastFault: string | undefined;
+      for (const path of candidates) {
+        const res = await this.nbi.queueTask(
+          plan.device, { name: 'setParameterValues', parameterValues: [[path, w.value]] }, true,
+        );
+        const taskId = (res.body as { _id?: string })?._id;
+
+        // Sin taskId persistido = aplicada en sesión sin fault → éxito.
+        if (!taskId) { results.push({ key: w.key, ok: true, path }); done = true; break; }
+
+        // Dar un momento a la sesión y comprobar fault del canal de la task.
+        await this._sleep(1500);
+        const faults = await this.nbi.getFaults(plan.device, `task_${taskId}`).catch(() => []);
+        if (faults.length === 0) {
+          // Sin fault: aplicada (o encolada pendiente sin error) → aceptada.
+          results.push({ key: w.key, ok: true, path });
+          done = true; break;
+        }
+        // Fault en esta candidata: limpiar y probar la siguiente.
+        lastFault = faults[0].code ?? faults[0].message;
+        await this.nbi.deleteFault(faults[0]._id).catch(() => {});
+        await this.nbi.deleteTask(taskId).catch(() => {});
+      }
+
+      if (!done) results.push({ key: w.key, ok: false, fault: lastFault, reason: 'todas-las-rutas-fallaron' });
     }
 
-    let queued = false;
-    if (paramValues.length) {
-      const res = await this.nbi.queueTask(
-        plan.device, { name: 'setParameterValues', parameterValues: paramValues }, true,
-      );
-      queued = res.status === 200 || res.status === 202;
-    }
-    // Tag idempotente (guard/traza del pipeline).
-    await this.nbi.addTag(plan.device, 'ProvisionedByErp').catch(() => {});
+    const applied = results.filter((r) => r.ok).length;
+    await this.nbi.addTag(plan.device, applied === plan.writes.length ? 'Provisioned' : 'ProvisionFailed').catch(() => {});
 
     this.logger.log(
-      `applyExecutionPlan | device=${plan.device} aplicadas=${paramValues.length} ` +
-      `omitidas=[${skipped.join(',')}] queued=${queued}`,
+      `applyExecutionPlan | device=${plan.device} ok=${applied}/${plan.writes.length} ` +
+      results.map((r) => `${r.key}:${r.ok ? 'ok' : (r.fault ?? r.reason)}`).join(' '),
     );
-    return { applied: paramValues.length, skipped, queued };
+    return { applied, results };
   }
 }

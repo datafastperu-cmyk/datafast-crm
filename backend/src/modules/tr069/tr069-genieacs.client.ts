@@ -115,4 +115,23 @@ export class Tr069GenieacsClient {
       ),
     );
   }
+
+  /** Lista faults del device (opcionalmente de un canal concreto, p.ej. `task_<id>`). */
+  async getFaults(deviceId: string, channel?: string): Promise<Array<{ _id: string; channel?: string; code?: string; message?: string }>> {
+    const query: Record<string, unknown> = { device: deviceId };
+    if (channel) query.channel = channel;
+    const q = encodeURIComponent(JSON.stringify(query));
+    const res = await firstValueFrom(this.http.get<any[]>(`${this.baseUrl}/faults/?query=${q}`, this.cfg()));
+    return res.data ?? [];
+  }
+
+  /** Borra un fault por id (`<device>:<channel>`). Libera el canal para reintentar. */
+  async deleteFault(faultId: string): Promise<void> {
+    await firstValueFrom(this.http.delete(`${this.baseUrl}/faults/${encodeURIComponent(faultId)}`, this.cfg()));
+  }
+
+  /** Borra una task encolada por id. */
+  async deleteTask(taskId: string): Promise<void> {
+    await firstValueFrom(this.http.delete(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}`, this.cfg()));
+  }
 }
