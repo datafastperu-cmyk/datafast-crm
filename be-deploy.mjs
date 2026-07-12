@@ -6,9 +6,8 @@ conn.on('ready', () => {
   console.log('✓ SSH conectado');
   const cmd = [
     'cd /opt/datafast && git pull origin main',
-    'pm2 stop datafast-backend 2>/dev/null || true',
     'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc -p tsconfig.build.json --skipLibCheck 2>&1 | tail -20',
-    'pm2 start datafast-backend',
+    'pm2 restart datafast-api-core --update-env',
     'pm2 status',
   ].join(' && ');
   conn.exec(cmd, { pty: false }, (err, s) => {
