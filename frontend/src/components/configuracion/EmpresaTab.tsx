@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useForm }             from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver }         from '@hookform/resolvers/zod';
 import { z }                   from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import api from '@/lib/api';
 import type { ApiRespuesta } from '@/types';
 import { useToast }  from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
+import { PAISES_TIMEZONE, timezoneDePais } from '@/lib/paises-timezone';
 
 const schema = z.object({
   razonSocial:       z.string().min(3, 'Mínimo 3 caracteres'),
@@ -25,6 +26,8 @@ const schema = z.object({
   email:                  z.string().email('Email inválido').optional().or(z.literal('')),
   websiteUrl:        z.string().url('URL inválida (ej: https://miisp.com)').optional().or(z.literal('')),
   dominio: z.string().optional(),
+  pais:         z.string().optional(),
+  zonaHoraria:  z.string().min(1, 'Requerida'),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -40,7 +43,7 @@ export function EmpresaTab() {
   });
 
   const {
-    register, handleSubmit, reset,
+    register, handleSubmit, reset, control, setValue,
     formState: { errors, isDirty },
   } = useForm<FormValues>({
     resolver:      zodResolver(schema),
@@ -126,6 +129,35 @@ export function EmpresaTab() {
           </Field>
           <Field label="Dirección" span={2}>
             <input {...register('direccion')} placeholder="Av. Sánchez Cerro 1234, Piura" className={inp()} />
+          </Field>
+          <Field label="País">
+            <Controller
+              name="pais"
+              control={control}
+              render={({ field }) => (
+                <select
+                  {...field}
+                  value={field.value ?? ''}
+                  onChange={(e) => {
+                    field.onChange(e.target.value);
+                    const tz = timezoneDePais(e.target.value);
+                    if (tz) setValue('zonaHoraria', tz, { shouldDirty: true });
+                  }}
+                  className={inp()}
+                >
+                  <option value="">Seleccionar…</option>
+                  {PAISES_TIMEZONE.map((p) => (
+                    <option key={p.codigo} value={p.codigo}>{p.nombre}</option>
+                  ))}
+                </select>
+              )}
+            />
+          </Field>
+          <Field label="Zona horaria *" error={errors.zonaHoraria?.message}>
+            <input {...register('zonaHoraria')} placeholder="America/Lima" className={inp(!!errors.zonaHoraria)} />
+            <p className="text-[11px] text-muted-foreground leading-snug mt-1">
+              Se autocompleta al elegir país. Gobierna facturación, cobranza y demás tareas programadas del ERP.
+            </p>
           </Field>
         </div>
 

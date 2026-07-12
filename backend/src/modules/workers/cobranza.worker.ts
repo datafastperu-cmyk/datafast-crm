@@ -5,15 +5,17 @@ import {
   Process, Processor,
   OnQueueFailed, OnQueueCompleted, OnQueueStalled,
 } from '@nestjs/bull';
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, OnModuleInit } from '@nestjs/common';
 import { InjectQueue }         from '@nestjs/bull';
 import { Job, Queue }          from 'bull';
-import { Cron }                from '@nestjs/schedule';
+import { SchedulerRegistry }   from '@nestjs/schedule';
+import { CronJob }             from 'cron';
 import { InjectDataSource }    from '@nestjs/typeorm';
 import { DataSource }          from 'typeorm';
 import { CACHE_MANAGER }       from '@nestjs/cache-manager';
 import { Cache }               from 'cache-manager';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 
 import { FirewallService }           from '../mikrotik/services/firewall.service';
 import { PppoeService }              from '../mikrotik/services/pppoe.service';
@@ -43,14 +45,29 @@ import { RedisLockService } from '../../common/redis/redis-lock.service';
 // CobranzaScheduler — Encola los jobs en los momentos correctos
 // ─────────────────────────────────────────────────────────────
 @Injectable()
-export class CobranzaScheduler {
+export class CobranzaScheduler implements OnModuleInit {
   private readonly logger = new Logger(CobranzaScheduler.name);
 
   constructor(
     @InjectQueue(QUEUES.COBRANZA) private readonly queue: Queue,
     @InjectDataSource()           private readonly ds: DataSource,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const jobs: Array<[string, string, () => Promise<void>]> = [
+      ['deteccion-morosos',          '* * * * *',  () => this.detectarMorosos()],
+      ['barrido-nocturno-cobranza',  '5 0 * * *',  () => this.barridoNocturno()],
+      ['notif-preventivas',          '* * * * *',  () => this.notificacionesPreventivas()],
+      ['purgar-vouchers',            '15 0 * * *', () => this.purgarVouchersExpirados()],
+    ];
+    for (const [name, expr, fn] of jobs) {
+      this.schedulerRegistry.addCronJob(name, new CronJob(expr, fn, null, true, tz));
+    }
+  }
 
   // Lee el horario configurado para un job; devuelve [hora, minuto]
   private async getHoraConf(key: string, defaultHora = '05:00'): Promise<[number, number]> {
@@ -85,7 +102,6 @@ export class CobranzaScheduler {
   // ─── DETECCIÓN DIARIA DE MOROSOS ──────────────────────────
   // Busca contratos activos con deuda y los suspende si superan
   // los días de gracia configurados por la empresa.
-  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'deteccion-morosos' })
   async detectarMorosos(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
     const [hora, min] = await this.getHoraConf('corte', '06:00');
@@ -157,7 +173,6 @@ export class CobranzaScheduler {
   // La prórroga ya no cambia estado — el contrato permanece ACTIVO
   // hasta que detectarMorosos lo suspende al superar los días de gracia.
   // Solo instancia 0 del clúster PM2 ejecuta este barrido.
-  @Cron('5 0 * * *', { timeZone: 'America/Lima', name: 'barrido-nocturno-cobranza' })
   async barridoNocturno(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 
@@ -227,7 +242,6 @@ export class CobranzaScheduler {
   // Corre cada minuto; ejecuta en la hora configurada para cada recordatorio.
   // Usa dias_recordatorio_N del contrato para determinar qué contratos aplican
   // en cada franja horaria, eliminando el hardcode anterior de [3, 1] días.
-  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'notif-preventivas' })
   async notificacionesPreventivas(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
     const [hora1, min1] = await this.getHoraConf('recordatorio1', '09:00');
@@ -305,7 +319,6 @@ export class CobranzaScheduler {
   // Política: vouchers con más de 90 días se borran del disco y
   // la columna comprobante_url se pone a NULL en la BD.
   // Compatible con la política de retención del módulo WhatsApp.
-  @Cron('15 0 * * *', { timeZone: 'America/Lima', name: 'purgar-vouchers' })
   async purgarVouchersExpirados(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 

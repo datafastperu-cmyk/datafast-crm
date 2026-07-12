@@ -20,6 +20,7 @@ import { ComprobanteConfig }           from './entities/comprobante-config.entit
 import { ConfiguracionFacturacion }    from './entities/configuracion-facturacion.entity';
 import { CargoPendiente }              from './entities/cargo-pendiente.entity';
 import { AuthModule }                  from '../auth/auth.module';
+import { ConfiguracionModule }         from '../config/config.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AuthModule }                  from '../auth/auth.module';
     }),
 
     AuthModule,
+    ConfiguracionModule,
   ],
   controllers: [
     FacturacionController,

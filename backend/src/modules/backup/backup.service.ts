@@ -4,7 +4,8 @@ import {
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Cron } from '@nestjs/schedule';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { exec } from 'child_process';
@@ -16,6 +17,7 @@ import axios from 'axios';
 
 import { Backup, EstadoBackup, TipoBackup, EstadoSubida } from './backup.entity';
 import { ModuleHealthService } from '../../common/services/module-health.service';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 
 const execAsync = promisify(exec);
 
@@ -53,6 +55,8 @@ export class BackupService implements OnModuleInit {
     private readonly config: ConfigService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     private readonly moduleHealth: ModuleHealthService,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -65,6 +69,10 @@ export class BackupService implements OnModuleInit {
         'pg_dump no encontrado — backups de base de datos deshabilitados (instala postgresql-client)',
       );
     }
+
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('* * * * *', () => this.cronBackupDiario(), null, true, tz);
+    this.schedulerRegistry.addCronJob('auto-backup-diario', job);
   }
 
   private get appDir(): string {
@@ -369,7 +377,6 @@ export class BackupService implements OnModuleInit {
 
   // ─── Cron automático (cada minuto, lock diario por empresa) ───
 
-  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'auto-backup-diario' })
   async cronBackupDiario(): Promise<void> {
     const empresas: { id: string }[] = await this.ds
       .query(`SELECT id FROM empresas WHERE deleted_at IS NULL`)

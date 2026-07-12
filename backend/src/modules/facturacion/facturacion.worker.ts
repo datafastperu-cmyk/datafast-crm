@@ -1,12 +1,14 @@
 import { Process, Processor, OnQueueFailed, OnQueueCompleted } from '@nestjs/bull';
-import { Logger, Injectable } from '@nestjs/common';
+import { Logger, Injectable, OnModuleInit } from '@nestjs/common';
 import { Job } from 'bull';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { FacturacionService } from './facturacion.service';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 
 export const FACTURACION_QUEUE = 'facturacion';
 
@@ -19,18 +21,25 @@ export interface GenerarMensualPayload {
 
 // ── Scheduler: encola los jobs en el momento correcto ────────
 @Injectable()
-export class FacturacionScheduler {
+export class FacturacionScheduler implements OnModuleInit {
   private readonly logger = new Logger(FacturacionScheduler.name);
 
   constructor(
     @InjectQueue(FACTURACION_QUEUE) private readonly queue: Queue,
     @InjectDataSource() private readonly ds: DataSource,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
 
-  // Ejecutar CADA DÍA a las 00:05 AM
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('5 0 * * *', () => this.scheduleDailyJobs(), null, true, tz);
+    this.schedulerRegistry.addCronJob('facturacion-schedule-daily-jobs', job);
+  }
+
+  // Ejecutar CADA DÍA a las 00:05 en la zona horaria configurada en la empresa
   // → Genera facturas para empresas cuyo día de facturación es HOY
   // → Marca facturas vencidas
-  @Cron('5 0 * * *', { timeZone: 'America/Lima' })
   async scheduleDailyJobs() {
     const hoy = new Date();
     this.logger.log(`Cron diario iniciado: ${hoy.toISOString()}`);

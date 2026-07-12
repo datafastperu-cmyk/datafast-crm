@@ -1,7 +1,8 @@
-import { Injectable, Logger }   from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository }      from '@nestjs/typeorm';
 import { Repository }            from 'typeorm';
-import { Cron }                  from '@nestjs/schedule';
+import { SchedulerRegistry }     from '@nestjs/schedule';
+import { CronJob }               from 'cron';
 import pLimit                    from 'p-limit';
 
 import { decrypt }               from '../../../common/utils/encryption.util';
@@ -10,6 +11,7 @@ import { OltProveedorConfig }    from '../entities/olt-proveedor-config.entity';
 import { OltHealthSnapshot }     from '../entities/olt-health-snapshot.entity';
 import { OltAutomationClient }   from '../olt-automation.client';
 import { OltAlertEngineService } from '../services/olt-alert-engine.service';
+import { EmpresaConfigService }  from '../../config/empresa-config.service';
 
 // ─────────────────────────────────────────────────────────────
 // OltHealthPollerCron
@@ -28,7 +30,7 @@ import { OltAlertEngineService } from '../services/olt-alert-engine.service';
 // Solo se encuestan OLTs con proveedor nativo_ssh activo.
 // ─────────────────────────────────────────────────────────────
 @Injectable()
-export class OltHealthPollerCron {
+export class OltHealthPollerCron implements OnModuleInit {
   private readonly logger  = new Logger(OltHealthPollerCron.name);
   private _boardRunning    = false;
   private _pomRunning      = false;
@@ -46,13 +48,27 @@ export class OltHealthPollerCron {
 
     private readonly automation:    OltAutomationClient,
     private readonly alertEngine:   OltAlertEngineService,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig:     EmpresaConfigService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const jobs: Array<[string, string, () => Promise<void>]> = [
+      ['olt-health-poller-boards',       '0,30 * * * *', () => this.pollBoards()],
+      ['olt-health-poller-pom',          '10,40 * * * *', () => this.pollPom()],
+      ['olt-health-poller-pon-ports',    '20,50 * * * *', () => this.pollPonPorts()],
+      ['olt-health-poller-purge',        '30 2 * * *',    () => this.purgeOldSnapshots()],
+    ];
+    for (const [name, expr, fn] of jobs) {
+      this.schedulerRegistry.addCronJob(name, new CronJob(expr, fn, null, true, tz));
+    }
+  }
 
   // ── Boards: cada 30 minutos (:00/:30) ─────────────────────────
   // Frecuencia reducida para no saturar el límite de sesiones SSH del MA5800
   // (que causaba "Reenter times reached upper limit" y "Currently operating
   // conflicts" al competir con aprovisionamientos). Los boards cambian rara vez.
-  @Cron('0,30 * * * *', { timeZone: 'America/Lima' })
   async pollBoards(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._boardRunning) {
@@ -72,7 +88,6 @@ export class OltHealthPollerCron {
   }
 
   // ── POM: cada 30 minutos (:10/:40), escalonado tras boards ────
-  @Cron('10,40 * * * *', { timeZone: 'America/Lima' })
   async pollPom(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._pomRunning) {
@@ -92,7 +107,6 @@ export class OltHealthPollerCron {
   }
 
   // ── PON Ports: cada 30 min (:20/:50), escalonado ─────────────
-  @Cron('20,50 * * * *', { timeZone: 'America/Lima' })
   async pollPonPorts(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     if (this._ponPortRunning) {
@@ -112,7 +126,6 @@ export class OltHealthPollerCron {
   }
 
   // ── Retención: diario 02:30 — purga snapshots >7 días ─────────
-  @Cron('30 2 * * *', { timeZone: 'America/Lima' })
   async purgeOldSnapshots(): Promise<void> {
     if (!this._isPrimaryInstance()) return;
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);

@@ -1,21 +1,30 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FinanzasOpexService } from './finanzas-opex.service';
 import { EgresoIngreso } from './egreso-ingreso.entity';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 
 @Injectable()
-export class FinanzasOpexScheduler {
+export class FinanzasOpexScheduler implements OnModuleInit {
   private readonly logger = new Logger(FinanzasOpexScheduler.name);
 
   constructor(
     private readonly svc:     FinanzasOpexService,
     private readonly events:  EventEmitter2,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig:     EmpresaConfigService,
   ) {}
 
-  // Corre cada día a las 07:00 hora Lima.
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('0 7 * * *', () => this.generarPendientesRecurrentes(), null, true, tz);
+    this.schedulerRegistry.addCronJob('generar-pendientes-opex', job);
+  }
+
+  // Corre cada día a las 07:00 en la zona horaria configurada en la empresa.
   // Solo la instancia PM2 id=0 ejecuta para evitar duplicados en cluster.
-  @Cron('0 7 * * *', { timeZone: 'America/Lima', name: 'generar-pendientes-opex' })
   async generarPendientesRecurrentes(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 

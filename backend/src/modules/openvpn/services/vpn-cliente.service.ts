@@ -1,10 +1,11 @@
 import {
   Injectable, Logger, NotFoundException,
-  ConflictException, BadRequestException,
+  ConflictException, BadRequestException, OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not, LessThan, In } from 'typeorm';
-import { Cron }             from '@nestjs/schedule';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob }           from 'cron';
 import * as fs              from 'fs/promises';
 import * as path            from 'path';
 import * as net             from 'net';
@@ -17,6 +18,7 @@ import { CrearVpnClienteDto }           from '../dto/vpn-cliente.dto';
 import { JwtPayload }                   from '../../../common/decorators/current-user.decorator';
 import { generateToken, encrypt }       from '../../../common/utils/encryption.util';
 import { Router, MetodoConexion, EstadoEquipo, VersionRouterOS } from '../../mikrotik/entities/router.entity';
+import { EmpresaConfigService } from '../../config/empresa-config.service';
 
 // ── Rutas del sistema VPN ─────────────────────────────────────
 const CA_CRT = '/etc/openvpn/server/ca.crt';
@@ -40,7 +42,7 @@ interface VpnConnectedClient {
 }
 
 @Injectable()
-export class VpnClienteService {
+export class VpnClienteService implements OnModuleInit {
   private readonly logger = new Logger(VpnClienteService.name);
   private _ipAssignLock: Promise<void> = Promise.resolve();
 
@@ -51,7 +53,15 @@ export class VpnClienteService {
     private readonly alertaRepo: Repository<VpnAlerta>,
     @InjectRepository(Router)
     private readonly routerRepo: Repository<Router>,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('0 */10 * * * *', () => this.limpiarWizardsAbandonados(), null, true, tz);
+    this.schedulerRegistry.addCronJob('vpn-cleanup-abandonados', job);
+  }
 
   // ── Crear cliente VPN ─────────────────────────────────────────
 
@@ -224,7 +234,6 @@ export class VpnClienteService {
   //   · conectado  (túnel activo)   → 60 min: el operador tardó en completar el paso 3
   // Corre cada 10 min. Máxima exposición de IP bloqueada: ~25 min / ~70 min.
 
-  @Cron('0 */10 * * * *', { name: 'vpn-cleanup-abandonados', timeZone: 'America/Lima' })
   async limpiarWizardsAbandonados(): Promise<void> {
     const cutoff15 = new Date(Date.now() - 15 * 60 * 1000);
     const cutoff60 = new Date(Date.now() - 60 * 60 * 1000);

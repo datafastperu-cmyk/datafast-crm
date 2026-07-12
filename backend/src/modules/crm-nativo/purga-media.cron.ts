@@ -1,20 +1,31 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import * as fs   from 'fs';
 import * as path from 'path';
 import { CrmNativoService } from './crm-nativo.service';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 
 const MEDIA_DIR        = process.env.MEDIA_DIR || '/opt/datafast/backend/public/crm_whatsapp';
 const DIAS_RETENCION   = 90;
 const RETENCION_MS     = DIAS_RETENCION * 24 * 60 * 60 * 1000;
 
 @Injectable()
-export class PurgaMediaCron {
+export class PurgaMediaCron implements OnModuleInit {
   private readonly logger = new Logger(PurgaMediaCron.name);
 
-  constructor(private readonly crmSvc: CrmNativoService) {}
+  constructor(
+    private readonly crmSvc: CrmNativoService,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
+  ) {}
 
-  @Cron('0 2 * * *', { name: 'purga-media-crm', timeZone: 'America/Lima' })
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('0 2 * * *', () => this.ejecutar(), null, true, tz);
+    this.schedulerRegistry.addCronJob('purga-media-crm', job);
+  }
+
   async ejecutar(): Promise<void> {
     // Solo instancia principal del clúster PM2
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;

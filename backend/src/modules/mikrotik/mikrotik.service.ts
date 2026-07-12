@@ -9,12 +9,14 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ModuleHealthService } from '../../common/services/module-health.service';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
-import { Cron } from '@nestjs/schedule';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import * as net from 'net';
 
 import {
@@ -83,6 +85,8 @@ export class MikrotikService implements OnModuleInit {
     @InjectDataSource() private readonly ds: DataSource,
     private readonly vpnSvc: VpnClienteService,
     private readonly moduleHealth: ModuleHealthService,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -123,6 +127,10 @@ export class MikrotikService implements OnModuleInit {
       this.degradedReason = err.message;
       this.moduleHealth.registrar('mikrotik', 'degraded', err.message);
     }
+
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('*/5 * * * *', () => this.pollRouterMetrics(), null, true, tz);
+    this.schedulerRegistry.addCronJob('mikrotik-poll-metrics', job);
   }
 
   isDegraded(): boolean {
@@ -1377,7 +1385,6 @@ export class MikrotikService implements OnModuleInit {
   // POLLING DE MÉTRICAS (CPU/RAM/sesiones) — cada 5 minutos
   // Solo se ejecuta en la instancia 0 del clúster PM2
   // ────────────────────────────────────────────────────────────
-  @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
   async pollRouterMetrics(): Promise<void> {
     if (
       process.env.NODE_APP_INSTANCE !== undefined &&

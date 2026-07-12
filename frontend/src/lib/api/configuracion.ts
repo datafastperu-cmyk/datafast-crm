@@ -20,6 +20,8 @@ export interface Empresa {
   moneda:            string;
   tipoComprobanteDefault: string;
   dominio?:          string;
+  pais?:             string;
+  zonaHoraria:       string;
   estado:            string;
 }
 

@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository }   from '@nestjs/typeorm';
 import { Repository, In }     from 'typeorm';
-import { Cron }               from '@nestjs/schedule';
+import { SchedulerRegistry }  from '@nestjs/schedule';
+import { CronJob }            from 'cron';
 
 import { OltDispositivo, OltMetodoConexion } from './entities/olt-dispositivo.entity';
 import { MetricasOnuOptical }                from './entities/metricas-onu-optical.entity';
@@ -16,6 +17,7 @@ import {
   PythonOnuQueryInfo,
   PythonOnuStatusInfo,
 } from './dto/olt-nativo-ops.dto';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 
 // ──────────────────────────────────────────────────────────────────
 // OltMonitoreoService  —  Sincronización inversa + conciliación
@@ -35,7 +37,7 @@ import {
 //   Se emite UNA alerta crítica global. Los estados se "congelan".
 // ──────────────────────────────────────────────────────────────────
 @Injectable()
-export class OltMonitoreoService {
+export class OltMonitoreoService implements OnModuleInit {
   private readonly logger = new Logger(OltMonitoreoService.name);
 
   private readonly RX_DEGRADADA_DBM = -27.0;  // Señal sucia / fibra doblada
@@ -55,14 +57,21 @@ export class OltMonitoreoService {
     private readonly alertaRepo: Repository<AlertaSistema>,
 
     private readonly automation: OltAutomationClient,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('2-59/5 * * * *', () => this.pollOltMetrics(), null, true, tz);
+    this.schedulerRegistry.addCronJob('olt-monitoreo-poll-metrics', job);
+  }
 
   // ────────────────────────────────────────────────────────────────
   // CRON — cada 5 minutos, solo instancia PM2 #0
   // ────────────────────────────────────────────────────────────────
   // Minutos 2,7,12,…,57 — disjuntos del health-poller (0,10,20,30,40,50) y del
   // ftth-recovery (4,9,…,59) para no abrir sesiones SSH a la misma OLT a la vez.
-  @Cron('2-59/5 * * * *', { timeZone: 'America/Lima' })
   async pollOltMetrics(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
 

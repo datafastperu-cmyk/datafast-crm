@@ -2,12 +2,13 @@ import {
   Process, Processor,
   OnQueueFailed, OnQueueCompleted,
 } from '@nestjs/bull';
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, OnModuleInit } from '@nestjs/common';
 import { InjectQueue }         from '@nestjs/bull';
 import { CACHE_MANAGER }       from '@nestjs/cache-manager';
 import { Cache }               from 'cache-manager';
 import { Job, Queue }          from 'bull';
-import { Cron }                from '@nestjs/schedule';
+import { SchedulerRegistry }   from '@nestjs/schedule';
+import { CronJob }             from 'cron';
 import { InjectDataSource }    from '@nestjs/typeorm';
 import { DataSource }          from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
@@ -16,6 +17,7 @@ import { FacturacionService }        from '../facturacion/facturacion.service';
 import { GatewayMensajeriaService }  from '../notificaciones/services/gateway-mensajeria.service';
 import { TipoNotificacion }          from '../notificaciones/services/whatsapp.service';
 import { AuditoriaService }          from '../auth/auditoria.service';
+import { EmpresaConfigService }      from '../config/empresa-config.service';
 
 import {
   QUEUES, JOBS, JOB_OPTIONS,
@@ -40,14 +42,22 @@ interface ResultadoGeneracion {
 // FacturacionScheduler — Encola generación mensual
 // ─────────────────────────────────────────────────────────────
 @Injectable()
-export class FacturacionScheduler {
+export class FacturacionScheduler implements OnModuleInit {
   private readonly logger = new Logger(FacturacionScheduler.name);
 
   constructor(
     @InjectQueue(QUEUES.FACTURACION) private readonly queue: Queue,
     @InjectDataSource()              private readonly ds: DataSource,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('* * * * *', () => this.scheduleFacturacionDiaria(), null, true, tz);
+    this.schedulerRegistry.addCronJob('facturacion-diaria', job);
+  }
 
   // Lee el horario configurado para un job desde empresas.cron_horarios
   private async getHoraConf(key: string, defaultHora = '05:00'): Promise<[number, number]> {
@@ -78,7 +88,6 @@ export class FacturacionScheduler {
   // ─── GENERACIÓN DIARIA — hora dinámica desde cron_horarios ───
   // Corre cada minuto; ejecuta solo cuando la hora coincide con
   // empresas.cron_horarios.facturacion (default: 05:00 Lima)
-  @Cron('* * * * *', { timeZone: 'America/Lima', name: 'facturacion-diaria' })
   async scheduleFacturacionDiaria(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined && process.env.NODE_APP_INSTANCE !== '0') return;
     const [hora, min] = await this.getHoraConf('facturacion', '05:00');

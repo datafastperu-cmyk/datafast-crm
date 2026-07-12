@@ -8,10 +8,12 @@ import { CrmNativoService }   from './crm-nativo.service';
 import { CrmNativoGateway }   from './crm-nativo.gateway';
 import { CrmNativoController } from './crm-nativo.controller';
 import { PurgaMediaCron }     from './purga-media.cron';
+import { ConfiguracionModule } from '../config/config.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CrmChat, CrmMensaje]),
+    ConfiguracionModule,
   ],
   controllers: [CrmNativoController],
   providers: [

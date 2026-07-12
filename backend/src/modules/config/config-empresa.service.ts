@@ -7,6 +7,7 @@ import * as dns from 'dns/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { Empresa } from './empresa.entity';
+import { EmpresaConfigService } from './empresa-config.service';
 
 const execAsync = promisify(exec);
 
@@ -19,6 +20,8 @@ export interface UpdateEmpresaDto {
   email?:                    string;
   websiteUrl?:               string;
   dominio?:                  string;
+  pais?:                     string;
+  zonaHoraria?:              string;
   serieBoleta?:              string;
   serieFactura?:             string;
   igvRate?:                  number;
@@ -79,6 +82,7 @@ export class ConfigEmpresaService {
     private readonly repo: Repository<Empresa>,
     @InjectDataSource()
     private readonly ds: DataSource,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
 
   // ── Empresa CRUD ──────────────────────────────────────────────
@@ -96,6 +100,7 @@ export class ConfigEmpresaService {
       updatePayload.dominio = dominio.trim() || null;
     }
     await this.repo.update({ id: empresaId }, updatePayload);
+    if (dto.zonaHoraria !== undefined) this.empresaConfig.invalidar();
     return this.getEmpresa(empresaId);
   }
 

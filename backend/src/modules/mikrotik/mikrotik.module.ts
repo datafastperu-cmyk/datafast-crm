@@ -27,10 +27,12 @@ import { Plan }                      from '../planes/entities/plan.entity';
 import { MikrotikUserService }       from './services/mikrotik-user.service';
 import { AuthModule }                from '../auth/auth.module';
 import { OpenvpnModule }             from '../openvpn/openvpn.module';
+import { ConfiguracionModule }       from '../config/config.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Router, Contrato, Plan]),
+    ConfiguracionModule,
 
     // Cola Bull para sincronización de velocidades
     BullModule.registerQueue({

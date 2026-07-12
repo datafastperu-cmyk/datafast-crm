@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository }   from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
-import { Cron }               from '@nestjs/schedule';
+import { SchedulerRegistry }  from '@nestjs/schedule';
+import { CronJob }            from 'cron';
 import pLimit                 from 'p-limit';
 
 import { decrypt }            from '../../../common/utils/encryption.util';
@@ -13,6 +14,7 @@ import {
 import { ProveedorCredenciales } from '../interfaces/olt-provider.interface';
 import { OltProviderRegistry }   from './olt-provider-registry.service';
 import { CircuitBreakerService } from './circuit-breaker.service';
+import { EmpresaConfigService }  from '../../config/empresa-config.service';
 
 // ─────────────────────────────────────────────────────────────
 // OltHealthMonitorService
@@ -34,7 +36,7 @@ import { CircuitBreakerService } from './circuit-breaker.service';
 // si una vuelta tarda más de 5 min (OLTs lentas o muchas).
 // ─────────────────────────────────────────────────────────────
 @Injectable()
-export class OltHealthMonitorService {
+export class OltHealthMonitorService implements OnModuleInit {
   private readonly logger  = new Logger(OltHealthMonitorService.name);
   private          _running = false;
 
@@ -47,12 +49,19 @@ export class OltHealthMonitorService {
 
     private readonly registry: OltProviderRegistry,
     private readonly breaker:  CircuitBreakerService,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig:     EmpresaConfigService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('*/5 * * * *', () => this.checkAll(), null, true, tz);
+    this.schedulerRegistry.addCronJob('olt-health-monitor-check-all', job);
+  }
 
   // ────────────────────────────────────────────────────────────
   // CRON — cada 5 minutos, solo instancia PM2 #0
   // ────────────────────────────────────────────────────────────
-  @Cron('*/5 * * * *', { timeZone: 'America/Lima' })
   async checkAll(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined &&
         process.env.NODE_APP_INSTANCE !== '0') return;

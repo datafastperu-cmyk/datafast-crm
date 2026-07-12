@@ -1,7 +1,8 @@
 import { Process, Processor, OnQueueFailed, OnQueueCompleted } from '@nestjs/bull';
-import { Injectable, Logger }     from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue }            from '@nestjs/bull';
-import { Cron }                   from '@nestjs/schedule';
+import { SchedulerRegistry }      from '@nestjs/schedule';
+import { CronJob }                from 'cron';
 import { Job, Queue }             from 'bull';
 import { InjectRepository }       from '@nestjs/typeorm';
 import { Repository }             from 'typeorm';
@@ -10,6 +11,7 @@ import { DataSource }             from 'typeorm';
 import { VelocidadOrquestador }   from './services/velocidad/velocidad-orquestador.service';
 import { Router, EstadoEquipo, VersionRouterOS } from './entities/router.entity';
 import { RouterConnectionPool }   from './services/connection-pool.service';
+import { EmpresaConfigService }   from '../config/empresa-config.service';
 
 export const VELOCIDAD_QUEUE = 'velocidad-sync';
 
@@ -30,17 +32,24 @@ export interface CambioVelocidadPayload {
 
 // ── Scheduler ─────────────────────────────────────────────────
 @Injectable()
-export class VelocidadScheduler {
+export class VelocidadScheduler implements OnModuleInit {
   private readonly logger = new Logger(VelocidadScheduler.name);
 
   constructor(
     @InjectQueue(VELOCIDAD_QUEUE) private readonly queue: Queue,
     @InjectRepository(Router)    private readonly routerRepo: Repository<Router>,
     @InjectDataSource()          private readonly ds: DataSource,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('0 */4 * * *', () => this.scheduleSync(), null, true, tz);
+    this.schedulerRegistry.addCronJob('velocidad-schedule-sync', job);
+  }
+
   // Sincronizar velocidades cada 4 horas
-  @Cron('0 */4 * * *', { timeZone: 'America/Lima' })
   async scheduleSync(): Promise<void> {
     this.logger.log('Iniciando sincronización periódica de velocidades');
 

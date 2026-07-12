@@ -9,10 +9,12 @@ import { VpnClienteService }     from './services/vpn-cliente.service';
 import { OpenvpnController }     from './openvpn.controller';
 import { VpnClienteController }  from './vpn-cliente.controller';
 import { Router }                from '../mikrotik/entities/router.entity';
+import { ConfiguracionModule }   from '../config/config.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([OpenvpnConfig, VpnCliente, VpnAlerta, Router]),
+    ConfiguracionModule,
   ],
   controllers: [OpenvpnController, VpnClienteController],
   providers:   [OpenvpnService, VpnClienteService],

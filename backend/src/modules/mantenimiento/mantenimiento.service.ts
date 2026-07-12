@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { QUEUES } from '../workers/workers.constants';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 
 interface CleanupResult {
   tarea:    string;
@@ -13,7 +15,7 @@ interface CleanupResult {
 }
 
 @Injectable()
-export class MantenimientoService {
+export class MantenimientoService implements OnModuleInit {
   private readonly logger = new Logger(MantenimientoService.name);
 
   constructor(
@@ -23,10 +25,17 @@ export class MantenimientoService {
     @InjectQueue(QUEUES.NOTIFICACIONES) private readonly qNotificaciones: Queue,
     @InjectQueue(QUEUES.MIKROTIK)       private readonly qMikrotik:       Queue,
     @InjectQueue(QUEUES.GOOGLE_SYNC)    private readonly qGoogle:         Queue,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig: EmpresaConfigService,
   ) {}
 
-  // Ejecuta todos los días a las 03:00 AM hora del servidor
-  @Cron('0 3 * * *', { name: 'mantenimiento-diario', timeZone: 'America/Lima' })
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('0 3 * * *', () => this.ejecutarMantenimientoDiario(), null, true, tz);
+    this.schedulerRegistry.addCronJob('mantenimiento-diario', job);
+  }
+
+  // Ejecuta todos los días a las 03:00 en la zona horaria configurada en la empresa
   async ejecutarMantenimientoDiario(): Promise<void> {
     const inicio = Date.now();
     this.logger.log('━━━ Inicio mantenimiento diario ━━━');

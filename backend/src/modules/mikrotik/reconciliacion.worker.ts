@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron }               from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry }  from '@nestjs/schedule';
+import { CronJob }            from 'cron';
 import { InjectDataSource }   from '@nestjs/typeorm';
 import { DataSource }         from 'typeorm';
 
@@ -7,12 +8,13 @@ import { RouterConnectionPool, RouterCredentials } from './services/connection-p
 import { PppoeService }       from './services/pppoe.service';
 import { FirewallService }    from './services/firewall.service';
 import { decrypt }            from '../../common/utils/encryption.util';
+import { EmpresaConfigService } from '../config/empresa-config.service';
 
 // Corre cada 30 minutos, solo en instancia PM2 #0.
 // Detecta contratos PPPoE activos en BD cuyo secret no existe en el router
 // y los encola en outbox para reprovisioning automático.
 @Injectable()
-export class ReconciliacionWorker {
+export class ReconciliacionWorker implements OnModuleInit {
   private readonly logger = new Logger(ReconciliacionWorker.name);
   private _running = false;
 
@@ -21,9 +23,16 @@ export class ReconciliacionWorker {
     private readonly pool:         RouterConnectionPool,
     private readonly pppoeSvc:    PppoeService,
     private readonly firewallSvc: FirewallService,
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly empresaConfig:     EmpresaConfigService,
   ) {}
 
-  @Cron('0 */30 * * * *', { timeZone: 'America/Lima' })
+  async onModuleInit(): Promise<void> {
+    const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+    const job = new CronJob('0 */30 * * * *', () => this.reconciliar(), null, true, tz);
+    this.schedulerRegistry.addCronJob('mikrotik-reconciliacion', job);
+  }
+
   async reconciliar(): Promise<void> {
     if (
       process.env.NODE_APP_INSTANCE !== undefined &&

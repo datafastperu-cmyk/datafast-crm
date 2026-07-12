@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { MantenimientoService } from './mantenimiento.service';
 import { QUEUES } from '../workers/workers.constants';
+import { ConfiguracionModule } from '../config/config.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { QUEUES } from '../workers/workers.constants';
       { name: QUEUES.MIKROTIK },
       { name: QUEUES.GOOGLE_SYNC },
     ),
+    ConfiguracionModule,
   ],
   providers: [MantenimientoService],
 })

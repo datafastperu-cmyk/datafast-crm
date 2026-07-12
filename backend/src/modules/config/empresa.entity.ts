@@ -35,6 +35,12 @@ export class Empresa {
   @Column({ type: 'varchar', length: 250, nullable: true })
   dominio: string | null;
 
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  pais: string | null;
+
+  @Column({ name: 'zona_horaria', length: 50, default: 'America/Lima' })
+  zonaHoraria: string;
+
   // serie_boleta, serie_factura, igv_rate, moneda, tipo_comprobante_default
   // fueron migrados a comprobantes_config y configuracion_facturacion.
   // Se mantiene dia_facturacion y dias_gracia porque son operativos (cobranza),
