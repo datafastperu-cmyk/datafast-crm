@@ -1202,4 +1202,59 @@ export const oltNativoApi = {
     const res = await api.get<ApiRespuesta<OltSyncJob | null>>(`/olt-nativo/${oltId}/sync/status`);
     return res.data.data ?? null;
   },
+
+  // ── ONU: detalle LIVE por TR-069 (botón "Ver detalle" del inventario) ──
+  onuTr069Detalle: async (sn: string): Promise<OnuTr069Detalle> => {
+    const res = await api.get<ApiRespuesta<OnuTr069Detalle>>(`/olt-nativo/onu/${encodeURIComponent(sn)}/tr069`);
+    return res.data.data;
+  },
+  onuTr069Refresh: async (sn: string): Promise<OnuTr069Detalle> => {
+    const res = await api.post<ApiRespuesta<OnuTr069Detalle>>(
+      `/olt-nativo/onu/${encodeURIComponent(sn)}/tr069/refresh`, {}, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+  onuTr069Reboot: async (sn: string): Promise<{ ok: boolean; mensaje: string }> => {
+    const res = await api.post<ApiRespuesta<{ ok: boolean; mensaje: string }>>(
+      `/olt-nativo/onu/${encodeURIComponent(sn)}/tr069/reboot`, {}, { timeout: 30_000 },
+    );
+    return res.data.data;
+  },
+  onuTr069FactoryReset: async (sn: string): Promise<{ ok: boolean; mensaje: string }> => {
+    const res = await api.post<ApiRespuesta<{ ok: boolean; mensaje: string }>>(
+      `/olt-nativo/onu/${encodeURIComponent(sn)}/tr069/factory-reset`, {}, { timeout: 30_000 },
+    );
+    return res.data.data;
+  },
+  onuTr069SetWifi: async (sn: string, dto: SetWifiLiveDto): Promise<OnuApplyResult> => {
+    const res = await api.put<ApiRespuesta<OnuApplyResult>>(
+      `/olt-nativo/onu/${encodeURIComponent(sn)}/tr069/wifi`, dto, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+  onuTr069SetPppoe: async (sn: string, dto: SetPppoeLiveDto): Promise<OnuApplyResult> => {
+    const res = await api.put<ApiRespuesta<OnuApplyResult>>(
+      `/olt-nativo/onu/${encodeURIComponent(sn)}/tr069/pppoe`, dto, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
 };
+
+// ─── Tipos ONU TR-069 (detalle LIVE) ──────────────────────────
+export interface OnuWifiBand { band: '2.4' | '5'; index: number; enabled: boolean | null; ssid: string | null; }
+export interface OnuPppLink { index: string; username: string | null; connectionStatus: string | null; externalIp: string | null; }
+export interface OnuTr069Detalle {
+  informing:   boolean;
+  deviceId?:   string;
+  lastInform?: string | null;
+  info?: {
+    serial?: string; manufacturer?: string; productClass?: string; modelName?: string;
+    softwareVersion?: string; hardwareVersion?: string; mgmtIp?: string | null;
+    uptimeSeconds?: number | null; profileMatched: boolean;
+  };
+  wifi?: OnuWifiBand[];
+  ppp?:  OnuPppLink[];
+}
+export interface SetWifiLiveDto { band: '2.4' | '5'; enabled?: boolean; ssid?: string; password?: string; }
+export interface SetPppoeLiveDto { username?: string; password?: string; }
+export interface OnuApplyResult { ok: boolean; applied: number; total: number; fallidas: string[]; }

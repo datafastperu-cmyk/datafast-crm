@@ -49,6 +49,7 @@ import { ProvisionFtthService }       from './services/provision-ftth.service';
 import { ZtpProvisioningService }     from './ztp/ztp.service';
 import { ContratoOnuConfigService }   from './ztp/contrato-onu-config.service';
 import { GenieAcsDriver }             from './ztp/genieacs.driver';
+import { OnuTr069DetalleService }      from './ztp/onu-tr069-detalle.service';
 import { Tr069Module }                from '../tr069/tr069.module';
 import { ConfiguracionModule }        from '../config/config.module';
 import { OltServicePortPoolService }  from './services/olt-service-port-pool.service';
@@ -178,6 +179,7 @@ import { OltGateway }                from './olt.gateway';
     ZtpProvisioningService,
     ContratoOnuConfigService,
     GenieAcsDriver,
+    OnuTr069DetalleService,
     OltServicePortPoolService,
     OltOnuIdPoolService,
     OltVlanService,

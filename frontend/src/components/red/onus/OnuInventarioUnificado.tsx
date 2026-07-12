@@ -9,6 +9,7 @@ import {
 import { oltNativoApi, type OnuClasificada, type OnuInventarioGlobalItem } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
+import { OnuDetalleTr069Modal } from './OnuDetalleTr069Modal';
 
 const EST: Record<OnuClasificada['estadoOperativo'], { label: string; cls: string; Icon: typeof Wifi }> = {
   online:           { label: 'Online',           cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-700/40', Icon: Wifi },
@@ -54,6 +55,7 @@ export function OnuInventarioUnificado() {
   const [q, setQ]     = useState('');
   const [olt, setOlt] = useState('');
   const [est, setEst] = useState('');
+  const [detalle, setDetalle] = useState<OnuInventarioGlobalItem | null>(null);
 
   const olts = useMemo(() => [...new Set(data.map(d => d.oltNombre))].sort(), [data]);
 
@@ -151,9 +153,10 @@ export function OnuInventarioUnificado() {
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          onClick={() => toast('Detalle de la ONU — próximamente', { type: 'default' })}
-                          title="Ver detalle"
-                          className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                          onClick={() => setDetalle(o)}
+                          disabled={!o.sn}
+                          title={o.sn ? 'Ver detalle (TR-069 en vivo)' : 'ONU sin SN'}
+                          className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
@@ -185,6 +188,15 @@ export function OnuInventarioUnificado() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {detalle && (
+        <OnuDetalleTr069Modal
+          sn={detalle.sn}
+          oltNombre={detalle.oltNombre}
+          cliente={detalle.cliente}
+          onClose={() => setDetalle(null)}
+        />
       )}
     </div>
   );

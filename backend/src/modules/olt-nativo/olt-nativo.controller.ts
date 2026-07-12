@@ -27,6 +27,9 @@ import {
 } from './services/provision-ftth.service';
 import { ZtpProvisioningService } from './ztp/ztp.service';
 import { ContratoOnuConfigService, UpsertOnuConfigDto } from './ztp/contrato-onu-config.service';
+import {
+  OnuTr069DetalleService, SetWifiLiveDto, SetPppoeLiveDto,
+} from './ztp/onu-tr069-detalle.service';
 import { WizardCommitDto } from './dto/olt-nativo-ops.dto';
 import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
 import {
@@ -78,6 +81,7 @@ export class OltNativoController {
     private readonly sync:          OltSyncService,
     private readonly ztp:           ZtpProvisioningService,
     private readonly onuConfig:     ContratoOnuConfigService,
+    private readonly onuTr069:      OnuTr069DetalleService,
     private readonly events:        EventEmitter2,
   ) {}
 
@@ -817,6 +821,51 @@ export class OltNativoController {
   @ApiOperation({ summary: 'ZTP: reconciliar (re-aplicar) los contratos con drift de la empresa' })
   async ztpReconcile(@CurrentUser() user: JwtPayload) {
     return this.ztp.reconcile(user.empresaId);
+  }
+
+  // ── Detalle LIVE de una ONU por TR-069 (botón "Ver detalle" del inventario) ──
+  // Sesión LIVE on-demand: lee el árbol de GenieACS (mgmt siempre on). El frontend
+  // dispara refresh mientras el panel está abierto y lo detiene al cerrar.
+  @Get('onu/:sn/tr069')
+  @ApiOperation({ summary: 'ONU: detalle LIVE por TR-069 (info + WiFi + PPP)' })
+  @ApiParam({ name: 'sn' })
+  async onuTr069Detalle(@Param('sn') sn: string) {
+    return this.onuTr069.getDetalle(sn);
+  }
+
+  @Post('onu/:sn/tr069/refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ONU: ConnectionRequest + refresh del árbol y re-lectura' })
+  async onuTr069Refresh(@Param('sn') sn: string) {
+    return this.onuTr069.refresh(sn);
+  }
+
+  @Post('onu/:sn/tr069/reboot')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ONU: reboot por TR-069' })
+  async onuTr069Reboot(@Param('sn') sn: string) {
+    return this.onuTr069.reboot(sn);
+  }
+
+  @Post('onu/:sn/tr069/factory-reset')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ONU: reset de fábrica por TR-069' })
+  async onuTr069FactoryReset(@Param('sn') sn: string) {
+    return this.onuTr069.factoryReset(sn);
+  }
+
+  @Put('onu/:sn/tr069/wifi')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ONU: editar WiFi (2.4/5G) en vivo por TR-069' })
+  async onuTr069SetWifi(@Param('sn') sn: string, @Body() dto: SetWifiLiveDto) {
+    return this.onuTr069.setWifi(sn, dto);
+  }
+
+  @Put('onu/:sn/tr069/pppoe')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ONU: editar credenciales PPPoE en vivo por TR-069' })
+  async onuTr069SetPppoe(@Param('sn') sn: string, @Body() dto: SetPppoeLiveDto) {
+    return this.onuTr069.setPppoe(sn, dto);
   }
 
   // ── ZTP: config de servicio de la ONU (lado de entrada del pipeline) ──
