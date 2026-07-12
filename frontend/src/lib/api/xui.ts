@@ -46,11 +46,15 @@ export interface XuiServidor {
   nombre:                 string;
   descripcion:            string | null;
   apiUrl:                 string;
+  apiKeyMask:             string | null;
   latitud:                number | null;
   longitud:               number | null;
   estadoConexion:         XuiEstadoConexionServidor;
   ultimoErrorConexion:    string | null;
   ultimaConexionEn:       string | null;
+  latenciaMs:             number | null;
+  xuiVersion:             string | null;
+  hostname:               string | null;
   totalLineas:            number;
   totalBouquets:          number;
   totalCanales:           number;
@@ -114,6 +118,11 @@ export const xuiApi = {
 
   editarServidor: async (id: string, dto: ServidorFormDto): Promise<XuiServidor> => {
     const res = await api.put<ApiRespuesta<XuiServidor>>(`/xui/servidor/${id}`, dto);
+    return res.data.data;
+  },
+
+  sincronizarServidor: async (id: string): Promise<XuiServidor> => {
+    const res = await api.post<ApiRespuesta<XuiServidor>>(`/xui/servidor/${id}/sincronizar`);
     return res.data.data;
   },
 };

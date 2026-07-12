@@ -8,7 +8,7 @@ import { z }             from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Tv, Users, Radio, AlertTriangle, Server, Plus, X, Loader2,
-  CheckCircle2, XCircle, MapPin, Pencil,
+  CheckCircle2, XCircle, MapPin, Pencil, RefreshCw,
 } from 'lucide-react';
 import { PageHeader }  from '@/components/shared/PageHeader';
 import { useToast }    from '@/components/ui/toaster';
@@ -24,10 +24,22 @@ export default function IPTVPage() {
   const [q, setQ]     = useState('');
   const [showWizard, setShowWizard] = useState(false);
 
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const { data: servidor, isLoading: cargandoServidor } = useQuery({
     queryKey: ['xui-servidor'],
     queryFn:  xuiApi.obtenerServidor,
     enabled:  tab === 'servidores',
+  });
+
+  const { mutate: sincronizar, isPending: sincronizando } = useMutation({
+    mutationFn: () => xuiApi.sincronizarServidor(servidor!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['xui-servidor'] });
+      toast('Catálogo sincronizado', { type: 'success' });
+    },
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
   const { data: lines = [], isLoading: cargandoLines } = useQuery({
@@ -228,18 +240,38 @@ export default function IPTVPage() {
                     <MapPin className="w-3 h-3" /> {servidor.latitud}, {servidor.longitud}
                   </p>
                 )}
+                <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+                  {servidor.apiKeyMask && <span className="font-mono">{servidor.apiKeyMask}</span>}
+                  {servidor.xuiVersion && <span>v{servidor.xuiVersion}</span>}
+                  {servidor.hostname && <span>{servidor.hostname}</span>}
+                  {servidor.latenciaMs != null && <span>{servidor.latenciaMs} ms</span>}
+                </div>
                 <div className="flex items-center gap-4 pt-1 text-xs text-muted-foreground">
                   <span>{servidor.totalLineas} lines</span>
                   <span>{servidor.totalBouquets} bouquets</span>
                   <span>{servidor.totalCanales} canales</span>
+                  {servidor.catalogoSincronizadoEn && (
+                    <span>Sincronizado: {new Date(servidor.catalogoSincronizadoEn).toLocaleString('es-PE')}</span>
+                  )}
                 </div>
               </div>
-              <button
-                onClick={() => setShowWizard(true)}
-                className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => sincronizar()}
+                  disabled={sincronizando}
+                  title="Sincronizar catálogo"
+                  className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={cn('w-4 h-4', sincronizando && 'animate-spin')} />
+                </button>
+                <button
+                  onClick={() => setShowWizard(true)}
+                  title="Editar"
+                  className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>

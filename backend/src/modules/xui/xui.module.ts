@@ -9,10 +9,12 @@ import { XuiMonitorService } from './xui-monitor.service';
 import { XuiServidoresService } from './xui-servidores.service';
 import { XuiLine } from './entities/xui-line.entity';
 import { XuiServidor } from './entities/xui-servidor.entity';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([XuiLine, XuiServidor]),
+    AuthModule,
     HttpModule.register({
       timeout: 15_000,
       maxRedirects: 3,

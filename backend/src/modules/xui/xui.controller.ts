@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Put, Body, Param, Query, ParseUUIDPipe, SetMetadata } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Req, ParseUUIDPipe, SetMetadata, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { Request } from 'express';
 import { XuiApiService } from './xui-api.service';
 import { XuiLinesService } from './xui-lines.service';
 import { XuiMonitorService } from './xui-monitor.service';
@@ -41,8 +42,12 @@ export class XuiController {
   @Post('servidor')
   @RequirePermission('system:config')
   @ApiOperation({ summary: 'Registrar el servidor XUI ONE (solo si no existe uno ya configurado)' })
-  async crearServidor(@Body() dto: CrearXuiServidorDto, @CurrentUser() user: JwtPayload) {
-    return StdResponse.ok(await this.servidores.crear(dto, user.empresaId), 'Servidor XUI ONE configurado');
+  async crearServidor(
+    @Body() dto: CrearXuiServidorDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    return StdResponse.ok(await this.servidores.crear(dto, user, req), 'Servidor XUI ONE configurado');
   }
 
   @Put('servidor/:id')
@@ -53,8 +58,21 @@ export class XuiController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: EditarXuiServidorDto,
     @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
   ) {
-    return StdResponse.ok(await this.servidores.editar(id, dto, user.empresaId), 'Servidor XUI ONE actualizado');
+    return StdResponse.ok(await this.servidores.editar(id, dto, user, req), 'Servidor XUI ONE actualizado');
+  }
+
+  @Post('servidor/:id/sincronizar')
+  @RequirePermission('system:config')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Refrescar totales de catálogo (bouquets/canales/lines) sin reingresar credenciales' })
+  async sincronizarServidor(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return StdResponse.ok(await this.servidores.sincronizar(id, user.empresaId), 'Catálogo sincronizado');
   }
 
   @Get('health')

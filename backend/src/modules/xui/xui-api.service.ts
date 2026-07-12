@@ -303,15 +303,28 @@ export class XuiApiService implements OnModuleInit {
   // servidor ya configurado y en uso.
   // ────────────────────────────────────────────────────────────
 
-  async probarConexionExterna(apiUrl: string, apiKey: string): Promise<{ conectado: boolean; mensaje: string }> {
+  async probarConexionExterna(apiUrl: string, apiKey: string): Promise<{
+    conectado: boolean; mensaje: string; latenciaMs?: number;
+    version?: string | null; hostname?: string | null;
+  }> {
     if (!apiUrl || !apiKey) {
       return { conectado: false, mensaje: 'API URL y API Key son obligatorios' };
     }
+    const inicio = Date.now();
     try {
-      await this.get<any>('/api/status', undefined, { baseUrl: apiUrl, apiKey });
-      return { conectado: true, mensaje: 'Conexión exitosa con XUI ONE' };
+      const data = await this.get<any>('/api/status', undefined, { baseUrl: apiUrl, apiKey });
+      return {
+        conectado:   true,
+        mensaje:     'Conexión exitosa con XUI ONE',
+        latenciaMs:  Date.now() - inicio,
+        // Campos opcionales — solo si la respuesta real de XUI los trae.
+        // No se asume un formato fijo: se prueban nombres comunes y se
+        // descarta silenciosamente si no existen.
+        version:     data?.version ?? data?.panel_version ?? null,
+        hostname:    data?.hostname ?? data?.server_name ?? null,
+      };
     } catch (error: any) {
-      return { conectado: false, mensaje: `No se pudo conectar: ${error.message}` };
+      return { conectado: false, mensaje: `No se pudo conectar: ${error.message}`, latenciaMs: Date.now() - inicio };
     }
   }
 
