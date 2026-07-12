@@ -624,6 +624,25 @@ export interface PythonFtthRollbackRequest {
   service_port_id: number | null;
 }
 
+// Carril de bootstrap TR-069 (ZTP): mgmt WAN DHCP + service-port GEM2 + FEC.
+// La ONU recibe la ACS URL por DHCP Option 43 → aparece sola en GenieACS.
+export interface PythonFtthBootstrapRequest {
+  connection:           PythonConnectionPayload;
+  slot:                 number;
+  port:                 number;
+  onu_id:               number;
+  mgmt_vlan:            number;
+  mgmt_service_port_id: number;
+  traffic_index?:       number;
+  priority?:            number;
+}
+
+export interface PythonFtthBootstrapResponse {
+  success: boolean;
+  olt_ip?: string | null;
+  error?:  string;
+}
+
 export interface PythonFtthOntIdsRequest {
   connection: PythonConnectionPayload;
   slot:       number;

@@ -28,6 +28,8 @@ from app.schemas.olt import (
     FirmwareJobProgress,
     FirmwareJobStatus,
     FirmwareUpgradeRequest,
+    FtthBootstrapRequest,
+    FtthBootstrapResponse,
     FtthGponRequest,
     FtthGponResponse,
     FtthOntIdsRequest,
@@ -106,6 +108,7 @@ from app.services.provisioning import (
     poll_onu_online,
     single_poll_check,
     provision_gpon_ftth,
+    provision_mgmt_bootstrap,
     provision_onu,
     reset_huawei_onu,
     rollback_gpon,
@@ -662,6 +665,33 @@ async def ftth_provision_gpon(body: FtthGponRequest) -> FtthGponResponse:
             )
             return FtthGponResponse(success=False, error=str(exc))
     return FtthGponResponse(success=True, sn=result['sn'], olt_ip=result['olt_ip'])
+
+
+@app.post(
+    '/api/v1/olt/ftth/bootstrap-tr069',
+    response_model=FtthBootstrapResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Carril bootstrap TR-069 (ZTP): mgmt WAN DHCP + Option 43 → ONU aparece en el ACS',
+)
+async def ftth_bootstrap_tr069(body: FtthBootstrapRequest) -> FtthBootstrapResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                provision_mgmt_bootstrap,
+                body.connection,
+                body.slot, body.port, body.onu_id,
+                body.mgmt_vlan, body.mgmt_service_port_id,
+                body.traffic_index, body.priority,
+            )
+        except ProvisioningError as exc:
+            logger.warning(
+                'ftth_bootstrap_tr069 FALLO | OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d: %s',
+                olt_ip, body.slot, body.port, body.onu_id, body.mgmt_vlan, exc,
+            )
+            return FtthBootstrapResponse(success=False, error=str(exc))
+    return FtthBootstrapResponse(success=True, olt_ip=result['olt_ip'])
 
 
 @app.post(

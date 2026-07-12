@@ -57,6 +57,17 @@ export class DesaprovisionarFtthDto {
   @IsUUID('4') contratoId: string;
 }
 
+// Carril de bootstrap TR-069 (ZTP): añade el plano de gestión (mgmt WAN DHCP + service-port
+// GEM2 + FEC) a una ONU ya aprovisionada, para que reciba la ACS URL por DHCP Option 43 y
+// aparezca sola en GenieACS. Requiere el DHCP server + Option 43 en la VLAN de gestión (MikroTik).
+export class BootstrapTr069Dto {
+  @IsUUID('4') contratoId: string;
+  @IsInt() @Min(1) @Max(4094) @Type(() => Number) mgmtVlan:          number;
+  @IsInt() @Min(1)            @Type(() => Number) mgmtServicePortId: number;
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndex?:  number;
+  @IsOptional() @IsInt() @Min(0) @Max(7) @Type(() => Number) priority?: number;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Resultado público
 // ─────────────────────────────────────────────────────────────
@@ -567,6 +578,75 @@ export class ProvisionFtthService {
       estado:     FtthOnuEstado.ACTIVO,
       registroId: registro.id,
       mensaje:    'WAN PPPoE re-inyectada correctamente.',
+    };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // bootstrapTr069 — carril ZTP: mgmt WAN DHCP + service-port GEM2 + FEC
+  //
+  // Añade el plano de gestión a una ONU ya aprovisionada (activo/gpon_registrado).
+  // La ONU hace DHCP en la VLAN de gestión y recibe la ACS URL vía DHCP Option 43
+  // (servida por el MikroTik gateway de esa VLAN) → aparece sola en GenieACS.
+  // NO usa ont wan-config (rompería el IP host de gestión — verificado en EG8145V5).
+  // ────────────────────────────────────────────────────────────
+  async bootstrapTr069(
+    oltId:     string,
+    empresaId: string,
+    dto:       BootstrapTr069Dto,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+
+    const registro = await this.ftthRepo.findOne({ where: { contratoId: dto.contratoId, empresaId } });
+    if (!registro) {
+      throw new NotFoundException(`No hay registro FTTH para el contrato ${dto.contratoId}.`);
+    }
+    if (registro.oltId !== oltId) {
+      throw new BadRequestException('La OLT indicada no coincide con el registro de aprovisionamiento.');
+    }
+    if (registro.estado !== FtthOnuEstado.ACTIVO && registro.estado !== FtthOnuEstado.GPON_REGISTRADO) {
+      throw new BadRequestException(
+        `El carril TR-069 solo se aplica a ONUs "activo" o "gpon_registrado". Estado actual: "${registro.estado}".`,
+      );
+    }
+
+    const olt  = await this._fetchOlt(oltId, empresaId);
+    const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+
+    this.logger.log(
+      `FTTH bootstrapTr069 | contrato=${dto.contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId} ` +
+      `mgmtVlan=${dto.mgmtVlan} svcPort=${dto.mgmtServicePortId}`,
+    );
+
+    let res: { success: boolean; error?: string };
+    try {
+      res = await this.automation.ftthBootstrapTr069({
+        connection:           conn,
+        slot:                 registro.slot,
+        port:                 registro.port,
+        onu_id:               registro.onuId,
+        mgmt_vlan:            dto.mgmtVlan,
+        mgmt_service_port_id: dto.mgmtServicePortId,
+        traffic_index:        dto.trafficIndex ?? 0,
+        priority:             dto.priority ?? 2,
+      });
+    } catch (err: any) {
+      res = { success: false, error: err?.message ?? 'Error de comunicación con la OLT' };
+    }
+
+    if (!res.success) {
+      await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(res.error) });
+      return {
+        exitoso: false,
+        mensaje: 'No se pudo aplicar el carril de gestión TR-069. Revisa el DHCP/Option 43 de la VLAN de gestión.',
+        error:   res.error,
+      };
+    }
+
+    await this.ftthRepo.update(registro.id, { ultimoError: null });
+    this.logger.log(`FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${dto.mgmtVlan}`);
+    return {
+      exitoso: true,
+      mensaje: `Carril de gestión TR-069 aplicado (mgmt WAN DHCP en VLAN ${dto.mgmtVlan}). ` +
+               `La ONU tomará la ACS URL por DHCP Option 43 y aparecerá en GenieACS.`,
     };
   }
 

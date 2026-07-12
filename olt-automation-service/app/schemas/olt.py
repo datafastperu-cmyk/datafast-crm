@@ -406,6 +406,27 @@ class FtthRollbackResponse(BaseModel):
     error:   str | None = None
 
 
+class FtthBootstrapRequest(BaseModel):
+    """Carril de bootstrap TR-069 (ZTP): mgmt WAN DHCP + service-port GEM2 + FEC.
+
+    La ONU hace DHCP en la VLAN de gestión y recibe la ACS URL por DHCP Option 43 → aparece
+    sola en GenieACS. NO usa ont wan-config (rompería el IP host de gestión)."""
+    connection:           OltConnectionSchema
+    slot:                 int = Field(..., ge=0, le=15)
+    port:                 int = Field(..., ge=0, le=15)
+    onu_id:               int = Field(..., ge=1, le=128)
+    mgmt_vlan:            int = Field(..., ge=1, le=4094)
+    mgmt_service_port_id: int = Field(..., ge=1)
+    traffic_index:        int = Field(0, ge=0, description='Traffic-table del service-port de gestión. 0 = sin límite.')
+    priority:             int = Field(2, ge=0, le=7, description='PCP del IP host de gestión (Huawei suele esperar 2).')
+
+
+class FtthBootstrapResponse(BaseModel):
+    success: bool
+    olt_ip:  str | None = None
+    error:   str | None = None
+
+
 class FtthOntIdsRequest(BaseModel):
     """Listar los ONT-IDs ya configurados en un puerto PON (incl. los de SmartOLT)."""
     connection: OltConnectionSchema

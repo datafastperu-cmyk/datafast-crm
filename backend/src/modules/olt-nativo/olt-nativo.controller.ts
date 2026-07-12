@@ -17,6 +17,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { OltNativoService }        from './olt-nativo.service';
 import { FirmwareService }         from './firmware.service';
 import {
+  BootstrapTr069Dto,
   CambiarVelocidadDto,
   DesaprovisionarFtthDto,
   FtthProvisionResult,
@@ -730,6 +731,18 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<FtthProvisionResult> {
     return this.ftth.provisionarFtth(oltId, user.empresaId, dto);
+  }
+
+  @Post(':oltId/ftth/bootstrap-tr069')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Carril bootstrap TR-069 (ZTP): mgmt WAN DHCP + Option 43 → ONU aparece en GenieACS' })
+  @ApiParam({ name: 'oltId' })
+  async bootstrapTr069(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: BootstrapTr069Dto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ftth.bootstrapTr069(oltId, user.empresaId, dto);
   }
 
   @Post(':oltId/ftth/reinject-wan')

@@ -18,6 +18,8 @@ import {
   PythonDiscoverResponse,
   PythonFirmwareJobStatus,
   PythonFirmwareUpgradeRequest,
+  PythonFtthBootstrapRequest,
+  PythonFtthBootstrapResponse,
   PythonFtthGponRequest,
   PythonFtthGponResponse,
   PythonFtthPollRequest,
@@ -278,6 +280,21 @@ export class OltAutomationClient {
       '/api/v1/olt/ftth/provision-gpon', payload, 60_000,
     );
     this.logger.log(`← ftth/provision-gpon | success=${res.success}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — Carril bootstrap TR-069 (ZTP): mgmt WAN DHCP + Option 43
+  // ────────────────────────────────────────────────────────────
+  async ftthBootstrapTr069(payload: PythonFtthBootstrapRequest): Promise<PythonFtthBootstrapResponse> {
+    this.logger.log(
+      `→ Python ftth/bootstrap-tr069 | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} mgmt_vlan=${payload.mgmt_vlan}`,
+    );
+    const res = await this.post<PythonFtthBootstrapResponse>(
+      '/api/v1/olt/ftth/bootstrap-tr069', payload, 60_000,
+    );
+    this.logger.log(`← ftth/bootstrap-tr069 | success=${res.success}`);
     return res;
   }
 

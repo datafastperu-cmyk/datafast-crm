@@ -2481,6 +2481,111 @@ def provision_gpon_ftth(
     return {'success': True, 'sn': sn, 'olt_ip': conn.ip}
 
 
+def provision_mgmt_bootstrap(
+    conn:                 OltConnectionSchema,
+    slot:                 int,
+    port:                 int,
+    onu_id:               int,
+    mgmt_vlan:            int,
+    mgmt_service_port_id: int,
+    traffic_index:        int = 0,
+    priority:             int = 2,
+) -> dict[str, Any]:
+    """
+    Carril de bootstrap TR-069 (ZTP) — se aplica a una ONU YA registrada (tras Fase 1 GPON).
+
+    Crea el plano de gestión que permite que la ONU aparezca sola en el ACS (GenieACS):
+      - service-port de gestión (GEM 2) en la VLAN de gestión (bridged).
+      - IP host de gestión en modo DHCP (ip-index 0) sobre la VLAN de gestión.
+      - FEC (estabilidad del enlace; best-effort).
+
+    La ONU hace DHCP en la VLAN de gestión y recibe la ACS URL vía DHCP Option 43 (servida por
+    el MikroTik gateway de esa VLAN), con lo que escribe ManagementServer.URL e inicia el
+    BOOTSTRAP/Inform hacia el ACS. Comportamiento verificado en EG8145V5 V5R020C10S195.
+
+    IMPORTANTE: NO usa `ont wan-config` para ip-index 0 — crear una WAN ruteada le quita la VLAN
+    al IP host de gestión y la ONU deja de emitir (verificado). La gestión es SOLO un IP host OMCI.
+    `ont tr069-server-config` NO inicializa ManagementServer.URL en este firmware → se delega al
+    DHCP Option 43. Requiere ONU online. Síncrono — llamar desde asyncio.to_thread().
+    """
+    logger.info(
+        'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d',
+        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id,
+    )
+    cmds = [
+        'config',
+        (
+            f'service-port {mgmt_service_port_id} vlan {mgmt_vlan} '
+            f'gpon 0/{slot}/{port} ont {onu_id} gemport 2 '
+            f'multi-service user-vlan {mgmt_vlan} tag-transform translate '
+            f'inbound traffic-table index {traffic_index} '
+            f'outbound traffic-table index {traffic_index}'
+        ),
+        f'interface gpon 0/{slot}',
+        f'ont ipconfig {port} {onu_id} ip-index 0 dhcp vlan {mgmt_vlan} priority {priority}',
+        f'display ont ipconfig {port} {onu_id}',
+    ]
+    try:
+        parts = _paramiko_huawei_run(
+            conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
+        )
+    except ProvisioningError:
+        raise
+    except Exception as exc:
+        raise ProvisioningError(
+            f'provision_mgmt_bootstrap falló en {conn.ip}: {exc}'
+        ) from exc
+
+    # parts: [0]config [1]service-port [2]interface [3]ipconfig [4]display-verificación
+    raw_create = '\n'.join(parts[:4])
+    verify_out = parts[4] if len(parts) > 4 else ''
+
+    error_patterns = [
+        'Error:', 'Failure:', 'Parameter error', 'Too many parameters',
+        'Unknown command', 'Incomplete command', 'conflicts with',
+    ]
+    for pat in error_patterns:
+        if pat.lower() in raw_create.lower():
+            linea = next(
+                (l for l in raw_create.splitlines() if pat.lower() in l.lower()), pat,
+            )
+            raise ProvisioningError(
+                f'CLI Huawei reportó error en el bootstrap de gestión en {conn.ip}: {linea.strip()}'
+            )
+
+    # Verificación dura: el IP host de gestión debe quedar en modo DHCP.
+    v = verify_out.lower()
+    if 'dhcp' not in v:
+        raise ProvisioningError(
+            f'El IP host de gestión (ip-index 0, DHCP) no se configuró en {conn.ip} '
+            f'(ont {slot}/{port}/{onu_id}). Verificación: {verify_out[-200:].strip()}'
+        )
+
+    # FEC — estabilidad del enlace. Best-effort: no aborta el bootstrap si el modelo no lo soporta.
+    try:
+        _paramiko_huawei_run(
+            conn,
+            [
+                'config', f'interface gpon 0/{slot}',
+                f'ont fec {port} {onu_id} enable ont-type 2.5g/1.25g use-profile-config',
+            ],
+            timeout=settings.ssh_command_timeout,
+        )
+    except Exception as exc:
+        logger.warning('provision_mgmt_bootstrap: ont fec falló (no crítico) OLT=%s: %s', conn.ip, exc)
+
+    try:
+        _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)
+    except Exception as exc:
+        logger.warning('provision_mgmt_bootstrap: save falló (config en running) OLT=%s: %s', conn.ip, exc)
+
+    logger.info(
+        'provision_mgmt_bootstrap OK | OLT=%s ont %d/%d/%d mgmt_vlan=%d (DHCP + Option 43)',
+        conn.ip, slot, port, onu_id, mgmt_vlan,
+    )
+    return {'success': True, 'olt_ip': conn.ip}
+
+
 def rollback_gpon(
     conn:           OltConnectionSchema,
     slot:           int,
