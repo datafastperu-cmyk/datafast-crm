@@ -54,6 +54,7 @@ import { OltServicePortPoolService }  from './services/olt-service-port-pool.ser
 import { OltOnuIdPoolService }        from './services/olt-onu-id-pool.service';
 import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
 import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
+import { ZtpReconcileCron }          from './cron/ztp-reconcile.cron';
 import { OltAlertEngineService }     from './services/olt-alert-engine.service';
 import { OltSyncService }            from './services/olt-sync.service';
 import { OltGateway }                from './olt.gateway';
@@ -184,6 +185,7 @@ import { OltGateway }                from './olt.gateway';
     OltGateway,
     FtthRecoveryCron,
     OltHealthPollerCron,
+    ZtpReconcileCron,
   ],
   // Solo exports que módulos externos realmente consumen
   exports: [

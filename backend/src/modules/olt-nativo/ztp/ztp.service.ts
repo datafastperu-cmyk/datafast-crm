@@ -185,14 +185,69 @@ export class ZtpProvisioningService {
     const res  = await this.driver.applyExecutionPlan(plan, pmap);
 
     const fallidas = res.results.filter((r) => !r.ok);
+    const ok = fallidas.length === 0;
+    const mensaje =
+      `Plan aplicado a ${deviceId}: ${res.applied}/${plan.writes.length} escrituras` +
+      (fallidas.length ? ` — fallaron: ${fallidas.map((r) => r.key).join(', ')}` : ' (todas OK)') + '.';
+
+    // Estado aplicado (Inc.3): la revisión solo "queda aplicada" si TODO el plan pasó.
+    // Un plan parcial sigue en drift → la reconciliación reintentará.
+    await this.configRepo.update(
+      { id: cfg.id },
+      {
+        lastProvisionedAt:   new Date(),
+        lastProvisionResult: mensaje.slice(0, 500),
+        ...(ok ? { lastAppliedRevision: plan.metadata.revision } : {}),
+      },
+    );
+
     return {
-      ok: fallidas.length === 0,
+      ok,
       deviceId,
       applied: res.applied,
       total: plan.writes.length,
       fallidas: fallidas.map((r) => `${r.key}(${r.fault ?? r.reason})`),
-      mensaje: `Plan aplicado a ${deviceId}: ${res.applied}/${plan.writes.length} escrituras` +
-               (fallidas.length ? ` — fallaron: ${fallidas.map((r) => r.key).join(', ')}` : ' (todas OK)') + '.',
+      mensaje,
     };
+  }
+
+  // ── reconcile ─────────────────────────────────────────────────────────────
+  // Auditoría ERP: busca configs con drift (deseada > aplicada) y las re-aplica.
+  // Idempotente: aplicar la misma config dos veces es inocuo (el driver escribe
+  // el mismo valor). El ConnectionRequest lo dispara el driver por cada write.
+  //
+  // Diseñado para correr en cron nocturno y también bajo demanda (endpoint).
+  async reconcile(
+    empresaId?: string,
+  ): Promise<{ revisadas: number; conDrift: number; ok: number; fallidas: number;
+               detalle: { contratoId: string; ok: boolean; mensaje: string }[] }> {
+    const qb = this.configRepo.createQueryBuilder('c')
+      .where('c.provisioning_enabled = true')
+      .andWhere('c.deleted_at IS NULL')
+      .andWhere('(c.last_applied_revision IS NULL OR c.last_applied_revision < c.revision)');
+    if (empresaId) qb.andWhere('c.empresa_id = :empresaId', { empresaId });
+
+    const conDrift = await qb.getMany();
+    const detalle: { contratoId: string; ok: boolean; mensaje: string }[] = [];
+    let ok = 0, fallidas = 0;
+
+    for (const cfg of conDrift) {
+      try {
+        const r = await this.provisionContract(cfg.contratoId, cfg.empresaId);
+        if (r.ok) ok++; else fallidas++;
+        detalle.push({ contratoId: cfg.contratoId, ok: r.ok, mensaje: r.mensaje });
+      } catch (e) {
+        fallidas++;
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`reconcile: contrato ${cfg.contratoId} lanzó — ${msg}`);
+        detalle.push({ contratoId: cfg.contratoId, ok: false, mensaje: msg });
+      }
+    }
+
+    this.logger.log(
+      `Reconcile${empresaId ? ` empresa=${empresaId}` : ''}: ` +
+      `drift=${conDrift.length} ok=${ok} fallidas=${fallidas}`,
+    );
+    return { revisadas: conDrift.length, conDrift: conDrift.length, ok, fallidas, detalle };
   }
 }

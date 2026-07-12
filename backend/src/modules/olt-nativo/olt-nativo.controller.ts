@@ -775,6 +775,16 @@ export class OltNativoController {
     return this.ztp.provisionContract(contratoId, user.empresaId);
   }
 
+  // ── ZTP: reconciliación bajo demanda (Inc.3) ──
+  // Re-aplica los contratos con drift (deseada > aplicada) de la empresa. Mismo
+  // barrido que el cron nocturno, disparable manualmente desde la UI/soporte.
+  @Post('ztp/reconcile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ZTP: reconciliar (re-aplicar) los contratos con drift de la empresa' })
+  async ztpReconcile(@CurrentUser() user: JwtPayload) {
+    return this.ztp.reconcile(user.empresaId);
+  }
+
   // ── ZTP: config de servicio de la ONU (lado de entrada del pipeline) ──
   @Get('ztp/config/:contratoId')
   @ApiOperation({ summary: 'ZTP: obtener la config de servicio (WiFi/VoIP) de la ONU del contrato' })

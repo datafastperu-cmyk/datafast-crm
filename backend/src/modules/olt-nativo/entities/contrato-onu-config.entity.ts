@@ -67,4 +67,16 @@ export class ContratoOnuConfig extends BaseModel {
   /** Revisión de la config de negocio — sube en cada cambio (base de reconciliación). */
   @Column({ name: 'revision', type: 'int', default: 1 })
   revision: number;
+
+  // ── Estado aplicado en la ONU (Inc.3 reconciliación) ──
+  /** Última revisión que quedó APLICADA con éxito en la ONU. null = nunca aprovisionada. */
+  @Column({ name: 'last_applied_revision', type: 'int', nullable: true })
+  lastAppliedRevision: number | null;
+
+  @Column({ name: 'last_provisioned_at', type: 'timestamptz', nullable: true })
+  lastProvisionedAt: Date | null;
+
+  /** Resultado resumido del último intento (para auditoría/UI). */
+  @Column({ name: 'last_provision_result', type: 'text', nullable: true })
+  lastProvisionResult: string | null;
 }
