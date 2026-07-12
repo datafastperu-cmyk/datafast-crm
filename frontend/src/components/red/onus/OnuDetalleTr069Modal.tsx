@@ -83,6 +83,7 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
   const [live, setLive] = useState(false);
   const [pppUser, setPppUser] = useState('');
   const [pppPass, setPppPass] = useState('');
+  const [pending, setPending] = useState<'reboot' | 'factory' | null>(null);
   const initRan = useRef(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery<OnuTr069Detalle>({
@@ -190,15 +191,34 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
                 <Zap className="w-3.5 h-3.5" /> LIVE{live ? '!' : ''}
               </button>
               <div className="flex-1" />
-              <button onClick={() => { if (confirm(`¿Reiniciar la ONU ${sn}?`)) rebootMut.mutate(); }} disabled={rebootMut.isPending}
+              <button onClick={() => setPending('reboot')} disabled={rebootMut.isPending}
                 className={cn(BTN_OUTLINE, 'border-orange-500/40 text-orange-400 hover:bg-orange-500/10')}>
                 {rebootMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />} Reboot
               </button>
-              <button onClick={() => { if (confirm(`¿RESET DE FÁBRICA de la ONU ${sn}? Se perderá toda su configuración.`)) factoryMut.mutate(); }} disabled={factoryMut.isPending}
+              <button onClick={() => setPending('factory')} disabled={factoryMut.isPending}
                 className={cn(BTN_OUTLINE, 'border-destructive/50 text-destructive hover:bg-destructive/10')}>
                 {factoryMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Reset de fábrica
               </button>
             </div>
+
+            {/* Confirmación de acciones destructivas (modal por estado — sin window.confirm) */}
+            {pending && (
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-destructive/5">
+                <span className="text-xs text-foreground flex-1">
+                  {pending === 'reboot'
+                    ? `¿Reiniciar la ONU ${sn}? Perderá conexión ~1 min.`
+                    : `¿RESET DE FÁBRICA de la ONU ${sn}? Se borrará TODA su configuración.`}
+                </span>
+                <button onClick={() => setPending(null)} className={BTN_OUTLINE}>Cancelar</button>
+                <button
+                  onClick={() => { (pending === 'reboot' ? rebootMut : factoryMut).mutate(); setPending(null); }}
+                  className={cn('px-3 py-1.5 text-xs font-semibold rounded text-white',
+                    pending === 'reboot' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-destructive hover:bg-destructive/90')}
+                >
+                  {pending === 'reboot' ? 'Sí, reiniciar' : 'Sí, resetear'}
+                </button>
+              </div>
+            )}
 
             {/* WiFi */}
             <div className="px-5 py-4 space-y-5 border-b border-border">
