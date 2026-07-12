@@ -26,6 +26,7 @@ import {
   ReinjectarWanDto,
 } from './services/provision-ftth.service';
 import { ZtpProvisioningService } from './ztp/ztp.service';
+import { ContratoOnuConfigService, UpsertOnuConfigDto } from './ztp/contrato-onu-config.service';
 import { WizardCommitDto } from './dto/olt-nativo-ops.dto';
 import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
 import {
@@ -76,6 +77,7 @@ export class OltNativoController {
     private readonly healthDash:    OltHealthDashboardService,
     private readonly sync:          OltSyncService,
     private readonly ztp:           ZtpProvisioningService,
+    private readonly onuConfig:     ContratoOnuConfigService,
     private readonly events:        EventEmitter2,
   ) {}
 
@@ -771,6 +773,48 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.ztp.provisionContract(contratoId, user.empresaId);
+  }
+
+  // ── ZTP: config de servicio de la ONU (lado de entrada del pipeline) ──
+  @Get('ztp/config/:contratoId')
+  @ApiOperation({ summary: 'ZTP: obtener la config de servicio (WiFi/VoIP) de la ONU del contrato' })
+  async ztpGetConfig(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.onuConfig.get(contratoId, user.empresaId);
+  }
+
+  @Put('ztp/config/:contratoId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ZTP: crear/actualizar la config de servicio (WiFi/VoIP) de la ONU' })
+  async ztpUpsertConfig(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @Body() dto: UpsertOnuConfigDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.onuConfig.upsert(contratoId, user.empresaId, dto);
+  }
+
+  @Post('ztp/config/:contratoId/generate-wifi')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ZTP: generar SSID + clave WiFi fuerte (devuelve la clave en claro una vez)' })
+  async ztpGenerateWifi(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.onuConfig.generateWifi(contratoId, user.empresaId);
+  }
+
+  @Post('ztp/config/:contratoId/provisioning')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ZTP: activar/desactivar el aprovisionamiento TR-069 del contrato' })
+  async ztpSetProvisioning(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @Body('enabled') enabled: boolean,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.onuConfig.setProvisioningEnabled(contratoId, user.empresaId, !!enabled);
   }
 
   @Post(':oltId/ftth/desaprovisionar')

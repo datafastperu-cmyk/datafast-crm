@@ -47,6 +47,7 @@ import { SmartoltProvider }         from './providers/smartolt.provider';
 import { AdminOltProvider }         from './providers/adminolt.provider';
 import { ProvisionFtthService }       from './services/provision-ftth.service';
 import { ZtpProvisioningService }     from './ztp/ztp.service';
+import { ContratoOnuConfigService }   from './ztp/contrato-onu-config.service';
 import { GenieAcsDriver }             from './ztp/genieacs.driver';
 import { Tr069Module }                from '../tr069/tr069.module';
 import { OltServicePortPoolService }  from './services/olt-service-port-pool.service';
@@ -171,6 +172,7 @@ import { OltGateway }                from './olt.gateway';
     FirmwareService,
     ProvisionFtthService,
     ZtpProvisioningService,
+    ContratoOnuConfigService,
     GenieAcsDriver,
     OltServicePortPoolService,
     OltOnuIdPoolService,
