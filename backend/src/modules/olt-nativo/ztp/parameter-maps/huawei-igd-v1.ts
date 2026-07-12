@@ -10,17 +10,19 @@ export const HUAWEI_IGD_V1: ParameterMap = {
   map: {
     'wifi.enable':   ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Enable'],
     'wifi.ssid':     ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID'],
+    // Orden validado en vivo (EG8145V5 V5R020C10S195): KeyPassphrase directo da
+    // cwmp.9003 "Invalid arguments"; PreSharedKey.1.KeyPassphrase aplica OK → va primero.
     'wifi.password': [
-      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase',
     ],
     'wifi5g.enable':   ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.Enable'],
     'wifi5g.ssid':     ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID'],
     'wifi5g.password': [
-      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.KeyPassphrase',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.PreSharedKey.1.KeyPassphrase',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.PreSharedKey.1.PreSharedKey',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.KeyPassphrase',
     ],
     'internet.username': ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.{ppp}.WANPPPConnection.1.Username'],
     'internet.password': ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.{ppp}.WANPPPConnection.1.Password'],
