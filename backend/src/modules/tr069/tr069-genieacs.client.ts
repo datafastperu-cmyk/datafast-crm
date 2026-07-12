@@ -95,4 +95,24 @@ export class Tr069GenieacsClient {
     );
     return { status: res.status, body: res.data };
   }
+
+  /** Agrega un tag al device (idempotente). Usado como guard del pipeline (Provisioned/…). */
+  async addTag(deviceId: string, tag: string): Promise<void> {
+    await firstValueFrom(
+      this.http.post(
+        `${this.baseUrl}/devices/${encodeURIComponent(deviceId)}/tags/${encodeURIComponent(tag)}`,
+        null, this.cfg(),
+      ),
+    );
+  }
+
+  /** Quita un tag del device (idempotente). */
+  async removeTag(deviceId: string, tag: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete(
+        `${this.baseUrl}/devices/${encodeURIComponent(deviceId)}/tags/${encodeURIComponent(tag)}`,
+        this.cfg(),
+      ),
+    );
+  }
 }

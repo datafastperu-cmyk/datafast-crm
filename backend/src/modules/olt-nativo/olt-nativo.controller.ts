@@ -25,6 +25,7 @@ import {
   ProvisionFtthService,
   ReinjectarWanDto,
 } from './services/provision-ftth.service';
+import { ZtpProvisioningService } from './ztp/ztp.service';
 import { WizardCommitDto } from './dto/olt-nativo-ops.dto';
 import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
 import {
@@ -74,6 +75,7 @@ export class OltNativoController {
     private readonly trafficTables: OltTrafficTableService,
     private readonly healthDash:    OltHealthDashboardService,
     private readonly sync:          OltSyncService,
+    private readonly ztp:           ZtpProvisioningService,
     private readonly events:        EventEmitter2,
   ) {}
 
@@ -755,6 +757,20 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<FtthProvisionResult> {
     return this.ftth.reinjectarWan(oltId, user.empresaId, dto);
+  }
+
+  // ── ZTP: aplicar la config de servicio (WiFi/PPPoE/…) por TR-069 vía GenieACS ──
+  // Pipeline capability-based: contrato_onu_config → ExecutionPlan → NBI. Guard:
+  // solo aplica si provisioning_enabled=true. La ONU debe estar informando a GenieACS.
+  @Post('ztp/provision/:contratoId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ZTP: aplicar config de servicio (WiFi/PPPoE) por TR-069 al contrato' })
+  @ApiParam({ name: 'contratoId' })
+  async ztpProvision(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ztp.provisionContract(contratoId, user.empresaId);
   }
 
   @Post(':oltId/ftth/desaprovisionar')

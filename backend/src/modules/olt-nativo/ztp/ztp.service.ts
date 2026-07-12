@@ -10,6 +10,7 @@ import { DesiredConfiguration, ExecutionPlan } from './ztp.contracts';
 import { filterByCapabilities } from './capability.engine';
 import { resolve } from './resolver';
 import { DeviceRuntime, getParameterMap, matchDeviceProfile } from './registry';
+import { GenieAcsDriver } from './genieacs.driver';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ZtpProvisioningService — orquestador del pipeline (lado ERP)
@@ -30,6 +31,7 @@ export class ZtpProvisioningService {
     private readonly ds: DataSource,
     @InjectRepository(ContratoOnuConfig)
     private readonly configRepo: Repository<ContratoOnuConfig>,
+    private readonly driver: GenieAcsDriver,
   ) {}
 
   private _dec(v: string | null): string | undefined {
@@ -129,5 +131,65 @@ export class ZtpProvisioningService {
       `profile=${plan.profile} writes=${plan.writes.length} rev=${plan.metadata.revision}`,
     );
     return plan;
+  }
+
+  // ── provisionContract ─────────────────────────────────────────────────────
+  // Flujo ERP-driven completo: busca el device en GenieACS por el SN de la ONU, lee su
+  // Runtime, produce el ExecutionPlan y lo aplica por NBI (con ConnectionRequest).
+  // GUARD: solo aplica si contrato_onu_config.provisioning_enabled = true (seguridad).
+  async provisionContract(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ ok: boolean; skipped?: boolean; deviceId?: string; applied?: number; skippedWrites?: string[]; mensaje: string }> {
+    const cfg = await this.configRepo.findOne({ where: { contratoId, empresaId } });
+    if (!cfg) {
+      throw new NotFoundException(`El contrato ${contratoId} no tiene config de ONU (contrato_onu_config).`);
+    }
+    if (!cfg.provisioningEnabled) {
+      return { ok: false, skipped: true,
+        mensaje: 'provisioning_enabled = false. Actívalo explícitamente antes de aplicar (seguridad ZTP).' };
+    }
+    if (!this.driver.isReady()) {
+      return { ok: false, mensaje: 'GenieACS NBI no configurado — el pipeline TR-069 está degradado.' };
+    }
+
+    const [reg] = await this.ds.query<{ sn: string | null }[]>(
+      `SELECT sn FROM ftth_onu_registro WHERE contrato_id = $1 AND empresa_id = $2`,
+      [contratoId, empresaId],
+    );
+    if (!reg?.sn) {
+      throw new NotFoundException('El contrato no tiene ONU aprovisionada (sin SN).');
+    }
+
+    const deviceId = await this.driver.findDeviceIdBySerial(reg.sn);
+    if (!deviceId) {
+      return { ok: false, mensaje: `La ONU ${reg.sn} aún no aparece en GenieACS (no ha informado).` };
+    }
+    const runtime = await this.driver.getRuntime(deviceId);
+    if (!runtime) {
+      return { ok: false, deviceId, mensaje: 'No se pudo leer el Runtime del device desde GenieACS.' };
+    }
+
+    const profile = matchDeviceProfile(runtime);
+    if (!profile) {
+      throw new UnprocessableEntityException(
+        `Sin device-profile para el modelo reportado (class=${runtime.productClass ?? '?'}).`,
+      );
+    }
+    const pmap = getParameterMap(profile.parameter_map);
+    if (!pmap) {
+      throw new UnprocessableEntityException(`parameter_map "${profile.parameter_map}" no registrado.`);
+    }
+
+    const plan = await this.buildExecutionPlan(contratoId, empresaId, deviceId, runtime);
+    const res  = await this.driver.applyExecutionPlan(plan, pmap);
+
+    return {
+      ok: true, deviceId,
+      applied: res.applied,
+      skippedWrites: res.skipped,
+      mensaje: `Plan aplicado a ${deviceId}: ${res.applied} escrituras encoladas` +
+               (res.skipped.length ? ` (omitidas por descubrimiento: ${res.skipped.join(', ')})` : '') + '.',
+    };
   }
 }

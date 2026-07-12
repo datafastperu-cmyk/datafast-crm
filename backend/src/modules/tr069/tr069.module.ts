@@ -15,6 +15,6 @@ import { Tr069Controller }      from './tr069.controller';
   ],
   controllers: [Tr069Controller],
   providers:   [Tr069GenieacsClient, Tr069Service],
-  exports:     [Tr069Service],
+  exports:     [Tr069Service, Tr069GenieacsClient],
 })
 export class Tr069Module {}
