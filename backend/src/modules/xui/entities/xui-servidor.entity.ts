@@ -26,7 +26,7 @@ export class XuiServidor extends BaseModel {
   @Column({ name: 'api_key', type: 'text' })
   apiKey: string;
 
-  @Column({ name: 'api_key_ultimos4', length: 4, nullable: true })
+  @Column({ name: 'api_key_ultimos4', type: 'varchar', length: 4, nullable: true })
   apiKeyUltimos4: string | null;
 
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
