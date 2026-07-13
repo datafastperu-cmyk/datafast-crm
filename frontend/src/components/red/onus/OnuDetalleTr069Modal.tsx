@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Radio, X, Zap, RefreshCcw, Power, RotateCcw, Wifi, Globe,
-  Loader2, Save, Eye, EyeOff, Signal, Clock,
+  Loader2, Save, Eye, EyeOff, Signal, Clock, KeyRound, Monitor, Cable,
 } from 'lucide-react';
-import { oltNativoApi, type OnuTr069Detalle, type OnuWifiBand } from '@/lib/api/olt-nativo';
+import { oltNativoApi, type OnuTr069Detalle, type OnuWifiBand, type OnuHost } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 
@@ -75,6 +75,69 @@ function WifiEditor({ sn, band, current, onSaved }: {
   );
 }
 
+// ── Dispositivos conectados (Hosts) ────────────────────────────
+const CONEXION_META: Record<OnuHost['conexion'], { label: string; cls: string; Icon: typeof Wifi }> = {
+  '2.4': { label: 'WiFi 2.4GHz', cls: 'text-sky-400 border-sky-700/40 bg-sky-500/10',       Icon: Wifi },
+  '5':   { label: 'WiFi 5GHz',   cls: 'text-violet-400 border-violet-700/40 bg-violet-500/10', Icon: Wifi },
+  wifi:  { label: 'WiFi',        cls: 'text-emerald-400 border-emerald-700/40 bg-emerald-500/10', Icon: Wifi },
+  lan:   { label: 'Cable',       cls: 'text-amber-400 border-amber-700/40 bg-amber-500/10',   Icon: Cable },
+};
+
+function HostsSection({ hosts }: { hosts: OnuHost[] }) {
+  const activos = hosts.filter(h => h.active !== false);
+  const cuenta = (c: OnuHost['conexion']) => activos.filter(h => h.conexion === c).length;
+
+  return (
+    <div className="px-5 py-4 space-y-2 border-t border-border">
+      <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+        <Monitor className="w-3.5 h-3.5 text-primary" /> Dispositivos conectados
+        <span className="text-[10px] font-normal text-muted-foreground">({activos.length})</span>
+        <div className="flex-1" />
+        {(['2.4', '5', 'lan'] as const).map(c => cuenta(c) > 0 && (
+          <span key={c} className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded border', CONEXION_META[c].cls)}>
+            {CONEXION_META[c].label}: {cuenta(c)}
+          </span>
+        ))}
+      </div>
+      {activos.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground italic">
+          Sin dispositivos reportados. Pulsa «Refresh interfaces» o activa LIVE (la ONU debe estar informando).
+        </p>
+      ) : (
+        <div className="rounded-lg border border-border overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead className="bg-muted/40 text-muted-foreground">
+              <tr>
+                <th className="text-left px-2.5 py-1.5 font-semibold">Dispositivo</th>
+                <th className="text-left px-2.5 py-1.5 font-semibold">IP</th>
+                <th className="text-left px-2.5 py-1.5 font-semibold">MAC</th>
+                <th className="text-left px-2.5 py-1.5 font-semibold">Conexión</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activos.map((h, i) => {
+                const m = CONEXION_META[h.conexion];
+                return (
+                  <tr key={`${h.mac ?? i}`} className="border-t border-border/50">
+                    <td className="px-2.5 py-1.5 text-foreground">{h.hostname || <span className="text-muted-foreground">—</span>}</td>
+                    <td className="px-2.5 py-1.5 font-mono text-muted-foreground">{h.ip || '—'}</td>
+                    <td className="px-2.5 py-1.5 font-mono text-muted-foreground">{h.mac || '—'}</td>
+                    <td className="px-2.5 py-1.5">
+                      <span className={cn('inline-flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded border', m.cls)}>
+                        <m.Icon className="w-3 h-3" /> {m.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Componente principal ───────────────────────────────────────
 export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
   sn: string; oltNombre?: string; cliente?: string | null; onClose: () => void;
@@ -83,6 +146,8 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
   const [live, setLive] = useState(false);
   const [pppUser, setPppUser] = useState('');
   const [pppPass, setPppPass] = useState('');
+  const [webAdminUser, setWebAdminUser] = useState('');
+  const [webAdminPass, setWebAdminPass] = useState('');
   const [pending, setPending] = useState<'reboot' | 'factory' | null>(null);
   const initRan = useRef(false);
 
@@ -125,6 +190,11 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
     mutationFn: () => oltNativoApi.onuTr069SetPppoe(sn, { username: pppUser || undefined, password: pppPass || undefined }),
     onSuccess: (r) => { if (r.ok) { toast(`PPPoE aplicado (${r.applied}/${r.total})`, { type: 'success' }); setPppPass(''); refetch(); } else toast(`PPPoE: fallaron ${r.fallidas.join(', ')}`, { type: 'error' }); },
     onError: () => toast('No se pudo aplicar el PPPoE', { type: 'error' }),
+  });
+  const webMut = useMutation({
+    mutationFn: () => oltNativoApi.onuTr069SetAccesoWeb(sn, { adminUser: webAdminUser || undefined, adminPassword: webAdminPass || undefined }),
+    onSuccess: (r) => { if (r.ok) { toast(`Acceso web aplicado (${r.applied}/${r.total})`, { type: 'success' }); setWebAdminPass(''); } else toast(`Acceso web: fallaron ${r.fallidas.join(', ')}`, { type: 'error' }); },
+    onError: () => toast('No se pudo cambiar el acceso web', { type: 'error' }),
   });
 
   const info = data?.info;
@@ -256,6 +326,29 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
                 {pppMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Aplicar PPPoE
               </button>
             </div>
+
+            {/* Credenciales de acceso web de la ONU */}
+            <div className="px-5 py-4 space-y-2 border-t border-border">
+              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                <KeyRound className="w-3.5 h-3.5 text-primary" /> Credenciales de acceso web (admin de la ONU)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground">Usuario admin</label>
+                  <input value={webAdminUser} onChange={e => setWebAdminUser(e.target.value)} placeholder="telecomadmin" className={INPUT} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground">Nueva clave admin (vacío = sin cambio)</label>
+                  <input type="password" value={webAdminPass} onChange={e => setWebAdminPass(e.target.value)} placeholder="••••••••" className={INPUT} />
+                </div>
+              </div>
+              <button onClick={() => webMut.mutate()} disabled={webMut.isPending || (!webAdminUser && !webAdminPass)} className={cn(BTN_OUTLINE, 'ml-auto')}>
+                {webMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Aplicar acceso web
+              </button>
+            </div>
+
+            {/* Dispositivos conectados */}
+            <HostsSection hosts={data?.hosts ?? []} />
 
             <div className="px-5 py-3 border-t border-border bg-muted/10">
               <p className="text-[10px] text-muted-foreground italic">

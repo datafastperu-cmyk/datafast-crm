@@ -1238,11 +1238,18 @@ export const oltNativoApi = {
     );
     return res.data.data;
   },
+  onuTr069SetAccesoWeb: async (sn: string, dto: SetAccesoWebDto): Promise<OnuApplyResult> => {
+    const res = await api.put<ApiRespuesta<OnuApplyResult>>(
+      `/olt-nativo/onu/${encodeURIComponent(sn)}/tr069/acceso-web`, dto, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
 };
 
 // ─── Tipos ONU TR-069 (detalle LIVE) ──────────────────────────
 export interface OnuWifiBand { band: '2.4' | '5'; index: number; enabled: boolean | null; ssid: string | null; }
 export interface OnuPppLink { index: string; username: string | null; connectionStatus: string | null; externalIp: string | null; }
+export interface OnuHost { hostname: string | null; ip: string | null; mac: string | null; active: boolean | null; conexion: '2.4' | '5' | 'wifi' | 'lan'; }
 export interface OnuTr069Detalle {
   informing:   boolean;
   deviceId?:   string;
@@ -1254,9 +1261,11 @@ export interface OnuTr069Detalle {
   };
   wifi?: OnuWifiBand[];
   ppp?:  OnuPppLink[];
+  hosts?: OnuHost[];
 }
 export interface SetWifiLiveDto { band: '2.4' | '5'; enabled?: boolean; ssid?: string; password?: string; }
 export interface SetPppoeLiveDto { username?: string; password?: string; }
+export interface SetAccesoWebDto { adminUser?: string; adminPassword?: string; userUser?: string; userPassword?: string; }
 export interface OnuApplyResult { ok: boolean; applied: number; total: number; fallidas: string[]; }
 
 // ─── Perfil TR-069 por OLT ─────────────────────────────────────

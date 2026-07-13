@@ -28,7 +28,7 @@ import {
 import { ZtpProvisioningService } from './ztp/ztp.service';
 import { ContratoOnuConfigService, UpsertOnuConfigDto } from './ztp/contrato-onu-config.service';
 import {
-  OnuTr069DetalleService, SetWifiLiveDto, SetPppoeLiveDto,
+  OnuTr069DetalleService, SetWifiLiveDto, SetPppoeLiveDto, SetAccesoWebDto,
 } from './ztp/onu-tr069-detalle.service';
 import { WizardCommitDto } from './dto/olt-nativo-ops.dto';
 import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
@@ -890,6 +890,13 @@ export class OltNativoController {
   @ApiOperation({ summary: 'ONU: editar credenciales PPPoE en vivo por TR-069' })
   async onuTr069SetPppoe(@Param('sn') sn: string, @Body() dto: SetPppoeLiveDto) {
     return this.onuTr069.setPppoe(sn, dto);
+  }
+
+  @Put('onu/:sn/tr069/acceso-web')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'ONU: editar credenciales de acceso web (admin/usuario) por TR-069' })
+  async onuTr069SetAccesoWeb(@Param('sn') sn: string, @Body() dto: SetAccesoWebDto) {
+    return this.onuTr069.setAccesoWeb(sn, dto);
   }
 
   // ── ZTP: config de servicio de la ONU (lado de entrada del pipeline) ──

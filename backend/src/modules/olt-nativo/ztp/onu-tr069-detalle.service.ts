@@ -17,6 +17,12 @@ export class SetPppoeLiveDto {
   @IsOptional() @IsString() @MaxLength(64) username?: string;
   @IsOptional() @IsString() @MaxLength(64) password?: string;
 }
+export class SetAccesoWebDto {
+  @IsOptional() @IsString() @MaxLength(64) adminUser?: string;
+  @IsOptional() @IsString() @MinLength(6) @MaxLength(64) adminPassword?: string;
+  @IsOptional() @IsString() @MaxLength(64) userUser?: string;
+  @IsOptional() @IsString() @MinLength(6) @MaxLength(64) userPassword?: string;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OnuTr069DetalleService — lectura/acciones LIVE de una ONU vía TR-069 (GenieACS).
@@ -42,6 +48,14 @@ export interface OnuPppLink {
   connectionStatus: string | null;
   externalIp:       string | null;
 }
+export interface OnuHost {
+  hostname: string | null;
+  ip:       string | null;
+  mac:      string | null;
+  active:   boolean | null;
+  /** Cómo está conectado: banda WiFi, WiFi genérico o cable. */
+  conexion: '2.4' | '5' | 'wifi' | 'lan';
+}
 export interface OnuTr069Detalle {
   informing:   boolean;
   deviceId?:   string;
@@ -59,6 +73,7 @@ export interface OnuTr069Detalle {
   };
   wifi?: OnuWifiBand[];
   ppp?:  OnuPppLink[];
+  hosts?: OnuHost[];
 }
 
 @Injectable()
@@ -105,7 +120,8 @@ export class OnuTr069DetalleService {
     if (!dev) return { informing: false, deviceId };
 
     const did  = dev._deviceId ?? {};
-    const info = dev.InternetGatewayDevice?.DeviceInfo ?? {};
+    const igd  = dev.InternetGatewayDevice ?? {};
+    const info = igd.DeviceInfo ?? {};
     const runtime = {
       manufacturer:    did._Manufacturer,
       productClass:    did._ProductClass,
@@ -143,6 +159,40 @@ export class OnuTr069DetalleService {
       }
     }
 
+    // Dispositivos conectados (Hosts) + banda WiFi por MAC (AssociatedDevice de cada WLAN).
+    const wlanRoot = igd.LANDevice?.['1']?.WLANConfiguration ?? {};
+    const macBand = new Map<string, '2.4' | '5'>();
+    for (const [idx, band] of [['1', '2.4'], ['5', '5']] as const) {
+      const ad = wlanRoot[idx]?.AssociatedDevice ?? {};
+      for (const k of Object.keys(ad)) {
+        if (k.startsWith('_')) continue;
+        const mac = this._val(dev, `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${idx}.AssociatedDevice.${k}.AssociatedDeviceMACAddress`);
+        if (mac) macBand.set(String(mac).toLowerCase(), band);
+      }
+    }
+    const hosts: OnuHost[] = [];
+    const hostRoot = igd.LANDevice?.['1']?.Hosts?.Host ?? {};
+    for (const k of Object.keys(hostRoot)) {
+      if (k.startsWith('_')) continue;
+      const base   = `InternetGatewayDevice.LANDevice.1.Hosts.Host.${k}`;
+      const mac    = this._val(dev, `${base}.MACAddress`);
+      const iftype = this._val(dev, `${base}.InterfaceType`);
+      const layer2 = this._val(dev, `${base}.Layer2Interface`) ?? this._val(dev, `${base}.Layer1Interface`);
+      let conexion: OnuHost['conexion'] = mac ? (macBand.get(String(mac).toLowerCase()) ?? 'lan') : 'lan';
+      if (conexion === 'lan' && typeof layer2 === 'string') {
+        if (/WLANConfiguration\.5\b/.test(layer2)) conexion = '5';
+        else if (/WLANConfiguration\.1\b/.test(layer2)) conexion = '2.4';
+      }
+      if (conexion === 'lan' && /802\.11|wifi|wlan/i.test(String(iftype ?? ''))) conexion = 'wifi';
+      hosts.push({
+        hostname: this._val(dev, `${base}.HostName`) ?? null,
+        ip:       this._val(dev, `${base}.IPAddress`) ?? null,
+        mac:      mac ?? null,
+        active:   this._val(dev, `${base}.Active`) ?? null,
+        conexion,
+      });
+    }
+
     return {
       informing: true,
       deviceId,
@@ -160,6 +210,7 @@ export class OnuTr069DetalleService {
       },
       wifi,
       ppp,
+      hosts,
     };
   }
 
@@ -178,6 +229,9 @@ export class OnuTr069DetalleService {
       'InternetGatewayDevice.DeviceInfo',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
       'InternetGatewayDevice.WANDevice.1.WANConnectionDevice',
+      'InternetGatewayDevice.LANDevice.1.Hosts',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.AssociatedDevice',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.AssociatedDevice',
     ]) {
       await this.nbi.queueTask(deviceId, { name: 'refreshObject', objectName: obj }, true).catch(() => {});
     }
@@ -240,6 +294,17 @@ export class OnuTr069DetalleService {
     return this._applyKeys(serial, [
       { key: 'internet.username', value: dto.username },
       { key: 'internet.password', value: dto.password },
+    ]);
+  }
+
+  // Credenciales de acceso web de la ONU (login del equipo): cuenta admin (X_HW_WebUserInfo.2)
+  // y usuario (X_HW_WebUserInfo.1). Reutiliza el fallback del driver.
+  setAccesoWeb(serial: string, dto: SetAccesoWebDto) {
+    return this._applyKeys(serial, [
+      { key: 'onu_admin.user',       value: dto.adminUser },
+      { key: 'onu_admin.password',   value: dto.adminPassword },
+      { key: 'onu_webuser.user',     value: dto.userUser },
+      { key: 'onu_webuser.password', value: dto.userPassword },
     ]);
   }
 }
