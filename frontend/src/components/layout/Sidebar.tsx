@@ -11,7 +11,7 @@ import {
   UserCheck, Zap,
   Tv,
   ChevronRight, Gift, Trophy, Settings2,
-  AlertTriangle,
+  AlertTriangle, Layers,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -29,6 +29,7 @@ const NAV: NavEntry[] = [
   {
     id: 'red', label: 'Gestión de Red', icon: Network,
     items: [
+      { href: '/red/sites',      label: 'Sites',            icon: Layers,   permiso: 'mikrotik:view'   },
       { href: '/red/routers',    label: 'Routers MikroTik', icon: Router,   permiso: 'mikrotik:view'   },
       { href: '/red/vpn',        label: 'OpenVPN',          icon: Shield,   permiso: 'mikrotik:manage' },
       { href: '/red/olt',        label: 'OLT / GPON',       icon: Server,   permiso: 'mikrotik:view'   },
