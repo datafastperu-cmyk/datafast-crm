@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Cpu, RefreshCw, Loader2,
   Settings, Activity, Network, Users, Server, Zap,
-  Plug, Gauge, AlertTriangle, GitCompareArrows, Radio,
+  Plug, Gauge, AlertTriangle, GitCompareArrows, Radio, ShieldCheck,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
@@ -20,6 +20,7 @@ import { TabVlans }      from '@/components/olt/TabVlans';
 import { TabProfiles }   from '@/components/olt/TabProfiles';
 import { TabOnus }       from '@/components/olt/TabOnus';
 import { TabDrift }      from '@/components/olt/TabDrift';
+import { TabCompliance } from '@/components/olt/TabCompliance';
 import { TabFirmware }   from '@/components/olt/TabFirmware';
 import { TabTr069 }      from '@/components/olt/TabTr069';
 import { ProveedoresTab } from '@/components/red/ProveedoresTab';
@@ -29,7 +30,7 @@ import { DeleteOltModal }  from '@/components/red/DeleteOltModal';
 // ─── Tabs ────────────────────────────────────────────────────────
 
 type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'drift' | 'firmware'
-           | 'proveedores' | 'salud' | 'tr069';
+           | 'proveedores' | 'salud' | 'tr069' | 'compliance';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; soloNativo?: boolean }[] = [
   { id: 'detalles',    label: 'Detalles',    icon: <Settings       className="w-3.5 h-3.5" /> },
@@ -37,6 +38,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; soloNativo?: bool
   { id: 'profiles',    label: 'Perfiles',    icon: <Server         className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'drift',       label: 'Drift',       icon: <GitCompareArrows className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'compliance',  label: 'Compliance',  icon: <ShieldCheck    className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'firmware',    label: 'Firmware',    icon: <Zap            className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'tr069',       label: 'TR-069',      icon: <Radio          className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'proveedores', label: 'Proveedores', icon: <Plug           className="w-3.5 h-3.5" /> },
@@ -246,6 +248,7 @@ export default function OltDetallePage() {
         {tabActual === 'profiles'    && <TabProfiles   oltId={id} />}
         {tabActual === 'onus'        && <TabOnus       oltId={id} />}
         {tabActual === 'drift'       && <TabDrift      oltId={id} />}
+        {tabActual === 'compliance'  && <TabCompliance oltId={id} />}
         {tabActual === 'firmware'    && <TabFirmware   oltId={id} />}
         {tabActual === 'tr069'       && <TabTr069      oltId={id} />}
         {tabActual === 'proveedores' && <ProveedoresTab oltId={id} />}

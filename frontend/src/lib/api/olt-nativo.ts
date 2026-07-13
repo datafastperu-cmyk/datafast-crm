@@ -509,6 +509,23 @@ export interface DriftResult {
   snapshotAt: string | null;
 }
 
+export interface ComplianceCheck {
+  regla:     string;
+  cumple:    boolean;
+  severidad: 'info' | 'warning' | 'critical';
+  mensaje:   string;
+}
+
+export interface ComplianceReport {
+  oltId:        string;
+  oltNombre:    string;
+  evaluadoEn:   string;
+  checks:       ComplianceCheck[];
+  cumpleTodo:   boolean;
+  criticos:     number;
+  advertencias: number;
+}
+
 export interface FtthOnuRegistro {
   id:             string;
   contratoId:     string;
@@ -1190,6 +1207,11 @@ export const oltNativoApi = {
     const res = await api.post<ApiRespuesta<{ encolado: boolean }>>(
       `/olt-nativo/${oltId}/drift/reaplicar/${contratoId}`,
     );
+    return res.data.data;
+  },
+
+  getCompliance: async (oltId: string): Promise<ComplianceReport> => {
+    const res = await api.get<ApiRespuesta<ComplianceReport>>(`/olt-nativo/${oltId}/compliance`);
     return res.data.data;
   },
 
