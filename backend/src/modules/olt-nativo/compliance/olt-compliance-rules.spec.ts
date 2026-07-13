@@ -107,6 +107,11 @@ describe('OLT_COMPLIANCE_RULES', () => {
     expect(checks.snmp_community_coherente.cumple).toBe(true);
   });
 
+  it('sin community configurada en el ERP (OLT sin SNMP habilitado): la regla no aplica', () => {
+    const checks = run(baseOlt({ snmpCommunity: null as any }), baseSnapshot(), capsHuawei);
+    expect(checks.snmp_community_coherente.cumple).toBe(true);
+  });
+
   it('NTP con reach=0 en todos los servidores: ntp_sincronizado falla', () => {
     const checks = run(baseOlt(), baseSnapshot({
       ntpServers: [{ source: '1.1.1.1', stratum: 16, reach: 0, status: 'configured, insane, invalid' }],

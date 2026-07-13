@@ -143,6 +143,14 @@ const snmpComunityCoherente: ComplianceRule = (olt, snapshot, caps) => {
       mensaje: 'Marca sin soporte de lectura SNMP conocido — regla no aplica',
     };
   }
+  if (!olt.snmpCommunity) {
+    return {
+      regla: 'snmp_community_coherente',
+      cumple: true,
+      severidad: 'info',
+      mensaje: 'Sin community SNMP configurada en el ERP — regla no aplica (OLT no usa SNMP con este método de conexión)',
+    };
+  }
   if (snapshot.snmpCommunities === null) {
     return {
       regla: 'snmp_community_coherente',
