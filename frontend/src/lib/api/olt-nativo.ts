@@ -1258,3 +1258,23 @@ export interface OnuTr069Detalle {
 export interface SetWifiLiveDto { band: '2.4' | '5'; enabled?: boolean; ssid?: string; password?: string; }
 export interface SetPppoeLiveDto { username?: string; password?: string; }
 export interface OnuApplyResult { ok: boolean; applied: number; total: number; fallidas: string[]; }
+
+// ─── Perfil TR-069 por OLT ─────────────────────────────────────
+export interface Tr069Profile {
+  enabled: boolean; acsUrl: string | null; mgmtVlan: number | null;
+  acsUsername: string | null; hasPassword: boolean;
+}
+export interface Tr069ProfileDto {
+  enabled?: boolean; acsUrl?: string; mgmtVlan?: number; acsUsername?: string; acsPassword?: string;
+}
+
+export const oltTr069ProfileApi = {
+  get: async (oltId: string): Promise<Tr069Profile> => {
+    const res = await api.get<ApiRespuesta<Tr069Profile>>(`/olt-nativo/${oltId}/tr069-profile`);
+    return res.data.data;
+  },
+  set: async (oltId: string, dto: Tr069ProfileDto): Promise<Tr069Profile> => {
+    const res = await api.put<ApiRespuesta<Tr069Profile>>(`/olt-nativo/${oltId}/tr069-profile`, dto);
+    return res.data.data;
+  },
+};
