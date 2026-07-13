@@ -59,6 +59,7 @@ import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
 import { ZtpReconcileCron }          from './cron/ztp-reconcile.cron';
 import { OltAlertEngineService }     from './services/olt-alert-engine.service';
 import { OltSyncService }            from './services/olt-sync.service';
+import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
 import { OltGateway }                from './olt.gateway';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -187,6 +188,7 @@ import { OltGateway }                from './olt.gateway';
     OltHealthDashboardService,
     OltAlertEngineService,
     OltSyncService,
+    InfrastructureSnapshotService,
     OltGateway,
     FtthRecoveryCron,
     OltHealthPollerCron,

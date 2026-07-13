@@ -43,6 +43,7 @@ import { AgregarTrafficTableDto, EditarTrafficTableDto, OltTrafficTableService }
 import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltSyncService }    from './services/olt-sync.service';
+import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
 import { OltBoard }          from './entities/olt-board.entity';
 import { OltLineProfile }    from './entities/olt-line-profile.entity';
 import { OltServiceProfile } from './entities/olt-service-profile.entity';
@@ -79,6 +80,7 @@ export class OltNativoController {
     private readonly trafficTables: OltTrafficTableService,
     private readonly healthDash:    OltHealthDashboardService,
     private readonly sync:          OltSyncService,
+    private readonly infraSnapshot: InfrastructureSnapshotService,
     private readonly ztp:           ZtpProvisioningService,
     private readonly onuConfig:     ContratoOnuConfigService,
     private readonly onuTr069:      OnuTr069DetalleService,
@@ -1383,6 +1385,23 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<OltSyncJob | null> {
     return this.sync.estadoSync(oltId, user.empresaId);
+  }
+
+  /**
+   * Incremento 2 — InfrastructureSnapshot unificado.
+   * Compone el estado actual leyendo el read-model ya persistido
+   * (boards, VLANs, perfiles, traffic tables, POM) — sin SSH, responde
+   * en milisegundos. No reemplaza /sync ni /wizard/topology: los
+   * consume indirectamente vía las tablas que ellos ya escriben.
+   */
+  @Get(':oltId/infrastructure-snapshot')
+  @ApiOperation({ summary: 'Estado actual unificado de la OLT (read-model, sin SSH)' })
+  @ApiParam({ name: 'oltId' })
+  async infrastructureSnapshot(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.infraSnapshot.obtener(oltId, user.empresaId);
   }
 
   /** Inventario observado de ONUs (read-model) + resumen de drift del último sync */
