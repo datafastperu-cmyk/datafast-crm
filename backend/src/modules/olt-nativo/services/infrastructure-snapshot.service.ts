@@ -109,9 +109,14 @@ export class InfrastructureSnapshotService {
 
       opticalPorts,
 
+      snmpCommunities: olt.snmpRealCommunities ?? null,
+      snmpVersions:    olt.snmpRealVersions ?? null,
+      ntpServers:      olt.ntpServers ?? null,
+
       ultimoSyncEn:     ultimoSync?.completadoEn ?? null,
       ultimoSyncEstado: ultimoSync?.estado ?? null,
       ultimoHealthEn:   opticalPorts[0]?.capturedAt ?? null,
+      configSnapshotEn: olt.configSnapshotAt ?? null,
     };
   }
 

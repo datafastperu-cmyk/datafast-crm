@@ -53,6 +53,18 @@ export interface SnapshotOpticalPort {
   capturedAt:  Date;
 }
 
+export interface SnapshotSnmpCommunity {
+  name:   string;
+  access: 'read' | 'write';
+}
+
+export interface SnapshotNtpServer {
+  source:  string;
+  stratum: number | null;
+  reach:   number;   // 0 = nunca sincronizó (RFC 5905) — no "mal escrito"
+  status:  string;
+}
+
 export interface InfrastructureSnapshot {
   oltId:            string;
   oltNombre:        string;
@@ -67,8 +79,15 @@ export interface InfrastructureSnapshot {
   trafficTables:    SnapshotTrafficTable[];
   opticalPorts:      SnapshotOpticalPort[];
 
+  // Config real leída de la OLT (distinto de lo que el ERP asume) —
+  // null si nunca se pudo leer (marca sin soporte o sync no llegó a ese paso).
+  snmpCommunities:  SnapshotSnmpCommunity[] | null;
+  snmpVersions:     string[] | null;
+  ntpServers:       SnapshotNtpServer[] | null;
+
   // Metadata de frescura — de dónde viene cada mitad del snapshot.
   ultimoSyncEn:     Date | null;
   ultimoSyncEstado: 'pending' | 'running' | 'completed' | 'failed' | null;
   ultimoHealthEn:   Date | null;
+  configSnapshotEn: Date | null;
 }

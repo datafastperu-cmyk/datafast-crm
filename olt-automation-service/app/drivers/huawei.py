@@ -19,8 +19,9 @@ from typing import Any
 
 from app.schemas.olt import OltConnectionSchema
 from app.drivers.base import (
-    BoardInfo, OltDriver, OltTopology, OntInfo,
-    PomData, PonPortInfo, TrafficTableInfo, VlanInfo,
+    BoardInfo, NtpServerData, OltDriver, OltTopology, OntInfo,
+    PomData, PonPortInfo, SnmpCommunityData, SnmpNtpConfigData,
+    TrafficTableInfo, VlanInfo,
 )
 from app.services.provisioning import (
     ConnectionError as ProvConnectionError,
@@ -220,6 +221,83 @@ class HuaweiDriver(OltDriver):
             for port in range(ports_count):
                 result.append(self.get_pom_data(board.slot, port))
         return result
+
+    # ── get_snmp_ntp_config ────────────────────────────────────
+
+    def get_snmp_ntp_config(self) -> SnmpNtpConfigData:
+        """
+        Config real de SNMP (communities read/write + versiones) y NTP
+        (servidores configurados + reach) — UNA sesión Paramiko, 4 comandos.
+
+        Comandos y formato de salida validados contra OLT real (MA5800-X7,
+        2026-07-13):
+          display snmp-agent community read
+          display snmp-agent community write
+          display snmp-agent sys-info
+          display ntp-service sessions
+
+        reach=0 en un servidor NTP significa que la OLT nunca recibió
+        respuesta válida de ese servidor en los últimos 8 polls (RFC 5905) —
+        no que esté "mal escrito", sino que el reloj no está sincronizado.
+        """
+        cmds = [
+            'display snmp-agent community read',
+            'display snmp-agent community write',
+            'display snmp-agent sys-info',
+            'display ntp-service sessions',
+        ]
+        try:
+            outputs = _paramiko_huawei_run(self._conn, cmds, timeout=45.0, return_list=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('get_snmp_ntp_config en %s: %s', self._conn.ip, exc)
+            return SnmpNtpConfigData(ok=False, error=str(exc))
+
+        read_raw, write_raw, sysinfo_raw, ntp_raw = outputs
+
+        communities = (
+            [SnmpCommunityData(name=n, access='read')  for n in self._parse_community_names(read_raw)] +
+            [SnmpCommunityData(name=n, access='write') for n in self._parse_community_names(write_raw)]
+        )
+        versions = self._parse_snmp_versions(sysinfo_raw)
+        ntp_servers = self._parse_ntp_sessions(ntp_raw)
+
+        return SnmpNtpConfigData(
+            ok=True,
+            snmp_communities=communities,
+            snmp_versions=versions,
+            ntp_servers=ntp_servers,
+        )
+
+    def _parse_community_names(self, raw: str) -> list[str]:
+        return re.findall(r'Community name\s*:\s*(\S+)', raw)
+
+    def _parse_snmp_versions(self, raw: str) -> list[str]:
+        # "\s*" abarca el salto de línea entre la etiqueta y el valor —
+        # en el MA5800-X7 real no hay línea en blanco entre ambos.
+        m = re.search(r'SNMP version running in the system:\s*(.+)', raw)
+        if not m:
+            return []
+        return m.group(1).split()
+
+    def _parse_ntp_sessions(self, raw: str) -> list[NtpServerData]:
+        servers: list[NtpServerData] = []
+        # Cada sesión es un bloque que empieza en "clock source:" — se separa
+        # por ese marcador y se parsea cada bloque independientemente.
+        blocks = re.split(r'(?=clock source\s*:)', raw)
+        for block in blocks:
+            m_source = re.search(r'clock source\s*:\s*(\S+)', block)
+            if not m_source:
+                continue
+            m_stratum = re.search(r'clock stratum\s*:\s*(\d+)', block)
+            m_status  = re.search(r'clock status\s*:\s*(.+)', block)
+            m_reach   = re.search(r'reach\s*:\s*(\d+)', block)
+            servers.append(NtpServerData(
+                source=m_source.group(1),
+                stratum=int(m_stratum.group(1)) if m_stratum else None,
+                reach=int(m_reach.group(1)) if m_reach else 0,
+                status=m_status.group(1).strip() if m_status else '',
+            ))
+        return servers
 
     # ── get_pon_port_status ───────────────────────────────────
 

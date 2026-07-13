@@ -81,6 +81,29 @@ class PonPortInfo:
 
 
 @dataclass
+class SnmpCommunityData:
+    name: str
+    access: str            # 'read' | 'write'
+
+
+@dataclass
+class NtpServerData:
+    source: str             # IP del servidor NTP
+    stratum: int | None
+    reach: int               # 0 = nunca respondió en los últimos 8 polls (RFC 5905)
+    status: str               # texto crudo, ej: "configured, insane, invalid"
+
+
+@dataclass
+class SnmpNtpConfigData:
+    ok: bool
+    snmp_communities: list[SnmpCommunityData] = field(default_factory=list)
+    snmp_versions: list[str] = field(default_factory=list)   # ej: ['SNMPv1','SNMPv2c','SNMPv3']
+    ntp_servers: list[NtpServerData] = field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass
 class OltTopology:
     model: str
     firmware_version: str
@@ -146,6 +169,14 @@ class OltDriver(ABC):
         No es abstracto para no forzar implementación en drivers sin soporte.
         """
         return []
+
+    def get_snmp_ntp_config(self) -> SnmpNtpConfigData:
+        """
+        Config real de SNMP (communities/versiones) y NTP (servidores + reach)
+        leída de la OLT vía CLI. Implementación opcional — por defecto retorna
+        ok=False para marcas sin driver de lectura de esta config todavía.
+        """
+        return SnmpNtpConfigData(ok=False, error='No implementado para esta marca')
 
     @abstractmethod
     def get_ont_list(self, slot: int, port: int) -> list[OntInfo]:

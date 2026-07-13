@@ -87,6 +87,10 @@ from app.schemas.olt import (
     TrafficTableDeleteResponse,
     TrafficTableEditRequest,
     TrafficTableEditResponse,
+    SnmpNtpConfigRequest,
+    SnmpNtpConfigResponse,
+    SnmpCommunityInfo,
+    NtpServerInfo,
 )
 from app.drivers import get_driver
 from app.drivers.base import UnsupportedBrandError, DriverNotImplementedError
@@ -1099,6 +1103,51 @@ async def wizard_topology(body: WizardTopologyRequest) -> WizardTopologyResponse
         traffic_tables   = traffic_tables,
         line_profiles    = line_profiles,
         service_profiles = service_profiles,
+    )
+
+
+# ── Config real SNMP/NTP ────────────────────────────────────────
+
+@app.post(
+    '/api/v1/olt/config/snmp-ntp',
+    response_model=SnmpNtpConfigResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['config'],
+    summary='Leer config real de SNMP (communities/versiones) y NTP (servidores + reach)',
+    description=(
+        'Solo lectura — nunca escribe en la OLT. Usa el driver de la marca; '
+        'si la marca no tiene esta capacidad implementada retorna success=False '
+        'con error descriptivo (no 4xx/5xx).'
+    ),
+)
+async def config_snmp_ntp(body: SnmpNtpConfigRequest) -> SnmpNtpConfigResponse:
+    olt_ip = body.connection.ip
+
+    try:
+        driver = get_driver(body.connection.brand.value, body.connection)
+    except UnsupportedBrandError as exc:
+        return SnmpNtpConfigResponse(success=False, error=str(exc))
+
+    async with connection_pool.acquire(olt_ip):
+        try:
+            cfg = await asyncio.to_thread(driver.get_snmp_ntp_config)
+        except Exception as exc:  # noqa: BLE001
+            logger.error('config_snmp_ntp en %s: %s', olt_ip, exc)
+            return SnmpNtpConfigResponse(success=False, error=str(exc))
+
+    if not cfg.ok:
+        return SnmpNtpConfigResponse(success=False, error=cfg.error)
+
+    return SnmpNtpConfigResponse(
+        success=True,
+        snmp_communities=[
+            SnmpCommunityInfo(name=c.name, access=c.access) for c in cfg.snmp_communities
+        ],
+        snmp_versions=cfg.snmp_versions,
+        ntp_servers=[
+            NtpServerInfo(source=s.source, stratum=s.stratum, reach=s.reach, status=s.status)
+            for s in cfg.ntp_servers
+        ],
     )
 
 

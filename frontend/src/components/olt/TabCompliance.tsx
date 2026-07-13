@@ -21,11 +21,13 @@ const SEVERIDAD_FAIL_CLS: Record<ComplianceCheck['severidad'], string> = {
 };
 
 const REGLA_LABEL: Record<string, string> = {
-  boards_sincronizadas:    'Tarjetas sincronizadas',
-  vlan_gestion_existe:     'VLAN de gestión coherente',
-  tr069_vlan_coherente:    'VLAN TR-069 coherente',
-  snapshot_fresco:         'Snapshot actualizado',
-  boards_saludables:       'Tarjetas sin fallas',
+  boards_sincronizadas:      'Tarjetas sincronizadas',
+  vlan_gestion_existe:       'VLAN de gestión coherente',
+  tr069_vlan_coherente:      'VLAN TR-069 coherente',
+  snapshot_fresco:           'Snapshot actualizado',
+  boards_saludables:         'Tarjetas sin fallas',
+  snmp_community_coherente:  'Community SNMP coherente',
+  ntp_sincronizado:          'NTP sincronizado',
 };
 
 export function TabCompliance({ oltId }: { oltId: string }) {

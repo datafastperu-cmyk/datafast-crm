@@ -828,6 +828,32 @@ export interface PythonWizardTopologyResponse {
   error?:           string;
 }
 
+// ─── Config real SNMP/NTP ──────────────────────────────────────
+
+export interface PythonSnmpCommunityInfo {
+  name:   string;
+  access: 'read' | 'write';
+}
+
+export interface PythonNtpServerInfo {
+  source:  string;
+  stratum: number | null;
+  reach:   number;   // 0 = nunca sincronizó (RFC 5905)
+  status:  string;
+}
+
+export interface PythonSnmpNtpConfigRequest {
+  connection: PythonConnectionPayload;
+}
+
+export interface PythonSnmpNtpConfigResponse {
+  success:          boolean;
+  snmp_communities: PythonSnmpCommunityInfo[];
+  snmp_versions:    string[];
+  ntp_servers:      PythonNtpServerInfo[];
+  error?:           string;
+}
+
 // ─── VLAN CLI Operations ─────────────────────────────────────
 
 export interface PythonVlanAddRequest {

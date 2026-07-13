@@ -277,6 +277,13 @@ export class OltSyncService implements OnModuleInit {
         oltId, empresaId, conn, (topo.boards ?? []).map(b => b.slot),
       );
 
+      // 8b. Config real SNMP/NTP — best-effort, nunca bloquea el sync.
+      // No todas las marcas la implementan (get_snmp_ntp_config retorna
+      // ok=False para las que no) y una OLT lenta no debe tumbar el sync
+      // completo por esto.
+      emit(95, 'Leyendo config SNMP/NTP…');
+      await this._snapshotSnmpNtp(oltId, empresaId, conn);
+
       // 9. Completar job
       const resultado: Record<string, unknown> = {
         boards:           (topo.boards ?? []).length,
@@ -371,6 +378,35 @@ export class OltSyncService implements OnModuleInit {
   }
 
   // ── Credenciales SSH ──────────────────────────────────────────
+
+  // ── Config real SNMP/NTP — best-effort ─────────────────────────
+  // Nunca lanza: un fallo aquí (marca sin soporte, timeout SSH) no debe
+  // marcar el sync completo como 'failed'. Si falla, simplemente no
+  // actualiza config_snapshot_at y el dato anterior (si existe) queda
+  // como estaba — las reglas de compliance ya distinguen "sin datos" de
+  // "no cumple".
+  private async _snapshotSnmpNtp(
+    oltId: string, empresaId: string,
+    conn:  { ip: string; port: number; username: string; password: string; brand: string },
+  ): Promise<void> {
+    try {
+      const res = await this.automation.configSnmpNtp({ connection: conn });
+      if (!res.success) {
+        this.logger.debug(`_snapshotSnmpNtp | olt=${oltId}: ${res.error ?? 'sin datos'}`);
+        return;
+      }
+      await this.oltRepo.update(oltId, {
+        snmpRealCommunities: res.snmp_communities.map(c => ({ name: c.name, access: c.access })),
+        snmpRealVersions:    res.snmp_versions,
+        ntpServers:          res.ntp_servers.map(s => ({
+          source: s.source, stratum: s.stratum, reach: s.reach, status: s.status,
+        })),
+        configSnapshotAt:    new Date(),
+      });
+    } catch (e) {
+      this.logger.warn(`_snapshotSnmpNtp | olt=${oltId}: ${(e as Error).message}`);
+    }
+  }
 
   private async _buildConn(
     oltId: string, empresaId: string, olt: OltDispositivo,

@@ -25,7 +25,10 @@ const baseSnapshot = (over: Partial<InfrastructureSnapshot> = {}): Infrastructur
   boards: [{ slot: 0, boardType: 'GPBD', estado: 'normal', onuCount: 5, onuCapacity: 16, portsPorSlot: 16 }],
   vlans: [{ vlanId: 201, nombre: 'GESTION', origen: 'olt', estado: 'active' }],
   lineProfiles: [], serviceProfiles: [], trafficTables: [], opticalPorts: [],
+  snmpCommunities: [{ name: 'public', access: 'read' }], snmpVersions: ['SNMPv2c'],
+  ntpServers: [{ source: '1.1.1.1', stratum: 2, reach: 255, status: 'configured, synced' }],
   ultimoSyncEn: new Date(), ultimoSyncEstado: 'completed', ultimoHealthEn: null,
+  configSnapshotEn: new Date(),
   ...over,
 });
 
@@ -85,6 +88,40 @@ describe('OLT_COMPLIANCE_RULES', () => {
     const hace45 = new Date(Date.now() - 45 * 86_400_000);
     const checks = run(baseOlt(), baseSnapshot({ ultimoSyncEn: hace45 }), capsHuawei);
     expect(checks.snapshot_fresco.cumple).toBe(false);
+  });
+
+  it('community del ERP no existe en la OLT real: snmp_community_coherente falla', () => {
+    const checks = run(baseOlt({ snmpCommunity: 'public' }), baseSnapshot({
+      snmpCommunities: [{ name: 'otra-cosa', access: 'read' }],
+    }), capsHuawei);
+    expect(checks.snmp_community_coherente.cumple).toBe(false);
+  });
+
+  it('config SNMP aún no leída (snmpCommunities null): la regla no aplica', () => {
+    const checks = run(baseOlt(), baseSnapshot({ snmpCommunities: null }), capsHuawei);
+    expect(checks.snmp_community_coherente.cumple).toBe(true);
+  });
+
+  it('marca sin soporte SNMP: snmp_community_coherente no aplica', () => {
+    const checks = run(baseOlt(), baseSnapshot({ snmpCommunities: [] }), capsSinSoporte);
+    expect(checks.snmp_community_coherente.cumple).toBe(true);
+  });
+
+  it('NTP con reach=0 en todos los servidores: ntp_sincronizado falla', () => {
+    const checks = run(baseOlt(), baseSnapshot({
+      ntpServers: [{ source: '1.1.1.1', stratum: 16, reach: 0, status: 'configured, insane, invalid' }],
+    }), capsHuawei);
+    expect(checks.ntp_sincronizado.cumple).toBe(false);
+  });
+
+  it('NTP sin servidores configurados: ntp_sincronizado falla', () => {
+    const checks = run(baseOlt(), baseSnapshot({ ntpServers: [] }), capsHuawei);
+    expect(checks.ntp_sincronizado.cumple).toBe(false);
+  });
+
+  it('NTP aún no leído (null): la regla no aplica', () => {
+    const checks = run(baseOlt(), baseSnapshot({ ntpServers: null }), capsHuawei);
+    expect(checks.ntp_sincronizado.cumple).toBe(true);
   });
 
   it('tarjeta en falla: boards_saludables falla', () => {

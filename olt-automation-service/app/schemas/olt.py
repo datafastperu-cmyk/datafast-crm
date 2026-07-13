@@ -688,6 +688,32 @@ class WizardTopologyResponse(BaseModel):
     error:            str | None = None
 
 
+# ── Config real SNMP/NTP (lectura, sin escritura) ─────────────
+
+class SnmpCommunityInfo(BaseModel):
+    name:   str
+    access: str   # 'read' | 'write'
+
+
+class NtpServerInfo(BaseModel):
+    source:  str
+    stratum: int | None = None
+    reach:   int          # 0 = nunca sincronizó (RFC 5905)
+    status:  str
+
+
+class SnmpNtpConfigRequest(BaseModel):
+    connection: OltConnectionSchema
+
+
+class SnmpNtpConfigResponse(BaseModel):
+    success:          bool
+    snmp_communities: list[SnmpCommunityInfo] = []
+    snmp_versions:    list[str]                = []
+    ntp_servers:      list[NtpServerInfo]      = []
+    error:            str | None = None
+
+
 # ── Clasificación de estados de ONUs por puerto ───────────────
 
 class ClassifyOnusRequest(BaseModel):

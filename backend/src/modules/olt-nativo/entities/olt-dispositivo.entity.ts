@@ -114,6 +114,22 @@ export class OltDispositivo extends BaseModel {
   @Column({ name: 'snmp_version', type: 'smallint', default: 2 })
   snmpVersion: number;   // 1 | 2 | 3
 
+  // ── Config real SNMP/NTP leída de la OLT (Incremento 4b) ──
+  // Distinto de snmpCommunity/snmpVersion arriba: aquellos son lo que el
+  // ERP ASUME; estos son lo que la OLT REALMENTE reporta vía CLI.
+  // Poblado por OltSyncService en cada sync, best-effort.
+  @Column({ name: 'snmp_real_communities', type: 'jsonb', nullable: true })
+  snmpRealCommunities: Array<{ name: string; access: 'read' | 'write' }> | null;
+
+  @Column({ name: 'snmp_real_versions', type: 'jsonb', nullable: true })
+  snmpRealVersions: string[] | null;
+
+  @Column({ name: 'ntp_servers', type: 'jsonb', nullable: true })
+  ntpServers: Array<{ source: string; stratum: number | null; reach: number; status: string }> | null;
+
+  @Column({ name: 'config_snapshot_at', type: 'timestamptz', nullable: true })
+  configSnapshotAt: Date | null;
+
   // ── Relaciones (FK almacenadas como UUID string) ──────────
 
   // Router MikroTik detrás del cual reside físicamente la OLT.

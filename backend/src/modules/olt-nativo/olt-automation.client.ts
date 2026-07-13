@@ -49,6 +49,8 @@ import {
   PythonChangeLineprofileResponse,
   PythonWizardTopologyRequest,
   PythonWizardTopologyResponse,
+  PythonSnmpNtpConfigRequest,
+  PythonSnmpNtpConfigResponse,
   PythonHealthSnapshotRequest,
   PythonHealthSnapshotResponse,
   PythonVlanAddRequest,
@@ -406,6 +408,21 @@ export class OltAutomationClient {
     );
     this.logger.log(
       `← Python wizard/topology | success=${res.success} boards=${res.boards?.length ?? 0} vlans=${res.vlans?.length ?? 0}`,
+    );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Config real SNMP/NTP (POST /api/v1/olt/config/snmp-ntp)
+  // Solo lectura. best-effort — el llamador decide qué hacer si falla.
+  // ────────────────────────────────────────────────────────────
+  async configSnmpNtp(payload: PythonSnmpNtpConfigRequest): Promise<PythonSnmpNtpConfigResponse> {
+    this.logger.log(`→ Python config/snmp-ntp | OLT=${payload.connection.ip}`);
+    const res = await this.post<PythonSnmpNtpConfigResponse>(
+      '/api/v1/olt/config/snmp-ntp', payload, 45_000,
+    );
+    this.logger.log(
+      `← Python config/snmp-ntp | success=${res.success} communities=${res.snmp_communities?.length ?? 0} ntp=${res.ntp_servers?.length ?? 0}`,
     );
     return res;
   }

@@ -133,10 +133,71 @@ const boardsSaludables: ComplianceRule = (olt, snapshot) => {
   };
 };
 
+// ── R6: la community SNMP que el ERP asume existe realmente en la OLT ──
+const snmpComunityCoherente: ComplianceRule = (olt, snapshot, caps) => {
+  if (!caps.snmp) {
+    return {
+      regla: 'snmp_community_coherente',
+      cumple: true,
+      severidad: 'info',
+      mensaje: 'Marca sin soporte de lectura SNMP conocido — regla no aplica',
+    };
+  }
+  if (snapshot.snmpCommunities === null) {
+    return {
+      regla: 'snmp_community_coherente',
+      cumple: true,
+      severidad: 'info',
+      mensaje: 'Config SNMP real aún no leída de la OLT — regla no aplica hasta el próximo sync',
+    };
+  }
+  const existe = snapshot.snmpCommunities.some(c => c.name === olt.snmpCommunity);
+  return {
+    regla: 'snmp_community_coherente',
+    cumple: existe,
+    severidad: 'warning',
+    mensaje: existe
+      ? `Community "${olt.snmpCommunity}" configurada en el ERP existe en la OLT`
+      : `Community "${olt.snmpCommunity}" del ERP no coincide con ninguna community real de la OLT — el monitoreo SNMP probablemente falla`,
+  };
+};
+
+// ── R7: al menos un servidor NTP configurado sincronizó alguna vez ──
+const ntpSincronizado: ComplianceRule = (_olt, snapshot) => {
+  if (snapshot.ntpServers === null) {
+    return {
+      regla: 'ntp_sincronizado',
+      cumple: true,
+      severidad: 'info',
+      mensaje: 'Config NTP real aún no leída de la OLT — regla no aplica hasta el próximo sync',
+    };
+  }
+  if (snapshot.ntpServers.length === 0) {
+    return {
+      regla: 'ntp_sincronizado',
+      cumple: false,
+      severidad: 'warning',
+      mensaje: 'La OLT no tiene ningún servidor NTP configurado',
+    };
+  }
+  // reach=0 (RFC 5905) = nunca recibió respuesta válida en los últimos 8 polls.
+  const sincronizado = snapshot.ntpServers.some(s => s.reach > 0);
+  return {
+    regla: 'ntp_sincronizado',
+    cumple: sincronizado,
+    severidad: 'warning',
+    mensaje: sincronizado
+      ? 'Al menos un servidor NTP configurado está sincronizando'
+      : `${snapshot.ntpServers.length} servidor(es) NTP configurado(s), pero ninguno respondió jamás (reach=0) — el reloj de la OLT probablemente está desviado`,
+  };
+};
+
 export const OLT_COMPLIANCE_RULES: ComplianceRule[] = [
   boardsSincronizadas,
   vlanGestionExiste,
   tr069VlanCoherente,
   snapshotFresco,
   boardsSaludables,
+  snmpComunityCoherente,
+  ntpSincronizado,
 ];
