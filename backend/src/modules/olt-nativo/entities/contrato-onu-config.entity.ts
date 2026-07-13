@@ -86,6 +86,14 @@ export class ContratoOnuConfig extends BaseModel {
   @Column({ name: 'onu_cli_password', type: 'text', nullable: true })
   onuCliPassword: string | null;
 
+  // ── Credenciales ConnectionRequest únicas por ONU (auth ACS→ONU) ──
+  @Column({ name: 'connreq_username', type: 'varchar', length: 64, nullable: true })
+  connReqUsername: string | null;
+
+  /** Cifrada. */
+  @Column({ name: 'connreq_password', type: 'text', nullable: true })
+  connReqPassword: string | null;
+
   // ── Control del pipeline ──
   /** Activación del aprovisionamiento TR-069. false por defecto (seguridad). */
   @Column({ name: 'provisioning_enabled', type: 'boolean', default: false })

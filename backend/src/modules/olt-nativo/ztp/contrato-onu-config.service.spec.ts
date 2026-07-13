@@ -65,6 +65,22 @@ describe('ContratoOnuConfigService', () => {
     });
   });
 
+  describe('ensureConnReq', () => {
+    it('genera usuario derivado del serial + clave cifrada si faltan', async () => {
+      repo.findOne.mockResolvedValue({ contratoId: 'c1', empresaId: 'e', connReqUsername: null, connReqPassword: null });
+      const saved = await svc.ensureConnReq('c1', 'e', 'HWTC4857544316A6BAAC');
+      expect(saved.connReqUsername).toBe('cr-4316a6baac'); // últimos 10 alfanum, minúsculas
+      expect(saved.connReqPassword).toMatch(/^enc\(/);     // cifrada
+    });
+
+    it('es idempotente: no regenera si ya existen', async () => {
+      repo.findOne.mockResolvedValue({ connReqUsername: 'cr-existente', connReqPassword: 'enc(x)' });
+      const saved = await svc.ensureConnReq('c1', 'e', 'SN123');
+      expect(saved.connReqUsername).toBe('cr-existente');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setProvisioningEnabled', () => {
     it('lanza si no existe la config', async () => {
       repo.findOne.mockResolvedValue(null);

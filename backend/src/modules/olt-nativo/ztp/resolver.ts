@@ -57,12 +57,6 @@ export function resolve(
     push('voip.proxy',     desired.voip.proxy);
   }
 
-  // Credenciales CWMP (auth ONU→ACS). Se emiten solo si el perfil TR-069 de la OLT las define.
-  if (desired.management) {
-    push('management.username', desired.management.acsUsername);
-    push('management.password', desired.management.acsPassword);
-  }
-
   // Credenciales de acceso de la ONU (cuentas web admin/usuario y CLI root del propio equipo)
   if (desired.onuAdmin?.enabled) {
     push('onu_admin.user',       desired.onuAdmin.user);
@@ -71,6 +65,15 @@ export function resolve(
     push('onu_webuser.password', desired.onuAdmin.webUserPassword);
     push('onu_cli.user',         desired.onuAdmin.cliUser);
     push('onu_cli.password',     desired.onuAdmin.cliPassword);
+  }
+
+  // Plano de gestión CWMP — AL FINAL: cambiar las credenciales ConnReq a mitad de sesión
+  // podría afectar el connection-request de escrituras posteriores, así que van últimas.
+  if (desired.management) {
+    push('management.username',     desired.management.acsUsername);
+    push('management.password',     desired.management.acsPassword);
+    push('management.connreq_user', desired.management.connReqUsername);
+    push('management.connreq_pass', desired.management.connReqPassword);
   }
 
   return {

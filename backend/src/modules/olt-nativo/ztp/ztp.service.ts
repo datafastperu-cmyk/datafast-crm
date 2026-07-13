@@ -11,6 +11,7 @@ import { filterByCapabilities } from './capability.engine';
 import { resolve } from './resolver';
 import { DeviceRuntime, getParameterMap, matchDeviceProfile } from './registry';
 import { GenieAcsDriver } from './genieacs.driver';
+import { ContratoOnuConfigService } from './contrato-onu-config.service';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ZtpProvisioningService — orquestador del pipeline (lado ERP)
@@ -32,6 +33,7 @@ export class ZtpProvisioningService {
     @InjectRepository(ContratoOnuConfig)
     private readonly configRepo: Repository<ContratoOnuConfig>,
     private readonly driver: GenieAcsDriver,
+    private readonly onuConfig: ContratoOnuConfigService,
   ) {}
 
   private _dec(v: string | null): string | undefined {
@@ -100,8 +102,13 @@ export class ZtpProvisioningService {
         ? { enabled: true, type: 'pppoe', username: c!.usuario_pppoe!,
             password: this._dec(c!.password_pppoe), vlan: c!.vlan_id ?? undefined }
         : { enabled: false, type: 'bridge' },
-      management: reg?.tr069_enabled && !!reg?.tr069_acs_username
-        ? { acsUsername: reg.tr069_acs_username, acsPassword: this._dec(reg.tr069_acs_password) }
+      management: reg?.tr069_enabled && (!!reg?.tr069_acs_username || !!cfg.connReqUsername)
+        ? {
+            acsUsername: reg.tr069_acs_username ?? undefined,
+            acsPassword: this._dec(reg.tr069_acs_password),
+            connReqUsername: cfg.connReqUsername ?? undefined,
+            connReqPassword: this._dec(cfg.connReqPassword),
+          }
         : undefined,
       voip: cfg.voipEnabled && !!cfg.voipUser
         ? { enabled: true, user: cfg.voipUser, password: this._dec(cfg.voipPassword) }
@@ -182,6 +189,10 @@ export class ZtpProvisioningService {
     if (!reg?.sn) {
       throw new NotFoundException('El contrato no tiene ONU aprovisionada (sin SN).');
     }
+
+    // Garantiza credenciales ConnectionRequest únicas por ONU antes de armar el plan
+    // (se aplicarán si la OLT tiene TR-069 habilitado). Idempotente.
+    await this.onuConfig.ensureConnReq(contratoId, empresaId, reg.sn);
 
     const deviceId = await this.driver.findDeviceIdBySerial(reg.sn);
     if (!deviceId) {

@@ -18,13 +18,15 @@ describe('ZtpProvisioningService.reconcile', () => {
   let repo: any;
   let ds: any;
   let driver: any;
+  let onuConfig: any;
   let svc: ZtpProvisioningService;
 
   beforeEach(() => {
     repo = { findOne: jest.fn(), update: jest.fn(), createQueryBuilder: jest.fn() };
     ds = { query: jest.fn() };
     driver = {};
-    svc = new ZtpProvisioningService(ds, repo, driver);
+    onuConfig = { ensureConnReq: jest.fn().mockResolvedValue({}) };
+    svc = new ZtpProvisioningService(ds, repo, driver, onuConfig);
   });
 
   it('solo re-aplica los contratos con drift y agrega ok/fallidas', async () => {
@@ -78,6 +80,7 @@ describe('ZtpProvisioningService.provisionContract — estado aplicado', () => {
   let repo: any;
   let ds: any;
   let driver: any;
+  let onuConfig: any;
   let svc: ZtpProvisioningService;
 
   const cfgBase = {
@@ -104,7 +107,8 @@ describe('ZtpProvisioningService.provisionContract — estado aplicado', () => {
       getRuntime: jest.fn().mockResolvedValue({ productClass: 'EG8145V5' }),
       applyExecutionPlan: jest.fn(),
     };
-    svc = new ZtpProvisioningService(ds, repo, driver);
+    onuConfig = { ensureConnReq: jest.fn().mockResolvedValue({}) };
+    svc = new ZtpProvisioningService(ds, repo, driver, onuConfig);
   });
 
   it('plan 100% OK → persiste last_applied_revision = revision', async () => {

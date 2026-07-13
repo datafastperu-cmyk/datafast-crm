@@ -91,6 +91,20 @@ describe('resolve (Resolver)', () => {
     expect(plan.writes.some((w) => w.key.startsWith('management'))).toBe(false);
   });
 
+  it('management: ConnReq único por ONU (ConnectionRequestUsername/Password) va al final del plan', () => {
+    const plan = resolve('dev', desired({ management: {
+      acsUsername: 'u', acsPassword: 'p', connReqUsername: 'cr-46a6baac', connReqPassword: 'X9$abcdef',
+    } }), HUAWEI_EG8145V5, HUAWEI_IGD_V1);
+    const cu = plan.writes.find((w) => w.key === 'management.connreq_user');
+    const cp = plan.writes.find((w) => w.key === 'management.connreq_pass');
+    expect(cu?.candidates[0]).toBe('InternetGatewayDevice.ManagementServer.ConnectionRequestUsername');
+    expect(cu?.value).toBe('cr-46a6baac');
+    expect(cp?.candidates[0]).toBe('InternetGatewayDevice.ManagementServer.ConnectionRequestPassword');
+    // Las 4 escrituras de management son las últimas del plan.
+    const mgmt = plan.writes.filter((w) => w.key.startsWith('management'));
+    expect(plan.writes.slice(-mgmt.length).every((w) => w.key.startsWith('management'))).toBe(true);
+  });
+
   it('propaga device, profile y metadata.revision', () => {
     const plan = resolve('dev-99', desired(), HUAWEI_EG8145V5, HUAWEI_IGD_V1);
     expect(plan.device).toBe('dev-99');

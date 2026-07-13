@@ -118,6 +118,20 @@ export class ContratoOnuConfigService {
     return { ssid, password };
   }
 
+  // Garantiza credenciales ConnectionRequest ÚNICAS por ONU (auth ACS→ONU). Idempotente:
+  // si ya existen, no las regenera. Usuario derivado del serial; clave fuerte aleatoria cifrada.
+  async ensureConnReq(contratoId: string, empresaId: string, serial: string): Promise<ContratoOnuConfig> {
+    const row = (await this.repo.findOne({ where: { contratoId, empresaId } })) ?? this._nuevo(contratoId, empresaId);
+    if (!row.connReqUsername || !row.connReqPassword) {
+      row.connReqUsername = `cr-${serial.replace(/[^a-zA-Z0-9]/g, '').slice(-10).toLowerCase()}`;
+      row.connReqPassword = encrypt(genStrongPassword());
+      const saved = await this.repo.save(row);
+      this.logger.log(`ConnReq creds generadas | contrato=${contratoId} user=${saved.connReqUsername}`);
+      return saved;
+    }
+    return row;
+  }
+
   async setProvisioningEnabled(contratoId: string, empresaId: string, enabled: boolean): Promise<ContratoOnuConfig> {
     const row = await this.repo.findOne({ where: { contratoId, empresaId } });
     if (!row) throw new NotFoundException(`El contrato ${contratoId} no tiene config de ONU.`);
