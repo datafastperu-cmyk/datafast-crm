@@ -44,6 +44,7 @@ import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltSyncService }    from './services/olt-sync.service';
 import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
+import { OltComplianceService }      from './services/olt-compliance.service';
 import { OltBoard }          from './entities/olt-board.entity';
 import { OltLineProfile }    from './entities/olt-line-profile.entity';
 import { OltServiceProfile } from './entities/olt-service-profile.entity';
@@ -81,6 +82,7 @@ export class OltNativoController {
     private readonly healthDash:    OltHealthDashboardService,
     private readonly sync:          OltSyncService,
     private readonly infraSnapshot: InfrastructureSnapshotService,
+    private readonly complianceService: OltComplianceService,
     private readonly ztp:           ZtpProvisioningService,
     private readonly onuConfig:     ContratoOnuConfigService,
     private readonly onuTr069:      OnuTr069DetalleService,
@@ -1402,6 +1404,21 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.infraSnapshot.obtener(oltId, user.empresaId);
+  }
+
+  /**
+   * Incremento 4 — reglas de cumplimiento sobre el InfrastructureSnapshot.
+   * Lectura pura (sin SSH): boards sincronizadas, VLAN de gestión coherente,
+   * VLAN TR-069 coherente, frescura del snapshot, salud de tarjetas.
+   */
+  @Get(':oltId/compliance')
+  @ApiOperation({ summary: 'Reglas de cumplimiento de la OLT (read-model, sin SSH)' })
+  @ApiParam({ name: 'oltId' })
+  async compliance(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.complianceService.evaluar(oltId, user.empresaId);
   }
 
   /** Inventario observado de ONUs (read-model) + resumen de drift del último sync */
