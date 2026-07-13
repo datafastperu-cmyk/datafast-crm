@@ -26,9 +26,41 @@ export class GenieAcsDriver {
     return this.nbi.isConfigured();
   }
 
-  /** Busca el device en GenieACS por el Serial Number (= SN GPON de la ONU). */
+  /**
+   * Variantes del SN para casar contra GenieACS. Los OLTs Huawei reportan el SN en forma
+   * LEGIBLE ("HWTC16A6BAAC" = 4 letras de vendor + 8 hex), pero la ONU informa a GenieACS
+   * en forma HEX ("4857544316A6BAAC" = ASCII-hex del vendor + los 8 hex). Se prueban ambas.
+   */
+  private _snVariants(serial: string): string[] {
+    const s = (serial ?? '').trim();
+    const out = new Set<string>();
+    if (!s) return [];
+    out.add(s);
+    // Legible (4 letras + 8 hex) → hex
+    const mLegible = /^([A-Za-z]{4})([0-9A-Fa-f]{8})$/.exec(s);
+    if (mLegible) {
+      const hexVendor = Array.from(mLegible[1]).map((ch) => ch.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+      out.add((hexVendor + mLegible[2]).toUpperCase());
+    }
+    // Hex (16 hex) → legible, solo si los primeros 8 hex decodifican a 4 letras ASCII
+    const mHex = /^([0-9A-Fa-f]{8})([0-9A-Fa-f]{8})$/.exec(s);
+    if (mHex) {
+      let vendor = '';
+      for (let i = 0; i < 8; i += 2) vendor += String.fromCharCode(parseInt(mHex[1].slice(i, i + 2), 16));
+      if (/^[A-Za-z]{4}$/.test(vendor)) out.add((vendor + mHex[2]).toUpperCase());
+    }
+    return [...out];
+  }
+
+  /** Busca el device en GenieACS por el Serial Number (= SN GPON de la ONU), tolerando el
+   *  desajuste legible↔hex entre el registro de la OLT y lo que informa la ONU. */
   async findDeviceIdBySerial(serial: string): Promise<string | null> {
-    const rows = await this.nbi.listDevices({ '_deviceId._SerialNumber': serial }, '_id');
+    const variants = this._snVariants(serial);
+    if (variants.length === 0) return null;
+    const query = variants.length === 1
+      ? { '_deviceId._SerialNumber': variants[0] }
+      : { '_deviceId._SerialNumber': { $in: variants } };
+    const rows = await this.nbi.listDevices(query, '_id');
     return rows[0]?._id ?? null;
   }
 

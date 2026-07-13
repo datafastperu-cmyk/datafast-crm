@@ -98,6 +98,27 @@ describe('GenieAcsDriver.applyExecutionPlan', () => {
     expect(res.results[0].path).toContain('WANConnectionDevice.4.WANPPPConnection.1.Username');
   });
 
+  it('findDeviceIdBySerial: SN legible Huawei → consulta también la forma hex ($in)', async () => {
+    nbi.listDevices = jest.fn().mockResolvedValue([{ _id: 'dev-james' }]);
+    const id = await driver.findDeviceIdBySerial('HWTC16A6BAAC');
+    expect(id).toBe('dev-james');
+    const q = nbi.listDevices.mock.calls[0][0]['_deviceId._SerialNumber'];
+    expect(q.$in).toEqual(expect.arrayContaining(['HWTC16A6BAAC', '4857544316A6BAAC']));
+  });
+
+  it('findDeviceIdBySerial: SN hex → también prueba la forma legible', async () => {
+    nbi.listDevices = jest.fn().mockResolvedValue([]);
+    await driver.findDeviceIdBySerial('4857544316A6BAAC');
+    const q = nbi.listDevices.mock.calls[0][0]['_deviceId._SerialNumber'];
+    expect(q.$in).toEqual(expect.arrayContaining(['4857544316A6BAAC', 'HWTC16A6BAAC']));
+  });
+
+  it('findDeviceIdBySerial: SN sin patrón Huawei → consulta exacta simple', async () => {
+    nbi.listDevices = jest.fn().mockResolvedValue([{ _id: 'x' }]);
+    await driver.findDeviceIdBySerial('ZTEGD8H12345'); // 'H' no es hex → no aplica conversión
+    expect(nbi.listDevices.mock.calls[0][0]).toEqual({ '_deviceId._SerialNumber': 'ZTEGD8H12345' });
+  });
+
   it('discovery no resuelto ({ppp} ausente) → write omitido', async () => {
     nbi.getDevice.mockResolvedValue({
       InternetGatewayDevice: { WANDevice: { '1': { WANConnectionDevice: {
