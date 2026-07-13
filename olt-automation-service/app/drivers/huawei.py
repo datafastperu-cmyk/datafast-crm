@@ -240,19 +240,24 @@ class HuaweiDriver(OltDriver):
         respuesta válida de ese servidor en los últimos 8 polls (RFC 5905) —
         no que esté "mal escrito", sino que el reloj no está sincronizado.
         """
+        # NTP primero: es el único comando paginado ("---- More ----") y por
+        # lo tanto el más lento/frágil. El deadline de _paramiko_huawei_run es
+        # compartido entre los 4 comandos — ponerlo al final lo dejaba sin
+        # presupuesto cuando esta llamada corría justo después de clasificar
+        # ONUs de varios boards (sesión previa pesada, OLT con latencia alta).
         cmds = [
+            'display ntp-service sessions',
             'display snmp-agent community read',
             'display snmp-agent community write',
             'display snmp-agent sys-info',
-            'display ntp-service sessions',
         ]
         try:
-            outputs = _paramiko_huawei_run(self._conn, cmds, timeout=45.0, return_list=True)
+            outputs = _paramiko_huawei_run(self._conn, cmds, timeout=90.0, return_list=True)
         except Exception as exc:  # noqa: BLE001
             logger.warning('get_snmp_ntp_config en %s: %s', self._conn.ip, exc)
             return SnmpNtpConfigData(ok=False, error=str(exc))
 
-        read_raw, write_raw, sysinfo_raw, ntp_raw = outputs
+        ntp_raw, read_raw, write_raw, sysinfo_raw = outputs
 
         communities = (
             [SnmpCommunityData(name=n, access='read')  for n in self._parse_community_names(read_raw)] +

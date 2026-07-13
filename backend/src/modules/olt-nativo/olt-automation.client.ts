@@ -419,7 +419,7 @@ export class OltAutomationClient {
   async configSnmpNtp(payload: PythonSnmpNtpConfigRequest): Promise<PythonSnmpNtpConfigResponse> {
     this.logger.log(`→ Python config/snmp-ntp | OLT=${payload.connection.ip}`);
     const res = await this.post<PythonSnmpNtpConfigResponse>(
-      '/api/v1/olt/config/snmp-ntp', payload, 45_000,
+      '/api/v1/olt/config/snmp-ntp', payload, 100_000,
     );
     this.logger.log(
       `← Python config/snmp-ntp | success=${res.success} communities=${res.snmp_communities?.length ?? 0} ntp=${res.ntp_servers?.length ?? 0}`,
