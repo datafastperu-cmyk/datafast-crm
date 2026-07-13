@@ -31,6 +31,9 @@ export const HUAWEI_IGD_V1: ParameterMap = {
     'voip.number':    ['InternetGatewayDevice.Services.VoiceService.1.VoiceProfile.1.Line.1.DirectoryNumber'],
     'voip.registrar': ['InternetGatewayDevice.Services.VoiceService.1.VoiceProfile.1.SIP.RegistrarServer'],
     'voip.proxy':     ['InternetGatewayDevice.Services.VoiceService.1.VoiceProfile.1.SIP.ProxyServer'],
+    // Credenciales CWMP (auth ONU→ACS). Parámetros estándar TR-098; Password es write-only por spec.
+    'management.username': ['InternetGatewayDevice.ManagementServer.Username'],
+    'management.password': ['InternetGatewayDevice.ManagementServer.Password'],
     // Credenciales de acceso de la ONU. Rutas verificadas writable en vivo (EG8145V5 V5R020C10S195,
     // 2026-07-12). X_HW_WebUserInfo.2 = admin web (Epadmin/telecomadmin); .1 = usuario web;
     // X_HW_CLIUserInfo.1 = root CLI/Telnet (Eproot; el campo de clave es 'Userpassword').

@@ -64,9 +64,17 @@ export class ZtpProvisioningService {
       [contratoId, empresaId],
     );
 
-    // Modo WAN de la ONU (bridge → el PPPoE lo hace el router del cliente, no la ONU).
-    const [reg] = await this.ds.query<{ wan_mode: string | null }[]>(
-      `SELECT wan_mode FROM ftth_onu_registro WHERE contrato_id = $1 AND empresa_id = $2`,
+    // Modo WAN de la ONU + perfil TR-069 de su OLT (credenciales CWMP para auth ONU→ACS).
+    const [reg] = await this.ds.query<{
+      wan_mode: string | null;
+      tr069_enabled: boolean | null;
+      tr069_acs_username: string | null;
+      tr069_acs_password: string | null;
+    }[]>(
+      `SELECT r.wan_mode, o.tr069_enabled, o.tr069_acs_username, o.tr069_acs_password
+       FROM   ftth_onu_registro r
+       JOIN   olt_dispositivos  o ON o.id = r.olt_id
+       WHERE  r.contrato_id = $1 AND r.empresa_id = $2`,
       [contratoId, empresaId],
     );
     const esRouting = (reg?.wan_mode ?? 'bridge') === 'routing';
@@ -92,6 +100,9 @@ export class ZtpProvisioningService {
         ? { enabled: true, type: 'pppoe', username: c!.usuario_pppoe!,
             password: this._dec(c!.password_pppoe), vlan: c!.vlan_id ?? undefined }
         : { enabled: false, type: 'bridge' },
+      management: reg?.tr069_enabled && !!reg?.tr069_acs_username
+        ? { acsUsername: reg.tr069_acs_username, acsPassword: this._dec(reg.tr069_acs_password) }
+        : undefined,
       voip: cfg.voipEnabled && !!cfg.voipUser
         ? { enabled: true, user: cfg.voipUser, password: this._dec(cfg.voipPassword) }
         : { enabled: false },

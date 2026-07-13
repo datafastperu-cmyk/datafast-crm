@@ -45,6 +45,11 @@ export interface DesiredConfiguration {
     registrar?: string;
     proxy?:     string;
   };
+  /** Credenciales CWMP: cómo la ONU se autentica ANTE el ACS (ManagementServer.Username/Password). */
+  management?: {
+    acsUsername?: string;
+    acsPassword?: string;
+  };
   /** Credenciales de acceso de la propia ONU (login web/CLI del equipo). */
   onuAdmin?: {
     enabled:   boolean;

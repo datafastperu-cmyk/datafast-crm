@@ -57,6 +57,12 @@ export function resolve(
     push('voip.proxy',     desired.voip.proxy);
   }
 
+  // Credenciales CWMP (auth ONU→ACS). Se emiten solo si el perfil TR-069 de la OLT las define.
+  if (desired.management) {
+    push('management.username', desired.management.acsUsername);
+    push('management.password', desired.management.acsPassword);
+  }
+
   // Credenciales de acceso de la ONU (cuentas web admin/usuario y CLI root del propio equipo)
   if (desired.onuAdmin?.enabled) {
     push('onu_admin.user',       desired.onuAdmin.user);

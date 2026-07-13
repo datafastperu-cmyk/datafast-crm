@@ -76,6 +76,21 @@ describe('resolve (Resolver)', () => {
     expect(plan.writes.some((w) => w.key.startsWith('onu_admin'))).toBe(false);
   });
 
+  it('management: emite credenciales CWMP (ManagementServer.Username/Password)', () => {
+    const plan = resolve('dev', desired({ management: { acsUsername: 'soltcpe', acsPassword: 'kzDHqd35fPlt' } }),
+      HUAWEI_EG8145V5, HUAWEI_IGD_V1);
+    const u = plan.writes.find((w) => w.key === 'management.username');
+    const p = plan.writes.find((w) => w.key === 'management.password');
+    expect(u?.candidates[0]).toBe('InternetGatewayDevice.ManagementServer.Username');
+    expect(u?.value).toBe('soltcpe');
+    expect(p?.value).toBe('kzDHqd35fPlt');
+  });
+
+  it('sin management: no genera writes de credenciales CWMP', () => {
+    const plan = resolve('dev', desired(), HUAWEI_EG8145V5, HUAWEI_IGD_V1);
+    expect(plan.writes.some((w) => w.key.startsWith('management'))).toBe(false);
+  });
+
   it('propaga device, profile y metadata.revision', () => {
     const plan = resolve('dev-99', desired(), HUAWEI_EG8145V5, HUAWEI_IGD_V1);
     expect(plan.device).toBe('dev-99');
