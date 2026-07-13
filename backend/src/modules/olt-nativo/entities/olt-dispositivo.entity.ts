@@ -86,6 +86,27 @@ export class OltDispositivo extends BaseModel {
   })
   vlanGestionDefecto: number | null;
 
+  // ── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
+  // Define la disponibilidad y parámetros del carril de gestión TR-069 para las ONUs
+  // de esta OLT/segmento. La ACS URL viaja a la ONU por DHCP Option 43 (MikroTik);
+  // usuario/clave = credenciales CWMP (ManagementServer.Username/Password) que la ONU
+  // usa para autenticarse ante GenieACS (endurecimiento; opcional). Clave CIFRADA.
+  @Column({ name: 'tr069_enabled', type: 'boolean', default: false })
+  tr069Enabled: boolean;
+
+  @Column({ name: 'tr069_acs_url', type: 'varchar', length: 255, nullable: true })
+  tr069AcsUrl: string | null;
+
+  @Column({ name: 'tr069_mgmt_vlan', type: 'smallint', nullable: true })
+  tr069MgmtVlan: number | null;
+
+  @Column({ name: 'tr069_acs_username', type: 'varchar', length: 100, nullable: true })
+  tr069AcsUsername: string | null;
+
+  /** Cifrada (AES). */
+  @Column({ name: 'tr069_acs_password', type: 'text', nullable: true })
+  tr069AcsPassword: string | null;
+
   // ── SNMP (complementa monitoreo pasivo) ───────────────────
   @Column({ name: 'snmp_community', length: 100, nullable: true, default: 'public' })
   snmpCommunity: string;

@@ -63,7 +63,7 @@ import {
   ProvisionResult,
   UpsertProveedorOltDto,
 } from './dto/olt-nativo-ops.dto';
-import { CreateOltDispositivoDto, UpdateOltDispositivoDto } from './dto/olt-dispositivo.dto';
+import { CreateOltDispositivoDto, UpdateOltDispositivoDto, Tr069ProfileDto } from './dto/olt-dispositivo.dto';
 
 @ApiTags('OLT Nativo')
 @Controller('olt-nativo')
@@ -182,6 +182,30 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     return this.service.eliminar(oltId, user.empresaId);
+  }
+
+  // ── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
+  @Get(':oltId/tr069-profile')
+  @ApiOperation({ summary: 'Perfil TR-069 de la OLT (ACS URL, VLAN gestión, usuario CWMP)' })
+  @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
+  async getTr069Profile(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.getTr069Profile(oltId, user.empresaId);
+  }
+
+  @Put(':oltId/tr069-profile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Configurar el perfil TR-069 de la OLT' })
+  @ApiParam({ name: 'oltId', description: 'UUID de la OLT' })
+  async setTr069Profile(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: Tr069ProfileDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.service.setTr069Profile(oltId, user.empresaId, dto);
+    return this.service.getTr069Profile(oltId, user.empresaId);
   }
 
   // ────────────────────────────────────────────────────────────

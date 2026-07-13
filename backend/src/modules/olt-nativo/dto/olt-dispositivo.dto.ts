@@ -1,5 +1,5 @@
 import {
-  IsEnum, IsIP, IsInt, IsNotEmpty, IsNumber,
+  IsBoolean, IsEnum, IsIP, IsInt, IsNotEmpty, IsNumber,
   IsOptional, IsString, IsUUID,
   Max, MaxLength, Min,
 } from 'class-validator';
@@ -116,3 +116,26 @@ export class CreateOltDispositivoDto {
 // PartialType convierte todos los campos de Create en opcionales
 // y hereda sus decoradores de class-validator automáticamente.
 export class UpdateOltDispositivoDto extends PartialType(CreateOltDispositivoDto) {}
+
+// ─── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
+export class Tr069ProfileDto {
+  @ApiPropertyOptional({ description: '¿TR-069 disponible en esta OLT?' })
+  @IsOptional() @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ example: 'http://10.8.1.1:7547' })
+  @IsOptional() @IsString() @MaxLength(255)
+  acsUrl?: string;
+
+  @ApiPropertyOptional({ example: 1600, description: 'VLAN de gestión para el bootstrap (DHCP Option 43)' })
+  @IsOptional() @IsInt() @Min(1) @Max(4094) @Type(() => Number)
+  mgmtVlan?: number;
+
+  @ApiPropertyOptional({ description: 'Usuario CWMP (ManagementServer.Username)' })
+  @IsOptional() @IsString() @MaxLength(100)
+  acsUsername?: string;
+
+  @ApiPropertyOptional({ description: 'Clave CWMP (se guarda cifrada)' })
+  @IsOptional() @IsString() @MaxLength(128)
+  acsPassword?: string;
+}

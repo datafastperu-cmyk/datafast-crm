@@ -37,7 +37,7 @@ import {
   WizardCommitDto,
 } from './dto/olt-nativo-ops.dto';
 import { CircuitBreakerService } from './services/circuit-breaker.service';
-import { CreateOltDispositivoDto, UpdateOltDispositivoDto } from './dto/olt-dispositivo.dto';
+import { CreateOltDispositivoDto, UpdateOltDispositivoDto, Tr069ProfileDto } from './dto/olt-dispositivo.dto';
 
 // ─────────────────────────────────────────────────────────────
 // OltNativoService — Orquestador híbrido NATIVO / SMARTOLT
@@ -502,6 +502,31 @@ export class OltNativoService implements OnModuleInit {
     }
     const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
     Object.assign(olt, defined);
+    return this.oltRepo.save(olt);
+  }
+
+  // ── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
+  async getTr069Profile(id: string, empresaId: string): Promise<{
+    enabled: boolean; acsUrl: string | null; mgmtVlan: number | null;
+    acsUsername: string | null; hasPassword: boolean;
+  }> {
+    const olt = await this.findOlt(id, empresaId);
+    return {
+      enabled:     olt.tr069Enabled,
+      acsUrl:      olt.tr069AcsUrl,
+      mgmtVlan:    olt.tr069MgmtVlan,
+      acsUsername: olt.tr069AcsUsername,
+      hasPassword: !!olt.tr069AcsPassword,   // nunca devolvemos la clave en claro
+    };
+  }
+
+  async setTr069Profile(id: string, empresaId: string, dto: Tr069ProfileDto): Promise<OltDispositivo> {
+    const olt = await this.findOlt(id, empresaId);
+    if (dto.enabled     !== undefined) olt.tr069Enabled     = dto.enabled;
+    if (dto.acsUrl      !== undefined) olt.tr069AcsUrl      = dto.acsUrl || null;
+    if (dto.mgmtVlan    !== undefined) olt.tr069MgmtVlan    = dto.mgmtVlan ?? null;
+    if (dto.acsUsername !== undefined) olt.tr069AcsUsername = dto.acsUsername || null;
+    if (dto.acsPassword !== undefined) olt.tr069AcsPassword = dto.acsPassword ? encrypt(dto.acsPassword) : null;
     return this.oltRepo.save(olt);
   }
 

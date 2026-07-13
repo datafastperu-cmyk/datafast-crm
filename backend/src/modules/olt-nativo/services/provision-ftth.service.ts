@@ -62,7 +62,8 @@ export class DesaprovisionarFtthDto {
 // aparezca sola en GenieACS. Requiere el DHCP server + Option 43 en la VLAN de gestión (MikroTik).
 export class BootstrapTr069Dto {
   @IsUUID('4') contratoId: string;
-  @IsInt() @Min(1) @Max(4094) @Type(() => Number) mgmtVlan:          number;
+  // Opcional: si se omite, se toma del perfil TR-069 de la OLT (tr069_mgmt_vlan) o su VLAN por defecto.
+  @IsOptional() @IsInt() @Min(1) @Max(4094) @Type(() => Number) mgmtVlan?: number;
   // Opcional: si se omite, se asigna del pool de gestión (canal 'gestion') de la OLT.
   @IsOptional() @IsInt() @Min(1) @Type(() => Number) mgmtServicePortId?: number;
   @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndex?:  number;
@@ -612,6 +613,15 @@ export class ProvisionFtthService {
     const olt  = await this._fetchOlt(oltId, empresaId);
     const conn = this._buildConn(olt, this._decryptOltPassword(olt));
 
+    // VLAN de gestión: la del DTO o, por defecto, la del perfil TR-069 de la OLT
+    // (equivalente al "TR069 Profile" de SmartOLT) o la VLAN de gestión por defecto.
+    const mgmtVlan = dto.mgmtVlan ?? olt.tr069MgmtVlan ?? olt.vlanGestionDefecto ?? undefined;
+    if (mgmtVlan == null) {
+      throw new UnprocessableEntityException(
+        'No hay VLAN de gestión: configúrala en el perfil TR-069 de la OLT o pásala en la petición.',
+      );
+    }
+
     // Asignación del service-port de GESTIÓN desde el pool (canal 'gestion').
     // Si el pool no está configurado (allocar → null) se exige el ID manual en el DTO.
     const asignadoDelPool = dto.mgmtServicePortId == null;
@@ -628,7 +638,7 @@ export class ProvisionFtthService {
 
     this.logger.log(
       `FTTH bootstrapTr069 | contrato=${dto.contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId} ` +
-      `mgmtVlan=${dto.mgmtVlan} svcPort=${mgmtServicePortId}${asignadoDelPool ? ' (pool gestion)' : ''}`,
+      `mgmtVlan=${mgmtVlan} svcPort=${mgmtServicePortId}${asignadoDelPool ? ' (pool gestion)' : ''}`,
     );
 
     let res: { success: boolean; error?: string };
@@ -638,7 +648,7 @@ export class ProvisionFtthService {
         slot:                 registro.slot,
         port:                 registro.port,
         onu_id:               registro.onuId,
-        mgmt_vlan:            dto.mgmtVlan,
+        mgmt_vlan:            mgmtVlan,
         mgmt_service_port_id: mgmtServicePortId!,
         traffic_index:        dto.trafficIndex ?? 0,
         priority:             dto.priority ?? 2,
@@ -661,7 +671,7 @@ export class ProvisionFtthService {
     }
 
     await this.ftthRepo.update(registro.id, { ultimoError: null });
-    this.logger.log(`FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${dto.mgmtVlan}`);
+    this.logger.log(`FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${mgmtVlan}`);
     return {
       exitoso: true,
       mensaje: `Carril de gestión TR-069 aplicado (mgmt WAN DHCP en VLAN ${dto.mgmtVlan}). ` +
