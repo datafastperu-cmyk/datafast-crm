@@ -2544,11 +2544,24 @@ def provision_mgmt_bootstrap(
         'Error:', 'Failure:', 'Parameter error', 'Too many parameters',
         'Unknown command', 'Incomplete command', 'conflicts with',
     ]
+    # IDEMPOTENCIA: re-aplicar el carril a una ONU que ya lo tenía (p.ej. tras un factory
+    # reset donde el service-port OLT-side sobrevive) NO es un fallo. Huawei reporta
+    # "service virtual port has existed already"; el lote continúa y el `ont ipconfig` sí
+    # se re-aplica. Estos mensajes benignos NO deben abortar — la verificación DHCP decide.
+    benign_patterns = (
+        'has existed already', 'already exist', 'already exists', 'has already existed',
+    )
     for pat in error_patterns:
         if pat.lower() in raw_create.lower():
             linea = next(
                 (l for l in raw_create.splitlines() if pat.lower() in l.lower()), pat,
             )
+            if any(b in linea.lower() for b in benign_patterns):
+                logger.info(
+                    'provision_mgmt_bootstrap: idempotente — ignorado "%s" en %s',
+                    linea.strip(), conn.ip,
+                )
+                continue
             raise ProvisioningError(
                 f'CLI Huawei reportó error en el bootstrap de gestión en {conn.ip}: {linea.strip()}'
             )
