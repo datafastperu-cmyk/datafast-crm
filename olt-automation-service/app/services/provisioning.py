@@ -2571,10 +2571,12 @@ def provision_mgmt_bootstrap(
         'Error:', 'Failure:', 'Parameter error', 'Too many parameters',
         'Unknown command', 'Incomplete command', 'conflicts with',
     ]
-    # IDEMPOTENCIA: re-aplicar el carril a una ONU que ya lo tenía (p.ej. tras un factory
-    # reset donde el service-port OLT-side sobrevive) NO es un fallo. Huawei reporta
-    # "service virtual port has existed already"; el lote continúa y el `ont ipconfig` sí
-    # se re-aplica. Estos mensajes benignos NO deben abortar — la verificación DHCP decide.
+    # IDEMPOTENCIA SEGURA: "service virtual port has existed already" SOLO es benigno si el
+    # service-port existente es de ESTA MISMA ONU y VLAN de gestión (re-aplicación tras factory
+    # reset). Si el ID ya pertenece a OTRA ONU (p.ej. un puerto de DATOS de un cliente en
+    # producción), reutilizarlo es una COLISIÓN peligrosa → error duro. Verificamos el dueño real
+    # con `display service-port <id>` antes de decidir. (Regresión: antes se tragaba cualquier
+    # "already exists" y enmascaraba colisiones con puertos de producción.)
     benign_patterns = (
         'has existed already', 'already exist', 'already exists', 'has already existed',
     )
@@ -2584,11 +2586,34 @@ def provision_mgmt_bootstrap(
                 (l for l in raw_create.splitlines() if pat.lower() in l.lower()), pat,
             )
             if any(b in linea.lower() for b in benign_patterns):
-                logger.info(
-                    'provision_mgmt_bootstrap: idempotente — ignorado "%s" en %s',
-                    linea.strip(), conn.ip,
+                # Verificar de quién es realmente el service-port.
+                try:
+                    check = _paramiko_huawei_run(
+                        conn, [f'display service-port {mgmt_service_port_id}'],
+                        timeout=settings.ssh_command_timeout,
+                    )
+                except Exception:
+                    check = ''
+                m_fsp  = re.search(r'F/S/P\s*:\s*(\S+)', check)
+                m_ont  = re.search(r'ONT ID\s*:\s*(\d+)', check)
+                m_vlan = re.search(r'VLAN ID\s*:\s*(\d+)', check)
+                fsp  = m_fsp.group(1)  if m_fsp  else '?'
+                ont  = m_ont.group(1)  if m_ont  else '?'
+                vlan = m_vlan.group(1) if m_vlan else '?'
+                mine = (fsp == f'0/{slot}/{port}' and str(ont) == str(onu_id)
+                        and str(vlan) == str(mgmt_vlan))
+                if mine:
+                    logger.info(
+                        'provision_mgmt_bootstrap: service-port %s ya existe y ES de esta ONU/VLAN '
+                        '(0/%d/%d ont %d vlan %d) — idempotente OK en %s',
+                        mgmt_service_port_id, slot, port, onu_id, mgmt_vlan, conn.ip,
+                    )
+                    continue
+                raise ProvisioningError(
+                    f'COLISIÓN de service-port en {conn.ip}: el ID {mgmt_service_port_id} ya está '
+                    f'EN USO por otra ONU (F/S/P {fsp}, ONT {ont}, VLAN {vlan}) — NO se reutiliza. '
+                    f'Asigna un ID libre desde el pool de gestión (canal "gestion").'
                 )
-                continue
             raise ProvisioningError(
                 f'CLI Huawei reportó error en el bootstrap de gestión en {conn.ip}: {linea.strip()}'
             )
