@@ -1215,6 +1215,15 @@ export const oltNativoApi = {
     return res.data.data;
   },
 
+  aplicarNtpServers: async (oltId: string, servers: string[]): Promise<{
+    aplicado: boolean; ntpServers: unknown; error?: string;
+  }> => {
+    const res = await api.put<ApiRespuesta<{ aplicado: boolean; ntpServers: unknown; error?: string }>>(
+      `/olt-nativo/${oltId}/config/ntp`, { servers },
+    );
+    return res.data.data;
+  },
+
   iniciarSync: async (oltId: string): Promise<{ jobId: string }> => {
     const res = await api.post<ApiRespuesta<{ jobId: string }>>(`/olt-nativo/${oltId}/sync`);
     return res.data.data;

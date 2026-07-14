@@ -178,6 +178,13 @@ class OltDriver(ABC):
         """
         return SnmpNtpConfigData(ok=False, error='No implementado para esta marca')
 
+    def apply_ntp_servers(self, desired: list[str]) -> SnmpNtpConfigData:
+        """
+        Converge los servidores NTP de la OLT hacia `desired` (agrega/quita
+        lo necesario). Implementación opcional — por defecto no escribe nada.
+        """
+        return SnmpNtpConfigData(ok=False, error='No implementado para esta marca')
+
     @abstractmethod
     def get_ont_list(self, slot: int, port: int) -> list[OntInfo]:
         """Lista de ONUs registradas en un puerto PON."""

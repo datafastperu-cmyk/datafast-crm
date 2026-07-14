@@ -128,6 +128,34 @@ export class OltSyncService implements OnModuleInit {
     return { jobId: job.id };
   }
 
+  /**
+   * Incremento 5 — convergencia real: aplica los servidores NTP deseados
+   * en la OLT (agrega/quita el diff) y persiste tanto el deseado como el
+   * estado real resultante. Nunca asume éxito — el resultado devuelto es
+   * lo que la OLT reportó DESPUÉS del cambio, releído por el driver.
+   */
+  async aplicarNtpServers(
+    oltId: string, empresaId: string, servers: string[],
+  ): Promise<{ aplicado: boolean; ntpServers: OltDispositivo['ntpServers']; error?: string }> {
+    const olt  = await this.oltRepo.findOneOrFail({ where: { id: oltId, empresaId } });
+    const conn = await this._buildConn(oltId, empresaId, olt);
+
+    const res = await this.automation.applyNtpServers({ connection: conn, servers });
+
+    await this.oltRepo.update(oltId, { ntpServersDeseados: servers });
+
+    if (!res.success) {
+      return { aplicado: false, ntpServers: olt.ntpServers, error: res.error };
+    }
+
+    const ntpServers = res.ntp_servers.map(s => ({
+      source: s.source, stratum: s.stratum, reach: s.reach, status: s.status,
+    }));
+    await this.oltRepo.update(oltId, { ntpServers, configSnapshotAt: new Date() });
+
+    return { aplicado: true, ntpServers };
+  }
+
   /** Estado actual del último job para un OLT. */
   async estadoSync(oltId: string, empresaId: string): Promise<OltSyncJob | null> {
     return this.syncJobRepo.findOne({

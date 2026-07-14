@@ -91,6 +91,8 @@ from app.schemas.olt import (
     SnmpNtpConfigResponse,
     SnmpCommunityInfo,
     NtpServerInfo,
+    ApplyNtpServersRequest,
+    ApplyNtpServersResponse,
 )
 from app.drivers import get_driver
 from app.drivers.base import UnsupportedBrandError, DriverNotImplementedError
@@ -1144,6 +1146,47 @@ async def config_snmp_ntp(body: SnmpNtpConfigRequest) -> SnmpNtpConfigResponse:
             SnmpCommunityInfo(name=c.name, access=c.access) for c in cfg.snmp_communities
         ],
         snmp_versions=cfg.snmp_versions,
+        ntp_servers=[
+            NtpServerInfo(source=s.source, stratum=s.stratum, reach=s.reach, status=s.status)
+            for s in cfg.ntp_servers
+        ],
+    )
+
+
+# ── Aplicar servidores NTP (Incremento 5 — convergencia real) ──
+
+@app.post(
+    '/api/v1/olt/config/ntp/apply',
+    response_model=ApplyNtpServersResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['config'],
+    summary='Converge los servidores NTP de la OLT hacia la lista deseada',
+    description=(
+        'Relee el estado real antes de decidir el diff — nunca escribe a '
+        'ciegas sobre un snapshot cacheado. Idempotente: si ya converge, '
+        'no ejecuta ningún comando.'
+    ),
+)
+async def config_ntp_apply(body: ApplyNtpServersRequest) -> ApplyNtpServersResponse:
+    olt_ip = body.connection.ip
+
+    try:
+        driver = get_driver(body.connection.brand.value, body.connection)
+    except UnsupportedBrandError as exc:
+        return ApplyNtpServersResponse(success=False, error=str(exc))
+
+    async with connection_pool.acquire(olt_ip):
+        try:
+            cfg = await asyncio.to_thread(driver.apply_ntp_servers, body.servers)
+        except Exception as exc:  # noqa: BLE001
+            logger.error('config_ntp_apply en %s: %s', olt_ip, exc)
+            return ApplyNtpServersResponse(success=False, error=str(exc))
+
+    if not cfg.ok:
+        return ApplyNtpServersResponse(success=False, error=cfg.error)
+
+    return ApplyNtpServersResponse(
+        success=True,
         ntp_servers=[
             NtpServerInfo(source=s.source, stratum=s.stratum, reach=s.reach, status=s.status)
             for s in cfg.ntp_servers

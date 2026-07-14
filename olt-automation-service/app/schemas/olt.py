@@ -714,6 +714,17 @@ class SnmpNtpConfigResponse(BaseModel):
     error:            str | None = None
 
 
+class ApplyNtpServersRequest(BaseModel):
+    connection: OltConnectionSchema
+    servers:    list[str]
+
+
+class ApplyNtpServersResponse(BaseModel):
+    success:     bool
+    ntp_servers: list[NtpServerInfo] = []
+    error:       str | None = None
+
+
 # ── Clasificación de estados de ONUs por puerto ───────────────
 
 class ClassifyOnusRequest(BaseModel):

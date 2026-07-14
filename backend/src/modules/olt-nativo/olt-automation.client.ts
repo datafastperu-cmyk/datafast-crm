@@ -51,6 +51,8 @@ import {
   PythonWizardTopologyResponse,
   PythonSnmpNtpConfigRequest,
   PythonSnmpNtpConfigResponse,
+  PythonApplyNtpServersRequest,
+  PythonApplyNtpServersResponse,
   PythonHealthSnapshotRequest,
   PythonHealthSnapshotResponse,
   PythonVlanAddRequest,
@@ -424,6 +426,18 @@ export class OltAutomationClient {
     this.logger.log(
       `← Python config/snmp-ntp | success=${res.success} communities=${res.snmp_communities?.length ?? 0} ntp=${res.ntp_servers?.length ?? 0}`,
     );
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Aplicar servidores NTP (Incremento 5 — convergencia real)
+  // ────────────────────────────────────────────────────────────
+  async applyNtpServers(payload: PythonApplyNtpServersRequest): Promise<PythonApplyNtpServersResponse> {
+    this.logger.log(`→ Python config/ntp/apply | OLT=${payload.connection.ip} servers=${payload.servers.join(',')}`);
+    const res = await this.post<PythonApplyNtpServersResponse>(
+      '/api/v1/olt/config/ntp/apply', payload, 60_000,
+    );
+    this.logger.log(`← Python config/ntp/apply | success=${res.success} ntp=${res.ntp_servers?.length ?? 0}`);
     return res;
   }
 

@@ -1421,6 +1421,23 @@ export class OltNativoController {
     return this.complianceService.evaluar(oltId, user.empresaId);
   }
 
+  /**
+   * Incremento 5 — convergencia real: aplica los servidores NTP declarados
+   * como deseados en la OLT. A diferencia de /compliance (solo lee), esto
+   * SÍ escribe en la OLT — relee el estado real antes de decidir el diff
+   * y nunca asume éxito.
+   */
+  @Put(':oltId/config/ntp')
+  @ApiOperation({ summary: 'Converge los servidores NTP de la OLT hacia la lista deseada' })
+  @ApiParam({ name: 'oltId' })
+  async aplicarNtpServers(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() body: { servers: string[] },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.sync.aplicarNtpServers(oltId, user.empresaId, body.servers);
+  }
+
   /** Inventario observado de ONUs (read-model) + resumen de drift del último sync */
   @Get(':oltId/inventario')
   @ApiOperation({ summary: 'Inventario de ONUs de la OLT (snapshot del reconcile) + drift' })

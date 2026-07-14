@@ -273,6 +273,50 @@ class HuaweiDriver(OltDriver):
             ntp_servers=ntp_servers,
         )
 
+    # ── apply_ntp_servers ──────────────────────────────────────
+    #
+    # Incremento 5 — Execution real: converge la OLT hacia el estado
+    # deseado que declara el ERP (antes solo se leía y se avisaba).
+    #
+    # SIEMPRE relee el estado actual antes de decidir el diff — nunca
+    # confía en un snapshot cacheado que pudo cambiar. Idempotente: una
+    # segunda llamada con el mismo `desired` calcula un diff vacío y no
+    # ejecuta ningún comando de escritura.
+    def apply_ntp_servers(self, desired: list[str]) -> SnmpNtpConfigData:
+        actual_cfg = self.get_snmp_ntp_config()
+        if not actual_cfg.ok:
+            return actual_cfg  # no se pudo leer el estado real — no se escribe a ciegas
+
+        actual_ips = {s.source for s in actual_cfg.ntp_servers}
+        desired_ips = set(desired)
+
+        a_agregar = desired_ips - actual_ips
+        a_quitar  = actual_ips - desired_ips
+
+        if not a_agregar and not a_quitar:
+            logger.info('apply_ntp_servers en %s: sin cambios (ya converge)', self._conn.ip)
+            return actual_cfg
+
+        cmds = ['config']
+        for ip in a_agregar:
+            cmds.append(f'ntp-service unicast-server {ip}')
+        for ip in a_quitar:
+            cmds.append(f'undo ntp-service unicast-server {ip}')
+        cmds.append('quit')
+
+        logger.info(
+            'apply_ntp_servers en %s: agregar=%s quitar=%s',
+            self._conn.ip, sorted(a_agregar), sorted(a_quitar),
+        )
+        try:
+            _paramiko_huawei_run(self._conn, cmds, timeout=60.0, return_list=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('apply_ntp_servers en %s: %s', self._conn.ip, exc)
+            return SnmpNtpConfigData(ok=False, error=str(exc))
+
+        # Releer para confirmar el estado real post-cambio — nunca asumir éxito.
+        return self.get_snmp_ntp_config()
+
     def _parse_community_names(self, raw: str) -> list[str]:
         return re.findall(r'Community name\s*:\s*(\S+)', raw)
 

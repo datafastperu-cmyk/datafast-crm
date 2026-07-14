@@ -854,6 +854,17 @@ export interface PythonSnmpNtpConfigResponse {
   error?:           string;
 }
 
+export interface PythonApplyNtpServersRequest {
+  connection: PythonConnectionPayload;
+  servers:    string[];
+}
+
+export interface PythonApplyNtpServersResponse {
+  success:     boolean;
+  ntp_servers: PythonNtpServerInfo[];
+  error?:      string;
+}
+
 // ─── VLAN CLI Operations ─────────────────────────────────────
 
 export interface PythonVlanAddRequest {

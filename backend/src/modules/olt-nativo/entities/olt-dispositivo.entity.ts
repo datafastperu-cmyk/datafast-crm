@@ -130,6 +130,11 @@ export class OltDispositivo extends BaseModel {
   @Column({ name: 'config_snapshot_at', type: 'timestamptz', nullable: true })
   configSnapshotAt: Date | null;
 
+  // ── Estado deseado NTP (Incremento 5 — convergencia real) ──
+  // Simétrico a ntpServers arriba (real): esto es lo que el ERP QUIERE.
+  @Column({ name: 'ntp_servers_deseados', type: 'jsonb', nullable: true })
+  ntpServersDeseados: string[] | null;
+
   // ── Relaciones (FK almacenadas como UUID string) ──────────
 
   // Router MikroTik detrás del cual reside físicamente la OLT.
