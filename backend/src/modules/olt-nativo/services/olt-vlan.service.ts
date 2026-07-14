@@ -9,7 +9,7 @@ import { Type } from 'class-transformer';
 import { OltVlan } from '../entities/olt-vlan.entity';
 import { OltDispositivo } from '../entities/olt-dispositivo.entity';
 import { OltAutomationClient } from '../olt-automation.client';
-import { decrypt } from '../../../common/utils/encryption.util';
+import { OltConnService } from './olt-conn.service';
 
 export class AgregarVlanDto {
   @IsInt() @Min(1) @Max(4094) @Type(() => Number) vlanId:      number;
@@ -28,6 +28,7 @@ export class OltVlanService {
     private readonly oltRepo: Repository<OltDispositivo>,
     private readonly automation: OltAutomationClient,
     private readonly ds: DataSource,
+    private readonly connService: OltConnService,
   ) {}
 
   async listar(oltId: string, empresaId: string): Promise<OltVlan[]> {
@@ -58,7 +59,7 @@ export class OltVlanService {
     if (existente) throw new ConflictException(`VLAN ${dto.vlanId} ya existe para esta OLT.`);
 
     const olt  = await this._fetchOlt(oltId, empresaId);
-    const conn = this._buildConn(olt);
+    const conn = await this.connService.buildConn(olt);
 
     // 1. Reservar en BD con estado syncing
     const vlan = await this.repo.save(this.repo.create({
@@ -124,7 +125,7 @@ export class OltVlanService {
     }
 
     const olt  = await this._fetchOlt(oltId, empresaId);
-    const conn = this._buildConn(olt);
+    const conn = await this.connService.buildConn(olt);
 
     // Mark syncing
     await this.repo.update(vlan.id, { estado: 'syncing' });
@@ -158,7 +159,7 @@ export class OltVlanService {
     empresaId: string,
   ): Promise<{ insertadas: number; omitidas: number }> {
     const olt     = await this._fetchOlt(oltId, empresaId);
-    const conn    = this._buildConn(olt);
+    const conn    = await this.connService.buildConn(olt);
     const perfiles = await this.automation.listProfiles({ connection: conn });
 
     if (!perfiles.success) {
@@ -212,19 +213,4 @@ export class OltVlanService {
     return olt;
   }
 
-  private _buildConn(olt: OltDispositivo) {
-    let password: string;
-    try {
-      password = decrypt(olt.contrasenaCifrada);
-    } catch {
-      throw new ServiceUnavailableException(`No se pudo descifrar la contraseña de la OLT "${olt.nombre}".`);
-    }
-    return {
-      ip:       olt.ipGestion,
-      port:     olt.puerto,
-      username: olt.usuarioAnclado,
-      password,
-      brand:    olt.marca,
-    };
-  }
 }

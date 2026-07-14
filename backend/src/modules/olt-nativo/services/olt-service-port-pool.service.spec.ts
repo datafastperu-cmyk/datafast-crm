@@ -14,7 +14,7 @@ describe('OltServicePortPoolService — canal (Inc.4)', () => {
     ds = { query: jest.fn() };
     const oltRepo: any = { findOne: jest.fn() };
     const automation: any = { servicePorts: jest.fn() };
-    svc = new OltServicePortPoolService(ds, oltRepo, automation);
+    svc = new OltServicePortPoolService(ds, oltRepo, automation, {} as never);
   });
 
   describe('configurarRango', () => {

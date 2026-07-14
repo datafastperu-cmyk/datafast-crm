@@ -10,7 +10,7 @@ describe('Ownership guards (Incremento 7)', () => {
     const makeService = (tt: unknown) => {
       const repo = { findOne: jest.fn().mockResolvedValue(tt), update: jest.fn() };
       return new OltTrafficTableService(
-        repo as never, {} as never, {} as never, {} as never,
+        repo as never, {} as never, {} as never, {} as never, {} as never,
       );
     };
 
@@ -37,7 +37,7 @@ describe('Ownership guards (Incremento 7)', () => {
       const repo = {
         findOne: jest.fn().mockResolvedValue({ id: 'v1', vlanId: 100, origen: 'olt' }),
       };
-      const svc = new OltVlanService(repo as never, {} as never, {} as never, {} as never);
+      const svc = new OltVlanService(repo as never, {} as never, {} as never, {} as never, {} as never);
       await expect(svc.eliminarConCli('olt-1', 'emp-1', 100)).rejects.toThrow(ConflictException);
     });
   });

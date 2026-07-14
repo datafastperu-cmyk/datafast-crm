@@ -9,7 +9,7 @@ import { Type } from 'class-transformer';
 import { OltTrafficTable, TrafficTableTipo } from '../entities/olt-traffic-table.entity';
 import { OltDispositivo } from '../entities/olt-dispositivo.entity';
 import { OltAutomationClient } from '../olt-automation.client';
-import { decrypt } from '../../../common/utils/encryption.util';
+import { OltConnService } from './olt-conn.service';
 
 export class AgregarTrafficTableDto {
   @IsString() @MaxLength(64)                       nombre:   string;
@@ -41,6 +41,7 @@ export class OltTrafficTableService {
     private readonly oltRepo: Repository<OltDispositivo>,
     private readonly automation: OltAutomationClient,
     private readonly ds: DataSource,
+    private readonly connService: OltConnService,
   ) {}
 
   async listar(oltId: string, empresaId: string): Promise<OltTrafficTable[]> {
@@ -58,7 +59,7 @@ export class OltTrafficTableService {
     dto:       AgregarTrafficTableDto,
   ): Promise<OltTrafficTable> {
     const olt  = await this._fetchOlt(oltId, empresaId);
-    const conn = this._buildConn(olt);
+    const conn = await this.connService.buildConn(olt);
 
     const res = await this.automation.trafficTableAdd({
       connection: conn,
@@ -117,7 +118,7 @@ export class OltTrafficTableService {
     await this._assertNoOnusEnUso(oltId, trafficId);
 
     const olt  = await this._fetchOlt(oltId, empresaId);
-    const conn = this._buildConn(olt);
+    const conn = await this.connService.buildConn(olt);
 
     await this.repo.update(tt.id, { estado: 'syncing' });
 
@@ -172,7 +173,7 @@ export class OltTrafficTableService {
     await this._assertNoOnusEnUso(oltId, trafficId);
 
     const olt  = await this._fetchOlt(oltId, empresaId);
-    const conn = this._buildConn(olt);
+    const conn = await this.connService.buildConn(olt);
 
     await this.repo.update(tt.id, { estado: 'syncing' });
 
@@ -270,19 +271,4 @@ export class OltTrafficTableService {
     return olt;
   }
 
-  private _buildConn(olt: OltDispositivo) {
-    let password: string;
-    try {
-      password = decrypt(olt.contrasenaCifrada);
-    } catch {
-      throw new ServiceUnavailableException(`No se pudo descifrar la contraseña de la OLT "${olt.nombre}".`);
-    }
-    return {
-      ip:       olt.ipGestion,
-      port:     olt.puerto,
-      username: olt.usuarioAnclado,
-      password,
-      brand:    olt.marca,
-    };
-  }
 }

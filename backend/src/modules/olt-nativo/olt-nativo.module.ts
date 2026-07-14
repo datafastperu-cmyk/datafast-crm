@@ -53,6 +53,7 @@ import { OnuTr069DetalleService }      from './ztp/onu-tr069-detalle.service';
 import { Tr069Module }                from '../tr069/tr069.module';
 import { ConfiguracionModule }        from '../config/config.module';
 import { OltServicePortPoolService }  from './services/olt-service-port-pool.service';
+import { OltConnService }             from './services/olt-conn.service';
 import { OltOnuIdPoolService }        from './services/olt-onu-id-pool.service';
 import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
 import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
@@ -183,6 +184,7 @@ import { OltGateway }                from './olt.gateway';
     GenieAcsDriver,
     OnuTr069DetalleService,
     OltServicePortPoolService,
+    OltConnService,
     OltOnuIdPoolService,
     OltVlanService,
     OltTrafficTableService,

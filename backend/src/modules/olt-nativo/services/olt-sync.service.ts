@@ -14,9 +14,9 @@ import { OltVlan }           from '../entities/olt-vlan.entity';
 import { OltTrafficTable }   from '../entities/olt-traffic-table.entity';
 import { OltAutomationClient } from '../olt-automation.client';
 import { ModuleHealthService } from '../../../common/services/module-health.service';
-import { decrypt }           from '../../../common/utils/encryption.util';
 import { OltServicePortPoolService } from './olt-service-port-pool.service';
 import { OltOnuIdPoolService }       from './olt-onu-id-pool.service';
+import { OltConnService }            from './olt-conn.service';
 
 // ─── Eventos WebSocket (emitidos por EventEmitter2, escuchados por OltGateway) ──
 export const OLT_SYNC_PROGRESS  = 'olt.sync.progress';
@@ -97,6 +97,7 @@ export class OltSyncService implements OnModuleInit {
     private readonly events:       EventEmitter2,
     private readonly servicePortPool: OltServicePortPoolService,
     private readonly onuIdPool:       OltOnuIdPoolService,
+    private readonly connService:     OltConnService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -484,27 +485,9 @@ export class OltSyncService implements OnModuleInit {
   }
 
   private async _buildConn(
-    oltId: string, empresaId: string, olt: OltDispositivo,
+    _oltId: string, _empresaId: string, olt: OltDispositivo,
   ): Promise<{ ip: string; port: number; username: string; password: string; brand: string }> {
-    const config = await this.provRepo.findOne({
-      where: { oltId, empresaId, tipo: 'nativo_ssh' as any, activo: true },
-    });
-    if (!config) throw new Error('OLT sin proveedor nativo_ssh activo');
-
-    const c        = config.credenciales as Record<string, unknown>;
-    const rawIp    = (c.ip as string) || olt.ipGestion;
-    const ip       = rawIp.includes('/') ? rawIp.split('/')[0] : rawIp;
-    const password = decrypt(
-      c.password_cifrado ? (c.password_cifrado as string) : olt.contrasenaCifrada,
-    );
-
-    return {
-      ip,
-      port:     ((c.port     as number) || olt.puerto) ?? 22,
-      username: (c.username  as string) || olt.usuarioAnclado,
-      password,
-      brand:    ((c.brand    as string) || olt.marca).toLowerCase(),
-    };
+    return this.connService.buildConn(olt);
   }
 
   // ── Inventario de ONUs (estado observado) + drift ─────────────

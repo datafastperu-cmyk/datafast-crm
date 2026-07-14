@@ -9,7 +9,7 @@ import { Type } from 'class-transformer';
 import { CanalServicePort } from '../entities/olt-service-port-pool.entity';
 import { OltDispositivo } from '../entities/olt-dispositivo.entity';
 import { OltAutomationClient } from '../olt-automation.client';
-import { decrypt } from '../../../common/utils/encryption.util';
+import { OltConnService } from './olt-conn.service';
 
 // ─── DTOs ─────────────────────────────────────────────────────────
 
@@ -45,6 +45,7 @@ export class OltServicePortPoolService {
     private readonly oltRepo: Repository<OltDispositivo>,
 
     private readonly automation: OltAutomationClient,
+    private readonly connService: OltConnService,
   ) {}
 
   // ── configurarRango ───────────────────────────────────────────────
@@ -235,19 +236,8 @@ export class OltServicePortPoolService {
     const olt = await this.oltRepo.findOne({ where: { id: oltId, empresaId } });
     if (!olt) throw new NotFoundException(`OLT ${oltId} no encontrada.`);
 
-    let password: string;
-    try {
-      password = decrypt(olt.contrasenaCifrada);
-    } catch {
-      throw new ServiceUnavailableException(`No se pudo descifrar la contraseña de la OLT "${olt.nombre}".`);
-    }
-
-    const res = await this.automation.servicePorts({
-      connection: {
-        ip: olt.ipGestion, port: olt.puerto, username: olt.usuarioAnclado,
-        password, brand: olt.marca,
-      },
-    });
+    const conn = await this.connService.buildConn(olt);
+    const res  = await this.automation.servicePorts({ connection: conn });
 
     if (!res.success) {
       throw new ServiceUnavailableException(`No se pudo leer service-ports de la OLT: ${res.error}`);

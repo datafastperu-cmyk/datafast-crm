@@ -502,7 +502,25 @@ export class OltNativoService implements OnModuleInit {
     }
     const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
     Object.assign(olt, defined);
-    return this.oltRepo.save(olt);
+    const saved = await this.oltRepo.save(olt);
+
+    // Propagar credenciales al proveedor nativo_ssh: la config es la fuente de
+    // verdad de conexión (OltConnService la prefiere). Sin esto, editar la
+    // contraseña/IP aquí dejaba a los caminos Router/sync usando la vieja.
+    const config = await this.proveedorRepo.findOne({
+      where: { oltId: id, empresaId, tipo: 'nativo_ssh' as TipoProveedor },
+    });
+    if (config) {
+      const c = config.credenciales as Record<string, unknown>;
+      if (dto.ipGestion)      c.ip = dto.ipGestion.includes('/') ? dto.ipGestion.split('/')[0] : dto.ipGestion;
+      if (dto.puerto)         c.port = dto.puerto;
+      if (dto.usuarioAnclado) c.username = dto.usuarioAnclado;
+      if (contrasena)         c.password_cifrado = olt.contrasenaCifrada;
+      config.credenciales = c;
+      await this.proveedorRepo.save(config);
+    }
+
+    return saved;
   }
 
   // ── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
