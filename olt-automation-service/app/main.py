@@ -16,6 +16,7 @@ from app.config import settings
 from app.routers.mikrotik import router as mikrotik_router
 from app.routers.monitoring import router as monitoring_router
 from app.schemas.olt import (
+    OltConnectionSchema,
     BatchStatusRequest,
     BatchStatusResponse,
     BoardTopologyRequest,
@@ -125,6 +126,7 @@ from app.services.provisioning import (
     suspend_onu,
     rehabilitate_onu,
     test_olt_connection,
+    _paramiko_huawei_run,
     upgrade_firmware_onu,
     verify_onu,
     add_vlan,
@@ -615,6 +617,51 @@ async def ont_version_endpoint(body: OntVersionRequest) -> OntVersionResponse:
         software_version=result.get('software_version'),
         equipment_id=result.get('equipment_id'),
     )
+
+
+# ── Diagnóstico read-only (comandos display en la OLT) ────────────
+from pydantic import BaseModel, Field as _Field
+
+class DiagnosticRequest(BaseModel):
+    connection: OltConnectionSchema
+    commands:   list[str] = _Field(..., min_length=1, max_length=20)
+
+class DiagnosticResponse(BaseModel):
+    success: bool
+    outputs: list[dict] | None = None
+    error:   str | None = None
+
+# Whitelist ESTRICTA: solo navegación de contexto + lectura. Nada que modifique config.
+_DIAG_ALLOWED = ('display ', 'config', 'interface ', 'quit', 'return')
+_DIAG_FORBIDDEN = ('undo', 'add', 'delete', 'set ', 'reset', 'save', 'ont ipconfig',
+                   'service-port', 'wan-config', 'ont add', 'ont delete', 'shutdown')
+
+@app.post(
+    '/api/v1/olt/diagnostic-display',
+    response_model=DiagnosticResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Ejecuta comandos display (solo lectura) en la OLT y retorna la salida cruda',
+)
+async def diagnostic_display_endpoint(body: DiagnosticRequest) -> DiagnosticResponse:
+    for cmd in body.commands:
+        low = cmd.strip().lower()
+        if not low.startswith(_DIAG_ALLOWED):
+            return DiagnosticResponse(success=False, error=f'Comando no permitido (solo lectura): {cmd}')
+        if any(f in low for f in _DIAG_FORBIDDEN):
+            return DiagnosticResponse(success=False, error=f'Comando bloqueado (modifica config): {cmd}')
+    olt_ip = body.connection.ip
+    try:
+        async with connection_pool.acquire(olt_ip):
+            parts = await asyncio.to_thread(
+                _paramiko_huawei_run, body.connection, body.commands, 120.0, True,
+            )
+        return DiagnosticResponse(
+            success=True,
+            outputs=[{'command': c, 'output': (parts[i] if i < len(parts) else '')} for i, c in enumerate(body.commands)],
+        )
+    except Exception as exc:  # noqa: BLE001 — diagnóstico best-effort
+        return DiagnosticResponse(success=False, error=str(exc))
 
 
 @app.get(
