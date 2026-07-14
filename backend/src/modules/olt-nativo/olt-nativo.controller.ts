@@ -44,6 +44,7 @@ import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltSyncService }    from './services/olt-sync.service';
 import { CrearBaselineDto, OltBaselineService } from './services/olt-baseline.service';
+import { OltBaselinePlanService } from './services/olt-baseline-plan.service';
 import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
 import { OltComplianceService }      from './services/olt-compliance.service';
 import { OltBoard }          from './entities/olt-board.entity';
@@ -85,6 +86,7 @@ export class OltNativoController {
     private readonly infraSnapshot: InfrastructureSnapshotService,
     private readonly complianceService: OltComplianceService,
     private readonly baselines:     OltBaselineService,
+    private readonly baselinePlan:  OltBaselinePlanService,
     private readonly ztp:           ZtpProvisioningService,
     private readonly onuConfig:     ContratoOnuConfigService,
     private readonly onuTr069:      OnuTr069DetalleService,
@@ -142,6 +144,29 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.baselines.asignarAOlt(oltId, user.empresaId, body.baselineId ?? null);
+  }
+
+  // ── Convergencia de baseline (Incremento 9) — dry-run + apply ──
+  @Get(':oltId/baseline/plan')
+  @ApiOperation({ summary: 'Dry-run: plan de operaciones para converger la OLT a su baseline (no toca la OLT)' })
+  @ApiParam({ name: 'oltId' })
+  async planBaseline(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.baselinePlan.generarPlan(oltId, user.empresaId);
+  }
+
+  @Post(':oltId/baseline/aplicar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ejecutar el plan aprobado (requiere planHash del dry-run; 409 si el estado cambió)' })
+  @ApiParam({ name: 'oltId' })
+  async aplicarBaseline(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() body: { planHash: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.baselinePlan.aplicarPlan(oltId, user.empresaId, body.planHash);
   }
 
   // ── GET /olt-nativo/validar-ip — check disponibilidad de IP ──
