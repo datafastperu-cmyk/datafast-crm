@@ -29,6 +29,7 @@ export interface OltDispositivo {
   latitud?:               number | null;
   longitud?:              number | null;
   activo:                 boolean;
+  baselineId?:            string | null;
   createdAt?:             string;
   updatedAt?:             string;
 }
@@ -524,6 +525,51 @@ export interface ComplianceReport {
   cumpleTodo:   boolean;
   criticos:     number;
   advertencias: number;
+}
+
+// ── Baselines declarativos (Incrementos 8-9) ─────────────────
+export interface BaselineSpec {
+  vlans:         Array<{ vlanId: number; nombre: string; proposito?: string }>;
+  trafficTables: Array<{ nombre: string; cirKbps: number; pirKbps: number }>;
+  ntpServers?:   string[];
+}
+
+export interface OltBaselineItem {
+  id:          string;
+  nombre:      string;
+  version:     number;
+  descripcion: string | null;
+  spec:        BaselineSpec;
+  activo:      boolean;
+  createdAt:   string;
+}
+
+export interface BaselinePlanOperacion {
+  orden:   number;
+  tipo:    'crear_vlan' | 'crear_traffic_table';
+  detalle: string;
+  params:  Record<string, unknown>;
+}
+
+export interface BaselinePlan {
+  oltId:           string;
+  baselineId:      string;
+  baselineNombre:  string;
+  baselineVersion: number;
+  generadoEn:      string;
+  operaciones:     BaselinePlanOperacion[];
+  bloqueos:        Array<{ recurso: string; motivo: string }>;
+  planHash:        string;
+  yaConverge:      boolean;
+}
+
+export interface BaselineAplicacionResultado {
+  oltId:      string;
+  planHash:   string;
+  ejecutadas: number;
+  fallidas:   number;
+  resultados: Array<BaselinePlanOperacion & { exitoso: boolean; mensaje: string }>;
+  completado: boolean;
 }
 
 export interface FtthOnuRegistro {
@@ -1220,6 +1266,37 @@ export const oltNativoApi = {
   }> => {
     const res = await api.put<ApiRespuesta<{ aplicado: boolean; ntpServers: unknown; error?: string }>>(
       `/olt-nativo/${oltId}/config/ntp`, { servers },
+    );
+    return res.data.data;
+  },
+
+  // ── Baselines declarativos (Incrementos 8-9) ────────────────
+  getBaselines: async (): Promise<OltBaselineItem[]> => {
+    const res = await api.get<ApiRespuesta<OltBaselineItem[]>>('/olt-nativo/baselines');
+    return res.data.data ?? [];
+  },
+
+  crearBaseline: async (dto: {
+    nombre: string; descripcion?: string;
+    vlans: BaselineSpec['vlans']; trafficTables: BaselineSpec['trafficTables'];
+    ntpServers?: string[];
+  }): Promise<OltBaselineItem> => {
+    const res = await api.post<ApiRespuesta<OltBaselineItem>>('/olt-nativo/baselines', dto);
+    return res.data.data;
+  },
+
+  asignarBaseline: async (oltId: string, baselineId: string | null): Promise<void> => {
+    await api.patch(`/olt-nativo/${oltId}/baseline`, { baselineId });
+  },
+
+  getBaselinePlan: async (oltId: string): Promise<BaselinePlan> => {
+    const res = await api.get<ApiRespuesta<BaselinePlan>>(`/olt-nativo/${oltId}/baseline/plan`);
+    return res.data.data;
+  },
+
+  aplicarBaselinePlan: async (oltId: string, planHash: string): Promise<BaselineAplicacionResultado> => {
+    const res = await api.post<ApiRespuesta<BaselineAplicacionResultado>>(
+      `/olt-nativo/${oltId}/baseline/aplicar`, { planHash },
     );
     return res.data.data;
   },
