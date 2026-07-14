@@ -648,7 +648,9 @@ async def diagnostic_display_endpoint(body: DiagnosticRequest) -> DiagnosticResp
         low = cmd.strip().lower()
         if not low.startswith(_DIAG_ALLOWED):
             return DiagnosticResponse(success=False, error=f'Comando no permitido (solo lectura): {cmd}')
-        if any(f in low for f in _DIAG_FORBIDDEN):
+        # Un comando `display ...` es inherentemente de lectura; el check de verbos de
+        # escritura solo aplica a los demás (config/interface/quit son navegación).
+        if not low.startswith('display ') and any(f in low for f in _DIAG_FORBIDDEN):
             return DiagnosticResponse(success=False, error=f'Comando bloqueado (modifica config): {cmd}')
     olt_ip = body.connection.ip
     try:
