@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 
 import { OltDispositivo } from '../entities/olt-dispositivo.entity';
+import { OltBaseline } from '../entities/olt-baseline.entity';
 import { InfrastructureSnapshotService } from './infrastructure-snapshot.service';
 import { resolverCapacidadesOlt } from '../capability/olt-capability-catalog';
 import {
@@ -33,6 +34,9 @@ export class OltComplianceService {
     @InjectRepository(OltDispositivo)
     private readonly oltRepo: Repository<OltDispositivo>,
 
+    @InjectRepository(OltBaseline)
+    private readonly baselineRepo: Repository<OltBaseline>,
+
     private readonly snapshotService: InfrastructureSnapshotService,
   ) {}
 
@@ -45,7 +49,13 @@ export class OltComplianceService {
     const snapshot = await this.snapshotService.obtener(oltId, empresaId);
     const caps     = resolverCapacidadesOlt(olt.marca);
 
-    const checks = OLT_COMPLIANCE_RULES.map(rule => rule(olt, snapshot, caps));
+    // Baseline asignado (Incremento 8) — null si no tiene: las reglas de
+    // baseline reportan "no aplica" en ese caso.
+    const baseline = olt.baselineId
+      ? await this.baselineRepo.findOne({ where: { id: olt.baselineId, empresaId } })
+      : null;
+
+    const checks = OLT_COMPLIANCE_RULES.map(rule => rule(olt, snapshot, caps, baseline));
 
     const criticos     = checks.filter(c => !c.cumple && c.severidad === 'critical').length;
     const advertencias = checks.filter(c => !c.cumple && c.severidad === 'warning').length;

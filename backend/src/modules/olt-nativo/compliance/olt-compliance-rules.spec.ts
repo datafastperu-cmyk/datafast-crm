@@ -1,4 +1,5 @@
 import { OLT_COMPLIANCE_RULES } from './olt-compliance-rules';
+import { OltBaseline } from '../entities/olt-baseline.entity';
 import { OltDispositivo, OltMarca, OltMetodoConexion } from '../entities/olt-dispositivo.entity';
 import { InfrastructureSnapshot } from '../types/infrastructure-snapshot';
 import { OltCapabilities } from '../capability/olt-capability-catalog';
@@ -35,9 +36,24 @@ const baseSnapshot = (over: Partial<InfrastructureSnapshot> = {}): Infrastructur
 const capsHuawei: OltCapabilities = { tr069Dhcp43: true, snmp: true, fec: true, ipv6: false, vlanQinq: false };
 const capsSinSoporte: OltCapabilities = { tr069Dhcp43: false, snmp: false, fec: false, ipv6: false, vlanQinq: false };
 
-function run(olt: OltDispositivo, snapshot: InfrastructureSnapshot, caps: OltCapabilities) {
-  return Object.fromEntries(OLT_COMPLIANCE_RULES.map(r => [r(olt, snapshot, caps).regla, r(olt, snapshot, caps)]));
+function run(
+  olt: OltDispositivo, snapshot: InfrastructureSnapshot, caps: OltCapabilities,
+  baseline: OltBaseline | null = null,
+) {
+  return Object.fromEntries(
+    OLT_COMPLIANCE_RULES.map(r => [r(olt, snapshot, caps, baseline).regla, r(olt, snapshot, caps, baseline)]),
+  );
 }
+
+const baseBaseline = (over: Partial<OltBaseline['spec']> = {}): OltBaseline => ({
+  id: 'bl-1', empresaId: 'e1', nombre: 'Datafast', version: 1,
+  descripcion: null, activo: true, createdAt: new Date(), updatedAt: new Date(),
+  spec: {
+    vlans:         [{ vlanId: 201, nombre: 'GESTION' }],
+    trafficTables: [{ nombre: 'ERP-100M', cirKbps: 102400, pirKbps: 102400 }],
+    ...over,
+  },
+} as OltBaseline);
 
 describe('OLT_COMPLIANCE_RULES', () => {
   it('OLT sana: todas las reglas cumplen', () => {
@@ -135,5 +151,45 @@ describe('OLT_COMPLIANCE_RULES', () => {
     });
     const checks = run(baseOlt(), snapshot, capsHuawei);
     expect(checks.boards_saludables.cumple).toBe(false);
+  });
+
+  // ── Reglas de baseline (Incremento 8) ──────────────────────────
+  it('sin baseline asignado: las reglas de baseline no aplican (pasan)', () => {
+    const checks = run(baseOlt(), baseSnapshot(), capsHuawei, null);
+    expect(checks.baseline_vlans_presentes.cumple).toBe(true);
+    expect(checks.baseline_traffic_tables_presentes.cumple).toBe(true);
+    expect(checks.baseline_vlans_presentes.severidad).toBe('info');
+  });
+
+  it('baseline cumplido: VLANs y traffic tables presentes con valores exactos', () => {
+    const snapshot = baseSnapshot({
+      trafficTables: [{ trafficId: 21, nombre: 'ERP-100M', cirKbps: 102400, pirKbps: 102400, tipo: 'combinado' }],
+    });
+    const checks = run(baseOlt(), snapshot, capsHuawei, baseBaseline());
+    expect(checks.baseline_vlans_presentes.cumple).toBe(true);
+    expect(checks.baseline_traffic_tables_presentes.cumple).toBe(true);
+  });
+
+  it('VLAN del baseline ausente: baseline_vlans_presentes falla (warning) y nombra la faltante', () => {
+    const baseline = baseBaseline({ vlans: [{ vlanId: 201, nombre: 'GESTION' }, { vlanId: 300, nombre: 'INTERNET' }] });
+    const checks = run(baseOlt(), baseSnapshot(), capsHuawei, baseline);
+    expect(checks.baseline_vlans_presentes.cumple).toBe(false);
+    expect(checks.baseline_vlans_presentes.severidad).toBe('warning');
+    expect(checks.baseline_vlans_presentes.mensaje).toContain('300');
+  });
+
+  it('traffic table ausente: baseline_traffic_tables_presentes falla', () => {
+    const checks = run(baseOlt(), baseSnapshot({ trafficTables: [] }), capsHuawei, baseBaseline());
+    expect(checks.baseline_traffic_tables_presentes.cumple).toBe(false);
+    expect(checks.baseline_traffic_tables_presentes.mensaje).toContain('ERP-100M');
+  });
+
+  it('traffic table con CIR/PIR distinto al declarado: falla y reporta el diff', () => {
+    const snapshot = baseSnapshot({
+      trafficTables: [{ trafficId: 21, nombre: 'ERP-100M', cirKbps: 51200, pirKbps: 51200, tipo: 'combinado' }],
+    });
+    const checks = run(baseOlt(), snapshot, capsHuawei, baseBaseline());
+    expect(checks.baseline_traffic_tables_presentes.cumple).toBe(false);
+    expect(checks.baseline_traffic_tables_presentes.mensaje).toContain('difiere');
   });
 });

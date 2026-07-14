@@ -1,4 +1,5 @@
 import { OltDispositivo } from '../entities/olt-dispositivo.entity';
+import { OltBaseline } from '../entities/olt-baseline.entity';
 import { InfrastructureSnapshot } from '../types/infrastructure-snapshot';
 import { OltCapabilities } from '../capability/olt-capability-catalog';
 
@@ -27,6 +28,7 @@ export type ComplianceRule = (
   olt:      OltDispositivo,
   snapshot: InfrastructureSnapshot,
   caps:     OltCapabilities,
+  baseline: OltBaseline | null,
 ) => ComplianceCheck;
 
 const DIAS_SNAPSHOT_OBSOLETO = 30;
@@ -200,6 +202,66 @@ const ntpSincronizado: ComplianceRule = (_olt, snapshot) => {
   };
 };
 
+// ── R8: las VLANs declaradas en el baseline existen en la OLT ────
+// Incremento 8. Severidad warning: un baseline recién asignado aún no
+// convergió (la escritura llega en el Incremento 9) — es trabajo pendiente,
+// no una falla operativa.
+const baselineVlansPresentes: ComplianceRule = (_olt, snapshot, _caps, baseline) => {
+  if (!baseline) {
+    return {
+      regla: 'baseline_vlans_presentes',
+      cumple: true,
+      severidad: 'info',
+      mensaje: 'Sin baseline asignado — regla no aplica',
+    };
+  }
+  const enOlt = new Set(snapshot.vlans.map(v => v.vlanId));
+  const faltantes = baseline.spec.vlans.filter(v => !enOlt.has(v.vlanId));
+  const cumple = faltantes.length === 0;
+  return {
+    regla: 'baseline_vlans_presentes',
+    cumple,
+    severidad: 'warning',
+    mensaje: cumple
+      ? `Las ${baseline.spec.vlans.length} VLAN(s) del baseline "${baseline.nombre}" v${baseline.version} existen en la OLT`
+      : `VLAN(s) del baseline ausentes en la OLT: ${faltantes.map(v => `${v.vlanId} (${v.nombre})`).join(', ')}`,
+  };
+};
+
+// ── R9: las traffic tables del baseline existen con el CIR/PIR declarado ──
+// Se comparan por nombre (el índice lo asigna la OLT y varía entre equipos).
+const baselineTrafficTablesPresentes: ComplianceRule = (_olt, snapshot, _caps, baseline) => {
+  if (!baseline) {
+    return {
+      regla: 'baseline_traffic_tables_presentes',
+      cumple: true,
+      severidad: 'info',
+      mensaje: 'Sin baseline asignado — regla no aplica',
+    };
+  }
+  const porNombre = new Map(snapshot.trafficTables.map(t => [t.nombre, t]));
+  const problemas: string[] = [];
+  for (const spec of baseline.spec.trafficTables) {
+    const real = porNombre.get(spec.nombre);
+    if (!real) {
+      problemas.push(`"${spec.nombre}" no existe`);
+    } else if (real.cirKbps !== spec.cirKbps || real.pirKbps !== spec.pirKbps) {
+      problemas.push(
+        `"${spec.nombre}" difiere: OLT CIR=${real.cirKbps}/PIR=${real.pirKbps} vs baseline CIR=${spec.cirKbps}/PIR=${spec.pirKbps}`,
+      );
+    }
+  }
+  const cumple = problemas.length === 0;
+  return {
+    regla: 'baseline_traffic_tables_presentes',
+    cumple,
+    severidad: 'warning',
+    mensaje: cumple
+      ? `Las ${baseline.spec.trafficTables.length} traffic table(s) del baseline "${baseline.nombre}" v${baseline.version} existen con los valores declarados`
+      : `Traffic table(s) del baseline con problemas: ${problemas.join('; ')}`,
+  };
+};
+
 export const OLT_COMPLIANCE_RULES: ComplianceRule[] = [
   boardsSincronizadas,
   vlanGestionExiste,
@@ -208,4 +270,6 @@ export const OLT_COMPLIANCE_RULES: ComplianceRule[] = [
   boardsSaludables,
   snmpComunityCoherente,
   ntpSincronizado,
+  baselineVlansPresentes,
+  baselineTrafficTablesPresentes,
 ];

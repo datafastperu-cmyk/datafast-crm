@@ -43,6 +43,7 @@ import { AgregarTrafficTableDto, EditarTrafficTableDto, OltTrafficTableService }
 import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltSyncService }    from './services/olt-sync.service';
+import { CrearBaselineDto, OltBaselineService } from './services/olt-baseline.service';
 import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
 import { OltComplianceService }      from './services/olt-compliance.service';
 import { OltBoard }          from './entities/olt-board.entity';
@@ -83,6 +84,7 @@ export class OltNativoController {
     private readonly sync:          OltSyncService,
     private readonly infraSnapshot: InfrastructureSnapshotService,
     private readonly complianceService: OltComplianceService,
+    private readonly baselines:     OltBaselineService,
     private readonly ztp:           ZtpProvisioningService,
     private readonly onuConfig:     ContratoOnuConfigService,
     private readonly onuTr069:      OnuTr069DetalleService,
@@ -113,6 +115,33 @@ export class OltNativoController {
   @ApiOperation({ summary: 'Inventario de ONUs de todas las OLTs de la empresa (read-model)' })
   async onusInventarioGlobal(@CurrentUser() user: JwtPayload) {
     return this.sync.inventarioGlobal(user.empresaId);
+  }
+
+  // ── Baselines (Incremento 8) — rutas literales ANTES de :oltId ──
+  @Get('baselines')
+  @ApiOperation({ summary: 'Listar baselines declarativos de la empresa (todas las versiones)' })
+  async listarBaselines(@CurrentUser() user: JwtPayload) {
+    return this.baselines.listar(user.empresaId);
+  }
+
+  @Post('baselines')
+  @ApiOperation({ summary: 'Crear baseline declarativo (nombre existente → versión nueva, inmutable)' })
+  async crearBaseline(
+    @Body() dto: CrearBaselineDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.baselines.crear(user.empresaId, dto);
+  }
+
+  @Patch(':oltId/baseline')
+  @ApiOperation({ summary: 'Asignar (o quitar con null) un baseline a la OLT' })
+  @ApiParam({ name: 'oltId' })
+  async asignarBaseline(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() body: { baselineId: string | null },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.baselines.asignarAOlt(oltId, user.empresaId, body.baselineId ?? null);
   }
 
   // ── GET /olt-nativo/validar-ip — check disponibilidad de IP ──

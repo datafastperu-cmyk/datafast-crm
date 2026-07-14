@@ -16,6 +16,8 @@ import { ContratoOnuConfig } from './entities/contrato-onu-config.entity';
 import { OltServicePortPool } from './entities/olt-service-port-pool.entity';
 import { OltOnuIdPool }      from './entities/olt-onu-id-pool.entity';
 import { OltVlan }           from './entities/olt-vlan.entity';
+import { OltBaseline }       from './entities/olt-baseline.entity';
+import { OltBaselineService } from './services/olt-baseline.service';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltHealthSnapshot } from './entities/olt-health-snapshot.entity';
 import { OltAlerta }         from './entities/olt-alerta.entity';
@@ -125,6 +127,7 @@ import { OltGateway }                from './olt.gateway';
       OltServicePortPool,
       OltOnuIdPool,
       OltVlan,
+      OltBaseline,
       OltTrafficTable,
       OltHealthSnapshot,
       OltAlerta,
@@ -193,6 +196,7 @@ import { OltGateway }                from './olt.gateway';
     OltSyncService,
     InfrastructureSnapshotService,
     OltComplianceService,
+    OltBaselineService,
     OltGateway,
     FtthRecoveryCron,
     OltHealthPollerCron,

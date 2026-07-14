@@ -175,6 +175,11 @@ export class OltDispositivo extends BaseModel {
   @Column({ name: 'zona_id', type: 'uuid', nullable: true })
   zonaId: string | null;
 
+  // ── Baseline declarativo asignado (Incremento 8) ─────────
+  // Null = sin baseline; las reglas de compliance de baseline no aplican.
+  @Column({ name: 'baseline_id', type: 'uuid', nullable: true })
+  baselineId: string | null;
+
   // ── Ubicación geográfica ──────────────────────────────────
   @Column({ length: 200, nullable: true })
   ubicacion: string;

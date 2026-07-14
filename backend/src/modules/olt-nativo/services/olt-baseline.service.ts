@@ -1,0 +1,124 @@
+import {
+  BadRequestException, Injectable, Logger, NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import {
+  IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { OltBaseline, BaselineSpec } from '../entities/olt-baseline.entity';
+import { OltDispositivo } from '../entities/olt-dispositivo.entity';
+
+// ─── DTOs ─────────────────────────────────────────────────────────
+
+export class BaselineVlanDto {
+  @IsInt() @Min(1) @Max(4094) @Type(() => Number) vlanId: number;
+  @IsString() @MaxLength(64)                       nombre: string;
+  @IsOptional() @IsString() @MaxLength(32)         proposito?: string;
+}
+
+export class BaselineTrafficTableDto {
+  @IsString() @MaxLength(64)                             nombre:  string;
+  @IsInt() @Min(64) @Max(10_000_000) @Type(() => Number) cirKbps: number;
+  @IsInt() @Min(64) @Max(10_000_000) @Type(() => Number) pirKbps: number;
+}
+
+export class CrearBaselineDto {
+  @IsString() @MaxLength(100)              nombre: string;
+  @IsOptional() @IsString()                descripcion?: string;
+
+  @IsArray() @ValidateNested({ each: true }) @Type(() => BaselineVlanDto)
+  vlans: BaselineVlanDto[];
+
+  @IsArray() @ValidateNested({ each: true }) @Type(() => BaselineTrafficTableDto)
+  trafficTables: BaselineTrafficTableDto[];
+
+  @IsOptional() @IsArray() @IsString({ each: true })
+  ntpServers?: string[];
+}
+
+// ─── Service ──────────────────────────────────────────────────────
+//
+// Versionado inmutable: crear con un nombre existente genera version = max+1.
+// Nunca se edita una versión publicada — el historial de qué se exigió en
+// cada momento queda auditable. Asignar a una OLT es apuntar baseline_id.
+@Injectable()
+export class OltBaselineService {
+  private readonly logger = new Logger(OltBaselineService.name);
+
+  constructor(
+    @InjectRepository(OltBaseline)
+    private readonly repo: Repository<OltBaseline>,
+
+    @InjectRepository(OltDispositivo)
+    private readonly oltRepo: Repository<OltDispositivo>,
+  ) {}
+
+  async listar(empresaId: string): Promise<OltBaseline[]> {
+    return this.repo.find({
+      where: { empresaId },
+      order: { nombre: 'ASC', version: 'DESC' },
+    });
+  }
+
+  async obtener(id: string, empresaId: string): Promise<OltBaseline> {
+    const baseline = await this.repo.findOne({ where: { id, empresaId } });
+    if (!baseline) throw new NotFoundException(`Baseline ${id} no encontrado.`);
+    return baseline;
+  }
+
+  async crear(empresaId: string, dto: CrearBaselineDto): Promise<OltBaseline> {
+    // Guard: VLANs duplicadas dentro del propio spec
+    const vlanIds = dto.vlans.map(v => v.vlanId);
+    if (new Set(vlanIds).size !== vlanIds.length) {
+      throw new BadRequestException('El baseline declara VLAN IDs duplicados.');
+    }
+    const ttNombres = dto.trafficTables.map(t => t.nombre);
+    if (new Set(ttNombres).size !== ttNombres.length) {
+      throw new BadRequestException('El baseline declara traffic tables con nombres duplicados.');
+    }
+    for (const t of dto.trafficTables) {
+      if (t.pirKbps < t.cirKbps) {
+        throw new BadRequestException(`Traffic table "${t.nombre}": PIR (${t.pirKbps}) no puede ser menor que CIR (${t.cirKbps}).`);
+      }
+    }
+
+    // Versionado: nombre existente → versión siguiente
+    const { max } = await this.repo
+      .createQueryBuilder('b')
+      .select('COALESCE(MAX(b.version), 0)', 'max')
+      .where('b.empresaId = :empresaId AND b.nombre = :nombre', { empresaId, nombre: dto.nombre })
+      .getRawOne<{ max: string }>();
+
+    const spec: BaselineSpec = {
+      vlans:         dto.vlans,
+      trafficTables: dto.trafficTables,
+      ntpServers:    dto.ntpServers,
+    };
+
+    const baseline = await this.repo.save(this.repo.create({
+      empresaId,
+      nombre:      dto.nombre,
+      version:     Number(max) + 1,
+      descripcion: dto.descripcion ?? null,
+      spec,
+      activo:      true,
+    }));
+    this.logger.log(`Baseline creado | ${baseline.nombre} v${baseline.version} (${baseline.id})`);
+    return baseline;
+  }
+
+  async asignarAOlt(oltId: string, empresaId: string, baselineId: string | null): Promise<OltDispositivo> {
+    const olt = await this.oltRepo.findOne({ where: { id: oltId, empresaId } });
+    if (!olt) throw new NotFoundException(`OLT ${oltId} no encontrada.`);
+
+    if (baselineId !== null) {
+      await this.obtener(baselineId, empresaId); // valida existencia y tenancy
+    }
+    olt.baselineId = baselineId;
+    const saved = await this.oltRepo.save(olt);
+    this.logger.log(`Baseline ${baselineId ?? '(ninguno)'} asignado a OLT ${olt.nombre}`);
+    return saved;
+  }
+}
