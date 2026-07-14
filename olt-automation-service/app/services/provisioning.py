@@ -2593,6 +2593,12 @@ def provision_mgmt_bootstrap(
                 f'CLI Huawei reportó error en el bootstrap de gestión en {conn.ip}: {linea.strip()}'
             )
 
+    # Diagnóstico: dejar en el log el estado real del IP host de gestión (IP asignada o requesting).
+    logger.info(
+        'provision_mgmt_bootstrap ipconfig verify | OLT=%s ont %d/%d/%d:\n%s',
+        conn.ip, slot, port, onu_id, verify_out.strip(),
+    )
+
     # Verificación dura: el IP host de gestión debe quedar en modo DHCP.
     v = verify_out.lower()
     if 'dhcp' not in v:
