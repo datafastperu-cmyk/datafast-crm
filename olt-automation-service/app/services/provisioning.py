@@ -1756,6 +1756,11 @@ def add_vlan(
     """
     Crea una VLAN en la OLT Huawei MA5800.
     Comandos: config → vlan {id} smart → vlan desc {id} {name} → quit
+
+    UNA sesión Paramiko (_paramiko_huawei_run) — mismo bypass que
+    add_traffic_table: el _send_config_set (Netmiko) falla en este hardware
+    con ReadTimeout: Pattern not detected 'MA5800-X7' (reproducido en
+    producción 2026-07-14 al aplicar el primer plan de baseline).
     Síncrono — llamar desde asyncio.to_thread().
     """
     if conn.brand != OltBrand.HUAWEI:
@@ -1763,18 +1768,19 @@ def add_vlan(
 
     safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', name)[:64]
     commands = [
-        'config',
-        f'vlan {vlan_id} smart',
-        f'vlan desc {vlan_id} {safe_name}',
-        'quit',
+        'config',                            # [0]
+        f'vlan {vlan_id} smart',             # [1]
+        f'vlan desc {vlan_id} {safe_name}',  # [2]
+        'quit',                              # [3]
     ]
     logger.info('add_vlan: vlan_id=%d name=%s en %s', vlan_id, safe_name, conn.ip)
     try:
-        output = _send_config_set(conn, commands)
-        _check_cli_error(conn.brand, 'add_vlan', output)
+        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
+        _check_cli_error(conn.brand, 'add_vlan', outputs[1])
+        _check_cli_error(conn.brand, 'add_vlan', outputs[2])
     except CommandError as exc:
         return {'success': False, 'error': str(exc)}
-    except (ConnectionError, ProvisioningError) as exc:
+    except Exception as exc:  # noqa: BLE001
         return {'success': False, 'error': str(exc)}
     logger.info('add_vlan: VLAN %d creada en %s', vlan_id, conn.ip)
     return {'success': True, 'vlan_id': vlan_id}
@@ -1787,6 +1793,7 @@ def delete_vlan(
     """
     Elimina una VLAN de la OLT Huawei MA5800.
     Comando: config → undo vlan {id} → quit
+    UNA sesión Paramiko — mismo bypass de Netmiko que add_vlan.
     Síncrono — llamar desde asyncio.to_thread().
     """
     if conn.brand != OltBrand.HUAWEI:
@@ -1795,11 +1802,11 @@ def delete_vlan(
     commands = ['config', f'undo vlan {vlan_id}', 'quit']
     logger.info('delete_vlan: vlan_id=%d en %s', vlan_id, conn.ip)
     try:
-        output = _send_config_set(conn, commands)
-        _check_cli_error(conn.brand, 'delete_vlan', output)
+        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
+        _check_cli_error(conn.brand, 'delete_vlan', outputs[1])
     except CommandError as exc:
         return {'success': False, 'error': str(exc)}
-    except (ConnectionError, ProvisioningError) as exc:
+    except Exception as exc:  # noqa: BLE001
         return {'success': False, 'error': str(exc)}
     logger.info('delete_vlan: VLAN %d eliminada en %s', vlan_id, conn.ip)
     return {'success': True}
