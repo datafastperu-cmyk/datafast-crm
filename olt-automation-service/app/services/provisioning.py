@@ -1805,6 +1805,24 @@ def delete_vlan(
     return {'success': True}
 
 
+def _parse_traffic_table_indices(raw: str) -> set[int]:
+    """
+    Extrae los TID (índices) de 'display traffic table ip from-index 0'.
+    Formato real (MA5800-X7, validado 2026-07-14):
+      TID CIR      CBS        PIR      PBS        Pri Copy-policy     Pri-Policy
+        0 1024     34768      2048     69536        6 -                  tag-pri
+        6 off      off        off      off          0 -                  tag-pri
+    Sin '^' anclado: el paginador puede pegar una fila al texto del "More".
+    """
+    return {
+        int(m.group(1))
+        for m in re.finditer(
+            r'(\d+)\s+(?:\d+|off)\s+(?:\d+|off)\s+(?:\d+|off)\s+(?:\d+|off)\s+\d\s+\S+\s+(?:tag-pri|local-pri)',
+            raw,
+        )
+    }
+
+
 def add_traffic_table(
     conn:      OltConnectionSchema,
     name:      str,
@@ -1815,7 +1833,18 @@ def add_traffic_table(
 ) -> dict[str, Any]:
     """
     Crea un traffic table en la OLT Huawei MA5800.
-    Tras crear, ejecuta display traffic table all para obtener el índice asignado.
+
+    UNA sesión Paramiko (_paramiko_huawei_run) — bypass del bug de
+    session_preparation de Netmiko en este hardware
+    (netmiko.exceptions.ReadTimeout: Pattern not detected 'MA5800-X7',
+    reproducido en producción 2026-07-14 con el _send_config_set anterior).
+
+    'display traffic table all' (usado antes para resolver el índice por
+    nombre) NO EXISTE en este firmware — "Unknown command". La vista que sí
+    existe ('display traffic table ip from-index 0') no tiene columna de
+    nombre, así que el índice asignado se obtiene por DIFERENCIA: se lee
+    la lista de índices antes y después de crear.
+
     Síncrono — llamar desde asyncio.to_thread().
     """
     if conn.brand != OltBrand.HUAWEI:
@@ -1825,40 +1854,37 @@ def add_traffic_table(
     # Orden Huawei: cir [cbs] pir [pbs] priority ... — cbs/pbs opcionales (bytes).
     cbs_part = f'cbs {cbs_bytes} ' if cbs_bytes is not None else ''
     pbs_part = f'pbs {pbs_bytes} ' if pbs_bytes is not None else ''
+    add_cmd = (f'traffic table ip name {safe_name} cir {cir_kbps} {cbs_part}'
+               f'pir {pir_kbps} {pbs_part}priority 0 priority-policy local-setting')
+
     commands = [
-        'config',
-        (f'traffic table ip name {safe_name} cir {cir_kbps} {cbs_part}'
-         f'pir {pir_kbps} {pbs_part}priority 0 priority-policy local-setting'),
-        'quit',
+        'display traffic table ip from-index 0',   # [0] snapshot antes
+        'config',                                   # [1]
+        add_cmd,                                    # [2]
+        'quit',                                      # [3]
+        'display traffic table ip from-index 0',   # [4] snapshot después
     ]
     logger.info('add_traffic_table: name=%s cir=%d cbs=%s pir=%d pbs=%s en %s',
                 safe_name, cir_kbps, cbs_bytes, pir_kbps, pbs_bytes, conn.ip)
     try:
-        output = _send_config_set(conn, commands)
-        _check_cli_error(conn.brand, 'add_traffic_table', output)
+        outputs = _paramiko_huawei_run(conn, commands, timeout=90.0, return_list=True)
+        _check_cli_error(conn.brand, 'add_traffic_table', outputs[2])
     except CommandError as exc:
         return {'success': False, 'error': str(exc)}
-    except (ConnectionError, ProvisioningError) as exc:
+    except Exception as exc:  # noqa: BLE001
         return {'success': False, 'error': str(exc)}
 
-    # Consultar índice asignado
-    try:
-        all_raw = _send_single_command(conn, 'display traffic table all')
-        rows    = _parse_output(conn.brand, 'display_traffic_table_all.textfsm', all_raw)
-        for row in rows:
-            if 'raw' in row:
-                continue
-            if str(row.get('TrafficName') or '').strip() == safe_name:
-                try:
-                    idx = int(row.get('TrafficIndex') or -1)
-                except (ValueError, TypeError):
-                    continue
-                if idx >= 0:
-                    logger.info('add_traffic_table: %s → index=%d en %s', safe_name, idx, conn.ip)
-                    return {'success': True, 'index': idx, 'name': safe_name}
-    except (ConnectionError, CommandError) as exc:
-        logger.warning('add_traffic_table: tabla creada pero no se pudo obtener índice en %s — %s', conn.ip, exc)
+    nuevos = _parse_traffic_table_indices(outputs[4]) - _parse_traffic_table_indices(outputs[0])
 
+    if len(nuevos) == 1:
+        idx = nuevos.pop()
+        logger.info('add_traffic_table: %s → index=%d en %s', safe_name, idx, conn.ip)
+        return {'success': True, 'index': idx, 'name': safe_name}
+
+    logger.warning(
+        'add_traffic_table: tabla creada pero índice ambiguo en %s (nuevos=%s)',
+        conn.ip, nuevos,
+    )
     return {'success': True, 'index': None, 'name': safe_name}
 
 
@@ -1869,6 +1895,7 @@ def delete_traffic_table(
     """
     Elimina un traffic table de la OLT Huawei MA5800 por índice.
     Comando: config → undo traffic table ip index {index} → quit
+    UNA sesión Paramiko — mismo bypass que add_traffic_table.
     Síncrono — llamar desde asyncio.to_thread().
     """
     if conn.brand != OltBrand.HUAWEI:
@@ -1877,11 +1904,11 @@ def delete_traffic_table(
     commands = ['config', f'undo traffic table ip index {index}', 'quit']
     logger.info('delete_traffic_table: index=%d en %s', index, conn.ip)
     try:
-        output = _send_config_set(conn, commands)
-        _check_cli_error(conn.brand, 'delete_traffic_table', output)
+        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
+        _check_cli_error(conn.brand, 'delete_traffic_table', outputs[1])
     except CommandError as exc:
         return {'success': False, 'error': str(exc)}
-    except (ConnectionError, ProvisioningError) as exc:
+    except Exception as exc:  # noqa: BLE001
         return {'success': False, 'error': str(exc)}
     logger.info('delete_traffic_table: index=%d eliminado en %s', index, conn.ip)
     return {'success': True}
