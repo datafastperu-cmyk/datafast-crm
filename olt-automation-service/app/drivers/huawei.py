@@ -20,7 +20,7 @@ from typing import Any
 from app.schemas.olt import OltConnectionSchema
 from app.drivers.base import (
     BoardInfo, NtpServerData, OltDriver, OltTopology, OntInfo,
-    PomData, PonPortInfo, SnmpCommunityData, SnmpNtpConfigData,
+    PomData, PonPortInfo, ServicePortInfo, SnmpCommunityData, SnmpNtpConfigData,
     TrafficTableInfo, VlanInfo,
 )
 from app.services.provisioning import (
@@ -272,6 +272,36 @@ class HuaweiDriver(OltDriver):
             snmp_versions=versions,
             ntp_servers=ntp_servers,
         )
+
+    # ── get_service_ports ───────────────────────────────────────
+    #
+    # `display service-port all` — lista TODOS los service-ports reales.
+    # Validado contra OLT real (MA5800-X7, 2026-07-14): 234 filas, formato
+    #   INDEX VLAN VLAN-ATTR PORT-TYPE F/S/P VPI VCI FLOW-TYPE FLOW-PARA RX TX STATE
+    # Solo se parsean INDEX, VLAN e STATE — suficiente para reconciliar el
+    # pool de service-ports del ERP contra la realidad (Incremento 6: migrar
+    # OLT en producción, hoy controlada por SmartOLT, sin que el ERP choque
+    # con IDs que SmartOLT ya usa).
+    def get_service_ports(self) -> list[ServicePortInfo]:
+        try:
+            raw = _paramiko_huawei_run(self._conn, ['display service-port all'], timeout=90.0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('get_service_ports en %s: %s', self._conn.ip, exc)
+            return []
+
+        # Sin anclar '^': el paginador ("---- More ----") a veces deja la fila
+        # siguiente pegada al final de esa misma línea de texto (el espacio que
+        # avanza página no inserta salto de línea) — anclar a inicio de línea
+        # perdía filas justo después de cada corte de página. Validado contra
+        # OLT real: cuenta correcta (234 filas) sin el ancla.
+        rows = re.findall(
+            r'(\d+)\s+(\d+)\s+\S+\s+gpon\s+.*?(up|down)',
+            raw,
+        )
+        return [
+            ServicePortInfo(index=int(idx), vlan_id=int(vlan), state=state)
+            for idx, vlan, state in rows
+        ]
 
     # ── apply_ntp_servers ──────────────────────────────────────
     #

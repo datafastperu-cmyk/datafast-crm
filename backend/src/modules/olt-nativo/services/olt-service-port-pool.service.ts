@@ -1,11 +1,15 @@
 import {
-  Injectable, Logger, UnprocessableEntityException,
+  Injectable, Logger, NotFoundException,
+  ServiceUnavailableException, UnprocessableEntityException,
 } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { IsInt, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CanalServicePort } from '../entities/olt-service-port-pool.entity';
+import { OltDispositivo } from '../entities/olt-dispositivo.entity';
+import { OltAutomationClient } from '../olt-automation.client';
+import { decrypt } from '../../../common/utils/encryption.util';
 
 // ─── DTOs ─────────────────────────────────────────────────────────
 
@@ -21,6 +25,12 @@ export interface EstadoPool {
   rango?:   { min: number; max: number };
 }
 
+export interface ResultadoReconciliacion {
+  reales:        number;
+  marcadosOcupados: number;
+  porCanal:      Record<CanalServicePort, number>;
+}
+
 // ─── Service ──────────────────────────────────────────────────────
 
 @Injectable()
@@ -30,6 +40,11 @@ export class OltServicePortPoolService {
   constructor(
     @InjectDataSource()
     private readonly ds: DataSource,
+
+    @InjectRepository(OltDispositivo)
+    private readonly oltRepo: Repository<OltDispositivo>,
+
+    private readonly automation: OltAutomationClient,
   ) {}
 
   // ── configurarRango ───────────────────────────────────────────────
@@ -204,6 +219,70 @@ export class OltServicePortPoolService {
     this.logger.warn(
       `Pool colisión | olt=${oltId} canal=${canal} svcPort=${servicePortId} ya existe en la OLT — marcado no-usable`,
     );
+  }
+
+  // ── reconciliarConOlt ───────────────────────────────────────────────
+  // Incremento 6 — migrar una OLT en producción (hoy controlada por
+  // SmartOLT en paralelo) sin que el ERP choque con IDs que SmartOLT ya
+  // usa. Lee TODOS los service-ports reales de la OLT y los marca
+  // 'ocupado, sin contrato' en el pool — inserta si el ID nunca existió
+  // en el pool, o lo pisa a 'ocupado' si estaba libre. Nunca toca un ID
+  // que YA tiene contrato_id asignado por el ERP (no se pisa una
+  // asignación propia real).
+  //
+  // Solo lectura hacia la OLT — no escribe nada en el hardware.
+  async reconciliarConOlt(oltId: string, empresaId: string): Promise<ResultadoReconciliacion> {
+    const olt = await this.oltRepo.findOne({ where: { id: oltId, empresaId } });
+    if (!olt) throw new NotFoundException(`OLT ${oltId} no encontrada.`);
+
+    let password: string;
+    try {
+      password = decrypt(olt.contrasenaCifrada);
+    } catch {
+      throw new ServiceUnavailableException(`No se pudo descifrar la contraseña de la OLT "${olt.nombre}".`);
+    }
+
+    const res = await this.automation.servicePorts({
+      connection: {
+        ip: olt.ipGestion, port: olt.puerto, username: olt.usuarioAnclado,
+        password, brand: olt.marca,
+      },
+    });
+
+    if (!res.success) {
+      throw new ServiceUnavailableException(`No se pudo leer service-ports de la OLT: ${res.error}`);
+    }
+
+    // Heurística de canal: la VLAN de gestión/TR-069 configurada en el ERP
+    // (si existe) define el canal 'gestion'; todo lo demás es 'datos'.
+    // Con NODO MALVINAS sin VLAN de gestión declarada todavía, todo cae en
+    // 'datos' — se corrige cuando se declare la VLAN real (paso 2 del plan).
+    const vlanGestion = olt.tr069MgmtVlan ?? olt.vlanGestionDefecto;
+    const porCanal: Record<CanalServicePort, number> = { datos: 0, gestion: 0 };
+
+    for (const port of res.ports) {
+      const canal: CanalServicePort = vlanGestion != null && port.vlan_id === vlanGestion ? 'gestion' : 'datos';
+      porCanal[canal]++;
+
+      await this.ds.query(
+        `INSERT INTO olt_service_port_pool
+           (id, empresa_id, olt_id, canal, service_port_id, estado, locked_at, created_at, updated_at, version)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, 'ocupado', NOW(), NOW(), NOW(), 1)
+         ON CONFLICT (olt_id, canal, service_port_id) DO UPDATE
+           SET estado     = 'ocupado',
+               locked_at  = NOW(),
+               updated_at = NOW(),
+               version    = olt_service_port_pool.version + 1
+           WHERE olt_service_port_pool.contrato_id IS NULL`,
+        [empresaId, oltId, canal, port.index],
+      );
+    }
+
+    this.logger.log(
+      `Reconciliación pool | olt=${oltId} reales=${res.ports.length} datos=${porCanal.datos} gestion=${porCanal.gestion}`,
+    );
+
+    return { reales: res.ports.length, marcadosOcupados: res.ports.length, porCanal };
   }
 
   // ── obtenerEstado ─────────────────────────────────────────────────

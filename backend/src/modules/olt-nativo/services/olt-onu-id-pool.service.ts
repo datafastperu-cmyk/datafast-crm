@@ -1,8 +1,9 @@
 import {
   Injectable, Logger, UnprocessableEntityException,
 } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { OltOnuInventario } from '../entities/olt-onu-inventario.entity';
 
 // ─── Service ──────────────────────────────────────────────────────
 //
@@ -23,6 +24,9 @@ export class OltOnuIdPoolService {
   constructor(
     @InjectDataSource()
     private readonly ds: DataSource,
+
+    @InjectRepository(OltOnuInventario)
+    private readonly inventarioRepo: Repository<OltOnuInventario>,
   ) {}
 
   // ── allocar ───────────────────────────────────────────────────────
@@ -179,6 +183,36 @@ export class OltOnuIdPoolService {
       `ONU ID sync OLT | olt=${oltId} ${slot}/${port} ocupados en OLT=${ontIds.length} marcados=${marcados}`,
     );
     return marcados;
+  }
+
+  // ── reconciliarTodosPuertos ─────────────────────────────────────────
+  // Incremento 6 — migrar una OLT en producción (hoy controlada por
+  // SmartOLT en paralelo) sin que el pool del ERP asigne un ONU-ID que
+  // SmartOLT ya usa. Agrupa el inventario YA sincronizado (olt_onu_inventario,
+  // no vuelve a leer la OLT) por puerto y reutiliza sincronizarOcupacionOlt
+  // — el mismo primitivo que ya protege el auto-sanado de colisiones.
+  async reconciliarTodosPuertos(
+    oltId: string, empresaId: string,
+  ): Promise<{ puertos: number; marcados: number }> {
+    const filas = await this.inventarioRepo.find({ where: { oltId, empresaId } });
+
+    const porPuerto = new Map<string, { slot: number; port: number; onuIds: number[] }>();
+    for (const f of filas) {
+      if (f.onuId === null) continue;
+      const key = `${f.slot}/${f.port}`;
+      if (!porPuerto.has(key)) porPuerto.set(key, { slot: f.slot, port: f.port, onuIds: [] });
+      porPuerto.get(key)!.onuIds.push(f.onuId);
+    }
+
+    let marcados = 0;
+    for (const { slot, port, onuIds } of porPuerto.values()) {
+      marcados += await this.sincronizarOcupacionOlt(oltId, empresaId, slot, port, onuIds);
+    }
+
+    this.logger.log(
+      `Reconciliación ONU-ID pool | olt=${oltId} puertos=${porPuerto.size} marcados=${marcados}`,
+    );
+    return { puertos: porPuerto.size, marcados };
   }
 
   // ── marcarColision ────────────────────────────────────────────────

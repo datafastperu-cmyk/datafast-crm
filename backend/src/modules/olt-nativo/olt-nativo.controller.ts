@@ -744,6 +744,24 @@ export class OltNativoController {
     return this.pool.configurarRango(oltId, user.empresaId, dto);
   }
 
+  /**
+   * Incremento 6 — migrar una OLT en producción (hoy controlada por
+   * SmartOLT en paralelo) sin arriesgar colisión. Lee los service-ports
+   * REALES de la OLT (solo lectura hacia el hardware) y marca ocupados
+   * en el pool del ERP los que ya existen — nunca pisa un contrato_id
+   * ya asignado.
+   */
+  @Post(':oltId/service-port-pool/reconciliar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reconciliar el pool de Service Ports contra el estado real de la OLT (protege contra colisión con SmartOLT/AdminOLT)' })
+  @ApiParam({ name: 'oltId' })
+  async poolReconciliar(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.pool.reconciliarConOlt(oltId, user.empresaId);
+  }
+
   @Delete(':oltId/service-port-pool/libres')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Eliminar entradas libres del pool (para reconfigurar rango)' })
@@ -1039,6 +1057,22 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<{ total: number; libres: number; ocupados: number; inicializado: boolean }> {
     return this.onuIdPool.obtenerEstado(oltId, user.empresaId, slot, port);
+  }
+
+  /**
+   * Incremento 6 — reconcilia el pool de ONU-IDs de TODOS los puertos
+   * contra el inventario ya sincronizado (sin volver a leer la OLT).
+   * Complemento de poolReconciliar (service-ports).
+   */
+  @Post(':oltId/onu-id-pool/reconciliar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reconciliar el pool de ONU-IDs de todos los puertos contra el inventario sincronizado' })
+  @ApiParam({ name: 'oltId' })
+  async onuIdPoolReconciliar(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.onuIdPool.reconciliarTodosPuertos(oltId, user.empresaId);
   }
 
   @Get(':oltId/ftth/signal-dashboard')

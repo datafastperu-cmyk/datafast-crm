@@ -53,6 +53,8 @@ import {
   PythonSnmpNtpConfigResponse,
   PythonApplyNtpServersRequest,
   PythonApplyNtpServersResponse,
+  PythonServicePortsRequest,
+  PythonServicePortsResponse,
   PythonHealthSnapshotRequest,
   PythonHealthSnapshotResponse,
   PythonVlanAddRequest,
@@ -438,6 +440,18 @@ export class OltAutomationClient {
       '/api/v1/olt/config/ntp/apply', payload, 60_000,
     );
     this.logger.log(`← Python config/ntp/apply | success=${res.success} ntp=${res.ntp_servers?.length ?? 0}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Service-ports reales (Incremento 6 — reconciliación de pools)
+  // ────────────────────────────────────────────────────────────
+  async servicePorts(payload: PythonServicePortsRequest): Promise<PythonServicePortsResponse> {
+    this.logger.log(`→ Python config/service-ports | OLT=${payload.connection.ip}`);
+    const res = await this.post<PythonServicePortsResponse>(
+      '/api/v1/olt/config/service-ports', payload, 90_000,
+    );
+    this.logger.log(`← Python config/service-ports | success=${res.success} ports=${res.ports?.length ?? 0}`);
     return res;
   }
 

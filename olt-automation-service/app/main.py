@@ -93,6 +93,9 @@ from app.schemas.olt import (
     NtpServerInfo,
     ApplyNtpServersRequest,
     ApplyNtpServersResponse,
+    ServicePortsRequest,
+    ServicePortsResponse,
+    ServicePortInfoSchema,
 )
 from app.drivers import get_driver
 from app.drivers.base import UnsupportedBrandError, DriverNotImplementedError
@@ -1191,6 +1194,37 @@ async def config_ntp_apply(body: ApplyNtpServersRequest) -> ApplyNtpServersRespo
             NtpServerInfo(source=s.source, stratum=s.stratum, reach=s.reach, status=s.status)
             for s in cfg.ntp_servers
         ],
+    )
+
+
+# ── Service-ports reales (Incremento 6 — reconciliación de pools) ──
+
+@app.post(
+    '/api/v1/olt/config/service-ports',
+    response_model=ServicePortsResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['config'],
+    summary='Lista todos los service-ports reales configurados en la OLT',
+    description='Solo lectura. Usado para reconciliar el pool del ERP contra la realidad.',
+)
+async def config_service_ports(body: ServicePortsRequest) -> ServicePortsResponse:
+    olt_ip = body.connection.ip
+
+    try:
+        driver = get_driver(body.connection.brand.value, body.connection)
+    except UnsupportedBrandError as exc:
+        return ServicePortsResponse(success=False, error=str(exc))
+
+    async with connection_pool.acquire(olt_ip):
+        try:
+            ports = await asyncio.to_thread(driver.get_service_ports)
+        except Exception as exc:  # noqa: BLE001
+            logger.error('config_service_ports en %s: %s', olt_ip, exc)
+            return ServicePortsResponse(success=False, error=str(exc))
+
+    return ServicePortsResponse(
+        success=True,
+        ports=[ServicePortInfoSchema(index=p.index, vlan_id=p.vlan_id, state=p.state) for p in ports],
     )
 
 

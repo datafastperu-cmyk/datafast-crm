@@ -725,6 +725,22 @@ class ApplyNtpServersResponse(BaseModel):
     error:       str | None = None
 
 
+class ServicePortInfoSchema(BaseModel):
+    index:   int
+    vlan_id: int
+    state:   str
+
+
+class ServicePortsRequest(BaseModel):
+    connection: OltConnectionSchema
+
+
+class ServicePortsResponse(BaseModel):
+    success: bool
+    ports:   list[ServicePortInfoSchema] = []
+    error:   str | None = None
+
+
 # ── Clasificación de estados de ONUs por puerto ───────────────
 
 class ClassifyOnusRequest(BaseModel):

@@ -95,6 +95,13 @@ class NtpServerData:
 
 
 @dataclass
+class ServicePortInfo:
+    index:   int    # service_port_id real en la OLT
+    vlan_id: int
+    state:   str    # 'up' | 'down'
+
+
+@dataclass
 class SnmpNtpConfigData:
     ok: bool
     snmp_communities: list[SnmpCommunityData] = field(default_factory=list)
@@ -177,6 +184,14 @@ class OltDriver(ABC):
         ok=False para marcas sin driver de lectura de esta config todavía.
         """
         return SnmpNtpConfigData(ok=False, error='No implementado para esta marca')
+
+    def get_service_ports(self) -> list[ServicePortInfo]:
+        """
+        Lista TODOS los service-ports reales configurados en la OLT
+        (`display service-port all`). Implementación opcional — por
+        defecto vacío para marcas sin driver de lectura todavía.
+        """
+        return []
 
     def apply_ntp_servers(self, desired: list[str]) -> SnmpNtpConfigData:
         """

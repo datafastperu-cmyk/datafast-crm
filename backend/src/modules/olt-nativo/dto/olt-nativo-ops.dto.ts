@@ -865,6 +865,22 @@ export interface PythonApplyNtpServersResponse {
   error?:      string;
 }
 
+export interface PythonServicePortInfo {
+  index:   number;
+  vlan_id: number;
+  state:   string;
+}
+
+export interface PythonServicePortsRequest {
+  connection: PythonConnectionPayload;
+}
+
+export interface PythonServicePortsResponse {
+  success: boolean;
+  ports:   PythonServicePortInfo[];
+  error?:  string;
+}
+
 // ─── VLAN CLI Operations ─────────────────────────────────────
 
 export interface PythonVlanAddRequest {
