@@ -487,7 +487,10 @@ export class OltAutomationClient {
   // ────────────────────────────────────────────────────────────
   async trafficTableAdd(payload: PythonTrafficTableAddRequest): Promise<PythonTrafficTableAddResponse> {
     this.logger.log(`→ Python traffic-table/add | OLT=${payload.connection.ip} name=${payload.name}`);
-    const res = await this.post<PythonTrafficTableAddResponse>('/api/v1/olt/traffic-table/add', payload, 30_000);
+    // 90s: add_traffic_table abre 2 sesiones Netmiko secuenciales (crear +
+    // consultar índice asignado) — 30s resultó insuficiente en producción
+    // bajo el mutex por-IP (NODO MALVINAS, 2026-07-14).
+    const res = await this.post<PythonTrafficTableAddResponse>('/api/v1/olt/traffic-table/add', payload, 90_000);
     this.logger.log(`← Python traffic-table/add | success=${res.success} index=${res.index}`);
     return res;
   }
