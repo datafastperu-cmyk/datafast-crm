@@ -30,6 +30,11 @@ import {
   IdempotencyContext,
 } from './olt-idempotency.service';
 
+// Excepción tipada: la OLT no tiene configs activas en olt_proveedor_config.
+// Permite a los llamadores (_tryRouter) distinguir "activar path legacy" de un
+// error 500 real, que antes se enmascaraba por ser la misma clase.
+export class SinProveedorConfigException extends InternalServerErrorException {}
+
 // ─────────────────────────────────────────────────────────────
 // OltOperationRouter  —  orquestador central del ecosistema
 //
@@ -214,7 +219,7 @@ export class OltOperationRouter {
     });
 
     if (configs.length === 0) {
-      throw new InternalServerErrorException(
+      throw new SinProveedorConfigException(
         `OLT ${olt.nombre} (${oltId}) no tiene proveedores activos configurados en olt_proveedor_config`,
       );
     }

@@ -111,6 +111,8 @@ export class OltTrafficTableService {
     const tt = await this.repo.findOne({ where: { oltId, empresaId, trafficId } });
     if (!tt) throw new NotFoundException(`Traffic table ${trafficId} no encontrada.`);
 
+    this._assertOwnedByErp(tt);
+
     // Guard de integridad
     await this._assertNoOnusEnUso(oltId, trafficId);
 
@@ -166,6 +168,7 @@ export class OltTrafficTableService {
     const tt = await this.repo.findOne({ where: { oltId, empresaId, trafficId } });
     if (!tt) throw new NotFoundException(`Traffic table ${trafficId} no encontrada.`);
 
+    this._assertOwnedByErp(tt);
     await this._assertNoOnusEnUso(oltId, trafficId);
 
     const olt  = await this._fetchOlt(oltId, empresaId);
@@ -234,6 +237,19 @@ export class OltTrafficTableService {
   }
 
   // ── Privados ──────────────────────────────────────────────────
+
+  // Ownership: el ERP solo muta en hardware recursos propios. Las tablas
+  // sincronizadas desde la OLT (origen='olt') pueden estar en uso por ONUs de
+  // SmartOLT invisibles a ftth_onu_registro — el guard de integridad no basta.
+  private _assertOwnedByErp(tt: OltTrafficTable): void {
+    if (tt.origen !== 'erp') {
+      throw new ConflictException(
+        `La traffic table ${tt.trafficId} ("${tt.nombre}") es de origen externo ` +
+        `(preexistente/SmartOLT). El ERP no modifica recursos que no le pertenecen.`,
+      );
+    }
+  }
+
   private async _assertNoOnusEnUso(oltId: string, trafficId: number): Promise<void> {
     const [{ count }] = await this.ds.query<[{ count: string }]>(
       `SELECT COUNT(*) AS count

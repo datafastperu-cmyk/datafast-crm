@@ -15,6 +15,8 @@ import { OltTrafficTable }   from '../entities/olt-traffic-table.entity';
 import { OltAutomationClient } from '../olt-automation.client';
 import { ModuleHealthService } from '../../../common/services/module-health.service';
 import { decrypt }           from '../../../common/utils/encryption.util';
+import { OltServicePortPoolService } from './olt-service-port-pool.service';
+import { OltOnuIdPoolService }       from './olt-onu-id-pool.service';
 
 // ─── Eventos WebSocket (emitidos por EventEmitter2, escuchados por OltGateway) ──
 export const OLT_SYNC_PROGRESS  = 'olt.sync.progress';
@@ -93,6 +95,8 @@ export class OltSyncService implements OnModuleInit {
     private readonly automation:   OltAutomationClient,
     private readonly moduleHealth: ModuleHealthService,
     private readonly events:       EventEmitter2,
+    private readonly servicePortPool: OltServicePortPoolService,
+    private readonly onuIdPool:       OltOnuIdPoolService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -305,7 +309,16 @@ export class OltSyncService implements OnModuleInit {
         oltId, empresaId, conn, (topo.boards ?? []).map(b => b.slot),
       );
 
-      // 8b. Config real SNMP/NTP — best-effort, nunca bloquea el sync.
+      // 8b. Reconciliación automática de pools — Incremento 7. Mientras
+      // SmartOLT coexista, cada ONU que aprovisione fuera del ERP ocupa un
+      // service-port y un ONU-ID que el pool creería libre. Antes esto era un
+      // botón manual; ahora corre en cada sync. Best-effort: solo marca
+      // libre→ocupado (nunca libera ni pisa contrato_id del ERP), y un fallo
+      // aquí no tumba el sync.
+      emit(92, 'Reconciliando pools contra la OLT…');
+      const pools = await this._reconciliarPools(oltId, empresaId);
+
+      // 8c. Config real SNMP/NTP — best-effort, nunca bloquea el sync.
       // No todas las marcas la implementan (get_snmp_ntp_config retorna
       // ok=False para las que no) y una OLT lenta no debe tumbar el sync
       // completo por esto.
@@ -325,6 +338,7 @@ export class OltSyncService implements OnModuleInit {
         onusSinContrato:     drift.sinContrato,
         onusNoAprovisionadas: drift.noAprovisionadas,
         onusEnErpNoEnOlt:    drift.enErpNoEnOlt,
+        poolsReconciliados:  pools,
       };
 
       await this.syncJobRepo.update(jobId, {
@@ -357,14 +371,22 @@ export class OltSyncService implements OnModuleInit {
     );
   }
 
+  // Lo descubierto en la OLT se inserta con origen='olt' (externo). En
+  // conflicto solo se refresca el nombre — nunca se pisa el origen, para no
+  // reetiquetar como externas las VLANs creadas por el ERP (origen='erp').
   private async _upsertVlans(
     oltId: string, empresaId: string,
     vlans: { vlan_id: number; name: string }[],
   ): Promise<void> {
     if (!vlans.length) return;
-    await this.vlanRepo.upsert(
-      vlans.map(v => ({ oltId, empresaId, vlanId: v.vlan_id, nombre: v.name })),
-      { conflictPaths: ['oltId', 'vlanId'], skipUpdateIfNoValuesChanged: true },
+    await this.ds.query(
+      `INSERT INTO olt_vlans
+         (id, olt_id, empresa_id, vlan_id, nombre, origen, estado, created_at, updated_at)
+       SELECT gen_random_uuid(), $1, $2, t.vid, t.name, 'olt', 'active', NOW(), NOW()
+       FROM   unnest($3::int[], $4::text[]) AS t(vid, name)
+       ON CONFLICT (olt_id, vlan_id) DO UPDATE
+         SET nombre = EXCLUDED.nombre, updated_at = NOW()`,
+      [oltId, empresaId, vlans.map(v => v.vlan_id), vlans.map(v => v.name)],
     );
   }
 
@@ -403,6 +425,31 @@ export class OltSyncService implements OnModuleInit {
       })),
       { conflictPaths: ['oltId', 'trafficId'], skipUpdateIfNoValuesChanged: true },
     );
+  }
+
+  // ── Reconciliación de pools (Incremento 7) — best-effort ──────
+  // Los service-ports se releen de la OLT (fuente real); los ONU-IDs se
+  // reconcilian contra olt_onu_inventario, que _snapshotOnus acaba de poblar.
+  private async _reconciliarPools(
+    oltId: string, empresaId: string,
+  ): Promise<{ servicePorts: number | null; onuIds: number | null; error?: string }> {
+    const out: { servicePorts: number | null; onuIds: number | null; error?: string } =
+      { servicePorts: null, onuIds: null };
+    try {
+      const sp = await this.servicePortPool.reconciliarConOlt(oltId, empresaId);
+      out.servicePorts = sp.marcadosOcupados;
+    } catch (e) {
+      out.error = `service-ports: ${(e as Error).message}`;
+      this.logger.warn(`_reconciliarPools service-ports | olt=${oltId}: ${(e as Error).message}`);
+    }
+    try {
+      const oi = await this.onuIdPool.reconciliarTodosPuertos(oltId, empresaId);
+      out.onuIds = oi.marcados;
+    } catch (e) {
+      out.error = [out.error, `onu-ids: ${(e as Error).message}`].filter(Boolean).join(' | ');
+      this.logger.warn(`_reconciliarPools onu-ids | olt=${oltId}: ${(e as Error).message}`);
+    }
+    return out;
   }
 
   // ── Credenciales SSH ──────────────────────────────────────────

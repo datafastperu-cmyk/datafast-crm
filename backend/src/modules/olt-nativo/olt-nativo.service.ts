@@ -1,5 +1,5 @@
 import {
-  BadRequestException, ConflictException, Injectable, InternalServerErrorException,
+  BadRequestException, ConflictException, Injectable,
   Logger, NotFoundException, OnModuleInit, ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -11,7 +11,7 @@ import { OltProveedorConfig, TipoProveedor }    from './entities/olt-proveedor-c
 import { Onu, EstadoOnu }                        from '../smartolt/entities/onu.entity';
 import { SmartoltApiService, ProvisionarOnuPayload } from '../smartolt/smartolt-api.service';
 import { OltAutomationClient }   from './olt-automation.client';
-import { OltOperationRouter }    from './services/olt-operation-router.service';
+import { OltOperationRouter, SinProveedorConfigException } from './services/olt-operation-router.service';
 import { OltProvisionPayload, OltMetricasPayload, ProveedorCredenciales } from './interfaces/olt-provider.interface';
 import { SmartoltProvider }      from './providers/smartolt.provider';
 import { decrypt, encrypt }      from '../../common/utils/encryption.util';
@@ -1143,13 +1143,13 @@ export class OltNativoService implements OnModuleInit {
 
   // Ejecuta fn() a través del Router multi-proveedor.
   // Retorna null si la OLT no tiene olt_proveedor_config activos
-  // (InternalServerErrorException del Router) → activar path legacy.
-  // Cualquier otra excepción se re-lanza para no silenciar errores reales.
+  // (SinProveedorConfigException del Router) → activar path legacy.
+  // Cualquier otra excepción (incluidos 500 reales) se re-lanza.
   private async _tryRouter<T>(fn: () => Promise<T>): Promise<T | null> {
     try {
       return await fn();
     } catch (err) {
-      if (err instanceof InternalServerErrorException) {
+      if (err instanceof SinProveedorConfigException) {
         this.logger.debug(
           `[Router] Sin configs activas → usando path legacy. Detalle: ${err.message}`,
         );

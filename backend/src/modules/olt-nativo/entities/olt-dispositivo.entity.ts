@@ -30,6 +30,12 @@ export { EstadoOnu as OnuEstado } from '../../smartolt/entities/onu.entity';
 @Index('idx_olt_disp_empresa_marca',  ['empresaId', 'marca'])
 @Index('idx_olt_disp_router',         ['routerId'])
 @Index('idx_olt_disp_ip',             ['ipGestion'])
+// Unicidad real de IP de gestión entre OLTs activas — creado por la migración
+// 1791700000014; cierra la race condition del check-then-insert de _validarIpUnica.
+@Index('uq_olt_disp_empresa_ip_activa', ['empresaId', 'ipGestion'], {
+  unique: true,
+  where:  '"activo" = true AND "deleted_at" IS NULL',
+})
 export class OltDispositivo extends BaseModel {
 
   @Column({ name: 'empresa_id' })

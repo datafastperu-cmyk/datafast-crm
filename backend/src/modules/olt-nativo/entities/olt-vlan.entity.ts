@@ -15,7 +15,9 @@ export class OltVlan {
   @Column({ type: 'varchar', length: 64 })       nombre:    string;
   @Column({ type: 'text', nullable: true })       descripcion: string | null;
 
-  @Column({ type: 'varchar', length: 10, default: 'erp' })
+  // Ownership: lo desconocido es externo ('olt'); 'erp' se declara explícito
+  // al crear la VLAN desde el panel. El ERP nunca muta recursos origen != 'erp'.
+  @Column({ type: 'varchar', length: 10, default: 'olt' })
   origen: VlanOrigen;
 
   @Column({ type: 'varchar', length: 20, default: 'active' })

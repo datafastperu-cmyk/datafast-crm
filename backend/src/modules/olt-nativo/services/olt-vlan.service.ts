@@ -102,6 +102,14 @@ export class OltVlanService {
     const vlan = await this.repo.findOne({ where: { oltId, empresaId, vlanId } });
     if (!vlan) throw new NotFoundException(`VLAN ${vlanId} no encontrada.`);
 
+    // Guard de ownership: el ERP solo muta en hardware recursos propios.
+    if (vlan.origen !== 'erp') {
+      throw new ConflictException(
+        `La VLAN ${vlanId} es de origen externo (preexistente/SmartOLT). ` +
+        `El ERP no modifica recursos que no le pertenecen.`,
+      );
+    }
+
     // Guard: verificar que no haya ONUs usando esta VLAN
     const [{ count }] = await this.ds.query<[{ count: string }]>(
       `SELECT COUNT(*) AS count
