@@ -21,6 +21,7 @@ const snapshot = (over: Partial<InfrastructureSnapshot> = {}): InfrastructureSna
   oltId: 'olt-1', oltNombre: 'OLT TEST', marca: 'huawei', modelo: null, firmware: null,
   boards: [], vlans: [], lineProfiles: [], serviceProfiles: [], trafficTables: [],
   opticalPorts: [], snmpCommunities: null, snmpVersions: null, ntpServers: null,
+  uplinkVlans: null,
   ultimoSyncEn: new Date(), ultimoSyncEstado: 'completed', ultimoHealthEn: null,
   configSnapshotEn: null,
   ...over,
@@ -31,14 +32,20 @@ function makeService(opts: {
   snap?: InfrastructureSnapshot;
   vlanService?: Record<string, jest.Mock>;
   ttService?: Record<string, jest.Mock>;
+  automation?: Record<string, jest.Mock>;
   oltRow?: Record<string, unknown> | null;
 }) {
-  const oltRepo      = { findOne: jest.fn().mockResolvedValue(opts.oltRow === undefined ? olt : opts.oltRow) };
+  const oltRepo = {
+    findOne: jest.fn().mockResolvedValue(opts.oltRow === undefined ? { ...olt } : opts.oltRow),
+    update:  jest.fn().mockResolvedValue(undefined),
+  };
   const baselineRepo = { findOne: jest.fn().mockResolvedValue(opts.bl === undefined ? baseline() : opts.bl) };
   const snapService  = { obtener: jest.fn().mockResolvedValue(opts.snap ?? snapshot()) };
+  const connService  = { buildConn: jest.fn().mockResolvedValue({ ip: '10.0.0.2', port: 22, username: 'u', password: 'p', brand: 'huawei' }) };
   return new OltBaselinePlanService(
     oltRepo as never, baselineRepo as never, snapService as never,
     (opts.vlanService ?? {}) as never, (opts.ttService ?? {}) as never,
+    connService as never, (opts.automation ?? {}) as never,
   );
 }
 
@@ -103,6 +110,68 @@ describe('OltBaselinePlanService', () => {
     expect(res.ejecutadas).toBe(0);
     expect(res.resultados).toHaveLength(1);
     expect(ttService.agregarConCli).not.toHaveBeenCalled(); // nunca continúa a ciegas
+  });
+
+  // ── Uplink tagging (9b) ──────────────────────────────────────
+  const blUplink = () => baseline({
+    vlans: [{ vlanId: 100, nombre: 'INTERNET', uplink: true }],
+    trafficTables: [],
+    uplinkPort: '0/9/0',
+  });
+
+  it('VLAN uplink:true no taggeada (observado): genera op taguear_uplink tras crear_vlan', async () => {
+    const svc = makeService({
+      bl: blUplink(),
+      snap: snapshot({ uplinkVlans: { '0/9/0': [1, 201] } }),
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones.map(o => o.tipo)).toEqual(['crear_vlan', 'taguear_uplink']);
+    expect(plan.operaciones[1].params).toEqual({ vlanId: 100, portPath: '0/9/0' });
+  });
+
+  it('VLAN uplink ya taggeada y existente: nada que hacer', async () => {
+    const svc = makeService({
+      bl: blUplink(),
+      snap: snapshot({
+        vlans: [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active' }],
+        uplinkVlans: { '0/9/0': [1, 100, 201] },
+      }),
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones).toHaveLength(0);
+    expect(plan.yaConverge).toBe(true);
+  });
+
+  it('uplink nunca observado y VLAN ya existe: bloqueo, no retaguea a ciegas', async () => {
+    const svc = makeService({
+      bl: blUplink(),
+      snap: snapshot({
+        vlans: [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active' }],
+        uplinkVlans: null,
+      }),
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones).toHaveLength(0);
+    expect(plan.bloqueos).toHaveLength(1);
+    expect(plan.bloqueos[0].motivo).toContain('sincronización');
+  });
+
+  it('aplicar taguear_uplink: llama al driver y persiste el observed state releído', async () => {
+    const vlanService = { agregarConCli: jest.fn().mockResolvedValue({ vlanId: 100 }) };
+    const automation  = {
+      uplinkVlanTag: jest.fn().mockResolvedValue({ success: true, vlan_ids: [1, 100, 201] }),
+    };
+    const svc = makeService({
+      bl: blUplink(),
+      snap: snapshot({ uplinkVlans: { '0/9/0': [1, 201] } }),
+      vlanService, automation,
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    const res  = await svc.aplicarPlan('olt-1', 'e1', plan.planHash);
+    expect(res.completado).toBe(true);
+    expect(automation.uplinkVlanTag).toHaveBeenCalledWith(
+      expect.objectContaining({ vlan_id: 100, port_path: '0/9/0' }),
+    );
   });
 
   it('aplicar feliz: ejecuta todas las operaciones y reporta completado', async () => {

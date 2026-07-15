@@ -112,6 +112,7 @@ export class InfrastructureSnapshotService {
       snmpCommunities: olt.snmpRealCommunities ?? null,
       snmpVersions:    olt.snmpRealVersions ?? null,
       ntpServers:      olt.ntpServers ?? null,
+      uplinkVlans:     olt.uplinkVlans ?? null,
 
       ultimoSyncEn:     ultimoSync?.completadoEn ?? null,
       ultimoSyncEstado: ultimoSync?.estado ?? null,

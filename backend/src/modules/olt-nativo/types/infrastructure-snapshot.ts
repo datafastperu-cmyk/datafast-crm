@@ -85,6 +85,10 @@ export interface InfrastructureSnapshot {
   snmpVersions:     string[] | null;
   ntpServers:       SnapshotNtpServer[] | null;
 
+  // Observed state del uplink (9b): VLANs taggeadas por puerto uplink,
+  // leídas en el último sync. Null = nunca observado.
+  uplinkVlans:      Record<string, number[]> | null;
+
   // Metadata de frescura — de dónde viene cada mitad del snapshot.
   ultimoSyncEn:     Date | null;
   ultimoSyncEstado: 'pending' | 'running' | 'completed' | 'failed' | null;

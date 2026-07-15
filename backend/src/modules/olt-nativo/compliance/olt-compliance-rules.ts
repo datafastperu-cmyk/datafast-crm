@@ -262,6 +262,43 @@ const baselineTrafficTablesPresentes: ComplianceRule = (_olt, snapshot, _caps, b
   };
 };
 
+// ── R10: las VLANs uplink del baseline están taggeadas en el puerto uplink ──
+// Incremento 9b. Si el uplink nunca se observó (sync pendiente), no aplica —
+// distinción Observed vs Current: la ausencia de lectura no es incumplimiento.
+const baselineUplinkTaggeado: ComplianceRule = (_olt, snapshot, _caps, baseline) => {
+  const uplinkPort  = baseline?.spec.uplinkPort;
+  const vlansUplink = baseline?.spec.vlans.filter(v => v.uplink) ?? [];
+  if (!baseline || !uplinkPort || vlansUplink.length === 0) {
+    return {
+      regla: 'baseline_uplink_taggeado',
+      cumple: true,
+      severidad: 'info',
+      mensaje: !baseline
+        ? 'Sin baseline asignado — regla no aplica'
+        : 'El baseline no declara VLANs de uplink — regla no aplica',
+    };
+  }
+  const observadas = snapshot.uplinkVlans?.[uplinkPort];
+  if (observadas == null) {
+    return {
+      regla: 'baseline_uplink_taggeado',
+      cumple: true,
+      severidad: 'info',
+      mensaje: `Estado del uplink ${uplinkPort} aún no observado — regla no aplica hasta el próximo sync`,
+    };
+  }
+  const faltantes = vlansUplink.filter(v => !observadas.includes(v.vlanId));
+  const cumple = faltantes.length === 0;
+  return {
+    regla: 'baseline_uplink_taggeado',
+    cumple,
+    severidad: 'warning',
+    mensaje: cumple
+      ? `Las ${vlansUplink.length} VLAN(s) de uplink del baseline están taggeadas en ${uplinkPort}`
+      : `VLAN(s) sin taguear en el uplink ${uplinkPort}: ${faltantes.map(v => v.vlanId).join(', ')}`,
+  };
+};
+
 export const OLT_COMPLIANCE_RULES: ComplianceRule[] = [
   boardsSincronizadas,
   vlanGestionExiste,
@@ -272,4 +309,5 @@ export const OLT_COMPLIANCE_RULES: ComplianceRule[] = [
   ntpSincronizado,
   baselineVlansPresentes,
   baselineTrafficTablesPresentes,
+  baselineUplinkTaggeado,
 ];

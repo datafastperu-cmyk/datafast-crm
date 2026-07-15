@@ -1812,6 +1812,97 @@ def delete_vlan(
     return {'success': True}
 
 
+def _parse_port_vlan_ids(raw: str) -> list[int]:
+    """
+    Extrae los VLAN IDs de la salida de 'display port vlan F/S/P'.
+    Formato real (MA5800-X7, validado 2026-07-14):
+      ---------------------------------------
+         1    201   1500   1600
+      ---------------------------------------
+      Total: 4
+      Native VLAN: 1
+    Solo cuentan las líneas compuestas exclusivamente por enteros (la tabla);
+    el eco del comando y 'Total:'/'Native VLAN:' contienen letras y se ignoran.
+    """
+    ids: list[int] = []
+    for line in raw.splitlines():
+        s = line.strip()
+        if s and re.fullmatch(r'\d+(?:\s+\d+)*', s):
+            ids.extend(int(x) for x in s.split())
+    return sorted(set(ids))
+
+
+def get_uplink_vlans(
+    conn:      OltConnectionSchema,
+    port_path: str,
+) -> dict[str, Any]:
+    """
+    Lee las VLANs taggeadas en un puerto uplink (frame/slot/port).
+    Solo lectura. Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'get_uplink_vlans no implementado para marca: {conn.brand.value}')
+
+    try:
+        outputs = _paramiko_huawei_run(
+            conn, [f'display port vlan {port_path}'], timeout=60.0, return_list=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    vlan_ids = _parse_port_vlan_ids('\n'.join(outputs))
+    logger.info('get_uplink_vlans: %s %s → %s', conn.ip, port_path, vlan_ids)
+    return {'success': True, 'vlan_ids': vlan_ids}
+
+
+def add_uplink_vlan(
+    conn:      OltConnectionSchema,
+    vlan_id:   int,
+    port_path: str,
+) -> dict[str, Any]:
+    """
+    Taguea una VLAN en el puerto uplink (comando ADITIVO: 'port vlan {vid} F/S P'
+    agrega la VLAN sin tocar las existentes — validado manualmente contra
+    MA5800-X7 el 2026-07-14 con VLAN de prueba 3999).
+
+    El destagueo (undo port vlan) NUNCA se automatiza: la OLT advierte
+    'may cause interruptions of many user services'.
+
+    Nunca asume éxito: relee el puerto al final y confirma que la VLAN quedó.
+    UNA sesión Paramiko. Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'add_uplink_vlan no implementado para marca: {conn.brand.value}')
+
+    frame, slot, port = port_path.split('/')
+    commands = [
+        'config',                                       # [0]
+        f'port vlan {vlan_id} {frame}/{slot} {port}',   # [1]
+        'quit',                                          # [2]
+        f'display port vlan {port_path}',               # [3] verificación
+    ]
+    logger.info('add_uplink_vlan: vlan=%d port=%s en %s', vlan_id, port_path, conn.ip)
+    try:
+        outputs = _paramiko_huawei_run(conn, commands, timeout=90.0, return_list=True)
+        _check_cli_error(conn.brand, 'add_uplink_vlan', outputs[1])
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    # Verificación real: el helper puede desplazar los límites entre comandos
+    # (eco del prompt), así que se parsea la salida completa de la sesión.
+    vlan_ids = _parse_port_vlan_ids('\n'.join(outputs))
+    if vlan_id not in vlan_ids:
+        return {
+            'success': False,
+            'vlan_ids': vlan_ids,
+            'error': f'El comando no reportó error pero la VLAN {vlan_id} no aparece taggeada en {port_path}',
+        }
+    logger.info('add_uplink_vlan: vlan=%d confirmada en %s (%s)', vlan_id, port_path, vlan_ids)
+    return {'success': True, 'vlan_ids': vlan_ids}
+
+
 def _parse_traffic_table_indices(raw: str) -> set[int]:
     """
     Extrae los TID (índices) de 'display traffic table ip from-index 0'.

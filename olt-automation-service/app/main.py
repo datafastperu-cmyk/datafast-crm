@@ -82,6 +82,10 @@ from app.schemas.olt import (
     VlanAddResponse,
     VlanDeleteRequest,
     VlanDeleteResponse,
+    UplinkVlansRequest,
+    UplinkVlansResponse,
+    UplinkTagRequest,
+    UplinkTagResponse,
     TrafficTableAddRequest,
     TrafficTableAddResponse,
     TrafficTableDeleteRequest,
@@ -131,6 +135,8 @@ from app.services.provisioning import (
     verify_onu,
     add_vlan,
     delete_vlan,
+    add_uplink_vlan,
+    get_uplink_vlans,
     add_traffic_table,
     delete_traffic_table,
     edit_traffic_table,
@@ -1311,6 +1317,48 @@ async def vlan_delete(body: VlanDeleteRequest) -> VlanDeleteResponse:
         except ProvisioningError as exc:
             return VlanDeleteResponse(success=False, error=str(exc))
     return VlanDeleteResponse(success=result['success'], error=result.get('error'))
+
+
+# ── Uplink VLAN tagging (Incremento 9b) ───────────────────────
+
+@app.post(
+    '/api/v1/olt/vlan/uplink-vlans',
+    response_model=UplinkVlansResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['vlan'],
+    summary='Lee las VLANs taggeadas en un puerto uplink (solo lectura)',
+)
+async def uplink_vlans(body: UplinkVlansRequest) -> UplinkVlansResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(get_uplink_vlans, body.connection, body.port_path)
+        except ProvisioningError as exc:
+            return UplinkVlansResponse(success=False, error=str(exc))
+    return UplinkVlansResponse(
+        success=result['success'], vlan_ids=result.get('vlan_ids', []), error=result.get('error'),
+    )
+
+
+@app.post(
+    '/api/v1/olt/vlan/uplink-tag',
+    response_model=UplinkTagResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['vlan'],
+    summary='Taguea una VLAN en el puerto uplink (aditivo; verifica releyendo el puerto)',
+)
+async def uplink_tag(body: UplinkTagRequest) -> UplinkTagResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                add_uplink_vlan, body.connection, body.vlan_id, body.port_path,
+            )
+        except ProvisioningError as exc:
+            return UplinkTagResponse(success=False, error=str(exc))
+    return UplinkTagResponse(
+        success=result['success'], vlan_ids=result.get('vlan_ids', []), error=result.get('error'),
+    )
 
 
 # ── Traffic Table CLI ─────────────────────────────────────────

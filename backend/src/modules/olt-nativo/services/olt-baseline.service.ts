@@ -4,7 +4,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
-  IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested,
+  IsArray, IsBoolean, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OltBaseline, BaselineSpec } from '../entities/olt-baseline.entity';
@@ -16,6 +16,8 @@ export class BaselineVlanDto {
   @IsInt() @Min(1) @Max(4094) @Type(() => Number) vlanId: number;
   @IsString() @MaxLength(64)                       nombre: string;
   @IsOptional() @IsString() @MaxLength(32)         proposito?: string;
+  // true → debe quedar taggeada en uplinkPort (9b). Tagging solo aditivo.
+  @IsOptional() @IsBoolean()                       uplink?: boolean;
 }
 
 export class BaselineTrafficTableDto {
@@ -36,6 +38,11 @@ export class CrearBaselineDto {
 
   @IsOptional() @IsArray() @IsString({ each: true })
   ntpServers?: string[];
+
+  // Puerto uplink físico frame/slot/port (ej. '0/9/0') donde se tagean las
+  // VLANs con uplink:true.
+  @IsOptional() @Matches(/^\d+\/\d+\/\d+$/, { message: 'uplinkPort debe tener formato frame/slot/port, ej. 0/9/0' })
+  uplinkPort?: string;
 }
 
 // ─── Service ──────────────────────────────────────────────────────
@@ -91,10 +98,15 @@ export class OltBaselineService {
       .where('b.empresaId = :empresaId AND b.nombre = :nombre', { empresaId, nombre: dto.nombre })
       .getRawOne<{ max: string }>();
 
+    if (dto.vlans.some(v => v.uplink) && !dto.uplinkPort) {
+      throw new BadRequestException('Hay VLANs con uplink:true pero el baseline no declara uplinkPort.');
+    }
+
     const spec: BaselineSpec = {
       vlans:         dto.vlans,
       trafficTables: dto.trafficTables,
       ntpServers:    dto.ntpServers,
+      uplinkPort:    dto.uplinkPort,
     };
 
     const baseline = await this.repo.save(this.repo.create({

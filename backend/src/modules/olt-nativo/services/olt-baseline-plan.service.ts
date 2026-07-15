@@ -11,10 +11,12 @@ import { InfrastructureSnapshot } from '../types/infrastructure-snapshot';
 import { InfrastructureSnapshotService } from './infrastructure-snapshot.service';
 import { OltVlanService } from './olt-vlan.service';
 import { OltTrafficTableService } from './olt-traffic-table.service';
+import { OltConnService } from './olt-conn.service';
+import { OltAutomationClient } from '../olt-automation.client';
 
 // ─── Tipos del plan ───────────────────────────────────────────────
 
-export type PlanOperacionTipo = 'crear_vlan' | 'crear_traffic_table';
+export type PlanOperacionTipo = 'crear_vlan' | 'crear_traffic_table' | 'taguear_uplink';
 
 export interface PlanOperacion {
   orden:   number;
@@ -91,6 +93,8 @@ export class OltBaselinePlanService {
     private readonly snapshotService: InfrastructureSnapshotService,
     private readonly vlanService:     OltVlanService,
     private readonly ttService:       OltTrafficTableService,
+    private readonly connService:     OltConnService,
+    private readonly automation:      OltAutomationClient,
   ) {}
 
   // ── Dry-run: qué haría el ERP para converger la OLT al baseline ──
@@ -132,7 +136,7 @@ export class OltBaselinePlanService {
 
     for (const op of plan.operaciones) {
       try {
-        const mensaje = await this._ejecutar(oltId, empresaId, op);
+        const mensaje = await this._ejecutar(oltId, empresaId, op, olt);
         resultados.push({ ...op, exitoso: true, mensaje });
       } catch (err) {
         fallidas = 1;
@@ -208,6 +212,41 @@ export class OltBaselinePlanService {
       }
     }
 
+    // Uplink tagging (9b): VLANs con uplink:true deben estar taggeadas en
+    // spec.uplinkPort. Comando ADITIVO — el destagueo nunca se automatiza.
+    const uplinkPort = baseline.spec.uplinkPort;
+    const vlansUplink = baseline.spec.vlans.filter(v => v.uplink);
+    if (vlansUplink.length > 0) {
+      if (!uplinkPort) {
+        bloqueos.push({
+          recurso: 'uplink',
+          motivo:  `${vlansUplink.length} VLAN(s) declaran uplink:true pero el baseline no define uplinkPort.`,
+        });
+      } else {
+        const observadas = snapshot.uplinkVlans?.[uplinkPort];
+        for (const v of vlansUplink) {
+          const seCreaEnEstePlan = operaciones.some(o => o.tipo === 'crear_vlan' && o.params.vlanId === v.vlanId);
+          if (observadas == null && !seCreaEnEstePlan) {
+            // Sin observed state no se puede saber si ya está taggeada; retaguear
+            // a ciegas no es aceptable en un uplink con clientes en producción.
+            bloqueos.push({
+              recurso: `uplink ${uplinkPort} / VLAN ${v.vlanId}`,
+              motivo:  'El estado del uplink aún no se ha observado — ejecuta una sincronización primero.',
+            });
+            continue;
+          }
+          if (seCreaEnEstePlan || !observadas!.includes(v.vlanId)) {
+            operaciones.push({
+              orden:   operaciones.length + 1,
+              tipo:    'taguear_uplink',
+              detalle: `Taguear VLAN ${v.vlanId} ("${v.nombre}") en el uplink ${uplinkPort}`,
+              params:  { vlanId: v.vlanId, portPath: uplinkPort },
+            });
+          }
+        }
+      }
+    }
+
     const planHash = createHash('sha256')
       .update(JSON.stringify({
         baselineId: baseline.id,
@@ -228,7 +267,9 @@ export class OltBaselinePlanService {
     };
   }
 
-  private async _ejecutar(oltId: string, empresaId: string, op: PlanOperacion): Promise<string> {
+  private async _ejecutar(
+    oltId: string, empresaId: string, op: PlanOperacion, olt: OltDispositivo,
+  ): Promise<string> {
     switch (op.tipo) {
       case 'crear_vlan': {
         const vlan = await this.vlanService.agregarConCli(oltId, empresaId, {
@@ -244,6 +285,24 @@ export class OltBaselinePlanService {
           pirKbps: op.params.pirKbps as number,
         });
         return `Traffic table "${tt.nombre}" creada con índice ${tt.trafficId} (origen=erp)`;
+      }
+      case 'taguear_uplink': {
+        const vlanId   = op.params.vlanId   as number;
+        const portPath = op.params.portPath as string;
+        const conn = await this.connService.buildConn(olt);
+        const res  = await this.automation.uplinkVlanTag({
+          connection: conn, vlan_id: vlanId, port_path: portPath,
+        });
+        if (!res.success) {
+          throw new Error(res.error ?? `La OLT no confirmó el tag de la VLAN ${vlanId} en ${portPath}`);
+        }
+        // Persistir el observed state releído por el driver — el siguiente
+        // dry-run ya no propone esta operación sin necesidad de otro sync.
+        await this.oltRepo.update(oltId, {
+          uplinkVlans: { ...(olt.uplinkVlans ?? {}), [portPath]: res.vlan_ids },
+        });
+        olt.uplinkVlans = { ...(olt.uplinkVlans ?? {}), [portPath]: res.vlan_ids };
+        return `VLAN ${vlanId} taggeada en uplink ${portPath} — puerto ahora: [${res.vlan_ids.join(', ')}]`;
       }
     }
   }

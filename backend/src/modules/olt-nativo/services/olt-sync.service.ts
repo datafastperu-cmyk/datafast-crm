@@ -5,6 +5,7 @@ import { EventEmitter2 }     from '@nestjs/event-emitter';
 
 import { OltOnuInventario }  from '../entities/olt-onu-inventario.entity';
 import { OltDispositivo }    from '../entities/olt-dispositivo.entity';
+import { OltBaseline }       from '../entities/olt-baseline.entity';
 import { OltProveedorConfig } from '../entities/olt-proveedor-config.entity';
 import { OltBoard }          from '../entities/olt-board.entity';
 import { OltLineProfile }    from '../entities/olt-line-profile.entity';
@@ -88,6 +89,9 @@ export class OltSyncService implements OnModuleInit {
 
     @InjectRepository(OltOnuInventario)
     private readonly inventarioRepo: Repository<OltOnuInventario>,
+
+    @InjectRepository(OltBaseline)
+    private readonly baselineRepo: Repository<OltBaseline>,
 
     @InjectDataSource()
     private readonly ds: DataSource,
@@ -326,6 +330,11 @@ export class OltSyncService implements OnModuleInit {
       emit(95, 'Leyendo config SNMP/NTP…');
       await this._snapshotSnmpNtp(oltId, empresaId, conn);
 
+      // 8d. Observed state del uplink (Incremento 9b) — best-effort. Solo si
+      // el baseline asignado declara uplinkPort; sin baseline no hay qué leer.
+      emit(97, 'Leyendo VLANs del uplink…');
+      await this._snapshotUplink(olt, conn);
+
       // 9. Completar job
       const resultado: Record<string, unknown> = {
         boards:           (topo.boards ?? []).length,
@@ -481,6 +490,31 @@ export class OltSyncService implements OnModuleInit {
       });
     } catch (e) {
       this.logger.warn(`_snapshotSnmpNtp | olt=${oltId}: ${(e as Error).message}`);
+    }
+  }
+
+  // ── Observed state del uplink (9b) — best-effort, nunca tumba el sync ──
+  private async _snapshotUplink(
+    olt:  OltDispositivo,
+    conn: { ip: string; port: number; username: string; password: string; brand: string },
+  ): Promise<void> {
+    try {
+      if (!olt.baselineId) return;
+      const baseline = await this.baselineRepo.findOne({ where: { id: olt.baselineId } });
+      const portPath = baseline?.spec?.uplinkPort;
+      if (!portPath) return;
+
+      const res = await this.automation.uplinkVlans({ connection: conn, port_path: portPath });
+      if (!res.success) {
+        this.logger.debug(`_snapshotUplink | olt=${olt.id}: ${res.error ?? 'sin datos'}`);
+        return;
+      }
+      await this.oltRepo.update(olt.id, {
+        uplinkVlans: { ...(olt.uplinkVlans ?? {}), [portPath]: res.vlan_ids },
+      });
+      this.logger.log(`_snapshotUplink | olt=${olt.id} ${portPath} → [${res.vlan_ids.join(', ')}]`);
+    } catch (e) {
+      this.logger.warn(`_snapshotUplink | olt=${olt.id}: ${(e as Error).message}`);
     }
   }
 

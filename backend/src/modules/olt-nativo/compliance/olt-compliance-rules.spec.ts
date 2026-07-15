@@ -28,6 +28,7 @@ const baseSnapshot = (over: Partial<InfrastructureSnapshot> = {}): Infrastructur
   lineProfiles: [], serviceProfiles: [], trafficTables: [], opticalPorts: [],
   snmpCommunities: [{ name: 'public', access: 'read' }], snmpVersions: ['SNMPv2c'],
   ntpServers: [{ source: '1.1.1.1', stratum: 2, reach: 255, status: 'configured, synced' }],
+  uplinkVlans: null,
   ultimoSyncEn: new Date(), ultimoSyncEstado: 'completed', ultimoHealthEn: null,
   configSnapshotEn: new Date(),
   ...over,
@@ -182,6 +183,26 @@ describe('OLT_COMPLIANCE_RULES', () => {
     const checks = run(baseOlt(), baseSnapshot({ trafficTables: [] }), capsHuawei, baseBaseline());
     expect(checks.baseline_traffic_tables_presentes.cumple).toBe(false);
     expect(checks.baseline_traffic_tables_presentes.mensaje).toContain('ERP-100M');
+  });
+
+  it('uplink observado sin la VLAN declarada: baseline_uplink_taggeado falla', () => {
+    const baseline = baseBaseline({
+      vlans: [{ vlanId: 201, nombre: 'GESTION', uplink: true }],
+      uplinkPort: '0/9/0',
+    });
+    const conObservado = baseSnapshot({ uplinkVlans: { '0/9/0': [1, 1500] } });
+    const checks = run(baseOlt(), conObservado, capsHuawei, baseline);
+    expect(checks.baseline_uplink_taggeado.cumple).toBe(false);
+    expect(checks.baseline_uplink_taggeado.mensaje).toContain('201');
+
+    // Y con la VLAN taggeada, cumple
+    const ok = run(baseOlt(), baseSnapshot({ uplinkVlans: { '0/9/0': [1, 201] } }), capsHuawei, baseline);
+    expect(ok.baseline_uplink_taggeado.cumple).toBe(true);
+
+    // Sin observed state: no aplica (info)
+    const sinObs = run(baseOlt(), baseSnapshot({ uplinkVlans: null }), capsHuawei, baseline);
+    expect(sinObs.baseline_uplink_taggeado.cumple).toBe(true);
+    expect(sinObs.baseline_uplink_taggeado.severidad).toBe('info');
   });
 
   it('traffic table con CIR/PIR distinto al declarado: falla y reporta el diff', () => {

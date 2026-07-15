@@ -180,6 +180,12 @@ export class OltDispositivo extends BaseModel {
   @Column({ name: 'baseline_id', type: 'uuid', nullable: true })
   baselineId: string | null;
 
+  // ── Observed state del uplink (Incremento 9b) ─────────────
+  // VLANs realmente taggeadas por puerto uplink, leídas en el último sync.
+  // Ej: { '0/9/0': [1, 201, 1500, 1600] }. Null = nunca observado.
+  @Column({ name: 'uplink_vlans', type: 'jsonb', nullable: true })
+  uplinkVlans: Record<string, number[]> | null;
+
   // ── Ubicación geográfica ──────────────────────────────────
   @Column({ length: 200, nullable: true })
   ubicacion: string;

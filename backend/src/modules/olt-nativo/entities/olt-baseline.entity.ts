@@ -18,6 +18,7 @@ export interface BaselineVlanSpec {
   vlanId:     number;
   nombre:     string;
   proposito?: string;   // ej. 'internet', 'gestion', 'iptv', 'voip'
+  uplink?:    boolean;  // true → debe estar taggeada en spec.uplinkPort (9b)
 }
 
 export interface BaselineTrafficTableSpec {
@@ -30,6 +31,10 @@ export interface BaselineSpec {
   vlans:         BaselineVlanSpec[];
   trafficTables: BaselineTrafficTableSpec[];
   ntpServers?:   string[];
+  // Puerto uplink físico donde se tagean las VLANs con uplink:true.
+  // Formato frame/slot/port (ej. '0/9/0' — MPLB activa en MA5800-X7).
+  // El tagging es SOLO aditivo; el destagueo nunca se automatiza.
+  uplinkPort?:   string;
 }
 
 @Entity('olt_baselines')

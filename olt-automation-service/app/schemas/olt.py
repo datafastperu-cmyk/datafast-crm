@@ -626,6 +626,33 @@ class VlanDeleteResponse(BaseModel):
     error:   str | None = None
 
 
+class UplinkVlansRequest(BaseModel):
+    """Lee las VLANs taggeadas en un puerto uplink (frame/slot/port)."""
+    connection: OltConnectionSchema
+    port_path:  str = Field(..., pattern=r'^\d+/\d+/\d+$')  # ej. '0/9/0'
+
+
+class UplinkVlansResponse(BaseModel):
+    success:  bool
+    vlan_ids: list[int] = []
+    error:    str | None = None
+
+
+class UplinkTagRequest(BaseModel):
+    """Taguea una VLAN en un puerto uplink. SOLO aditivo — el undo emite
+    'Warning: may cause interruptions of many user services' y nunca se
+    automatiza (validado manualmente contra MA5800-X7, 2026-07-14)."""
+    connection: OltConnectionSchema
+    vlan_id:    int = Field(..., ge=1, le=4094)
+    port_path:  str = Field(..., pattern=r'^\d+/\d+/\d+$')  # ej. '0/9/0'
+
+
+class UplinkTagResponse(BaseModel):
+    success:  bool
+    vlan_ids: list[int] = []   # estado real del puerto DESPUÉS del tag (releído)
+    error:    str | None = None
+
+
 # ─── Traffic Table CLI Operations ──────────────────────────────
 
 class TrafficTableAddRequest(BaseModel):

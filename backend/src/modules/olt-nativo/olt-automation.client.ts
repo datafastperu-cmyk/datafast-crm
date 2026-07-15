@@ -58,6 +58,10 @@ import {
   PythonHealthSnapshotRequest,
   PythonHealthSnapshotResponse,
   PythonVlanAddRequest,
+  PythonUplinkVlansRequest,
+  PythonUplinkVlansResponse,
+  PythonUplinkTagRequest,
+  PythonUplinkTagResponse,
   PythonVlanAddResponse,
   PythonVlanDeleteRequest,
   PythonVlanDeleteResponse,
@@ -468,17 +472,35 @@ export class OltAutomationClient {
   // ────────────────────────────────────────────────────────────
   // VLAN CLI (POST /api/v1/olt/vlan/add | /delete)
   // ────────────────────────────────────────────────────────────
+  // 90s: la sesión Paramiko interna usa 60s y el mutex por-IP puede encolar
+  // detrás de un health-poll — 30s resultó insuficiente en producción
+  // (timeout reproducido al aplicar el primer plan de baseline, 2026-07-14).
   async vlanAdd(payload: PythonVlanAddRequest): Promise<PythonVlanAddResponse> {
     this.logger.log(`→ Python vlan/add | OLT=${payload.connection.ip} vlan_id=${payload.vlan_id}`);
-    const res = await this.post<PythonVlanAddResponse>('/api/v1/olt/vlan/add', payload, 30_000);
+    const res = await this.post<PythonVlanAddResponse>('/api/v1/olt/vlan/add', payload, 90_000);
     this.logger.log(`← Python vlan/add | success=${res.success}`);
     return res;
   }
 
   async vlanDelete(payload: PythonVlanDeleteRequest): Promise<PythonVlanDeleteResponse> {
     this.logger.log(`→ Python vlan/delete | OLT=${payload.connection.ip} vlan_id=${payload.vlan_id}`);
-    const res = await this.post<PythonVlanDeleteResponse>('/api/v1/olt/vlan/delete', payload, 30_000);
+    const res = await this.post<PythonVlanDeleteResponse>('/api/v1/olt/vlan/delete', payload, 90_000);
     this.logger.log(`← Python vlan/delete | success=${res.success}`);
+    return res;
+  }
+
+  // ── Uplink VLAN tagging (Incremento 9b) ─────────────────────
+  async uplinkVlans(payload: PythonUplinkVlansRequest): Promise<PythonUplinkVlansResponse> {
+    this.logger.log(`→ Python vlan/uplink-vlans | OLT=${payload.connection.ip} port=${payload.port_path}`);
+    const res = await this.post<PythonUplinkVlansResponse>('/api/v1/olt/vlan/uplink-vlans', payload, 90_000);
+    this.logger.log(`← Python vlan/uplink-vlans | success=${res.success} vlans=${res.vlan_ids?.length}`);
+    return res;
+  }
+
+  async uplinkVlanTag(payload: PythonUplinkTagRequest): Promise<PythonUplinkTagResponse> {
+    this.logger.log(`→ Python vlan/uplink-tag | OLT=${payload.connection.ip} vlan=${payload.vlan_id} port=${payload.port_path}`);
+    const res = await this.post<PythonUplinkTagResponse>('/api/v1/olt/vlan/uplink-tag', payload, 120_000);
+    this.logger.log(`← Python vlan/uplink-tag | success=${res.success}`);
     return res;
   }
 

@@ -905,6 +905,31 @@ export interface PythonVlanDeleteResponse {
   error?:  string;
 }
 
+// ─── Uplink VLAN tagging (Incremento 9b) ─────────────────────
+
+export interface PythonUplinkVlansRequest {
+  connection: PythonConnectionPayload;
+  port_path:  string;   // ej. '0/9/0'
+}
+
+export interface PythonUplinkVlansResponse {
+  success:  boolean;
+  vlan_ids: number[];
+  error?:   string;
+}
+
+export interface PythonUplinkTagRequest {
+  connection: PythonConnectionPayload;
+  vlan_id:    number;
+  port_path:  string;
+}
+
+export interface PythonUplinkTagResponse {
+  success:  boolean;
+  vlan_ids: number[];   // estado del puerto releído tras el tag
+  error?:   string;
+}
+
 // ─── Traffic Table CLI Operations ────────────────────────────
 
 export interface PythonTrafficTableAddRequest {
