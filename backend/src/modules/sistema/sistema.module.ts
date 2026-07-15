@@ -2,13 +2,13 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SistemaController } from './sistema.controller';
 import { SistemaService }    from './sistema.service';
-import { EventosSistemaService } from './eventos-sistema.service';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
+// EventosSistemaService llega vía EventosSistemaModule (@Global)
 @Module({
   imports:     [TypeOrmModule.forFeature([]), NotificacionesModule],
   controllers: [SistemaController],
-  providers:   [SistemaService, EventosSistemaService],
-  exports:     [SistemaService, EventosSistemaService],
+  providers:   [SistemaService],
+  exports:     [SistemaService],
 })
 export class SistemaModule {}

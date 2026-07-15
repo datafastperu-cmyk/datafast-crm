@@ -31,6 +31,7 @@ import { AuthModule }             from './modules/auth/auth.module';
 import { InstallModule }          from './modules/install/install.module';
 import { UsuariosModule }         from './modules/usuarios/usuarios.module';
 import { SistemaModule }          from './modules/sistema/sistema.module';
+import { EventosSistemaModule }   from './modules/sistema/eventos-sistema.module';
 import { ClientesModule }         from './modules/clientes/clientes.module';
 import { ContratosModule }        from './modules/contratos/contratos.module';
 import { FacturacionModule }      from './modules/facturacion/facturacion.module';
@@ -178,6 +179,7 @@ import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pag
     AuthModule,
     InstallModule,
     UsuariosModule,
+    EventosSistemaModule,
     SistemaModule,
     ClientesModule,
     ContratosModule,

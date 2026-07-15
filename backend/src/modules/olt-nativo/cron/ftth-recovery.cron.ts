@@ -8,6 +8,7 @@ import { OltDispositivo }                  from '../entities/olt-dispositivo.ent
 import { OltAutomationClient }             from '../olt-automation.client';
 import { decrypt }                         from '../../../common/utils/encryption.util';
 import { filasUpdateReturning }            from '../../../common/utils/pg-result.util';
+import { EventosSistemaService }           from '../../sistema/eventos-sistema.service';
 
 // ─────────────────────────────────────────────────────────────
 // FtthRecoveryCron
@@ -37,6 +38,8 @@ export class FtthRecoveryCron {
     private readonly oltRepo: Repository<OltDispositivo>,
 
     private readonly automation: OltAutomationClient,
+
+    private readonly eventos: EventosSistemaService,
   ) {}
 
   // Minutos 4,9,…,59 — disjuntos del health-poller (x0) y del monitoreo (2,7,…)
@@ -70,6 +73,13 @@ export class FtthRecoveryCron {
         this.logger.error(
           `FTTH Recovery error | registroId=${rec.id} estado=${rec.estado}: ${err.message}`,
         );
+        await this.eventos.registrar({
+          origen:   'olt',
+          codigo:   'FTTH_RECOVERY_ERROR',
+          mensaje:  `FTTH Recovery falló para registro ${rec.id} (estado ${rec.estado}): ${err.message}`,
+          stack:    err.stack ?? null,
+          contexto: { registroId: rec.id, estado: rec.estado, oltId: rec.olt_id, slot: rec.slot, port: rec.port },
+        });
       }
     }
   }
@@ -117,6 +127,13 @@ export class FtthRecoveryCron {
           this.logger.error(
             `FTTH Recovery rollback GPON falló | registroId=${rec.id}: ${err.message}`,
           );
+          await this.eventos.registrar({
+            origen:   'olt',
+            codigo:   'FTTH_ROLLBACK_GPON_ERROR',
+            mensaje:  `Rollback GPON falló en OLT ${olt.ipGestion} (registro ${rec.id}): ${err.message} — posible ONU fantasma en slot ${rec.slot}/${rec.port} onu_id ${rec.onu_id}`,
+            stack:    err.stack ?? null,
+            contexto: { registroId: rec.id, olt: olt.ipGestion, slot: rec.slot, port: rec.port, onuId: rec.onu_id },
+          });
           // Marcamos fallido de todos modos para liberar el lock
         }
       } else {

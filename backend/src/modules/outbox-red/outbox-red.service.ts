@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { Cron }              from '@nestjs/schedule';
@@ -9,6 +9,7 @@ import { PppoeService }      from '../mikrotik/services/pppoe.service';
 import { QueueService }      from '../mikrotik/services/queue.service';
 import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
 import { decrypt }           from '../../common/utils/encryption.util';
+import { EventosSistemaService } from '../sistema/eventos-sistema.service';
 import {
   NOTIFICATION_EVENTS,
   EventOutboxRedAgotado,
@@ -83,6 +84,7 @@ export class OutboxRedService {
     private readonly queueSvc:    QueueService,
     private readonly ftthSvc:     ProvisionFtthService,
     private readonly events:      EventEmitter2,
+    @Optional() private readonly eventos?: EventosSistemaService,
   ) {}
 
   /**
@@ -458,6 +460,13 @@ export class OutboxRedService {
           ultimoError: (err.message ?? 'Error desconocido').slice(0, 200),
           empresaId:   row?.empresa_id ?? undefined,
         } satisfies EventOutboxRedAgotado);
+
+        void this.eventos?.registrar({
+          origen:   'mikrotik',
+          codigo:   'OUTBOX_RED_AGOTADO',
+          mensaje:  `Comando ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (contrato ${cmd.contrato_id}, router ${cmd.router_id}): ${err.message}`,
+          contexto: { contratoId: cmd.contrato_id, routerId: cmd.router_id, accion: cmd.accion, intentos: nuevosIntentos },
+        });
       } else {
         this.logger.warn(
           `[OutboxRed] Reintento ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${err.message}`,
@@ -510,6 +519,14 @@ export class OutboxRedService {
       this.logger.warn(
         `[OutboxRed] Reintento ONU ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${err.message}`,
       );
+      if (nuevosIntentos === cmd.max_intentos) {
+        void this.eventos?.registrar({
+          origen:   'olt',
+          codigo:   'OUTBOX_ONU_AGOTADO',
+          mensaje:  `Comando ONU ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (contrato ${cmd.contrato_id}): ${err.message}`,
+          contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
+        });
+      }
     }
   }
 

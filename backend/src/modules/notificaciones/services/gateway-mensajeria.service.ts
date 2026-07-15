@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { HttpService }    from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -12,6 +12,7 @@ import { SYSTEM_DEFAULTS_WHATSAPP, SYSTEM_DEFAULTS_EMAIL } from '../../plantilla
 import { DatafastMensajeriaMasivaStrategy } from './datafast-mensajeria-masiva.strategy';
 import { SmtpStrategy, SMTP_ASUNTOS }       from './smtp.strategy';
 import { CircuitBreakerRegistry }           from '../../../common/services/circuit-breaker.registry';
+import { EventosSistemaService }            from '../../sistema/eventos-sistema.service';
 
 export type ProveedorActivo =
   | 'CUSTOM_API'
@@ -177,6 +178,7 @@ export class GatewayMensajeriaService {
     private readonly cb:    CircuitBreakerRegistry,
     @InjectDataSource() private readonly ds:    DataSource,
     @Inject(CACHE_MANAGER)  private readonly cache: Cache,
+    @Optional() private readonly eventos?: EventosSistemaService,
   ) {}
 
   // ── Punto de entrada único para el worker ─────────────────
@@ -289,6 +291,12 @@ export class GatewayMensajeriaService {
             [(resultado.error ?? 'Error desconocido').substring(0, 500), proveedorNombre, logId],
           );
           nuevoEstado = 'FALLIDO';
+          void this.eventos?.registrar({
+            origen:   'whatsapp',
+            codigo:   'ENVIO_FALLIDO',
+            mensaje:  `Envío WhatsApp FALLIDO (proveedor ${proveedorNombre ?? 'desconocido'}): ${resultado.error ?? 'Error desconocido'}`,
+            contexto: { logId, proveedor: proveedorNombre ?? null },
+          });
         }
         this.logger.log(`[GW] Log ${logId} → ${nuevoEstado}`);
       } catch (logErr: any) {
