@@ -75,14 +75,14 @@ export class SistemaService {
   }
 
   // ─── Versión de schema (BD) ───────────────────────────────────
-  // Derivada de la tabla `migrations` de TypeORM: el número de
+  // Derivada de la tabla `typeorm_migrations`: el número de
   // migraciones ejecutadas es un contador monotónico del esquema.
   async getSchemaVersion(): Promise<{ version: number; ultimaMigracion: string | null }> {
     try {
       const rows: Array<{ total: string; name: string | null }> = await this.ds.query(
         `SELECT COUNT(*)::text AS total,
-                (SELECT name FROM migrations ORDER BY id DESC LIMIT 1) AS name
-           FROM migrations`,
+                (SELECT name FROM typeorm_migrations ORDER BY id DESC LIMIT 1) AS name
+           FROM typeorm_migrations`,
       );
       return {
         version: parseInt(rows[0]?.total ?? '0', 10),
