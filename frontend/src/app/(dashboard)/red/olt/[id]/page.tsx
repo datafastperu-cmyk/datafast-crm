@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Cpu, RefreshCw, Loader2,
   Settings, Activity, Network, Users, Server, Zap,
-  Plug, Gauge, AlertTriangle, GitCompareArrows, Radio, ShieldCheck, BookMarked,
+  Plug, Gauge, AlertTriangle, GitCompareArrows, Radio, ShieldCheck,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
@@ -31,21 +31,24 @@ import { DeleteOltModal }  from '@/components/red/DeleteOltModal';
 // ─── Tabs ────────────────────────────────────────────────────────
 
 type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'drift' | 'firmware'
-           | 'proveedores' | 'salud' | 'tr069' | 'compliance' | 'baseline';
+           | 'proveedores' | 'salud' | 'tr069' | 'cumplimiento';
 
+// Orden por relevancia operativa: primero el día a día (ONUs, salud,
+// correcciones), luego configuración de red, al final infraestructura/auditoría.
+// "Cumplimiento" fusiona los antiguos tabs Compliance y Baseline: el baseline
+// declara el estado deseado, compliance lo mide y el plan lo corrige.
 const TABS: { id: TabId; label: string; icon: React.ReactNode; soloNativo?: boolean }[] = [
-  { id: 'detalles',    label: 'Detalles',    icon: <Settings       className="w-3.5 h-3.5" /> },
-  { id: 'vlans',       label: 'VLANs',       icon: <Network        className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'profiles',    label: 'Perfiles',    icon: <Server         className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'onus',        label: 'ONUs',        icon: <Users          className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'drift',       label: 'Drift',       icon: <GitCompareArrows className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'compliance',  label: 'Compliance',  icon: <ShieldCheck    className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'baseline',    label: 'Baseline',    icon: <BookMarked     className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'firmware',    label: 'Firmware',    icon: <Zap            className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'tr069',       label: 'TR-069',      icon: <Radio          className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'proveedores', label: 'Proveedores', icon: <Plug           className="w-3.5 h-3.5" /> },
-  { id: 'salud',       label: 'Salud',       icon: <Gauge          className="w-3.5 h-3.5" /> },
-  { id: 'eventos',     label: 'Eventos',     icon: <Activity       className="w-3.5 h-3.5" /> },
+  { id: 'detalles',     label: 'Detalles',     icon: <Settings         className="w-3.5 h-3.5" /> },
+  { id: 'onus',         label: 'ONUs',         icon: <Users            className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'salud',        label: 'Salud',        icon: <Gauge            className="w-3.5 h-3.5" /> },
+  { id: 'drift',        label: 'Drift',        icon: <GitCompareArrows className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'cumplimiento', label: 'Cumplimiento', icon: <ShieldCheck      className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'vlans',        label: 'VLANs',        icon: <Network          className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'profiles',     label: 'Perfiles',     icon: <Server           className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'tr069',        label: 'TR-069',       icon: <Radio            className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'firmware',     label: 'Firmware',     icon: <Zap              className="w-3.5 h-3.5" />, soloNativo: true },
+  { id: 'proveedores',  label: 'Proveedores',  icon: <Plug             className="w-3.5 h-3.5" /> },
+  { id: 'eventos',      label: 'Eventos',      icon: <Activity         className="w-3.5 h-3.5" /> },
 ];
 
 const MARCA_COLOR: Record<string, string> = {
@@ -250,8 +253,14 @@ export default function OltDetallePage() {
         {tabActual === 'profiles'    && <TabProfiles   oltId={id} />}
         {tabActual === 'onus'        && <TabOnus       oltId={id} />}
         {tabActual === 'drift'       && <TabDrift      oltId={id} />}
-        {tabActual === 'compliance'  && <TabCompliance oltId={id} />}
-        {tabActual === 'baseline'    && <TabBaseline oltId={id} />}
+        {tabActual === 'cumplimiento' && (
+          <div className="space-y-8">
+            <TabCompliance oltId={id} />
+            <div className="border-t border-border pt-6">
+              <TabBaseline oltId={id} />
+            </div>
+          </div>
+        )}
         {tabActual === 'firmware'    && <TabFirmware   oltId={id} />}
         {tabActual === 'tr069'       && <TabTr069      oltId={id} />}
         {tabActual === 'proveedores' && <ProveedoresTab oltId={id} />}
