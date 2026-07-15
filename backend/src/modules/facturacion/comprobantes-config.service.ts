@@ -13,6 +13,7 @@ import {
   UpdateConfiguracionFacturacionDto,
 } from './dto/comprobante-config.dto';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
+import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 
 @Injectable()
 export class ComprobantesConfigService {
@@ -212,12 +213,12 @@ export class ComprobantesConfigService {
   // ── Incremento atómico de correlativo (sin race condition) ────
   // Usa UPDATE ... RETURNING en lugar de MAX()+1
   async siguienteCorrelativo(comprobanteConfigId: string): Promise<{ serie: string; correlativo: number }> {
-    const [row] = await this.ds.query(`
+    const [row] = filasUpdateReturning<{ serie: string; correlativo: string }>(await this.ds.query(`
       UPDATE comprobantes_config
       SET correlativo_actual = correlativo_actual + 1
       WHERE id = $1
       RETURNING serie, correlativo_actual AS correlativo
-    `, [comprobanteConfigId]);
+    `, [comprobanteConfigId]));
 
     if (!row) throw new NotFoundException(`ComprobanteConfig ${comprobanteConfigId} no encontrado`);
     const correlativo = parseInt(String(row.correlativo ?? 1), 10);
@@ -326,13 +327,13 @@ export class ComprobantesConfigService {
   }
 
   async actualizarBanco(id: string, nombre: string, user: JwtPayload) {
-    const [row] = await this.ds.query(
+    const [row] = filasUpdateReturning<Record<string, unknown>>(await this.ds.query(
       `UPDATE bancos_isp
        SET nombre = $1, updated_at = NOW(), version = version + 1
        WHERE id = $2 AND empresa_id = $3 AND deleted_at IS NULL
        RETURNING id, nombre, es_protegido AS "esProtegido", activo`,
       [nombre.trim(), id, user.empresaId],
-    );
+    ));
     if (!row) throw new NotFoundException('Banco no encontrado');
     return row;
   }
@@ -382,13 +383,13 @@ export class ComprobantesConfigService {
   }
 
   async actualizarFormaPago(id: string, nombre: string, user: JwtPayload) {
-    const [row] = await this.ds.query(
+    const [row] = filasUpdateReturning<Record<string, unknown>>(await this.ds.query(
       `UPDATE formas_pago_isp
        SET nombre = $1, updated_at = NOW(), version = version + 1
        WHERE id = $2 AND empresa_id = $3 AND deleted_at IS NULL
        RETURNING id, nombre, es_protegido AS "esProtegido", activo`,
       [nombre.trim(), id, user.empresaId],
-    );
+    ));
     if (!row) throw new NotFoundException('Forma de pago no encontrada');
     return row;
   }

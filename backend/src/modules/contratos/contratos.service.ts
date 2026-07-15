@@ -13,6 +13,7 @@ import { Contrato, EstadoContrato, ContratoHistorial, TipoPago } from './entitie
 import { SegmentoIpv4, IpAsignada } from './entities/red.entity';
 import { CreateContratoDto, UpdateContratoDto, FilterContratoDto, CambiarEstadoContratoDto, OtorgarProrrogaDto } from './dto/contrato.dto';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
+import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { encrypt, decrypt } from '../../common/utils/encryption.util';
 import { getNextAvailableIp, getCidrRange, isValidIp } from '../../common/utils/ip.util';
 import { WirelessService } from '../mikrotik/services/wireless.service';
@@ -724,7 +725,7 @@ export class ContratosService {
       dto.estado === EstadoContrato.ACTIVO &&
       [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO].includes(anterior as EstadoContrato)
     ) {
-      const [clienteActualizado] = await this.dataSource.query(`
+      const [clienteActualizado] = filasUpdateReturning<{ id: string }>(await this.dataSource.query(`
         UPDATE clientes
         SET estado = 'activo', fecha_estado = NOW()
         WHERE id = $1
@@ -737,7 +738,7 @@ export class ContratosService {
               AND id != $2
           )
         RETURNING id
-      `, [contrato.clienteId, id]);
+      `, [contrato.clienteId, id]));
 
       if (clienteActualizado) {
         await this.dataSource.query(`

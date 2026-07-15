@@ -9,6 +9,7 @@ import { Cache }               from 'cache-manager';
 import { Job, Queue }          from 'bull';
 import { SchedulerRegistry }   from '@nestjs/schedule';
 import { CronJob }             from 'cron';
+import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { InjectDataSource }    from '@nestjs/typeorm';
 import { DataSource }          from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
@@ -461,14 +462,14 @@ export class FacturacionWorker {
   async processMarcarVencidas(job: Job<{ fecha: string }>): Promise<{ marcadas: number }> {
     const fecha = job.data.fecha || new Date().toISOString().split('T')[0];
 
-    const result = await this.ds.query(`
+    const result = filasUpdateReturning<{ id: string }>(await this.ds.query(`
       UPDATE facturas
       SET estado = 'vencida'
       WHERE fecha_vencimiento < $1
         AND estado IN ('emitida', 'pagada_parcial')
         AND deleted_at IS NULL
       RETURNING id
-    `, [fecha]);
+    `, [fecha]));
 
     const marcadas = result.length;
 

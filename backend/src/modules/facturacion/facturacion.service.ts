@@ -5,6 +5,7 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
+import { filasUpdateReturning }       from '../../common/utils/pg-result.util';
 import { FacturaRepository }          from './repositories/factura.repository';
 import { ComprobantesConfigService }   from './comprobantes-config.service';
 import { PdfService, EmpresaPdfData, ClientePdfData } from './pdf.service';
@@ -488,7 +489,7 @@ export class FacturacionService {
     // UPDATE atómico: elimina la race condition de leer-calcular-escribir.
     // La condición del WHERE valida estado y que el monto no exceda el saldo
     // pendiente (tolerancia de 1 centavo para redondeos de punto flotante).
-    const result = await this.ds.query<{ id: string; estado: string }[]>(`
+    const result = filasUpdateReturning<{ id: string; estado: string }>(await this.ds.query(`
       UPDATE facturas
       SET
         monto_pagado = monto_pagado::numeric + $3::numeric,
@@ -504,7 +505,7 @@ export class FacturacionService {
         AND estado NOT IN ('pagada', 'anulada')
         AND $3::numeric <= (total::numeric - monto_pagado::numeric + 0.01)
       RETURNING id, estado
-    `, [facturaId, empresaId, montoPago, fechaPago]);
+    `, [facturaId, empresaId, montoPago, fechaPago]));
 
     if (!result.length) {
       const factura = await this.findOne(facturaId, empresaId);

@@ -39,6 +39,7 @@ import {
   PayloadNotificacionCobro,
 } from './workers.constants';
 import { decrypt } from '../../common/utils/encryption.util';
+import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { RedisLockService } from '../../common/redis/redis-lock.service';
 
 // ─────────────────────────────────────────────────────────────
@@ -703,7 +704,7 @@ export class CobranzaWorker {
     }
 
     // RETURNING id para saber si realmente cambió de estado (evita historial fantasma).
-    const [contratoActualizado] = await this.ds.query<{ id: string }[]>(`
+    const [contratoActualizado] = filasUpdateReturning<{ id: string }>(await this.ds.query(`
       UPDATE contratos SET
         estado = 'activo',
         fecha_estado = NOW(),
@@ -715,7 +716,7 @@ export class CobranzaWorker {
         meses_deuda = 0
       WHERE id = $1 AND estado = 'suspendido'
       RETURNING id
-    `, [contratoId, nuevaFechaStr]);
+    `, [contratoId, nuevaFechaStr]));
 
     if (contratoActualizado) {
       await this.ds.query(`
@@ -726,7 +727,7 @@ export class CobranzaWorker {
     }
 
     // Sincronizar clientes.estado: si no quedan contratos suspendidos del cliente → activo
-    const [clienteActualizado] = await this.ds.query(`
+    const [clienteActualizado] = filasUpdateReturning<{ id: string }>(await this.ds.query(`
       UPDATE clientes
       SET estado = 'activo', fecha_estado = NOW()
       WHERE id = $1
@@ -742,7 +743,7 @@ export class CobranzaWorker {
     `, [clienteId, contratoId]).catch((e: any) => {
       this.logger.warn(`[REACTIVAR] No se pudo sincronizar clientes.estado: ${e.message}`);
       return [];
-    });
+    }));
 
     if (clienteActualizado) {
       await this.ds.query(`

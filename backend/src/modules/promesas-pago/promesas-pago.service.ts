@@ -13,6 +13,7 @@ import { FirewallService }            from '../mikrotik/services/firewall.servic
 import { PppoeService }               from '../mikrotik/services/pppoe.service';
 import { OutboxRedService }           from '../outbox-red/outbox-red.service';
 import { decrypt }                    from '../../common/utils/encryption.util';
+import { filasUpdateReturning }       from '../../common/utils/pg-result.util';
 import { JwtPayload }                 from '../../common/decorators/current-user.decorator';
 import { NOTIFICATION_EVENTS }        from '../notificaciones/events/notification.events';
 
@@ -133,7 +134,7 @@ export class PromesasPagoService {
         `, [dto.contratoId]);
 
         // Sincronizar clientes.estado solo si no quedan otros contratos bloqueados
-        const [clienteActualizado] = await em.query<{ id: string }[]>(`
+        const [clienteActualizado] = filasUpdateReturning<{ id: string }>(await em.query(`
           UPDATE clientes
           SET    estado = 'activo', fecha_estado = NOW()
           WHERE  id = $1
@@ -146,7 +147,7 @@ export class PromesasPagoService {
                 AND  id != $2
             )
           RETURNING id
-        `, [contrato.cliente_id, dto.contratoId]);
+        `, [contrato.cliente_id, dto.contratoId]));
 
         if (clienteActualizado) {
           await em.query(`
@@ -251,7 +252,7 @@ export class PromesasPagoService {
     // UPDATE atómico con WHERE estado = 'activa': evita race condition contra procesarVencidas().
     // Si el cron movió la promesa a VENCIDA_PENDIENTE entre el findOne y aquí, RETURNING devuelve
     // 0 filas y abortamos antes de tocar MikroTik o los contratos.
-    const [cancelada] = await this.ds.query<{ id: string }[]>(`
+    const [cancelada] = filasUpdateReturning<{ id: string }>(await this.ds.query(`
       UPDATE promesas_pago
       SET    estado       = 'cancelada',
              resuelta_por = $1,
@@ -261,7 +262,7 @@ export class PromesasPagoService {
         AND  estado     = 'activa'
         AND  empresa_id = $4
       RETURNING id
-    `, [user.sub, motivo || promesa.motivo, id, user.empresaId]);
+    `, [user.sub, motivo || promesa.motivo, id, user.empresaId]));
 
     if (!cancelada) {
       throw new ConflictException(

@@ -28,6 +28,7 @@ import {
 } from './dto/pago.dto';
 import { QUEUES, JOBS, PayloadReactivarContrato } from '../workers/workers.constants';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
+import { filasUpdateReturning }    from '../../common/utils/pg-result.util';
 
 @Injectable()
 export class PagosService {
@@ -145,7 +146,7 @@ export class PagosService {
       if (autoVerificado) {
         // UPDATE atómico: evita la race condition leer-calcular-escribir.
         // Si el monto excede el saldo, el WHERE lo rechaza y lanzamos error.
-        const result = await manager.query<{ id: string }[]>(`
+        const result = filasUpdateReturning<{ id: string }>(await manager.query(`
           UPDATE facturas
           SET
             monto_pagado = monto_pagado::numeric + $1::numeric,
@@ -161,7 +162,7 @@ export class PagosService {
             AND estado NOT IN ('pagada', 'anulada')
             AND $1::numeric <= (total::numeric - monto_pagado::numeric + 0.01)
           RETURNING id
-        `, [dto.monto, factura.id]);
+        `, [dto.monto, factura.id]));
 
         if (!result.length) {
           throw new BadRequestException(

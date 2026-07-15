@@ -4,6 +4,7 @@ import { OnEvent }      from '@nestjs/event-emitter';
 import { InjectQueue }  from '@nestjs/bull';
 import { Queue }        from 'bull';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { DataSource }   from 'typeorm';
 import { QUEUES, JOBS } from '../workers/workers.constants';
 import { GATEWAY_EVENTS } from '../sistema/sistema.service';
@@ -57,14 +58,14 @@ export class GatewayMonitorService implements OnModuleInit {
   async limpiarHuerfanosEnProceso(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     try {
-      const rows = await this.ds.query<{ id: string }[]>(`
+      const rows = filasUpdateReturning<{ id: string }>(await this.ds.query(`
         UPDATE notificaciones_logs
         SET estado_entrega = 'NO_ENVIADO',
             error_detalle  = 'Timeout: worker no respondió en 10 min'
         WHERE estado_entrega = 'EN_PROCESO'
           AND updated_at <= NOW() - INTERVAL '10 minutes'
         RETURNING id
-      `);
+      `));
       if (rows.length > 0) {
         this.logger.warn(`[Monitor] ${rows.length} log(s) EN_PROCESO rescatados a NO_ENVIADO`);
       }

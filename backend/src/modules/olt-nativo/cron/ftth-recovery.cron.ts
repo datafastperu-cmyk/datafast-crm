@@ -7,6 +7,7 @@ import { FtthOnuEstado, FtthOnuRegistro } from '../entities/ftth-onu-registro.en
 import { OltDispositivo }                  from '../entities/olt-dispositivo.entity';
 import { OltAutomationClient }             from '../olt-automation.client';
 import { decrypt }                         from '../../../common/utils/encryption.util';
+import { filasUpdateReturning }            from '../../../common/utils/pg-result.util';
 
 // ─────────────────────────────────────────────────────────────
 // FtthRecoveryCron
@@ -45,10 +46,10 @@ export class FtthRecoveryCron {
     // UPDATE atómico: solo la instancia que gana el race obtiene las filas.
     // locked_at se renueva a NOW() para que la condición `< NOW() - 10min`
     // sea falsa para cualquier otra instancia que corra en paralelo.
-    const bloqueados = await this.ds.query<{
+    const bloqueados = filasUpdateReturning<{
       id: string; estado: string; olt_id: string;
       slot: number; port: number; onu_id: number; service_port_id: number | null;
-    }[]>(
+    }>(await this.ds.query(
       `UPDATE ftth_onu_registro
        SET locked_at = NOW()
        WHERE locked_at IS NOT NULL
@@ -56,7 +57,7 @@ export class FtthRecoveryCron {
          AND estado IN ('pendiente', 'gpon_registrado', 'wan_inyectado', 'desaprovisionando')
          AND deleted_at IS NULL
        RETURNING id, estado, olt_id, slot, port, onu_id, service_port_id`,
-    );
+    ));
 
     if (!bloqueados.length) return;
 
