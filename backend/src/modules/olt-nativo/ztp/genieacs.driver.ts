@@ -64,6 +64,55 @@ export class GenieAcsDriver {
     return rows[0]?._id ?? null;
   }
 
+  /** Serial hex tal cual lo ve GenieACS (DeviceID.SerialNumber) — el que la ONU informa
+   *  y contra el que la extensión erpauth.js deriva el HMAC. Distinto del SN legible de la OLT. */
+  async getGenieSerial(deviceId: string): Promise<string | null> {
+    const dev = await this.nbi.getDevice(deviceId);
+    return dev?._deviceId?._SerialNumber ?? null;
+  }
+
+  /**
+   * Endurece la auth CWMP del device (ONU→ACS) de forma DETERMINISTA e inmune al refresh:
+   *   ManagementServer.Username = serial hex (DeviceID.SerialNumber)
+   *   ManagementServer.Password = HMAC(CWMP_AUTH_SECRET, serial)  (= erpauth.js derive)
+   * y sólo si el write se aplicó, marca el device con Tag "AuthEnforced".
+   *
+   * ORDEN CRÍTICO: primero escribe las credenciales, comprueba que no hubo fault, y RECIÉN
+   * ahí taggea. Taggear antes de que la ONU tenga la clave la dejaría fuera (401 en el próximo
+   * Inform). La sesión CWMP la dispara el connection-request; la clave aplica desde el siguiente
+   * Inform, donde ya coincide con derive → AUTH pasa. La extensión recomputa el HMAC, así que
+   * un refreshObject que vacíe el Password cacheado (write-only) NO rompe la auth.
+   */
+  async enforceDeviceAuth(
+    deviceId: string,
+    serial: string,
+    password: string,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    const writes: Array<[string, string]> = [
+      ['InternetGatewayDevice.ManagementServer.Username', serial],
+      ['InternetGatewayDevice.ManagementServer.Password', password],
+    ];
+    for (const pv of writes) {
+      const res = await this.nbi.queueTask(
+        deviceId, { name: 'setParameterValues', parameterValues: [pv] }, true,
+      );
+      const taskId = (res.body as { _id?: string })?._id;
+      if (!taskId) continue; // aplicada en sesión sin fault
+      await this._sleep(1500);
+      const faults = await this.nbi.getFaults(deviceId, `task_${taskId}`).catch(() => []);
+      if (faults.length > 0) {
+        const fault = faults[0].code ?? faults[0].message;
+        await this.nbi.deleteFault(faults[0]._id).catch(() => {});
+        await this.nbi.deleteTask(taskId).catch(() => {});
+        this.logger.warn(`enforceDeviceAuth | device=${deviceId} fault en ${pv[0]}: ${fault}`);
+        return { ok: false, reason: `fault:${fault}` };
+      }
+    }
+    await this.nbi.addTag(deviceId, 'AuthEnforced');
+    this.logger.log(`enforceDeviceAuth | device=${deviceId} auth CWMP endurecida + Tag AuthEnforced`);
+    return { ok: true };
+  }
+
   /** Runtime del device (para resolver el DeviceProfile). */
   async getRuntime(deviceId: string): Promise<DeviceRuntime | null> {
     const dev = await this.nbi.getDevice(deviceId);

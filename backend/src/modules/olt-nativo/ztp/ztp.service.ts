@@ -12,6 +12,7 @@ import { resolve } from './resolver';
 import { DeviceRuntime, getParameterMap, matchDeviceProfile } from './registry';
 import { GenieAcsDriver } from './genieacs.driver';
 import { ContratoOnuConfigService } from './contrato-onu-config.service';
+import { CwmpAuthService } from './cwmp-auth.service';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ZtpProvisioningService — orquestador del pipeline (lado ERP)
@@ -34,6 +35,7 @@ export class ZtpProvisioningService {
     private readonly configRepo: Repository<ContratoOnuConfig>,
     private readonly driver: GenieAcsDriver,
     private readonly onuConfig: ContratoOnuConfigService,
+    private readonly cwmpAuth: CwmpAuthService,
   ) {}
 
   private _dec(v: string | null): string | undefined {
@@ -234,13 +236,30 @@ export class ZtpProvisioningService {
       },
     );
 
+    // Endurecimiento de auth CWMP por-dispositivo (ONU→ACS): SÓLO tras un plan 100% OK,
+    // para no dejar una ONU a medio provisionar exigiendo auth. Determinista + inmune al
+    // refresh (ver enforceDeviceAuth + erpauth.js). Degradado si no hay CWMP_AUTH_SECRET.
+    let authMsg = '';
+    if (ok && this.cwmpAuth.isEnabled()) {
+      const genieSn = await this.driver.getGenieSerial(deviceId);
+      const pwd = genieSn ? this.cwmpAuth.derive(genieSn) : null;
+      if (genieSn && pwd) {
+        try {
+          const a = await this.driver.enforceDeviceAuth(deviceId, genieSn, pwd);
+          authMsg = a.ok ? ' Auth CWMP endurecida.' : ` Auth CWMP no endurecida (${a.reason}).`;
+        } catch (e) {
+          authMsg = ` Auth CWMP no endurecida (${e instanceof Error ? e.message : String(e)}).`;
+        }
+      }
+    }
+
     return {
       ok,
       deviceId,
       applied: res.applied,
       total: plan.writes.length,
       fallidas: fallidas.map((r) => `${r.key}(${r.fault ?? r.reason})`),
-      mensaje,
+      mensaje: mensaje + authMsg,
     };
   }
 
