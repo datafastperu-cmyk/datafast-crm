@@ -670,7 +670,17 @@ export class ProvisionFtthService {
       };
     }
 
-    await this.ftthRepo.update(registro.id, { ultimoError: null });
+    // Persistir el estado del carril para poder RESTAURARLO tras un re-aprovisionamiento
+    // (la OLT borra los service-ports de la ONU al re-registrarla). Se guarda el mismo
+    // mgmtServicePortId (ya asignado a este contrato en el pool) para reutilizarlo idéntico.
+    await this.ftthRepo.update(registro.id, {
+      ultimoError:            null,
+      tr069BootstrapAplicado: true,
+      mgmtServicePortId,
+      mgmtVlan,
+      mgmtTrafficIndex:       dto.trafficIndex ?? 0,
+      mgmtPriority:           dto.priority ?? 2,
+    });
     this.logger.log(`FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${mgmtVlan}`);
     return {
       exitoso: true,
@@ -1400,8 +1410,46 @@ export class ProvisionFtthService {
       trafficIndexUp:   reg.trafficIndexUp ?? undefined,
       wanMode:          reg.wanMode ?? undefined,
     };
-    this.logger.log(`reaplicar | contrato=${contratoId} olt=${reg.oltId} sn=${reg.sn}`);
-    return this.provisionarFtth(reg.oltId, empresaId, dto);
+    // Captura del estado del carril de gestión ANTES de re-aprovisionar (la fila puede
+    // ser reescrita por el upsert de provisionarFtth). Si estaba aplicado, se restaura
+    // reutilizando el MISMO mgmtServicePortId (ya asignado a este contrato en el pool).
+    const carril = reg.tr069BootstrapAplicado && reg.mgmtServicePortId != null
+      ? {
+          mgmtServicePortId: reg.mgmtServicePortId,
+          mgmtVlan:          reg.mgmtVlan ?? undefined,
+          trafficIndex:      reg.mgmtTrafficIndex ?? undefined,
+          priority:          reg.mgmtPriority ?? undefined,
+        }
+      : null;
+
+    this.logger.log(
+      `reaplicar | contrato=${contratoId} olt=${reg.oltId} sn=${reg.sn}` +
+      (carril ? ` (restaurará carril TR-069 svcPort=${carril.mgmtServicePortId})` : ''),
+    );
+    const result = await this.provisionarFtth(reg.oltId, empresaId, dto);
+
+    // Restauración del carril de gestión: best-effort tras un re-aprovisionamiento exitoso.
+    // No falla el re-aprovisionamiento si el carril no aplica (el plano de datos ya está OK);
+    // se anota en el mensaje para visibilidad. La ONU sin carril no aparecerá en GenieACS.
+    if (carril && result.estado === FtthOnuEstado.ACTIVO) {
+      try {
+        const b = await this.bootstrapTr069(reg.oltId, empresaId, {
+          contratoId,
+          mgmtVlan:          carril.mgmtVlan,
+          mgmtServicePortId: carril.mgmtServicePortId,
+          trafficIndex:      carril.trafficIndex,
+          priority:          carril.priority,
+        });
+        result.mensaje += b.exitoso
+          ? ' Carril TR-069 restaurado.'
+          : ` Carril TR-069 NO restaurado: ${b.error ?? b.mensaje}`;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`reaplicar: restauración de carril falló | contrato=${contratoId}: ${msg}`);
+        result.mensaje += ` Carril TR-069 NO restaurado: ${msg}`;
+      }
+    }
+    return result;
   }
 
   async reconciliar(

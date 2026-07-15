@@ -128,6 +128,25 @@ export class FtthOnuRegistro extends BaseModel {
   @Column({ name: 'traffic_table_id', type: 'int', nullable: true })
   trafficTableId: number | null;
 
+  // ── Carril de gestión TR-069 (ZTP) ──────────────────────────────
+  // Persiste que la ONU tuvo aplicado el plano de gestión (bootstrapTr069) y con qué
+  // parámetros, para restaurarlo automáticamente tras un re-aprovisionamiento (la OLT
+  // borra TODOS los service-ports de la ONU al re-registrarla, incluido el carril).
+  @Column({ name: 'tr069_bootstrap_aplicado', type: 'boolean', default: false })
+  tr069BootstrapAplicado: boolean;
+
+  @Column({ name: 'mgmt_service_port_id', type: 'int', nullable: true })
+  mgmtServicePortId: number | null;
+
+  @Column({ name: 'mgmt_vlan', type: 'smallint', nullable: true })
+  mgmtVlan: number | null;
+
+  @Column({ name: 'mgmt_traffic_index', type: 'int', nullable: true })
+  mgmtTrafficIndex: number | null;
+
+  @Column({ name: 'mgmt_priority', type: 'smallint', nullable: true })
+  mgmtPriority: number | null;
+
 }
 
 // ── Helpers (fuera de la clase para evitar get/set con SWC) ──────────
