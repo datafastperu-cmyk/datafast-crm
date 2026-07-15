@@ -231,11 +231,22 @@ export class SistemaService {
     this.logger.log('Reinicio de PM2 programado en 2s');
   }
 
-  // ─── Actualizar sistema ───────────────────────────────────────
+  // ─── Actualizar sistema (flujo transaccional) ─────────────────
+  // Orden: backup BD → pull → build backend → migraciones → build
+  // frontend → restart → health check. Cualquier fallo tras el pull
+  // ejecuta rollback al commit previo. La BD nunca se restaura
+  // automáticamente: las migraciones corren con transactionMode
+  // 'each', así que un fallo deja la BD en la última migración buena
+  // (política de cambios aditivos); el dump queda para recuperación
+  // manual ante desastre.
   triggerUpdate(): void {
-    const scriptPath = '/tmp/datafast_update.sh';
-    const backendDir  = `${this.appDir}/backend`;
-    const frontendDir = `${this.appDir}/frontend`;
+    const scriptPath  = '/tmp/datafast_update.sh';
+    const statusPath  = '/tmp/datafast_update_status';
+    const app         = this.appDir;
+    const backendDir  = `${app}/backend`;
+    const frontendDir = `${app}/frontend`;
+    const port        = this.config.get<number>('app.port') || 4000;
+    const nodeOpts    = 'NODE_OPTIONS="--max-old-space-size=2048"';
 
     const pullCmd = this.buildPullCommand();
     if (!pullCmd) {
@@ -244,25 +255,82 @@ export class SistemaService {
 
     const script = [
       '#!/bin/bash',
-      'set -e',
-      'echo "[UPDATE] Iniciando actualización..."',
-      pullCmd,
-      `echo "[UPDATE] Reconstruyendo backend..."`,
-      `cd ${backendDir} && npm install --production=false 2>/dev/null || true`,
-      `cd ${backendDir} && ./node_modules/.bin/tsc --skipLibCheck --noEmitOnError false 2>/dev/null || true`,
-      `echo "[UPDATE] Reconstruyendo frontend..."`,
-      `cd ${frontendDir} && npm install 2>/dev/null || true`,
-      `cd ${frontendDir} && npm run build 2>/dev/null || true`,
-      'echo "[UPDATE] Reiniciando procesos..."',
-      'pm2 restart all',
-      `echo "[UPDATE] Finalizado: $(date)"`,
+      'set -o pipefail',
+      `APP="${app}"`,
+      `STATUS="${statusPath}"`,
+      'step()       { echo "[UPDATE][$(date \'+%H:%M:%S\')] $1"; }',
+      'fail_abort() { step "ERROR: $1 — abortado, sin cambios aplicados"; echo "FAILED_SAFE $(date -Is)" > "$STATUS"; exit 1; }',
+      'rollback()   {',
+      '  step "ERROR: $1"',
+      '  step "ROLLBACK: volviendo al commit $PREV_COMMIT"',
+      '  cd "$APP" && git reset --hard "$PREV_COMMIT"',
+      `  cd "${backendDir}"  && ${nodeOpts} npm run build > /dev/null 2>&1 || step "AVISO: rebuild backend falló durante rollback"`,
+      `  cd "${frontendDir}" && ${nodeOpts} npm run build > /dev/null 2>&1 || step "AVISO: rebuild frontend falló durante rollback"`,
+      '  pm2 restart all',
+      '  echo "ROLLED_BACK $(date -Is)" > "$STATUS"',
+      '  step "Rollback completado. Backup de BD disponible en $BK_SQL"',
+      '  exit 1',
+      '}',
+      '',
+      'echo "IN_PROGRESS $(date -Is)" > "$STATUS"',
+      'step "Paso 0/7: registrando versión actual"',
+      'cd "$APP" || fail_abort "no existe $APP"',
+      'PREV_COMMIT=$(git rev-parse HEAD) || fail_abort "no se pudo leer el commit actual"',
+      '',
+      'step "Paso 1/7: backup de base de datos"',
+      'mkdir -p "$APP/backups/updates"',
+      `set -a; source "${backendDir}/.env.production" 2>/dev/null; set +a`,
+      'DBH="${DATABASE_HOST:-${DB_HOST:-localhost}}"',
+      'DBP="${DATABASE_PORT:-${DB_PORT:-5432}}"',
+      'DBN="${DATABASE_NAME:-${DB_NAME:-datafast_db}}"',
+      'DBU="${DATABASE_USER:-${DB_USER:-datafast_db_user}}"',
+      'DBPASS="${DATABASE_PASSWORD:-$DB_PASSWORD}"',
+      'TS=$(date +%Y%m%d_%H%M%S)',
+      'BK_SQL="$APP/backups/updates/pre_update_$TS.sql.gz"',
+      'PGPASSWORD="$DBPASS" pg_dump -h "$DBH" -p "$DBP" -U "$DBU" "$DBN" | gzip > "$BK_SQL" || fail_abort "pg_dump falló"',
+      '[ -s "$BK_SQL" ] || fail_abort "el backup quedó vacío"',
+      `cp "${backendDir}/.env.production" "$APP/backups/updates/env_$TS.bak" 2>/dev/null || true`,
+      '# Retención: conservar los 5 backups de update más recientes',
+      'ls -1t "$APP"/backups/updates/pre_update_*.sql.gz 2>/dev/null | tail -n +6 | xargs -r rm -f',
+      'step "Backup OK: $BK_SQL"',
+      '',
+      'step "Paso 2/7: descargando código"',
+      `{ ${pullCmd}; } || fail_abort "descarga de código falló"`,
+      '',
+      'step "Paso 3/7: build backend"',
+      `cd "${backendDir}" && npm install --production=false > /dev/null 2>&1`,
+      `cd "${backendDir}" && ${nodeOpts} npm run build || rollback "build de backend falló"`,
+      '',
+      'step "Paso 4/7: migraciones de base de datos"',
+      `cd "${backendDir}" && npm run migration:run           || rollback "migración core falló (BD quedó en la última migración válida; backup: $BK_SQL)"`,
+      `cd "${backendDir}" && npm run migration:run:auxiliary || rollback "migración auxiliary falló (BD quedó en la última migración válida; backup: $BK_SQL)"`,
+      '',
+      'step "Paso 5/7: build frontend"',
+      `cd "${frontendDir}" && npm install > /dev/null 2>&1`,
+      `cd "${frontendDir}" && ${nodeOpts} npm run build || rollback "build de frontend falló"`,
+      '',
+      'step "Paso 6/7: reiniciando procesos"',
+      'pm2 restart all || rollback "pm2 restart falló"',
+      '',
+      'step "Paso 7/7: verificando salud del sistema"',
+      'HEALTH_OK=0',
+      'for i in $(seq 1 12); do',
+      '  sleep 5',
+      `  CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${port}/health" 2>/dev/null)`,
+      '  if [ "$CODE" = "200" ]; then HEALTH_OK=1; break; fi',
+      '  step "health check intento $i/12: HTTP $CODE"',
+      'done',
+      '[ "$HEALTH_OK" = "1" ] || rollback "el backend no respondió sano tras el reinicio"',
+      '',
+      'echo "OK $(date -Is)" > "$STATUS"',
+      'step "Actualización completada y verificada: $(date)"',
     ].join('\n');
 
     fs.writeFileSync(scriptPath, script, { mode: 0o755 });
     exec(`nohup bash ${scriptPath} > /tmp/datafast_update.log 2>&1 &`, (err) => {
       if (err) this.logger.error(`Error al lanzar script de actualización: ${err.message}`);
     });
-    this.logger.log('Script de actualización lanzado en background');
+    this.logger.log('Actualización transaccional lanzada en background');
   }
 
   private buildPullCommand(): string | null {
@@ -651,7 +719,9 @@ export class SistemaService {
   // ─── Log de actualización ────────────────────────────────────
   async getUpdateLog(): Promise<string> {
     try {
-      const { stdout } = await execAsync('tail -50 /tmp/datafast_update.log 2>/dev/null || echo "(sin logs)"');
+      const { stdout } = await execAsync(
+        'echo "Estado: $(cat /tmp/datafast_update_status 2>/dev/null || echo desconocido)"; tail -80 /tmp/datafast_update.log 2>/dev/null || echo "(sin logs)"',
+      );
       return stdout;
     } catch {
       return '(sin logs disponibles)';
