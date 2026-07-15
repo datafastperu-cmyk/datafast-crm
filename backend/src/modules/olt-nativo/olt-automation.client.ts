@@ -253,7 +253,11 @@ export class OltAutomationClient {
     this.logger.log(
       `→ Python ont-reset | OLT=${payload.connection.ip} slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
     );
-    const res = await this.post<PythonOntResetResponse>('/api/v1/olt/ont-reset', payload);
+    // 45s (> default 30s, < 60s del frontend): el reset en python hace SSH connect +
+    // read_timeout 60s + reintentos con backoff; con 30s el backend abortaba con falso
+    // fallo mientras la ONU sí se reiniciaba. Debe quedar por debajo del timeout del
+    // frontend para que sea el backend quien devuelva el error limpio primero.
+    const res = await this.post<PythonOntResetResponse>('/api/v1/olt/ont-reset', payload, 45_000);
     this.logger.log(`← Python ont-reset | success=${res.success}`);
     return res;
   }
