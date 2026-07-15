@@ -5,13 +5,17 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { QueryFailedError, EntityNotFoundError, OptimisticLockVersionMismatchError } from 'typeorm';
+import { EventosSistemaService } from '../../modules/sistema/eventos-sistema.service';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
+
+  constructor(@Optional() private readonly eventos?: EventosSistemaService) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     if (host.getType() !== 'http') return;
@@ -134,6 +138,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
         `${status} ${request.method} ${request.url} — ${message}`,
         exception instanceof Error ? exception.stack : undefined,
       );
+    }
+
+    // Persistir errores graves en eventos_sistema (best-effort, no bloquea la respuesta)
+    if (this.eventos && (status >= 500 || code === 'SCHEMA_ERROR' || code === 'DATABASE_ERROR')) {
+      void this.eventos.registrar({
+        nivel:   code === 'SCHEMA_ERROR' ? 'critical' : 'error',
+        origen:  exception instanceof QueryFailedError ? 'db' : 'api',
+        codigo:  code,
+        mensaje: exception instanceof Error ? exception.message : String(message),
+        stack:   exception instanceof Error ? exception.stack ?? null : null,
+        contexto: { url: request.url, method: request.method, status },
+      });
     }
 
     response.status(status).json(errorResponse);

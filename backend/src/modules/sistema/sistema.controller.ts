@@ -7,6 +7,7 @@ import { Roles }       from '../../common/decorators/roles.decorator';
 import { ApiResponse } from '../../common/dto/response.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { SistemaService, CronHorarios, ProveedorActivo } from './sistema.service';
+import { EventosSistemaService } from './eventos-sistema.service';
 
 @ApiTags('Sistema — Admin')
 @ApiBearerAuth('JWT')
@@ -15,7 +16,28 @@ import { SistemaService, CronHorarios, ProveedorActivo } from './sistema.service
 export class SistemaController {
   private readonly logger = new Logger(SistemaController.name);
 
-  constructor(private readonly sistema: SistemaService) {}
+  constructor(
+    private readonly sistema: SistemaService,
+    private readonly eventos: EventosSistemaService,
+  ) {}
+
+  // ── GET /admin/sistema/eventos ────────────────────────────────
+  @Get('eventos')
+  @ApiOperation({ summary: 'Registro de eventos/errores de producción' })
+  async getEventos(
+    @Query('nivel')  nivel?: string,
+    @Query('origen') origen?: string,
+    @Query('page')   page?: string,
+    @Query('limit')  limit?: string,
+  ) {
+    const res = await this.eventos.listar({
+      nivel,
+      origen,
+      page:  page  ? parseInt(page, 10)  : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+    return ApiResponse.ok(res);
+  }
 
   // ── GET /admin/sistema/info ───────────────────────────────────
   @Get('info')

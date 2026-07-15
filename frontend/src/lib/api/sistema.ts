@@ -74,8 +74,24 @@ export interface NotifLog {
   cliente_nombre?:  string | null;
 }
 
+export interface EventoSistema {
+  id:           string;
+  nivel:        'critical' | 'error' | 'warn';
+  origen:       string;
+  codigo:       string | null;
+  mensaje:      string;
+  stack:        string | null;
+  contexto:     Record<string, unknown> | null;
+  sincronizado: boolean;
+  createdAt:    string;
+}
+
 export const sistemaApi = {
   getInfo:      () => api.get<{ data: ServerInfo }>('/admin/sistema/info').then(r => r.data.data),
+
+  getEventos: (params: { nivel?: string; origen?: string; page?: number; limit?: number }) =>
+    api.get<{ data: { items: EventoSistema[]; total: number } }>('/admin/sistema/eventos', { params })
+       .then(r => r.data.data),
   getUpdateLog: () => api.get<{ data: { log: string } }>('/admin/sistema/update-log').then(r => r.data.data.log),
   restart:      () => api.post('/admin/sistema/restart'),
   update:       () => api.post('/admin/sistema/update'),

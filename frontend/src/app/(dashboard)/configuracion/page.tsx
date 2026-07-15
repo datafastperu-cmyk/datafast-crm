@@ -61,7 +61,7 @@ const CATEGORIES = [
       { href: '/configuracion/backup',   label: 'Copia de Seguridad', icon: HardDrive,desc: 'Respaldo y restauración de la base de datos' },
       { href: '/configuracion/crontab',  label: 'Crontab',            icon: Clock,    desc: 'Tareas programadas del sistema' },
       { href: '/configuracion/log',      label: 'Log',                icon: Terminal, desc: 'Registro de eventos y errores del sistema' },
-      { href: '/configuracion/sistema',  label: 'Sistema',            icon: Monitor,  desc: 'Estado y rendimiento del servidor' },
+      { href: '/configuracion/sistema',  label: 'Centro de Operaciones', icon: Monitor, desc: 'Registro de eventos y errores de producción' },
       { href: '/configuracion/servidor', label: 'Servidor',           icon: Server,   desc: 'Configuración del servidor y red' },
       { href: '/configuracion/licencia', label: 'Licencia',           icon: Key,      desc: 'Activación y estado de la licencia' },
     ],
