@@ -1812,6 +1812,48 @@ def delete_vlan(
     return {'success': True}
 
 
+def _parse_version_info(raw: str) -> dict[str, str | None]:
+    """
+    Extrae PRODUCT (modelo), VERSION (firmware) y PATCH de 'display version'.
+    Formato Huawei VRP (MA5800):
+      VERSION : MA5800V100R019C10
+      PATCH   : SPH113
+      PRODUCT : MA5800-X7
+    """
+    def buscar(clave: str) -> str | None:
+        m = re.search(rf'^\s*{clave}\s*:\s*(\S+)', raw, re.MULTILINE | re.IGNORECASE)
+        return m.group(1).strip() if m else None
+
+    return {
+        'model':    buscar('PRODUCT'),
+        'firmware': buscar('VERSION'),
+        'patch':    buscar('PATCH'),
+    }
+
+
+def get_version_info(conn: OltConnectionSchema) -> dict[str, Any]:
+    """
+    Lee modelo, firmware y patch reales de la OLT ('display version').
+    Una sesión Paramiko, un solo comando. Solo lectura.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'get_version_info no implementado para marca: {conn.brand.value}')
+
+    try:
+        raw = _paramiko_huawei_run(conn, ['display version'], timeout=45.0)
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    info = _parse_version_info(raw)
+    if not info['model'] and not info['firmware']:
+        return {'success': False, 'error': 'display version no retornó PRODUCT ni VERSION reconocibles'}
+
+    logger.info('get_version_info: %s → model=%s firmware=%s patch=%s',
+                conn.ip, info['model'], info['firmware'], info['patch'])
+    return {'success': True, **info}
+
+
 def _parse_port_vlan_ids(raw: str) -> list[int]:
     """
     Extrae los VLAN IDs de la salida de 'display port vlan F/S/P'.

@@ -84,6 +84,8 @@ from app.schemas.olt import (
     VlanDeleteResponse,
     UplinkVlansRequest,
     UplinkVlansResponse,
+    VersionInfoRequest,
+    VersionInfoResponse,
     UplinkTagRequest,
     UplinkTagResponse,
     TrafficTableAddRequest,
@@ -137,6 +139,7 @@ from app.services.provisioning import (
     delete_vlan,
     add_uplink_vlan,
     get_uplink_vlans,
+    get_version_info,
     add_traffic_table,
     delete_traffic_table,
     edit_traffic_table,
@@ -1317,6 +1320,29 @@ async def vlan_delete(body: VlanDeleteRequest) -> VlanDeleteResponse:
         except ProvisioningError as exc:
             return VlanDeleteResponse(success=False, error=str(exc))
     return VlanDeleteResponse(success=result['success'], error=result.get('error'))
+
+
+# ── Versión / modelo real de la OLT ───────────────────────────
+
+@app.post(
+    '/api/v1/olt/version-info',
+    response_model=VersionInfoResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['olt'],
+    summary='Lee modelo (PRODUCT), firmware (VERSION) y patch reales de la OLT (solo lectura)',
+)
+async def version_info(body: VersionInfoRequest) -> VersionInfoResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(get_version_info, body.connection)
+        except ProvisioningError as exc:
+            return VersionInfoResponse(success=False, error=str(exc))
+    return VersionInfoResponse(
+        success=result['success'],
+        model=result.get('model'), firmware=result.get('firmware'),
+        patch=result.get('patch'), error=result.get('error'),
+    )
 
 
 # ── Uplink VLAN tagging (Incremento 9b) ───────────────────────

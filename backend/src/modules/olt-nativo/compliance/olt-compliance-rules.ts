@@ -2,6 +2,7 @@ import { OltDispositivo } from '../entities/olt-dispositivo.entity';
 import { OltBaseline } from '../entities/olt-baseline.entity';
 import { InfrastructureSnapshot } from '../types/infrastructure-snapshot';
 import { OltCapabilities } from '../capability/olt-capability-catalog';
+import { evaluarCompatibilidadModelo } from '../capability/olt-model-catalog';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Reglas de cumplimiento — Incremento 4
@@ -299,6 +300,28 @@ const baselineUplinkTaggeado: ComplianceRule = (_olt, snapshot, _caps, baseline)
   };
 };
 
+// ── R11: modelo + firmware están en el catálogo de compatibilidad ──
+// Clasificación de errores: si esta regla no cumple y aparecen errores CLI
+// en este equipo, la primera hipótesis es incompatibilidad de firmware/modelo
+// (Huawei no uniformiza el CLI entre firmwares), no un bug del driver.
+const firmwareSoportado: ComplianceRule = (_olt, snapshot) => {
+  if (!snapshot.modelo && !snapshot.firmware) {
+    return {
+      regla: 'firmware_soportado',
+      cumple: true,
+      severidad: 'info',
+      mensaje: 'Modelo/firmware aún no detectados — se leen automáticamente en el próximo sync',
+    };
+  }
+  const ev = evaluarCompatibilidadModelo(snapshot.marca, snapshot.modelo, snapshot.firmware);
+  return {
+    regla: 'firmware_soportado',
+    cumple: ev.nivel === 'validado',
+    severidad: ev.nivel === 'validado' ? 'info' : 'warning',
+    mensaje: ev.mensaje,
+  };
+};
+
 export const OLT_COMPLIANCE_RULES: ComplianceRule[] = [
   boardsSincronizadas,
   vlanGestionExiste,
@@ -310,4 +333,5 @@ export const OLT_COMPLIANCE_RULES: ComplianceRule[] = [
   baselineVlansPresentes,
   baselineTrafficTablesPresentes,
   baselineUplinkTaggeado,
+  firmwareSoportado,
 ];

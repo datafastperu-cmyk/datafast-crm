@@ -626,6 +626,19 @@ class VlanDeleteResponse(BaseModel):
     error:   str | None = None
 
 
+class VersionInfoRequest(BaseModel):
+    """Lee modelo (PRODUCT), firmware (VERSION) y patch reales de la OLT."""
+    connection: OltConnectionSchema
+
+
+class VersionInfoResponse(BaseModel):
+    success:  bool
+    model:    str | None = None
+    firmware: str | None = None
+    patch:    str | None = None
+    error:    str | None = None
+
+
 class UplinkVlansRequest(BaseModel):
     """Lee las VLANs taggeadas en un puerto uplink (frame/slot/port)."""
     connection: OltConnectionSchema

@@ -58,6 +58,8 @@ import {
   PythonHealthSnapshotRequest,
   PythonHealthSnapshotResponse,
   PythonVlanAddRequest,
+  PythonVersionInfoRequest,
+  PythonVersionInfoResponse,
   PythonUplinkVlansRequest,
   PythonUplinkVlansResponse,
   PythonUplinkTagRequest,
@@ -486,6 +488,14 @@ export class OltAutomationClient {
     this.logger.log(`→ Python vlan/delete | OLT=${payload.connection.ip} vlan_id=${payload.vlan_id}`);
     const res = await this.post<PythonVlanDeleteResponse>('/api/v1/olt/vlan/delete', payload, 90_000);
     this.logger.log(`← Python vlan/delete | success=${res.success}`);
+    return res;
+  }
+
+  // ── Versión / modelo real (display version) ─────────────────
+  async versionInfo(payload: PythonVersionInfoRequest): Promise<PythonVersionInfoResponse> {
+    this.logger.log(`→ Python version-info | OLT=${payload.connection.ip}`);
+    const res = await this.post<PythonVersionInfoResponse>('/api/v1/olt/version-info', payload, 60_000);
+    this.logger.log(`← Python version-info | success=${res.success} model=${res.model} fw=${res.firmware}`);
     return res;
   }
 

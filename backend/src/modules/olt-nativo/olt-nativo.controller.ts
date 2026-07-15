@@ -44,6 +44,7 @@ import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltSyncService }    from './services/olt-sync.service';
 import { CrearBaselineDto, OltBaselineService } from './services/olt-baseline.service';
+import { OLT_MODEL_CATALOG } from './capability/olt-model-catalog';
 import { OltBaselinePlanService } from './services/olt-baseline-plan.service';
 import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
 import { OltComplianceService }      from './services/olt-compliance.service';
@@ -117,6 +118,24 @@ export class OltNativoController {
   @ApiOperation({ summary: 'Inventario de ONUs de todas las OLTs de la empresa (read-model)' })
   async onusInventarioGlobal(@CurrentUser() user: JwtPayload) {
     return this.sync.inventarioGlobal(user.empresaId);
+  }
+
+  // ── Catálogo de modelos soportados (wizard) ──────────────────
+  @Get('catalogo-modelos')
+  @ApiOperation({ summary: 'Modelos de OLT soportados por marca, con firmwares validados' })
+  catalogoModelos() {
+    return OLT_MODEL_CATALOG;
+  }
+
+  // ── Detección de modelo/firmware con credenciales crudas (wizard) ──
+  @Post('wizard/detect-version')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Wizard: detectar modelo y firmware reales de la OLT y evaluar compatibilidad' })
+  async wizardDetectVersion(
+    @Body() body: { ip: string; puerto: number; usuario: string; contrasena: string; marca: string },
+    @CurrentUser() _user: JwtPayload,
+  ) {
+    return this.service.detectarVersion(body);
   }
 
   // ── Baselines (Incremento 8) — rutas literales ANTES de :oltId ──

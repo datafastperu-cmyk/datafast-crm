@@ -37,6 +37,7 @@ import {
   WizardCommitDto,
 } from './dto/olt-nativo-ops.dto';
 import { CircuitBreakerService } from './services/circuit-breaker.service';
+import { evaluarCompatibilidadModelo, EvaluacionCompatibilidad } from './capability/olt-model-catalog';
 import { CreateOltDispositivoDto, UpdateOltDispositivoDto, Tr069ProfileDto } from './dto/olt-dispositivo.dto';
 
 // ─────────────────────────────────────────────────────────────
@@ -1403,6 +1404,51 @@ export class OltNativoService implements OnModuleInit {
         brand:    params.marca.toLowerCase(),
       },
     });
+  }
+
+  // ── Wizard: detectar modelo/firmware reales + compatibilidad ──
+  // Se llama tras el test SSH exitoso. Nunca lanza — el wizard degrada a
+  // selección manual del modelo si la detección falla.
+  async detectarVersion(
+    params: { ip: string; puerto: number; usuario: string; contrasena: string; marca: string },
+  ): Promise<{
+    exitoso:  boolean;
+    modelo:   string | null;
+    firmware: string | null;
+    patch:    string | null;
+    compatibilidad: EvaluacionCompatibilidad;
+    error?:   string;
+  }> {
+    try {
+      const ip  = params.ip.includes('/') ? params.ip.split('/')[0] : params.ip;
+      const res = await this.automation.versionInfo({
+        connection: {
+          ip, port: params.puerto, username: params.usuario,
+          password: params.contrasena, brand: params.marca.toLowerCase(),
+        },
+      });
+      if (!res.success) {
+        return {
+          exitoso: false, modelo: null, firmware: null, patch: null,
+          compatibilidad: evaluarCompatibilidadModelo(params.marca, null, null),
+          error: res.error,
+        };
+      }
+      const firmware = [res.firmware, res.patch].filter(Boolean).join('/') || null;
+      return {
+        exitoso:  true,
+        modelo:   res.model,
+        firmware,
+        patch:    res.patch,
+        compatibilidad: evaluarCompatibilidadModelo(params.marca, res.model, firmware),
+      };
+    } catch (e: any) {
+      return {
+        exitoso: false, modelo: null, firmware: null, patch: null,
+        compatibilidad: evaluarCompatibilidadModelo(params.marca, null, null),
+        error: e?.response?.data?.message ?? e?.message ?? 'Error al detectar versión',
+      };
+    }
   }
 
   // ── Wizard: commit atómico OLT + proveedor SSH ─────────────────

@@ -22,6 +22,7 @@ interface FormState {
   nombre:      string;
   marca:       string;
   modelo:      string;
+  firmware:    string;   // autodetectado tras el test SSH (display version)
   zonaId:      string;
   // Ubicación
   ubicacion:   string;
@@ -36,6 +37,15 @@ interface FormState {
 }
 
 const MARCAS = ['huawei', 'zte', 'vsol', 'cdata'] as const;
+
+type NivelCompat = 'validado' | 'firmware_no_probado' | 'experimental' | 'no_soportado';
+
+const COMPAT_BADGE: Record<NivelCompat, { label: string; cls: string }> = {
+  validado:            { label: 'Firmware validado',      cls: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' },
+  firmware_no_probado: { label: 'Firmware no probado',    cls: 'bg-amber-500/10 border-amber-500/30 text-amber-400' },
+  experimental:        { label: 'Modelo experimental',    cls: 'bg-amber-500/10 border-amber-500/30 text-amber-400' },
+  no_soportado:        { label: 'No soportado',           cls: 'bg-red-500/10 border-red-500/30 text-red-400' },
+};
 
 const STEP_LABELS: Record<Step, string> = {
   1: 'Identidad',
@@ -78,15 +88,24 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
   const [connMsg, setConnMsg]     = useState('');
   const [escenario, setEscenario] = useState<Escenario>('brownfield');
   const [baselineId, setBaselineId] = useState<string>('');
+  const [deteccion, setDeteccion] = useState<{
+    exitoso: boolean; modelo: string | null; firmware: string | null;
+    compatibilidad: { nivel: NivelCompat; mensaje: string };
+  } | null>(null);
 
   const { data: baselines = [] } = useQuery({
     queryKey: ['olt-baselines'],
     queryFn:  () => oltNativoApi.getBaselines(),
     enabled:  open,
   });
+  const { data: catalogo = {} } = useQuery({
+    queryKey: ['olt-catalogo-modelos'],
+    queryFn:  () => oltNativoApi.getCatalogoModelos(),
+    enabled:  open,
+  });
 
   const [form, setForm] = useState<FormState>({
-    nombre: '', marca: 'huawei', modelo: '', zonaId: '',
+    nombre: '', marca: 'huawei', modelo: '', firmware: '', zonaId: '',
     ubicacion: '', latitud: '', longitud: '', descripcion: '',
     ip: '', puerto: 22, usuario: 'root', contrasena: '',
   });
@@ -94,6 +113,22 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm(f => ({ ...f, [k]: v }));
   }
+
+  const modelosMarca = catalogo[form.marca] ?? [];
+
+  // ── Step 2: detección de modelo/firmware (tras test SSH OK) ──
+  const detectMut = useMutation({
+    mutationFn: () => oltNativoApi.wizardDetectVersion({
+      ip: form.ip, puerto: form.puerto, usuario: form.usuario,
+      contrasena: form.contrasena, marca: form.marca,
+    }),
+    onSuccess: (res) => {
+      setDeteccion(res);
+      if (res.modelo)   set('modelo',   res.modelo);
+      if (res.firmware) set('firmware', res.firmware);
+    },
+    onError: () => setDeteccion(null), // degradar a selección manual
+  });
 
   // ── Step 2: test SSH ──────────────────────────────────────────
   const testMut = useMutation({
@@ -107,6 +142,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
     onSuccess: (res) => {
       setConnOk(res.exitoso);
       setConnMsg(res.mensaje || (res.exitoso ? 'Conexión SSH exitosa' : 'Conexión fallida'));
+      if (res.exitoso) detectMut.mutate();
     },
     onError: () => {
       setConnOk(false);
@@ -124,6 +160,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
       contrasena:  form.contrasena,
       marca:       form.marca,
       modelo:      form.modelo || form.marca.toUpperCase(),
+      firmware:    form.firmware || undefined,
       zonaId:      form.zonaId || undefined,
       ubicacion:   form.ubicacion   || undefined,
       latitud:     form.latitud     ? parseFloat(form.latitud)  : undefined,
@@ -155,7 +192,8 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
     setConnMsg('');
     setEscenario('brownfield');
     setBaselineId('');
-    setForm({ nombre: '', marca: 'huawei', modelo: '', zonaId: '', ubicacion: '', latitud: '', longitud: '', descripcion: '', ip: '', puerto: 22, usuario: 'root', contrasena: '' });
+    setDeteccion(null);
+    setForm({ nombre: '', marca: 'huawei', modelo: '', firmware: '', zonaId: '', ubicacion: '', latitud: '', longitud: '', descripcion: '', ip: '', puerto: 22, usuario: 'root', contrasena: '' });
     onClose();
   }
 
@@ -228,7 +266,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                       <select
                         className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                         value={form.marca}
-                        onChange={e => set('marca', e.target.value)}
+                        onChange={e => { set('marca', e.target.value); set('modelo', ''); setDeteccion(null); }}
                       >
                         {MARCAS.map(m => (
                           <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
@@ -237,14 +275,28 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1">Modelo</label>
-                      <input
-                        className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                        placeholder="Ej: MA5800-X7"
+                      <select
+                        className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
                         value={form.modelo}
                         onChange={e => set('modelo', e.target.value)}
-                      />
+                        disabled={modelosMarca.length === 0}
+                      >
+                        <option value="">— Detectar automáticamente —</option>
+                        {modelosMarca.map(m => (
+                          <option key={m.modelo} value={m.modelo}>
+                            {m.modelo}{m.estado === 'experimental' ? ' (experimental)' : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
+                  {modelosMarca.length === 0 && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs">
+                      <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      La marca {form.marca} no tiene modelos soportados por el driver nativo del ERP todavía.
+                      Puedes registrarla, pero el aprovisionamiento nativo no está validado.
+                    </div>
+                  )}
 
                   {/* Dirección física */}
                   <div>
@@ -363,6 +415,38 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                 {!testMut.isPending && !connMsg && (
                   <p className="text-xs text-muted-foreground">
                     Debes probar la conexión SSH antes de continuar.
+                  </p>
+                )}
+
+                {/* Detección de modelo/firmware (post-test) */}
+                {connOk && detectMut.isPending && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Detectando modelo y firmware de la OLT…
+                  </div>
+                )}
+                {connOk && deteccion && (
+                  <div className={cn(
+                    'rounded-lg border p-3 text-xs space-y-1.5',
+                    COMPAT_BADGE[deteccion.compatibilidad.nivel].cls,
+                  )}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">
+                        {COMPAT_BADGE[deteccion.compatibilidad.nivel].label}
+                      </span>
+                      {deteccion.modelo && (
+                        <span className="font-mono">{deteccion.modelo}</span>
+                      )}
+                      {deteccion.firmware && (
+                        <span className="font-mono opacity-80">{deteccion.firmware}</span>
+                      )}
+                    </div>
+                    <p className="opacity-90">{deteccion.compatibilidad.mensaje}</p>
+                  </div>
+                )}
+                {connOk && !detectMut.isPending && !deteccion && detectMut.isError && (
+                  <p className="text-xs text-amber-400">
+                    No se pudo detectar el modelo/firmware — selecciona el modelo manualmente en el paso 1.
                   </p>
                 )}
               </div>

@@ -1273,6 +1273,33 @@ export const oltNativoApi = {
     return res.data.data;
   },
 
+  // ── Catálogo de modelos + detección de versión (wizard) ─────
+  getCatalogoModelos: async (): Promise<Record<string, Array<{
+    modelo: string; estado: 'validado' | 'experimental';
+    firmwaresValidados: string[]; notas?: string;
+  }>>> => {
+    const res = await api.get<ApiRespuesta<Record<string, Array<{
+      modelo: string; estado: 'validado' | 'experimental';
+      firmwaresValidados: string[]; notas?: string;
+    }>>>>('/olt-nativo/catalogo-modelos');
+    return res.data.data ?? {};
+  },
+
+  wizardDetectVersion: async (params: {
+    ip: string; puerto: number; usuario: string; contrasena: string; marca: string;
+  }): Promise<{
+    exitoso: boolean; modelo: string | null; firmware: string | null; patch: string | null;
+    compatibilidad: { nivel: 'validado' | 'firmware_no_probado' | 'experimental' | 'no_soportado'; mensaje: string };
+    error?: string;
+  }> => {
+    const res = await api.post<ApiRespuesta<{
+      exitoso: boolean; modelo: string | null; firmware: string | null; patch: string | null;
+      compatibilidad: { nivel: 'validado' | 'firmware_no_probado' | 'experimental' | 'no_soportado'; mensaje: string };
+      error?: string;
+    }>>('/olt-nativo/wizard/detect-version', params, { timeout: 90_000 });
+    return res.data.data;
+  },
+
   // ── Baselines declarativos (Incrementos 8-9) ────────────────
   getBaselines: async (): Promise<OltBaselineItem[]> => {
     const res = await api.get<ApiRespuesta<OltBaselineItem[]>>('/olt-nativo/baselines');

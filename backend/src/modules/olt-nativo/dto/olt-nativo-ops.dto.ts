@@ -905,6 +905,20 @@ export interface PythonVlanDeleteResponse {
   error?:  string;
 }
 
+// ─── Versión / modelo real de la OLT ─────────────────────────
+
+export interface PythonVersionInfoRequest {
+  connection: PythonConnectionPayload;
+}
+
+export interface PythonVersionInfoResponse {
+  success:  boolean;
+  model:    string | null;
+  firmware: string | null;
+  patch:    string | null;
+  error?:   string;
+}
+
 // ─── Uplink VLAN tagging (Incremento 9b) ─────────────────────
 
 export interface PythonUplinkVlansRequest {

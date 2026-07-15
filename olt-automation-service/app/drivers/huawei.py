@@ -28,6 +28,7 @@ from app.services.provisioning import (
     CommandError as ProvCommandError,
     ProvisioningError,
     _paramiko_huawei_run,
+    _parse_version_info,
     _build_netmiko_params,
     _huawei_enter_enable,
     _check_cli_error,
@@ -105,13 +106,14 @@ class HuaweiDriver(OltDriver):
         # display ont-lineprofile/srvprofile gpon all requiere config mode.
         # display traffic table ip from-index 0 y display board/vlan son global.
         cmds = [
-            'display board 0',                       # idx 0
-            'display vlan all',                      # idx 1
-            'config',                                # idx 2 (transición a config mode)
-            'display ont-lineprofile gpon all',      # idx 3
-            'display ont-srvprofile gpon all',       # idx 4
-            'quit',                                  # idx 5 (vuelve a global)
-            'display traffic table ip from-index 0', # idx 6
+            'display version',                       # idx 0 (modelo + firmware reales)
+            'display board 0',                       # idx 1
+            'display vlan all',                      # idx 2
+            'config',                                # idx 3 (transición a config mode)
+            'display ont-lineprofile gpon all',      # idx 4
+            'display ont-srvprofile gpon all',       # idx 5
+            'quit',                                  # idx 6 (vuelve a global)
+            'display traffic table ip from-index 0', # idx 7
         ]
         try:
             outputs = _paramiko_huawei_run(
@@ -119,11 +121,12 @@ class HuaweiDriver(OltDriver):
                 timeout=120.0,
                 return_list=True,
             )
-            board_raw = outputs[0]
-            vlan_raw  = outputs[1]
-            lp_raw    = outputs[3]
-            sp_raw    = outputs[4]
-            tt_raw    = outputs[6]
+            ver_raw   = outputs[0]
+            board_raw = outputs[1]
+            vlan_raw  = outputs[2]
+            lp_raw    = outputs[4]
+            sp_raw    = outputs[5]
+            tt_raw    = outputs[7]
         except ProvisioningError:
             raise
         except Exception as exc:
@@ -139,9 +142,13 @@ class HuaweiDriver(OltDriver):
 
         vlans = self._parse_vlans(vlan_raw)
 
+        # Modelo/firmware reales (antes hardcodeado 'Huawei MA5x00' + '').
+        # Necesario para clasificar compatibilidad de firmware en el ERP.
+        ver = _parse_version_info(ver_raw)
+
         return OltTopology(
-            model            = 'Huawei MA5x00',
-            firmware_version = '',
+            model            = ver['model'] or 'Huawei MA5x00',
+            firmware_version = '/'.join(x for x in [ver['firmware'], ver['patch']] if x),
             boards           = boards,
             vlans            = vlans,
             traffic_tables   = traffic_tables,

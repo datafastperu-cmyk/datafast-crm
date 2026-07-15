@@ -288,6 +288,15 @@ export class OltSyncService implements OnModuleInit {
         throw new Error(topo.error ?? 'La OLT no devolvió topología');
       }
 
+      // 2b. Persistir modelo/firmware reales detectados por 'display version'
+      // (el driver los incluye en la topología). Autodetección continua: si la
+      // OLT se actualiza de firmware, el ERP lo ve en el siguiente sync y las
+      // reglas de compatibilidad se reevalúan solas.
+      const cambios: Partial<OltDispositivo> = {};
+      if (topo.model && !topo.model.includes('MA5x00')) cambios.modelo = topo.model;
+      if (topo.firmware_version) cambios.firmware = topo.firmware_version;
+      if (Object.keys(cambios).length) await this.oltRepo.update(oltId, cambios);
+
       // 3. Persistir boards
       emit(35, 'Guardando tarjetas…');
       await this._upsertBoards(oltId, empresaId, topo.boards ?? []);
