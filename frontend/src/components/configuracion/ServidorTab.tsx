@@ -84,7 +84,7 @@ export function ServidorTab() {
 
   if (!info) return null;
 
-  const { version, update, system, processes } = info;
+  const { version, update, system, processes, observacion } = info;
 
   if (!version || !update || !system) return null;
 
@@ -105,6 +105,31 @@ export function ServidorTab() {
           Actualizar
         </button>
       </div>
+
+      {/* Ventana de observación post-update */}
+      {observacion?.activa && (
+        <div className={cn(
+          'flex items-start gap-3 p-3 rounded-xl border',
+          observacion.inestable
+            ? 'bg-red-500/10 border-red-500/30'
+            : 'bg-blue-500/10 border-blue-500/20',
+        )}>
+          <AlertTriangle className={cn('w-4 h-4 shrink-0 mt-0.5', observacion.inestable ? 'text-red-400' : 'text-blue-400')} />
+          <div className="text-sm">
+            {observacion.inestable ? (
+              <p className="text-red-300 font-medium">
+                Versión INESTABLE — {observacion.errores} errores desde la actualización
+                (línea base previa: {observacion.baseline}). Revisa el Centro de Operaciones y evalúa un rollback.
+              </p>
+            ) : (
+              <p className="text-blue-300">
+                Período de observación post-actualización activo ({observacion.horasRestantes}h restantes) —
+                {' '}{observacion.errores} errores registrados (línea base previa: {observacion.baseline}).
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Versión y actualizaciones */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-4">

@@ -17,8 +17,18 @@ export interface Proceso {
   memoryMb: number;
 }
 
+export interface EstadoObservacion {
+  activa:         boolean;
+  desde:          string | null;
+  horasRestantes: number;
+  errores:        number;
+  baseline:       number;
+  inestable:      boolean;
+}
+
 export interface ServerInfo {
   version: VersionInfo;
+  observacion?: EstadoObservacion;
   update: {
     sourceType: string;
     sourceUrl:  string;

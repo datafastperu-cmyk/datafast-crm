@@ -1,4 +1,6 @@
-import { Injectable, Logger, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, Inject, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -15,6 +17,7 @@ import { encrypt } from '../../common/utils/encryption.util';
 import { GatewayMensajeriaService } from '../notificaciones/services/gateway-mensajeria.service';
 import { SYSTEM_DEFAULTS_WHATSAPP } from '../plantillas/plantillas.service';
 import { TipoNotificacion }         from '../notificaciones/services/whatsapp.service';
+import { EventosSistemaService }    from './eventos-sistema.service';
 
 export const GATEWAY_EVENTS = {
   PROVIDER_ACTIVATED: 'gateway.provider.activated',
@@ -39,8 +42,23 @@ export interface CronHorarios {
 
 const execAsync = promisify(exec);
 
+// Ventana de observación post-update
+const OBSERVACION_HORAS       = 48;
+const OBSERVACION_UMBRAL_MIN  = 10; // mínimo de errores para considerar inestable
+const OBSERVACION_FACTOR      = 3;  // errores > factor × baseline pre-update
+const CODIGO_VERSION_INESTABLE = 'VERSION_INESTABLE';
+
+export interface EstadoObservacion {
+  activa:        boolean;
+  desde:         string | null;
+  horasRestantes: number;
+  errores:       number;
+  baseline:      number;
+  inestable:     boolean;
+}
+
 @Injectable()
-export class SistemaService {
+export class SistemaService implements OnModuleInit {
   private readonly logger = new Logger(SistemaService.name);
 
   private readonly appDir:      string;
@@ -55,12 +73,91 @@ export class SistemaService {
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     private readonly gateway: GatewayMensajeriaService,
     private readonly events: EventEmitter2,
+    private readonly eventos: EventosSistemaService,
+    private readonly schedulerRegistry: SchedulerRegistry,
   ) {
     this.appDir       = this.config.get('UPDATE_DIR')            || '/opt/datafast';
     this.sourceType   = this.config.get('UPDATE_SOURCE_TYPE')    || 'git';
     this.sourceUrl    = this.config.get('UPDATE_SOURCE_URL')     || '';
     this.sourceBranch = this.config.get('UPDATE_SOURCE_BRANCH')  || 'main';
     this.sourceToken  = this.config.get('UPDATE_SOURCE_TOKEN')   || '';
+  }
+
+  onModuleInit(): void {
+    if (process.env.RUN_CRONS !== 'true') return;
+    const job = new CronJob('0 * * * *', () => void this.vigilarObservacion(), null, true, 'America/Lima');
+    this.schedulerRegistry.addCronJob('sistema-observacion-post-update', job);
+  }
+
+  // ─── Ventana de observación post-update ───────────────────────
+  // Tras un update exitoso (status OK con timestamp), durante 48h se
+  // compara la tasa de errores contra la línea base pre-update. Si se
+  // supera el umbral, la versión se marca inestable (evento critical
+  // visible en el Centro de Operaciones y badge en la UI).
+  private leerUltimoUpdateOk(): Date | null {
+    try {
+      const raw = fs.readFileSync('/tmp/datafast_update_status', 'utf8').trim();
+      const [estado, iso] = raw.split(/\s+/);
+      if (estado !== 'OK' || !iso) return null;
+      const fecha = new Date(iso);
+      return isNaN(fecha.getTime()) ? null : fecha;
+    } catch {
+      return null;
+    }
+  }
+
+  async getEstadoObservacion(): Promise<EstadoObservacion> {
+    const inactivo: EstadoObservacion = {
+      activa: false, desde: null, horasRestantes: 0, errores: 0, baseline: 0, inestable: false,
+    };
+
+    const desde = this.leerUltimoUpdateOk();
+    if (!desde) return inactivo;
+
+    const ahora      = new Date();
+    const transcurrido = ahora.getTime() - desde.getTime();
+    const ventanaMs  = OBSERVACION_HORAS * 3600_000;
+    if (transcurrido <= 0 || transcurrido > ventanaMs) return inactivo;
+
+    const [errores, baseline] = await Promise.all([
+      this.eventos.contarEntre(desde, ahora),
+      this.eventos.contarEntre(new Date(desde.getTime() - transcurrido), desde),
+    ]);
+
+    const inestable =
+      errores >= OBSERVACION_UMBRAL_MIN &&
+      errores > OBSERVACION_FACTOR * Math.max(baseline, 1);
+
+    return {
+      activa: true,
+      desde: desde.toISOString(),
+      horasRestantes: Math.max(0, Math.ceil((ventanaMs - transcurrido) / 3600_000)),
+      errores,
+      baseline,
+      inestable,
+    };
+  }
+
+  async vigilarObservacion(): Promise<void> {
+    try {
+      const estado = await this.getEstadoObservacion();
+      if (!estado.activa || !estado.inestable || !estado.desde) return;
+
+      // Una sola alerta por ventana de observación
+      const yaAlertado = await this.eventos.existeDesde(CODIGO_VERSION_INESTABLE, new Date(estado.desde));
+      if (yaAlertado) return;
+
+      await this.eventos.registrar({
+        nivel:   'critical',
+        origen:  'update',
+        codigo:  CODIGO_VERSION_INESTABLE,
+        mensaje: `Versión marcada como INESTABLE: ${estado.errores} errores desde el update (baseline pre-update: ${estado.baseline}). Evaluar rollback.`,
+        contexto: { desde: estado.desde, errores: estado.errores, baseline: estado.baseline },
+      });
+      this.logger.error(`VERSIÓN INESTABLE: ${estado.errores} errores post-update vs baseline ${estado.baseline}`);
+    } catch (err) {
+      this.logger.warn(`vigilarObservacion falló: ${(err as Error).message}`);
+    }
   }
 
   // ─── Versión local ────────────────────────────────────────────
@@ -164,6 +261,7 @@ export class SistemaService {
   async getServerInfo() {
     const currentVersion = this.getCurrentVersion();
     const schema = await this.getSchemaVersion();
+    const observacion = await this.getEstadoObservacion();
     let remoteVersion: string | null = null;
     let updateAvailable = false;
 
@@ -205,6 +303,7 @@ export class SistemaService {
         schema:          schema.version,
         ultimaMigracion: schema.ultimaMigracion,
       },
+      observacion,
       update: {
         sourceType: this.sourceType,
         sourceUrl:  this.sourceUrl ? '(configurado)' : '(no configurado)',

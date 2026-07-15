@@ -98,17 +98,30 @@ export class EventosSistemaService implements OnModuleInit {
     return { items: items as unknown as EventoSistema[], total: parseInt(totalRows[0]?.total ?? '0', 10) };
   }
 
-  // Tasa de errores desde una fecha — usada por la ventana de observación post-update.
-  async contarDesde(desde: Date, niveles: NivelEvento[] = ['critical', 'error']): Promise<number> {
+  // Tasa de errores en un rango — usada por la ventana de observación post-update.
+  async contarEntre(desde: Date, hasta: Date, niveles: NivelEvento[] = ['critical', 'error']): Promise<number> {
     try {
       const rows: Array<{ total: string }> = await this.ds.query(
         `SELECT COUNT(*)::text AS total FROM eventos_sistema
-          WHERE created_at >= $1 AND nivel = ANY($2)`,
-        [desde.toISOString(), niveles],
+          WHERE created_at >= $1 AND created_at < $2 AND nivel = ANY($3)`,
+        [desde.toISOString(), hasta.toISOString(), niveles],
       );
       return parseInt(rows[0]?.total ?? '0', 10);
     } catch {
       return 0;
+    }
+  }
+
+  // Dedupe de alertas: ¿ya existe un evento con este código desde una fecha?
+  async existeDesde(codigo: string, desde: Date): Promise<boolean> {
+    try {
+      const rows: Array<{ existe: boolean }> = await this.ds.query(
+        `SELECT EXISTS(SELECT 1 FROM eventos_sistema WHERE codigo = $1 AND created_at >= $2) AS existe`,
+        [codigo, desde.toISOString()],
+      );
+      return rows[0]?.existe === true;
+    } catch {
+      return false;
     }
   }
 
