@@ -1414,6 +1414,16 @@ export class OltNativoService implements OnModuleInit {
     this.assertNotDegraded();
     await this._validarIpUnica(dto.ipGestion, empresaId);
 
+    // Baseline a asignar (Incremento 10): validar existencia y tenancy ANTES
+    // de abrir la transacción — un baselineId ajeno no debe crear la OLT.
+    if (dto.baselineId) {
+      const [bl] = await this.ds.query<{ id: string }[]>(
+        `SELECT id FROM olt_baselines WHERE id = $1 AND empresa_id = $2`,
+        [dto.baselineId, empresaId],
+      );
+      if (!bl) throw new NotFoundException(`Baseline ${dto.baselineId} no encontrado.`);
+    }
+
     const qr = this.ds.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
@@ -1432,6 +1442,11 @@ export class OltNativoService implements OnModuleInit {
         puerto:            dto.puerto,
         usuarioAnclado:    dto.usuario,
         contrasenaCifrada,
+        ubicacion:         dto.ubicacion ?? null,
+        latitud:           dto.latitud ?? null,
+        longitud:          dto.longitud ?? null,
+        descripcion:       dto.descripcion ?? null,
+        baselineId:        dto.baselineId ?? null,
         activo:            true,
       });
       const saved = await qr.manager.save(olt);

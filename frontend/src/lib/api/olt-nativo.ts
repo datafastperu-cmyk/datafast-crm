@@ -279,6 +279,8 @@ export interface WizardCommitPayload {
   latitud?:       number;
   longitud?:      number;
   descripcion?:   string;
+  escenario?:     'greenfield' | 'brownfield';
+  baselineId?:    string;
   vlans?:         Array<{ vlan_id: number; nombre: string }>;
   trafficTables?: Array<{ index: number; name: string; cir_kbps?: number; pir_kbps?: number }>;
 }
@@ -529,9 +531,10 @@ export interface ComplianceReport {
 
 // ── Baselines declarativos (Incrementos 8-9) ─────────────────
 export interface BaselineSpec {
-  vlans:         Array<{ vlanId: number; nombre: string; proposito?: string }>;
+  vlans:         Array<{ vlanId: number; nombre: string; proposito?: string; uplink?: boolean }>;
   trafficTables: Array<{ nombre: string; cirKbps: number; pirKbps: number }>;
   ntpServers?:   string[];
+  uplinkPort?:   string;   // frame/slot/port, ej. '0/9/0'
 }
 
 export interface OltBaselineItem {
@@ -1279,7 +1282,7 @@ export const oltNativoApi = {
   crearBaseline: async (dto: {
     nombre: string; descripcion?: string;
     vlans: BaselineSpec['vlans']; trafficTables: BaselineSpec['trafficTables'];
-    ntpServers?: string[];
+    ntpServers?: string[]; uplinkPort?: string;
   }): Promise<OltBaselineItem> => {
     const res = await api.post<ApiRespuesta<OltBaselineItem>>('/olt-nativo/baselines', dto);
     return res.data.data;

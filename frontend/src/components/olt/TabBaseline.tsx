@@ -14,10 +14,13 @@ import { cn } from '@/lib/utils';
 
 // ─── Parsers del formulario (una línea por recurso) ───────────────
 
-function parseVlans(text: string): { vlanId: number; nombre: string }[] {
+function parseVlans(text: string): { vlanId: number; nombre: string; uplink?: boolean }[] {
   return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-    const [id, ...rest] = l.split(/\s+/);
-    return { vlanId: Number(id), nombre: rest.join(' ') || `VLAN_${id}` };
+    const partes = l.split(/\s+/);
+    const uplink = partes[partes.length - 1]?.toLowerCase() === 'uplink';
+    if (uplink) partes.pop();
+    const [id, ...rest] = partes;
+    return { vlanId: Number(id), nombre: rest.join(' ') || `VLAN_${id}`, ...(uplink ? { uplink: true } : {}) };
   });
 }
 
@@ -35,11 +38,12 @@ function NuevaVersionForm({ base, onCreado }: { base: OltBaselineItem | null; on
   const [nombre, setNombre]      = useState(base?.nombre ?? 'Datafast');
   const [descripcion, setDesc]   = useState('');
   const [vlansText, setVlans]    = useState(
-    base ? base.spec.vlans.map(v => `${v.vlanId} ${v.nombre}`).join('\n') : '',
+    base ? base.spec.vlans.map(v => `${v.vlanId} ${v.nombre}${v.uplink ? ' uplink' : ''}`).join('\n') : '',
   );
   const [ttsText, setTts]        = useState(
     base ? base.spec.trafficTables.map(t => `${t.nombre} ${t.cirKbps} ${t.pirKbps}`).join('\n') : '',
   );
+  const [uplinkPort, setUplinkPort] = useState(base?.spec.uplinkPort ?? '');
 
   const crear = useMutation({
     mutationFn: () => oltNativoApi.crearBaseline({
@@ -47,6 +51,7 @@ function NuevaVersionForm({ base, onCreado }: { base: OltBaselineItem | null; on
       descripcion: descripcion.trim() || undefined,
       vlans: parseVlans(vlansText),
       trafficTables: parseTts(ttsText),
+      uplinkPort: uplinkPort.trim() || undefined,
     }),
     onSuccess: (b) => {
       toast(`Baseline "${b.nombre}" v${b.version} creado`, { type: 'success' });
@@ -55,9 +60,12 @@ function NuevaVersionForm({ base, onCreado }: { base: OltBaselineItem | null; on
     onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al crear baseline', { type: 'error' }),
   });
 
+  const hayVlansUplink = parseVlans(vlansText).some(v => v.uplink);
   const valido = nombre.trim()
     && parseVlans(vlansText).every(v => v.vlanId >= 1 && v.vlanId <= 4094)
-    && parseTts(ttsText).every(t => t.nombre && t.cirKbps >= 64 && t.pirKbps >= t.cirKbps);
+    && parseTts(ttsText).every(t => t.nombre && t.cirKbps >= 64 && t.pirKbps >= t.cirKbps)
+    && (!uplinkPort.trim() || /^\d+\/\d+\/\d+$/.test(uplinkPort.trim()))
+    && (!hayVlansUplink || !!uplinkPort.trim());
 
   return (
     <div className="rounded-xl border border-border p-4 space-y-3">
@@ -78,9 +86,20 @@ function NuevaVersionForm({ base, onCreado }: { base: OltBaselineItem | null; on
             className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50" />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">VLANs — una por línea: <code>id nombre</code></label>
+          <label className="text-xs text-muted-foreground">
+            Puerto uplink (frame/slot/port) — requerido si alguna VLAN lleva <code>uplink</code>
+          </label>
+          <input value={uplinkPort} onChange={e => setUplinkPort(e.target.value)} placeholder="0/9/0"
+            className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+          <p className="text-[10px] text-muted-foreground/70 mt-1">
+            El tagging es solo aditivo; el ERP nunca destaguea un uplink automáticamente.
+          </p>
+        </div>
+        <div />
+        <div>
+          <label className="text-xs text-muted-foreground">VLANs — una por línea: <code>id nombre [uplink]</code></label>
           <textarea value={vlansText} onChange={e => setVlans(e.target.value)} rows={6}
-            placeholder={'100 INTERNET\n1600 GESTION_TR069'}
+            placeholder={'100 INTERNET uplink\n1600 GESTION_TR069'}
             className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50" />
         </div>
         <div>

@@ -1048,6 +1048,18 @@ export interface WizardCommitDto {
   modelo:        string;
   firmware?:     string;
   zonaId?:       string;
+  ubicacion?:    string;
+  latitud?:      number;
+  longitud?:     number;
+  descripcion?:  string;
+  // ── Pipeline de adopción (Incremento 10) ─────────────────────
+  // brownfield: OLT en producción — el ERP respeta lo existente y crea su
+  //   ecosistema paralelo (la reconciliación de pools corre en cada sync).
+  // greenfield: OLT nueva — el baseline define la puesta en marcha completa.
+  escenario?:    'greenfield' | 'brownfield';
+  // Baseline a asignar al crear — el plan de convergencia queda disponible
+  // de inmediato en el tab Baseline tras el primer sync.
+  baselineId?:   string;
   vlans?:        Array<{ vlan_id: number; nombre: string }>;
   trafficTables?: Array<{ index: number; name: string; cir_kbps?: number; pir_kbps?: number }>;
 }

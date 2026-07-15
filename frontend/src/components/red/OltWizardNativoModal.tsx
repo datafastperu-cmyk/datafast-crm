@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CheckCircle2, ChevronRight, Eye, EyeOff,
-  Loader2, Network, Server, X, XCircle,
+  BookMarked, CheckCircle2, ChevronRight, Eye, EyeOff,
+  Loader2, Network, Server, Sprout, Factory, X, XCircle,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
@@ -13,7 +14,8 @@ import { cn } from '@/lib/utils';
 
 // ─── Tipos ────────────────────────────────────────────────────
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
+type Escenario = 'brownfield' | 'greenfield';
 
 interface FormState {
   // Identidad
@@ -38,7 +40,8 @@ const MARCAS = ['huawei', 'zte', 'vsol', 'cdata'] as const;
 const STEP_LABELS: Record<Step, string> = {
   1: 'Identidad',
   2: 'Conectividad',
-  3: 'Confirmar',
+  3: 'Adopción',
+  4: 'Confirmar',
 };
 
 function StepDot({ n, current }: { n: number; current: number }) {
@@ -66,12 +69,21 @@ interface Props {
 
 export function OltWizardNativoModal({ open, onClose }: Props) {
   const queryClient = useQueryClient();
+  const router      = useRouter();
   const { toast }   = useToast();
 
-  const [step, setStep]       = useState<Step>(1);
-  const [showPwd, setShowPwd] = useState(false);
-  const [connOk, setConnOk]   = useState(false);
-  const [connMsg, setConnMsg] = useState('');
+  const [step, setStep]           = useState<Step>(1);
+  const [showPwd, setShowPwd]     = useState(false);
+  const [connOk, setConnOk]       = useState(false);
+  const [connMsg, setConnMsg]     = useState('');
+  const [escenario, setEscenario] = useState<Escenario>('brownfield');
+  const [baselineId, setBaselineId] = useState<string>('');
+
+  const { data: baselines = [] } = useQuery({
+    queryKey: ['olt-baselines'],
+    queryFn:  () => oltNativoApi.getBaselines(),
+    enabled:  open,
+  });
 
   const [form, setForm] = useState<FormState>({
     nombre: '', marca: 'huawei', modelo: '', zonaId: '',
@@ -117,16 +129,20 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
       latitud:     form.latitud     ? parseFloat(form.latitud)  : undefined,
       longitud:    form.longitud    ? parseFloat(form.longitud) : undefined,
       descripcion: form.descripcion || undefined,
+      escenario,
+      baselineId:  baselineId || undefined,
     }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['olt-nativas'] });
       queryClient.invalidateQueries({ queryKey: ['olt-todas'] });
       queryClient.invalidateQueries({ queryKey: ['olts-config'] });
-      toast('OLT registrada', {
-        description: `${form.nombre} agregada. Usa "Sincronizar" en la página de detalle para cargar perfiles y VLANs.`,
+      toast('OLT registrada — adopción en curso', {
+        description: `${form.nombre}: la sincronización inicial y la reconciliación de pools ya están corriendo en segundo plano.`,
         type: 'success',
       });
+      const oltId = res?.oltId;
       handleClose();
+      if (oltId) router.push(`/red/olt/${oltId}`);
     },
     onError: (err: any) => {
       toast('Error al registrar OLT', { description: err?.message ?? '', type: 'error' });
@@ -137,6 +153,8 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
     setStep(1);
     setConnOk(false);
     setConnMsg('');
+    setEscenario('brownfield');
+    setBaselineId('');
     setForm({ nombre: '', marca: 'huawei', modelo: '', zonaId: '', ubicacion: '', latitud: '', longitud: '', descripcion: '', ip: '', puerto: 22, usuario: 'root', contrasena: '' });
     onClose();
   }
@@ -169,7 +187,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
 
           {/* Steps */}
           <div className="flex items-center gap-2 px-6 py-3 border-b border-border bg-muted/20">
-            {([1, 2, 3] as Step[]).map((n, i) => (
+            {([1, 2, 3, 4] as Step[]).map((n, i) => (
               <div key={n} className="flex items-center gap-2">
                 <div className="flex flex-col items-center">
                   <StepDot n={n} current={step} />
@@ -180,7 +198,7 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                     {STEP_LABELS[n]}
                   </span>
                 </div>
-                {i < 2 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mb-3" />}
+                {i < 3 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mb-3" />}
               </div>
             ))}
           </div>
@@ -350,8 +368,81 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
               </div>
             )}
 
-            {/* ── STEP 3: Resumen + Commit ──────────────────────── */}
+            {/* ── STEP 3: Adopción (escenario + baseline) ───────── */}
             {step === 3 && (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  ¿En qué estado está esta OLT? El ERP adapta su comportamiento para no
+                  generar conflictos con la configuración preexistente.
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEscenario('brownfield')}
+                    className={cn(
+                      'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors',
+                      escenario === 'brownfield'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/30',
+                    )}
+                  >
+                    <Factory className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+                    <span>
+                      <span className="block text-sm font-medium">En producción (brownfield)</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        La OLT ya sirve clientes (ej. gestionada por SmartOLT). El ERP descubre y
+                        respeta lo existente — recursos externos quedan protegidos como intocables —
+                        y crea su ecosistema paralelo sin colisiones (pools reconciliados en cada sync).
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEscenario('greenfield')}
+                    className={cn(
+                      'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors',
+                      escenario === 'greenfield'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/30',
+                    )}
+                  >
+                    <Sprout className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400" />
+                    <span>
+                      <span className="block text-sm font-medium">Nueva / de fábrica (greenfield)</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        OLT con configuración básica, sin clientes. El baseline define la puesta en
+                        marcha completa: VLANs, tagging del uplink y traffic tables se aplican desde
+                        el plan de convergencia con tu aprobación.
+                      </span>
+                    </span>
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">
+                    <BookMarked className="w-3.5 h-3.5 inline mr-1" />
+                    Baseline a asignar {escenario === 'greenfield' ? '(recomendado)' : '(opcional)'}
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    value={baselineId}
+                    onChange={e => setBaselineId(e.target.value)}
+                  >
+                    <option value="">— Sin baseline (asignar después) —</option>
+                    {baselines.map(b => (
+                      <option key={b.id} value={b.id}>{b.nombre} v{b.version}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground/70 mt-1">
+                    Con baseline asignado, el plan de convergencia (dry-run + aprobación) queda
+                    disponible en el tab Baseline apenas termine la sincronización inicial.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 4: Resumen + Commit ──────────────────────── */}
+            {step === 4 && (
               <div className="space-y-4">
                 <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
@@ -364,6 +455,8 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                     ['Modelo',    form.modelo || '—'],
                     ['IP',        `${form.ip}:${form.puerto}`],
                     ['Usuario',   form.usuario],
+                    ['Escenario', escenario === 'greenfield' ? 'Nueva (greenfield)' : 'En producción (brownfield)'],
+                    ['Baseline',  baselineId ? (baselines.find(b => b.id === baselineId)?.nombre ?? '') + ' v' + (baselines.find(b => b.id === baselineId)?.version ?? '') : '— después'],
                     ...(form.ubicacion  ? [['Dirección', form.ubicacion]]  : []),
                     ...(form.latitud && form.longitud ? [['GPS', `${form.latitud}, ${form.longitud}`]] : []),
                     ...(form.descripcion ? [['Descripción', form.descripcion]] : []),
@@ -375,7 +468,9 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Después del registro podrás sincronizar la OLT para importar VLANs, perfiles y tarjetas físicas automáticamente.
+                  Al registrar: sincronización inicial automática (boards, VLANs, perfiles, ONUs) +
+                  reconciliación de pools contra lo existente. Luego el tab Baseline muestra el plan
+                  de convergencia para tu aprobación — nada se escribe en la OLT sin ella.
                 </p>
                 {commitMut.isPending && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -433,8 +528,18 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                 </>
               )}
 
-              {/* Step 3: commit */}
+              {/* Step 3 → 4 */}
               {step === 3 && (
+                <button
+                  className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+                  onClick={() => setStep(4)}
+                >
+                  Continuar →
+                </button>
+              )}
+
+              {/* Step 4: commit */}
+              {step === 4 && (
                 <button
                   className="px-4 py-2 text-sm rounded-md bg-emerald-600 text-white font-medium disabled:opacity-50 hover:bg-emerald-700 transition-colors flex items-center gap-2"
                   disabled={commitMut.isPending}
