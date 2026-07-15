@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Cpu, RefreshCw, Loader2,
   Settings, Activity, Network, Users, Server, Zap,
-  Plug, Gauge, AlertTriangle, GitCompareArrows, Radio, ShieldCheck,
+  Gauge, AlertTriangle, GitCompareArrows, Radio, ShieldCheck,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
@@ -24,14 +24,13 @@ import { TabCompliance } from '@/components/olt/TabCompliance';
 import { TabBaseline }   from '@/components/olt/TabBaseline';
 import { TabFirmware }   from '@/components/olt/TabFirmware';
 import { TabTr069 }      from '@/components/olt/TabTr069';
-import { ProveedoresTab } from '@/components/red/ProveedoresTab';
 import { SaludTab }       from '@/components/red/SaludTab';
 import { DeleteOltModal }  from '@/components/red/DeleteOltModal';
 
 // ─── Tabs ────────────────────────────────────────────────────────
 
 type TabId = 'detalles' | 'eventos' | 'vlans' | 'profiles' | 'onus' | 'drift' | 'firmware'
-           | 'proveedores' | 'salud' | 'tr069' | 'cumplimiento';
+           | 'salud' | 'tr069' | 'cumplimiento';
 
 // Orden por relevancia operativa: primero el día a día (ONUs, salud,
 // correcciones), luego configuración de red, al final infraestructura/auditoría.
@@ -47,7 +46,9 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; soloNativo?: bool
   { id: 'profiles',     label: 'Perfiles',     icon: <Server           className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'tr069',        label: 'TR-069',       icon: <Radio            className="w-3.5 h-3.5" />, soloNativo: true },
   { id: 'firmware',     label: 'Firmware',     icon: <Zap              className="w-3.5 h-3.5" />, soloNativo: true },
-  { id: 'proveedores',  label: 'Proveedores',  icon: <Plug             className="w-3.5 h-3.5" /> },
+  // Tab Proveedores eliminado: una OLT admite un solo proveedor (fijado al
+  // registrarla), el listado /red/olt ya muestra la columna de proveedor y
+  // editar credenciales en Detalles propaga a la config del proveedor.
   { id: 'eventos',      label: 'Eventos',      icon: <Activity         className="w-3.5 h-3.5" /> },
 ];
 
@@ -263,7 +264,6 @@ export default function OltDetallePage() {
         )}
         {tabActual === 'firmware'    && <TabFirmware   oltId={id} />}
         {tabActual === 'tr069'       && <TabTr069      oltId={id} />}
-        {tabActual === 'proveedores' && <ProveedoresTab oltId={id} />}
         {tabActual === 'salud'       && <SaludTab      oltId={id} />}
         {tabActual === 'eventos'     && <TabEventos    oltId={id} />}
       </div>
