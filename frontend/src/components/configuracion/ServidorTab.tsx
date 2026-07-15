@@ -112,6 +112,14 @@ export function ServidorTab() {
           <div>
             <p className="text-xs text-muted-foreground mb-1">Versión instalada</p>
             <p className="text-2xl font-bold text-foreground">v{version.current}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Schema BD: <span className="text-foreground font-medium">{version.schema}</span>
+              {version.ultimaMigracion && (
+                <span className="font-mono ml-1.5 opacity-70" title={version.ultimaMigracion}>
+                  ({version.ultimaMigracion.length > 40 ? version.ultimaMigracion.slice(0, 40) + '…' : version.ultimaMigracion})
+                </span>
+              )}
+            </p>
             {version.remote && (
               <p className="text-xs text-muted-foreground mt-1">
                 Última disponible: <span className="text-foreground font-medium">v{version.remote}</span>

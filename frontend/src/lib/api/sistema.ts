@@ -4,6 +4,8 @@ export interface VersionInfo {
   current:         string;
   remote:          string | null;
   updateAvailable: boolean;
+  schema:          number;
+  ultimaMigracion: string | null;
 }
 
 export interface Proceso {

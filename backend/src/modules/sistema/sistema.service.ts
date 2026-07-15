@@ -74,6 +74,26 @@ export class SistemaService {
     return process.env.npm_package_version || '1.0.0';
   }
 
+  // ─── Versión de schema (BD) ───────────────────────────────────
+  // Derivada de la tabla `migrations` de TypeORM: el número de
+  // migraciones ejecutadas es un contador monotónico del esquema.
+  async getSchemaVersion(): Promise<{ version: number; ultimaMigracion: string | null }> {
+    try {
+      const rows: Array<{ total: string; name: string | null }> = await this.ds.query(
+        `SELECT COUNT(*)::text AS total,
+                (SELECT name FROM migrations ORDER BY id DESC LIMIT 1) AS name
+           FROM migrations`,
+      );
+      return {
+        version: parseInt(rows[0]?.total ?? '0', 10),
+        ultimaMigracion: rows[0]?.name ?? null,
+      };
+    } catch (err) {
+      this.logger.warn(`No se pudo leer versión de schema: ${(err as Error).message}`);
+      return { version: 0, ultimaMigracion: null };
+    }
+  }
+
   // ─── Versión remota ───────────────────────────────────────────
   async getRemoteVersion(): Promise<string | null> {
     const rawUrl = this.buildRawVersionUrl();
@@ -143,6 +163,7 @@ export class SistemaService {
   // ─── Información del servidor ─────────────────────────────────
   async getServerInfo() {
     const currentVersion = this.getCurrentVersion();
+    const schema = await this.getSchemaVersion();
     let remoteVersion: string | null = null;
     let updateAvailable = false;
 
@@ -181,6 +202,8 @@ export class SistemaService {
         current:         currentVersion,
         remote:          remoteVersion,
         updateAvailable,
+        schema:          schema.version,
+        ultimaMigracion: schema.ultimaMigracion,
       },
       update: {
         sourceType: this.sourceType,
