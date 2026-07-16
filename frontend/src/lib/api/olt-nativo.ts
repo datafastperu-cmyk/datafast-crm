@@ -635,6 +635,8 @@ export interface OltVlan {
   descripcion: string | null;
   origen:      'erp' | 'olt';
   estado:      'active' | 'syncing' | 'error';
+  tipo:        string | null;    // smart | mux | standard | super (observed)
+  servPorts:   number | null;    // service-ports activos en la OLT (observed)
   createdAt:   string;
   updatedAt:   string;
 }
