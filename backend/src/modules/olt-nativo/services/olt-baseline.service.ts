@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Injectable, Logger, NotFoundException,
+  BadRequestException, ConflictException, Injectable, Logger, NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -180,6 +180,29 @@ export class OltBaselineService {
       uplinkPort:       spec.uplinkPort,
       servicePortRange: spec.servicePortRange,
     });
+  }
+
+  // ── Eliminar una versión ──────────────────────────────────────
+  // Las versiones son INMUTABLES (nunca se editan), pero sí se pueden borrar
+  // cuando ninguna OLT las tiene asignadas — el historial auditable que
+  // importa es el de versiones que estuvieron en uso; las huérfanas (pruebas,
+  // duplicados) solo estorban en el selector.
+  async eliminar(id: string, empresaId: string): Promise<void> {
+    const baseline = await this.obtener(id, empresaId);
+
+    const enUso = await this.oltRepo.find({
+      where: { baselineId: id, empresaId },
+      select: ['id', 'nombre'],
+    });
+    if (enUso.length > 0) {
+      throw new ConflictException(
+        `No se puede eliminar "${baseline.nombre}" v${baseline.version}: está asignado a ` +
+        `${enUso.length} OLT(s): ${enUso.map(o => o.nombre).join(', ')}. Reasigna otra versión primero.`,
+      );
+    }
+
+    await this.repo.remove(baseline);
+    this.logger.log(`Baseline eliminado | ${baseline.nombre} v${baseline.version} (${id})`);
   }
 
   // JSON canónico con claves ordenadas recursivamente (comparación jsonb-safe).

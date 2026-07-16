@@ -1320,6 +1320,10 @@ export const oltNativoApi = {
     return res.data.data;
   },
 
+  eliminarBaseline: async (id: string): Promise<void> => {
+    await api.delete(`/olt-nativo/baselines/${id}`);
+  },
+
   generarBaselineEstandar: async (uplinkPort: string): Promise<OltBaselineItem> => {
     const res = await api.post<ApiRespuesta<OltBaselineItem>>('/olt-nativo/baselines/estandar', { uplinkPort });
     return res.data.data;

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookMarked, CheckCircle2, ChevronDown, Loader2, Lock, PlayCircle, Plus,
-  RefreshCw, ShieldCheck, XCircle,
+  RefreshCw, ShieldCheck, Trash2, XCircle,
 } from 'lucide-react';
 import {
   oltNativoApi, type BaselinePlan, type BaselineAplicacionResultado, type OltBaselineItem,
@@ -215,6 +215,15 @@ export function TabBaseline({ oltId }: { oltId: string }) {
   const baselineId = olt?.baselineId ?? null;
   const asignado   = baselines.find(b => b.id === baselineId) ?? null;
 
+  const eliminarVersion = useMutation({
+    mutationFn: (b: OltBaselineItem) => oltNativoApi.eliminarBaseline(b.id),
+    onSuccess: (_d, b) => {
+      toast(`Baseline "${b.nombre}" v${b.version} eliminado`, { type: 'success' });
+      qc.invalidateQueries({ queryKey: ['olt-baselines'] });
+    },
+    onError: (e: any) => toast(e?.response?.data?.message ?? 'No se pudo eliminar (¿asignado a alguna OLT?)', { type: 'error' }),
+  });
+
   const asignar = useMutation({
     mutationFn: (id: string | null) => oltNativoApi.asignarBaseline(oltId, id),
     onSuccess: () => {
@@ -303,6 +312,34 @@ export function TabBaseline({ oltId }: { oltId: string }) {
           <p className="text-xs text-muted-foreground">
             Declara {asignado.spec.vlans.length} VLAN(s) y {asignado.spec.trafficTables.length} traffic table(s).
           </p>
+        )}
+
+        {/* Versiones existentes: inmutables (editar = crear versión nueva);
+            las huérfanas (sin OLT asignada) se pueden eliminar. */}
+        {baselines.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {baselines.map(b => {
+              const esAsignado = b.id === baselineId;
+              return (
+                <span key={b.id} className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]',
+                  esAsignado ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground',
+                )}>
+                  {b.nombre} v{b.version}{esAsignado && ' · asignado'}
+                  {!esAsignado && (
+                    <button
+                      onClick={() => eliminarVersion.mutate(b)}
+                      disabled={eliminarVersion.isPending}
+                      className="hover:text-red-400 disabled:opacity-50"
+                      title={`Eliminar ${b.nombre} v${b.version} (solo si ninguna OLT la usa)`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </div>
         )}
       </div>
 

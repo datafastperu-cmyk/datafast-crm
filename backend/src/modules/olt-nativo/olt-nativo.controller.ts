@@ -154,6 +154,17 @@ export class OltNativoController {
     return this.baselines.crear(user.empresaId, dto);
   }
 
+  @Delete('baselines/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar una versión de baseline (409 si alguna OLT la tiene asignada)' })
+  @ApiParam({ name: 'id' })
+  async eliminarBaseline(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    await this.baselines.eliminar(id, user.empresaId);
+  }
+
   @Post('baselines/estandar')
   @ApiOperation({ summary: 'Generar el Baseline Datafast Estándar (configuración canónica del ERP) para un uplink dado' })
   async generarBaselineEstandar(
