@@ -1975,15 +1975,19 @@ def add_traffic_table(
     Crea un traffic table en la OLT Huawei MA5800.
 
     UNA sesión Paramiko (_paramiko_huawei_run) — bypass del bug de
-    session_preparation de Netmiko en este hardware
-    (netmiko.exceptions.ReadTimeout: Pattern not detected 'MA5800-X7',
-    reproducido en producción 2026-07-14 con el _send_config_set anterior).
+    session_preparation de Netmiko en este hardware.
 
-    'display traffic table all' (usado antes para resolver el índice por
-    nombre) NO EXISTE en este firmware — "Unknown command". La vista que sí
-    existe ('display traffic table ip from-index 0') no tiene columna de
-    nombre, así que el índice asignado se obtiene por DIFERENCIA: se lee
-    la lista de índices antes y después de crear.
+    Resolución del índice (validado manualmente 2026-07-16): la OLT retorna
+    el índice EN LA RESPUESTA del propio comando de creación:
+      Create traffic descriptor record successfully
+      Traffic Table Index          : 22
+      Traffic Table Name           : ERP-MGMT
+    El método anterior (diff de 'display traffic table ip from-index 0'
+    antes/después) fallaba con listas largas: el paginador More desfasaba
+    la segmentación por comando y el diff salía vacío, reportando
+    "creada sin índice" cuando en realidad la creación había fallado o
+    quedaba sin registrar (reproducido en producción al aplicar el
+    Baseline Estándar).
 
     Síncrono — llamar desde asyncio.to_thread().
     """
@@ -1997,35 +2001,31 @@ def add_traffic_table(
     add_cmd = (f'traffic table ip name {safe_name} cir {cir_kbps} {cbs_part}'
                f'pir {pir_kbps} {pbs_part}priority 0 priority-policy local-setting')
 
-    commands = [
-        'display traffic table ip from-index 0',   # [0] snapshot antes
-        'config',                                   # [1]
-        add_cmd,                                    # [2]
-        'quit',                                      # [3]
-        'display traffic table ip from-index 0',   # [4] snapshot después
-    ]
+    commands = ['config', add_cmd, 'quit']
     logger.info('add_traffic_table: name=%s cir=%d cbs=%s pir=%d pbs=%s en %s',
                 safe_name, cir_kbps, cbs_bytes, pir_kbps, pbs_bytes, conn.ip)
     try:
-        outputs = _paramiko_huawei_run(conn, commands, timeout=90.0, return_list=True)
-        _check_cli_error(conn.brand, 'add_traffic_table', outputs[2])
-    except CommandError as exc:
-        return {'success': False, 'error': str(exc)}
+        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
     except Exception as exc:  # noqa: BLE001
         return {'success': False, 'error': str(exc)}
 
-    nuevos = _parse_traffic_table_indices(outputs[4]) - _parse_traffic_table_indices(outputs[0])
-
-    if len(nuevos) == 1:
-        idx = nuevos.pop()
+    # Se parsea la sesión completa (los límites entre comandos pueden desfasarse).
+    raw = '\n'.join(outputs)
+    m = re.search(
+        r'Create traffic descriptor record successfully.*?Traffic Table Index\s*:\s*(\d+)',
+        raw, re.DOTALL,
+    )
+    if m:
+        idx = int(m.group(1))
         logger.info('add_traffic_table: %s → index=%d en %s', safe_name, idx, conn.ip)
         return {'success': True, 'index': idx, 'name': safe_name}
 
-    logger.warning(
-        'add_traffic_table: tabla creada pero índice ambiguo en %s (nuevos=%s)',
-        conn.ip, nuevos,
-    )
-    return {'success': True, 'index': None, 'name': safe_name}
+    try:
+        _check_cli_error(conn.brand, 'add_traffic_table', raw)
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+    return {'success': False,
+            'error': 'La OLT no confirmó la creación (sin "successfully" ni índice en la respuesta)'}
 
 
 def delete_traffic_table(
