@@ -44,6 +44,7 @@ import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltSyncService }    from './services/olt-sync.service';
 import { CrearBaselineDto, OltBaselineService } from './services/olt-baseline.service';
+import { AgregarSrvProfileDto, OltSrvProfileService } from './services/olt-srvprofile.service';
 import { OLT_MODEL_CATALOG } from './capability/olt-model-catalog';
 import { OltBaselinePlanService } from './services/olt-baseline-plan.service';
 import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
@@ -88,6 +89,7 @@ export class OltNativoController {
     private readonly complianceService: OltComplianceService,
     private readonly baselines:     OltBaselineService,
     private readonly baselinePlan:  OltBaselinePlanService,
+    private readonly srvProfiles:   OltSrvProfileService,
     private readonly ztp:           ZtpProvisioningService,
     private readonly onuConfig:     ContratoOnuConfigService,
     private readonly onuTr069:      OnuTr069DetalleService,
@@ -183,6 +185,31 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.baselines.asignarAOlt(oltId, user.empresaId, body.baselineId ?? null);
+  }
+
+  // ── Tipos de ONU (ont-srvprofile) — excepción gestionable ─────
+  @Post(':oltId/srvprofiles')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Crear un tipo de ONU (ont-srvprofile) en la OLT — sello DATAFAST automático' })
+  @ApiParam({ name: 'oltId' })
+  async agregarSrvProfile(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: AgregarSrvProfileDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.srvProfiles.agregarConCli(oltId, user.empresaId, dto);
+  }
+
+  @Delete(':oltId/srvprofiles/:profileId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar un tipo de ONU del ERP (guards: ownership + sin ONUs usándolo)' })
+  @ApiParam({ name: 'oltId' })
+  async eliminarSrvProfile(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Param('profileId', ParseIntPipe) profileId: number,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    await this.srvProfiles.eliminarConCli(oltId, user.empresaId, profileId);
   }
 
   // ── Convergencia de baseline (Incremento 9) — dry-run + apply ──

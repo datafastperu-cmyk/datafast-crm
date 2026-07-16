@@ -84,6 +84,7 @@ export interface OltServiceProfile {
   oltId:     string;
   profileId: number;
   nombre:    string;
+  origen?:   'erp' | 'olt';
 }
 
 export interface OltSyncJob {
@@ -176,6 +177,7 @@ export interface OntFoundInfo {
   sn:   string;
   slot: number;
   port: number;
+  ont_model?: string | null;   // modelo reportado por el autofind (ej. EG8145V5)
 }
 
 export interface DiscoverResult {
@@ -1214,6 +1216,21 @@ export const oltNativoApi = {
   getServiceProfiles: async (oltId: string): Promise<OltServiceProfile[]> => {
     const res = await api.get<ApiRespuesta<OltServiceProfile[]>>(`/olt-nativo/${oltId}/service-profiles`);
     return res.data.data ?? [];
+  },
+
+  // ── Tipos de ONU (ont-srvprofile) ────────────────────────────
+  agregarSrvProfile: async (
+    oltId: string,
+    dto: { modelo: string; eth: number; pots: number; catv: number },
+  ): Promise<OltServiceProfile> => {
+    const res = await api.post<ApiRespuesta<OltServiceProfile>>(
+      `/olt-nativo/${oltId}/srvprofiles`, dto, { timeout: 90_000 },
+    );
+    return res.data.data;
+  },
+
+  eliminarSrvProfile: async (oltId: string, profileId: number): Promise<void> => {
+    await api.delete(`/olt-nativo/${oltId}/srvprofiles/${profileId}`, { timeout: 90_000 });
   },
 
   getEventos: async (

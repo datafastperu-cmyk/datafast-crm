@@ -922,6 +922,33 @@ export interface PythonVersionInfoResponse {
   error?:   string;
 }
 
+// ─── ONT service-profiles ("tipos de ONU") ───────────────────
+
+export interface PythonSrvProfileAddRequest {
+  connection: PythonConnectionPayload;
+  name: string;
+  eth:  number;
+  pots: number;
+  catv: number;
+}
+
+export interface PythonSrvProfileAddResponse {
+  success:    boolean;
+  profile_id: number | null;
+  name:       string | null;
+  error?:     string;
+}
+
+export interface PythonSrvProfileDeleteRequest {
+  connection: PythonConnectionPayload;
+  name: string;
+}
+
+export interface PythonSrvProfileDeleteResponse {
+  success: boolean;
+  error?:  string;
+}
+
 // ─── Uplink VLAN tagging (Incremento 9b) ─────────────────────
 
 export interface PythonUplinkVlansRequest {

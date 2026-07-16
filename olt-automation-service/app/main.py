@@ -86,6 +86,10 @@ from app.schemas.olt import (
     UplinkVlansResponse,
     VersionInfoRequest,
     VersionInfoResponse,
+    SrvProfileAddRequest,
+    SrvProfileAddResponse,
+    SrvProfileDeleteRequest,
+    SrvProfileDeleteResponse,
     UplinkTagRequest,
     UplinkTagResponse,
     TrafficTableAddRequest,
@@ -140,6 +144,8 @@ from app.services.provisioning import (
     add_uplink_vlan,
     get_uplink_vlans,
     get_version_info,
+    add_ont_srvprofile,
+    delete_ont_srvprofile,
     add_traffic_table,
     delete_traffic_table,
     edit_traffic_table,
@@ -1349,6 +1355,47 @@ async def version_info(body: VersionInfoRequest) -> VersionInfoResponse:
         model=result.get('model'), firmware=result.get('firmware'),
         patch=result.get('patch'), error=result.get('error'),
     )
+
+
+# ── ONT service-profiles ("tipos de ONU") ─────────────────────
+
+@app.post(
+    '/api/v1/olt/srvprofile/add',
+    response_model=SrvProfileAddResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['srvprofile'],
+    summary='Crear un ONT service-profile (tipo de ONU) en la OLT',
+)
+async def srvprofile_add(body: SrvProfileAddRequest) -> SrvProfileAddResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                add_ont_srvprofile, body.connection, body.name, body.eth, body.pots, body.catv,
+            )
+        except ProvisioningError as exc:
+            return SrvProfileAddResponse(success=False, error=str(exc))
+    return SrvProfileAddResponse(
+        success=result['success'], profile_id=result.get('profile_id'),
+        name=result.get('name'), error=result.get('error'),
+    )
+
+
+@app.post(
+    '/api/v1/olt/srvprofile/delete',
+    response_model=SrvProfileDeleteResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['srvprofile'],
+    summary='Eliminar un ONT service-profile por nombre (la OLT rechaza si tiene ONTs asociadas)',
+)
+async def srvprofile_delete(body: SrvProfileDeleteRequest) -> SrvProfileDeleteResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(delete_ont_srvprofile, body.connection, body.name)
+        except ProvisioningError as exc:
+            return SrvProfileDeleteResponse(success=False, error=str(exc))
+    return SrvProfileDeleteResponse(success=result['success'], error=result.get('error'))
 
 
 # ── Uplink VLAN tagging (Incremento 9b) ───────────────────────

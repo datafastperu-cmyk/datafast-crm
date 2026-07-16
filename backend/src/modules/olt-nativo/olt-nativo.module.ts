@@ -19,6 +19,7 @@ import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltBaseline }       from './entities/olt-baseline.entity';
 import { OltBaselineService } from './services/olt-baseline.service';
 import { OltBaselinePlanService } from './services/olt-baseline-plan.service';
+import { OltSrvProfileService } from './services/olt-srvprofile.service';
 import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltHealthSnapshot } from './entities/olt-health-snapshot.entity';
 import { OltAlerta }         from './entities/olt-alerta.entity';
@@ -201,6 +202,7 @@ import { OltGateway }                from './olt.gateway';
     OltComplianceService,
     OltBaselineService,
     OltBaselinePlanService,
+    OltSrvProfileService,
     OltGateway,
     FtthRecoveryCron,
     OltHealthPollerCron,

@@ -1854,6 +1854,86 @@ def get_version_info(conn: OltConnectionSchema) -> dict[str, Any]:
     return {'success': True, **info}
 
 
+def add_ont_srvprofile(
+    conn: OltConnectionSchema,
+    name: str,
+    eth:  int,
+    pots: int = 0,
+    catv: int = 0,
+) -> dict[str, Any]:
+    """
+    Crea un ONT service-profile ("tipo de ONU") en la OLT Huawei MA5800.
+    Validado manualmente 2026-07-16: al entrar al modo perfil, el PROMPT revela
+    el Profile-ID asignado — 'MA5800-X7(config-gpon-srvprofile-19)#' — de ahí
+    se resuelve el índice (sin diffs de displays paginados).
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'add_ont_srvprofile no implementado para marca: {conn.brand.value}')
+
+    safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', name)[:32]
+    port_cmd  = f'ont-port eth {eth}'
+    if pots > 0:
+        port_cmd += f' pots {pots}'
+    if catv > 0:
+        port_cmd += f' catv {catv}'
+
+    commands = [
+        'config',                                            # [0]
+        f'ont-srvprofile gpon profile-name {safe_name}',     # [1] crea + entra al modo perfil
+        port_cmd,                                            # [2] capacidades del modelo
+        'commit',                                            # [3]
+        'quit',                                              # [4] sale del modo perfil
+        'quit',                                              # [5] sale de config
+    ]
+    logger.info('add_ont_srvprofile: name=%s eth=%d pots=%d catv=%d en %s',
+                safe_name, eth, pots, catv, conn.ip)
+    try:
+        outputs = _paramiko_huawei_run(conn, commands, timeout=90.0, return_list=True)
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    raw = '\n'.join(outputs)
+    try:
+        _check_cli_error(conn.brand, 'add_ont_srvprofile', raw)
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+
+    m = re.search(r'config-gpon-srvprofile-(\d+)', raw)
+    if not m:
+        return {'success': False,
+                'error': 'La OLT no entró al modo de perfil (sin profile-id en el prompt)'}
+    profile_id = int(m.group(1))
+    logger.info('add_ont_srvprofile: %s → profile_id=%d en %s', safe_name, profile_id, conn.ip)
+    return {'success': True, 'profile_id': profile_id, 'name': safe_name}
+
+
+def delete_ont_srvprofile(
+    conn: OltConnectionSchema,
+    name: str,
+) -> dict[str, Any]:
+    """
+    Elimina un ONT service-profile por nombre. La OLT rechaza el undo si el
+    perfil tiene ONTs asociadas (Binding times > 0) — ese error se propaga.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'delete_ont_srvprofile no implementado para marca: {conn.brand.value}')
+
+    safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', name)[:32]
+    commands = ['config', f'undo ont-srvprofile gpon profile-name {safe_name}', 'quit']
+    logger.info('delete_ont_srvprofile: name=%s en %s', safe_name, conn.ip)
+    try:
+        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
+        _check_cli_error(conn.brand, 'delete_ont_srvprofile', '\n'.join(outputs))
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+    logger.info('delete_ont_srvprofile: %s eliminado en %s', safe_name, conn.ip)
+    return {'success': True}
+
+
 def _parse_port_vlan_ids(raw: str) -> list[int]:
     """
     Extrae los VLAN IDs de la salida de 'display port vlan F/S/P'.

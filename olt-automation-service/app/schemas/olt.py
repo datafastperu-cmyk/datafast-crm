@@ -643,6 +643,32 @@ class VersionInfoResponse(BaseModel):
     error:    str | None = None
 
 
+class SrvProfileAddRequest(BaseModel):
+    """Crea un ONT service-profile ('tipo de ONU') en la OLT."""
+    connection: OltConnectionSchema
+    name: str = Field(..., min_length=1, max_length=32)
+    eth:  int = Field(..., ge=1, le=24)
+    pots: int = Field(default=0, ge=0, le=8)
+    catv: int = Field(default=0, ge=0, le=4)
+
+
+class SrvProfileAddResponse(BaseModel):
+    success:    bool
+    profile_id: int | None = None
+    name:       str | None = None
+    error:      str | None = None
+
+
+class SrvProfileDeleteRequest(BaseModel):
+    connection: OltConnectionSchema
+    name: str = Field(..., min_length=1, max_length=32)
+
+
+class SrvProfileDeleteResponse(BaseModel):
+    success: bool
+    error:   str | None = None
+
+
 class UplinkVlansRequest(BaseModel):
     """Lee las VLANs taggeadas en un puerto uplink (frame/slot/port)."""
     connection: OltConnectionSchema

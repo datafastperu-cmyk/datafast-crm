@@ -60,6 +60,10 @@ import {
   PythonVlanAddRequest,
   PythonVersionInfoRequest,
   PythonVersionInfoResponse,
+  PythonSrvProfileAddRequest,
+  PythonSrvProfileAddResponse,
+  PythonSrvProfileDeleteRequest,
+  PythonSrvProfileDeleteResponse,
   PythonUplinkVlansRequest,
   PythonUplinkVlansResponse,
   PythonUplinkTagRequest,
@@ -500,6 +504,21 @@ export class OltAutomationClient {
     this.logger.log(`→ Python version-info | OLT=${payload.connection.ip}`);
     const res = await this.post<PythonVersionInfoResponse>('/api/v1/olt/version-info', payload, 60_000);
     this.logger.log(`← Python version-info | success=${res.success} model=${res.model} fw=${res.firmware}`);
+    return res;
+  }
+
+  // ── ONT service-profiles ("tipos de ONU") ───────────────────
+  async srvProfileAdd(payload: PythonSrvProfileAddRequest): Promise<PythonSrvProfileAddResponse> {
+    this.logger.log(`→ Python srvprofile/add | OLT=${payload.connection.ip} name=${payload.name}`);
+    const res = await this.post<PythonSrvProfileAddResponse>('/api/v1/olt/srvprofile/add', payload, 90_000);
+    this.logger.log(`← Python srvprofile/add | success=${res.success} id=${res.profile_id}`);
+    return res;
+  }
+
+  async srvProfileDelete(payload: PythonSrvProfileDeleteRequest): Promise<PythonSrvProfileDeleteResponse> {
+    this.logger.log(`→ Python srvprofile/delete | OLT=${payload.connection.ip} name=${payload.name}`);
+    const res = await this.post<PythonSrvProfileDeleteResponse>('/api/v1/olt/srvprofile/delete', payload, 90_000);
+    this.logger.log(`← Python srvprofile/delete | success=${res.success}`);
     return res;
   }
 

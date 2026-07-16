@@ -285,6 +285,28 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     setScanNoResults(false);
   }, [selectedOltId]);
 
+  // ── Tipo de ONU: detección de modelo nuevo (propuesta del usuario) ──
+  // El escaneo reporta el modelo (ont_model). Si ningún ont-srvprofile de la
+  // OLT corresponde a ese modelo, se sugiere crearlo con sello DATAFAST y se
+  // reanuda el aprovisionamiento con el perfil recién creado seleccionado.
+  const modeloDetectado = scanData?.onus.find(o => o.sn === sn)?.ont_model?.trim() || null;
+  const perfilDelModelo = modeloDetectado
+    ? perfiles?.srvprofiles?.find(p => p.name.toUpperCase().includes(modeloDetectado.toUpperCase()))
+    : undefined;
+
+  const crearTipoOnu = useMutation({
+    mutationFn: () => oltNativoApi.agregarSrvProfile(selectedOltId, {
+      modelo: modeloDetectado!.toUpperCase(), eth: 4, pots: 2, catv: 0,
+    }),
+    onSuccess: (p) => {
+      toast(`Tipo de ONU "${p.nombre}" creado (profile-id ${p.profileId}) — aprovisionamiento reanudado`, { type: 'success' });
+      setSrvprofileId(String(p.profileId));
+      qc.invalidateQueries({ queryKey: ["olt-perfiles", selectedOltId] });
+      qc.invalidateQueries({ queryKey: ["olt-service-profiles", selectedOltId] });
+    },
+    onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al crear el tipo de ONU', { type: 'error' }),
+  });
+
   // Form validation
   // Velocidad Bajada/Subida OBLIGATORIAS: dejarlas vacías aplicaba traffic-table
   // index 0, que en OLTs ya provisionadas por SmartOLT puede ser una tabla con tope
@@ -677,6 +699,35 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       <input type="number" value={srvprofileId} onChange={e => setSrvprofileId(e.target.value)} min={1} placeholder="1" className={inputCls} />
                     )}
                   </Field>
+                  {/* Modelo nuevo detectado en el escaneo sin tipo de ONU → sugerir crear */}
+                  {modeloDetectado && !perfilDelModelo && (
+                    <div className="col-span-2 flex items-center gap-2 flex-wrap rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2">
+                      <p className="text-xs text-sky-700 dark:text-sky-400 flex-1 min-w-48">
+                        La ONU escaneada es modelo <strong className="font-mono">{modeloDetectado}</strong> y la OLT
+                        no tiene un tipo de ONU para ese modelo. Créalo y el aprovisionamiento continúa.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => crearTipoOnu.mutate()}
+                        disabled={crearTipoOnu.isPending}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-medium hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {crearTipoOnu.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                        Crear DATAFAST_{modeloDetectado.toUpperCase()} (4 ETH, 2 POTS)
+                      </button>
+                    </div>
+                  )}
+                  {modeloDetectado && perfilDelModelo && srvprofileId === '' && (
+                    <div className="col-span-2">
+                      <button
+                        type="button"
+                        onClick={() => setSrvprofileId(String(perfilDelModelo.profile_id))}
+                        className="text-xs text-sky-600 dark:text-sky-400 hover:underline"
+                      >
+                        Modelo {modeloDetectado} detectado → usar perfil {perfilDelModelo.profile_id} — {perfilDelModelo.name}
+                      </button>
+                    </div>
+                  )}
                   {(lineprofileId === '0' || srvprofileId === '0') && (
                     <div className="col-span-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
                       <span className="text-amber-600 text-sm leading-none mt-0.5">⚠</span>
