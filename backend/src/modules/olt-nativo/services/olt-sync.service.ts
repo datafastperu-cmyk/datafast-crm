@@ -441,18 +441,39 @@ export class OltSyncService implements OnModuleInit {
     );
   }
 
+  // 'display traffic table ip from-index 0' NO trae nombres — el driver
+  // genera sintéticos. El ERP es dueño de los nombres de sus tablas
+  // (origen='erp': ERP-MGMT, ERP-100M…): jamás se pisan en el sync.
+  // Regresión real 2026-07-16: el upsert anterior renombró las tablas del
+  // estándar a 'traffic-table-N' y el plan quiso recrearlas todas.
   private async _upsertTrafficTables(
     oltId: string, empresaId: string,
     tables: { index: number; name: string; cir_kbps: number | null; pir_kbps: number | null; cbs_bytes?: number | null; pbs_bytes?: number | null }[],
   ): Promise<void> {
     if (!tables.length) return;
-    await this.trafficRepo.upsert(
-      tables.map(t => ({
-        oltId, empresaId, trafficId: t.index, nombre: t.name,
-        cirKbps: t.cir_kbps, pirKbps: t.pir_kbps,
-        cbsBytes: t.cbs_bytes ?? null, pbsBytes: t.pbs_bytes ?? null,
-      })),
-      { conflictPaths: ['oltId', 'trafficId'], skipUpdateIfNoValuesChanged: true },
+    await this.ds.query(
+      `INSERT INTO olt_traffic_tables
+         (id, olt_id, empresa_id, traffic_id, nombre, cir_kbps, pir_kbps, cbs_bytes, pbs_bytes, origen, estado, created_at, updated_at)
+       SELECT gen_random_uuid(), $1, $2, t.idx, t.name, t.cir, t.pir, t.cbs, t.pbs, 'olt', 'active', NOW(), NOW()
+       FROM   unnest($3::int[], $4::text[], $5::int[], $6::int[], $7::int[], $8::int[])
+              AS t(idx, name, cir, pir, cbs, pbs)
+       ON CONFLICT (olt_id, traffic_id) DO UPDATE
+         SET cir_kbps   = EXCLUDED.cir_kbps,
+             pir_kbps   = EXCLUDED.pir_kbps,
+             cbs_bytes  = EXCLUDED.cbs_bytes,
+             pbs_bytes  = EXCLUDED.pbs_bytes,
+             nombre     = CASE WHEN olt_traffic_tables.origen = 'erp'
+                               THEN olt_traffic_tables.nombre ELSE EXCLUDED.nombre END,
+             updated_at = NOW()`,
+      [
+        oltId, empresaId,
+        tables.map(t => t.index),
+        tables.map(t => t.name),
+        tables.map(t => t.cir_kbps),
+        tables.map(t => t.pir_kbps),
+        tables.map(t => t.cbs_bytes ?? null),
+        tables.map(t => t.pbs_bytes ?? null),
+      ],
     );
   }
 
