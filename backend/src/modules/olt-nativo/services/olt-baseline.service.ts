@@ -149,7 +149,9 @@ export class OltBaselineService {
       where: { empresaId, nombre: BASELINE_ESTANDAR_NOMBRE },
       order: { version: 'DESC' },
     });
-    if (ultima && JSON.stringify(ultima.spec) === JSON.stringify(spec)) {
+    // Comparación estable: Postgres jsonb NO preserva el orden de claves,
+    // así que JSON.stringify directo nunca coincide (bug real: duplicó v3).
+    if (ultima && this._stableStringify(ultima.spec) === this._stableStringify(spec)) {
       return ultima;
     }
 
@@ -164,6 +166,18 @@ export class OltBaselineService {
     // el estándar lo fija directamente.
     baseline.spec = spec;
     return this.repo.save(baseline);
+  }
+
+  // JSON canónico con claves ordenadas recursivamente (comparación jsonb-safe).
+  private _stableStringify(v: unknown): string {
+    if (Array.isArray(v)) return `[${v.map(x => this._stableStringify(x)).join(',')}]`;
+    if (v !== null && typeof v === 'object') {
+      return `{${Object.keys(v as object).sort()
+        .filter(k => (v as Record<string, unknown>)[k] !== undefined)
+        .map(k => `${JSON.stringify(k)}:${this._stableStringify((v as Record<string, unknown>)[k])}`)
+        .join(',')}}`;
+    }
+    return JSON.stringify(v);
   }
 
   async asignarAOlt(oltId: string, empresaId: string, baselineId: string | null): Promise<OltDispositivo> {
