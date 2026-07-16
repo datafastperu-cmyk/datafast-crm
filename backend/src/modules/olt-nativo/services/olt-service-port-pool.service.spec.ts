@@ -18,18 +18,18 @@ describe('OltServicePortPoolService — canal (Inc.4)', () => {
   });
 
   describe('configurarRango', () => {
-    it('default canal="datos" e inserta con ON CONFLICT (olt_id, canal, service_port_id)', async () => {
+    it('siembra el namespace único con ON CONFLICT (olt_id, service_port_id) — canal neutro "datos"', async () => {
       ds.query.mockResolvedValue([{ service_port_id: 10 }, { service_port_id: 11 }]);
       await svc.configurarRango('olt1', 'e1', { inicio: 10, fin: 11 });
       const { sql, params } = lastQuery(ds);
-      expect(sql).toContain('ON CONFLICT (olt_id, canal, service_port_id)');
-      expect(params).toEqual(['e1', 'olt1', [10, 11], 'datos']);
+      expect(sql).toContain('ON CONFLICT (olt_id, service_port_id)');
+      expect(params).toEqual(['e1', 'olt1', [10, 11]]);
     });
 
-    it('canal="gestion" se propaga como parámetro', async () => {
+    it('el canal ya NO particiona el sembrado: siempre neutro, sin propagarse a params', async () => {
       ds.query.mockResolvedValue([]);
       await svc.configurarRango('olt1', 'e1', { inicio: 100, fin: 100 }, 'gestion');
-      expect(lastQuery(ds).params).toEqual(['e1', 'olt1', [100], 'gestion']);
+      expect(lastQuery(ds).params).toEqual(['e1', 'olt1', [100]]);
     });
   });
 
@@ -43,7 +43,7 @@ describe('OltServicePortPoolService — canal (Inc.4)', () => {
       expect(params).toEqual(['olt1', 'c1', 'gestion']);
     });
 
-    it('sin reuse: UPDATE atómico incluye el canal en el subquery', async () => {
+    it('sin reuse: UPDATE atómico toma del namespace único y ESTAMPA el rol (canal=$3)', async () => {
       ds.query
         .mockResolvedValueOnce([])                              // sin reuse
         .mockResolvedValueOnce([[{ service_port_id: 5 }], 1]);  // UPDATE ... RETURNING
@@ -51,17 +51,18 @@ describe('OltServicePortPoolService — canal (Inc.4)', () => {
       expect(r).toBe(5);
       const { sql, params } = lastQuery(ds);
       expect(sql).toContain('FOR UPDATE SKIP LOCKED');
+      expect(sql).toContain('canal       = $3');   // estampa el rol
       expect(params).toEqual(['c1', 'olt1', 'gestion']);
     });
 
-    it('pool del canal vacío → null (modo bypass)', async () => {
+    it('pool vacío (toda la OLT) → null (modo bypass)', async () => {
       ds.query
         .mockResolvedValueOnce([])            // sin reuse
         .mockResolvedValueOnce([[], 0])       // UPDATE no asigna
-        .mockResolvedValueOnce([{ total: '0' }]); // count del canal = 0
+        .mockResolvedValueOnce([{ total: '0' }]); // count pool-wide = 0
       const r = await svc.allocar('olt1', 'c1', 'gestion');
       expect(r).toBeNull();
-      expect(lastQuery(ds).params).toEqual(['olt1', 'gestion']);
+      expect(lastQuery(ds).params).toEqual(['olt1']);
     });
 
     it('pool configurado pero agotado → lanza', async () => {
@@ -80,11 +81,11 @@ describe('OltServicePortPoolService — canal (Inc.4)', () => {
       expect(lastQuery(ds).params).toEqual(['olt1', 'c1', 'gestion']);
     });
 
-    it('obtenerEstado agrega por canal', async () => {
+    it('obtenerEstado agrega el pool completo (namespace único, sin filtrar canal)', async () => {
       ds.query.mockResolvedValue([{ total: '5', libres: '4', ocupados: '1', min_id: 100, max_id: 104 }]);
       const est = await svc.obtenerEstado('olt1', 'e1', 'gestion');
       expect(est).toEqual({ total: 5, libres: 4, ocupados: 1, rango: { min: 100, max: 104 } });
-      expect(lastQuery(ds).params).toEqual(['olt1', 'e1', 'gestion']);
+      expect(lastQuery(ds).params).toEqual(['olt1', 'e1']);
     });
   });
 });

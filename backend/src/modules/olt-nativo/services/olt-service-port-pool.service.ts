@@ -74,11 +74,11 @@ export class OltServicePortPoolService {
     const rows = await this.ds.query<{ service_port_id: number }[]>(
       `INSERT INTO olt_service_port_pool
          (id, empresa_id, olt_id, canal, service_port_id, estado, created_at, updated_at, version)
-       SELECT gen_random_uuid(), $1, $2, $4, svc_id, 'libre', NOW(), NOW(), 1
+       SELECT gen_random_uuid(), $1, $2, 'datos', svc_id, 'libre', NOW(), NOW(), 1
        FROM   unnest($3::int[]) AS svc_id
-       ON CONFLICT (olt_id, canal, service_port_id) DO NOTHING
+       ON CONFLICT (olt_id, service_port_id) DO NOTHING
        RETURNING service_port_id`,
-      [empresaId, oltId, ids, canal],
+      [empresaId, oltId, ids],
     );
 
     const insertados = rows.length;
@@ -118,11 +118,16 @@ export class OltServicePortPoolService {
       return existing.service_port_id;
     }
 
-    // Asignación atómica: FOR UPDATE SKIP LOCKED garantiza cero colisiones bajo carga concurrente
+    // Asignación atómica sobre el NAMESPACE ÚNICO (Opción A): se toma el menor ID libre
+    // del pool SIN importar el rol previo y se ESTAMPA el rol (canal) en la fila. Como la
+    // unicidad es (olt_id, service_port_id), un ID solo puede quedar asignado a un
+    // contrato/rol a la vez → cero solape entre datos y gestión por construcción.
+    // FOR UPDATE SKIP LOCKED garantiza cero colisiones bajo carga concurrente.
     const result: any = await this.ds.query(
       `UPDATE olt_service_port_pool
        SET estado      = 'ocupado',
            contrato_id = $1,
+           canal       = $3,
            locked_at   = NOW(),
            updated_at  = NOW(),
            version     = version + 1
@@ -130,7 +135,6 @@ export class OltServicePortPoolService {
          SELECT id
          FROM   olt_service_port_pool
          WHERE  olt_id     = $2
-           AND  canal      = $3
            AND  estado     = 'libre'
            AND  deleted_at IS NULL
          ORDER  BY service_port_id ASC
@@ -151,14 +155,14 @@ export class OltServicePortPoolService {
       return allocated.service_port_id;
     }
 
-    // ¿El pool existe para esta OLT/canal o está en modo bypass?
+    // ¿El pool existe para esta OLT o está en modo bypass? Namespace único → se cuenta
+    // todo el pool de la OLT, no por canal (los IDs libres son neutrales hasta asignarse).
     const [{ total }] = await this.ds.query<{ total: string }[]>(
       `SELECT COUNT(*)::text AS total
        FROM   olt_service_port_pool
        WHERE  olt_id    = $1
-         AND  canal     = $2
          AND  deleted_at IS NULL`,
-      [oltId, canal],
+      [oltId],
     );
 
     if (Number(total) === 0) {
@@ -180,10 +184,13 @@ export class OltServicePortPoolService {
     contratoId: string,
     canal: CanalServicePort = 'datos',
   ): Promise<void> {
+    // Al liberar se NEUTRALIZA el rol (canal='datos'): la fila vuelve al pool único como
+    // ID libre neutro, reasignable a cualquier rol. Se localiza por el rol con que se asignó.
     await this.ds.query(
       `UPDATE olt_service_port_pool
        SET estado      = 'libre',
            contrato_id = NULL,
+           canal       = 'datos',
            locked_at   = NULL,
            updated_at  = NOW(),
            version     = version + 1
@@ -213,12 +220,11 @@ export class OltServicePortPoolService {
            version     = version + 1
        WHERE olt_id          = $1
          AND service_port_id = $2
-         AND canal           = $3
          AND deleted_at      IS NULL`,
-      [oltId, servicePortId, canal],
+      [oltId, servicePortId],
     );
     this.logger.warn(
-      `Pool colisión | olt=${oltId} canal=${canal} svcPort=${servicePortId} ya existe en la OLT — marcado no-usable`,
+      `Pool colisión | olt=${oltId} svcPort=${servicePortId} ya existe en la OLT — marcado no-usable`,
     );
   }
 
@@ -258,8 +264,9 @@ export class OltServicePortPoolService {
         `INSERT INTO olt_service_port_pool
            (id, empresa_id, olt_id, canal, service_port_id, estado, locked_at, created_at, updated_at, version)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, 'ocupado', NOW(), NOW(), NOW(), 1)
-         ON CONFLICT (olt_id, canal, service_port_id) DO UPDATE
+         ON CONFLICT (olt_id, service_port_id) DO UPDATE
            SET estado     = 'ocupado',
+               canal      = EXCLUDED.canal,
                locked_at  = NOW(),
                updated_at = NOW(),
                version    = olt_service_port_pool.version + 1
@@ -297,9 +304,8 @@ export class OltServicePortPoolService {
        FROM  olt_service_port_pool
        WHERE olt_id     = $1
          AND empresa_id = $2
-         AND canal      = $3
          AND deleted_at IS NULL`,
-      [oltId, empresaId, canal],
+      [oltId, empresaId],
     );
 
     return {
@@ -325,11 +331,10 @@ export class OltServicePortPoolService {
            version    = version + 1
        WHERE olt_id     = $1
          AND empresa_id = $2
-         AND canal      = $3
          AND estado     = 'libre'
          AND deleted_at IS NULL
        RETURNING id`,
-      [oltId, empresaId, canal],
+      [oltId, empresaId],
     );
     // TypeORM/pg devuelve [filas, affectedCount] para UPDATE...RETURNING.
     const filas = Array.isArray(result?.[0]) ? result[0] : result;
