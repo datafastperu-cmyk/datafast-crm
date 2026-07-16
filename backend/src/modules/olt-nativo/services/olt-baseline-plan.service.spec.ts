@@ -156,6 +156,74 @@ describe('OltBaselinePlanService', () => {
     expect(plan.bloqueos[0].motivo).toContain('sincronización');
   });
 
+  // ── TR-069 + transparencia de comandos ───────────────────────
+  it('toda operación CLI expone los comandos exactos que se inyectarán', async () => {
+    const svc = makeService({
+      bl: baseline({
+        vlans: [{ vlanId: 1600, nombre: 'GESTION_TR069', uplink: true, proposito: 'tr069' }],
+        trafficTables: [{ nombre: 'ERP-100M', cirKbps: 102400, pirKbps: 102400 }],
+        uplinkPort: '0/9/0',
+      }),
+      snap: snapshot({ uplinkVlans: { '0/9/0': [1] } }),
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    const porTipo = Object.fromEntries(plan.operaciones.map(o => [o.tipo, o]));
+
+    expect(porTipo.crear_vlan.comandos).toEqual(
+      ['config', 'vlan 1600 smart', 'vlan desc 1600 GESTION_TR069', 'quit'],
+    );
+    expect(porTipo.taguear_uplink.comandos).toContain('port vlan 1600 0/9 0');
+    expect(porTipo.crear_traffic_table.comandos.join(' ')).toContain(
+      'traffic table ip name ERP-100M cir 102400 pir 102400',
+    );
+    // La declaración TR-069 es solo BD — sin comandos CLI
+    expect(porTipo.declarar_tr069_vlan.comandos).toEqual([]);
+  });
+
+  it('VLAN tr069 ya registrada como tr069MgmtVlan: no genera la op de declaración', async () => {
+    const svc = makeService({
+      bl: baseline({
+        vlans: [{ vlanId: 1600, nombre: 'GESTION_TR069', uplink: true, proposito: 'tr069' }],
+        trafficTables: [],
+        uplinkPort: '0/9/0',
+      }),
+      snap: snapshot({
+        vlans: [{ vlanId: 1600, nombre: 'GESTION_TR069', origen: 'erp', estado: 'active' }],
+        uplinkVlans: { '0/9/0': [1, 1600] },
+      }),
+      oltRow: { ...olt, tr069MgmtVlan: 1600 },
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones).toHaveLength(0);
+    expect(plan.yaConverge).toBe(true);
+  });
+
+  it('aplicar declarar_tr069_vlan: actualiza tr069MgmtVlan en BD', async () => {
+    const oltRepo = {
+      findOne: jest.fn().mockResolvedValue({ ...olt, tr069MgmtVlan: null }),
+      update:  jest.fn().mockResolvedValue(undefined),
+    };
+    const baselineRepo = { findOne: jest.fn().mockResolvedValue(baseline({
+      vlans: [{ vlanId: 1600, nombre: 'TR069', uplink: true, proposito: 'tr069' }],
+      trafficTables: [],
+      uplinkPort: '0/9/0',
+    })) };
+    const snapService = { obtener: jest.fn().mockResolvedValue(snapshot({
+      vlans: [{ vlanId: 1600, nombre: 'TR069', origen: 'erp', estado: 'active' }],
+      uplinkVlans: { '0/9/0': [1, 1600] },
+    })) };
+    const svc = new OltBaselinePlanService(
+      oltRepo as never, baselineRepo as never, snapService as never,
+      {} as never, {} as never, {} as never, {} as never,
+    );
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones.map(o => o.tipo)).toEqual(['declarar_tr069_vlan']);
+
+    const res = await svc.aplicarPlan('olt-1', 'e1', plan.planHash);
+    expect(res.completado).toBe(true);
+    expect(oltRepo.update).toHaveBeenCalledWith('olt-1', { tr069MgmtVlan: 1600 });
+  });
+
   it('aplicar taguear_uplink: llama al driver y persiste el observed state releído', async () => {
     const vlanService = { agregarConCli: jest.fn().mockResolvedValue({ vlanId: 100 }) };
     const automation  = {

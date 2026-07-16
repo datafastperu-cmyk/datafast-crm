@@ -16,13 +16,21 @@ import { OltAutomationClient } from '../olt-automation.client';
 
 // ─── Tipos del plan ───────────────────────────────────────────────
 
-export type PlanOperacionTipo = 'crear_vlan' | 'crear_traffic_table' | 'taguear_uplink';
+export type PlanOperacionTipo =
+  | 'crear_vlan'
+  | 'crear_traffic_table'
+  | 'taguear_uplink'
+  | 'declarar_tr069_vlan';   // solo BD del ERP — no toca la OLT
 
 export interface PlanOperacion {
   orden:   number;
   tipo:    PlanOperacionTipo;
   detalle: string;
   params:  Record<string, unknown>;
+  // Transparencia total: los comandos CLI EXACTOS que el ERP inyectará a la
+  // OLT al ejecutar esta operación (vacío = operación solo en BD del ERP).
+  // El operador los ve en el dry-run antes de aprobar.
+  comandos: string[];
 }
 
 // Diferencia que el ERP detecta pero NO va a ejecutar automáticamente —
@@ -170,6 +178,12 @@ export class OltBaselinePlanService {
     return { olt, baseline };
   }
 
+  // Mismo saneo de nombres que el driver Python (re.sub + límite 64) — los
+  // comandos mostrados deben ser EXACTAMENTE los que se inyectarán.
+  private _safeName(nombre: string): string {
+    return nombre.replace(/[^A-Za-z0-9_\-]/g, '_').slice(0, 64);
+  }
+
   private _construirPlan(
     olt: OltDispositivo, baseline: OltBaseline, snapshot: InfrastructureSnapshot,
   ): BaselinePlan {
@@ -181,11 +195,13 @@ export class OltBaselinePlanService {
     const vlansEnOlt = new Set(snapshot.vlans.map(v => v.vlanId));
     for (const v of baseline.spec.vlans) {
       if (!vlansEnOlt.has(v.vlanId)) {
+        const safe = this._safeName(v.nombre);
         operaciones.push({
           orden:   operaciones.length + 1,
           tipo:    'crear_vlan',
-          detalle: `Crear VLAN ${v.vlanId} ("${v.nombre}") en la OLT`,
+          detalle: `Crear VLAN ${v.vlanId} ("${v.nombre}")${v.proposito === 'tr069' ? ' — VLAN exclusiva de gestión TR-069' : ''}`,
           params:  { vlanId: v.vlanId, nombre: v.nombre },
+          comandos: ['config', `vlan ${v.vlanId} smart`, `vlan desc ${v.vlanId} ${safe}`, 'quit'],
         });
       }
     }
@@ -194,11 +210,19 @@ export class OltBaselinePlanService {
     for (const t of baseline.spec.trafficTables) {
       const real = ttPorNombre.get(t.nombre);
       if (!real) {
+        const safe = this._safeName(t.nombre);
         operaciones.push({
           orden:   operaciones.length + 1,
           tipo:    'crear_traffic_table',
           detalle: `Crear traffic table "${t.nombre}" (CIR=${t.cirKbps} PIR=${t.pirKbps} kbps)`,
           params:  { nombre: t.nombre, cirKbps: t.cirKbps, pirKbps: t.pirKbps },
+          comandos: [
+            'display traffic table ip from-index 0',
+            'config',
+            `traffic table ip name ${safe} cir ${t.cirKbps} pir ${t.pirKbps} priority 0 priority-policy local-setting`,
+            'quit',
+            'display traffic table ip from-index 0',
+          ],
         });
       } else if (real.cirKbps !== t.cirKbps || real.pirKbps !== t.pirKbps) {
         // Existe con otros valores: no se auto-corrige. Si es externa, el ERP
@@ -236,15 +260,34 @@ export class OltBaselinePlanService {
             continue;
           }
           if (seCreaEnEstePlan || !observadas!.includes(v.vlanId)) {
+            const [f, s, p] = uplinkPort.split('/');
             operaciones.push({
               orden:   operaciones.length + 1,
               tipo:    'taguear_uplink',
               detalle: `Taguear VLAN ${v.vlanId} ("${v.nombre}") en el uplink ${uplinkPort}`,
               params:  { vlanId: v.vlanId, portPath: uplinkPort },
+              comandos: ['config', `port vlan ${v.vlanId} ${f}/${s} ${p}`, 'quit', `display port vlan ${uplinkPort}`],
             });
           }
         }
       }
+    }
+
+    // TR-069: si el baseline declara una VLAN con propósito tr069, el ERP
+    // debe registrarla como VLAN de gestión TR-069 de esta OLT (la usa el
+    // bootstrap DHCP Option 43 y la regla de compliance tr069_vlan_coherente).
+    // El lado PON no se pre-configura: en el MA5800 el enlace PON↔VLAN se crea
+    // POR ONU vía service-port durante el bootstrap TR-069 / provisión.
+    const vlanTr069 = baseline.spec.vlans.find(v => v.proposito === 'tr069');
+    if (vlanTr069 && olt.tr069MgmtVlan !== vlanTr069.vlanId) {
+      operaciones.push({
+        orden:   operaciones.length + 1,
+        tipo:    'declarar_tr069_vlan',
+        detalle: `Registrar VLAN ${vlanTr069.vlanId} como VLAN de gestión TR-069 en el ERP ` +
+                 `(hoy: ${olt.tr069MgmtVlan ?? 'sin declarar'}). Solo BD — no toca la OLT.`,
+        params:  { vlanId: vlanTr069.vlanId },
+        comandos: [],
+      });
     }
 
     const planHash = createHash('sha256')
@@ -303,6 +346,12 @@ export class OltBaselinePlanService {
         });
         olt.uplinkVlans = { ...(olt.uplinkVlans ?? {}), [portPath]: res.vlan_ids };
         return `VLAN ${vlanId} taggeada en uplink ${portPath} — puerto ahora: [${res.vlan_ids.join(', ')}]`;
+      }
+      case 'declarar_tr069_vlan': {
+        const vlanId = op.params.vlanId as number;
+        await this.oltRepo.update(oltId, { tr069MgmtVlan: vlanId });
+        olt.tr069MgmtVlan = vlanId;
+        return `VLAN ${vlanId} registrada como VLAN de gestión TR-069 de esta OLT (solo BD del ERP)`;
       }
     }
   }

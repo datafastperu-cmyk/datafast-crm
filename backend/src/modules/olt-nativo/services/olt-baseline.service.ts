@@ -98,8 +98,20 @@ export class OltBaselineService {
       .where('b.empresaId = :empresaId AND b.nombre = :nombre', { empresaId, nombre: dto.nombre })
       .getRawOne<{ max: string }>();
 
+    // TR-069: máximo una VLAN exclusiva, y siempre va taggeada al uplink
+    // (sin camino al ACS la VLAN de gestión no sirve de nada).
+    const tr069Vlans = dto.vlans.filter(v => v.proposito === 'tr069');
+    if (tr069Vlans.length > 1) {
+      throw new BadRequestException('El baseline declara más de una VLAN con propósito tr069 — debe ser exclusiva.');
+    }
+    for (const v of tr069Vlans) v.uplink = true;
+
     if (dto.vlans.some(v => v.uplink) && !dto.uplinkPort) {
-      throw new BadRequestException('Hay VLANs con uplink:true pero el baseline no declara uplinkPort.');
+      throw new BadRequestException(
+        tr069Vlans.length
+          ? 'La VLAN TR-069 debe taguearse al uplink: declara uplinkPort en el baseline.'
+          : 'Hay VLANs con uplink:true pero el baseline no declara uplinkPort.',
+      );
     }
 
     const spec: BaselineSpec = {

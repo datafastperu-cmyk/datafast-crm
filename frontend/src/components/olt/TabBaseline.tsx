@@ -14,13 +14,25 @@ import { cn } from '@/lib/utils';
 
 // ─── Parsers del formulario (una línea por recurso) ───────────────
 
-function parseVlans(text: string): { vlanId: number; nombre: string; uplink?: boolean }[] {
+function parseVlans(text: string): { vlanId: number; nombre: string; uplink?: boolean; proposito?: string }[] {
   return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
     const partes = l.split(/\s+/);
-    const uplink = partes[partes.length - 1]?.toLowerCase() === 'uplink';
-    if (uplink) partes.pop();
+    let uplink = false, tr069 = false;
+    // Tokens al final de la línea, en cualquier orden: uplink / tr069
+    while (partes.length > 1) {
+      const ultimo = partes[partes.length - 1].toLowerCase();
+      if (ultimo === 'uplink')      { uplink = true; partes.pop(); }
+      else if (ultimo === 'tr069')  { tr069 = true;  partes.pop(); }
+      else break;
+    }
     const [id, ...rest] = partes;
-    return { vlanId: Number(id), nombre: rest.join(' ') || `VLAN_${id}`, ...(uplink ? { uplink: true } : {}) };
+    return {
+      vlanId: Number(id),
+      nombre: rest.join(' ') || `VLAN_${id}`,
+      // TR-069 implica uplink: sin camino al ACS la VLAN de gestión no sirve
+      ...(uplink || tr069 ? { uplink: true } : {}),
+      ...(tr069 ? { proposito: 'tr069' } : {}),
+    };
   });
 }
 
@@ -38,7 +50,9 @@ function NuevaVersionForm({ base, onCreado }: { base: OltBaselineItem | null; on
   const [nombre, setNombre]      = useState(base?.nombre ?? 'Datafast');
   const [descripcion, setDesc]   = useState('');
   const [vlansText, setVlans]    = useState(
-    base ? base.spec.vlans.map(v => `${v.vlanId} ${v.nombre}${v.uplink ? ' uplink' : ''}`).join('\n') : '',
+    base ? base.spec.vlans.map(v =>
+      `${v.vlanId} ${v.nombre}${v.proposito === 'tr069' ? ' tr069' : v.uplink ? ' uplink' : ''}`,
+    ).join('\n') : '',
   );
   const [ttsText, setTts]        = useState(
     base ? base.spec.trafficTables.map(t => `${t.nombre} ${t.cirKbps} ${t.pirKbps}`).join('\n') : '',
@@ -97,9 +111,12 @@ function NuevaVersionForm({ base, onCreado }: { base: OltBaselineItem | null; on
         </div>
         <div />
         <div>
-          <label className="text-xs text-muted-foreground">VLANs — una por línea: <code>id nombre [uplink]</code></label>
+          <label className="text-xs text-muted-foreground">
+            VLANs — una por línea: <code>id nombre [uplink] [tr069]</code>
+            <span className="block text-muted-foreground/70"><code>tr069</code> = VLAN exclusiva de gestión TR-069 (implica uplink y se registra en la config TR-069 de la OLT)</span>
+          </label>
           <textarea value={vlansText} onChange={e => setVlans(e.target.value)} rows={6}
-            placeholder={'100 INTERNET uplink\n1600 GESTION_TR069'}
+            placeholder={'100 INTERNET uplink\n1600 GESTION_TR069 tr069'}
             className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50" />
         </div>
         <div>
@@ -198,11 +215,26 @@ function PlanPanel({ oltId }: { oltId: string }) {
                 Operaciones que el ERP ejecutará en la OLT (dry-run — aún no se ha tocado nada):
               </p>
               {plan.operaciones.map(op => (
-                <div key={op.orden} className="flex items-center gap-2 text-sm rounded-lg border border-border bg-muted/20 px-3 py-2">
-                  <span className="text-xs text-muted-foreground font-mono shrink-0">#{op.orden}</span>
-                  {op.detalle}
+                <div key={op.orden} className="rounded-lg border border-border bg-muted/20 px-3 py-2 space-y-1.5">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-xs text-muted-foreground font-mono shrink-0">#{op.orden}</span>
+                    {op.detalle}
+                  </div>
+                  {op.comandos?.length > 0 ? (
+                    <pre className="text-[11px] font-mono bg-background/60 border border-border rounded-md px-2.5 py-1.5 overflow-x-auto text-muted-foreground">
+{op.comandos.join('\n')}
+                    </pre>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground/70 pl-6">
+                      Sin comandos CLI — esta operación solo actualiza la base de datos del ERP.
+                    </p>
+                  )}
                 </div>
               ))}
+              <p className="text-[11px] text-muted-foreground/70">
+                Los bloques muestran los comandos CLI exactos que el ERP inyectará a la OLT
+                (los <code>display</code> son verificaciones de solo lectura).
+              </p>
             </div>
           )}
 

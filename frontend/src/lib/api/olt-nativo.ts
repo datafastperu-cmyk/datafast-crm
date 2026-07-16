@@ -548,10 +548,11 @@ export interface OltBaselineItem {
 }
 
 export interface BaselinePlanOperacion {
-  orden:   number;
-  tipo:    'crear_vlan' | 'crear_traffic_table';
-  detalle: string;
-  params:  Record<string, unknown>;
+  orden:    number;
+  tipo:     'crear_vlan' | 'crear_traffic_table' | 'taguear_uplink' | 'declarar_tr069_vlan';
+  detalle:  string;
+  params:   Record<string, unknown>;
+  comandos: string[];   // CLI exacto que se inyectará (vacío = solo BD del ERP)
 }
 
 export interface BaselinePlan {
