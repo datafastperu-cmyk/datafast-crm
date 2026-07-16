@@ -9,6 +9,9 @@ import {
 import { Type } from 'class-transformer';
 import { OltBaseline, BaselineSpec } from '../entities/olt-baseline.entity';
 import { OltDispositivo } from '../entities/olt-dispositivo.entity';
+import {
+  BASELINE_ESTANDAR_DESCRIPCION, BASELINE_ESTANDAR_NOMBRE, construirSpecEstandar,
+} from '../capability/olt-baseline-standard';
 
 // ─── DTOs ─────────────────────────────────────────────────────────
 
@@ -131,6 +134,36 @@ export class OltBaselineService {
     }));
     this.logger.log(`Baseline creado | ${baseline.nombre} v${baseline.version} (${baseline.id})`);
     return baseline;
+  }
+
+  // ── Generar el Baseline Datafast Estándar (definición canónica en código) ──
+  // Idempotente: si la última versión del estándar ya tiene el mismo spec para
+  // ese uplinkPort, la retorna sin crear una versión nueva.
+  async generarEstandar(empresaId: string, uplinkPort: string): Promise<OltBaseline> {
+    if (!/^\d+\/\d+\/\d+$/.test(uplinkPort)) {
+      throw new BadRequestException('uplinkPort debe tener formato frame/slot/port, ej. 0/9/0');
+    }
+    const spec = construirSpecEstandar(uplinkPort);
+
+    const ultima = await this.repo.findOne({
+      where: { empresaId, nombre: BASELINE_ESTANDAR_NOMBRE },
+      order: { version: 'DESC' },
+    });
+    if (ultima && JSON.stringify(ultima.spec) === JSON.stringify(spec)) {
+      return ultima;
+    }
+
+    const baseline = await this.crear(empresaId, {
+      nombre:        BASELINE_ESTANDAR_NOMBRE,
+      descripcion:   BASELINE_ESTANDAR_DESCRIPCION,
+      vlans:         spec.vlans,
+      trafficTables: spec.trafficTables,
+      uplinkPort:    spec.uplinkPort,
+    });
+    // crear() no conoce servicePortRange (no es parte del DTO manual) —
+    // el estándar lo fija directamente.
+    baseline.spec = spec;
+    return this.repo.save(baseline);
   }
 
   async asignarAOlt(oltId: string, empresaId: string, baselineId: string | null): Promise<OltDispositivo> {

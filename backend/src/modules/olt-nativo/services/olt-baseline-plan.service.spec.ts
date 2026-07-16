@@ -33,6 +33,7 @@ function makeService(opts: {
   vlanService?: Record<string, jest.Mock>;
   ttService?: Record<string, jest.Mock>;
   automation?: Record<string, jest.Mock>;
+  pool?: Record<string, jest.Mock>;
   oltRow?: Record<string, unknown> | null;
 }) {
   const oltRepo = {
@@ -42,10 +43,14 @@ function makeService(opts: {
   const baselineRepo = { findOne: jest.fn().mockResolvedValue(opts.bl === undefined ? baseline() : opts.bl) };
   const snapService  = { obtener: jest.fn().mockResolvedValue(opts.snap ?? snapshot()) };
   const connService  = { buildConn: jest.fn().mockResolvedValue({ ip: '10.0.0.2', port: 22, username: 'u', password: 'p', brand: 'huawei' }) };
+  const pool = opts.pool ?? {
+    obtenerEstado:   jest.fn().mockResolvedValue({ total: 0, libres: 0, ocupados: 0 }),
+    configurarRango: jest.fn().mockResolvedValue({ insertados: 0, omitidos: 0 }),
+  };
   return new OltBaselinePlanService(
     oltRepo as never, baselineRepo as never, snapService as never,
     (opts.vlanService ?? {}) as never, (opts.ttService ?? {}) as never,
-    connService as never, (opts.automation ?? {}) as never,
+    connService as never, (opts.automation ?? {}) as never, pool as never,
   );
 }
 
@@ -156,6 +161,39 @@ describe('OltBaselinePlanService', () => {
     expect(plan.bloqueos[0].motivo).toContain('sincronización');
   });
 
+  // ── Rango canónico de service-ports ──────────────────────────
+  it('pool que no cubre el rango canónico: op configurar_pool_service_ports (solo BD)', async () => {
+    const pool = {
+      obtenerEstado:   jest.fn().mockResolvedValue({ total: 244, rango: { min: 0, max: 1502 } }),
+      configurarRango: jest.fn().mockResolvedValue({ insertados: 2000, omitidos: 0 }),
+    };
+    const svc = makeService({
+      bl: baseline({ vlans: [], trafficTables: [], servicePortRange: { inicio: 2000, fin: 3999 } }),
+      pool,
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones.map(o => o.tipo)).toEqual(['configurar_pool_service_ports']);
+    expect(plan.operaciones[0].comandos).toEqual([]);
+
+    const res = await svc.aplicarPlan('olt-1', 'e1', plan.planHash);
+    expect(res.completado).toBe(true);
+    expect(pool.configurarRango).toHaveBeenCalledWith('olt-1', 'e1', { inicio: 2000, fin: 3999 });
+  });
+
+  it('pool ya cubre el rango canónico: sin operación', async () => {
+    const pool = {
+      obtenerEstado:   jest.fn().mockResolvedValue({ total: 2000, rango: { min: 2000, max: 3999 } }),
+      configurarRango: jest.fn(),
+    };
+    const svc = makeService({
+      bl: baseline({ vlans: [], trafficTables: [], servicePortRange: { inicio: 2000, fin: 3999 } }),
+      pool,
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones).toHaveLength(0);
+    expect(plan.yaConverge).toBe(true);
+  });
+
   // ── TR-069 + transparencia de comandos ───────────────────────
   it('toda operación CLI expone los comandos exactos que se inyectarán', async () => {
     const svc = makeService({
@@ -215,6 +253,7 @@ describe('OltBaselinePlanService', () => {
     const svc = new OltBaselinePlanService(
       oltRepo as never, baselineRepo as never, snapService as never,
       {} as never, {} as never, {} as never, {} as never,
+      { obtenerEstado: jest.fn().mockResolvedValue({ total: 0 }), configurarRango: jest.fn() } as never,
     );
     const plan = await svc.generarPlan('olt-1', 'e1');
     expect(plan.operaciones.map(o => o.tipo)).toEqual(['declarar_tr069_vlan']);

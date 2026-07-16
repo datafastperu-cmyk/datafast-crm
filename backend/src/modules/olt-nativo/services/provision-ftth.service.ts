@@ -549,7 +549,11 @@ export class ProvisionFtthService {
       return ' Carril TR-069 omitido: configura el pool del canal "gestion" en la OLT.';
     }
 
-    const trafficIndex = 0;
+    // Carril canónico del ERP (directriz "inyectar desde cero"): usar la
+    // traffic table ERP-MGMT del baseline estándar, nunca el index 0
+    // preexistente de la OLT. Fallback a 0 SOLO si el estándar aún no se
+    // aplicó en esta OLT (queda advertido en logs y visible en compliance).
+    const trafficIndex = await this._resolverTrafficIndexGestion(olt.id);
     const priority     = 2;
     let res: { success: boolean; error?: string };
     try {
@@ -582,6 +586,27 @@ export class ProvisionFtthService {
       `carril TR-069 OK | contrato=${contratoId} olt=${olt.id} mgmtVlan=${mgmtVlan} svcPort=${mgmtSvcPort}`,
     );
     return ' Carril TR-069 aplicado (la ONU aparecerá en GenieACS).';
+  }
+
+  // Resuelve el índice de la traffic table de gestión canónica (ERP-MGMT,
+  // creada por el Baseline Datafast Estándar). Fallback: 0 con advertencia.
+  private async _resolverTrafficIndexGestion(oltId: string): Promise<number> {
+    try {
+      const [row] = await this.ds.query<{ traffic_id: number }[]>(
+        `SELECT traffic_id FROM olt_traffic_tables
+         WHERE olt_id = $1 AND nombre = 'ERP-MGMT' AND origen = 'erp'
+         LIMIT 1`,
+        [oltId],
+      );
+      if (row) return row.traffic_id;
+    } catch (e) {
+      this.logger.warn(`_resolverTrafficIndexGestion | olt=${oltId}: ${(e as Error).message}`);
+    }
+    this.logger.warn(
+      `carril: OLT ${oltId} sin traffic table ERP-MGMT — usando index 0 preexistente. ` +
+      `Aplica el Baseline Datafast Estándar para corregirlo.`,
+    );
+    return 0;
   }
 
   // ────────────────────────────────────────────────────────────
@@ -722,9 +747,12 @@ export class ProvisionFtthService {
       }
     }
 
+    // Carril canónico: ERP-MGMT del baseline estándar; el DTO puede forzar otro.
+    const mgmtTrafficIndex = dto.trafficIndex ?? await this._resolverTrafficIndexGestion(oltId);
+
     this.logger.log(
       `FTTH bootstrapTr069 | contrato=${dto.contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId} ` +
-      `mgmtVlan=${mgmtVlan} svcPort=${mgmtServicePortId}${asignadoDelPool ? ' (pool gestion)' : ''}`,
+      `mgmtVlan=${mgmtVlan} svcPort=${mgmtServicePortId}${asignadoDelPool ? ' (pool gestion)' : ''} ttIndex=${mgmtTrafficIndex}`,
     );
 
     let res: { success: boolean; error?: string };
@@ -736,7 +764,7 @@ export class ProvisionFtthService {
         onu_id:               registro.onuId,
         mgmt_vlan:            mgmtVlan,
         mgmt_service_port_id: mgmtServicePortId!,
-        traffic_index:        dto.trafficIndex ?? 0,
+        traffic_index:        mgmtTrafficIndex,
         priority:             dto.priority ?? 2,
       });
     } catch (err: any) {
@@ -764,7 +792,7 @@ export class ProvisionFtthService {
       tr069BootstrapAplicado: true,
       mgmtServicePortId,
       mgmtVlan,
-      mgmtTrafficIndex:       dto.trafficIndex ?? 0,
+      mgmtTrafficIndex,
       mgmtPriority:           dto.priority ?? 2,
     });
     this.logger.log(`FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${mgmtVlan}`);

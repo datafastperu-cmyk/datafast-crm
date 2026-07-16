@@ -200,6 +200,31 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     retry: false,
   });
 
+  // ── Directriz "inyectar desde cero": la provisión del ERP consume SOLO
+  // recursos declarados en el baseline asignado a la OLT (los preexistentes
+  // se respetan pero no se usan). Sin baseline → se muestran todos, con aviso.
+  const { data: oltDetalle } = useQuery({
+    queryKey: ['olt-detalle', selectedOltId],
+    queryFn:  () => oltNativoApi.findOne(selectedOltId),
+    enabled:  !!selectedOltId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const { data: baselinesList = [] } = useQuery({
+    queryKey: ['olt-baselines'],
+    queryFn:  () => oltNativoApi.getBaselines(),
+    enabled:  !!selectedOltId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const baselineAsignado = baselinesList.find(b => b.id === oltDetalle?.baselineId) ?? null;
+  const vlansPermitidas = baselineAsignado
+    ? vlans.filter(v => baselineAsignado.spec.vlans.some(bv => bv.vlanId === v.vlanId))
+    : vlans;
+  const ttPermitidas = baselineAsignado
+    ? trafficTables.filter(t => baselineAsignado.spec.trafficTables.some(bt => bt.nombre === t.nombre))
+    : trafficTables;
+
   const slotNum  = parseInt(slot);
   const portNum  = parseInt(port);
 
@@ -589,19 +614,25 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       readOnly={snSelectMode} className={cn(inputCls, snSelectMode && 'opacity-60 cursor-not-allowed bg-muted')} />
                   </Field>
                   <Field label="VLAN Servicio">
-                    {vlans.length > 0 ? (
+                    {vlansPermitidas.length > 0 ? (
                       <div className="relative">
                         <select value={vlan} onChange={e => setVlan(e.target.value)}
                           className={cn(inputCls, 'appearance-none pr-8')}>
                           <option value="">— Seleccionar VLAN —</option>
-                          {vlans.map(v => (
+                          {vlansPermitidas.map(v => (
                             <option key={v.id} value={v.vlanId}>{v.vlanId} — {v.nombre}</option>
                           ))}
                         </select>
                         <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                       </div>
                     ) : (
-                      <input type="number" value={vlan} onChange={e => setVlan(e.target.value)} min={1} max={4094} placeholder="201" className={inputCls} />
+                      <input type="number" value={vlan} onChange={e => setVlan(e.target.value)} min={1} max={4094} placeholder="200" className={inputCls} />
+                    )}
+                    {!baselineAsignado && !!selectedOltId && (
+                      <p className="text-[10px] text-amber-500 mt-0.5">
+                        OLT sin baseline del ERP — se muestran recursos preexistentes. Aplica el
+                        Baseline Datafast Estándar (tab Cumplimiento) para provisionar solo con recursos propios.
+                      </p>
                     )}
                   </Field>
                   <Field label="Modo ONU" span2>
@@ -664,7 +695,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                         className={cn(inputCls, 'appearance-none pr-8')}
                       >
                         <option value="">— Elegir (obligatorio) —</option>
-                        {trafficTables
+                        {ttPermitidas
                           .filter(t => t.tipo === 'downstream' || t.tipo === 'combinado')
                           .map(t => (
                             <option key={t.id} value={t.trafficId}>
@@ -683,7 +714,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                         className={cn(inputCls, 'appearance-none pr-8')}
                       >
                         <option value="">— Elegir (obligatorio) —</option>
-                        {trafficTables
+                        {ttPermitidas
                           .filter(t => t.tipo === 'upstream' || t.tipo === 'combinado')
                           .map(t => (
                             <option key={t.id} value={t.trafficId}>

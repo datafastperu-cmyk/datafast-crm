@@ -535,6 +535,7 @@ export interface BaselineSpec {
   trafficTables: Array<{ nombre: string; cirKbps: number; pirKbps: number }>;
   ntpServers?:   string[];
   uplinkPort?:   string;   // frame/slot/port, ej. '0/9/0'
+  servicePortRange?: { inicio: number; fin: number };
 }
 
 export interface OltBaselineItem {
@@ -1313,6 +1314,11 @@ export const oltNativoApi = {
     ntpServers?: string[]; uplinkPort?: string;
   }): Promise<OltBaselineItem> => {
     const res = await api.post<ApiRespuesta<OltBaselineItem>>('/olt-nativo/baselines', dto);
+    return res.data.data;
+  },
+
+  generarBaselineEstandar: async (uplinkPort: string): Promise<OltBaselineItem> => {
+    const res = await api.post<ApiRespuesta<OltBaselineItem>>('/olt-nativo/baselines/estandar', { uplinkPort });
     return res.data.data;
   },
 

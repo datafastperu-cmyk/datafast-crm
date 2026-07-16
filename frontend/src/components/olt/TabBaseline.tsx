@@ -300,6 +300,20 @@ export function TabBaseline({ oltId }: { oltId: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [uplinkEstandar, setUplinkEstandar] = useState('0/9/0');
+
+  const generarEstandar = useMutation({
+    mutationFn: () => oltNativoApi.generarBaselineEstandar(uplinkEstandar.trim()),
+    onSuccess: async (b) => {
+      toast(`Baseline "${b.nombre}" v${b.version} listo — asignándolo a esta OLT…`, { type: 'success' });
+      await oltNativoApi.asignarBaseline(oltId, b.id);
+      qc.invalidateQueries({ queryKey: ['olt-baselines'] });
+      qc.invalidateQueries({ queryKey: ['olt-detalle', oltId] });
+      qc.invalidateQueries({ queryKey: ['olt-baseline-plan', oltId] });
+      qc.invalidateQueries({ queryKey: ['olt-compliance', oltId] });
+    },
+    onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al generar el estándar', { type: 'error' }),
+  });
 
   const { data: olt } = useQuery({
     queryKey: ['olt-detalle', oltId],
@@ -336,6 +350,35 @@ export function TabBaseline({ oltId }: { oltId: string }) {
         versionada de qué VLANs y traffic tables debe tener. El compliance mide la brecha y el plan la corrige
         con aprobación explícita.
       </p>
+
+      {/* Estándar canónico del ERP — directriz "inyectar desde cero" */}
+      <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-2">
+        <p className="text-sm font-semibold flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-primary" /> Baseline Datafast Estándar
+        </p>
+        <p className="text-xs text-muted-foreground">
+          La configuración canónica del ERP (VLAN 1600 TR-069, VLAN 200 Internet, carril ERP-MGMT,
+          velocidades ERP-50M…ERP-800M, service-ports 2000–3999) — idéntica en toda OLT. Genera la
+          versión vigente y asígnala a esta OLT en un paso.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            value={uplinkEstandar}
+            onChange={e => setUplinkEstandar(e.target.value)}
+            placeholder="0/9/0"
+            className="w-28 bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:border-primary/50"
+            title="Puerto uplink de esta OLT (frame/slot/port)"
+          />
+          <button
+            onClick={() => generarEstandar.mutate()}
+            disabled={generarEstandar.isPending || !/^\d+\/\d+\/\d+$/.test(uplinkEstandar.trim())}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+          >
+            {generarEstandar.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookMarked className="w-3.5 h-3.5" />}
+            Generar estándar y asignar
+          </button>
+        </div>
+      </div>
 
       {/* Asignación */}
       <div className="rounded-xl border border-border p-4 space-y-2">

@@ -35,6 +35,10 @@ export interface BaselineSpec {
   // Formato frame/slot/port (ej. '0/9/0' — MPLB activa en MA5800-X7).
   // El tagging es SOLO aditivo; el destagueo nunca se automatiza.
   uplinkPort?:   string;
+  // Rango canónico de service-port IDs del ERP (ej. 2000–3999). El plan
+  // configura el pool para cubrirlo (solo BD); los IDs ajenos ya ocupados
+  // dentro del rango quedan protegidos por la reconciliación.
+  servicePortRange?: { inicio: number; fin: number };
 }
 
 @Entity('olt_baselines')

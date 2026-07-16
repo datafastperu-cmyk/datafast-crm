@@ -154,6 +154,15 @@ export class OltNativoController {
     return this.baselines.crear(user.empresaId, dto);
   }
 
+  @Post('baselines/estandar')
+  @ApiOperation({ summary: 'Generar el Baseline Datafast Estándar (configuración canónica del ERP) para un uplink dado' })
+  async generarBaselineEstandar(
+    @Body() body: { uplinkPort: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.baselines.generarEstandar(user.empresaId, body.uplinkPort);
+  }
+
   @Patch(':oltId/baseline')
   @ApiOperation({ summary: 'Asignar (o quitar con null) un baseline a la OLT' })
   @ApiParam({ name: 'oltId' })

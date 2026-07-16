@@ -12,6 +12,7 @@ import { InfrastructureSnapshotService } from './infrastructure-snapshot.service
 import { OltVlanService } from './olt-vlan.service';
 import { OltTrafficTableService } from './olt-traffic-table.service';
 import { OltConnService } from './olt-conn.service';
+import { OltServicePortPoolService } from './olt-service-port-pool.service';
 import { OltAutomationClient } from '../olt-automation.client';
 
 // ─── Tipos del plan ───────────────────────────────────────────────
@@ -20,7 +21,8 @@ export type PlanOperacionTipo =
   | 'crear_vlan'
   | 'crear_traffic_table'
   | 'taguear_uplink'
-  | 'declarar_tr069_vlan';   // solo BD del ERP — no toca la OLT
+  | 'declarar_tr069_vlan'            // solo BD del ERP — no toca la OLT
+  | 'configurar_pool_service_ports'; // solo BD del ERP — no toca la OLT
 
 export interface PlanOperacion {
   orden:   number;
@@ -103,13 +105,14 @@ export class OltBaselinePlanService {
     private readonly ttService:       OltTrafficTableService,
     private readonly connService:     OltConnService,
     private readonly automation:      OltAutomationClient,
+    private readonly servicePortPool: OltServicePortPoolService,
   ) {}
 
   // ── Dry-run: qué haría el ERP para converger la OLT al baseline ──
   async generarPlan(oltId: string, empresaId: string): Promise<BaselinePlan> {
     const { olt, baseline } = await this._cargar(oltId, empresaId);
     const snapshot = await this.snapshotService.obtener(oltId, empresaId);
-    return this._construirPlan(olt, baseline, snapshot);
+    return this._construirPlan(olt, baseline, snapshot, empresaId);
   }
 
   // ── Ejecución aprobada por el operador ────────────────────────
@@ -120,7 +123,7 @@ export class OltBaselinePlanService {
 
     const { olt, baseline } = await this._cargar(oltId, empresaId);
     const snapshot = await this.snapshotService.obtener(oltId, empresaId);
-    const plan     = this._construirPlan(olt, baseline, snapshot);
+    const plan     = await this._construirPlan(olt, baseline, snapshot, empresaId);
 
     if (plan.planHash !== planHash) {
       throw new ConflictException(
@@ -184,9 +187,10 @@ export class OltBaselinePlanService {
     return nombre.replace(/[^A-Za-z0-9_\-]/g, '_').slice(0, 64);
   }
 
-  private _construirPlan(
+  private async _construirPlan(
     olt: OltDispositivo, baseline: OltBaseline, snapshot: InfrastructureSnapshot,
-  ): BaselinePlan {
+    empresaId: string,
+  ): Promise<BaselinePlan> {
     const operaciones: PlanOperacion[] = [];
     const bloqueos:    PlanBloqueo[]   = [];
 
@@ -290,6 +294,26 @@ export class OltBaselinePlanService {
       });
     }
 
+    // Rango canónico de service-ports (solo BD): el pool debe cubrirlo para
+    // que el ERP asigne siempre IDs propios. Idempotente (ON CONFLICT).
+    const rango = baseline.spec.servicePortRange;
+    if (rango) {
+      const estado = await this.servicePortPool.obtenerEstado(olt.id, empresaId);
+      const cubierto = estado.total > 0 && estado.rango
+        && estado.rango.min <= rango.inicio && estado.rango.max >= rango.fin;
+      if (!cubierto) {
+        operaciones.push({
+          orden:   operaciones.length + 1,
+          tipo:    'configurar_pool_service_ports',
+          detalle: `Configurar el pool de service-ports del ERP con el rango canónico ` +
+                   `${rango.inicio}–${rango.fin}. Solo BD — los IDs ya usados por otros ` +
+                   `sistemas quedan protegidos por la reconciliación de cada sync.`,
+          params:  { inicio: rango.inicio, fin: rango.fin },
+          comandos: [],
+        });
+      }
+    }
+
     const planHash = createHash('sha256')
       .update(JSON.stringify({
         baselineId: baseline.id,
@@ -352,6 +376,12 @@ export class OltBaselinePlanService {
         await this.oltRepo.update(oltId, { tr069MgmtVlan: vlanId });
         olt.tr069MgmtVlan = vlanId;
         return `VLAN ${vlanId} registrada como VLAN de gestión TR-069 de esta OLT (solo BD del ERP)`;
+      }
+      case 'configurar_pool_service_ports': {
+        const inicio = op.params.inicio as number;
+        const fin    = op.params.fin as number;
+        const res = await this.servicePortPool.configurarRango(oltId, empresaId, { inicio, fin });
+        return `Pool de service-ports configurado ${inicio}–${fin}: ${res.insertados} ID(s) nuevos, ${res.omitidos} ya existentes`;
       }
     }
   }
