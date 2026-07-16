@@ -533,10 +533,13 @@ export class ProvisionFtthService {
   ): Promise<string> {
     if (!olt.tr069Enabled) return '';
 
-    const mgmtVlan = olt.tr069MgmtVlan ?? olt.vlanGestionDefecto ?? null;
+    // Directriz "inyectar desde cero": la VLAN de gestión debe ser la CANÓNICA que declara
+    // el baseline (olt.tr069MgmtVlan lo puebla el plan vía declarar_tr069_vlan), NUNCA
+    // vlanGestionDefecto — ese campo puede reflejar una VLAN heredada/no-canónica de la OLT.
+    const mgmtVlan = olt.tr069MgmtVlan ?? null;
     if (mgmtVlan == null) {
-      this.logger.warn(`carril: OLT ${olt.id} con TR-069 activo pero SIN VLAN de gestión — carril omitido`);
-      return ' Carril TR-069 omitido: la OLT no tiene VLAN de gestión configurada.';
+      this.logger.warn(`carril: OLT ${olt.id} con TR-069 activo pero SIN VLAN TR-069 canónica declarada — carril omitido`);
+      return ' Carril TR-069 omitido: la OLT no tiene VLAN TR-069 canónica declarada (asigna y aplica el Baseline Datafast Estándar).';
     }
 
     // Reusa el service-port de gestión del contrato si ya lo tenía; si no, asigna del pool.
