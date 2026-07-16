@@ -427,6 +427,18 @@ export class ProvisionFtthService {
       };
     }
 
+    // ── Carril de gestión TR-069 (ZTP) — INTRÍNSECO al aprovisionamiento ──
+    // Causa raíz de "los botones de la ONU no funcionan": al (re)aprovisionar, la OLT
+    // recrea SOLO el plano de datos; sin el carril de gestión la ONU no aparece en
+    // GenieACS y toda operación TR-069 (WiFi, reboot, detalle) queda inalcanzable. Se
+    // asegura aquí, en el ÚNICO punto común (tras ONU online), para TODAS las ONUs de una
+    // OLT con TR-069 activo y en CUALQUIER ruta (botón Aprovisionar, reaplicar, recovery).
+    // Idempotente (reusa el service-port de gestión del contrato) y best-effort (no tumba
+    // el aprovisionamiento del plano de datos si el carril falla).
+    const carrilNota = await this._ensureCarrilGestion(
+      olt, conn, registroId, dto.contratoId, dto.slot, dto.port, onuId,
+    );
+
     // ── Modo BRIDGE: sin inyección WAN ────────────────────────
     // La ONU va transparente; el PPPoE lo hace el router del cliente contra el BRAS
     // MikroTik. El OLT ya tiene GPON + service-port → el aprovisionamiento concluye
@@ -435,13 +447,12 @@ export class ProvisionFtthService {
       await this.ftthRepo.update(registroId, {
         estado:      FtthOnuEstado.ACTIVO,
         lockedAt:    null,
-        ultimoError: null,
       });
       return {
         estado:  FtthOnuEstado.ACTIVO,
         registroId,
         mensaje: 'ONU aprovisionada (modo bridge). GPON + service-port OK. ' +
-                 'El PPPoE lo maneja el router del cliente contra el BRAS.',
+                 'El PPPoE lo maneja el router del cliente contra el BRAS.' + carrilNota,
       };
     }
 
@@ -456,7 +467,7 @@ export class ProvisionFtthService {
       });
       return {
         estado: FtthOnuEstado.ACTIVO, registroId,
-        mensaje: `ONU aprovisionada (GPON + service-port OK). WAN pendiente: ${wanInject.error}`,
+        mensaje: `ONU aprovisionada (GPON + service-port OK). WAN pendiente: ${wanInject.error}` + carrilNota,
       };
     }
 
@@ -478,7 +489,7 @@ export class ProvisionFtthService {
       return {
         estado:     FtthOnuEstado.ACTIVO,
         registroId,
-        mensaje:    `ONU aprovisionada (GPON + service-port OK). ${notaWanManual}`,
+        mensaje:    `ONU aprovisionada (GPON + service-port OK). ${notaWanManual}` + carrilNota,
         error:      wanRes.error,
       };
     }
@@ -494,8 +505,83 @@ export class ProvisionFtthService {
     return {
       estado:     FtthOnuEstado.ACTIVO,
       registroId,
-      mensaje:    `ONU aprovisionada correctamente. GPON registrada y WAN PPPoE inyectada.`,
+      mensaje:    `ONU aprovisionada correctamente. GPON registrada y WAN PPPoE inyectada.` + carrilNota,
     };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // _ensureCarrilGestion — asegura el carril de gestión TR-069 (ZTP)
+  //
+  // Punto ÚNICO de aplicación del carril de gestión, invocado desde provisionarFtth
+  // (ruta común de todo (re)aprovisionamiento). Idempotente: reusa el service-port de
+  // gestión ya asignado al contrato en el pool (sobrevive al re-aprovisionamiento), y el
+  // lado Python valida ownership del service-port ("already exists" → no-op si es el mismo
+  // F/S/P+ONT+VLAN). Best-effort: nunca lanza — el plano de datos ya está OK.
+  // Persiste el estado del carril para trazabilidad y para la red de seguridad (reconcile).
+  // ────────────────────────────────────────────────────────────
+  private async _ensureCarrilGestion(
+    olt:        OltDispositivo,
+    conn:       any,
+    registroId: string,
+    contratoId: string,
+    slot:       number,
+    port:       number,
+    onuId:      number,
+  ): Promise<string> {
+    if (!olt.tr069Enabled) return '';
+
+    const mgmtVlan = olt.tr069MgmtVlan ?? olt.vlanGestionDefecto ?? null;
+    if (mgmtVlan == null) {
+      this.logger.warn(`carril: OLT ${olt.id} con TR-069 activo pero SIN VLAN de gestión — carril omitido`);
+      return ' Carril TR-069 omitido: la OLT no tiene VLAN de gestión configurada.';
+    }
+
+    // Reusa el service-port de gestión del contrato si ya lo tenía; si no, asigna del pool.
+    let mgmtSvcPort: number | null;
+    try {
+      mgmtSvcPort = await this.poolService.allocar(olt.id, contratoId, 'gestion');
+    } catch (err: any) {
+      this.logger.error(`carril: pool de gestión agotado | olt=${olt.id}: ${err?.message}`);
+      return ' Carril TR-069 pendiente: pool de gestión agotado (amplía el rango del canal "gestion").';
+    }
+    if (mgmtSvcPort == null) {
+      this.logger.warn(`carril: OLT ${olt.id} sin pool de gestión configurado — carril omitido`);
+      return ' Carril TR-069 omitido: configura el pool del canal "gestion" en la OLT.';
+    }
+
+    const trafficIndex = 0;
+    const priority     = 2;
+    let res: { success: boolean; error?: string };
+    try {
+      res = await this.automation.ftthBootstrapTr069({
+        connection:           conn,
+        slot, port, onu_id:   onuId,
+        mgmt_vlan:            mgmtVlan,
+        mgmt_service_port_id: mgmtSvcPort,
+        traffic_index:        trafficIndex,
+        priority,
+      });
+    } catch (err: any) {
+      res = { success: false, error: err?.message ?? 'error de comunicación con la OLT' };
+    }
+
+    if (!res.success) {
+      this.logger.error(`carril: bootstrap TR-069 falló | contrato=${contratoId} olt=${olt.id}: ${res.error}`);
+      await this.ftthRepo.update(registroId, { ultimoError: this._limpiar(res.error) });
+      return ` Carril TR-069 NO aplicado: ${this._limpiar(res.error) ?? 'error'} (la ONU no aparecerá en GenieACS).`;
+    }
+
+    await this.ftthRepo.update(registroId, {
+      tr069BootstrapAplicado: true,
+      mgmtServicePortId:      mgmtSvcPort,
+      mgmtVlan,
+      mgmtTrafficIndex:       trafficIndex,
+      mgmtPriority:           priority,
+    });
+    this.logger.log(
+      `carril TR-069 OK | contrato=${contratoId} olt=${olt.id} mgmtVlan=${mgmtVlan} svcPort=${mgmtSvcPort}`,
+    );
+    return ' Carril TR-069 aplicado (la ONU aparecerá en GenieACS).';
   }
 
   // ────────────────────────────────────────────────────────────
@@ -684,7 +770,7 @@ export class ProvisionFtthService {
     this.logger.log(`FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${mgmtVlan}`);
     return {
       exitoso: true,
-      mensaje: `Carril de gestión TR-069 aplicado (mgmt WAN DHCP en VLAN ${dto.mgmtVlan}). ` +
+      mensaje: `Carril de gestión TR-069 aplicado (mgmt WAN DHCP en VLAN ${mgmtVlan}). ` +
                `La ONU tomará la ACS URL por DHCP Option 43 y aparecerá en GenieACS.`,
     };
   }
@@ -1410,46 +1496,11 @@ export class ProvisionFtthService {
       trafficIndexUp:   reg.trafficIndexUp ?? undefined,
       wanMode:          reg.wanMode ?? undefined,
     };
-    // Captura del estado del carril de gestión ANTES de re-aprovisionar (la fila puede
-    // ser reescrita por el upsert de provisionarFtth). Si estaba aplicado, se restaura
-    // reutilizando el MISMO mgmtServicePortId (ya asignado a este contrato en el pool).
-    const carril = reg.tr069BootstrapAplicado && reg.mgmtServicePortId != null
-      ? {
-          mgmtServicePortId: reg.mgmtServicePortId,
-          mgmtVlan:          reg.mgmtVlan ?? undefined,
-          trafficIndex:      reg.mgmtTrafficIndex ?? undefined,
-          priority:          reg.mgmtPriority ?? undefined,
-        }
-      : null;
-
-    this.logger.log(
-      `reaplicar | contrato=${contratoId} olt=${reg.oltId} sn=${reg.sn}` +
-      (carril ? ` (restaurará carril TR-069 svcPort=${carril.mgmtServicePortId})` : ''),
-    );
-    const result = await this.provisionarFtth(reg.oltId, empresaId, dto);
-
-    // Restauración del carril de gestión: best-effort tras un re-aprovisionamiento exitoso.
-    // No falla el re-aprovisionamiento si el carril no aplica (el plano de datos ya está OK);
-    // se anota en el mensaje para visibilidad. La ONU sin carril no aparecerá en GenieACS.
-    if (carril && result.estado === FtthOnuEstado.ACTIVO) {
-      try {
-        const b = await this.bootstrapTr069(reg.oltId, empresaId, {
-          contratoId,
-          mgmtVlan:          carril.mgmtVlan,
-          mgmtServicePortId: carril.mgmtServicePortId,
-          trafficIndex:      carril.trafficIndex,
-          priority:          carril.priority,
-        });
-        result.mensaje += b.exitoso
-          ? ' Carril TR-069 restaurado.'
-          : ` Carril TR-069 NO restaurado: ${b.error ?? b.mensaje}`;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        this.logger.warn(`reaplicar: restauración de carril falló | contrato=${contratoId}: ${msg}`);
-        result.mensaje += ` Carril TR-069 NO restaurado: ${msg}`;
-      }
-    }
-    return result;
+    // El carril de gestión TR-069 lo asegura provisionarFtth de forma intrínseca (punto
+    // común), así que reaplicar no necesita restaurarlo aparte: reusa el service-port de
+    // gestión del contrato en el pool y lo re-aplica idempotente.
+    this.logger.log(`reaplicar | contrato=${contratoId} olt=${reg.oltId} sn=${reg.sn}`);
+    return this.provisionarFtth(reg.oltId, empresaId, dto);
   }
 
   async reconciliar(
