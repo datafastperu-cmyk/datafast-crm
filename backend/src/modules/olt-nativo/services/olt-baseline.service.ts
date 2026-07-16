@@ -15,6 +15,13 @@ import {
 
 // ─── DTOs ─────────────────────────────────────────────────────────
 
+// DEBE declararse antes de CrearBaselineDto: emitDecoratorMetadata refiere la
+// clase al evaluar los decoradores (TDZ con SWC — crash en frío si va después).
+export class ServicePortRangeDto {
+  @IsInt() @Min(1) @Max(32_768) @Type(() => Number) inicio: number;
+  @IsInt() @Min(1) @Max(32_768) @Type(() => Number) fin:    number;
+}
+
 export class BaselineVlanDto {
   @IsInt() @Min(1) @Max(4094) @Type(() => Number) vlanId: number;
   @IsString() @MaxLength(64)                       nombre: string;
@@ -49,11 +56,6 @@ export class CrearBaselineDto {
 
   @IsOptional() @ValidateNested() @Type(() => ServicePortRangeDto)
   servicePortRange?: ServicePortRangeDto;
-}
-
-export class ServicePortRangeDto {
-  @IsInt() @Min(1) @Max(32_768) @Type(() => Number) inicio: number;
-  @IsInt() @Min(1) @Max(32_768) @Type(() => Number) fin:    number;
 }
 
 // ─── Service ──────────────────────────────────────────────────────
