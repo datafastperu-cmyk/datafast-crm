@@ -77,8 +77,8 @@ export function BaselineEditorModal({ open, base, onClose, onCreado }: Props) {
     const operativo: Check[] = [
       { ok: vlans.some(v => v.tr069), texto: 'Declara la VLAN de gestión TR-069' },
       { ok: vlans.some(v => !v.tr069), texto: 'Declara al menos una VLAN de servicio' },
-      { ok: ttNombres.includes('ERP-MGMT'), texto: 'Declara el carril de gestión ERP-MGMT' },
-      { ok: ttNombres.some(n => n !== 'ERP-MGMT'), texto: 'Declara al menos una velocidad de cliente' },
+      { ok: ttNombres.some(n => n === 'DATAFAST-MGMT' || n === 'ERP-MGMT'), texto: 'Declara el carril de gestión DATAFAST-MGMT' },
+      { ok: ttNombres.some(n => n !== 'DATAFAST-MGMT' && n !== 'ERP-MGMT'), texto: 'Declara al menos una velocidad de cliente' },
       { ok: !!rangoIni && !!rangoFin, texto: 'Declara el rango de service-ports del ERP' },
       { ok: /^\d+\/\d+\/\d+$/.test(uplinkPort.trim()), texto: 'Declara el puerto uplink' },
     ];
@@ -170,7 +170,7 @@ export function BaselineEditorModal({ open, base, onClose, onCreado }: Props) {
                   <input value={v.vlanId} onChange={e => setVlan(i, { vlanId: e.target.value })}
                     placeholder="ID" type="number" min={1} max={4094} className={cn(inputCls, 'w-20 font-mono')} />
                   <input value={v.nombre} onChange={e => setVlan(i, { nombre: e.target.value })}
-                    placeholder="ERP-INTERNET" className={cn(inputCls, 'flex-1 font-mono')} />
+                    placeholder="DATAFAST-INTERNET" className={cn(inputCls, 'flex-1 font-mono')} />
                   <label className="flex items-center gap-1 text-xs whitespace-nowrap">
                     <input type="checkbox" checked={v.uplink || v.tr069} disabled={v.tr069}
                       onChange={e => setVlan(i, { uplink: e.target.checked })} />
@@ -199,7 +199,7 @@ export function BaselineEditorModal({ open, base, onClose, onCreado }: Props) {
               {tts.map((t, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input value={t.nombre} onChange={e => setTt(i, { nombre: e.target.value })}
-                    placeholder="ERP-100M" className={cn(inputCls, 'flex-1 font-mono')} />
+                    placeholder="DATAFAST-100M" className={cn(inputCls, 'flex-1 font-mono')} />
                   <input value={t.cirKbps} onChange={e => setTt(i, { cirKbps: e.target.value })}
                     placeholder="CIR" type="number" className={cn(inputCls, 'w-28 font-mono')} />
                   <input value={t.pirKbps} onChange={e => setTt(i, { pirKbps: e.target.value })}

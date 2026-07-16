@@ -21,6 +21,12 @@ import { BaselineSpec } from '../entities/olt-baseline.entity';
 
 export const BASELINE_ESTANDAR_NOMBRE = 'Datafast Estándar';
 
+// Sello DataFast (directriz del usuario 2026-07-16): TODO dato que el ERP
+// inyecta en una OLT lleva este prefijo en su nombre/descripción, para que
+// cualquier técnico que mire el equipo identifique al instante qué es del
+// ERP. Aplica a recursos que el ERP CREA — lo adoptado/ajeno no se renombra.
+export const SELLO_DATAFAST = 'DATAFAST';
+
 export const VLAN_IPTV_RESERVADA = 220; // documentada, aún sin crear
 
 // El uplinkPort depende del chasis (MA5800-X7: 0/9/0 — MPLB activa), por eso
@@ -28,22 +34,30 @@ export const VLAN_IPTV_RESERVADA = 220; // documentada, aún sin crear
 export function construirSpecEstandar(uplinkPort: string): BaselineSpec {
   return {
     vlans: [
-      { vlanId: 1600, nombre: 'ERP-TR069',    proposito: 'tr069',    uplink: true },
-      { vlanId: 200,  nombre: 'ERP-INTERNET', proposito: 'internet', uplink: true },
+      { vlanId: 1600, nombre: `${SELLO_DATAFAST}-TR069`,    proposito: 'tr069',    uplink: true },
+      { vlanId: 200,  nombre: `${SELLO_DATAFAST}-INTERNET`, proposito: 'internet', uplink: true },
     ],
     trafficTables: [
       // Carril de gestión TR-069 (el bootstrap la usa en vez del index 0 de la OLT)
-      { nombre: 'ERP-MGMT', cirKbps: 10_240,  pirKbps: 10_240  },
-      { nombre: 'ERP-50M',  cirKbps: 51_200,  pirKbps: 51_200  },
-      { nombre: 'ERP-100M', cirKbps: 102_400, pirKbps: 102_400 },
-      { nombre: 'ERP-200M', cirKbps: 204_800, pirKbps: 204_800 },
-      { nombre: 'ERP-400M', cirKbps: 409_600, pirKbps: 409_600 },
-      { nombre: 'ERP-600M', cirKbps: 614_400, pirKbps: 614_400 },
-      { nombre: 'ERP-800M', cirKbps: 819_200, pirKbps: 819_200 },
+      { nombre: `${SELLO_DATAFAST}-MGMT`, cirKbps: 10_240,  pirKbps: 10_240  },
+      { nombre: `${SELLO_DATAFAST}-50M`,  cirKbps: 51_200,  pirKbps: 51_200  },
+      { nombre: `${SELLO_DATAFAST}-100M`, cirKbps: 102_400, pirKbps: 102_400 },
+      { nombre: `${SELLO_DATAFAST}-200M`, cirKbps: 204_800, pirKbps: 204_800 },
+      { nombre: `${SELLO_DATAFAST}-400M`, cirKbps: 409_600, pirKbps: 409_600 },
+      { nombre: `${SELLO_DATAFAST}-600M`, cirKbps: 614_400, pirKbps: 614_400 },
+      { nombre: `${SELLO_DATAFAST}-800M`, cirKbps: 819_200, pirKbps: 819_200 },
     ],
     servicePortRange: { inicio: 2000, fin: 3999 },
     uplinkPort,
   };
+}
+
+// Aplica el sello a un texto que se inyectará como nombre/descripción en la
+// OLT (idempotente: no duplica el prefijo). Uso: descripciones de ONT, etc.
+export function conSelloDatafast(texto: string): string {
+  const limpio = (texto ?? '').trim();
+  if (limpio.toUpperCase().startsWith(SELLO_DATAFAST)) return limpio;
+  return limpio ? `${SELLO_DATAFAST}_${limpio}` : SELLO_DATAFAST;
 }
 
 export const BASELINE_ESTANDAR_DESCRIPCION =

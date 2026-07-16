@@ -244,9 +244,9 @@ export function TabBaseline({ oltId }: { oltId: string }) {
           <ShieldCheck className="w-4 h-4 text-primary" /> Baseline Datafast Estándar
         </p>
         <p className="text-xs text-muted-foreground">
-          La configuración canónica del ERP (VLAN 1600 TR-069, VLAN 200 Internet, carril ERP-MGMT,
-          velocidades ERP-50M…ERP-800M, service-ports 2000–3999) — idéntica en toda OLT. Genera la
-          versión vigente y asígnala a esta OLT en un paso.
+          La configuración canónica del ERP con sello DataFast (VLAN 1600 TR-069, VLAN 200 Internet,
+          carril DATAFAST-MGMT, velocidades DATAFAST-50M…800M, service-ports 2000–3999) — idéntica
+          en toda OLT. Genera la versión vigente y asígnala a esta OLT en un paso.
         </p>
         <div className="flex items-center gap-2">
           <input

@@ -18,6 +18,7 @@ import { decrypt }                        from '../../../common/utils/encryption
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 import { OltOnuIdPoolService }           from './olt-onu-id-pool.service';
 import { PythonOnuStatusInfo, PythonFtthWanPppoeRequest } from '../dto/olt-nativo-ops.dto';
+import { conSelloDatafast } from '../capability/olt-baseline-standard';
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de entrada
@@ -311,7 +312,9 @@ export class ProvisionFtthService {
           srvprofile_id:   dto.srvprofileId,
           traffic_index_down: dto.trafficIndexDown ?? null,
           traffic_index_up:   dto.trafficIndexUp   ?? null,
-          description:        dto.description      ?? null,
+          // Sello DataFast: toda ONT aprovisionada por el ERP queda marcada en
+          // la OLT como propia (visible en display ont info / desc).
+          description:        conSelloDatafast(dto.description ?? contrato.numero_contrato ?? ''),
         });
       } catch (err: any) {
         // El cliente lanza en errores HTTP (422/503/timeout). Se trata como fallo
@@ -594,7 +597,8 @@ export class ProvisionFtthService {
     try {
       const [row] = await this.ds.query<{ traffic_id: number }[]>(
         `SELECT traffic_id FROM olt_traffic_tables
-         WHERE olt_id = $1 AND nombre = 'ERP-MGMT' AND origen = 'erp'
+         WHERE olt_id = $1 AND nombre IN ('DATAFAST-MGMT', 'ERP-MGMT') AND origen = 'erp'
+         ORDER BY (nombre = 'DATAFAST-MGMT') DESC
          LIMIT 1`,
         [oltId],
       );
@@ -850,18 +854,19 @@ export class ProvisionFtthService {
 
   private async _fetchContrato(contratoId: string, empresaId: string) {
     const rows = await this.ds.query<{
-      estado:         string;
-      tipo_servicio:  string;
-      tipo_auth:      string | null;
-      vlan_id:        number | null;
-      usuario_pppoe:  string | null;
-      password_pppoe: string | null;
-      ip_asignada:    string | null;
-      mask:           string | null;
-      gateway:        string | null;
-      dns_primario:   string | null;
+      estado:          string;
+      tipo_servicio:   string;
+      tipo_auth:       string | null;
+      vlan_id:         number | null;
+      numero_contrato: string | null;
+      usuario_pppoe:   string | null;
+      password_pppoe:  string | null;
+      ip_asignada:     string | null;
+      mask:            string | null;
+      gateway:         string | null;
+      dns_primario:    string | null;
     }[]>(
-      `SELECT c.estado, c.tipo_servicio, c.tipo_auth, c.vlan_id,
+      `SELECT c.estado, c.tipo_servicio, c.tipo_auth, c.vlan_id, c.numero_contrato,
               c.usuario_pppoe, c.password_pppoe,
               host(c.ip_asignada)       AS ip_asignada,
               host(netmask(s.red_cidr)) AS mask,
