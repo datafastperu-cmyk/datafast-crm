@@ -810,6 +810,9 @@ export interface PythonWizardBoardInfo {
 export interface PythonWizardVlanInfo {
   vlan_id: number;
   name:    string;
+  vlan_type?:  string | null;   // smart | mux | standard | super
+  attribute?:  string | null;
+  serv_ports?: number | null;   // uso real (service-ports activos)
 }
 
 export interface PythonWizardTopologyRequest {

@@ -54,6 +54,12 @@ class OntInfo:
 class VlanInfo:
     vlan_id: int
     name: str
+    # 'display vlan all' del MA5800 NO tiene columna de nombre; sí tiene
+    # Type/Attribute/SERV-Port — claves para verificar compatibilidad antes
+    # de que el ERP adopte una VLAN preexistente (smart vs mux, uso real).
+    vlan_type: str | None = None    # smart | mux | standard | super
+    attribute: str | None = None    # common | qinq | ...
+    serv_ports: int | None = None   # service-ports activos (uso real)
 
 
 @dataclass

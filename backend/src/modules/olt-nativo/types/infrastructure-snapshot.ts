@@ -28,6 +28,9 @@ export interface SnapshotVlan {
   nombre: string;
   origen: string;
   estado: string;
+  // Observed state (9c): tipo real y uso real — null si el sync aún no los leyó.
+  tipo:      string | null;   // smart | mux | standard | super
+  servPorts: number | null;   // service-ports activos en la OLT
 }
 
 export interface SnapshotProfile {

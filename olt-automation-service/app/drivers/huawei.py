@@ -750,14 +750,17 @@ class HuaweiDriver(OltDriver):
 
     def _parse_vlans(self, raw: str) -> list[VlanInfo]:
         """
-        Parsea 'display vlan all'.
-        Formato Huawei: líneas con VLAN ID y nombre.
+        Parsea 'display vlan all'. Formato real MA5800 (validado 2026-07-16):
+          VLAN   Type      Attribute  STND-Port NUM   SERV-Port NUM  VLAN-Con NUM
+           200   smart     common                 1               0             -
+        NO hay columna de nombre (el parser anterior guardaba 'smart' como
+        nombre de todas las VLANs — bug real en producción). El nombre queda
+        sintético VLAN-{id}; Type/SERV-Port son los datos de compatibilidad.
         """
         vlans: list[VlanInfo] = []
-        # Líneas típicas: "  100    smartolt          common  ..."
         for line in raw.splitlines():
             parts = line.split()
-            if not parts:
+            if len(parts) < 3:
                 continue
             try:
                 vid = int(parts[0])
@@ -765,8 +768,22 @@ class HuaweiDriver(OltDriver):
                 continue
             if vid < 1 or vid > 4094:
                 continue
-            name = parts[1] if len(parts) > 1 else f'VLAN-{vid}'
-            vlans.append(VlanInfo(vlan_id=vid, name=name))
+            vlan_type = parts[1].lower()
+            if vlan_type not in ('smart', 'mux', 'standard', 'super'):
+                continue  # línea que no es una fila de la tabla
+            serv_ports: int | None = None
+            if len(parts) >= 5:
+                try:
+                    serv_ports = int(parts[4])
+                except ValueError:
+                    serv_ports = None
+            vlans.append(VlanInfo(
+                vlan_id=vid,
+                name=f'VLAN-{vid}',
+                vlan_type=vlan_type,
+                attribute=parts[2].lower(),
+                serv_ports=serv_ports,
+            ))
         return vlans
 
     def _ports_per_board(self, board_type: str) -> int:

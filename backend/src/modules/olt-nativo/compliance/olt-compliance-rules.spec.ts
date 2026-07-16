@@ -24,7 +24,7 @@ const baseOlt = (over: Partial<OltDispositivo> = {}): OltDispositivo => ({
 const baseSnapshot = (over: Partial<InfrastructureSnapshot> = {}): InfrastructureSnapshot => ({
   oltId: 'olt-1', oltNombre: 'OLT Test', marca: 'huawei', modelo: null, firmware: null,
   boards: [{ slot: 0, boardType: 'GPBD', estado: 'normal', onuCount: 5, onuCapacity: 16, portsPorSlot: 16 }],
-  vlans: [{ vlanId: 201, nombre: 'GESTION', origen: 'olt', estado: 'active' }],
+  vlans: [{ vlanId: 201, nombre: 'GESTION', origen: 'olt', estado: 'active', tipo: 'smart', servPorts: 0 }],
   lineProfiles: [], serviceProfiles: [], trafficTables: [], opticalPorts: [],
   snmpCommunities: [{ name: 'public', access: 'read' }], snmpVersions: ['SNMPv2c'],
   ntpServers: [{ source: '1.1.1.1', stratum: 2, reach: 255, status: 'configured, synced' }],

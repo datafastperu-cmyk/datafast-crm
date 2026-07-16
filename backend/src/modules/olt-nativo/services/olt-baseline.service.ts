@@ -46,6 +46,14 @@ export class CrearBaselineDto {
   // VLANs con uplink:true.
   @IsOptional() @Matches(/^\d+\/\d+\/\d+$/, { message: 'uplinkPort debe tener formato frame/slot/port, ej. 0/9/0' })
   uplinkPort?: string;
+
+  @IsOptional() @ValidateNested() @Type(() => ServicePortRangeDto)
+  servicePortRange?: ServicePortRangeDto;
+}
+
+export class ServicePortRangeDto {
+  @IsInt() @Min(1) @Max(32_768) @Type(() => Number) inicio: number;
+  @IsInt() @Min(1) @Max(32_768) @Type(() => Number) fin:    number;
 }
 
 // ─── Service ──────────────────────────────────────────────────────
@@ -117,11 +125,18 @@ export class OltBaselineService {
       );
     }
 
+    if (dto.servicePortRange && dto.servicePortRange.fin < dto.servicePortRange.inicio) {
+      throw new BadRequestException('servicePortRange: "fin" debe ser ≥ "inicio".');
+    }
+
     const spec: BaselineSpec = {
       vlans:         dto.vlans,
       trafficTables: dto.trafficTables,
       ntpServers:    dto.ntpServers,
       uplinkPort:    dto.uplinkPort,
+      servicePortRange: dto.servicePortRange
+        ? { inicio: dto.servicePortRange.inicio, fin: dto.servicePortRange.fin }
+        : undefined,
     };
 
     const baseline = await this.repo.save(this.repo.create({
@@ -155,17 +170,14 @@ export class OltBaselineService {
       return ultima;
     }
 
-    const baseline = await this.crear(empresaId, {
-      nombre:        BASELINE_ESTANDAR_NOMBRE,
-      descripcion:   BASELINE_ESTANDAR_DESCRIPCION,
-      vlans:         spec.vlans,
-      trafficTables: spec.trafficTables,
-      uplinkPort:    spec.uplinkPort,
+    return this.crear(empresaId, {
+      nombre:           BASELINE_ESTANDAR_NOMBRE,
+      descripcion:      BASELINE_ESTANDAR_DESCRIPCION,
+      vlans:            spec.vlans,
+      trafficTables:    spec.trafficTables,
+      uplinkPort:       spec.uplinkPort,
+      servicePortRange: spec.servicePortRange,
     });
-    // crear() no conoce servicePortRange (no es parte del DTO manual) —
-    // el estándar lo fija directamente.
-    baseline.spec = spec;
-    return this.repo.save(baseline);
   }
 
   // JSON canónico con claves ordenadas recursivamente (comparación jsonb-safe).

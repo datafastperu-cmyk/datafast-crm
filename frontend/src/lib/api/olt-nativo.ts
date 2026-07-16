@@ -564,6 +564,8 @@ export interface BaselinePlan {
   generadoEn:      string;
   operaciones:     BaselinePlanOperacion[];
   bloqueos:        Array<{ recurso: string; motivo: string }>;
+  // VLANs preexistentes que el ERP adoptará sin modificar — informativas
+  adopciones:      Array<{ vlanId: number; nombre: string; tipo: string | null; servPorts: number | null; detalle: string }>;
   planHash:        string;
   yaConverge:      boolean;
 }

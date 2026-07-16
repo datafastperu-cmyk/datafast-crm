@@ -68,7 +68,7 @@ describe('OltBaselinePlanService', () => {
   it('OLT ya convergida: plan vacío y yaConverge=true', async () => {
     const svc = makeService({
       snap: snapshot({
-        vlans:         [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active' }],
+        vlans:         [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active', tipo: 'smart', servPorts: 0 }],
         trafficTables: [{ trafficId: 21, nombre: 'ERP-100M', cirKbps: 102400, pirKbps: 102400, tipo: 'combinado' }],
       }),
     });
@@ -80,7 +80,7 @@ describe('OltBaselinePlanService', () => {
   it('traffic table existente con CIR distinto: bloqueo, nunca operación automática', async () => {
     const svc = makeService({
       snap: snapshot({
-        vlans:         [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active' }],
+        vlans:         [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active', tipo: 'smart', servPorts: 0 }],
         trafficTables: [{ trafficId: 5, nombre: 'ERP-100M', cirKbps: 51200, pirKbps: 51200, tipo: 'combinado' }],
       }),
     });
@@ -138,7 +138,7 @@ describe('OltBaselinePlanService', () => {
     const svc = makeService({
       bl: blUplink(),
       snap: snapshot({
-        vlans: [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active' }],
+        vlans: [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active', tipo: 'smart', servPorts: 0 }],
         uplinkVlans: { '0/9/0': [1, 100, 201] },
       }),
     });
@@ -151,7 +151,7 @@ describe('OltBaselinePlanService', () => {
     const svc = makeService({
       bl: blUplink(),
       snap: snapshot({
-        vlans: [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active' }],
+        vlans: [{ vlanId: 100, nombre: 'INTERNET', origen: 'erp', estado: 'active', tipo: 'smart', servPorts: 0 }],
         uplinkVlans: null,
       }),
     });
@@ -159,6 +159,40 @@ describe('OltBaselinePlanService', () => {
     expect(plan.operaciones).toHaveLength(0);
     expect(plan.bloqueos).toHaveLength(1);
     expect(plan.bloqueos[0].motivo).toContain('sincronización');
+  });
+
+  // ── Adopción de VLANs preexistentes (verificación de no-interferencia) ──
+  it('VLAN canónica ya existe con origen externo y tipo smart: adopción informativa, no silenciosa', async () => {
+    const svc = makeService({
+      snap: snapshot({
+        vlans: [{ vlanId: 100, nombre: 'VLAN-100', origen: 'olt', estado: 'active', tipo: 'smart', servPorts: 205 }],
+        trafficTables: [{ trafficId: 21, nombre: 'ERP-100M', cirKbps: 102400, pirKbps: 102400, tipo: 'combinado' }],
+      }),
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones).toHaveLength(0);            // no la crea
+    expect(plan.adopciones).toHaveLength(1);             // pero lo informa
+    expect(plan.adopciones[0].servPorts).toBe(205);      // con el uso real visible
+    expect(plan.yaConverge).toBe(true);                  // adopción no bloquea convergencia
+  });
+
+  it('VLAN canónica existe con tipo incompatible (mux): bloqueo, no se usa ni taguea', async () => {
+    const svc = makeService({
+      bl: baseline({
+        vlans: [{ vlanId: 100, nombre: 'ERP-INTERNET', uplink: true }],
+        trafficTables: [],
+        uplinkPort: '0/9/0',
+      }),
+      snap: snapshot({
+        vlans: [{ vlanId: 100, nombre: 'VLAN-100', origen: 'olt', estado: 'active', tipo: 'mux', servPorts: 3 }],
+        uplinkVlans: { '0/9/0': [1] },
+      }),
+    });
+    const plan = await svc.generarPlan('olt-1', 'e1');
+    expect(plan.operaciones).toHaveLength(0);            // ni crear ni taguear
+    expect(plan.bloqueos).toHaveLength(1);
+    expect(plan.bloqueos[0].motivo).toContain('mux');
+    expect(plan.yaConverge).toBe(false);
   });
 
   // ── Rango canónico de service-ports ──────────────────────────
@@ -226,7 +260,7 @@ describe('OltBaselinePlanService', () => {
         uplinkPort: '0/9/0',
       }),
       snap: snapshot({
-        vlans: [{ vlanId: 1600, nombre: 'GESTION_TR069', origen: 'erp', estado: 'active' }],
+        vlans: [{ vlanId: 1600, nombre: 'GESTION_TR069', origen: 'erp', estado: 'active', tipo: 'smart', servPorts: 0 }],
         uplinkVlans: { '0/9/0': [1, 1600] },
       }),
       oltRow: { ...olt, tr069MgmtVlan: 1600 },
@@ -247,7 +281,7 @@ describe('OltBaselinePlanService', () => {
       uplinkPort: '0/9/0',
     })) };
     const snapService = { obtener: jest.fn().mockResolvedValue(snapshot({
-      vlans: [{ vlanId: 1600, nombre: 'TR069', origen: 'erp', estado: 'active' }],
+      vlans: [{ vlanId: 1600, nombre: 'TR069', origen: 'erp', estado: 'active', tipo: 'smart', servPorts: 0 }],
       uplinkVlans: { '0/9/0': [1, 1600] },
     })) };
     const svc = new OltBaselinePlanService(

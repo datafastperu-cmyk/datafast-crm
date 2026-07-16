@@ -15,6 +15,14 @@ export class OltVlan {
   @Column({ type: 'varchar', length: 64 })       nombre:    string;
   @Column({ type: 'text', nullable: true })       descripcion: string | null;
 
+  // Observed state (9c): tipo real y uso real leídos de 'display vlan all'.
+  // Claves para verificar compatibilidad antes de adoptar una VLAN ajena.
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  tipo: string | null;              // smart | mux | standard | super
+
+  @Column({ name: 'serv_ports', type: 'int', nullable: true })
+  servPorts: number | null;         // service-ports activos en la OLT
+
   // Ownership: lo desconocido es externo ('olt'); 'erp' se declara explícito
   // al crear la VLAN desde el panel. El ERP nunca muta recursos origen != 'erp'.
   @Column({ type: 'varchar', length: 10, default: 'olt' })

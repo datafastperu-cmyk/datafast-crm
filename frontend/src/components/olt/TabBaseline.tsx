@@ -11,132 +11,7 @@ import {
 } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
-
-// ─── Parsers del formulario (una línea por recurso) ───────────────
-
-function parseVlans(text: string): { vlanId: number; nombre: string; uplink?: boolean; proposito?: string }[] {
-  return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-    const partes = l.split(/\s+/);
-    let uplink = false, tr069 = false;
-    // Tokens al final de la línea, en cualquier orden: uplink / tr069
-    while (partes.length > 1) {
-      const ultimo = partes[partes.length - 1].toLowerCase();
-      if (ultimo === 'uplink')      { uplink = true; partes.pop(); }
-      else if (ultimo === 'tr069')  { tr069 = true;  partes.pop(); }
-      else break;
-    }
-    const [id, ...rest] = partes;
-    return {
-      vlanId: Number(id),
-      nombre: rest.join(' ') || `VLAN_${id}`,
-      // TR-069 implica uplink: sin camino al ACS la VLAN de gestión no sirve
-      ...(uplink || tr069 ? { uplink: true } : {}),
-      ...(tr069 ? { proposito: 'tr069' } : {}),
-    };
-  });
-}
-
-function parseTts(text: string): { nombre: string; cirKbps: number; pirKbps: number }[] {
-  return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-    const [nombre, cir, pir] = l.split(/\s+/);
-    return { nombre, cirKbps: Number(cir), pirKbps: Number(pir ?? cir) };
-  });
-}
-
-// ─── Form de nueva versión ─────────────────────────────────────────
-
-function NuevaVersionForm({ base, onCreado }: { base: OltBaselineItem | null; onCreado: () => void }) {
-  const { toast } = useToast();
-  const [nombre, setNombre]      = useState(base?.nombre ?? 'Datafast');
-  const [descripcion, setDesc]   = useState('');
-  const [vlansText, setVlans]    = useState(
-    base ? base.spec.vlans.map(v =>
-      `${v.vlanId} ${v.nombre}${v.proposito === 'tr069' ? ' tr069' : v.uplink ? ' uplink' : ''}`,
-    ).join('\n') : '',
-  );
-  const [ttsText, setTts]        = useState(
-    base ? base.spec.trafficTables.map(t => `${t.nombre} ${t.cirKbps} ${t.pirKbps}`).join('\n') : '',
-  );
-  const [uplinkPort, setUplinkPort] = useState(base?.spec.uplinkPort ?? '');
-
-  const crear = useMutation({
-    mutationFn: () => oltNativoApi.crearBaseline({
-      nombre: nombre.trim(),
-      descripcion: descripcion.trim() || undefined,
-      vlans: parseVlans(vlansText),
-      trafficTables: parseTts(ttsText),
-      uplinkPort: uplinkPort.trim() || undefined,
-    }),
-    onSuccess: (b) => {
-      toast(`Baseline "${b.nombre}" v${b.version} creado`, { type: 'success' });
-      onCreado();
-    },
-    onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al crear baseline', { type: 'error' }),
-  });
-
-  const hayVlansUplink = parseVlans(vlansText).some(v => v.uplink);
-  const valido = nombre.trim()
-    && parseVlans(vlansText).every(v => v.vlanId >= 1 && v.vlanId <= 4094)
-    && parseTts(ttsText).every(t => t.nombre && t.cirKbps >= 64 && t.pirKbps >= t.cirKbps)
-    && (!uplinkPort.trim() || /^\d+\/\d+\/\d+$/.test(uplinkPort.trim()))
-    && (!hayVlansUplink || !!uplinkPort.trim());
-
-  return (
-    <div className="rounded-xl border border-border p-4 space-y-3">
-      <p className="text-sm font-semibold flex items-center gap-2">
-        <Plus className="w-4 h-4" />
-        Nueva versión de baseline
-        {base && <span className="text-xs font-normal text-muted-foreground">(prellenado desde {base.nombre} v{base.version})</span>}
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-muted-foreground">Nombre (nombre existente → versión nueva)</label>
-          <input value={nombre} onChange={e => setNombre(e.target.value)}
-            className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-primary/50" />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Descripción</label>
-          <input value={descripcion} onChange={e => setDesc(e.target.value)} placeholder="Qué cambia en esta versión"
-            className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">
-            Puerto uplink (frame/slot/port) — requerido si alguna VLAN lleva <code>uplink</code>
-          </label>
-          <input value={uplinkPort} onChange={e => setUplinkPort(e.target.value)} placeholder="0/9/0"
-            className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-          <p className="text-[10px] text-muted-foreground/70 mt-1">
-            El tagging es solo aditivo; el ERP nunca destaguea un uplink automáticamente.
-          </p>
-        </div>
-        <div />
-        <div>
-          <label className="text-xs text-muted-foreground">
-            VLANs — una por línea: <code>id nombre [uplink] [tr069]</code>
-            <span className="block text-muted-foreground/70"><code>tr069</code> = VLAN exclusiva de gestión TR-069 (implica uplink y se registra en la config TR-069 de la OLT)</span>
-          </label>
-          <textarea value={vlansText} onChange={e => setVlans(e.target.value)} rows={6}
-            placeholder={'100 INTERNET uplink\n1600 GESTION_TR069 tr069'}
-            className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Traffic tables — una por línea: <code>nombre cir_kbps pir_kbps</code></label>
-          <textarea value={ttsText} onChange={e => setTts(e.target.value)} rows={6}
-            placeholder={'ERP-100M 102400 102400\nERP-50M 51200 51200'}
-            className="w-full mt-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-        </div>
-      </div>
-      <button
-        onClick={() => crear.mutate()}
-        disabled={!valido || crear.isPending}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-      >
-        {crear.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookMarked className="w-3.5 h-3.5" />}
-        Crear versión
-      </button>
-    </div>
-  );
-}
+import { BaselineEditorModal } from './BaselineEditorModal';
 
 // ─── Panel del plan (dry-run + aplicar) ────────────────────────────
 
@@ -202,6 +77,18 @@ function PlanPanel({ oltId }: { oltId: string }) {
           <RefreshCw className={cn('w-3.5 h-3.5', isFetching && 'animate-spin')} />
         </button>
       </div>
+
+      {/* Adopciones: VLANs preexistentes que el ERP usará — nunca en silencio */}
+      {(plan.adopciones ?? []).length > 0 && (
+        <div className="space-y-1.5">
+          {plan.adopciones.map((a) => (
+            <div key={a.vlanId} className="flex items-start gap-2 text-xs rounded-lg border border-sky-700/40 bg-sky-500/5 text-sky-400 px-3 py-2">
+              <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{a.detalle}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {plan.yaConverge ? (
         <p className="flex items-center gap-2 text-sm text-emerald-400">
@@ -409,7 +296,7 @@ export function TabBaseline({ oltId }: { oltId: string }) {
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-accent"
           >
             <Plus className="w-3.5 h-3.5" />
-            {mostrarForm ? 'Ocultar formulario' : 'Nueva versión'}
+            Nueva versión…
           </button>
         </div>
         {asignado && (
@@ -419,15 +306,15 @@ export function TabBaseline({ oltId }: { oltId: string }) {
         )}
       </div>
 
-      {mostrarForm && (
-        <NuevaVersionForm
-          base={asignado}
-          onCreado={() => {
-            setMostrarForm(false);
-            qc.invalidateQueries({ queryKey: ['olt-baselines'] });
-          }}
-        />
-      )}
+      <BaselineEditorModal
+        open={mostrarForm}
+        base={asignado}
+        onClose={() => setMostrarForm(false)}
+        onCreado={() => {
+          setMostrarForm(false);
+          qc.invalidateQueries({ queryKey: ['olt-baselines'] });
+        }}
+      />
 
       {baselineId && <PlanPanel oltId={oltId} />}
     </div>

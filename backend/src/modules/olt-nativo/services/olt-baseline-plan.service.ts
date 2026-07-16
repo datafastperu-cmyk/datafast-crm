@@ -42,6 +42,18 @@ export interface PlanBloqueo {
   motivo:  string;
 }
 
+// VLAN del baseline que YA existe en la OLT con origen externo: el ERP la va
+// a usar sin crearla. La adopción NUNCA es silenciosa — se muestra con el
+// tipo real y el uso real (service-ports) para que el operador confirme que
+// no interfiere con reglas preexistentes del equipo.
+export interface PlanAdopcion {
+  vlanId:    number;
+  nombre:    string;          // nombre canónico del baseline
+  tipo:      string | null;   // tipo real en la OLT
+  servPorts: number | null;   // uso real en la OLT
+  detalle:   string;
+}
+
 export interface BaselinePlan {
   oltId:           string;
   baselineId:      string;
@@ -50,6 +62,7 @@ export interface BaselinePlan {
   generadoEn:      Date;
   operaciones:     PlanOperacion[];
   bloqueos:        PlanBloqueo[];
+  adopciones:      PlanAdopcion[];   // informativas — no afectan yaConverge
   planHash:        string;   // el apply exige este hash — si el estado cambió, 409
   yaConverge:      boolean;
 }
@@ -193,11 +206,41 @@ export class OltBaselinePlanService {
   ): Promise<BaselinePlan> {
     const operaciones: PlanOperacion[] = [];
     const bloqueos:    PlanBloqueo[]   = [];
+    const adopciones:  PlanAdopcion[]  = [];
+    const vlansBloqueadas = new Set<number>();
 
     // VLANs primero: las traffic tables no dependen de ellas, pero el orden
     // estable hace el hash determinista y el plan legible (red antes que QoS).
+    const vlanEnOltPorId = new Map(snapshot.vlans.map(v => [v.vlanId, v]));
     const vlansEnOlt = new Set(snapshot.vlans.map(v => v.vlanId));
     for (const v of baseline.spec.vlans) {
+      const existente = vlanEnOltPorId.get(v.vlanId);
+      if (existente && existente.origen !== 'erp') {
+        // Caso pesimista: la VLAN canónica ya existe, creada por otro sistema.
+        // Verificación de no-interferencia: el ERP solo opera sobre VLANs
+        // smart (sus service-ports asumen ese forwarding); otro tipo → bloqueo.
+        if (existente.tipo && existente.tipo !== 'smart') {
+          vlansBloqueadas.add(v.vlanId);
+          bloqueos.push({
+            recurso: `VLAN ${v.vlanId}`,
+            motivo:  `Existe en la OLT con tipo "${existente.tipo}" (el ERP requiere "smart"). ` +
+                     `Usarla interferiría con la configuración preexistente — elige otro ID canónico ` +
+                     `o corrige la VLAN manualmente.`,
+          });
+          continue;
+        }
+        adopciones.push({
+          vlanId:    v.vlanId,
+          nombre:    v.nombre,
+          tipo:      existente.tipo,
+          servPorts: existente.servPorts,
+          detalle:   `La VLAN ${v.vlanId} ya existe en la OLT (origen externo` +
+                     `${existente.tipo ? `, tipo ${existente.tipo}` : ''}` +
+                     `${existente.servPorts != null ? `, ${existente.servPorts} service-port(s) en uso` : ''}). ` +
+                     `El ERP la adoptará como "${v.nombre}" sin modificarla — verifica que su propósito ` +
+                     `actual no interfiera.`,
+        });
+      }
       if (!vlansEnOlt.has(v.vlanId)) {
         const safe = this._safeName(v.nombre);
         operaciones.push({
@@ -253,6 +296,7 @@ export class OltBaselinePlanService {
       } else {
         const observadas = snapshot.uplinkVlans?.[uplinkPort];
         for (const v of vlansUplink) {
+          if (vlansBloqueadas.has(v.vlanId)) continue; // VLAN incompatible — no taguear
           const seCreaEnEstePlan = operaciones.some(o => o.tipo === 'crear_vlan' && o.params.vlanId === v.vlanId);
           if (observadas == null && !seCreaEnEstePlan) {
             // Sin observed state no se puede saber si ya está taggeada; retaguear
@@ -329,6 +373,7 @@ export class OltBaselinePlanService {
       generadoEn:      new Date(),
       operaciones,
       bloqueos,
+      adopciones,
       planHash,
       yaConverge:      operaciones.length === 0 && bloqueos.length === 0,
     };

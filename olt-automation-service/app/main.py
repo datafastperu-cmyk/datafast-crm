@@ -1141,7 +1141,13 @@ async def wizard_topology(body: WizardTopologyRequest) -> WizardTopologyResponse
         for b in topology.boards
     ]
 
-    vlans = [WizardVlanInfo(vlan_id=v.vlan_id, name=v.name) for v in topology.vlans]
+    vlans = [
+        WizardVlanInfo(
+            vlan_id=v.vlan_id, name=v.name,
+            vlan_type=v.vlan_type, attribute=v.attribute, serv_ports=v.serv_ports,
+        )
+        for v in topology.vlans
+    ]
 
     traffic_tables = [
         OltTrafficTableInfo(index=t.index, name=t.name, cir_kbps=t.cir_kbps, pir_kbps=t.pir_kbps,

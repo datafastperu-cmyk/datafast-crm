@@ -391,21 +391,31 @@ export class OltSyncService implements OnModuleInit {
   }
 
   // Lo descubierto en la OLT se inserta con origen='olt' (externo). En
-  // conflicto solo se refresca el nombre — nunca se pisa el origen, para no
-  // reetiquetar como externas las VLANs creadas por el ERP (origen='erp').
+  // conflicto: tipo/serv_ports (observed state) se refrescan siempre; el
+  // nombre solo para VLANs externas — el ERP es dueño de los nombres de las
+  // suyas (ERP-INTERNET, ERP-TR069…) y 'display vlan all' no trae nombres.
   private async _upsertVlans(
     oltId: string, empresaId: string,
-    vlans: { vlan_id: number; name: string }[],
+    vlans: { vlan_id: number; name: string; vlan_type?: string | null; serv_ports?: number | null }[],
   ): Promise<void> {
     if (!vlans.length) return;
     await this.ds.query(
       `INSERT INTO olt_vlans
-         (id, olt_id, empresa_id, vlan_id, nombre, origen, estado, created_at, updated_at)
-       SELECT gen_random_uuid(), $1, $2, t.vid, t.name, 'olt', 'active', NOW(), NOW()
-       FROM   unnest($3::int[], $4::text[]) AS t(vid, name)
+         (id, olt_id, empresa_id, vlan_id, nombre, tipo, serv_ports, origen, estado, created_at, updated_at)
+       SELECT gen_random_uuid(), $1, $2, t.vid, t.name, t.tipo, t.sp, 'olt', 'active', NOW(), NOW()
+       FROM   unnest($3::int[], $4::text[], $5::text[], $6::int[]) AS t(vid, name, tipo, sp)
        ON CONFLICT (olt_id, vlan_id) DO UPDATE
-         SET nombre = EXCLUDED.nombre, updated_at = NOW()`,
-      [oltId, empresaId, vlans.map(v => v.vlan_id), vlans.map(v => v.name)],
+         SET tipo       = COALESCE(EXCLUDED.tipo, olt_vlans.tipo),
+             serv_ports = COALESCE(EXCLUDED.serv_ports, olt_vlans.serv_ports),
+             nombre     = CASE WHEN olt_vlans.origen = 'erp' THEN olt_vlans.nombre ELSE EXCLUDED.nombre END,
+             updated_at = NOW()`,
+      [
+        oltId, empresaId,
+        vlans.map(v => v.vlan_id),
+        vlans.map(v => v.name),
+        vlans.map(v => v.vlan_type ?? null),
+        vlans.map(v => v.serv_ports ?? null),
+      ],
     );
   }
 

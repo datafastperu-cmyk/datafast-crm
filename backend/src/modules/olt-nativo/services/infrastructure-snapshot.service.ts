@@ -90,10 +90,12 @@ export class InfrastructureSnapshotService {
       })),
 
       vlans: vlans.map(v => ({
-        vlanId: v.vlanId,
-        nombre: v.nombre,
-        origen: v.origen,
-        estado: v.estado,
+        vlanId:    v.vlanId,
+        nombre:    v.nombre,
+        origen:    v.origen,
+        estado:    v.estado,
+        tipo:      v.tipo ?? null,
+        servPorts: v.servPorts ?? null,
       })),
 
       lineProfiles:    lineProfiles.map(p => ({ profileId: p.profileId, nombre: p.nombre })),

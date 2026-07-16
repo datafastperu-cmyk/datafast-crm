@@ -533,6 +533,10 @@ class OntSuspendResponse(BaseModel):
 class WizardVlanInfo(BaseModel):
     vlan_id: int
     name:    str
+    # Compatibilidad de adopción (9c): tipo real y uso real de la VLAN.
+    vlan_type:  str | None = None   # smart | mux | standard | super
+    attribute:  str | None = None
+    serv_ports: int | None = None   # service-ports activos en la OLT
 
 
 class WizardBoardInfo(BaseModel):
