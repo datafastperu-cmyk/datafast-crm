@@ -1314,6 +1314,7 @@ export const oltNativoApi = {
     nombre: string; descripcion?: string;
     vlans: BaselineSpec['vlans']; trafficTables: BaselineSpec['trafficTables'];
     ntpServers?: string[]; uplinkPort?: string;
+    servicePortRange?: { inicio: number; fin: number };
   }): Promise<OltBaselineItem> => {
     const res = await api.post<ApiRespuesta<OltBaselineItem>>('/olt-nativo/baselines', dto);
     return res.data.data;
