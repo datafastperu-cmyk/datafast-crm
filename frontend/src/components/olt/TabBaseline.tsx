@@ -285,7 +285,20 @@ export function TabBaseline({ oltId }: { oltId: string }) {
           <div className="relative">
             <select
               value={baselineId ?? ''}
-              onChange={e => asignar.mutate(e.target.value || null)}
+              onChange={e => {
+                const nuevo = e.target.value || null;
+                if (nuevo === baselineId) return;
+                const b = baselines.find(x => x.id === nuevo);
+                // Confirmación explícita: reasignar cambia la meta de convergencia
+                // de la OLT (incidente real: un cambio accidental del selector
+                // dejó la OLT apuntando a un baseline de prueba).
+                const ok = window.confirm(
+                  b ? `¿Asignar "${b.nombre}" v${b.version} a esta OLT? El plan de convergencia pasará a medir contra esa versión.`
+                    : '¿Quitar el baseline de esta OLT? Las reglas de baseline dejarán de aplicar.',
+                );
+                if (ok) asignar.mutate(nuevo);
+                else e.target.value = baselineId ?? '';
+              }}
               disabled={asignar.isPending}
               className="appearance-none bg-background border border-border rounded-lg pl-2.5 pr-8 py-1.5 text-sm focus:outline-none focus:border-primary/50 disabled:opacity-50"
             >
