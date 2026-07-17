@@ -3152,70 +3152,82 @@ def check_ont_wan_pppoe(
     return {'ok': ok, 'connected': connected, 'username': username, 'error': None}
 
 
+def _undo_service_port_verificado(conn: OltConnectionSchema, service_port_id: int) -> bool:
+    """
+    `undo service-port` + VERIFICACIÓN activa de que la OLT terminó de procesarlo.
+    En el MA5800 el `undo service-port` no es síncrono con el prompt de vuelta: si
+    el `ont delete` se envía inmediatamente después, la OLT lo rechaza con "This
+    configured object has some service virtual ports" porque la baja interna del
+    service-port aún no terminó. El drenaje de `_paramiko_huawei_run` solo limpia
+    buffers de lectura (0.15s) — no espera a que el equipo termine de procesar el
+    comando anterior. Confirmado en incidente 2026-07-17 (CNT-2026-000005) — ver
+    memoria del firmware R018 para el mismo patrón de causa raíz. Devuelve True si
+    se confirmó la baja tras reintentos.
+    """
+    for sp_attempt in range(4):
+        try:
+            sp_parts = _paramiko_huawei_run(
+                conn,
+                ['config', f'undo service-port {service_port_id}',
+                 f'display service-port {service_port_id}', 'quit'],
+                timeout=settings.ssh_command_timeout, return_list=True,
+            )
+        except Exception as exc:
+            logger.error(
+                'rollback_gpon: undo service-port %d SSH falló | OLT=%s intento=%d: %s',
+                service_port_id, conn.ip, sp_attempt + 1, exc,
+            )
+            _time_read.sleep(2)
+            continue
+        sp_verify = sp_parts[2] if len(sp_parts) > 2 else ''
+        if 'does not exist' in sp_verify.lower():
+            logger.info(
+                'rollback_gpon: service-port %d confirmado eliminado | OLT=%s intento=%d',
+                service_port_id, conn.ip, sp_attempt + 1,
+            )
+            return True
+        logger.warning(
+            'rollback_gpon: service-port %d aún no se confirma eliminado | OLT=%s intento=%d',
+            service_port_id, conn.ip, sp_attempt + 1,
+        )
+        _time_read.sleep(2)
+    logger.warning(
+        'rollback_gpon: no se pudo confirmar la baja del service-port %d tras reintentos '
+        '| OLT=%s — se intentará igual el ont delete',
+        service_port_id, conn.ip,
+    )
+    return False
+
+
 def rollback_gpon(
-    conn:           OltConnectionSchema,
-    slot:           int,
-    port:           int,
-    onu_id:         int,
-    service_port_id: int | None,
+    conn:                 OltConnectionSchema,
+    slot:                 int,
+    port:                 int,
+    onu_id:               int,
+    service_port_id:      int | None,
+    mgmt_service_port_id: int | None = None,
 ) -> dict[str, Any]:
     """
-    Rollback de Fase 1: elimina el service-port y el ont add de la OLT.
+    Rollback de Fase 1: elimina el/los service-port(s) y el ont add de la OLT.
     Se ejecuta automáticamente si provision_gpon_ftth falla, y manualmente
     cuando el operador desprovisionó un contrato FTTH.
+
+    `mgmt_service_port_id` (incidente 2026-07-17, CNT-2026-000004): si la ONU
+    tiene carril de gestión TR-069 (GEM 2), su service-port también debe
+    deshacerse ANTES de `ont delete` — de lo contrario la OLT rechaza el borrado
+    del ONT con "has some service virtual ports" porque el GEM 2 sigue atado.
 
     No propaga excepciones — si el rollback también falla, lo registra y retorna
     success=False para que el sistema lo marque como requiere_intervencion_manual.
     """
     logger.info(
-        'rollback_gpon: OLT=%s slot=%d port=%d onu_id=%d', conn.ip, slot, port, onu_id,
+        'rollback_gpon: OLT=%s slot=%d port=%d onu_id=%d svc=%s mgmt_svc=%s',
+        conn.ip, slot, port, onu_id, service_port_id, mgmt_service_port_id,
     )
 
-    # Fase 1: `undo service-port` + VERIFICACIÓN activa de que la OLT terminó de
-    # procesarlo antes de tocar el ont. En el MA5800 el `undo service-port` no es
-    # síncrono con el prompt de vuelta: si el `ont delete` se envía inmediatamente
-    # después (como hacía este código antes), la OLT lo rechaza con "This configured
-    # object has some service virtual ports" porque la baja interna del service-port
-    # aún no terminó. El drenaje de `_paramiko_huawei_run` solo limpia buffers de
-    # lectura (0.15s) — no espera a que el equipo termine de procesar el comando
-    # anterior. Confirmado en incidente 2026-07-17 (contrato CNT-2026-000005) — ver
-    # memoria del firmware R018 para el mismo patrón de causa raíz.
-    if service_port_id is not None:
-        sp_gone = False
-        for sp_attempt in range(4):
-            try:
-                sp_parts = _paramiko_huawei_run(
-                    conn,
-                    ['config', f'undo service-port {service_port_id}',
-                     f'display service-port {service_port_id}', 'quit'],
-                    timeout=settings.ssh_command_timeout, return_list=True,
-                )
-            except Exception as exc:
-                logger.error(
-                    'rollback_gpon: undo service-port SSH falló | OLT=%s intento=%d: %s',
-                    conn.ip, sp_attempt + 1, exc,
-                )
-                _time_read.sleep(2)
-                continue
-            sp_verify = sp_parts[2] if len(sp_parts) > 2 else ''
-            if 'does not exist' in sp_verify.lower():
-                sp_gone = True
-                logger.info(
-                    'rollback_gpon: service-port %d confirmado eliminado | OLT=%s intento=%d',
-                    service_port_id, conn.ip, sp_attempt + 1,
-                )
-                break
-            logger.warning(
-                'rollback_gpon: service-port %d aún no se confirma eliminado | OLT=%s intento=%d',
-                service_port_id, conn.ip, sp_attempt + 1,
-            )
-            _time_read.sleep(2)
-        if not sp_gone:
-            logger.warning(
-                'rollback_gpon: no se pudo confirmar la baja del service-port %d tras reintentos '
-                '| OLT=%s — se intentará igual el ont delete',
-                service_port_id, conn.ip,
-            )
+    for sp_id in (service_port_id, mgmt_service_port_id):
+        if sp_id is not None:
+            _undo_service_port_verificado(conn, sp_id)
 
     # Fase 2: ont delete + verificación dura + reintento. NO basta con que SSH no
     # lance excepción. El `ont delete` puede fallar en silencio (lock de otra sesión

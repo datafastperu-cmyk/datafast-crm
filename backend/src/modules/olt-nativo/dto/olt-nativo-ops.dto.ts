@@ -617,11 +617,12 @@ export interface PythonFtthGponResponse {
 }
 
 export interface PythonFtthRollbackRequest {
-  connection:      PythonConnectionPayload;
-  slot:            number;
-  port:            number;
-  onu_id:          number;
-  service_port_id: number | null;
+  connection:            PythonConnectionPayload;
+  slot:                  number;
+  port:                  number;
+  onu_id:                number;
+  service_port_id:       number | null;
+  mgmt_service_port_id?: number | null;
 }
 
 // Carril de bootstrap TR-069 (ZTP): mgmt WAN DHCP + service-port GEM2 + FEC.

@@ -205,11 +205,12 @@ export class ProvisionFtthService {
         const pwPrevio   = this._decryptOltPassword(oltPrevio);
         const connPrevio = this._buildConn(oltPrevio, pwPrevio);
         await this.automation.ftthRollbackGpon({
-          connection:      connPrevio,
-          slot:            registroExistente.slot,
-          port:            registroExistente.port,
-          onu_id:          registroExistente.onuId,
-          service_port_id: registroExistente.servicePortId,
+          connection:           connPrevio,
+          slot:                 registroExistente.slot,
+          port:                 registroExistente.port,
+          onu_id:               registroExistente.onuId,
+          service_port_id:      registroExistente.servicePortId,
+          mgmt_service_port_id: registroExistente.mgmtServicePortId,
         }).catch((err: any) => {
           this.logger.error(
             `FTTH pre-retry rollback falló (se procede de todos modos) | contrato=${dto.contratoId}: ${err.message}`,
@@ -1068,11 +1069,12 @@ export class ProvisionFtthService {
     if (olt) {
       const conn = this._buildConn(olt, this._decryptOltPassword(olt));
       await this.automation.ftthRollbackGpon({
-        connection:      conn,
-        slot:            registro.slot,
-        port:            registro.port,
-        onu_id:          registro.onuId,
-        service_port_id: registro.servicePortId,
+        connection:           conn,
+        slot:                 registro.slot,
+        port:                 registro.port,
+        onu_id:               registro.onuId,
+        service_port_id:      registro.servicePortId,
+        mgmt_service_port_id: registro.mgmtServicePortId,
       }).catch((err: any) => {
         this.logger.error(`FTTH cancelar rollback falló | contrato=${contratoId}: ${err.message}`);
       });
@@ -1275,11 +1277,12 @@ export class ProvisionFtthService {
     let rollbackError: string | undefined;
     try {
       const res = await this.automation.ftthRollbackGpon({
-        connection:      conn,
-        slot:            registro.slot,
-        port:            registro.port,
-        onu_id:          registro.onuId,
-        service_port_id: registro.servicePortId,
+        connection:           conn,
+        slot:                 registro.slot,
+        port:                 registro.port,
+        onu_id:               registro.onuId,
+        service_port_id:      registro.servicePortId,
+        mgmt_service_port_id: registro.mgmtServicePortId,
       });
       rollbackOk    = res.success;
       rollbackError = res.error;

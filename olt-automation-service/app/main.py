@@ -793,6 +793,7 @@ async def ftth_rollback_gpon(body: FtthRollbackRequest) -> FtthRollbackResponse:
             rollback_gpon,
             body.connection,
             body.slot, body.port, body.onu_id, body.service_port_id,
+            body.mgmt_service_port_id,
         )
     return FtthRollbackResponse(success=result['success'], error=result.get('error'))
 

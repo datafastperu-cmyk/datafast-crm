@@ -394,11 +394,15 @@ class FtthGponResponse(BaseModel):
 
 class FtthRollbackRequest(BaseModel):
     """Deshacer el registro GPON de una ONU en la OLT."""
-    connection:      OltConnectionSchema
-    slot:            int = Field(..., ge=0, le=15)
-    port:            int = Field(..., ge=0, le=15)
-    onu_id:          int = Field(..., ge=1, le=128)
-    service_port_id: int | None = Field(None, ge=1)
+    connection:           OltConnectionSchema
+    slot:                 int = Field(..., ge=0, le=15)
+    port:                 int = Field(..., ge=0, le=15)
+    onu_id:               int = Field(..., ge=1, le=128)
+    service_port_id:      int | None = Field(None, ge=1)
+    # Service-port del carril de gestión TR-069 (GEM 2), si la ONU lo tiene. Sin
+    # deshacerlo también, `ont delete` falla con "has some service virtual ports"
+    # (incidente 2026-07-17, CNT-2026-000004 — el rollback solo conocía el de datos).
+    mgmt_service_port_id: int | None = Field(None, ge=1)
 
 
 class FtthRollbackResponse(BaseModel):
