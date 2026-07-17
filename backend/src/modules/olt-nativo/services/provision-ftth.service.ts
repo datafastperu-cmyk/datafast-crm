@@ -593,10 +593,30 @@ export class ProvisionFtthService {
       mgmtTrafficIndex:       trafficIndex,
       mgmtPriority:           priority,
     });
+
+    // Verificación de plano de gestión (Inc. post-incidente 2026-07-17, CNT-2026-000004):
+    // que la OLT haya aceptado el comando OMCI NO significa que el firmware de la ONU
+    // materializó el IP-host en tráfico real — en esa ONU la config quedó "aceptada"
+    // durante días mientras el canal de gestión estaba completamente muerto (0 tramas
+    // Ethernet emitidas, confirmado con sniffer). Se sondea brevemente (no bloquea el
+    // aprovisionamiento si tarda — la ONU puede seguir negociando DHCP después) y se
+    // distingue "aplicado y confirmado" de "aceptado por OMCI, sin confirmar" en el
+    // mensaje devuelto al operador.
+    let confirmado = false;
+    for (let intento = 0; intento < 4; intento++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const chk = await this.automation.ftthCheckMgmtIp({ connection: conn, slot, port, onu_id: onuId });
+      if (chk.has_ip) { confirmado = true; break; }
+    }
+
     this.logger.log(
-      `carril TR-069 OK | contrato=${contratoId} olt=${olt.id} mgmtVlan=${mgmtVlan} svcPort=${mgmtSvcPort}`,
+      `carril TR-069 ${confirmado ? 'OK confirmado' : 'aceptado SIN confirmar'} | ` +
+      `contrato=${contratoId} olt=${olt.id} mgmtVlan=${mgmtVlan} svcPort=${mgmtSvcPort}`,
     );
-    return ' Carril TR-069 aplicado (la ONU aparecerá en GenieACS).';
+    return confirmado
+      ? ' Carril TR-069 aplicado y confirmado (IP de gestión obtenida — la ONU aparecerá en GenieACS).'
+      : ' Carril TR-069 aceptado por la OLT, pero SIN confirmar (la ONU no obtuvo IP de gestión tras ' +
+        '12s — puede tardar más o ser una limitación de firmware de esta unidad; revisa el panel TR-069 luego).';
   }
 
   // Resuelve el índice de la traffic table de gestión canónica (ERP-MGMT,

@@ -3152,6 +3152,53 @@ def check_ont_wan_pppoe(
     return {'ok': ok, 'connected': connected, 'username': username, 'error': None}
 
 
+def check_ont_mgmt_ip(
+    conn:   OltConnectionSchema,
+    slot:   int,
+    port:   int,
+    onu_id: int,
+) -> dict[str, Any]:
+    """
+    Verifica si el IP-host de gestión (ip-index 0, DHCP, VLAN de gestión) de una
+    ONU realmente obtuvo dirección (`display ont ipconfig`) — es decir, si el
+    firmware de la ONU MATERIALIZÓ la configuración OMCI en tráfico real, no solo
+    si la OLT la aceptó.
+
+    Causa raíz (incidente 2026-07-17, CNT-2026-000004): `_ensureCarrilGestion`
+    marcaba `tr069_bootstrap_aplicado=true` en cuanto la OLT aceptaba el comando
+    OMCI (`provision_mgmt_bootstrap` retornaba success), sin verificar evidencia
+    operacional real. En esa ONU la OLT aceptó la config pero el firmware nunca
+    activó el IP-host (0 tramas Ethernet emitidas, confirmado con sniffer durante
+    un cold-boot real) — el ERP reportaba "carril aplicado" durante días mientras
+    la gestión remota estaba completamente muerta. Esta verificación cierra ese
+    gap: confirma materialización real antes de reportar éxito.
+
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    try:
+        parts = _paramiko_huawei_run(
+            conn,
+            ['config', f'interface gpon 0/{slot}', f'display ont ipconfig {port} {onu_id}', 'quit', 'quit'],
+            timeout=settings.ssh_command_timeout, return_list=True,
+        )
+    except Exception as exc:
+        logger.warning('check_ont_mgmt_ip: SSH falló | OLT=%s onu_id=%d: %s', conn.ip, onu_id, exc)
+        return {'has_ip': False, 'ip': None, 'error': str(exc)}
+
+    raw = parts[2] if len(parts) > 2 else ''
+    bloques = re.split(r'\n\s*ONT IP host index\s*:', raw)
+    ip: str | None = None
+    for bloque in bloques:
+        if not re.match(r'\s*0\b', bloque):
+            continue
+        m_ip = re.search(r'ONT IP\s*:\s*(\S+)', bloque)
+        if m_ip and m_ip.group(1) != '-':
+            ip = m_ip.group(1)
+        break
+
+    return {'has_ip': ip is not None, 'ip': ip, 'error': None}
+
+
 def _undo_service_port_verificado(conn: OltConnectionSchema, service_port_id: int) -> bool:
     """
     `undo service-port` + VERIFICACIÓN activa de que la OLT terminó de procesarlo.

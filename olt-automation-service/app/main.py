@@ -39,6 +39,8 @@ from app.schemas.olt import (
     FtthPollResponse,
     FtthCheckWanRequest,
     FtthCheckWanResponse,
+    FtthCheckMgmtIpRequest,
+    FtthCheckMgmtIpResponse,
     FtthRollbackRequest,
     FtthRollbackResponse,
     FtthWanPppoeRequest,
@@ -136,6 +138,7 @@ from app.services.provisioning import (
     poll_onu_online,
     single_poll_check,
     check_ont_wan_pppoe,
+    check_ont_mgmt_ip,
     provision_gpon_ftth,
     provision_mgmt_bootstrap,
     provision_onu,
@@ -865,6 +868,22 @@ async def ftth_check_wan(body: FtthCheckWanRequest) -> FtthCheckWanResponse:
             check_ont_wan_pppoe, body.connection, body.slot, body.port, body.onu_id, body.expected_username,
         )
     return FtthCheckWanResponse(**result)
+
+
+@app.post(
+    '/api/v1/olt/ftth/check-mgmt-ip',
+    response_model=FtthCheckMgmtIpResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Verifica si el IP-host de gestión (ip-index 0) materializó una IP real',
+)
+async def ftth_check_mgmt_ip(body: FtthCheckMgmtIpRequest) -> FtthCheckMgmtIpResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        result = await asyncio.to_thread(
+            check_ont_mgmt_ip, body.connection, body.slot, body.port, body.onu_id,
+        )
+    return FtthCheckMgmtIpResponse(**result)
 
 
 @app.post(

@@ -26,6 +26,8 @@ import {
   PythonFtthPollResponse,
   PythonFtthCheckWanRequest,
   PythonFtthCheckWanResponse,
+  PythonFtthCheckMgmtIpRequest,
+  PythonFtthCheckMgmtIpResponse,
   PythonFtthRollbackRequest,
   PythonFtthOntIdsRequest,
   PythonFtthOntIdsResponse,
@@ -384,6 +386,20 @@ export class OltAutomationClient {
     } catch (err: any) {
       this.logger.warn(`← ftth/check-wan falló (se trata como no verificado): ${err.message}`);
       return { ok: false, connected: false, username: null, error: err.message };
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — verificar IP-host de gestión materializado (post bootstrap TR-069)
+  // ────────────────────────────────────────────────────────────
+  async ftthCheckMgmtIp(payload: PythonFtthCheckMgmtIpRequest): Promise<PythonFtthCheckMgmtIpResponse> {
+    try {
+      return await this.post<PythonFtthCheckMgmtIpResponse>(
+        '/api/v1/olt/ftth/check-mgmt-ip', payload, 20_000,
+      );
+    } catch (err: any) {
+      this.logger.warn(`← ftth/check-mgmt-ip falló (se trata como no confirmado): ${err.message}`);
+      return { has_ip: false, ip: null, error: err.message };
     }
   }
 

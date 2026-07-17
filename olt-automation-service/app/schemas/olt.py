@@ -458,6 +458,20 @@ class FtthPollResponse(BaseModel):
     error:     str | None = None
 
 
+class FtthCheckMgmtIpRequest(BaseModel):
+    """Verifica si el IP-host de gestión (ip-index 0) materializó una IP real."""
+    connection: OltConnectionSchema
+    slot:       int = Field(..., ge=0, le=15)
+    port:       int = Field(..., ge=0, le=15)
+    onu_id:     int = Field(..., ge=1, le=128)
+
+
+class FtthCheckMgmtIpResponse(BaseModel):
+    has_ip: bool
+    ip:     str | None = None
+    error:  str | None = None
+
+
 class FtthCheckWanRequest(BaseModel):
     """Verifica si la WAN PPPoE de una ONU activa sigue viva (watcher post factory-reset)."""
     connection:        OltConnectionSchema

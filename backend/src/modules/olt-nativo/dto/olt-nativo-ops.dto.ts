@@ -674,6 +674,19 @@ export interface PythonFtthPollResponse {
   error?:     string;
 }
 
+export interface PythonFtthCheckMgmtIpRequest {
+  connection: PythonConnectionPayload;
+  slot:       number;
+  port:       number;
+  onu_id:     number;
+}
+
+export interface PythonFtthCheckMgmtIpResponse {
+  has_ip: boolean;
+  ip?:    string | null;
+  error?: string | null;
+}
+
 export interface PythonFtthCheckWanRequest {
   connection:        PythonConnectionPayload;
   slot:              number;
