@@ -442,6 +442,10 @@ export class ProvisionFtthService {
       olt, conn, registroId, dto.contratoId, dto.slot, dto.port, onuId,
     );
 
+    // Punto único común tras confirmar el service-port de datos en la OLT — ver
+    // _syncVlanContrato para la causa raíz que esto corrige (contratos.vlan_id NULL).
+    await this._syncVlanContrato(dto.contratoId, empresaId, dto.vlan);
+
     // ── Modo BRIDGE: sin inyección WAN ────────────────────────
     // La ONU va transparente; el PPPoE lo hace el router del cliente contra el BRAS
     // MikroTik. El OLT ya tiene GPON + service-port → el aprovisionamiento concluye
@@ -693,6 +697,8 @@ export class ProvisionFtthService {
       intentosWan: registro.intentosWan + 1,
       ultimoError: null,
     });
+    // Retro-completa contratos.vlan_id para registros creados antes de este fix.
+    await this._syncVlanContrato(dto.contratoId, empresaId, registro.vlan);
 
     return {
       estado:     FtthOnuEstado.ACTIVO,
@@ -853,6 +859,29 @@ export class ProvisionFtthService {
     if (!error) return false;
     const e = error.toLowerCase();
     return /conflicts with other user|please retry later|currently operating|being used by another|try again later|operating conflicts/.test(e);
+  }
+
+  // Sincroniza contratos.vlan_id con la VLAN real del service-port de datos en la OLT.
+  // Causa raíz (2026-07-17): el flujo nativo de aprovisionamiento (este archivo) nunca
+  // escribía este campo — solo lo hacía el orquestador LEGACY de SmartOLT
+  // (smartolt/orquestador-ftth.service.ts). Con el flujo nativo como único camino de
+  // aprovisionamiento, contratos.vlan_id quedaba NULL para el 100% de las ONUs nuevas,
+  // dejando inerte el guard de drift de actualizarWan() (`contrato.vlan_id !== registro.vlan`)
+  // que evita reinyectar la WAN con una VLAN desactualizada. Se llama en el ÚNICO punto
+  // común tras confirmar el service-port en la OLT (ver provisionarFtth), para TODAS las
+  // rutas (bridge, routing OK, routing con WAN pendiente). Best-effort: un fallo aquí no
+  // debe tumbar un aprovisionamiento ya exitoso en la OLT.
+  private async _syncVlanContrato(contratoId: string, empresaId: string, vlan: number): Promise<void> {
+    try {
+      await this.ds.query(
+        `UPDATE contratos SET vlan_id = $1 WHERE id = $2 AND empresa_id = $3 AND deleted_at IS NULL`,
+        [vlan, contratoId, empresaId],
+      );
+    } catch (e) {
+      this.logger.warn(
+        `_syncVlanContrato falló (no bloqueante) | contrato=${contratoId} vlan=${vlan}: ${(e as Error).message}`,
+      );
+    }
   }
 
   private async _fetchContrato(contratoId: string, empresaId: string) {
