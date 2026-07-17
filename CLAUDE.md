@@ -55,6 +55,48 @@ auth, usuarios, licencia, clientes, contratos, planes, facturacion, pagos (caja 
 finanzas-opex, reportes, zonas, plantillas, config, schema-guard, auditoria.
 Si alguno de estos falla en init → el backend debe crashear para proteger el servidor anterior en PM2.
 
+## Verified Infrastructure Operations (VIO) — Regla de Construcción Obligatoria
+
+### Aceptar una configuración no significa que la infraestructura la haya materializado
+
+Origen: incidente 2026-07-17 (CNT-2026-000004). Una ONU Huawei EG8145V5 aceptó sin error
+el comando OMCI del carril de gestión TR-069 (`ont ipconfig ... dhcp vlan 1600`) — la OLT
+lo mostraba configurado — pero el firmware de la ONU nunca activó el IP-host (0 tramas
+Ethernet emitidas, confirmado con sniffer durante un cold-boot físico real). El ERP reportó
+"carril aplicado" durante días mientras la gestión remota estaba completamente muerta,
+porque el código solo verificaba que el comando CLI no devolviera error — nunca verificó
+que el cambio existiera realmente en el plano operativo.
+
+**Regla:** toda operación mutante contra hardware externo (OLT, MikroTik, cualquier
+dispositivo de red) tiene dos estados distintos, y el segundo NUNCA se asume a partir del
+primero:
+
+1. **Accepted** — el comando CLI/API no devolvió error. Esto es lo único que confirma
+   `success: true` de un driver típico. **No es suficiente para marcar algo como aplicado.**
+2. **Materialized/Verified** — existe evidencia observable, obtenida con un comando de
+   lectura independiente (`display ...`), de que el cambio vive en el plano operativo.
+
+**Checklist obligatorio para operaciones mutantes nuevas o modificadas sobre hardware
+externo (OLT/MikroTik/etc.):**
+
+1. Tras ejecutar el comando de escritura, ejecutar un comando de lectura independiente que
+   confirme el efecto esperado (estado real del recurso, no el eco del comando).
+2. Si la verificación falla o no puede confirmarse en un tiempo acotado, el método
+   **NO reporta éxito silencioso** — distingue explícitamente "aceptado, sin confirmar" de
+   "aplicado y confirmado" en el mensaje/resultado devuelto al operador.
+3. La verificación no debe bloquear indefinidamente el flujo (usar reintentos acotados,
+   p.ej. 3-4 intentos con backoff corto) — si el recurso puede tardar en converger de forma
+   legítima (ej. DHCP), no fallar duro, pero sí dejar constancia de que no se confirmó.
+4. Reutilizar/extender las funciones de verificación ya existentes en
+   `olt-automation-service/app/services/provisioning.py` como referencia de patrón:
+   `_undo_service_port_verificado`, `check_ont_wan_pppoe`, `check_ont_mgmt_ip`, y el loop de
+   verificación de `rollback_gpon`/`suspend_onu`/`rehabilitate_onu`.
+
+**Alcance de aplicación:** aplica a todo código **nuevo** o que se **modifique** por otra
+razón (bug, feature) sobre drivers de hardware externo. No es mandato de refactor retroactivo
+masivo de las funciones existentes del driver Huawei/MikroTik que hoy no verifican
+materialización — se corrigen incrementalmente, una por una, la próxima vez que se toquen.
+
 ## Portabilidad Multi-VPS — Regla Crítica de Configuración
 
 Este ERP se instala en múltiples servidores VPS con IPs y dominios distintos.
