@@ -71,12 +71,23 @@ export class OltServicePortPoolService {
     const ids: number[] = [];
     for (let i = dto.inicio; i <= dto.fin; i++) ids.push(i);
 
+    // ON CONFLICT: si la fila existe pero está soft-deleted (limpiarLibres),
+    // se REVIVE como libre — sin esto, reconfigurar un rango tras una limpieza
+    // dejaba el pool vacío para siempre (caso real: prueba de integración
+    // limpia 2026-07-17). Las filas vivas (libres u ocupadas) no se tocan.
     const rows = await this.ds.query<{ service_port_id: number }[]>(
       `INSERT INTO olt_service_port_pool
          (id, empresa_id, olt_id, canal, service_port_id, estado, created_at, updated_at, version)
        SELECT gen_random_uuid(), $1, $2, 'datos', svc_id, 'libre', NOW(), NOW(), 1
        FROM   unnest($3::int[]) AS svc_id
-       ON CONFLICT (olt_id, service_port_id) DO NOTHING
+       ON CONFLICT (olt_id, service_port_id) DO UPDATE
+         SET deleted_at = NULL,
+             estado     = 'libre',
+             contrato_id = NULL,
+             locked_at  = NULL,
+             updated_at = NOW(),
+             version    = olt_service_port_pool.version + 1
+         WHERE olt_service_port_pool.deleted_at IS NOT NULL
        RETURNING service_port_id`,
       [empresaId, oltId, ids],
     );
