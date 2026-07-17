@@ -634,6 +634,11 @@ export interface PythonFtthBootstrapRequest {
   onu_id:               number;
   mgmt_vlan:            number;
   mgmt_service_port_id: number;
+  mgmt_ip:              string;
+  mgmt_mask:            string;
+  mgmt_gateway:         string;
+  acs_url:              string;
+  mgmt_dns?:            string;
   traffic_index?:       number;
   priority?:            number;
 }

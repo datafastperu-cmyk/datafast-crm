@@ -38,6 +38,7 @@ import {
   OltServicePortPoolService,
 } from './services/olt-service-port-pool.service';
 import { OltOnuIdPoolService } from './services/olt-onu-id-pool.service';
+import { ConfigurarMgmtIpPoolDto, OltMgmtIpPoolService } from './services/olt-mgmt-ip-pool.service';
 import { AgregarVlanDto, OltVlanService }         from './services/olt-vlan.service';
 import { AgregarTrafficTableDto, EditarTrafficTableDto, OltTrafficTableService } from './services/olt-traffic-table.service';
 import { OltVlan }           from './entities/olt-vlan.entity';
@@ -81,6 +82,7 @@ export class OltNativoController {
     private readonly firmware:      FirmwareService,
     private readonly ftth:          ProvisionFtthService,
     private readonly pool:          OltServicePortPoolService,
+    private readonly mgmtIpPool:    OltMgmtIpPoolService,
     private readonly onuIdPool:     OltOnuIdPoolService,
     private readonly oltVlans:      OltVlanService,
     private readonly trafficTables: OltTrafficTableService,
@@ -952,6 +954,32 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<{ eliminados: number }> {
     return this.pool.limpiarLibres(oltId, user.empresaId, 'gestion');
+  }
+
+  // ── Pool de IPs ESTÁTICAS de gestión TR-069 (causa raíz 2026-07-17) ──
+  // DHCP nunca materializó tráfico en el IP-host de gestión (confirmado con
+  // sniffer, 2 ONUs, 2 firmwares). Ingeniería inversa contra SmartOLT confirmó
+  // que el mecanismo real es IP estática — este pool asigna IPs propias del ERP.
+  @Get(':oltId/mgmt-ip-pool')
+  @ApiOperation({ summary: 'Estado del pool de IPs estáticas de gestión TR-069 de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async mgmtIpPoolEstado(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.mgmtIpPool.obtenerEstado(oltId, user.empresaId);
+  }
+
+  @Post(':oltId/mgmt-ip-pool/configurar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Configurar rango de IPs estáticas para el pool de gestión de una OLT' })
+  @ApiParam({ name: 'oltId' })
+  async mgmtIpPoolConfigurar(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: ConfigurarMgmtIpPoolDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.mgmtIpPool.configurarRango(oltId, user.empresaId, dto);
   }
 
   // ── FTTH Two-Phase Provisioning ───────────────────────────────

@@ -106,6 +106,16 @@ export class OltDispositivo extends BaseModel {
   @Column({ name: 'tr069_mgmt_vlan', type: 'smallint', nullable: true })
   tr069MgmtVlan: number | null;
 
+  // Gateway/máscara de la VLAN de gestión — requeridos por el bootstrap TR-069
+  // ESTÁTICO (causa raíz 2026-07-17: DHCP nunca materializó tráfico en el IP-host
+  // de gestión; el mecanismo real es IP estática, confirmado por ingeniería
+  // inversa contra una ONU aprovisionada por SmartOLT).
+  @Column({ name: 'tr069_mgmt_gateway', type: 'varchar', length: 15, nullable: true })
+  tr069MgmtGateway: string | null;
+
+  @Column({ name: 'tr069_mgmt_mask', type: 'varchar', length: 15, default: '255.255.255.0' })
+  tr069MgmtMask: string;
+
   @Column({ name: 'tr069_acs_username', type: 'varchar', length: 100, nullable: true })
   tr069AcsUsername: string | null;
 

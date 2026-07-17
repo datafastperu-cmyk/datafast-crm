@@ -14,6 +14,7 @@ import { FtthOnuRegistro }    from './entities/ftth-onu-registro.entity';
 import { FtthRollbackLog }   from './entities/ftth-rollback-log.entity';
 import { ContratoOnuConfig } from './entities/contrato-onu-config.entity';
 import { OltServicePortPool } from './entities/olt-service-port-pool.entity';
+import { OltMgmtIpPool } from './entities/olt-mgmt-ip-pool.entity';
 import { OltOnuIdPool }      from './entities/olt-onu-id-pool.entity';
 import { OltVlan }           from './entities/olt-vlan.entity';
 import { OltBaseline }       from './entities/olt-baseline.entity';
@@ -59,6 +60,7 @@ import { OnuTr069DetalleService }      from './ztp/onu-tr069-detalle.service';
 import { Tr069Module }                from '../tr069/tr069.module';
 import { ConfiguracionModule }        from '../config/config.module';
 import { OltServicePortPoolService }  from './services/olt-service-port-pool.service';
+import { OltMgmtIpPoolService }       from './services/olt-mgmt-ip-pool.service';
 import { OltConnService }             from './services/olt-conn.service';
 import { OltOnuIdPoolService }        from './services/olt-onu-id-pool.service';
 import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
@@ -130,6 +132,7 @@ import { OltGateway }                from './olt.gateway';
       FtthRollbackLog,
       ContratoOnuConfig,
       OltServicePortPool,
+      OltMgmtIpPool,
       OltOnuIdPool,
       OltVlan,
       OltBaseline,
@@ -193,6 +196,7 @@ import { OltGateway }                from './olt.gateway';
     CwmpAuthService,
     OnuTr069DetalleService,
     OltServicePortPoolService,
+    OltMgmtIpPoolService,
     OltConnService,
     OltOnuIdPoolService,
     OltVlanService,

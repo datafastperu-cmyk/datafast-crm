@@ -127,9 +127,17 @@ export class Tr069ProfileDto {
   @IsOptional() @IsString() @MaxLength(255)
   acsUrl?: string;
 
-  @ApiPropertyOptional({ example: 1600, description: 'VLAN de gestión para el bootstrap (DHCP Option 43)' })
+  @ApiPropertyOptional({ example: 1600, description: 'VLAN de gestión para el bootstrap TR-069 (IP estática, ver mgmtGateway/mgmtMask)' })
   @IsOptional() @IsInt() @Min(1) @Max(4094) @Type(() => Number)
   mgmtVlan?: number;
+
+  @ApiPropertyOptional({ example: '10.16.0.1', description: 'Gateway de la VLAN de gestión (requerido para IP estática).' })
+  @IsOptional() @IsIP('4')
+  mgmtGateway?: string;
+
+  @ApiPropertyOptional({ example: '255.255.255.0', description: 'Máscara de la VLAN de gestión.' })
+  @IsOptional() @IsIP('4')
+  mgmtMask?: string;
 
   @ApiPropertyOptional({ description: 'Usuario CWMP (ManagementServer.Username)' })
   @IsOptional() @IsString() @MaxLength(100)

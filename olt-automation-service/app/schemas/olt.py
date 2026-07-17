@@ -411,16 +411,24 @@ class FtthRollbackResponse(BaseModel):
 
 
 class FtthBootstrapRequest(BaseModel):
-    """Carril de bootstrap TR-069 (ZTP): mgmt WAN DHCP + service-port GEM2 + FEC.
+    """Carril de bootstrap TR-069: mgmt IP-host ESTÁTICO + service-port GEM3 + FEC.
 
-    La ONU hace DHCP en la VLAN de gestión y recibe la ACS URL por DHCP Option 43 → aparece
-    sola en GenieACS. NO usa ont wan-config (rompería el IP host de gestión)."""
+    Causa raíz 2026-07-17 (CNT-2026-000004): DHCP en el IP-host de gestión nunca
+    materializó tráfico (2 ONUs, 2 firmwares, confirmado con sniffer). Ingeniería
+    inversa contra una ONU aprovisionada por SmartOLT confirmó que el mecanismo
+    real es IP ESTÁTICA + `ont tr069-server-config` con la URL del ACS explícita —
+    NO depende de DHCP Option 43. NO usa ont wan-config (rompería el IP host)."""
     connection:           OltConnectionSchema
     slot:                 int = Field(..., ge=0, le=15)
     port:                 int = Field(..., ge=0, le=15)
     onu_id:               int = Field(..., ge=1, le=128)
     mgmt_vlan:            int = Field(..., ge=1, le=4094)
     mgmt_service_port_id: int = Field(..., ge=1)
+    mgmt_ip:              str = Field(..., description='IP estática del pool de gestión del ERP.')
+    mgmt_mask:            str = Field(..., description='Máscara de la VLAN de gestión, ej. 255.255.255.0.')
+    mgmt_gateway:         str = Field(..., description='Gateway de la VLAN de gestión.')
+    acs_url:              str = Field(..., description='URL CWMP del ACS (GenieACS), ej. http://10.8.1.1:7547')
+    mgmt_dns:             str = Field('8.8.8.8', description='DNS primario del IP-host de gestión.')
     traffic_index:        int = Field(0, ge=0, description='Traffic-table del service-port de gestión. 0 = sin límite.')
     priority:             int = Field(2, ge=0, le=7, description='PCP del IP host de gestión (Huawei suele esperar 2).')
 
@@ -456,6 +464,16 @@ class FtthPollResponse(BaseModel):
     run_state: str | None = None
     timeout:   bool = False
     error:     str | None = None
+
+
+class UndoServicePortRequest(BaseModel):
+    """Elimina un service-port puntual (mantenimiento — no toca el ONT)."""
+    connection:      OltConnectionSchema
+    service_port_id: int = Field(..., ge=1)
+
+
+class UndoServicePortResponse(BaseModel):
+    success: bool
 
 
 class FtthCheckMgmtIpRequest(BaseModel):

@@ -17,6 +17,7 @@ import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 import { OltOnuIdPoolService }           from './olt-onu-id-pool.service';
+import { OltMgmtIpPoolService }          from './olt-mgmt-ip-pool.service';
 import { PythonOnuStatusInfo, PythonFtthWanPppoeRequest } from '../dto/olt-nativo-ops.dto';
 import { conSelloDatafast } from '../capability/olt-baseline-standard';
 
@@ -111,6 +112,8 @@ export class ProvisionFtthService {
     private readonly poolService: OltServicePortPoolService,
 
     private readonly onuIdPool: OltOnuIdPoolService,
+
+    private readonly mgmtIpPool: OltMgmtIpPoolService,
   ) {}
 
   private async _logRollback(
@@ -560,6 +563,30 @@ export class ProvisionFtthService {
       return ' Carril TR-069 omitido: configura el pool del canal "gestion" en la OLT.';
     }
 
+    // Carril de gestión ESTÁTICO (causa raíz 2026-07-17, CNT-2026-000004): DHCP en el
+    // IP-host de gestión nunca materializó tráfico (2 ONUs, 2 firmwares, confirmado con
+    // sniffer). Ingeniería inversa contra una ONU aprovisionada por SmartOLT confirmó que
+    // el mecanismo real es IP ESTÁTICA + `ont tr069-server-config` — replicado aquí sobre
+    // la VLAN de gestión propia del ERP (nunca la infraestructura de SmartOLT).
+    if (!olt.tr069AcsUrl || !olt.tr069MgmtGateway) {
+      this.logger.warn(`carril: OLT ${olt.id} sin acsUrl/mgmtGateway configurados — carril omitido`);
+      await this.poolService.liberar(olt.id, contratoId, 'gestion');
+      return ' Carril TR-069 omitido: configura la URL del ACS y el gateway de gestión en el perfil TR-069 de la OLT.';
+    }
+    let mgmtIp: string | null;
+    try {
+      mgmtIp = await this.mgmtIpPool.allocar(olt.id, contratoId);
+    } catch (err: any) {
+      this.logger.error(`carril: pool de IPs de gestión agotado | olt=${olt.id}: ${err?.message}`);
+      await this.poolService.liberar(olt.id, contratoId, 'gestion');
+      return ' Carril TR-069 pendiente: pool de IPs de gestión agotado (amplía el rango en la OLT).';
+    }
+    if (mgmtIp == null) {
+      this.logger.warn(`carril: OLT ${olt.id} sin pool de IPs de gestión configurado — carril omitido`);
+      await this.poolService.liberar(olt.id, contratoId, 'gestion');
+      return ' Carril TR-069 omitido: configura el pool de IPs de gestión en la OLT.';
+    }
+
     // Carril canónico del ERP (directriz "inyectar desde cero"): usar la
     // traffic table ERP-MGMT del baseline estándar, nunca el index 0
     // preexistente de la OLT. Fallback a 0 SOLO si el estándar aún no se
@@ -573,6 +600,10 @@ export class ProvisionFtthService {
         slot, port, onu_id:   onuId,
         mgmt_vlan:            mgmtVlan,
         mgmt_service_port_id: mgmtSvcPort,
+        mgmt_ip:              mgmtIp,
+        mgmt_mask:            olt.tr069MgmtMask || '255.255.255.0',
+        mgmt_gateway:         olt.tr069MgmtGateway,
+        acs_url:              olt.tr069AcsUrl,
         traffic_index:        trafficIndex,
         priority,
       });
@@ -781,12 +812,27 @@ export class ProvisionFtthService {
       }
     }
 
+    // Carril ESTÁTICO (causa raíz 2026-07-17): requiere acsUrl/mgmtGateway del perfil
+    // TR-069 de la OLT y una IP del pool de gestión — ver _ensureCarrilGestion.
+    if (!olt.tr069AcsUrl || !olt.tr069MgmtGateway) {
+      throw new UnprocessableEntityException(
+        'Configura la URL del ACS y el gateway de gestión en el perfil TR-069 de la OLT antes de aplicar el carril.',
+      );
+    }
+    const mgmtIp = await this.mgmtIpPool.allocar(oltId, dto.contratoId);
+    if (mgmtIp == null) {
+      throw new UnprocessableEntityException(
+        'No hay pool de IPs de gestión configurado para esta OLT. Configúralo antes de aplicar el carril.',
+      );
+    }
+
     // Carril canónico: ERP-MGMT del baseline estándar; el DTO puede forzar otro.
     const mgmtTrafficIndex = dto.trafficIndex ?? await this._resolverTrafficIndexGestion(oltId);
 
     this.logger.log(
       `FTTH bootstrapTr069 | contrato=${dto.contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId} ` +
-      `mgmtVlan=${mgmtVlan} svcPort=${mgmtServicePortId}${asignadoDelPool ? ' (pool gestion)' : ''} ttIndex=${mgmtTrafficIndex}`,
+      `mgmtVlan=${mgmtVlan} svcPort=${mgmtServicePortId}${asignadoDelPool ? ' (pool gestion)' : ''} ` +
+      `mgmtIp=${mgmtIp} ttIndex=${mgmtTrafficIndex}`,
     );
 
     let res: { success: boolean; error?: string };
@@ -798,6 +844,10 @@ export class ProvisionFtthService {
         onu_id:               registro.onuId,
         mgmt_vlan:            mgmtVlan,
         mgmt_service_port_id: mgmtServicePortId!,
+        mgmt_ip:              mgmtIp,
+        mgmt_mask:            olt.tr069MgmtMask || '255.255.255.0',
+        mgmt_gateway:         olt.tr069MgmtGateway,
+        acs_url:              olt.tr069AcsUrl,
         traffic_index:        mgmtTrafficIndex,
         priority:             dto.priority ?? 2,
       });

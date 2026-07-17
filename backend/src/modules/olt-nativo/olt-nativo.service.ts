@@ -527,6 +527,7 @@ export class OltNativoService implements OnModuleInit {
   // ── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
   async getTr069Profile(id: string, empresaId: string): Promise<{
     enabled: boolean; acsUrl: string | null; mgmtVlan: number | null;
+    mgmtGateway: string | null; mgmtMask: string;
     acsUsername: string | null; hasPassword: boolean;
   }> {
     const olt = await this.findOlt(id, empresaId);
@@ -534,6 +535,8 @@ export class OltNativoService implements OnModuleInit {
       enabled:     olt.tr069Enabled,
       acsUrl:      olt.tr069AcsUrl,
       mgmtVlan:    olt.tr069MgmtVlan,
+      mgmtGateway: olt.tr069MgmtGateway,
+      mgmtMask:    olt.tr069MgmtMask,
       acsUsername: olt.tr069AcsUsername,
       hasPassword: !!olt.tr069AcsPassword,   // nunca devolvemos la clave en claro
     };
@@ -544,6 +547,8 @@ export class OltNativoService implements OnModuleInit {
     if (dto.enabled     !== undefined) olt.tr069Enabled     = dto.enabled;
     if (dto.acsUrl      !== undefined) olt.tr069AcsUrl      = dto.acsUrl || null;
     if (dto.mgmtVlan    !== undefined) olt.tr069MgmtVlan    = dto.mgmtVlan ?? null;
+    if (dto.mgmtGateway !== undefined) olt.tr069MgmtGateway = dto.mgmtGateway || null;
+    if (dto.mgmtMask    !== undefined) olt.tr069MgmtMask    = dto.mgmtMask || '255.255.255.0';
     if (dto.acsUsername !== undefined) olt.tr069AcsUsername = dto.acsUsername || null;
     if (dto.acsPassword !== undefined) olt.tr069AcsPassword = dto.acsPassword ? encrypt(dto.acsPassword) : null;
     return this.oltRepo.save(olt);

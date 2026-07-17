@@ -2035,50 +2035,70 @@ def add_gem_mgmt_to_lineprofile(
     profile_id: int,
 ) -> dict[str, Any]:
     """
-    Agrega GEM index 2 (tcont 0, el DBA por-defecto que Huawei crea implícitamente
-    en todo ONT) a un line-profile GPON existente, para habilitar el carril de
-    gestión TR-069 (provision_mgmt_bootstrap usa `service-port ... gemport 2`).
+    Agrega GEM index 3 en un T-CONT NUEVO Y DEDICADO (tcont 2, con DBA propio) a
+    un line-profile GPON existente, para habilitar el carril de gestión TR-069
+    (provision_mgmt_bootstrap usa `service-port ... gemport 3`).
 
-    Causa raíz (incidente 2026-07-17): `add_ont_lineprofile` solo crea GEM index 1
-    (tcont 1, DBA propio) para el plano de datos — el line-profile canónico
-    DATAFAST_LINE nunca tuvo GEM 2, por lo que NINGUNA ONU con ese perfil podía
-    recibir el carril de gestión ("The GEM index does not exist or the T-CONT
-    binding with this GEM port does not bind a DBA profile"). Fix estructural
-    de una sola vez sobre el perfil compartido — no requiere recrear el DBA ni
-    tocar GEM 1 (datos).
+    Causa raíz #1 (incidente 2026-07-17): `add_ont_lineprofile` solo crea GEM
+    index 1 (tcont 1, DBA propio) para el plano de datos — el line-profile
+    canónico DATAFAST_LINE nunca tuvo un GEM de gestión. Corregido en un primer fix
+    (que usó GEM 2/tcont 0 — ver causa raíz #2).
 
-    Idempotente: 'has existed already'/'already exist' en la respuesta se
-    tolera (GEM 2 ya presente). Síncrono — llamar desde asyncio.to_thread().
+    Causa raíz #2, más profunda (mismo incidente — descubierta con evidencia de
+    sniffer en DOS ONUs físicas distintas, DOS firmwares distintos, mismo síntoma
+    exacto: 0 tramas Ethernet en la VLAN de gestión durante un cold-boot real):
+    el primer fix ató el GEM de gestión al T-CONT 0 (`gem add 2 eth tcont 0`),
+    asumiendo que era "el DBA por defecto". T-CONT 0 usa DBA profile tipo 1
+    ("Fix"), el patrón clásico Huawei para el canal de señalización OMCI interno
+    — NO para tráfico Ethernet/IP de usuario. El ONT nunca transmitía nada porque
+    ese T-CONT no tiene ancho de banda dinámico asignable a tráfico de datos, sin
+    importar el firmware. Fix real: T-CONT NUEVO (tcont 2) con su propio DBA
+    profile type4 (igual patrón que usa GEM 1/tcont 1 para datos).
+
+    Usa GEM index 3 (no 2): en este perfil GEM 2 ya quedó creado apuntando a
+    tcont 0 por el fix anterior y la sintaxis de undo (`undo gem ...`) no se
+    pudo confirmar contra este firmware sin arriesgar más cambios en un perfil
+    compartido en producción — GEM 2/tcont 0 queda como remanente inofensivo
+    (sin service-port apuntándole, nunca se usa) y GEM 3/tcont 2 es el real.
+
+    Síncrono — llamar desde asyncio.to_thread().
     """
     if conn.brand != OltBrand.HUAWEI:
         raise ProvisioningError(f'add_gem_mgmt_to_lineprofile no implementado para marca: {conn.brand.value}')
 
+    dba_name = 'DATAFAST-MGMT-DBA'
     commands = [
         'config',
+        f'dba-profile add profile-name {dba_name} type4 max 4096',
         f'ont-lineprofile gpon profile-id {profile_id}',
-        'gem add 2 eth tcont 0',
+        f'tcont 2 dba-profile-name {dba_name}',
+        'gem add 3 eth tcont 2',
         'commit',
         'quit',
         'quit',
     ]
-    logger.info('add_gem_mgmt_to_lineprofile: profile_id=%d en %s', profile_id, conn.ip)
+    logger.info('add_gem_mgmt_to_lineprofile: profile_id=%d en %s (gem 3 / tcont 2 dedicado)', profile_id, conn.ip)
     try:
         outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
     except Exception as exc:  # noqa: BLE001
         return {'success': False, 'error': str(exc)}
 
-    raw = '\n'.join(outputs[1:4])
+    # [0]config [1]dba-profile-add [2]ont-lineprofile [3]tcont [4]gem-add [5]commit
+    raw = '\n'.join(outputs[3:6])
     error_patterns = ['Error:', 'Failure:', 'Parameter error', 'Unknown command', 'Incomplete command']
-    benign = ('has existed already', 'already exist', 'already exists', 'has already existed')
+    benign = (
+        'has existed already', 'already exist', 'already exists', 'has already existed',
+    )
     for pat in error_patterns:
         if pat.lower() in raw.lower():
             linea = next((l for l in raw.splitlines() if pat.lower() in l.lower()), pat)
             if any(b in linea.lower() for b in benign):
-                logger.info('add_gem_mgmt_to_lineprofile: GEM 2 ya existía en profile_id=%d en %s', profile_id, conn.ip)
-                break
+                logger.info('add_gem_mgmt_to_lineprofile: aviso benigno ignorado en profile_id=%d en %s: %s',
+                            profile_id, conn.ip, linea.strip())
+                continue
             return {'success': False, 'error': f'CLI Huawei reportó error: {linea.strip()}'}
 
-    logger.info('add_gem_mgmt_to_lineprofile OK | profile_id=%d en %s', profile_id, conn.ip)
+    logger.info('add_gem_mgmt_to_lineprofile OK | profile_id=%d tcont=2 dba=%s en %s', profile_id, dba_name, conn.ip)
     return {'success': True, 'profile_id': profile_id}
 
 
@@ -2934,41 +2954,58 @@ def provision_mgmt_bootstrap(
     onu_id:               int,
     mgmt_vlan:            int,
     mgmt_service_port_id: int,
+    mgmt_ip:              str,
+    mgmt_mask:             str,
+    mgmt_gateway:          str,
+    acs_url:               str,
+    mgmt_dns:              str = '8.8.8.8',
     traffic_index:        int = 0,
     priority:             int = 2,
 ) -> dict[str, Any]:
     """
-    Carril de bootstrap TR-069 (ZTP) — se aplica a una ONU YA registrada (tras Fase 1 GPON).
+    Carril de bootstrap TR-069 — se aplica a una ONU YA registrada (tras Fase 1 GPON).
 
     Crea el plano de gestión que permite que la ONU aparezca sola en el ACS (GenieACS):
-      - service-port de gestión (GEM 2) en la VLAN de gestión (bridged).
-      - IP host de gestión en modo DHCP (ip-index 0) sobre la VLAN de gestión.
+      - service-port de gestión (GEM 3, tcont 2 dedicado) en la VLAN de gestión (bridged).
+      - IP host de gestión ESTÁTICO (ip-index 0) sobre la VLAN de gestión, con ACS URL
+        empujada directamente vía `ont tr069-server-config`.
       - FEC (estabilidad del enlace; best-effort).
 
-    La ONU hace DHCP en la VLAN de gestión y recibe la ACS URL vía DHCP Option 43 (servida por
-    el MikroTik gateway de esa VLAN), con lo que escribe ManagementServer.URL e inicia el
-    BOOTSTRAP/Inform hacia el ACS. Comportamiento verificado en EG8145V5 V5R020C10S195.
+    CAUSA RAÍZ (incidente 2026-07-17, CNT-2026-000004) — reemplaza el enfoque DHCP anterior:
+    se probó DHCP en el IP-host de gestión contra DOS ONUs físicas distintas, DOS firmwares
+    distintos (V5R021C00S208 y V5R020C10S195) y DOS esquemas de GEM/T-CONT distintos — en
+    los CUATRO casos, 0 tramas Ethernet emitidas por la ONU (confirmado con sniffer durante
+    cold-boot físico real). Ingeniería inversa contra una ONU aprovisionada por SmartOLT
+    (que SÍ tiene el canal de gestión funcionando) confirmó que su IP-host de gestión usa
+    config ESTÁTICA (`ONT config type: Static config`), no DHCP — con IP real materializada
+    y tráfico de red confirmado por ping. Este bootstrap replica ese MECANISMO (estático)
+    sobre la VLAN de gestión propia del ERP — nunca reutiliza IPs/VLAN de SmartOLT.
 
     IMPORTANTE: NO usa `ont wan-config` para ip-index 0 — crear una WAN ruteada le quita la VLAN
-    al IP host de gestión y la ONU deja de emitir (verificado). La gestión es SOLO un IP host OMCI.
-    `ont tr069-server-config` NO inicializa ManagementServer.URL en este firmware → se delega al
-    DHCP Option 43. Requiere ONU online. Síncrono — llamar desde asyncio.to_thread().
+    al IP host de gestión y la ONU deja de emitir (verificado). La gestión es SOLO un IP host OMCI
+    estático + `ont tr069-server-config` con la URL del ACS explícita (no depende de DHCP Option 43).
+    Requiere ONU online. Síncrono — llamar desde asyncio.to_thread().
     """
     logger.info(
-        'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d',
-        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id,
+        'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d ip=%s (static)',
+        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id, mgmt_ip,
     )
     cmds = [
         'config',
         (
             f'service-port {mgmt_service_port_id} vlan {mgmt_vlan} '
-            f'gpon 0/{slot}/{port} ont {onu_id} gemport 2 '
+            f'gpon 0/{slot}/{port} ont {onu_id} gemport 3 '
             f'multi-service user-vlan {mgmt_vlan} tag-transform translate '
             f'inbound traffic-table index {traffic_index} '
             f'outbound traffic-table index {traffic_index}'
         ),
         f'interface gpon 0/{slot}',
-        f'ont ipconfig {port} {onu_id} ip-index 0 dhcp vlan {mgmt_vlan} priority {priority}',
+        (
+            f'ont ipconfig {port} {onu_id} ip-index 0 static '
+            f'ip-address {mgmt_ip} mask {mgmt_mask} gateway {mgmt_gateway} pri-dns {mgmt_dns} '
+            f'vlan {mgmt_vlan} priority {priority}'
+        ),
+        f'ont tr069-server-config {port} {onu_id} acs-url {acs_url}',
         f'display ont ipconfig {port} {onu_id}',
     ]
 
@@ -3007,8 +3044,9 @@ def provision_mgmt_bootstrap(
             ) from exc
 
         # parts: [0]config [1]service-port [2]interface [3]ipconfig [4]display-verificación
-        raw_create = '\n'.join(parts[:4])
-        verify_out = parts[4] if len(parts) > 4 else ''
+        # parts: [0]config [1]service-port [2]interface [3]ipconfig-static [4]tr069-server-config [5]display-verify
+        raw_create = '\n'.join(parts[:5])
+        verify_out = parts[5] if len(parts) > 5 else ''
 
         hubo_error = False
         for pat in error_patterns:
@@ -3073,11 +3111,11 @@ def provision_mgmt_bootstrap(
         conn.ip, slot, port, onu_id, verify_out.strip(),
     )
 
-    # Verificación dura: el IP host de gestión debe quedar en modo DHCP.
+    # Verificación dura: el IP host de gestión debe quedar en modo estático.
     v = verify_out.lower()
-    if 'dhcp' not in v:
+    if 'static' not in v:
         raise ProvisioningError(
-            f'El IP host de gestión (ip-index 0, DHCP) no se configuró en {conn.ip} '
+            f'El IP host de gestión (ip-index 0, estático) no se configuró en {conn.ip} '
             f'(ont {slot}/{port}/{onu_id}). Verificación: {verify_out[-200:].strip()}'
         )
 
@@ -3100,8 +3138,8 @@ def provision_mgmt_bootstrap(
         logger.warning('provision_mgmt_bootstrap: save falló (config en running) OLT=%s: %s', conn.ip, exc)
 
     logger.info(
-        'provision_mgmt_bootstrap OK | OLT=%s ont %d/%d/%d mgmt_vlan=%d (DHCP + Option 43)',
-        conn.ip, slot, port, onu_id, mgmt_vlan,
+        'provision_mgmt_bootstrap OK | OLT=%s ont %d/%d/%d mgmt_vlan=%d ip=%s (estático + tr069-server-config)',
+        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_ip,
     )
     return {'success': True, 'olt_ip': conn.ip}
 
@@ -3244,6 +3282,19 @@ def _undo_service_port_verificado(conn: OltConnectionSchema, service_port_id: in
         service_port_id, conn.ip,
     )
     return False
+
+
+def undo_service_port(conn: OltConnectionSchema, service_port_id: int) -> dict[str, Any]:
+    """
+    Elimina UN service-port puntual (sin tocar el ONT ni otros service-ports).
+    Uso de mantenimiento: reparar un service-port reciclado que quedó atado a un
+    GEM/config vieja tras cambiar el line-profile (idempotencia de
+    provision_mgmt_bootstrap solo verifica F/S/P/ONT/VLAN, no el GEM index — un
+    service-port reusado con el binding antiguo pasa como "ya existe, es mío" sin
+    corregirse). Síncrono — llamar desde asyncio.to_thread().
+    """
+    ok = _undo_service_port_verificado(conn, service_port_id)
+    return {'success': ok}
 
 
 def rollback_gpon(
