@@ -90,6 +90,10 @@ from app.schemas.olt import (
     SrvProfileAddResponse,
     SrvProfileDeleteRequest,
     SrvProfileDeleteResponse,
+    LineProfileAddRequest,
+    LineProfileAddResponse,
+    LineProfileDeleteRequest,
+    LineProfileDeleteResponse,
     UplinkTagRequest,
     UplinkTagResponse,
     TrafficTableAddRequest,
@@ -146,6 +150,8 @@ from app.services.provisioning import (
     get_version_info,
     add_ont_srvprofile,
     delete_ont_srvprofile,
+    add_ont_lineprofile,
+    delete_ont_lineprofile,
     add_traffic_table,
     delete_traffic_table,
     edit_traffic_table,
@@ -1396,6 +1402,53 @@ async def srvprofile_delete(body: SrvProfileDeleteRequest) -> SrvProfileDeleteRe
         except ProvisioningError as exc:
             return SrvProfileDeleteResponse(success=False, error=str(exc))
     return SrvProfileDeleteResponse(success=result['success'], error=result.get('error'))
+
+
+# ── ONT line-profiles ─────────────────────────────────────────
+
+@app.post(
+    '/api/v1/olt/lineprofile/add',
+    response_model=LineProfileAddResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['lineprofile'],
+    summary='Crear un ONT line-profile GPON canónico (mapping priority + TR-069) con DBA propio',
+)
+async def lineprofile_add(body: LineProfileAddRequest) -> LineProfileAddResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                add_ont_lineprofile, body.connection, body.name, body.dba_name, body.dba_max_kbps,
+            )
+        except ProvisioningError as exc:
+            return LineProfileAddResponse(success=False, error=str(exc))
+    return LineProfileAddResponse(
+        success=result['success'], profile_id=result.get('profile_id'),
+        name=result.get('name'), dba_profile_id=result.get('dba_profile_id'),
+        dba_name=result.get('dba_name'), error=result.get('error'),
+    )
+
+
+@app.post(
+    '/api/v1/olt/lineprofile/delete',
+    response_model=LineProfileDeleteResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['lineprofile'],
+    summary='Eliminar un ONT line-profile por nombre (la OLT rechaza si tiene ONTs asociadas)',
+)
+async def lineprofile_delete(body: LineProfileDeleteRequest) -> LineProfileDeleteResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                delete_ont_lineprofile, body.connection, body.name, body.dba_name,
+            )
+        except ProvisioningError as exc:
+            return LineProfileDeleteResponse(success=False, error=str(exc))
+    return LineProfileDeleteResponse(
+        success=result['success'], dba_eliminado=result.get('dba_eliminado'),
+        error=result.get('error'),
+    )
 
 
 # ── Uplink VLAN tagging (Incremento 9b) ───────────────────────

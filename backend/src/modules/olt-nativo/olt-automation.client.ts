@@ -64,6 +64,10 @@ import {
   PythonSrvProfileAddResponse,
   PythonSrvProfileDeleteRequest,
   PythonSrvProfileDeleteResponse,
+  PythonLineProfileAddRequest,
+  PythonLineProfileAddResponse,
+  PythonLineProfileDeleteRequest,
+  PythonLineProfileDeleteResponse,
   PythonUplinkVlansRequest,
   PythonUplinkVlansResponse,
   PythonUplinkTagRequest,
@@ -519,6 +523,21 @@ export class OltAutomationClient {
     this.logger.log(`→ Python srvprofile/delete | OLT=${payload.connection.ip} name=${payload.name}`);
     const res = await this.post<PythonSrvProfileDeleteResponse>('/api/v1/olt/srvprofile/delete', payload, 90_000);
     this.logger.log(`← Python srvprofile/delete | success=${res.success}`);
+    return res;
+  }
+
+  // ── ONT line-profiles ───────────────────────────────────────
+  async lineProfileAdd(payload: PythonLineProfileAddRequest): Promise<PythonLineProfileAddResponse> {
+    this.logger.log(`→ Python lineprofile/add | OLT=${payload.connection.ip} name=${payload.name}`);
+    const res = await this.post<PythonLineProfileAddResponse>('/api/v1/olt/lineprofile/add', payload, 150_000);
+    this.logger.log(`← Python lineprofile/add | success=${res.success} id=${res.profile_id} dba=${res.dba_profile_id}`);
+    return res;
+  }
+
+  async lineProfileDelete(payload: PythonLineProfileDeleteRequest): Promise<PythonLineProfileDeleteResponse> {
+    this.logger.log(`→ Python lineprofile/delete | OLT=${payload.connection.ip} name=${payload.name}`);
+    const res = await this.post<PythonLineProfileDeleteResponse>('/api/v1/olt/lineprofile/delete', payload, 120_000);
+    this.logger.log(`← Python lineprofile/delete | success=${res.success} dbaEliminado=${res.dba_eliminado}`);
     return res;
   }
 

@@ -245,6 +245,13 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     if (r.wanMode)       setWanMode(r.wanMode);
   }, [estadoExistente]);
 
+  // Preferencia: line-profile canónico DATAFAST si existe y no hay selección previa
+  useEffect(() => {
+    if (lineprofileId || !perfiles?.lineprofiles?.length) return;
+    const canonico = perfiles.lineprofiles.find(p => (p.name ?? '').toUpperCase().startsWith('DATAFAST'));
+    if (canonico) setLineprofileId(String(canonico.profile_id));
+  }, [perfiles]); // eslint-disable-line
+
   // Scan ONUs
   const [snSelectMode,  setSnSelectMode]  = useState(false);
   const [scanNoResults, setScanNoResults] = useState(false);

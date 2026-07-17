@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Server, Trash2 } from 'lucide-react';
-import { oltNativoApi, type OltServiceProfile, type OltTrafficTable } from '@/lib/api/olt-nativo';
+import { oltNativoApi, type OltLineProfile, type OltServiceProfile, type OltTrafficTable } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 
@@ -54,14 +54,9 @@ export function TabProfiles({ oltId }: { oltId: string }) {
         </div>
       ) : (
         <>
-          {sub === 'line' && (
-            lineProfiles.length === 0 ? <EmptyProfiles label="perfiles de línea" /> : (
-              <ProfileTable
-                headers={['Profile ID', 'Nombre']}
-                rows={lineProfiles.map(p => [String(p.profileId), p.nombre])}
-              />
-            )
-          )}
+          {/* Excepción de la directriz: el LINE-PROFILE canónico (mapping priority
+              802.1p + TR-069 enable + DBA propio) se gestiona a demanda. */}
+          {sub === 'line' && <LineProfilesManager oltId={oltId} lineProfiles={lineProfiles} />}
           {/* Excepción de la directriz: los TIPOS DE ONU (ont-srvprofile) se
               gestionan a demanda — cada modelo nuevo de ONU necesita el suyo. */}
           {sub === 'service' && <TiposOnuManager oltId={oltId} srvProfiles={srvProfiles} />}
@@ -73,9 +68,121 @@ export function TabProfiles({ oltId }: { oltId: string }) {
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        Line y Service profiles son vistas informativas del estado sincronizado. Las velocidades
-        (traffic tables) sí se gestionan aquí — siempre con sello DATAFAST; el resto de recursos
-        del ERP se declara en el Baseline (tab Cumplimiento).
+        Line, Service y Traffic se gestionan aquí — siempre con sello DATAFAST y solo los del ERP;
+        los preexistentes son informativos. El resto de recursos del ERP se declara en el Baseline
+        (tab Cumplimiento).
+      </p>
+    </div>
+  );
+}
+
+// ─── Gestor de line-profiles GPON (canónicos DATAFAST) ─────────────
+
+function LineProfilesManager({ oltId, lineProfiles }: { oltId: string; lineProfiles: OltLineProfile[] }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [sufijo, setSufijo]         = useState('LINE');
+  const [dbaMaxMbps, setDbaMaxMbps] = useState('1200');
+
+  const nombre = sufijo.trim() ? `DATAFAST_${sufijo.trim().toUpperCase()}` : '';
+  const mbps   = Number(dbaMaxMbps);
+  const valido = !!nombre && mbps >= 10 && mbps <= 10000
+    && !lineProfiles.some(p => p.nombre === nombre);
+
+  const agregar = useMutation({
+    mutationFn: () => oltNativoApi.agregarLineProfile(oltId, {
+      nombre: sufijo.trim().toUpperCase(), dbaMaxMbps: mbps,
+    }),
+    onSuccess: (p) => {
+      toast(`Line-profile "${p.nombre}" creado en la OLT (profile-id ${p.profileId})`, { type: 'success' });
+      qc.invalidateQueries({ queryKey: ['olt-line-profiles', oltId] });
+    },
+    onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al crear el line-profile', { type: 'error' }),
+  });
+
+  const eliminar = useMutation({
+    mutationFn: (p: OltLineProfile) => oltNativoApi.eliminarLineProfile(oltId, p.profileId),
+    onSuccess: (_d, p) => {
+      toast(`Line-profile "${p.nombre}" eliminado de la OLT`, { type: 'success' });
+      qc.invalidateQueries({ queryKey: ['olt-line-profiles', oltId] });
+    },
+    onError: (e: any) => toast(e?.response?.data?.message ?? 'No se pudo eliminar (¿en uso o preexistente?)', { type: 'error' }),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-border p-3 flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-1">Nombre (sello automático)</label>
+          <div className="flex items-center">
+            <span className="px-2 py-2 text-sm font-mono text-muted-foreground bg-muted/40 border border-r-0 border-border rounded-l-lg">DATAFAST_</span>
+            <input value={sufijo} onChange={e => setSufijo(e.target.value)} placeholder="LINE"
+              className="w-28 px-2 py-2 text-sm font-mono rounded-r-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-1">DBA máx. subida (Mbps, best-effort)</label>
+          <input value={dbaMaxMbps} onChange={e => setDbaMaxMbps(e.target.value)} type="number" min={10} max={10000}
+            className="w-28 px-3 py-2 text-sm font-mono rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
+        </div>
+        <button
+          onClick={() => agregar.mutate()}
+          disabled={!valido || agregar.isPending}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          {agregar.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+          Crear en la OLT
+        </button>
+      </div>
+
+      {lineProfiles.length === 0 ? <EmptyProfiles label="perfiles de línea" /> : (
+        <div className="rounded-xl border border-border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                {['Profile ID', 'Nombre', 'DBA', 'Origen', ''].map((h, i) => (
+                  <th key={i} className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {lineProfiles.map(p => (
+                <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/10">
+                  <td className="px-4 py-2.5 font-mono font-semibold text-primary">{p.profileId}</td>
+                  <td className="px-4 py-2.5 font-mono">{p.nombre}</td>
+                  <td className="px-4 py-2.5 font-mono text-muted-foreground">
+                    {p.dbaNombre ? `${p.dbaNombre}${p.dbaProfileId != null ? ` (${p.dbaProfileId})` : ''}` : '—'}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className={cn(
+                      'inline-flex rounded-full border px-2 py-0.5 text-[11px]',
+                      p.origen === 'erp' ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground',
+                    )}>
+                      {p.origen === 'erp' ? 'ERP (DataFast)' : 'Preexistente'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    {p.origen === 'erp' && (
+                      <button
+                        onClick={() => eliminar.mutate(p)}
+                        disabled={eliminar.isPending}
+                        title="Eliminar de la OLT (solo si ninguna ONU lo usa)"
+                        className="p-1 text-muted-foreground hover:text-red-400 disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground">
+        El line-profile canónico DataFast se crea con mapping-mode priority (802.1p flexible,
+        multi-VLAN), TR-069 habilitado y un DBA propio type4 (best-effort). Los preexistentes
+        nunca se tocan; la OLT además rechaza eliminar cualquiera con ONTs asociadas.
       </p>
     </div>
   );
@@ -316,32 +423,3 @@ function EmptyProfiles({ label }: { label: string }) {
   );
 }
 
-function ProfileTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
-  return (
-    <div className="rounded-xl border border-border overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-muted/30">
-            {headers.map(h => (
-              <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/10 transition-colors">
-              {row.map((cell, j) => (
-                <td key={j} className={cn('px-4 py-2.5 text-sm', j === 0 ? 'font-mono font-semibold text-primary' : 'text-foreground')}>
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="px-4 py-2 text-[11px] text-muted-foreground border-t border-border bg-muted/20">
-        {rows.length} entradas
-      </p>
-    </div>
-  );
-}

@@ -1414,11 +1414,31 @@ def _paramiko_huawei_run(
         chan.send('screen-length 0 temporary\r\n')
         _read_until_prompt(chan, deadline)
 
-        # Ejecutar cada comando y acumular salida
+        # Ejecutar cada comando y acumular salida.
+        # La VTY del MA5800 pierde caracteres (espacios) si recibe input mientras
+        # imprime mensajes asíncronos (p.ej. logs de autosave) → el eco llega
+        # pegado ("undo dba-profileprofile-name...") y responde "% Unknown
+        # command" sin ejecutar nada. Mitigación: drenar salida pendiente antes
+        # de enviar y reintentar cuando se detecta eco corrupto de ESTE comando.
         output_parts: list[str] = []
         for cmd in commands:
-            chan.send(cmd + '\r\n')
-            part = _read_until_prompt(chan, deadline)
+            part = ''
+            sin_espacios = cmd.replace(' ', '')
+            for _intento in range(3):
+                _time_read.sleep(0.15)
+                while chan.recv_ready():  # drenar output asíncrono acumulado
+                    chan.recv(4096)
+                chan.send(cmd + '\r\n')
+                part = _read_until_prompt(chan, deadline)
+                eco_corrupto = (
+                    '% Unknown command' in part
+                    and cmd not in part
+                    and sin_espacios in part.replace(' ', '')
+                )
+                if eco_corrupto:
+                    _time_read.sleep(0.6)
+                    continue
+                break
             output_parts.append(part)
 
         chan.close()
@@ -1932,6 +1952,119 @@ def delete_ont_srvprofile(
         return {'success': False, 'error': str(exc)}
     logger.info('delete_ont_srvprofile: %s eliminado en %s', safe_name, conn.ip)
     return {'success': True}
+
+
+def add_ont_lineprofile(
+    conn:         OltConnectionSchema,
+    name:         str,
+    dba_name:     str,
+    dba_max_kbps: int,
+) -> dict[str, Any]:
+    """
+    Crea un ONT line-profile GPON canónico en la OLT Huawei MA5800 con su propio
+    DBA profile (type4 best-effort). Sintaxis validada manualmente 2026-07-17:
+      - 'dba-profile add ...' responde 'Profile ID  : N' en la salida.
+      - 'ont-lineprofile gpon profile-name X' entra al modo perfil y el PROMPT
+        revela el ID: 'MA5800-X7(config-gpon-lineprofile-10)#'.
+      - mapping-mode priority (802.1p flexible, multi-VLAN por service-port),
+        tr069-management enable, tcont 1 → DBA propio, GEM 1 eth con mapping
+        de las 8 prioridades 802.1p.
+    Idempotente ante DBA preexistente ('exist' tolerado — se referencia por
+    nombre). Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'add_ont_lineprofile no implementado para marca: {conn.brand.value}')
+
+    safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', name)[:32]
+    safe_dba  = re.sub(r'[^A-Za-z0-9_\-]', '_', dba_name)[:32]
+    if dba_max_kbps < 128 or dba_max_kbps > 10_000_000:
+        return {'success': False, 'error': f'dba_max_kbps fuera de rango: {dba_max_kbps}'}
+
+    commands = [
+        'config',
+        f'dba-profile add profile-name {safe_dba} type4 max {dba_max_kbps}',
+        f'ont-lineprofile gpon profile-name {safe_name}',
+        'mapping-mode priority',
+        'tr069-management enable',
+        f'tcont 1 dba-profile-name {safe_dba}',
+        'gem add 1 eth tcont 1',
+        *[f'gem mapping 1 {i} priority {i}' for i in range(8)],
+        'commit',
+        'quit',
+        'quit',
+    ]
+    logger.info('add_ont_lineprofile: name=%s dba=%s max=%d en %s',
+                safe_name, safe_dba, dba_max_kbps, conn.ip)
+    try:
+        outputs = _paramiko_huawei_run(conn, commands, timeout=120.0, return_list=True)
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    # DBA: tolerar 'exists already' (referenciado por nombre); otro Failure → error
+    salida_dba = outputs[1]
+    dba_id: int | None = None
+    m_dba = re.search(r'Profile ID\s*:\s*(\d+)', salida_dba)
+    if m_dba:
+        dba_id = int(m_dba.group(1))
+    elif 'Failure' in salida_dba and 'exist' not in salida_dba.lower():
+        return {'success': False, 'error': f'DBA profile falló: {salida_dba.strip()[:300]}'}
+
+    raw = '\n'.join(outputs[2:])
+    try:
+        _check_cli_error(conn.brand, 'add_ont_lineprofile', raw)
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+
+    m = re.search(r'config-gpon-lineprofile-(\d+)', raw)
+    if not m:
+        return {'success': False,
+                'error': 'La OLT no entró al modo line-profile (sin profile-id en el prompt)'}
+    profile_id = int(m.group(1))
+    logger.info('add_ont_lineprofile: %s → profile_id=%d dba_id=%s en %s',
+                safe_name, profile_id, dba_id, conn.ip)
+    return {'success': True, 'profile_id': profile_id, 'name': safe_name,
+            'dba_profile_id': dba_id, 'dba_name': safe_dba}
+
+
+def delete_ont_lineprofile(
+    conn:     OltConnectionSchema,
+    name:     str,
+    dba_name: str | None = None,
+) -> dict[str, Any]:
+    """
+    Elimina un ONT line-profile por nombre y, opcionalmente, su DBA profile
+    asociado. La OLT rechaza el undo si el perfil tiene ONTs asociadas
+    (Binding times > 0) — ese error se propaga. Si el DBA sigue referenciado
+    por otro line-profile, su undo falla sin afectar el resultado principal.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'delete_ont_lineprofile no implementado para marca: {conn.brand.value}')
+
+    safe_name = re.sub(r'[^A-Za-z0-9_\-]', '_', name)[:32]
+    commands  = ['config', f'undo ont-lineprofile gpon profile-name {safe_name}']
+    if dba_name:
+        safe_dba = re.sub(r'[^A-Za-z0-9_\-]', '_', dba_name)[:32]
+        commands.append(f'undo dba-profile profile-name {safe_dba}')
+    commands.append('quit')
+
+    logger.info('delete_ont_lineprofile: name=%s dba=%s en %s', safe_name, dba_name, conn.ip)
+    try:
+        outputs = _paramiko_huawei_run(conn, commands, timeout=90.0, return_list=True)
+        _check_cli_error(conn.brand, 'delete_ont_lineprofile', outputs[1])
+    except CommandError as exc:
+        return {'success': False, 'error': str(exc)}
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    dba_eliminado = True
+    if dba_name and 'Failure' in outputs[2]:
+        dba_eliminado = False
+        logger.warning('delete_ont_lineprofile: DBA %s no eliminado (¿referenciado?): %s',
+                       dba_name, outputs[2].strip()[:200])
+    logger.info('delete_ont_lineprofile: %s eliminado en %s (dba_eliminado=%s)',
+                safe_name, conn.ip, dba_eliminado)
+    return {'success': True, 'dba_eliminado': dba_eliminado}
 
 
 def _parse_port_vlan_ids(raw: str) -> list[int]:

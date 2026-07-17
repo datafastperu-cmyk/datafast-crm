@@ -669,6 +669,35 @@ class SrvProfileDeleteResponse(BaseModel):
     error:   str | None = None
 
 
+class LineProfileAddRequest(BaseModel):
+    """Crea un ONT line-profile GPON canónico (mapping-mode priority + TR-069) con DBA propio."""
+    connection:   OltConnectionSchema
+    name:         str = Field(..., min_length=1, max_length=32)
+    dba_name:     str = Field(..., min_length=1, max_length=32)
+    dba_max_kbps: int = Field(..., ge=128, le=10_000_000)
+
+
+class LineProfileAddResponse(BaseModel):
+    success:        bool
+    profile_id:     int | None = None
+    name:           str | None = None
+    dba_profile_id: int | None = None
+    dba_name:       str | None = None
+    error:          str | None = None
+
+
+class LineProfileDeleteRequest(BaseModel):
+    connection: OltConnectionSchema
+    name:       str = Field(..., min_length=1, max_length=32)
+    dba_name:   str | None = Field(default=None, min_length=1, max_length=32)
+
+
+class LineProfileDeleteResponse(BaseModel):
+    success:       bool
+    dba_eliminado: bool | None = None
+    error:         str | None = None
+
+
 class UplinkVlansRequest(BaseModel):
     """Lee las VLANs taggeadas en un puerto uplink (frame/slot/port)."""
     connection: OltConnectionSchema

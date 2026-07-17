@@ -73,10 +73,13 @@ export interface OltBoard {
 }
 
 export interface OltLineProfile {
-  id:        string;
-  oltId:     string;
-  profileId: number;
-  nombre:    string;
+  id:            string;
+  oltId:         string;
+  profileId:     number;
+  nombre:        string;
+  origen?:       'erp' | 'olt';
+  dbaProfileId?: number | null;
+  dbaNombre?:    string | null;
 }
 
 export interface OltServiceProfile {
@@ -1231,6 +1234,21 @@ export const oltNativoApi = {
 
   eliminarSrvProfile: async (oltId: string, profileId: number): Promise<void> => {
     await api.delete(`/olt-nativo/${oltId}/srvprofiles/${profileId}`, { timeout: 90_000 });
+  },
+
+  // ── Line-profiles GPON (canónicos DATAFAST) ──────────────────
+  agregarLineProfile: async (
+    oltId: string,
+    dto: { nombre: string; dbaMaxMbps: number },
+  ): Promise<OltLineProfile> => {
+    const res = await api.post<ApiRespuesta<OltLineProfile>>(
+      `/olt-nativo/${oltId}/lineprofiles`, dto, { timeout: 150_000 },
+    );
+    return res.data.data;
+  },
+
+  eliminarLineProfile: async (oltId: string, profileId: number): Promise<void> => {
+    await api.delete(`/olt-nativo/${oltId}/lineprofiles/${profileId}`, { timeout: 120_000 });
   },
 
   getEventos: async (

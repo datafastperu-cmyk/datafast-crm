@@ -45,6 +45,7 @@ import { OltTrafficTable }   from './entities/olt-traffic-table.entity';
 import { OltSyncService }    from './services/olt-sync.service';
 import { CrearBaselineDto, OltBaselineService } from './services/olt-baseline.service';
 import { AgregarSrvProfileDto, OltSrvProfileService } from './services/olt-srvprofile.service';
+import { AgregarLineProfileDto, OltLineProfileService } from './services/olt-lineprofile.service';
 import { OLT_MODEL_CATALOG } from './capability/olt-model-catalog';
 import { OltBaselinePlanService } from './services/olt-baseline-plan.service';
 import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
@@ -90,6 +91,7 @@ export class OltNativoController {
     private readonly baselines:     OltBaselineService,
     private readonly baselinePlan:  OltBaselinePlanService,
     private readonly srvProfiles:   OltSrvProfileService,
+    private readonly lineProfiles:  OltLineProfileService,
     private readonly ztp:           ZtpProvisioningService,
     private readonly onuConfig:     ContratoOnuConfigService,
     private readonly onuTr069:      OnuTr069DetalleService,
@@ -210,6 +212,31 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     await this.srvProfiles.eliminarConCli(oltId, user.empresaId, profileId);
+  }
+
+  // ── Line-profiles GPON (canónicos DATAFAST) — excepción gestionable ──
+  @Post(':oltId/lineprofiles')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Crear un line-profile GPON canónico (mapping priority + TR-069 + DBA propio) — sello DATAFAST automático' })
+  @ApiParam({ name: 'oltId' })
+  async agregarLineProfile(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: AgregarLineProfileDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.lineProfiles.agregarConCli(oltId, user.empresaId, dto);
+  }
+
+  @Delete(':oltId/lineprofiles/:profileId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar un line-profile del ERP (guards: ownership + sin ONUs usándolo)' })
+  @ApiParam({ name: 'oltId' })
+  async eliminarLineProfile(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Param('profileId', ParseIntPipe) profileId: number,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    await this.lineProfiles.eliminarConCli(oltId, user.empresaId, profileId);
   }
 
   // ── Convergencia de baseline (Incremento 9) — dry-run + apply ──

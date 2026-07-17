@@ -949,6 +949,34 @@ export interface PythonSrvProfileDeleteResponse {
   error?:  string;
 }
 
+export interface PythonLineProfileAddRequest {
+  connection:   PythonConnectionPayload;
+  name:         string;
+  dba_name:     string;
+  dba_max_kbps: number;
+}
+
+export interface PythonLineProfileAddResponse {
+  success:        boolean;
+  profile_id:     number | null;
+  name:           string | null;
+  dba_profile_id: number | null;
+  dba_name:       string | null;
+  error?:         string;
+}
+
+export interface PythonLineProfileDeleteRequest {
+  connection: PythonConnectionPayload;
+  name:       string;
+  dba_name?:  string | null;
+}
+
+export interface PythonLineProfileDeleteResponse {
+  success:        boolean;
+  dba_eliminado?: boolean | null;
+  error?:         string;
+}
+
 // ─── Uplink VLAN tagging (Incremento 9b) ─────────────────────
 
 export interface PythonUplinkVlansRequest {
