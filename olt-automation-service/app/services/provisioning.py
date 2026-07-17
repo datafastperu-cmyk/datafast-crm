@@ -1368,6 +1368,13 @@ def _paramiko_huawei_run(
     # screen-length 0 no se aplicó o hay paginación activa en el comando.
     # Responder con espacio (avanza página) hasta llegar al prompt final.
     MORE_RE   = re.compile(r'----\s*[Mm]ore', re.IGNORECASE)
+    # Confirmación interactiva estilo "Are you sure? (y/n)[n]:" (ont reset, etc.) —
+    # NO coincide con CONFIRM_RE (ese es solo el prompt '{ <cr>||<K> }:'). Sin este
+    # handler, comandos como 'ont reset' quedaban esperando un PROMPT_RE que nunca
+    # llega hasta agotar el `deadline` completo de la sesión (incidente 2026-07-17:
+    # enviar 'y' como comando separado en la lista no funciona porque el deadline es
+    # compartido entre TODOS los comandos, no por-comando). Se auto-confirma con 'y'.
+    YESNO_RE  = re.compile(r'\(y/n\)\s*\[.\]\s*:\s*$', re.IGNORECASE)
 
     def _read_until_prompt(chan: 'paramiko.Channel', deadline: float) -> str:
         buf = ''
@@ -1380,6 +1387,9 @@ def _paramiko_huawei_run(
                     continue
                 if MORE_RE.search(last):
                     chan.send(' ')  # Espacio avanza una página en el pager Huawei
+                    continue
+                if YESNO_RE.search(last):
+                    chan.send('y\r\n')
                     continue
                 if PROMPT_RE.match(last):
                     break
@@ -1645,14 +1655,23 @@ def reset_huawei_onu(
     """
     Reinicia una ONU Huawei MA5800 vía comando 'ont reset'.
 
-    El comando pide confirmación "Are you sure? (y/n)[n]:" → insertar 'y'.
+    El comando pide confirmación "Are you sure? (y/n)[n]:" → `_paramiko_huawei_run`
+    la auto-responde con 'y' (ver YESNO_RE en su lector de prompt).
+
+    Migrado de Netmiko (`_send_config_set`) a `_paramiko_huawei_run` (incidente
+    2026-07-17): el driver `huawei_smartax` de Netmiko cuelga en
+    `session_preparation → _disable_infoswitch_cli → exit_enable_mode`
+    (netmiko.exceptions.ReadTimeout) contra este firmware — el mismo problema de
+    fondo que ya forzó migrar rollback_gpon/DBA-profile al transporte paramiko
+    (ver memoria firmware R018). `_send_config_set` sigue siendo válido para otros
+    comandos menos sensibles al prompt, pero `ont reset` lo dejaba inutilizable.
+
     Síncrono — llamar desde asyncio.to_thread().
     """
     commands = [
         'config',
         f'interface gpon 0/{slot}',
         f'ont reset {port} {onu_id}',
-        'y',    # confirmación interactiva de MA5800
         'quit',
         'quit',
     ]
@@ -1660,12 +1679,8 @@ def reset_huawei_onu(
         'reset_huawei_onu: reiniciando ONU slot=%d port=%d onu_id=%d en %s',
         slot, port, onu_id, conn.ip,
     )
-    raw_output = _send_config_set(conn, commands)
-
-    # 'y' puede producir "Invalid input" si la versión no pide confirmación.
-    # Verificar que el propio 'ont reset' no reportó error (ignorar línea de 'y').
-    reset_output = raw_output
-    _check_cli_error(conn.brand, 'reset_huawei_onu', reset_output)
+    raw_output = _paramiko_huawei_run(conn, commands, timeout=settings.ssh_command_timeout)
+    _check_cli_error(conn.brand, 'reset_huawei_onu', raw_output)
 
     logger.info('reset_huawei_onu: ONU slot=%d port=%d onu_id=%d reiniciada en %s', slot, port, onu_id, conn.ip)
     return {
@@ -3614,6 +3629,28 @@ def change_lineprofile(
 
 # ── Suspensión / Rehabilitación por service-port ──────────────
 
+def _get_ont_control_flag(
+    conn: OltConnectionSchema, slot: int, port: int, onu_id: int,
+) -> str | None:
+    """
+    Lee el 'Control flag' actual de un ONT (`display ont info <port> <onu_id>`
+    dentro de `interface gpon 0/<slot>`). Devuelve el valor en minúsculas
+    (ej. 'active', 'deactive') o None si no se pudo leer.
+    """
+    try:
+        parts = _paramiko_huawei_run(
+            conn,
+            ['config', f'interface gpon 0/{slot}', f'display ont info {port} {onu_id}', 'quit', 'quit'],
+            timeout=settings.ssh_command_timeout, return_list=True,
+        )
+    except Exception as exc:
+        logger.error('_get_ont_control_flag SSH falló | OLT=%s: %s', conn.ip, exc)
+        return None
+    verify_out = parts[2] if len(parts) > 2 else ''
+    m = re.search(r'Control flag\s*:\s*(\S+)', verify_out, re.IGNORECASE)
+    return m.group(1).lower() if m else None
+
+
 def suspend_onu(
     conn:            OltConnectionSchema,
     slot:            int,
@@ -3628,6 +3665,13 @@ def suspend_onu(
     a nivel de protocolo OMCI sin eliminar la configuración. El service-port
     queda intacto en la OLT (no se hace undo service-port).
 
+    Verificación dura + reintento (incidente 2026-07-17, contrato CNT-2026-000004):
+    `_check_cli_error` solo detecta patrones de error conocidos — si el comando se
+    corrompe por la misma colisión con el autosave asíncrono documentada para
+    rollback_gpon/DBA-profile (ver memoria firmware R018), el ONT sigue
+    "Control flag: active" pero la función igual reportaba success=True. Ahora se
+    relee el Control flag real tras el comando y solo se confirma éxito si cambió.
+
     Síncrono — llamar desde asyncio.to_thread().
     """
     if conn.brand != OltBrand.HUAWEI:
@@ -3641,23 +3685,45 @@ def suspend_onu(
     cmds = [
         'config',
         f'interface gpon 0/{slot}',
-        f'port {port} ont deactivate ontid {onu_id}',
+        f'ont deactivate {port} {onu_id}',
         'quit',
         'save',
     ]
-    try:
-        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
-    except ProvisioningError:
-        raise
-    except Exception as exc:
-        raise ProvisioningError(f'suspend_onu falló en {conn.ip}: {exc}') from exc
+    last_flag: str | None = None
+    for attempt in range(3):
+        try:
+            raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+        except Exception as exc:
+            logger.error('suspend_onu SSH falló | OLT=%s intento=%d: %s', conn.ip, attempt + 1, exc)
+            _time_read.sleep(2)
+            continue
+        try:
+            _check_cli_error(conn.brand, 'suspend_onu', raw)
+        except CommandError as exc:
+            raise ProvisioningError(str(exc)) from exc
 
-    _check_cli_error(conn.brand, 'suspend_onu', raw)
-    logger.info('suspend_onu OK | OLT=%s slot=%d port=%d onu_id=%d', conn.ip, slot, port, onu_id)
+        last_flag = _get_ont_control_flag(conn, slot, port, onu_id)
+        if last_flag is not None and last_flag != 'active':
+            logger.info(
+                'suspend_onu OK verificado | OLT=%s slot=%d port=%d onu_id=%d control_flag=%s intento=%d',
+                conn.ip, slot, port, onu_id, last_flag, attempt + 1,
+            )
+            return {
+                'success':         True,
+                'message':         f'ONU {onu_id} suspendida en slot={slot} port={port}',
+                'olt_ip':          conn.ip,
+                'service_port_id': service_port_id,
+            }
+        logger.warning(
+            'suspend_onu NO verificado (control_flag=%s) | OLT=%s slot=%d port=%d onu_id=%d intento=%d',
+            last_flag, conn.ip, slot, port, onu_id, attempt + 1,
+        )
+        _time_read.sleep(2)
+
     return {
-        'success':         True,
-        'message':         f'ONU {onu_id} suspendida en slot={slot} port={port}',
-        'olt_ip':          conn.ip,
+        'success': False,
+        'error':   f'ONT {slot}/{port}/{onu_id} sigue "Control flag: {last_flag}" tras 3 intentos de deactivate.',
+        'olt_ip':  conn.ip,
         'service_port_id': service_port_id,
     }
 
@@ -3688,25 +3754,44 @@ def rehabilitate_onu(
     cmds = [
         'config',
         f'interface gpon 0/{slot}',
-        f'port {port} ont activate ontid {onu_id}',
+        f'ont activate {port} {onu_id}',
         'quit',
         'save',
     ]
-    try:
-        raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
-    except ProvisioningError:
-        raise
-    except Exception as exc:
-        raise ProvisioningError(f'rehabilitate_onu falló en {conn.ip}: {exc}') from exc
+    last_flag: str | None = None
+    for attempt in range(3):
+        try:
+            raw = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+        except Exception as exc:
+            logger.error('rehabilitate_onu SSH falló | OLT=%s intento=%d: %s', conn.ip, attempt + 1, exc)
+            _time_read.sleep(2)
+            continue
+        try:
+            _check_cli_error(conn.brand, 'rehabilitate_onu', raw)
+        except CommandError as exc:
+            raise ProvisioningError(str(exc)) from exc
 
-    _check_cli_error(conn.brand, 'rehabilitate_onu', raw)
-    logger.info(
-        'rehabilitate_onu OK | OLT=%s slot=%d port=%d onu_id=%d',
-        conn.ip, slot, port, onu_id,
-    )
+        last_flag = _get_ont_control_flag(conn, slot, port, onu_id)
+        if last_flag == 'active':
+            logger.info(
+                'rehabilitate_onu OK verificado | OLT=%s slot=%d port=%d onu_id=%d intento=%d',
+                conn.ip, slot, port, onu_id, attempt + 1,
+            )
+            return {
+                'success':         True,
+                'message':         f'ONU {onu_id} rehabilitada en slot={slot} port={port}',
+                'olt_ip':          conn.ip,
+                'service_port_id': service_port_id,
+            }
+        logger.warning(
+            'rehabilitate_onu NO verificado (control_flag=%s) | OLT=%s slot=%d port=%d onu_id=%d intento=%d',
+            last_flag, conn.ip, slot, port, onu_id, attempt + 1,
+        )
+        _time_read.sleep(2)
+
     return {
-        'success':         True,
-        'message':         f'ONU {onu_id} rehabilitada en slot={slot} port={port}',
-        'olt_ip':          conn.ip,
+        'success': False,
+        'error':   f'ONT {slot}/{port}/{onu_id} sigue "Control flag: {last_flag}" tras 3 intentos de activate.',
+        'olt_ip':  conn.ip,
         'service_port_id': service_port_id,
     }

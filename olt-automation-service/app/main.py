@@ -895,6 +895,8 @@ async def ftth_suspend_onu(body: OntSuspendRequest) -> OntSuspendResponse:
             )
         except ProvisioningError as exc:
             return OntSuspendResponse(success=False, message='Error al suspender ONU', error=str(exc))
+    if not result.get('success', False):
+        return OntSuspendResponse(success=False, message='No se pudo verificar la suspensión de la ONU', error=result.get('error'))
     return OntSuspendResponse(success=True, message=result['message'])
 
 
@@ -916,6 +918,8 @@ async def ftth_rehabilitate_onu(body: OntRehabilitateRequest) -> OntSuspendRespo
             )
         except ProvisioningError as exc:
             return OntSuspendResponse(success=False, message='Error al rehabilitar ONU', error=str(exc))
+    if not result.get('success', False):
+        return OntSuspendResponse(success=False, message='No se pudo verificar la rehabilitación de la ONU', error=result.get('error'))
     return OntSuspendResponse(success=True, message=result['message'])
 
 
