@@ -3027,22 +3027,67 @@ def rollback_gpon(
     logger.info(
         'rollback_gpon: OLT=%s slot=%d port=%d onu_id=%d', conn.ip, slot, port, onu_id,
     )
-    # Verificación dura + reintento: NO basta con que SSH no lance excepción. El
-    # `ont delete` puede fallar en silencio (lock de otra sesión tipo SmartOLT, o el
-    # bug de espacios de VRP) y dejar el ONT en la OLT mientras el sistema cree que
-    # se borró → huérfano. Se verifica con `display ont info` que el ONT ya no exista,
-    # reintentando ante bloqueos transitorios.
+
+    # Fase 1: `undo service-port` + VERIFICACIÓN activa de que la OLT terminó de
+    # procesarlo antes de tocar el ont. En el MA5800 el `undo service-port` no es
+    # síncrono con el prompt de vuelta: si el `ont delete` se envía inmediatamente
+    # después (como hacía este código antes), la OLT lo rechaza con "This configured
+    # object has some service virtual ports" porque la baja interna del service-port
+    # aún no terminó. El drenaje de `_paramiko_huawei_run` solo limpia buffers de
+    # lectura (0.15s) — no espera a que el equipo termine de procesar el comando
+    # anterior. Confirmado en incidente 2026-07-17 (contrato CNT-2026-000005) — ver
+    # memoria del firmware R018 para el mismo patrón de causa raíz.
+    if service_port_id is not None:
+        sp_gone = False
+        for sp_attempt in range(4):
+            try:
+                sp_parts = _paramiko_huawei_run(
+                    conn,
+                    ['config', f'undo service-port {service_port_id}',
+                     f'display service-port {service_port_id}', 'quit'],
+                    timeout=settings.ssh_command_timeout, return_list=True,
+                )
+            except Exception as exc:
+                logger.error(
+                    'rollback_gpon: undo service-port SSH falló | OLT=%s intento=%d: %s',
+                    conn.ip, sp_attempt + 1, exc,
+                )
+                _time_read.sleep(2)
+                continue
+            sp_verify = sp_parts[2] if len(sp_parts) > 2 else ''
+            if 'does not exist' in sp_verify.lower():
+                sp_gone = True
+                logger.info(
+                    'rollback_gpon: service-port %d confirmado eliminado | OLT=%s intento=%d',
+                    service_port_id, conn.ip, sp_attempt + 1,
+                )
+                break
+            logger.warning(
+                'rollback_gpon: service-port %d aún no se confirma eliminado | OLT=%s intento=%d',
+                service_port_id, conn.ip, sp_attempt + 1,
+            )
+            _time_read.sleep(2)
+        if not sp_gone:
+            logger.warning(
+                'rollback_gpon: no se pudo confirmar la baja del service-port %d tras reintentos '
+                '| OLT=%s — se intentará igual el ont delete',
+                service_port_id, conn.ip,
+            )
+
+    # Fase 2: ont delete + verificación dura + reintento. NO basta con que SSH no
+    # lance excepción. El `ont delete` puede fallar en silencio (lock de otra sesión
+    # tipo SmartOLT, o el bug de espacios de VRP) y dejar el ONT en la OLT mientras
+    # el sistema cree que se borró → huérfano. Se verifica con `display ont info`
+    # que el ONT ya no exista, reintentando ante bloqueos transitorios.
     verify_cmd = f'display ont info {port} {onu_id}'
     last_err: str | None = None
     for attempt in range(3):
-        pre: list[str] = ['config']
-        if service_port_id is not None:
-            pre += [f'undo service-port {service_port_id}']
         # Sin `save` en el loop: guardar en cada reintento dejaba la OLT guardando en
         # segundo plano y provocaba "Currently operating conflicts" en el siguiente
         # comando. El `ont delete` es efectivo en running-config al instante; se persiste
         # con un único save al confirmar el borrado.
-        cmds = pre + [
+        cmds = [
+            'config',
             f'interface gpon 0/{slot}',
             f'ont delete {port} {onu_id}',
             verify_cmd,
@@ -3058,7 +3103,7 @@ def rollback_gpon(
             _time_read.sleep(3)
             continue
 
-        verify_out = parts[len(pre) + 2] if len(parts) > (len(pre) + 2) else ''
+        verify_out = parts[3] if len(parts) > 3 else ''
         if 'does not exist' in verify_out.lower():
             try:
                 _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)

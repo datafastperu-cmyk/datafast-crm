@@ -169,7 +169,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const [trafficIndexDown, setTrafficIndexDown] = useState('');  // '' = Indefinida
   const [trafficIndexUp,   setTrafficIndexUp]   = useState('');  // '' = Indefinida
   const [description,   setDescription]  = useState('');
-  const [servicePortId, setServicePortId] = useState('');  // '' = usar pool automático
   const [wanMode,       setWanMode]      = useState<'bridge' | 'routing'>('bridge');
 
   // Perfiles OLT (Phase 4)
@@ -199,6 +198,19 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     staleTime: 5 * 60_000,
     retry: false,
   });
+
+  // Pool de Service Port IDs (Inc.7): si la OLT tiene pool configurado, el backend
+  // SIEMPRE asigna el ID desde ahí (provision-ftth.service.ts: poolSvcPortId ?? dto.servicePortId)
+  // e ignora cualquier valor manual — el input solo aplica como fallback cuando no
+  // hay pool configurado para esa OLT.
+  const { data: servicePortPool } = useQuery({
+    queryKey:  ['olt-service-port-pool', selectedOltId],
+    queryFn:   () => oltNativoApi.servicePortPoolEstado(selectedOltId),
+    enabled:   !!selectedOltId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const poolConfigurado = (servicePortPool?.total ?? 0) > 0;
 
   // ── Directriz "inyectar desde cero": la provisión del ERP consume SOLO
   // recursos declarados en el baseline asignado a la OLT (los preexistentes
@@ -237,7 +249,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     setSlot(String(r.slot));
     setPort(String(r.port));
     setVlan(String(r.vlan));
-    if (r.servicePortId != null) setServicePortId(String(r.servicePortId));
     if (r.trafficIndexDown != null) setTrafficIndexDown(String(r.trafficIndexDown));
     if (r.trafficIndexUp   != null) setTrafficIndexUp(String(r.trafficIndexUp));
     if (r.lineprofileId) setLineprofileId(String(r.lineprofileId));
@@ -321,7 +332,8 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const formValid = (
     !!selectedOltId && !!sn.trim() && slot !== '' && port !== '' &&
     !!vlan && !!lineprofileId && !!srvprofileId &&
-    trafficIndexDown !== '' && trafficIndexUp !== ''
+    trafficIndexDown !== '' && trafficIndexUp !== '' &&
+    poolConfigurado
   );
 
   // Desaprovisionar mutation
@@ -393,7 +405,8 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       srvprofileId:  parseInt(srvprofileId),
       trafficIndexDown: trafficIndexDown !== '' ? parseInt(trafficIndexDown) : undefined,
       trafficIndexUp:   trafficIndexUp   !== '' ? parseInt(trafficIndexUp)   : undefined,
-      servicePortId:    servicePortId    !== '' ? parseInt(servicePortId)    : undefined,
+      // Sin input manual: el Service Port ID SIEMPRE lo asigna el pool de la OLT
+      // (backend rechaza el submit si no hay pool — ver aviso poolConfigurado abajo).
       description:      description.trim() || undefined,
       wanMode,
     }),
@@ -790,23 +803,26 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                 </div>
 
                 <div className="mt-1 space-y-1.5">
-                  <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
-                    <Hash className="w-3.5 h-3.5 flex-shrink-0" />
-                    <div className="flex flex-1 items-center gap-2 flex-wrap">
+                  {poolConfigurado ? (
+                    // Pool configurado en la OLT: el backend SIEMPRE asigna el Service Port ID
+                    // desde ahí (provision-ftth.service.ts). Puramente informativo — nunca editable,
+                    // para eliminar el riesgo de colisión/errores por ID manual incorrecto.
+                    <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
+                      <Hash className="w-3.5 h-3.5 flex-shrink-0" />
                       <span className="flex-1">
-                        Service Port ID — si hay pool configurado en la OLT se asigna automáticamente.
-                        Si no, ingresa el ID manualmente:
+                        Service Port ID — se asigna automáticamente del pool de la OLT
+                        ({servicePortPool?.libres ?? 0} libres de {servicePortPool?.total ?? 0}).
                       </span>
-                      <input
-                        type="number"
-                        value={servicePortId}
-                        onChange={e => setServicePortId(e.target.value)}
-                        min={1}
-                        placeholder="Ej: 1501"
-                        className="w-28 rounded-md border border-violet-700/40 bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-violet-500"
-                      />
                     </div>
-                  </div>
+                  ) : selectedOltId ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-red-700/30 bg-red-500/5 px-3 py-2 text-[11px] text-red-700 dark:text-red-400">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="flex-1">
+                        Esta OLT no tiene pool de Service Port IDs configurado — no se puede aprovisionar
+                        sin asignación automática. Configúralo en Detalles de la OLT → Pool de Service Port IDs.
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
                     <Hash className="w-3.5 h-3.5 flex-shrink-0" />
                     <span>ONU ID se asigna automáticamente del pool por puerto PON (1–128).</span>

@@ -18,6 +18,7 @@ import { ZtpProvisioningService } from '../ztp/ztp.service';
 export class ZtpReconcileCron {
   private readonly logger = new Logger(ZtpReconcileCron.name);
   private running = false;
+  private runningReinjection = false;
 
   constructor(private readonly ztp: ZtpProvisioningService) {}
 
@@ -39,6 +40,22 @@ export class ZtpReconcileCron {
       this.logger.error(`Reconcile nocturno falló: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       this.running = false;
+    }
+  }
+
+  // Watcher de re-inyección post factory-reset (botón o físico): intervalo corto,
+  // deliberadamente SEPARADO del reconcile nocturno de drift normal (edición admin) para no
+  // aumentar la frecuencia de ese barrido más amplio. Solo toca last_applied_revision IS NULL.
+  @Cron('*/2 * * * *')
+  async watchPendingReinjection(): Promise<void> {
+    if (this.runningReinjection) return;
+    this.runningReinjection = true;
+    try {
+      await this.ztp.reconcilePendingReinjection();
+    } catch (e) {
+      this.logger.error(`Watcher de re-inyección falló: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.runningReinjection = false;
     }
   }
 }

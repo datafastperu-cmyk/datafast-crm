@@ -5,6 +5,7 @@ import { Tr069GenieacsClient } from '../../tr069/tr069-genieacs.client';
 import { GenieAcsDriver } from './genieacs.driver';
 import { getParameterMap, matchDeviceProfile } from './registry';
 import { ExecutionPlan, ExecutionPlanWrite } from './ztp.contracts';
+import { ContratoOnuConfigService } from './contrato-onu-config.service';
 
 // ── DTOs de edición LIVE ────────────────────────────────────────────────────
 export class SetWifiLiveDto {
@@ -83,6 +84,7 @@ export class OnuTr069DetalleService {
   constructor(
     private readonly nbi: Tr069GenieacsClient,
     private readonly driver: GenieAcsDriver,
+    private readonly onuConfig: ContratoOnuConfigService,
   ) {}
 
   isReady(): boolean {
@@ -249,7 +251,20 @@ export class OnuTr069DetalleService {
     const deviceId = await this._deviceIdOrThrow(serial);
     const res = await this.nbi.queueTask(deviceId, { name: 'factoryReset' }, true);
     this.logger.warn(`FactoryReset ONU ${serial} (device=${deviceId}) status=${res.status}`);
-    return { ok: res.status >= 200 && res.status < 300, mensaje: `Reset de fábrica enviado a la ONU ${serial}.` };
+    const ok = res.status >= 200 && res.status < 300;
+
+    // La ONU vuelve a bootstrap "en blanco" (pierde WiFi/PPPoE/credenciales). Marca drift
+    // para que el watcher de re-inyección la re-aprovisione en cuanto vuelva a informar.
+    // Best-effort: si falla el marcado no se revierte el reset ya enviado a la ONU.
+    if (ok) {
+      try {
+        await this.onuConfig.markPendingReinjectionBySerial(serial);
+      } catch (e) {
+        this.logger.warn(`No se pudo marcar re-inyección pendiente (${serial}): ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    return { ok, mensaje: `Reset de fábrica enviado a la ONU ${serial}.` };
   }
 
   // ── Edición WiFi / PPPoE (reutiliza el fallback del GenieAcsDriver) ─────────

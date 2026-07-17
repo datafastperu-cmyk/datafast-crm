@@ -302,4 +302,35 @@ export class ZtpProvisioningService {
     );
     return { revisadas: conDrift.length, conDrift: conDrift.length, ok, fallidas, detalle };
   }
+
+  // ── reconcilePendingReinjection ──────────────────────────────────────────
+  // Watcher de re-inyección post factory-reset: subconjunto ESTRICTO de reconcile()
+  // (solo last_applied_revision IS NULL, nunca el caso "< revision" de un drift normal
+  // por edición admin). Corre en un cron corto (ver ZtpReconcileCron) para reaprovisionar
+  // apenas la ONU vuelva a informar a GenieACS tras perder su config.
+  // No informar aún es esperado (la ONU sigue reiniciando/haciendo DHCP) → no es fallo real.
+  async reconcilePendingReinjection(): Promise<{ pendientes: number; ok: number; fallidas: number }> {
+    const pendientes = await this.configRepo.createQueryBuilder('c')
+      .where('c.provisioning_enabled = true')
+      .andWhere('c.deleted_at IS NULL')
+      .andWhere('c.last_applied_revision IS NULL')
+      .getMany();
+
+    let ok = 0, fallidas = 0;
+    for (const cfg of pendientes) {
+      try {
+        const r = await this.provisionContract(cfg.contratoId, cfg.empresaId);
+        if (r.ok) ok++;
+        else if (!r.skipped) fallidas++;
+      } catch (e) {
+        fallidas++;
+        this.logger.warn(`reinjection watcher: contrato ${cfg.contratoId} lanzó — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    if (ok > 0) {
+      this.logger.log(`Reinjection watcher: pendientes=${pendientes.length} ok=${ok} fallidas=${fallidas}`);
+    }
+    return { pendientes: pendientes.length, ok, fallidas };
+  }
 }

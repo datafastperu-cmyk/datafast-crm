@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { randomInt } from 'crypto';
 
@@ -56,6 +56,8 @@ export class ContratoOnuConfigService {
   constructor(
     @InjectRepository(ContratoOnuConfig)
     private readonly repo: Repository<ContratoOnuConfig>,
+    @InjectDataSource()
+    private readonly ds: DataSource,
   ) {}
 
   get(contratoId: string, empresaId: string): Promise<ContratoOnuConfig | null> {
@@ -130,6 +132,26 @@ export class ContratoOnuConfigService {
       return saved;
     }
     return row;
+  }
+
+  // Tras un factory-reset (botón o físico) la ONU vuelve a bootstrap "en blanco":
+  // fuerza drift (last_applied_revision = null) para que el watcher de re-inyección
+  // (ZtpReconcileCron.watchPendingReinjection) reaplique el ExecutionPlan completo en
+  // cuanto la ONU vuelva a informar a GenieACS. No falla si el serial no tiene contrato.
+  async markPendingReinjectionBySerial(serial: string): Promise<{ ok: boolean; contratoId?: string }> {
+    const [reg] = await this.ds.query<{ contrato_id: string; empresa_id: string }[]>(
+      `SELECT contrato_id, empresa_id FROM ftth_onu_registro WHERE sn = $1`,
+      [serial],
+    );
+    if (!reg) return { ok: false };
+    const res = await this.repo.update(
+      { contratoId: reg.contrato_id, empresaId: reg.empresa_id },
+      { lastAppliedRevision: null, lastProvisionResult: 'Pendiente de re-inyección tras factory-reset.' },
+    );
+    if (res.affected) {
+      this.logger.warn(`Pendiente de re-inyección marcada | contrato=${reg.contrato_id} (factory-reset serial=${serial})`);
+    }
+    return { ok: !!res.affected, contratoId: reg.contrato_id };
   }
 
   async setProvisioningEnabled(contratoId: string, empresaId: string, enabled: boolean): Promise<ContratoOnuConfig> {
