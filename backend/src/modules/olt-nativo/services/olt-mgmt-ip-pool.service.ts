@@ -89,7 +89,7 @@ export class OltMgmtIpPoolService {
   // Retorna null → pool sin configurar para esta OLT (modo bypass).
   async allocar(oltId: string, contratoId: string): Promise<string | null> {
     const [existing] = await this.ds.query<{ ip_address: string }[]>(
-      `SELECT ip_address::text AS ip_address
+      `SELECT host(ip_address) AS ip_address
        FROM   olt_mgmt_ip_pool
        WHERE  olt_id      = $1
          AND  contrato_id = $2
@@ -119,7 +119,7 @@ export class OltMgmtIpPoolService {
          LIMIT  1
          FOR UPDATE SKIP LOCKED
        )
-       RETURNING ip_address::text AS ip_address`,
+       RETURNING host(ip_address) AS ip_address`,
       [contratoId, oltId],
     );
     const filas = Array.isArray(result?.[0]) ? result[0] : result;
