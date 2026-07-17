@@ -1415,31 +1415,20 @@ def _paramiko_huawei_run(
         _read_until_prompt(chan, deadline)
 
         # Ejecutar cada comando y acumular salida.
-        # La VTY del MA5800 pierde caracteres (espacios) si recibe input mientras
-        # imprime mensajes asíncronos (p.ej. logs de autosave) → el eco llega
-        # pegado ("undo dba-profileprofile-name...") y responde "% Unknown
-        # command" sin ejecutar nada. Mitigación: drenar salida pendiente antes
-        # de enviar y reintentar cuando se detecta eco corrupto de ESTE comando.
+        # Nota de firmware (MA5800 R018, validado 2026-07-17): si un token no es
+        # prefijo válido en el modo actual, la VTY RECHAZA el espacio siguiente
+        # (el eco llega pegado: "undo dba-profileprofile-name...") y responde
+        # "% Unknown command". Ese eco corrupto significa comando/modo inválido
+        # — no un problema de transporte; el error se propaga vía
+        # _check_cli_error. El drenaje pre-envío evita que logs asíncronos
+        # (autosave) contaminen la lectura del comando siguiente.
         output_parts: list[str] = []
         for cmd in commands:
-            part = ''
-            sin_espacios = cmd.replace(' ', '')
-            for _intento in range(3):
-                _time_read.sleep(0.15)
-                while chan.recv_ready():  # drenar output asíncrono acumulado
-                    chan.recv(4096)
-                chan.send(cmd + '\r\n')
-                part = _read_until_prompt(chan, deadline)
-                eco_corrupto = (
-                    '% Unknown command' in part
-                    and cmd not in part
-                    and sin_espacios in part.replace(' ', '')
-                )
-                if eco_corrupto:
-                    _time_read.sleep(0.6)
-                    continue
-                break
-            output_parts.append(part)
+            _time_read.sleep(0.15)
+            while chan.recv_ready():  # drenar output asíncrono acumulado
+                chan.recv(4096)
+            chan.send(cmd + '\r\n')
+            output_parts.append(_read_until_prompt(chan, deadline))
 
         chan.close()
         return output_parts if return_list else '\n'.join(output_parts)
@@ -2045,7 +2034,9 @@ def delete_ont_lineprofile(
     commands  = ['config', f'undo ont-lineprofile gpon profile-name {safe_name}']
     if dba_name:
         safe_dba = re.sub(r'[^A-Za-z0-9_\-]', '_', dba_name)[:32]
-        commands.append(f'undo dba-profile profile-name {safe_dba}')
+        # Firmware R018: 'undo dba-profile' NO existe — el borrado es
+        # 'dba-profile delete profile-name X' (validado 2026-07-17).
+        commands.append(f'dba-profile delete profile-name {safe_dba}')
     commands.append('quit')
 
     logger.info('delete_ont_lineprofile: name=%s dba=%s en %s', safe_name, dba_name, conn.ip)
