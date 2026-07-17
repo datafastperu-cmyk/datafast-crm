@@ -454,6 +454,22 @@ class FtthPollResponse(BaseModel):
     error:     str | None = None
 
 
+class FtthCheckWanRequest(BaseModel):
+    """Verifica si la WAN PPPoE de una ONU activa sigue viva (watcher post factory-reset)."""
+    connection:        OltConnectionSchema
+    slot:               int = Field(..., ge=0, le=15)
+    port:               int = Field(..., ge=0, le=15)
+    onu_id:             int = Field(..., ge=1, le=128)
+    expected_username:  str = Field(..., min_length=1, max_length=64)
+
+
+class FtthCheckWanResponse(BaseModel):
+    ok:        bool
+    connected: bool
+    username:  str | None = None
+    error:     str | None = None
+
+
 class FtthWanPppoeRequest(BaseModel):
     """Fase 2: inyectar la WAN en la ONU vía OMCI. Soporta pppoe/static/dhcp."""
     connection: OltConnectionSchema
@@ -696,6 +712,19 @@ class LineProfileDeleteResponse(BaseModel):
     success:       bool
     dba_eliminado: bool | None = None
     error:         str | None = None
+
+
+class LineProfileAddGemMgmtRequest(BaseModel):
+    """Agrega GEM index 2 (tcont 0) a un line-profile existente para habilitar
+    el carril de gestión TR-069 (fix estructural, ver add_gem_mgmt_to_lineprofile)."""
+    connection: OltConnectionSchema
+    profile_id: int = Field(..., ge=1)
+
+
+class LineProfileAddGemMgmtResponse(BaseModel):
+    success:    bool
+    profile_id: int | None = None
+    error:      str | None = None
 
 
 class UplinkVlansRequest(BaseModel):

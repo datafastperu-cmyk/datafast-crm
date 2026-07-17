@@ -2030,6 +2030,58 @@ def add_ont_lineprofile(
             'dba_profile_id': dba_id, 'dba_name': safe_dba}
 
 
+def add_gem_mgmt_to_lineprofile(
+    conn:       OltConnectionSchema,
+    profile_id: int,
+) -> dict[str, Any]:
+    """
+    Agrega GEM index 2 (tcont 0, el DBA por-defecto que Huawei crea implícitamente
+    en todo ONT) a un line-profile GPON existente, para habilitar el carril de
+    gestión TR-069 (provision_mgmt_bootstrap usa `service-port ... gemport 2`).
+
+    Causa raíz (incidente 2026-07-17): `add_ont_lineprofile` solo crea GEM index 1
+    (tcont 1, DBA propio) para el plano de datos — el line-profile canónico
+    DATAFAST_LINE nunca tuvo GEM 2, por lo que NINGUNA ONU con ese perfil podía
+    recibir el carril de gestión ("The GEM index does not exist or the T-CONT
+    binding with this GEM port does not bind a DBA profile"). Fix estructural
+    de una sola vez sobre el perfil compartido — no requiere recrear el DBA ni
+    tocar GEM 1 (datos).
+
+    Idempotente: 'has existed already'/'already exist' en la respuesta se
+    tolera (GEM 2 ya presente). Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'add_gem_mgmt_to_lineprofile no implementado para marca: {conn.brand.value}')
+
+    commands = [
+        'config',
+        f'ont-lineprofile gpon profile-id {profile_id}',
+        'gem add 2 eth tcont 0',
+        'commit',
+        'quit',
+        'quit',
+    ]
+    logger.info('add_gem_mgmt_to_lineprofile: profile_id=%d en %s', profile_id, conn.ip)
+    try:
+        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    raw = '\n'.join(outputs[1:4])
+    error_patterns = ['Error:', 'Failure:', 'Parameter error', 'Unknown command', 'Incomplete command']
+    benign = ('has existed already', 'already exist', 'already exists', 'has already existed')
+    for pat in error_patterns:
+        if pat.lower() in raw.lower():
+            linea = next((l for l in raw.splitlines() if pat.lower() in l.lower()), pat)
+            if any(b in linea.lower() for b in benign):
+                logger.info('add_gem_mgmt_to_lineprofile: GEM 2 ya existía en profile_id=%d en %s', profile_id, conn.ip)
+                break
+            return {'success': False, 'error': f'CLI Huawei reportó error: {linea.strip()}'}
+
+    logger.info('add_gem_mgmt_to_lineprofile OK | profile_id=%d en %s', profile_id, conn.ip)
+    return {'success': True, 'profile_id': profile_id}
+
+
 def delete_ont_lineprofile(
     conn:     OltConnectionSchema,
     name:     str,
@@ -2919,25 +2971,17 @@ def provision_mgmt_bootstrap(
         f'ont ipconfig {port} {onu_id} ip-index 0 dhcp vlan {mgmt_vlan} priority {priority}',
         f'display ont ipconfig {port} {onu_id}',
     ]
-    try:
-        parts = _paramiko_huawei_run(
-            conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
-        )
-    except ProvisioningError:
-        raise
-    except Exception as exc:
-        raise ProvisioningError(
-            f'provision_mgmt_bootstrap falló en {conn.ip}: {exc}'
-        ) from exc
-
-    # parts: [0]config [1]service-port [2]interface [3]ipconfig [4]display-verificación
-    raw_create = '\n'.join(parts[:4])
-    verify_out = parts[4] if len(parts) > 4 else ''
 
     error_patterns = [
         'Error:', 'Failure:', 'Parameter error', 'Too many parameters',
         'Unknown command', 'Incomplete command', 'conflicts with',
     ]
+    # Errores TRANSITORIOS (autosave asíncrono de la OLT aún procesando la operación
+    # anterior — mismo patrón que rollback_gpon/suspend_onu, ver memoria firmware R018):
+    # se reintenta el batch completo. Sin este retry, UN solo choque con el autosave
+    # tumbaba el carril de gestión para siempre (incidente 2026-07-17, CNT-2026-000004:
+    # la ONU nunca apareció en GenieACS pese a que el plano de datos quedó 100% OK).
+    transient_patterns = ('conflicts with', 'currently operating', 'please retry later')
     # IDEMPOTENCIA SEGURA: "service virtual port has existed already" SOLO es benigno si el
     # service-port existente es de ESTA MISMA ONU y VLAN de gestión (re-aplicación tras factory
     # reset). Si el ID ya pertenece a OTRA ONU (p.ej. un puerto de DATOS de un cliente en
@@ -2947,43 +2991,81 @@ def provision_mgmt_bootstrap(
     benign_patterns = (
         'has existed already', 'already exist', 'already exists', 'has already existed',
     )
-    for pat in error_patterns:
-        if pat.lower() in raw_create.lower():
-            linea = next(
-                (l for l in raw_create.splitlines() if pat.lower() in l.lower()), pat,
+
+    verify_out = ''
+    last_transient_err: str | None = None
+    for attempt in range(3):
+        try:
+            parts = _paramiko_huawei_run(
+                conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
             )
-            if any(b in linea.lower() for b in benign_patterns):
-                # Verificar de quién es realmente el service-port.
-                try:
-                    check = _paramiko_huawei_run(
-                        conn, [f'display service-port {mgmt_service_port_id}'],
-                        timeout=settings.ssh_command_timeout,
-                    )
-                except Exception:
-                    check = ''
-                m_fsp  = re.search(r'F/S/P\s*:\s*(\S+)', check)
-                m_ont  = re.search(r'ONT ID\s*:\s*(\d+)', check)
-                m_vlan = re.search(r'VLAN ID\s*:\s*(\d+)', check)
-                fsp  = m_fsp.group(1)  if m_fsp  else '?'
-                ont  = m_ont.group(1)  if m_ont  else '?'
-                vlan = m_vlan.group(1) if m_vlan else '?'
-                mine = (fsp == f'0/{slot}/{port}' and str(ont) == str(onu_id)
-                        and str(vlan) == str(mgmt_vlan))
-                if mine:
-                    logger.info(
-                        'provision_mgmt_bootstrap: service-port %s ya existe y ES de esta ONU/VLAN '
-                        '(0/%d/%d ont %d vlan %d) — idempotente OK en %s',
-                        mgmt_service_port_id, slot, port, onu_id, mgmt_vlan, conn.ip,
-                    )
-                    continue
-                raise ProvisioningError(
-                    f'COLISIÓN de service-port en {conn.ip}: el ID {mgmt_service_port_id} ya está '
-                    f'EN USO por otra ONU (F/S/P {fsp}, ONT {ont}, VLAN {vlan}) — NO se reutiliza. '
-                    f'Asigna un ID libre desde el pool de gestión (canal "gestion").'
-                )
+        except ProvisioningError:
+            raise
+        except Exception as exc:
             raise ProvisioningError(
-                f'CLI Huawei reportó error en el bootstrap de gestión en {conn.ip}: {linea.strip()}'
-            )
+                f'provision_mgmt_bootstrap falló en {conn.ip}: {exc}'
+            ) from exc
+
+        # parts: [0]config [1]service-port [2]interface [3]ipconfig [4]display-verificación
+        raw_create = '\n'.join(parts[:4])
+        verify_out = parts[4] if len(parts) > 4 else ''
+
+        hubo_error = False
+        for pat in error_patterns:
+            if pat.lower() in raw_create.lower():
+                hubo_error = True
+                linea = next(
+                    (l for l in raw_create.splitlines() if pat.lower() in l.lower()), pat,
+                )
+                if any(b in linea.lower() for b in benign_patterns):
+                    # Verificar de quién es realmente el service-port.
+                    try:
+                        check = _paramiko_huawei_run(
+                            conn, [f'display service-port {mgmt_service_port_id}'],
+                            timeout=settings.ssh_command_timeout,
+                        )
+                    except Exception:
+                        check = ''
+                    m_fsp  = re.search(r'F/S/P\s*:\s*(\S+)', check)
+                    m_ont  = re.search(r'ONT ID\s*:\s*(\d+)', check)
+                    m_vlan = re.search(r'VLAN ID\s*:\s*(\d+)', check)
+                    fsp  = m_fsp.group(1)  if m_fsp  else '?'
+                    ont  = m_ont.group(1)  if m_ont  else '?'
+                    vlan = m_vlan.group(1) if m_vlan else '?'
+                    mine = (fsp == f'0/{slot}/{port}' and str(ont) == str(onu_id)
+                            and str(vlan) == str(mgmt_vlan))
+                    if mine:
+                        logger.info(
+                            'provision_mgmt_bootstrap: service-port %s ya existe y ES de esta ONU/VLAN '
+                            '(0/%d/%d ont %d vlan %d) — idempotente OK en %s',
+                            mgmt_service_port_id, slot, port, onu_id, mgmt_vlan, conn.ip,
+                        )
+                        hubo_error = False
+                        break
+                    raise ProvisioningError(
+                        f'COLISIÓN de service-port en {conn.ip}: el ID {mgmt_service_port_id} ya está '
+                        f'EN USO por otra ONU (F/S/P {fsp}, ONT {ont}, VLAN {vlan}) — NO se reutiliza. '
+                        f'Asigna un ID libre desde el pool de gestión (canal "gestion").'
+                    )
+                if any(t in linea.lower() for t in transient_patterns):
+                    last_transient_err = linea.strip()
+                    logger.warning(
+                        'provision_mgmt_bootstrap: error transitorio (autosave) intento=%d | OLT=%s: %s',
+                        attempt + 1, conn.ip, last_transient_err,
+                    )
+                    _time_read.sleep(3)
+                    break
+                raise ProvisioningError(
+                    f'CLI Huawei reportó error en el bootstrap de gestión en {conn.ip}: {linea.strip()}'
+                )
+        if not hubo_error:
+            last_transient_err = None
+            break
+    else:
+        raise ProvisioningError(
+            f'Bootstrap de gestión falló tras 3 intentos por conflicto transitorio en {conn.ip}: '
+            f'{last_transient_err}'
+        )
 
     # Diagnóstico: dejar en el log el estado real del IP host de gestión (IP asignada o requesting).
     logger.info(
@@ -3022,6 +3104,52 @@ def provision_mgmt_bootstrap(
         conn.ip, slot, port, onu_id, mgmt_vlan,
     )
     return {'success': True, 'olt_ip': conn.ip}
+
+
+def check_ont_wan_pppoe(
+    conn:              OltConnectionSchema,
+    slot:              int,
+    port:              int,
+    onu_id:            int,
+    expected_username: str,
+) -> dict[str, Any]:
+    """
+    Verifica si la WAN PPPoE de una ONU sigue viva (`display ont wan-info`) y si
+    el username configurado coincide con el esperado. Usado por el watcher de
+    re-inyección post factory-reset del flujo FTTH nativo: un factory-reset (botón
+    o físico) borra la config OMCI de la ONU (WAN incluida) pero el registro del
+    ERP la sigue marcando "activo" — sin esta verificación de estado real, nada
+    detecta el drift. No lanza: drift/errores de lectura se tratan como "no verificado"
+    para que el watcher reintente en el próximo ciclo. Síncrono — llamar desde
+    asyncio.to_thread().
+    """
+    try:
+        parts = _paramiko_huawei_run(
+            conn,
+            ['config', f'interface gpon 0/{slot}', f'display ont wan-info {port} {onu_id}', 'quit', 'quit'],
+            timeout=settings.ssh_command_timeout, return_list=True,
+        )
+    except Exception as exc:
+        logger.warning('check_ont_wan_pppoe: SSH falló | OLT=%s onu_id=%d: %s', conn.ip, onu_id, exc)
+        return {'ok': False, 'connected': False, 'username': None, 'error': str(exc)}
+
+    raw = parts[2] if len(parts) > 2 else ''
+    # Puede haber varios "Index" (Internet/Other/IPTV) — nos quedamos con el bloque
+    # 'Service type : Internet' (el mismo criterio que usa la WAN PPPoE inyectada).
+    bloques = re.split(r'\n\s*Index\s*:', raw)
+    connected = False
+    username: str | None = None
+    for bloque in bloques:
+        if 'internet' not in bloque.lower():
+            continue
+        m_status = re.search(r'IPv4 Connection status\s*:\s*(\S+)', bloque)
+        m_user   = re.search(r'PPPoE username\s*:\s*(\S+)', bloque)
+        connected = bool(m_status and m_status.group(1).lower() == 'connected')
+        username  = m_user.group(1) if m_user else None
+        break
+
+    ok = connected and username == expected_username
+    return {'ok': ok, 'connected': connected, 'username': username, 'error': None}
 
 
 def rollback_gpon(

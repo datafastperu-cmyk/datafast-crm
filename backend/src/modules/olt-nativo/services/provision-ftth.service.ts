@@ -1155,6 +1155,63 @@ export class ProvisionFtthService {
     return { actualizado: true, mensaje: `WAN actualizada en la ONU (${wanInject.payload!.mode}) con la config actual del contrato.` };
   }
 
+  // ── verificarYRepararWanDrift ────────────────────────────────────────────
+  // Watcher de re-inyección post factory-reset del flujo FTTH NATIVO (el que usa
+  // el botón "Aprovisionar" — distinto del pipeline ZTP/TR-069 de
+  // ztp.service.ts::reconcilePendingReinjection, que no cubre estas ONUs).
+  //
+  // Un factory-reset (por botón TR-069 o FÍSICO en el equipo) borra la config OMCI
+  // de la ONU — incluida la WAN PPPoE — pero el registro del ERP la sigue marcando
+  // "activo" sin que nada lo detecte. Sin trigger de evento para un reset físico,
+  // la única forma de cubrir AMBOS casos es verificación de ESTADO REAL contra la
+  // OLT: `display ont wan-info` confirma si la sesión PPPoE sigue viva con el
+  // username correcto. Si no, se re-inyecta con `actualizarWan` (misma config del
+  // contrato — idempotente). Diseñado para correr en cron (ver FtthWanWatcherCron).
+  async verificarYRepararWanDrift(): Promise<{
+    revisadas: number; ok: number; reparadas: number; fallidas: number;
+  }> {
+    const candidatos = await this.ds.query<{
+      contrato_id: string; empresa_id: string; olt_id: string;
+      slot: number; port: number; onu_id: number; usuario_pppoe: string | null;
+    }[]>(
+      `SELECT r.contrato_id, r.empresa_id, r.olt_id, r.slot, r.port, r.onu_id, c.usuario_pppoe
+       FROM   ftth_onu_registro r
+       JOIN   contratos c ON c.id = r.contrato_id
+       WHERE  r.estado = 'activo' AND r.wan_mode = 'routing' AND r.deleted_at IS NULL
+         AND  c.usuario_pppoe IS NOT NULL AND c.deleted_at IS NULL`,
+    );
+
+    let ok = 0, reparadas = 0, fallidas = 0;
+    for (const c of candidatos) {
+      try {
+        const olt  = await this._fetchOlt(c.olt_id, c.empresa_id);
+        const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+        const chk  = await this.automation.ftthCheckWan({
+          connection: conn, slot: c.slot, port: c.port, onu_id: c.onu_id,
+          expected_username: c.usuario_pppoe!,
+        });
+        if (chk.ok) { ok++; continue; }
+
+        this.logger.warn(
+          `verificarYRepararWanDrift: drift detectado | contrato=${c.contrato_id} ` +
+          `connected=${chk.connected} username=${chk.username ?? '?'} (esperado ${c.usuario_pppoe})`,
+        );
+        const rep = await this.actualizarWan(c.contrato_id, c.empresa_id);
+        if (rep.actualizado) reparadas++; else fallidas++;
+      } catch (e) {
+        fallidas++;
+        this.logger.warn(`verificarYRepararWanDrift: contrato ${c.contrato_id} lanzó — ${(e as Error).message}`);
+      }
+    }
+
+    if (reparadas > 0 || fallidas > 0) {
+      this.logger.log(
+        `verificarYRepararWanDrift: revisadas=${candidatos.length} ok=${ok} reparadas=${reparadas} fallidas=${fallidas}`,
+      );
+    }
+    return { revisadas: candidatos.length, ok, reparadas, fallidas };
+  }
+
   async suspenderPorContrato(
     contratoId: string,
     empresaId:  string,

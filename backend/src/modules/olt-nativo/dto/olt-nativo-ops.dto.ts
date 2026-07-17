@@ -673,6 +673,21 @@ export interface PythonFtthPollResponse {
   error?:     string;
 }
 
+export interface PythonFtthCheckWanRequest {
+  connection:        PythonConnectionPayload;
+  slot:              number;
+  port:              number;
+  onu_id:            number;
+  expected_username: string;
+}
+
+export interface PythonFtthCheckWanResponse {
+  ok:        boolean;
+  connected: boolean;
+  username?: string | null;
+  error?:    string | null;
+}
+
 export interface PythonFtthWanPppoeRequest {
   connection:  PythonConnectionPayload;
   slot:        number;

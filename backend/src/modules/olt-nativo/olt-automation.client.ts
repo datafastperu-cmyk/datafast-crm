@@ -24,6 +24,8 @@ import {
   PythonFtthGponResponse,
   PythonFtthPollRequest,
   PythonFtthPollResponse,
+  PythonFtthCheckWanRequest,
+  PythonFtthCheckWanResponse,
   PythonFtthRollbackRequest,
   PythonFtthOntIdsRequest,
   PythonFtthOntIdsResponse,
@@ -369,6 +371,20 @@ export class OltAutomationClient {
       `← ftth/poll-online | success=${res.success} run_state=${res.run_state} timeout=${res.timeout}`,
     );
     return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — verificar WAN PPPoE viva (watcher de re-inyección post factory-reset)
+  // ────────────────────────────────────────────────────────────
+  async ftthCheckWan(payload: PythonFtthCheckWanRequest): Promise<PythonFtthCheckWanResponse> {
+    try {
+      return await this.post<PythonFtthCheckWanResponse>(
+        '/api/v1/olt/ftth/check-wan', payload, 20_000,
+      );
+    } catch (err: any) {
+      this.logger.warn(`← ftth/check-wan falló (se trata como no verificado): ${err.message}`);
+      return { ok: false, connected: false, username: null, error: err.message };
+    }
   }
 
   // ────────────────────────────────────────────────────────────

@@ -37,6 +37,8 @@ from app.schemas.olt import (
     FtthOntIdsResponse,
     FtthPollRequest,
     FtthPollResponse,
+    FtthCheckWanRequest,
+    FtthCheckWanResponse,
     FtthRollbackRequest,
     FtthRollbackResponse,
     FtthWanPppoeRequest,
@@ -94,6 +96,8 @@ from app.schemas.olt import (
     LineProfileAddResponse,
     LineProfileDeleteRequest,
     LineProfileDeleteResponse,
+    LineProfileAddGemMgmtRequest,
+    LineProfileAddGemMgmtResponse,
     UplinkTagRequest,
     UplinkTagResponse,
     TrafficTableAddRequest,
@@ -131,6 +135,7 @@ from app.services.provisioning import (
     list_huawei_profiles,
     poll_onu_online,
     single_poll_check,
+    check_ont_wan_pppoe,
     provision_gpon_ftth,
     provision_mgmt_bootstrap,
     provision_onu,
@@ -152,6 +157,7 @@ from app.services.provisioning import (
     delete_ont_srvprofile,
     add_ont_lineprofile,
     delete_ont_lineprofile,
+    add_gem_mgmt_to_lineprofile,
     add_traffic_table,
     delete_traffic_table,
     edit_traffic_table,
@@ -845,6 +851,22 @@ async def ftth_poll_online(body: FtthPollRequest) -> FtthPollResponse:
 
 
 @app.post(
+    '/api/v1/olt/ftth/check-wan',
+    response_model=FtthCheckWanResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Verifica si la WAN PPPoE de una ONU activa sigue viva (watcher post factory-reset)',
+)
+async def ftth_check_wan(body: FtthCheckWanRequest) -> FtthCheckWanResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        result = await asyncio.to_thread(
+            check_ont_wan_pppoe, body.connection, body.slot, body.port, body.onu_id, body.expected_username,
+        )
+    return FtthCheckWanResponse(**result)
+
+
+@app.post(
     '/api/v1/olt/ftth/inject-wan-pppoe',
     response_model=FtthWanResponse,
     status_code=status.HTTP_200_OK,
@@ -1452,6 +1474,27 @@ async def lineprofile_delete(body: LineProfileDeleteRequest) -> LineProfileDelet
     return LineProfileDeleteResponse(
         success=result['success'], dba_eliminado=result.get('dba_eliminado'),
         error=result.get('error'),
+    )
+
+
+@app.post(
+    '/api/v1/olt/lineprofile/add-gem-mgmt',
+    response_model=LineProfileAddGemMgmtResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['lineprofile'],
+    summary='Fix estructural: agrega GEM 2 (tcont 0) a un line-profile para habilitar el carril TR-069',
+)
+async def lineprofile_add_gem_mgmt(body: LineProfileAddGemMgmtRequest) -> LineProfileAddGemMgmtResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                add_gem_mgmt_to_lineprofile, body.connection, body.profile_id,
+            )
+        except ProvisioningError as exc:
+            return LineProfileAddGemMgmtResponse(success=False, error=str(exc))
+    return LineProfileAddGemMgmtResponse(
+        success=result['success'], profile_id=result.get('profile_id'), error=result.get('error'),
     )
 
 

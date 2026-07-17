@@ -62,6 +62,7 @@ import { OltServicePortPoolService }  from './services/olt-service-port-pool.ser
 import { OltConnService }             from './services/olt-conn.service';
 import { OltOnuIdPoolService }        from './services/olt-onu-id-pool.service';
 import { FtthRecoveryCron }           from './cron/ftth-recovery.cron';
+import { FtthWanWatcherCron }         from './cron/ftth-wan-watcher.cron';
 import { OltHealthPollerCron }       from './cron/olt-health-poller.cron';
 import { ZtpReconcileCron }          from './cron/ztp-reconcile.cron';
 import { OltAlertEngineService }     from './services/olt-alert-engine.service';
@@ -207,6 +208,7 @@ import { OltGateway }                from './olt.gateway';
     OltLineProfileService,
     OltGateway,
     FtthRecoveryCron,
+    FtthWanWatcherCron,
     OltHealthPollerCron,
     ZtpReconcileCron,
   ],
