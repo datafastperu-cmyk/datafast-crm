@@ -2081,23 +2081,31 @@ def add_traffic_table(
     add_cmd = (f'traffic table ip name {safe_name} cir {cir_kbps} {cbs_part}'
                f'pir {pir_kbps} {pbs_part}priority 0 priority-policy local-setting')
 
-    commands = ['config', add_cmd, 'quit']
+    # IDEMPOTENTE (2026-07-17): tras el create se verifica SIEMPRE con
+    # 'display traffic table ip name X' (sí existe en este firmware, validado
+    # a mano) — resiste respuestas perdidas: si el create dice "exists
+    # already" (creación previa cuya confirmación se perdió, caso real en la
+    # prueba de integración limpia) o la sesión se corta a mitad, la
+    # verificación por nombre resuelve el índice igual y el plan continúa.
+    commands = ['config', add_cmd, 'quit', f'display traffic table ip name {safe_name}']
     logger.info('add_traffic_table: name=%s cir=%d cbs=%s pir=%d pbs=%s en %s',
                 safe_name, cir_kbps, cbs_bytes, pir_kbps, pbs_bytes, conn.ip)
     try:
-        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
+        outputs = _paramiko_huawei_run(conn, commands, timeout=90.0, return_list=True)
     except Exception as exc:  # noqa: BLE001
         return {'success': False, 'error': str(exc)}
 
     # Se parsea la sesión completa (los límites entre comandos pueden desfasarse).
     raw = '\n'.join(outputs)
     m = re.search(
-        r'Create traffic descriptor record successfully.*?Traffic Table Index\s*:\s*(\d+)',
-        raw, re.DOTALL,
+        rf'Traffic Table Index\s*:\s*(\d+)\s*\r?\n\s*Traffic Table Name\s*:\s*{re.escape(safe_name)}\b',
+        raw,
     )
     if m:
         idx = int(m.group(1))
-        logger.info('add_traffic_table: %s → index=%d en %s', safe_name, idx, conn.ip)
+        ya_existia = 'exists already' in raw
+        logger.info('add_traffic_table: %s → index=%d en %s%s',
+                    safe_name, idx, conn.ip, ' (ya existía — idempotente)' if ya_existia else '')
         return {'success': True, 'index': idx, 'name': safe_name}
 
     try:
@@ -2105,7 +2113,7 @@ def add_traffic_table(
     except CommandError as exc:
         return {'success': False, 'error': str(exc)}
     return {'success': False,
-            'error': 'La OLT no confirmó la creación (sin "successfully" ni índice en la respuesta)'}
+            'error': f'La OLT no confirmó "{safe_name}" ni la reporta por nombre tras el create'}
 
 
 def delete_traffic_table(
