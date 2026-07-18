@@ -146,8 +146,10 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
   const [live, setLive] = useState(false);
   const [pppUser, setPppUser] = useState('');
   const [pppPass, setPppPass] = useState('');
+  const [showPppPass, setShowPppPass] = useState(false);
   const [webAdminUser, setWebAdminUser] = useState('');
   const [webAdminPass, setWebAdminPass] = useState('');
+  const [showWebPass, setShowWebPass] = useState(false);
   const [pending, setPending] = useState<'reboot' | 'factory' | null>(null);
   const initRan = useRef(false);
 
@@ -319,7 +321,13 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
                 </div>
                 <div>
                   <label className="text-[10px] text-muted-foreground">Clave PPPoE (vacío = sin cambio)</label>
-                  <input type="password" value={pppPass} onChange={e => setPppPass(e.target.value)} placeholder="••••••••" className={INPUT} />
+                  <div className="relative">
+                    <input type={showPppPass ? 'text' : 'password'} value={pppPass} onChange={e => setPppPass(e.target.value)}
+                      placeholder="••••••••" className={cn(INPUT, 'pr-8')} />
+                    <button type="button" onClick={() => setShowPppPass(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      {showPppPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
               <button onClick={() => pppMut.mutate()} disabled={pppMut.isPending || (!pppUser && !pppPass)} className={cn(BTN_OUTLINE, 'ml-auto')}>
@@ -339,7 +347,13 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
                 </div>
                 <div>
                   <label className="text-[10px] text-muted-foreground">Nueva clave admin (vacío = sin cambio)</label>
-                  <input type="password" value={webAdminPass} onChange={e => setWebAdminPass(e.target.value)} placeholder="••••••••" className={INPUT} />
+                  <div className="relative">
+                    <input type={showWebPass ? 'text' : 'password'} value={webAdminPass} onChange={e => setWebAdminPass(e.target.value)}
+                      placeholder="••••••••" className={cn(INPUT, 'pr-8')} />
+                    <button type="button" onClick={() => setShowWebPass(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      {showWebPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
               <button onClick={() => webMut.mutate()} disabled={webMut.isPending || (!webAdminUser && !webAdminPass)} className={cn(BTN_OUTLINE, 'ml-auto')}>
