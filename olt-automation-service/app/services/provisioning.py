@@ -3110,7 +3110,7 @@ def _get_or_create_tr069_server_profile(
     acs_url:     str,
     user:        str = 'tr069',
     password:    str = 'tr069',
-    auth_realm:  str = 'genieacs',
+    auth_realm:  str = '',
 ) -> int:
     """
     CAUSA RAÍZ #5 (incidente 2026-07-17, CNT-2026-000004): una WAN `Service type:
@@ -3154,11 +3154,21 @@ def _get_or_create_tr069_server_profile(
     new_id = 2
     while new_id in existing_ids:
         new_id += 1
+    # Diferencias reales encontradas (2026-07-18) comparando contra el perfil de
+    # SmartOLT (profile-id 1) que SÍ funciona en esta misma OLT: (a) su URL NO
+    # tiene "/" final, la nuestra sí la tenía (posible URI malformada al armar el
+    # POST del Inform); (b) NO usa auth-realm en absoluto (nosotros forzábamos uno
+    # por defecto, "genieacs", sin necesidad real — GenieACS no exige Digest auth
+    # en el primer Inform de un dispositivo nuevo). Se replica el formato exacto
+    # de SmartOLT: URL sin barra final, auth-realm solo si se pasa explícito.
+    clean_url = acs_url.rstrip('/')
     create_cmd = (
         f'ont tr069-server-profile add profile-id {new_id} '
-        f'profile-name "DATAFAST-ACS" url "{acs_url}" '
-        f'user "{user}" password "{password}" auth-realm "{auth_realm}"'
+        f'profile-name "DATAFAST-ACS" url "{clean_url}" '
+        f'user "{user}" password "{password}"'
     )
+    if auth_realm:
+        create_cmd += f' auth-realm "{auth_realm}"'
     try:
         out = _paramiko_huawei_run(
             conn, ['config', create_cmd, 'quit'], timeout=settings.ssh_command_timeout,
