@@ -1974,7 +1974,8 @@ def remove_gem_from_lineprofile(
         raise ProvisioningError(f'remove_gem_from_lineprofile no implementado para marca: {conn.brand.value}')
 
     variantes = [
-        'ont modify ?',
+        '?',
+        'undo ?',
     ]
     intentos: list[dict[str, str]] = []
     exito = False
