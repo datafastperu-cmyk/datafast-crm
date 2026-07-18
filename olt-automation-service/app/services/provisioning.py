@@ -1745,11 +1745,19 @@ def get_huawei_ont_version(
     Comando: display ont version 0/slot/port onu_id
     Retorna ont_version, software_version y equipment_id.
     Síncrono — llamar desde asyncio.to_thread().
+
+    Usa _paramiko_huawei_run (NO _send_single_command/Netmiko) — Netmiko se traba
+    en session_preparation (screen-length 0 temporary nunca coincide con el prompt
+    de confirmación del MA5800, ver docstring de _paramiko_huawei_run) para el
+    firmware de esta OLT, dejando esta consulta permanentemente rota (incidente
+    2026-07-18: equipment_id/firmware_version nunca se pudieron persistir en el
+    registro FTTH por este bug — confirmado reproduciendo el timeout con la
+    función real, no solo con un script ad-hoc).
     """
     command = f'display ont version 0/{slot}/{port} {onu_id}'
     try:
-        raw_output = _send_single_command(conn, command)
-    except (ConnectionError, CommandError) as exc:
+        raw_output = _paramiko_huawei_run(conn, [command], timeout=settings.ssh_command_timeout)
+    except Exception as exc:  # noqa: BLE001
         logger.warning('get_huawei_ont_version: fallo en %s — %s', conn.ip, exc)
         return {'success': False, 'error': str(exc)}
 
