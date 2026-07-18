@@ -3289,6 +3289,25 @@ def provision_mgmt_bootstrap(
                         )
                     except Exception:
                         check = ''
+                    # Si el propio chequeo dice "no existe", el "has existed already" original
+                    # fue un resabio TRANSITORIO del estado de la OLT (visto justo tras un factory
+                    # reset: autosave aún liquidando el service-port viejo en el instante de la
+                    # creación, pero ya limpio milisegundos después) — NO es una colisión real con
+                    # otra ONU. Sin este chequeo, F/S/P/ONT/VLAN quedan en '?' (nada que parsear en
+                    # "does not exist") y se reportaba colisión falsa contra un ID que en realidad
+                    # ya estaba libre (incidente 2026-07-18, ONU HWTC78CA0FAA tras reset factory).
+                    if 'does not exist' in check.lower() or 'not exist' in check.lower():
+                        last_transient_err = (
+                            f'service-port {mgmt_service_port_id} reportado "has existed already" '
+                            f'pero el chequeo de dueño dice que ya no existe (transitorio)'
+                        )
+                        logger.warning(
+                            'provision_mgmt_bootstrap: colisión aparente pero service-port %s ya no '
+                            'existe (transitorio, reintentando) intento=%d | OLT=%s',
+                            mgmt_service_port_id, attempt + 1, conn.ip,
+                        )
+                        _time_read.sleep(3)
+                        break
                     m_fsp  = re.search(r'F/S/P\s*:\s*(\S+)', check)
                     m_ont  = re.search(r'ONT ID\s*:\s*(\d+)', check)
                     m_vlan = re.search(r'VLAN ID\s*:\s*(\d+)', check)
