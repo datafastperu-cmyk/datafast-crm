@@ -3230,16 +3230,30 @@ def provision_mgmt_bootstrap(
         'tr069_profile_id=%d (static, WAN tr069)',
         conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id, mgmt_ip, tr069_profile_id,
     )
-    # Secuencia OMCI reducida a lo que un ONU real gestionado por SmartOLT (referencia
-    # HWTC16A6BAAC, gpon-onu_0/1/6:0) demuestra que basta — confirmado vía "Show
-    # running-config" del propio SmartOLT (2026-07-18): el IP-host de gestión NUNCA se
-    # convierte en WAN (`ont wan-config`/`ont internet-config`/`ont tr069-config` — esos
-    # tres SOLO se aplican al ip-index de la WAN de datos/Internet, nunca al de gestión).
-    # La causa raíz #4 documentada antes (asumir que el carril de gestión necesita ser una
-    # "WAN completa tipo Tr069") era una conclusión errada de una comparación anterior —
-    # esta referencia real la contradice: solo hacen falta 2 comandos.
+    # Secuencia OMCI alineada al ORDEN real que usa SmartOLT (referencia HWTC16A6BAAC,
+    # gpon-onu_0/1/6:0, "Show running-config", 2026-07-18): el IP-host de gestión NUNCA
+    # se convierte en WAN (`ont wan-config`/`ont internet-config`/`ont tr069-config` —
+    # esos tres SOLO se aplican al ip-index de la WAN de datos/Internet, nunca al de
+    # gestión). La causa raíz #4 documentada antes (asumir que el carril de gestión
+    # necesita ser una "WAN completa tipo Tr069") era una conclusión errada de una
+    # comparación anterior — esta referencia real la contradice.
+    #
+    # ORDEN también importa: confirmado con sniffer en vivo (2026-07-18, incluso tras
+    # power-cycle físico real de la ONU) que crear el service-port ANTES de la config
+    # OMCI del ONT (ipconfig/tr069-server-config) deja el IP-host "aceptado" por la OLT
+    # pero sin tráfico real (0 tramas, ni ARP) — exactamente el síntoma del incidente
+    # original. SmartOLT crea los service-port SIEMPRE AL FINAL, después de cerrar el
+    # contexto `interface gpon`. Se replica ese orden aquí.
     cmds = [
         'config',
+        f'interface gpon 0/{slot}',
+        (
+            f'ont ipconfig {port} {onu_id} ip-index 0 static '
+            f'ip-address {mgmt_ip} mask {mgmt_mask} gateway {mgmt_gateway} pri-dns {mgmt_dns} '
+            f'vlan {mgmt_vlan} priority {priority}'
+        ),
+        f'ont tr069-server-config {port} {onu_id} profile-id {tr069_profile_id}',
+        'quit',
         (
             f'service-port {mgmt_service_port_id} vlan {mgmt_vlan} '
             f'gpon 0/{slot}/{port} ont {onu_id} gemport 3 '
@@ -3248,12 +3262,6 @@ def provision_mgmt_bootstrap(
             f'outbound traffic-table index {traffic_index}'
         ),
         f'interface gpon 0/{slot}',
-        (
-            f'ont ipconfig {port} {onu_id} ip-index 0 static '
-            f'ip-address {mgmt_ip} mask {mgmt_mask} gateway {mgmt_gateway} pri-dns {mgmt_dns} '
-            f'vlan {mgmt_vlan} priority {priority}'
-        ),
-        f'ont tr069-server-config {port} {onu_id} profile-id {tr069_profile_id}',
         f'display ont ipconfig {port} {onu_id}',
     ]
 
@@ -3291,10 +3299,10 @@ def provision_mgmt_bootstrap(
                 f'provision_mgmt_bootstrap falló en {conn.ip}: {exc}'
             ) from exc
 
-        # parts: [0]config [1]service-port [2]interface [3]ipconfig-static
-        #        [4]tr069-server-config [5]display-verify
-        raw_create = '\n'.join(parts[:5])
-        verify_out = parts[5] if len(parts) > 5 else ''
+        # parts: [0]config [1]interface [2]ipconfig-static [3]tr069-server-config
+        #        [4]quit [5]service-port [6]interface [7]display-verify
+        raw_create = '\n'.join(parts[:7])
+        verify_out = parts[7] if len(parts) > 7 else ''
 
         hubo_error = False
         for pat in error_patterns:
