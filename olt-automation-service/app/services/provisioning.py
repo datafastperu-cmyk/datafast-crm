@@ -1754,17 +1754,18 @@ def get_huawei_ont_version(
     función real, no solo con un script ad-hoc).
 
     Sintaxis: el formato combinado "0/slot/port onu_id" desde el nivel raíz NO es
-    válido en este firmware ("Parameter error") — hay que entrar al contexto
-    `interface gpon 0/<slot>` primero y usar solo `<port> <onu_id>`, igual que
+    válido en este firmware ("Parameter error") — hay que entrar a `config` y luego
+    al contexto `interface gpon 0/<slot>` y usar solo `<port> <onu_id>`, igual que
     `display ont info`/`display ont ipconfig` en el resto de este archivo
-    (confirmado en vivo 2026-07-18).
+    (confirmado en vivo 2026-07-18 — "interface gpon" no es válido en modo exec,
+    solo dentro de "config").
     """
-    cmds = [f'interface gpon 0/{slot}', f'display ont version {port} {onu_id}']
+    cmds = ['config', f'interface gpon 0/{slot}', f'display ont version {port} {onu_id}']
     try:
         parts = _paramiko_huawei_run(
             conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
         )
-        raw_output = parts[1] if len(parts) > 1 else ''
+        raw_output = parts[2] if len(parts) > 2 else ''
     except Exception as exc:  # noqa: BLE001
         logger.warning('get_huawei_ont_version: fallo en %s — %s', conn.ip, exc)
         return {'success': False, 'error': str(exc)}
