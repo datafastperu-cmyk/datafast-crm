@@ -3213,6 +3213,14 @@ def provision_mgmt_bootstrap(
         'tr069_profile_id=%d (static, WAN tr069)',
         conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id, mgmt_ip, tr069_profile_id,
     )
+    # Secuencia OMCI reducida a lo que un ONU real gestionado por SmartOLT (referencia
+    # HWTC16A6BAAC, gpon-onu_0/1/6:0) demuestra que basta — confirmado vía "Show
+    # running-config" del propio SmartOLT (2026-07-18): el IP-host de gestión NUNCA se
+    # convierte en WAN (`ont wan-config`/`ont internet-config`/`ont tr069-config` — esos
+    # tres SOLO se aplican al ip-index de la WAN de datos/Internet, nunca al de gestión).
+    # La causa raíz #4 documentada antes (asumir que el carril de gestión necesita ser una
+    # "WAN completa tipo Tr069") era una conclusión errada de una comparación anterior —
+    # esta referencia real la contradice: solo hacen falta 2 comandos.
     cmds = [
         'config',
         (
@@ -3228,8 +3236,6 @@ def provision_mgmt_bootstrap(
             f'ip-address {mgmt_ip} mask {mgmt_mask} gateway {mgmt_gateway} pri-dns {mgmt_dns} '
             f'vlan {mgmt_vlan} priority {priority}'
         ),
-        f'ont tr069-config {port} {onu_id} ip-index 0',
-        f'ont wan-config {port} {onu_id} ip-index 0 profile-id 0',
         f'ont tr069-server-config {port} {onu_id} profile-id {tr069_profile_id}',
         f'display ont ipconfig {port} {onu_id}',
     ]
@@ -3269,9 +3275,9 @@ def provision_mgmt_bootstrap(
             ) from exc
 
         # parts: [0]config [1]service-port [2]interface [3]ipconfig-static
-        #        [4]tr069-config [5]wan-config [6]tr069-server-config [7]display-verify
-        raw_create = '\n'.join(parts[:7])
-        verify_out = parts[7] if len(parts) > 7 else ''
+        #        [4]tr069-server-config [5]display-verify
+        raw_create = '\n'.join(parts[:5])
+        verify_out = parts[5] if len(parts) > 5 else ''
 
         hubo_error = False
         for pat in error_patterns:
