@@ -68,8 +68,8 @@ export const CPE_PROVISIONING_CATALOG: CpeModelCapability[] = [
       {
         canal: 'http_web',
         estado: 'experimental',
-        notas: 'Sesión (GetRandCount+BOM strip → login.cgi por cookie → onttoken fresco por página) validada en vivo el 2026-07-18 contra un equipo real (HTTP plano puerto 80, interfaz "ssmp/tr069", no "net_wan_tr069_t.cgi"). Endpoint y campos del Apply ACS (x.URL/x.Username/x.Password/x.ConnectionRequestUsername/x.ConnectionRequestPassword) confirmados contra el HTML real del formulario. Pendiente: probar el submit del Apply de punta a punta con verificación de persistencia antes de habilitar. El equipo se autobloquea a los 3 intentos de login fallidos (confirmado en vivo). Requiere circuit breaker estricto: máximo 1 intento por ventana de bloqueo observada, cooldown largo obligatorio antes de reintentar.',
-        habilitadoAuto: false, // requiere validar el Apply end-to-end contra un equipo real antes de habilitar
+        notas: 'Sesión (GetRandCount+BOM strip → login.cgi por cookie → onttoken fresco por página) y Apply (x.URL/x.Username/x.Password/x.ConnectionRequestUsername/x.ConnectionRequestPassword vía set.cgi) validados end-to-end en vivo el 2026-07-18 contra un equipo real (HTTP plano puerto 80, interfaz "ssmp/tr069", no "net_wan_tr069_t.cgi") — POST aceptado Y verificado visualmente en el panel (ACS User Name mostró el valor de prueba tras el Apply). Habilitado temporalmente para prueba controlada de aprovisionamiento real tras reset factory (registro=91f88a42-7410-441f-a4f2-8dd5ee737f82) — revertir a false si no converge o tras confirmar que omci_tr069 basta. El equipo se autobloquea a los 3 intentos de login fallidos (confirmado en vivo). Circuit breaker estricto ya activo: máximo 1 intento por ventana de bloqueo observada, cooldown largo obligatorio antes de reintentar.',
+        habilitadoAuto: true, // TEMPORAL: prueba controlada 2026-07-18, revertir tras validar convergencia real
       },
     ],
   },
