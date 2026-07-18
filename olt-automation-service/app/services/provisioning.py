@@ -3161,11 +3161,15 @@ def _get_or_create_tr069_server_profile(
     # por defecto, "genieacs", sin necesidad real — GenieACS no exige Digest auth
     # en el primer Inform de un dispositivo nuevo). Se replica el formato exacto
     # de SmartOLT: URL sin barra final, auth-realm solo si se pasa explícito.
+    # Sintaxis real confirmada en vivo (2026-07-18): la clave va POSICIONAL, sin la
+    # palabra clave "password" — "user "<user>" password "<pass>"" da "Too many
+    # parameters" cuando no hay auth-realm a continuación (el CLI de este firmware
+    # no acepta el keyword "password" como término final).
     clean_url = acs_url.rstrip('/')
     create_cmd = (
         f'ont tr069-server-profile add profile-id {new_id} '
         f'profile-name "DATAFAST-ACS" url "{clean_url}" '
-        f'user "{user}" password "{password}"'
+        f'user "{user}" "{password}"'
     )
     if auth_realm:
         create_cmd += f' auth-realm "{auth_realm}"'
