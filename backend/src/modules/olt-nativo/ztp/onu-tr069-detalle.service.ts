@@ -227,17 +227,24 @@ export class OnuTr069DetalleService {
   /** ConnectionRequest + refreshObject de los árboles del panel → devuelve el detalle fresco. */
   async refresh(serial: string): Promise<OnuTr069Detalle> {
     const deviceId = await this._deviceIdOrThrow(serial);
+    // ManagementServer: getParameterValues con lista EXPLÍCITA, nunca refreshObject
+    // del subárbol completo. ConnectionRequestPassword es write-only — el equipo
+    // SIEMPRE la reporta vacía — así que un refreshObject de todo el objeto
+    // sincroniza esa cadena vacía sobre el valor real que el ERP ya conoce
+    // (TR069_CONNREQ_PASSWORD), rompiendo Connection Request en el siguiente
+    // refresh (confirmado en vivo 2026-07-18: funcionaba una vez, se rompía en
+    // el refresh siguiente). Se piden solo los campos que sí necesitamos leer.
+    await this.nbi.queueTask(deviceId, {
+      name: 'getParameterValues',
+      parameterNames: [
+        'InternetGatewayDevice.ManagementServer.ConnectionRequestURL',
+        'InternetGatewayDevice.ManagementServer.ConnectionRequestUsername',
+        'InternetGatewayDevice.ManagementServer.URL',
+        'InternetGatewayDevice.ManagementServer.PeriodicInformEnable',
+        'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
+      ],
+    }, true).catch(() => {});
     for (const obj of [
-      // ManagementServer PRIMERO: sin esto GenieACS nunca aprende
-      // ConnectionRequestUsername/Password del propio dispositivo, y todo
-      // Connection Request posterior (Reboot, refresh, WiFi, etc.) queda
-      // encolado para siempre sin ejecutarse — confirmado en vivo 2026-07-18
-      // (connection request devolvía 401 sin auth, tareas nunca procesadas).
-      // Si esta ONU nunca reportó esos parámetros, este refresh también
-      // queda encolado hasta el próximo Inform natural del equipo — no hay
-      // forma de forzarlo sin esas credenciales (problema circular inherente
-      // al protocolo, no un bug del ERP).
-      'InternetGatewayDevice.ManagementServer',
       'InternetGatewayDevice.DeviceInfo',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
       'InternetGatewayDevice.WANDevice.1.WANConnectionDevice',
