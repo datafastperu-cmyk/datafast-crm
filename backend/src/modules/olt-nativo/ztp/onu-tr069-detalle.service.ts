@@ -228,6 +228,16 @@ export class OnuTr069DetalleService {
   async refresh(serial: string): Promise<OnuTr069Detalle> {
     const deviceId = await this._deviceIdOrThrow(serial);
     for (const obj of [
+      // ManagementServer PRIMERO: sin esto GenieACS nunca aprende
+      // ConnectionRequestUsername/Password del propio dispositivo, y todo
+      // Connection Request posterior (Reboot, refresh, WiFi, etc.) queda
+      // encolado para siempre sin ejecutarse — confirmado en vivo 2026-07-18
+      // (connection request devolvía 401 sin auth, tareas nunca procesadas).
+      // Si esta ONU nunca reportó esos parámetros, este refresh también
+      // queda encolado hasta el próximo Inform natural del equipo — no hay
+      // forma de forzarlo sin esas credenciales (problema circular inherente
+      // al protocolo, no un bug del ERP).
+      'InternetGatewayDevice.ManagementServer',
       'InternetGatewayDevice.DeviceInfo',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration',
       'InternetGatewayDevice.WANDevice.1.WANConnectionDevice',
