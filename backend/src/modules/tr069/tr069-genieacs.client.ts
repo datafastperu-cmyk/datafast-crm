@@ -87,11 +87,19 @@ export class Tr069GenieacsClient {
    * Encola una task para un device. connectionRequest=true intenta aplicar YA
    * (connection-request al CPE); si el CPE no es alcanzable (NAT/offline) queda
    * encolada hasta el próximo Inform. Retorna el status HTTP (200 aplicada / 202 encolada).
+   *
+   * Con connection_request=true, GenieACS bloquea la respuesta HTTP hasta que el
+   * CPE completa la sesión disparada (o su propio timeout interno expira) — puede
+   * tardar bastante más que TIMEOUT_MS (confirmado en vivo 2026-07-18: un Reboot
+   * real tomó ~90s de punta a punta). Usa un timeout largo propio, no el default.
    */
+  private readonly CONNECTION_REQUEST_TIMEOUT_MS = 60_000;
+
   async queueTask(deviceId: string, task: GenieTask, connectionRequest = true): Promise<{ status: number; body: unknown }> {
     const cr = connectionRequest ? '?connection_request' : '';
+    const timeout = connectionRequest ? this.CONNECTION_REQUEST_TIMEOUT_MS : this.TIMEOUT_MS;
     const res = await firstValueFrom(
-      this.http.post(`${this.baseUrl}/devices/${encodeURIComponent(deviceId)}/tasks${cr}`, task, this.cfg()),
+      this.http.post(`${this.baseUrl}/devices/${encodeURIComponent(deviceId)}/tasks${cr}`, task, this.cfg({ timeout })),
     );
     return { status: res.status, body: res.data };
   }
