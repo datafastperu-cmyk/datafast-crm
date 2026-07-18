@@ -846,6 +846,29 @@ export class ProvisionFtthService {
       `mgmtIp=${mgmtIp} ttIndex=${mgmtTrafficIndex}`,
     );
 
+    // El catálogo de capacidad (cpe-provisioning-catalog.ts) necesita el modelo real
+    // del CPE para saber qué canales aplican — si el registro no lo tiene aún
+    // (ONU recién agregada, o registro creado antes de que existiera este campo),
+    // se consulta a la OLT una sola vez y se persiste, para no depender de un
+    // parche manual de BD en cada ONU (causa raíz: get_huawei_ont_version estuvo
+    // roto — ver incidente 2026-07-18 — y nunca se pudo poblar automáticamente).
+    let equipmentId = registro.equipmentId;
+    let firmwareVersion = registro.firmwareVersion;
+    if (!equipmentId) {
+      try {
+        const ver = await this.automation.ontVersion({
+          connection: conn, slot: registro.slot, port: registro.port, onu_id: registro.onuId,
+        });
+        if (ver.success && ver.equipment_id) {
+          equipmentId = ver.equipment_id;
+          firmwareVersion = ver.software_version ?? null;
+          await this.ftthRepo.update(registro.id, { equipmentId, firmwareVersion });
+        }
+      } catch (err: any) {
+        this.logger.warn(`No se pudo obtener equipment_id de la OLT | registro=${registro.id}: ${err?.message}`);
+      }
+    }
+
     // DISP: la decisión de "por qué canal" (OMCI, HTTP-CPE, u otro futuro) NO
     // se resuelve aquí — se delega al ProvisioningStrategyResolver, que consulta
     // el catálogo de capacidad del dispositivo y verifica convergencia real
@@ -853,8 +876,8 @@ export class ProvisionFtthService {
     const resolverResult = await this.cpeResolver.ejecutarBootstrap({
       device: {
         fabricante: olt.marca,
-        modelo:     registro.equipmentId ?? 'DESCONOCIDO',
-        firmware:   registro.firmwareVersion ?? null,
+        modelo:     equipmentId ?? 'DESCONOCIDO',
+        firmware:   firmwareVersion ?? null,
         sn:         registro.sn,
         mgmtIp,
       },
