@@ -93,15 +93,13 @@ export class OltDispositivo extends BaseModel {
   vlanGestionDefecto: number | null;
 
   // ── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
-  // Define la disponibilidad y parámetros del carril de gestión TR-069 para las ONUs
-  // de esta OLT/segmento. La ACS URL viaja a la ONU por DHCP Option 43 (MikroTik);
-  // usuario/clave = credenciales CWMP (ManagementServer.Username/Password) que la ONU
-  // usa para autenticarse ante GenieACS (endurecimiento; opcional). Clave CIFRADA.
+  // Define la disponibilidad y los parámetros de RED del carril de gestión
+  // TR-069 para las ONUs de esta OLT/segmento (VLAN/gateway/máscara varían por
+  // OLT). Las credenciales del ACS (URL/usuario/clave/ConnReq) YA NO viven aquí:
+  // son config de plataforma, una sola instancia de GenieACS por instalación del
+  // ERP — ver backend/src/config/tr069-acs.config.ts (.env, no editable por OLT).
   @Column({ name: 'tr069_enabled', type: 'boolean', default: false })
   tr069Enabled: boolean;
-
-  @Column({ name: 'tr069_acs_url', type: 'varchar', length: 255, nullable: true })
-  tr069AcsUrl: string | null;
 
   @Column({ name: 'tr069_mgmt_vlan', type: 'smallint', nullable: true })
   tr069MgmtVlan: number | null;
@@ -115,23 +113,6 @@ export class OltDispositivo extends BaseModel {
 
   @Column({ name: 'tr069_mgmt_mask', type: 'varchar', length: 15, default: '255.255.255.0' })
   tr069MgmtMask: string;
-
-  @Column({ name: 'tr069_acs_username', type: 'varchar', length: 100, nullable: true })
-  tr069AcsUsername: string | null;
-
-  /** Cifrada (AES). */
-  @Column({ name: 'tr069_acs_password', type: 'text', nullable: true })
-  tr069AcsPassword: string | null;
-
-  // Connection Request: credenciales que el ACS usa para conectarse DE VUELTA al
-  // CPE (operaciones inmediatas, ej. "reboot ahora"). Sin esto la ONU solo puede
-  // ser gestionada de forma pasiva vía sus Informs periódicos.
-  @Column({ name: 'tr069_connreq_username', type: 'varchar', length: 100, nullable: true })
-  tr069ConnReqUsername: string | null;
-
-  /** Cifrada (AES). */
-  @Column({ name: 'tr069_connreq_password', type: 'text', nullable: true })
-  tr069ConnReqPassword: string | null;
 
   // ── SNMP (complementa monitoreo pasivo) ───────────────────
   @Column({ name: 'snmp_community', length: 100, nullable: true, default: 'public' })

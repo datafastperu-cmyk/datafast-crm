@@ -1458,17 +1458,17 @@ export interface SetAccesoWebDto { adminUser?: string; adminPassword?: string; u
 export interface OnuApplyResult { ok: boolean; applied: number; total: number; fallidas: string[]; }
 
 // ─── Perfil TR-069 por OLT ─────────────────────────────────────
+// ACS URL/User/Pass/ConnReq son config de plataforma (.env del servidor) —
+// de solo lectura aquí, no se editan por OLT. Solo enabled/mgmt* son por OLT.
 export interface Tr069Profile {
-  enabled: boolean; acsUrl: string | null; mgmtVlan: number | null;
+  enabled: boolean; mgmtVlan: number | null;
   mgmtGateway: string | null; mgmtMask: string;
-  acsUsername: string | null; hasPassword: boolean;
-  connReqUsername: string | null; hasConnReqPassword: boolean;
+  acsUrl: string; acsUsername: string; acsPassword: string;
+  connReqUsername: string; connReqPassword: string;
 }
 export interface Tr069ProfileDto {
-  enabled?: boolean; acsUrl?: string; mgmtVlan?: number;
+  enabled?: boolean; mgmtVlan?: number;
   mgmtGateway?: string; mgmtMask?: string;
-  acsUsername?: string; acsPassword?: string;
-  connReqUsername?: string; connReqPassword?: string;
 }
 
 export const oltTr069ProfileApi = {

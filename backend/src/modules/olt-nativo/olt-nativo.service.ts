@@ -16,6 +16,10 @@ import { OltProvisionPayload, OltMetricasPayload, ProveedorCredenciales } from '
 import { SmartoltProvider }      from './providers/smartolt.provider';
 import { decrypt, encrypt }      from '../../common/utils/encryption.util';
 import {
+  getTr069AcsUrl, getTr069AcsUsername, getTr069AcsPassword,
+  getTr069ConnReqUsername, getTr069ConnReqPassword,
+} from '../../config/tr069-acs.config';
+import {
   CrearOltIntegracionDto,
   DiscoverResult,
   MetricasOnuResult,
@@ -526,36 +530,32 @@ export class OltNativoService implements OnModuleInit {
 
   // ── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
   async getTr069Profile(id: string, empresaId: string): Promise<{
-    enabled: boolean; acsUrl: string | null; mgmtVlan: number | null;
+    enabled: boolean; mgmtVlan: number | null;
     mgmtGateway: string | null; mgmtMask: string;
-    acsUsername: string | null; hasPassword: boolean;
-    connReqUsername: string | null; hasConnReqPassword: boolean;
+    // ACS: config de plataforma (.env), de solo lectura — no se guarda por OLT.
+    acsUrl: string; acsUsername: string; acsPassword: string;
+    connReqUsername: string; connReqPassword: string;
   }> {
     const olt = await this.findOlt(id, empresaId);
     return {
-      enabled:             olt.tr069Enabled,
-      acsUrl:              olt.tr069AcsUrl,
-      mgmtVlan:             olt.tr069MgmtVlan,
-      mgmtGateway:          olt.tr069MgmtGateway,
-      mgmtMask:             olt.tr069MgmtMask,
-      acsUsername:          olt.tr069AcsUsername,
-      hasPassword:          !!olt.tr069AcsPassword,        // nunca devolvemos la clave en claro
-      connReqUsername:      olt.tr069ConnReqUsername,
-      hasConnReqPassword:   !!olt.tr069ConnReqPassword,    // nunca devolvemos la clave en claro
+      enabled:         olt.tr069Enabled,
+      mgmtVlan:        olt.tr069MgmtVlan,
+      mgmtGateway:     olt.tr069MgmtGateway,
+      mgmtMask:        olt.tr069MgmtMask,
+      acsUrl:          getTr069AcsUrl(),
+      acsUsername:     getTr069AcsUsername(),
+      acsPassword:     getTr069AcsPassword(),
+      connReqUsername: getTr069ConnReqUsername(),
+      connReqPassword: getTr069ConnReqPassword(),
     };
   }
 
   async setTr069Profile(id: string, empresaId: string, dto: Tr069ProfileDto): Promise<OltDispositivo> {
     const olt = await this.findOlt(id, empresaId);
-    if (dto.enabled         !== undefined) olt.tr069Enabled          = dto.enabled;
-    if (dto.acsUrl          !== undefined) olt.tr069AcsUrl           = dto.acsUrl || null;
-    if (dto.mgmtVlan        !== undefined) olt.tr069MgmtVlan         = dto.mgmtVlan ?? null;
-    if (dto.mgmtGateway     !== undefined) olt.tr069MgmtGateway      = dto.mgmtGateway || null;
-    if (dto.mgmtMask        !== undefined) olt.tr069MgmtMask         = dto.mgmtMask || '255.255.255.0';
-    if (dto.acsUsername     !== undefined) olt.tr069AcsUsername      = dto.acsUsername || null;
-    if (dto.acsPassword     !== undefined) olt.tr069AcsPassword      = dto.acsPassword ? encrypt(dto.acsPassword) : null;
-    if (dto.connReqUsername !== undefined) olt.tr069ConnReqUsername  = dto.connReqUsername || null;
-    if (dto.connReqPassword !== undefined) olt.tr069ConnReqPassword  = dto.connReqPassword ? encrypt(dto.connReqPassword) : null;
+    if (dto.enabled     !== undefined) olt.tr069Enabled     = dto.enabled;
+    if (dto.mgmtVlan    !== undefined) olt.tr069MgmtVlan    = dto.mgmtVlan ?? null;
+    if (dto.mgmtGateway !== undefined) olt.tr069MgmtGateway = dto.mgmtGateway || null;
+    if (dto.mgmtMask    !== undefined) olt.tr069MgmtMask    = dto.mgmtMask || '255.255.255.0';
     return this.oltRepo.save(olt);
   }
 

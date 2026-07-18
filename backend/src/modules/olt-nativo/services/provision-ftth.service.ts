@@ -22,6 +22,10 @@ import { PythonOnuStatusInfo, PythonFtthWanPppoeRequest } from '../dto/olt-nativ
 import { conSelloDatafast } from '../capability/olt-baseline-standard';
 import { ProvisioningStrategyResolver } from './cpe-provisioning/provisioning-strategy-resolver.service';
 import { Tr069GenieacsClient } from '../../tr069/tr069-genieacs.client';
+import {
+  getTr069AcsUrl, getTr069AcsUsername, getTr069AcsPassword,
+  getTr069ConnReqUsername, getTr069ConnReqPassword,
+} from '../../../config/tr069-acs.config';
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de entrada
@@ -574,10 +578,11 @@ export class ProvisionFtthService {
     // sniffer). Ingeniería inversa contra una ONU aprovisionada por SmartOLT confirmó que
     // el mecanismo real es IP ESTÁTICA + `ont tr069-server-config` — replicado aquí sobre
     // la VLAN de gestión propia del ERP (nunca la infraestructura de SmartOLT).
-    if (!olt.tr069AcsUrl || !olt.tr069MgmtGateway) {
-      this.logger.warn(`carril: OLT ${olt.id} sin acsUrl/mgmtGateway configurados — carril omitido`);
+    const acsUrl = getTr069AcsUrl();
+    if (!acsUrl || !olt.tr069MgmtGateway) {
+      this.logger.warn(`carril: OLT ${olt.id} sin ACS URL (.env) / mgmtGateway configurados — carril omitido`);
       await this.poolService.liberar(olt.id, contratoId, 'gestion');
-      return ' Carril TR-069 omitido: configura la URL del ACS y el gateway de gestión en el perfil TR-069 de la OLT.';
+      return ' Carril TR-069 omitido: configura TR069_ACS_URL en el .env del servidor y el gateway de gestión en el perfil TR-069 de la OLT.';
     }
     let mgmtIp: string | null;
     try {
@@ -609,7 +614,7 @@ export class ProvisionFtthService {
         mgmt_ip:              mgmtIp,
         mgmt_mask:            olt.tr069MgmtMask || '255.255.255.0',
         mgmt_gateway:         olt.tr069MgmtGateway,
-        acs_url:              olt.tr069AcsUrl,
+        acs_url:              acsUrl,
         traffic_index:        trafficIndex,
         priority,
       });
@@ -818,11 +823,11 @@ export class ProvisionFtthService {
       }
     }
 
-    // Carril ESTÁTICO (causa raíz 2026-07-17): requiere acsUrl/mgmtGateway del perfil
-    // TR-069 de la OLT y una IP del pool de gestión — ver _ensureCarrilGestion.
-    if (!olt.tr069AcsUrl || !olt.tr069MgmtGateway) {
+    // Carril ESTÁTICO (causa raíz 2026-07-17): requiere ACS URL (config de plataforma,
+    // .env) y mgmtGateway del perfil TR-069 de la OLT, más una IP del pool de gestión.
+    if (!getTr069AcsUrl() || !olt.tr069MgmtGateway) {
       throw new UnprocessableEntityException(
-        'Configura la URL del ACS y el gateway de gestión en el perfil TR-069 de la OLT antes de aplicar el carril.',
+        'Configura TR069_ACS_URL en el .env del servidor y el gateway de gestión en el perfil TR-069 de la OLT antes de aplicar el carril.',
       );
     }
     const mgmtIp = await this.mgmtIpPool.allocar(oltId, dto.contratoId);
@@ -853,11 +858,11 @@ export class ProvisionFtthService {
         sn:         registro.sn,
         mgmtIp,
       },
-      acsUrl:          olt.tr069AcsUrl,
-      acsUsername:     olt.tr069AcsUsername ?? 'tr069',
-      acsPassword:     olt.tr069AcsPassword ? decrypt(olt.tr069AcsPassword) : '',
-      connReqUsername: olt.tr069ConnReqUsername ?? undefined,
-      connReqPassword: olt.tr069ConnReqPassword ? decrypt(olt.tr069ConnReqPassword) : undefined,
+      acsUrl:          getTr069AcsUrl(),
+      acsUsername:     getTr069AcsUsername() || 'tr069',
+      acsPassword:     getTr069AcsPassword(),
+      connReqUsername: getTr069ConnReqUsername() || undefined,
+      connReqPassword: getTr069ConnReqPassword() || undefined,
       oltId,
       empresaId,
       ftthRegistroId:  registro.id,

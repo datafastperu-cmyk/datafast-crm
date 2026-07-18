@@ -118,14 +118,14 @@ export class CreateOltDispositivoDto {
 export class UpdateOltDispositivoDto extends PartialType(CreateOltDispositivoDto) {}
 
 // ─── Perfil TR-069 por OLT (equivalente al "TR069 Profile" de SmartOLT) ──
+// Las credenciales del ACS (URL/usuario/clave/ConnReq) NO son parte de este DTO:
+// son config de plataforma definida por el ERP (.env, ver tr069-acs.config.ts),
+// de solo lectura en el panel — no editable por OLT. Solo los parámetros de RED
+// (que sí varían por OLT/segmento) se aceptan aquí.
 export class Tr069ProfileDto {
   @ApiPropertyOptional({ description: '¿TR-069 disponible en esta OLT?' })
   @IsOptional() @IsBoolean()
   enabled?: boolean;
-
-  @ApiPropertyOptional({ example: 'http://10.8.1.1:7547' })
-  @IsOptional() @IsString() @MaxLength(255)
-  acsUrl?: string;
 
   @ApiPropertyOptional({ example: 1600, description: 'VLAN de gestión para el bootstrap TR-069 (IP estática, ver mgmtGateway/mgmtMask)' })
   @IsOptional() @IsInt() @Min(1) @Max(4094) @Type(() => Number)
@@ -138,20 +138,4 @@ export class Tr069ProfileDto {
   @ApiPropertyOptional({ example: '255.255.255.0', description: 'Máscara de la VLAN de gestión.' })
   @IsOptional() @IsIP('4')
   mgmtMask?: string;
-
-  @ApiPropertyOptional({ description: 'Usuario CWMP (ManagementServer.Username)' })
-  @IsOptional() @IsString() @MaxLength(100)
-  acsUsername?: string;
-
-  @ApiPropertyOptional({ description: 'Clave CWMP (se guarda cifrada)' })
-  @IsOptional() @IsString() @MaxLength(128)
-  acsPassword?: string;
-
-  @ApiPropertyOptional({ description: 'Usuario Connection Request (ACS → CPE, para operaciones inmediatas)' })
-  @IsOptional() @IsString() @MaxLength(100)
-  connReqUsername?: string;
-
-  @ApiPropertyOptional({ description: 'Clave Connection Request (se guarda cifrada)' })
-  @IsOptional() @IsString() @MaxLength(128)
-  connReqPassword?: string;
 }
