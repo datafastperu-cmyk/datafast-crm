@@ -1742,7 +1742,6 @@ def get_huawei_ont_version(
 ) -> dict[str, Any]:
     """
     Consulta la versión de firmware de una ONU Huawei.
-    Comando: display ont version 0/slot/port onu_id
     Retorna ont_version, software_version y equipment_id.
     Síncrono — llamar desde asyncio.to_thread().
 
@@ -1753,10 +1752,19 @@ def get_huawei_ont_version(
     2026-07-18: equipment_id/firmware_version nunca se pudieron persistir en el
     registro FTTH por este bug — confirmado reproduciendo el timeout con la
     función real, no solo con un script ad-hoc).
+
+    Sintaxis: el formato combinado "0/slot/port onu_id" desde el nivel raíz NO es
+    válido en este firmware ("Parameter error") — hay que entrar al contexto
+    `interface gpon 0/<slot>` primero y usar solo `<port> <onu_id>`, igual que
+    `display ont info`/`display ont ipconfig` en el resto de este archivo
+    (confirmado en vivo 2026-07-18).
     """
-    command = f'display ont version 0/{slot}/{port} {onu_id}'
+    cmds = [f'interface gpon 0/{slot}', f'display ont version {port} {onu_id}']
     try:
-        raw_output = _paramiko_huawei_run(conn, [command], timeout=settings.ssh_command_timeout)
+        parts = _paramiko_huawei_run(
+            conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
+        )
+        raw_output = parts[1] if len(parts) > 1 else ''
     except Exception as exc:  # noqa: BLE001
         logger.warning('get_huawei_ont_version: fallo en %s — %s', conn.ip, exc)
         return {'success': False, 'error': str(exc)}
