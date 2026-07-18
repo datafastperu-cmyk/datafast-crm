@@ -146,4 +146,12 @@ export class Tr069ProfileDto {
   @ApiPropertyOptional({ description: 'Clave CWMP (se guarda cifrada)' })
   @IsOptional() @IsString() @MaxLength(128)
   acsPassword?: string;
+
+  @ApiPropertyOptional({ description: 'Usuario Connection Request (ACS → CPE, para operaciones inmediatas)' })
+  @IsOptional() @IsString() @MaxLength(100)
+  connReqUsername?: string;
+
+  @ApiPropertyOptional({ description: 'Clave Connection Request (se guarda cifrada)' })
+  @IsOptional() @IsString() @MaxLength(128)
+  connReqPassword?: string;
 }

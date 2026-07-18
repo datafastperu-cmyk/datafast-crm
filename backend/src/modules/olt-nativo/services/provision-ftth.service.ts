@@ -20,6 +20,8 @@ import { OltOnuIdPoolService }           from './olt-onu-id-pool.service';
 import { OltMgmtIpPoolService }          from './olt-mgmt-ip-pool.service';
 import { PythonOnuStatusInfo, PythonFtthWanPppoeRequest } from '../dto/olt-nativo-ops.dto';
 import { conSelloDatafast } from '../capability/olt-baseline-standard';
+import { ProvisioningStrategyResolver } from './cpe-provisioning/provisioning-strategy-resolver.service';
+import { Tr069GenieacsClient } from '../../tr069/tr069-genieacs.client';
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de entrada
@@ -114,6 +116,10 @@ export class ProvisionFtthService {
     private readonly onuIdPool: OltOnuIdPoolService,
 
     private readonly mgmtIpPool: OltMgmtIpPoolService,
+
+    private readonly cpeResolver: ProvisioningStrategyResolver,
+
+    private readonly genieacs: Tr069GenieacsClient,
   ) {}
 
   private async _logRollback(
@@ -835,36 +841,50 @@ export class ProvisionFtthService {
       `mgmtIp=${mgmtIp} ttIndex=${mgmtTrafficIndex}`,
     );
 
-    let res: { success: boolean; error?: string };
-    try {
-      res = await this.automation.ftthBootstrapTr069({
+    // DISP: la decisión de "por qué canal" (OMCI, HTTP-CPE, u otro futuro) NO
+    // se resuelve aquí — se delega al ProvisioningStrategyResolver, que consulta
+    // el catálogo de capacidad del dispositivo y verifica convergencia real
+    // contra GenieACS antes de reportar éxito (VIO: aceptado ≠ confirmado).
+    const resolverResult = await this.cpeResolver.ejecutarBootstrap({
+      device: {
+        fabricante: olt.marca,
+        modelo:     registro.equipmentId ?? 'DESCONOCIDO',
+        firmware:   registro.firmwareVersion ?? null,
+        sn:         registro.sn,
+        mgmtIp,
+      },
+      acsUrl:          olt.tr069AcsUrl,
+      acsUsername:     olt.tr069AcsUsername ?? 'tr069',
+      acsPassword:     olt.tr069AcsPassword ? decrypt(olt.tr069AcsPassword) : '',
+      connReqUsername: olt.tr069ConnReqUsername ?? undefined,
+      connReqPassword: olt.tr069ConnReqPassword ? decrypt(olt.tr069ConnReqPassword) : undefined,
+      oltId,
+      empresaId,
+      ftthRegistroId:  registro.id,
+      omci: {
         connection:           conn,
         slot:                 registro.slot,
         port:                 registro.port,
-        onu_id:               registro.onuId,
-        mgmt_vlan:            mgmtVlan,
-        mgmt_service_port_id: mgmtServicePortId!,
-        mgmt_ip:              mgmtIp,
-        mgmt_mask:            olt.tr069MgmtMask || '255.255.255.0',
-        mgmt_gateway:         olt.tr069MgmtGateway,
-        acs_url:              olt.tr069AcsUrl,
-        traffic_index:        mgmtTrafficIndex,
+        onuId:                registro.onuId,
+        mgmtVlan,
+        mgmtServicePortId:    mgmtServicePortId!,
+        mgmtMask:             olt.tr069MgmtMask || '255.255.255.0',
+        mgmtGateway:          olt.tr069MgmtGateway,
+        trafficIndex:         mgmtTrafficIndex,
         priority:             dto.priority ?? 2,
-      });
-    } catch (err: any) {
-      res = { success: false, error: err?.message ?? 'Error de comunicación con la OLT' };
-    }
+      },
+    });
 
-    if (!res.success) {
+    if (!resolverResult.exitoso) {
       // Devolver el service-port de gestión al pool si lo tomamos nosotros (rollback).
       if (asignadoDelPool) {
         await this.poolService.liberar(oltId, dto.contratoId, 'gestion').catch(() => { /* best-effort */ });
       }
-      await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(res.error) });
+      await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(resolverResult.mensaje) });
       return {
         exitoso: false,
-        mensaje: 'No se pudo aplicar el carril de gestión TR-069. Revisa el DHCP/Option 43 de la VLAN de gestión.',
-        error:   res.error,
+        mensaje: resolverResult.mensaje,
+        error:   resolverResult.intentos.map((i) => `${i.canal}: ${i.mensaje}`).join(' | '),
       };
     }
 
@@ -879,11 +899,12 @@ export class ProvisionFtthService {
       mgmtTrafficIndex,
       mgmtPriority:           dto.priority ?? 2,
     });
-    this.logger.log(`FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${mgmtVlan}`);
+    this.logger.log(
+      `FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${mgmtVlan} canal=${resolverResult.canalUsado}`,
+    );
     return {
       exitoso: true,
-      mensaje: `Carril de gestión TR-069 aplicado (mgmt WAN DHCP en VLAN ${mgmtVlan}). ` +
-               `La ONU tomará la ACS URL por DHCP Option 43 y aparecerá en GenieACS.`,
+      mensaje: resolverResult.mensaje,
     };
   }
 
@@ -1279,6 +1300,59 @@ export class ProvisionFtthService {
     if (reparadas > 0 || fallidas > 0) {
       this.logger.log(
         `verificarYRepararWanDrift: revisadas=${candidatos.length} ok=${ok} reparadas=${reparadas} fallidas=${fallidas}`,
+      );
+    }
+    return { revisadas: candidatos.length, ok, reparadas, fallidas };
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // reconciliarTr069Drift — cron de reconciliación del canal CPE (incidente
+  // CNT-2026-000004). Un ONT puede "olvidar" su config TR-069 tras un
+  // factory-reset remoto, un power-cycle, o un reemplazo de equipo — sin que
+  // nada en el flujo normal de aprovisionamiento se entere. Se detecta por
+  // staleness de lastInform en GenieACS (no por Config state de la OLT: ya
+  // se demostró que ese flag no es confiable para esto) y se repara
+  // reejecutando bootstrapTr069, que a su vez delega en
+  // ProvisioningStrategyResolver (circuit breaker por canal incluido).
+  // ────────────────────────────────────────────────────────────
+  private readonly TR069_DRIFT_STALENESS_MS = 2 * 60 * 60_000; // 2h sin Inform = drift
+
+  async reconciliarTr069Drift(): Promise<{
+    revisadas: number; ok: number; reparadas: number; fallidas: number;
+  }> {
+    if (!this.genieacs.isConfigured()) {
+      return { revisadas: 0, ok: 0, reparadas: 0, fallidas: 0 }; // módulo degradado — no hay con qué verificar
+    }
+
+    const candidatos = await this.ftthRepo.find({
+      where: { estado: FtthOnuEstado.ACTIVO, tr069BootstrapAplicado: true },
+    });
+
+    let ok = 0, reparadas = 0, fallidas = 0;
+    for (const registro of candidatos) {
+      try {
+        const deviceId = `00259E-${registro.equipmentId ?? ''}-${registro.sn}`;
+        const device = await this.genieacs.getDevice(deviceId).catch(() => null);
+        const lastInform = device?._lastInform ? new Date(device._lastInform).getTime() : 0;
+
+        if (Date.now() - lastInform < this.TR069_DRIFT_STALENESS_MS) { ok++; continue; }
+
+        this.logger.warn(
+          `reconciliarTr069Drift: drift detectado | contrato=${registro.contratoId} ` +
+          `deviceId=${deviceId} lastInform=${device?._lastInform ?? 'nunca'}`,
+        );
+
+        const rep = await this.bootstrapTr069(registro.oltId, registro.empresaId, { contratoId: registro.contratoId });
+        if (rep.exitoso) reparadas++; else fallidas++;
+      } catch (e) {
+        fallidas++;
+        this.logger.warn(`reconciliarTr069Drift: contrato ${registro.contratoId} lanzó — ${(e as Error).message}`);
+      }
+    }
+
+    if (reparadas > 0 || fallidas > 0) {
+      this.logger.log(
+        `reconciliarTr069Drift: revisadas=${candidatos.length} ok=${ok} reparadas=${reparadas} fallidas=${fallidas}`,
       );
     }
     return { revisadas: candidatos.length, ok, reparadas, fallidas };

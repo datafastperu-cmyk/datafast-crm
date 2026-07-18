@@ -1460,10 +1460,15 @@ export interface OnuApplyResult { ok: boolean; applied: number; total: number; f
 // ─── Perfil TR-069 por OLT ─────────────────────────────────────
 export interface Tr069Profile {
   enabled: boolean; acsUrl: string | null; mgmtVlan: number | null;
+  mgmtGateway: string | null; mgmtMask: string;
   acsUsername: string | null; hasPassword: boolean;
+  connReqUsername: string | null; hasConnReqPassword: boolean;
 }
 export interface Tr069ProfileDto {
-  enabled?: boolean; acsUrl?: string; mgmtVlan?: number; acsUsername?: string; acsPassword?: string;
+  enabled?: boolean; acsUrl?: string; mgmtVlan?: number;
+  mgmtGateway?: string; mgmtMask?: string;
+  acsUsername?: string; acsPassword?: string;
+  connReqUsername?: string; connReqPassword?: string;
 }
 
 export const oltTr069ProfileApi = {

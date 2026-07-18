@@ -1958,6 +1958,52 @@ def delete_ont_srvprofile(
     return {'success': True}
 
 
+def remove_gem_from_lineprofile(
+    conn:       OltConnectionSchema,
+    profile_id: int,
+    gem_index:  int,
+) -> dict[str, Any]:
+    """
+    Diagnóstico/limpieza (incidente 2026-07-17, CNT-2026-000004): elimina un GEM
+    huérfano de un ont-lineprofile GPON. Prueba varias sintaxis Huawei conocidas
+    en orden y se detiene en la primera que no reporte error, capturando la
+    salida cruda de CADA intento para diagnóstico (no solo "Unknown command").
+    Verifica el resultado releyendo `display ont-lineprofile gpon profile-id`.
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'remove_gem_from_lineprofile no implementado para marca: {conn.brand.value}')
+
+    variantes = [
+        'ont modify ?',
+    ]
+    intentos: list[dict[str, str]] = []
+    exito = False
+    for variante in variantes:
+        cmds = ['config', f'ont-lineprofile gpon profile-id {profile_id}', variante, 'commit', 'quit', 'quit']
+        try:
+            outputs = _paramiko_huawei_run(conn, cmds, timeout=15.0, return_list=True)
+        except Exception as exc:  # noqa: BLE001
+            intentos.append({'comando': variante, 'resultado': f'EXC: {exc}'})
+            continue
+        salida = outputs[2] if len(outputs) > 2 else ''
+        intentos.append({'comando': variante, 'resultado': salida.strip()[:2000]})
+        if variante.strip().endswith('?'):
+            continue
+        if not any(p in salida for p in ('Unknown command', 'Failure', 'Error', 'Parameter error', 'Incomplete command')):
+            exito = True
+            logger.info(
+                'remove_gem_from_lineprofile: sintaxis exitosa "%s" | profile_id=%d gem=%d en %s',
+                variante, profile_id, gem_index, conn.ip,
+            )
+            break
+        logger.warning(
+            'remove_gem_from_lineprofile: variante falló "%s" | profile_id=%d gem=%d en %s: %s',
+            variante, profile_id, gem_index, conn.ip, salida.strip()[:200],
+        )
+
+    return {'success': exito, 'intentos': intentos}
+
+
 def add_ont_lineprofile(
     conn:         OltConnectionSchema,
     name:         str,
@@ -2099,6 +2145,100 @@ def add_gem_mgmt_to_lineprofile(
             return {'success': False, 'error': f'CLI Huawei reportó error: {linea.strip()}'}
 
     logger.info('add_gem_mgmt_to_lineprofile OK | profile_id=%d tcont=2 dba=%s en %s', profile_id, dba_name, conn.ip)
+    return {'success': True, 'profile_id': profile_id}
+
+
+def add_gem_priority_mapping(
+    conn: OltConnectionSchema, profile_id: int, gem_index: int, priority: int,
+) -> dict[str, Any]:
+    """
+    Agrega una entrada de mapeo prioridad→GEM (802.1p Mapper Service Profile) a un
+    line-profile GPON. Causa raíz #3 del incidente 2026-07-17 (CNT-2026-000004),
+    la definitiva: en modo `mapping-mode priority`, el `gemport N` que la OLT usa
+    al crear el service-port NO determina por sí solo qué GEM usa la ONU para
+    transmitir — lo determina esta tabla, que vive en la ONU. El GEM 1 (datos) del
+    perfil DATAFAST_LINE reclama las 8 prioridades (0-7), incluida la 2 (usada por
+    el IP-host de gestión) — la ONU nunca recibió instrucción de usar el GEM de
+    gestión para esa prioridad, así que el tráfico se quedaba enrutado a GEM 1
+    aunque la OLT esperara verlo en el service-port de gestión. Confirmado
+    comparando contra una ONU aprovisionada por SmartOLT, que reparte prioridades
+    SIN solapar entre sus 3 GEMs. Aditivo — no intenta remover la entrada de GEM 1
+    (evita sintaxis `undo` no confirmada sobre un perfil compartido en producción).
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'add_gem_priority_mapping no implementado para marca: {conn.brand.value}')
+
+    commands = [
+        'config',
+        f'ont-lineprofile gpon profile-id {profile_id}',
+        f'gem mapping {gem_index} {priority} priority {priority}',
+        'commit',
+        'quit',
+        'quit',
+    ]
+    logger.info('add_gem_priority_mapping: profile_id=%d gem=%d priority=%d en %s', profile_id, gem_index, priority, conn.ip)
+    try:
+        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    raw = '\n'.join(outputs[1:4])
+    error_patterns = ['Error:', 'Failure:', 'Parameter error', 'Unknown command', 'Incomplete command']
+    benign = ('has existed already', 'already exist', 'already exists', 'has already existed')
+    for pat in error_patterns:
+        if pat.lower() in raw.lower():
+            linea = next((l for l in raw.splitlines() if pat.lower() in l.lower()), pat)
+            if any(b in linea.lower() for b in benign):
+                logger.info('add_gem_priority_mapping: ya existía en profile_id=%d en %s', profile_id, conn.ip)
+                break
+            return {'success': False, 'error': f'CLI Huawei reportó error: {linea.strip()}'}
+
+    logger.info('add_gem_priority_mapping OK | profile_id=%d gem=%d priority=%d en %s', profile_id, gem_index, priority, conn.ip)
+    return {'success': True, 'profile_id': profile_id}
+
+
+def remove_gem_priority_mapping(
+    conn: OltConnectionSchema, profile_id: int, gem_index: int, mapping_index: int,
+) -> dict[str, Any]:
+    """
+    Elimina una entrada de mapeo prioridad→GEM (802.1p Mapper). Complemento de
+    add_gem_priority_mapping: la OLT no permite que la misma prioridad esté
+    mapeada en dos GEMs a la vez ("Other mapping has the same mapping parameter",
+    confirmado en incidente 2026-07-17) — hay que liberar la entrada del GEM
+    viejo antes de poder asignarla al nuevo. `mapping_index` es el índice dentro
+    de la tabla de ESE gem (0-7, coincide con la prioridad en el mapeo 1:1 que
+    crea add_ont_lineprofile). Síncrono — llamar desde asyncio.to_thread().
+    """
+    if conn.brand != OltBrand.HUAWEI:
+        raise ProvisioningError(f'remove_gem_priority_mapping no implementado para marca: {conn.brand.value}')
+
+    commands = [
+        'config',
+        f'ont-lineprofile gpon profile-id {profile_id}',
+        f'undo gem mapping {gem_index} {mapping_index}',
+        'commit',
+        'quit',
+        'quit',
+    ]
+    logger.info('remove_gem_priority_mapping: profile_id=%d gem=%d idx=%d en %s', profile_id, gem_index, mapping_index, conn.ip)
+    try:
+        outputs = _paramiko_huawei_run(conn, commands, timeout=60.0, return_list=True)
+    except Exception as exc:  # noqa: BLE001
+        return {'success': False, 'error': str(exc)}
+
+    raw = '\n'.join(outputs[1:4])
+    error_patterns = ['Error:', 'Failure:', 'Parameter error', 'Unknown command', 'Incomplete command']
+    benign = ('does not exist',)
+    for pat in error_patterns:
+        if pat.lower() in raw.lower():
+            linea = next((l for l in raw.splitlines() if pat.lower() in l.lower()), pat)
+            if any(b in linea.lower() for b in benign):
+                logger.info('remove_gem_priority_mapping: ya no existía en profile_id=%d en %s', profile_id, conn.ip)
+                break
+            return {'success': False, 'error': f'CLI Huawei reportó error: {linea.strip()}'}
+
+    logger.info('remove_gem_priority_mapping OK | profile_id=%d gem=%d idx=%d en %s', profile_id, gem_index, mapping_index, conn.ip)
     return {'success': True, 'profile_id': profile_id}
 
 
@@ -2947,6 +3087,78 @@ def provision_gpon_ftth(
     return {'success': True, 'sn': sn, 'olt_ip': conn.ip}
 
 
+def _get_or_create_tr069_server_profile(
+    conn:        OltConnectionSchema,
+    acs_url:     str,
+    user:        str = 'tr069',
+    password:    str = 'tr069',
+    auth_realm:  str = 'genieacs',
+) -> int:
+    """
+    CAUSA RAÍZ #5 (incidente 2026-07-17, CNT-2026-000004): una WAN `Service type:
+    Tr069` (Connected, IP estática confirmada por ping) NO basta para que la ONU
+    contacte al ACS — Huawei requiere además vincular el ONT a un
+    `ont tr069-server-profile` explícito vía `ont tr069-server-config <port>
+    <onu_id> profile-id <n>`. Sin este bind, 0 tramas CWMP llegan al ACS pese a
+    WAN "Connected" (confirmado: logs de genieacs-cwmp vacíos, lastInform nunca
+    avanza). Descubierto por ingeniería inversa del `current-configuration` real
+    de la OLT: el profile-id 1 ("SmartOLT", url http://10.69.69.1:14501) está
+    vinculado a decenas de ONTs SmartOLT; el ERP NUNCA reutiliza ese profile —
+    busca/crea el suyo propio por URL (idempotente) y lo referencia por ID.
+    """
+    try:
+        raw = _paramiko_huawei_run(
+            conn, ['display current-configuration | include tr069-server-profile'],
+            timeout=settings.ssh_command_timeout,
+        )
+    except Exception as exc:
+        raise ProvisioningError(
+            f'No se pudo leer tr069-server-profile en {conn.ip}: {exc}'
+        ) from exc
+
+    existing_ids: set[int] = set()
+    for line in raw.splitlines():
+        m = re.search(
+            r'ont tr069-server-profile add profile-id (\d+) profile-name "[^"]*" url "([^"]*)"',
+            line,
+        )
+        if not m:
+            continue
+        pid, url = int(m.group(1)), m.group(2)
+        existing_ids.add(pid)
+        if url.rstrip('/') == acs_url.rstrip('/'):
+            logger.info(
+                'tr069-server-profile ya existe para url=%s | profile_id=%d en %s',
+                acs_url, pid, conn.ip,
+            )
+            return pid
+
+    new_id = 2
+    while new_id in existing_ids:
+        new_id += 1
+    create_cmd = (
+        f'ont tr069-server-profile add profile-id {new_id} '
+        f'profile-name "DATAFAST-ACS" url "{acs_url}" '
+        f'user "{user}" password "{password}" auth-realm "{auth_realm}"'
+    )
+    try:
+        out = _paramiko_huawei_run(
+            conn, ['config', create_cmd, 'quit'], timeout=settings.ssh_command_timeout,
+        )
+    except Exception as exc:
+        raise ProvisioningError(
+            f'No se pudo crear tr069-server-profile en {conn.ip}: {exc}'
+        ) from exc
+    if any(p in out for p in ('Failure:', 'Error:', 'Unknown command', 'Parameter error')):
+        raise ProvisioningError(
+            f'tr069-server-profile add falló en {conn.ip}: {out.strip()[:300]}'
+        )
+    logger.info(
+        'tr069-server-profile creado | url=%s profile_id=%d en %s', acs_url, new_id, conn.ip,
+    )
+    return new_id
+
+
 def provision_mgmt_bootstrap(
     conn:                 OltConnectionSchema,
     slot:                 int,
@@ -2981,14 +3193,24 @@ def provision_mgmt_bootstrap(
     y tráfico de red confirmado por ping. Este bootstrap replica ese MECANISMO (estático)
     sobre la VLAN de gestión propia del ERP — nunca reutiliza IPs/VLAN de SmartOLT.
 
-    IMPORTANTE: NO usa `ont wan-config` para ip-index 0 — crear una WAN ruteada le quita la VLAN
-    al IP host de gestión y la ONU deja de emitir (verificado). La gestión es SOLO un IP host OMCI
-    estático + `ont tr069-server-config` con la URL del ACS explícita (no depende de DHCP Option 43).
-    Requiere ONU online. Síncrono — llamar desde asyncio.to_thread().
+    CAUSA RAÍZ #4, la definitiva (incidente 2026-07-17): un IP-host OMCI simple
+    (`ont ipconfig` sin WAN) nunca es suficiente — la ONU obtiene IP (verificado con
+    ping) pero JAMÁS intenta contactar al ACS (logs CWMP vacíos). Comparando contra
+    `display ont wan-info` de la ONU de referencia SmartOLT se confirmó que su canal
+    de gestión es una WAN COMPLETA con `Service type: Tr069` (mismo mecanismo que la
+    WAN de Internet, vía `ont wan-config`, pero con el comando paralelo
+    `ont tr069-config` en vez de `ont internet-config`) — NO un simple IP-host. La
+    nota previa "no usar ont wan-config para ip-index 0" era una suposición de una
+    sesión anterior nunca verificada contra una referencia real. `acs_url` NO se
+    usa aquí — la ONU descubre el ACS por sí misma al levantar la WAN tr069 (mismo
+    comportamiento que SmartOLT). Requiere ONU online. Síncrono — llamar desde
+    asyncio.to_thread().
     """
+    tr069_profile_id = _get_or_create_tr069_server_profile(conn, acs_url)
     logger.info(
-        'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d ip=%s (static)',
-        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id, mgmt_ip,
+        'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d ip=%s '
+        'tr069_profile_id=%d (static, WAN tr069)',
+        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id, mgmt_ip, tr069_profile_id,
     )
     cmds = [
         'config',
@@ -3005,7 +3227,9 @@ def provision_mgmt_bootstrap(
             f'ip-address {mgmt_ip} mask {mgmt_mask} gateway {mgmt_gateway} pri-dns {mgmt_dns} '
             f'vlan {mgmt_vlan} priority {priority}'
         ),
-        f'ont tr069-server-config {port} {onu_id} acs-url {acs_url}',
+        f'ont tr069-config {port} {onu_id} ip-index 0',
+        f'ont wan-config {port} {onu_id} ip-index 0 profile-id 0',
+        f'ont tr069-server-config {port} {onu_id} profile-id {tr069_profile_id}',
         f'display ont ipconfig {port} {onu_id}',
     ]
 
@@ -3043,10 +3267,10 @@ def provision_mgmt_bootstrap(
                 f'provision_mgmt_bootstrap falló en {conn.ip}: {exc}'
             ) from exc
 
-        # parts: [0]config [1]service-port [2]interface [3]ipconfig [4]display-verificación
-        # parts: [0]config [1]service-port [2]interface [3]ipconfig-static [4]tr069-server-config [5]display-verify
-        raw_create = '\n'.join(parts[:5])
-        verify_out = parts[5] if len(parts) > 5 else ''
+        # parts: [0]config [1]service-port [2]interface [3]ipconfig-static
+        #        [4]tr069-config [5]wan-config [6]tr069-server-config [7]display-verify
+        raw_create = '\n'.join(parts[:7])
+        verify_out = parts[7] if len(parts) > 7 else ''
 
         hubo_error = False
         for pat in error_patterns:

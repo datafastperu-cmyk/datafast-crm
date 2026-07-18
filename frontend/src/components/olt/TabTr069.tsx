@@ -25,8 +25,12 @@ export function TabTr069({ oltId }: { oltId: string }) {
   const [enabled, setEnabled] = useState(false);
   const [acsUrl, setAcsUrl] = useState('');
   const [mgmtVlan, setMgmtVlan] = useState('');
+  const [mgmtGateway, setMgmtGateway] = useState('');
+  const [mgmtMask, setMgmtMask] = useState('');
   const [acsUsername, setAcsUsername] = useState('');
   const [acsPassword, setAcsPassword] = useState('');
+  const [connReqUsername, setConnReqUsername] = useState('');
+  const [connReqPassword, setConnReqPassword] = useState('');
 
   // Precarga el formulario cuando llega el perfil.
   useEffect(() => {
@@ -34,8 +38,12 @@ export function TabTr069({ oltId }: { oltId: string }) {
     setEnabled(data.enabled);
     setAcsUrl(data.acsUrl ?? '');
     setMgmtVlan(data.mgmtVlan != null ? String(data.mgmtVlan) : '');
+    setMgmtGateway(data.mgmtGateway ?? '');
+    setMgmtMask(data.mgmtMask ?? '');
     setAcsUsername(data.acsUsername ?? '');
     setAcsPassword('');
+    setConnReqUsername(data.connReqUsername ?? '');
+    setConnReqPassword('');
   }, [data]);
 
   const mut = useMutation({
@@ -45,13 +53,18 @@ export function TabTr069({ oltId }: { oltId: string }) {
         acsUrl: acsUrl.trim(),
         acsUsername: acsUsername.trim(),
         mgmtVlan: mgmtVlan.trim() ? Number(mgmtVlan) : undefined,
+        mgmtGateway: mgmtGateway.trim(),
+        mgmtMask: mgmtMask.trim(),
+        connReqUsername: connReqUsername.trim(),
       };
       if (acsPassword) dto.acsPassword = acsPassword;
+      if (connReqPassword) dto.connReqPassword = connReqPassword;
       return oltTr069ProfileApi.set(oltId, dto);
     },
     onSuccess: () => {
       toast('Perfil TR-069 guardado', { type: 'success' });
       setAcsPassword('');
+      setConnReqPassword('');
       qc.invalidateQueries({ queryKey: ['olt-tr069-profile', oltId] });
     },
     onError: () => toast('No se pudo guardar el perfil TR-069', { type: 'error' }),
@@ -94,6 +107,14 @@ export function TabTr069({ oltId }: { oltId: string }) {
           <input value={mgmtVlan} onChange={e => setMgmtVlan(e.target.value.replace(/[^0-9]/g, ''))} placeholder="1600" inputMode="numeric" className={inputCls} />
         </div>
         <div>
+          <label className="text-xs font-medium text-muted-foreground">Gateway de gestión (IP estática)</label>
+          <input value={mgmtGateway} onChange={e => setMgmtGateway(e.target.value)} placeholder="10.16.0.1" className={inputCls} />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Máscara de gestión</label>
+          <input value={mgmtMask} onChange={e => setMgmtMask(e.target.value)} placeholder="255.255.255.0" className={inputCls} />
+        </div>
+        <div>
           <label className="text-xs font-medium text-muted-foreground">Usuario ACS (CWMP)</label>
           <input value={acsUsername} onChange={e => setAcsUsername(e.target.value)} placeholder="opcional" className={inputCls} />
         </div>
@@ -104,6 +125,28 @@ export function TabTr069({ oltId }: { oltId: string }) {
           </label>
           <input type="password" value={acsPassword} onChange={e => setAcsPassword(e.target.value)}
             placeholder={data?.hasPassword ? '•••••••• (dejar vacío = sin cambio)' : 'opcional'} className={inputCls} />
+        </div>
+      </div>
+
+      <div className="pt-2 border-t border-border">
+        <h4 className="text-xs font-semibold text-foreground mt-3">Connection Request</h4>
+        <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+          Credenciales que el ACS usa para conectarse de vuelta al CPE (operaciones inmediatas,
+          ej. reboot on-demand). Sin esto la ONU solo se gestiona de forma pasiva vía sus Informs periódicos.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Usuario Connection Request</label>
+            <input value={connReqUsername} onChange={e => setConnReqUsername(e.target.value)} placeholder="opcional" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              Clave Connection Request
+              {data?.hasConnReqPassword && <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400"><ShieldCheck className="w-3 h-3" /> configurada</span>}
+            </label>
+            <input type="password" value={connReqPassword} onChange={e => setConnReqPassword(e.target.value)}
+              placeholder={data?.hasConnReqPassword ? '•••••••• (dejar vacío = sin cambio)' : 'opcional'} className={inputCls} />
+          </div>
         </div>
       </div>
 

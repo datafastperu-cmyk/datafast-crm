@@ -763,6 +763,47 @@ class LineProfileAddGemMgmtResponse(BaseModel):
     error:      str | None = None
 
 
+class LineProfileAddGemPriorityRequest(BaseModel):
+    """Agrega mapeo prioridad→GEM (802.1p Mapper) a un line-profile existente."""
+    connection: OltConnectionSchema
+    profile_id: int = Field(..., ge=1)
+    gem_index:  int = Field(..., ge=1, le=15)
+    priority:   int = Field(..., ge=0, le=7)
+
+
+class LineProfileAddGemPriorityResponse(BaseModel):
+    success:    bool
+    profile_id: int | None = None
+    error:      str | None = None
+
+
+class LineProfileRemoveGemPriorityRequest(BaseModel):
+    """Elimina mapeo prioridad->GEM (802.1p Mapper) de un line-profile existente."""
+    connection:    OltConnectionSchema
+    profile_id:    int = Field(..., ge=1)
+    gem_index:     int = Field(..., ge=1, le=15)
+    mapping_index: int = Field(..., ge=0, le=7)
+
+
+class LineProfileRemoveGemPriorityResponse(BaseModel):
+    success:    bool
+    profile_id: int | None = None
+    error:      str | None = None
+
+
+class LineProfileRemoveGemRequest(BaseModel):
+    """Elimina un GEM huérfano de un line-profile (diagnóstico/limpieza)."""
+    connection: OltConnectionSchema
+    profile_id: int = Field(..., ge=1)
+    gem_index:  int = Field(..., ge=1, le=15)
+
+
+class LineProfileRemoveGemResponse(BaseModel):
+    success: bool
+    intentos: list[dict] = []
+    error:   str | None = None
+
+
 class UplinkVlansRequest(BaseModel):
     """Lee las VLANs taggeadas en un puerto uplink (frame/slot/port)."""
     connection: OltConnectionSchema

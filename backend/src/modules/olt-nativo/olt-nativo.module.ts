@@ -30,6 +30,8 @@ import { OltLineProfile }    from './entities/olt-line-profile.entity';
 import { OltServiceProfile } from './entities/olt-service-profile.entity';
 import { OltSyncJob }        from './entities/olt-sync-job.entity';
 import { OltOnuInventario }  from './entities/olt-onu-inventario.entity';
+import { CpeWebCredential }         from './entities/cpe-web-credential.entity';
+import { CpeProvisioningAttempt }   from './entities/cpe-provisioning-attempt.entity';
 import { OltVlanService }         from './services/olt-vlan.service';
 import { OltTrafficTableService } from './services/olt-traffic-table.service';
 import { OltHealthDashboardService } from './services/olt-health-dashboard.service';
@@ -72,6 +74,11 @@ import { OltSyncService }            from './services/olt-sync.service';
 import { InfrastructureSnapshotService } from './services/infrastructure-snapshot.service';
 import { OltComplianceService }      from './services/olt-compliance.service';
 import { OltGateway }                from './olt.gateway';
+import { CpeProvisioningAttemptService }    from './services/cpe-provisioning/cpe-provisioning-attempt.service';
+import { HuaweiOmciBootstrapChannel }       from './services/cpe-provisioning/huawei-omci-bootstrap-channel.service';
+import { HuaweiHttpBootstrapChannel }       from './services/cpe-provisioning/huawei-http-bootstrap-channel.service';
+import { ProvisioningStrategyResolver }     from './services/cpe-provisioning/provisioning-strategy-resolver.service';
+import { Tr069CpeDriftWatcherCron }         from './cron/tr069-cpe-drift-watcher.cron';
 
 // ═══════════════════════════════════════════════════════════════════
 // OltNativoModule — ecosistema multi-proveedor OLT/ONU
@@ -144,6 +151,8 @@ import { OltGateway }                from './olt.gateway';
       OltServiceProfile,
       OltSyncJob,
       OltOnuInventario,
+      CpeWebCredential,
+      CpeProvisioningAttempt,
     ]),
 
     // HTTP compartido: OltAutomationClient + SmartoltProvider + AdminOltProvider
@@ -211,10 +220,16 @@ import { OltGateway }                from './olt.gateway';
     OltSrvProfileService,
     OltLineProfileService,
     OltGateway,
+    // ── Capa: CPE Provisioning Channels (DISP — capability-driven) ──
+    CpeProvisioningAttemptService,
+    HuaweiOmciBootstrapChannel,
+    HuaweiHttpBootstrapChannel,
+    ProvisioningStrategyResolver,
     FtthRecoveryCron,
     FtthWanWatcherCron,
     OltHealthPollerCron,
     ZtpReconcileCron,
+    Tr069CpeDriftWatcherCron,
   ],
   // Solo exports que módulos externos realmente consumen
   exports: [

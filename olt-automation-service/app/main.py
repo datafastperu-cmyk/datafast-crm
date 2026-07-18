@@ -102,6 +102,12 @@ from app.schemas.olt import (
     LineProfileDeleteResponse,
     LineProfileAddGemMgmtRequest,
     LineProfileAddGemMgmtResponse,
+    LineProfileAddGemPriorityRequest,
+    LineProfileAddGemPriorityResponse,
+    LineProfileRemoveGemPriorityRequest,
+    LineProfileRemoveGemPriorityResponse,
+    LineProfileRemoveGemRequest,
+    LineProfileRemoveGemResponse,
     UplinkTagRequest,
     UplinkTagResponse,
     TrafficTableAddRequest,
@@ -164,6 +170,9 @@ from app.services.provisioning import (
     add_ont_lineprofile,
     delete_ont_lineprofile,
     add_gem_mgmt_to_lineprofile,
+    add_gem_priority_mapping,
+    remove_gem_priority_mapping,
+    remove_gem_from_lineprofile,
     add_traffic_table,
     delete_traffic_table,
     edit_traffic_table,
@@ -1533,6 +1542,69 @@ async def lineprofile_add_gem_mgmt(body: LineProfileAddGemMgmtRequest) -> LinePr
             return LineProfileAddGemMgmtResponse(success=False, error=str(exc))
     return LineProfileAddGemMgmtResponse(
         success=result['success'], profile_id=result.get('profile_id'), error=result.get('error'),
+    )
+
+
+@app.post(
+    '/api/v1/olt/lineprofile/add-gem-priority',
+    response_model=LineProfileAddGemPriorityResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['lineprofile'],
+    summary='Fix estructural: agrega mapeo prioridad->GEM (802.1p Mapper) a un line-profile',
+)
+async def lineprofile_add_gem_priority(body: LineProfileAddGemPriorityRequest) -> LineProfileAddGemPriorityResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                add_gem_priority_mapping, body.connection, body.profile_id, body.gem_index, body.priority,
+            )
+        except ProvisioningError as exc:
+            return LineProfileAddGemPriorityResponse(success=False, error=str(exc))
+    return LineProfileAddGemPriorityResponse(
+        success=result['success'], profile_id=result.get('profile_id'), error=result.get('error'),
+    )
+
+
+@app.post(
+    '/api/v1/olt/lineprofile/remove-gem-priority',
+    response_model=LineProfileRemoveGemPriorityResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['lineprofile'],
+    summary='Fix estructural: elimina mapeo prioridad->GEM (802.1p Mapper) de un line-profile',
+)
+async def lineprofile_remove_gem_priority(body: LineProfileRemoveGemPriorityRequest) -> LineProfileRemoveGemPriorityResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                remove_gem_priority_mapping, body.connection, body.profile_id, body.gem_index, body.mapping_index,
+            )
+        except ProvisioningError as exc:
+            return LineProfileRemoveGemPriorityResponse(success=False, error=str(exc))
+    return LineProfileRemoveGemPriorityResponse(
+        success=result['success'], profile_id=result.get('profile_id'), error=result.get('error'),
+    )
+
+
+@app.post(
+    '/api/v1/olt/lineprofile/remove-gem',
+    response_model=LineProfileRemoveGemResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['lineprofile'],
+    summary='Diagnóstico: elimina un GEM huérfano de un line-profile (prueba varias sintaxis Huawei)',
+)
+async def lineprofile_remove_gem(body: LineProfileRemoveGemRequest) -> LineProfileRemoveGemResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        try:
+            result = await asyncio.to_thread(
+                remove_gem_from_lineprofile, body.connection, body.profile_id, body.gem_index,
+            )
+        except ProvisioningError as exc:
+            return LineProfileRemoveGemResponse(success=False, error=str(exc))
+    return LineProfileRemoveGemResponse(
+        success=result['success'], intentos=result.get('intentos', []),
     )
 
 

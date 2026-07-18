@@ -123,6 +123,16 @@ export class OltDispositivo extends BaseModel {
   @Column({ name: 'tr069_acs_password', type: 'text', nullable: true })
   tr069AcsPassword: string | null;
 
+  // Connection Request: credenciales que el ACS usa para conectarse DE VUELTA al
+  // CPE (operaciones inmediatas, ej. "reboot ahora"). Sin esto la ONU solo puede
+  // ser gestionada de forma pasiva vía sus Informs periódicos.
+  @Column({ name: 'tr069_connreq_username', type: 'varchar', length: 100, nullable: true })
+  tr069ConnReqUsername: string | null;
+
+  /** Cifrada (AES). */
+  @Column({ name: 'tr069_connreq_password', type: 'text', nullable: true })
+  tr069ConnReqPassword: string | null;
+
   // ── SNMP (complementa monitoreo pasivo) ───────────────────
   @Column({ name: 'snmp_community', length: 100, nullable: true, default: 'public' })
   snmpCommunity: string;
