@@ -4,5 +4,5 @@ Value EquipmentId (\S+)
 
 Start
   ^\s+ONT Version\s*:\s+${OntVersion}
-  ^\s+Main Software Version\s*:\s+${SoftwareVersion}
-  ^\s+Equipment-ID\s*:\s+${EquipmentId} -> Record
+  ^\s+Equipment-ID\s*:\s+${EquipmentId}
+  ^\s+Main Software Version\s*:\s+${SoftwareVersion} -> Record
