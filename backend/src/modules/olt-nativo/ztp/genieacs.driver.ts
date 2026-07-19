@@ -113,6 +113,18 @@ export class GenieAcsDriver {
     return { ok: true };
   }
 
+  /** ProductClass (modelo) que la ONU reporta a GenieACS, por SN — tolerando el desajuste
+   *  legible↔hex. Fallback de detección de modelo cuando la OLT no lo reporta (ontVersion). */
+  async getProductClassBySerial(serial: string): Promise<string | null> {
+    const variants = this._snVariants(serial);
+    if (variants.length === 0) return null;
+    const query = variants.length === 1
+      ? { '_deviceId._SerialNumber': variants[0] }
+      : { '_deviceId._SerialNumber': { $in: variants } };
+    const rows = await this.nbi.listDevices(query, '_deviceId._ProductClass');
+    return rows[0]?._deviceId?._ProductClass ?? null;
+  }
+
   /** Runtime del device (para resolver el DeviceProfile). */
   async getRuntime(deviceId: string): Promise<DeviceRuntime | null> {
     const dev = await this.nbi.getDevice(deviceId);

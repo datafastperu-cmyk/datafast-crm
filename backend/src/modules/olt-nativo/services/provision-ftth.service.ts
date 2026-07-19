@@ -22,6 +22,7 @@ import { PythonOnuStatusInfo, PythonFtthWanPppoeRequest } from '../dto/olt-nativ
 import { conSelloDatafast } from '../capability/olt-baseline-standard';
 import { ProvisioningStrategyResolver } from './cpe-provisioning/provisioning-strategy-resolver.service';
 import { Tr069GenieacsClient } from '../../tr069/tr069-genieacs.client';
+import { GenieAcsDriver } from '../ztp/genieacs.driver';
 import {
   getTr069AcsUrl, getTr069AcsUsername, getTr069AcsPassword,
   getTr069ConnReqUsername, getTr069ConnReqPassword,
@@ -124,6 +125,7 @@ export class ProvisionFtthService {
     private readonly cpeResolver: ProvisioningStrategyResolver,
 
     private readonly genieacs: Tr069GenieacsClient,
+    private readonly genieDriver: GenieAcsDriver,
   ) {}
 
   private async _logRollback(
@@ -765,6 +767,22 @@ export class ProvisionFtthService {
         }
       } catch (err: any) {
         this.logger.warn(`No se pudo obtener equipment_id de la OLT | registro=${registro.id}: ${err?.message}`);
+      }
+    }
+    // Fallback de detección de modelo: si la OLT no lo reportó (ontVersion falla en algunos
+    // firmwares), leer el ProductClass que la ONU reporta a GenieACS por SN — persiste ahí
+    // aunque la ONU se haya factory-reseteado. Evita CPE_MODEL_NOT_SUPPORTED al re-aprovisionar
+    // una ONU ya conocida (el resolver necesita el modelo para elegir el canal del catálogo).
+    if (!equipmentId) {
+      try {
+        const pc = await this.genieDriver.getProductClassBySerial(registro.sn);
+        if (pc) {
+          equipmentId = pc;
+          await this.ftthRepo.update(registro.id, { equipmentId });
+          this.logger.log(`equipment_id resuelto por GenieACS | registro=${registro.id}: ${pc}`);
+        }
+      } catch (err: any) {
+        this.logger.warn(`No se pudo leer ProductClass de GenieACS | registro=${registro.id}: ${err?.message}`);
       }
     }
 
