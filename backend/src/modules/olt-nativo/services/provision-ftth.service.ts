@@ -452,9 +452,7 @@ export class ProvisionFtthService {
     // OLT con TR-069 activo y en CUALQUIER ruta (botón Aprovisionar, reaplicar, recovery).
     // Idempotente (reusa el service-port de gestión del contrato) y best-effort (no tumba
     // el aprovisionamiento del plano de datos si el carril falla).
-    const carrilNota = await this._ensureCarrilGestion(
-      olt, conn, registroId, dto.contratoId, dto.slot, dto.port, onuId,
-    );
+    const carrilNota = await this._ensureCarrilGestion(olt, dto.contratoId);
 
     // Punto único común tras confirmar el service-port de datos en la OLT — ver
     // _syncVlanContrato para la causa raíz que esto corrige (contratos.vlan_id NULL).
@@ -542,123 +540,24 @@ export class ProvisionFtthService {
   // ────────────────────────────────────────────────────────────
   private async _ensureCarrilGestion(
     olt:        OltDispositivo,
-    conn:       any,
-    registroId: string,
     contratoId: string,
-    slot:       number,
-    port:       number,
-    onuId:      number,
   ): Promise<string> {
     if (!olt.tr069Enabled) return '';
 
-    // Directriz "inyectar desde cero": la VLAN de gestión debe ser la CANÓNICA que declara
-    // el baseline (olt.tr069MgmtVlan lo puebla el plan vía declarar_tr069_vlan), NUNCA
-    // vlanGestionDefecto — ese campo puede reflejar una VLAN heredada/no-canónica de la OLT.
-    const mgmtVlan = olt.tr069MgmtVlan ?? null;
-    if (mgmtVlan == null) {
-      this.logger.warn(`carril: OLT ${olt.id} con TR-069 activo pero SIN VLAN TR-069 canónica declarada — carril omitido`);
-      return ' Carril TR-069 omitido: la OLT no tiene VLAN TR-069 canónica declarada (asigna y aplica el Baseline Datafast Estándar).';
-    }
-
-    // Reusa el service-port de gestión del contrato si ya lo tenía; si no, asigna del pool.
-    let mgmtSvcPort: number | null;
+    // WIRING ÚNICO (directriz feedback_arquitectura_multicanal_provisioning): el carril de
+    // gestión SIEMPRE pasa por bootstrapTr069 → ProvisioningStrategyResolver (catálogo de
+    // capacidad por modelo + verificación de convergencia real contra GenieACS, VIO). El
+    // flujo automático (este) y el manual (endpoint) comparten UN solo orquestador — nunca
+    // se invoca un canal ni provision_mgmt_bootstrap directamente desde el aprovisionamiento.
+    // Best-effort: el plano de datos ya está OK, así que un fallo del carril no tumba la provisión.
     try {
-      mgmtSvcPort = await this.poolService.allocar(olt.id, contratoId, 'gestion');
-    } catch (err: any) {
-      this.logger.error(`carril: pool de gestión agotado | olt=${olt.id}: ${err?.message}`);
-      return ' Carril TR-069 pendiente: pool de gestión agotado (amplía el rango del canal "gestion").';
+      const r = await this.bootstrapTr069(olt.id, olt.empresaId, { contratoId });
+      return ' ' + r.mensaje;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`carril: bootstrapTr069 lanzó | contrato=${contratoId}: ${msg}`);
+      return ` Carril TR-069 no aplicado: ${msg}`;
     }
-    if (mgmtSvcPort == null) {
-      this.logger.warn(`carril: OLT ${olt.id} sin pool de gestión configurado — carril omitido`);
-      return ' Carril TR-069 omitido: configura el pool del canal "gestion" en la OLT.';
-    }
-
-    // Carril de gestión ESTÁTICO (causa raíz 2026-07-17, CNT-2026-000004): DHCP en el
-    // IP-host de gestión nunca materializó tráfico (2 ONUs, 2 firmwares, confirmado con
-    // sniffer). Ingeniería inversa contra una ONU aprovisionada por SmartOLT confirmó que
-    // el mecanismo real es IP ESTÁTICA + `ont tr069-server-config` — replicado aquí sobre
-    // la VLAN de gestión propia del ERP (nunca la infraestructura de SmartOLT).
-    const acsUrl = getTr069AcsUrl();
-    if (!acsUrl || !olt.tr069MgmtGateway) {
-      this.logger.warn(`carril: OLT ${olt.id} sin ACS URL (.env) / mgmtGateway configurados — carril omitido`);
-      await this.poolService.liberar(olt.id, contratoId, 'gestion');
-      return ' Carril TR-069 omitido: configura TR069_ACS_URL en el .env del servidor y el gateway de gestión en el perfil TR-069 de la OLT.';
-    }
-    let mgmtIp: string | null;
-    try {
-      mgmtIp = await this.mgmtIpPool.allocar(olt.id, contratoId);
-    } catch (err: any) {
-      this.logger.error(`carril: pool de IPs de gestión agotado | olt=${olt.id}: ${err?.message}`);
-      await this.poolService.liberar(olt.id, contratoId, 'gestion');
-      return ' Carril TR-069 pendiente: pool de IPs de gestión agotado (amplía el rango en la OLT).';
-    }
-    if (mgmtIp == null) {
-      this.logger.warn(`carril: OLT ${olt.id} sin pool de IPs de gestión configurado — carril omitido`);
-      await this.poolService.liberar(olt.id, contratoId, 'gestion');
-      return ' Carril TR-069 omitido: configura el pool de IPs de gestión en la OLT.';
-    }
-
-    // Carril canónico del ERP (directriz "inyectar desde cero"): usar la
-    // traffic table ERP-MGMT del baseline estándar, nunca el index 0
-    // preexistente de la OLT. Fallback a 0 SOLO si el estándar aún no se
-    // aplicó en esta OLT (queda advertido en logs y visible en compliance).
-    const trafficIndex = await this._resolverTrafficIndexGestion(olt.id);
-    const priority     = 2;
-    let res: { success: boolean; error?: string };
-    try {
-      res = await this.automation.ftthBootstrapTr069({
-        connection:           conn,
-        slot, port, onu_id:   onuId,
-        mgmt_vlan:            mgmtVlan,
-        mgmt_service_port_id: mgmtSvcPort,
-        mgmt_ip:              mgmtIp,
-        mgmt_mask:            olt.tr069MgmtMask || '255.255.255.0',
-        mgmt_gateway:         olt.tr069MgmtGateway,
-        acs_url:              acsUrl,
-        traffic_index:        trafficIndex,
-        priority,
-      });
-    } catch (err: any) {
-      res = { success: false, error: err?.message ?? 'error de comunicación con la OLT' };
-    }
-
-    if (!res.success) {
-      this.logger.error(`carril: bootstrap TR-069 falló | contrato=${contratoId} olt=${olt.id}: ${res.error}`);
-      await this.ftthRepo.update(registroId, { ultimoError: this._limpiar(res.error) });
-      return ` Carril TR-069 NO aplicado: ${this._limpiar(res.error) ?? 'error'} (la ONU no aparecerá en GenieACS).`;
-    }
-
-    await this.ftthRepo.update(registroId, {
-      tr069BootstrapAplicado: true,
-      mgmtServicePortId:      mgmtSvcPort,
-      mgmtVlan,
-      mgmtTrafficIndex:       trafficIndex,
-      mgmtPriority:           priority,
-    });
-
-    // Verificación de plano de gestión (Inc. post-incidente 2026-07-17, CNT-2026-000004):
-    // que la OLT haya aceptado el comando OMCI NO significa que el firmware de la ONU
-    // materializó el IP-host en tráfico real — en esa ONU la config quedó "aceptada"
-    // durante días mientras el canal de gestión estaba completamente muerto (0 tramas
-    // Ethernet emitidas, confirmado con sniffer). Se sondea brevemente (no bloquea el
-    // aprovisionamiento si tarda — la ONU puede seguir negociando DHCP después) y se
-    // distingue "aplicado y confirmado" de "aceptado por OMCI, sin confirmar" en el
-    // mensaje devuelto al operador.
-    let confirmado = false;
-    for (let intento = 0; intento < 4; intento++) {
-      await new Promise((r) => setTimeout(r, 3000));
-      const chk = await this.automation.ftthCheckMgmtIp({ connection: conn, slot, port, onu_id: onuId });
-      if (chk.has_ip) { confirmado = true; break; }
-    }
-
-    this.logger.log(
-      `carril TR-069 ${confirmado ? 'OK confirmado' : 'aceptado SIN confirmar'} | ` +
-      `contrato=${contratoId} olt=${olt.id} mgmtVlan=${mgmtVlan} svcPort=${mgmtSvcPort}`,
-    );
-    return confirmado
-      ? ' Carril TR-069 aplicado y confirmado (IP de gestión obtenida — la ONU aparecerá en GenieACS).'
-      : ' Carril TR-069 aceptado por la OLT, pero SIN confirmar (la ONU no obtuvo IP de gestión tras ' +
-        '12s — puede tardar más o ser una limitación de firmware de esta unidad; revisa el panel TR-069 luego).';
   }
 
   // Resuelve el índice de la traffic table de gestión canónica (ERP-MGMT,

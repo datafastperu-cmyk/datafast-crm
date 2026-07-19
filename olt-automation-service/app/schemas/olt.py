@@ -411,13 +411,14 @@ class FtthRollbackResponse(BaseModel):
 
 
 class FtthBootstrapRequest(BaseModel):
-    """Carril de bootstrap TR-069: mgmt IP-host ESTÁTICO + service-port GEM3 + FEC.
+    """Carril de bootstrap TR-069: mgmt IP-host + service-port GEM3 + FEC.
 
-    Causa raíz 2026-07-17 (CNT-2026-000004): DHCP en el IP-host de gestión nunca
-    materializó tráfico (2 ONUs, 2 firmwares, confirmado con sniffer). Ingeniería
-    inversa contra una ONU aprovisionada por SmartOLT confirmó que el mecanismo
-    real es IP ESTÁTICA + `ont tr069-server-config` con la URL del ACS explícita —
-    NO depende de DHCP Option 43. NO usa ont wan-config (rompería el IP host)."""
+    `modo` selecciona la estrategia de entrega de la ACS URL (canal del resolver):
+      - 'dhcp'   → IP-host DHCP; URL por DHCP Option 43 (canal dhcp_bootstrap).
+        VALIDADO 2026-07-19 en EG8145V5/V5R020C10S195.
+      - 'static' → IP-host estático + ME137 (canal omci_management_server). En este
+        firmware NO materializa (CNT-2026-000004); se mantiene para otras variantes.
+    En modo 'dhcp', mgmt_ip/mask/gateway se ignoran (la IP la da el DHCP)."""
     connection:           OltConnectionSchema
     slot:                 int = Field(..., ge=0, le=15)
     port:                 int = Field(..., ge=0, le=15)
@@ -431,6 +432,7 @@ class FtthBootstrapRequest(BaseModel):
     mgmt_dns:             str = Field('8.8.8.8', description='DNS primario del IP-host de gestión.')
     traffic_index:        int = Field(0, ge=0, description='Traffic-table del service-port de gestión. 0 = sin límite.')
     priority:             int = Field(2, ge=0, le=7, description='PCP del IP host de gestión (Huawei suele esperar 2).')
+    modo:                 str = Field('dhcp', description="Estrategia de entrega ACS URL: 'dhcp' (Option 43) | 'static' (ME137).")
 
 
 class FtthBootstrapResponse(BaseModel):

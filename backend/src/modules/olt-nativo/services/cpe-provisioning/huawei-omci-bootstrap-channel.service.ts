@@ -11,7 +11,7 @@ import {
 // se interpreta como convergencia real (ver ProvisioningStrategyResolver).
 @Injectable()
 export class HuaweiOmciBootstrapChannel implements CpeProvisioningChannel {
-  readonly nombre = 'omci_tr069' as const;
+  readonly nombre = 'omci_management_server' as const;
   private readonly logger = new Logger(HuaweiOmciBootstrapChannel.name);
 
   constructor(private readonly automation: OltAutomationClient) {}
@@ -39,13 +39,14 @@ export class HuaweiOmciBootstrapChannel implements CpeProvisioningChannel {
         acs_url:               ctx.acsUrl,
         traffic_index:         omci.trafficIndex,
         priority:              omci.priority,
+        modo:                  'static',   // ME137: IP-host estático + tr069-server-config
       });
       if (!res.success) {
         return { exitoso: false, mensaje: 'OMCI rechazó el bootstrap TR-069', error: res.error };
       }
       return { exitoso: true, mensaje: 'OMCI aceptó el bootstrap TR-069 (pendiente de verificación real)' };
     } catch (err: any) {
-      this.logger.warn(`Canal omci_tr069 falló | registro=${ctx.ftthRegistroId}: ${err?.message}`);
+      this.logger.warn(`Canal omci_management_server falló | registro=${ctx.ftthRegistroId}: ${err?.message}`);
       return { exitoso: false, mensaje: 'Error de comunicación OMCI', error: err?.message ?? String(err) };
     }
   }

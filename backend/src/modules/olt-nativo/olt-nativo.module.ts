@@ -76,6 +76,7 @@ import { OltComplianceService }      from './services/olt-compliance.service';
 import { OltGateway }                from './olt.gateway';
 import { CpeProvisioningAttemptService }    from './services/cpe-provisioning/cpe-provisioning-attempt.service';
 import { HuaweiOmciBootstrapChannel }       from './services/cpe-provisioning/huawei-omci-bootstrap-channel.service';
+import { HuaweiDhcpBootstrapChannel }       from './services/cpe-provisioning/huawei-dhcp-bootstrap-channel.service';
 import { HuaweiHttpBootstrapChannel }       from './services/cpe-provisioning/huawei-http-bootstrap-channel.service';
 import { ProvisioningStrategyResolver }     from './services/cpe-provisioning/provisioning-strategy-resolver.service';
 import { Tr069CpeDriftWatcherCron }         from './cron/tr069-cpe-drift-watcher.cron';
@@ -223,6 +224,7 @@ import { Tr069CpeDriftWatcherCron }         from './cron/tr069-cpe-drift-watcher
     // ── Capa: CPE Provisioning Channels (DISP — capability-driven) ──
     CpeProvisioningAttemptService,
     HuaweiOmciBootstrapChannel,
+    HuaweiDhcpBootstrapChannel,
     HuaweiHttpBootstrapChannel,
     ProvisioningStrategyResolver,
     FtthRecoveryCron,

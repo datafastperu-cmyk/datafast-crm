@@ -784,7 +784,7 @@ async def ftth_bootstrap_tr069(body: FtthBootstrapRequest) -> FtthBootstrapRespo
                 body.slot, body.port, body.onu_id,
                 body.mgmt_vlan, body.mgmt_service_port_id,
                 body.mgmt_ip, body.mgmt_mask, body.mgmt_gateway, body.acs_url,
-                body.mgmt_dns, body.traffic_index, body.priority,
+                body.mgmt_dns, body.traffic_index, body.priority, body.modo,
             )
         except ProvisioningError as exc:
             logger.warning(

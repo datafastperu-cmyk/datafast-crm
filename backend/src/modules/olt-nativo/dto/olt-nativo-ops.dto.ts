@@ -641,6 +641,8 @@ export interface PythonFtthBootstrapRequest {
   mgmt_dns?:            string;
   traffic_index?:       number;
   priority?:            number;
+  /** Estrategia de entrega ACS URL: 'dhcp' (Option 43) | 'static' (ME137). Default backend: 'dhcp'. */
+  modo?:                'dhcp' | 'static';
 }
 
 export interface PythonFtthBootstrapResponse {

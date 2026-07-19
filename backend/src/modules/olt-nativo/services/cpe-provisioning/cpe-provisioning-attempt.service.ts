@@ -24,8 +24,9 @@ import { NombreCanal } from '../../capability/cpe-provisioning-catalog';
 interface Umbral { maxIntentos: number; cooldownMs: number; }
 
 const UMBRALES: Record<NombreCanal, Umbral> = {
-  omci_tr069: { maxIntentos: 3, cooldownMs: 2 * 60_000 },        // 2 min
-  http_web:   { maxIntentos: 1, cooldownMs: 30 * 60_000 },       // 30 min
+  dhcp_bootstrap:         { maxIntentos: 3, cooldownMs: 2 * 60_000 },   // 2 min
+  omci_management_server: { maxIntentos: 3, cooldownMs: 2 * 60_000 },   // 2 min
+  cpe_local:              { maxIntentos: 1, cooldownMs: 30 * 60_000 },  // 30 min (autolockout del panel)
 };
 
 @Injectable()

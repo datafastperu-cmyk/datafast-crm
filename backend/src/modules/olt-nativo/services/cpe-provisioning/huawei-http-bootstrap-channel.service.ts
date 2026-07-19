@@ -69,7 +69,7 @@ import {
 // ─────────────────────────────────────────────────────────────
 @Injectable()
 export class HuaweiHttpBootstrapChannel implements CpeProvisioningChannel {
-  readonly nombre = 'http_web' as const;
+  readonly nombre = 'cpe_local' as const;
   private readonly logger = new Logger(HuaweiHttpBootstrapChannel.name);
 
   private readonly TIMEOUT_MS = 8_000;

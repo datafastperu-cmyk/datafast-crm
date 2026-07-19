@@ -3205,6 +3205,7 @@ def provision_mgmt_bootstrap(
     mgmt_dns:              str = '8.8.8.8',
     traffic_index:        int = 0,
     priority:             int = 2,
+    modo:                  str = 'dhcp',
 ) -> dict[str, Any]:
     """
     Carril de bootstrap TR-069 — se aplica a una ONU YA registrada (tras Fase 1 GPON).
@@ -3252,10 +3253,22 @@ def provision_mgmt_bootstrap(
     # pero sin tráfico real (0 tramas, ni ARP) — exactamente el síntoma del incidente
     # original. SmartOLT crea los service-port SIEMPRE AL FINAL, después de cerrar el
     # contexto `interface gpon`. Se replica ese orden aquí.
+    # `modo` selecciona la ESTRATEGIA de entrega de la ACS URL (canal del resolver):
+    #   'dhcp'   → IP-host en DHCP; la URL llega por DHCP Option 43 (canal dhcp_bootstrap).
+    #   'static' → IP-host estático + la URL se empuja por ME137 (canal omci_management_server).
+    modo_l = (modo or 'dhcp').lower()
+    if modo_l == 'static':
+        ipcfg = (
+            f'ont ipconfig {port} {onu_id} ip-index 0 static '
+            f'ip-address {mgmt_ip} mask {mgmt_mask} gateway {mgmt_gateway} pri-dns {mgmt_dns} '
+            f'vlan {mgmt_vlan} priority {priority}'
+        )
+    else:
+        ipcfg = f'ont ipconfig {port} {onu_id} ip-index 0 dhcp vlan {mgmt_vlan} priority {priority}'
     cmds = [
         'config',
         f'interface gpon 0/{slot}',
-        f'ont ipconfig {port} {onu_id} ip-index 0 dhcp vlan {mgmt_vlan} priority {priority}',
+        ipcfg,
         f'ont tr069-server-config {port} {onu_id} profile-id {tr069_profile_id}',
         'quit',
         (
@@ -3395,9 +3408,10 @@ def provision_mgmt_bootstrap(
     # una IP ya materializada aquí: el DHCP es asíncrono; la materialización real (lease +
     # Inform) la confirma el drift-watcher / check_ont_mgmt_ip aparte.
     v = verify_out.lower()
-    if 'dhcp' not in v:
+    expect_token = 'static' if modo_l == 'static' else 'dhcp'
+    if expect_token not in v:
         raise ProvisioningError(
-            f'El IP host de gestión (ip-index 0, DHCP) no se configuró en {conn.ip} '
+            f'El IP host de gestión (ip-index 0, {expect_token}) no se configuró en {conn.ip} '
             f'(ont {slot}/{port}/{onu_id}). Verificación: {verify_out[-200:].strip()}'
         )
 

@@ -1,44 +1,43 @@
 // ─────────────────────────────────────────────────────────────
-// Catálogo de canales de aprovisionamiento TR-069 por CPE (ONT/ONU).
+// Catálogo de ESTRATEGIAS de bootstrap TR-069 por CPE (ONT/ONU).
 //
-// Origen (incidente 2026-07-17/18, CNT-2026-000004): se demostró que el
-// comando OMCI `ont tr069-server-config` es aceptado por el CLI de la OLT
-// Huawei MA5800 pero NO logra sobrescribir de forma confiable la Managed
-// Entity "TR069 Management Server" (ME 137, ITU-T G.988) en el ONT Huawei
-// EG8145V5 (firmware V5R020C10S195). El ONT permaneció apuntando a un ACS
-// anterior (SmartOLT) pese al comando OMCI aceptado sin error, y la
-// configuración TR-069 solo convergió al escribirla directamente vía la
-// interfaz HTTP de administración del propio equipo (mismo IP de gestión
-// TR-069, alcanzable desde la red del backend, no solo LAN del cliente).
+// Directriz de arquitectura (feedback_arquitectura_multicanal_provisioning, 2026-07-19):
+// un canal representa una ESTRATEGIA de bootstrap, no una tecnología concreta. Así, el
+// día que Huawei use DHCP Option 43, ZTE Option 125 y VSOL otro Vendor-Specific, todos
+// siguen siendo la MISMA estrategia (`dhcp_bootstrap`) — no hay que renombrar nada.
 //
-// IMPORTANTE (feedback del experto consultado): esto NO demuestra que la
-// ME137 "nunca se escriba" — solo que la configuración no converge por esa
-// vía en este firmware. Por eso el canal HTTP se modela como una CAPACIDAD
-// adicional del dispositivo (certificada para esta combinación exacta de
-// fabricante/modelo/firmware), no como un "fallback" genérico ni como
-// solución universal. Cada fabricante/modelo/firmware tiene su propia
-// entrada — un modelo no catalogado NUNCA cae a un intento a ciegas.
+//   omci_management_server → escribir el ACS en la ONU vía OMCI (ME137 / tr069-server-config)
+//   dhcp_bootstrap         → la ONU descubre la ACS URL por DHCP (Option 43 / 125 / vendor)
+//   cpe_local              → escribir vía el panel/API local del CPE (solo LAN del equipo)
 //
-// RIESGO CONFIRMADO EN VIVO: el panel de administración web del EG8145V5
-// se autobloquea tras 3 intentos de login fallidos (observado: LoginTimes=3,
-// LockLeftTime=42s). El canal HTTP DEBE aplicarse con circuit breaker
-// estricto (ver CpeProvisioningAttempt) — nunca reintentos agresivos.
+// El resolver NUNCA confía en el "success" del canal: verifica convergencia real contra
+// GenieACS (VIO: accepted ≠ materialized). Un modelo no catalogado => CPE_MODEL_NOT_SUPPORTED,
+// jamás un intento a ciegas.
+//
+// Evidencia EG8145V5/V5R020C10S195 (CNT-2026-000004): `omci_management_server` NO materializa
+// el ME137 en este firmware (validado con sniffer); `dhcp_bootstrap` (WAN mgmt DHCP + Option 43)
+// SÍ converge (validado end-to-end). Por eso aquí dhcp_bootstrap es CERTIFIED y omci EXPERIMENTAL.
+// En otro firmware donde el ME137 sí funcione, omci_management_server sería el CERTIFIED — la
+// decisión es POR MODELO, nunca una dependencia global de un mecanismo.
+//
+// RIESGO CONFIRMADO: el panel web del EG8145V5 se autobloquea tras 3 logins fallidos
+// (LoginTimes=3, LockLeftTime=42s) y solo escucha en la LAN del cliente (inalcanzable desde
+// el backend). Por eso `cpe_local` es DISABLED — solo herramienta manual en sitio.
 // ─────────────────────────────────────────────────────────────
 
-export type NombreCanal = 'omci_tr069' | 'http_web';
+export type NombreCanal = 'omci_management_server' | 'dhcp_bootstrap' | 'cpe_local';
 
-export type EstadoCertificacion =
-  | 'operativo'      // probado end-to-end, seguro para uso automático
-  | 'experimental'   // implementado pero no validado en producción a escala
-  | 'no_certificado'; // existe en el código pero requiere validación manual antes de habilitarse
+// Nivel de confianza del canal para ESTE modelo/firmware — más expresivo que un booleano:
+//   CERTIFIED    → probado end-to-end en hardware real, seguro para uso automático.
+//   VALIDATED    → probado, pero aún no a escala/producción; el resolver lo usa en automático.
+//   EXPERIMENTAL → implementado pero sin confirmar; solo se intenta si una política lo permite.
+//   DISABLED     → no se intenta nunca en automático (inseguro, inalcanzable o descartado).
+export type ConfidenceLevel = 'CERTIFIED' | 'VALIDATED' | 'EXPERIMENTAL' | 'DISABLED';
 
 export interface CanalCapability {
-  canal:          NombreCanal;
-  estado:         EstadoCertificacion;
-  notas:          string;
-  // Si false, el resolver NUNCA invoca este canal automáticamente aunque supports()
-  // devuelva true — requiere que un operador lo habilite explícitamente (flag BD/env).
-  habilitadoAuto: boolean;
+  canal:      NombreCanal;
+  confidence: ConfidenceLevel;
+  notas:      string;
 }
 
 export interface CpeModelCapability {
@@ -49,9 +48,8 @@ export interface CpeModelCapability {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Catálogo — se agregan entradas a medida que se certifican nuevos
-// modelos/canales. Un modelo/fabricante ausente => CPE_MODEL_NOT_SUPPORTED,
-// jamás un intento silencioso.
+// Catálogo — una entrada por modelo/fabricante. Se amplía a medida que se
+// certifican nuevos modelos/canales.
 // ─────────────────────────────────────────────────────────────
 export const CPE_PROVISIONING_CATALOG: CpeModelCapability[] = [
   {
@@ -60,31 +58,50 @@ export const CPE_PROVISIONING_CATALOG: CpeModelCapability[] = [
     firmwaresValidados: ['V5R020C10S195'],
     canales: [
       {
-        canal: 'omci_tr069',
-        estado: 'no_certificado',
-        notas: 'Aceptado por CLI/OMCI pero no confirmado que escriba ME137 de forma confiable en este firmware (incidente CNT-2026-000004). Se intenta primero por ser el estándar y por resolver WAN/service-port/GEM, pero su resultado SIEMPRE se verifica — nunca se asume éxito.',
-        habilitadoAuto: true,
+        canal: 'dhcp_bootstrap',
+        confidence: 'CERTIFIED',
+        notas: 'WAN de gestión en DHCP + ACS URL por DHCP Option 43 (servida por el MikroTik de la ' +
+               'VLAN de gestión). Validado end-to-end 2026-07-19: lease real + Inform a GenieACS con la ' +
+               'config ACS borrada (solo Option 43 pudo entregar la URL).',
       },
       {
-        canal: 'http_web',
-        estado: 'experimental',
-        notas: 'DESCARTADO como canal automático/remoto — confirmado en vivo el 2026-07-18 mediante prueba end-to-end real (bootstrap tras factory reset, registro=91f88a42-7410-441f-a4f2-8dd5ee737f82): la sesión y el Apply (x.URL/x.Username/x.Password/x.ConnectionRequestUsername/x.ConnectionRequestPassword vía set.cgi) funcionan y persisten correctamente CUANDO el cliente HTTP está en la LAN del ONT (verificado visualmente en el panel). Pero al invocarlo desde el backend contra la IP de gestión TR-069/WAN (10.16.0.10, misma VLAN 1600 del carril OMCI) el POST nunca responde (timeout, ping SÍ responde — el servidor web del ONT no escucha en esa interfaz, solo en la LAN). La LAN del ONT es la red del cliente, no ruteada ni alcanzable desde el ERP por diseño (correctamente aislada) — este canal NUNCA puede converger de forma automática/remota tal como está implementado. Sirve únicamente como herramienta manual de laboratorio (técnico con laptop en la LAN del equipo) o como base para un futuro agente local en sitio — no como fallback del resolver.',
-        habilitadoAuto: false, // NUNCA activar en automático: requiere estar físicamente en la LAN del ONT, inalcanzable desde el backend remoto
+        canal: 'omci_management_server',
+        confidence: 'EXPERIMENTAL',
+        notas: 'OMCI ME137 (ont tr069-server-config, WAN mgmt estática). Aceptado por el CLI de la OLT ' +
+               'pero NO materializa la ACS URL en este firmware (CNT-2026-000004, confirmado con sniffer). ' +
+               'Se mantiene catalogado por ser el estándar y para futuras variantes; su resultado SIEMPRE ' +
+               'se verifica contra GenieACS — nunca se asume éxito.',
+      },
+      {
+        canal: 'cpe_local',
+        confidence: 'DISABLED',
+        notas: 'Panel/API web del ONT. Funciona solo desde la LAN del cliente (verificado): el servidor web ' +
+               'del ONT no escucha en la interfaz de gestión WAN, y la LAN del ONT no es ruteable desde el ' +
+               'backend por diseño. Inalcanzable en automático — solo herramienta manual en sitio o base para ' +
+               'un futuro agente local. Además el panel se autobloquea tras 3 logins fallidos.',
       },
     ],
   },
 ];
 
+const RANGO: Record<ConfidenceLevel, number> = {
+  CERTIFIED: 0, VALIDATED: 1, EXPERIMENTAL: 2, DISABLED: 99,
+};
+
 export interface EvaluacionCanales {
   soportado:   boolean;
   motivo?:     string;
-  candidatos:  CanalCapability[]; // orden de intento: certificados primero
+  candidatos:  CanalCapability[]; // orden de intento: mayor confianza primero
 }
 
+// Devuelve los canales que el resolver debe intentar, ordenados por confianza.
+// `permitirExperimental` (política) habilita los EXPERIMENTAL; por defecto solo
+// entran CERTIFIED y VALIDATED. DISABLED nunca entra.
 export function evaluarCanalesDisponibles(
   fabricante: string,
   modelo:     string,
   firmware:   string | null,
+  permitirExperimental = false,
 ): EvaluacionCanales {
   const entrada = CPE_PROVISIONING_CATALOG.find(
     (e) => e.fabricante.toLowerCase() === fabricante.toLowerCase() && e.modeloPattern.test(modelo),
@@ -92,17 +109,25 @@ export function evaluarCanalesDisponibles(
   if (!entrada) {
     return { soportado: false, motivo: `Modelo no catalogado: ${fabricante} ${modelo}`, candidatos: [] };
   }
-  if (entrada.firmwaresValidados.length > 0 && firmware && !entrada.firmwaresValidados.includes(firmware)) {
-    return {
-      soportado: true,
-      motivo: `Firmware "${firmware}" no está en la lista validada (${entrada.firmwaresValidados.join(', ')}) — se procede con precaución, solo canales certificados.`,
-      candidatos: entrada.canales.filter((c) => c.estado === 'operativo' && c.habilitadoAuto),
-    };
-  }
-  // Orden: operativo > experimental > no_certificado. Solo habilitadoAuto entra al resolver automático.
-  const rango: Record<EstadoCertificacion, number> = { operativo: 0, experimental: 1, no_certificado: 2 };
-  const candidatos = [...entrada.canales]
-    .filter((c) => c.habilitadoAuto)
-    .sort((a, b) => rango[a.estado] - rango[b.estado]);
-  return { soportado: true, candidatos };
+
+  const firmwareFueraDeLista =
+    entrada.firmwaresValidados.length > 0 && firmware != null && !entrada.firmwaresValidados.includes(firmware);
+
+  const nivelesAuto: ConfidenceLevel[] = firmwareFueraDeLista
+    ? ['CERTIFIED']                                    // firmware desconocido → solo lo más seguro
+    : permitirExperimental
+      ? ['CERTIFIED', 'VALIDATED', 'EXPERIMENTAL']
+      : ['CERTIFIED', 'VALIDATED'];
+
+  const candidatos = entrada.canales
+    .filter((c) => nivelesAuto.includes(c.confidence))
+    .sort((a, b) => RANGO[a.confidence] - RANGO[b.confidence]);
+
+  return {
+    soportado: true,
+    motivo: firmwareFueraDeLista
+      ? `Firmware "${firmware}" no está en la lista validada (${entrada.firmwaresValidados.join(', ')}) — solo canales CERTIFIED.`
+      : undefined,
+    candidatos,
+  };
 }

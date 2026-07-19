@@ -3,6 +3,7 @@ import { ModuleHealthService } from '../../../../common/services/module-health.s
 import { Tr069GenieacsClient } from '../../../tr069/tr069-genieacs.client';
 import { CpeProvisioningAttemptService } from './cpe-provisioning-attempt.service';
 import { HuaweiOmciBootstrapChannel } from './huawei-omci-bootstrap-channel.service';
+import { HuaweiDhcpBootstrapChannel } from './huawei-dhcp-bootstrap-channel.service';
 import { HuaweiHttpBootstrapChannel } from './huawei-http-bootstrap-channel.service';
 import { BootstrapContext, CpeProvisioningChannel } from './cpe-provisioning-channel.interface';
 import { evaluarCanalesDisponibles, NombreCanal } from '../../capability/cpe-provisioning-catalog';
@@ -50,9 +51,11 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
     private readonly genieacs:       Tr069GenieacsClient,
     private readonly attemptService: CpeProvisioningAttemptService,
     private readonly omciChannel:    HuaweiOmciBootstrapChannel,
+    private readonly dhcpChannel:    HuaweiDhcpBootstrapChannel,
     private readonly httpChannel:    HuaweiHttpBootstrapChannel,
   ) {
     this.channelsByName = new Map<NombreCanal, CpeProvisioningChannel>([
+      [this.dhcpChannel.nombre, this.dhcpChannel],
       [this.omciChannel.nombre, this.omciChannel],
       [this.httpChannel.nombre, this.httpChannel],
     ]);
