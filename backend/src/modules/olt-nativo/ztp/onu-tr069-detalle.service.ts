@@ -289,6 +289,12 @@ export class OnuTr069DetalleService {
   }
 
   // ── Edición WiFi / PPPoE (reutiliza el fallback del GenieAcsDriver) ─────────
+  // applyExecutionPlan hace UN queueTask(connection_request) POR CAMPO, en serie
+  // (hasta 3-4 para WiFi/acceso web) — cada uno puede tardar hasta
+  // CONNECTION_REQUEST_TIMEOUT_MS (60s) si el CPE está frío, igual que
+  // reboot/factoryReset (confirmado en vivo 2026-07-18: "Aplicar WiFi" daba
+  // timeout aunque el cambio SÍ llegaba a aplicarse). Se encola en segundo
+  // plano sin bloquear la respuesta HTTP — mismo patrón que reboot/factoryReset.
   private async _applyKeys(
     serial: string,
     writes: Array<{ key: string; value: string | number | boolean | undefined }>,
@@ -312,9 +318,12 @@ export class OnuTr069DetalleService {
       device: deviceId, profile: `${profile.vendor}_${profile.model}`, writes: planWrites,
       metadata: { revision: 0, generated_at: new Date().toISOString(), generated_by: 'Resolver' },
     };
-    const res = await this.driver.applyExecutionPlan(plan, pmap);
-    const fallidas = res.results.filter((r) => !r.ok).map((r) => `${r.key}(${r.fault ?? r.reason})`);
-    return { ok: fallidas.length === 0, applied: res.applied, total: planWrites.length, fallidas };
+    this.driver.applyExecutionPlan(plan, pmap)
+      .then((res) => this.logger.log(
+        `applyExecutionPlan (background) | serial=${serial} device=${deviceId} ok=${res.applied}/${planWrites.length}`,
+      ))
+      .catch((err) => this.logger.warn(`applyExecutionPlan (background) | serial=${serial} falló: ${err?.message}`));
+    return { ok: true, applied: planWrites.length, total: planWrites.length, fallidas: [] };
   }
 
   setWifi(serial: string, dto: { band: '2.4' | '5'; ssid?: string; password?: string; enabled?: boolean }) {

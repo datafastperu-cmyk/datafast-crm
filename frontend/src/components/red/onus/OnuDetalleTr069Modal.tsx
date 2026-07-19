@@ -40,7 +40,7 @@ function WifiEditor({ sn, band, current, onSaved }: {
   const mut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069SetWifi(sn, { band, ssid: ssid || undefined, password: pass || undefined }),
     onSuccess: (r) => {
-      if (r.ok) { toast(`WiFi ${band}GHz aplicado (${r.applied}/${r.total})`, { type: 'success' }); setPass(''); onSaved(); }
+      if (r.ok) { toast(`WiFi ${band}GHz enviado — puede tardar 1-2 min en aplicarse`, { type: 'success' }); setPass(''); onSaved(); }
       else toast(`WiFi ${band}GHz: fallaron ${r.fallidas.join(', ')}`, { type: 'error' });
     },
     onError: () => toast(`No se pudo aplicar el WiFi ${band}GHz`, { type: 'error' }),
@@ -190,12 +190,12 @@ export function OnuDetalleTr069Modal({ sn, oltNombre, cliente, onClose }: {
   });
   const pppMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069SetPppoe(sn, { username: pppUser || undefined, password: pppPass || undefined }),
-    onSuccess: (r) => { if (r.ok) { toast(`PPPoE aplicado (${r.applied}/${r.total})`, { type: 'success' }); setPppPass(''); refetch(); } else toast(`PPPoE: fallaron ${r.fallidas.join(', ')}`, { type: 'error' }); },
+    onSuccess: (r) => { if (r.ok) { toast('PPPoE enviado — puede tardar 1-2 min en aplicarse', { type: 'success' }); setPppPass(''); refetch(); } else toast(`PPPoE: fallaron ${r.fallidas.join(', ')}`, { type: 'error' }); },
     onError: () => toast('No se pudo aplicar el PPPoE', { type: 'error' }),
   });
   const webMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069SetAccesoWeb(sn, { adminUser: webAdminUser || undefined, adminPassword: webAdminPass || undefined }),
-    onSuccess: (r) => { if (r.ok) { toast(`Acceso web aplicado (${r.applied}/${r.total})`, { type: 'success' }); setWebAdminPass(''); } else toast(`Acceso web: fallaron ${r.fallidas.join(', ')}`, { type: 'error' }); },
+    onSuccess: (r) => { if (r.ok) { toast('Acceso web enviado — puede tardar 1-2 min en aplicarse', { type: 'success' }); setWebAdminPass(''); } else toast(`Acceso web: fallaron ${r.fallidas.join(', ')}`, { type: 'error' }); },
     onError: () => toast('No se pudo cambiar el acceso web', { type: 'error' }),
   });
 
