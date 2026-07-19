@@ -257,31 +257,35 @@ export class OnuTr069DetalleService {
     return this.getDetalle(serial);
   }
 
+  // Reboot/factoryReset exigen que el CPE se apague, reinicie y vuelva a informar antes de
+  // que GenieACS considere la sesión de Connection Request cerrada — confirmado en vivo
+  // (2026-07-18): ~80-90s de punta a punta, por encima de cualquier timeout HTTP razonable
+  // para una request síncrona del panel. Se encola SIN esperar el connection_request
+  // completo: responde de inmediato, la ejecución real ocurre en segundo plano.
   async reboot(serial: string): Promise<{ ok: boolean; mensaje: string }> {
     const deviceId = await this._deviceIdOrThrow(serial);
-    const res = await this.nbi.queueTask(deviceId, { name: 'reboot' }, true);
-    this.logger.warn(`Reboot ONU ${serial} (device=${deviceId}) status=${res.status}`);
-    return { ok: res.status >= 200 && res.status < 300, mensaje: `Reboot enviado a la ONU ${serial}.` };
+    this.nbi.queueTask(deviceId, { name: 'reboot' }, true)
+      .then((res) => this.logger.warn(`Reboot ONU ${serial} (device=${deviceId}) status=${res.status}`))
+      .catch((err) => this.logger.warn(`Reboot ONU ${serial} (device=${deviceId}) falló: ${err?.message}`));
+    return { ok: true, mensaje: `Reboot enviado a la ONU ${serial} — puede tardar 1-2 min en aplicarse.` };
   }
 
   async factoryReset(serial: string): Promise<{ ok: boolean; mensaje: string }> {
     const deviceId = await this._deviceIdOrThrow(serial);
-    const res = await this.nbi.queueTask(deviceId, { name: 'factoryReset' }, true);
-    this.logger.warn(`FactoryReset ONU ${serial} (device=${deviceId}) status=${res.status}`);
-    const ok = res.status >= 200 && res.status < 300;
+    this.nbi.queueTask(deviceId, { name: 'factoryReset' }, true)
+      .then((res) => this.logger.warn(`FactoryReset ONU ${serial} (device=${deviceId}) status=${res.status}`))
+      .catch((err) => this.logger.warn(`FactoryReset ONU ${serial} (device=${deviceId}) falló: ${err?.message}`));
 
     // La ONU vuelve a bootstrap "en blanco" (pierde WiFi/PPPoE/credenciales). Marca drift
     // para que el watcher de re-inyección la re-aprovisione en cuanto vuelva a informar.
     // Best-effort: si falla el marcado no se revierte el reset ya enviado a la ONU.
-    if (ok) {
-      try {
-        await this.onuConfig.markPendingReinjectionBySerial(serial);
-      } catch (e) {
-        this.logger.warn(`No se pudo marcar re-inyección pendiente (${serial}): ${e instanceof Error ? e.message : String(e)}`);
-      }
+    try {
+      await this.onuConfig.markPendingReinjectionBySerial(serial);
+    } catch (e) {
+      this.logger.warn(`No se pudo marcar re-inyección pendiente (${serial}): ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    return { ok, mensaje: `Reset de fábrica enviado a la ONU ${serial}.` };
+    return { ok: true, mensaje: `Reset de fábrica enviado a la ONU ${serial} — puede tardar 1-2 min en aplicarse.` };
   }
 
   // ── Edición WiFi / PPPoE (reutiliza el fallback del GenieAcsDriver) ─────────
