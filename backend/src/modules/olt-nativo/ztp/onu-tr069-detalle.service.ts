@@ -227,6 +227,18 @@ export class OnuTr069DetalleService {
   /** ConnectionRequest + refreshObject de los árboles del panel → devuelve el detalle fresco. */
   async refresh(serial: string): Promise<OnuTr069Detalle> {
     const deviceId = await this._deviceIdOrThrow(serial);
+    // Acotar la cola (CNT-2026-000004, fase gestión continua): si la ONU está inalcanzable,
+    // cada refresh acumulaba tareas de lectura sin límite (llegamos a 64 encoladas), y ese
+    // clog envenena la sesión de bootstrap (0 BOOTSTRAP) starvando los writes críticos
+    // (PeriodicInform/ConnReq) → deadlock de gestión. Se borran las tareas de LECTURA pendientes
+    // (refreshObject/getParameterValues) antes de encolar las nuevas → la cola queda acotada a un
+    // ciclo. NO toca setParameterValues ni reboot (writes de config del operador).
+    const pendientes = await this.nbi.listTasks(deviceId).catch(() => []);
+    await Promise.all(
+      pendientes
+        .filter((t) => t.name === 'refreshObject' || t.name === 'getParameterValues')
+        .map((t) => this.nbi.deleteTask(t._id).catch(() => {})),
+    );
     // ManagementServer: getParameterValues con lista EXPLÍCITA, nunca refreshObject
     // del subárbol completo. ConnectionRequestPassword es write-only — el equipo
     // SIEMPRE la reporta vacía — así que un refreshObject de todo el objeto

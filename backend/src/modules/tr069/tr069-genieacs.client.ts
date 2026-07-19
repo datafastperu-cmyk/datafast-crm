@@ -142,4 +142,12 @@ export class Tr069GenieacsClient {
   async deleteTask(taskId: string): Promise<void> {
     await firstValueFrom(this.http.delete(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}`, this.cfg()));
   }
+
+  /** Lista las tasks PENDIENTES (encoladas, aún no entregadas) de un device. */
+  async listTasks(deviceId: string, projection = '_id,name,objectName'): Promise<Array<{ _id: string; name: string; objectName?: string }>> {
+    const q = encodeURIComponent(JSON.stringify({ device: deviceId }));
+    const url = `${this.baseUrl}/tasks/?query=${q}&projection=${encodeURIComponent(projection)}`;
+    const res = await firstValueFrom(this.http.get<Array<{ _id: string; name: string; objectName?: string }>>(url, this.cfg()));
+    return res.data ?? [];
+  }
 }
