@@ -3211,46 +3211,40 @@ def provision_mgmt_bootstrap(
 
     Crea el plano de gestión que permite que la ONU aparezca sola en el ACS (GenieACS):
       - service-port de gestión (GEM 3, tcont 2 dedicado) en la VLAN de gestión (bridged).
-      - IP host de gestión ESTÁTICO (ip-index 0) sobre la VLAN de gestión, con ACS URL
-        empujada directamente vía `ont tr069-server-config`.
+      - IP host de gestión en DHCP (ip-index 0) sobre la VLAN de gestión.
+      - `ont tr069-server-config` que PROMUEVE ese ip-index a una WAN `Service type: Tr069`.
       - FEC (estabilidad del enlace; best-effort).
 
-    CAUSA RAÍZ (incidente 2026-07-17, CNT-2026-000004) — reemplaza el enfoque DHCP anterior:
-    se probó DHCP en el IP-host de gestión contra DOS ONUs físicas distintas, DOS firmwares
-    distintos (V5R021C00S208 y V5R020C10S195) y DOS esquemas de GEM/T-CONT distintos — en
-    los CUATRO casos, 0 tramas Ethernet emitidas por la ONU (confirmado con sniffer durante
-    cold-boot físico real). Ingeniería inversa contra una ONU aprovisionada por SmartOLT
-    (que SÍ tiene el canal de gestión funcionando) confirmó que su IP-host de gestión usa
-    config ESTÁTICA (`ONT config type: Static config`), no DHCP — con IP real materializada
-    y tráfico de red confirmado por ping. Este bootstrap replica ese MECANISMO (estático)
-    sobre la VLAN de gestión propia del ERP — nunca reutiliza IPs/VLAN de SmartOLT.
+    CAUSA RAÍZ DEFINITIVA (validado en hardware 2026-07-19, CNT-2026-000004) — reconcilia
+    las dos conclusiones previas contradictorias:
+      * El enfoque DHCP viejo daba 0 tramas porque hacía `ont ipconfig ip-index 0 dhcp`
+        SIN `ont tr069-server-config` → creaba un IP-host pelado, no una WAN Tr069.
+      * El enfoque estático creaba la WAN Tr069 (vía tr069-server-config) pero con IP
+        estática → el ME137 (`ont tr069-server-config`) NO materializa la ACS URL en este
+        firmware (V5R020C10S195): la OLT la acepta pero la ONU nunca la aplica → 0 tramas
+        (solo la escritura MANUAL del ACS en el panel de la ONU la salvaba).
+      * El COMBO que sí funciona = `ont ipconfig ip-index 0 DHCP` + `ont tr069-server-config`:
+        el tr069-server-config crea la WAN Tr069 y el DHCP hace que, al levantar, tome la
+        ACS URL por DHCP Option 43 (servida por el MikroTik de la VLAN de gestión). Probado:
+        lease real + Inform a GenieACS con la config del ACS BORRADA (solo Option 43 la pudo
+        entregar). El ME137 queda como respaldo — la URL efectiva viene de Option 43.
 
-    CAUSA RAÍZ #4, la definitiva (incidente 2026-07-17): un IP-host OMCI simple
-    (`ont ipconfig` sin WAN) nunca es suficiente — la ONU obtiene IP (verificado con
-    ping) pero JAMÁS intenta contactar al ACS (logs CWMP vacíos). Comparando contra
-    `display ont wan-info` de la ONU de referencia SmartOLT se confirmó que su canal
-    de gestión es una WAN COMPLETA con `Service type: Tr069` (mismo mecanismo que la
-    WAN de Internet, vía `ont wan-config`, pero con el comando paralelo
-    `ont tr069-config` en vez de `ont internet-config`) — NO un simple IP-host. La
-    nota previa "no usar ont wan-config para ip-index 0" era una suposición de una
-    sesión anterior nunca verificada contra una referencia real. `acs_url` NO se
-    usa aquí — la ONU descubre el ACS por sí misma al levantar la WAN tr069 (mismo
-    comportamiento que SmartOLT). Requiere ONU online. Síncrono — llamar desde
-    asyncio.to_thread().
+    `mgmt_ip`/`mgmt_mask`/`mgmt_gateway`/`mgmt_dns` ya NO se usan (la IP la da el DHCP); se
+    conservan en la firma por compatibilidad con los llamadores. Requiere ONU online.
+    Síncrono — llamar desde asyncio.to_thread().
     """
     tr069_profile_id = _get_or_create_tr069_server_profile(conn, acs_url)
     logger.info(
-        'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d ip=%s '
-        'tr069_profile_id=%d (static, WAN tr069)',
-        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id, mgmt_ip, tr069_profile_id,
+        'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d '
+        'tr069_profile_id=%d (DHCP, WAN tr069)',
+        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_service_port_id, tr069_profile_id,
     )
-    # Secuencia OMCI alineada al ORDEN real que usa SmartOLT (referencia HWTC16A6BAAC,
-    # gpon-onu_0/1/6:0, "Show running-config", 2026-07-18): el IP-host de gestión NUNCA
-    # se convierte en WAN (`ont wan-config`/`ont internet-config`/`ont tr069-config` —
-    # esos tres SOLO se aplican al ip-index de la WAN de datos/Internet, nunca al de
-    # gestión). La causa raíz #4 documentada antes (asumir que el carril de gestión
-    # necesita ser una "WAN completa tipo Tr069") era una conclusión errada de una
-    # comparación anterior — esta referencia real la contradice.
+    # Secuencia validada 2026-07-19 (`display ont wan-info` de la ONU de referencia SmartOLT
+    # HWTC16A6BAAC muestra su canal de gestión como WAN `Service type: Tr069`): el
+    # `ont tr069-server-config` promueve el ip-index 0 a esa WAN Tr069, y el `ont ipconfig
+    # ... dhcp` hace que tome la ACS URL por Option 43. NOTA: `ont tr069-config` NO existe en
+    # este firmware (`% Unknown command`, verificado) — la WAN Tr069 la crea el
+    # tr069-server-config, no un comando de service-type aparte.
     #
     # ORDEN también importa: confirmado con sniffer en vivo (2026-07-18, incluso tras
     # power-cycle físico real de la ONU) que crear el service-port ANTES de la config
@@ -3261,11 +3255,7 @@ def provision_mgmt_bootstrap(
     cmds = [
         'config',
         f'interface gpon 0/{slot}',
-        (
-            f'ont ipconfig {port} {onu_id} ip-index 0 static '
-            f'ip-address {mgmt_ip} mask {mgmt_mask} gateway {mgmt_gateway} pri-dns {mgmt_dns} '
-            f'vlan {mgmt_vlan} priority {priority}'
-        ),
+        f'ont ipconfig {port} {onu_id} ip-index 0 dhcp vlan {mgmt_vlan} priority {priority}',
         f'ont tr069-server-config {port} {onu_id} profile-id {tr069_profile_id}',
         'quit',
         (
@@ -3400,11 +3390,14 @@ def provision_mgmt_bootstrap(
         conn.ip, slot, port, onu_id, verify_out.strip(),
     )
 
-    # Verificación dura: el IP host de gestión debe quedar en modo estático.
+    # Verificación dura: el IP host de gestión debe quedar en modo DHCP (así la WAN Tr069
+    # levanta, hace DHCP en la VLAN de gestión y toma la ACS URL por Option 43). NO se exige
+    # una IP ya materializada aquí: el DHCP es asíncrono; la materialización real (lease +
+    # Inform) la confirma el drift-watcher / check_ont_mgmt_ip aparte.
     v = verify_out.lower()
-    if 'static' not in v:
+    if 'dhcp' not in v:
         raise ProvisioningError(
-            f'El IP host de gestión (ip-index 0, estático) no se configuró en {conn.ip} '
+            f'El IP host de gestión (ip-index 0, DHCP) no se configuró en {conn.ip} '
             f'(ont {slot}/{port}/{onu_id}). Verificación: {verify_out[-200:].strip()}'
         )
 
@@ -3427,8 +3420,9 @@ def provision_mgmt_bootstrap(
         logger.warning('provision_mgmt_bootstrap: save falló (config en running) OLT=%s: %s', conn.ip, exc)
 
     logger.info(
-        'provision_mgmt_bootstrap OK | OLT=%s ont %d/%d/%d mgmt_vlan=%d ip=%s (estático + tr069-server-config)',
-        conn.ip, slot, port, onu_id, mgmt_vlan, mgmt_ip,
+        'provision_mgmt_bootstrap OK | OLT=%s ont %d/%d/%d mgmt_vlan=%d '
+        '(DHCP + tr069-server-config; ACS URL vía Option 43)',
+        conn.ip, slot, port, onu_id, mgmt_vlan,
     )
     return {'success': True, 'olt_ip': conn.ip}
 
