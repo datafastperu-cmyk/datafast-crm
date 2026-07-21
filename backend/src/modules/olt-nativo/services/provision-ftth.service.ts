@@ -396,16 +396,31 @@ export class ProvisionFtthService {
         olt, password, dto, servicePortId, onuId,
         'gpon_failed', FtthOnuEstado.PENDIENTE,
       );
-      if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
-      await this.onuIdPool.liberar(oltId, dto.contratoId);
-      // Atómico: si no se concluye, no queda NADA en el sistema. Se borra el registro
-      // (la ONU vuelve a autofind, la OLT quedó limpia por el rollback).
-      await this.ftthRepo.delete(registroId);
+      if (rbOk) {
+        // OLT CONFIRMADA limpia → atómico: no queda NADA en el sistema.
+        if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
+        await this.onuIdPool.liberar(oltId, dto.contratoId);
+        await this.ftthRepo.delete(registroId);
+        return {
+          estado:     FtthOnuEstado.FALLIDO_GPON,
+          registroId,
+          mensaje:    `Fase 1 (GPON) falló y se revirtió todo (OLT limpia). ${this._limpiar(gponRes.error) ?? ''}`.trim(),
+          error:      gponRes.error,
+        };
+      }
+      // INVARIANTE (atomicidad hardware↔ERP): el rollback NO se confirmó → la ONU puede
+      // seguir configurada en la OLT. NUNCA se borra el registro (dejaría un `ont` huérfano
+      // sin contrato). Se conserva vinculado en fallido_rollback, con los pools RETENIDOS,
+      // para que el watcher reintente la limpieza hasta confirmarla.
+      await this.ftthRepo.update(registroId, {
+        estado:      FtthOnuEstado.FALLIDO_ROLLBACK,
+        lockedAt:    null,
+        ultimoError: `Fase 1 (GPON) falló y la limpieza en la OLT NO se confirmó — se reintenta automáticamente. ${this._limpiar(gponRes.error) ?? ''}`.trim(),
+      });
       return {
-        estado:     FtthOnuEstado.FALLIDO_GPON,
+        estado:     FtthOnuEstado.FALLIDO_ROLLBACK,
         registroId,
-        mensaje:    `Fase 1 (GPON) falló y se revirtió todo (rollback ${rbOk ? 'OK' : 'FALLÓ'}). ` +
-                    `${this._limpiar(gponRes.error) ?? ''}`.trim(),
+        mensaje:    'Fase 1 (GPON) falló y la limpieza de la OLT no se pudo confirmar. El registro se conserva vinculado al contrato; la limpieza se reintenta automáticamente.',
         error:      gponRes.error,
       };
     }
@@ -434,14 +449,30 @@ export class ProvisionFtthService {
         olt, password, dto, servicePortId, onuId,
         'timeout_online', FtthOnuEstado.GPON_REGISTRADO,
       );
-      if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
-      await this.onuIdPool.liberar(oltId, dto.contratoId);
-      // Atómico: rollback ya ejecutado, se borra el registro (no persiste nada).
-      await this.ftthRepo.delete(registroId);
+      if (rbOk) {
+        // OLT CONFIRMADA limpia → atómico: no persiste nada.
+        if (usedSvcPool) await this.poolService.liberar(oltId, dto.contratoId);
+        await this.onuIdPool.liberar(oltId, dto.contratoId);
+        await this.ftthRepo.delete(registroId);
+        return {
+          estado:     FtthOnuEstado.TIMEOUT_ONLINE,
+          registroId,
+          mensaje:    `La ONU no apareció online en 150 s tras el registro GPON (estado: ${runState}). Rollback ejecutado, OLT limpia.`,
+          error:      rbErr,
+        };
+      }
+      // INVARIANTE: rollback no confirmado → el `ont` puede seguir en la OLT. NUNCA se borra
+      // el registro (huérfano). Se conserva vinculado en fallido_rollback (pools retenidos);
+      // el watcher reintenta la limpieza.
+      await this.ftthRepo.update(registroId, {
+        estado:      FtthOnuEstado.FALLIDO_ROLLBACK,
+        lockedAt:    null,
+        ultimoError: `La ONU no apareció online (${runState}) y la limpieza en la OLT NO se confirmó — se reintenta automáticamente.`,
+      });
       return {
-        estado:     FtthOnuEstado.TIMEOUT_ONLINE,
+        estado:     FtthOnuEstado.FALLIDO_ROLLBACK,
         registroId,
-        mensaje:    `La ONU no apareció online en 150 s tras el registro GPON (estado: ${runState}). Rollback ejecutado, nada quedó registrado.`,
+        mensaje:    'La ONU no apareció online y la limpieza de la OLT no se pudo confirmar. El registro se conserva vinculado al contrato; la limpieza se reintenta automáticamente.',
         error:      rbErr,
       };
     }
@@ -1101,29 +1132,95 @@ export class ProvisionFtthService {
       };
     }
 
-    // Rollback best-effort en la OLT (borra ont add + service-port si alcanzaron a crearse).
+    // Rollback en la OLT — su resultado DECIDE si se puede borrar el registro. INVARIANTE:
+    // nunca borrar con la OLT posiblemente sucia (dejaría un `ont` huérfano sin contrato).
+    let rbOk = false;
+    let rbErr: string | undefined;
     const olt = await this._fetchOlt(registro.oltId, empresaId).catch(() => null);
     if (olt) {
       const conn = this._buildConn(olt, this._decryptOltPassword(olt));
-      await this.automation.ftthRollbackGpon({
-        connection:           conn,
-        slot:                 registro.slot,
-        port:                 registro.port,
-        onu_id:               registro.onuId,
-        service_port_id:      registro.servicePortId,
-        mgmt_service_port_id: registro.mgmtServicePortId,
-      }).catch((err: any) => {
+      try {
+        const res = await this.automation.ftthRollbackGpon({
+          connection:           conn,
+          slot:                 registro.slot,
+          port:                 registro.port,
+          onu_id:               registro.onuId,
+          service_port_id:      registro.servicePortId,
+          mgmt_service_port_id: registro.mgmtServicePortId,
+        });
+        rbOk  = res.success;
+        rbErr = res.error;
+      } catch (err: any) {
+        rbErr = err.message;
         this.logger.error(`FTTH cancelar rollback falló | contrato=${contratoId}: ${err.message}`);
-      });
+      }
+    } else {
+      rbErr = 'No se pudo conectar a la OLT para limpiar la ONU.';
     }
 
+    if (!rbOk) {
+      // La OLT no se confirmó limpia → se conserva el registro vinculado en fallido_rollback
+      // (pools RETENIDOS); el watcher reintenta la limpieza hasta confirmarla.
+      await this.ftthRepo.update(registro.id, {
+        estado:      FtthOnuEstado.FALLIDO_ROLLBACK,
+        lockedAt:    null,
+        ultimoError: `Cancelación: la limpieza en la OLT NO se confirmó — se reintenta automáticamente. ${this._limpiar(rbErr) ?? ''}`.trim(),
+      });
+      return {
+        cancelado: false,
+        mensaje: 'No se pudo confirmar la limpieza de la ONU en la OLT. El registro se conserva vinculado al contrato; la limpieza se reintenta automáticamente.',
+      };
+    }
+
+    // OLT CONFIRMADA limpia → liberar pools + borrar registro.
     await this.poolService.liberar(registro.oltId, contratoId).catch(() => { /* best-effort */ });
     await this.poolService.liberar(registro.oltId, contratoId, 'gestion').catch(() => { /* best-effort */ });
     await this.onuIdPool.liberar(registro.oltId, contratoId).catch(() => { /* best-effort */ });
     await this.ftthRepo.delete(registro.id);
 
     this.logger.warn(`FTTH cancelado | contrato=${contratoId} estado_previo=${registro.estado}`);
-    return { cancelado: true, mensaje: 'Aprovisionamiento cancelado — no quedó nada registrado.' };
+    return { cancelado: true, mensaje: 'Aprovisionamiento cancelado — OLT limpia, nada quedó registrado.' };
+  }
+
+  // ── reintentarRollbacksFallidos ───────────────────────────────────
+  // Watcher del INVARIANTE de atomicidad hardware↔ERP: los registros que quedaron en
+  // `fallido_rollback` (el rollback en la OLT no se pudo confirmar) siguen VINCULADOS al
+  // contrato — nunca huérfanos. Este watcher reintenta la limpieza real de la OLT; SOLO
+  // cuando la OLT queda confirmada limpia libera los pools y borra el registro. Mientras
+  // no se confirme, el registro persiste (con su error). Diseñado para correr en cron.
+  async reintentarRollbacksFallidos(): Promise<{ revisados: number; limpiados: number; pendientes: number }> {
+    const registros = await this.ftthRepo.find({ where: { estado: FtthOnuEstado.FALLIDO_ROLLBACK } });
+    let limpiados = 0, pendientes = 0;
+    for (const r of registros) {
+      try {
+        const olt  = await this._fetchOlt(r.oltId, r.empresaId);
+        const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+        const res  = await this.automation.ftthRollbackGpon({
+          connection: conn, slot: r.slot, port: r.port, onu_id: r.onuId,
+          service_port_id: r.servicePortId, mgmt_service_port_id: r.mgmtServicePortId,
+        });
+        if (res.success) {
+          await Promise.all([
+            this.poolService.liberar(r.oltId, r.contratoId).catch(() => { /* best-effort */ }),
+            this.poolService.liberar(r.oltId, r.contratoId, 'gestion').catch(() => { /* best-effort */ }),
+            this.onuIdPool.liberar(r.oltId, r.contratoId).catch(() => { /* best-effort */ }),
+          ]);
+          await this.ftthRepo.delete(r.id);
+          limpiados++;
+          this.logger.log(`fallido_rollback limpiado | contrato=${r.contratoId} — OLT confirmada limpia, recursos liberados`);
+        } else {
+          pendientes++;
+          await this.ftthRepo.update(r.id, { ultimoError: `Limpieza OLT aún no confirmada: ${this._limpiar(res.error) ?? 'error'}` });
+        }
+      } catch (e) {
+        pendientes++;
+        this.logger.warn(`reintentarRollbacksFallidos: contrato ${r.contratoId} lanzó — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (limpiados > 0 || pendientes > 0) {
+      this.logger.log(`reintentarRollbacksFallidos: revisados=${registros.length} limpiados=${limpiados} pendientes=${pendientes}`);
+    }
+    return { revisados: registros.length, limpiados, pendientes };
   }
 
   // ── actualizarWan ─────────────────────────────────────────────────
@@ -1344,6 +1441,7 @@ export class ProvisionFtthService {
       FtthOnuEstado.ACTIVO,
       FtthOnuEstado.GPON_REGISTRADO,
       FtthOnuEstado.WAN_INYECTADO,
+      FtthOnuEstado.FALLIDO_ROLLBACK,   // permite forzar la limpieza manual además del watcher
     ];
     if (!estadosPermitidos.includes(registro.estado)) {
       throw new BadRequestException(

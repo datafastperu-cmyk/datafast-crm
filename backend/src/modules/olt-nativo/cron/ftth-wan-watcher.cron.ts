@@ -37,4 +37,22 @@ export class FtthWanWatcherCron {
       this.running = false;
     }
   }
+
+  // Watcher del invariante de atomicidad: reintenta la limpieza de la OLT para registros
+  // en `fallido_rollback` (rollback no confirmado) hasta dejar la OLT limpia y liberar el
+  // registro. Horario disjunto del verificarWan (min 5-59/10) para no solapar sesiones SSH.
+  private runningRollback = false;
+
+  @Cron('5-59/10 * * * *')
+  async reintentarRollbacks(): Promise<void> {
+    if (this.runningRollback) return;
+    this.runningRollback = true;
+    try {
+      await this.ftth.reintentarRollbacksFallidos();
+    } catch (e) {
+      this.logger.error(`FtthWanWatcherCron.reintentarRollbacks falló: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.runningRollback = false;
+    }
+  }
 }

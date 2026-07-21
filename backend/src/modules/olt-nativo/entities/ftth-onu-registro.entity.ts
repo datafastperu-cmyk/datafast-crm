@@ -12,6 +12,10 @@ export enum FtthOnuEstado {
   TIMEOUT_ONLINE         = 'timeout_online',
   FALLIDO_SERVICE_PORT   = 'fallido_service_port',
   SUSPENDIDO             = 'suspendido',
+  // Rollback en la OLT falló: la ONU sigue configurada en la OLT (dirty). El registro
+  // se conserva (NUNCA se borra con la OLT sucia — evita el `ont` huérfano sin contrato)
+  // y un watcher reintenta la limpieza hasta confirmarla.
+  FALLIDO_ROLLBACK       = 'fallido_rollback',
 }
 
 export const FTTH_ESTADOS_ACTIVOS: FtthOnuEstado[] = [
@@ -28,6 +32,7 @@ export const FTTH_ESTADOS_FALLIDOS: FtthOnuEstado[] = [
   FtthOnuEstado.FALLIDO_WAN,
   FtthOnuEstado.TIMEOUT_ONLINE,
   FtthOnuEstado.FALLIDO_SERVICE_PORT,
+  FtthOnuEstado.FALLIDO_ROLLBACK,
 ];
 
 @Entity('ftth_onu_registro')
