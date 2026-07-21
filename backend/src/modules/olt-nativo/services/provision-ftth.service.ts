@@ -853,16 +853,37 @@ export class ProvisionFtthService {
     });
 
     if (!resolverResult.exitoso) {
-      // Devolver el service-port de gestión al pool si lo tomamos nosotros (rollback).
-      if (asignadoDelPool) {
-        await this.poolService.liberar(oltId, dto.contratoId, 'gestion').catch(() => { /* best-effort */ });
+      // SAFETY NET VIO (causa raíz 2026-07-21, CNT-2026-000004): el canal puede reportar
+      // fallo por un choque transitorio del CLI (p.ej. "% Unknown command" tras un
+      // "conflicts with other user operations" de autosave en el reintento) AUNQUE el carril
+      // ya se haya materializado — el DHCP+Inform es asíncrono y llega ~60-90s después. Hacer
+      // rollback duro aquí liberaba el service-port de gestión y marcaba el carril como no
+      // aplicado mientras la ONU YA estaba gestionada por TR-069 (registro↔OLT↔pool
+      // desincronizados). Antes de deshacer, se confirma la materialización REAL contra
+      // GenieACS: si la ONU informa dentro de la ventana, el carril vive → se persiste como
+      // éxito y se CONSERVA el service-port. La verdad observable manda sobre el eco del CLI.
+      const materializado = await this.cpeResolver.confirmarConvergencia({
+        fabricante: olt.marca,
+        modelo:     equipmentId ?? 'DESCONOCIDO',
+        sn:         registro.sn,
+      });
+      if (!materializado) {
+        // Devolver el service-port de gestión al pool si lo tomamos nosotros (rollback).
+        if (asignadoDelPool) {
+          await this.poolService.liberar(oltId, dto.contratoId, 'gestion').catch(() => { /* best-effort */ });
+        }
+        await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(resolverResult.mensaje) });
+        return {
+          exitoso: false,
+          mensaje: resolverResult.mensaje,
+          error:   resolverResult.intentos.map((i) => `${i.canal}: ${i.mensaje}`).join(' | '),
+        };
       }
-      await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(resolverResult.mensaje) });
-      return {
-        exitoso: false,
-        mensaje: resolverResult.mensaje,
-        error:   resolverResult.intentos.map((i) => `${i.canal}: ${i.mensaje}`).join(' | '),
-      };
+      this.logger.warn(
+        `FTTH bootstrapTr069: el canal reportó fallo pero GenieACS confirma Inform — carril ` +
+        `MATERIALIZADO (VIO), se conserva el service-port | contrato=${dto.contratoId} onu=${registro.slot}/${registro.port}/${registro.onuId}`,
+      );
+      // Cae al bloque de persistencia de éxito de abajo.
     }
 
     // Persistir el estado del carril para poder RESTAURARLO tras un re-aprovisionamiento

@@ -117,7 +117,7 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
       }
 
       // El canal no reportó error — ahora se verifica de verdad contra GenieACS.
-      const convergio = await this._verificarConvergencia(ctx);
+      const convergio = await this.confirmarConvergencia(ctx.device);
       if (convergio) {
         await this.attemptService.recordSuccess(ctx.empresaId, ctx.ftthRegistroId, candidato.canal);
         intentos.push({ canal: candidato.canal, exitoso: true, mensaje: 'Convergió — Inform recibido en GenieACS' });
@@ -151,9 +151,14 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
     return 'fallido_red';
   }
 
-  private async _verificarConvergencia(ctx: BootstrapContext): Promise<boolean> {
+  // Verifica materialización REAL contra GenieACS: espera hasta VENTANA_VERIFICACION_MS a que
+  // el `lastInform` del dispositivo AVANCE (o aparezca por primera vez). Público para que el
+  // carril de gestión pueda confirmar convergencia también en su ruta de fallo del canal (VIO:
+  // un "% Unknown command" tras un conflicto transitorio no significa que el carril no se haya
+  // materializado — el DHCP+Inform es asíncrono; la verdad observable manda sobre el eco CLI).
+  async confirmarConvergencia(device: { fabricante: string; modelo: string; sn: string }): Promise<boolean> {
     if (!this.genieacs.isConfigured()) return false; // no se puede verificar — nunca se asume éxito
-    const deviceId = this._buildGenieAcsDeviceId(ctx.device);
+    const deviceId = this._buildGenieAcsDeviceId(device);
     const deadline = Date.now() + this.VENTANA_VERIFICACION_MS;
     const antes = await this._lastInformSeguro(deviceId);
 
