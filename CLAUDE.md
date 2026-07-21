@@ -97,6 +97,40 @@ razón (bug, feature) sobre drivers de hardware externo. No es mandato de refact
 masivo de las funciones existentes del driver Huawei/MikroTik que hoy no verifican
 materialización — se corrigen incrementalmente, una por una, la próxima vez que se toquen.
 
+## Wizards y Modales — Regla de Construcción Obligatoria
+
+### Un procedimiento no terminado se anula por completo
+
+**Ningún wizard o modal que se cierre, por el motivo que sea, puede dejar procesos pendientes.**
+Si se cierra sin completarse — botón X, Cancelar, ESC, click fuera, navegación, recarga,
+cierre de pestaña, crash del navegador, pérdida de sesión — **todo lo que se ejecutó dentro
+debe anularse**.
+
+Origen: incidente 2026-07-21 (CNT-2026-000004). Un wizard de provisión FTTH cerrado a medias
+dejó la ONU registrada en la OLT sin `ftth_onu_registro`, y una tarea async del carril TR-069
+siguió corriendo contra un contrato que ya no tenía registro
+(`carril (async): No hay registro FTTH para el contrato`). Resultado: ONU huérfana — discordancia
+entre el plano físico (OLT) y el lógico (ERP).
+
+**Checklist obligatorio para cualquier wizard/modal que toque hardware o reserve recursos**
+(pools de service-port, ONU ID, IP de gestión, certs VPN, etc.):
+
+1. **Ruta de anulación completa** invocada en TODOS los caminos de cierre — no solo en "Cancelar".
+2. **El fire-and-forget debe ser cancelable/anulable.** Una tarea en vuelo (p.ej. el carril TR-069
+   async) no puede sobrevivir a la muerte del wizard: se aborta o se revierte.
+3. **Red de seguridad del lado servidor**, porque el cierre puede ser un crash y el navegador no
+   alcanza a avisar: marca de "wizard en curso" con dueño y heartbeat/TTL, más un barrido que
+   revierta lo iniciado si el wizard nunca confirmó término.
+4. **Anular = revertir el hardware Y liberar los recursos reservados**, respetando el invariante
+   de atomicidad: nunca borrar el registro con la OLT sucia (estado `fallido_rollback` +
+   watcher `reintentarRollbacksFallidos`).
+5. **Prohibir operaciones concurrentes sobre el mismo contrato/ONU.** Una desaprovisión y una
+   provisión en vuelo simultáneas fueron causa directa de un huérfano (2026-07-21).
+
+Referencia de patrón ya aplicado correctamente: el wizard de registro de routers VPN
+(`fireRevoke` al cerrar sin completar el paso 3 + cron `limpiarWizardsAbandonados` como red
+de seguridad).
+
 ## Portabilidad Multi-VPS — Regla Crítica de Configuración
 
 Este ERP se instala en múltiples servidores VPS con IPs y dominios distintos.
