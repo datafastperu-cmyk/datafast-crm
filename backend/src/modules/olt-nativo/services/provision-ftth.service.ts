@@ -1223,6 +1223,122 @@ export class ProvisionFtthService {
     return { revisados: registros.length, limpiados, pendientes };
   }
 
+  // ── adoptarOnusHuerfanas ──────────────────────────────────────────
+  // Cara CREATE del invariante de atomicidad hardware↔ERP (complementa a
+  // `reintentarRollbacksFallidos`, que cubre la cara DELETE): si por un fallo entre el
+  // registro GPON en la OLT y la persistencia del registro (crash, corte, op manual) queda
+  // una ONU aprovisionada en la OLT y VINCULADA a un contrato vigente pero SIN
+  // `ftth_onu_registro`, este watcher la ADOPTA — reconstruye el registro con estado real.
+  //
+  // Reconstrucción a partir de estado que el ERP posee (no de parsing frágil de la OLT):
+  //   · posición física + SN + contrato → `olt_onu_inventario` (snapshot SSH del reconcile).
+  //   · service-ports asignados         → `olt_service_port_pool` (el ERP retiene la
+  //                                        asignación en toda ruta de fallo — ver fix A).
+  //   · VLAN de cada service-port       → lectura VIVA de la OLT (`servicePorts`), que además
+  //                                        CONFIRMA (VIO) que el service-port existe de verdad
+  //                                        en el plano operativo antes de adoptar.
+  // No se fabrica ningún dato: si el pool no retiene la asignación de datos, o la OLT no
+  // confirma el service-port, NO se adopta (se deja para reporte). Los perfiles y el wan_mode
+  // no son recuperables con certeza → se adopta conservador (wan_mode='bridge', perfiles NULL)
+  // y se deja constancia explícita en `ultimo_error` para revisión del operador.
+  async adoptarOnusHuerfanas(): Promise<{ candidatas: number; adoptadas: number; omitidas: number }> {
+    const orphans = await this.ds.query<{
+      empresa_id: string; olt_id: string; slot: number; port: number; onu_id: number;
+      sn: string; contrato_id: string; numero_contrato: string | null;
+      tipo_auth: string | null; data_sp: number; mgmt_sp: number | null;
+    }[]>(`
+      SELECT inv.empresa_id, inv.olt_id, inv.slot, inv.port, inv.onu_id, inv.sn,
+             inv.contrato_id, inv.numero_contrato, c.tipo_auth,
+             pd.service_port_id AS data_sp,
+             pg.service_port_id AS mgmt_sp
+      FROM   olt_onu_inventario inv
+      JOIN   contratos c
+             ON c.id = inv.contrato_id AND c.deleted_at IS NULL AND c.estado <> 'baja_definitiva'
+      JOIN   olt_service_port_pool pd
+             ON pd.contrato_id = inv.contrato_id AND pd.olt_id = inv.olt_id
+            AND pd.canal = 'datos' AND pd.estado = 'ocupado'
+      LEFT   JOIN olt_service_port_pool pg
+             ON pg.contrato_id = inv.contrato_id AND pg.olt_id = inv.olt_id
+            AND pg.canal = 'gestion' AND pg.estado = 'ocupado'
+      WHERE  inv.sin_contrato = false
+        AND  inv.contrato_id IS NOT NULL
+        AND  inv.estado_operativo <> 'no_aprovisionada'
+        AND  NOT EXISTS (SELECT 1 FROM ftth_onu_registro f WHERE f.contrato_id = inv.contrato_id)
+    `);
+
+    if (orphans.length === 0) return { candidatas: 0, adoptadas: 0, omitidas: 0 };
+
+    let adoptadas = 0, omitidas = 0;
+    // Cache de service-ports vivos por OLT (una sola lectura SSH por OLT en el ciclo).
+    const portsCache = new Map<string, Map<number, number>>();
+
+    for (const o of orphans) {
+      try {
+        let vlanByIndex = portsCache.get(o.olt_id);
+        if (!vlanByIndex) {
+          const olt  = await this._fetchOlt(o.olt_id, o.empresa_id);
+          const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+          const res  = await this.automation.servicePorts({ connection: conn });
+          if (!res.success) {
+            omitidas++;
+            this.logger.warn(`adoptarOnusHuerfanas: no se pudo leer service-ports de OLT ${o.olt_id} — omitido contrato ${o.contrato_id}`);
+            continue;
+          }
+          vlanByIndex = new Map(res.ports.map(p => [p.index, p.vlan_id]));
+          portsCache.set(o.olt_id, vlanByIndex);
+        }
+
+        // VIO: el service-port de datos debe existir REALMENTE en la OLT para adoptar.
+        const dataVlan = vlanByIndex.get(o.data_sp);
+        if (dataVlan == null) {
+          omitidas++;
+          this.logger.warn(
+            `adoptarOnusHuerfanas: service-port datos ${o.data_sp} NO confirmado en OLT ` +
+            `${o.olt_id} — no se adopta contrato ${o.contrato_id} (posible drift real).`,
+          );
+          continue;
+        }
+        const mgmtVlan = o.mgmt_sp != null ? vlanByIndex.get(o.mgmt_sp) ?? null : null;
+
+        const wanMode = o.tipo_auth === 'pppoe' ? 'routing' : 'bridge';
+        const nota =
+          `Adoptado por reconciliador ${new Date().toISOString()} — registro reconstruido tras ` +
+          `huérfano ONU↔contrato. REVISAR: wan_mode='${wanMode}' y perfiles (lineprofile/srvprofile) ` +
+          `no recuperables; usar Re-Aprovisionar si el modo/perfil difiere.`;
+
+        const ins = await this.ds.query<{ id: string }[]>(`
+          INSERT INTO ftth_onu_registro
+            (empresa_id, contrato_id, olt_id, frame, slot, port, onu_id, sn,
+             service_port_id, vlan, wan_mode, estado,
+             mgmt_service_port_id, mgmt_vlan, tr069_bootstrap_aplicado, ultimo_error)
+          VALUES ($1,$2,$3,0,$4,$5,$6,$7,$8,$9,$10,'activo',$11,$12,$13,$14)
+          ON CONFLICT (contrato_id) DO NOTHING
+          RETURNING id
+        `, [
+          o.empresa_id, o.contrato_id, o.olt_id, o.slot, o.port, o.onu_id, o.sn,
+          o.data_sp, dataVlan, wanMode, o.mgmt_sp, mgmtVlan, o.mgmt_sp != null, nota,
+        ]);
+
+        if (ins.length > 0) {
+          adoptadas++;
+          this.logger.warn(
+            `adoptarOnusHuerfanas: ADOPTADA sn=${o.sn} ${o.slot}/${o.port}/${o.onu_id} ` +
+            `contrato=${o.numero_contrato ?? o.contrato_id} data_sp=${o.data_sp}/vlan${dataVlan} ` +
+            `mgmt_sp=${o.mgmt_sp ?? '-'}/vlan${mgmtVlan ?? '-'} wan_mode=${wanMode}`,
+          );
+        } else {
+          omitidas++; // colisión de contrato_id (registro soft-deleted) — no adoptar
+        }
+      } catch (e) {
+        omitidas++;
+        this.logger.warn(`adoptarOnusHuerfanas: contrato ${o.contrato_id} lanzó — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    this.logger.log(`adoptarOnusHuerfanas: candidatas=${orphans.length} adoptadas=${adoptadas} omitidas=${omitidas}`);
+    return { candidatas: orphans.length, adoptadas, omitidas };
+  }
+
   // ── actualizarWan ─────────────────────────────────────────────────
   // Re-inyecta la WAN PPPoE en la ONU con las credenciales ACTUALES del contrato.
   // Idempotente (`ont ipconfig ip-index 1` modifica la config existente). Se dispara

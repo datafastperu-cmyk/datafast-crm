@@ -55,4 +55,22 @@ export class FtthWanWatcherCron {
       this.runningRollback = false;
     }
   }
+
+  // Watcher de la cara CREATE del invariante: adopta ONUs aprovisionadas en la OLT y
+  // vinculadas a un contrato vigente pero sin `ftth_onu_registro` (huérfanos de creación),
+  // reconstruyendo el registro. Cada 30 min, horario disjunto de los otros dos watchers.
+  private runningAdopt = false;
+
+  @Cron('7-59/30 * * * *')
+  async adoptarHuerfanas(): Promise<void> {
+    if (this.runningAdopt) return;
+    this.runningAdopt = true;
+    try {
+      await this.ftth.adoptarOnusHuerfanas();
+    } catch (e) {
+      this.logger.error(`FtthWanWatcherCron.adoptarHuerfanas falló: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.runningAdopt = false;
+    }
+  }
 }
