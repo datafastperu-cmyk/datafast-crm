@@ -298,6 +298,15 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     return () => clearTimeout(t);
   }, [scanNoResults]);
 
+  // Sincroniza slot/port con el SN seleccionado en modo lista. La opción por defecto de
+  // un <select> NO dispara onChange, así que sin esto slot/port quedaban vacíos (formValid
+  // falla y el botón Aprovisionar no se habilita) hasta re-seleccionar manualmente el SN.
+  useEffect(() => {
+    if (!snSelectMode || !scanData?.onus.length || !sn) return;
+    const o = (scanData.onus as OntFoundInfo[]).find(x => x.sn === sn);
+    if (o) { setSlot(String(o.slot)); setPort(String(o.port)); }
+  }, [snSelectMode, scanData, sn]);
+
   useEffect(() => {
     setSnSelectMode(false);
     setScanNoResults(false);
