@@ -902,7 +902,10 @@ export const oltNativoApi = {
     contratoId: string,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
     const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
-      `/olt-nativo/${oltId}/ftth/desaprovisionar`, { contratoId },
+      // El rollback GPON + liberación de pools hace varios round-trips SSH a la OLT y puede
+      // tardar ~40s. Sin timeout amplio el frontend abortaba (~30s) y mostraba "error" aunque
+      // el backend completaba OK.
+      `/olt-nativo/${oltId}/ftth/desaprovisionar`, { contratoId }, { timeout: 90_000 },
     );
     return res.data.data;
   },

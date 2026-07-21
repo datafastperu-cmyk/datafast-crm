@@ -546,20 +546,21 @@ export class ProvisionFtthService {
   ): Promise<string> {
     if (!olt.tr069Enabled) return '';
 
-    // WIRING ÚNICO (directriz feedback_arquitectura_multicanal_provisioning): el carril de
-    // gestión SIEMPRE pasa por bootstrapTr069 → ProvisioningStrategyResolver (catálogo de
-    // capacidad por modelo + verificación de convergencia real contra GenieACS, VIO). El
-    // flujo automático (este) y el manual (endpoint) comparten UN solo orquestador — nunca
-    // se invoca un canal ni provision_mgmt_bootstrap directamente desde el aprovisionamiento.
-    // Best-effort: el plano de datos ya está OK, así que un fallo del carril no tumba la provisión.
-    try {
-      const r = await this.bootstrapTr069(olt.id, olt.empresaId, { contratoId });
-      return ' ' + r.mensaje;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      this.logger.warn(`carril: bootstrapTr069 lanzó | contrato=${contratoId}: ${msg}`);
-      return ` Carril TR-069 no aplicado: ${msg}`;
-    }
+    // WIRING ÚNICO (directriz feedback_arquitectura_multicanal_provisioning): el carril SIEMPRE
+    // pasa por bootstrapTr069 → ProvisioningStrategyResolver (catálogo por modelo + verificación
+    // de convergencia real contra GenieACS, VIO). El flujo automático y el manual comparten un
+    // solo orquestador.
+    //
+    // FIRE-AND-FORGET: el carril es inherentemente ASÍNCRONO — la ONU tiene que bootear, hacer
+    // DHCP e informar (minutos). El resolver espera hasta 3 min esa convergencia; bloquear el
+    // request de "Aprovisionar" en eso hacía que la provisión tardara y "fallara" aunque el
+    // plano de datos ya estuviera OK. Se dispara en segundo plano: la provisión retorna de
+    // inmediato y el drift-watcher (tr069-cpe-drift-watcher) reintenta/verifica el carril.
+    void this.bootstrapTr069(olt.id, olt.empresaId, { contratoId })
+      .then((r) => this.logger.log(`carril (async) | contrato=${contratoId}: ${r.exitoso ? 'OK' : 'pendiente'} — ${r.mensaje}`))
+      .catch((e) => this.logger.warn(`carril (async) | contrato=${contratoId}: ${e instanceof Error ? e.message : String(e)}`));
+
+    return ' Carril TR-069 en aplicación en segundo plano (se confirma por el watcher; la ONU aparecerá en el ACS al informar).';
   }
 
   // Resuelve el índice de la traffic table de gestión canónica (ERP-MGMT,
