@@ -3304,7 +3304,8 @@ def provision_mgmt_bootstrap(
 
     verify_out = ''
     last_transient_err: str | None = None
-    for attempt in range(3):
+    INTENTOS = 4
+    for attempt in range(INTENTOS):
         try:
             parts = _paramiko_huawei_run(
                 conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
@@ -3379,11 +3380,34 @@ def provision_mgmt_bootstrap(
                     )
                 if any(t in linea.lower() for t in transient_patterns):
                     last_transient_err = linea.strip()
+                    # Backoff progresivo: el "conflicts with other user operations" es el autosave
+                    # asíncrono de la OLT aún en curso. Reintentar demasiado pronto entra a una OLT
+                    # todavía ocupada y contamina la sesión (causa raíz 2026-07-21). Se espera cada
+                    # vez más para darle tiempo a liberar el lock.
+                    espera = 4 * (attempt + 1)
                     logger.warning(
-                        'provision_mgmt_bootstrap: error transitorio (autosave) intento=%d | OLT=%s: %s',
-                        attempt + 1, conn.ip, last_transient_err,
+                        'provision_mgmt_bootstrap: error transitorio (autosave) intento=%d/%d | '
+                        'OLT=%s (backoff %ds): %s',
+                        attempt + 1, INTENTOS, conn.ip, espera, last_transient_err,
                     )
-                    _time_read.sleep(3)
+                    _time_read.sleep(espera)
+                    break
+                # Error CLI "duro" (p.ej. "% Unknown command, the error locates at '^'") que aparece
+                # SÓLO tras un conflicto transitorio previo en esta MISMA operación: es casi con
+                # certeza contaminación de la sesión por la operación concurrente (autosave) aún en
+                # curso — el batch es estático y correcto (funciona en el camino normal), no hay
+                # error de sintaxis real. Se trata como turbulencia transitoria y se reintenta con
+                # backoff mientras queden intentos; sólo en el último intento se propaga como error
+                # duro. Causa raíz CNT-2026-000004: attempt 1 "conflicts" → attempt 2 "% Unknown
+                # command" espurio → carril daba FALSO NEGATIVO (rollback de un carril ya materializado).
+                if last_transient_err is not None and attempt < (INTENTOS - 1):
+                    espera = 4 * (attempt + 1)
+                    logger.warning(
+                        'provision_mgmt_bootstrap: error CLI duro tras conflicto transitorio previo '
+                        '(sesión contaminada, reintentando) intento=%d/%d | OLT=%s (backoff %ds): %s',
+                        attempt + 1, INTENTOS, conn.ip, espera, linea.strip(),
+                    )
+                    _time_read.sleep(espera)
                     break
                 raise ProvisioningError(
                     f'CLI Huawei reportó error en el bootstrap de gestión en {conn.ip}: {linea.strip()}'
@@ -3393,7 +3417,7 @@ def provision_mgmt_bootstrap(
             break
     else:
         raise ProvisioningError(
-            f'Bootstrap de gestión falló tras 3 intentos por conflicto transitorio en {conn.ip}: '
+            f'Bootstrap de gestión falló tras {INTENTOS} intentos por conflicto transitorio en {conn.ip}: '
             f'{last_transient_err}'
         )
 
