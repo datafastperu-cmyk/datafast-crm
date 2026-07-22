@@ -174,7 +174,10 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   const [trafficIndexDown, setTrafficIndexDown] = useState('');  // '' = Indefinida
   const [trafficIndexUp,   setTrafficIndexUp]   = useState('');  // '' = Indefinida
   const [description,   setDescription]  = useState('');
-  const [wanMode,       setWanMode]      = useState<'bridge' | 'routing'>('bridge');
+  // Routing preseleccionado: es el modo habitual de la operación. Si la ONU ya existe, el
+  // efecto de auto-relleno lo pisa con el modo REAL del registro, así que esto solo aplica
+  // a provisiones nuevas.
+  const [wanMode,       setWanMode]      = useState<'bridge' | 'routing'>('routing');
 
   // Perfiles OLT (Phase 4)
   const { data: perfiles } = useQuery<OltPerfilesResult>({
