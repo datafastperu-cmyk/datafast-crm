@@ -109,6 +109,20 @@ export class CompensadorWizardService {
           select: ['servicePortId', 'mgmtServicePortId', 'onuId', 'slot', 'port'],
         }).catch(() => null);
 
+        // El POOL manda sobre el registro para el service-port de gestión. Orden real de los
+        // hechos: el carril asigna el ID en el pool y RECIÉN DESPUÉS lo persiste en el
+        // registro. Si el procedimiento se interrumpe entre ambos —o el carril async muere—
+        // el registro queda con mgmt_service_port_id NULL mientras el service-port SÍ existe
+        // en la OLT. Confiar solo en el registro hacía fallar `ont delete` con "This
+        // configured object has some service virtual ports" (observado en vivo, ONT 1/8/44).
+        const [mgmtPool] = await this.ds.query<{ service_port_id: number }[]>(
+          `SELECT service_port_id FROM olt_service_port_pool
+           WHERE olt_id = $1 AND contrato_id = $2 AND canal = 'gestion'
+             AND estado = 'ocupado' AND deleted_at IS NULL
+           LIMIT 1`,
+          [c.oltId, c.contratoId],
+        ).catch(() => [] as { service_port_id: number }[]);
+
         const res = await this.automation.ftthRollbackGpon({
           connection: {
             ip: olt.ipGestion, port: olt.puerto,
@@ -119,7 +133,7 @@ export class CompensadorWizardService {
           port:                 reg?.port  ?? c.port,
           onu_id:               reg?.onuId ?? c.onuId,
           service_port_id:      reg?.servicePortId     ?? c.servicePortId     ?? null,
-          mgmt_service_port_id: reg?.mgmtServicePortId ?? c.mgmtServicePortId ?? null,
+          mgmt_service_port_id: reg?.mgmtServicePortId ?? mgmtPool?.service_port_id ?? c.mgmtServicePortId ?? null,
         });
         if (!res.success) {
           throw new Error(`Limpieza de la OLT NO confirmada: ${res.error ?? 'sin detalle'}`);
