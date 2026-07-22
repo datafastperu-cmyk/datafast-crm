@@ -3644,9 +3644,48 @@ def rollback_gpon(
         conn.ip, slot, port, onu_id, service_port_id, mgmt_service_port_id,
     )
 
-    for sp_id in (service_port_id, mgmt_service_port_id):
-        if sp_id is not None:
-            _undo_service_port_verificado(conn, sp_id)
+    # DESCUBRIMIENTO EN LA OLT (causa raíz, 2026-07-22): no basta con deshacer los IDs que
+    # el ERP recuerda. Este mismo fallo mordió cuatro veces —FtthRecoveryCron, el compensador
+    # de sagas, la desaprovisión y el re-aprovisionamiento— siempre con el mismo síntoma:
+    # "This configured object has some service virtual ports" y el ONT imposible de borrar.
+    #
+    # Motivo: el service-port de GESTIÓN se crea en una fase posterior (carril TR-069) y el
+    # ERP puede no habérselo guardado; y si el bootstrap dio falso negativo, el ID se devuelve
+    # al pool NEUTRALIZANDO su rol y contrato, con lo que ya no hay forma de reconstruirlo
+    # desde la BD — mientras el service-port sigue vivo en la OLT.
+    #
+    # La OLT es la única fuente que siempre sabe la verdad: se le pregunta qué service-ports
+    # cuelgan de este ONT y se deshacen TODOS. Los IDs recibidos por parámetro se conservan
+    # como respaldo por si la consulta falla.
+    sp_ids: set[int] = {sp for sp in (service_port_id, mgmt_service_port_id) if sp is not None}
+    try:
+        raw_sp = _paramiko_huawei_run(
+            conn, [f'display service-port port 0/{slot}/{port}'],
+            timeout=settings.ssh_command_timeout,
+        )
+        # Formato: "<index> <vlan> common gpon 0/1 /8 <ont> <gem> vlan ... up"
+        patron = re.compile(
+            rf'^\s*(\d+)\s+\d+\s+\S+\s+gpon\s+0/\s*{slot}\s*/\s*{port}\s+{onu_id}\s+',
+            re.MULTILINE,
+        )
+        descubiertos = {int(m) for m in patron.findall(raw_sp)}
+        if descubiertos:
+            nuevos = descubiertos - sp_ids
+            if nuevos:
+                logger.warning(
+                    'rollback_gpon: service-ports NO conocidos por el ERP descubiertos en la '
+                    'OLT para ont %d/%d/%d: %s — se deshacen igual',
+                    slot, port, onu_id, sorted(nuevos),
+                )
+            sp_ids |= descubiertos
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            'rollback_gpon: no se pudo listar service-ports de 0/%d/%d (se usan solo los '
+            'recibidos): %s', slot, port, exc,
+        )
+
+    for sp_id in sorted(sp_ids):
+        _undo_service_port_verificado(conn, sp_id)
 
     # Fase 2: ont delete + verificación dura + reintento. NO basta con que SSH no
     # lance excepción. El `ont delete` puede fallar en silencio (lock de otra sesión
