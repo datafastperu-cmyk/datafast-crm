@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 
 import { ProvisionFtthService } from '../services/provision-ftth.service';
+import { CompensadorWizardService } from '../services/compensador-wizard.service';
 
 // ─────────────────────────────────────────────────────────────
 // FtthWanWatcherCron
@@ -23,7 +24,10 @@ export class FtthWanWatcherCron {
   private readonly logger = new Logger(FtthWanWatcherCron.name);
   private running = false;
 
-  constructor(private readonly ftth: ProvisionFtthService) {}
+  constructor(
+    private readonly ftth: ProvisionFtthService,
+    private readonly compensador: CompensadorWizardService,
+  ) {}
 
   @Cron('*/10 * * * *')
   async verificarWan(): Promise<void> {
@@ -71,6 +75,25 @@ export class FtthWanWatcherCron {
       this.logger.error(`FtthWanWatcherCron.adoptarHuerfanas falló: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       this.runningAdopt = false;
+    }
+  }
+
+  // Anulación de procedimientos cerrados sin confirmar: compensa sus pasos en LIFO
+  // (Fase 2). Cada 3 min para que el operador vea el sistema limpio pronto tras cerrar,
+  // pero con lote acotado y una sola pasada por ciclo — nada de reintentos agresivos
+  // contra la OLT. Minutos 2,5,8… disjuntos del resto de watchers FTTH.
+  private runningAnular = false;
+
+  @Cron('2-59/3 * * * *')
+  async procesarAnulaciones(): Promise<void> {
+    if (this.runningAnular) return;
+    this.runningAnular = true;
+    try {
+      await this.compensador.procesarPendientes();
+    } catch (e) {
+      this.logger.error(`FtthWanWatcherCron.procesarAnulaciones falló: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.runningAnular = false;
     }
   }
 }

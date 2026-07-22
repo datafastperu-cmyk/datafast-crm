@@ -17,6 +17,7 @@ import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 import { FtthOperacionLockService }       from './ftth-operacion-lock.service';
+import { OperacionWizardPasoService }     from './operacion-wizard-paso.service';
 import { OltOnuIdPoolService }           from './olt-onu-id-pool.service';
 import { OltMgmtIpPoolService }          from './olt-mgmt-ip-pool.service';
 import { PythonOnuStatusInfo, PythonFtthWanPppoeRequest } from '../dto/olt-nativo-ops.dto';
@@ -46,6 +47,11 @@ export class ProvisionarFtthDto {
   @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndexDown?: number;
   @IsOptional() @IsInt() @Min(0) @Type(() => Number) trafficIndexUp?:   number;
   @IsOptional() @IsString() @MaxLength(64)            description?:      string;
+  // Procedimiento operativo (wizard) al que pertenece esta provisión. Si viene, cada paso
+  // mutante se anota en la bitácora de compensación y el cierre sin confirmar puede
+  // deshacerlo. Si no viene, el comportamiento es el histórico: la red de seguridad es
+  // FtthRecoveryCron. Opcional a propósito — no rompe llamadores existentes (outbox, reaplicar).
+  @IsOptional() @IsUUID('4')                          operacionId?:      string;
   // Modo WAN de la ONU:
   //  - 'bridge'  → ONU transparente; el PPPoE lo hace el router del cliente (BRAS).
   //                El OLT solo hace GPON + service-port. NO se inyecta WAN por OMCI.
@@ -129,6 +135,7 @@ export class ProvisionFtthService {
     private readonly genieDriver: GenieAcsDriver,
 
     private readonly opLock: FtthOperacionLockService,
+    private readonly pasos:  OperacionWizardPasoService,
   ) {}
 
   private async _logRollback(
@@ -324,12 +331,51 @@ export class ProvisionFtthService {
 
     const registroId = insertResult[0].id;
 
+    // ── Bitácora de compensación (Fase 2) ────────────────────────────────
+    // Solo si el wizard declaró su procedimiento (`dto.operacionId`). Si no viene, el
+    // comportamiento es el de siempre: la red de seguridad sigue siendo FtthRecoveryCron.
+    // Los recursos ya reservados se anotan aquí; el paso de HARDWARE se anota más abajo,
+    // write-ahead, justo antes de tocar la OLT.
+    const opId = dto.operacionId ?? null;
+    if (opId) {
+      await this.pasos.registrarIntencion(
+        opId, 'registro_ftth', `Registro FTTH del contrato ${dto.contratoId}`,
+        { contratoId: dto.contratoId },
+      ).then((id) => this.pasos.marcarAplicado(id)).catch(() => { /* la bitácora nunca aborta la provisión */ });
+
+      if (usedSvcPool) {
+        await this.pasos.registrarIntencion(
+          opId, 'pool_service_port', `Service-port ${servicePortId} (datos)`,
+          { oltId, contratoId: dto.contratoId, canal: 'datos' },
+        ).then((id) => this.pasos.marcarAplicado(id)).catch(() => { /* idem */ });
+      }
+      await this.pasos.registrarIntencion(
+        opId, 'pool_onu_id', `ONT-ID ${onuId} en ${dto.slot}/${dto.port}`,
+        { oltId, contratoId: dto.contratoId },
+      ).then((id) => this.pasos.marcarAplicado(id)).catch(() => { /* idem */ });
+    }
+
     // ── Fase 1: GPON (con auto-sanado de colisión de service-port) ──
     // Si el índice asignado por el pool ya existe en la OLT, se marca como
     // no-usable y se reintenta con el siguiente del pool (hasta 3 veces).
     let gponRes: { success: boolean; error?: string };
     for (let intento = 0; ; intento++) {
       this.logger.log(`FTTH Fase1 GPON | contrato=${dto.contratoId} sn=${dto.sn} onuId=${onuId} svcPort=${servicePortId} intento=${intento + 1}`);
+
+      // WRITE-AHEAD: la intención se escribe ANTES de tocar la OLT. Si el proceso muere
+      // entre este INSERT y el `ont add`, el paso queda `en_vuelo` y el compensador ejecuta
+      // igual el rollback (que es idempotente y verifica con `display ont info`). Escribirlo
+      // después reintroduciría el huérfano exacto que arrastraba FtthRecoveryCron.
+      let pasoGponId: string | null = null;
+      if (opId) {
+        pasoGponId = await this.pasos.registrarIntencion(
+          opId, 'olt_gpon',
+          `ont add ${dto.slot}/${dto.port} onu ${onuId} sn ${dto.sn} + service-port ${servicePortId}`,
+          { oltId, slot: dto.slot, port: dto.port, onuId, servicePortId },
+          { tipo: 'display_ont_info', slot: dto.slot, port: dto.port, onuId },
+        ).catch(() => null);
+      }
+
       try {
         gponRes = await this.automation.ftthProvisionGpon({
           connection:      conn,
@@ -353,6 +399,16 @@ export class ProvisionFtthService {
         // para no dejar el registro atascado en 'pendiente' con el lock puesto.
         gponRes = { success: false, error: err?.message ?? 'Error de comunicación con la OLT' };
       }
+
+      // El paso se cierra según el resultado REAL. Ante un fallo NO se marca `no_aplicado`:
+      // un timeout o un 503 no prueban que la OLT no ejecutara el `ont add` (hoy mismo vimos
+      // un `ont` creado tras un timeout del microservicio). Se deja `en_vuelo` para que el
+      // compensador lo resuelva contra el hardware — "aceptado ≠ materializado" también vale
+      // en el sentido inverso: "fallido ≠ no aplicado".
+      if (pasoGponId && gponRes.success) {
+        await this.pasos.marcarAplicado(pasoGponId).catch(() => { /* la bitácora no aborta */ });
+      }
+
       if (gponRes.success) break;
 
       // Auto-sanado de colisión de service-port: reasignar del pool (hasta 3 veces).
