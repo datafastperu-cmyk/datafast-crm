@@ -63,6 +63,7 @@ import { Tr069Module }                from '../tr069/tr069.module';
 import { ConfiguracionModule }        from '../config/config.module';
 import { OltServicePortPoolService }  from './services/olt-service-port-pool.service';
 import { FtthOperacionLockService }   from './services/ftth-operacion-lock.service';
+import { OperacionWizardService }     from './services/operacion-wizard.service';
 import { OltMgmtIpPoolService }       from './services/olt-mgmt-ip-pool.service';
 import { OltConnService }             from './services/olt-conn.service';
 import { OltOnuIdPoolService }        from './services/olt-onu-id-pool.service';
@@ -208,6 +209,7 @@ import { Tr069CpeDriftWatcherCron }         from './cron/tr069-cpe-drift-watcher
     OnuTr069DetalleService,
     OltServicePortPoolService,
     FtthOperacionLockService,
+    OperacionWizardService,
     OltMgmtIpPoolService,
     OltConnService,
     OltOnuIdPoolService,

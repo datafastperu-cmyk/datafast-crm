@@ -1,3 +1,5 @@
+import { OperacionWizardService } from './services/operacion-wizard.service';
+import { AbrirWizardDto, CerrarWizardDto } from './dto/wizard.dto';
 import {
   BadRequestException,
   Body, Controller, Delete, Get, HttpCode, HttpStatus,
@@ -81,6 +83,7 @@ export class OltNativoController {
     private readonly service:       OltNativoService,
     private readonly firmware:      FirmwareService,
     private readonly ftth:          ProvisionFtthService,
+    private readonly wizards:      OperacionWizardService,
     private readonly pool:          OltServicePortPoolService,
     private readonly mgmtIpPool:    OltMgmtIpPoolService,
     private readonly onuIdPool:     OltOnuIdPoolService,
@@ -1182,6 +1185,56 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<{ cancelado: boolean; mensaje: string }> {
     return this.ftth.cancelarFtth(contratoId, user.empresaId);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Procedimiento operativo (wizard) — Fase 1 de la directriz.
+  // El navegador abre el procedimiento, late mientras el operador está a cargo, y confirma
+  // cuando el recurso alcanzó su estado terminal verificado. El servidor es la autoridad:
+  // si el heartbeat calla, el barrido revierte el trabajo no confirmado.
+  // ────────────────────────────────────────────────────────────
+  @Post('wizard/abrir')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Abrir un procedimiento operativo sobre un recurso (contrato)' })
+  async abrirWizard(
+    @Body() dto: AbrirWizardDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ id: string; expiraEn: Date; techoEn: Date }> {
+    const op = await this.wizards.abrir(user.empresaId, dto.tipo, dto.recursoRef, user.sub);
+    return { id: op.id, expiraEn: op.expira_en, techoEn: op.techo_en };
+  }
+
+  @Post('wizard/:id/heartbeat')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Señal de vida del wizard — renueva el TTL, nunca el techo absoluto' })
+  @ApiParam({ name: 'id' })
+  async heartbeatWizard(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ vivo: boolean }> {
+    return { vivo: await this.wizards.heartbeat(id) };
+  }
+
+  @Post('wizard/:id/confirmar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirmar el procedimiento — su trabajo deja de ser anulable por cierre' })
+  @ApiParam({ name: 'id' })
+  async confirmarWizard(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ confirmado: boolean }> {
+    await this.wizards.confirmar(id);
+    return { confirmado: true };
+  }
+
+  @Post('wizard/:id/cerrar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cerrar sin confirmar — el trabajo no confirmado queda para anulación' })
+  @ApiParam({ name: 'id' })
+  async cerrarWizard(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CerrarWizardDto,
+  ): Promise<{ cerrado: boolean }> {
+    await this.wizards.cerrarSinConfirmar(id, dto.motivo ?? 'Cerrado por el operador');
+    return { cerrado: true };
   }
 
   @Post(':oltId/ftth/cambiar-velocidad')

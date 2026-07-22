@@ -9,19 +9,30 @@ import { OltAutomationClient }             from '../olt-automation.client';
 import { decrypt }                         from '../../../common/utils/encryption.util';
 import { filasUpdateReturning }            from '../../../common/utils/pg-result.util';
 import { EventosSistemaService }           from '../../sistema/eventos-sistema.service';
+import { OperacionWizardService }          from '../services/operacion-wizard.service';
 
 // ─────────────────────────────────────────────────────────────
 // FtthRecoveryCron
 //
-// Cada 5 minutos busca registros FTTH con locked_at > 10 min
-// y los libera, haciendo rollback GPON si ya estaban en la OLT.
+// Red de seguridad del lado servidor para procedimientos que quedaron a medias: cada 5 min
+// busca registros FTTH con locked_at > 10 min y los revierte. NO depende del navegador —
+// el registro nace 'pendiente' con locked_at, así que un crash queda cubierto igual.
 //
-// Escenarios:
-//   pendiente          → ninguna acción en OLT, solo marcar fallido_gpon
-//   gpon_registrado    → rollback GPON en OLT, marcar fallido_gpon
-//   wan_inyectado      → rollback GPON en OLT (WAN OMCI no tiene undo clean),
-//                        marcar fallido_gpon
-//   desaprovisionando  → marcar fallido_gpon (proceso de baja abortado)
+// Se SUPRIME mientras haya un wizard vivo sobre el contrato (heartbeat vigente y dentro del
+// techo absoluto): el operador puede estar leyendo un error en pantalla y no se le deshace
+// el trabajo por debajo. Ver OperacionWizardService.
+//
+// Escenarios (el rollback SIEMPRE incluye el service-port de gestión, si lo hay):
+//   pendiente          → rollback GPON: el `ont add` puede haber ocurrido antes del UPDATE
+//   gpon_registrado    → rollback GPON
+//   wan_inyectado      → rollback GPON (la WAN OMCI no tiene undo limpio)
+//   desaprovisionando  → marcar fallido (baja abortada; el registro sigue vinculado)
+//
+// Desenlace según la OLT, nunca según el eco del comando:
+//   limpieza CONFIRMADA      → fallido_gpon (recurso liberable)
+//   limpieza NO confirmada   → fallido_rollback + pools retenidos → lo hereda
+//                              `reintentarRollbacksFallidos`. Jamás se declara limpio algo
+//                              que no se pudo verificar: así es como nacen los ONT huérfanos.
 // ─────────────────────────────────────────────────────────────
 @Injectable()
 export class FtthRecoveryCron {
@@ -40,6 +51,8 @@ export class FtthRecoveryCron {
     private readonly automation: OltAutomationClient,
 
     private readonly eventos: EventosSistemaService,
+
+    private readonly wizards: OperacionWizardService,
   ) {}
 
   // Minutos 4,9,…,59 — disjuntos del health-poller (x0) y del monitoreo (2,7,…)
@@ -50,7 +63,7 @@ export class FtthRecoveryCron {
     // locked_at se renueva a NOW() para que la condición `< NOW() - 10min`
     // sea falsa para cualquier otra instancia que corra en paralelo.
     const bloqueados = filasUpdateReturning<{
-      id: string; estado: string; olt_id: string;
+      id: string; estado: string; olt_id: string; contrato_id: string;
       slot: number; port: number; onu_id: number; service_port_id: number | null;
       mgmt_service_port_id: number | null;
     }>(await this.ds.query(
@@ -60,14 +73,37 @@ export class FtthRecoveryCron {
          AND locked_at < NOW() - INTERVAL '10 minutes'
          AND estado IN ('pendiente', 'gpon_registrado', 'wan_inyectado', 'desaprovisionando')
          AND deleted_at IS NULL
-       RETURNING id, estado, olt_id, slot, port, onu_id, service_port_id, mgmt_service_port_id`,
+       RETURNING id, estado, olt_id, contrato_id, slot, port, onu_id, service_port_id, mgmt_service_port_id`,
     ));
 
     if (!bloqueados.length) return;
 
-    this.logger.warn(`FTTH Recovery: ${bloqueados.length} registros bloqueados detectados`);
+    // SUPRESIÓN POR WIZARD VIVO (Fase 1): si hay un operador a cargo del contrato —
+    // heartbeat vigente y dentro del techo absoluto — este barrido NO toca sus recursos.
+    // Sin esto, un operador que se toma 12 minutos leyendo un error en pantalla se
+    // encontraba con que el cron ya le había deshecho el trabajo por debajo, sin que él
+    // cerrara nada. El heartbeat solo POSPONE al barredor; nunca autoriza nada.
+    const contratos  = bloqueados.map((b) => b.contrato_id).filter(Boolean);
+    const conOperador = await this.wizards.filtrarVivos(contratos).catch(() => new Set<string>());
+    const procesables = bloqueados.filter((b) => !conOperador.has(b.contrato_id));
 
-    for (const rec of bloqueados) {
+    if (conOperador.size > 0) {
+      this.logger.log(
+        `FTTH Recovery: ${conOperador.size} registro(s) omitidos — wizard vivo (operador a cargo)`,
+      );
+      // Se devuelve el lock a su estado previo para no falsear la antigüedad: el UPDATE de
+      // arriba lo renovó a NOW() al reclamarlos, y estos no se van a procesar.
+      await this.ds.query(
+        `UPDATE ftth_onu_registro SET locked_at = $2 WHERE contrato_id = ANY($1::uuid[])`,
+        [[...conOperador], new Date(Date.now() - 11 * 60_000)],
+      ).catch(() => { /* best-effort: el próximo ciclo lo vuelve a evaluar */ });
+    }
+
+    if (!procesables.length) return;
+
+    this.logger.warn(`FTTH Recovery: ${procesables.length} registros bloqueados detectados`);
+
+    for (const rec of procesables) {
       try {
         await this._procesarBloqueado(rec);
       } catch (err: any) {
@@ -244,6 +280,11 @@ export class FtthRecoveryCron {
     await this.ds.query(
       `DELETE FROM ftth_operacion_lock WHERE expira_en < NOW() - INTERVAL '1 hour'`,
     ).catch(() => { /* best-effort: no es crítico para la correctitud */ });
+
+    // Wizards que dejaron de latir o superaron el techo absoluto: se marcan vencidos para
+    // que dejen de suprimir el barrido. Es lo que hace que un navegador muerto no congele
+    // los recursos de un contrato para siempre.
+    await this.wizards.vencerAbandonados().catch(() => 0);
 
     const svcLiberados = (svcRes as any)?.rowCount ?? 0;
     const onuLiberados = (onuRes as any)?.rowCount ?? 0;
