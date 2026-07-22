@@ -112,6 +112,30 @@ siguió corriendo contra un contrato que ya no tenía registro
 (`carril (async): No hay registro FTTH para el contrato`). Resultado: ONU huérfana — discordancia
 entre el plano físico (OLT) y el lógico (ERP).
 
+**La frontera de confirmación es el ESTADO TERMINAL VERIFICADO, no el clic del operador.**
+Un procedimiento está confirmado cuando su recurso alcanzó el estado terminal de su máquina
+de estados con verificación VIO (en FTTH: `estado = activo`). Todo lo anterior
+(`pendiente`, `gpon_registrado`, `wan_inyectado`, `fallido_*`) es trabajo en vuelo y **se anula
+al cerrar**. Lo confirmado **jamás** se anula por un cierre: para deshacerlo existe la
+desaprovisión formal, que pide confirmación y queda auditada.
+
+El clic NO puede ser la frontera transaccional por dos razones:
+1. Es inalcanzable justo en los peores casos — crash del navegador, caída de sesión, corte de
+   luz — que son precisamente los que motivan esta regla. Una frontera que no existe en el
+   caso que la justifica no es una frontera.
+2. Convertiría la regla en fábrica de cortes de servicio: provisión correcta → ONU activa →
+   cliente navegando → crash → el ERP desaprovisiona a un cliente en producción. La regla
+   nació para evitar la discordancia físico↔lógico; así la crearía.
+
+El caso objetivo queda cubierto al 100%: si el procedimiento arrojó error y el operador cierra
+para empezar de nuevo, el recurso está en estado no terminal y se anula completo. El botón
+"Finalizar" sigue existiendo como acto de UX y auditoría, nunca como acto transaccional.
+
+**Nunca se interrumpe una operación de hardware a mitad.** Anular no es abortar: si hay una
+operación en vuelo contra la OLT/MikroTik, se ESPERA a que termine de forma atómica y recién
+entonces se revierte por completo. Cortar a mitad de un comando es justamente lo que deja el
+plano físico sucio.
+
 **Checklist obligatorio para cualquier wizard/modal que toque hardware o reserve recursos**
 (pools de service-port, ONU ID, IP de gestión, certs VPN, etc.):
 
@@ -126,6 +150,33 @@ entre el plano físico (OLT) y el lógico (ERP).
    watcher `reintentarRollbacksFallidos`).
 5. **Prohibir operaciones concurrentes sobre el mismo contrato/ONU.** Una desaprovisión y una
    provisión en vuelo simultáneas fueron causa directa de un huérfano (2026-07-21).
+   Implementado: `FtthOperacionLockService` (tabla `ftth_operacion_lock`, TTL corto, 409 si
+   hay algo en curso). Ese lock cubre UNA operación; NO se toma por toda la sesión del wizard
+   (bloquearía el contrato a los watchers) — se toma solo mientras se ejecuta cada paso.
+
+**Reglas estructurales de la anulación (patrón saga con bitácora de compensación):**
+
+6. **La compensación se registra ANTES de ejecutar el paso**, nunca después (write-ahead).
+   Si el proceso muere entre "ejecuté `ont add`" y "escribí el paso", el huérfano renace.
+   Orden obligatorio: escribir paso `en_vuelo` → ejecutar contra hardware → marcar `aplicado`.
+   Un paso que queda `en_vuelo` tras el TTL es SOSPECHOSO de haberse ejecutado: se verifica
+   contra el hardware antes de decidir si hay algo que compensar.
+7. **Cada paso guarda DOS cosas: cómo deshacerlo y cómo verificar si llegó a aplicarse.**
+   Sin la sonda de verificación, un paso `en_vuelo` no es resoluble.
+8. **Las compensaciones son idempotentes por contrato.** Reejecutar una compensación ya
+   aplicada debe contar como ÉXITO ("does not exist" al deshacer = hecho, no error). Una
+   anulación interrumpida se reintenta desde el principio sin efectos raros.
+9. **VIO también al deshacer.** Una compensación no confirmada NO se reporta como hecha; el
+   procedimiento pasa a `anulacion_fallida` y lo hereda el watcher. Una sola pasada ordenada,
+   sin reintentos agresivos (el MA5800 tiene un límite bajo de sesiones VTY concurrentes).
+10. **El heartbeat SUPRIME el barrido, nunca autoriza nada**, y tiene TECHO ABSOLUTO: pasado
+    un máximo duro, el barrido procede aunque el heartbeat siga latiendo (si no, una pestaña
+    olvidada bloquea el recurso para siempre). El servidor es la autoridad: `beforeunload` no
+    puede ejecutar trabajo asíncrono fiable, así que el mecanismo real de anulación es la
+    expiración del TTL en el servidor, jamás un `sendBeacon` best-effort del navegador.
+11. **Anular es asíncrono.** Si el operador cierra mientras corre un paso, la anulación no es
+    la respuesta a ese request: es un trabajo del servidor que espera a que el paso termine y
+    recién entonces compensa (consecuencia directa de "no se interrumpe el hardware").
 
 Referencia de patrón ya aplicado correctamente: el wizard de registro de routers VPN
 (`fireRevoke` al cerrar sin completar el paso 3 + cron `limpiarWizardsAbandonados` como red
