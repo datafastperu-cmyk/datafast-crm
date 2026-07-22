@@ -85,7 +85,14 @@ export class CompensadorWizardService {
       }
     }
 
-    await this._marcarOperacion(operacionId, 'anulado', null);
+    // Se PISA el motivo, no se conserva: si un intento anterior falló, el mensaje de error
+    // quedaba pegado en una operación que terminó bien y la auditoría la mostraba como
+    // fallida. El desenlace final es el que manda.
+    await this._marcarOperacion(
+      operacionId, 'anulado',
+      `Anulación completada: ${compensados} paso(s) compensado(s) y verificado(s)`,
+      true,
+    );
     this.logger.log(`Operación anulada | id=${operacionId} pasos_compensados=${compensados}`);
     return { completa: true, compensados };
   }
@@ -186,12 +193,18 @@ export class CompensadorWizardService {
     }
   }
 
-  private async _marcarOperacion(id: string, estado: string, error: string | null): Promise<void> {
+  // `pisarMotivo=true` reemplaza el motivo aunque ya hubiera uno (desenlace final);
+  // por defecto solo lo rellena si estaba vacío, para no perder el primer error.
+  private async _marcarOperacion(
+    id: string, estado: string, motivo: string | null, pisarMotivo = false,
+  ): Promise<void> {
     await this.ds.query(
       `UPDATE operacion_wizard
-       SET estado = $2, motivo_cierre = COALESCE($3, motivo_cierre), updated_at = NOW()
+       SET estado = $2,
+           motivo_cierre = ${pisarMotivo ? '$3' : 'COALESCE($3, motivo_cierre)'},
+           updated_at = NOW()
        WHERE id = $1`,
-      [id, estado, error],
+      [id, estado, motivo],
     );
   }
 
