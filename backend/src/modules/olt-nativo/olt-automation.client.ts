@@ -335,7 +335,7 @@ export class OltAutomationClient {
       `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
     );
     const res = await this.post<PythonFtthRollbackResponse>(
-      '/api/v1/olt/ftth/rollback-gpon', payload, 30_000,
+      '/api/v1/olt/ftth/rollback-gpon', payload, 150_000,
     );
     this.logger.log(`← ftth/rollback-gpon | success=${res.success}`);
     return res;
@@ -412,7 +412,7 @@ export class OltAutomationClient {
       `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
     );
     const res = await this.post<PythonFtthWanResponse>(
-      '/api/v1/olt/ftth/inject-wan-pppoe', payload, 30_000,
+      '/api/v1/olt/ftth/inject-wan-pppoe', payload, 90_000,
     );
     this.logger.log(`← ftth/inject-wan-pppoe | success=${res.success}`);
     return res;
@@ -751,9 +751,20 @@ export class OltAutomationClient {
     );
 
     if (isNetworkError) {
+      // Un TIMEOUT no es lo mismo que "servicio caído", y confundirlos cuesta caro: la
+      // operación pudo haberse EJECUTADO en la OLT y solo tardó más que el límite del
+      // cliente (2026-07-22: un rollback lento se reportaba como "microservicio no
+      // alcanzable" mientras uvicorn respondía en 11 ms). Mezclarlos manda a diagnosticar
+      // el proceso equivocado y, peor, invita a asumir que no pasó nada — cuando el
+      // hardware puede haber quedado tocado.
+      const esTimeout = /timeout/i.test(message ?? '');
       throw new ServiceUnavailableException(
-        `Microservicio OLT no alcanzable en ${this.baseUrl}. ` +
-        `Verifica que el servicio esté corriendo: ${message}`,
+        esTimeout
+          ? `La operación en la OLT excedió el tiempo de espera del cliente (${message}). ` +
+            `El microservicio responde: es la OLT la que está tardando. ` +
+            `La operación PUEDE haberse aplicado — verifica el estado real antes de reintentar.`
+          : `Microservicio OLT no alcanzable en ${this.baseUrl}. ` +
+            `Verifica que el servicio esté corriendo: ${message}`,
       );
     }
 
