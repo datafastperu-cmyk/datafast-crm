@@ -125,6 +125,26 @@ export class GenieAcsDriver {
     return rows[0]?._deviceId?._ProductClass ?? null;
   }
 
+  /**
+   * `_lastInform` buscando el device por SN, probando las variantes legible/hex.
+   *
+   * NO se debe construir el `_id` a mano (`OUI-Modelo-SN`) para esto: el ERP guarda el SN
+   * en forma legible (`HWTC78CA0FAA`) mientras GenieACS registra el device con el serial
+   * HEX completo (`4857544378CA0FAA`). El `_id` fabricado nunca coincidía, `getDevice`
+   * devolvía null y la verificación de convergencia del carril TR-069 no podía confirmarse
+   * JAMÁS — daba igual el tamaño de la ventana (causa raíz 2026-07-22).
+   */
+  async getLastInformBySerial(serial: string): Promise<Date | null> {
+    const variants = this._snVariants(serial);
+    if (variants.length === 0) return null;
+    const query = variants.length === 1
+      ? { '_deviceId._SerialNumber': variants[0] }
+      : { '_deviceId._SerialNumber': { $in: variants } };
+    const rows = await this.nbi.listDevices(query, '_lastInform');
+    const raw  = rows[0]?._lastInform;
+    return raw ? new Date(raw) : null;
+  }
+
   /** Runtime del device (para resolver el DeviceProfile). */
   async getRuntime(deviceId: string): Promise<DeviceRuntime | null> {
     const dev = await this.nbi.getDevice(deviceId);

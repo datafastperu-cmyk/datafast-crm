@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ModuleHealthService } from '../../../../common/services/module-health.service';
 import { Tr069GenieacsClient } from '../../../tr069/tr069-genieacs.client';
+import { GenieAcsDriver } from '../../ztp/genieacs.driver';
 import { CpeProvisioningAttemptService } from './cpe-provisioning-attempt.service';
 import { HuaweiOmciBootstrapChannel } from './huawei-omci-bootstrap-channel.service';
 import { HuaweiDhcpBootstrapChannel } from './huawei-dhcp-bootstrap-channel.service';
@@ -56,6 +57,7 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
   constructor(
     private readonly moduleHealth:   ModuleHealthService,
     private readonly genieacs:       Tr069GenieacsClient,
+    private readonly genieDriver:    GenieAcsDriver,
     private readonly attemptService: CpeProvisioningAttemptService,
     private readonly omciChannel:    HuaweiOmciBootstrapChannel,
     private readonly dhcpChannel:    HuaweiDhcpBootstrapChannel,
@@ -118,7 +120,7 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
       // prueba válida de que el carril quedó vivo. Tomando la referencia después, ese
       // Inform quedaba "ya contado" y había que esperar al siguiente ciclo periódico
       // (300 s) — que caía fuera de la ventana → falso negativo con carril funcionando.
-      const refInform = await this._lastInformSeguro(this._buildGenieAcsDeviceId(ctx.device));
+      const refInform = await this._lastInformSeguro(ctx.device.sn);
 
       const resultado = await canal.bootstrap(ctx);
 
@@ -178,28 +180,35 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
     referencia?: Date | null,
   ): Promise<boolean> {
     if (!this.genieacs.isConfigured()) return false; // no se puede verificar — nunca se asume éxito
-    const deviceId = this._buildGenieAcsDeviceId(device);
     const deadline = Date.now() + this.VENTANA_VERIFICACION_MS;
-    const antes = referencia !== undefined ? referencia : await this._lastInformSeguro(deviceId);
+    const antes = referencia !== undefined ? referencia : await this._lastInformSeguro(device.sn);
 
     // Atajo: si el CPE ya informó DESPUÉS de la referencia, el carril está confirmado y no
     // hay nada que esperar. Evita quemar la ventana entera cuando la prueba ya existe.
-    const yaInformo = await this._lastInformSeguro(deviceId);
+    const yaInformo = await this._lastInformSeguro(device.sn);
     if (yaInformo && (!antes || yaInformo.getTime() > antes.getTime())) return true;
 
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, this.POLL_INTERVAL_MS));
-      const actual = await this._lastInformSeguro(deviceId);
+      const actual = await this._lastInformSeguro(device.sn);
       if (actual && (!antes || actual.getTime() > antes.getTime())) return true;
     }
     return false;
   }
 
-  private async _lastInformSeguro(deviceId: string): Promise<Date | null> {
+  /**
+   * `_lastInform` del CPE, resuelto POR SERIAL (no por `_id` fabricado).
+   *
+   * CAUSA RAÍZ 2026-07-22: el ERP guarda el SN legible (`HWTC78CA0FAA`) y GenieACS registra
+   * el device con el serial HEX completo (`4857544378CA0FAA`). El `_id` construido a mano
+   * (`OUI-Modelo-SN`) nunca coincidía → `getDevice` null → `lastInform` null → la
+   * convergencia del carril NUNCA podía confirmarse, con cualquier ventana. El ERP declaraba
+   * "requiere intervención manual" y liberaba el pool de gestión mientras la ONU estaba
+   * perfectamente gestionada. El driver ya sabe probar ambas variantes: se usa eso.
+   */
+  private async _lastInformSeguro(serial: string): Promise<Date | null> {
     try {
-      const device = await this.genieacs.getDevice(deviceId);
-      const raw = device?._lastInform;
-      return raw ? new Date(raw) : null;
+      return await this.genieDriver.getLastInformBySerial(serial);
     } catch {
       return null;
     }
