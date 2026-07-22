@@ -94,17 +94,32 @@ export class CompensadorWizardService {
         if (!olt) {
           throw new Error(`OLT ${c.oltId} no disponible — no se puede confirmar la limpieza del hardware`);
         }
+
+        // El payload se congeló ANTES de ejecutar (write-ahead), así que puede haber
+        // quedado obsoleto en dos casos reales:
+        //   · El carril TR-069 asigna el service-port de GESTIÓN DESPUÉS de este paso. Sin
+        //     él, `ont delete` falla con "has some service virtual ports" — el mismo defecto
+        //     que arrastraba FtthRecoveryCron (incidente 2026-07-17).
+        //   · El auto-sanado de colisión REASIGNA el service-port de datos tras el registro.
+        // Por eso los IDs se toman del registro VIVO, que es la verdad actual; el payload
+        // solo sirve de respaldo si el registro ya no existe. El orden LIFO garantiza que
+        // aquí el registro todavía está (se borra en el último paso).
+        const reg = await this.ftthRepo.findOne({
+          where: { contratoId: c.contratoId ?? undefined },
+          select: ['servicePortId', 'mgmtServicePortId', 'onuId', 'slot', 'port'],
+        }).catch(() => null);
+
         const res = await this.automation.ftthRollbackGpon({
           connection: {
             ip: olt.ipGestion, port: olt.puerto,
             username: olt.usuarioAnclado, password: decrypt(olt.contrasenaCifrada),
             brand: olt.marca,
           },
-          slot:                 c.slot,
-          port:                 c.port,
-          onu_id:               c.onuId,
-          service_port_id:      c.servicePortId ?? null,
-          mgmt_service_port_id: c.mgmtServicePortId ?? null,
+          slot:                 reg?.slot  ?? c.slot,
+          port:                 reg?.port  ?? c.port,
+          onu_id:               reg?.onuId ?? c.onuId,
+          service_port_id:      reg?.servicePortId     ?? c.servicePortId     ?? null,
+          mgmt_service_port_id: reg?.mgmtServicePortId ?? c.mgmtServicePortId ?? null,
         });
         if (!res.success) {
           throw new Error(`Limpieza de la OLT NO confirmada: ${res.error ?? 'sin detalle'}`);
@@ -114,8 +129,15 @@ export class CompensadorWizardService {
 
       // ── Recursos reservados (solo BD) ────────────────────────
       // Todas idempotentes: si ya están libres, el UPDATE afecta 0 filas y no es un error.
+      // Libera AMBOS canales del contrato, no solo el que se anotó. El service-port de
+      // GESTIÓN lo asigna el carril TR-069 en una tarea asíncrona posterior que no pasa por
+      // la bitácora; sin esto el ID de gestión quedaba 'ocupado' para siempre aunque su
+      // service-port ya no existiera en la OLT. `liberar` es idempotente: si un canal no
+      // tenía nada asignado, el UPDATE afecta 0 filas y no es un error.
       case 'pool_service_port':
-        await this.poolService.liberar(c.oltId, c.contratoId, c.canal ?? 'datos');
+        await this.poolService.liberar(c.oltId, c.contratoId, 'datos');
+        await this.poolService.liberar(c.oltId, c.contratoId, 'gestion');
+        await this.mgmtIpPool.liberar(c.oltId, c.contratoId).catch(() => { /* puede no haberse asignado */ });
         return;
 
       case 'pool_onu_id':

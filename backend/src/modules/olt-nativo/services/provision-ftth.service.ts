@@ -371,7 +371,7 @@ export class ProvisionFtthService {
         pasoGponId = await this.pasos.registrarIntencion(
           opId, 'olt_gpon',
           `ont add ${dto.slot}/${dto.port} onu ${onuId} sn ${dto.sn} + service-port ${servicePortId}`,
-          { oltId, slot: dto.slot, port: dto.port, onuId, servicePortId },
+          { oltId, contratoId: dto.contratoId, slot: dto.slot, port: dto.port, onuId, servicePortId },
           { tipo: 'display_ont_info', slot: dto.slot, port: dto.port, onuId },
         ).catch(() => null);
       }
