@@ -352,7 +352,36 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
 
   // Desaprovisionar mutation
   const { mutate: desaprovisionar, isPending: desaprovisionandoPending } = useMutation({
-    mutationFn: () => oltNativoApi.ftthDesaprovisionar(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
+    // La llamada HTTP es el DISPARADOR; la verdad es el estado real. Se corre en paralelo un
+    // sondeo del registro y gana el primero que resuelva.
+    //
+    // Motivo (2026-07-22): el backend completaba en ~19 s y respondía 200, pero la respuesta
+    // no llegaba al navegador; axios agotaba su timeout y el operador esperaba MINUTOS con el
+    // botón bloqueado por una operación ya terminada. Subir el timeout solo alargaba la
+    // espera. Atar la UI al transporte es el error de fondo: en una operación de hardware
+    // larga, que la respuesta se pierda no dice nada sobre si la operación ocurrió.
+    mutationFn: async () => {
+      const oltId = selectedOltId || (estadoExistente?.oltId ?? '');
+      let postFallo: unknown = null;
+      const post = oltNativoApi.ftthDesaprovisionar(oltId, contrato.id)
+        .catch((e: unknown): undefined => { postFallo = e; return undefined; });
+
+      const sondeo = (async (): Promise<{ exitoso: boolean; mensaje: string; error?: string } | undefined> => {
+        for (let i = 0; i < 60; i++) {                 // ~3 min de red de seguridad
+          await new Promise(r => setTimeout(r, 3000));
+          const est = await oltNativoApi.ftthEstado(contrato.id).catch((): undefined => undefined);
+          if (est === null) {                          // sin registro ⇒ ya se desaprovisionó
+            return { exitoso: true, mensaje: 'ONU desaprovisionada (verificado en el sistema).' };
+          }
+        }
+        return undefined;
+      })();
+
+      const ganador = await Promise.race([post, sondeo]);
+      if (ganador) return ganador;
+      // El POST resolvió primero pero vacío (falló): se propaga para que lo trate onError.
+      throw postFallo ?? new Error('No se pudo confirmar la desaprovisión.');
+    },
     onSuccess: (res) => {
       if (res.exitoso) {
         toast('ONU desaprovisionada correctamente', { type: 'success' });
@@ -373,22 +402,8 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       //
       // Mismo principio VIO que aplicamos al hardware, aquí en la UI: se consulta el ESTADO
       // REAL antes de declarar el fallo. Si el registro ya no está, la operación ocurrió.
-      for (let i = 0; i < 20; i++) {           // ~60s máx (20 × 3s)
-        let est: { estado?: string } | null = null;
-        try { est = await oltNativoApi.ftthEstado(contrato.id); } catch { /* reintenta */ }
-        if (est === null) {                     // sin registro ⇒ desaprovisionada
-          toast('ONU desaprovisionada correctamente', {
-            type: 'success',
-            description: 'La respuesta se perdió, pero se verificó que la ONU ya no está aprovisionada.',
-          });
-          qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-          qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
-          onClose();
-          return;
-        }
-        if (est.estado && est.estado !== 'desaprovisionando') break;  // desenlace real
-        await new Promise(r => setTimeout(r, 3000));
-      }
+      // El sondeo del mutationFn ya cubrió la verificación del estado real; si llegamos aquí
+      // es que la operación falló de verdad o no se pudo confirmar en la ventana.
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast(msg ?? 'Error al desaprovisionar la ONU', { type: 'error' });
       qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });

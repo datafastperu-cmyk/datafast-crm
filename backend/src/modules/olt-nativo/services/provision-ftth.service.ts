@@ -1779,9 +1779,15 @@ export class ProvisionFtthService {
       };
     }
 
+    // Se liberan AMBOS canales del pool y la IP de gestión. Antes solo se soltaba 'datos':
+    // el service-port de gestión quedaba 'ocupado' para siempre aunque ya no existiera en la
+    // OLT (fuga observada 2026-07-22 — el 2001 seguía retenido tras desaprovisionar). Con el
+    // tiempo eso agota el pool con IDs fantasma. `liberar` es idempotente.
     await Promise.all([
       this.poolService.liberar(oltId, dto.contratoId),
+      this.poolService.liberar(oltId, dto.contratoId, 'gestion'),
       this.onuIdPool.liberar(oltId, dto.contratoId),
+      this.mgmtIpPool.liberar(oltId, dto.contratoId).catch(() => { /* puede no tener IP asignada */ }),
     ]);
 
     await this.ftthRepo.softDelete(registro.id);
