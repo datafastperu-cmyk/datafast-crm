@@ -1,53 +1,83 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CRM ISP DATAFAST — PM2 Ecosystem (fuente de verdad única)
+// CRM ISP DATAFAST — PM2 Ecosystem (FUENTE DE VERDAD ÚNICA)
 // ─────────────────────────────────────────────────────────────────────────────
-// IMPORTANTE: Este archivo está en git. Cualquier cambio de configuración
-// debe hacerse aquí y desplegarse con `scripts/update.sh`.
-// NO usar `pm2 start` manual; siempre usar `pm2 start ecosystem.config.js`.
+// Este archivo describe los CUATRO procesos de producción. Antes estaban repartidos
+// entre tres archivos —uno de ellos (`ecosystem.dev.config.js`) SIN VERSIONAR— y lo que
+// realmente corría no coincidía con lo declarado en el repo: una instalación nueva no era
+// reproducible. De ahí salió, entre otras cosas, el `--reload` de uvicorn en producción.
+//
+// REGLAS:
+//  · Cualquier cambio de arranque se hace AQUÍ y se despliega; nunca con `pm2 start` manual.
+//  · Prohibido poner IPs, dominios o secretos: van en los `.env` de cada VPS
+//    (ver § Portabilidad Multi-VPS en CLAUDE.md).
+//  · Las apps de backend NO reciben credenciales por `env`: las lee la propia aplicación
+//    desde `.env.production` vía ConfigModule. PM2 solo declara lo que distingue a cada
+//    proceso (rol, puerto, límites).
+//
+// Aplicar:  pm2 delete all && pm2 start ecosystem.config.js && pm2 save
 // ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
   apps: [
 
-    // ── Backend NestJS ───────────────────────────────────────────────────────
+    // ── API Core — atiende al frontend. NO ejecuta crons. ────────────────────
     {
-      name:      'datafast-backend',
-      script:    './dist/main.js',
+      name:      'datafast-api-core',
+      script:    'dist/main.js',
       cwd:       '/opt/datafast/backend',
-      instances: 1,
       exec_mode: 'fork',
+      instances: 1,
 
-      env_file: '/opt/datafast/backend/.env.production',
       env: {
-        NODE_ENV:           'production',
-        PORT:               4000,
-        UV_THREADPOOL_SIZE: 8,
-        TZ:                 'America/Lima',
-        // ALLOWED_ORIGINS se lee del .env.production — no hardcodear IPs aquí
+        NODE_ENV:       'production',
+        RUN_CRONS:      'false',
+        // ÚNICO proceso que migra: api-core y worker arrancan a la vez y competían por las
+        // migraciones (2026-07-21, "duplicate key ... pg_type_typname_nsp_index").
+        RUN_MIGRATIONS: 'true',
+        PORT:           4000,
+        DB_POOL_MAX:    '15',
+        DB_POOL_MIN:    '2',
+        TZ:             'America/Lima',
       },
 
-      // Estabilidad
-      max_memory_restart:        '900M',
-      restart_delay:             4000,
-      exp_backoff_restart_delay: 100,
-      max_restarts:              10,
-      min_uptime:                '10s',
+      max_memory_restart: '1G',
+      restart_delay:      4000,
+      min_uptime:         '10s',
+      max_restarts:       10,
 
-      // Zero-downtime: PM2 espera 'ready' antes de enrutar tráfico
-      wait_ready:     true,
-      listen_timeout: 20000,
-      kill_timeout:   10000,   // ms antes de SIGKILL tras SIGTERM
-
-      // Logs
-      log_file:        '/opt/datafast/logs/backend-combined.log',
-      out_file:        '/opt/datafast/logs/backend-out.log',
-      error_file:      '/opt/datafast/logs/backend-error.log',
+      out_file:        '/opt/datafast/logs/api-core-out.log',
+      error_file:      '/opt/datafast/logs/api-core-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs:      true,
-      log_type:        'json',
+      watch:           false,
+    },
 
-      node_args: ['--max-old-space-size=768', '--optimize-for-size'],
-      watch:     false,
+    // ── Worker Auxiliary — crons, colas y watchers. NO migra. ────────────────
+    {
+      name:      'datafast-worker-auxiliary',
+      script:    'dist/main.js',
+      cwd:       '/opt/datafast/backend',
+      exec_mode: 'fork',
+      instances: 1,
+
+      env: {
+        NODE_ENV:       'production',
+        RUN_CRONS:      'true',
+        RUN_MIGRATIONS: 'false',
+        PORT:           4001,
+        DB_POOL_MAX:    '15',
+        DB_POOL_MIN:    '2',
+        TZ:             'America/Lima',
+      },
+
+      max_memory_restart: '800M',
+      restart_delay:      4000,
+      min_uptime:         '10s',
+      max_restarts:       10,
+
+      out_file:        '/opt/datafast/logs/worker-out.log',
+      error_file:      '/opt/datafast/logs/worker-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      watch:           false,
     },
 
     // ── OLT Automation Service (Python/FastAPI) ──────────────────────────────
@@ -55,12 +85,10 @@ module.exports = {
       name:        'olt-automation-service',
       script:      '/opt/datafast/olt-automation-service/venv/bin/uvicorn',
       // NUNCA `--reload` en producción: WatchFiles reinicia uvicorn al tocar cualquier
-      // archivo, y un `git reset --hard` de deploy lo dispara en medio de una operación
-      // contra la OLT — las peticiones en vuelo mueren. Causa del `timeout of 30000ms /
-      // Microservicio OLT no alcanzable` que abortó la Fase2 WAN el 2026-07-21 justo
-      // tras un deploy, dejando un ONT huérfano.
-      // 1 worker a propósito: cada worker abre sus propias sesiones SSH y el MA5800 tiene
-      // un límite bajo de VTY concurrentes ("Reenter times have reached the upper limit").
+      // archivo y un `git reset --hard` de deploy lo dispara en medio de una operación
+      // contra la OLT. Causó el timeout que abortó una Fase 2 WAN y dejó un ONT huérfano
+      // (2026-07-21). 1 worker a propósito: cada worker abre sus propias sesiones SSH y el
+      // MA5800 tiene un límite bajo de VTY concurrentes.
       args:        'app.main:app --host 127.0.0.1 --port 8001 --workers 1',
       cwd:         '/opt/datafast/olt-automation-service',
       interpreter: 'none',
@@ -75,60 +103,46 @@ module.exports = {
 
       max_memory_restart: '256M',
       restart_delay:      5000,
-      max_restarts:       10,
       min_uptime:         '10s',
+      max_restarts:       10,
 
-      log_file:        '/opt/datafast/logs/olt-combined.log',
       out_file:        '/opt/datafast/logs/olt-out.log',
       error_file:      '/opt/datafast/logs/olt-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs:      true,
-
-      watch: false,
+      watch:           false,
     },
 
     // ── Frontend Next.js ─────────────────────────────────────────────────────
-    //
-    // USA server.js DIRECTAMENTE (no npm start).
-    // Motivo: `npm start` crea una cadena de procesos (npm → sh → next-server).
-    // PM2 mata npm con SIGTERM, pero el hijo `next-server` puede sobrevivir
-    // unos milisegundos con el puerto 3000 todavía abierto. El nuevo proceso
-    // arranca y choca → EADDRINUSE.
-    //
-    // Con `node server.js`, PM2 gestiona el proceso Node directamente.
-    // server.js captura SIGTERM, llama server.close() y sale limpiamente
-    // antes de que PM2 lance el reemplazo. Puerto liberado, sin colisión.
     {
       name:      'datafast-frontend',
-      script:    'server.js',        // ← custom server, no npm
+      script:    'node_modules/.bin/next',
+      args:      'start',
       cwd:       '/opt/datafast/frontend',
-      instances: 1,
       exec_mode: 'fork',
+      instances: 1,
 
-      env_file: '/opt/datafast/frontend/.env.production',
+      // Entorno MÍNIMO a propósito. El proceso que corría hasta 2026-07-22 arrastraba, por
+      // haberse lanzado desde una shell con el .env del backend cargado, TODOS los secretos:
+      // DB_PASSWORD, ENCRYPTION_KEY, JWT_SECRET, REDIS_PASSWORD… El frontend es el proceso
+      // expuesto y no necesita ninguno: en runtime solo usa NODE_ENV; sus NEXT_PUBLIC_* se
+      // hornean en tiempo de build desde los .env del propio frontend.
       env: {
         NODE_ENV: 'production',
         PORT:     3000,
-        HOSTNAME: '0.0.0.0',
         TZ:       'America/Lima',
       },
 
-      // CRÍTICO: estos tres parámetros son los que evitan EADDRINUSE
-      kill_timeout:   10000,   // PM2 espera 10 s tras SIGTERM antes de SIGKILL
-      wait_ready:     true,    // PM2 espera process.send('ready') para continuar
-      listen_timeout: 30000,   // tiempo máximo para recibir 'ready'
-
       max_memory_restart: '512M',
-      restart_delay:      4000,
-      max_restarts:       10,
+      restart_delay:      8000,
       min_uptime:         '10s',
+      max_restarts:       10,
+      listen_timeout:     30000,
 
-      log_file:        '/opt/datafast/logs/frontend-combined.log',
       out_file:        '/opt/datafast/logs/frontend-out.log',
       error_file:      '/opt/datafast/logs/frontend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-
-      watch: false,
+      watch:           false,
     },
+
   ],
 };
