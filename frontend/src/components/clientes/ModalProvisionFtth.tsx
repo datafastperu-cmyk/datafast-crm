@@ -156,12 +156,30 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   }, [olts, selectedOltId]);
   const selectedOlt = olts.find((o: OltDispositivo) => o.id === selectedOltId);
 
+  // Mientras corre una provisión se sondea el estado para poder mostrar la FASE en curso.
+  // Una provisión ronda los 40 s —la mitad es la ONU arrancando su stack GPON, tiempo
+  // irreducible— y un spinner opaco durante ese rato se percibe como que el sistema se colgó.
+  // No hace falta instrumentar nada nuevo: la máquina de estados del registro YA es el
+  // progreso real.
+  const [provisionando, setProvisionando] = useState(false);
+
   // Estado existente
   const { data: estadoExistente, isLoading: estadoLoading } = useQuery({
     queryKey:  ['ftth-estado', contrato.id],
     queryFn:   () => oltNativoApi.ftthEstado(contrato.id),
     staleTime: 0,
+    refetchInterval: provisionando ? 2000 : false,
   });
+
+  // Fase legible. Deliberadamente honesta: `gpon_registrado` cubre tanto la espera a que la
+  // ONU levante como la inyección de la WAN, así que se anuncian juntas en vez de fingir un
+  // detalle que el backend no reporta.
+  const faseProvision = !provisionando ? null
+    : !estadoExistente                                ? 'Reservando recursos y preparando la OLT…'
+    : estadoExistente.estado === 'pendiente'          ? 'Registrando la ONU en la OLT (GPON)…'
+    : estadoExistente.estado === 'gpon_registrado'    ? 'Esperando que la ONU levante e inyectando la WAN…'
+    : estadoExistente.estado === 'activo'             ? 'Finalizando…'
+    : `Estado: ${estadoExistente.estado}`;
 
   // Form state
   const [sn,            setSn]            = useState('');
@@ -451,6 +469,8 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
 
   // Provision mutation
   const { mutate: provisionar, isPending: provIsPending } = useMutation({
+    onMutate:   () => { setProvisionando(true); },
+    onSettled:  () => { setProvisionando(false); },
     // Se abre el procedimiento JUSTO antes del primer paso mutante, no al montar el modal:
     // abrir el modal solo para mirar no debe crear nada que luego haya que anular.
     mutationFn: async () => {
@@ -937,6 +957,17 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
 
           {/* Footer */}
           <div className="px-5 py-4 border-t border-border flex items-center justify-end gap-3 flex-shrink-0">
+            {faseProvision && (
+              <span className="mr-auto flex items-center gap-2 text-[11px] text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin flex-shrink-0" />
+                <span>
+                  {faseProvision}
+                  <span className="block text-[10px] opacity-70">
+                    Puede tardar ~40 s: la ONU necesita arrancar su enlace GPON.
+                  </span>
+                </span>
+              </span>
+            )}
             <button type="button" onClick={handleClose}
               className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors text-foreground/80">
               {yaActivo ? 'Cerrar' : 'Cancelar'}

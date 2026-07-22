@@ -256,6 +256,14 @@ export class ProvisionFtthService {
         });
       }
       await this.ftthRepo.delete(registroExistente.id);
+
+      // Respiro tras el rollback ANTES de volver a escribir en la OLT. El MA5800 procesa su
+      // autosave de forma asíncrona tras un `ont delete`, y atacarlo de inmediato devuelve
+      // "conflicts with other user operations": la Fase 1 gastaba 2 reintentos con backoff
+      // (~30 s de los 115 s que costaba un re-aprovisionamiento, medido 2026-07-22). Esperar
+      // aquí es más barato que reintentar después, porque cada reintento es un ciclo SSH
+      // completo contra una OLT con pocas sesiones VTY concurrentes.
+      await new Promise((r) => setTimeout(r, 6000));
     }
 
     // 3. Obtener OLT y construir conexión Python
