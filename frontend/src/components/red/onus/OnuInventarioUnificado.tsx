@@ -195,6 +195,15 @@ export function OnuInventarioUnificado() {
           sn={detalle.sn}
           oltNombre={detalle.oltNombre}
           cliente={detalle.cliente}
+          // Datos que el modal NO puede obtener por TR-069: vienen del inventario de la OLT
+          // y del registro del ERP. Así el panel de info sigue siendo útil aunque la ONU no
+          // esté informando.
+          slot={detalle.slot}
+          port={detalle.port}
+          onuId={detalle.onuId}
+          estadoOperativo={detalle.estadoOperativo}
+          rxPowerDbm={detalle.rxPowerDbm}
+          contratoId={detalle.contratoId}
           onClose={() => setDetalle(null)}
         />
       )}
