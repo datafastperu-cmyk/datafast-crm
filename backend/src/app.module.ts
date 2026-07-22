@@ -91,7 +91,15 @@ import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pag
         entities:             [__dirname + '/**/*.entity{.ts,.js}'],
         migrations:              [__dirname + '/database/migrations/core/*{.ts,.js}'],
         migrationsTableName:     'typeorm_migrations',
-        migrationsRun:           true,
+        // Solo UN proceso debe migrar. El mismo `dist/main.js` corre como
+        // `datafast-api-core` y como `datafast-worker-auxiliary`; al reiniciar juntos,
+        // ambos ejecutaban las migraciones a la vez y competían — visto el 2026-07-21 con
+        // CreateFtthOperacionLock (`duplicate key ... pg_type_typname_nsp_index`: uno creó
+        // la tabla y el otro chocó). Fue inofensivo por ser idempotente, pero una migración
+        // menos defensiva puede dejar el esquema a medias.
+        // Default `true` a propósito (retrocompatible): un VPS que aún no declare la
+        // variable se comporta como hasta ahora. El worker la pone en 'false'.
+        migrationsRun:           process.env.RUN_MIGRATIONS !== 'false',
         migrationsTransactionMode: 'each',
         synchronize:          false,
         logging:              false,

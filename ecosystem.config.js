@@ -54,7 +54,14 @@ module.exports = {
     {
       name:        'olt-automation-service',
       script:      '/opt/datafast/olt-automation-service/venv/bin/uvicorn',
-      args:        'app.main:app --host 127.0.0.1 --port 8001 --workers 2',
+      // NUNCA `--reload` en producción: WatchFiles reinicia uvicorn al tocar cualquier
+      // archivo, y un `git reset --hard` de deploy lo dispara en medio de una operación
+      // contra la OLT — las peticiones en vuelo mueren. Causa del `timeout of 30000ms /
+      // Microservicio OLT no alcanzable` que abortó la Fase2 WAN el 2026-07-21 justo
+      // tras un deploy, dejando un ONT huérfano.
+      // 1 worker a propósito: cada worker abre sus propias sesiones SSH y el MA5800 tiene
+      // un límite bajo de VTY concurrentes ("Reenter times have reached the upper limit").
+      args:        'app.main:app --host 127.0.0.1 --port 8001 --workers 1',
       cwd:         '/opt/datafast/olt-automation-service',
       interpreter: 'none',
       exec_mode:   'fork',

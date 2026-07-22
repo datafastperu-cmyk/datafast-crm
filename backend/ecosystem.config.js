@@ -15,6 +15,8 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         RUN_CRONS: 'false',
+        // Este proceso es el ÚNICO que ejecuta migraciones (ver worker: RUN_MIGRATIONS='false').
+        RUN_MIGRATIONS: 'true',
         PORT: 4000,
         DB_POOL_MAX: '15',
         DB_POOL_MIN: '2',
@@ -32,6 +34,9 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         RUN_CRONS: 'true',
+        // NO migra: api-core y worker arrancan a la vez y competían por las migraciones
+        // (2026-07-21, CreateFtthOperacionLock: "duplicate key ... pg_type_typname_nsp_index").
+        RUN_MIGRATIONS: 'false',
         PORT: 4001,
         DB_POOL_MAX: '15',
         DB_POOL_MIN: '2',
