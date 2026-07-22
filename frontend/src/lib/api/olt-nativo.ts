@@ -889,7 +889,7 @@ export const oltNativoApi = {
 
   ftthCancelar: async (contratoId: string): Promise<{ cancelado: boolean; mensaje: string }> => {
     const res = await api.post<ApiRespuesta<{ cancelado: boolean; mensaje: string }>>(
-      `/olt-nativo/ftth/cancelar/${contratoId}`, {}, { timeout: 60_000 },
+      `/olt-nativo/ftth/cancelar/${contratoId}`, {}, { timeout: 200_000 },
     );
     return res.data.data;
   },
@@ -942,9 +942,11 @@ export const oltNativoApi = {
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
     const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
       // El rollback GPON + liberación de pools hace varios round-trips SSH a la OLT y puede
-      // tardar ~40s. Sin timeout amplio el frontend abortaba (~30s) y mostraba "error" aunque
-      // el backend completaba OK.
-      `/olt-nativo/${oltId}/ftth/desaprovisionar`, { contratoId }, { timeout: 90_000 },
+      // pasar del minuto. El timeout del BACKEND hacia el microservicio es de 150s, así que
+      // el cliente debe superarlo: si se rinde antes, el operador ve "error" en una operación
+      // que el backend está completando bien (observado 2026-07-22: dos desaprovisiones con
+      // toast de error y HTTP 200 en el servidor).
+      `/olt-nativo/${oltId}/ftth/desaprovisionar`, { contratoId }, { timeout: 200_000 },
     );
     return res.data.data;
   },

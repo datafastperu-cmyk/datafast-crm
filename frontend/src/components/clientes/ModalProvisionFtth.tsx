@@ -364,9 +364,34 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
         qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
       }
     },
-    onError: (err: unknown) => {
+    onError: async (err: unknown) => {
+      // Un error de TRANSPORTE no prueba que la operación fallara. La desaprovisión hace
+      // varios round-trips SSH y puede pasar del minuto; si el cliente pierde la respuesta
+      // (timeout, corte, pestaña en segundo plano) el backend sigue y termina bien. Mostrar
+      // "error" sin más entrena al operador a desconfiar de la UI — y hoy se vio dos veces
+      // un toast de error sobre desaprovisiones que respondieron HTTP 200 (2026-07-22).
+      //
+      // Mismo principio VIO que aplicamos al hardware, aquí en la UI: se consulta el ESTADO
+      // REAL antes de declarar el fallo. Si el registro ya no está, la operación ocurrió.
+      for (let i = 0; i < 20; i++) {           // ~60s máx (20 × 3s)
+        let est: { estado?: string } | null = null;
+        try { est = await oltNativoApi.ftthEstado(contrato.id); } catch { /* reintenta */ }
+        if (est === null) {                     // sin registro ⇒ desaprovisionada
+          toast('ONU desaprovisionada correctamente', {
+            type: 'success',
+            description: 'La respuesta se perdió, pero se verificó que la ONU ya no está aprovisionada.',
+          });
+          qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
+          qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
+          onClose();
+          return;
+        }
+        if (est.estado && est.estado !== 'desaprovisionando') break;  // desenlace real
+        await new Promise(r => setTimeout(r, 3000));
+      }
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast(msg ?? 'Error al desaprovisionar la ONU', { type: 'error' });
+      qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
     },
   });
 
