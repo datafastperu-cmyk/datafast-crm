@@ -58,9 +58,19 @@ export class CompensadorWizardService {
     const pendientes = await this.pasos.pasosACompensar(operacionId);
     let compensados = 0;
 
+    // El recurso lo identifica la OPERACIÓN, no el payload de cada paso. Depender del
+    // payload rompía la compensación de procedimientos creados antes de que ese campo
+    // existiera (caso real: pasos escritos a las 01:32 sin `contratoId` → las búsquedas de
+    // registro y pool quedaban vacías y el carril nunca se deshacía). `recurso_ref` es el
+    // contratoId por construcción, así que sirve de respaldo universal.
+    const [op] = await this.ds.query<{ recurso_ref: string }[]>(
+      `SELECT recurso_ref FROM operacion_wizard WHERE id = $1`, [operacionId],
+    ).catch(() => [] as { recurso_ref: string }[]);
+    const recursoRef = op?.recurso_ref ?? null;
+
     for (const paso of pendientes) {
       try {
-        await this._compensar(paso);
+        await this._compensar(paso, recursoRef);
         await this.pasos.marcarCompensado(paso.id);
         compensados++;
       } catch (e: any) {
@@ -80,8 +90,10 @@ export class CompensadorWizardService {
     return { completa: true, compensados };
   }
 
-  private async _compensar(paso: PasoRow): Promise<void> {
-    const c = paso.compensacion as any;
+  private async _compensar(paso: PasoRow, recursoRef: string | null): Promise<void> {
+    // `contratoId` del payload, con el recurso de la operación como respaldo universal.
+    const c = { ...(paso.compensacion as any) };
+    c.contratoId = c.contratoId ?? recursoRef;
 
     switch (paso.tipo) {
       // ── Hardware ─────────────────────────────────────────────
