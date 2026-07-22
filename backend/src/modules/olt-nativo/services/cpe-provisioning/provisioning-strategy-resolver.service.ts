@@ -42,8 +42,15 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
   private readonly logger = new Logger(ProvisioningStrategyResolver.name);
   private channelsByName: Map<NombreCanal, CpeProvisioningChannel>;
 
-  // Ventana de gracia esperando el próximo Inform tras un bootstrap aceptado.
-  private readonly VENTANA_VERIFICACION_MS = 3 * 60_000; // 3 min
+  // Ventana de gracia esperando un Inform que confirme el carril.
+  //
+  // DEBE SUPERAR el PeriodicInformInterval del CPE (300 s en nuestros presets). Con 3 min
+  // un carril perfectamente funcional daba FALSO NEGATIVO: si el CPE acababa de informar,
+  // el siguiente Inform llegaba a los 5 min, fuera de la ventana → el ERP declaraba
+  // "requiere intervención manual", liberaba el pool de gestión y dejaba el registro sin
+  // `mgmt_service_port_id`, mientras la ONU estaba gestionada de verdad
+  // (observado 2026-07-22, ONT 1/8/44).
+  private readonly VENTANA_VERIFICACION_MS = 6 * 60_000; // 6 min > 300 s de PeriodicInform
   private readonly POLL_INTERVAL_MS        = 10_000;
 
   constructor(
@@ -105,6 +112,14 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
       }
 
       this.logger.log(`Intentando canal ${candidato.canal} | registro=${ctx.ftthRegistroId}`);
+
+      // Referencia de convergencia tomada ANTES de aplicar el carril. Es la clave del fix:
+      // el CPE puede informar MIENTRAS corre el bootstrap (dura ~30 s), y ese Inform es
+      // prueba válida de que el carril quedó vivo. Tomando la referencia después, ese
+      // Inform quedaba "ya contado" y había que esperar al siguiente ciclo periódico
+      // (300 s) — que caía fuera de la ventana → falso negativo con carril funcionando.
+      const refInform = await this._lastInformSeguro(this._buildGenieAcsDeviceId(ctx.device));
+
       const resultado = await canal.bootstrap(ctx);
 
       if (!resultado.exitoso) {
@@ -117,7 +132,7 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
       }
 
       // El canal no reportó error — ahora se verifica de verdad contra GenieACS.
-      const convergio = await this.confirmarConvergencia(ctx.device);
+      const convergio = await this.confirmarConvergencia(ctx.device, refInform);
       if (convergio) {
         await this.attemptService.recordSuccess(ctx.empresaId, ctx.ftthRegistroId, candidato.canal);
         intentos.push({ canal: candidato.canal, exitoso: true, mensaje: 'Convergió — Inform recibido en GenieACS' });
@@ -156,11 +171,21 @@ export class ProvisioningStrategyResolver implements OnModuleInit {
   // carril de gestión pueda confirmar convergencia también en su ruta de fallo del canal (VIO:
   // un "% Unknown command" tras un conflicto transitorio no significa que el carril no se haya
   // materializado — el DHCP+Inform es asíncrono; la verdad observable manda sobre el eco CLI).
-  async confirmarConvergencia(device: { fabricante: string; modelo: string; sn: string }): Promise<boolean> {
+  async confirmarConvergencia(
+    device: { fabricante: string; modelo: string; sn: string },
+    // Referencia tomada ANTES de aplicar el carril. Si se omite se lee ahora, que es el
+    // comportamiento antiguo y solo sirve para llamadas sueltas (p.ej. el watcher de drift).
+    referencia?: Date | null,
+  ): Promise<boolean> {
     if (!this.genieacs.isConfigured()) return false; // no se puede verificar — nunca se asume éxito
     const deviceId = this._buildGenieAcsDeviceId(device);
     const deadline = Date.now() + this.VENTANA_VERIFICACION_MS;
-    const antes = await this._lastInformSeguro(deviceId);
+    const antes = referencia !== undefined ? referencia : await this._lastInformSeguro(deviceId);
+
+    // Atajo: si el CPE ya informó DESPUÉS de la referencia, el carril está confirmado y no
+    // hay nada que esperar. Evita quemar la ventana entera cuando la prueba ya existe.
+    const yaInformo = await this._lastInformSeguro(deviceId);
+    if (yaInformo && (!antes || yaInformo.getTime() > antes.getTime())) return true;
 
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, this.POLL_INTERVAL_MS));
