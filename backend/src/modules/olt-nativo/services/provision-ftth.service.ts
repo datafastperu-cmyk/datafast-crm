@@ -1227,6 +1227,20 @@ export class ProvisionFtthService {
     contratoId: string,
     empresaId:  string,
   ): Promise<{ cancelado: boolean; mensaje: string }> {
+    // CONVERGENCIA de las dos rutas de anulación: cualquier cancelación —venga del modal,
+    // del outbox o de donde sea— marca también el procedimiento del wizard para que el
+    // compensador deshaga su bitácora. Mantener dos caminos independientes era justo el
+    // tipo de duplicidad que produce los bugs que veníamos persiguiendo. Ambas rutas son
+    // idempotentes, así que ejecutar las dos no causa daño.
+    await this.ds.query(
+      `UPDATE operacion_wizard
+       SET estado = 'anulando', cerrado_en = NOW(),
+           motivo_cierre = COALESCE(motivo_cierre, 'Cancelación del procedimiento'),
+           updated_at = NOW()
+       WHERE recurso_ref = $1 AND estado = 'en_curso'`,
+      [contratoId],
+    ).catch(() => { /* best-effort: el TTL del servidor lo cubre igual */ });
+
     const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
     if (!registro) {
       return { cancelado: false, mensaje: 'No hay aprovisionamiento por cancelar.' };

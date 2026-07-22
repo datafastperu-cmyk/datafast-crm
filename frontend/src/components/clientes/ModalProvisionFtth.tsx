@@ -20,6 +20,7 @@ import {
 } from '@/lib/api/olt-nativo';
 import type { Contrato } from '@/types';
 import { Portal } from '@/components/ui/portal';
+import { useProcedimientoWizard } from '@/hooks/useProcedimientoWizard';
 
 // ─── Estado badge ─────────────────────────────────────────────
 
@@ -137,6 +138,10 @@ const fmtVel = (pirKbps: number | null): string =>
 
 export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; onClose: () => void }) {
   const qc = useQueryClient();
+
+  // Procedimiento operativo: heartbeat mientras el operador está a cargo; lo NO confirmado
+  // se anula al cerrar. Ver CLAUDE.md § Wizards y Modales.
+  const wizard = useProcedimientoWizard('ftth_provision', contrato.id);
   const { toast } = useToast();
 
   // OLT selection
@@ -403,7 +408,12 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
 
   // Provision mutation
   const { mutate: provisionar, isPending: provIsPending } = useMutation({
-    mutationFn: () => oltNativoApi.ftthProvision(selectedOltId, {
+    // Se abre el procedimiento JUSTO antes del primer paso mutante, no al montar el modal:
+    // abrir el modal solo para mirar no debe crear nada que luego haya que anular.
+    mutationFn: async () => {
+      const opId = await wizard.abrir();
+      return oltNativoApi.ftthProvision(selectedOltId, {
+      operacionId:   opId ?? undefined,
       contratoId:    contrato.id,
       frame:         parseInt(frame) || 0,
       slot:          slotNum,
@@ -418,9 +428,13 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       // (backend rechaza el submit si no hay pool — ver aviso poolConfigurado abajo).
       description:      description.trim() || undefined,
       wanMode,
-    }),
-    onSuccess: (res) => {
+      });
+    },
+    onSuccess: async (res) => {
       if (res.estado === 'activo') {
+        // FRONTERA DE CONFIRMACIÓN: solo aquí, con el estado terminal verificado por el
+        // backend. A partir de este punto cerrar el modal ya NO anula nada.
+        await wizard.confirmar();
         // Éxito. res.mensaje informa el detalle: "GPON + WAN OK" o, si la WAN no se
         // pudo inyectar por incompatibilidad, la instrucción de configurarla manual.
         toast('ONU FTTH aprovisionada correctamente', {
@@ -449,6 +463,10 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
         let est: { estado?: string } | null = null;
         try { est = await oltNativoApi.ftthEstado(contrato.id); } catch { /* reintenta */ }
         if (est?.estado === 'activo') {
+          // Mismo criterio que en onSuccess: el estado terminal lo dicta el backend, no el
+          // hecho de que el request HTTP haya fallado. Confirmar aquí evita que un timeout
+          // de red acabe anulando una ONU que quedó perfectamente activa.
+          await wizard.confirmar();
           toast('ONU FTTH aprovisionada correctamente', {
             type: 'success',
             description: 'La ONU quedó activa.',
@@ -482,16 +500,34 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
 
   // Cierre del wizard: si el aprovisionamiento NO concluyó, se limpia todo (OLT + BD)
   // vía ftthCancelar (el backend ignora ONUs ya activas/suspendidas). Fire-and-forget.
+  // Cierre del wizard. Nunca se cierra por accidente: ni ESC ni clic fuera lo cierran, y si
+  // hay trabajo SIN CONFIRMAR se pide confirmación explícita porque ese trabajo se va a
+  // deshacer. Si el procedimiento ya se confirmó (ONU activa y verificada), cierra sin
+  // fricción — lo confirmado no se anula por un cierre.
   const handleClose = () => {
     const est = estadoExistente?.estado;
     const enProceso = !!est && est !== 'activo' && est !== 'suspendido';
-    if (enProceso || provIsPending) {
+    const hayQueAnular = wizard.hayTrabajoSinConfirmar || enProceso || provIsPending;
+
+    if (hayQueAnular) {
+      const ok = window.confirm(
+        'Este procedimiento no ha terminado.\n\n' +
+        'Al cerrar se deshará TODO lo que se ejecutó en esta sesión: la ONU se quitará de la ' +
+        'OLT y se liberarán los recursos reservados. Tendrás que empezar el proceso desde cero.\n\n' +
+        '¿Cerrar de todos modos?',
+      );
+      if (!ok) return;
+
+      // Anulación por saga (bitácora de compensación). `ftthCancelar` queda como respaldo
+      // para el trabajo iniciado ANTES de que existiera el procedimiento (registros que no
+      // tienen operacionId). Ambas son idempotentes.
+      void wizard.cerrar('Cerrado por el operador sin confirmar');
       oltNativoApi.ftthCancelar(contrato.id)
         .then(() => {
           qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
           qc.invalidateQueries({ queryKey: ['cliente-contratos'] });
         })
-        .catch(() => { /* best-effort — el recovery/reconciliador es la red de seguridad */ });
+        .catch(() => { /* best-effort — el barrido del servidor es la red de seguridad real */ });
     }
     onClose();
   };

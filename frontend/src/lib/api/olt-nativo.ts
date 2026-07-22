@@ -623,6 +623,10 @@ export interface FtthProvisionDto {
   trafficIndexUp?:   number;  // inbound subida;  undefined = índice 0 sin límite
   description?:      string;
   wanMode?:          'bridge' | 'routing';  // bridge = PPPoE en router cliente (default)
+  // Procedimiento operativo (wizard) al que pertenece esta provisión. Si viene, cada paso
+  // mutante se anota en la bitácora de compensación del backend y el cierre sin confirmar
+  // puede deshacerlo. Opcional: sin él, el comportamiento es el histórico.
+  operacionId?:      string;
 }
 
 export interface OltPerfilesResult {
@@ -886,6 +890,41 @@ export const oltNativoApi = {
   ftthCancelar: async (contratoId: string): Promise<{ cancelado: boolean; mensaje: string }> => {
     const res = await api.post<ApiRespuesta<{ cancelado: boolean; mensaje: string }>>(
       `/olt-nativo/ftth/cancelar/${contratoId}`, {}, { timeout: 60_000 },
+    );
+    return res.data.data;
+  },
+
+  // ── Procedimiento operativo (wizard) ────────────────────────────────
+  // El servidor es la autoridad: si el navegador deja de latir, el barrido anula el
+  // trabajo NO confirmado. Estas llamadas son best-effort desde el cliente — ninguna
+  // debe romper el flujo del operador si falla.
+  wizardAbrir: async (
+    tipo: 'ftth_provision' | 'router_vpn' | 'olt_wizard',
+    recursoRef: string,
+  ): Promise<{ id: string; expiraEn: string; techoEn: string }> => {
+    const res = await api.post<ApiRespuesta<{ id: string; expiraEn: string; techoEn: string }>>(
+      '/olt-nativo/wizard/abrir', { tipo, recursoRef },
+    );
+    return res.data.data;
+  },
+
+  wizardHeartbeat: async (id: string): Promise<{ vivo: boolean }> => {
+    const res = await api.post<ApiRespuesta<{ vivo: boolean }>>(
+      `/olt-nativo/wizard/${id}/heartbeat`, {},
+    );
+    return res.data.data;
+  },
+
+  wizardConfirmar: async (id: string): Promise<{ confirmado: boolean }> => {
+    const res = await api.post<ApiRespuesta<{ confirmado: boolean }>>(
+      `/olt-nativo/wizard/${id}/confirmar`, {},
+    );
+    return res.data.data;
+  },
+
+  wizardCerrar: async (id: string, motivo?: string): Promise<{ cerrado: boolean }> => {
+    const res = await api.post<ApiRespuesta<{ cerrado: boolean }>>(
+      `/olt-nativo/wizard/${id}/cerrar`, { motivo },
     );
     return res.data.data;
   },
