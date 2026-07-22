@@ -1138,6 +1138,39 @@ export class ProvisionFtthService {
     }
   }
 
+  /**
+   * Service-port del carril de gestión, con el POOL como respaldo del registro.
+   *
+   * El carril asigna el ID en el pool y RECIÉN DESPUÉS lo persiste en el registro. Si el
+   * procedimiento se interrumpe entre ambos —o el carril async falla su verificación— el
+   * registro queda con `mgmt_service_port_id` NULL mientras el service-port SÍ existe en la
+   * OLT. Confiar solo en el registro hacía que `ont delete` fallara para siempre con
+   * "This configured object has some service virtual ports" (observado 2026-07-22 en el
+   * compensador y, con la misma causa, en esta ruta de desaprovisión).
+   *
+   * Se consulta incluso el pool ya liberado: un carril cuyo bootstrap dio falso negativo
+   * devuelve el ID al pool pero deja el service-port vivo en la OLT.
+   */
+  private async _resolverMgmtServicePort(registro: FtthOnuRegistro): Promise<number | null> {
+    if (registro.mgmtServicePortId != null) return registro.mgmtServicePortId;
+
+    const [fila] = await this.ds.query<{ service_port_id: number }[]>(
+      `SELECT service_port_id FROM olt_service_port_pool
+       WHERE olt_id = $1 AND contrato_id = $2 AND canal = 'gestion' AND deleted_at IS NULL
+       ORDER BY updated_at DESC LIMIT 1`,
+      [registro.oltId, registro.contratoId],
+    ).catch(() => [] as { service_port_id: number }[]);
+
+    if (fila?.service_port_id != null) {
+      this.logger.warn(
+        `mgmt service-port resuelto por POOL (registro lo tenía NULL) | ` +
+        `contrato=${registro.contratoId} svcPort=${fila.service_port_id}`,
+      );
+      return fila.service_port_id;
+    }
+    return null;
+  }
+
   private _buildConn(olt: OltDispositivo, password: string) {
     return {
       ip:       olt.ipGestion,
@@ -1716,7 +1749,7 @@ export class ProvisionFtthService {
         port:                 registro.port,
         onu_id:               registro.onuId,
         service_port_id:      registro.servicePortId,
-        mgmt_service_port_id: registro.mgmtServicePortId,
+        mgmt_service_port_id: await this._resolverMgmtServicePort(registro),
       });
       rollbackOk    = res.success;
       rollbackError = res.error;
