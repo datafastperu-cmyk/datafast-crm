@@ -16,6 +16,7 @@ import { FtthRollbackLog, RollbackMotivo } from '../entities/ftth-rollback-log.e
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
+import { FtthOperacionLockService }       from './ftth-operacion-lock.service';
 import { OltOnuIdPoolService }           from './olt-onu-id-pool.service';
 import { OltMgmtIpPoolService }          from './olt-mgmt-ip-pool.service';
 import { PythonOnuStatusInfo, PythonFtthWanPppoeRequest } from '../dto/olt-nativo-ops.dto';
@@ -126,6 +127,8 @@ export class ProvisionFtthService {
 
     private readonly genieacs: Tr069GenieacsClient,
     private readonly genieDriver: GenieAcsDriver,
+
+    private readonly opLock: FtthOperacionLockService,
   ) {}
 
   private async _logRollback(
@@ -153,7 +156,20 @@ export class ProvisionFtthService {
   // ────────────────────────────────────────────────────────────
   // provisionarFtth — flujo completo (lock → GPON → poll → WAN)
   // ────────────────────────────────────────────────────────────
+  // Punto de entrada público: toma el lock de exclusión mutua del contrato para que
+  // NUNCA corra en paralelo con una desaprovisión/cancelación del mismo contrato
+  // (causa raíz del ONT huérfano de 2026-07-21 — ver FtthOperacionLockService).
   async provisionarFtth(
+    oltId:     string,
+    empresaId: string,
+    dto:       ProvisionarFtthDto,
+  ): Promise<FtthProvisionResult> {
+    return this.opLock.conLock(dto.contratoId, 'provision', () =>
+      this._provisionarFtthInterno(oltId, empresaId, dto),
+    );
+  }
+
+  private async _provisionarFtthInterno(
     oltId:     string,
     empresaId: string,
     dto:       ProvisionarFtthDto,
@@ -1138,7 +1154,20 @@ export class ProvisionFtthService {
   // se borra TODO (rollback en la OLT + liberar pools + borrar registro), dejando el
   // contrato como si nunca se hubiera iniciado. Una ONU ya ACTIVA/SUSPENDIDA no se
   // toca (esa se retira con Desaprovisionar). Idempotente.
+  // El cierre del wizard llama aquí. Si hay una provisión EN VUELO, el lock la
+  // rechaza con 409 a propósito: cancelar a mitad de una provisión activa es
+  // exactamente la carrera que dejó el ONT huérfano. La provisión en curso
+  // termina sola de forma atómica (fix A: nunca borra el registro con la OLT sucia).
   async cancelarFtth(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ cancelado: boolean; mensaje: string }> {
+    return this.opLock.conLock(contratoId, 'cancelacion', () =>
+      this._cancelarFtthInterno(contratoId, empresaId),
+    );
+  }
+
+  private async _cancelarFtthInterno(
     contratoId: string,
     empresaId:  string,
   ): Promise<{ cancelado: boolean; mensaje: string }> {
@@ -1561,6 +1590,16 @@ export class ProvisionFtthService {
   }
 
   async desaprovisionar(
+    oltId:     string,
+    empresaId: string,
+    dto:       DesaprovisionarFtthDto,
+  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
+    return this.opLock.conLock(dto.contratoId, 'desaprovision', () =>
+      this._desaprovisionarInterno(oltId, empresaId, dto),
+    );
+  }
+
+  private async _desaprovisionarInterno(
     oltId:     string,
     empresaId: string,
     dto:       DesaprovisionarFtthDto,
