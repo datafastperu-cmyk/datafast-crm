@@ -11,6 +11,7 @@ import {
 import { oltNativoApi, type OnuTr069Detalle, type OnuWifiBand, type OnuHost, type FtthOnuRegistro } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
+import { clasificarSenalFtth } from '@/lib/senal-ftth';
 
 // ─────────────────────────────────────────────────────────────
 // Modal "Ver detalle ONU" — layout unificado con la vista ONU/Router.
@@ -175,9 +176,10 @@ function HostsSection({ hosts }: { hosts: OnuHost[] }) {
 
 // ── Modal ──────────────────────────────────────────────────────
 export function OnuDetalleTr069Modal({
-  sn, oltNombre, cliente, slot, port, onuId, estadoOperativo, rxPowerDbm, contratoId, onClose,
+  sn, oltId, oltNombre, cliente, slot, port, onuId, estadoOperativo, rxPowerDbm, contratoId, onClose,
 }: {
   sn: string;
+  oltId?: string | null;
   oltNombre?: string;
   cliente?: string | null;
   slot?: number | null;
@@ -215,6 +217,20 @@ export function OnuDetalleTr069Modal({
     enabled:  Boolean(contratoId),
     staleTime: 30_000,
   });
+
+  // Señal óptica EN VIVO (display ont optical-info). El inventario no la guarda, así que se
+  // lee directo de la OLT al abrir el modal. Independiente de TR-069: la potencia Rx la mide
+  // la OLT en el puerto GPON, así que hay lectura aunque la ONU no informe a GenieACS.
+  const puedeLeerMetricas = Boolean(oltId && slot != null && port != null && onuId != null);
+  const { data: metricas, isFetching: metricasFetching, refetch: refetchMetricas } = useQuery({
+    queryKey: ['onu-metricas', oltId, slot, port, onuId],
+    queryFn:  () => oltNativoApi.metricas(oltId!, { slot: slot!, port: port!, onuId: onuId!, sn }),
+    enabled:  puedeLeerMetricas,
+    staleTime: 15_000,
+  });
+  // La señal en vivo manda; el valor del inventario (si lo hubiera) queda de respaldo.
+  const rxDbm = metricas?.rxPowerDbm ?? rxPowerDbm ?? null;
+  const senal = clasificarSenalFtth(rxDbm);
 
   const refreshMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069Refresh(sn),
@@ -320,7 +336,21 @@ export function OnuDetalleTr069Modal({
             <Info label="Status" value={estadoOperativo
               ? <span className={cn('font-semibold', ESTADO_CLS[estadoOperativo] ?? 'text-foreground')}>{estadoOperativo}</span>
               : undefined} />
-            <Info label="ONU/OLT Rx signal" value={rxPowerDbm != null ? <span className="font-mono">{rxPowerDbm.toFixed(2)} dBm</span> : undefined} />
+            <Info label="Señal FTTH (Rx)" value={
+              rxDbm != null ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className={cn('font-mono font-semibold', senal.colorCls)}>{rxDbm.toFixed(2)} dBm</span>
+                  <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded border', senal.badgeCls)}>
+                    {senal.label}
+                  </span>
+                  {metricasFetching && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                </span>
+              ) : metricasFetching ? (
+                <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin" /> leyendo…</span>
+              ) : puedeLeerMetricas ? (
+                <button onClick={() => refetchMetricas()} className="text-[11px] text-primary hover:underline">Leer señal</button>
+              ) : undefined
+            } />
             <Info label="Attached VLANs" value={registro?.vlan ?? undefined} />
             <Info label="ONU mode" value={registro?.wanMode} />
             <Info label="TR069" value={informing

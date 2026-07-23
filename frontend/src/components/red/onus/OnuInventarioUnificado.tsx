@@ -193,6 +193,7 @@ export function OnuInventarioUnificado() {
       {detalle && (
         <OnuDetalleTr069Modal
           sn={detalle.sn}
+          oltId={detalle.oltId}
           oltNombre={detalle.oltNombre}
           cliente={detalle.cliente}
           // Datos que el modal NO puede obtener por TR-069: vienen del inventario de la OLT

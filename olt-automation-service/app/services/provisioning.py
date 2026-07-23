@@ -517,13 +517,27 @@ def get_huawei_metrics(
       RxPower < -28 dBm → alarm warning
       RxPower < -30 dBm → alarm critical (ONU offline / fibra cortada)
     """
-    command = f'display ont optical-info 0 {onu.slot} {onu.port} {onu.onu_id}'
-
-    # ── Enviar comando ────────────────────────────────────────
+    # Runner PARAMIKO (no Netmiko). `_send_single_command` va por Netmiko, cuyo
+    # session_preparation se cuelga en el prompt de paginación { <cr>||<K> }: del MA5800 —
+    # exactamente por lo que el provisioning se migró a `_paramiko_huawei_run`. La lectura
+    # óptica se había quedado en el camino viejo y por eso agotaba el timeout (~60s) sin
+    # devolver dato, pese a que el comando responde en ~20s por el runner correcto
+    # (verificado en hardware 2026-07-22). El comando va DENTRO de `interface gpon 0/slot`
+    # (forma que la CLI acepta de forma fiable), y se toma solo la salida de ese comando.
+    cmds = [
+        'config',
+        f'interface gpon 0/{onu.slot}',
+        f'display ont optical-info {onu.port} {onu.onu_id}',
+        'quit',
+        'quit',
+    ]
     try:
-        raw_output = _send_single_command(conn, command)
-    except (ConnectionError, CommandError) as exc:
-        logger.warning('get_huawei_metrics: fallo de conexión a %s — %s', conn.ip, exc)
+        parts = _paramiko_huawei_run(
+            conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
+        )
+        raw_output = parts[2] if len(parts) > 2 else ''
+    except Exception as exc:  # noqa: BLE001 — nunca propagar al caller (contrato de la función)
+        logger.warning('get_huawei_metrics: fallo leyendo óptica en %s — %s', conn.ip, exc)
         return {
             'success':       False,
             'rx_power_dbm':  None,
@@ -531,7 +545,7 @@ def get_huawei_metrics(
             'temperature_c': None,
             'alarm': {
                 'level':   'error',
-                'message': f'No se pudo conectar a la OLT {conn.ip}: {exc}',
+                'message': f'No se pudo leer la señal óptica en la OLT {conn.ip}: {exc}',
             },
         }
 
