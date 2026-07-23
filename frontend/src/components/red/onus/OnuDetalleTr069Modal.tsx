@@ -238,7 +238,12 @@ export function OnuDetalleTr069Modal({
     queryKey: ['onu-metricas', oltId, effSlot, effPort, effOnuId],
     queryFn:  () => oltNativoApi.metricas(oltId!, { slot: effSlot!, port: effPort!, onuId: effOnuId!, sn }),
     enabled:  puedeLeerMetricas && registroListo,
-    staleTime: 15_000,
+    // Refresco cada 10 s mientras el modal está abierto. `refetchIntervalInBackground:false`
+    // detiene el sondeo si la pestaña pasa a segundo plano — cada lectura es una sesión SSH
+    // real contra la OLT (VTY concurrentes limitadas), así que no se martillea en vano.
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+    staleTime: 8_000,
   });
   // La señal en vivo manda; el valor del inventario (si lo hubiera) queda de respaldo.
   const rxDbm = metricas?.rxPowerDbm ?? rxPowerDbm ?? null;
