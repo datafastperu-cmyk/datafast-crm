@@ -69,80 +69,80 @@ export function TabDetalles({ olt, oltId }: Props) {
     </div>
   );
 
+  // Capacidad/hardware NO se edita: la topología real (slots, puertos PON) la
+  // lee el sync y se muestra en el tab Placas. La VLAN de gestión la declara
+  // el baseline (DATAFAST-TR069), no un campo suelto.
   return (
-    <div className="space-y-6">
-      {/* 1. Información general */}
-      <Seccion icon={<Info className="w-4 h-4 text-muted-foreground" />} titulo="Información general">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Nombre">
-            <input className={inputCls} value={nombre} onChange={e => setNombre(e.target.value)} />
-          </Field>
-          <Field label="Marca">
-            <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.marca} readOnly />
-          </Field>
-          {/* Modelo y Estado son observados (detect-version / health poller), no editables */}
-          <Field label="Modelo (detectado)">
-            <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.modelo || '— sin detectar —'} readOnly />
-          </Field>
-          <Field label="Estado (monitoreo)">
-            <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.estado} readOnly />
-          </Field>
-          <div className="md:col-span-2">
-            <Field label="Descripción adicional">
-              <textarea
-                className={`${inputCls} resize-none`}
-                rows={3}
-                value={descripcion}
-                onChange={e => setDescripcion(e.target.value)}
-                placeholder="Notas técnicas, rack, nodo, etc."
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+      {/* Columna izquierda: lo que define el ERP (identidad + ubicación) */}
+      <div className="space-y-6">
+        <Seccion icon={<Info className="w-4 h-4 text-muted-foreground" />} titulo="Información general">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Nombre">
+              <input className={inputCls} value={nombre} onChange={e => setNombre(e.target.value)} />
+            </Field>
+            <Field label="Marca">
+              <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.marca} readOnly />
+            </Field>
+            {/* Modelo y Estado son observados (detect-version / health poller), no editables */}
+            <Field label="Modelo (detectado)">
+              <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.modelo || '— sin detectar —'} readOnly />
+            </Field>
+            <Field label="Estado (monitoreo)">
+              <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.estado} readOnly />
+            </Field>
+            <div className="md:col-span-2">
+              <Field label="Descripción adicional">
+                <textarea
+                  className={`${inputCls} resize-none`}
+                  rows={3}
+                  value={descripcion}
+                  onChange={e => setDescripcion(e.target.value)}
+                  placeholder="Notas técnicas, rack, nodo, etc."
+                />
+              </Field>
+            </div>
+          </div>
+        </Seccion>
+
+        <Seccion icon={<MapPin className="w-4 h-4 text-muted-foreground" />} titulo="Ubicación">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Dirección física">
+              <input className={inputCls} value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ej: Av. Los Pinos 123, Zona Norte" />
+            </Field>
+            <Field label="Coordenadas GPS">
+              <input
+                className={inputCls}
+                value={gps}
+                onChange={e => setGps(e.target.value)}
+                placeholder="-12.046374, -77.042793"
               />
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">Formato: latitud, longitud</p>
             </Field>
           </div>
+        </Seccion>
+
+        {/* Guarda Información + Ubicación (Conectividad tiene su propio flujo con prueba) */}
+        <div className="flex justify-end">
+          <button
+            onClick={handleSave}
+            disabled={saveMut.isPending}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground
+                       hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-60"
+          >
+            {saveMut.isPending
+              ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando…</>
+              : <><Save className="w-4 h-4" />Guardar cambios</>
+            }
+          </button>
         </div>
-      </Seccion>
-
-      {/* 2. Conectividad SSH — edición con prueba previa y guard de ops en vuelo */}
-      <ConectividadSection olt={olt} oltId={oltId} />
-
-      {/* Capacidad/hardware NO se edita: la topología real (slots, puertos PON)
-          la lee el sync y se muestra en el tab Placas. La VLAN de gestión la
-          declara el baseline (DATAFAST-TR069), no un campo suelto. */}
-
-      {/* 3. Ubicación */}
-      <Seccion icon={<MapPin className="w-4 h-4 text-muted-foreground" />} titulo="Ubicación">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Dirección física">
-            <input className={inputCls} value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ej: Av. Los Pinos 123, Zona Norte" />
-          </Field>
-          <Field label="Coordenadas GPS">
-            <input
-              className={inputCls}
-              value={gps}
-              onChange={e => setGps(e.target.value)}
-              placeholder="-12.046374, -77.042793"
-            />
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Formato: latitud, longitud</p>
-          </Field>
-        </div>
-      </Seccion>
-
-      {/* Guardar secciones 1/3/4 (Conectividad tiene su propio flujo con prueba) */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saveMut.isPending}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground
-                     hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-60"
-        >
-          {saveMut.isPending
-            ? <><Loader2 className="w-4 h-4 animate-spin" />Guardando…</>
-            : <><Save className="w-4 h-4" />Guardar cambios</>
-          }
-        </button>
       </div>
 
-      {/* 4. Pool de Service Port IDs (asignación automática por el ERP) */}
-      <ServicePortPoolSection oltId={oltId} />
+      {/* Columna derecha: conexión y recursos automáticos */}
+      <div className="space-y-6">
+        <ConectividadSection olt={olt} oltId={oltId} />
+        <ServicePortPoolSection oltId={oltId} />
+      </div>
     </div>
   );
 }
@@ -248,7 +248,7 @@ function ConectividadSection({ olt, oltId }: { olt: OltDispositivo; oltId: strin
         <h3 className="text-sm font-semibold">Conectividad SSH</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">IP de gestión</label>
           <input className={`${inputCls} font-mono`} value={ip} onChange={e => editar(setIp)(e.target.value)} />
