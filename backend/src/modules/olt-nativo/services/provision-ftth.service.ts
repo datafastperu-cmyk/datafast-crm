@@ -1360,6 +1360,32 @@ export class ProvisionFtthService {
     contratoId: string,
     empresaId:  string,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string; skipped?: boolean }> {
+    // ── Regla C — guard de reactivación (ruta AUTOMÁTICA/tumba, outbox) ──
+    // Esta ruta la dispara la baja (encolarDesaprovisionarOnu) y el outbox la reintenta hasta
+    // que la OLT esté disponible. Entre el encolado y la ejecución el contrato PUDO reactivarse
+    // (OLT caída horas → cliente vuelve a contratar). Ejecutar la tumba a ciegas cortaría a un
+    // cliente en producción — exactamente lo que la directriz prohíbe. Se revalida el estado
+    // vivo del contrato: la limpieza SOLO procede sobre una tumba real (baja/eliminado). El
+    // botón manual `desaprovisionar` NO pasa por aquí, así que la acción explícita del operador
+    // nunca se bloquea.
+    const [contrato] = await this.ds.query<Array<{ estado: string; deleted_at: string | null }>>(
+      `SELECT estado, deleted_at FROM contratos WHERE id = $1 AND empresa_id = $2`,
+      [contratoId, empresaId],
+    );
+    if (!contrato) {
+      // Contrato borrado en duro: la tumba sigue siendo válida (hay que limpiar el hardware).
+      this.logger.log(`desaprovisionarPorContrato | contrato=${contratoId} inexistente en BD — se procede a limpiar hardware.`);
+    } else {
+      const esTumba = contrato.estado === 'baja_definitiva' || contrato.deleted_at !== null;
+      if (!esTumba) {
+        this.logger.warn(
+          `desaprovisionarPorContrato | contrato=${contratoId} estado=${contrato.estado} NO es tumba ` +
+          `(reactivado antes de drenar el outbox) — desaprovisión omitida (Regla C).`,
+        );
+        return { exitoso: true, skipped: true, mensaje: 'Contrato reactivado — desaprovisión automática omitida para no cortar servicio activo.' };
+      }
+    }
+
     const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
     if (!registro) {
       return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — desaprovisionar omitido.' };
@@ -2036,6 +2062,17 @@ export class ProvisionFtthService {
       this.onuIdPool.liberar(oltId, dto.contratoId),
       this.mgmtIpPool.liberar(oltId, dto.contratoId).catch(() => { /* puede no tener IP asignada */ }),
     ]);
+
+    // Regla D — limpieza terminal del device en GenieACS. La ONU deja de existir en la OLT
+    // (rollback_gpon borró el `ont`), así que su device en el ACS queda fantasma: nunca más
+    // informará y solo ensucia el inventario. Se borra por SN (tolera legible↔hex, VIO al
+    // confirmar). Best-effort: NUNCA bloquea la baja — si el ACS está caído, el device muerto
+    // es inocuo y el próximo re-uso del SN lo recrea limpio.
+    if (this.genieacs.isConfigured()) {
+      await this.genieDriver.wipeDeviceBySerial(registro.sn)
+        .then((r) => this.logger.log(`desaprovisionar | ACS wipe sn=${registro.sn}: ${r.borrado ? 'borrado' : 'no confirmado'} (device=${r.deviceId ?? 'inexistente'})`))
+        .catch((e) => this.logger.warn(`desaprovisionar | ACS wipe sn=${registro.sn} falló (no bloquea baja): ${e instanceof Error ? e.message : String(e)}`));
+    }
 
     await this.ftthRepo.softDelete(registro.id);
 

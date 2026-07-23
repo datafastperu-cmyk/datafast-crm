@@ -64,6 +64,24 @@ export class GenieAcsDriver {
     return rows[0]?._id ?? null;
   }
 
+  /**
+   * Borra de GenieACS el device asociado a un SN (limpieza terminal al eliminar el contrato,
+   * Regla D). Idempotente y VIO: resuelve el device por SN (tolera legible↔hex), lo borra y
+   * CONFIRMA que ya no está. "No existía" cuenta como éxito. Devuelve false solo si tras borrar
+   * el device sigue apareciendo (no confirmado) — el llamador decide si reintenta.
+   */
+  async wipeDeviceBySerial(serial: string): Promise<{ borrado: boolean; deviceId: string | null }> {
+    const deviceId = await this.findDeviceIdBySerial(serial);
+    if (!deviceId) return { borrado: true, deviceId: null }; // no existe = nada que limpiar
+    await this.nbi.deleteDevice(deviceId);
+    // VIO: confirmar que el device desapareció con una lectura independiente.
+    const sigue = await this.findDeviceIdBySerial(serial).catch(() => null);
+    const borrado = sigue === null;
+    if (!borrado) this.logger.warn(`wipeDeviceBySerial | sn=${serial} device=${deviceId} sigue presente tras DELETE`);
+    else this.logger.log(`wipeDeviceBySerial | sn=${serial} device=${deviceId} borrado de GenieACS`);
+    return { borrado, deviceId };
+  }
+
   /** Serial hex tal cual lo ve GenieACS (DeviceID.SerialNumber) — el que la ONU informa
    *  y contra el que la extensión erpauth.js deriva el HMAC. Distinto del SN legible de la OLT. */
   async getGenieSerial(deviceId: string): Promise<string | null> {

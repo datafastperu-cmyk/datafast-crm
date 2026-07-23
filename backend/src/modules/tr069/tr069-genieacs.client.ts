@@ -133,6 +133,17 @@ export class Tr069GenieacsClient {
     return res.data ?? [];
   }
 
+  /** Borra el device completo de GenieACS (limpieza terminal al eliminar el contrato).
+   *  Idempotente: un 404 (ya no existe) cuenta como éxito. */
+  async deleteDevice(deviceId: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete(`${this.baseUrl}/devices/${encodeURIComponent(deviceId)}`, this.cfg()),
+    ).catch((e: { response?: { status?: number } }) => {
+      if (e?.response?.status === 404) return; // ya borrado = hecho
+      throw e;
+    });
+  }
+
   /** Borra un fault por id (`<device>:<channel>`). Libera el canal para reintentar. */
   async deleteFault(faultId: string): Promise<void> {
     await firstValueFrom(this.http.delete(`${this.baseUrl}/faults/${encodeURIComponent(faultId)}`, this.cfg()));
