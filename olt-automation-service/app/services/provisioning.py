@@ -1699,6 +1699,7 @@ def reset_huawei_onu(
     el prompt (y/n) antes de confirmar con 'y'; solo se reporta éxito si la
     confirmación se envió y la OLT no devolvió error.
     """
+    import paramiko
     logger.info(
         'reset_huawei_onu: reiniciando ONU slot=%d port=%d onu_id=%d en %s',
         slot, port, onu_id, conn.ip,
