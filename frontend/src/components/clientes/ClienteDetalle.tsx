@@ -26,7 +26,6 @@ import { clientesApi }                          from '@/lib/api/clientes';
 import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
 import { xuiApi, type XuiLine, type EditarXuiLineDto } from '@/lib/api/xui';
 import { zonasApi }                             from '@/lib/api/zonas';
-import { TabOnuRouter }                        from './TabOnuRouter';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
 import { ModalProvisionFtth }                from './ModalProvisionFtth';
 import { TabConfigFacturacion, calcularFechas, calcularFechaRecordatorio } from './TabConfigFacturacion';
@@ -43,7 +42,6 @@ import { useAuthStore } from '@/store/auth.store';
 // ── Tabs ──────────────────────────────────────────────────────
 const TABS = [
   { key: 'resumen',      label: 'Resumen',      icon: Monitor      },
-  { key: 'onu_router',   label: 'ONU/Router',   icon: Radio        },
   { key: 'servicios',    label: 'Servicios',    icon: Wifi         },
   { key: 'facturacion',  label: 'Facturación',  icon: CreditCard   },
   { key: 'estadisticas', label: 'Consumo',      icon: BarChart2    },
@@ -710,9 +708,6 @@ export function ClienteDetalle({ id }: { id: string }) {
         {tab === 'servicios' && (
           <TabServicios clienteId={id} contratos={contratos as Contrato[]} />
         )}
-
-        {/* ── ONU/Router ───────────────────────────────────── */}
-        {tab === 'onu_router' && <TabOnuRouter clienteId={id} />}
 
         {/* Tabs placeholder */}
         {tab === 'facturacion'  && <TabFacturacion clienteId={id} contratos={contratos as Contrato[]} />}
