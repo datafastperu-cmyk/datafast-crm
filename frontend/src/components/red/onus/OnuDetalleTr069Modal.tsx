@@ -315,7 +315,7 @@ export function OnuDetalleTr069Modal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-[110] flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-4xl my-4 bg-card border border-border rounded-xl shadow-xl" onClick={e => e.stopPropagation()}>
 
         {/* Header */}

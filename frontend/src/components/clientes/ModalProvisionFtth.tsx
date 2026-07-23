@@ -4,7 +4,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X, Zap, Loader2, AlertTriangle, Search, CheckCircle2,
-  RefreshCw, WifiOff, Hash, Trash2, ChevronDown,
+  RefreshCw, WifiOff, Hash, Trash2, ChevronDown, Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toaster';
@@ -22,6 +22,7 @@ import type { Contrato } from '@/types';
 import { Portal } from '@/components/ui/portal';
 import { useProcedimientoWizard } from '@/hooks/useProcedimientoWizard';
 import { SenalFtthValor } from '@/components/red/onus/SenalFtthValor';
+import { OnuDetalleTr069Modal } from '@/components/red/onus/OnuDetalleTr069Modal';
 
 // ─── Estado badge ─────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ function EstadoBadge({ estado }: { estado: FtthOnuEstado }) {
 
 // ─── Estado panel ─────────────────────────────────────────────
 
-function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando, onReset, isReiniciando }: {
+function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando, onReset, isReiniciando, onVerDetalle }: {
   registro: FtthOnuRegistro;
   onDesaprovisionar: () => void;
   isDesaprovisionandoPending: boolean;
@@ -59,6 +60,7 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
   isRehabilitando: boolean;
   onReset: () => void;
   isReiniciando: boolean;
+  onVerDetalle: () => void;
 }) {
   const btnCls = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50';
   const canDesaprov = registro.estado === 'activo' || registro.estado === 'gpon_registrado' || registro.estado === 'wan_inyectado' || registro.estado === 'suspendido';
@@ -135,6 +137,11 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
             Desaprovisionar
           </button>
         )}
+        <button onClick={onVerDetalle}
+          className={cn(btnCls, 'border-primary/40 bg-primary/5 text-primary hover:bg-primary/15')}>
+          <Eye className="w-3.5 h-3.5" />
+          Ver detalle
+        </button>
       </div>
     </div>
   );
@@ -165,6 +172,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   // Procedimiento operativo: heartbeat mientras el operador está a cargo; lo NO confirmado
   // se anula al cerrar. Ver CLAUDE.md § Wizards y Modales.
   const wizard = useProcedimientoWizard('ftth_provision', contrato.id);
+  const [verDetalle, setVerDetalle] = useState(false);
   const { toast } = useToast();
 
   // OLT selection
@@ -661,6 +669,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   isRehabilitando={rehabilitando}
                   onReset={() => resetOnu()}
                   isReiniciando={reiniciandoOnu}
+                  onVerDetalle={() => setVerDetalle(true)}
                 />
                 {yaActivo && (
                   <div className="flex items-start gap-2 mt-2.5 px-3 py-2 rounded-lg bg-emerald-500/5 border border-emerald-700/30">
@@ -1006,6 +1015,20 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
           </div>
         </div>
       </div>
+
+      {/* Modal de gestión TR-069 en vivo, sobre el de aprovisionar. Solo con ONU registrada. */}
+      {verDetalle && estadoExistente && (
+        <OnuDetalleTr069Modal
+          sn={estadoExistente.sn}
+          oltId={estadoExistente.oltId}
+          cliente={contrato.clienteNombre ?? undefined}
+          slot={estadoExistente.slot}
+          port={estadoExistente.port}
+          onuId={estadoExistente.onuId}
+          contratoId={contrato.id}
+          onClose={() => setVerDetalle(false)}
+        />
+      )}
     </>
     </Portal>
   );
