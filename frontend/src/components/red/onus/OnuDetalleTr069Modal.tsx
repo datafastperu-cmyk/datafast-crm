@@ -64,7 +64,7 @@ const ESTADO_DOT: Record<string, string> = {
 // Chip de "vitals" — dato clave siempre visible bajo el header.
 function Vital({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5 min-w-0">
+    <div className="flex flex-col gap-0.5 flex-shrink-0 max-w-[220px]">
       <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">{label}</span>
       <span className="text-[11px] font-medium text-foreground truncate">{children}</span>
     </div>
@@ -495,21 +495,21 @@ export function OnuDetalleTr069Modal({
         </div>
 
         {/* ── Vitals: datos clave siempre visibles (ERP/OLT, no dependen de TR-069) ── */}
-        <div className="flex items-stretch gap-4 px-5 py-2.5 border-b border-border bg-muted/20 overflow-x-auto flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-2.5 border-b border-border bg-muted/20 flex-shrink-0">
           <Vital label="OLT / Pos">{oltNombre ?? '—'} · 0/{slot ?? '–'}/{port ?? '–'}{onuId != null ? `·${onuId}` : ''}</Vital>
-          <div className="w-px bg-border/60 flex-shrink-0" />
-          <div className="flex flex-col gap-0.5 min-w-0">
+          <div className="hidden sm:block w-px self-stretch bg-border/60 flex-shrink-0" />
+          <div className="flex flex-col gap-0.5 flex-shrink-0">
             <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">Señal FTTH (Rx)</span>
             <SenalFtthValor rxDbm={rxDbm} oltRxDbm={oltRxDbm} cargando={metricasFetching}
               puedeLeer={puedeLeerMetricas} onLeer={() => refetchMetricas()} />
           </div>
-          <div className="w-px bg-border/60 flex-shrink-0" />
+          <div className="hidden sm:block w-px self-stretch bg-border/60 flex-shrink-0" />
           <Vital label="TR-069">
             {informing
               ? <span className="inline-flex items-center gap-1 text-emerald-400"><Signal className="w-3 h-3" /> Online</span>
               : <span className="text-amber-400">sin informar</span>}
           </Vital>
-          <div className="w-px bg-border/60 flex-shrink-0" />
+          <div className="hidden sm:block w-px self-stretch bg-border/60 flex-shrink-0" />
           <Vital label="Uptime">
             {informing ? <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3 text-muted-foreground" /> {fmtUptime(info?.uptimeSeconds)}</span> : '—'}
           </Vital>
@@ -588,21 +588,23 @@ export function OnuDetalleTr069Modal({
         )}
 
         {/* ── Cuerpo: sidebar de secciones + panel de contenido ── */}
-        <div className="flex flex-1 min-h-0">
-          {/* Sidebar */}
-          <nav className="w-56 flex-shrink-0 border-r border-border overflow-y-auto bg-muted/10 py-1.5">
+        {/* En móvil apila: el sidebar pasa a barra horizontal desplazable arriba y el contenido debajo. */}
+        <div className="flex flex-col md:flex-row flex-1 min-h-0">
+          {/* Sidebar / barra de secciones */}
+          <nav className="flex md:flex-col md:w-56 flex-shrink-0 border-b md:border-b-0 md:border-r border-border overflow-x-auto md:overflow-x-visible md:overflow-y-auto bg-muted/10 md:py-1.5">
             {SECCIONES.map(({ key, label, icon: Icon, real }) => {
               const activo = key === active;
               return (
                 <button key={key} onClick={() => setActive(key)}
                   className={cn(
-                    'w-full flex items-center gap-2.5 px-3.5 py-2 text-left transition-colors border-l-2',
+                    'flex items-center gap-2.5 px-3.5 py-2 text-left transition-colors flex-shrink-0 md:w-full',
+                    'border-b-2 md:border-b-0 md:border-l-2',
                     activo
                       ? 'bg-primary/10 border-primary text-foreground'
                       : 'border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground',
                   )}>
                   <Icon className={cn('w-4 h-4 flex-shrink-0', activo ? 'text-primary' : '')} />
-                  <span className="flex-1 text-[11px] truncate">{label}</span>
+                  <span className="text-[11px] whitespace-nowrap md:whitespace-normal md:flex-1 md:truncate">{label}</span>
                   {!real && (
                     <span className="text-[8px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded border border-dashed border-border/70 text-muted-foreground/60">
                       maq
