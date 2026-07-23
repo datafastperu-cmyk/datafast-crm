@@ -1404,7 +1404,6 @@ def _paramiko_huawei_run(
             if chan.recv_ready():
                 buf += chan.recv(4096).decode('utf-8', errors='replace')
                 last = buf.rsplit('\n', 1)[-1].replace('\r', '').strip()
-                logger.info('paramiko _read last=<<%s>>', last[-80:])
                 if CONFIRM_RE.search(last):
                     chan.send('\r\n')
                     continue
@@ -1412,7 +1411,6 @@ def _paramiko_huawei_run(
                     chan.send(' ')  # Espacio avanza una página en el pager Huawei
                     continue
                 if YESNO_RE.search(last):
-                    logger.info('paramiko _read: YESNO match -> y')
                     chan.send('y\r\n')
                     continue
                 if PROMPT_RE.match(last):
@@ -1691,33 +1689,103 @@ def reset_huawei_onu(
     comandos menos sensibles al prompt, pero `ont reset` lo dejaba inutilizable.
 
     Síncrono — llamar desde asyncio.to_thread().
+
+    IMPLEMENTACIÓN DETERMINISTA (2026-07-23): el loop reactivo genérico
+    `_paramiko_huawei_run` rompía por PROMPT antes de que llegara
+    "Are you sure to reset the ONT(s)? (y/n)[n]:", así que el 'y' NUNCA se enviaba
+    y el `quit` siguiente respondía la confirmación como 'n' (default) → el reset
+    se ABORTABA silenciosamente mientras la función reportaba éxito (verificado en
+    hardware con log del raw). Aquí se envía el comando y se ESPERA explícitamente
+    el prompt (y/n) antes de confirmar con 'y'; solo se reporta éxito si la
+    confirmación se envió y la OLT no devolvió error.
     """
-    commands = [
-        'config',
-        f'interface gpon 0/{slot}',
-        f'ont reset {port} {onu_id}',
-        'quit',
-        'quit',
-    ]
     logger.info(
         'reset_huawei_onu: reiniciando ONU slot=%d port=%d onu_id=%d en %s',
         slot, port, onu_id, conn.ip,
     )
-    raw_output = _paramiko_huawei_run(conn, commands, timeout=settings.ssh_command_timeout)
-    _check_cli_error(conn.brand, 'reset_huawei_onu', raw_output)
+    timeout = max(60.0, settings.ssh_command_timeout)
+    yesno_re  = re.compile(r'\(\s*y\s*/\s*n\s*\)', re.IGNORECASE)
+    prompt_re = re.compile(r'\)#\s*$')
 
-    # DIAGNÓSTICO TEMPORAL: registrar la salida cruda para confirmar si el prompt de
-    # confirmación (y/n) se auto-respondió y el reset se ejecutó de verdad.
-    logger.info('reset_huawei_onu RAW <<<%s>>>', (raw_output or '')[-1200:].replace('\r', ''))
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        ssh.connect(
+            hostname=conn.ip, port=conn.port,
+            username=conn.username, password=conn.password,
+            timeout=15, look_for_keys=False, allow_agent=False,
+        )
+        chan = ssh.invoke_shell(width=200, height=50)
+        chan.settimeout(timeout)
 
-    logger.info('reset_huawei_onu: ONU slot=%d port=%d onu_id=%d reiniciada en %s', slot, port, onu_id, conn.ip)
-    return {
-        'success': True,
-        'message': f'ONU slot={slot} port={port} onu_id={onu_id} reiniciada',
-        'slot':    slot,
-        'port':    port,
-        'onu_id':  onu_id,
-    }
+        def _drain(seconds: float) -> str:
+            end = _time_read.monotonic() + seconds
+            data = ''
+            while _time_read.monotonic() < end:
+                if chan.recv_ready():
+                    data += chan.recv(4096).decode('utf-8', errors='replace')
+                else:
+                    _time_read.sleep(0.05)
+            return data
+
+        # Navegación hasta el contexto interface-gpon.
+        _drain(0.6)
+        chan.send('enable\r\n');                       _drain(0.4)
+        chan.send('screen-length 0 temporary\r\n');    _drain(0.4)
+        chan.send('config\r\n');                       _drain(0.3)
+        chan.send(f'interface gpon 0/{slot}\r\n');     _drain(0.3)
+
+        # ont reset — esperar el (y/n) y confirmar con 'y' de forma determinista.
+        chan.send(f'ont reset {port} {onu_id}\r\n')
+        buf = ''
+        confirmado = False
+        deadline = _time_read.monotonic() + 25
+        while _time_read.monotonic() < deadline:
+            if chan.recv_ready():
+                buf += chan.recv(4096).decode('utf-8', errors='replace')
+                if not confirmado and yesno_re.search(buf):
+                    chan.send('y\r\n')
+                    confirmado = True
+                    buf = ''  # descartar para no re-disparar ni confundir el prompt final
+                    continue
+                if confirmado and prompt_re.search(buf.rsplit('\n', 1)[-1].replace('\r', '')):
+                    break
+            else:
+                _time_read.sleep(0.05)
+
+        buf += _drain(0.5)
+        try:
+            chan.close()
+        finally:
+            pass
+
+        _check_cli_error(conn.brand, 'reset_huawei_onu', buf)
+
+        if not confirmado:
+            logger.warning('reset_huawei_onu: NO apareció el prompt (y/n) — reset NO confirmado slot=%d port=%d onu_id=%d en %s', slot, port, onu_id, conn.ip)
+            return {
+                'success': False,
+                'message': f'No se pudo confirmar el reinicio (la OLT no pidió confirmación (y/n)).',
+                'slot': slot, 'port': port, 'onu_id': onu_id,
+            }
+
+        logger.info('reset_huawei_onu: ONU slot=%d port=%d onu_id=%d reiniciada (confirmado y) en %s', slot, port, onu_id, conn.ip)
+        return {
+            'success': True,
+            'message': f'ONU slot={slot} port={port} onu_id={onu_id} reiniciada',
+            'slot':    slot,
+            'port':    port,
+            'onu_id':  onu_id,
+        }
+    except paramiko.AuthenticationException as exc:
+        raise ProvisioningError(f'Autenticación fallida en Huawei {conn.ip}') from exc
+    except (paramiko.SSHException, OSError, TimeoutError) as exc:
+        raise ProvisioningError(f'Error SSH en Huawei {conn.ip}: {exc}') from exc
+    finally:
+        try:
+            ssh.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def display_huawei_board(conn: OltConnectionSchema) -> dict[str, Any]:
