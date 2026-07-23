@@ -524,10 +524,14 @@ def get_huawei_metrics(
     # devolver dato, pese a que el comando responde en ~20s por el runner correcto
     # (verificado en hardware 2026-07-22). El comando va DENTRO de `interface gpon 0/slot`
     # (forma que la CLI acepta de forma fiable), y se toma solo la salida de ese comando.
+    # Se usa la forma TABLA por puerto (`... {port} all`) en vez de la per-ONU: el firmware de
+    # esta MA5800 SOLO expone la columna "OLT Rx ONT power" (la potencia que la OLT recibe de
+    # la ONU, upstream) en esta tabla — el comando per-ONU trae únicamente Rx/Tx de la ONU.
+    # Cabecera real:  ONT  Rx power  Tx power  OLT Rx ONT power  Temperature  Voltage  Current  Distance
     cmds = [
         'config',
         f'interface gpon 0/{onu.slot}',
-        f'display ont optical-info {onu.port} {onu.onu_id}',
+        f'display ont optical-info {onu.port} all',
         'quit',
         'quit',
     ]
@@ -542,6 +546,7 @@ def get_huawei_metrics(
             'success':       False,
             'rx_power_dbm':  None,
             'tx_power_dbm':  None,
+            'olt_rx_power_dbm': None,
             'temperature_c': None,
             'alarm': {
                 'level':   'error',
@@ -549,42 +554,44 @@ def get_huawei_metrics(
             },
         }
 
-    # ── Parsear con TextFSM ───────────────────────────────────
-    parsed = _parse_output(conn.brand, 'display_ont_optical_info.textfsm', raw_output)
+    # ── Parsear la fila del ONT en la tabla ───────────────────
+    # Fila: "<id> <rx> <tx> <oltRx> <temp> <voltage> <current> <distance>", con '-' si un
+    # valor no está disponible. Ej.: "44  -22.07  2.24  -23.98  45  3.300  6  382"
+    def _num(tok: str) -> float | None:
+        return None if tok in ('-', '') else float(tok)
 
-    if not parsed or 'raw' in parsed[0]:
+    fila = re.compile(
+        r'^\s*(\d+)\s+(-?\d+\.\d+|-)\s+(-?\d+\.\d+|-)\s+(-?\d+\.\d+|-)\s+(-?\d+|-)'
+    )
+    rx = tx = olt_rx = None
+    temp = 0
+    for line in raw_output.splitlines():
+        m = fila.match(line)
+        if m and int(m.group(1)) == onu.onu_id:
+            try:
+                rx     = _num(m.group(2))
+                tx     = _num(m.group(3))
+                olt_rx = _num(m.group(4))
+                temp   = int(m.group(5)) if m.group(5) != '-' else 0
+            except (ValueError, TypeError):
+                rx = None
+            break
+
+    if rx is None:
         logger.warning(
-            'get_huawei_metrics: TextFSM no encontró datos en la salida de %s', conn.ip
+            'get_huawei_metrics: ONU %s no encontrada en la tabla óptica de %s (0/%d/%d)',
+            onu.onu_id, conn.ip, onu.slot, onu.port,
         )
         return {
             'success':       False,
             'rx_power_dbm':  None,
             'tx_power_dbm':  None,
+            'olt_rx_power_dbm': None,
             'temperature_c': None,
-            'raw':           raw_output,
+            'raw':           raw_output[-400:],
             'alarm': {
                 'level':   'warning',
-                'message': 'Datos ópticos no disponibles — ONU posiblemente no registrada',
-            },
-        }
-
-    metrics = parsed[0]
-
-    # ── Convertir valores capturados ──────────────────────────
-    try:
-        rx   = float(metrics.get('RxPower') or '0')
-        tx   = float(metrics.get('TxPower') or '0')
-        temp = int(float(metrics.get('Temp')  or '0'))
-    except (ValueError, TypeError) as exc:
-        logger.error('get_huawei_metrics: error convirtiendo valores — %s | raw=%s', exc, metrics)
-        return {
-            'success':       False,
-            'rx_power_dbm':  None,
-            'tx_power_dbm':  None,
-            'temperature_c': None,
-            'alarm': {
-                'level':   'warning',
-                'message': f'No se pudieron interpretar los valores ópticos: {exc}',
+                'message': 'Datos ópticos no disponibles — ONU posiblemente offline o no registrada',
             },
         }
 
@@ -612,11 +619,12 @@ def get_huawei_metrics(
         }
 
     return {
-        'success':       True,
-        'rx_power_dbm':  rx,
-        'tx_power_dbm':  tx,
-        'temperature_c': temp,
-        'alarm':         alarm,
+        'success':          True,
+        'rx_power_dbm':     rx,
+        'tx_power_dbm':     tx,
+        'olt_rx_power_dbm': olt_rx,
+        'temperature_c':    temp,
+        'alarm':            alarm,
     }
 
 

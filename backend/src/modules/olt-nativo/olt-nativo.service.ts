@@ -233,6 +233,7 @@ export class OltNativoService implements OnModuleInit {
         metricsAvailable: d?.metricsAvailable ?? false,
         rxPowerDbm:       d?.rxPowerDbm,
         txPowerDbm:       d?.txPowerDbm,
+        oltRxPowerDbm:    d?.oltRxPowerDbm,
         temperatureC:     d?.temperatureC,
         alarm:            d?.alarm,
       };

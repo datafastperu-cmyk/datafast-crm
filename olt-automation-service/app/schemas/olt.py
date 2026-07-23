@@ -134,8 +134,10 @@ class AlarmInfo(BaseModel):
 
 class MetricsResponse(BaseModel):
     success:       bool
-    rx_power_dbm:  float | None = None
-    tx_power_dbm:  float | None = None
+    rx_power_dbm:  float | None = None   # potencia que RECIBE la ONU (downstream)
+    tx_power_dbm:  float | None = None   # potencia que EMITE la ONU (upstream)
+    # Potencia que la OLT recibe de esta ONU (upstream, medida en el puerto GPON de la OLT).
+    olt_rx_power_dbm: float | None = None
     temperature_c: int | None   = None
     alarm:         AlarmInfo | None = None
     raw:           str | None   = None

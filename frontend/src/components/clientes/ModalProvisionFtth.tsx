@@ -75,7 +75,7 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
     staleTime: 8_000,
   });
   const rxSenal = metricasSenal?.rxPowerDbm ?? null;
-  const txSenal = metricasSenal?.txPowerDbm ?? null;
+  const oltRxSenal = metricasSenal?.oltRxPowerDbm ?? null;
 
   return (
     <div className="rounded-xl border border-border bg-card p-3 space-y-2.5">
@@ -97,7 +97,7 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
       {/* Señal FTTH — mismo formato y tamaño que el modal Ver detalle */}
       <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Señal FTTH</span>
-        <SenalFtthValor rxDbm={rxSenal} txDbm={txSenal} cargando={senalFetching}
+        <SenalFtthValor rxDbm={rxSenal} oltRxDbm={oltRxSenal} cargando={senalFetching}
           puedeLeer={puedeLeerSenal} onLeer={() => refetchSenal()} />
       </div>
       {registro.ultimoError && (

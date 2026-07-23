@@ -103,6 +103,7 @@ export interface OltMetricasDatos {
   metricsAvailable: boolean;
   rxPowerDbm?:      number | null;
   txPowerDbm?:      number | null;
+  oltRxPowerDbm?:   number | null;
   temperatureC?:    number | null;
   alarm?: {
     level:   'warning' | 'critical' | 'error';

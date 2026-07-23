@@ -151,6 +151,7 @@ export interface PythonMetricsResponse {
   success:       boolean;
   rx_power_dbm:  number | null;
   tx_power_dbm:  number | null;
+  olt_rx_power_dbm?: number | null;
   temperature_c: number | null;
   alarm:         PythonAlarmInfo | null;
   raw?:          string;
@@ -227,6 +228,7 @@ export interface PythonOnuStatusInfo {
   run_state:     string;   // 'online' | 'offline' | 'unknown' | 'los' | etc.
   rx_power_dbm:  number | null;
   tx_power_dbm:  number | null;
+  olt_rx_power_dbm?: number | null;
   temperature_c: number | null;
 }
 
@@ -346,6 +348,7 @@ export interface PythonVerifyOnuResponse {
   run_state:     string | null;
   rx_power_dbm:  number | null;
   tx_power_dbm:  number | null;
+  olt_rx_power_dbm?: number | null;
   temperature_c: number | null;
   error?:        string;
 }
@@ -378,6 +381,7 @@ export interface MetricasOnuResult {
   metricsAvailable: boolean;
   rxPowerDbm?:      number | null;
   txPowerDbm?:      number | null;
+  oltRxPowerDbm?:   number | null;
   temperatureC?:    number | null;
   alarm?:           PythonAlarmInfo | null;
 }

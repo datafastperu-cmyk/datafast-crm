@@ -265,6 +265,7 @@ export class NativoSshProvider implements IOltProvider {
         metricsAvailable: res.success && !res.error,
         rxPowerDbm:       res.rx_power_dbm,
         txPowerDbm:       res.tx_power_dbm,
+        oltRxPowerDbm:    res.olt_rx_power_dbm ?? null,
         temperatureC:     res.temperature_c,
         alarm:            res.alarm ?? null,
       };

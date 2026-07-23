@@ -144,8 +144,9 @@ export interface AlarmInfo {
 export interface MetricasOnuResult {
   status:           'online' | 'offline' | 'degraded';
   metricsAvailable: boolean;
-  rxPowerDbm?:      number | null;
-  txPowerDbm?:      number | null;
+  rxPowerDbm?:      number | null;   // potencia que RECIBE la ONU (downstream)
+  txPowerDbm?:      number | null;   // potencia que EMITE la ONU (upstream)
+  oltRxPowerDbm?:   number | null;   // potencia que la OLT recibe de esta ONU (upstream)
   temperatureC?:    number | null;
   alarm?:           AlarmInfo | null;
 }

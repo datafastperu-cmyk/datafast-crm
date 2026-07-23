@@ -247,7 +247,7 @@ export function OnuDetalleTr069Modal({
   });
   // La señal en vivo manda; el valor del inventario (si lo hubiera) queda de respaldo.
   const rxDbm = metricas?.rxPowerDbm ?? rxPowerDbm ?? null;
-  const txDbm = metricas?.txPowerDbm ?? null;
+  const oltRxDbm = metricas?.oltRxPowerDbm ?? null;
 
   const refreshMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069Refresh(sn),
@@ -354,7 +354,7 @@ export function OnuDetalleTr069Modal({
               ? <span className={cn('font-semibold', ESTADO_CLS[estadoOperativo] ?? 'text-foreground')}>{estadoOperativo}</span>
               : undefined} />
             <Info label="Señal FTTH (Rx)" value={
-              <SenalFtthValor rxDbm={rxDbm} txDbm={txDbm} cargando={metricasFetching}
+              <SenalFtthValor rxDbm={rxDbm} oltRxDbm={oltRxDbm} cargando={metricasFetching}
                 puedeLeer={puedeLeerMetricas} onLeer={() => refetchMetricas()} />
             } />
             <Info label="Attached VLANs" value={registro?.vlan ?? undefined} />
