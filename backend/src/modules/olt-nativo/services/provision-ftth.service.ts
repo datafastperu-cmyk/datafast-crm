@@ -1349,6 +1349,24 @@ export class ProvisionFtthService {
   // contrato — nunca huérfanos. Este watcher reintenta la limpieza real de la OLT; SOLO
   // cuando la OLT queda confirmada limpia libera los pools y borra el registro. Mientras
   // no se confirme, el registro persiste (con su error). Diseñado para correr en cron.
+  // ── carrilStats (Fase 0 — observabilidad) ─────────────────────────
+  // Línea base de carriles TR-069 por estado, para el health/dashboard. Permite tener la
+  // curva desde el día uno (antes de que la migración de SmartOLT multiplique la base) sin
+  // esperar a que el toggle esté en uso. `bajas_pendientes` llega en la Fase 5.
+  async carrilStats(empresaId: string): Promise<{ porEstado: Record<string, number>; activos: number }> {
+    const rows = await this.ds.query<{ carril_estado: string; n: string }[]>(
+      `SELECT carril_estado, COUNT(*)::text AS n
+       FROM   ftth_onu_registro
+       WHERE  empresa_id = $1 AND deleted_at IS NULL
+       GROUP  BY carril_estado`,
+      [empresaId],
+    );
+    const porEstado: Record<string, number> = {};
+    for (const r of rows) porEstado[r.carril_estado] = Number(r.n);
+    const activos = (porEstado['activo'] ?? 0) + (porEstado['activando'] ?? 0);
+    return { porEstado, activos };
+  }
+
   async reintentarRollbacksFallidos(): Promise<{ revisados: number; limpiados: number; pendientes: number }> {
     const registros = await this.ftthRepo.find({ where: { estado: FtthOnuEstado.FALLIDO_ROLLBACK } });
     let limpiados = 0, pendientes = 0;

@@ -1193,6 +1193,14 @@ export class OltNativoController {
   // cuando el recurso alcanzó su estado terminal verificado. El servidor es la autoridad:
   // si el heartbeat calla, el barrido revierte el trabajo no confirmado.
   // ────────────────────────────────────────────────────────────
+  @Get('carril/stats')
+  @ApiOperation({ summary: 'Conteo de carriles TR-069 por estado (observabilidad)' })
+  async carrilStats(
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ porEstado: Record<string, number>; activos: number }> {
+    return this.ftth.carrilStats(user.empresaId);
+  }
+
   @Post('wizard/abrir')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Abrir un procedimiento operativo sobre un recurso (contrato)' })

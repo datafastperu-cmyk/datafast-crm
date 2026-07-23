@@ -18,6 +18,27 @@ export enum FtthOnuEstado {
   FALLIDO_ROLLBACK       = 'fallido_rollback',
 }
 
+// ── Estado del carril de gestión TR-069 (bajo demanda) ──────────────
+// Máquina de estados del carril, gobernada por VIO (nunca se infiere del eco del comando).
+// Reemplaza al flag booleano `tr069_bootstrap_aplicado`, que queda de solo lectura hasta
+// retirarse. Solo aplica al proveedor NATIVO (SmartOLT/AdminOLT gestionan el ACS por su API).
+export enum FtthCarrilEstado {
+  INACTIVO              = 'inactivo',                // sin interface, sin identidad reservada
+  ACTIVANDO             = 'activando',               // bootstrap en vuelo (write-ahead)
+  ACTIVO                = 'activo',                   // interface arriba + ONU informando (VIO)
+  ACTIVACION_FALLIDA    = 'activacion_fallida',       // aceptado sin converger → watcher reintenta
+  DESACTIVANDO          = 'desactivando',            // teardown en vuelo
+  // Interface removida pero se CONSERVA la identidad (IP + service-port de gestión) y los
+  // datos ACS del CPE — reactivar reusa la misma identidad. Estado del apagado por TTL/botón.
+  INACTIVO_RESERVADO    = 'inactivo_reservado',
+  DESACTIVACION_FALLIDA = 'desactivacion_fallida',    // teardown no confirmado → watcher reintenta
+}
+
+export const FTTH_CARRIL_ACTIVOS: FtthCarrilEstado[] = [
+  FtthCarrilEstado.ACTIVANDO,
+  FtthCarrilEstado.ACTIVO,
+];
+
 export const FTTH_ESTADOS_ACTIVOS: FtthOnuEstado[] = [
   FtthOnuEstado.PENDIENTE,
   FtthOnuEstado.GPON_REGISTRADO,
@@ -139,6 +160,22 @@ export class FtthOnuRegistro extends BaseModel {
   // borra TODOS los service-ports de la ONU al re-registrarla, incluido el carril).
   @Column({ name: 'tr069_bootstrap_aplicado', type: 'boolean', default: false })
   tr069BootstrapAplicado: boolean;
+
+  // Estado del carril bajo demanda (Fase 0). Se pobla por migración desde
+  // `tr069_bootstrap_aplicado`; a partir de la Fase 2 es la fuente de verdad del carril.
+  @Column({
+    name: 'carril_estado',
+    type: 'enum',
+    enum: FtthCarrilEstado,
+    enumName: 'ftth_carril_estado',
+    default: FtthCarrilEstado.INACTIVO,
+  })
+  carrilEstado: FtthCarrilEstado;
+
+  // Última interacción del operador con el TR-069 de esta ONU (abrir el detalle o cualquier
+  // acción). Lo usa el barrido TTL de 3 días — NUNCA el lastInform (que es cada 300s).
+  @Column({ name: 'tr069_ultimo_uso_at', type: 'timestamptz', nullable: true })
+  tr069UltimoUsoAt: Date | null;
 
   @Column({ name: 'mgmt_service_port_id', type: 'int', nullable: true })
   mgmtServicePortId: number | null;
