@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Loader2, KeyRound, PlugZap, CheckCircle2, XCircle } from 'lucide-react';
+import { Save, Loader2, KeyRound, PlugZap, CheckCircle2, XCircle, Info, Cpu, MapPin } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
@@ -71,86 +71,86 @@ export function TabDetalles({ olt, oltId }: Props) {
   const inputCls = 'w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30';
   const selectCls = `${inputCls} cursor-pointer`;
 
+  const Seccion = ({ icon, titulo, children }: { icon: React.ReactNode; titulo: string; children: React.ReactNode }) => (
+    <div className="rounded-xl border border-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        {icon}
+        <h3 className="text-sm font-semibold">{titulo}</h3>
+      </div>
+      {children}
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* 1. Información general */}
+      <Seccion icon={<Info className="w-4 h-4 text-muted-foreground" />} titulo="Información general">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Nombre">
+            <input className={inputCls} value={nombre} onChange={e => setNombre(e.target.value)} />
+          </Field>
+          <Field label="Marca">
+            <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.marca} readOnly />
+          </Field>
+          <Field label="Modelo">
+            <input className={inputCls} value={modelo} onChange={e => setModelo(e.target.value)} placeholder="Ej: MA5608T" />
+          </Field>
+          <Field label="Estado">
+            <select className={selectCls} value={estado} onChange={e => setEstado(e.target.value as typeof estado)}>
+              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          <div className="md:col-span-2">
+            <Field label="Descripción adicional">
+              <textarea
+                className={`${inputCls} resize-none`}
+                rows={3}
+                value={descripcion}
+                onChange={e => setDescripcion(e.target.value)}
+                placeholder="Notas técnicas, rack, nodo, etc."
+              />
+            </Field>
+          </div>
+        </div>
+      </Seccion>
 
-        {/* Nombre */}
-        <Field label="Nombre">
-          <input className={inputCls} value={nombre} onChange={e => setNombre(e.target.value)} />
-        </Field>
+      {/* 2. Conectividad SSH — edición con prueba previa y guard de ops en vuelo */}
+      <ConectividadSection olt={olt} oltId={oltId} />
 
-        {/* Modelo */}
-        <Field label="Modelo">
-          <input className={inputCls} value={modelo} onChange={e => setModelo(e.target.value)} placeholder="Ej: MA5608T" />
-        </Field>
-
-        {/* Estado */}
-        <Field label="Estado">
-          <select className={selectCls} value={estado} onChange={e => setEstado(e.target.value as typeof estado)}>
-            {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </Field>
-
-        {/* Marca (read-only) */}
-        <Field label="Marca">
-          <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.marca} readOnly />
-        </Field>
-
-        {/* IP y puerto se editan en la sección Conectividad SSH (con prueba previa) */}
-        <Field label="IP Gestión">
-          <input className={`${inputCls} font-mono opacity-60 cursor-not-allowed`} value={olt.ipGestion} readOnly />
-        </Field>
-
-        <Field label="Puerto SSH">
-          <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.puerto} readOnly />
-        </Field>
-
-        {/* Slots */}
-        <Field label="Slots totales">
-          <input className={inputCls} type="number" min={1} max={16} value={slots} onChange={e => setSlots(e.target.value)} />
-        </Field>
-
-        {/* Puertos por slot */}
-        <Field label="Puertos por slot (PON)">
-          <input className={inputCls} type="number" min={1} max={16} value={puertos} onChange={e => setPuertos(e.target.value)} />
-        </Field>
-
-        {/* VLAN gestión */}
-        <Field label="VLAN gestión por defecto">
-          <input className={inputCls} type="number" min={1} max={4094} value={vlanMgmt} onChange={e => setVlanMgmt(e.target.value)} placeholder="Ej: 100" />
-        </Field>
-
-        {/* Dirección física */}
-        <Field label="Dirección física">
-          <input className={inputCls} value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ej: Av. Los Pinos 123, Zona Norte" />
-        </Field>
-
-        {/* Coordenadas GPS */}
-        <Field label="Coordenadas GPS">
-          <input
-            className={inputCls}
-            value={gps}
-            onChange={e => setGps(e.target.value)}
-            placeholder="-12.046374, -77.042793"
-          />
-          <p className="text-[10px] text-muted-foreground/60 mt-0.5">Formato: latitud, longitud</p>
-        </Field>
-
-        {/* Descripción */}
-        <div className="md:col-span-2">
-          <Field label="Descripción adicional">
-            <textarea
-              className={`${inputCls} resize-none`}
-              rows={3}
-              value={descripcion}
-              onChange={e => setDescripcion(e.target.value)}
-              placeholder="Notas técnicas, rack, nodo, etc."
-            />
+      {/* 3. Capacidad / Hardware */}
+      <Seccion icon={<Cpu className="w-4 h-4 text-muted-foreground" />} titulo="Capacidad / Hardware">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Field label="Slots totales">
+            <input className={inputCls} type="number" min={1} max={16} value={slots} onChange={e => setSlots(e.target.value)} />
+          </Field>
+          <Field label="Puertos por slot (PON)">
+            <input className={inputCls} type="number" min={1} max={16} value={puertos} onChange={e => setPuertos(e.target.value)} />
+          </Field>
+          <Field label="VLAN gestión por defecto">
+            <input className={inputCls} type="number" min={1} max={4094} value={vlanMgmt} onChange={e => setVlanMgmt(e.target.value)} placeholder="Ej: 100" />
           </Field>
         </div>
-      </div>
+      </Seccion>
 
+      {/* 4. Ubicación */}
+      <Seccion icon={<MapPin className="w-4 h-4 text-muted-foreground" />} titulo="Ubicación">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Dirección física">
+            <input className={inputCls} value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ej: Av. Los Pinos 123, Zona Norte" />
+          </Field>
+          <Field label="Coordenadas GPS">
+            <input
+              className={inputCls}
+              value={gps}
+              onChange={e => setGps(e.target.value)}
+              placeholder="-12.046374, -77.042793"
+            />
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">Formato: latitud, longitud</p>
+          </Field>
+        </div>
+      </Seccion>
+
+      {/* Guardar secciones 1/3/4 (Conectividad tiene su propio flujo con prueba) */}
       <div className="flex justify-end">
         <button
           onClick={handleSave}
@@ -165,10 +165,7 @@ export function TabDetalles({ olt, oltId }: Props) {
         </button>
       </div>
 
-      {/* Conectividad SSH — edición post-integración con prueba previa */}
-      <ConectividadSection olt={olt} oltId={oltId} />
-
-      {/* Pool de Service Port IDs (asignación automática por el ERP) */}
+      {/* 5. Pool de Service Port IDs (asignación automática por el ERP) */}
       <ServicePortPoolSection oltId={oltId} />
     </div>
   );
