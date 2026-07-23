@@ -32,6 +32,8 @@ import {
   PythonFtthOntIdsRequest,
   PythonFtthOntIdsResponse,
   PythonFtthRollbackResponse,
+  PythonFtthTeardownRequest,
+  PythonFtthTeardownResponse,
   PythonFtthWanPppoeRequest,
   PythonFtthWanResponse,
   PythonListProfilesRequest,
@@ -338,6 +340,23 @@ export class OltAutomationClient {
       '/api/v1/olt/ftth/rollback-gpon', payload, 150_000,
     );
     this.logger.log(`← ftth/rollback-gpon | success=${res.success}`);
+    return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // FTTH — quitar el carril de gestión TR-069 (POST /api/v1/olt/ftth/teardown-tr069)
+  // Preserva el plano de datos y los datos ACS del CPE. Timeout amplio: hace varios
+  // `undo` + verificación VIO por SSH.
+  // ────────────────────────────────────────────────────────────
+  async ftthTeardownTr069(payload: PythonFtthTeardownRequest): Promise<PythonFtthTeardownResponse> {
+    this.logger.log(
+      `→ Python ftth/teardown-tr069 | OLT=${payload.connection.ip} ` +
+      `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} mgmt_sp=${payload.mgmt_service_port_id}`,
+    );
+    const res = await this.post<PythonFtthTeardownResponse>(
+      '/api/v1/olt/ftth/teardown-tr069', payload, 120_000,
+    );
+    this.logger.log(`← ftth/teardown-tr069 | success=${res.success}`);
     return res;
   }
 

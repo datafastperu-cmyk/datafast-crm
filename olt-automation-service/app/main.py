@@ -31,6 +31,8 @@ from app.schemas.olt import (
     FirmwareUpgradeRequest,
     FtthBootstrapRequest,
     FtthBootstrapResponse,
+    FtthTeardownRequest,
+    FtthTeardownResponse,
     FtthGponRequest,
     FtthGponResponse,
     FtthOntIdsRequest,
@@ -150,6 +152,7 @@ from app.services.provisioning import (
     undo_service_port,
     provision_gpon_ftth,
     provision_mgmt_bootstrap,
+    teardown_mgmt_carril,
     provision_onu,
     reset_huawei_onu,
     rollback_gpon,
@@ -793,6 +796,25 @@ async def ftth_bootstrap_tr069(body: FtthBootstrapRequest) -> FtthBootstrapRespo
             )
             return FtthBootstrapResponse(success=False, error=str(exc))
     return FtthBootstrapResponse(success=True, olt_ip=result['olt_ip'])
+
+
+@app.post(
+    '/api/v1/olt/ftth/teardown-tr069',
+    response_model=FtthTeardownResponse,
+    status_code=status.HTTP_200_OK,
+    tags=['ftth'],
+    summary='Quitar el carril de gestión TR-069 (preserva plano de datos y datos ACS del CPE)',
+)
+async def ftth_teardown_tr069(body: FtthTeardownRequest) -> FtthTeardownResponse:
+    olt_ip = body.connection.ip
+    async with connection_pool.acquire(olt_ip):
+        result = await asyncio.to_thread(
+            teardown_mgmt_carril,
+            body.connection, body.slot, body.port, body.onu_id, body.mgmt_service_port_id,
+        )
+    return FtthTeardownResponse(
+        success=result['success'], olt_ip=result.get('olt_ip'), error=result.get('error'),
+    )
 
 
 @app.post(

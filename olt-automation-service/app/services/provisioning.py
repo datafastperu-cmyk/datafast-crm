@@ -3487,6 +3487,108 @@ def provision_mgmt_bootstrap(
     return {'success': True, 'olt_ip': conn.ip}
 
 
+def teardown_mgmt_carril(
+    conn:                 OltConnectionSchema,
+    slot:                 int,
+    port:                 int,
+    onu_id:               int,
+    mgmt_service_port_id: int | None,
+) -> dict[str, Any]:
+    """
+    Quita SOLO el carril de gestión TR-069 de una ONU Huawei, dejando intacto el plano de
+    datos (WAN PPPoE / ip-index 1) y **sin borrar los datos ACS** que ya viven en el CPE
+    (URL, ConnReq, PeriodicInform persisten hasta un factory reset — esto solo corta el
+    transporte OLT↔ONU de gestión). Es el inverso de provision_mgmt_bootstrap.
+
+    Deshace, en orden inverso al bootstrap:
+      1. service-port de gestión (GEM 3, VLAN 1600)         → `undo service-port <id>`
+      2. tr069-server-config (la WAN Service type: Tr069)    → `undo ont tr069-server-config`
+      3. IP-host de gestión (ip-index 0, DHCP)               → `undo ont ipconfig ... ip-index 0`
+
+    IDEMPOTENTE: reejecutar sobre un carril ya quitado cuenta como ÉXITO ("does not exist" al
+    deshacer = hecho, no error) — mismo criterio que las compensaciones del saga.
+
+    VIO: confirma con lecturas independientes que (a) el service-port de gestión ya no existe
+    y (b) el ip-index 0 desapareció del `display ont ipconfig`. NUNCA se declara desactivado
+    sin esa confirmación. No propaga excepciones — retorna success=False con detalle.
+    Síncrono — llamar desde asyncio.to_thread().
+    """
+    logger.info(
+        'teardown_mgmt_carril: OLT=%s ont %d/%d/%d mgmt_svc=%s',
+        conn.ip, slot, port, onu_id, mgmt_service_port_id,
+    )
+
+    cmds: list[str] = ['config']
+    if mgmt_service_port_id is not None:
+        cmds.append(f'undo service-port {mgmt_service_port_id}')
+    cmds += [
+        f'interface gpon 0/{slot}',
+        f'undo ont tr069-server-config {port} {onu_id}',
+        f'undo ont ipconfig {port} {onu_id} ip-index 0',
+        f'display ont ipconfig {port} {onu_id}',
+        'quit',
+    ]
+
+    try:
+        parts = _paramiko_huawei_run(
+            conn, cmds, timeout=settings.ssh_command_timeout, return_list=True,
+        )
+    except Exception as exc:  # noqa: BLE001 — contrato: nunca propagar al caller
+        logger.warning('teardown_mgmt_carril: SSH falló en %s: %s', conn.ip, exc)
+        return {
+            'success': False,
+            'olt_ip':  conn.ip,
+            'error':   f'No se pudo quitar el carril en {conn.ip}: {exc}',
+        }
+
+    # El `display ont ipconfig` es el último comando de la lista.
+    ipcfg_out = parts[-1] if parts else ''
+
+    # ── Verificación VIO ──────────────────────────────────────
+    # (a) el IP-host de gestión (ip-index 0) ya NO debe aparecer. La forma segura de detectarlo
+    #     es que el bloque "ONT IP host index : 0" no exista en la salida (puede quedar el
+    #     index 1 del PPPoE, que NO se toca).
+    tiene_index0 = bool(re.search(r'ONT IP host index\s*:\s*0\b', ipcfg_out))
+
+    # (b) el service-port de gestión ya no existe (si se pidió quitarlo).
+    sp_confirmado = True
+    if mgmt_service_port_id is not None:
+        try:
+            check = _paramiko_huawei_run(
+                conn, [f'display service-port {mgmt_service_port_id}'],
+                timeout=settings.ssh_command_timeout,
+            )
+            sp_confirmado = 'does not exist' in check.lower() or 'not exist' in check.lower()
+        except Exception:  # noqa: BLE001
+            sp_confirmado = False
+
+    if tiene_index0 or not sp_confirmado:
+        logger.warning(
+            'teardown_mgmt_carril: NO confirmado en %s ont %d/%d/%d '
+            '(ip-index0=%s service_port_ok=%s)',
+            conn.ip, slot, port, onu_id, tiene_index0, sp_confirmado,
+        )
+        return {
+            'success': False,
+            'olt_ip':  conn.ip,
+            'error': (
+                'El carril de gestión no se confirmó como removido '
+                f'(ip-index 0 presente={tiene_index0}, service-port removido={sp_confirmado}).'
+            ),
+        }
+
+    try:
+        _paramiko_huawei_run(conn, ['save'], timeout=settings.ssh_command_timeout)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('teardown_mgmt_carril: save falló (config en running) OLT=%s: %s', conn.ip, exc)
+
+    logger.info(
+        'teardown_mgmt_carril OK | OLT=%s ont %d/%d/%d — carril quitado, plano de datos y ACS intactos',
+        conn.ip, slot, port, onu_id,
+    )
+    return {'success': True, 'olt_ip': conn.ip}
+
+
 def check_ont_wan_pppoe(
     conn:              OltConnectionSchema,
     slot:              int,

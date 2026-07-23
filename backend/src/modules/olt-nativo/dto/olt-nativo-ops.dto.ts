@@ -670,6 +670,21 @@ export interface PythonFtthRollbackResponse {
   error?:  string;
 }
 
+// ─── FTTH: Teardown del carril de gestión TR-069 (quita interface, preserva datos ACS) ──
+export interface PythonFtthTeardownRequest {
+  connection:           PythonConnectionPayload;
+  slot:                 number;
+  port:                 number;
+  onu_id:               number;
+  mgmt_service_port_id: number | null;
+}
+
+export interface PythonFtthTeardownResponse {
+  success: boolean;
+  olt_ip?: string | null;
+  error?:  string | null;
+}
+
 export interface PythonFtthPollRequest {
   connection: PythonConnectionPayload;
   slot:       number;

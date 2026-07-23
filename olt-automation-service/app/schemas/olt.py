@@ -443,6 +443,22 @@ class FtthBootstrapResponse(BaseModel):
     error:   str | None = None
 
 
+class FtthTeardownRequest(BaseModel):
+    """Quitar SOLO el carril de gestión TR-069 (ip-index 0 + tr069-server-config +
+    service-port de gestión), preservando el plano de datos y los datos ACS del CPE."""
+    connection:           OltConnectionSchema
+    slot:                 int = Field(..., ge=0, le=15)
+    port:                 int = Field(..., ge=0, le=15)
+    onu_id:               int = Field(..., ge=1, le=128)
+    mgmt_service_port_id: int | None = Field(None, ge=1)
+
+
+class FtthTeardownResponse(BaseModel):
+    success: bool
+    olt_ip:  str | None = None
+    error:   str | None = None
+
+
 class FtthOntIdsRequest(BaseModel):
     """Listar los ONT-IDs ya configurados en un puerto PON (incl. los de SmartOLT)."""
     connection: OltConnectionSchema
