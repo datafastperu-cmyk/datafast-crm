@@ -651,11 +651,26 @@ export class ProvisionFtthService {
   // F/S/P+ONT+VLAN). Best-effort: nunca lanza — el plano de datos ya está OK.
   // Persiste el estado del carril para trazabilidad y para la red de seguridad (reconcile).
   // ────────────────────────────────────────────────────────────
+  // Flag de política (Fase 4): por defecto el carril TR-069 NO se inyecta con la provisión —
+  // se activa BAJO DEMANDA desde el modal Ver ONU (toggle, Fase 2). Poner
+  // INYECTAR_CARRIL_AUTOMATICO=true en el .env del VPS restaura el comportamiento intrínseco
+  // (carril con cada aprovisionamiento). Leído en tiempo de llamada (portabilidad multi-VPS).
+  private get _inyectarCarrilAutomatico(): boolean {
+    return String(process.env.INYECTAR_CARRIL_AUTOMATICO).toLowerCase() === 'true';
+  }
+
   private async _ensureCarrilGestion(
     olt:        OltDispositivo,
     contratoId: string,
   ): Promise<string> {
     if (!olt.tr069Enabled) return '';
+
+    // Fase 4: carril desacoplado de la provisión. Sin el flag, la ONU queda con el plano de
+    // datos OK y carril_estado='inactivo'; el operador lo activa cuando lo necesite (Ver ONU →
+    // Activar TR-069). El drift-watcher IGNORA carriles 'inactivo', así que no lo revive.
+    if (!this._inyectarCarrilAutomatico) {
+      return ' El carril TR-069 no se inyectó (activación bajo demanda desde Ver ONU → Activar TR-069).';
+    }
 
     // WIRING ÚNICO (directriz feedback_arquitectura_multicanal_provisioning): el carril SIEMPRE
     // pasa por bootstrapTr069 → ProvisioningStrategyResolver (catálogo por modelo + verificación
