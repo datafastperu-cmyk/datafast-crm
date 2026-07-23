@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Loader2, KeyRound, PlugZap, CheckCircle2, XCircle, Info, Cpu, MapPin } from 'lucide-react';
+import { Save, Loader2, KeyRound, PlugZap, CheckCircle2, XCircle, Info, MapPin } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
@@ -13,24 +13,16 @@ interface Props {
   oltId: string;
 }
 
-const MARCAS  = ['huawei', 'zte', 'vsol', 'cdata'] as const;
-const ESTADOS = ['online', 'offline', 'mantenimiento', 'desconocido'] as const;
-
 export function TabDetalles({ olt, oltId }: Props) {
   const qc       = useQueryClient();
   const { toast } = useToast();
 
   const [nombre,      setNombre]      = useState(olt.nombre);
   const [descripcion, setDescripcion] = useState(olt.descripcion ?? '');
-  const [modelo,      setModelo]      = useState(olt.modelo ?? '');
-  const [estado,      setEstado]      = useState(olt.estado);
   const [ubicacion,   setUbicacion]   = useState(olt.ubicacion ?? '');
   const [gps,         setGps]         = useState(
     olt.latitud != null && olt.longitud != null ? `${olt.latitud}, ${olt.longitud}` : '',
   );
-  const [slots,       setSlots]       = useState(String(olt.slotsTotales));
-  const [puertos,     setPuertos]     = useState(String(olt.puertosPorSlot));
-  const [vlanMgmt,    setVlanMgmt]    = useState(String(olt.vlanGestionDefecto ?? ''));
 
   const saveMut = useMutation({
     mutationFn: (body: Record<string, unknown>) => oltNativoApi.patch(oltId, body),
@@ -42,19 +34,16 @@ export function TabDetalles({ olt, oltId }: Props) {
     onError: (e: any) => toast(`Error: ${e?.message ?? 'Error al guardar'}`, { type: 'error' }),
   });
 
+  // Solo los campos que DEFINE el ERP. Modelo, estado, slots y puertos son
+  // estado observado (detect-version / sync / health poller) — no se editan.
   const handleSave = () => {
     const gpsParts = gps.split(',').map(s => s.trim());
     const body: Record<string, unknown> = {
-      nombre:             nombre.trim(),
-      descripcion:        descripcion.trim() || null,
-      modelo:             modelo.trim() || null,
-      estado,
-      ubicacion:          ubicacion.trim() || null,
-      latitud:            gpsParts[0] ? parseFloat(gpsParts[0]) : null,
-      longitud:           gpsParts[1] ? parseFloat(gpsParts[1]) : null,
-      slotsTotales:       Number(slots) || olt.slotsTotales,
-      puertosPorSlot:     Number(puertos) || olt.puertosPorSlot,
-      vlanGestionDefecto: vlanMgmt ? Number(vlanMgmt) : null,
+      nombre:      nombre.trim(),
+      descripcion: descripcion.trim() || null,
+      ubicacion:   ubicacion.trim() || null,
+      latitud:     gpsParts[0] ? parseFloat(gpsParts[0]) : null,
+      longitud:    gpsParts[1] ? parseFloat(gpsParts[1]) : null,
     };
     saveMut.mutate(body);
   };
@@ -69,7 +58,6 @@ export function TabDetalles({ olt, oltId }: Props) {
   );
 
   const inputCls = 'w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30';
-  const selectCls = `${inputCls} cursor-pointer`;
 
   const Seccion = ({ icon, titulo, children }: { icon: React.ReactNode; titulo: string; children: React.ReactNode }) => (
     <div className="rounded-xl border border-border p-4 space-y-3">
@@ -92,13 +80,12 @@ export function TabDetalles({ olt, oltId }: Props) {
           <Field label="Marca">
             <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.marca} readOnly />
           </Field>
-          <Field label="Modelo">
-            <input className={inputCls} value={modelo} onChange={e => setModelo(e.target.value)} placeholder="Ej: MA5608T" />
+          {/* Modelo y Estado son observados (detect-version / health poller), no editables */}
+          <Field label="Modelo (detectado)">
+            <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.modelo || '— sin detectar —'} readOnly />
           </Field>
-          <Field label="Estado">
-            <select className={selectCls} value={estado} onChange={e => setEstado(e.target.value as typeof estado)}>
-              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+          <Field label="Estado (monitoreo)">
+            <input className={`${inputCls} opacity-60 cursor-not-allowed`} value={olt.estado} readOnly />
           </Field>
           <div className="md:col-span-2">
             <Field label="Descripción adicional">
@@ -117,22 +104,11 @@ export function TabDetalles({ olt, oltId }: Props) {
       {/* 2. Conectividad SSH — edición con prueba previa y guard de ops en vuelo */}
       <ConectividadSection olt={olt} oltId={oltId} />
 
-      {/* 3. Capacidad / Hardware */}
-      <Seccion icon={<Cpu className="w-4 h-4 text-muted-foreground" />} titulo="Capacidad / Hardware">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Field label="Slots totales">
-            <input className={inputCls} type="number" min={1} max={16} value={slots} onChange={e => setSlots(e.target.value)} />
-          </Field>
-          <Field label="Puertos por slot (PON)">
-            <input className={inputCls} type="number" min={1} max={16} value={puertos} onChange={e => setPuertos(e.target.value)} />
-          </Field>
-          <Field label="VLAN gestión por defecto">
-            <input className={inputCls} type="number" min={1} max={4094} value={vlanMgmt} onChange={e => setVlanMgmt(e.target.value)} placeholder="Ej: 100" />
-          </Field>
-        </div>
-      </Seccion>
+      {/* Capacidad/hardware NO se edita: la topología real (slots, puertos PON)
+          la lee el sync y se muestra en el tab Placas. La VLAN de gestión la
+          declara el baseline (DATAFAST-TR069), no un campo suelto. */}
 
-      {/* 4. Ubicación */}
+      {/* 3. Ubicación */}
       <Seccion icon={<MapPin className="w-4 h-4 text-muted-foreground" />} titulo="Ubicación">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Field label="Dirección física">
@@ -165,7 +141,7 @@ export function TabDetalles({ olt, oltId }: Props) {
         </button>
       </div>
 
-      {/* 5. Pool de Service Port IDs (asignación automática por el ERP) */}
+      {/* 4. Pool de Service Port IDs (asignación automática por el ERP) */}
       <ServicePortPoolSection oltId={oltId} />
     </div>
   );
