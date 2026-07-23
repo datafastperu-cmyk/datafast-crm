@@ -276,7 +276,13 @@ export function OnuDetalleTr069Modal({
   });
 
   useEffect(() => {
-    if (!initRan.current) { initRan.current = true; refreshMut.mutate(); }
+    if (!initRan.current) {
+      initRan.current = true;
+      refreshMut.mutate();
+      // Sella "uso" del carril: abrir el modal cuenta como interacción del operador y
+      // suprime el barrido TTL por inactividad (Fase 3). Best-effort, no bloquea.
+      if (contratoId) void oltNativoApi.ftthMarcarUsoCarril(contratoId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

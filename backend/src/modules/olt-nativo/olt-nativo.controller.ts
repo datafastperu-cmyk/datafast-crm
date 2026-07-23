@@ -1216,6 +1216,18 @@ export class OltNativoController {
     return this.ftth.desactivarCarril(contratoId, user.empresaId);
   }
 
+  // Sella "uso" del carril (el operador abrió el modal Ver ONU). Suprime el barrido TTL.
+  @Post('onu/:contratoId/tr069/uso')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Marcar uso del carril TR-069 (suprime el barrido por inactividad)' })
+  @ApiParam({ name: 'contratoId' })
+  async marcarUsoTr069(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<void> {
+    await this.ftth.marcarUsoTr069(contratoId, user.empresaId);
+  }
+
   @Get('carril/stats')
   @ApiOperation({ summary: 'Conteo de carriles TR-069 por estado (observabilidad)' })
   async carrilStats(

@@ -1836,6 +1836,72 @@ export class ProvisionFtthService {
     return { revisadas: candidatos.length, ok, reparadas, fallidas };
   }
 
+  // ────────────────────────────────────────────────────────────
+  // Fase 3 — barrido TTL del carril TR-069.
+  //
+  // Un carril activo que nadie usa por N días se desactiva solo (quita el
+  // transporte, conserva identidad + datos ACS). El "uso" es interacción REAL
+  // del operador (abrir el modal / togglear) — `tr069UltimoUsoAt`. NO existe un
+  // heartbeat automático que infle esa marca, así que un carril sin uso genuino
+  // converge al TTL sin necesidad de techo absoluto: la reparación por drift NO
+  // toca `tr069UltimoUsoAt` (a propósito), luego un rebootstrap del watcher no
+  // "resucita" el TTL. COALESCE con updatedAt cubre carriles legados con marca
+  // NULL (activados antes de la Fase 0) sin barrerlos de inmediato.
+  //
+  // N configurable por VPS vía env (default 3 días). Portabilidad: leído en
+  // tiempo de llamada, nunca constante de módulo.
+  // ────────────────────────────────────────────────────────────
+  private get _tr069TtlDias(): number {
+    const n = Number(process.env.TR069_CARRIL_TTL_DIAS);
+    return Number.isFinite(n) && n > 0 ? n : 3;
+  }
+
+  async barrerCarrilesTr069Inactivos(): Promise<
+    Array<{ contratoId: string; estado: FtthCarrilEstado; ok: boolean; mensaje: string }>
+  > {
+    const dias = this._tr069TtlDias;
+    const candidatos = await this.ds.query<Array<{ contrato_id: string; empresa_id: string }>>(
+      `SELECT contrato_id, empresa_id
+         FROM ftth_onu_registro
+        WHERE deleted_at IS NULL
+          AND estado = 'activo'
+          AND carril_estado = 'activo'
+          AND COALESCE(tr069_ultimo_uso_at, updated_at) < NOW() - ($1 || ' days')::interval`,
+      [String(dias)],
+    );
+
+    const resultados: Array<{ contratoId: string; estado: FtthCarrilEstado; ok: boolean; mensaje: string }> = [];
+    for (const c of candidatos) {
+      try {
+        const r = await this.desactivarCarril(c.contrato_id, c.empresa_id);
+        const ok = r.estado === FtthCarrilEstado.INACTIVO_RESERVADO || r.estado === FtthCarrilEstado.INACTIVO;
+        resultados.push({ contratoId: c.contrato_id, estado: r.estado, ok, mensaje: r.mensaje });
+      } catch (e) {
+        resultados.push({
+          contratoId: c.contrato_id,
+          estado: FtthCarrilEstado.DESACTIVACION_FALLIDA,
+          ok: false,
+          mensaje: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    if (resultados.length > 0) {
+      this.logger.log(
+        `barrerCarrilesTr069Inactivos: ttl=${dias}d candidatos=${candidatos.length} ` +
+        `desactivados=${resultados.filter(r => r.ok).length} fallidos=${resultados.filter(r => !r.ok).length}`,
+      );
+    }
+    return resultados;
+  }
+
+  // Marca de uso del carril (interacción real del operador: abrir el modal Ver ONU).
+  // Es lo que suprime el barrido TTL. Best-effort — nunca lanza.
+  async marcarUsoTr069(contratoId: string, empresaId: string): Promise<void> {
+    await this.ftthRepo.update({ contratoId, empresaId }, { tr069UltimoUsoAt: new Date() })
+      .catch(() => { /* best-effort: un fallo al sellar el uso no debe romper la apertura del modal */ });
+  }
+
   async suspenderPorContrato(
     contratoId: string,
     empresaId:  string,

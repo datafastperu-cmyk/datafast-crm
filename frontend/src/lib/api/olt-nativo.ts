@@ -912,6 +912,11 @@ export const oltNativoApi = {
     return res.data.data;
   },
 
+  // Sella uso del carril al abrir el modal Ver ONU (suprime el barrido TTL). Best-effort.
+  ftthMarcarUsoCarril: async (contratoId: string): Promise<void> => {
+    await api.post(`/olt-nativo/onu/${contratoId}/tr069/uso`, {}, { timeout: 10_000 }).catch(() => { /* best-effort */ });
+  },
+
   // ── Procedimiento operativo (wizard) ────────────────────────────────
   // El servidor es la autoridad: si el navegador deja de latir, el barrido anula el
   // trabajo NO confirmado. Estas llamadas son best-effort desde el cliente — ninguna
