@@ -1292,29 +1292,11 @@ export class OltNativoController {
     return this.ftth.cambiarVelocidad(oltId, user.empresaId, dto);
   }
 
-  @Post(':oltId/ftth/suspender')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Suspender ONU FTTH — desactiva ONT en OLT Huawei sin eliminar service-port' })
-  @ApiParam({ name: 'oltId' })
-  async suspenderFtth(
-    @Param('oltId', ParseUUIDPipe) oltId: string,
-    @Body('contratoId') contratoId: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
-    return this.ftth.suspender(oltId, user.empresaId, contratoId);
-  }
-
-  @Post(':oltId/ftth/rehabilitar')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Rehabilitar ONU FTTH — reactiva ONT previamente suspendida' })
-  @ApiParam({ name: 'oltId' })
-  async rehabilitarFtth(
-    @Param('oltId', ParseUUIDPipe) oltId: string,
-    @Body('contratoId') contratoId: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
-    return this.ftth.rehabilitar(oltId, user.empresaId, contratoId);
-  }
+  // Los endpoints manuales ftth/suspender y ftth/rehabilitar se retiraron
+  // (2026-07-23): suspender la ONU a mano creaba divergencia silenciosa con el
+  // contrato (ONU suspendida + contrato facturando). La suspensión/reactivación
+  // de la ONU la gobierna el ciclo del servicio vía outbox (SUSPENDER_ONU /
+  // REACTIVAR_ONU); los métodos del servicio siguen existiendo para ese camino.
 
   @Get(':oltId/onu-id-pool')
   @ApiOperation({ summary: 'Estado del pool de ONU IDs para un puerto PON de una OLT' })
@@ -1777,6 +1759,25 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ): Promise<{ encolado: boolean }> {
     this.events.emit('ftth.drift.reaplicar', { contratoId, empresaId: user.empresaId });
+    return { encolado: true };
+  }
+
+  /** Re-sincronizar el estado ONU con el del contrato (divergencia suspendido/activo cruzados) */
+  @Post(':oltId/drift/resincronizar-estado/:contratoId')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Encolar SUSPENDER_ONU/REACTIVAR_ONU según el estado del contrato (repara divergencia)' })
+  @ApiParam({ name: 'oltId' })
+  @ApiParam({ name: 'contratoId' })
+  async resincronizarEstadoDrift(
+    @Param('oltId', ParseUUIDPipe) _oltId: string,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @Body('accion') accion: 'SUSPENDER_ONU' | 'REACTIVAR_ONU',
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ encolado: boolean }> {
+    if (accion !== 'SUSPENDER_ONU' && accion !== 'REACTIVAR_ONU') {
+      throw new BadRequestException('accion debe ser SUSPENDER_ONU o REACTIVAR_ONU.');
+    }
+    this.events.emit('ftth.drift.resincronizar-estado', { contratoId, empresaId: user.empresaId, accion });
     return { encolado: true };
   }
 }

@@ -515,6 +515,11 @@ export interface DriftResult {
     estadoOperativo: string; rxPowerDbm: number | null;
   }>;
   noAprovisionadas: Array<{ sn: string; slot: number; port: number }>;
+  estadoDivergente?: Array<{
+    contratoId: string; sn: string; onuEstado: string; contratoEstado: string;
+    accionSugerida: 'SUSPENDER_ONU' | 'REACTIVAR_ONU';
+    numeroContrato: string | null; cliente: string | null;
+  }>;
   snapshotAt: string | null;
 }
 
@@ -1031,27 +1036,8 @@ export const oltNativoApi = {
     return res.data.data;
   },
 
-  ftthSuspender: async (
-    oltId: string,
-    contratoId: string,
-  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
-    const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
-      `/olt-nativo/${oltId}/ftth/suspender`,
-      { contratoId },
-    );
-    return res.data.data;
-  },
-
-  ftthRehabilirar: async (
-    oltId: string,
-    contratoId: string,
-  ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> => {
-    const res = await api.post<ApiRespuesta<{ exitoso: boolean; mensaje: string; error?: string }>>(
-      `/olt-nativo/${oltId}/ftth/rehabilitar`,
-      { contratoId },
-    );
-    return res.data.data;
-  },
+  // ftthSuspender / ftthRehabilirar retirados: la suspensión de la ONU la
+  // gobierna el ciclo del servicio (outbox SUSPENDER_ONU / REACTIVAR_ONU).
 
   // ─── VLANs ───────────────────────────────────────────────────
 
@@ -1363,6 +1349,15 @@ export const oltNativoApi = {
   reaplicarDrift: async (oltId: string, contratoId: string): Promise<{ encolado: boolean }> => {
     const res = await api.post<ApiRespuesta<{ encolado: boolean }>>(
       `/olt-nativo/${oltId}/drift/reaplicar/${contratoId}`,
+    );
+    return res.data.data;
+  },
+
+  resincronizarEstadoDrift: async (
+    oltId: string, contratoId: string, accion: 'SUSPENDER_ONU' | 'REACTIVAR_ONU',
+  ): Promise<{ encolado: boolean }> => {
+    const res = await api.post<ApiRespuesta<{ encolado: boolean }>>(
+      `/olt-nativo/${oltId}/drift/resincronizar-estado/${contratoId}`, { accion },
     );
     return res.data.data;
   },

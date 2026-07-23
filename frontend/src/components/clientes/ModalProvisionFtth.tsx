@@ -50,14 +50,10 @@ function EstadoBadge({ estado }: { estado: FtthOnuEstado }) {
 
 // ─── Estado panel ─────────────────────────────────────────────
 
-function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, onSuspender, isSuspendiendo, onRehabiliitar, isRehabilitando, onReset, isReiniciando, onVerDetalle }: {
+function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, onReset, isReiniciando, onVerDetalle }: {
   registro: FtthOnuRegistro;
   onDesaprovisionar: () => void;
   isDesaprovisionandoPending: boolean;
-  onSuspender: () => void;
-  isSuspendiendo: boolean;
-  onRehabiliitar: () => void;
-  isRehabilitando: boolean;
   onReset: () => void;
   isReiniciando: boolean;
   onVerDetalle: () => void;
@@ -102,6 +98,12 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
         <SenalFtthValor rxDbm={rxSenal} oltRxDbm={oltRxSenal} cargando={senalFetching}
           puedeLeer={puedeLeerSenal} onLeer={() => refetchSenal()} />
       </div>
+      {registro.estado === 'suspendido' && (
+        <div className="flex items-start gap-2 rounded-lg border border-yellow-700/40 bg-yellow-500/5 px-3 py-1.5 text-xs text-yellow-700 dark:text-yellow-300">
+          <WifiOff className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>Suspendida por el estado del servicio — se reactiva automáticamente al reactivar el cliente.</span>
+        </div>
+      )}
       {registro.ultimoError && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-700/40 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
@@ -116,20 +118,8 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
             Reiniciar
           </button>
         )}
-        {registro.estado === 'activo' && (
-          <button onClick={onSuspender} disabled={isSuspendiendo}
-            className={cn(btnCls, 'border-amber-700/50 bg-amber-500/5 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15')}>
-            {isSuspendiendo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <WifiOff className="w-3.5 h-3.5" />}
-            Suspender
-          </button>
-        )}
-        {registro.estado === 'suspendido' && (
-          <button onClick={onRehabiliitar} disabled={isRehabilitando}
-            className={cn(btnCls, 'border-emerald-700/50 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15')}>
-            {isRehabilitando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            Rehabilitar
-          </button>
-        )}
+        {/* Suspender/Rehabilitar manuales retirados: la suspensión de la ONU la
+            gobierna el ciclo del servicio (outbox), nunca una palanca de red. */}
         {canDesaprov && (
           <button onClick={onDesaprovisionar} disabled={isDesaprovisionandoPending}
             className={cn(btnCls, 'border-red-700/50 bg-red-500/5 text-red-700 dark:text-red-400 hover:bg-red-500/15')}>
@@ -462,42 +452,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
     },
   });
 
-  // Suspender mutation
-  const { mutate: suspender, isPending: suspendiendo } = useMutation({
-    mutationFn: () => oltNativoApi.ftthSuspender(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
-    onSuccess: (res) => {
-      if (res.exitoso) {
-        toast('ONU suspendida correctamente', { type: 'success' });
-        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-      } else {
-        toast(res.error ?? res.mensaje ?? 'No se pudo suspender la ONU', { type: 'error' });
-        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-      }
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast(msg ?? 'Error al suspender la ONU', { type: 'error' });
-    },
-  });
-
-  // Rehabilitar mutation
-  const { mutate: rehabilitar, isPending: rehabilitando } = useMutation({
-    mutationFn: () => oltNativoApi.ftthRehabilirar(selectedOltId || (estadoExistente?.oltId ?? ''), contrato.id),
-    onSuccess: (res) => {
-      if (res.exitoso) {
-        toast('ONU rehabilitada correctamente', { type: 'success' });
-        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-      } else {
-        toast(res.error ?? res.mensaje ?? 'No se pudo rehabilitar la ONU', { type: 'error' });
-        qc.invalidateQueries({ queryKey: ['ftth-estado', contrato.id] });
-      }
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      toast(msg ?? 'Error al rehabilitar la ONU', { type: 'error' });
-    },
-  });
-
   // Provision mutation
   const { mutate: provisionar, isPending: provIsPending } = useMutation({
     onMutate:   () => { setProvisionando(true); },
@@ -663,10 +617,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   registro={estadoExistente}
                   onDesaprovisionar={() => desaprovisionar()}
                   isDesaprovisionandoPending={desaprovisionandoPending}
-                  onSuspender={() => suspender()}
-                  isSuspendiendo={suspendiendo}
-                  onRehabiliitar={() => rehabilitar()}
-                  isRehabilitando={rehabilitando}
                   onReset={() => resetOnu()}
                   isReiniciando={reiniciandoOnu}
                   onVerDetalle={() => setVerDetalle(true)}

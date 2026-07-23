@@ -34,12 +34,20 @@ export function TabDrift({ oltId }: { oltId: string }) {
     onError:   () => toast('No se pudo encolar el re-aprovisionamiento', { type: 'error' }),
   });
 
+  const { mutate: resincronizar, isPending: resincronizando, variables: resincVar } = useMutation({
+    mutationFn: (p: { contratoId: string; accion: 'SUSPENDER_ONU' | 'REACTIVAR_ONU' }) =>
+      oltNativoApi.resincronizarEstadoDrift(oltId, p.contratoId, p.accion),
+    onSuccess: () => toast('Re-sincronización encolada — la ONU seguirá al estado del contrato.', { type: 'success' }),
+    onError:   () => toast('No se pudo encolar la re-sincronización', { type: 'error' }),
+  });
+
   if (isLoading) {
     return <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>;
   }
 
-  const d = data ?? { enErpNoEnOlt: [], sinContrato: [], noAprovisionadas: [], snapshotAt: null };
-  const sinDrift = !d.enErpNoEnOlt.length && !d.sinContrato.length && !d.noAprovisionadas.length;
+  const d = data ?? { enErpNoEnOlt: [], sinContrato: [], noAprovisionadas: [], estadoDivergente: [], snapshotAt: null };
+  const divergentes = d.estadoDivergente ?? [];
+  const sinDrift = !d.enErpNoEnOlt.length && !d.sinContrato.length && !d.noAprovisionadas.length && !divergentes.length;
 
   return (
     <div className="space-y-4">
@@ -68,6 +76,52 @@ export function TabDrift({ oltId }: { oltId: string }) {
 
       {/* Dos columnas responsive; apila en pantallas menores */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+      {/* 0. Estado ONU ≠ estado contrato → re-sincronizar (la ONU sigue al contrato) */}
+      {divergentes.length > 0 && (
+        <section className="rounded-xl border border-amber-700/40 overflow-hidden">
+          <header className="flex items-center gap-2 px-3 py-2 bg-amber-500/5 text-amber-500 text-xs font-semibold">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Estado ONU ≠ estado del contrato ({divergentes.length}) — re-sincronizar
+          </header>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-border bg-muted/30 text-[11px] text-muted-foreground">
+                <th className="text-left px-3 py-2 font-semibold">Contrato / Cliente</th>
+                <th className="text-left px-3 py-2 font-semibold">SN</th>
+                <th className="text-left px-3 py-2 font-semibold">ONU</th>
+                <th className="text-left px-3 py-2 font-semibold">Contrato</th>
+                <th className="text-right px-3 py-2 font-semibold">Acción</th>
+              </tr></thead>
+              <tbody>
+                {divergentes.map((r) => (
+                  <tr key={r.contratoId} className="border-b border-border last:border-0 hover:bg-muted/10">
+                    <td className="px-3 py-2 text-xs">{r.numeroContrato ? <><span className="font-mono">{r.numeroContrato}</span>{r.cliente ? ` · ${r.cliente}` : ''}</> : (r.cliente ?? '—')}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{r.sn}</td>
+                    <td className="px-3 py-2 text-xs capitalize">{r.onuEstado}</td>
+                    <td className="px-3 py-2 text-xs capitalize">{r.contratoEstado.replace('_', ' ')}</td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        onClick={() => resincronizar({ contratoId: r.contratoId, accion: r.accionSugerida })}
+                        disabled={resincronizando && resincVar?.contratoId === r.contratoId}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-700/50 bg-amber-500/10 text-amber-500 text-xs font-semibold hover:bg-amber-500/20 disabled:opacity-50"
+                      >
+                        {resincronizando && resincVar?.contratoId === r.contratoId
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <RefreshCw className="w-3.5 h-3.5" />}
+                        {r.accionSugerida === 'REACTIVAR_ONU' ? 'Reactivar ONU' : 'Suspender ONU'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="px-3 py-2 text-[11px] text-muted-foreground border-t border-border">
+            La ONU siempre sigue al contrato. Re-sincronizar encola el comando correcto por outbox
+            (reintenta hasta aplicarlo aunque la OLT esté caída).
+          </p>
+        </section>
+      )}
       {/* 1. En ERP, no en OLT → push (re-aprovisionar) */}
       {d.enErpNoEnOlt.length > 0 && (
         <section className="rounded-xl border border-red-700/40 overflow-hidden">

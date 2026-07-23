@@ -146,7 +146,9 @@ export class OutboxRedService {
   // ── Ciclo de vida ONU (FTTH) ──────────────────────────────────
   // Encola una acción sobre la ONU SOLO si el contrato tiene registro FTTH.
   // router_id = 'none' (la OLT se resuelve en ejecución desde el registro).
-  private async encolarOnu(
+  // Público: además del listener de eventos, lo usa la re-sincronización de
+  // estado del tab Drift (ONU suspendida con contrato con servicio o viceversa).
+  async encolarOnu(
     accion:     'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU' | 'ACTUALIZAR_WAN_ONU' | 'REAPROVISIONAR_ONU',
     contratoId: string,
     empresaId:  string,
@@ -195,6 +197,17 @@ export class OutboxRedService {
   async onDriftReaplicar(ev: { contratoId: string; empresaId: string }): Promise<void> {
     if (ev?.contratoId && ev?.empresaId) {
       await this.encolarReaprovisionarOnu(ev.contratoId, ev.empresaId);
+    }
+  }
+
+  // Re-sincronización de estado desde el tab Drift: la ONU debe seguir al
+  // contrato (suspendido/activo cruzados → re-encolar el comando correcto).
+  @OnEvent('ftth.drift.resincronizar-estado', { async: true })
+  async onDriftResincronizarEstado(
+    ev: { contratoId: string; empresaId: string; accion: 'SUSPENDER_ONU' | 'REACTIVAR_ONU' },
+  ): Promise<void> {
+    if (ev?.contratoId && ev?.empresaId && (ev.accion === 'SUSPENDER_ONU' || ev.accion === 'REACTIVAR_ONU')) {
+      await this.encolarOnu(ev.accion, ev.contratoId, ev.empresaId);
     }
   }
 

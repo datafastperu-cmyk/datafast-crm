@@ -232,6 +232,7 @@ export class OltSyncService implements OnModuleInit {
     enErpNoEnOlt:     Array<{ contratoId: string; sn: string; slot: number; port: number; numeroContrato: string | null; cliente: string | null }>;
     sinContrato:      Array<{ sn: string; slot: number; port: number; onuId: number | null; estadoOperativo: string; rxPowerDbm: number | null }>;
     noAprovisionadas: Array<{ sn: string; slot: number; port: number }>;
+    estadoDivergente: Array<{ contratoId: string; sn: string; onuEstado: string; contratoEstado: string; accionSugerida: 'SUSPENDER_ONU' | 'REACTIVAR_ONU'; numeroContrato: string | null; cliente: string | null }>;
     snapshotAt:       Date | null;
   }> {
     const norm = (sn?: string | null): string =>
@@ -263,7 +264,33 @@ export class OltSyncService implements OnModuleInit {
       .filter(r => !observados.has(norm(r.sn)))
       .map(r => ({ contratoId: r.contrato_id, sn: r.sn, slot: r.slot, port: r.port, numeroContrato: r.numero_contrato, cliente: r.cliente }));
 
-    return { enErpNoEnOlt, sinContrato, noAprovisionadas, snapshotAt: inv[0]?.snapshotAt ?? null };
+    // Divergencia de estado contrato↔ONU. Sin botones manuales de suspensión
+    // (retirados 2026-07-23), cualquier cruce restante es un comando de outbox
+    // que no llegó o un residuo histórico — se muestra y se repara re-encolando.
+    // Contrato CON servicio: activo|moroso. SIN servicio: suspendido|cortado.
+    const cruzados: Array<{ contrato_id: string; sn: string; onu_estado: string; contrato_estado: string; numero_contrato: string | null; cliente: string | null }> =
+      await this.ds.query(
+        `SELECT r.contrato_id, r.sn, r.estado AS onu_estado, c.estado AS contrato_estado, c.numero_contrato,
+                COALESCE(cl.nombre_completo, TRIM(CONCAT(cl.nombres,' ',cl.apellido_paterno,' ',cl.apellido_materno))) AS cliente
+           FROM ftth_onu_registro r
+           JOIN contratos c ON c.id = r.contrato_id
+           LEFT JOIN clientes cl ON cl.id = c.cliente_id
+          WHERE r.deleted_at IS NULL AND r.olt_id = $1 AND r.empresa_id = $2
+            AND ((r.estado = 'suspendido' AND c.estado IN ('activo','moroso'))
+              OR (r.estado = 'activo'     AND c.estado IN ('suspendido','cortado')))`,
+        [oltId, empresaId],
+      );
+    const estadoDivergente = cruzados.map(r => ({
+      contratoId:     r.contrato_id,
+      sn:             r.sn,
+      onuEstado:      r.onu_estado,
+      contratoEstado: r.contrato_estado,
+      accionSugerida: (r.onu_estado === 'suspendido' ? 'REACTIVAR_ONU' : 'SUSPENDER_ONU') as 'SUSPENDER_ONU' | 'REACTIVAR_ONU',
+      numeroContrato: r.numero_contrato,
+      cliente:        r.cliente,
+    }));
+
+    return { enErpNoEnOlt, sinContrato, noAprovisionadas, estadoDivergente, snapshotAt: inv[0]?.snapshotAt ?? null };
   }
 
   // ── Ejecución interna ─────────────────────────────────────────
