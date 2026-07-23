@@ -3927,22 +3927,31 @@ def _bulk_metrics_paramiko_huawei(
     status_raw  = parts[2] if len(parts) > 2 else ''
     optical_raw = parts[3] if len(parts) > 3 else ''
 
-    status_rows  = _parse_output(conn.brand, 'display_ont_info_all.textfsm',    status_raw)
-    optical_rows = _parse_output(conn.brand, 'display_ont_optical_all.textfsm', optical_raw)
+    status_rows = _parse_output(conn.brand, 'display_ont_info_all.textfsm', status_raw)
+
+    # Óptica: se parsea con el MISMO regex validado en hardware que usa la lectura per-ONU
+    # (get_huawei_metrics). El TextFSM display_ont_optical_all.textfsm esperaba un prefijo
+    # F/S/P inexistente en este firmware MA5800 y el orden Tx/Rx invertido → NUNCA casaba, y
+    # el inventario quedaba con rx_power_dbm=NULL en las 205 ONUs (la señal no salía en el
+    # listado). Cabecera real de la tabla por puerto:
+    #   ONT  Rx power  Tx power  OLT Rx ONT power  Temperature  Voltage  Current  Distance
+    _optical_re = re.compile(
+        r'^\s*(\d+)\s+(-?\d+\.\d+|-)\s+(-?\d+\.\d+|-)\s+(-?\d+\.\d+|-)\s+(-?\d+|-)'
+    )
+    def _optnum(tok: str) -> float | None:
+        return None if tok in ('-', '', '--') else float(tok)
 
     optical_map: dict[int, dict[str, Any]] = {}
-    for row in optical_rows:
-        if 'raw' in row:
+    for line in (optical_raw or '').splitlines():
+        m = _optical_re.match(line)
+        if not m:
             continue
         try:
-            oid  = int(row.get('OnuId')   or 0)
-            rx_s = str(row.get('RxPower')  or '').strip()
-            tx_s = str(row.get('TxPower')  or '').strip()
-            tc_s = str(row.get('TempC')    or '').strip()
-            optical_map[oid] = {
-                'rx_power_dbm':  float(rx_s) if rx_s not in ('', '-', '--') else None,
-                'tx_power_dbm':  float(tx_s) if tx_s not in ('', '-', '--') else None,
-                'temperature_c': float(tc_s) if tc_s not in ('', '-', '--') else None,
+            optical_map[int(m.group(1))] = {
+                'rx_power_dbm':     _optnum(m.group(2)),
+                'tx_power_dbm':     _optnum(m.group(3)),
+                'olt_rx_power_dbm': _optnum(m.group(4)),
+                'temperature_c':    _optnum(m.group(5)),
             }
         except (ValueError, TypeError):
             continue
@@ -3961,9 +3970,10 @@ def _bulk_metrics_paramiko_huawei(
             result.append({
                 'slot': slot, 'port': port, 'onu_id': oid, 'sn': sn,
                 'run_state': run, 'control_flag': ctl, 'config_state': cfg,
-                'rx_power_dbm':  opt.get('rx_power_dbm'),
-                'tx_power_dbm':  opt.get('tx_power_dbm'),
-                'temperature_c': opt.get('temperature_c'),
+                'rx_power_dbm':     opt.get('rx_power_dbm'),
+                'tx_power_dbm':     opt.get('tx_power_dbm'),
+                'olt_rx_power_dbm': opt.get('olt_rx_power_dbm'),
+                'temperature_c':    opt.get('temperature_c'),
             })
         except (ValueError, TypeError):
             continue
