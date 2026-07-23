@@ -218,6 +218,21 @@ export class NativoSshProvider implements IOltProvider {
   // ────────────────────────────────────────────────────────────
   // obtenerMetricas — RxPower, TxPower, Temperatura en tiempo real
   // ────────────────────────────────────────────────────────────
+  // Normaliza el SN a 16 hex que exige el esquema Python. Acepta la forma hex tal cual y
+  // convierte la legible (4 letras de fabricante + 8 hex → hex(ASCII)+hex). Si no encaja en
+  // ningún patrón, devuelve un placeholder válido: el SN no interviene en la lectura óptica
+  // (esa usa slot/port/onu_id), así que basta con que pase la validación del esquema.
+  private _snHex(sn?: string): string {
+    const s = (sn ?? '').trim().toUpperCase();
+    if (/^[0-9A-F]{16}$/.test(s)) return s;
+    const m = /^([A-Z]{4})([0-9A-F]{8})$/.exec(s);
+    if (m) {
+      const vendor = [...m[1]].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+      return (vendor + m[2]).toUpperCase();
+    }
+    return '00000000DEADBEEF';
+  }
+
   async obtenerMetricas(
     olt:     OltDispositivo,
     creds:   ProveedorCredenciales,
@@ -225,7 +240,10 @@ export class NativoSshProvider implements IOltProvider {
   ): Promise<OltOperacionResult<OltMetricasDatos>> {
     const t0 = Date.now();
     try {
-      // getMetrics reutiliza PythonProvisionRequest; solo slot/port/onu_id importan
+      // getMetrics reutiliza PythonProvisionRequest; solo slot/port/onu_id importan para la
+      // lectura óptica. El SN NO se usa en el comando, pero el esquema Python exige 16 hex y
+      // rechaza (422) el SN en forma legible (p.ej. 'HWTC78CA0FAA') que guarda el registro
+      // FTTH — por eso la señal no aparecía en el modal de aprovisionar. Se normaliza aquí.
       const res = await this.automation.getMetrics({
         connection: this.conn(creds, olt),
         onu: {
@@ -233,7 +251,7 @@ export class NativoSshProvider implements IOltProvider {
           slot:          payload.slot,
           port:          payload.port,
           onu_id:        payload.onuId,
-          sn:            payload.sn ?? '',
+          sn:            this._snHex(payload.sn),
           vlan:          1,
           vlan_gestion:  1,
           profile_speed: 'metrics',
