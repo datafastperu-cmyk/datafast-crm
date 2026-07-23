@@ -231,7 +231,7 @@ export function OnuDetalleTr069Modal({
   const [webAdminUser, setWebAdminUser] = useState('');
   const [webAdminPass, setWebAdminPass] = useState('');
   const [showWebPass, setShowWebPass] = useState(false);
-  const [pending, setPending] = useState<'reboot' | 'factory' | null>(null);
+  const [pending, setPending] = useState<'reboot' | 'factory' | 'olt_reset' | null>(null);
   const [active, setActive] = useState('general');
   const [fwFile, setFwFile] = useState('');
   const initRan = useRef(false);
@@ -325,6 +325,12 @@ export function OnuDetalleTr069Modal({
     mutationFn: () => oltNativoApi.onuTr069FactoryReset(sn),
     onSuccess: (r) => toast(r.mensaje, { type: 'success' }),
     onError: () => toast('No se pudo resetear la ONU', { type: 'error' }),
+  });
+  // Reinicio por la OLT (`ont reset`) — funciona aunque la ONU NO esté informando a TR-069.
+  const oltResetMut = useMutation({
+    mutationFn: () => oltNativoApi.ftthResetOnu(oltId!, effSlot!, effPort!, effOnuId!),
+    onSuccess: (r) => toast(r.mensaje ?? 'ONU reiniciada desde la OLT — vuelve online en ~1 min', { type: 'success' }),
+    onError: () => toast('No se pudo reiniciar la ONU desde la OLT', { type: 'error' }),
   });
   const pppMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069SetPppoe(sn, { username: pppUser || undefined, password: pppPass || undefined }),
@@ -592,9 +598,15 @@ export function OnuDetalleTr069Modal({
 
           <div className="flex-1" />
 
+          <button onClick={() => setPending('olt_reset')} disabled={oltResetMut.isPending || !puedeLeerMetricas}
+            title="Reinicia la ONU por la OLT (ont reset) — funciona aunque no esté informando a TR-069"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-orange-500/50 text-orange-500 hover:bg-orange-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            {oltResetMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Reiniciar (OLT)
+          </button>
           <button onClick={() => setPending('reboot')} disabled={rebootMut.isPending || !informing}
+            title="Reinicia la ONU por TR-069 (requiere que esté informando a GenieACS)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-orange-500 hover:bg-orange-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <Power className="w-3.5 h-3.5" /> Reboot
+            <Power className="w-3.5 h-3.5" /> Reboot (TR-069)
           </button>
           <button onClick={() => setPending('factory')} disabled={factoryMut.isPending || !informing}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-destructive hover:bg-destructive/90 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
@@ -607,16 +619,18 @@ export function OnuDetalleTr069Modal({
           <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-destructive/5 flex-shrink-0">
             <span className="text-xs text-foreground flex-1">
               {pending === 'reboot'
-                ? `¿Reiniciar la ONU ${sn}? Perderá conexión ~1 min.`
-                : `¿RESET DE FÁBRICA de la ONU ${sn}? Se borrará TODA su configuración.`}
+                ? `¿Reiniciar la ONU ${sn} por TR-069? Perderá conexión ~1 min.`
+                : pending === 'olt_reset'
+                  ? `¿Reiniciar la ONU ${sn} desde la OLT (ont reset)? Perderá conexión ~1 min.`
+                  : `¿RESET DE FÁBRICA de la ONU ${sn}? Se borrará TODA su configuración.`}
             </span>
             <button onClick={() => setPending(null)} className={BTN_OUTLINE}>Cancelar</button>
             <button
-              onClick={() => { (pending === 'reboot' ? rebootMut : factoryMut).mutate(); setPending(null); }}
+              onClick={() => { (pending === 'reboot' ? rebootMut : pending === 'olt_reset' ? oltResetMut : factoryMut).mutate(); setPending(null); }}
               className={cn('px-3 py-1.5 text-xs font-semibold rounded-md text-white',
-                pending === 'reboot' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-destructive hover:bg-destructive/90')}
+                pending === 'factory' ? 'bg-destructive hover:bg-destructive/90' : 'bg-orange-500 hover:bg-orange-600')}
             >
-              {pending === 'reboot' ? 'Sí, reiniciar' : 'Sí, resetear'}
+              {pending === 'factory' ? 'Sí, resetear' : 'Sí, reiniciar'}
             </button>
           </div>
         )}
