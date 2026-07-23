@@ -15,39 +15,39 @@ import { cn } from '@/lib/utils';
 // Componente ÚNICO para que el modal Ver detalle y el de Aprovisionar servicio sean idénticos.
 // ─────────────────────────────────────────────────────────────
 export function SenalFtthValor({
-  rxDbm, oltRxDbm, cargando, onLeer, puedeLeer = true,
+  rxDbm, oltRxDbm, cargando, onLeer, puedeLeer = true, compact = false,
 }: {
   rxDbm?: number | null;
   oltRxDbm?: number | null;
   cargando?: boolean;
   onLeer?: () => void;
   puedeLeer?: boolean;
+  /** Reduce tamaños y espaciados para no ocupar tanto vertical (p.ej. en móvil). */
+  compact?: boolean;
 }) {
   const onu = clasificarSenalFtth(rxDbm);
   const olt = clasificarSenalFtth(oltRxDbm);
 
+  const valCls   = compact ? 'font-mono font-bold text-xs leading-none' : 'font-mono font-bold text-sm leading-none';
+  const lblCls   = compact ? 'text-[9px] font-semibold text-muted-foreground uppercase w-9 text-right' : 'text-[10px] font-semibold text-muted-foreground uppercase w-10 text-right';
+  const badgeBase = compact ? 'text-[9px] font-bold px-1 py-0 rounded border' : 'text-[10px] font-bold px-1.5 py-0.5 rounded border';
+  const rowGap   = compact ? 'gap-1.5' : 'gap-2';
+  const colGap   = compact ? 'gap-0.5' : 'gap-1';
+
   if (rxDbm != null) {
     return (
-      <span className="inline-flex flex-col items-end gap-1">
-        <span className="inline-flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase w-10 text-right">ONU Rx</span>
-          <span className={cn('font-mono font-bold text-sm leading-none', onu.colorCls)}>
-            {rxDbm.toFixed(2)} dBm
-          </span>
-          <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', onu.badgeCls)}>
-            {onu.label}
-          </span>
-          {cargando && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+      <span className={cn('inline-flex flex-col items-end', colGap)}>
+        <span className={cn('inline-flex items-center', rowGap)}>
+          <span className={lblCls}>ONU Rx</span>
+          <span className={cn(valCls, onu.colorCls)}>{rxDbm.toFixed(2)} dBm</span>
+          <span className={cn(badgeBase, onu.badgeCls)}>{onu.label}</span>
+          {cargando && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
         </span>
         {oltRxDbm != null && (
-          <span className="inline-flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase w-10 text-right">OLT Rx</span>
-            <span className={cn('font-mono font-bold text-sm leading-none', olt.colorCls)}>
-              {oltRxDbm.toFixed(2)} dBm
-            </span>
-            <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', olt.badgeCls)}>
-              {olt.label}
-            </span>
+          <span className={cn('inline-flex items-center', rowGap)}>
+            <span className={lblCls}>OLT Rx</span>
+            <span className={cn(valCls, olt.colorCls)}>{oltRxDbm.toFixed(2)} dBm</span>
+            <span className={cn(badgeBase, olt.badgeCls)}>{olt.label}</span>
           </span>
         )}
       </span>

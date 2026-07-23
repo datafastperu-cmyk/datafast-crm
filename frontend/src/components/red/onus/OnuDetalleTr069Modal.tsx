@@ -512,13 +512,20 @@ export function OnuDetalleTr069Modal({
         </div>
 
         {/* ── Vitals: datos clave siempre visibles (ERP/OLT, no dependen de TR-069) ── */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-2.5 border-b border-border bg-muted/20 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 md:gap-y-3 px-5 py-1.5 md:py-2.5 border-b border-border bg-muted/20 flex-shrink-0">
           <Vital label="OLT / Pos">{oltNombre ?? '—'} · 0/{slot ?? '–'}/{port ?? '–'}{onuId != null ? `·${onuId}` : ''}</Vital>
           <div className="hidden sm:block w-px self-stretch bg-border/60 flex-shrink-0" />
           <div className="flex flex-col gap-0.5 flex-shrink-0">
             <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">Señal FTTH (Rx)</span>
-            <SenalFtthValor rxDbm={rxDbm} oltRxDbm={oltRxDbm} cargando={metricasFetching}
-              puedeLeer={puedeLeerMetricas} onLeer={() => refetchMetricas()} />
+            {/* Compacto en móvil, normal en escritorio */}
+            <div className="md:hidden">
+              <SenalFtthValor rxDbm={rxDbm} oltRxDbm={oltRxDbm} cargando={metricasFetching}
+                puedeLeer={puedeLeerMetricas} onLeer={() => refetchMetricas()} compact />
+            </div>
+            <div className="hidden md:block">
+              <SenalFtthValor rxDbm={rxDbm} oltRxDbm={oltRxDbm} cargando={metricasFetching}
+                puedeLeer={puedeLeerMetricas} onLeer={() => refetchMetricas()} />
+            </div>
           </div>
           <div className="hidden sm:block w-px self-stretch bg-border/60 flex-shrink-0" />
           <Vital label="TR-069">
