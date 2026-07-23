@@ -1404,6 +1404,7 @@ def _paramiko_huawei_run(
             if chan.recv_ready():
                 buf += chan.recv(4096).decode('utf-8', errors='replace')
                 last = buf.rsplit('\n', 1)[-1].replace('\r', '').strip()
+                logger.info('paramiko _read last=<<%s>>', last[-80:])
                 if CONFIRM_RE.search(last):
                     chan.send('\r\n')
                     continue
@@ -1411,6 +1412,7 @@ def _paramiko_huawei_run(
                     chan.send(' ')  # Espacio avanza una página en el pager Huawei
                     continue
                 if YESNO_RE.search(last):
+                    logger.info('paramiko _read: YESNO match -> y')
                     chan.send('y\r\n')
                     continue
                 if PROMPT_RE.match(last):
