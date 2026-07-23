@@ -31,10 +31,10 @@ export function SenalFtthValor({
       <span className="inline-flex flex-col items-end gap-1">
         <span className="inline-flex items-center gap-2">
           <span className="text-[10px] font-semibold text-muted-foreground uppercase w-10 text-right">ONU Rx</span>
-          <span className={cn('font-mono font-bold text-lg leading-none', onu.colorCls)}>
+          <span className={cn('font-mono font-bold text-sm leading-none', onu.colorCls)}>
             {rxDbm.toFixed(2)} dBm
           </span>
-          <span className={cn('text-[11px] font-bold px-1.5 py-0.5 rounded border', onu.badgeCls)}>
+          <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', onu.badgeCls)}>
             {onu.label}
           </span>
           {cargando && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
@@ -42,10 +42,10 @@ export function SenalFtthValor({
         {oltRxDbm != null && (
           <span className="inline-flex items-center gap-2">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase w-10 text-right">OLT Rx</span>
-            <span className={cn('font-mono font-bold text-lg leading-none', olt.colorCls)}>
+            <span className={cn('font-mono font-bold text-sm leading-none', olt.colorCls)}>
               {oltRxDbm.toFixed(2)} dBm
             </span>
-            <span className={cn('text-[11px] font-bold px-1.5 py-0.5 rounded border', olt.badgeCls)}>
+            <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', olt.badgeCls)}>
               {olt.label}
             </span>
           </span>
