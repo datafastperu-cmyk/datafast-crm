@@ -211,11 +211,32 @@ export function OnuDetalleTr069Modal({
 
   // Registro FTTH del ERP: aporta lo que TR-069 no sabe (VLAN de servicio, modo WAN,
   // fecha de autorización, service-ports). Solo si la ONU está ligada a un contrato.
-  const { data: registro } = useQuery<FtthOnuRegistro | null>({
+  const { data: registro, refetch: refetchRegistro } = useQuery<FtthOnuRegistro | null>({
     queryKey: ['ftth-estado', contratoId],
     queryFn:  () => oltNativoApi.ftthEstado(contratoId!),
     enabled:  Boolean(contratoId),
     staleTime: 30_000,
+    // Mientras el carril está en un estado transitorio (activando/desactivando), sondea para
+    // reflejar la transición → estado terminal sin que el operador refresque.
+    refetchInterval: (q) => {
+      const e = (q.state.data as FtthOnuRegistro | null | undefined)?.carrilEstado;
+      return e === 'activando' || e === 'desactivando' ? 5_000 : false;
+    },
+  });
+
+  // ── Carril TR-069 bajo demanda (toggle) ─────────────────────────────
+  const carril = registro?.carrilEstado ?? 'inactivo';
+  const carrilActivo    = carril === 'activo';
+  const carrilTransitorio = carril === 'activando' || carril === 'desactivando';
+  const carrilMut = useMutation({
+    mutationFn: () => carrilActivo
+      ? oltNativoApi.ftthDesactivarCarril(contratoId!)
+      : oltNativoApi.ftthActivarCarril(contratoId!),
+    onSuccess: (r) => { toast(r.mensaje, { type: 'success' }); refetchRegistro(); },
+    onError: (e: unknown) => toast(
+      (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'No se pudo cambiar el carril TR-069',
+      { type: 'error' },
+    ),
   });
 
   // Posición EFECTIVA de la ONU para leer la señal. El registro FTTH es la fuente
@@ -377,7 +398,35 @@ export function OnuDetalleTr069Modal({
           </button>
           <button type="button" disabled title="Pendiente de integración" className={BTN_MAQUETA}>Show running-config</button>
           <button type="button" disabled title="Pendiente de integración" className={BTN_MAQUETA}>SW info</button>
-          <button type="button" disabled title="Pendiente de integración" className={BTN_MAQUETA}>TR069 Stat</button>
+
+          {/* Toggle del carril TR-069 — solo para ONUs con registro FTTH (proveedor nativo) */}
+          {contratoId && (
+            <button
+              onClick={() => carrilMut.mutate()}
+              disabled={carrilMut.isPending || carrilTransitorio}
+              title={carrilActivo
+                ? 'Quitar la interface TR-069 de la ONU (conserva los datos ACS)'
+                : 'Crear la interface TR-069 en la ONU y escribir los datos ACS'}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded border transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
+                carrilActivo
+                  ? 'border-emerald-700/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                  : carril === 'activacion_fallida' || carril === 'desactivacion_fallida'
+                    ? 'border-amber-700/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+                    : 'border-primary/40 bg-primary/5 text-primary hover:bg-primary/15',
+              )}
+            >
+              {(carrilMut.isPending || carrilTransitorio)
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {carril === 'desactivando' ? 'Desactivando…' : 'Activando… (~1-5 min)'}</>
+                : carrilActivo
+                  ? <><Signal className="w-3.5 h-3.5" /> Desactivar TR-069</>
+                  : carril === 'activacion_fallida' || carril === 'desactivacion_fallida'
+                    ? <><Signal className="w-3.5 h-3.5" /> Reintentar TR-069</>
+                    : <><Signal className="w-3.5 h-3.5" /> Activar TR-069</>
+              }
+            </button>
+          )}
+
           <button onClick={() => setLive(v => !v)} disabled={!informing} className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
             live ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-muted text-muted-foreground hover:bg-accent border border-border',

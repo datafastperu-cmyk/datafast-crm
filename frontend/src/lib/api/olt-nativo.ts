@@ -602,6 +602,8 @@ export interface FtthOnuRegistro {
   srvprofileId:   number | null;
   wanMode?:       'bridge' | 'routing';
   estado:         FtthOnuEstado;
+  // Estado del carril de gestión TR-069 bajo demanda (Fase 2).
+  carrilEstado?:  'inactivo' | 'activando' | 'activo' | 'activacion_fallida' | 'desactivando' | 'inactivo_reservado' | 'desactivacion_fallida';
   intentosGpon:   number;
   intentosWan:    number;
   ultimoError:    string | null;
@@ -891,6 +893,21 @@ export const oltNativoApi = {
   ftthCancelar: async (contratoId: string): Promise<{ cancelado: boolean; mensaje: string }> => {
     const res = await api.post<ApiRespuesta<{ cancelado: boolean; mensaje: string }>>(
       `/olt-nativo/ftth/cancelar/${contratoId}`, {}, { timeout: 200_000 },
+    );
+    return res.data.data;
+  },
+
+  // ── Carril TR-069 bajo demanda (toggle) ─────────────────────────────
+  ftthActivarCarril: async (contratoId: string): Promise<{ estado: string; mensaje: string }> => {
+    const res = await api.post<ApiRespuesta<{ estado: string; mensaje: string }>>(
+      `/olt-nativo/onu/${contratoId}/tr069/activar`, {}, { timeout: 30_000 },
+    );
+    return res.data.data;
+  },
+
+  ftthDesactivarCarril: async (contratoId: string): Promise<{ estado: string; mensaje: string }> => {
+    const res = await api.post<ApiRespuesta<{ estado: string; mensaje: string }>>(
+      `/olt-nativo/onu/${contratoId}/tr069/desactivar`, {}, { timeout: 120_000 },
     );
     return res.data.data;
   },

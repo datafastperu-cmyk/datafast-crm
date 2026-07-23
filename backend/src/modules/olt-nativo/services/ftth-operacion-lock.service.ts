@@ -3,12 +3,13 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 
-export type OperacionFtth = 'provision' | 'desaprovision' | 'cancelacion';
+export type OperacionFtth = 'provision' | 'desaprovision' | 'cancelacion' | 'tr069';
 
 const ETIQUETA: Record<OperacionFtth, string> = {
   provision:    'un aprovisionamiento',
   desaprovision: 'una desaprovisión',
   cancelacion:  'una cancelación',
+  tr069:        'una operación de gestión TR-069',
 };
 
 // ─────────────────────────────────────────────────────────────

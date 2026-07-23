@@ -3,7 +3,7 @@ import {
   NotFoundException, ServiceUnavailableException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository }             from 'typeorm';
+import { DataSource, Repository, In, LessThan } from 'typeorm';
 import {
   IsIn, IsInt, IsOptional, IsString, IsUUID,
   Max, MaxLength, Min,
@@ -11,7 +11,7 @@ import {
 import { Type } from 'class-transformer';
 
 import { OltDispositivo }   from '../entities/olt-dispositivo.entity';
-import { FtthOnuEstado, FtthOnuRegistro, ftthNecesitaRecovery } from '../entities/ftth-onu-registro.entity';
+import { FtthOnuEstado, FtthCarrilEstado, FtthOnuRegistro, ftthNecesitaRecovery } from '../entities/ftth-onu-registro.entity';
 import { FtthRollbackLog, RollbackMotivo } from '../entities/ftth-rollback-log.entity';
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
@@ -674,6 +674,108 @@ export class ProvisionFtthService {
     return ' Carril TR-069 en aplicación en segundo plano (se confirma por el watcher; la ONU aparecerá en el ACS al informar).';
   }
 
+  // ── activarCarril (Fase 2 — toggle bajo demanda) ──────────────────
+  // Punto de entrada del botón "Activar TR-069". Marca el carril `activando` (write-ahead) y
+  // dispara el bootstrap en SEGUNDO PLANO (la convergencia tarda de segundos a ~5 min; no se
+  // bloquea la request). El estado terminal (`activo` / `activacion_fallida`) lo fija el
+  // propio bootstrap; un watcher resuelve cualquier `activando` que quede colgado por crash.
+  // El lock por contrato se mantiene durante todo el bootstrap async (mutex con desaprovisión).
+  async activarCarril(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ estado: FtthCarrilEstado; mensaje: string }> {
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+    if (!registro) throw new NotFoundException('Contrato sin ONU FTTH — no hay carril que activar.');
+    if (registro.estado !== FtthOnuEstado.ACTIVO && registro.estado !== FtthOnuEstado.GPON_REGISTRADO) {
+      throw new BadRequestException(`El carril solo se activa en ONUs "activo"/"gpon_registrado" (actual: "${registro.estado}").`);
+    }
+    // Idempotente: ya activo o ya en curso.
+    if (registro.carrilEstado === FtthCarrilEstado.ACTIVO || registro.carrilEstado === FtthCarrilEstado.ACTIVANDO) {
+      await this.ftthRepo.update(registro.id, { tr069UltimoUsoAt: new Date() });
+      return { estado: registro.carrilEstado, mensaje: 'El carril TR-069 ya está activo o activándose.' };
+    }
+
+    // Lock manual (no `conLock`): se toma aquí y lo LIBERA el bootstrap async al terminar, para
+    // que la request retorne de inmediato pero la desaprovisión no pueda colarse mientras se
+    // escribe el carril. TTL amplio para cubrir la ventana de convergencia (6 min).
+    const token = await this.opLock.adquirir(contratoId, 'tr069', 480);
+
+    await this.ftthRepo.update(registro.id, {
+      carrilEstado: FtthCarrilEstado.ACTIVANDO,
+      tr069UltimoUsoAt: new Date(),
+      ultimoError: null,
+    });
+
+    // Fire-and-forget con red de seguridad: el estado `activando` persistido + el watcher.
+    // Reusa la identidad reservada si venía de `inactivo_reservado` (mgmtServicePortId ya guardado).
+    void this.bootstrapTr069(registro.oltId, empresaId, {
+      contratoId,
+      mgmtServicePortId: registro.mgmtServicePortId ?? undefined,
+      mgmtVlan:          registro.mgmtVlan ?? undefined,
+      priority:          registro.mgmtPriority ?? undefined,
+    })
+      .then((r) => this.logger.log(`activarCarril | contrato=${contratoId}: ${r.exitoso ? 'activo' : 'activacion_fallida'} — ${r.mensaje}`))
+      .catch((e) => this.logger.warn(`activarCarril | contrato=${contratoId}: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => this.opLock.liberar(contratoId, token));
+
+    return {
+      estado: FtthCarrilEstado.ACTIVANDO,
+      mensaje: 'Activando el carril TR-069. La ONU aparecerá en el ACS al informar (~1-5 min).',
+    };
+  }
+
+  // ── desactivarCarril (Fase 2 — toggle bajo demanda) ───────────────
+  // Punto de entrada del botón "Desactivar TR-069". Quita SOLO el transporte (teardown),
+  // PRESERVA los datos ACS del CPE y CONSERVA la identidad reservada (IP + service-port de
+  // gestión con el contrato) para que reactivar sea idempotente y estable. Es rápido
+  // (~10-30s) → síncrono. VIO: si el teardown no se confirma, queda `desactivacion_fallida`
+  // y lo hereda el watcher.
+  async desactivarCarril(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ estado: FtthCarrilEstado; mensaje: string }> {
+    return this.opLock.conLock(contratoId, 'tr069', async () => {
+      const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+      if (!registro) throw new NotFoundException('Contrato sin ONU FTTH — no hay carril que desactivar.');
+
+      // Idempotente: ya inactivo.
+      if (registro.carrilEstado === FtthCarrilEstado.INACTIVO ||
+          registro.carrilEstado === FtthCarrilEstado.INACTIVO_RESERVADO) {
+        await this.ftthRepo.update(registro.id, { tr069UltimoUsoAt: new Date() });
+        return { estado: registro.carrilEstado, mensaje: 'El carril TR-069 ya está desactivado.' };
+      }
+
+      await this.ftthRepo.update(registro.id, { carrilEstado: FtthCarrilEstado.DESACTIVANDO });
+
+      const olt  = await this._fetchOlt(registro.oltId, empresaId);
+      const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+      const mgmtSp = await this._resolverMgmtServicePort(registro);
+
+      const res = await this.automation.ftthTeardownTr069({
+        connection: conn, slot: registro.slot, port: registro.port, onu_id: registro.onuId,
+        mgmt_service_port_id: mgmtSp,
+      }).catch((e) => ({ success: false, error: e instanceof Error ? e.message : String(e) }));
+
+      if (!res.success) {
+        await this.ftthRepo.update(registro.id, {
+          carrilEstado: FtthCarrilEstado.DESACTIVACION_FALLIDA,
+          ultimoError: `Desactivación TR-069 no confirmada: ${this._limpiar(res.error) ?? 'error'}`,
+        });
+        return { estado: FtthCarrilEstado.DESACTIVACION_FALLIDA, mensaje: 'No se pudo confirmar la desactivación; el watcher reintentará.' };
+      }
+
+      // Éxito: transporte quitado, identidad y datos ACS PRESERVADOS. tr069_bootstrap_aplicado
+      // = false para que el drift-watcher deje de mantener el carril.
+      await this.ftthRepo.update(registro.id, {
+        carrilEstado: FtthCarrilEstado.INACTIVO_RESERVADO,
+        tr069BootstrapAplicado: false,
+        tr069UltimoUsoAt: new Date(),
+        ultimoError: null,
+      });
+      return { estado: FtthCarrilEstado.INACTIVO_RESERVADO, mensaje: 'Carril TR-069 desactivado. Los datos ACS y la identidad se conservan; reactivar es inmediato.' };
+    });
+  }
+
   // Resuelve el índice de la traffic table de gestión canónica (ERP-MGMT,
   // creada por el Baseline Datafast Estándar). Fallback: 0 con advertencia.
   private async _resolverTrafficIndexGestion(oltId: string): Promise<number> {
@@ -952,7 +1054,10 @@ export class ProvisionFtthService {
         if (asignadoDelPool) {
           await this.poolService.liberar(oltId, dto.contratoId, 'gestion').catch(() => { /* best-effort */ });
         }
-        await this.ftthRepo.update(registro.id, { ultimoError: this._limpiar(resolverResult.mensaje) });
+        await this.ftthRepo.update(registro.id, {
+          ultimoError: this._limpiar(resolverResult.mensaje),
+          carrilEstado: FtthCarrilEstado.ACTIVACION_FALLIDA,
+        });
         return {
           exitoso: false,
           mensaje: resolverResult.mensaje,
@@ -972,6 +1077,7 @@ export class ProvisionFtthService {
     await this.ftthRepo.update(registro.id, {
       ultimoError:            null,
       tr069BootstrapAplicado: true,
+      carrilEstado:           FtthCarrilEstado.ACTIVO,
       mgmtServicePortId,
       mgmtVlan,
       mgmtTrafficIndex,
@@ -1662,25 +1768,59 @@ export class ProvisionFtthService {
       return { revisadas: 0, ok: 0, reparadas: 0, fallidas: 0 }; // módulo degradado — no hay con qué verificar
     }
 
-    const candidatos = await this.ftthRepo.find({
-      where: { estado: FtthOnuEstado.ACTIVO, tr069BootstrapAplicado: true },
+    // MIGRADO a `carril_estado` (Fase 2): un carril DESACTIVADO intencionalmente
+    // (`inactivo`/`inactivo_reservado`) NUNCA es drift — no se revive. Se atienden:
+    //   · 'activo'                → drift check (staleness de lastInform) → rebootstrap si stale.
+    //   · 'activacion_fallida'    → reintento del bootstrap (aceptado sin converger).
+    //   · 'activando' colgado     → crash a media activación → reintento.
+    //   · 'desactivacion_fallida' → reintento del teardown (VIO al deshacer).
+    const reintentables = await this.ftthRepo.find({
+      where: {
+        estado: FtthOnuEstado.ACTIVO,
+        carrilEstado: In([
+          FtthCarrilEstado.ACTIVO,
+          FtthCarrilEstado.ACTIVACION_FALLIDA,
+          FtthCarrilEstado.DESACTIVACION_FALLIDA,
+        ]),
+      },
     });
+    const stuckActivando = await this.ftthRepo.find({
+      where: {
+        estado: FtthOnuEstado.ACTIVO,
+        carrilEstado: FtthCarrilEstado.ACTIVANDO,
+        updatedAt: LessThan(new Date(Date.now() - 10 * 60_000)),
+      },
+    });
+    const candidatos = [...reintentables, ...stuckActivando];
 
     let ok = 0, reparadas = 0, fallidas = 0;
     for (const registro of candidatos) {
       try {
-        const deviceId = `00259E-${registro.equipmentId ?? ''}-${registro.sn}`;
-        const device = await this.genieacs.getDevice(deviceId).catch(() => null);
-        const lastInform = device?._lastInform ? new Date(device._lastInform).getTime() : 0;
+        // Desactivación no confirmada → reintentar el teardown, no el bootstrap.
+        if (registro.carrilEstado === FtthCarrilEstado.DESACTIVACION_FALLIDA) {
+          const r = await this.desactivarCarril(registro.contratoId, registro.empresaId).catch(() => null);
+          if (r?.estado === FtthCarrilEstado.INACTIVO_RESERVADO) reparadas++; else fallidas++;
+          continue;
+        }
 
-        if (Date.now() - lastInform < this.TR069_DRIFT_STALENESS_MS) { ok++; continue; }
+        // Estados de activación: 'activo' se revisa por drift; el resto se reintenta directo.
+        if (registro.carrilEstado === FtthCarrilEstado.ACTIVO) {
+          const deviceId = `00259E-${registro.equipmentId ?? ''}-${registro.sn}`;
+          const device = await this.genieacs.getDevice(deviceId).catch(() => null);
+          const lastInform = device?._lastInform ? new Date(device._lastInform).getTime() : 0;
+          if (Date.now() - lastInform < this.TR069_DRIFT_STALENESS_MS) { ok++; continue; }
+          this.logger.warn(
+            `reconciliarTr069Drift: drift detectado | contrato=${registro.contratoId} ` +
+            `deviceId=${deviceId} lastInform=${device?._lastInform ?? 'nunca'}`,
+          );
+        }
 
-        this.logger.warn(
-          `reconciliarTr069Drift: drift detectado | contrato=${registro.contratoId} ` +
-          `deviceId=${deviceId} lastInform=${device?._lastInform ?? 'nunca'}`,
-        );
-
-        const rep = await this.bootstrapTr069(registro.oltId, registro.empresaId, { contratoId: registro.contratoId });
+        const rep = await this.bootstrapTr069(registro.oltId, registro.empresaId, {
+          contratoId:        registro.contratoId,
+          mgmtServicePortId: registro.mgmtServicePortId ?? undefined,
+          mgmtVlan:          registro.mgmtVlan ?? undefined,
+          priority:          registro.mgmtPriority ?? undefined,
+        });
         if (rep.exitoso) reparadas++; else fallidas++;
       } catch (e) {
         fallidas++;

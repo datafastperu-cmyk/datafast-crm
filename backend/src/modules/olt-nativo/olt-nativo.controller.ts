@@ -1193,6 +1193,29 @@ export class OltNativoController {
   // cuando el recurso alcanzó su estado terminal verificado. El servidor es la autoridad:
   // si el heartbeat calla, el barrido revierte el trabajo no confirmado.
   // ────────────────────────────────────────────────────────────
+  // ── Carril TR-069 bajo demanda (toggle) ─────────────────────
+  @Post('onu/:contratoId/tr069/activar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activar el carril de gestión TR-069 de la ONU (bajo demanda)' })
+  @ApiParam({ name: 'contratoId' })
+  async activarCarril(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ estado: string; mensaje: string }> {
+    return this.ftth.activarCarril(contratoId, user.empresaId);
+  }
+
+  @Post('onu/:contratoId/tr069/desactivar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Desactivar el carril TR-069 (quita interface, preserva datos ACS)' })
+  @ApiParam({ name: 'contratoId' })
+  async desactivarCarril(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ estado: string; mensaje: string }> {
+    return this.ftth.desactivarCarril(contratoId, user.empresaId);
+  }
+
   @Get('carril/stats')
   @ApiOperation({ summary: 'Conteo de carriles TR-069 por estado (observabilidad)' })
   async carrilStats(
