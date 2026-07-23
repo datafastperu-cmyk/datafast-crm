@@ -9,6 +9,7 @@ import {
 import { oltNativoApi, type OnuClasificada, type OnuInventarioGlobalItem } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
+import { clasificarSenalFtth } from '@/lib/senal-ftth';
 import { OnuDetalleTr069Modal } from './OnuDetalleTr069Modal';
 
 const EST: Record<OnuClasificada['estadoOperativo'], { label: string; cls: string; Icon: typeof Wifi }> = {
@@ -21,13 +22,6 @@ const EST: Record<OnuClasificada['estadoOperativo'], { label: string; cls: strin
 };
 const ESTADOS = Object.keys(EST) as OnuClasificada['estadoOperativo'][];
 
-// Señal FTTH (RxPower óptico en la ONU) → calidad por umbrales GPON.
-function senalFtth(rx: number | null): { txt: string; cls: string } {
-  if (rx == null) return { txt: '— sin datos', cls: 'text-muted-foreground' };
-  if (rx >= -23)  return { txt: `${rx} dBm`, cls: 'text-emerald-400' };   // buena
-  if (rx >= -27)  return { txt: `${rx} dBm`, cls: 'text-amber-400' };     // marginal
-  return { txt: `${rx} dBm`, cls: 'text-red-400' };                      // crítica
-}
 
 export function OnuInventarioUnificado() {
   const { toast } = useToast();
@@ -129,7 +123,7 @@ export function OnuInventarioUnificado() {
             <tbody>
               {filtered.map((o, i) => {
                 const e = EST[o.estadoOperativo] ?? EST.offline;
-                const s = senalFtth(o.rxPowerDbm);
+                const s = clasificarSenalFtth(o.rxPowerDbm);
                 return (
                   <tr key={`${o.oltId}-${o.sn}-${i}`} className="border-b border-border last:border-0 hover:bg-muted/10">
                     <td className="px-3 py-2 text-xs">
@@ -149,7 +143,9 @@ export function OnuInventarioUnificado() {
                       </div>
                     </td>
                     <td className="px-3 py-2 text-xs">{o.oltNombre}</td>
-                    <td className={cn('px-3 py-2 text-xs font-medium', s.cls)}>{s.txt}</td>
+                    <td className={cn('px-3 py-2 text-xs font-medium', s.colorCls)}>
+                      {o.rxPowerDbm != null ? `${o.rxPowerDbm} dBm · ${s.label}` : s.label}
+                    </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1">
                         <button
