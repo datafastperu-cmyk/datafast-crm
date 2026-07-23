@@ -6,7 +6,7 @@ import {
   Radio, X, Zap, RefreshCcw, Power, RotateCcw, Wifi, Globe, Download,
   Loader2, Save, Eye, EyeOff, Signal, Clock, KeyRound, Monitor, Cable,
   Home, Network, Server, BarChart2, Shield, Phone, Settings, Search,
-  ScrollText, Lock,
+  ScrollText, Lock, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { oltNativoApi, type OnuTr069Detalle, type OnuWifiBand, type OnuHost, type FtthOnuRegistro } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
@@ -354,6 +354,23 @@ export function OnuDetalleTr069Modal({
 
   const seccion = SECCIONES.find(s => s.key === active) ?? SECCIONES[0];
   const SecIcon = seccion.icon;
+
+  // Extra "File Download" ligado a la sección de firmware (maqueta), reutilizado en el
+  // acordeón móvil y en el panel de escritorio.
+  const firmwareExtra = seccion.key === 'firmware' ? (
+    <div className="mt-4 flex items-center gap-3 flex-wrap rounded-lg border border-dashed border-border/70 bg-muted/10 px-3 py-3">
+      <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
+        <Lock className="w-3 h-3" /> File Download (ACS → ONU)
+      </span>
+      <select value={fwFile} onChange={e => setFwFile(e.target.value)} disabled
+        className="flex-1 min-w-[180px] max-w-xs px-3 py-1.5 text-xs border border-dashed border-border/70 rounded-lg bg-background text-muted-foreground/70 cursor-not-allowed">
+        <option value="">— pendiente de integración —</option>
+      </select>
+      <button type="button" disabled className={BTN_MAQUETA}>
+        <Download className="w-3.5 h-3.5" /> Start download
+      </button>
+    </div>
+  ) : null;
   // 'general' vive de datos del ERP/OLT → disponible siempre. El resto necesita la sesión TR-069.
   const seccionBloqueada = seccion.real && seccion.key !== 'general' && !informing;
 
@@ -587,58 +604,59 @@ export function OnuDetalleTr069Modal({
           </div>
         )}
 
-        {/* ── Cuerpo: sidebar de secciones + panel de contenido ── */}
-        {/* En móvil apila: el sidebar pasa a barra horizontal desplazable arriba y el contenido debajo. */}
+        {/* ── Cuerpo: nav de secciones + contenido ──
+            Escritorio (≥md): nav lateral fija + panel de contenido a la derecha.
+            Móvil (<md): ACORDEÓN — la nav ocupa el ancho y el contenido de la sección activa
+            se despliega INLINE debajo de su opción; al elegir otra, la anterior se recoge. */}
         <div className="flex flex-col md:flex-row flex-1 min-h-0">
-          {/* Sidebar / barra de secciones */}
-          <nav className="flex md:flex-col md:w-56 flex-shrink-0 border-b md:border-b-0 md:border-r border-border overflow-x-auto md:overflow-x-visible md:overflow-y-auto bg-muted/10 md:py-1.5">
+          {/* Nav de secciones (acordeón en móvil, sidebar en escritorio) */}
+          <nav className="flex flex-col md:w-56 md:flex-shrink-0 border-b md:border-b-0 md:border-r border-border overflow-y-auto bg-muted/10 md:py-1.5">
             {SECCIONES.map(({ key, label, icon: Icon, real }) => {
               const activo = key === active;
               return (
-                <button key={key} onClick={() => setActive(key)}
-                  className={cn(
-                    'flex items-center gap-2.5 px-3.5 py-2 text-left transition-colors flex-shrink-0 md:w-full',
-                    'border-b-2 md:border-b-0 md:border-l-2',
-                    activo
-                      ? 'bg-primary/10 border-primary text-foreground'
-                      : 'border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground',
-                  )}>
-                  <Icon className={cn('w-4 h-4 flex-shrink-0', activo ? 'text-primary' : '')} />
-                  <span className="text-[11px] whitespace-nowrap md:whitespace-normal md:flex-1 md:truncate">{label}</span>
-                  {!real && (
-                    <span className="text-[8px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded border border-dashed border-border/70 text-muted-foreground/60">
-                      maq
+                <div key={key}>
+                  <button onClick={() => setActive(key)}
+                    className={cn(
+                      'w-full flex items-center gap-2.5 px-3.5 py-2.5 md:py-2 text-left transition-colors border-l-2',
+                      activo
+                        ? 'bg-primary/10 border-primary text-foreground'
+                        : 'border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+                    )}>
+                    <Icon className={cn('w-4 h-4 flex-shrink-0', activo ? 'text-primary' : '')} />
+                    <span className="flex-1 text-[11px] truncate">{label}</span>
+                    {!real && (
+                      <span className="text-[8px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded border border-dashed border-border/70 text-muted-foreground/60">
+                        maq
+                      </span>
+                    )}
+                    {/* Chevron de acordeón (solo móvil) */}
+                    <span className="md:hidden text-muted-foreground flex-shrink-0">
+                      {activo ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </span>
+                  </button>
+
+                  {/* Contenido desplegado INLINE — solo móvil */}
+                  {activo && (
+                    <div className="md:hidden px-4 py-3 bg-background border-b border-border/60">
+                      {isLoading
+                        ? <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                        : <>{renderContenido()}{firmwareExtra}</>}
+                    </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </nav>
 
-          {/* Panel de contenido */}
-          <div className="flex-1 overflow-y-auto min-w-0">
+          {/* Panel de contenido — solo escritorio */}
+          <div className="hidden md:block flex-1 overflow-y-auto min-w-0">
             {isLoading ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
             ) : (
               <div className="px-5 py-4">
                 <SeccionHeader icon={SecIcon} label={seccion.label} hint={!seccion.real ? 'maqueta' : undefined} />
                 {renderContenido()}
-
-                {/* File Download — maqueta, ligada a la sección de firmware */}
-                {seccion.key === 'firmware' && (
-                  <div className="mt-4 flex items-center gap-3 flex-wrap rounded-lg border border-dashed border-border/70 bg-muted/10 px-3 py-3">
-                    <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
-                      <Lock className="w-3 h-3" /> File Download (ACS → ONU)
-                    </span>
-                    <select value={fwFile} onChange={e => setFwFile(e.target.value)} disabled
-                      className="flex-1 min-w-[180px] max-w-xs px-3 py-1.5 text-xs border border-dashed border-border/70 rounded-lg bg-background text-muted-foreground/70 cursor-not-allowed">
-                      <option value="">— pendiente de integración —</option>
-                    </select>
-                    <button type="button" disabled className={BTN_MAQUETA}>
-                      <Download className="w-3.5 h-3.5" /> Start download
-                    </button>
-                  </div>
-                )}
+                {firmwareExtra}
               </div>
             )}
           </div>
