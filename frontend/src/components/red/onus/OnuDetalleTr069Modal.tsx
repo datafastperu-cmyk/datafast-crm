@@ -231,7 +231,7 @@ export function OnuDetalleTr069Modal({
   const [webAdminUser, setWebAdminUser] = useState('');
   const [webAdminPass, setWebAdminPass] = useState('');
   const [showWebPass, setShowWebPass] = useState(false);
-  const [pending, setPending] = useState<'factory' | 'olt_reset' | null>(null);
+  const [pending, setPending] = useState<'reboot' | 'factory' | null>(null);
   const [active, setActive] = useState('general');
   const [fwFile, setFwFile] = useState('');
   const initRan = useRef(false);
@@ -316,17 +316,19 @@ export function OnuDetalleTr069Modal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reinicio y factory-reset van por TR-069 (probado: `ont reset` de la OLT NO reinicia estas
+  // EG8145V5; SmartOLT tampoco usa la OLT — lo hace por TR-069 al CPE). Requieren que la ONU
+  // esté informando a GenieACS; si no lo está, se AUTO-ACTIVA el carril y la operación se
+  // dispara sola al informar (ver `esperandoCarril`).
+  const rebootMut = useMutation({
+    mutationFn: () => oltNativoApi.onuTr069Reboot(sn),
+    onSuccess: (r) => toast(r.mensaje ?? 'Reinicio enviado — la ONU vuelve en ~1 min', { type: 'success' }),
+    onError: () => toast('No se pudo reiniciar la ONU', { type: 'error' }),
+  });
   const factoryMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069FactoryReset(sn),
     onSuccess: (r) => toast(r.mensaje, { type: 'success' }),
     onError: () => toast('No se pudo resetear la ONU', { type: 'error' }),
-  });
-  // Reinicio por la OLT (`ont reset`) — ES EL ÚNICO reinicio del ERP: funciona aunque la ONU
-  // NO esté informando a TR-069. El reinicio por TR-069 se descartó (decisión de producto).
-  const oltResetMut = useMutation({
-    mutationFn: () => oltNativoApi.ftthResetOnu(oltId!, effSlot!, effPort!, effOnuId!),
-    onSuccess: (r) => toast(r.mensaje ?? 'ONU reiniciada desde la OLT — vuelve online en ~1 min', { type: 'success' }),
-    onError: () => toast('No se pudo reiniciar la ONU desde la OLT', { type: 'error' }),
   });
   const pppMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069SetPppoe(sn, { username: pppUser || undefined, password: pppPass || undefined }),
@@ -341,6 +343,56 @@ export function OnuDetalleTr069Modal({
 
   const info = data?.info;
   const informing = data?.informing;
+
+  // ── Auto-activación del carril para operaciones de CPE (reinicio / factory-reset) ──
+  // Si la ONU no está informando, activamos el carril TR-069 y dejamos la operación EN ESPERA;
+  // en cuanto la ONU informa, se dispara sola. Abandonar el flujo (cerrar el modal) NO deja
+  // estado sucio: un reinicio que no llega a ejecutarse simplemente no ocurre (el carril queda
+  // activo y el TTL lo apaga). Por eso se orquesta en el cliente, sin red de seguridad servidor.
+  const [esperandoCarril, setEsperandoCarril] = useState<null | 'reboot' | 'factory'>(null);
+
+  const lanzarCpeOp = (tipo: 'reboot' | 'factory') => {
+    if (informing) {
+      (tipo === 'reboot' ? rebootMut : factoryMut).mutate();
+      return;
+    }
+    if (!contratoId) {
+      toast('Esta ONU no tiene carril TR-069 gestionable (sin contrato nativo).', { type: 'error' });
+      return;
+    }
+    setEsperandoCarril(tipo);
+    oltNativoApi.ftthActivarCarril(contratoId)
+      .then(() => { refetchRegistro(); })
+      .catch(() => { setEsperandoCarril(null); toast('No se pudo iniciar la activación del carril TR-069.', { type: 'error' }); });
+    toast('Activando gestión TR-069… la operación se ejecutará automáticamente cuando la ONU informe (~1-5 min).', { type: 'success' });
+  };
+
+  // Dispara la operación en espera cuando la ONU empieza a informar.
+  useEffect(() => {
+    if (esperandoCarril && informing) {
+      (esperandoCarril === 'reboot' ? rebootMut : factoryMut).mutate();
+      setEsperandoCarril(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [informing, esperandoCarril]);
+
+  // Si la activación falla, cancela la espera y avisa.
+  useEffect(() => {
+    if (esperandoCarril && carril === 'activacion_fallida') {
+      toast('No se pudo activar la gestión TR-069; reintenta la operación.', { type: 'error' });
+      setEsperandoCarril(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carril, esperandoCarril]);
+
+  // Mientras se espera el carril, refresca la sesión TR-069 más seguido para detectar el
+  // "informing" sin esperar el ciclo normal de 30 s.
+  useEffect(() => {
+    if (!esperandoCarril) return undefined;
+    const id = setInterval(() => refreshMut.mutate(), 12_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esperandoCarril]);
 
   // Secciones del sidebar. `real` marca las que ya tienen backend; el resto se maqueta.
   const SECCIONES: Array<{ key: string; label: string; icon: typeof Home; real: boolean; nota?: string }> = [
@@ -592,16 +644,25 @@ export function OnuDetalleTr069Modal({
             </button>
           )}
 
+          {/* Aviso: operación en espera de que la ONU informe */}
+          {esperandoCarril && (
+            <span className="inline-flex items-center gap-1.5 text-[10px] text-amber-400">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Activando gestión… {esperandoCarril === 'reboot' ? 'reinicio' : 'factory-reset'} al informar
+            </span>
+          )}
+
           <div className="flex-1" />
 
-          <button onClick={() => setPending('olt_reset')} disabled={oltResetMut.isPending || !puedeLeerMetricas}
-            title="Reinicia la ONU por la OLT (ont reset) — no requiere TR-069"
+          <button onClick={() => setPending('reboot')} disabled={rebootMut.isPending || esperandoCarril !== null || !contratoId}
+            title="Reinicia la ONU por TR-069 (si no está informando, activa la gestión y reinicia al informar)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-orange-500 hover:bg-orange-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            {oltResetMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />} Reiniciar
+            {(rebootMut.isPending || esperandoCarril === 'reboot') ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />} Reiniciar
           </button>
-          <button onClick={() => setPending('factory')} disabled={factoryMut.isPending || !informing}
+          <button onClick={() => setPending('factory')} disabled={factoryMut.isPending || esperandoCarril !== null || !contratoId}
+            title="Restablece de fábrica por TR-069 (si no está informando, activa la gestión y resetea al informar)"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-destructive hover:bg-destructive/90 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <RotateCcw className="w-3.5 h-3.5" /> Reset to factory
+            {(factoryMut.isPending || esperandoCarril === 'factory') ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Reset to factory
           </button>
         </div>
 
@@ -609,13 +670,13 @@ export function OnuDetalleTr069Modal({
         {pending && (
           <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-destructive/5 flex-shrink-0">
             <span className="text-xs text-foreground flex-1">
-              {pending === 'olt_reset'
-                ? `¿Reiniciar la ONU ${sn} desde la OLT (ont reset)? Perderá conexión ~1 min.`
-                : `¿RESET DE FÁBRICA de la ONU ${sn}? Se borrará TODA su configuración.`}
+              {pending === 'reboot'
+                ? `¿Reiniciar la ONU ${sn} por TR-069? Perderá conexión ~1 min.${!informing ? ' (Se activará la gestión primero; ~1-5 min.)' : ''}`
+                : `¿RESET DE FÁBRICA de la ONU ${sn}? Se borrará TODA su configuración.${!informing ? ' (Se activará la gestión primero; ~1-5 min.)' : ''}`}
             </span>
             <button onClick={() => setPending(null)} className={BTN_OUTLINE}>Cancelar</button>
             <button
-              onClick={() => { (pending === 'olt_reset' ? oltResetMut : factoryMut).mutate(); setPending(null); }}
+              onClick={() => { lanzarCpeOp(pending); setPending(null); }}
               className={cn('px-3 py-1.5 text-xs font-semibold rounded-md text-white',
                 pending === 'factory' ? 'bg-destructive hover:bg-destructive/90' : 'bg-orange-500 hover:bg-orange-600')}
             >
