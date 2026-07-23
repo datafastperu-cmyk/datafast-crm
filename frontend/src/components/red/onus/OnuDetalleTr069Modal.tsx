@@ -3,11 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  Radio, X, Zap, RefreshCcw, Power, RotateCcw, Wifi, Globe, Download,
+  Radio, X, RefreshCcw, Power, RotateCcw, Wifi, Globe, Download,
   Loader2, Save, Eye, EyeOff, Signal, Clock, KeyRound, Monitor, Cable,
   Home, Network, Server, BarChart2, Shield, Phone, Settings, Search,
   ScrollText, Lock, ChevronDown, ChevronRight,
 } from 'lucide-react';
+
+// Cadencia del auto-refresco mientras el modal está abierto. Cada tick es una sesión TR-069
+// real contra la ONU (refreshObject + connection-request); 30 s da "tiempo real" sin saturar
+// el límite bajo de sesiones VTY concurrentes del MA5800.
+const AUTO_REFRESH_MS = 30_000;
 import { oltNativoApi, type OnuTr069Detalle, type OnuWifiBand, type OnuHost, type FtthOnuRegistro } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
@@ -220,7 +225,6 @@ export function OnuDetalleTr069Modal({
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const [live, setLive] = useState(false);
   const [pppUser, setPppUser] = useState('');
   const [pppPass, setPppPass] = useState('');
   const [showPppPass, setShowPppPass] = useState(false);
@@ -282,9 +286,14 @@ export function OnuDetalleTr069Modal({
   const rxDbm = metricas?.rxPowerDbm ?? rxPowerDbm ?? null;
   const oltRxDbm = metricas?.oltRxPowerDbm ?? null;
 
+  // Evita apilar refrescos si uno tarda más que el intervalo (el closure del setInterval no ve
+  // el `isPending` fresco de la mutación, así que se sincroniza en un ref).
+  const refrescandoRef = useRef(false);
   const refreshMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069Refresh(sn),
-    onSuccess: () => refetch(),
+    onMutate:   () => { refrescandoRef.current = true; },
+    onSuccess:  () => refetch(),
+    onSettled:  () => { refrescandoRef.current = false; },
   });
 
   useEffect(() => {
@@ -295,15 +304,17 @@ export function OnuDetalleTr069Modal({
       // suprime el barrido TTL por inactividad (Fase 3). Best-effort, no bloquea.
       if (contratoId) void oltNativoApi.ftthMarcarUsoCarril(contratoId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!live) return undefined;
-    const id = setInterval(() => refreshMut.mutate(), 8000);
+    // Auto-refresco mientras el modal está abierto: el operador ve los datos en tiempo real sin
+    // pulsar nada. Solo si la pestaña está visible y no hay un refresco en curso, para no
+    // martillear la ONU ni apilar sesiones.
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible' && !refrescandoRef.current) {
+        refreshMut.mutate();
+      }
+    }, AUTO_REFRESH_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live]);
+  }, []);
 
   const rebootMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069Reboot(sn),
@@ -544,6 +555,12 @@ export function OnuDetalleTr069Modal({
           <button onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending || isFetching || !informing} className={BTN_OUTLINE}>
             {(refreshMut.isPending || isFetching) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />} Refresh interfaces
           </button>
+          {informing && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className={cn('w-1.5 h-1.5 rounded-full', refreshMut.isPending ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-400/60')} />
+              Auto-actualiza cada {AUTO_REFRESH_MS / 1000}s
+            </span>
+          )}
 
           {/* Toggle del carril TR-069 — solo para ONUs con registro FTTH (proveedor nativo) */}
           {contratoId && (
@@ -572,13 +589,6 @@ export function OnuDetalleTr069Modal({
               }
             </button>
           )}
-
-          <button onClick={() => setLive(v => !v)} disabled={!informing} className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
-            live ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-muted text-muted-foreground hover:bg-accent border border-border',
-          )}>
-            <Zap className="w-3.5 h-3.5" /> LIVE{live ? '!' : ''}
-          </button>
 
           <div className="flex-1" />
 
