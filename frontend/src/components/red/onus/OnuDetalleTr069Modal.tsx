@@ -218,14 +218,26 @@ export function OnuDetalleTr069Modal({
     staleTime: 30_000,
   });
 
+  // Posición EFECTIVA de la ONU para leer la señal. El registro FTTH es la fuente
+  // autoritativa y ACTUAL: al re-aprovisionar, el `onu_id` cambia (p.ej. 43→44) pero el
+  // inventario (read-model del último sync) puede seguir mostrando el viejo. Leer la óptica
+  // con un onu_id que ya no existe devuelve vacío. Por eso, si hay registro, mandan sus
+  // slot/port/onuId; el inventario queda de respaldo para ONUs sin registro (p.ej. SmartOLT).
+  const effSlot  = registro?.slot  ?? slot;
+  const effPort  = registro?.port  ?? port;
+  const effOnuId = registro?.onuId ?? onuId;
+
   // Señal óptica EN VIVO (display ont optical-info). El inventario no la guarda, así que se
   // lee directo de la OLT al abrir el modal. Independiente de TR-069: la potencia Rx la mide
   // la OLT en el puerto GPON, así que hay lectura aunque la ONU no informe a GenieACS.
-  const puedeLeerMetricas = Boolean(oltId && slot != null && port != null && onuId != null);
+  // Si la ONU tiene contrato, se espera a que el registro resuelva (undefined → cargando)
+  // antes de leer, para no gastar una lectura óptica con el onu_id viejo del inventario.
+  const registroListo = !contratoId || registro !== undefined;
+  const puedeLeerMetricas = Boolean(oltId && effSlot != null && effPort != null && effOnuId != null);
   const { data: metricas, isFetching: metricasFetching, refetch: refetchMetricas } = useQuery({
-    queryKey: ['onu-metricas', oltId, slot, port, onuId],
-    queryFn:  () => oltNativoApi.metricas(oltId!, { slot: slot!, port: port!, onuId: onuId!, sn }),
-    enabled:  puedeLeerMetricas,
+    queryKey: ['onu-metricas', oltId, effSlot, effPort, effOnuId],
+    queryFn:  () => oltNativoApi.metricas(oltId!, { slot: effSlot!, port: effPort!, onuId: effOnuId!, sn }),
+    enabled:  puedeLeerMetricas && registroListo,
     staleTime: 15_000,
   });
   // La señal en vivo manda; el valor del inventario (si lo hubiera) queda de respaldo.
