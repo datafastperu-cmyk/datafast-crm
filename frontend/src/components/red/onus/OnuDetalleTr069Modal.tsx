@@ -5,8 +5,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Radio, X, Zap, RefreshCcw, Power, RotateCcw, Wifi, Globe, Download,
   Loader2, Save, Eye, EyeOff, Signal, Clock, KeyRound, Monitor, Cable,
-  ChevronRight, ChevronDown, Home, Network, Server, BarChart2, Shield,
-  Phone, Settings, Search, ScrollText, Lock,
+  Home, Network, Server, BarChart2, Shield, Phone, Settings, Search,
+  ScrollText, Lock,
 } from 'lucide-react';
 import { oltNativoApi, type OnuTr069Detalle, type OnuWifiBand, type OnuHost, type FtthOnuRegistro } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
@@ -14,25 +14,25 @@ import { cn } from '@/lib/utils';
 import { SenalFtthValor } from './SenalFtthValor';
 
 // ─────────────────────────────────────────────────────────────
-// Modal "Ver detalle ONU" — layout unificado con la vista ONU/Router.
+// Modal "Ver detalle ONU" — layout de panel de gestión (sidebar + contenido).
 //
-// Convención innegociable de esta pantalla: NUNCA se muestran datos inventados. Lo que hay
-// se lee de la sesión TR-069 real (GenieACS), del registro FTTH o del inventario de la OLT.
-// Lo que todavía no tiene backend se marca de forma explícita como «Pendiente de integración»
-// y se deja inerte — un operador no debe poder confundir una maqueta con el estado real de
-// la ONU de un cliente.
+// Navegación por sidebar: columna izquierda con todas las secciones (icono + estado),
+// panel derecho con el contenido de la sección activa. Escala a las 19 secciones sin el
+// scroll infinito del acordeón y se siente como una consola de gestión (SmartOLT/GenieACS).
+//
+// Convención innegociable: NUNCA se muestran datos inventados. Lo que hay se lee de la
+// sesión TR-069 real (GenieACS), del registro FTTH o del inventario de la OLT. Lo que aún no
+// tiene backend se marca de forma explícita como «Pendiente de integración» y se deja inerte.
 // ─────────────────────────────────────────────────────────────
 
-const BTN_OUTLINE = 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border border-border text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+const BTN_OUTLINE = 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-border text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
 const INPUT = 'w-full px-2.5 py-1.5 text-xs border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary';
-
-// Botón presente en el diseño pero sin backend todavía. Inerte y visiblemente marcado.
-const BTN_MAQUETA = 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border border-dashed border-border/70 text-muted-foreground/70 cursor-not-allowed';
+const BTN_MAQUETA = 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-dashed border-border/70 text-muted-foreground/70 cursor-not-allowed';
 
 function Info({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
-      <span className="text-[11px] text-muted-foreground min-w-[128px] flex-shrink-0">{label}</span>
+      <span className="text-[11px] text-muted-foreground min-w-[120px] flex-shrink-0">{label}</span>
       <span className="text-[11px] text-foreground font-medium break-all">{value ?? <span className="text-muted-foreground/50">—</span>}</span>
     </div>
   );
@@ -52,6 +52,24 @@ const ESTADO_CLS: Record<string, string> = {
   offline:          'text-zinc-400',
   no_aprovisionada: 'text-muted-foreground',
 };
+const ESTADO_DOT: Record<string, string> = {
+  online:           'bg-emerald-400',
+  apagada:          'bg-zinc-400',
+  ruptura_fibra:    'bg-red-400',
+  desactivada:      'bg-amber-400',
+  offline:          'bg-zinc-400',
+  no_aprovisionada: 'bg-muted-foreground',
+};
+
+// Chip de "vitals" — dato clave siempre visible bajo el header.
+function Vital({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">{label}</span>
+      <span className="text-[11px] font-medium text-foreground truncate">{children}</span>
+    </div>
+  );
+}
 
 // ── Aviso de sección sin backend ──────────────────────────────
 function Maqueta({ nota }: { nota: string }) {
@@ -61,6 +79,17 @@ function Maqueta({ nota }: { nota: string }) {
         <Lock className="w-3 h-3" /> Pendiente de integración
       </div>
       <p className="text-[11px] text-muted-foreground mt-1">{nota}</p>
+    </div>
+  );
+}
+
+// ── Cabecera de sección en el panel de contenido ──────────────
+function SeccionHeader({ icon: Icon, label, hint }: { icon: typeof Home; label: string; hint?: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/50">
+      <Icon className="w-4 h-4 text-primary" />
+      <h3 className="text-sm font-semibold text-foreground">{label}</h3>
+      {hint && <span className="text-[10px] text-muted-foreground ml-auto">{hint}</span>}
     </div>
   );
 }
@@ -199,7 +228,7 @@ export function OnuDetalleTr069Modal({
   const [webAdminPass, setWebAdminPass] = useState('');
   const [showWebPass, setShowWebPass] = useState(false);
   const [pending, setPending] = useState<'reboot' | 'factory' | null>(null);
-  const [expanded, setExpanded] = useState<string | null>('general');
+  const [active, setActive] = useState('general');
   const [fwFile, setFwFile] = useState('');
   const initRan = useRef(false);
 
@@ -209,15 +238,11 @@ export function OnuDetalleTr069Modal({
     staleTime: 0,
   });
 
-  // Registro FTTH del ERP: aporta lo que TR-069 no sabe (VLAN de servicio, modo WAN,
-  // fecha de autorización, service-ports). Solo si la ONU está ligada a un contrato.
   const { data: registro, refetch: refetchRegistro } = useQuery<FtthOnuRegistro | null>({
     queryKey: ['ftth-estado', contratoId],
     queryFn:  () => oltNativoApi.ftthEstado(contratoId!),
     enabled:  Boolean(contratoId),
     staleTime: 30_000,
-    // Mientras el carril está en un estado transitorio (activando/desactivando), sondea para
-    // reflejar la transición → estado terminal sin que el operador refresque.
     refetchInterval: (q) => {
       const e = (q.state.data as FtthOnuRegistro | null | undefined)?.carrilEstado;
       return e === 'activando' || e === 'desactivando' ? 5_000 : false;
@@ -239,34 +264,21 @@ export function OnuDetalleTr069Modal({
     ),
   });
 
-  // Posición EFECTIVA de la ONU para leer la señal. El registro FTTH es la fuente
-  // autoritativa y ACTUAL: al re-aprovisionar, el `onu_id` cambia (p.ej. 43→44) pero el
-  // inventario (read-model del último sync) puede seguir mostrando el viejo. Leer la óptica
-  // con un onu_id que ya no existe devuelve vacío. Por eso, si hay registro, mandan sus
-  // slot/port/onuId; el inventario queda de respaldo para ONUs sin registro (p.ej. SmartOLT).
+  // Posición EFECTIVA de la ONU para leer la señal (el registro FTTH es la fuente actual).
   const effSlot  = registro?.slot  ?? slot;
   const effPort  = registro?.port  ?? port;
   const effOnuId = registro?.onuId ?? onuId;
 
-  // Señal óptica EN VIVO (display ont optical-info). El inventario no la guarda, así que se
-  // lee directo de la OLT al abrir el modal. Independiente de TR-069: la potencia Rx la mide
-  // la OLT en el puerto GPON, así que hay lectura aunque la ONU no informe a GenieACS.
-  // Si la ONU tiene contrato, se espera a que el registro resuelva (undefined → cargando)
-  // antes de leer, para no gastar una lectura óptica con el onu_id viejo del inventario.
   const registroListo = !contratoId || registro !== undefined;
   const puedeLeerMetricas = Boolean(oltId && effSlot != null && effPort != null && effOnuId != null);
   const { data: metricas, isFetching: metricasFetching, refetch: refetchMetricas } = useQuery({
     queryKey: ['onu-metricas', oltId, effSlot, effPort, effOnuId],
     queryFn:  () => oltNativoApi.metricas(oltId!, { slot: effSlot!, port: effPort!, onuId: effOnuId!, sn }),
     enabled:  puedeLeerMetricas && registroListo,
-    // Refresco cada 10 s mientras el modal está abierto. `refetchIntervalInBackground:false`
-    // detiene el sondeo si la pestaña pasa a segundo plano — cada lectura es una sesión SSH
-    // real contra la OLT (VTY concurrentes limitadas), así que no se martillea en vano.
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
     staleTime: 8_000,
   });
-  // La señal en vivo manda; el valor del inventario (si lo hubiera) queda de respaldo.
   const rxDbm = metricas?.rxPowerDbm ?? rxPowerDbm ?? null;
   const oltRxDbm = metricas?.oltRxPowerDbm ?? null;
 
@@ -316,9 +328,8 @@ export function OnuDetalleTr069Modal({
 
   const info = data?.info;
   const informing = data?.informing;
-  const toggle = (k: string) => setExpanded(p => (p === k ? null : k));
 
-  // Secciones del acordeón. `real` marca las que ya tienen backend; el resto se maqueta.
+  // Secciones del sidebar. `real` marca las que ya tienen backend; el resto se maqueta.
   const SECCIONES: Array<{ key: string; label: string; icon: typeof Home; real: boolean; nota?: string }> = [
     { key: 'general',         label: 'General',                     icon: Home,       real: true  },
     { key: 'ppp',             label: 'PPP Interface',               icon: Globe,      real: true  },
@@ -341,69 +352,174 @@ export function OnuDetalleTr069Modal({
     { key: 'firmware',        label: 'File & Firmware management',  icon: Download,   real: false, nota: 'La actualización masiva ya existe en la pestaña Firmware de la OLT.' },
   ];
 
-  return (
-    <div className="fixed inset-0 z-[110] flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-4xl my-4 bg-card border border-border rounded-xl shadow-xl" onClick={e => e.stopPropagation()}>
+  const seccion = SECCIONES.find(s => s.key === active) ?? SECCIONES[0];
+  const SecIcon = seccion.icon;
+  // 'general' vive de datos del ERP/OLT → disponible siempre. El resto necesita la sesión TR-069.
+  const seccionBloqueada = seccion.real && seccion.key !== 'general' && !informing;
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 text-primary" />
-            <span className="text-sm font-semibold text-foreground">ONU / Router</span>
-            <span className="text-xs font-mono text-muted-foreground">{sn}</span>
+  const estadoTxt = estadoOperativo ?? '—';
+
+  // ── Contenido del panel derecho según la sección activa ──
+  const renderContenido = () => {
+    if (!seccion.real) return <Maqueta nota={seccion.nota ?? 'Sección aún no integrada.'} />;
+
+    if (seccion.key === 'general') {
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+          <div>
+            <Info label="OLT"           value={oltNombre} />
+            <Info label="Board / Port"  value={slot != null && port != null ? `${slot} / ${port}` : undefined} />
+            <Info label="ONU ID"        value={onuId ?? undefined} />
+            <Info label="Serial"        value={<span className="font-mono">{info?.serial ?? sn}</span>} />
+            <Info label="ONU type"      value={info?.modelName ?? info?.productClass} />
+            <Info label="Fabricante"    value={info?.manufacturer} />
+            <Info label="Firmware"      value={info?.softwareVersion} />
+            <Info label="Hardware"      value={info?.hardwareVersion} />
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent"><X className="w-4 h-4" /></button>
-        </div>
-
-        {/* ── Panel de info (siempre visible: sale del ERP/OLT, no depende de TR-069) ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border-b border-border">
-          <div className="px-5 py-4 border-b md:border-b-0 md:border-r border-border/60">
-            <Info label="OLT"                value={oltNombre} />
-            <Info label="Board"              value={slot ?? undefined} />
-            <Info label="Port"               value={port ?? undefined} />
-            <Info label="ONU"                value={onuId ?? undefined} />
-            <Info label="SN"                 value={<span className="font-mono">{info?.serial ?? sn}</span>} />
-            <Info label="ONU type"           value={info?.modelName ?? info?.productClass} />
-            <Info label="Fabricante"         value={info?.manufacturer} />
-            <Info label="Firmware"           value={info?.softwareVersion} />
-            <Info label="Hardware"           value={info?.hardwareVersion} />
-            <Info label="Name"               value={cliente ?? undefined} />
+          <div>
+            <Info label="Cliente"           value={cliente ?? undefined} />
+            <Info label="Attached VLAN"     value={registro?.vlan ?? undefined} />
+            <Info label="ONU mode"          value={registro?.wanMode} />
+            <Info label="Mgmt IP"           value={info?.mgmtIp ? <span className="font-mono">{info.mgmtIp}</span> : undefined} />
+            <Info label="PPPoE username"    value={data?.ppp?.find(p => p.username)?.username
+              ? <span className="font-mono">{data.ppp.find(p => p.username)!.username}</span> : undefined} />
             <Info label="Authorization date" value={registro?.createdAt ? new Date(registro.createdAt).toLocaleString('es-PE') : undefined} />
+            <Info label="Último inform"     value={data?.lastInform ? new Date(data.lastInform).toLocaleString('es-PE') : undefined} />
+            <Info label="Perfil soportado"  value={info?.profileMatched
+              ? <span className="text-emerald-400">sí (edición habilitada)</span>
+              : info ? <span className="text-amber-400">modelo sin perfil (solo lectura)</span> : undefined} />
           </div>
+        </div>
+      );
+    }
 
-          <div className="px-5 py-4">
-            <div className="flex justify-center mb-3">
-              <div className="w-44 h-16 rounded-lg bg-muted/40 border border-border/60 flex items-center justify-center">
-                <Radio className="w-8 h-8 text-muted-foreground/30" />
+    if (seccionBloqueada) {
+      return (
+        <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-4 py-6 text-center space-y-1">
+          <Signal className="w-6 h-6 mx-auto text-muted-foreground/40" />
+          <p className="text-xs text-foreground font-medium">Requiere la sesión TR-069 activa</p>
+          <p className="text-[11px] text-muted-foreground">La ONU no está informando a GenieACS. Activa el carril TR-069 y pulsa «Refresh interfaces».</p>
+        </div>
+      );
+    }
+
+    if (seccion.key === 'ppp') {
+      return (
+        <div className="space-y-2">
+          {data?.ppp?.length ? data.ppp.map(p => (
+            <div key={p.index} className="text-[11px] text-muted-foreground">
+              WAN {p.index}: <span className="text-foreground font-mono">{p.username ?? '—'}</span>
+              {p.connectionStatus && <span className={cn('ml-2 px-1.5 rounded border', p.connectionStatus === 'Connected' ? 'text-emerald-400 border-emerald-700/40 bg-emerald-500/10' : 'text-amber-400 border-amber-700/40 bg-amber-500/10')}>{p.connectionStatus}</span>}
+              {p.externalIp && <span className="ml-2 font-mono">{p.externalIp}</span>}
+            </div>
+          )) : <p className="text-[11px] text-muted-foreground italic">Sin conexión PPPoE instanciada en la ONU.</p>}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <div>
+              <label className="text-[10px] text-muted-foreground">Usuario PPPoE</label>
+              <input value={pppUser} onChange={e => setPppUser(e.target.value)} placeholder="usuario" className={INPUT} />
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground">Clave PPPoE (vacío = sin cambio)</label>
+              <div className="relative">
+                <input type={showPppPass ? 'text' : 'password'} value={pppPass} onChange={e => setPppPass(e.target.value)}
+                  placeholder="••••••••" className={cn(INPUT, 'pr-8')} />
+                <button type="button" onClick={() => setShowPppPass(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showPppPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
               </div>
             </div>
-            <Info label="Status" value={estadoOperativo
-              ? <span className={cn('font-semibold', ESTADO_CLS[estadoOperativo] ?? 'text-foreground')}>{estadoOperativo}</span>
-              : undefined} />
-            <Info label="Señal FTTH (Rx)" value={
-              <SenalFtthValor rxDbm={rxDbm} oltRxDbm={oltRxDbm} cargando={metricasFetching}
-                puedeLeer={puedeLeerMetricas} onLeer={() => refetchMetricas()} />
-            } />
-            <Info label="Attached VLANs" value={registro?.vlan ?? undefined} />
-            <Info label="ONU mode" value={registro?.wanMode} />
-            <Info label="TR069" value={informing
-              ? <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold"><Signal className="w-3 h-3" /> Online</span>
-              : <span className="text-amber-400">sin informar</span>} />
-            <Info label="Mgmt IP" value={info?.mgmtIp ? <span className="font-mono">{info.mgmtIp}</span> : undefined} />
-            <Info label="Uptime" value={informing ? <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3 text-muted-foreground" /> {fmtUptime(info?.uptimeSeconds)}</span> : undefined} />
-            <Info label="Último inform" value={data?.lastInform ? new Date(data.lastInform).toLocaleString('es-PE') : undefined} />
-            <Info label="PPPoE username" value={data?.ppp?.find(p => p.username)?.username
-              ? <span className="font-mono">{data.ppp.find(p => p.username)!.username}</span> : undefined} />
           </div>
+          <button onClick={() => pppMut.mutate()} disabled={pppMut.isPending || (!pppUser && !pppPass)} className={cn(BTN_OUTLINE, 'ml-auto')}>
+            {pppMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Aplicar PPPoE
+          </button>
+        </div>
+      );
+    }
+    if (seccion.key === 'wlan1') return <WifiEditor sn={sn} band="2.4" current={data?.wifi?.find(w => w.band === '2.4')} onSaved={() => refetch()} />;
+    if (seccion.key === 'wlan5') return <WifiEditor sn={sn} band="5" current={data?.wifi?.find(w => w.band === '5')} onSaved={() => refetch()} />;
+    if (seccion.key === 'hosts') return <HostsSection hosts={data?.hosts ?? []} />;
+    if (seccion.key === 'security') {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+            <KeyRound className="w-3.5 h-3.5 text-primary" /> Credenciales de acceso web (admin de la ONU)
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-muted-foreground">Usuario admin</label>
+              <input value={webAdminUser} onChange={e => setWebAdminUser(e.target.value)} placeholder="telecomadmin" className={INPUT} />
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground">Nueva clave admin (vacío = sin cambio)</label>
+              <div className="relative">
+                <input type={showWebPass ? 'text' : 'password'} value={webAdminPass} onChange={e => setWebAdminPass(e.target.value)}
+                  placeholder="••••••••" className={cn(INPUT, 'pr-8')} />
+                <button type="button" onClick={() => setShowWebPass(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showWebPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+          <button onClick={() => webMut.mutate()} disabled={webMut.isPending || (!webAdminUser && !webAdminPass)} className={cn(BTN_OUTLINE, 'ml-auto')}>
+            {webMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Aplicar acceso web
+          </button>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-5xl max-h-[92vh] flex flex-col bg-card border border-border rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+
+        {/* ── Header ── */}
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-border flex-shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+            <Radio className="w-5 h-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-foreground">ONU / Router</span>
+              <span className={cn('inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border border-border', ESTADO_CLS[estadoTxt] ?? 'text-foreground')}>
+                <span className={cn('w-1.5 h-1.5 rounded-full', ESTADO_DOT[estadoTxt] ?? 'bg-muted-foreground')} /> {estadoTxt}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground truncate">
+              <span className="font-mono">{sn}</span>
+              {cliente && <><span className="text-border">·</span><span className="truncate">{cliente}</span></>}
+            </div>
+          </div>
+          <button onClick={onClose} className="ml-auto p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent flex-shrink-0"><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* ── Vitals: datos clave siempre visibles (ERP/OLT, no dependen de TR-069) ── */}
+        <div className="flex items-stretch gap-4 px-5 py-2.5 border-b border-border bg-muted/20 overflow-x-auto flex-shrink-0">
+          <Vital label="OLT / Pos">{oltNombre ?? '—'} · 0/{slot ?? '–'}/{port ?? '–'}{onuId != null ? `·${onuId}` : ''}</Vital>
+          <div className="w-px bg-border/60 flex-shrink-0" />
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/70">Señal FTTH (Rx)</span>
+            <SenalFtthValor rxDbm={rxDbm} oltRxDbm={oltRxDbm} cargando={metricasFetching}
+              puedeLeer={puedeLeerMetricas} onLeer={() => refetchMetricas()} />
+          </div>
+          <div className="w-px bg-border/60 flex-shrink-0" />
+          <Vital label="TR-069">
+            {informing
+              ? <span className="inline-flex items-center gap-1 text-emerald-400"><Signal className="w-3 h-3" /> Online</span>
+              : <span className="text-amber-400">sin informar</span>}
+          </Vital>
+          <div className="w-px bg-border/60 flex-shrink-0" />
+          <Vital label="Uptime">
+            {informing ? <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3 text-muted-foreground" /> {fmtUptime(info?.uptimeSeconds)}</span> : '—'}
+          </Vital>
         </div>
 
         {/* ── Barra de acciones ── */}
-        <div className="flex items-center gap-2 flex-wrap px-4 py-3 border-b border-border bg-muted/20">
+        <div className="flex items-center gap-2 flex-wrap px-4 py-2.5 border-b border-border flex-shrink-0">
           <button onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending || isFetching || !informing} className={BTN_OUTLINE}>
             {(refreshMut.isPending || isFetching) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />} Refresh interfaces
           </button>
-          <button type="button" disabled title="Pendiente de integración" className={BTN_MAQUETA}>Show running-config</button>
-          <button type="button" disabled title="Pendiente de integración" className={BTN_MAQUETA}>SW info</button>
 
           {/* Toggle del carril TR-069 — solo para ONUs con registro FTTH (proveedor nativo) */}
           {contratoId && (
@@ -414,7 +530,7 @@ export function OnuDetalleTr069Modal({
                 ? 'Quitar la interface TR-069 de la ONU (conserva los datos ACS)'
                 : 'Crear la interface TR-069 en la ONU y escribir los datos ACS'}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded border transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md border transition-colors disabled:opacity-60 disabled:cursor-not-allowed',
                 carrilActivo
                   ? 'border-emerald-700/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
                   : carril === 'activacion_fallida' || carril === 'desactivacion_fallida'
@@ -434,16 +550,27 @@ export function OnuDetalleTr069Modal({
           )}
 
           <button onClick={() => setLive(v => !v)} disabled={!informing} className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
             live ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-muted text-muted-foreground hover:bg-accent border border-border',
           )}>
             <Zap className="w-3.5 h-3.5" /> LIVE{live ? '!' : ''}
+          </button>
+
+          <div className="flex-1" />
+
+          <button onClick={() => setPending('reboot')} disabled={rebootMut.isPending || !informing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-orange-500 hover:bg-orange-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <Power className="w-3.5 h-3.5" /> Reboot
+          </button>
+          <button onClick={() => setPending('factory')} disabled={factoryMut.isPending || !informing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-destructive hover:bg-destructive/90 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <RotateCcw className="w-3.5 h-3.5" /> Reset to factory
           </button>
         </div>
 
         {/* Confirmación de acciones destructivas */}
         {pending && (
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-destructive/5">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-destructive/5 flex-shrink-0">
             <span className="text-xs text-foreground flex-1">
               {pending === 'reboot'
                 ? `¿Reiniciar la ONU ${sn}? Perderá conexión ~1 min.`
@@ -452,7 +579,7 @@ export function OnuDetalleTr069Modal({
             <button onClick={() => setPending(null)} className={BTN_OUTLINE}>Cancelar</button>
             <button
               onClick={() => { (pending === 'reboot' ? rebootMut : factoryMut).mutate(); setPending(null); }}
-              className={cn('px-3 py-1.5 text-xs font-semibold rounded text-white',
+              className={cn('px-3 py-1.5 text-xs font-semibold rounded-md text-white',
                 pending === 'reboot' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-destructive hover:bg-destructive/90')}
             >
               {pending === 'reboot' ? 'Sí, reiniciar' : 'Sí, resetear'}
@@ -460,166 +587,59 @@ export function OnuDetalleTr069Modal({
           </div>
         )}
 
-        {/* ── Aviso cuando la ONU no informa: el acordeón vive de TR-069 ── */}
-        {!isLoading && !informing && (
-          <div className="px-5 py-6 text-center space-y-2 border-b border-border">
-            <Radio className="w-7 h-7 mx-auto text-muted-foreground/40" />
-            <p className="text-sm text-foreground font-medium">La ONU no está informando a GenieACS</p>
-            <p className="text-xs text-muted-foreground">
-              Los datos de arriba salen del ERP y de la OLT. Para ver y editar su configuración en vivo
-              hace falta el carril de gestión TR-069 activo (bootstrap DHCP Option 43).
-            </p>
-            <button onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending} className={cn(BTN_OUTLINE, 'mx-auto mt-1')}>
-              {refreshMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCcw className="w-3.5 h-3.5" />} Reintentar
-            </button>
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="flex items-center justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
-        )}
-
-        {/* ── Acordeón de secciones ── */}
-        {!isLoading && (
-          <div className="divide-y divide-border/60">
-            {SECCIONES.map(({ key, label, icon: Icon, real, nota }) => {
-              const open = expanded === key;
-              const bloqueada = real && !informing;
+        {/* ── Cuerpo: sidebar de secciones + panel de contenido ── */}
+        <div className="flex flex-1 min-h-0">
+          {/* Sidebar */}
+          <nav className="w-56 flex-shrink-0 border-r border-border overflow-y-auto bg-muted/10 py-1.5">
+            {SECCIONES.map(({ key, label, icon: Icon, real }) => {
+              const activo = key === active;
               return (
-                <div key={key}>
-                  <button onClick={() => toggle(key)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/30 transition-colors">
-                    <Icon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                    <span className="flex-1 text-xs text-foreground">{label}</span>
-                    {!real && (
-                      <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-dashed border-border/70 text-muted-foreground/70">
-                        maqueta
-                      </span>
-                    )}
-                    {open ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                  </button>
-
-                  {open && (
-                    <div className="px-5 py-4 bg-muted/10 border-t border-border/40">
-                      {!real ? (
-                        <Maqueta nota={nota ?? 'Sección aún no integrada.'} />
-                      ) : bloqueada ? (
-                        <p className="text-[11px] text-muted-foreground italic">
-                          Requiere que la ONU esté informando a GenieACS.
-                        </p>
-                      ) : key === 'general' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-                          <div>
-                            <Info label="Serial" value={<span className="font-mono">{info?.serial ?? sn}</span>} />
-                            <Info label="Fabricante" value={info?.manufacturer} />
-                            <Info label="Modelo" value={info?.modelName ?? info?.productClass} />
-                          </div>
-                          <div>
-                            <Info label="Firmware" value={info?.softwareVersion} />
-                            <Info label="Hardware" value={info?.hardwareVersion} />
-                            <Info label="Perfil soportado" value={info?.profileMatched
-                              ? <span className="text-emerald-400">sí (edición habilitada)</span>
-                              : <span className="text-amber-400">modelo sin perfil (solo lectura)</span>} />
-                          </div>
-                        </div>
-                      ) : key === 'ppp' ? (
-                        <div className="space-y-2">
-                          {data?.ppp?.length ? data.ppp.map(p => (
-                            <div key={p.index} className="text-[11px] text-muted-foreground">
-                              WAN {p.index}: <span className="text-foreground font-mono">{p.username ?? '—'}</span>
-                              {p.connectionStatus && <span className={cn('ml-2 px-1.5 rounded border', p.connectionStatus === 'Connected' ? 'text-emerald-400 border-emerald-700/40 bg-emerald-500/10' : 'text-amber-400 border-amber-700/40 bg-amber-500/10')}>{p.connectionStatus}</span>}
-                              {p.externalIp && <span className="ml-2 font-mono">{p.externalIp}</span>}
-                            </div>
-                          )) : <p className="text-[11px] text-muted-foreground italic">Sin conexión PPPoE instanciada en la ONU.</p>}
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                            <div>
-                              <label className="text-[10px] text-muted-foreground">Usuario PPPoE</label>
-                              <input value={pppUser} onChange={e => setPppUser(e.target.value)} placeholder="usuario" className={INPUT} />
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-muted-foreground">Clave PPPoE (vacío = sin cambio)</label>
-                              <div className="relative">
-                                <input type={showPppPass ? 'text' : 'password'} value={pppPass} onChange={e => setPppPass(e.target.value)}
-                                  placeholder="••••••••" className={cn(INPUT, 'pr-8')} />
-                                <button type="button" onClick={() => setShowPppPass(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                                  {showPppPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <button onClick={() => pppMut.mutate()} disabled={pppMut.isPending || (!pppUser && !pppPass)} className={cn(BTN_OUTLINE, 'ml-auto')}>
-                            {pppMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Aplicar PPPoE
-                          </button>
-                        </div>
-                      ) : key === 'wlan1' ? (
-                        <WifiEditor sn={sn} band="2.4" current={data?.wifi?.find(w => w.band === '2.4')} onSaved={() => refetch()} />
-                      ) : key === 'wlan5' ? (
-                        <WifiEditor sn={sn} band="5" current={data?.wifi?.find(w => w.band === '5')} onSaved={() => refetch()} />
-                      ) : key === 'hosts' ? (
-                        <HostsSection hosts={data?.hosts ?? []} />
-                      ) : key === 'security' ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                            <KeyRound className="w-3.5 h-3.5 text-primary" /> Credenciales de acceso web (admin de la ONU)
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[10px] text-muted-foreground">Usuario admin</label>
-                              <input value={webAdminUser} onChange={e => setWebAdminUser(e.target.value)} placeholder="telecomadmin" className={INPUT} />
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-muted-foreground">Nueva clave admin (vacío = sin cambio)</label>
-                              <div className="relative">
-                                <input type={showWebPass ? 'text' : 'password'} value={webAdminPass} onChange={e => setWebAdminPass(e.target.value)}
-                                  placeholder="••••••••" className={cn(INPUT, 'pr-8')} />
-                                <button type="button" onClick={() => setShowWebPass(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                                  {showWebPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <button onClick={() => webMut.mutate()} disabled={webMut.isPending || (!webAdminUser && !webAdminPass)} className={cn(BTN_OUTLINE, 'ml-auto')}>
-                            {webMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Aplicar acceso web
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
+                <button key={key} onClick={() => setActive(key)}
+                  className={cn(
+                    'w-full flex items-center gap-2.5 px-3.5 py-2 text-left transition-colors border-l-2',
+                    activo
+                      ? 'bg-primary/10 border-primary text-foreground'
+                      : 'border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+                  )}>
+                  <Icon className={cn('w-4 h-4 flex-shrink-0', activo ? 'text-primary' : '')} />
+                  <span className="flex-1 text-[11px] truncate">{label}</span>
+                  {!real && (
+                    <span className="text-[8px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded border border-dashed border-border/70 text-muted-foreground/60">
+                      maq
+                    </span>
                   )}
-                </div>
+                </button>
               );
             })}
+          </nav>
+
+          {/* Panel de contenido */}
+          <div className="flex-1 overflow-y-auto min-w-0">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <div className="px-5 py-4">
+                <SeccionHeader icon={SecIcon} label={seccion.label} hint={!seccion.real ? 'maqueta' : undefined} />
+                {renderContenido()}
+
+                {/* File Download — maqueta, ligada a la sección de firmware */}
+                {seccion.key === 'firmware' && (
+                  <div className="mt-4 flex items-center gap-3 flex-wrap rounded-lg border border-dashed border-border/70 bg-muted/10 px-3 py-3">
+                    <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
+                      <Lock className="w-3 h-3" /> File Download (ACS → ONU)
+                    </span>
+                    <select value={fwFile} onChange={e => setFwFile(e.target.value)} disabled
+                      className="flex-1 min-w-[180px] max-w-xs px-3 py-1.5 text-xs border border-dashed border-border/70 rounded-lg bg-background text-muted-foreground/70 cursor-not-allowed">
+                      <option value="">— pendiente de integración —</option>
+                    </select>
+                    <button type="button" disabled className={BTN_MAQUETA}>
+                      <Download className="w-3.5 h-3.5" /> Start download
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
-
-        {/* ── File Download (maqueta) ── */}
-        <div className="flex items-center gap-3 px-4 py-3 border-t border-border bg-muted/10 flex-wrap">
-          <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap flex items-center gap-1.5">
-            <Lock className="w-3 h-3" /> File Download (ACS → ONU)
-          </span>
-          <select value={fwFile} onChange={e => setFwFile(e.target.value)} disabled
-            className="flex-1 min-w-[180px] max-w-xs px-3 py-1.5 text-xs border border-dashed border-border/70 rounded-lg bg-background text-muted-foreground/70 cursor-not-allowed">
-            <option value="">— pendiente de integración —</option>
-          </select>
-          <button type="button" disabled className={BTN_MAQUETA}>
-            <Download className="w-3.5 h-3.5" /> Start download
-          </button>
-        </div>
-
-        {/* ── Acciones finales ── */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-muted/10 flex-wrap">
-          <button onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending || isFetching || !informing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <RefreshCcw className="w-3.5 h-3.5" /> Refresh interfaces
-          </button>
-          <button onClick={() => setPending('reboot')} disabled={rebootMut.isPending || !informing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-orange-500 hover:bg-orange-600 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <Power className="w-3.5 h-3.5" /> Reboot
-          </button>
-          <button onClick={() => setPending('factory')} disabled={factoryMut.isPending || !informing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-destructive hover:bg-destructive/90 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <RotateCcw className="w-3.5 h-3.5" /> Reset to factory
-          </button>
         </div>
       </div>
     </div>
