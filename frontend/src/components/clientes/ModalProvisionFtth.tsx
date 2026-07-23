@@ -21,6 +21,7 @@ import {
 import type { Contrato } from '@/types';
 import { Portal } from '@/components/ui/portal';
 import { useProcedimientoWizard } from '@/hooks/useProcedimientoWizard';
+import { SenalFtthValor } from '@/components/red/onus/SenalFtthValor';
 
 // ─── Estado badge ─────────────────────────────────────────────
 
@@ -61,6 +62,20 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
 }) {
   const btnCls = 'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50';
   const canDesaprov = registro.estado === 'activo' || registro.estado === 'gpon_registrado' || registro.estado === 'wan_inyectado' || registro.estado === 'suspendido';
+
+  // Señal óptica en vivo, igual que en el modal Ver detalle de /red/olt: refresco cada 10 s
+  // mientras el panel está montado; detenido en segundo plano (cada lectura es SSH a la OLT).
+  const puedeLeerSenal = Boolean(registro.oltId && registro.slot != null && registro.port != null && registro.onuId != null);
+  const { data: metricasSenal, isFetching: senalFetching, refetch: refetchSenal } = useQuery({
+    queryKey: ['onu-metricas', registro.oltId, registro.slot, registro.port, registro.onuId],
+    queryFn:  () => oltNativoApi.metricas(registro.oltId, { slot: registro.slot, port: registro.port, onuId: registro.onuId, sn: registro.sn }),
+    enabled:  puedeLeerSenal,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
+    staleTime: 8_000,
+  });
+  const rxSenal = metricasSenal?.rxPowerDbm ?? null;
+
   return (
     <div className="rounded-xl border border-border bg-card p-3 space-y-2.5">
       <div className="flex items-center justify-between">
@@ -76,6 +91,13 @@ function EstadoPanel({ registro, onDesaprovisionar, isDesaprovisionandoPending, 
         <span className="font-mono">{registro.vlan}</span>
         <span className="text-muted-foreground">Intentos GPON / WAN</span>
         <span>{registro.intentosGpon} / {registro.intentosWan}</span>
+      </div>
+
+      {/* Señal FTTH — mismo formato y tamaño que el modal Ver detalle */}
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Señal FTTH</span>
+        <SenalFtthValor rxDbm={rxSenal} cargando={senalFetching}
+          puedeLeer={puedeLeerSenal} onLeer={() => refetchSenal()} />
       </div>
       {registro.ultimoError && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-700/40 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">

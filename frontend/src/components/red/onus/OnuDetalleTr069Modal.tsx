@@ -11,7 +11,7 @@ import {
 import { oltNativoApi, type OnuTr069Detalle, type OnuWifiBand, type OnuHost, type FtthOnuRegistro } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
-import { clasificarSenalFtth } from '@/lib/senal-ftth';
+import { SenalFtthValor } from './SenalFtthValor';
 
 // ─────────────────────────────────────────────────────────────
 // Modal "Ver detalle ONU" — layout unificado con la vista ONU/Router.
@@ -247,7 +247,6 @@ export function OnuDetalleTr069Modal({
   });
   // La señal en vivo manda; el valor del inventario (si lo hubiera) queda de respaldo.
   const rxDbm = metricas?.rxPowerDbm ?? rxPowerDbm ?? null;
-  const senal = clasificarSenalFtth(rxDbm);
 
   const refreshMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069Refresh(sn),
@@ -354,19 +353,8 @@ export function OnuDetalleTr069Modal({
               ? <span className={cn('font-semibold', ESTADO_CLS[estadoOperativo] ?? 'text-foreground')}>{estadoOperativo}</span>
               : undefined} />
             <Info label="Señal FTTH (Rx)" value={
-              rxDbm != null ? (
-                <span className="inline-flex items-center gap-2">
-                  <span className={cn('font-mono font-semibold', senal.colorCls)}>{rxDbm.toFixed(2)} dBm</span>
-                  <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded border', senal.badgeCls)}>
-                    {senal.label}
-                  </span>
-                  {metricasFetching && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
-                </span>
-              ) : metricasFetching ? (
-                <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin" /> leyendo…</span>
-              ) : puedeLeerMetricas ? (
-                <button onClick={() => refetchMetricas()} className="text-[11px] text-primary hover:underline">Leer señal</button>
-              ) : undefined
+              <SenalFtthValor rxDbm={rxDbm} cargando={metricasFetching}
+                puedeLeer={puedeLeerMetricas} onLeer={() => refetchMetricas()} />
             } />
             <Info label="Attached VLANs" value={registro?.vlan ?? undefined} />
             <Info label="ONU mode" value={registro?.wanMode} />
