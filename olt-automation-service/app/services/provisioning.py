@@ -1704,6 +1704,10 @@ def reset_huawei_onu(
     raw_output = _paramiko_huawei_run(conn, commands, timeout=settings.ssh_command_timeout)
     _check_cli_error(conn.brand, 'reset_huawei_onu', raw_output)
 
+    # DIAGNÓSTICO TEMPORAL: registrar la salida cruda para confirmar si el prompt de
+    # confirmación (y/n) se auto-respondió y el reset se ejecutó de verdad.
+    logger.info('reset_huawei_onu RAW <<<%s>>>', (raw_output or '')[-1200:].replace('\r', ''))
+
     logger.info('reset_huawei_onu: ONU slot=%d port=%d onu_id=%d reiniciada en %s', slot, port, onu_id, conn.ip)
     return {
         'success': True,
