@@ -502,6 +502,28 @@ export class OltNativoService implements OnModuleInit {
     if (dto.ipGestion && dto.ipGestion !== olt.ipGestion) {
       await this._validarIpUnica(dto.ipGestion, empresaId, id);
     }
+
+    // Guard pesimista: no cambiar conectividad debajo de una operación FTTH en
+    // vuelo (provisión/desaprovisión) contra esta OLT — cambiaría las
+    // credenciales a mitad de una secuencia CLI.
+    const tocaConectividad =
+      dto.ipGestion !== undefined || dto.puerto !== undefined ||
+      dto.usuarioAnclado !== undefined || dto.contrasena !== undefined;
+    if (tocaConectividad) {
+      const [{ count }] = await this.ds.query<[{ count: string }]>(
+        `SELECT COUNT(*) AS count
+           FROM ftth_operacion_lock l
+           JOIN ftth_onu_registro r ON r.contrato_id = l.contrato_id AND r.deleted_at IS NULL
+          WHERE r.olt_id = $1 AND l.expira_en > NOW()`,
+        [id],
+      );
+      if (Number(count) > 0) {
+        throw new ConflictException(
+          `Hay ${count} operación(es) FTTH en curso contra esta OLT. ` +
+          'Espera a que terminen antes de cambiar IP o credenciales.',
+        );
+      }
+    }
     const { contrasena, ...rest } = dto;
     if (contrasena) {
       olt.contrasenaCifrada = encrypt(contrasena);
