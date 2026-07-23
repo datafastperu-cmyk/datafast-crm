@@ -247,6 +247,10 @@ export function TabBaseline({ oltId }: { oltId: string }) {
         con aprobación explícita.
       </p>
 
+      {/* Dos columnas responsive: izquierda declara (estándar + asignación),
+          derecha ejecuta (plan de convergencia). Apila en pantallas menores. */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+      <div className="space-y-4">
       {/* Estándar canónico del ERP — directriz "inyectar desde cero" */}
       <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-2">
         <p className="text-sm font-semibold flex items-center gap-2">
@@ -356,6 +360,19 @@ export function TabBaseline({ oltId }: { oltId: string }) {
         )}
       </div>
 
+      </div>
+
+      <div className="space-y-4">
+        {baselineId
+          ? <PlanPanel oltId={oltId} />
+          : (
+            <p className="text-xs text-muted-foreground rounded-xl border border-border p-4">
+              Asigna un baseline para generar el plan de convergencia.
+            </p>
+          )}
+      </div>
+      </div>
+
       <BaselineEditorModal
         open={mostrarForm}
         base={asignado}
@@ -365,8 +382,6 @@ export function TabBaseline({ oltId }: { oltId: string }) {
           qc.invalidateQueries({ queryKey: ['olt-baselines'] });
         }}
       />
-
-      {baselineId && <PlanPanel oltId={oltId} />}
     </div>
   );
 }

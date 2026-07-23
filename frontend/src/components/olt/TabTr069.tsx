@@ -63,7 +63,7 @@ export function TabTr069({ oltId }: { oltId: string }) {
   }
 
   return (
-    <div className="max-w-2xl space-y-5">
+    <div className="space-y-5">
       <div className="flex items-start gap-3">
         <Radio className="w-5 h-5 text-primary mt-0.5" />
         <div>
@@ -76,69 +76,75 @@ export function TabTr069({ oltId }: { oltId: string }) {
         </div>
       </div>
 
-      {/* Habilitado */}
-      <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/20 cursor-pointer">
-        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} className="w-4 h-4 accent-primary" />
-        <div>
-          <span className="text-sm font-medium text-foreground">TR-069 habilitado en esta OLT</span>
-          <p className="text-xs text-muted-foreground">Si está desactivado, el bootstrap TR-069 no se ofrece para sus ONUs.</p>
-        </div>
-      </label>
+      {/* Dos columnas responsive: izquierda lo editable por OLT, derecha la
+          config ACS del ERP (solo lectura). Apila en pantallas menores. */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+        <div className="rounded-xl border border-border p-4 space-y-4">
+          {/* Habilitado */}
+          <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/20 cursor-pointer">
+            <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} className="w-4 h-4 accent-primary" />
+            <div>
+              <span className="text-sm font-medium text-foreground">TR-069 habilitado en esta OLT</span>
+              <p className="text-xs text-muted-foreground">Si está desactivado, el bootstrap TR-069 no se ofrece para sus ONUs.</p>
+            </div>
+          </label>
 
-      {/* Parámetros de red — editables por OLT */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">VLAN de gestión</label>
-          <input value={mgmtVlan} onChange={e => setMgmtVlan(e.target.value.replace(/[^0-9]/g, ''))} placeholder="1600" inputMode="numeric" className={inputCls} />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Gateway de gestión (IP estática)</label>
-          <input value={mgmtGateway} onChange={e => setMgmtGateway(e.target.value)} placeholder="10.16.0.1" className={inputCls} />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Máscara de gestión</label>
-          <input value={mgmtMask} onChange={e => setMgmtMask(e.target.value)} placeholder="255.255.255.0" className={inputCls} />
-        </div>
-      </div>
+          {/* Parámetros de red — editables por OLT */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">VLAN de gestión</label>
+              <input value={mgmtVlan} onChange={e => setMgmtVlan(e.target.value.replace(/[^0-9]/g, ''))} placeholder="1600" inputMode="numeric" className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Gateway de gestión (IP estática)</label>
+              <input value={mgmtGateway} onChange={e => setMgmtGateway(e.target.value)} placeholder="10.16.0.1" className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Máscara de gestión</label>
+              <input value={mgmtMask} onChange={e => setMgmtMask(e.target.value)} placeholder="255.255.255.0" className={inputCls} />
+            </div>
+          </div>
 
-      {/* Config ACS — definida por el ERP, solo lectura */}
-      <div className="pt-2 border-t border-border">
-        <h4 className="text-xs font-semibold text-foreground mt-3 flex items-center gap-1.5">
-          <Lock className="w-3 h-3" /> Config ACS (definida por el ERP)
-        </h4>
-        <p className="text-xs text-muted-foreground mt-0.5 mb-3">
-          Estos valores vienen del servidor (.env) y aplican a todas las OLTs de esta instalación.
-          No son editables desde aquí — si necesitas cambiarlos, contacta al administrador del ERP.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="sm:col-span-2">
-            <label className="text-xs font-medium text-muted-foreground">ACS URL (CWMP)</label>
-            <input value={data?.acsUrl ?? ''} readOnly disabled className={lockedInputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Usuario ACS</label>
-            <input value={data?.acsUsername ?? ''} readOnly disabled className={lockedInputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Clave ACS</label>
-            <input value={data?.acsPassword ?? ''} readOnly disabled className={lockedInputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Usuario Connection Request</label>
-            <input value={data?.connReqUsername ?? ''} readOnly disabled className={lockedInputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Clave Connection Request</label>
-            <input value={data?.connReqPassword ?? ''} readOnly disabled className={lockedInputCls} />
+          <div className="flex justify-end">
+            <button onClick={() => mut.mutate()} disabled={mut.isPending}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40">
+              {mut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar perfil
+            </button>
           </div>
         </div>
-      </div>
 
-      <div className="flex justify-end">
-        <button onClick={() => mut.mutate()} disabled={mut.isPending}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40">
-          {mut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar perfil
-        </button>
+        {/* Config ACS — definida por el ERP, solo lectura */}
+        <div className="rounded-xl border border-border p-4">
+          <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <Lock className="w-3 h-3" /> Config ACS (definida por el ERP)
+          </h4>
+          <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+            Estos valores vienen del servidor (.env) y aplican a todas las OLTs de esta instalación.
+            No son editables desde aquí — si necesitas cambiarlos, contacta al administrador del ERP.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-muted-foreground">ACS URL (CWMP)</label>
+              <input value={data?.acsUrl ?? ''} readOnly disabled className={lockedInputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Usuario ACS</label>
+              <input value={data?.acsUsername ?? ''} readOnly disabled className={lockedInputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Clave ACS</label>
+              <input value={data?.acsPassword ?? ''} readOnly disabled className={lockedInputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Usuario Connection Request</label>
+              <input value={data?.connReqUsername ?? ''} readOnly disabled className={lockedInputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Clave Connection Request</label>
+              <input value={data?.connReqPassword ?? ''} readOnly disabled className={lockedInputCls} />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -66,6 +66,8 @@ export function TabDrift({ oltId }: { oltId: string }) {
         </div>
       )}
 
+      {/* Dos columnas responsive; apila en pantallas menores */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
       {/* 1. En ERP, no en OLT → push (re-aprovisionar) */}
       {d.enErpNoEnOlt.length > 0 && (
         <section className="rounded-xl border border-red-700/40 overflow-hidden">
@@ -161,6 +163,7 @@ export function TabDrift({ oltId }: { oltId: string }) {
           </div>
         </section>
       )}
+      </div>
     </div>
   );
 }

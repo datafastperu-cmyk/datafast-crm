@@ -115,7 +115,8 @@ export function TabCompliance({ oltId }: { oltId: string }) {
         en la OLT hasta el próximo sync.
       </p>
 
-      <div className="space-y-2">
+      {/* Dos columnas responsive; apila en pantallas menores */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 items-start">
         {data.checks.map((check) => {
           const Icon = SEVERIDAD_ICON[check.severidad];
           return (

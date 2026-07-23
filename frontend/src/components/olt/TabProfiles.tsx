@@ -110,7 +110,8 @@ function LineProfilesManager({ oltId, lineProfiles }: { oltId: string; lineProfi
   });
 
   return (
-    <div className="space-y-3">
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+      <div className="space-y-3">
       <div className="rounded-xl border border-border p-3 flex flex-wrap items-end gap-2">
         <div>
           <label className="block text-[11px] text-muted-foreground mb-1">Nombre (sello automático)</label>
@@ -134,9 +135,15 @@ function LineProfilesManager({ oltId, lineProfiles }: { oltId: string; lineProfi
           Crear en la OLT
         </button>
       </div>
+      <p className="text-[11px] text-muted-foreground">
+        El line-profile canónico DataFast se crea con mapping-mode priority (802.1p flexible,
+        multi-VLAN), TR-069 habilitado y un DBA propio type4 (best-effort). Los preexistentes
+        nunca se tocan; la OLT además rechaza eliminar cualquiera con ONTs asociadas.
+      </p>
+      </div>
 
       {lineProfiles.length === 0 ? <EmptyProfiles label="perfiles de línea" /> : (
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="rounded-xl border border-border overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
@@ -179,11 +186,6 @@ function LineProfilesManager({ oltId, lineProfiles }: { oltId: string; lineProfi
           </table>
         </div>
       )}
-      <p className="text-[11px] text-muted-foreground">
-        El line-profile canónico DataFast se crea con mapping-mode priority (802.1p flexible,
-        multi-VLAN), TR-069 habilitado y un DBA propio type4 (best-effort). Los preexistentes
-        nunca se tocan; la OLT además rechaza eliminar cualquiera con ONTs asociadas.
-      </p>
     </div>
   );
 }
@@ -222,7 +224,8 @@ export function TiposOnuManager({ oltId, srvProfiles }: { oltId: string; srvProf
   });
 
   return (
-    <div className="space-y-3">
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+      <div className="space-y-3">
       <div className="rounded-xl border border-border p-3 flex flex-wrap items-end gap-2">
         <div>
           <label className="block text-[11px] text-muted-foreground mb-1">Modelo de ONU (sello automático)</label>
@@ -252,9 +255,15 @@ export function TiposOnuManager({ oltId, srvProfiles }: { oltId: string; srvProf
           Crear en la OLT
         </button>
       </div>
+      <p className="text-[11px] text-muted-foreground">
+        El tipo de ONU (ont-srvprofile) describe el modelo físico del equipo del cliente
+        (puertos ETH, telefonía, CATV). Los preexistentes nunca se tocan; la OLT además
+        rechaza eliminar cualquiera con ONTs asociadas.
+      </p>
+      </div>
 
       {srvProfiles.length === 0 ? <EmptyProfiles label="tipos de ONU" /> : (
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="rounded-xl border border-border overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
@@ -294,11 +303,6 @@ export function TiposOnuManager({ oltId, srvProfiles }: { oltId: string; srvProf
           </table>
         </div>
       )}
-      <p className="text-[11px] text-muted-foreground">
-        El tipo de ONU (ont-srvprofile) describe el modelo físico del equipo del cliente
-        (puertos ETH, telefonía, CATV). Los preexistentes nunca se tocan; la OLT además
-        rechaza eliminar cualquiera con ONTs asociadas.
-      </p>
     </div>
   );
 }
@@ -336,7 +340,8 @@ function VelocidadesManager({ oltId, trafficTables }: { oltId: string; trafficTa
   });
 
   return (
-    <div className="space-y-3">
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+      <div className="space-y-3">
       {/* Agregar velocidad — sello DATAFAST forzado, CIR=PIR simétrico */}
       <div className="rounded-xl border border-border p-3 flex flex-wrap items-end gap-2">
         <div>
@@ -362,9 +367,14 @@ function VelocidadesManager({ oltId, trafficTables }: { oltId: string; trafficTa
         </button>
         {kbps > 0 && <span className="text-[11px] text-muted-foreground">= {kbps} kbps CIR/PIR</span>}
       </div>
+      <p className="text-[11px] text-muted-foreground">
+        Las preexistentes nunca se tocan. Si una velocidad nueva se vuelve estándar del negocio,
+        agrégala también al Baseline (versión nueva) para que toda OLT futura la reciba.
+      </p>
+      </div>
 
       {trafficTables.length === 0 ? <EmptyProfiles label="traffic tables" /> : (
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="rounded-xl border border-border overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
@@ -406,10 +416,6 @@ function VelocidadesManager({ oltId, trafficTables }: { oltId: string; trafficTa
           </table>
         </div>
       )}
-      <p className="text-[11px] text-muted-foreground">
-        Las preexistentes nunca se tocan. Si una velocidad nueva se vuelve estándar del negocio,
-        agrégala también al Baseline (versión nueva) para que toda OLT futura la reciba.
-      </p>
     </div>
   );
 }
