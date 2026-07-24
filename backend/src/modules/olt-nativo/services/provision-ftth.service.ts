@@ -767,6 +767,13 @@ export class ProvisionFtthService {
     // escribe el carril. TTL amplio para cubrir la ventana de convergencia (6 min).
     const token = await this.opLock.adquirir(contratoId, 'tr069', 480);
 
+    // Romper un posible deadlock de auth CWMP al revivir: si el device quedó `AuthEnforced` sin el
+    // HMAC materializado (p.ej. tras un factory reset), su Inform de recuperación se rechaza por
+    // auth y la sesión NUNCA revive. Se retira el tag (gracia) para desbloquear ese Inform;
+    // enforceDeviceAuth (VIO) lo re-agrega al cerrar la re-provisión. Idempotente (no-op sin tag).
+    const gDev = await this.genieDriver.findDeviceIdBySerial(registro.sn).catch((): null => null);
+    if (gDev) await this.genieDriver.grantAuthGrace(gDev).catch(() => { /* best-effort */ });
+
     await this.ftthRepo.update(registro.id, {
       carrilEstado: FtthCarrilEstado.ACTIVANDO,
       tr069UltimoUsoAt: new Date(),

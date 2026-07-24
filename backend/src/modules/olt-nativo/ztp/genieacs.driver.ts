@@ -126,9 +126,55 @@ export class GenieAcsDriver {
         return { ok: false, reason: `fault:${fault}` };
       }
     }
+    // VIO (incidente 2026-07-24, fase 2): "aceptado ≠ materializado". El write de
+    // ManagementServer.Password es write-only y puede no aterrizar (race con el connreq); si se
+    // taggeara AuthEnforced sin que el HMAC viva de verdad en la ONU, el próximo Inform se
+    // rechazaría por auth → deadlock re-creado. Por eso: se fija el tag, se fuerza una sesión y se
+    // CONFIRMA que llega un Inform fresco (=autenticó con el HMAC bajo enforcement). Cualquier
+    // avance de lastInform con el tag puesto prueba que la clave funciona. Si no se confirma en la
+    // ventana → ROLLBACK del tag (queda zero-touch, gestionable; el próximo reconcile reintenta).
     await this.nbi.addTag(deviceId, 'AuthEnforced');
-    this.logger.log(`enforceDeviceAuth | device=${deviceId} auth CWMP endurecida + Tag AuthEnforced`);
+    const antes = await this._lastInformMs(deviceId);
+    const confirmado = await this._verificarInformEndurecido(deviceId, antes);
+    if (!confirmado) {
+      await this.nbi.removeTag(deviceId, 'AuthEnforced').catch(() => {});
+      this.logger.warn(
+        `enforceDeviceAuth | device=${deviceId} VIO NO confirmado: ningún Inform autenticó con el ` +
+        `HMAC bajo enforcement — Tag AuthEnforced revertido (queda zero-touch, se reintenta).`,
+      );
+      return { ok: false, reason: 'vio_no_confirmado' };
+    }
+    this.logger.log(`enforceDeviceAuth | device=${deviceId} auth CWMP endurecida + VIO confirmado + Tag AuthEnforced`);
     return { ok: true };
+  }
+
+  /** lastInform del device en ms (null si no existe/nunca informó). */
+  private async _lastInformMs(deviceId: string): Promise<number | null> {
+    const dev = await this.nbi.getDevice(deviceId).catch(() => null);
+    const li = dev?._lastInform;
+    const t = li ? new Date(li).getTime() : NaN;
+    return Number.isFinite(t) ? t : null;
+  }
+
+  /**
+   * VIO de la auth endurecida: fuerza una sesión CWMP (connection-request) y confirma que
+   * llega un Inform MÁS NUEVO que `antesMs`. Con el Tag ya puesto, un Inform fresco sólo puede
+   * existir si la ONU autenticó con el HMAC correcto. El connreq de GenieACS bloquea hasta que
+   * la sesión se completa o expira (CPE frío ~30-60s), así que un connreq + settle basta; se
+   * reintenta una vez por si el CPE estaba dormido. NO relanza — es best-effort verificable.
+   */
+  private async _verificarInformEndurecido(deviceId: string, antesMs: number | null): Promise<boolean> {
+    for (let intento = 0; intento < 2; intento++) {
+      await this.nbi.queueTask(
+        deviceId,
+        { name: 'getParameterValues', parameterNames: ['InternetGatewayDevice.DeviceInfo.UpTime'] },
+        true,
+      ).catch(() => { /* connreq puede fallar/expirar; lo decide la lectura de lastInform */ });
+      await this._sleep(3000);
+      const ahora = await this._lastInformMs(deviceId);
+      if (ahora != null && (antesMs == null || ahora > antesMs)) return true;
+    }
+    return false;
   }
 
   /**
