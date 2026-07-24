@@ -11,6 +11,7 @@ import { filterByCapabilities } from './capability.engine';
 import { resolve } from './resolver';
 import { DeviceRuntime, getParameterMap, matchDeviceProfile } from './registry';
 import { GenieAcsDriver } from './genieacs.driver';
+import { getTr069AcsUsername, getTr069AcsPassword } from '../../../config/tr069-acs.config';
 import { ContratoOnuConfigService } from './contrato-onu-config.service';
 import { CwmpAuthService } from './cwmp-auth.service';
 
@@ -68,20 +69,23 @@ export class ZtpProvisioningService {
       [contratoId, empresaId],
     );
 
-    // Modo WAN de la ONU + perfil TR-069 de su OLT (credenciales CWMP para auth ONU→ACS).
+    // Modo WAN de la ONU + si su OLT tiene TR-069 habilitado.
     const [reg] = await this.ds.query<{
       wan_mode: string | null;
       tr069_enabled: boolean | null;
-      tr069_acs_username: string | null;
-      tr069_acs_password: string | null;
     }[]>(
-      `SELECT r.wan_mode, o.tr069_enabled, o.tr069_acs_username, o.tr069_acs_password
+      `SELECT r.wan_mode, o.tr069_enabled
        FROM   ftth_onu_registro r
        JOIN   olt_dispositivos  o ON o.id = r.olt_id
        WHERE  r.contrato_id = $1 AND r.empresa_id = $2`,
       [contratoId, empresaId],
     );
     const esRouting = (reg?.wan_mode ?? 'bridge') === 'routing';
+
+    // Credenciales CWMP (auth ONU→ACS): GLOBALES por VPS (.env), ya no por-OLT — las columnas
+    // tr069_acs_* se dropearon (migración 1791800000007) al centralizarlas en tr069-acs.config.
+    const acsUsername = getTr069AcsUsername();
+    const acsPassword = getTr069AcsPassword();
 
     const wifiOn = cfg.wifiEnabled && !!cfg.wifiSsid;
     const pppoe  = esRouting && !!c?.usuario_pppoe;
@@ -104,10 +108,10 @@ export class ZtpProvisioningService {
         ? { enabled: true, type: 'pppoe', username: c!.usuario_pppoe!,
             password: this._dec(c!.password_pppoe), vlan: c!.vlan_id ?? undefined }
         : { enabled: false, type: 'bridge' },
-      management: reg?.tr069_enabled && (!!reg?.tr069_acs_username || !!cfg.connReqUsername)
+      management: reg?.tr069_enabled && (!!acsUsername || !!cfg.connReqUsername)
         ? {
-            acsUsername: reg.tr069_acs_username ?? undefined,
-            acsPassword: this._dec(reg.tr069_acs_password),
+            acsUsername: acsUsername || undefined,
+            acsPassword: acsPassword || undefined,
             connReqUsername: cfg.connReqUsername ?? undefined,
             connReqPassword: this._dec(cfg.connReqPassword),
           }
