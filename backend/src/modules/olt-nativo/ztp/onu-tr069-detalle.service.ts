@@ -274,12 +274,46 @@ export class OnuTr069DetalleService {
   // (2026-07-18): ~80-90s de punta a punta, por encima de cualquier timeout HTTP razonable
   // para una request síncrona del panel. Se encola SIN esperar el connection_request
   // completo: responde de inmediato, la ejecución real ocurre en segundo plano.
+  // ── VIO (aceptado ≠ materializado) ────────────────────────────────────────
+  // Encolar el task en GenieACS solo confirma "aceptado". Un reboot/factory-reset se
+  // MATERIALIZA cuando la ONU efectivamente reinicia y vuelve a informar con el uptime
+  // reseteado. Verificado en hardware 2026-07-23: tras un factory-reset por TR-069 la ONU
+  // re-informó sola a los ~137s. Esta verificación corre en segundo plano (la operación es
+  // asíncrona, ~1-3 min, por encima de cualquier timeout HTTP) y deja constancia server-side
+  // de si materializó o NO — nunca un éxito silencioso. Si la sesión estaba rancia/muerta y
+  // el task no se entregó, la ONU no re-informa con uptime bajo → queda registrado como NO
+  // confirmado (que es la verdad).
+  private async _verificarReinicioVIO(deviceId: string, serial: string, tipo: 'reboot' | 'factory'): Promise<void> {
+    const dev0 = await this.nbi.getDevice(deviceId).catch(() => null);
+    const lastInform0 = dev0?._lastInform ? new Date(dev0._lastInform).getTime() : 0;
+    const uptime0 = Number(this._val(dev0, 'InternetGatewayDevice.DeviceInfo.UpTime')) || 0;
+
+    const INTENTOS = 12, ESPERA_MS = 20_000; // ~4 min
+    for (let i = 0; i < INTENTOS; i++) {
+      await new Promise((r) => setTimeout(r, ESPERA_MS));
+      const dev = await this.nbi.getDevice(deviceId).catch(() => null);
+      if (!dev) continue;
+      const li = dev._lastInform ? new Date(dev._lastInform).getTime() : 0;
+      const up = Number(this._val(dev, 'InternetGatewayDevice.DeviceInfo.UpTime')) || 0;
+      // Materializó: re-informó (lastInform avanzó) con uptime reiniciado (bajó, o < 5 min).
+      if (li > lastInform0 && (up < uptime0 || up < 300)) {
+        this.logger.log(`VIO ${tipo} ONU ${serial}: CONFIRMADO — re-informó con uptime=${up}s (baseline ${uptime0}s) en ~${((i + 1) * ESPERA_MS) / 1000}s`);
+        return;
+      }
+    }
+    this.logger.warn(
+      `VIO ${tipo} ONU ${serial}: NO CONFIRMADO — la ONU no volvió a informar con uptime reiniciado en ~4 min. ` +
+      `La operación pudo NO materializarse (sesión TR-069 rancia/muerta o el CPE no obedeció).`,
+    );
+  }
+
   async reboot(serial: string): Promise<{ ok: boolean; mensaje: string }> {
     const deviceId = await this._deviceIdOrThrow(serial);
     this.nbi.queueTask(deviceId, { name: 'reboot' }, true)
       .then((res) => this.logger.warn(`Reboot ONU ${serial} (device=${deviceId}) status=${res.status}`))
       .catch((err) => this.logger.warn(`Reboot ONU ${serial} (device=${deviceId}) falló: ${err?.message}`));
-    return { ok: true, mensaje: `Reboot enviado a la ONU ${serial} — puede tardar 1-2 min en aplicarse.` };
+    void this._verificarReinicioVIO(deviceId, serial, 'reboot');
+    return { ok: true, mensaje: `Reinicio ACEPTADO por la ONU ${serial} — verificando materialización (debe reiniciar y volver a informar en ~1-3 min).` };
   }
 
   async factoryReset(serial: string): Promise<{ ok: boolean; mensaje: string }> {
@@ -287,6 +321,7 @@ export class OnuTr069DetalleService {
     this.nbi.queueTask(deviceId, { name: 'factoryReset' }, true)
       .then((res) => this.logger.warn(`FactoryReset ONU ${serial} (device=${deviceId}) status=${res.status}`))
       .catch((err) => this.logger.warn(`FactoryReset ONU ${serial} (device=${deviceId}) falló: ${err?.message}`));
+    void this._verificarReinicioVIO(deviceId, serial, 'factory');
 
     // La ONU vuelve a bootstrap "en blanco" (pierde WiFi/PPPoE/credenciales). Marca drift
     // para que el watcher de re-inyección la re-aprovisione en cuanto vuelva a informar.
@@ -297,7 +332,7 @@ export class OnuTr069DetalleService {
       this.logger.warn(`No se pudo marcar re-inyección pendiente (${serial}): ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    return { ok: true, mensaje: `Reset de fábrica enviado a la ONU ${serial} — puede tardar 1-2 min en aplicarse.` };
+    return { ok: true, mensaje: `Reset de fábrica ACEPTADO por la ONU ${serial} — verificando materialización (debe reiniciar y volver a informar en ~1-3 min).` };
   }
 
   // ── Edición WiFi / PPPoE (reutiliza el fallback del GenieAcsDriver) ─────────

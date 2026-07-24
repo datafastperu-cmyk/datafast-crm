@@ -232,6 +232,10 @@ export function OnuDetalleTr069Modal({
   const [webAdminPass, setWebAdminPass] = useState('');
   const [showWebPass, setShowWebPass] = useState(false);
   const [pending, setPending] = useState<'reboot' | 'factory' | null>(null);
+  // VIO de cara al operador: tras enviar un reinicio/factory-reset, se confirma observando que
+  // el uptime de la ONU se reinicie (bajó respecto al baseline) → materializó. Si no ocurre en
+  // ~4 min → NO confirmado (aceptado ≠ aplicado).
+  const [verif, setVerif] = useState<null | { tipo: 'reboot' | 'factory'; baseUptime: number; estado: 'verificando' | 'confirmado' | 'no_confirmado' }>(null);
   const [active, setActive] = useState('general');
   const [fwFile, setFwFile] = useState('');
   const initRan = useRef(false);
@@ -322,12 +326,12 @@ export function OnuDetalleTr069Modal({
   // dispara sola al informar (ver `esperandoCarril`).
   const rebootMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069Reboot(sn),
-    onSuccess: (r) => toast(r.mensaje ?? 'Reinicio enviado — la ONU vuelve en ~1 min', { type: 'success' }),
+    onSuccess: (r) => { toast(r.mensaje ?? 'Reinicio aceptado — verificando…', { type: 'success' }); setVerif({ tipo: 'reboot', baseUptime: data?.info?.uptimeSeconds ?? 0, estado: 'verificando' }); },
     onError: () => toast('No se pudo reiniciar la ONU', { type: 'error' }),
   });
   const factoryMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069FactoryReset(sn),
-    onSuccess: (r) => toast(r.mensaje, { type: 'success' }),
+    onSuccess: (r) => { toast(r.mensaje, { type: 'success' }); setVerif({ tipo: 'factory', baseUptime: data?.info?.uptimeSeconds ?? 0, estado: 'verificando' }); },
     onError: () => toast('No se pudo resetear la ONU', { type: 'error' }),
   });
   const pppMut = useMutation({
@@ -393,6 +397,24 @@ export function OnuDetalleTr069Modal({
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [esperandoCarril]);
+
+  // VIO: confirma el reinicio cuando el uptime cae (la ONU reinició y volvió a informar).
+  useEffect(() => {
+    if (!verif || verif.estado !== 'verificando') return;
+    const up = data?.info?.uptimeSeconds;
+    const reinicio = up != null && (verif.baseUptime > 0 ? up < verif.baseUptime : up < 300);
+    if (informing && reinicio) setVerif((v) => (v ? { ...v, estado: 'confirmado' } : v));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, informing]);
+
+  // Mientras verifica: refresco rápido + techo de ~4 min → NO confirmado.
+  useEffect(() => {
+    if (!verif || verif.estado !== 'verificando') return undefined;
+    const poll = setInterval(() => refreshMut.mutate(), 15_000);
+    const techo = setTimeout(() => setVerif((v) => (v && v.estado === 'verificando' ? { ...v, estado: 'no_confirmado' } : v)), 4 * 60_000);
+    return () => { clearInterval(poll); clearTimeout(techo); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verif?.estado]);
 
   // Secciones del sidebar. `real` marca las que ya tienen backend; el resto se maqueta.
   const SECCIONES: Array<{ key: string; label: string; icon: typeof Home; real: boolean; nota?: string }> = [
@@ -649,6 +671,16 @@ export function OnuDetalleTr069Modal({
             <span className="inline-flex items-center gap-1.5 text-[10px] text-amber-400">
               <Loader2 className="w-3 h-3 animate-spin" />
               Activando gestión… {esperandoCarril === 'reboot' ? 'reinicio' : 'factory-reset'} al informar
+            </span>
+          )}
+
+          {/* VIO: estado de verificación del reinicio/factory-reset */}
+          {verif && (
+            <span className={cn('inline-flex items-center gap-1.5 text-[10px] font-semibold',
+              verif.estado === 'verificando' ? 'text-amber-400' : verif.estado === 'confirmado' ? 'text-emerald-400' : 'text-red-400')}>
+              {verif.estado === 'verificando' && <><Loader2 className="w-3 h-3 animate-spin" /> Verificando {verif.tipo === 'factory' ? 'factory-reset' : 'reinicio'}…</>}
+              {verif.estado === 'confirmado' && <><Signal className="w-3 h-3" /> {verif.tipo === 'factory' ? 'Factory-reset' : 'Reinicio'} confirmado</>}
+              {verif.estado === 'no_confirmado' && <><X className="w-3 h-3" /> No confirmado — no reinició</>}
             </span>
           )}
 
