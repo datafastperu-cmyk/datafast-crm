@@ -25,6 +25,7 @@ import { conSelloDatafast } from '../capability/olt-baseline-standard';
 import { ProvisioningStrategyResolver } from './cpe-provisioning/provisioning-strategy-resolver.service';
 import { Tr069GenieacsClient } from '../../tr069/tr069-genieacs.client';
 import { GenieAcsDriver } from '../ztp/genieacs.driver';
+import { OltOnuPresetService } from '../ztp/olt-onu-preset.service';
 import {
   getTr069AcsUrl, getTr069AcsUsername, getTr069AcsPassword,
   getTr069ConnReqUsername, getTr069ConnReqPassword,
@@ -133,6 +134,7 @@ export class ProvisionFtthService {
 
     private readonly genieacs: Tr069GenieacsClient,
     private readonly genieDriver: GenieAcsDriver,
+    private readonly oltPreset: OltOnuPresetService,
 
     private readonly opLock: FtthOperacionLockService,
     private readonly pasos:  OperacionWizardPasoService,
@@ -571,6 +573,11 @@ export class ProvisionFtthService {
     // _syncVlanContrato para la causa raíz que esto corrige (contratos.vlan_id NULL).
     await this._syncVlanContrato(dto.contratoId, empresaId, dto.vlan);
 
+    // Auto-config (preset por OLT): puebla la config del contrato desde el preset y enciende el
+    // pipeline ZTP; el watcher de re-inyección (cron 2 min) la escribe en la ONU en cuanto informe.
+    // Fire-and-forget best-effort: nunca bloquea ni tumba el aprovisionamiento del plano de datos.
+    void this._aplicarPresetAuto(olt.id, dto.contratoId, empresaId, dto.sn.toUpperCase());
+
     // ── Modo BRIDGE: sin inyección WAN ────────────────────────
     // La ONU va transparente; el PPPoE lo hace el router del cliente contra el BRAS
     // MikroTik. El OLT ya tiene GPON + service-port → el aprovisionamiento concluye
@@ -687,6 +694,35 @@ export class ProvisionFtthService {
       .catch((e) => this.logger.warn(`carril (async) | contrato=${contratoId}: ${e instanceof Error ? e.message : String(e)}`));
 
     return ' Carril TR-069 en aplicación en segundo plano (se confirma por el watcher; la ONU aparecerá en el ACS al informar).';
+  }
+
+  // Puebla la config del contrato desde el preset de auto-config de la OLT (si está habilitado)
+  // y enciende el pipeline ZTP. Resuelve la plantilla del SSID con el nombre del cliente.
+  // Best-effort: nunca lanza. El apply real lo hace el watcher ZTP al informar la ONU.
+  private async _aplicarPresetAuto(
+    oltId:      string,
+    contratoId: string,
+    empresaId:  string,
+    sn:         string,
+  ): Promise<void> {
+    try {
+      const [row] = await this.ds.query<Array<{ cliente: string | null; numero: string | null }>>(
+        `SELECT cl.nombre_completo AS cliente, co.numero_contrato AS numero
+         FROM   contratos co JOIN clientes cl ON cl.id = co.cliente_id
+         WHERE  co.id = $1 AND co.empresa_id = $2`,
+        [contratoId, empresaId],
+      );
+      const r = await this.oltPreset.aplicarAContrato(oltId, contratoId, empresaId, {
+        cliente:  row?.cliente ?? undefined,
+        contrato: row?.numero ?? undefined,
+        sn,
+      });
+      if (r.aplicado) {
+        this.logger.log(`preset auto | contrato=${contratoId}: config poblada — el watcher ZTP la aplicará al informar la ONU.`);
+      }
+    } catch (e) {
+      this.logger.warn(`preset auto | contrato=${contratoId}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   // ── activarCarril (Fase 2 — toggle bajo demanda) ──────────────────
