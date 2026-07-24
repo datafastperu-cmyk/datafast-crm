@@ -189,6 +189,19 @@ export class FtthOnuRegistro extends BaseModel {
   @Column({ name: 'mgmt_priority', type: 'smallint', nullable: true })
   mgmtPriority: number | null;
 
+  // IP de gestión TR-069 asignada a esta ONU. FUENTE DE VERDAD del ERP (causa raíz
+  // 2026-07-24): el pool guardaba la asignación pero el registro no, así el modal, el
+  // reconciliador VIO y el ConnectionRequest perdían el rastro de la IP. Sticky por
+  // contrato (regla IP-VPN): se persiste al aplicar el carril y solo se limpia al
+  // desaprovisionar. `null` = carril no aplicado o modo inactivo.
+  @Column({ name: 'mgmt_ip', type: 'varchar', length: 45, nullable: true })
+  mgmtIp: string | null;
+
+  // Modo con que se materializó la IP de gestión: 'static' (canónico EG8145V5, único que
+  // materializa tráfico — ver CreateOltMgmtIpPool) | 'dhcp' (legacy) | 'inactive'.
+  @Column({ name: 'mgmt_ip_mode', type: 'varchar', length: 12, nullable: true })
+  mgmtIpMode: string | null;
+
 }
 
 // ── Helpers (fuera de la clase para evitar get/set con SWC) ──────────

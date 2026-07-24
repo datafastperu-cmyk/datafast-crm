@@ -1149,6 +1149,8 @@ export class ProvisionFtthService {
       mgmtVlan,
       mgmtTrafficIndex,
       mgmtPriority:           dto.priority ?? 2,
+      mgmtIp,                                  // fuente de verdad: la IP del pool queda en el registro
+      mgmtIpMode:             'static',        // canónico EG8145V5 (único modo que materializa)
     });
     this.logger.log(
       `FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${mgmtVlan} canal=${resolverResult.canalUsado}`,
