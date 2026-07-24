@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Save, Radio, Lock, Wifi } from 'lucide-react';
+import { Loader2, Save, Radio, Lock, Wifi, Eye, EyeOff } from 'lucide-react';
 import { oltTr069ProfileApi, oltOnuPresetApi, type Tr069ProfileDto, type UpsertOltPresetDto } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
@@ -70,13 +70,17 @@ export function TabTr069({ oltId }: { oltId: string }) {
   const [pWifiPass5, setPWifiPass5] = useState('');
   const [pAdminUser, setPAdminUser] = useState('');
   const [pAdminPass, setPAdminPass] = useState('');
+  const [showPass, setShowPass] = useState(true);
   useEffect(() => {
     if (preset === undefined) return;
     setPEnabled(preset?.enabled ?? false);
     setPSsid(preset?.wifiSsidTemplate ?? '');
     setPSsid5(preset?.wifi5gSsidTemplate ?? '');
     setPAdminUser(preset?.onuAdminUser ?? '');
-    setPWifiPass(''); setPWifiPass5(''); setPAdminPass('');
+    // Precarga las claves EN CLARO (el operador las ve y edita).
+    setPWifiPass(preset?.wifiPassword ?? '');
+    setPWifiPass5(preset?.wifi5gPassword ?? '');
+    setPAdminPass(preset?.onuAdminPassword ?? '');
   }, [preset]);
 
   const presetMut = useMutation({
@@ -95,7 +99,7 @@ export function TabTr069({ oltId }: { oltId: string }) {
     },
     onSuccess: () => {
       toast('Preset de auto-config guardado', { type: 'success' });
-      setPWifiPass(''); setPWifiPass5(''); setPAdminPass('');
+      // El refetch re-precarga los campos (incluidas las claves en claro) desde el preset guardado.
       qc.invalidateQueries({ queryKey: ['olt-onu-preset', oltId] });
     },
     onError: () => toast('No se pudo guardar el preset', { type: 'error' }),
@@ -205,13 +209,19 @@ export function TabTr069({ oltId }: { oltId: string }) {
       </div>
 
       <div className="rounded-xl border border-border p-4 space-y-4">
-        <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/20 cursor-pointer">
-          <input type="checkbox" checked={pEnabled} onChange={e => setPEnabled(e.target.checked)} className="w-4 h-4 accent-primary" />
-          <div>
-            <span className="text-sm font-medium text-foreground">Inyección automática activada</span>
-            <p className="text-xs text-muted-foreground">Al aprovisionar / tras factory-reset, la ONU recibe este preset por TR-069.</p>
-          </div>
-        </label>
+        <div className="flex items-center justify-between gap-3">
+          <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/20 cursor-pointer flex-1">
+            <input type="checkbox" checked={pEnabled} onChange={e => setPEnabled(e.target.checked)} className="w-4 h-4 accent-primary" />
+            <div>
+              <span className="text-sm font-medium text-foreground">Inyección automática activada</span>
+              <p className="text-xs text-muted-foreground">Al aprovisionar / tras factory-reset, la ONU recibe este preset por TR-069.</p>
+            </div>
+          </label>
+          <button type="button" onClick={() => setShowPass(v => !v)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:bg-accent whitespace-nowrap">
+            {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />} {showPass ? 'Ocultar' : 'Mostrar'} claves
+          </button>
+        </div>
 
         {/* WiFi 2.4 GHz */}
         <div className="rounded-lg border border-border/60 p-3">
@@ -223,8 +233,8 @@ export function TabTr069({ oltId }: { oltId: string }) {
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">Clave</label>
-              <input type="password" value={pWifiPass} onChange={e => setPWifiPass(e.target.value)}
-                placeholder={preset?.wifiPasswordSet ? '•••••••• (definida — vacío = no cambiar)' : 'mínimo 8 caracteres'} className={inputCls} />
+              <input type={showPass ? 'text' : 'password'} value={pWifiPass} onChange={e => setPWifiPass(e.target.value)}
+                placeholder="mínimo 8 caracteres" className={inputCls} />
             </div>
           </div>
         </div>
@@ -239,8 +249,8 @@ export function TabTr069({ oltId }: { oltId: string }) {
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">Clave</label>
-              <input type="password" value={pWifiPass5} onChange={e => setPWifiPass5(e.target.value)}
-                placeholder={preset?.wifi5gPasswordSet ? '•••••••• (definida — vacío = no cambiar)' : 'mínimo 8 caracteres'} className={inputCls} />
+              <input type={showPass ? 'text' : 'password'} value={pWifiPass5} onChange={e => setPWifiPass5(e.target.value)}
+                placeholder="vacío = usa la clave de 2.4 GHz" className={inputCls} />
             </div>
           </div>
         </div>
@@ -257,8 +267,8 @@ export function TabTr069({ oltId }: { oltId: string }) {
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">Clave</label>
-              <input type="password" value={pAdminPass} onChange={e => setPAdminPass(e.target.value)}
-                placeholder={preset?.onuAdminPasswordSet ? '•••••••• (definida — vacío = no cambiar)' : 'mínimo 6 caracteres'} className={inputCls} />
+              <input type={showPass ? 'text' : 'password'} value={pAdminPass} onChange={e => setPAdminPass(e.target.value)}
+                placeholder="mínimo 6 caracteres" className={inputCls} />
             </div>
           </div>
         </div>

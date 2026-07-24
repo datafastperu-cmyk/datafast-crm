@@ -1562,9 +1562,9 @@ export interface OltPresetView {
   wifiSsidTemplate: string | null;
   wifi5gSsidTemplate: string | null;
   onuAdminUser: string | null;
-  wifiPasswordSet: boolean;
-  wifi5gPasswordSet: boolean;
-  onuAdminPasswordSet: boolean;
+  wifiPassword: string | null;
+  wifi5gPassword: string | null;
+  onuAdminPassword: string | null;
 }
 export interface UpsertOltPresetDto {
   enabled?: boolean;

@@ -18,16 +18,17 @@ export class UpsertOltPresetDto {
   @IsOptional() @IsString() @MinLength(6) @MaxLength(64) onuAdminPassword?: string;
 }
 
-/** Vista segura del preset para la UI: nunca devuelve claves, solo si están definidas. */
+/** Vista del preset para la UI. Devuelve las claves EN CLARO: el operador (admin autenticado)
+ *  necesita verlas para gestionarlas/entregarlas, igual que SmartOLT. */
 export interface OltPresetView {
   oltId:              string;
   enabled:            boolean;
   wifiSsidTemplate:   string | null;
   wifi5gSsidTemplate: string | null;
   onuAdminUser:       string | null;
-  wifiPasswordSet:    boolean;
-  wifi5gPasswordSet:  boolean;
-  onuAdminPasswordSet: boolean;
+  wifiPassword:       string | null;
+  wifi5gPassword:     string | null;
+  onuAdminPassword:   string | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -49,15 +50,19 @@ export class OltOnuPresetService {
   async getView(oltId: string, empresaId: string): Promise<OltPresetView | null> {
     const p = await this.repo.findOne({ where: { oltId, empresaId } });
     if (!p) return null;
+    const dec = (v: string | null): string | null => {
+      if (!v) return null;
+      try { return decrypt(v); } catch { return null; }
+    };
     return {
-      oltId:               p.oltId,
-      enabled:             p.enabled,
-      wifiSsidTemplate:    p.wifiSsidTemplate,
-      wifi5gSsidTemplate:  p.wifi5gSsidTemplate,
-      onuAdminUser:        p.onuAdminUser,
-      wifiPasswordSet:     !!p.wifiPassword,
-      wifi5gPasswordSet:   !!p.wifi5gPassword,
-      onuAdminPasswordSet: !!p.onuAdminPassword,
+      oltId:              p.oltId,
+      enabled:            p.enabled,
+      wifiSsidTemplate:   p.wifiSsidTemplate,
+      wifi5gSsidTemplate: p.wifi5gSsidTemplate,
+      onuAdminUser:       p.onuAdminUser,
+      wifiPassword:       dec(p.wifiPassword),
+      wifi5gPassword:     dec(p.wifi5gPassword),
+      onuAdminPassword:   dec(p.onuAdminPassword),
     };
   }
 
