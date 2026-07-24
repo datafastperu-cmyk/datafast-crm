@@ -232,10 +232,11 @@ export function OnuDetalleTr069Modal({
   const [webAdminPass, setWebAdminPass] = useState('');
   const [showWebPass, setShowWebPass] = useState(false);
   const [pending, setPending] = useState<'reboot' | 'factory' | null>(null);
-  // VIO de cara al operador: tras enviar un reinicio/factory-reset, se confirma observando que
-  // el uptime de la ONU se reinicie (bajó respecto al baseline) → materializó. Si no ocurre en
-  // ~4 min → NO confirmado (aceptado ≠ aplicado).
-  const [verif, setVerif] = useState<null | { tipo: 'reboot' | 'factory'; baseUptime: number; estado: 'verificando' | 'confirmado' | 'no_confirmado' }>(null);
+  // VIO de cara al operador: tras enviar un reinicio/factory-reset, se confirma leyendo el
+  // "Last up time" de la ONU en la OLT (plano independiente). Cambia solo cuando la ONU
+  // reinició de verdad → materializó. Si no cambia en ~4 min → NO confirmado. (No se usa el
+  // uptime de GenieACS: queda rancio y da falsos negativos.)
+  const [verif, setVerif] = useState<null | { tipo: 'reboot' | 'factory'; baseUpTime: string | null; estado: 'verificando' | 'confirmado' | 'no_confirmado' }>(null);
   const [active, setActive] = useState('general');
   const [fwFile, setFwFile] = useState('');
   const initRan = useRef(false);
@@ -324,14 +325,20 @@ export function OnuDetalleTr069Modal({
   // EG8145V5; SmartOLT tampoco usa la OLT — lo hace por TR-069 al CPE). Requieren que la ONU
   // esté informando a GenieACS; si no lo está, se AUTO-ACTIVA el carril y la operación se
   // dispara sola al informar (ver `esperandoCarril`).
+  // Captura el "Last up time" baseline en la OLT y arranca la verificación (VIO).
+  const iniciarVerif = async (tipo: 'reboot' | 'factory') => {
+    if (!contratoId) return;
+    const base = await oltNativoApi.ftthOntEstadoOlt(contratoId).catch((): null => null);
+    setVerif({ tipo, baseUpTime: base?.lastUpTime ?? null, estado: 'verificando' });
+  };
   const rebootMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069Reboot(sn),
-    onSuccess: (r) => { toast(r.mensaje ?? 'Reinicio aceptado — verificando…', { type: 'success' }); setVerif({ tipo: 'reboot', baseUptime: data?.info?.uptimeSeconds ?? 0, estado: 'verificando' }); },
+    onSuccess: (r) => { toast(r.mensaje ?? 'Reinicio aceptado — verificando…', { type: 'success' }); void iniciarVerif('reboot'); },
     onError: () => toast('No se pudo reiniciar la ONU', { type: 'error' }),
   });
   const factoryMut = useMutation({
     mutationFn: () => oltNativoApi.onuTr069FactoryReset(sn),
-    onSuccess: (r) => { toast(r.mensaje, { type: 'success' }); setVerif({ tipo: 'factory', baseUptime: data?.info?.uptimeSeconds ?? 0, estado: 'verificando' }); },
+    onSuccess: (r) => { toast(r.mensaje, { type: 'success' }); void iniciarVerif('factory'); },
     onError: () => toast('No se pudo resetear la ONU', { type: 'error' }),
   });
   const pppMut = useMutation({
@@ -398,23 +405,20 @@ export function OnuDetalleTr069Modal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [esperandoCarril]);
 
-  // VIO: confirma el reinicio cuando el uptime cae (la ONU reinició y volvió a informar).
+  // VIO: sondea el "Last up time" de la ONU en la OLT; cambia solo cuando reinició de verdad.
+  // Techo de ~4 min → NO confirmado. Independiente del plano TR-069 (sin falsos negativos).
   useEffect(() => {
-    if (!verif || verif.estado !== 'verificando') return;
-    const up = data?.info?.uptimeSeconds;
-    const reinicio = up != null && (verif.baseUptime > 0 ? up < verif.baseUptime : up < 300);
-    if (informing && reinicio) setVerif((v) => (v ? { ...v, estado: 'confirmado' } : v));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, informing]);
-
-  // Mientras verifica: refresco rápido + techo de ~4 min → NO confirmado.
-  useEffect(() => {
-    if (!verif || verif.estado !== 'verificando') return undefined;
-    const poll = setInterval(() => refreshMut.mutate(), 15_000);
+    if (!verif || verif.estado !== 'verificando' || !contratoId) return undefined;
+    const poll = setInterval(async () => {
+      const now = await oltNativoApi.ftthOntEstadoOlt(contratoId).catch((): null => null);
+      if (now?.ok && now.lastUpTime && verif.baseUpTime && now.lastUpTime !== verif.baseUpTime) {
+        setVerif((v) => (v ? { ...v, estado: 'confirmado' } : v));
+      }
+    }, 15_000);
     const techo = setTimeout(() => setVerif((v) => (v && v.estado === 'verificando' ? { ...v, estado: 'no_confirmado' } : v)), 4 * 60_000);
     return () => { clearInterval(poll); clearTimeout(techo); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [verif?.estado]);
+  }, [verif?.estado, contratoId]);
 
   // Secciones del sidebar. `real` marca las que ya tienen backend; el resto se maqueta.
   const SECCIONES: Array<{ key: string; label: string; icon: typeof Home; real: boolean; nota?: string }> = [

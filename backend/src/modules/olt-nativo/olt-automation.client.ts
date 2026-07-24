@@ -8,6 +8,7 @@ import { firstValueFrom } from 'rxjs';
 import { AxiosRequestConfig } from 'axios';
 
 import {
+  PythonConnectionPayload,
   PythonBatchStatusRequest,
   PythonBatchStatusResponse,
   PythonBoardTopologyRequest,
@@ -296,6 +297,18 @@ export class OltAutomationClient {
     const res = await this.post<PythonOntVersionResponse>('/api/v1/olt/ont-version', payload);
     this.logger.log(`← Python ont-version | success=${res.success} sw=${res.software_version}`);
     return res;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Diagnóstico read-only (POST /api/v1/olt/diagnostic-display)
+  // Solo comandos `display ...` (whitelist en el lado Python). Se usa para VIO:
+  // leer el estado real del plano operativo (p.ej. "Last up time" de una ONU).
+  // ────────────────────────────────────────────────────────────
+  async diagnosticDisplay(
+    connection: PythonConnectionPayload,
+    commands: string[],
+  ): Promise<{ success: boolean; outputs?: Array<{ command: string; output: string }>; error?: string }> {
+    return this.post('/api/v1/olt/diagnostic-display', { connection, commands }, 90_000);
   }
 
   // ────────────────────────────────────────────────────────────

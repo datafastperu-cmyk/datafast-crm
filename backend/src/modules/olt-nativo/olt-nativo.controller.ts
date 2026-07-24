@@ -1228,6 +1228,17 @@ export class OltNativoController {
     await this.ftth.marcarUsoTr069(contratoId, user.empresaId);
   }
 
+  // VIO de reinicio/factory-reset: estado real de la ONU en la OLT (Last up time cambia al reiniciar).
+  @Get('onu/:contratoId/olt-estado')
+  @ApiOperation({ summary: 'Estado operativo de la ONU leído de la OLT (VIO — Last up time / run state)' })
+  @ApiParam({ name: 'contratoId' })
+  async ontEstadoOlt(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ ok: boolean; lastUpTime: string | null; runState: string | null }> {
+    return this.ftth.leerOntEstadoOlt(contratoId, user.empresaId);
+  }
+
   @Get('carril/stats')
   @ApiOperation({ summary: 'Conteo de carriles TR-069 por estado (observabilidad)' })
   async carrilStats(

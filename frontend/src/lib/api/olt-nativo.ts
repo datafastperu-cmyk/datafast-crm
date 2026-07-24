@@ -902,6 +902,15 @@ export const oltNativoApi = {
     return res.data.data;
   },
 
+  // VIO: estado real de la ONU en la OLT (Last up time cambia al reiniciar) — para confirmar
+  // la materialización de un reinicio/factory-reset sin depender del uptime rancio de GenieACS.
+  ftthOntEstadoOlt: async (contratoId: string): Promise<{ ok: boolean; lastUpTime: string | null; runState: string | null }> => {
+    const res = await api.get<ApiRespuesta<{ ok: boolean; lastUpTime: string | null; runState: string | null }>>(
+      `/olt-nativo/onu/${contratoId}/olt-estado`, { timeout: 90_000 },
+    );
+    return res.data.data;
+  },
+
   // ── Carril TR-069 bajo demanda (toggle) ─────────────────────────────
   ftthActivarCarril: async (contratoId: string): Promise<{ estado: string; mensaje: string }> => {
     const res = await api.post<ApiRespuesta<{ estado: string; mensaje: string }>>(

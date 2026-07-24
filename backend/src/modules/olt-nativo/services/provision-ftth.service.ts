@@ -1936,6 +1936,32 @@ export class ProvisionFtthService {
     return resultados;
   }
 
+  // Estado operativo de la ONU leído DIRECTO de la OLT (plano independiente del TR-069).
+  // Es la señal VIO para confirmar la materialización de un reinicio/factory-reset: el
+  // "Last up time" cambia solo cuando la ONU realmente reinició. NO se usa el uptime de
+  // GenieACS (queda rancio → falsos negativos).
+  async leerOntEstadoOlt(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<{ ok: boolean; lastUpTime: string | null; runState: string | null }> {
+    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+    if (!registro) return { ok: false, lastUpTime: null, runState: null };
+    try {
+      const olt  = await this._fetchOlt(registro.oltId, empresaId);
+      const conn = this._buildConn(olt, this._decryptOltPassword(olt));
+      const res  = await this.automation.diagnosticDisplay(conn, [
+        `display ont info 0 ${registro.slot} ${registro.port} ${registro.onuId}`,
+      ]);
+      const out = res.outputs?.[0]?.output ?? '';
+      const up  = /Last up time\s*:\s*([^\r\n]+)/.exec(out)?.[1]?.trim() ?? null;
+      const rs  = /Run state\s*:\s*(\S+)/.exec(out)?.[1] ?? null;
+      return { ok: Boolean(up || rs), lastUpTime: up, runState: rs };
+    } catch (e) {
+      this.logger.warn(`leerOntEstadoOlt | contrato=${contratoId}: ${(e as Error).message}`);
+      return { ok: false, lastUpTime: null, runState: null };
+    }
+  }
+
   // Marca de uso del carril (interacción real del operador: abrir el modal Ver ONU).
   // Es lo que suprime el barrido TTL. Best-effort — nunca lanza.
   async marcarUsoTr069(contratoId: string, empresaId: string): Promise<void> {
