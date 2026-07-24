@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Save, Radio, Lock } from 'lucide-react';
-import { oltTr069ProfileApi, type Tr069ProfileDto } from '@/lib/api/olt-nativo';
+import { Loader2, Save, Radio, Lock, Wifi } from 'lucide-react';
+import { oltTr069ProfileApi, oltOnuPresetApi, type Tr069ProfileDto, type UpsertOltPresetDto } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 
@@ -56,6 +56,44 @@ export function TabTr069({ oltId }: { oltId: string }) {
       qc.invalidateQueries({ queryKey: ['olt-tr069-profile', oltId] });
     },
     onError: () => toast('No se pudo guardar el perfil TR-069', { type: 'error' }),
+  });
+
+  // ── Preset de auto-config (SSID/clave WiFi + admin web) ──
+  const { data: preset } = useQuery({
+    queryKey: ['olt-onu-preset', oltId],
+    queryFn:  () => oltOnuPresetApi.get(oltId),
+  });
+  const [pEnabled, setPEnabled] = useState(false);
+  const [pSsid, setPSsid] = useState('');
+  const [pWifiPass, setPWifiPass] = useState('');
+  const [pAdminUser, setPAdminUser] = useState('');
+  const [pAdminPass, setPAdminPass] = useState('');
+  useEffect(() => {
+    if (preset === undefined) return;
+    setPEnabled(preset?.enabled ?? false);
+    setPSsid(preset?.wifiSsidTemplate ?? '');
+    setPAdminUser(preset?.onuAdminUser ?? '');
+    setPWifiPass(''); setPAdminPass('');
+  }, [preset]);
+
+  const presetMut = useMutation({
+    mutationFn: () => {
+      const dto: UpsertOltPresetDto = {
+        enabled: pEnabled,
+        wifiSsidTemplate: pSsid.trim(),
+        onuAdminUser: pAdminUser.trim(),
+        // Secretos: solo se envían si el operador escribió uno nuevo (vacío = no tocar).
+        ...(pWifiPass ? { wifiPassword: pWifiPass } : {}),
+        ...(pAdminPass ? { onuAdminPassword: pAdminPass } : {}),
+      };
+      return oltOnuPresetApi.set(oltId, dto);
+    },
+    onSuccess: () => {
+      toast('Preset de auto-config guardado', { type: 'success' });
+      setPWifiPass(''); setPAdminPass('');
+      qc.invalidateQueries({ queryKey: ['olt-onu-preset', oltId] });
+    },
+    onError: () => toast('No se pudo guardar el preset', { type: 'error' }),
   });
 
   if (isLoading) {
@@ -144,6 +182,60 @@ export function TabTr069({ oltId }: { oltId: string }) {
               <input value={data?.connReqPassword ?? ''} readOnly disabled className={lockedInputCls} />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Preset de auto-config de ONUs ── */}
+      <div className="flex items-start gap-3 pt-2 border-t border-border">
+        <Wifi className="w-5 h-5 text-primary mt-0.5" />
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Auto-config de ONUs (preset)</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Config que se inyecta automáticamente a cada ONU al aprovisionar y tras un
+            restablecimiento de fábrica: nombre/clave WiFi y credenciales de acceso web. El SSID es
+            una plantilla por cliente — usa <code className="px-1 rounded bg-muted">{'{cliente}'}</code> y
+            se resuelve con el nombre del abonado (ej.: <code className="px-1 rounded bg-muted">DATAFAST-{'{cliente}'}</code>).
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border p-4 space-y-4">
+        <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/20 cursor-pointer">
+          <input type="checkbox" checked={pEnabled} onChange={e => setPEnabled(e.target.checked)} className="w-4 h-4 accent-primary" />
+          <div>
+            <span className="text-sm font-medium text-foreground">Inyección automática activada</span>
+            <p className="text-xs text-muted-foreground">Al aprovisionar / tras factory-reset, la ONU recibe este preset por TR-069.</p>
+          </div>
+        </label>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">Plantilla del SSID WiFi</label>
+            <input value={pSsid} onChange={e => setPSsid(e.target.value)} placeholder="DATAFAST-{cliente}" className={inputCls} />
+            <p className="text-[11px] text-muted-foreground mt-1">Placeholders: {'{cliente}'}, {'{contrato}'}, {'{sn}'}. El 5GHz se deriva con sufijo «-5G».</p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Clave WiFi</label>
+            <input type="password" value={pWifiPass} onChange={e => setPWifiPass(e.target.value)}
+              placeholder={preset?.wifiPasswordSet ? '•••••••• (definida — dejar vacío para no cambiar)' : 'mínimo 8 caracteres'} className={inputCls} />
+          </div>
+          <div />
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Usuario admin web</label>
+            <input value={pAdminUser} onChange={e => setPAdminUser(e.target.value)} placeholder="telecomadmin" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Clave admin web</label>
+            <input type="password" value={pAdminPass} onChange={e => setPAdminPass(e.target.value)}
+              placeholder={preset?.onuAdminPasswordSet ? '•••••••• (definida — dejar vacío para no cambiar)' : 'mínimo 6 caracteres'} className={inputCls} />
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button onClick={() => presetMut.mutate()} disabled={presetMut.isPending}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40">
+            {presetMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar preset
+          </button>
         </div>
       </div>
     </div>

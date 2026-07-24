@@ -1554,3 +1554,34 @@ export const oltTr069ProfileApi = {
     return res.data.data;
   },
 };
+
+// ── Preset de auto-config por OLT (SSID/clave WiFi + admin web) ──
+export interface OltPresetView {
+  oltId: string;
+  enabled: boolean;
+  wifiSsidTemplate: string | null;
+  wifi5gSsidTemplate: string | null;
+  onuAdminUser: string | null;
+  wifiPasswordSet: boolean;
+  wifi5gPasswordSet: boolean;
+  onuAdminPasswordSet: boolean;
+}
+export interface UpsertOltPresetDto {
+  enabled?: boolean;
+  wifiSsidTemplate?: string;
+  wifiPassword?: string;
+  wifi5gSsidTemplate?: string;
+  wifi5gPassword?: string;
+  onuAdminUser?: string;
+  onuAdminPassword?: string;
+}
+export const oltOnuPresetApi = {
+  get: async (oltId: string): Promise<OltPresetView | null> => {
+    const res = await api.get<ApiRespuesta<OltPresetView | null>>(`/olt-nativo/${oltId}/onu-preset`);
+    return res.data.data;
+  },
+  set: async (oltId: string, dto: UpsertOltPresetDto): Promise<OltPresetView> => {
+    const res = await api.put<ApiRespuesta<OltPresetView>>(`/olt-nativo/${oltId}/onu-preset`, dto);
+    return res.data.data;
+  },
+};
