@@ -223,10 +223,11 @@ export function TabTr069({ oltId }: { oltId: string }) {
           </button>
         </div>
 
-        {/* WiFi 2.4 GHz */}
-        <div className="rounded-lg border border-border/60 p-3">
-          <div className="text-xs font-semibold text-foreground mb-2">Red WiFi 2.4 GHz</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Dos columnas responsive (xl): WiFi 2.4 | WiFi 5; el admin abajo a lo ancho. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          {/* WiFi 2.4 GHz */}
+          <div className="rounded-lg border border-border/60 p-3 space-y-3">
+            <div className="text-xs font-semibold text-foreground">Red WiFi 2.4 GHz</div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">Nombre (SSID)</label>
               <input value={pSsid} onChange={e => setPSsid(e.target.value)} placeholder="DATAFAST-{cliente}" className={inputCls} />
@@ -237,12 +238,10 @@ export function TabTr069({ oltId }: { oltId: string }) {
                 placeholder="mínimo 8 caracteres" className={inputCls} />
             </div>
           </div>
-        </div>
 
-        {/* WiFi 5 GHz */}
-        <div className="rounded-lg border border-border/60 p-3">
-          <div className="text-xs font-semibold text-foreground mb-2">Red WiFi 5 GHz</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* WiFi 5 GHz */}
+          <div className="rounded-lg border border-border/60 p-3 space-y-3">
+            <div className="text-xs font-semibold text-foreground">Red WiFi 5 GHz</div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">Nombre (SSID)</label>
               <input value={pSsid5} onChange={e => setPSsid5(e.target.value)} placeholder="DATAFAST-{cliente}-5G" className={inputCls} />
@@ -253,25 +252,25 @@ export function TabTr069({ oltId }: { oltId: string }) {
                 placeholder="vacío = usa la clave de 2.4 GHz" className={inputCls} />
             </div>
           </div>
-        </div>
 
-        <p className="text-[11px] text-muted-foreground">Placeholders del SSID: {'{cliente}'}, {'{contrato}'}, {'{sn}'} — se resuelven con los datos del abonado.</p>
-
-        {/* Acceso web admin */}
-        <div className="rounded-lg border border-border/60 p-3">
-          <div className="text-xs font-semibold text-foreground mb-2">Acceso web admin de la ONU</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">Usuario</label>
-              <input value={pAdminUser} onChange={e => setPAdminUser(e.target.value)} placeholder="telecomadmin" className={inputCls} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">Clave</label>
-              <input type={showPass ? 'text' : 'password'} value={pAdminPass} onChange={e => setPAdminPass(e.target.value)}
-                placeholder="mínimo 6 caracteres" className={inputCls} />
+          {/* Acceso web admin — a lo ancho */}
+          <div className="rounded-lg border border-border/60 p-3 space-y-3 xl:col-span-2">
+            <div className="text-xs font-semibold text-foreground">Acceso web admin de la ONU</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Usuario</label>
+                <input value={pAdminUser} onChange={e => setPAdminUser(e.target.value)} placeholder="telecomadmin" className={inputCls} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Clave</label>
+                <input type={showPass ? 'text' : 'password'} value={pAdminPass} onChange={e => setPAdminPass(e.target.value)}
+                  placeholder="mínimo 6 caracteres" className={inputCls} />
+              </div>
             </div>
           </div>
         </div>
+
+        <p className="text-[11px] text-muted-foreground">Placeholders del SSID: {'{cliente}'}, {'{contrato}'}, {'{sn}'} — se resuelven con los datos del abonado.</p>
 
         <div className="flex justify-end">
           <button onClick={() => presetMut.mutate()} disabled={presetMut.isPending}
