@@ -138,10 +138,34 @@ export class ContratoOnuConfigService {
   // fuerza drift (last_applied_revision = null) para que el watcher de re-inyección
   // (ZtpReconcileCron.watchPendingReinjection) reaplique el ExecutionPlan completo en
   // cuanto la ONU vuelva a informar a GenieACS. No falla si el serial no tiene contrato.
+  // Variantes del SN (legible ↔ hex): los OLTs Huawei reportan el SN LEGIBLE ("HWTC78CA0FAA",
+  // 4 letras de vendor + 8 hex) y `ftth_onu_registro.sn` lo guarda así, pero las acciones LIVE
+  // llegan con el SN HEX que informa la ONU a GenieACS ("4857544378CA0FAA"). Sin casar ambas
+  // formas, markPendingReinjection no encontraba el contrato → la re-inyección post factory-reset
+  // NUNCA se marcaba (bug 2026-07-24).
+  private _snVariants(serial: string): string[] {
+    const s = (serial ?? '').trim().toUpperCase();
+    const out = new Set<string>();
+    if (!s) return [];
+    out.add(s);
+    const mLegible = /^([A-Z]{4})([0-9A-F]{8})$/.exec(s);
+    if (mLegible) {
+      const hex = Array.from(mLegible[1]).map((ch) => ch.charCodeAt(0).toString(16).padStart(2, '0')).join('').toUpperCase();
+      out.add(hex + mLegible[2]);
+    }
+    const mHex = /^([0-9A-F]{8})([0-9A-F]{8})$/.exec(s);
+    if (mHex) {
+      let vendor = '';
+      for (let i = 0; i < 8; i += 2) vendor += String.fromCharCode(parseInt(mHex[1].slice(i, i + 2), 16));
+      if (/^[A-Z]{4}$/.test(vendor)) out.add(vendor + mHex[2]);
+    }
+    return [...out];
+  }
+
   async markPendingReinjectionBySerial(serial: string): Promise<{ ok: boolean; contratoId?: string }> {
     const [reg] = await this.ds.query<{ contrato_id: string; empresa_id: string }[]>(
-      `SELECT contrato_id, empresa_id FROM ftth_onu_registro WHERE sn = $1`,
-      [serial],
+      `SELECT contrato_id, empresa_id FROM ftth_onu_registro WHERE sn = ANY($1) AND deleted_at IS NULL`,
+      [this._snVariants(serial)],
     );
     if (!reg) return { ok: false };
     const res = await this.repo.update(
