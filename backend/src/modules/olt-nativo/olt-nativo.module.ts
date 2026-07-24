@@ -13,6 +13,7 @@ import { HistorialFirmware }   from './entities/historial-firmware.entity';
 import { FtthOnuRegistro }    from './entities/ftth-onu-registro.entity';
 import { FtthRollbackLog }   from './entities/ftth-rollback-log.entity';
 import { ContratoOnuConfig } from './entities/contrato-onu-config.entity';
+import { OltOnuPreset } from './entities/olt-onu-preset.entity';
 import { OltServicePortPool } from './entities/olt-service-port-pool.entity';
 import { OltMgmtIpPool } from './entities/olt-mgmt-ip-pool.entity';
 import { OltOnuIdPool }      from './entities/olt-onu-id-pool.entity';
@@ -56,6 +57,7 @@ import { AdminOltProvider }         from './providers/adminolt.provider';
 import { ProvisionFtthService }       from './services/provision-ftth.service';
 import { ZtpProvisioningService }     from './ztp/ztp.service';
 import { ContratoOnuConfigService }   from './ztp/contrato-onu-config.service';
+import { OltOnuPresetService }         from './ztp/olt-onu-preset.service';
 import { GenieAcsDriver }             from './ztp/genieacs.driver';
 import { CwmpAuthService }            from './ztp/cwmp-auth.service';
 import { OnuTr069DetalleService }      from './ztp/onu-tr069-detalle.service';
@@ -143,6 +145,7 @@ import { Tr069CpeDriftWatcherCron }         from './cron/tr069-cpe-drift-watcher
       FtthOnuRegistro,
       FtthRollbackLog,
       ContratoOnuConfig,
+      OltOnuPreset,
       OltServicePortPool,
       OltMgmtIpPool,
       OltOnuIdPool,
@@ -206,6 +209,7 @@ import { Tr069CpeDriftWatcherCron }         from './cron/tr069-cpe-drift-watcher
     ProvisionFtthService,
     ZtpProvisioningService,
     ContratoOnuConfigService,
+    OltOnuPresetService,
     GenieAcsDriver,
     CwmpAuthService,
     OnuTr069DetalleService,

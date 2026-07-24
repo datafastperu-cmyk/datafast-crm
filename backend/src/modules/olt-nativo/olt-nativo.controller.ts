@@ -29,6 +29,7 @@ import {
 } from './services/provision-ftth.service';
 import { ZtpProvisioningService } from './ztp/ztp.service';
 import { ContratoOnuConfigService, UpsertOnuConfigDto } from './ztp/contrato-onu-config.service';
+import { OltOnuPresetService, UpsertOltPresetDto } from './ztp/olt-onu-preset.service';
 import {
   OnuTr069DetalleService, SetWifiLiveDto, SetPppoeLiveDto, SetAccesoWebDto,
 } from './ztp/onu-tr069-detalle.service';
@@ -99,6 +100,7 @@ export class OltNativoController {
     private readonly lineProfiles:  OltLineProfileService,
     private readonly ztp:           ZtpProvisioningService,
     private readonly onuConfig:     ContratoOnuConfigService,
+    private readonly oltPreset:     OltOnuPresetService,
     private readonly onuTr069:      OnuTr069DetalleService,
     private readonly events:        EventEmitter2,
   ) {}
@@ -1139,6 +1141,29 @@ export class OltNativoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.onuConfig.setProvisioningEnabled(contratoId, user.empresaId, !!enabled);
+  }
+
+  // ── Preset de auto-config por OLT (la "sección TR-069 de la OLT") ──
+  @Get(':oltId/onu-preset')
+  @ApiOperation({ summary: 'Preset de auto-config de la OLT (SSID/clave WiFi + admin web); claves no se devuelven' })
+  @ApiParam({ name: 'oltId' })
+  async getOltPreset(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.oltPreset.getView(oltId, user.empresaId);
+  }
+
+  @Put(':oltId/onu-preset')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Crear/actualizar el preset de auto-config de la OLT' })
+  @ApiParam({ name: 'oltId' })
+  async upsertOltPreset(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: UpsertOltPresetDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.oltPreset.upsert(oltId, user.empresaId, dto);
   }
 
   @Post(':oltId/ftth/desaprovisionar')
