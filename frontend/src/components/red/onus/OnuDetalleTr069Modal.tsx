@@ -354,6 +354,9 @@ export function OnuDetalleTr069Modal({
 
   const info = data?.info;
   const informing = data?.informing;
+  // Sesión VIVA (lastInform reciente) — gate REAL para operar por TR-069. `informing` (el device
+  // existe) no basta: puede estar "presente pero muerto" y el task no se entregaría.
+  const vivo = data?.vivo ?? false;
 
   // ── Auto-activación del carril para operaciones de CPE (reinicio / factory-reset) ──
   // Si la ONU no está informando, activamos el carril TR-069 y dejamos la operación EN ESPERA;
@@ -363,7 +366,7 @@ export function OnuDetalleTr069Modal({
   const [esperandoCarril, setEsperandoCarril] = useState<null | 'reboot' | 'factory'>(null);
 
   const lanzarCpeOp = (tipo: 'reboot' | 'factory') => {
-    if (informing) {
+    if (vivo) {
       (tipo === 'reboot' ? rebootMut : factoryMut).mutate();
       return;
     }
@@ -371,21 +374,23 @@ export function OnuDetalleTr069Modal({
       toast('Esta ONU no tiene carril TR-069 gestionable (sin contrato nativo).', { type: 'error' });
       return;
     }
+    // Sesión no viva (inactiva o "activa pero muerta"): activarCarril revive/re-bootstrapea y la
+    // operación se dispara sola cuando la ONU vuelve a informar.
     setEsperandoCarril(tipo);
     oltNativoApi.ftthActivarCarril(contratoId)
       .then(() => { refetchRegistro(); })
       .catch(() => { setEsperandoCarril(null); toast('No se pudo iniciar la activación del carril TR-069.', { type: 'error' }); });
-    toast('Activando gestión TR-069… la operación se ejecutará automáticamente cuando la ONU informe (~1-5 min).', { type: 'success' });
+    toast('Reviviendo la gestión TR-069… la operación se ejecutará automáticamente cuando la ONU vuelva a informar (~1-5 min).', { type: 'success' });
   };
 
-  // Dispara la operación en espera cuando la ONU empieza a informar.
+  // Dispara la operación en espera cuando la sesión vuelve a estar VIVA.
   useEffect(() => {
-    if (esperandoCarril && informing) {
+    if (esperandoCarril && vivo) {
       (esperandoCarril === 'reboot' ? rebootMut : factoryMut).mutate();
       setEsperandoCarril(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [informing, esperandoCarril]);
+  }, [vivo, esperandoCarril]);
 
   // Si la activación falla, cancela la espera y avisa.
   useEffect(() => {
@@ -621,7 +626,9 @@ export function OnuDetalleTr069Modal({
           <div className="hidden sm:block w-px self-stretch bg-border/60 flex-shrink-0" />
           <Vital label="TR-069">
             {informing
-              ? <span className="inline-flex items-center gap-1 text-emerald-400"><Signal className="w-3 h-3" /> Online</span>
+              ? vivo
+                ? <span className="inline-flex items-center gap-1 text-emerald-400"><Signal className="w-3 h-3" /> Online</span>
+                : <span className="inline-flex items-center gap-1 text-amber-400" title="El device existe en el ACS pero dejó de informar (sesión rancia). Refresh o una operación la revive."><Signal className="w-3 h-3" /> Rancio</span>
               : <span className="text-amber-400">sin informar</span>}
           </Vital>
           <div className="hidden sm:block w-px self-stretch bg-border/60 flex-shrink-0" />

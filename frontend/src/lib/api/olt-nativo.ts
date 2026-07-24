@@ -1512,6 +1512,8 @@ export interface OnuPppLink { index: string; username: string | null; connection
 export interface OnuHost { hostname: string | null; ip: string | null; mac: string | null; active: boolean | null; conexion: '2.4' | '5' | 'wifi' | 'lan'; }
 export interface OnuTr069Detalle {
   informing:   boolean;
+  /** Sesión viva ahora (lastInform reciente). Gate para operar por TR-069. */
+  vivo?:       boolean;
   deviceId?:   string;
   lastInform?: string | null;
   info?: {

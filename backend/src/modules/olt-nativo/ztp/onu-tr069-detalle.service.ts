@@ -58,7 +58,11 @@ export interface OnuHost {
   conexion: '2.4' | '5' | 'wifi' | 'lan';
 }
 export interface OnuTr069Detalle {
+  /** El device existe en GenieACS (informó alguna vez). Habilita mostrar datos y hacer Refresh. */
   informing:   boolean;
+  /** La sesión está VIVA ahora (lastInform reciente). Es el gate para operar por TR-069: si no
+   *  está vivo, un task se encola pero puede no entregarse — hay que revivir el carril primero. */
+  vivo?:       boolean;
   deviceId?:   string;
   lastInform?: string | null;
   info?: {
@@ -80,6 +84,8 @@ export interface OnuTr069Detalle {
 @Injectable()
 export class OnuTr069DetalleService {
   private readonly logger = new Logger(OnuTr069DetalleService.name);
+  // Umbral de "sesión viva": > 2× PeriodicInform (300s) sin informar ⇒ no viva.
+  private static readonly LIVE_STALENESS_MS = 12 * 60_000;
 
   constructor(
     private readonly nbi: Tr069GenieacsClient,
@@ -116,10 +122,15 @@ export class OnuTr069DetalleService {
   async getDetalle(serial: string): Promise<OnuTr069Detalle> {
     this._assertReady();
     const deviceId = await this.driver.findDeviceIdBySerial(serial);
-    if (!deviceId) return { informing: false };
+    if (!deviceId) return { informing: false, vivo: false };
 
     const dev = await this.nbi.getDevice(deviceId);
-    if (!dev) return { informing: false, deviceId };
+    if (!dev) return { informing: false, vivo: false, deviceId };
+
+    // Sesión VIVA = informó hace poco. > 2 PeriodicInform (300s) sin informar ⇒ no viva:
+    // un task encolado podría no entregarse. El operador puede revivirla con Refresh/activar.
+    const lastInformMs = dev._lastInform ? new Date(dev._lastInform).getTime() : 0;
+    const vivo = lastInformMs > 0 && (Date.now() - lastInformMs) < OnuTr069DetalleService.LIVE_STALENESS_MS;
 
     const did  = dev._deviceId ?? {};
     const igd  = dev.InternetGatewayDevice ?? {};
@@ -197,6 +208,7 @@ export class OnuTr069DetalleService {
 
     return {
       informing: true,
+      vivo,
       deviceId,
       lastInform: dev._lastInform ?? null,
       info: {

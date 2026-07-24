@@ -704,10 +704,26 @@ export class ProvisionFtthService {
     if (registro.estado !== FtthOnuEstado.ACTIVO && registro.estado !== FtthOnuEstado.GPON_REGISTRADO) {
       throw new BadRequestException(`El carril solo se activa en ONUs "activo"/"gpon_registrado" (actual: "${registro.estado}").`);
     }
-    // Idempotente: ya activo o ya en curso.
-    if (registro.carrilEstado === FtthCarrilEstado.ACTIVO || registro.carrilEstado === FtthCarrilEstado.ACTIVANDO) {
+    // Idempotente PERO liveness-aware: "activo" solo es un no-op si la sesión está VIVA. Si el
+    // carril está activo pero el CPE dejó de informar (lastInform viejo → sesión muerta), se
+    // RE-BOOTSTRAPEA para revivirla; de lo contrario un task TR-069 se encolaría sin entregarse
+    // (el bug de "activo pero muerto"). `activando` siempre es no-op (ya está en curso).
+    if (registro.carrilEstado === FtthCarrilEstado.ACTIVANDO) {
       await this.ftthRepo.update(registro.id, { tr069UltimoUsoAt: new Date() });
-      return { estado: registro.carrilEstado, mensaje: 'El carril TR-069 ya está activo o activándose.' };
+      return { estado: registro.carrilEstado, mensaje: 'El carril TR-069 ya se está activando.' };
+    }
+    if (registro.carrilEstado === FtthCarrilEstado.ACTIVO) {
+      const li   = await this.genieDriver.getLastInformBySerial(registro.sn).catch(() => null);
+      const vivo = li != null && (Date.now() - li.getTime()) < 12 * 60_000;
+      if (vivo) {
+        await this.ftthRepo.update(registro.id, { tr069UltimoUsoAt: new Date() });
+        return { estado: FtthCarrilEstado.ACTIVO, mensaje: 'El carril TR-069 ya está activo y la sesión está viva.' };
+      }
+      this.logger.warn(
+        `activarCarril | contrato=${contratoId}: carril ACTIVO pero sesión TR-069 rancia ` +
+        `(lastInform=${li?.toISOString() ?? 'nunca'}) — re-bootstrapeando para revivir.`,
+      );
+      // cae al re-bootstrap de abajo.
     }
 
     // Lock manual (no `conLock`): se toma aquí y lo LIBERA el bootstrap async al terminar, para
