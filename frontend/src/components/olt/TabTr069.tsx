@@ -66,14 +66,17 @@ export function TabTr069({ oltId }: { oltId: string }) {
   const [pEnabled, setPEnabled] = useState(false);
   const [pSsid, setPSsid] = useState('');
   const [pWifiPass, setPWifiPass] = useState('');
+  const [pSsid5, setPSsid5] = useState('');
+  const [pWifiPass5, setPWifiPass5] = useState('');
   const [pAdminUser, setPAdminUser] = useState('');
   const [pAdminPass, setPAdminPass] = useState('');
   useEffect(() => {
     if (preset === undefined) return;
     setPEnabled(preset?.enabled ?? false);
     setPSsid(preset?.wifiSsidTemplate ?? '');
+    setPSsid5(preset?.wifi5gSsidTemplate ?? '');
     setPAdminUser(preset?.onuAdminUser ?? '');
-    setPWifiPass(''); setPAdminPass('');
+    setPWifiPass(''); setPWifiPass5(''); setPAdminPass('');
   }, [preset]);
 
   const presetMut = useMutation({
@@ -81,16 +84,18 @@ export function TabTr069({ oltId }: { oltId: string }) {
       const dto: UpsertOltPresetDto = {
         enabled: pEnabled,
         wifiSsidTemplate: pSsid.trim(),
+        wifi5gSsidTemplate: pSsid5.trim(),
         onuAdminUser: pAdminUser.trim(),
         // Secretos: solo se envían si el operador escribió uno nuevo (vacío = no tocar).
         ...(pWifiPass ? { wifiPassword: pWifiPass } : {}),
+        ...(pWifiPass5 ? { wifi5gPassword: pWifiPass5 } : {}),
         ...(pAdminPass ? { onuAdminPassword: pAdminPass } : {}),
       };
       return oltOnuPresetApi.set(oltId, dto);
     },
     onSuccess: () => {
       toast('Preset de auto-config guardado', { type: 'success' });
-      setPWifiPass(''); setPAdminPass('');
+      setPWifiPass(''); setPWifiPass5(''); setPAdminPass('');
       qc.invalidateQueries({ queryKey: ['olt-onu-preset', oltId] });
     },
     onError: () => toast('No se pudo guardar el preset', { type: 'error' }),
@@ -208,26 +213,53 @@ export function TabTr069({ oltId }: { oltId: string }) {
           </div>
         </label>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="sm:col-span-2">
-            <label className="text-xs font-medium text-muted-foreground">Plantilla del SSID WiFi</label>
-            <input value={pSsid} onChange={e => setPSsid(e.target.value)} placeholder="DATAFAST-{cliente}" className={inputCls} />
-            <p className="text-[11px] text-muted-foreground mt-1">Placeholders: {'{cliente}'}, {'{contrato}'}, {'{sn}'}. El 5GHz se deriva con sufijo «-5G».</p>
+        {/* WiFi 2.4 GHz */}
+        <div className="rounded-lg border border-border/60 p-3">
+          <div className="text-xs font-semibold text-foreground mb-2">Red WiFi 2.4 GHz</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Nombre (SSID)</label>
+              <input value={pSsid} onChange={e => setPSsid(e.target.value)} placeholder="DATAFAST-{cliente}" className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Clave</label>
+              <input type="password" value={pWifiPass} onChange={e => setPWifiPass(e.target.value)}
+                placeholder={preset?.wifiPasswordSet ? '•••••••• (definida — vacío = no cambiar)' : 'mínimo 8 caracteres'} className={inputCls} />
+            </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Clave WiFi</label>
-            <input type="password" value={pWifiPass} onChange={e => setPWifiPass(e.target.value)}
-              placeholder={preset?.wifiPasswordSet ? '•••••••• (definida — dejar vacío para no cambiar)' : 'mínimo 8 caracteres'} className={inputCls} />
+        </div>
+
+        {/* WiFi 5 GHz */}
+        <div className="rounded-lg border border-border/60 p-3">
+          <div className="text-xs font-semibold text-foreground mb-2">Red WiFi 5 GHz</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Nombre (SSID)</label>
+              <input value={pSsid5} onChange={e => setPSsid5(e.target.value)} placeholder="DATAFAST-{cliente}-5G" className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Clave</label>
+              <input type="password" value={pWifiPass5} onChange={e => setPWifiPass5(e.target.value)}
+                placeholder={preset?.wifi5gPasswordSet ? '•••••••• (definida — vacío = no cambiar)' : 'mínimo 8 caracteres'} className={inputCls} />
+            </div>
           </div>
-          <div />
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Usuario admin web</label>
-            <input value={pAdminUser} onChange={e => setPAdminUser(e.target.value)} placeholder="telecomadmin" className={inputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Clave admin web</label>
-            <input type="password" value={pAdminPass} onChange={e => setPAdminPass(e.target.value)}
-              placeholder={preset?.onuAdminPasswordSet ? '•••••••• (definida — dejar vacío para no cambiar)' : 'mínimo 6 caracteres'} className={inputCls} />
+        </div>
+
+        <p className="text-[11px] text-muted-foreground">Placeholders del SSID: {'{cliente}'}, {'{contrato}'}, {'{sn}'} — se resuelven con los datos del abonado.</p>
+
+        {/* Acceso web admin */}
+        <div className="rounded-lg border border-border/60 p-3">
+          <div className="text-xs font-semibold text-foreground mb-2">Acceso web admin de la ONU</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Usuario</label>
+              <input value={pAdminUser} onChange={e => setPAdminUser(e.target.value)} placeholder="telecomadmin" className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Clave</label>
+              <input type="password" value={pAdminPass} onChange={e => setPAdminPass(e.target.value)}
+                placeholder={preset?.onuAdminPasswordSet ? '•••••••• (definida — vacío = no cambiar)' : 'mínimo 6 caracteres'} className={inputCls} />
+            </div>
           </div>
         </div>
 
