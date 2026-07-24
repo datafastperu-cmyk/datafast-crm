@@ -175,6 +175,7 @@ export class ZtpProvisioningService {
   async provisionContract(
     contratoId: string,
     empresaId:  string,
+    opts:       { grantGrace?: boolean } = {},
   ): Promise<{ ok: boolean; skipped?: boolean; deviceId?: string; applied?: number; total?: number; fallidas?: string[]; mensaje: string }> {
     const cfg = await this.configRepo.findOne({ where: { contratoId, empresaId } });
     if (!cfg) {
@@ -203,6 +204,16 @@ export class ZtpProvisioningService {
     const deviceId = await this.driver.findDeviceIdBySerial(reg.sn);
     if (!deviceId) {
       return { ok: false, mensaje: `La ONU ${reg.sn} aún no aparece en GenieACS (no ha informado).` };
+    }
+    // Gracia de bootstrap post factory-reset: en el path de re-inyección, la ONU pendiente que
+    // conserva el Tag `AuthEnforced` está en el deadlock de erpauth (su Inform de recuperación se
+    // rechaza por auth). Se retira el tag ANTES de leer runtime para desbloquear ese Inform; si el
+    // plan cierra 100% OK, enforceDeviceAuth reescribe las credenciales y re-agrega el tag. Sólo en
+    // el path pending (grantGrace) para no des-endurecer devices sanos en una re-provisión por drift.
+    if (opts.grantGrace) {
+      await this.driver.grantAuthGrace(deviceId).catch((e) =>
+        this.logger.warn(`grantAuthGrace falló | contrato=${contratoId}: ${e instanceof Error ? e.message : String(e)}`),
+      );
     }
     const runtime = await this.driver.getRuntime(deviceId);
     if (!runtime) {
@@ -323,7 +334,7 @@ export class ZtpProvisioningService {
     let ok = 0, fallidas = 0;
     for (const cfg of pendientes) {
       try {
-        const r = await this.provisionContract(cfg.contratoId, cfg.empresaId);
+        const r = await this.provisionContract(cfg.contratoId, cfg.empresaId, { grantGrace: true });
         if (r.ok) ok++;
         else if (!r.skipped) fallidas++;
       } catch (e) {

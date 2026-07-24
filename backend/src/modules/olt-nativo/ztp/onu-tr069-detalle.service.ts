@@ -314,6 +314,16 @@ export class OnuTr069DetalleService {
       this.logger.warn(`No se pudo marcar re-inyección pendiente (${serial}): ${e instanceof Error ? e.message : String(e)}`);
     }
 
+    // Gracia de bootstrap post-reset (incidente 2026-07-24): el reset borra las credenciales CWMP
+    // de la ONU, pero el device conserva el Tag `AuthEnforced` → su Inform de ARRANQUE se rechazaría
+    // por auth (erpauth exige el HMAC que la ONU ya no tiene) → deadlock de gestión permanente. Se
+    // retira el tag AHORA, antes de que la ONU rebootee, para que el boot-inform entre y dispare la
+    // re-inyección; enforceDeviceAuth re-agrega el tag al cerrar la re-provisión 100% OK. El watcher
+    // de pending (reconcilePendingReinjection.grantGrace) es la red de seguridad si esto no alcanza.
+    this.nbi.removeTag(deviceId, 'AuthEnforced')
+      .then(() => this.logger.warn(`FactoryReset ${serial}: Tag AuthEnforced retirado (gracia post-reset, evita deadlock erpauth)`))
+      .catch((e) => this.logger.warn(`No se pudo retirar AuthEnforced (${serial}): ${e instanceof Error ? e.message : String(e)}`));
+
     return { ok: true, mensaje: `Reset de fábrica ACEPTADO por la ONU ${serial} — verificando materialización (debe reiniciar y volver a informar en ~1-3 min).` };
   }
 

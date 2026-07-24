@@ -131,6 +131,20 @@ export class GenieAcsDriver {
     return { ok: true };
   }
 
+  /**
+   * Gracia de bootstrap post factory-reset (incidente 2026-07-24): un factory reset borra las
+   * credenciales CWMP de la ONU (ManagementServer.Username/Password) pero el device CONSERVA el
+   * Tag `AuthEnforced` en GenieACS. La expresión cwmp.auth entonces exige el HMAC en el Inform y
+   * RECHAZA el Inform vacío de la ONU reseteada → el Inform de recuperación no entra → la
+   * re-provisión (que reescribiría las credenciales) nunca corre → deadlock de gestión permanente.
+   * Quitar el tag desbloquea ese Inform (vuelve a zero-touch); `enforceDeviceAuth` lo re-agrega al
+   * cerrar la re-provisión 100% OK. Idempotente: borrar un tag ausente es un no-op.
+   */
+  async grantAuthGrace(deviceId: string): Promise<void> {
+    await this.nbi.removeTag(deviceId, 'AuthEnforced');
+    this.logger.warn(`grantAuthGrace | device=${deviceId} Tag AuthEnforced retirado (gracia de recuperación post-reset)`);
+  }
+
   /** ProductClass (modelo) que la ONU reporta a GenieACS, por SN — tolerando el desajuste
    *  legible↔hex. Fallback de detección de modelo cuando la OLT no lo reporta (ontVersion). */
   async getProductClassBySerial(serial: string): Promise<string | null> {
