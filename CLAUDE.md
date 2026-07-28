@@ -97,6 +97,84 @@ razón (bug, feature) sobre drivers de hardware externo. No es mandato de refact
 masivo de las funciones existentes del driver Huawei/MikroTik que hoy no verifican
 materialización — se corrigen incrementalmente, una por una, la próxima vez que se toquen.
 
+## VIO hacia adentro — El software también afirma sin verificar
+
+Origen: análisis de causa raíz 2026-07-28. VIO se aplicaba al hardware externo pero no a
+las afirmaciones que el propio software hace sobre sí mismo. Dos ejemplos que costaron
+producción:
+
+- `outbox-red.service.ts` afirmaba en un comentario: *"`SELECT FOR UPDATE SKIP LOCKED`:
+  dos instancias PM2 nunca toman el mismo registro"*. Era **falso** — la transacción se
+  cerraba antes de ejecutar contra el hardware. Nadie lo verificó nunca; lo verificó
+  producción, y lo salvó por casualidad un lock que existe por otra razón.
+- `contratos.service.ts` logueaba *"requiere confirmación manual"* cuando el outbox ya
+  tenía el trabajo encolado. El log describía la intención del autor al escribirlo, no el
+  estado del sistema.
+
+**Regla:** una afirmación sobre el propio sistema es una afirmación **sin verificar** hasta
+que un test la demuestra. Un comentario que garantiza una propiedad es un `success: true`
+sin comprobar; la única diferencia es que el driver de hardware al menos tiene la regla
+escrita.
+
+1. Todo comentario que garantice **concurrencia, atomicidad o exclusión mutua** ("dos
+   instancias nunca...", "esto no puede ocurrir", "es idempotente") lleva un test que lo
+   ejercite, o se borra el comentario. Borrarlo es una opción legítima: una garantía que
+   nadie sostiene es peor que ninguna, porque el siguiente lector construye encima.
+2. Un **log describe lo que ocurrió**, nunca lo que el código pretendía hacer. Si el
+   mensaje puede quedar desactualizado por un cambio en otro archivo, ya está mal escrito.
+3. Los tests de estas garantías nombran el **incidente real** que las motivó. Un test
+   llamado "no debería fallar" se borra en la primera limpieza; uno que dice "409 de lock
+   es reintentable, no un veredicto (incidente 28/07)" sobrevive.
+
+**Alcance:** igual que VIO — código nuevo o que se modifique por otra razón. No es mandato
+de auditar retroactivamente todos los comentarios del repositorio.
+
+## Máquina de estados declarativa — Regla de Construcción Obligatoria
+
+Origen: mismo análisis. Los estados legales de cada operación FTTH vivían en arrays y
+condicionales sueltos repartidos por el servicio (13 sitios). Nadie podía leer la máquina
+completa y **por eso faltaba un estado de origen sin que nadie pudiera notarlo**:
+`desaprovisionar` no aceptaba `suspendido`, que es el caso más frecuente del negocio (un
+moroso suspendido al que se le da de baja). Resultado: ONU huérfana en la OLT.
+
+**Regla:** todo recurso con ciclo de vida contra hardware declara sus transiciones en **un
+solo lugar** (`domain/*-maquina-estados.ts`), no en condicionales dispersos.
+
+1. La declaración indica, por transición: estados de origen legales, estado destino y qué
+   significa en términos de negocio.
+2. **La idempotencia se DERIVA del estado destino**, no se implementa a mano en cada
+   método: si el recurso ya está en el destino, la operación es `ya_en_destino` (ÉXITO).
+   Un método nuevo no puede olvidarse de ser idempotente si no es él quien lo implementa.
+3. Los guards consultan la máquina (`evaluarTransicion`), nunca escriben su propio array.
+4. Un criterio disperso no es auditable; uno declarativo se revisa de un vistazo en un PR.
+   Cualquier cambio a la lista de orígenes debe justificar por qué un estado deja de poder
+   hacer esa transición.
+
+## Vocabulario de dominio, no de transporte — Regla de Construcción Obligatoria
+
+Origen: mismo análisis. Los mismos métodos los consume un humano (controller HTTP) y una
+máquina (outbox). Los guards se escribieron para el primero y expresaban su veredicto con
+excepciones de NestJS. Para un reintentador automático eso es ambiguo: un `409` puede
+significar "esto nunca va a funcionar" o "vuelve en 5 minutos", y el status code no lo
+distingue. El outbox terminó haciendo arqueología sobre códigos HTTP, y se equivocó dos
+veces: un no-op idempotente leído como fallo (1788 reintentos contra el MA5800 en 4 días)
+y un 409 de lock leído como veredicto definitivo (trabajo descartado).
+
+**Regla:** todo método invocable por un orquestador automático devuelve `ResultadoOperacion`
+(`common/domain/resultado-operacion.ts`), no excepciones HTTP. El transporte traduce en el
+borde (`traducirAHttp` en el controller), nunca al revés.
+
+1. Clases: `aplicado` | `ya_en_destino` | `no_aplica` | `rechazado_definitivo` |
+   `reintentable` | `indeterminado`.
+2. **`indeterminado` es obligatorio ante un timeout contra hardware.** Un timeout NO
+   significa "no pasó nada": la operación pudo aplicarse y solo tardar más que el límite
+   del cliente. No se reintenta a ciegas ni se reporta como fallo al operador — se reporta
+   como "aceptado, sin confirmar" y se audita para que alguien verifique el estado real.
+3. La lista de rechazos definitivos es **explícita y corta**: solo 400 y 404. Un criterio
+   amplio tipo `status < 500` es incorrecto — 409/408/429 significan "vuelve luego". Ante
+   la duda: reintentable, porque reintentar es recuperable y descartar no.
+4. Nunca inferir reintentabilidad desde un código de estado HTTP.
+
 ## Wizards y Modales — Regla de Construcción Obligatoria
 
 ### Un procedimiento no terminado se anula por completo

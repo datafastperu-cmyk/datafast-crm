@@ -16,6 +16,7 @@ import { FtthRollbackLog, RollbackMotivo } from '../entities/ftth-rollback-log.e
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { ResultadoOperacion, clasificarError } from '../../../common/domain/resultado-operacion';
+import { evaluarTransicion }                   from '../domain/ftth-maquina-estados';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 import { FtthOperacionLockService }       from './ftth-operacion-lock.service';
 import { OperacionWizardPasoService }     from './operacion-wizard-paso.service';
@@ -2065,11 +2066,11 @@ export class ProvisionFtthService {
       if (!registro) {
         return { clase: 'no_aplica', mensaje: 'Contrato sin ONU FTTH — suspender omitido.' };
       }
-      // Idempotencia por contrato: el estado destino ya alcanzado es ÉXITO, no error.
-      // Sin esto el outbox trata el no-op como fallo y reintenta indefinidamente.
-      if (registro.estado === FtthOnuEstado.SUSPENDIDO) {
-        return { clase: 'ya_en_destino', mensaje: `ONU ${registro.sn} ya estaba suspendida.` };
-      }
+      // La idempotencia y los orígenes legales los DERIVA la máquina de estados: este
+      // método ya no puede olvidarse de ninguno de los dos.
+      const veredicto = evaluarTransicion('suspender', registro.estado);
+      if (veredicto) return veredicto;
+
       const r = await this.suspender(registro.oltId, empresaId, contratoId);
       return r.exitoso
         ? { clase: 'aplicado',     mensaje: r.mensaje }
@@ -2085,10 +2086,9 @@ export class ProvisionFtthService {
       if (!registro) {
         return { clase: 'no_aplica', mensaje: 'Contrato sin ONU FTTH — rehabilitar omitido.' };
       }
-      // Idempotencia por contrato (ver suspenderPorContrato).
-      if (registro.estado === FtthOnuEstado.ACTIVO) {
-        return { clase: 'ya_en_destino', mensaje: `ONU ${registro.sn} ya estaba activa.` };
-      }
+      const veredicto = evaluarTransicion('rehabilitar', registro.estado);
+      if (veredicto) return veredicto;
+
       const r = await this.rehabilitar(registro.oltId, empresaId, contratoId);
       return r.exitoso
         ? { clase: 'aplicado',     mensaje: r.mensaje }
@@ -2122,18 +2122,14 @@ export class ProvisionFtthService {
       throw new BadRequestException('La OLT indicada no coincide con el registro de aprovisionamiento.');
     }
 
-    const estadosPermitidos: FtthOnuEstado[] = [
-      FtthOnuEstado.ACTIVO,
-      FtthOnuEstado.SUSPENDIDO,         // caso más frecuente del negocio: moroso suspendido → baja
-      FtthOnuEstado.GPON_REGISTRADO,
-      FtthOnuEstado.WAN_INYECTADO,
-      FtthOnuEstado.FALLIDO_ROLLBACK,   // permite forzar la limpieza manual además del watcher
-    ];
-    if (!estadosPermitidos.includes(registro.estado)) {
-      throw new BadRequestException(
-        `No se puede desaprovisionar desde el estado "${registro.estado}". ` +
-        `Solo se permite desde: ${estadosPermitidos.join(', ')}.`,
-      );
+    // Orígenes legales declarados en la máquina de estados (FTTH_TRANSICIONES), no en
+    // un array local: tenerlo aquí suelto fue lo que permitió que faltara `suspendido`
+    // durante meses sin que nadie pudiera revisarlo de un vistazo.
+    const veredicto = evaluarTransicion('desaprovisionar', registro.estado);
+    if (veredicto && veredicto.clase === 'rechazado_definitivo') {
+      // Ruta interna: mantiene el contrato de excepción para el borde HTTP. El wrapper
+      // `desaprovisionarPorContrato` la traduce de vuelta a dominio con clasificarError.
+      throw new BadRequestException(veredicto.motivo);
     }
 
     // Marcar como en proceso (lock)
