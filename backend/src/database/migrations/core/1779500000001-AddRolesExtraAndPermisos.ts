@@ -85,7 +85,7 @@ export class AddRolesExtraAndPermisos1779500000001 implements MigrationInterface
       await queryRunner.query(`
         INSERT INTO roles (id, empresa_id, nombre, descripcion, es_sistema)
         VALUES ('${r.id}', '${empresa}', '${r.nombre}', '${r.desc}', TRUE)
-        ON CONFLICT (empresa_id, nombre) DO NOTHING
+        ON CONFLICT (empresa_id, nombre) WHERE deleted_at IS NULL DO NOTHING
       `);
     }
 
