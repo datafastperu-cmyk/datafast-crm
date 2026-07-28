@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuditoriaService } from './auditoria.service';
 import { Usuario, EstadoUsuario } from '../usuarios/entities/usuario.entity';
@@ -84,17 +85,21 @@ describe('AuthService', () => {
             decode: jest.fn().mockReturnValue({ exp: Math.floor(Date.now()/1000) + 900 }),
           },
         },
+        // OJO: antes esto se registraba como `provide: 'ConfigService'` (un STRING).
+        // Nest inyecta por token de CLASE, así que ese provider no satisfacía nada y la
+        // suite entera no podía instanciar AuthService. Un provider con el token
+        // equivocado es invisible: no falla al declararlo, falla al resolver.
         {
-          provide: 'ConfigService',
+          provide: ConfigService,
           useValue: {
-            get: jest.fn((key: string) => {
-              const cfg = {
+            get: jest.fn((key: string, def?: unknown) => {
+              const cfg: Record<string, unknown> = {
                 'jwt.secret': 'test-secret',
                 'jwt.refreshSecret': 'test-refresh-secret',
                 'jwt.expiresIn': '15m',
                 'jwt.refreshExpiresIn': '7d',
               };
-              return cfg[key];
+              return cfg[key] ?? def;
             }),
           },
         },

@@ -4,6 +4,9 @@ import {
   BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { EventEmitter2 }      from '@nestjs/event-emitter';
+import { getQueueToken }      from '@nestjs/bull';
+import { QUEUES }             from '../workers/workers.constants';
 import { PagosService }        from './pagos.service';
 import { PagoRepository }      from './repositories/pago.repository';
 import { MercadoPagoService }  from './mercadopago.service';
@@ -99,8 +102,38 @@ const mockAuditoria = {
 
 const mockConfig = { get: jest.fn((k, d) => d) };
 
+// `registrar()` pasó a ser TRANSACCIONAL (registrar un pago y aplicarlo a la factura
+// tienen que ser atómicos o el dinero se pierde entre ambos pasos). El mock ejecuta el
+// callback con un manager que delega en los mismos mocks, para que la transacción sea
+// transparente al test en vez de tener que simularla en cada caso.
+// `registrar()` pasó a ser TRANSACCIONAL (registrar el pago y aplicarlo a la factura
+// tienen que ser atómicos, o el dinero se pierde entre ambos pasos) y resuelve todo por
+// `manager.findOne(Entidad, …)`. El mock despacha POR ENTIDAD para que cada test controle
+// qué existe: duplicado, factura y contrato son decisiones distintas del flujo.
+const mockEntidades: { pagoDuplicado: any; factura: any; contrato: any } = {
+  pagoDuplicado: null,
+  factura:       null,
+  contrato:      null,
+};
+
+const managerMock = {
+  findOne: jest.fn(async (entidad: any) => {
+    const nombre = entidad?.name ?? '';
+    if (nombre === 'Pago')     return mockEntidades.pagoDuplicado;
+    if (nombre === 'Factura')  return mockEntidades.factura;
+    if (nombre === 'Contrato') return mockEntidades.contrato;
+    return null;
+  }),
+  save:   jest.fn(async (_e: any, d: any) => ({ ...mockPago, ...(d ?? {}) })),
+  update: jest.fn(),
+  create: jest.fn((_e: any, d: any) => ({ ...mockPago, ...(d ?? {}) })),
+  // La factura se actualiza con SQL crudo dentro de la TX → forma [filas, rowCount].
+  query:  jest.fn().mockResolvedValue([[{ id: 'fac-001' }], 1]),
+};
+
 const mockDs = {
   query: jest.fn().mockResolvedValue([mockFacturaRow]),
+  transaction: jest.fn(async (cb: any) => cb(managerMock)),
 };
 
 // ─── Tests ────────────────────────────────────────────────────
@@ -118,6 +151,12 @@ describe('PagosService', () => {
         { provide: AuditoriaService,    useValue: mockAuditoria },
         { provide: ConfigService,       useValue: mockConfig },
         { provide: getDataSourceToken(), useValue: mockDs },
+        // Dependencias que el servicio adquirió después de escribirse este spec. Sin
+        // ellas Nest no puede instanciarlo y la suite ENTERA se cae — no un test suelto.
+        // `emitAsync` además de `emit`: el servicio espera a los listeners para saber si
+        // la reactivación se aplicó. Un mock sin él hacía fallar el pago entero.
+        { provide: EventEmitter2,        useValue: { emit: jest.fn(), emitAsync: jest.fn().mockResolvedValue([]) } },
+        { provide: getQueueToken(QUEUES.COBRANZA), useValue: { add: jest.fn() } },
       ],
     }).compile();
     service = m.get<PagosService>(PagosService);
@@ -128,24 +167,32 @@ describe('PagosService', () => {
   // ── Registrar pago ────────────────────────────────────────
   describe('registrar()', () => {
 
-    it('debe registrar pago Yape como PENDIENTE_VERIFICACION', async () => {
-      mockRepo.existeDuplicado.mockResolvedValue({ existe: false });
-      mockDs.query.mockResolvedValue([mockFacturaRow]);
-      mockRepo.save.mockResolvedValue({ ...mockPago, estado: EstadoPago.PENDIENTE_VERIFICACION });
+    // El flujo vive DENTRO de una transacción y resuelve todo con `manager.findOne`;
+    // `mockEntidades` define qué encuentra: ese es el estado del mundo de cada caso.
+    beforeEach(() => {
+      mockEntidades.pagoDuplicado = null;
+      mockEntidades.factura       = { ...mockFacturaRow, contratoId: 'cnt-001', clienteId: 'cli-001' };
+      mockEntidades.contrato      = mockContratoSuspendido;
+    });
 
-      const dto = {
+    it('debe registrar pago Yape como PENDIENTE_VERIFICACION', async () => {
+      // Yape sin OTP requiere verificación humana: no se da por bueno automáticamente.
+      managerMock.save.mockResolvedValueOnce({ ...mockPago, estado: EstadoPago.PENDIENTE_VERIFICACION });
+
+      const result = await service.registrar({
         clienteId: 'cli-001', facturaId: 'fac-001', contratoId: 'cnt-001',
         monto: 85, metodoPago: MetodoPago.YAPE, numeroOperacion: 'YAP12345678',
-      };
+      } as any, mockUser as any);
 
-      const result = await service.registrar(dto as any, mockUser as any);
       expect(result.estado).toBe(EstadoPago.PENDIENTE_VERIFICACION);
-      expect(mockRepo.save).toHaveBeenCalled();
+      expect(managerMock.save).toHaveBeenCalled();
+      // La atomicidad es el punto: el pago y su aplicación no pueden separarse.
+      expect(mockDs.transaction).toHaveBeenCalled();
     });
 
     it('debe rechazar duplicado por número de operación', async () => {
-      mockDs.query.mockResolvedValue([mockFacturaRow]);
-      mockRepo.existeDuplicado.mockResolvedValue({ existe: true, pagoExistente: mockPago });
+      // Idempotencia: el mismo número de operación no puede cobrarse dos veces.
+      mockEntidades.pagoDuplicado = mockPago;
 
       await expect(service.registrar({
         clienteId: 'cli-001', facturaId: 'fac-001',
@@ -154,20 +201,48 @@ describe('PagosService', () => {
       } as any, mockUser as any)).rejects.toThrow(ConflictException);
     });
 
-    it('debe requerir número de operación para Yape/Plin/Transferencia', async () => {
-      mockDs.query.mockResolvedValue([mockFacturaRow]);
-      await expect(service.registrar({
+    it('acepta Yape sin número de operación, pero SIN auto-verificar', async () => {
+      // El servicio ya no exige `numeroOperacion` al registrar: la protección pasó de
+      // ser una validación de formato a ser idempotencia real por (empresa, método,
+      // operación) — ver el test de duplicado. Un pago sin número simplemente no puede
+      // deduplicarse ni auto-verificarse, así que queda pendiente de revisión humana.
+      managerMock.save.mockResolvedValueOnce({ ...mockPago, numeroOperacion: null });
+
+      const result = await service.registrar({
         clienteId: 'cli-001', facturaId: 'fac-001',
         monto: 85, metodoPago: MetodoPago.YAPE,
-        // Sin numeroOperacion
+      } as any, mockUser as any);
+
+      expect(result.estado).toBe(EstadoPago.PENDIENTE_VERIFICACION);
+    });
+
+    it('no registra un pago sobre una factura ya pagada', async () => {
+      mockEntidades.factura = { ...mockFacturaRow, estado: EstadoFactura.PAGADA };
+
+      await expect(service.registrar({
+        clienteId: 'cli-001', facturaId: 'fac-001',
+        monto: 85, metodoPago: MetodoPago.EFECTIVO,
       } as any, mockUser as any)).rejects.toThrow(BadRequestException);
     });
 
-    it('debe auto-verificar efectivo y aplicar a factura', async () => {
-      mockRepo.existeDuplicado.mockResolvedValue({ existe: false });
-      mockDs.query.mockResolvedValue([mockFacturaRow]);
+    it('un cajero SIN permiso no puede auto-verificar aunque lo pida', async () => {
+      // Protección de caja: `autoVerificar: true` en el body no basta — exige rol
+      // Administrador o el permiso `pagos:autoverificar`. Si el body pudiera decidirlo,
+      // cualquiera daría por cobrado un pago que nadie recibió.
+      managerMock.save.mockResolvedValueOnce({ ...mockPago, estado: EstadoPago.PENDIENTE_VERIFICACION });
+
+      const result = await service.registrar({
+        clienteId: 'cli-001', facturaId: 'fac-001', contratoId: 'cnt-001',
+        monto: 85, metodoPago: MetodoPago.EFECTIVO, autoVerificar: true,
+      } as any, mockUser as any); // mockUser = Cajero, sin ese permiso
+
+      expect(result.estado).toBe(EstadoPago.PENDIENTE_VERIFICACION);
+    });
+
+    it('con permiso, auto-verifica y aplica el pago a la factura en la MISMA transacción', async () => {
+      const usuarioAutorizado = { ...mockUser, roles: ['Administrador'] };
       const pagoVerificado = { ...mockPago, estado: EstadoPago.VERIFICADO, metodoPago: MetodoPago.EFECTIVO };
-      mockRepo.save.mockResolvedValue(pagoVerificado);
+      managerMock.save.mockResolvedValueOnce(pagoVerificado);
       mockRepo.findById.mockResolvedValue(pagoVerificado);
       mockRepo.calcularDeudaContrato.mockResolvedValue({ deuda: 0, meses: 0 });
       mockContratosSvc.actualizarDeuda.mockResolvedValue(undefined);
@@ -176,9 +251,16 @@ describe('PagosService', () => {
       const result = await service.registrar({
         clienteId: 'cli-001', facturaId: 'fac-001', contratoId: 'cnt-001',
         monto: 85, metodoPago: MetodoPago.EFECTIVO, autoVerificar: true,
-      } as any, mockUser as any);
+      } as any, usuarioAutorizado as any);
 
-      expect(mockFacturacionSvc.aplicarPago).toHaveBeenCalled();
+      expect(result.estado).toBe(EstadoPago.VERIFICADO);
+
+      // La factura se actualiza DENTRO de la transacción, no delegando en
+      // FacturacionService: cobrar y aplicar tienen que ser un solo hecho, o el dinero
+      // queda registrado sin imputar si algo falla en medio.
+      const sqls = managerMock.query.mock.calls.map((c: any[]) => String(c[0]));
+      expect(sqls.some((s) => /UPDATE\s+facturas/i.test(s))).toBe(true);
+      expect(mockDs.transaction).toHaveBeenCalled();
     });
   });
 

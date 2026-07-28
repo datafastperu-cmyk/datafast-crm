@@ -1,7 +1,7 @@
 import { Test, TestingModule }     from '@nestjs/testing';
 import { getRepositoryToken }        from '@nestjs/typeorm';
 import { getDataSourceToken }        from '@nestjs/typeorm';
-import { EventEmitter }             from '@nestjs/event-emitter';
+import { EventEmitter2 }            from '@nestjs/event-emitter';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 
 import { MikrotikService }           from './mikrotik.service';
@@ -11,6 +11,12 @@ import { QueueService }              from './services/queue.service';
 import { FirewallService }           from './services/firewall.service';
 import { InterfaceService }          from './services/interface.service';
 import { AuditoriaService }          from '../auth/auditoria.service';
+import { ArpService }                from './services/arp.service';
+import { SubnetRouteService }        from './services/subnet-route.service';
+import { VpnClienteService }         from '../openvpn/services/vpn-cliente.service';
+import { ModuleHealthService }       from '../../common/services/module-health.service';
+import { EmpresaConfigService }      from '../config/empresa-config.service';
+import { SchedulerRegistry }         from '@nestjs/schedule';
 import { Router, EstadoEquipo, VersionRouterOS, MetodoConexion } from './entities/router.entity';
 
 // ── Fixtures ──────────────────────────────────────────────────
@@ -73,6 +79,7 @@ const mockPppoe = {
   listarPerfiles:       jest.fn(),
   crearPerfilSiNoExiste: jest.fn(),
   getTraficoSesion:     jest.fn(),
+  contarSesionesActivas: jest.fn().mockResolvedValue(0),
 };
 
 const mockQueue = {
@@ -130,8 +137,17 @@ describe('MikrotikService', () => {
         { provide: FirewallService,            useValue: mockFirewall },
         { provide: InterfaceService,           useValue: mockIface },
         { provide: AuditoriaService,           useValue: mockAuditoria },
-        { provide: EventEmitter,              useValue: mockEvents },
+        { provide: EventEmitter2,             useValue: mockEvents },
         { provide: getDataSourceToken(),       useValue: mockDs },
+        // Dependencias que MikrotikService adquirió después de escribirse este spec.
+        // Faltando una sola, Nest no instancia el servicio y la suite ENTERA se cae —
+        // no un test suelto. Son dobles inertes: aquí no se prueba su comportamiento.
+        { provide: ArpService,          useValue: { listar: jest.fn(), crear: jest.fn(), eliminar: jest.fn() } },
+        { provide: SubnetRouteService,  useValue: { listar: jest.fn(), sincronizar: jest.fn() } },
+        { provide: VpnClienteService,   useValue: { revocar: jest.fn(), listar: jest.fn() } },
+        { provide: ModuleHealthService, useValue: { registrar: jest.fn() } },
+        { provide: SchedulerRegistry,   useValue: { addInterval: jest.fn(), deleteInterval: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
       ],
     }).compile();
     service = m.get<MikrotikService>(MikrotikService);
@@ -142,7 +158,13 @@ describe('MikrotikService', () => {
   // ── Crear router ───────────────────────────────────────────
   describe('crearRouter()', () => {
     it('debe crear un router y cifrar el password', async () => {
-      mockRepo.findOne.mockResolvedValue(null); // no existe
+      // `findOne` se usa dos veces con propósitos distintos: validar que la IP no esté
+      // repetida (busca por `ipGestion` → null) y releer el router recién creado (busca
+      // por `id` → el router). Se discrimina por la consulta en vez de por el orden de
+      // llamada: un `mockResolvedValueOnce` sin consumir se filtra al test siguiente.
+      mockRepo.findOne.mockImplementation(async (opts: any) =>
+        opts?.where?.ipGestion ? null : mockRouter,
+      );
       mockRepo.save.mockResolvedValue(mockRouter);
 
       const dto = {
@@ -154,11 +176,15 @@ describe('MikrotikService', () => {
       expect(mockRepo.save).toHaveBeenCalled();
     });
 
-    it('debe lanzar ConflictException si la IP ya existe', async () => {
-      mockRepo.findOne.mockResolvedValue(mockRouter);
+    it('rechaza una IP de gestión ya registrada en la empresa', async () => {
+      // Un router duplicado por IP es lo que llenó la tabla de fantasmas que el ERP
+      // seguía poleando (incidente 2026-07-28: 11 registros para 5 IPs). El servicio
+      // lanza BadRequestException, no ConflictException — el test seguía esperando la
+      // excepción antigua y por eso no protegía nada.
+      mockRepo.findOne.mockImplementation(async () => mockRouter);
       await expect(
         service.crearRouter({ ipGestion: '192.168.100.1' } as any, mockUser as any),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow(/ya está registrada/i);
     });
   });
 
@@ -313,6 +339,10 @@ describe('MikrotikService', () => {
         { name: 'cli_001', address: '192.168.1.2' },
         { name: 'cli_002', address: '192.168.1.3' },
       ]);
+      // El conteo pasó a resolverse con `contarSesionesActivas` en vez de traer todas
+      // las sesiones y medir el array: en un router con miles de sesiones, listarlas
+      // solo para contarlas es caro.
+      mockPppoe.contarSesionesActivas.mockResolvedValue(2);
       mockIface.getIdentity.mockResolvedValue('Router-Principal');
       mockRepo.update.mockResolvedValue(undefined);
 
