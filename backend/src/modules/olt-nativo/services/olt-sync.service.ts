@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { EventEmitter2 }     from '@nestjs/event-emitter';
@@ -165,6 +165,21 @@ export class OltSyncService implements OnModuleInit {
 
   /** Inicia un job de sincronización. Si ya hay uno 'running', retorna su id. */
   async iniciarSync(oltId: string, empresaId: string): Promise<{ jobId: string }> {
+    // Una OLT inactiva o eliminada no se sincroniza: el job solo puede terminar en
+    // 'failed' por timeout SSH tras esperar la conexión, y deja basura en el historial.
+    // Comprobado el 2026-07-28 lanzando por error un sync contra una OLT desactivada.
+    const [olt] = await this.ds.query<Array<{ nombre: string; activo: boolean }>>(
+      `SELECT nombre, activo FROM olt_dispositivos
+       WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+      [oltId, empresaId],
+    );
+    if (!olt) throw new NotFoundException(`OLT ${oltId} no encontrada.`);
+    if (!olt.activo) {
+      throw new BadRequestException(
+        `La OLT "${olt.nombre}" está inactiva: no se puede sincronizar. Actívala primero.`,
+      );
+    }
+
     const running = await this.syncJobRepo.findOne({
       where: { oltId, empresaId, estado: 'running' as SyncJobEstado },
     });

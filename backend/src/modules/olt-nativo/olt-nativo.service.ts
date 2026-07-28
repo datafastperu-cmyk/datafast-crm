@@ -582,10 +582,41 @@ export class OltNativoService implements OnModuleInit {
     return this.oltRepo.save(olt);
   }
 
+  /**
+   * Elimina una OLT (soft delete real).
+   *
+   * Antes solo ponía `activo = false` pese a que el endpoint anuncia "soft delete": el
+   * registro nunca recibía `deleted_at`, así que sobrevivía a toda consulta que filtre
+   * por `deleted_at IS NULL` — que son casi todas. Encontrado el 2026-07-28: una OLT de
+   * pruebas "eliminada" en junio seguía en el sistema, apareciendo en listados y
+   * aceptando operaciones. El operador pulsó Eliminar, el ERP respondió 204, y no
+   * eliminó nada. Misma familia que el log que decía "requiere confirmación manual"
+   * cuando el trabajo ya estaba encolado: la operación declara una cosa y hace otra.
+   *
+   * Guard de integridad: una OLT con ONUs aprovisionadas NO se elimina. Borrarla dejaría
+   * registros FTTH apuntando a una OLT inexistente — el huérfano que el invariante de
+   * atomicidad físico↔lógico existe para impedir.
+   */
   async eliminar(id: string, empresaId: string): Promise<void> {
     const olt = await this.findOlt(id, empresaId);
+
+    const [{ count }] = await this.ds.query<Array<{ count: string }>>(
+      `SELECT COUNT(*)::text AS count
+       FROM   ftth_onu_registro
+       WHERE  olt_id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
+    if (Number(count) > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar la OLT: tiene ${count} ONU(s) aprovisionada(s). ` +
+        `Desaprovisiónalas primero — eliminarla dejaría registros apuntando a una OLT inexistente.`,
+      );
+    }
+
     olt.activo = false;
     await this.oltRepo.save(olt);
+    await this.oltRepo.softDelete(id);   // esto es lo que faltaba: fija deleted_at
+    this.logger.log(`OLT eliminada (soft delete) | id=${id} nombre=${olt.nombre} ip=${olt.ipGestion}`);
   }
 
   // ─── Gestión de proveedores multi-proveedor ───────────────────
