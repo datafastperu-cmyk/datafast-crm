@@ -117,7 +117,11 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
       await queryRunner.query(`
         INSERT INTO roles (id, empresa_id, nombre, descripcion, es_sistema)
         VALUES ('${r.id}', '${empresa}', '${r.nombre}', '${r.desc}', TRUE)
-        ON CONFLICT (empresa_id, nombre) DO NOTHING
+        -- El índice uq_roles_empresa_nombre es PARCIAL (WHERE deleted_at IS NULL). Para
+        -- que Postgres pueda inferirlo, el ON CONFLICT debe repetir el mismo predicado;
+        -- sin él aborta con "no unique or exclusion constraint matching the ON CONFLICT
+        -- specification" y la migración entera falla.
+        ON CONFLICT (empresa_id, nombre) WHERE deleted_at IS NULL DO NOTHING
       `);
     }
 
@@ -200,7 +204,8 @@ export class SeedInitialData1700000010000 implements MigrationInterface {
         '${passwordHash}',
         'activo', TRUE
       )
-      ON CONFLICT (empresa_id, email) DO NOTHING
+      -- Igual que en roles: uq_usuarios_empresa_email también es parcial.
+      ON CONFLICT (empresa_id, email) WHERE deleted_at IS NULL DO NOTHING
     `);
 
     // Asignar rol admin al usuario inicial
