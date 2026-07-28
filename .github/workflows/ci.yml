@@ -25,14 +25,29 @@ jobs:
     name: Backend — typecheck, tests y esquema
     runs-on: ubuntu-latest
 
-    # Nota: NO se levanta Postgres ni se corren las migraciones aquí, aunque sería lo
-    # ideal. Al intentarlo (2026-07-28) se descubrió que la cadena de migraciones NO
-    # aplica sobre una base vacía: `core` referencia tablas que crea `auxiliary` y son dos
-    # comandos separados, así que no existe hoy un procedimiento de instalación desde
-    # cero que funcione. Meterlo en CI ahora bloquearía TODOS los merges por un problema
-    # preexistente y ajeno a cada PR. Se usa un snapshot del esquema de producción y
-    # arreglar la cadena queda como tarea propia — ver schema.snapshot.txt.
+    # Postgres 16 como en la VPS (16.14). Validar contra otra versión daría una confianza
+    # que no se sostiene en el despliegue.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     datafast_db_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB:       datafast_db
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U datafast_db_user -d datafast_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
+      DB_HOST:     localhost
+      DB_PORT:     '5432'
+      DB_NAME:     datafast_db
+      DB_USER:     datafast_db_user
+      DB_PASSWORD: ci_password
+      DB_SSL:      'false'
       NODE_OPTIONS: '--max-old-space-size=4096'
 
     defaults:
@@ -59,17 +74,31 @@ jobs:
         # número de suites. Tarda algo más y termina.
         run: npx jest --runInBand --ci
 
+      # ── Instalación desde cero ─────────────────────────────────
+      # Cumple dos funciones a la vez: comprueba que la cadena COMPLETA aplica sobre una
+      # base vacía —o sea, que el ERP se puede instalar en un VPS nuevo, que es la
+      # directriz de portabilidad multi-VPS— y produce el esquema real contra el que
+      # validar las queries crudas, sin depender de un snapshot que envejece.
+      #
+      # Hasta el 2026-07-28 esto era imposible: `core` referenciaba tablas de `auxiliary`
+      # y se ejecutaban en bloques separados. `migration:run:all` los intercala por
+      # timestamp, que es lo que TypeORM hace de forma nativa.
+      - name: Instalación desde cero (migraciones core + auxiliary)
+        run: npm run migration:run:all
+
+      - name: Volcar esquema resultante
+        run: |
+          PGPASSWORD=ci_password psql -h localhost -U datafast_db_user -d datafast_db -tAc \
+            "SELECT table_name || ':' || string_agg(column_name, ',' ORDER BY column_name) \
+             FROM information_schema.columns \
+             WHERE table_schema='public' GROUP BY table_name ORDER BY table_name" > /tmp/schema.txt
+          echo "tablas: $(wc -l < /tmp/schema.txt)"
+
       - name: Verificar queries crudas contra el esquema
         # Las columnas dentro de template strings son invisibles para el compilador: así
         # se colaron `em.serie_boleta`, `em.telefono` y `cl.empresa_nombre`, que rompían
         # facturación y notificaciones EN SILENCIO — sin tráfico real no se notaba nada.
-        #
-        # El snapshot se regenera desde la BD con:
-        #   psql -tAc "SELECT table_name || ':' || string_agg(column_name, ',' ORDER BY column_name)
-        #              FROM information_schema.columns WHERE table_schema='public'
-        #              GROUP BY table_name ORDER BY table_name" > backend/schema.snapshot.txt
-        # Toda migración que añada o quite columnas debe actualizarlo en el mismo PR.
-        run: npm run sql:check -- schema.snapshot.txt src
+        run: npm run sql:check -- /tmp/schema.txt src
 
   frontend:
     name: Frontend — typecheck
