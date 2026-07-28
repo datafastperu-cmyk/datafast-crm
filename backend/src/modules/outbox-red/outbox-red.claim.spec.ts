@@ -21,15 +21,25 @@ import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.serv
 describe('OutboxRedService — reclamo atómico', () => {
   let svc: OutboxRedService;
   let queries: Array<{ sql: string; params?: any[] }>;
+  let filasReclamo: any[];
 
   const noop = () => ({});
 
   beforeEach(async () => {
     queries = [];
+    filasReclamo = [];
     const dsMock = {
+      // El mock IMITA EL CONTRATO REAL DEL DRIVER, no una versión conveniente de él:
+      // TypeORM/Postgres devuelve `[filas, rowCount]` para UPDATE y DELETE, y `filas`
+      // a secas para SELECT. Un mock que devuelve siempre `[]` deja pasar exactamente
+      // el bug que rompió el drenado del outbox en producción (2026-07-28): el código
+      // iteraba sobre [arrayDeFilas, número] y no procesaba nada, sin un solo error.
       query: jest.fn(async (sql: string, params?: any[]) => {
         queries.push({ sql, params });
-        return [];
+        const esMutante = /^\s*(UPDATE|DELETE)/i.test(sql);
+        if (!esMutante) return [];
+        const filas = /RETURNING/i.test(sql) ? filasReclamo : [];
+        return [filas, filas.length];
       }),
       transaction: jest.fn(async (cb: any) => cb({ query: jest.fn(async () => []) })),
     };
@@ -86,6 +96,23 @@ describe('OutboxRedService — reclamo atómico', () => {
     expect(barrido!.sql).toMatch(/estado\s*=\s*'EN_PROCESO'\s+AND\s+claim_expira_en\s*<\s*NOW\(\)/i);
     expect(barrido!.sql).toMatch(/SET\s+estado\s*=\s*'PENDIENTE'/i);
     expect(barrido!.sql).toMatch(/reclamado_por\s*=\s*NULL/i);
+  });
+
+  it('interpreta [filas, rowCount] del driver: procesa los comandos reclamados', async () => {
+    // Regresión directa del bug del 2026-07-28. Si el código vuelve a tratar el retorno
+    // del UPDATE como un array de filas, iterará sobre [array, número] y ejecutará
+    // basura: aquí eso se manifiesta como que NO se consulta el router del comando.
+    filasReclamo = [{
+      id: 29, contrato_id: 'c-1', router_id: 'r-1',
+      accion: 'PROVISIONAR', payload: {}, intentos: 0, max_intentos: 12,
+    }];
+
+    await svc.procesarPendientes();
+
+    // Un comando MikroTik reclamado tiene que llegar a consultar su router.
+    const consultaRouter = queries.find((q) => /FROM\s+routers\s+WHERE\s+id/i.test(q.sql));
+    expect(consultaRouter).toBeDefined();
+    expect(consultaRouter!.params).toEqual(['r-1']);
   });
 
   it('el barrido programado respeta RUN_CRONS; el trigger por evento no', async () => {

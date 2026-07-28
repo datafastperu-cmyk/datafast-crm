@@ -260,6 +260,23 @@ export class OutboxRedService {
   // tiempo que esto es un proceso muerto, no una OLT lenta.
   private static readonly CLAIM_TTL_SEGUNDOS = 600;
 
+  /**
+   * Normaliza el retorno de un `UPDATE ... RETURNING` de TypeORM/Postgres.
+   *
+   * El driver devuelve `[filas, rowCount]` para UPDATE y DELETE, pero `filas` a secas
+   * para SELECT. Confundirlos no lanza ningún error: se itera sobre dos elementos
+   * basura y el trabajo real nunca se ejecuta. Pasó en producción el 2026-07-28 —
+   * el outbox dejó de drenar durante ~20 min sin una sola línea de error.
+   */
+  private _filasDe(resultado: any): any[] {
+    if (!Array.isArray(resultado)) return [];
+    // Forma [filas, rowCount] del driver para sentencias mutantes.
+    if (resultado.length === 2 && Array.isArray(resultado[0]) && typeof resultado[1] === 'number') {
+      return resultado[0];
+    }
+    return resultado;
+  }
+
   // ────────────────────────────────────────────────────────────
   // CRON — cada 5 minutos: red de seguridad que barre la cola.
   // Guard RUN_CRONS como HIGIENE, no como fix: evita que api-core y el worker hagan
@@ -286,7 +303,12 @@ export class OutboxRedService {
       // propiedad efímera de una transacción que ya terminó.
       let lote: any[];
       do {
-        lote = await this.ds.query<any[]>(`
+        // OJO con la forma del resultado: el driver Postgres de TypeORM devuelve
+        // `[filas, rowCount]` para UPDATE/DELETE, no las filas directamente (sí lo hace
+        // para SELECT). Tratar el retorno como un array de filas hace que el bucle itere
+        // sobre [arrayDeFilas, número] y procese basura en silencio — el outbox deja de
+        // drenar sin un solo error en el log. Ver `_filasDe`.
+        lote = this._filasDe(await this.ds.query(`
           UPDATE comandos_red_pendientes
           SET    estado          = 'EN_PROCESO',
                  reclamado_por   = $1,
@@ -301,7 +323,7 @@ export class OutboxRedService {
                    FOR UPDATE SKIP LOCKED
                  )
           RETURNING id, contrato_id, router_id, accion, payload, intentos, max_intentos
-        `, [this._dueño, String(OutboxRedService.CLAIM_TTL_SEGUNDOS)]);
+        `, [this._dueño, String(OutboxRedService.CLAIM_TTL_SEGUNDOS)]));
 
         if (lote.length > 0) {
           this.logger.log(`[OutboxRed] Procesando ${lote.length} comando(s) reclamado(s)`);
@@ -330,7 +352,7 @@ export class OutboxRedService {
   @Cron('30 */5 * * * *')
   async barrerClaimsExpirados(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
-    const huerfanos = await this.ds.query<any[]>(`
+    const huerfanos = this._filasDe(await this.ds.query(`
       UPDATE comandos_red_pendientes
       SET    estado          = 'PENDIENTE',
              reclamado_por   = NULL,
@@ -344,7 +366,7 @@ export class OutboxRedService {
     `).catch((e) => {
       this.logger.warn(`[OutboxRed] barrerClaimsExpirados falló: ${e?.message}`);
       return [] as any[];
-    });
+    }));
 
     for (const h of huerfanos) {
       this.logger.error(
