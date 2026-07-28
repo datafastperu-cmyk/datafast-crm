@@ -14,6 +14,7 @@ import { PppoeService }      from '../mikrotik/services/pppoe.service';
 import { QueueService }      from '../mikrotik/services/queue.service';
 import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
 import { decrypt }           from '../../common/utils/encryption.util';
+import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { EventosSistemaService } from '../sistema/eventos-sistema.service';
 import {
   NOTIFICATION_EVENTS,
@@ -304,14 +305,13 @@ export class OutboxRedService {
    * para SELECT. Confundirlos no lanza ningún error: se itera sobre dos elementos
    * basura y el trabajo real nunca se ejecuta. Pasó en producción el 2026-07-28 —
    * el outbox dejó de drenar durante ~20 min sin una sola línea de error.
+   *
+   * Delega en `filasUpdateReturning`, que YA existía en common/utils: al corregir aquel
+   * incidente escribí una segunda implementación de la misma regla por no buscar antes.
+   * Dos versiones de un invariante del driver es como acaban divergiendo.
    */
-  private _filasDe(resultado: any): any[] {
-    if (!Array.isArray(resultado)) return [];
-    // Forma [filas, rowCount] del driver para sentencias mutantes.
-    if (resultado.length === 2 && Array.isArray(resultado[0]) && typeof resultado[1] === 'number') {
-      return resultado[0];
-    }
-    return resultado;
+  private _filasDe(resultado: unknown): any[] {
+    return filasUpdateReturning<any>(resultado);
   }
 
   // ────────────────────────────────────────────────────────────
