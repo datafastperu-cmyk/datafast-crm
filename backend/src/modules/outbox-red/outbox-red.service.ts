@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, HttpException } from '@nestjs/common';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { Cron }              from '@nestjs/schedule';
@@ -525,6 +525,33 @@ export class OutboxRedService {
       );
     } catch (err: any) {
       const nuevosIntentos = (cmd.intentos as number) + 1;
+
+      // Error PERMANENTE vs TRANSITORIO. La política de "nunca descartar" existe para el
+      // segundo caso: si la OLT está caída, reintentar es una obligación. Pero un rechazo de
+      // dominio (transición no permitida, registro inexistente) no se arregla reintentando:
+      // se repite idéntico cada 5 min contra un MA5800 con pocas sesiones VTY. El incidente
+      // del 24/07 acumuló 1784 intentos sobre un techo de 12 por esta vía. Se marca AGOTADO
+      // y se audita para que un humano lo resuelva.
+      if (err instanceof HttpException && err.getStatus() < 500) {
+        await this.ds.query(
+          `UPDATE comandos_red_pendientes
+           SET estado = 'AGOTADO', intentos = $2, ultimo_error = $3
+           WHERE id = $1`,
+          [cmd.id, nuevosIntentos, err.message?.slice(0, 500)],
+        );
+        this.logger.error(
+          `[OutboxRed] ${cmd.accion} rechazado de forma permanente → contrato=${cmd.contrato_id}: ${err.message}`,
+        );
+        void this.eventos?.registrar({
+          nivel:    'error',
+          origen:   'olt',
+          codigo:   'OUTBOX_ONU_RECHAZO_PERMANENTE',
+          mensaje:  `Comando ONU ${cmd.accion} rechazado de forma permanente (contrato ${cmd.contrato_id}): ${err.message}`,
+          contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
+        });
+        return;
+      }
+
       await this.ds.query(
         `UPDATE comandos_red_pendientes SET intentos = $2, ultimo_error = $3 WHERE id = $1`,
         [cmd.id, nuevosIntentos, err.message?.slice(0, 500)],

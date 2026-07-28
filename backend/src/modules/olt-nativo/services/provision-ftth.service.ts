@@ -1806,6 +1806,12 @@ export class ProvisionFtthService {
   // OLT: `display ont wan-info` confirma si la sesión PPPoE sigue viva con el
   // username correcto. Si no, se re-inyecta con `actualizarWan` (misma config del
   // contrato — idempotente). Diseñado para correr en cron (ver FtthWanWatcherCron).
+  //
+  // Defensa en profundidad: además del estado del registro se filtra por el estado del
+  // CONTRATO. Si SUSPENDER_ONU no llega a aplicarse, el registro sigue "activo" y este
+  // watcher re-inyectaría la WAN de un cliente suspendido cada 10 min — el bucle
+  // conecta→cae→reconecta reportado. Un watcher nunca repara hacia un estado que el
+  // negocio no autoriza.
   async verificarYRepararWanDrift(): Promise<{
     revisadas: number; ok: number; reparadas: number; fallidas: number;
   }> {
@@ -1817,7 +1823,8 @@ export class ProvisionFtthService {
        FROM   ftth_onu_registro r
        JOIN   contratos c ON c.id = r.contrato_id
        WHERE  r.estado = 'activo' AND r.wan_mode = 'routing' AND r.deleted_at IS NULL
-         AND  c.usuario_pppoe IS NOT NULL AND c.deleted_at IS NULL`,
+         AND  c.usuario_pppoe IS NOT NULL AND c.deleted_at IS NULL
+         AND  c.estado NOT IN ('suspendido', 'cortado', 'baja_definitiva')`,
     );
 
     let ok = 0, reparadas = 0, fallidas = 0;
@@ -2038,6 +2045,11 @@ export class ProvisionFtthService {
     if (!registro) {
       return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — suspender omitido.' };
     }
+    // Idempotencia por contrato: el estado destino ya alcanzado es ÉXITO, no error.
+    // Sin esto el outbox trata el no-op como fallo y reintenta indefinidamente contra la OLT.
+    if (registro.estado === FtthOnuEstado.SUSPENDIDO) {
+      return { exitoso: true, skipped: true, mensaje: `ONU ${registro.sn} ya estaba suspendida.` };
+    }
     return this.suspender(registro.oltId, empresaId, contratoId);
   }
 
@@ -2048,6 +2060,10 @@ export class ProvisionFtthService {
     const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
     if (!registro) {
       return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — rehabilitar omitido.' };
+    }
+    // Idempotencia por contrato (ver suspenderPorContrato).
+    if (registro.estado === FtthOnuEstado.ACTIVO) {
+      return { exitoso: true, skipped: true, mensaje: `ONU ${registro.sn} ya estaba activa.` };
     }
     return this.rehabilitar(registro.oltId, empresaId, contratoId);
   }
@@ -2078,6 +2094,7 @@ export class ProvisionFtthService {
 
     const estadosPermitidos: FtthOnuEstado[] = [
       FtthOnuEstado.ACTIVO,
+      FtthOnuEstado.SUSPENDIDO,         // caso más frecuente del negocio: moroso suspendido → baja
       FtthOnuEstado.GPON_REGISTRADO,
       FtthOnuEstado.WAN_INYECTADO,
       FtthOnuEstado.FALLIDO_ROLLBACK,   // permite forzar la limpieza manual además del watcher

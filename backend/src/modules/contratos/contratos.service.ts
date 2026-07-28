@@ -1398,9 +1398,11 @@ export class ContratosService {
         this.logger.warn(`desaprovisionarOlt → ${contratoId} | Error eliminando ONU de SmartOLT: ${err?.message}`);
       }
     } else {
-      // OLT nativo (SSH): el deprovisioning se delega al microservicio Python.
-      // El técnico debe confirmar manualmente en la OLT si el Python no está disponible.
-      this.logger.warn(`desaprovisionarOlt → ${contratoId} | ONU ${row.onuId} sin SmartOLT ID — deprovision nativo requiere confirmación manual.`);
+      // OLT nativo (SSH): NO se desaprovisiona aquí. La baja ya encoló DESAPROVISIONAR_ONU
+      // en el outbox (ver bajaDefinitiva → encolarDesaprovisionarOnu), que ejecuta el
+      // rollback GPON contra la OLT con reintento resiliente. Duplicar la llamada aquí
+      // crearía dos rutas concurrentes sobre la misma ONU.
+      this.logger.log(`desaprovisionarOlt → ${contratoId} | ONU ${row.onuId} es nativa (sin SmartOLT ID) — rollback GPON delegado al outbox.`);
     }
 
     // Actualizar estado de la ONU en BD (independientemente del resultado de la OLT)
