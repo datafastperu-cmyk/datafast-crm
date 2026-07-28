@@ -17,6 +17,7 @@ import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
 import { ResultadoOperacion, clasificarError } from '../../../common/domain/resultado-operacion';
 import { evaluarTransicion }                   from '../domain/ftth-maquina-estados';
+import { EventEmitter2 }                       from '@nestjs/event-emitter';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 import { FtthOperacionLockService }       from './ftth-operacion-lock.service';
 import { OperacionWizardPasoService }     from './operacion-wizard-paso.service';
@@ -140,6 +141,11 @@ export class ProvisionFtthService {
 
     private readonly opLock: FtthOperacionLockService,
     private readonly pasos:  OperacionWizardPasoService,
+
+    // Desacoplado por evento a propósito: OutboxRedModule ya importa OltNativoModule,
+    // así que inyectar el outbox aquí crearía una dependencia circular. Mismo patrón
+    // que 'ftth.drift.reaplicar' y 'ftth.drift.resincronizar-estado'.
+    private readonly events: EventEmitter2,
   ) {}
 
   private async _logRollback(
@@ -686,16 +692,21 @@ export class ProvisionFtthService {
     // de convergencia real contra GenieACS, VIO). El flujo automático y el manual comparten un
     // solo orquestador.
     //
-    // FIRE-AND-FORGET: el carril es inherentemente ASÍNCRONO — la ONU tiene que bootear, hacer
-    // DHCP e informar (minutos). El resolver espera hasta 3 min esa convergencia; bloquear el
-    // request de "Aprovisionar" en eso hacía que la provisión tardara y "fallara" aunque el
-    // plano de datos ya estuviera OK. Se dispara en segundo plano: la provisión retorna de
-    // inmediato y el drift-watcher (tr069-cpe-drift-watcher) reintenta/verifica el carril.
-    void this.bootstrapTr069(olt.id, olt.empresaId, { contratoId })
-      .then((r) => this.logger.log(`carril (async) | contrato=${contratoId}: ${r.exitoso ? 'OK' : 'pendiente'} — ${r.mensaje}`))
-      .catch((e) => this.logger.warn(`carril (async) | contrato=${contratoId}: ${e instanceof Error ? e.message : String(e)}`));
+    // El carril es inherentemente ASÍNCRONO — la ONU tiene que bootear, hacer DHCP e
+    // informar (minutos). Bloquear el request de "Aprovisionar" en eso hacía que la
+    // provisión tardara y "fallara" aunque el plano de datos ya estuviera OK.
+    //
+    // Antes era un `void bootstrapTr069(...)` fire-and-forget. Eso violaba la directriz
+    // de wizards (punto 2: "el fire-and-forget debe ser cancelable/anulable") y era la
+    // única operación de hardware del ciclo de servicio fuera del outbox: sin reintento,
+    // sin auditoría, y muerta en silencio si la OLT estaba ocupada. Fue el origen del
+    // incidente 2026-07-21 (`carril (async): No hay registro FTTH para el contrato` —
+    // una tarea sobreviviendo al wizard que la creó).
+    //
+    // Ahora se encola: hereda reintento resiliente, auditoría y el lock por contrato.
+    this.events.emit('ftth.carril.activar', { contratoId, empresaId: olt.empresaId });
 
-    return ' Carril TR-069 en aplicación en segundo plano (se confirma por el watcher; la ONU aparecerá en el ACS al informar).';
+    return ' Carril TR-069 encolado (se aplica y se confirma en segundo plano; la ONU aparecerá en el ACS al informar).';
   }
 
   // Puebla la config del contrato desde el preset de auto-config de la OLT (si está habilitado)
@@ -764,40 +775,66 @@ export class ProvisionFtthService {
       // cae al re-bootstrap de abajo.
     }
 
-    // Lock manual (no `conLock`): se toma aquí y lo LIBERA el bootstrap async al terminar, para
-    // que la request retorne de inmediato pero la desaprovisión no pueda colarse mientras se
-    // escribe el carril. TTL amplio para cubrir la ventana de convergencia (6 min).
-    const token = await this.opLock.adquirir(contratoId, 'tr069', 480);
-
-    // Romper un posible deadlock de auth CWMP al revivir: si el device quedó `AuthEnforced` sin el
-    // HMAC materializado (p.ej. tras un factory reset), su Inform de recuperación se rechaza por
-    // auth y la sesión NUNCA revive. Se retira el tag (gracia) para desbloquear ese Inform;
-    // enforceDeviceAuth (VIO) lo re-agrega al cerrar la re-provisión. Idempotente (no-op sin tag).
-    const gDev = await this.genieDriver.findDeviceIdBySerial(registro.sn).catch((): null => null);
-    if (gDev) await this.genieDriver.grantAuthGrace(gDev).catch(() => { /* best-effort */ });
-
+    // Write-ahead: el estado `activando` se persiste ANTES de encolar. Si el proceso muere
+    // entre ambos, el watcher ve un `activando` colgado y lo resuelve; al revés (encolar y
+    // luego persistir) el comando podría ejecutarse contra un registro que aún dice
+    // `inactivo`. Mismo orden que exige la directriz de wizards para la bitácora de saga.
     await this.ftthRepo.update(registro.id, {
       carrilEstado: FtthCarrilEstado.ACTIVANDO,
       tr069UltimoUsoAt: new Date(),
       ultimoError: null,
     });
 
-    // Fire-and-forget con red de seguridad: el estado `activando` persistido + el watcher.
-    // Reusa la identidad reservada si venía de `inactivo_reservado` (mgmtServicePortId ya guardado).
-    void this.bootstrapTr069(registro.oltId, empresaId, {
-      contratoId,
-      mgmtServicePortId: registro.mgmtServicePortId ?? undefined,
-      mgmtVlan:          registro.mgmtVlan ?? undefined,
-      priority:          registro.mgmtPriority ?? undefined,
-    })
-      .then((r) => this.logger.log(`activarCarril | contrato=${contratoId}: ${r.exitoso ? 'activo' : 'activacion_fallida'} — ${r.mensaje}`))
-      .catch((e) => this.logger.warn(`activarCarril | contrato=${contratoId}: ${e instanceof Error ? e.message : String(e)}`))
-      .finally(() => this.opLock.liberar(contratoId, token));
+    // El trabajo pesado (bootstrap + convergencia, hasta ~6 min) lo hace el outbox, no un
+    // fire-and-forget colgado de esta request. El lock por contrato se toma DENTRO del
+    // comando, no aquí: sostenerlo desde la request obligaba a adivinar un TTL que cubriera
+    // una ventana que esta función ya no controla.
+    this.events.emit('ftth.carril.activar', { contratoId, empresaId });
 
     return {
       estado: FtthCarrilEstado.ACTIVANDO,
       mensaje: 'Activando el carril TR-069. La ONU aparecerá en el ACS al informar (~1-5 min).',
     };
+  }
+
+  // ── Ejecutor del comando ACTIVAR_CARRIL_TR069 (lo invoca el outbox) ──────
+  // Aquí sí se bloquea lo que haga falta: corre en el worker, no en una request HTTP.
+  async activarCarrilPorContrato(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+      if (!registro) {
+        // El wizard pudo anularse entre el encolado y la ejecución: no hay carril que
+        // activar y NO es un error. Exactamente el caso que dejó el log huérfano del
+        // 2026-07-21 (`carril (async): No hay registro FTTH para el contrato`).
+        return { clase: 'no_aplica', mensaje: 'Contrato sin ONU FTTH — activación de carril omitida.' };
+      }
+      if (registro.carrilEstado === FtthCarrilEstado.ACTIVO) {
+        return { clase: 'ya_en_destino', mensaje: `Carril TR-069 ya activo para ${registro.sn}.` };
+      }
+
+      // Romper un posible deadlock de auth CWMP al revivir: si el device quedó `AuthEnforced`
+      // sin el HMAC materializado (p.ej. tras un factory reset), su Inform de recuperación se
+      // rechaza por auth y la sesión NUNCA revive. Se retira el tag (gracia) para desbloquear
+      // ese Inform. Idempotente (no-op si no hay tag).
+      const gDev = await this.genieDriver.findDeviceIdBySerial(registro.sn).catch((): null => null);
+      if (gDev) await this.genieDriver.grantAuthGrace(gDev).catch(() => { /* best-effort */ });
+
+      // El lock vive lo que dura el trabajo real: mutex con la desaprovisión.
+      const r = await this.opLock.conLock(contratoId, 'tr069', () =>
+        this.bootstrapTr069(registro.oltId, empresaId, {
+          contratoId,
+          mgmtServicePortId: registro.mgmtServicePortId ?? undefined,
+          mgmtVlan:          registro.mgmtVlan ?? undefined,
+          priority:          registro.mgmtPriority ?? undefined,
+        }),
+      );
+
+      return r.exitoso
+        ? { clase: 'aplicado',     mensaje: r.mensaje }
+        : { clase: 'reintentable', motivo:  r.mensaje };
+    } catch (err) {
+      return clasificarError(err);
+    }
   }
 
   // ── desactivarCarril (Fase 2 — toggle bajo demanda) ───────────────

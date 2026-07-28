@@ -28,7 +28,24 @@ export type AccionRed =
   // Ciclo de vida ONU (FTTH) — comandos independientes del corte MikroTik,
   // cada uno con su propio reintento resiliente.
   | 'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU' | 'ACTUALIZAR_WAN_ONU'
-  | 'REAPROVISIONAR_ONU';
+  | 'REAPROVISIONAR_ONU' | 'ACTIVAR_CARRIL_TR069';
+
+/**
+ * Acciones que se resuelven por CONTRATO contra la OLT (no usan router MikroTik).
+ * Fuente única: agregar una acción ONU aquí es lo que la enruta correctamente. El
+ * tipo `AccionOnu` se deriva de esta lista, así que el compilador obliga a mantener
+ * ambas cosas en sintonía.
+ */
+export const ACCIONES_ONU = [
+  'SUSPENDER_ONU',
+  'REACTIVAR_ONU',
+  'DESAPROVISIONAR_ONU',
+  'ACTUALIZAR_WAN_ONU',
+  'REAPROVISIONAR_ONU',
+  'ACTIVAR_CARRIL_TR069',
+] as const satisfies readonly AccionRed[];
+
+export type AccionOnu = (typeof ACCIONES_ONU)[number];
 
 export interface PayloadSuspenderRed {
   ipAsignada:  string;
@@ -154,7 +171,7 @@ export class OutboxRedService {
   // Público: además del listener de eventos, lo usa la re-sincronización de
   // estado del tab Drift (ONU suspendida con contrato con servicio o viceversa).
   async encolarOnu(
-    accion:     'SUSPENDER_ONU' | 'REACTIVAR_ONU' | 'DESAPROVISIONAR_ONU' | 'ACTUALIZAR_WAN_ONU' | 'REAPROVISIONAR_ONU',
+    accion:     AccionOnu,
     contratoId: string,
     empresaId:  string,
   ): Promise<void> {
@@ -194,6 +211,18 @@ export class OutboxRedService {
   // esté disponible; omite si el contrato no tiene ONU FTTH o está en modo bridge.
   async encolarReaprovisionarOnu(contratoId: string, empresaId: string): Promise<void> {
     await this.encolarOnu('REAPROVISIONAR_ONU', contratoId, empresaId);
+  }
+
+  // Carril TR-069 (T3). Antes era un `void bootstrapTr069(...)` fire-and-forget dentro
+  // del servicio FTTH: la única operación de hardware del ciclo de servicio fuera del
+  // outbox, sin reintento ni auditoría, y capaz de sobrevivir al wizard que la creó
+  // (incidente 2026-07-21). Desacoplado por evento porque OutboxRedModule ya importa
+  // OltNativoModule — inyectar el outbox allá sería una dependencia circular.
+  @OnEvent('ftth.carril.activar', { async: true })
+  async onCarrilActivar(ev: { contratoId: string; empresaId: string }): Promise<void> {
+    if (ev?.contratoId && ev?.empresaId) {
+      await this.encolarOnu('ACTIVAR_CARRIL_TR069', ev.contratoId, ev.empresaId);
+    }
   }
 
   // Solicitud desde el panel de drift (olt-nativo) — desacoplado por evento para
@@ -400,9 +429,10 @@ export class OutboxRedService {
   // ────────────────────────────────────────────────────────────
   private async ejecutarComando(cmd: any): Promise<void> {
     // Ciclo de vida ONU (FTTH): no usa router MikroTik, se resuelve por contrato.
-    if (cmd.accion === 'SUSPENDER_ONU' || cmd.accion === 'REACTIVAR_ONU' ||
-        cmd.accion === 'DESAPROVISIONAR_ONU' || cmd.accion === 'ACTUALIZAR_WAN_ONU' ||
-        cmd.accion === 'REAPROVISIONAR_ONU') {
+    // La pertenencia se declara UNA vez (ACCIONES_ONU): repetir la lista en cada `if`
+    // es cómo una acción nueva termina cayendo por error en la rama MikroTik y
+    // muriendo con "Router eliminado de BD".
+    if (ACCIONES_ONU.includes(cmd.accion)) {
       await this.ejecutarComandoOnu(cmd);
       return;
     }
@@ -623,6 +653,8 @@ export class OutboxRedService {
         res = r.skipped      ? { clase: 'no_aplica',    mensaje: r.mensaje }
             : r.actualizado  ? { clase: 'aplicado',     mensaje: r.mensaje }
                              : { clase: 'reintentable', motivo:  r.error ?? r.mensaje };
+      } else if (cmd.accion === 'ACTIVAR_CARRIL_TR069') {
+        res = await this.ftthSvc.activarCarrilPorContrato(cmd.contrato_id, empresaId);
       } else if (cmd.accion === 'REAPROVISIONAR_ONU') {
         // Push ERP→OLT de drift: re-aplica la ONU con los datos guardados del registro.
         const r = await this.ftthSvc.reaplicar(cmd.contrato_id, empresaId);
