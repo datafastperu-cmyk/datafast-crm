@@ -86,6 +86,7 @@ import { HuaweiDhcpBootstrapChannel }       from './services/cpe-provisioning/hu
 import { HuaweiHttpBootstrapChannel }       from './services/cpe-provisioning/huawei-http-bootstrap-channel.service';
 import { ProvisioningStrategyResolver }     from './services/cpe-provisioning/provisioning-strategy-resolver.service';
 import { Tr069CpeDriftWatcherCron }         from './cron/tr069-cpe-drift-watcher.cron';
+import { Tr069StalenessService }           from './services/tr069-staleness.service';
 
 // ═══════════════════════════════════════════════════════════════════
 // OltNativoModule — ecosistema multi-proveedor OLT/ONU
@@ -244,6 +245,7 @@ import { Tr069CpeDriftWatcherCron }         from './cron/tr069-cpe-drift-watcher
     OltHealthPollerCron,
     ZtpReconcileCron,
     Tr069CpeDriftWatcherCron,
+    Tr069StalenessService,
   ],
   // Solo exports que módulos externos realmente consumen
   exports: [

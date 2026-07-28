@@ -4,6 +4,7 @@ import { ProvisionFtthService } from '../services/provision-ftth.service';
 import { EventosSistemaService } from '../../sistema/eventos-sistema.service';
 import { GenieAcsDriver } from '../ztp/genieacs.driver';
 import { CwmpAuthService } from '../ztp/cwmp-auth.service';
+import { Tr069StalenessService } from '../services/tr069-staleness.service';
 
 // Corre cada 20 min (desfasado de FtthWanWatcherCron, que corre cada 10) para
 // no concentrar carga sobre la OLT/GenieACS en el mismo instante.
@@ -13,12 +14,14 @@ export class Tr069CpeDriftWatcherCron {
   private running = false;
   private barriendo = false;
   private desendureciendo = false;
+  private verificandoStaleness = false;
 
   constructor(
     private readonly ftth: ProvisionFtthService,
     private readonly eventos: EventosSistemaService,
     private readonly genie: GenieAcsDriver,
     private readonly cwmpAuth: CwmpAuthService,
+    private readonly staleness: Tr069StalenessService,
   ) {}
 
   // Desendurecimiento residual (2026-07-28). Con la política de endurecimiento CWMP
@@ -51,6 +54,46 @@ export class Tr069CpeDriftWatcherCron {
       this.logger.error(`desendurecerAuthResidual falló: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       this.desendureciendo = false;
+    }
+  }
+
+  // Watcher de staleness (B4) — cada 30 min, desfasado 12' de los demás para no
+  // concentrar carga sobre OLT/GenieACS. Detecta gestión TR-069 muerta, que es el
+  // agujero que dejaba el factory reset por BOTÓN FÍSICO: no genera ningún evento,
+  // el cliente sigue navegando, y la ONU queda administrativamente muerta sin que
+  // nadie se entere.
+  @Cron('12,42 * * * *')
+  async verificarStaleness(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
+    if (this.verificandoStaleness) return;
+    this.verificandoStaleness = true;
+    try {
+      const r = await this.staleness.revisar();
+      if (r.rancias === 0 && r.recuperadas === 0) return; // sin novedad, sin ruido
+
+      this.logger.warn(
+        `[Staleness TR-069] revisadas=${r.revisadas} rancias=${r.rancias} ` +
+        `recuperadas=${r.recuperadas} accionadas=${r.accionadas} ` +
+        `apagadas=${r.apagadas} suprimidas_zonal=${r.suprimidasZonal}`,
+      );
+
+      // Solo se audita cuando hubo una DECISIÓN. Registrar cada pasada convertiría la
+      // bitácora en ruido y escondería justo los eventos que importan.
+      if (r.accionadas > 0 || r.suprimidasZonal > 0) {
+        await this.eventos.registrar({
+          nivel:   r.suprimidasZonal > 0 ? 'error' : 'warn',
+          origen:  'olt',
+          codigo:  r.suprimidasZonal > 0 ? 'TR069_STALENESS_CORTE_ZONAL' : 'TR069_GESTION_MUERTA',
+          mensaje: r.suprimidasZonal > 0
+            ? `Patrón de corte zonal: ${r.suprimidasZonal} ONU(s) rancias no accionadas para no saturar la OLT. Revisar la infraestructura del nodo.`
+            : `${r.accionadas} ONU(s) ONLINE en la OLT pero sin Inform hace horas — gestión TR-069 muerta (patrón de factory-reset físico). Carril re-inyectado.`,
+          contexto: r,
+        });
+      }
+    } catch (e) {
+      this.logger.error(`verificarStaleness falló: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.verificandoStaleness = false;
     }
   }
 

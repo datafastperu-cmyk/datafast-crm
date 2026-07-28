@@ -177,6 +177,17 @@ export class FtthOnuRegistro extends BaseModel {
   @Column({ name: 'tr069_ultimo_uso_at', type: 'timestamptz', nullable: true })
   tr069UltimoUsoAt: Date | null;
 
+  // Watcher de staleness (B4). Cuándo se detectó por primera vez que la sesión TR-069
+  // estaba rancia. Sostiene la ventana de gracia: sin ella, cada corte de luz doméstico
+  // dispararía trabajo contra la OLT. Se limpia en cuanto la ONU vuelve a informar.
+  @Column({ name: 'tr069_stale_desde', type: 'timestamptz', nullable: true })
+  tr069StaleDesde: Date | null;
+
+  // Última vez que el watcher confirmó que una sesión rancia volvió sola. Rastro para
+  // distinguir "se recuperó" de "nunca estuvo caída".
+  @Column({ name: 'tr069_recuperado_en', type: 'timestamptz', nullable: true })
+  tr069RecuperadoEn: Date | null;
+
   @Column({ name: 'mgmt_service_port_id', type: 'int', nullable: true })
   mgmtServicePortId: number | null;
 
