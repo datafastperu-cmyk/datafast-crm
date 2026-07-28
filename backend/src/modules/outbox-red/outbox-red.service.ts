@@ -175,11 +175,19 @@ export class OutboxRedService {
     contratoId: string,
     empresaId:  string,
   ): Promise<void> {
+    // `deleted_at IS NULL` es imprescindible: el desaprovisionamiento hace SOFT-delete
+    // del registro, así que un contrato cuya ONU ya se retiró conserva la fila. Sin el
+    // filtro se encola trabajo para una ONU que ya no existe (observado el 2026-07-28
+    // al dar de baja CNT-2026-000005, sin ONU desde hacía días). No es dañino —el
+    // ejecutor lo resuelve como `ya_en_destino`— pero es una vuelta entera de outbox
+    // y un comando en la cola que el operador tiene que interpretar.
     const [existe] = await this.ds.query(
-      `SELECT 1 FROM ftth_onu_registro WHERE contrato_id = $1 AND empresa_id = $2 LIMIT 1`,
+      `SELECT 1 FROM ftth_onu_registro
+       WHERE contrato_id = $1 AND empresa_id = $2 AND deleted_at IS NULL
+       LIMIT 1`,
       [contratoId, empresaId],
     ).catch(() => [null]);
-    if (!existe) return; // Contrato WISP o sin ONU — nada que hacer en la OLT.
+    if (!existe) return; // Contrato WISP, sin ONU, o ya desaprovisionado.
 
     await this.encolar(accion, contratoId, 'none', { empresaId } as any);
     this.logger.warn(`[OutboxRed] ${accion} encolado → contrato=${contratoId}`);
