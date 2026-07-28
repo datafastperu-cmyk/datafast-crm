@@ -852,7 +852,10 @@ export class FacturacionService {
     clienteOverride?: Partial<ClientePdfData>,
   ): void {
     this.ds.query(
-      `SELECT em.razon_social, em.ruc, em.direccion_fiscal, em.telefono, em.email,
+      // `empresas.telefono` no existe: la columna es `telefono_informativo`. Sin el
+      // alias la query fallaba entera y el PDF de la factura no se generaba.
+      `SELECT em.razon_social, em.ruc, em.direccion_fiscal,
+              em.telefono_informativo AS telefono, em.email,
               cl.nombre_completo, cl.tipo_documento, cl.numero_documento,
               cl.direccion, cl.email AS cl_email, cl.telefono AS cl_telefono,
               cl.es_empresa, cl.ruc_empresa, cl.razon_social AS cl_razon_social

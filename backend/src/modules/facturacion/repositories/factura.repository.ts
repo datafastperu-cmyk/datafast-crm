@@ -256,9 +256,12 @@ export class FacturaRepository {
         cl.email                AS cliente_email,
         cl.telefono             AS cliente_telefono,
         cl.direccion            AS cliente_direccion,
-        em.serie_boleta,
-        em.serie_factura,
-        CAST(em.igv_rate AS FLOAT) AS igv_rate,
+        -- serie_boleta, serie_factura e igv_rate se migraron de empresas a
+        -- comprobantes_config / configuracion_facturacion, pero seguian en este
+        -- SELECT: la query fallaba entera con "column em.serie_boleta does not exist",
+        -- y con ella TODA la generacion de facturas. El consumidor ya los lee de
+        -- configGlobal (ver facturacion.service.ts: "IGV leido de configGlobal, no del
+        -- primer contrato del lote"), asi que eran campos muertos.
         em.dias_gracia,
         em.razon_social         AS empresa_nombre,
         em.ruc                  AS empresa_ruc,

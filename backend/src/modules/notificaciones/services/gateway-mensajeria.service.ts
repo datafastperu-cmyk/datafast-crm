@@ -545,7 +545,9 @@ export class GatewayMensajeriaService {
               cl.nombre_completo       AS nombre_completo,
               em.razon_social          AS empresa,
               em.razon_social          AS empresa_nombre,
-              em.telefono              AS telefono_empresa,
+              -- La columna es telefono_informativo, no telefono: sin esto la query
+              -- fallaba entera y NINGUNA variable de plantilla se resolvia.
+              em.telefono_informativo  AS telefono_empresa,
               pl.nombre                AS plan,
               pl.nombre                AS plan_contratado,
               pl.velocidad_bajada::text AS velocidad_bajada,

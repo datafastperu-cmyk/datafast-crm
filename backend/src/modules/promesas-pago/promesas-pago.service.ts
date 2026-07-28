@@ -708,11 +708,15 @@ export class PromesasPagoService {
     // Notificar al cliente que su servicio fue cortado por promesa vencida
     setImmediate(async () => {
       try {
+        // `clientes.empresa_nombre` no existe — la query fallaba entera y el cliente
+        // NUNCA recibía el aviso de corte por promesa vencida. `nombreEmpresa` en la
+        // notificación es quien la firma (el ISP), así que sale de `empresas`.
         const [row] = await this.ds.query<any[]>(`
           SELECT cl.nombre_completo, cl.whatsapp, cl.telefono,
-                 cl.empresa_nombre, co.deuda_total
+                 em.razon_social AS empresa_nombre, co.deuda_total
           FROM   contratos co
           JOIN   clientes  cl ON cl.id = co.cliente_id
+          JOIN   empresas  em ON em.id = co.empresa_id
           WHERE  co.id = $1
         `, [promesa.contratoId]);
         if (!row) return;
