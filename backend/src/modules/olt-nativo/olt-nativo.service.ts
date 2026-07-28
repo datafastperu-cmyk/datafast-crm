@@ -598,7 +598,15 @@ export class OltNativoService implements OnModuleInit {
    * atomicidad físico↔lógico existe para impedir.
    */
   async eliminar(id: string, empresaId: string): Promise<void> {
-    const olt = await this.findOlt(id, empresaId);
+    // NO se usa `findOlt`: ese exige `activo = true`, y como la versión anterior de este
+    // método solo desactivaba, la OLT quedaba ATRAPADA — pulsar "Eliminar" una vez la
+    // volvía inalcanzable para cualquier operación posterior, incluida eliminarla de
+    // verdad. Las dos mitades del bug se tapaban entre sí: por eso una OLT "eliminada"
+    // en junio seguía viva en julio y no había forma de sacarla desde la UI.
+    const olt = await this.oltRepo.findOne({ where: { id, empresaId } });
+    if (!olt) {
+      throw new NotFoundException(`OLT con ID "${id}" no encontrada o no pertenece a esta empresa`);
+    }
 
     const [{ count }] = await this.ds.query<Array<{ count: string }>>(
       `SELECT COUNT(*)::text AS count
