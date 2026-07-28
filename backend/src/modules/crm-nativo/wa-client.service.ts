@@ -41,16 +41,23 @@ const CLIENT_ID    = 'datafast-crm';
 const MAX_RESTARTS   = 5;
 const RESTART_DELAYS = [8_000, 16_000, 32_000, 64_000, 120_000];
 
-// Cluster guard: only PM2 instance 0 manages the WA client.
-// Reads from env var first, falls back to pm2_env JSON (PM2 v7 embeds it as number).
+// Guard de instancia única: solo UN proceso puede manejar el cliente de WhatsApp,
+// porque whatsapp-web.js abre Chromium sobre un perfil de sesión exclusivo.
+//
+// El guard anterior discriminaba por `NODE_APP_INSTANCE === '0'`, que funciona en PM2
+// modo CLUSTER. Pero esta instalación corre en modo FORK con dos apps distintas
+// (datafast-api-core y datafast-worker-auxiliary), y PM2 les da NODE_APP_INSTANCE=0 a
+// las DOS. Verificado en producción 2026-07-28 leyendo /proc/<pid>/environ: ambos
+// procesos se creían primarios, ambos lanzaban Chromium, y api-core moría con
+// "Failed to launch the browser process" mientras el worker se quedaba con el perfil.
+//
+// La discriminación correcta es la misma que usa el resto del backend para decidir qué
+// proceso hace el trabajo de fondo: el worker. `WA_ENABLED` permite override explícito
+// por si alguna instalación quiere separarlo del resto de los jobs.
 const IS_PRIMARY = (() => {
-  const raw = process.env.NODE_APP_INSTANCE;
-  if (raw !== undefined) return raw === '0';
-  try {
-    const inst = JSON.parse(process.env.pm2_env || '{}').NODE_APP_INSTANCE;
-    if (inst !== undefined) return inst === 0;
-  } catch {}
-  return true; // not under PM2 cluster → always primary
+  const explicito = process.env.WA_ENABLED;
+  if (explicito !== undefined) return explicito.toLowerCase() === 'true';
+  return process.env.RUN_CRONS === 'true';
 })();
 
 // Prefer the real Google Chrome binary over the snap wrapper
@@ -85,7 +92,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     if (!IS_PRIMARY) {
       this.moduleHealth.registrar('crm-whatsapp', 'ok');
-      this.logger.log('Instancia secundaria — WaClient delegado a instancia 0');
+      this.logger.log('Proceso secundario — WaClient delegado al worker (RUN_CRONS/WA_ENABLED)');
       return;
     }
     if (!CHROME_PATH) {
