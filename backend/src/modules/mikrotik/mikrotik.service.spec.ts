@@ -98,7 +98,7 @@ const mockFirewall = {
   estaEnListaMorosos:      jest.fn(),
   listarMorosos:           jest.fn(),
   aplicarProrroga:         jest.fn(),
-  configurarReglasControl: jest.fn(),
+  configurarReglasControl: jest.fn().mockResolvedValue(undefined),
   crearDhcpBinding:        jest.fn(),
   eliminarDhcpBinding:     jest.fn(),
   listarDhcpLeases:        jest.fn(),
@@ -106,7 +106,10 @@ const mockFirewall = {
 };
 
 const mockIface = {
-  getRecursos:        jest.fn(),
+  // Con `jest.fn()` a secas devuelve undefined, y `detectarVersionAsync` encadena un
+  // `.then()` sobre el resultado: revienta en una tarea de fondo que nada tiene que ver
+  // con lo que el test comprueba. Un mock sin valor por defecto no es neutro.
+  getRecursos:        jest.fn().mockResolvedValue({ version: '7.14', cpuLoad: 0 }),
   getIdentity:        jest.fn().mockResolvedValue('MikroTik'),
   listarInterfaces:   jest.fn(),
   monitorearInterface: jest.fn(),
@@ -143,8 +146,21 @@ describe('MikrotikService', () => {
         // Faltando una sola, Nest no instancia el servicio y la suite ENTERA se cae —
         // no un test suelto. Son dobles inertes: aquí no se prueba su comportamiento.
         { provide: ArpService,          useValue: { listar: jest.fn(), crear: jest.fn(), eliminar: jest.fn() } },
-        { provide: SubnetRouteService,  useValue: { listar: jest.fn(), sincronizar: jest.fn() } },
-        { provide: VpnClienteService,   useValue: { revocar: jest.fn(), listar: jest.fn() } },
+        // `fetchSubnets` se dispara en segundo plano tras crear el router (descubre las
+        // redes que cuelgan de él). Devuelve promesa: sin ella el `.then()` revienta.
+        { provide: SubnetRouteService,  useValue: {
+          listar: jest.fn(), sincronizar: jest.fn(),
+          fetchSubnets: jest.fn().mockResolvedValue([]),
+          guardarSubnets: jest.fn().mockResolvedValue(undefined),
+        } },
+        // Todos devuelven promesa: el alta encadena `.catch()` sobre ellos como tareas de
+        // fondo (generar el CCD del cert VPN). Un `jest.fn()` pelado devuelve undefined y
+        // el encadenado revienta lejos del código que se está probando.
+        { provide: VpnClienteService,   useValue: {
+          revocar: jest.fn().mockResolvedValue(undefined),
+          listar:  jest.fn().mockResolvedValue([]),
+          generarParaRouter: jest.fn().mockResolvedValue(undefined),
+        } },
         { provide: ModuleHealthService, useValue: { registrar: jest.fn() } },
         { provide: SchedulerRegistry,   useValue: { addInterval: jest.fn(), deleteInterval: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
@@ -162,9 +178,13 @@ describe('MikrotikService', () => {
       // repetida (busca por `ipGestion` → null) y releer el router recién creado (busca
       // por `id` → el router). Se discrimina por la consulta en vez de por el orden de
       // llamada: un `mockResolvedValueOnce` sin consumir se filtra al test siguiente.
-      mockRepo.findOne.mockImplementation(async (opts: any) =>
-        opts?.where?.ipGestion ? null : mockRouter,
-      );
+      // El alta valida unicidad de IP de gestión, NOMBRE e IP VPN antes de crear; las
+      // tres deben devolver null. Solo la relectura final (por `id`) devuelve el router.
+      mockRepo.findOne.mockImplementation(async (opts: any) => {
+        const w = opts?.where ?? {};
+        if (w.ipGestion || w.nombre || w.vpnIp) return null;   // validaciones de unicidad
+        return mockRouter;                                      // relectura por id
+      });
       mockRepo.save.mockResolvedValue(mockRouter);
 
       const dto = {

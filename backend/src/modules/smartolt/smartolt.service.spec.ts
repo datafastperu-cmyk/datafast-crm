@@ -218,7 +218,11 @@ describe('OrquestadorFtthService - ejecutarFlujoComipletoFtth', () => {
 
   const mockContratoRow = {
     id: 'cnt-001', numero_contrato: 'CNT-2024-000001',
-    estado: 'pendiente_activacion', aprovisionado: false,
+    // El paso 1 exige contrato ACTIVO: el flujo FTTH completo se ejecuta sobre un
+    // contrato ya vigente, no sobre uno pendiente. El fixture seguía en
+    // `pendiente_activacion` y hacía fallar el paso 1, que arrastraba los otros 7 como
+    // "Omitido por fallo en paso 1" — un solo dato desactualizado tumbaba el flujo entero.
+    estado: 'activo', aprovisionado: false,
     usuario_pppoe: 'cli_abc12345', password_pppoe: 'pass123',
     ip_asignada: '192.168.1.2',
     cliente_nombre: 'Juan Pérez', telefono: '987654321', email: 'juan@test.pe',
@@ -250,6 +254,12 @@ describe('OrquestadorFtthService - ejecutarFlujoComipletoFtth', () => {
       ],
     }).compile();
     orquestador = m.get<OrquestadorFtthService>(OrquestadorFtthService);
+
+    // `jest.clearAllMocks()` NO vacía la cola de `mockResolvedValueOnce`. El test que
+    // prueba el flujo interrumpido deja onces sin consumir (falla a propósito en el paso
+    // 1) y esos valores se filtran al test siguiente, que entonces recibe respuestas de
+    // otro escenario y falla por una razón inventada. Se resetea explícitamente.
+    mockDs.query.mockReset();
   });
 
   afterEach(() => jest.clearAllMocks());

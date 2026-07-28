@@ -148,7 +148,16 @@ describe('VelocidadService', () => {
   // ── parseMikrotikRate ─────────────────────────────────────
   describe('parseMikrotikRate()', () => {
     it('parsea Mbps: 30M → 30', () => expect(service.parseMikrotikRate('30M')).toBe(30));
-    it('parsea Kbps: 512K → 0.5', () => expect(service.parseMikrotikRate('512K')).toBeCloseTo(0.5));
+    // El test esperaba 0.5 y la implementación devuelve 0.512: la que estaba MAL era la
+    // expectativa. 512 Kbps son 0.512 Mbps exactos, no medio mega. Redondear aquí haría
+    // que `formatearTasa` (la inversa) dejara de ser consistente: 0.5 → "500K" ≠ "512K".
+    it('parsea Kbps: 512K → 0.512 Mbps', () => expect(service.parseMikrotikRate('512K')).toBeCloseTo(0.512));
+
+    it('parseMikrotikRate y formatearTasa son inversas entre sí', () => {
+      for (const tasa of ['512K', '30M', '1G']) {
+        expect(service.formatearTasa(service.parseMikrotikRate(tasa))).toBe(tasa);
+      }
+    });
     it('parsea Gbps: 1G → 1000', () => expect(service.parseMikrotikRate('1G')).toBe(1000));
   });
 });

@@ -69,6 +69,11 @@ const mockFirewall = {
 const mockPppoe = {
   desconectarSesion: jest.fn().mockResolvedValue(undefined),
   crear:             jest.fn().mockResolvedValue('*1'),
+  // Suspender ya no es solo desconectar la sesión: además DESHABILITA el secret
+  // (`setEstado(creds, usuario, true)`). Sin esto el cliente se reconectaba al instante
+  // — desconectar sin deshabilitar no suspende a nadie.
+  setEstado:         jest.fn().mockResolvedValue(undefined),
+  eliminar:          jest.fn().mockResolvedValue(undefined),
 };
 
 const mockWhatsapp = {
@@ -113,11 +118,27 @@ describe('CobranzaWorker', () => {
         { provide: FacturacionService, useValue: mockFacturacionSvc },
         { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
-        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
+        { provide: RedisLockService,   useValue: {
+          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
+          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
+          // sin ninguna llamada al hardware.
+          withLock: jest.fn(async (...args: any[]) => {
+            const fn = args.find((a) => typeof a === 'function');
+            return fn ? fn() : undefined;
+          }),
+          adquirir: jest.fn(), liberar: jest.fn(),
+        } },
         { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
+          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
+          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
+          // reactivación se rechaza siempre.
+          reactivarServicio:   jest.fn().mockResolvedValue(true),
+          suspenderServicio:   jest.fn().mockResolvedValue(true),
+          provisionarServicio: jest.fn().mockResolvedValue(true),
+        } },
         { provide: EventEmitter2,      useValue: mockEvents },
         { provide: getDataSourceToken(), useValue: { query: buildDsMock() } },
       ],
@@ -161,11 +182,27 @@ describe('CobranzaWorker', () => {
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
-        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
+        { provide: RedisLockService,   useValue: {
+          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
+          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
+          // sin ninguna llamada al hardware.
+          withLock: jest.fn(async (...args: any[]) => {
+            const fn = args.find((a) => typeof a === 'function');
+            return fn ? fn() : undefined;
+          }),
+          adquirir: jest.fn(), liberar: jest.fn(),
+        } },
         { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
+          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
+          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
+          // reactivación se rechaza siempre.
+          reactivarServicio:   jest.fn().mockResolvedValue(true),
+          suspenderServicio:   jest.fn().mockResolvedValue(true),
+          provisionarServicio: jest.fn().mockResolvedValue(true),
+        } },
           { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
@@ -181,7 +218,12 @@ describe('CobranzaWorker', () => {
       const result = await w.processSuspenderContrato(job as any);
 
       // Debe tener un error por router no encontrado pero no lanzar excepción
-      expect(result.errores).toContain(expect.stringContaining('no encontrado'));
+      // `toContain` compara por identidad y NO admite matchers: con un
+      // `expect.stringContaining` dentro siempre falla, aunque el array tenga el texto.
+      // Para buscar por patrón dentro de un array hay que usar arrayContaining.
+      expect(result.errores).toEqual(
+        expect.arrayContaining([expect.stringContaining('no encontrado')]),
+      );
       expect(mockFirewall.suspenderCliente).not.toHaveBeenCalled();
     });
 
@@ -201,11 +243,27 @@ describe('CobranzaWorker', () => {
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
-        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
+        { provide: RedisLockService,   useValue: {
+          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
+          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
+          // sin ninguna llamada al hardware.
+          withLock: jest.fn(async (...args: any[]) => {
+            const fn = args.find((a) => typeof a === 'function');
+            return fn ? fn() : undefined;
+          }),
+          adquirir: jest.fn(), liberar: jest.fn(),
+        } },
         { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
+          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
+          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
+          // reactivación se rechaza siempre.
+          reactivarServicio:   jest.fn().mockResolvedValue(true),
+          suspenderServicio:   jest.fn().mockResolvedValue(true),
+          provisionarServicio: jest.fn().mockResolvedValue(true),
+        } },
           { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
@@ -218,8 +276,13 @@ describe('CobranzaWorker', () => {
         deudaTotal: 85, mesesDeuda: 1, notificar: true,
       }) as any);
 
-      expect(mockWhatsapp.notificarServicioSuspendido).toHaveBeenCalledWith(
-        expect.objectContaining({ clienteNombre: 'Juan Pérez', deudaTotal: 85 }),
+      // La notificación dejó de ser una llamada directa a WhatsApp: el worker EMITE un
+      // evento de dominio y quien lo entrega (WhatsApp, SMS, lo que sea) se suscribe.
+      // Así el corte no depende de que el gateway de mensajería esté disponible — un
+      // fallo al notificar no puede impedir suspender a un moroso.
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        expect.stringContaining('suspendido'),
+        expect.objectContaining({ clienteNombre: 'Juan Pérez' }),
       );
     });
 
@@ -255,11 +318,27 @@ describe('CobranzaWorker', () => {
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
-        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
+        { provide: RedisLockService,   useValue: {
+          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
+          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
+          // sin ninguna llamada al hardware.
+          withLock: jest.fn(async (...args: any[]) => {
+            const fn = args.find((a) => typeof a === 'function');
+            return fn ? fn() : undefined;
+          }),
+          adquirir: jest.fn(), liberar: jest.fn(),
+        } },
         { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
+          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
+          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
+          // reactivación se rechaza siempre.
+          reactivarServicio:   jest.fn().mockResolvedValue(true),
+          suspenderServicio:   jest.fn().mockResolvedValue(true),
+          provisionarServicio: jest.fn().mockResolvedValue(true),
+        } },
           { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
@@ -275,9 +354,11 @@ describe('CobranzaWorker', () => {
       expect(mockFirewall.reactivarCliente).toHaveBeenCalledWith(
         expect.anything(), '192.168.1.2',
       );
-      expect(mockWhatsapp.notificarServicioReactivado).toHaveBeenCalled();
+      // Igual que en la suspensión: la notificación es un EVENTO de dominio, no una
+      // llamada directa al gateway. Se comprueba que se emite con los datos del cliente.
       expect(mockEvents.emit).toHaveBeenCalledWith(
-        'mikrotik.cliente.reactivado', expect.anything(),
+        expect.stringContaining('reactivado'),
+        expect.objectContaining({ contratoId: 'cnt-001' }),
       );
     });
   });
@@ -298,11 +379,27 @@ describe('CobranzaWorker', () => {
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
-        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
+        { provide: RedisLockService,   useValue: {
+          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
+          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
+          // sin ninguna llamada al hardware.
+          withLock: jest.fn(async (...args: any[]) => {
+            const fn = args.find((a) => typeof a === 'function');
+            return fn ? fn() : undefined;
+          }),
+          adquirir: jest.fn(), liberar: jest.fn(),
+        } },
         { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
+          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
+          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
+          // reactivación se rechaza siempre.
+          reactivarServicio:   jest.fn().mockResolvedValue(true),
+          suspenderServicio:   jest.fn().mockResolvedValue(true),
+          provisionarServicio: jest.fn().mockResolvedValue(true),
+        } },
           { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
@@ -331,14 +428,27 @@ describe('FacturacionWorker', () => {
   let worker: FacturacionWorker;
 
   beforeEach(async () => {
-    const dsMock = jest.fn()
-      .mockResolvedValueOnce([mockEmpresa])         // getEmpresa
-      .mockResolvedValueOnce([mockContratoFactura]) // getContratos
-      .mockResolvedValueOnce([])                    // checkDuplicado (no existe)
-      .mockResolvedValueOnce([{ siguiente: '1' }])  // correlativo
-      .mockResolvedValueOnce([{ id: 'fac-001', numero_completo: 'B001-00000001' }]) // INSERT
-      .mockResolvedValueOnce([])                    // UPDATE deuda contrato
-      .mockResolvedValue([]);                       // resto
+    // Mock POR PATRÓN DE CONSULTA, no por orden de llamada.
+    //
+    // El encadenado de `mockResolvedValueOnce` ataba el test al número y orden exactos de
+    // queries: al añadir dos lecturas nuevas (el IGV y la serie salieron de `empresas` y
+    // pasaron a `configuracion_facturacion` / `comprobantes_config`, 2026-07-28) toda la
+    // secuencia se desplazó y los tres tests fallaron sin que la lógica cambiara.
+    // Responder por patrón hace el mock inmune al orden.
+    const dsMock = jest.fn(async (sql: string) => {
+      const s = String(sql);
+      if (/FROM\s+empresas/i.test(s))                  return [mockEmpresa];
+      if (/FROM\s+configuracion_facturacion/i.test(s)) return [{ igv_rate: '0.18' }];
+      if (/FROM\s+comprobantes_config/i.test(s))       return [{ serie: 'B001' }];
+      if (/FROM\s+contratos\b/i.test(s))               return [mockContratoFactura];
+      // El correlativo se calcula con MAX(correlativo)+1 SOBRE `facturas`, así que esta
+      // comprobación va ANTES del "sin duplicado": ambas consultan la misma tabla y la
+      // primera regla que coincida gana.
+      if (/AS\s+siguiente|nextval/i.test(s))           return [{ siguiente: '1' }];
+      if (/FROM\s+facturas/i.test(s))                  return [];   // sin duplicado del periodo
+      if (/INSERT\s+INTO\s+facturas/i.test(s))         return [{ id: 'fac-001', numero_completo: 'B001-00000001' }];
+      return [];
+    });
 
     const m: TestingModule = await Test.createTestingModule({
       providers: [
@@ -346,11 +456,27 @@ describe('FacturacionWorker', () => {
         { provide: FacturacionService, useValue: mockFacturacionSvc },
         { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
-        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
+        { provide: RedisLockService,   useValue: {
+          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
+          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
+          // sin ninguna llamada al hardware.
+          withLock: jest.fn(async (...args: any[]) => {
+            const fn = args.find((a) => typeof a === 'function');
+            return fn ? fn() : undefined;
+          }),
+          adquirir: jest.fn(), liberar: jest.fn(),
+        } },
         { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
+          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
+          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
+          // reactivación se rechaza siempre.
+          reactivarServicio:   jest.fn().mockResolvedValue(true),
+          suspenderServicio:   jest.fn().mockResolvedValue(true),
+          provisionarServicio: jest.fn().mockResolvedValue(true),
+        } },
         { provide: EventEmitter2,      useValue: mockEvents },
         { provide: getDataSourceToken(), useValue: { query: dsMock } },
       ],
@@ -374,11 +500,20 @@ describe('FacturacionWorker', () => {
     });
 
     it('debe omitir contrato si ya fue facturado en el periodo', async () => {
-      const dsMockConDuplicado = jest.fn()
-        .mockResolvedValueOnce([mockEmpresa])
-        .mockResolvedValueOnce([mockContratoFactura])
-        .mockResolvedValueOnce([{ id: 'fac-existe' }])  // Factura ya existe
-        .mockResolvedValue([]);
+      // Mismo mock por patrón que el resto, salvo que la comprobación de duplicado SÍ
+      // encuentra una factura del periodo. Es la protección contra la doble facturación:
+      // si el cron se ejecuta dos veces (reintento, dos instancias PM2), el cliente no
+      // puede recibir dos facturas del mismo mes.
+      const dsMockConDuplicado = jest.fn(async (sql: string) => {
+        const s = String(sql);
+        if (/FROM\s+empresas/i.test(s))                  return [mockEmpresa];
+        if (/FROM\s+configuracion_facturacion/i.test(s)) return [{ igv_rate: '0.18' }];
+        if (/FROM\s+comprobantes_config/i.test(s))       return [{ serie: 'B001' }];
+        if (/FROM\s+contratos\b/i.test(s))               return [mockContratoFactura];
+        if (/AS\s+siguiente|nextval/i.test(s))           return [{ siguiente: '1' }];
+        if (/FROM\s+facturas/i.test(s))                  return [{ id: 'fac-existe' }];
+        return [];
+      });
 
       const m = await Test.createTestingModule({
         providers: [
@@ -386,11 +521,27 @@ describe('FacturacionWorker', () => {
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
-        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
+        { provide: RedisLockService,   useValue: {
+          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
+          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
+          // sin ninguna llamada al hardware.
+          withLock: jest.fn(async (...args: any[]) => {
+            const fn = args.find((a) => typeof a === 'function');
+            return fn ? fn() : undefined;
+          }),
+          adquirir: jest.fn(), liberar: jest.fn(),
+        } },
         { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
+          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
+          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
+          // reactivación se rechaza siempre.
+          reactivarServicio:   jest.fn().mockResolvedValue(true),
+          suspenderServicio:   jest.fn().mockResolvedValue(true),
+          provisionarServicio: jest.fn().mockResolvedValue(true),
+        } },
           { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMockConDuplicado } },
         ],
@@ -405,10 +556,17 @@ describe('FacturacionWorker', () => {
       expect(result.exitosas).toBe(0);
     });
 
-    it('debe enviar WhatsApp al generar factura', async () => {
+    it('emite el aviso de factura emitida (no llama al gateway directamente)', async () => {
+      // Igual que cobranza: el worker EMITE `notification.factura.emitida` y quien
+      // entrega el mensaje se suscribe. Facturar no puede quedar acoplado a que WhatsApp
+      // esté disponible — una factura tiene que emitirse aunque no se pueda avisar.
       const job = createMockJob({ empresaId: 'emp-001', mes: 1, anio: 2024, forzar: false });
       await worker.processGenerarFacturasEmpresa(job as any);
-      expect(mockWhatsapp.notificarFacturaEmitida).toHaveBeenCalled();
+
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        'notification.factura.emitida',
+        expect.anything(),
+      );
     });
 
     it('debe emitir evento al completar generación', async () => {
@@ -432,11 +590,27 @@ describe('FacturacionWorker', () => {
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
-        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
+        { provide: RedisLockService,   useValue: {
+          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
+          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
+          // sin ninguna llamada al hardware.
+          withLock: jest.fn(async (...args: any[]) => {
+            const fn = args.find((a) => typeof a === 'function');
+            return fn ? fn() : undefined;
+          }),
+          adquirir: jest.fn(), liberar: jest.fn(),
+        } },
         { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
         { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
+          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
+          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
+          // reactivación se rechaza siempre.
+          reactivarServicio:   jest.fn().mockResolvedValue(true),
+          suspenderServicio:   jest.fn().mockResolvedValue(true),
+          provisionarServicio: jest.fn().mockResolvedValue(true),
+        } },
           { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
