@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { EventEmitter2 }     from '@nestjs/event-emitter';
+import { Cron }             from '@nestjs/schedule';
 
 import { OltOnuInventario }  from '../entities/olt-onu-inventario.entity';
 import { OltDispositivo }    from '../entities/olt-dispositivo.entity';
@@ -116,6 +117,49 @@ export class OltSyncService implements OnModuleInit {
       this.moduleHealth.registrar('olt-sync', 'degraded', 'Python automation no disponible');
     }
   }
+
+  // ── CRON: sincronización periódica ────────────────────────────
+  // Hasta 2026-07-28 el inventario SOLO se refrescaba cuando un operador pulsaba
+  // "Sincronizar". El resultado: /red/olt mostraba un snapshot de días atrás como si
+  // fuera el estado actual — una ONU dada de baja seguía apareciendo `online` con su
+  // cliente y su contrato.
+  //
+  // La re-observación puntual por transición (OltInventarioRefreshService) cubre lo que
+  // hace el ERP. Este cron cubre lo que NO hace: cambios aplicados por CLI directamente
+  // en la OLT, ONUs que aparecen en autofind, equipos que se caen. Sin él, el inventario
+  // solo sería fiel a las acciones del ERP — que es justo la ilusión que hay que evitar.
+  //
+  // Cada 6 horas y a las :50, desfasado de los watchers de ONU (que corren a :00/:05/:12/
+  // :20/:30/:42): un sync completo recorre todos los slots y puertos, y el MA5800 admite
+  // pocas sesiones VTY concurrentes. Serializado por OLT.
+  @Cron('50 */6 * * *')
+  async syncPeriodico(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
+    if (this._syncPeriodicoEnCurso) return;
+    this._syncPeriodicoEnCurso = true;
+    try {
+      const olts = await this.ds.query<Array<{ id: string; empresa_id: string; ip_gestion: string }>>(
+        `SELECT id, empresa_id, ip_gestion
+         FROM   olt_dispositivos
+         WHERE  deleted_at IS NULL AND activo = true
+           AND  metodo_conexion = 'nativo_ssh'`,
+      ).catch(() => []);
+
+      for (const olt of olts) {
+        try {
+          await this.iniciarSync(olt.id, olt.empresa_id);
+          this.logger.log(`[SyncPeriódico] job encolado | olt=${olt.ip_gestion}`);
+        } catch (e) {
+          // Una OLT inalcanzable no puede impedir que se sincronicen las demás.
+          this.logger.warn(`[SyncPeriódico] olt=${olt.ip_gestion}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    } finally {
+      this._syncPeriodicoEnCurso = false;
+    }
+  }
+
+  private _syncPeriodicoEnCurso = false;
 
   // ── API pública ───────────────────────────────────────────────
 

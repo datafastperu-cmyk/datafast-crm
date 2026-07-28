@@ -649,11 +649,25 @@ export class ProvisionFtthService {
       ultimoError:  null,
     });
 
+    this._reobservarInventario(oltId, empresaId, dto.slot, dto.port);
+
     return {
       estado:     FtthOnuEstado.ACTIVO,
       registroId,
       mensaje:    `ONU aprovisionada correctamente. GPON registrada y WAN PPPoE inyectada.` + carrilNota,
     };
+  }
+
+  /**
+   * Pide re-observar el puerto PON en `olt_onu_inventario` (lo que muestra /red/olt).
+   *
+   * Es lo que faltaba: el inventario era un snapshot que solo se refrescaba a mano, así
+   * que una ONU dada de baja seguía apareciendo `online` con su contrato durante días
+   * (reportado 2026-07-28). Se emite un evento y NO se espera: refrescar la vista jamás
+   * puede demorar ni hacer fallar la operación de negocio que lo disparó.
+   */
+  private _reobservarInventario(oltId: string, empresaId: string, slot: number, port: number): void {
+    this.events.emit('ftth.inventario.reobservar', { oltId, empresaId, slot, port });
   }
 
   // ────────────────────────────────────────────────────────────
@@ -2243,6 +2257,10 @@ export class ProvisionFtthService {
 
     await this.ftthRepo.softDelete(registro.id);
 
+    // El caso que originó el reporte: sin esto, /red/olt seguía mostrando la ONU `online`
+    // con su cliente y contrato días después de la baja.
+    this._reobservarInventario(registro.oltId, empresaId, registro.slot, registro.port);
+
     this.logger.log(
       `FTTH desaprovisionado | contrato=${dto.contratoId} sn=${registro.sn} olt=${olt.ipGestion}`,
     );
@@ -2303,6 +2321,7 @@ export class ProvisionFtthService {
     }
 
     await this.ftthRepo.update(registro.id, { estado: FtthOnuEstado.SUSPENDIDO });
+    this._reobservarInventario(registro.oltId, empresaId, registro.slot, registro.port);
     this.logger.log(`FTTH suspendido | contrato=${contratoId} sn=${registro.sn}`);
     return { exitoso: true, mensaje: `ONU ${registro.sn} suspendida correctamente.` };
   }
@@ -2358,6 +2377,7 @@ export class ProvisionFtthService {
     }
 
     await this.ftthRepo.update(registro.id, { estado: FtthOnuEstado.ACTIVO });
+    this._reobservarInventario(registro.oltId, empresaId, registro.slot, registro.port);
     this.logger.log(`FTTH rehabilitado | contrato=${contratoId} sn=${registro.sn}`);
     return { exitoso: true, mensaje: `ONU ${registro.sn} rehabilitada correctamente.` };
   }

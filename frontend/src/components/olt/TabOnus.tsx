@@ -17,6 +17,17 @@ const fmtRel = (iso: string | null): string => {
   return `hace ${Math.floor(h / 24)} d`;
 };
 
+// Este panel muestra un SNAPSHOT, no el estado en vivo. La antigüedad ya se mostraba,
+// pero en gris pequeño: un operador que lee "online" junto al nombre de su cliente no
+// tiene motivo para desconfiar del dato (incidente 2026-07-28 — una ONU dada de baja
+// seguía apareciendo online con su contrato, y el snapshot tenía 3 días).
+// Pasado el periodo del sync automático (6h), la antigüedad deja de ser un detalle y
+// pasa a ser una advertencia: el dato PUEDE no reflejar la realidad.
+const SNAPSHOT_STALE_MIN = 6 * 60;
+
+const snapshotRancio = (iso: string | null): boolean =>
+  !iso || (Date.now() - new Date(iso).getTime()) / 60_000 > SNAPSHOT_STALE_MIN;
+
 const ESTADO_COLOR: Record<string, string> = {
   activo:      'bg-emerald-500/10 text-emerald-400',
   suspendido:  'bg-yellow-500/10 text-yellow-400',
@@ -95,8 +106,20 @@ function InventarioSnapshot({ oltId }: { oltId: string }) {
       <div className="flex items-center gap-2 flex-wrap">
         <Database className="w-4 h-4 text-primary" />
         <span className="text-sm font-semibold">Inventario de ONUs (snapshot)</span>
-        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+        <span
+          className={`inline-flex items-center gap-1 text-[11px] ${
+            snapshotRancio(inv.data?.snapshotAt ?? null)
+              ? 'text-amber-400 font-medium'
+              : 'text-muted-foreground'
+          }`}
+          title={
+            snapshotRancio(inv.data?.snapshotAt ?? null)
+              ? 'Este snapshot está desactualizado: los estados mostrados pueden no reflejar la realidad de la OLT. Sincroniza para verificarlos.'
+              : undefined
+          }
+        >
           <Clock className="w-3 h-3" /> {fmtRel(inv.data?.snapshotAt ?? null)}
+          {snapshotRancio(inv.data?.snapshotAt ?? null) && ' — puede estar desactualizado'}
         </span>
         <button
           onClick={startSync}
