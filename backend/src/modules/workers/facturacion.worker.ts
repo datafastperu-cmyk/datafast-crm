@@ -208,9 +208,13 @@ export class FacturacionWorker {
 
     await job.progress(5);
 
-    // Obtener empresa
+    // Obtener empresa. `igv_rate`, `serie_boleta` y `serie_factura` NO viven aquí desde
+    // que se migraron a `configuracion_facturacion` y `comprobantes_config`: pedirlas a
+    // `empresas` hacía fallar la query entera con "column igv_rate does not exist" y con
+    // ella TODO el job de generación masiva. Se leen de sus fuentes reales, las mismas
+    // que ya usa FacturacionService — una sola fuente de verdad para el IGV y las series.
     const [empresa] = await this.ds.query(
-      'SELECT id, razon_social, igv_rate, serie_boleta, serie_factura FROM empresas WHERE id = $1',
+      'SELECT id, razon_social FROM empresas WHERE id = $1',
       [empresaId],
     );
 
@@ -265,7 +269,26 @@ export class FacturacionWorker {
 
     const periodoInicio  = `${anio}-${String(mes).padStart(2, '0')}-01`;
     const periodoFin     = this.ultimoDiaMes(anio, mes);
-    const igvRate        = parseFloat(empresa.igv_rate || '0.18');
+    // IGV y serie desde sus fuentes reales (ver la nota en la lectura de `empresas`).
+    const [cfgFact] = await this.ds.query(
+      `SELECT igv_rate FROM configuracion_facturacion
+       WHERE empresa_id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [empresaId],
+    );
+    const igvRate = parseFloat(cfgFact?.igv_rate ?? '0.18');
+
+    // Serie del comprobante por defecto de la empresa. Se toma el marcado `es_default`;
+    // si no hay ninguno, el primero activo. El fallback 'B001' se conserva como último
+    // recurso para no dejar una factura sin serie.
+    const [cfgComp] = await this.ds.query(
+      `SELECT serie FROM comprobantes_config
+       WHERE empresa_id = $1 AND activo = true AND deleted_at IS NULL
+       ORDER BY es_default DESC, created_at ASC
+       LIMIT 1`,
+      [empresaId],
+    );
+    const serieComprobante = cfgComp?.serie || 'B001';
+
     const totalClientes  = porCliente.size;
     let   idx            = 0;
 
@@ -298,7 +321,7 @@ export class FacturacionWorker {
 
         // ── Calcular monto por cada contrato del cliente ────
         const primer    = grupo[0];
-        const serie     = empresa.serie_boleta || 'B001';
+        const serie     = serieComprobante;
         const aplicaIgv = primer.aplica_igv === true || primer.aplica_igv === 'true';
         const items: Array<{ descripcion: string; cantidad: number; precioUnitario: number; subtotal: number }> = [];
         let   totalFactura  = 0;

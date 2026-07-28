@@ -25,6 +25,7 @@
     "migration:revert": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:revert -d src/config/datasource.ts",
     "migration:show": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:show -d src/config/datasource.ts",
     "migration:show:auxiliary": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs migration:show -d src/config/datasource.auxiliary.ts",
+    "sql:check": "node scripts/verificar-sql.mjs",
     "db:check": "TS_NODE_PROJECT=tsconfig.migration.json typeorm-ts-node-commonjs schema:log -d src/config/datasource.ts",
     "seed:run": "TS_NODE_PROJECT=tsconfig.migration.json ts-node src/database/seeds/run-seeds.ts",
     "typecheck": "tsc --noEmit"

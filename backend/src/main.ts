@@ -10,6 +10,8 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 
 import { AppModule } from './app.module';
 import { winstonConfig } from './config/logger.config';
+import { EventosSistemaService } from './modules/sistema/eventos-sistema.service';
+import { instalarCapturaDeErroresDeProceso } from './common/observabilidad/errores-proceso';
 
 async function bootstrap() {
   // ── Crear la aplicación ──────────────────────────────────────
@@ -173,6 +175,17 @@ async function bootstrap() {
     process.exit(0);
   });
 
+  // ── Observabilidad de fondo ───────────────────────────────────
+  // Sin esto, TODO lo que falla fuera de una petición HTTP (crons, workers de cola,
+  // tareas fire-and-forget) es invisible en /configuracion/sistema. Así estuvo días
+  // roto el cron de facturación sin un solo evento registrado.
+  try {
+    const eventos = app.get(EventosSistemaService, { strict: false });
+    if (eventos) instalarCapturaDeErroresDeProceso(eventos);
+  } catch (e) {
+    logger.warn(`No se pudo instalar la captura global de errores: ${(e as Error).message}`);
+  }
+
   // ── Arrancar el servidor ──────────────────────────────────────
   await app.listen(port, '0.0.0.0');
 
@@ -204,7 +217,11 @@ process.on('uncaughtException', (err) => {
     return;
   }
   console.error('Uncaught exception:', msg);
-  process.exit(1);
+  // Ventana breve para que `instalarCapturaDeErroresDeProceso` alcance a persistir el
+  // evento antes de morir: sin ella, el fallo MÁS grave sería justo el único que nunca
+  // aparecería en /configuracion/sistema. 300 ms no retrasan de forma apreciable el
+  // reinicio de PM2 y salvan el registro.
+  setTimeout(() => process.exit(1), 300).unref();
 });
 
 bootstrap().catch((error) => {
