@@ -32,9 +32,31 @@ export class CwmpAuthService implements OnModuleInit {
     return process.env.CWMP_AUTH_SECRET ?? '';
   }
 
-  /** true si hay secreto configurado → el provisioning puede endurecer la auth CWMP. */
+  /** true si hay secreto configurado → el HMAC por dispositivo es derivable. */
   isEnabled(): boolean {
     return this.secret.length > 0;
+  }
+
+  /**
+   * ¿Se ENDURECE la auth CWMP por dispositivo (tag `AuthEnforced`)?
+   *
+   * Por defecto NO. Decisión de arquitectura 2026-07-28, tras el análisis de causa raíz:
+   * `ManagementServer.Password` es write-only en la EG8145V5 — no existe forma de leer el
+   * valor que quedó en la ONU. Un mecanismo de seguridad cuyo estado no se puede observar
+   * contradice frontalmente la regla VIO ("aceptado ≠ materializado"), y ya costó caro: si
+   * el tag queda puesto sin que el HMAC viva de verdad en la ONU (p.ej. tras un factory
+   * reset, que borra las credenciales pero no el tag), GenieACS rechaza su Inform y la
+   * gestión remota muere en un deadlock permanente — incidente del 2026-07-24, días de
+   * gestión perdida, diagnosticado con tcpdump.
+   *
+   * El aislamiento de la VLAN de gestión 1600 + el connection-request con credenciales del
+   * ERP sí son verificables, y son la defensa que se conserva.
+   *
+   * `CWMP_AUTH_ENFORCE=true` restaura el endurecimiento para instalaciones donde el
+   * firmware SÍ materialice el write de forma comprobable.
+   */
+  isEnforcementEnabled(): boolean {
+    return this.isEnabled() && String(process.env.CWMP_AUTH_ENFORCE).toLowerCase() === 'true';
   }
 
   onModuleInit(): void {

@@ -254,8 +254,13 @@ export class ZtpProvisioningService {
     // Endurecimiento de auth CWMP por-dispositivo (ONU→ACS): SÓLO tras un plan 100% OK,
     // para no dejar una ONU a medio provisionar exigiendo auth. Determinista + inmune al
     // refresh (ver enforceDeviceAuth + erpauth.js). Degradado si no hay CWMP_AUTH_SECRET.
+    //
+    // DESACTIVADO POR DEFECTO desde 2026-07-28 (ver CwmpAuthService.isEnforcementEnabled):
+    // `ManagementServer.Password` es write-only y su materialización no es observable, así
+    // que el endurecimiento no puede cumplir VIO. La defensa que queda —y que sí es
+    // verificable— es el aislamiento de la VLAN 1600 + el connection-request autenticado.
     let authMsg = '';
-    if (ok && this.cwmpAuth.isEnabled()) {
+    if (ok && this.cwmpAuth.isEnabled() && this.cwmpAuth.isEnforcementEnabled()) {
       const genieSn = await this.driver.getGenieSerial(deviceId);
       const pwd = genieSn ? this.cwmpAuth.derive(genieSn) : null;
       if (genieSn && pwd) {

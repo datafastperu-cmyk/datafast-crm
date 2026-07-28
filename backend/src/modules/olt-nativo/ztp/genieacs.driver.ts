@@ -191,6 +191,44 @@ export class GenieAcsDriver {
     this.logger.warn(`grantAuthGrace | device=${deviceId} Tag AuthEnforced retirado (gracia de recuperación post-reset)`);
   }
 
+  /**
+   * Retira el tag `AuthEnforced` de TODOS los devices que lo conserven.
+   *
+   * Corre cuando la política de endurecimiento está desactivada (ver
+   * `CwmpAuthService.isEnforcementEnabled`). Desactivar la política solo evita CREAR
+   * deadlocks nuevos; los devices endurecidos por la etapa anterior siguen exigiendo un
+   * HMAC que nadie va a reescribir, así que un factory reset de cualquiera de ellos lo
+   * mata igual. El riesgo latente no caduca solo: hay que ir a buscarlo.
+   *
+   * Idempotente y best-effort por device: un fallo suelto no aborta el barrido.
+   */
+  async desendurecerAuthResidual(): Promise<{ revisados: number; desendurecidos: number; fallidos: number }> {
+    const devices = await this.nbi
+      .listDevices({ _tags: 'AuthEnforced' }, '_id')
+      .catch((e) => {
+        this.logger.warn(`desendurecerAuthResidual | no se pudo listar devices: ${e instanceof Error ? e.message : String(e)}`);
+        return [] as any[];
+      });
+
+    let desendurecidos = 0, fallidos = 0;
+    for (const d of devices) {
+      const id = d?._id;
+      if (!id) continue;
+      try {
+        await this.nbi.removeTag(id, 'AuthEnforced');
+        desendurecidos++;
+        this.logger.warn(
+          `desendurecerAuthResidual | device=${id} Tag AuthEnforced retirado ` +
+          `(política de endurecimiento desactivada — se elimina el riesgo de deadlock post-reset)`,
+        );
+      } catch (e) {
+        fallidos++;
+        this.logger.warn(`desendurecerAuthResidual | device=${id} no se pudo retirar el tag: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return { revisados: devices.length, desendurecidos, fallidos };
+  }
+
   /** ProductClass (modelo) que la ONU reporta a GenieACS, por SN — tolerando el desajuste
    *  legible↔hex. Fallback de detección de modelo cuando la OLT no lo reporta (ontVersion). */
   async getProductClassBySerial(serial: string): Promise<string | null> {

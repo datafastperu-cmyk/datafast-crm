@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ProvisionFtthService } from '../services/provision-ftth.service';
 import { EventosSistemaService } from '../../sistema/eventos-sistema.service';
+import { GenieAcsDriver } from '../ztp/genieacs.driver';
+import { CwmpAuthService } from '../ztp/cwmp-auth.service';
 
 // Corre cada 20 min (desfasado de FtthWanWatcherCron, que corre cada 10) para
 // no concentrar carga sobre la OLT/GenieACS en el mismo instante.
@@ -10,11 +12,47 @@ export class Tr069CpeDriftWatcherCron {
   private readonly logger = new Logger(Tr069CpeDriftWatcherCron.name);
   private running = false;
   private barriendo = false;
+  private desendureciendo = false;
 
   constructor(
     private readonly ftth: ProvisionFtthService,
     private readonly eventos: EventosSistemaService,
+    private readonly genie: GenieAcsDriver,
+    private readonly cwmpAuth: CwmpAuthService,
   ) {}
+
+  // Desendurecimiento residual (2026-07-28). Con la política de endurecimiento CWMP
+  // desactivada, los devices tagueados por la etapa anterior siguen exigiendo un HMAC
+  // que ya nadie reescribe: un factory reset de cualquiera de ellos reproduce el
+  // deadlock de gestión del 24/07. Desactivar la política solo evita crear deadlocks
+  // NUEVOS — el riesgo latente hay que ir a buscarlo.
+  //
+  // Diario y desfasado del resto (03:40 Lima). Se detiene solo cuando ya no queda
+  // ningún device con el tag, así que su costo en régimen es una query.
+  @Cron('40 3 * * *', { timeZone: 'America/Lima' })
+  async desendurecerAuthResidual(): Promise<void> {
+    if (this.desendureciendo) return;
+    if (this.cwmpAuth.isEnforcementEnabled()) return; // política activa: no tocar nada
+    this.desendureciendo = true;
+    try {
+      const r = await this.genie.desendurecerAuthResidual();
+      if (r.revisados === 0) return; // nada que hacer, sin ruido
+      await this.eventos.registrar({
+        nivel:    r.fallidos > 0 ? 'error' : 'warn',
+        origen:   'olt',
+        codigo:   'TR069_AUTH_DESENDURECIDA',
+        mensaje:
+          `Endurecimiento CWMP residual retirado de ${r.desendurecidos}/${r.revisados} device(s)` +
+          `${r.fallidos > 0 ? ` — ${r.fallidos} fallaron y se reintentarán` : ''}. ` +
+          `Elimina el riesgo de deadlock de gestión tras un factory reset.`,
+        contexto: r,
+      });
+    } catch (e) {
+      this.logger.error(`desendurecerAuthResidual falló: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      this.desendureciendo = false;
+    }
+  }
 
   @Cron('5-59/20 * * * *')
   async verificarDrift(): Promise<void> {
