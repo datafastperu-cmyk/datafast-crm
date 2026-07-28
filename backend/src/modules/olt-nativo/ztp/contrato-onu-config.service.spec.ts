@@ -16,7 +16,11 @@ describe('ContratoOnuConfigService', () => {
       create:  jest.fn((o: any) => ({ ...o })),
       save:    jest.fn((o: any) => Promise.resolve(o)),
     };
-    svc = new ContratoOnuConfigService(repo);
+    // El servicio recibe además el DataSource (lee datos del contrato para resolver la
+    // plantilla del SSID). Instanciarlo con un solo argumento dejó de compilar y, al no
+    // compilar, jest abortaba la suite entera sin que nadie lo notara.
+    const ds = { query: jest.fn().mockResolvedValue([]) } as any;
+    svc = new ContratoOnuConfigService(repo, ds);
   });
 
   describe('generateWifi', () => {

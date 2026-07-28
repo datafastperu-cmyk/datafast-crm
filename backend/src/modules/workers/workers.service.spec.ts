@@ -1,15 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken }  from '@nestjs/typeorm';
-import { EventEmitter }       from '@nestjs/event-emitter';
+import { EventEmitter2 }       from '@nestjs/event-emitter';
 import { getQueueToken }       from '@nestjs/bull';
 
 import { CobranzaWorker }      from './cobranza.worker';
 import { FacturacionWorker }   from './facturacion.worker';
 import { FirewallService }     from '../mikrotik/services/firewall.service';
 import { PppoeService }        from '../mikrotik/services/pppoe.service';
-import { WhatsAppService }     from '../notificaciones/services/whatsapp.service';
 import { FacturacionService }  from '../facturacion/facturacion.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
+import { OutboxRedService } from '../outbox-red/outbox-red.service';
+import { RedisLockService } from '../../common/redis/redis-lock.service';
+import { SchedulerRegistry } from '@nestjs/schedule';
+import { EmpresaConfigService } from '../config/empresa-config.service';
+import { GatewayMensajeriaService } from '../notificaciones/services/gateway-mensajeria.service';
 import { QUEUES }              from './workers.constants';
 
 // ── Fixtures ──────────────────────────────────────────────────
@@ -106,10 +110,15 @@ describe('CobranzaWorker', () => {
         CobranzaWorker,
         { provide: FirewallService,    useValue: mockFirewall },
         { provide: PppoeService,       useValue: mockPppoe },
-        { provide: WhatsAppService,    useValue: mockWhatsapp },
         { provide: FacturacionService, useValue: mockFacturacionSvc },
         { provide: AuditoriaService,   useValue: mockAuditoria },
-        { provide: EventEmitter,      useValue: mockEvents },
+        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
+        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: EventEmitter2,      useValue: mockEvents },
         { provide: getDataSourceToken(), useValue: { query: buildDsMock() } },
       ],
     }).compile();
@@ -149,10 +158,15 @@ describe('CobranzaWorker', () => {
           CobranzaWorker,
           { provide: FirewallService,    useValue: mockFirewall },
           { provide: PppoeService,       useValue: mockPppoe },
-          { provide: WhatsAppService,    useValue: mockWhatsapp },
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
-          { provide: EventEmitter,      useValue: mockEvents },
+        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
+        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+          { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
       }).compile();
@@ -184,10 +198,15 @@ describe('CobranzaWorker', () => {
           CobranzaWorker,
           { provide: FirewallService,    useValue: mockFirewall },
           { provide: PppoeService,       useValue: mockPppoe },
-          { provide: WhatsAppService,    useValue: mockWhatsapp },
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
-          { provide: EventEmitter,      useValue: mockEvents },
+        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
+        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+          { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
       }).compile();
@@ -219,7 +238,7 @@ describe('CobranzaWorker', () => {
   });
 
   // ── Reactivar contrato ────────────────────────────────────
-  describe('processReactivarContrato()', () => {
+  describe('handleReactivarContrato()', () => {
     it('debe quitar IP de Address Lists y notificar', async () => {
       const dsMock = jest.fn()
         .mockResolvedValueOnce([mockRouter])
@@ -233,16 +252,21 @@ describe('CobranzaWorker', () => {
           CobranzaWorker,
           { provide: FirewallService,    useValue: mockFirewall },
           { provide: PppoeService,       useValue: mockPppoe },
-          { provide: WhatsAppService,    useValue: mockWhatsapp },
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
-          { provide: EventEmitter,      useValue: mockEvents },
+        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
+        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+          { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
       }).compile();
       const w = m.get<CobranzaWorker>(CobranzaWorker);
 
-      await w.processReactivarContrato(createMockJob({
+      await w.handleReactivarContrato(createMockJob({
         contratoId: 'cnt-001', empresaId: 'emp-001', clienteId: 'cli-001',
         routerId: 'rtr-001', ipAsignada: '192.168.1.2',
         planNombre: 'Plan 30 Mbps', notificar: true,
@@ -271,10 +295,15 @@ describe('CobranzaWorker', () => {
           CobranzaWorker,
           { provide: FirewallService,    useValue: mockFirewall },
           { provide: PppoeService,       useValue: mockPppoe },
-          { provide: WhatsAppService,    useValue: mockWhatsapp },
           { provide: FacturacionService, useValue: mockFacturacionSvc },
           { provide: AuditoriaService,   useValue: mockAuditoria },
-          { provide: EventEmitter,      useValue: mockEvents },
+        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
+        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+          { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
       }).compile();
@@ -315,9 +344,14 @@ describe('FacturacionWorker', () => {
       providers: [
         FacturacionWorker,
         { provide: FacturacionService, useValue: mockFacturacionSvc },
-        { provide: WhatsAppService,    useValue: mockWhatsapp },
         { provide: AuditoriaService,   useValue: mockAuditoria },
-        { provide: EventEmitter,      useValue: mockEvents },
+        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
+        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+        { provide: EventEmitter2,      useValue: mockEvents },
         { provide: getDataSourceToken(), useValue: { query: dsMock } },
       ],
     }).compile();
@@ -350,9 +384,14 @@ describe('FacturacionWorker', () => {
         providers: [
           FacturacionWorker,
           { provide: FacturacionService, useValue: mockFacturacionSvc },
-          { provide: WhatsAppService,    useValue: mockWhatsapp },
           { provide: AuditoriaService,   useValue: mockAuditoria },
-          { provide: EventEmitter,      useValue: mockEvents },
+        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
+        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+          { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMockConDuplicado } },
         ],
       }).compile();
@@ -391,9 +430,14 @@ describe('FacturacionWorker', () => {
         providers: [
           FacturacionWorker,
           { provide: FacturacionService, useValue: mockFacturacionSvc },
-          { provide: WhatsAppService,    useValue: mockWhatsapp },
           { provide: AuditoriaService,   useValue: mockAuditoria },
-          { provide: EventEmitter,      useValue: mockEvents },
+        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
+        { provide: OutboxRedService,   useValue: { encolar: jest.fn(), encolarDesprovisionar: jest.fn() } },
+        { provide: RedisLockService,   useValue: { withLock: jest.fn(async (_k: any, fn: any) => fn()), adquirir: jest.fn(), liberar: jest.fn() } },
+        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
+        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
+        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: { suspender: jest.fn(), reactivar: jest.fn(), provisionar: jest.fn(), desprovisionar: jest.fn() } },
+          { provide: EventEmitter2,      useValue: mockEvents },
           { provide: getDataSourceToken(), useValue: { query: dsMock } },
         ],
       }).compile();

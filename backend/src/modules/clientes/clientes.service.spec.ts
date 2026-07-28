@@ -67,7 +67,43 @@ const mockContratos = {
   eliminarDeAccessListAntena: jest.fn(),
 };
 const mockEvents     = { emit: jest.fn() };
-const mockDataSource = { query: jest.fn().mockResolvedValue([]) };
+// El código de cliente se genera con una SECUENCIA de Postgres (`nextval`), no con un
+// contador en memoria: dos altas simultáneas en distintas instancias PM2 producirían el
+// mismo código. Devolver [] a toda consulta hacía que el servicio leyera
+// `undefined.nextval` y el alta fallara por una razón que nada tiene que ver con el test.
+// `remove()` lee el cliente con SQL CRUDO (`SELECT * FROM clientes …`), sin filtrar
+// `deleted_at`, para permitir el hard-delete de uno ya soft-deleted. Por eso no basta
+// con mockear `repo.findById`: hay que responder también a esa consulta. Se expone
+// `clienteEnBd` para que cada test decida qué encuentra.
+const estadoBd: { clienteEnBd: any } = { clienteEnBd: null };
+
+const mockDataSource = {
+  query: jest.fn(async (sql: string) => {
+    const s = String(sql);
+    if (/nextval/i.test(s)) return [{ nextval: '1' }];
+    if (/FROM\s+clientes\s+WHERE\s+id/i.test(s)) {
+      return estadoBd.clienteEnBd ? [estadoBd.clienteEnBd] : [];
+    }
+    return [];
+  }),
+  // El borrado usa QueryRunner explícito: eliminar al cliente y limpiar sus referencias
+  // (contratos, facturas, pagos) tiene que ser un solo hecho o quedan huérfanos.
+  createQueryRunner: jest.fn(() => ({
+    connect:             jest.fn(),
+    startTransaction:    jest.fn(),
+    commitTransaction:   jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release:             jest.fn(),
+    query:               jest.fn().mockResolvedValue([]),
+    manager: {
+      query:   jest.fn().mockResolvedValue([]),
+      delete:  jest.fn(),
+      update:  jest.fn(),
+      save:    jest.fn(),
+      findOne: jest.fn().mockResolvedValue(null),
+    },
+  })),
+};
 
 // ─── Tests ────────────────────────────────────────────────────
 describe('ClientesService', () => {
@@ -219,19 +255,30 @@ describe('ClientesService', () => {
   // ── Eliminar ──────────────────────────────────────────────
   describe('remove()', () => {
     it('no debe eliminar un cliente activo', async () => {
-      mockRepo.findById.mockResolvedValue({ ...mockCliente, estado: EstadoCliente.ACTIVO });
+      // Protección de datos: un cliente con servicio no se borra. Antes hay que darlo de
+      // baja, lo que dispara la desprovisión del hardware.
+      estadoBd.clienteEnBd = { ...mockCliente, estado: EstadoCliente.ACTIVO };
 
       await expect(service.remove('cli-001', mockUser as any)).rejects.toThrow(BadRequestException);
       expect(mockRepo.softDelete).not.toHaveBeenCalled();
     });
 
-    it('debe eliminar un cliente en baja definitiva', async () => {
-      mockRepo.findById.mockResolvedValue({ ...mockCliente, estado: EstadoCliente.BAJA_DEFINITIVA });
-      mockRepo.softDelete.mockResolvedValue(undefined);
-      mockDataSource.query.mockResolvedValue([]);
+    it('elimina en cascada y de forma atómica al cliente dado de baja', async () => {
+      // `remove()` pasó de soft-delete a HARD DELETE transaccional: borra órdenes,
+      // tickets, pagos, facturas y el cliente en una sola transacción. Si se hiciera por
+      // partes, un fallo a mitad dejaría facturas apuntando a un cliente inexistente.
+      // El test anterior seguía esperando `repo.softDelete`, que ya nadie invoca.
+      estadoBd.clienteEnBd = { ...mockCliente, estado: EstadoCliente.BAJA_DEFINITIVA };
 
       await expect(service.remove('cli-001', mockUser as any)).resolves.not.toThrow();
-      expect(mockRepo.softDelete).toHaveBeenCalledWith('cli-001', 'empresa-001');
+
+      const qr = mockDataSource.createQueryRunner.mock.results[0].value;
+      expect(qr.startTransaction).toHaveBeenCalled();
+      expect(qr.commitTransaction).toHaveBeenCalled();
+
+      const borrados = qr.query.mock.calls.map((c: any[]) => String(c[0])).join(' | ');
+      expect(borrados).toMatch(/DELETE FROM facturas/i);
+      expect(borrados).toMatch(/DELETE FROM pagos/i);
     });
   });
 

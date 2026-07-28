@@ -1,6 +1,6 @@
 import { Test, TestingModule }    from '@nestjs/testing';
 import { getDataSourceToken }      from '@nestjs/typeorm';
-import { EventEmitter }           from '@nestjs/event-emitter';
+import { EventEmitter2 }           from '@nestjs/event-emitter';
 import {
   NotFoundException, ConflictException, BadRequestException,
 } from '@nestjs/common';
@@ -245,7 +245,7 @@ describe('OrquestadorFtthService - ejecutarFlujoComipletoFtth', () => {
         { provide: VelocidadOrquestador,  useValue: mockVelocidadOrc },
         { provide: FirewallService,       useValue: mockFirewallSvc },
         { provide: AuditoriaService,      useValue: mockAuditoria },
-        { provide: EventEmitter,         useValue: mockEvents },
+        { provide: EventEmitter2,         useValue: mockEvents },
         { provide: getDataSourceToken(),  useValue: mockDs },
       ],
     }).compile();
@@ -266,7 +266,7 @@ describe('OrquestadorFtthService - ejecutarFlujoComipletoFtth', () => {
 
     mockApi.detectarOnuEnPuerto.mockResolvedValue(mockOnuNoAprovisionada);
 
-    const dto: FlujoComipletoFtthDto = {
+    const dto: any = {
       contratoId: 'cnt-001', clienteId: 'cli-001',
       oltId: 'olt-001', ponPort: '0/1/3',
       perfil: 'HSI-100M', vlanId: 100,
