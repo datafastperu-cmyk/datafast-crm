@@ -532,7 +532,14 @@ export class OutboxRedService {
       // se repite idéntico cada 5 min contra un MA5800 con pocas sesiones VTY. El incidente
       // del 24/07 acumuló 1784 intentos sobre un techo de 12 por esta vía. Se marca AGOTADO
       // y se audita para que un humano lo resuelva.
-      if (err instanceof HttpException && err.getStatus() < 500) {
+      //
+      // La lista es EXPLÍCITA y corta a propósito: sólo 400 (transición no permitida) y 404
+      // (recurso inexistente) son veredictos definitivos del dominio. Un criterio amplio
+      // tipo `status < 500` es incorrecto — el 409 del lock de operación y el 408/429 de
+      // congestión significan "vuelve luego", y descartarlos abandona trabajo que sí debía
+      // aplicarse. Ante la duda: transitorio, porque reintentar es recuperable y descartar no.
+      const ESTADOS_RECHAZO_PERMANENTE = [400, 404];
+      if (err instanceof HttpException && ESTADOS_RECHAZO_PERMANENTE.includes(err.getStatus())) {
         await this.ds.query(
           `UPDATE comandos_red_pendientes
            SET estado = 'AGOTADO', intentos = $2, ultimo_error = $3
