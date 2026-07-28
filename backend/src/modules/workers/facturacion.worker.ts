@@ -115,8 +115,16 @@ export class FacturacionScheduler implements OnModuleInit {
     // ── 2. Encolar facturas por dia_facturacion del contrato ──
     // Cada contrato puede tener su propio día de facturación.
     // Se agrupan por empresa para evitar jobs duplicados.
+    // `serie_boleta` e `igv_rate` se migraron de `empresas` a `comprobantes_config` y
+    // `configuracion_facturacion` (ver empresa.entity.ts). La entidad se actualizó pero
+    // esta query cruda quedó apuntando a las columnas viejas, así que el cron de
+    // facturación diaria fallaba TODOS los días a las 05:00 con
+    // "column em.serie_boleta does not exist". Pasó inadvertido porque hoy no hay
+    // contratos activos con día de facturación: el fallo era invisible hasta que
+    // hubiera clientes reales que facturar.
+    // Ninguno de los dos campos se usaba aguas abajo — el job solo consume `id`.
     const empresas = await this.ds.query(`
-      SELECT DISTINCT em.id, em.razon_social, em.serie_boleta, em.igv_rate
+      SELECT DISTINCT em.id, em.razon_social
       FROM contratos co
       JOIN empresas em ON em.id = co.empresa_id
       WHERE co.dia_facturacion = $1
