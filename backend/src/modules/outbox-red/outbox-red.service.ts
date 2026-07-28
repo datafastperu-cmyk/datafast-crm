@@ -103,7 +103,7 @@ export class OutboxRedService {
     await this.ds.query(`
       INSERT INTO comandos_red_pendientes (contrato_id, router_id, accion, payload)
       VALUES ($1, $2, $3, $4)
-      ON CONFLICT (contrato_id, accion) WHERE estado = 'PENDIENTE' DO NOTHING
+      ON CONFLICT (contrato_id, accion) WHERE estado IN ('PENDIENTE', 'EN_PROCESO') DO NOTHING
     `, [contratoId, routerIdVal, accion, JSON.stringify(payload)]);
 
     this.logger.warn(
@@ -217,13 +217,18 @@ export class OutboxRedService {
 
   async getStatus(): Promise<{
     pendientes: number;
+    enProceso: number;
     agotados: number;
     ejecutadosUltima1h: number;
     ultimoEjecutadoEn: string | null;
   }> {
     const [row] = await this.ds.query<any[]>(`
       SELECT
-        COUNT(*) FILTER (WHERE estado = 'PENDIENTE')                               AS pendientes,
+        -- 'EN_PROCESO' cuenta como pendiente hacia afuera: es trabajo sin aplicar.
+        -- Excluirlo haría desaparecer de la vista del operador justo los comandos que
+        -- están tocando el hardware ahora mismo.
+        COUNT(*) FILTER (WHERE estado IN ('PENDIENTE', 'EN_PROCESO'))               AS pendientes,
+        COUNT(*) FILTER (WHERE estado = 'EN_PROCESO')                               AS en_proceso,
         COUNT(*) FILTER (WHERE estado = 'AGOTADO')                                 AS agotados,
         COUNT(*) FILTER (WHERE estado = 'EJECUTADO' AND ejecutado_en > NOW() - INTERVAL '1 hour') AS ejecutados_ultima_1h,
         MAX(ejecutado_en)                                                           AS ultimo_ejecutado_en
@@ -231,6 +236,7 @@ export class OutboxRedService {
     `);
     return {
       pendientes:          Number(row.pendientes),
+      enProceso:           Number(row.en_proceso),
       agotados:            Number(row.agotados),
       ejecutadosUltima1h:  Number(row.ejecutados_ultima_1h),
       ultimoEjecutadoEn:   row.ultimo_ejecutado_en ?? null,
@@ -240,38 +246,113 @@ export class OutboxRedService {
   // Guard anti-solapamiento: coalesce cron + eventos de reconexión concurrentes.
   private _procesando = false;
 
+  // Identidad del proceso que reclama. Sirve para diagnosticar qué instancia PM2 tomó
+  // cada comando cuando algo queda a medias.
+  private readonly _dueño = `${process.env.PM2_INSTANCE_ID ?? process.env.NODE_APP_INSTANCE ?? 'solo'}:${process.pid}`;
+
+  // TTL del reclamo. Techo generoso: el rollback GPON del MA5800 tarda ~60s y el
+  // cliente HTTP del microservicio admite hasta 150s. Un comando reclamado por más
+  // tiempo que esto es un proceso muerto, no una OLT lenta.
+  private static readonly CLAIM_TTL_SEGUNDOS = 600;
+
   // ────────────────────────────────────────────────────────────
   // CRON — cada 5 minutos: red de seguridad que barre la cola.
+  // Guard RUN_CRONS como HIGIENE, no como fix: evita que api-core y el worker hagan
+  // el mismo barrido: la exclusión real la da el reclamo atómico. El trigger por
+  // evento (onRouterReconectado) sigue activo en todos los procesos a propósito —
+  // el router reconecta contra api-core y la latencia de segundos es el objetivo.
   // ────────────────────────────────────────────────────────────
   @Cron('0 */5 * * * *')
+  async barridoProgramado(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
+    await this.procesarPendientes();
+  }
+
   async procesarPendientes(): Promise<void> {
     if (this._procesando) return;
     this._procesando = true;
     try {
-      // Barre la cola completa en lotes hasta vaciar lo procesable en esta pasada.
-      // Los comandos de routers aún caídos fallan y quedan PENDIENTE (nunca se descartan).
-      // SELECT FOR UPDATE SKIP LOCKED: dos instancias PM2 nunca toman el mismo registro.
+      // RECLAMO ATÓMICO. El esquema anterior (SELECT ... FOR UPDATE SKIP LOCKED dentro
+      // de una transacción, y ejecución FUERA de ella) no daba la exclusión que su
+      // comentario prometía: la transacción se cerraba al devolver el lote, el lock de
+      // fila se soltaba y la otra instancia PM2 tomaba el mismo comando. Verificado en
+      // producción el 2026-07-28 — api-core y worker procesaron el id=26 en el mismo
+      // tick. El reclamo debe ser un HECHO PERSISTIDO (estado + dueño + TTL), no una
+      // propiedad efímera de una transacción que ya terminó.
       let lote: any[];
       do {
-        lote = await this.ds.transaction(async (em) => {
-          return em.query<any[]>(`
-            SELECT id, contrato_id, router_id, accion, payload, intentos, max_intentos
-            FROM   comandos_red_pendientes
-            WHERE  estado = 'PENDIENTE'
-            ORDER  BY creado_en
-            LIMIT  10
-            FOR UPDATE SKIP LOCKED
-          `);
-        });
+        lote = await this.ds.query<any[]>(`
+          UPDATE comandos_red_pendientes
+          SET    estado          = 'EN_PROCESO',
+                 reclamado_por   = $1,
+                 reclamado_en    = NOW(),
+                 claim_expira_en = NOW() + ($2 || ' seconds')::interval
+          WHERE  id IN (
+                   SELECT id
+                   FROM   comandos_red_pendientes
+                   WHERE  estado = 'PENDIENTE'
+                   ORDER  BY creado_en
+                   LIMIT  10
+                   FOR UPDATE SKIP LOCKED
+                 )
+          RETURNING id, contrato_id, router_id, accion, payload, intentos, max_intentos
+        `, [this._dueño, String(OutboxRedService.CLAIM_TTL_SEGUNDOS)]);
+
         if (lote.length > 0) {
-          this.logger.log(`[OutboxRed] Procesando ${lote.length} comando(s) pendiente(s)`);
+          this.logger.log(`[OutboxRed] Procesando ${lote.length} comando(s) reclamado(s)`);
           for (const cmd of lote) {
+            // Cada comando libera su propio reclamo al terminar (EJECUTADO / AGOTADO /
+            // vuelta a PENDIENTE). Si el proceso muere aquí, lo recupera barrerClaimsExpirados.
             await this.ejecutarComando(cmd);
           }
         }
       } while (lote.length === 10);
     } finally {
       this._procesando = false;
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // CRON — recupera comandos cuyo reclamo expiró: el proceso que los tomó murió
+  // (deploy, OOM, kill) sin dejarlos en un estado terminal. Sin esto, un comando
+  // reclamado se queda EN_PROCESO para siempre y nadie vuelve a mirarlo — el
+  // mismo trabajo abandonado que el reclamo vino a evitar.
+  //
+  // Volver a PENDIENTE es correcto porque los comandos son idempotentes por
+  // contrato. Pero se AUDITA: un reclamo expirado es indeterminado — la operación
+  // pudo haberse aplicado en el hardware antes de morir el proceso.
+  // ────────────────────────────────────────────────────────────
+  @Cron('30 */5 * * * *')
+  async barrerClaimsExpirados(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
+    const huerfanos = await this.ds.query<any[]>(`
+      UPDATE comandos_red_pendientes
+      SET    estado          = 'PENDIENTE',
+             reclamado_por   = NULL,
+             reclamado_en    = NULL,
+             claim_expira_en = NULL,
+             ultimo_error    = COALESCE(ultimo_error, '') ||
+                               ' | reclamo expirado (dueño=' || COALESCE(reclamado_por, '?') ||
+                               '): estado indeterminado, reencolado'
+      WHERE  estado = 'EN_PROCESO' AND claim_expira_en < NOW()
+      RETURNING id, accion, contrato_id, reclamado_por
+    `).catch((e) => {
+      this.logger.warn(`[OutboxRed] barrerClaimsExpirados falló: ${e?.message}`);
+      return [] as any[];
+    });
+
+    for (const h of huerfanos) {
+      this.logger.error(
+        `[OutboxRed] Reclamo expirado → comando=${h.id} ${h.accion} contrato=${h.contrato_id} ` +
+        `dueño=${h.reclamado_por} — reencolado (pudo haberse aplicado en hardware)`,
+      );
+      void this.eventos?.registrar({
+        nivel:    'warn',
+        origen:   'mikrotik',
+        codigo:   'OUTBOX_CLAIM_EXPIRADO',
+        mensaje:  `Comando ${h.accion} quedó reclamado sin terminar (contrato ${h.contrato_id}, dueño ${h.reclamado_por}) — reencolado. Estado en hardware indeterminado.`,
+        contexto: { comandoId: h.id, accion: h.accion, contratoId: h.contrato_id, dueño: h.reclamado_por },
+      });
     }
   }
 
@@ -449,9 +530,13 @@ export class OutboxRedService {
       // VPN esté caído días, al volver el router los cambios se aplican automáticamente.
       const nuevosIntentos = (cmd.intentos as number) + 1;
 
+      // Vuelve a PENDIENTE: libera el reclamo para que el próximo ciclo lo reintente.
+      // Omitirlo dejaría el comando EN_PROCESO hasta que expire el TTL — 10 min de
+      // latencia extra en cada fallo transitorio.
       await this.ds.query(`
         UPDATE comandos_red_pendientes
-        SET    intentos = $2, ultimo_error = $3
+        SET    estado = 'PENDIENTE', intentos = $2, ultimo_error = $3,
+               reclamado_por = NULL, reclamado_en = NULL, claim_expira_en = NULL
         WHERE  id = $1
       `, [cmd.id, nuevosIntentos, err.message?.slice(0, 500)]);
 
@@ -559,8 +644,12 @@ export class OutboxRedService {
         return;
       }
 
+      // Vuelve a PENDIENTE y libera el reclamo (ver rama MikroTik).
       await this.ds.query(
-        `UPDATE comandos_red_pendientes SET intentos = $2, ultimo_error = $3 WHERE id = $1`,
+        `UPDATE comandos_red_pendientes
+         SET estado = 'PENDIENTE', intentos = $2, ultimo_error = $3,
+             reclamado_por = NULL, reclamado_en = NULL, claim_expira_en = NULL
+         WHERE id = $1`,
         [cmd.id, nuevosIntentos, err.message?.slice(0, 500)],
       );
       this.logger.warn(
