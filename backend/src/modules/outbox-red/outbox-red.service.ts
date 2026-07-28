@@ -1,4 +1,9 @@
-import { Injectable, Logger, Optional, HttpException } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  ResultadoOperacion,
+  clasificarError,
+  esExito,
+} from '../../common/domain/resultado-operacion';
 import { InjectDataSource }  from '@nestjs/typeorm';
 import { DataSource }        from 'typeorm';
 import { Cron }              from '@nestjs/schedule';
@@ -579,90 +584,117 @@ export class OutboxRedService {
   // hasta aplicarse. Si el contrato no tiene ONU, el wrapper omite → EJECUTADO.
   private async ejecutarComandoOnu(cmd: any): Promise<void> {
     const empresaId = (cmd.payload as any)?.empresaId as string;
+
+    // El resultado llega ya clasificado por el DOMINIO. El outbox no vuelve a inferir
+    // reintentabilidad de un status code: esa inferencia fue la causa raíz de los dos
+    // incidentes del 24 y el 28/07 (un no-op leído como fallo → 1788 reintentos; un 409
+    // de lock leído como veredicto → trabajo descartado).
+    let res: ResultadoOperacion;
     try {
-      let res: { exitoso: boolean; mensaje: string; error?: string; skipped?: boolean };
       if (cmd.accion === 'SUSPENDER_ONU') {
         res = await this.ftthSvc.suspenderPorContrato(cmd.contrato_id, empresaId);
       } else if (cmd.accion === 'REACTIVAR_ONU') {
         res = await this.ftthSvc.rehabilitarPorContrato(cmd.contrato_id, empresaId);
       } else if (cmd.accion === 'ACTUALIZAR_WAN_ONU') {
         const r = await this.ftthSvc.actualizarWan(cmd.contrato_id, empresaId);
-        // 'skipped' (bridge / sin ONU) cuenta como exitoso: no hay nada que aplicar.
-        res = { exitoso: r.actualizado || !!r.skipped, mensaje: r.mensaje, error: r.error, skipped: r.skipped };
+        // 'skipped' (bridge / sin ONU): no hay nada que aplicar → éxito vacío.
+        res = r.skipped      ? { clase: 'no_aplica',    mensaje: r.mensaje }
+            : r.actualizado  ? { clase: 'aplicado',     mensaje: r.mensaje }
+                             : { clase: 'reintentable', motivo:  r.error ?? r.mensaje };
       } else if (cmd.accion === 'REAPROVISIONAR_ONU') {
         // Push ERP→OLT de drift: re-aplica la ONU con los datos guardados del registro.
         const r = await this.ftthSvc.reaplicar(cmd.contrato_id, empresaId);
-        res = { exitoso: r.estado === 'activo', mensaje: r.mensaje ?? `Estado: ${r.estado}` };
+        res = r.estado === 'activo'
+          ? { clase: 'aplicado',     mensaje: r.mensaje ?? 'ONU reaplicada.' }
+          : { clase: 'reintentable', motivo:  r.mensaje ?? `Estado: ${r.estado}` };
       } else {
         res = await this.ftthSvc.desaprovisionarPorContrato(cmd.contrato_id, empresaId);
       }
+    } catch (err) {
+      // Red de seguridad: cualquier método que todavía lance en vez de devolver.
+      res = clasificarError(err);
+    }
 
-      if (!res.exitoso) {
-        throw new Error(res.error ?? res.mensaje ?? 'Operación ONU fallida');
-      }
+    const nuevosIntentos = (cmd.intentos as number) + 1;
 
+    // ── Éxito: aplicado, ya_en_destino o no_aplica ──────────────────
+    if (esExito(res)) {
       await this.ds.query(
-        `UPDATE comandos_red_pendientes SET estado = 'EJECUTADO', ejecutado_en = NOW() WHERE id = $1`,
+        `UPDATE comandos_red_pendientes SET estado = 'EJECUTADO', ejecutado_en = NOW(), ultimo_error = NULL WHERE id = $1`,
         [cmd.id],
       );
-      this.logger.log(
-        `[OutboxRed] ✅ ${cmd.accion} → contrato=${cmd.contrato_id}${res.skipped ? ' (omitido: sin ONU FTTH)' : ''}`,
+      const detalle = res.clase === 'aplicado' ? '' : ` (${res.clase})`;
+      this.logger.log(`[OutboxRed] ✅ ${cmd.accion} → contrato=${cmd.contrato_id}${detalle}`);
+      return;
+    }
+
+    // ── Rechazo definitivo: reintentar produce el mismo veredicto ───
+    if (res.clase === 'rechazado_definitivo') {
+      await this.ds.query(
+        `UPDATE comandos_red_pendientes
+         SET estado = 'AGOTADO', intentos = $2, ultimo_error = $3
+         WHERE id = $1`,
+        [cmd.id, nuevosIntentos, res.motivo.slice(0, 500)],
       );
-    } catch (err: any) {
-      const nuevosIntentos = (cmd.intentos as number) + 1;
+      this.logger.error(
+        `[OutboxRed] ${cmd.accion} rechazado de forma permanente → contrato=${cmd.contrato_id}: ${res.motivo}`,
+      );
+      void this.eventos?.registrar({
+        nivel:    'error',
+        origen:   'olt',
+        codigo:   'OUTBOX_ONU_RECHAZO_PERMANENTE',
+        mensaje:  `Comando ONU ${cmd.accion} rechazado de forma permanente (contrato ${cmd.contrato_id}): ${res.motivo}`,
+        contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
+      });
+      return;
+    }
 
-      // Error PERMANENTE vs TRANSITORIO. La política de "nunca descartar" existe para el
-      // segundo caso: si la OLT está caída, reintentar es una obligación. Pero un rechazo de
-      // dominio (transición no permitida, registro inexistente) no se arregla reintentando:
-      // se repite idéntico cada 5 min contra un MA5800 con pocas sesiones VTY. El incidente
-      // del 24/07 acumuló 1784 intentos sobre un techo de 12 por esta vía. Se marca AGOTADO
-      // y se audita para que un humano lo resuelva.
-      //
-      // La lista es EXPLÍCITA y corta a propósito: sólo 400 (transición no permitida) y 404
-      // (recurso inexistente) son veredictos definitivos del dominio. Un criterio amplio
-      // tipo `status < 500` es incorrecto — el 409 del lock de operación y el 408/429 de
-      // congestión significan "vuelve luego", y descartarlos abandona trabajo que sí debía
-      // aplicarse. Ante la duda: transitorio, porque reintentar es recuperable y descartar no.
-      const ESTADOS_RECHAZO_PERMANENTE = [400, 404];
-      if (err instanceof HttpException && ESTADOS_RECHAZO_PERMANENTE.includes(err.getStatus())) {
-        await this.ds.query(
-          `UPDATE comandos_red_pendientes
-           SET estado = 'AGOTADO', intentos = $2, ultimo_error = $3
-           WHERE id = $1`,
-          [cmd.id, nuevosIntentos, err.message?.slice(0, 500)],
-        );
-        this.logger.error(
-          `[OutboxRed] ${cmd.accion} rechazado de forma permanente → contrato=${cmd.contrato_id}: ${err.message}`,
-        );
-        void this.eventos?.registrar({
-          nivel:    'error',
-          origen:   'olt',
-          codigo:   'OUTBOX_ONU_RECHAZO_PERMANENTE',
-          mensaje:  `Comando ONU ${cmd.accion} rechazado de forma permanente (contrato ${cmd.contrato_id}): ${err.message}`,
-          contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
-        });
-        return;
-      }
-
-      // Vuelve a PENDIENTE y libera el reclamo (ver rama MikroTik).
+    // ── Indeterminado: pudo haberse aplicado ────────────────────────
+    // No se reintenta a ciegas. Reintentar un rollback que SÍ se ejecutó es
+    // exactamente cómo se ensucia el plano físico. Se deja PENDIENTE —el trabajo no
+    // se abandona— pero se AUDITA para que el operador verifique el estado real, y
+    // el reintento queda a cargo del ciclo normal, no de un bucle inmediato.
+    if (res.clase === 'indeterminado') {
       await this.ds.query(
         `UPDATE comandos_red_pendientes
          SET estado = 'PENDIENTE', intentos = $2, ultimo_error = $3,
              reclamado_por = NULL, reclamado_en = NULL, claim_expira_en = NULL
          WHERE id = $1`,
-        [cmd.id, nuevosIntentos, err.message?.slice(0, 500)],
+        [cmd.id, nuevosIntentos, `INDETERMINADO: ${res.motivo}`.slice(0, 500)],
       );
-      this.logger.warn(
-        `[OutboxRed] Reintento ONU ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${err.message}`,
+      this.logger.error(
+        `[OutboxRed] ${cmd.accion} INDETERMINADO → contrato=${cmd.contrato_id}: ${res.motivo} ` +
+        `— pudo haberse aplicado en el hardware; verificar estado real`,
       );
-      if (nuevosIntentos === cmd.max_intentos) {
-        void this.eventos?.registrar({
-          origen:   'olt',
-          codigo:   'OUTBOX_ONU_AGOTADO',
-          mensaje:  `Comando ONU ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (contrato ${cmd.contrato_id}): ${err.message}`,
-          contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
-        });
-      }
+      void this.eventos?.registrar({
+        nivel:    'error',
+        origen:   'olt',
+        codigo:   'OUTBOX_ONU_INDETERMINADO',
+        mensaje:  `Comando ONU ${cmd.accion} con resultado indeterminado (contrato ${cmd.contrato_id}): ${res.motivo}. La operación PUDO aplicarse — verificar el estado real en la OLT antes de asumir que no pasó nada.`,
+        contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
+      });
+      return;
+    }
+
+    // ── Reintentable: obligación de volver a intentar ───────────────
+    // Vuelve a PENDIENTE y libera el reclamo (ver rama MikroTik).
+    await this.ds.query(
+      `UPDATE comandos_red_pendientes
+       SET estado = 'PENDIENTE', intentos = $2, ultimo_error = $3,
+           reclamado_por = NULL, reclamado_en = NULL, claim_expira_en = NULL
+       WHERE id = $1`,
+      [cmd.id, nuevosIntentos, res.motivo.slice(0, 500)],
+    );
+    this.logger.warn(
+      `[OutboxRed] Reintento ONU ${nuevosIntentos} → contrato=${cmd.contrato_id}: ${res.motivo}`,
+    );
+    if (nuevosIntentos === cmd.max_intentos) {
+      void this.eventos?.registrar({
+        origen:   'olt',
+        codigo:   'OUTBOX_ONU_AGOTADO',
+        mensaje:  `Comando ONU ${cmd.accion} sin aplicar tras ${nuevosIntentos} intentos (contrato ${cmd.contrato_id}): ${res.motivo}`,
+        contexto: { contratoId: cmd.contrato_id, accion: cmd.accion, intentos: nuevosIntentos },
+      });
     }
   }
 

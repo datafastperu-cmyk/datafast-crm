@@ -15,6 +15,7 @@ import { FtthOnuEstado, FtthCarrilEstado, FtthOnuRegistro, ftthNecesitaRecovery 
 import { FtthRollbackLog, RollbackMotivo } from '../entities/ftth-rollback-log.entity';
 import { OltAutomationClient }            from '../olt-automation.client';
 import { decrypt }                        from '../../../common/utils/encryption.util';
+import { ResultadoOperacion, clasificarError } from '../../../common/domain/resultado-operacion';
 import { OltServicePortPoolService }      from './olt-service-port-pool.service';
 import { FtthOperacionLockService }       from './ftth-operacion-lock.service';
 import { OperacionWizardPasoService }     from './operacion-wizard-paso.service';
@@ -1420,7 +1421,18 @@ export class ProvisionFtthService {
   async desaprovisionarPorContrato(
     contratoId: string,
     empresaId:  string,
-  ): Promise<{ exitoso: boolean; mensaje: string; error?: string; skipped?: boolean }> {
+  ): Promise<ResultadoOperacion> {
+    try {
+      return await this._desaprovisionarPorContratoInterno(contratoId, empresaId);
+    } catch (err) {
+      return clasificarError(err);
+    }
+  }
+
+  private async _desaprovisionarPorContratoInterno(
+    contratoId: string,
+    empresaId:  string,
+  ): Promise<ResultadoOperacion> {
     // ── Regla C — guard de reactivación (ruta AUTOMÁTICA/tumba, outbox) ──
     // Esta ruta la dispara la baja (encolarDesaprovisionarOnu) y el outbox la reintenta hasta
     // que la OLT esté disponible. Entre el encolado y la ejecución el contrato PUDO reactivarse
@@ -1443,15 +1455,19 @@ export class ProvisionFtthService {
           `desaprovisionarPorContrato | contrato=${contratoId} estado=${contrato.estado} NO es tumba ` +
           `(reactivado antes de drenar el outbox) — desaprovisión omitida (Regla C).`,
         );
-        return { exitoso: true, skipped: true, mensaje: 'Contrato reactivado — desaprovisión automática omitida para no cortar servicio activo.' };
+        return { clase: 'no_aplica', mensaje: 'Contrato reactivado — desaprovisión automática omitida para no cortar servicio activo.' };
       }
     }
 
     const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
     if (!registro) {
-      return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — desaprovisionar omitido.' };
+      // Idempotencia de la compensación: si ya no hay registro, deshacer está HECHO.
+      return { clase: 'ya_en_destino', mensaje: 'Contrato sin ONU FTTH — desaprovisionar omitido.' };
     }
-    return this.desaprovisionar(registro.oltId, empresaId, { contratoId });
+    const r = await this.desaprovisionar(registro.oltId, empresaId, { contratoId });
+    return r.exitoso
+      ? { clase: 'aplicado',     mensaje: r.mensaje }
+      : { clase: 'reintentable', motivo:  r.error ?? r.mensaje };
   }
 
   // ── cancelarFtth ──────────────────────────────────────────────────
@@ -2037,35 +2053,49 @@ export class ProvisionFtthService {
       .catch(() => { /* best-effort: un fallo al sellar el uso no debe romper la apertura del modal */ });
   }
 
-  async suspenderPorContrato(
-    contratoId: string,
-    empresaId:  string,
-  ): Promise<{ exitoso: boolean; mensaje: string; error?: string; skipped?: boolean }> {
-    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
-    if (!registro) {
-      return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — suspender omitido.' };
+  // ── Frontera de la AUTOMATIZACIÓN ────────────────────────────────
+  // Estos wrappers son lo que consume el outbox. Devuelven `ResultadoOperacion` —
+  // vocabulario de dominio— en vez de excepciones HTTP: quien reintenta no puede
+  // depender de un status code para saber si un rechazo es definitivo o pasajero
+  // (causa raíz 2026-07-28). Los métodos internos que aún lanzan se traducen con
+  // `clasificarError`; el borde HTTP vuelve a traducir con `traducirAHttp`.
+  async suspenderPorContrato(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+      if (!registro) {
+        return { clase: 'no_aplica', mensaje: 'Contrato sin ONU FTTH — suspender omitido.' };
+      }
+      // Idempotencia por contrato: el estado destino ya alcanzado es ÉXITO, no error.
+      // Sin esto el outbox trata el no-op como fallo y reintenta indefinidamente.
+      if (registro.estado === FtthOnuEstado.SUSPENDIDO) {
+        return { clase: 'ya_en_destino', mensaje: `ONU ${registro.sn} ya estaba suspendida.` };
+      }
+      const r = await this.suspender(registro.oltId, empresaId, contratoId);
+      return r.exitoso
+        ? { clase: 'aplicado',     mensaje: r.mensaje }
+        : { clase: 'reintentable', motivo:  r.error ?? r.mensaje };
+    } catch (err) {
+      return clasificarError(err);
     }
-    // Idempotencia por contrato: el estado destino ya alcanzado es ÉXITO, no error.
-    // Sin esto el outbox trata el no-op como fallo y reintenta indefinidamente contra la OLT.
-    if (registro.estado === FtthOnuEstado.SUSPENDIDO) {
-      return { exitoso: true, skipped: true, mensaje: `ONU ${registro.sn} ya estaba suspendida.` };
-    }
-    return this.suspender(registro.oltId, empresaId, contratoId);
   }
 
-  async rehabilitarPorContrato(
-    contratoId: string,
-    empresaId:  string,
-  ): Promise<{ exitoso: boolean; mensaje: string; error?: string; skipped?: boolean }> {
-    const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
-    if (!registro) {
-      return { exitoso: true, skipped: true, mensaje: 'Contrato sin ONU FTTH — rehabilitar omitido.' };
+  async rehabilitarPorContrato(contratoId: string, empresaId: string): Promise<ResultadoOperacion> {
+    try {
+      const registro = await this.ftthRepo.findOne({ where: { contratoId, empresaId } });
+      if (!registro) {
+        return { clase: 'no_aplica', mensaje: 'Contrato sin ONU FTTH — rehabilitar omitido.' };
+      }
+      // Idempotencia por contrato (ver suspenderPorContrato).
+      if (registro.estado === FtthOnuEstado.ACTIVO) {
+        return { clase: 'ya_en_destino', mensaje: `ONU ${registro.sn} ya estaba activa.` };
+      }
+      const r = await this.rehabilitar(registro.oltId, empresaId, contratoId);
+      return r.exitoso
+        ? { clase: 'aplicado',     mensaje: r.mensaje }
+        : { clase: 'reintentable', motivo:  r.error ?? r.mensaje };
+    } catch (err) {
+      return clasificarError(err);
     }
-    // Idempotencia por contrato (ver suspenderPorContrato).
-    if (registro.estado === FtthOnuEstado.ACTIVO) {
-      return { exitoso: true, skipped: true, mensaje: `ONU ${registro.sn} ya estaba activa.` };
-    }
-    return this.rehabilitar(registro.oltId, empresaId, contratoId);
   }
 
   async desaprovisionar(

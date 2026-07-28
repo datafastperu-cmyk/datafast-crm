@@ -16,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { traducirAHttp } from '../../common/domain/resultado-operacion';
 import { OltNativoService }        from './olt-nativo.service';
 import { FirmwareService }         from './firmware.service';
 import {
@@ -1187,7 +1188,8 @@ export class OltNativoController {
     @Param('contratoId', ParseUUIDPipe) contratoId: string,
     @CurrentUser() user: JwtPayload,
   ): Promise<{ exitoso: boolean; mensaje: string; error?: string }> {
-    return this.ftth.desaprovisionarPorContrato(contratoId, user.empresaId);
+    // El servicio habla dominio; la traducción a HTTP vive aquí, en el borde.
+    return traducirAHttp(await this.ftth.desaprovisionarPorContrato(contratoId, user.empresaId));
   }
 
   @Post('ftth/actualizar-wan/:contratoId')
