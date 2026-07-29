@@ -4,7 +4,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X, Zap, Loader2, AlertTriangle, Search, CheckCircle2,
-  RefreshCw, WifiOff, Hash, Trash2, ChevronDown, Eye,
+  RefreshCw, WifiOff, Trash2, ChevronDown, Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toaster';
@@ -915,19 +915,24 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                   </Field>
                 </div>
 
+                {/* Solo se avisa de lo que el operador puede o debe DECIDIR.
+                    Se retiraron los avisos de "Service Port ID / ONU ID se asignan
+                    automáticamente" y el resumen del procedimiento: describían automatismos
+                    que quien aprovisiona no controla ni puede cambiar, y competían por
+                    atención con lo que sí importa. Quedan dos, ambos accionables: que la OLT
+                    no tenga pool (bloquea el aprovisionamiento) y que el pool esté por
+                    agotarse (lo bloqueará pronto). */}
                 <div className="mt-1 space-y-1.5">
-                  {poolConfigurado ? (
-                    // Pool configurado en la OLT: el backend SIEMPRE asigna el Service Port ID
-                    // desde ahí (provision-ftth.service.ts). Puramente informativo — nunca editable,
-                    // para eliminar el riesgo de colisión/errores por ID manual incorrecto.
-                    <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
-                      <Hash className="w-3.5 h-3.5 flex-shrink-0" />
+                  {poolConfigurado && (servicePortPool?.libres ?? 0) <= Math.max(20, Math.round((servicePortPool?.total ?? 0) * 0.05)) ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-amber-700/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                       <span className="flex-1">
-                        Service Port ID — se asigna automáticamente del pool de la OLT
-                        ({servicePortPool?.libres ?? 0} libres de {servicePortPool?.total ?? 0}).
+                        Quedan {servicePortPool?.libres ?? 0} Service Port IDs libres de {servicePortPool?.total ?? 0}.
+                        Al agotarse, los aprovisionamientos empezarán a fallar — amplía el pool en
+                        Detalles de la OLT.
                       </span>
                     </div>
-                  ) : selectedOltId ? (
+                  ) : !poolConfigurado && selectedOltId ? (
                     <div className="flex items-center gap-2 rounded-lg border border-red-700/30 bg-red-500/5 px-3 py-2 text-[11px] text-red-700 dark:text-red-400">
                       <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                       <span className="flex-1">
@@ -936,25 +941,6 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       </span>
                     </div>
                   ) : null}
-                  <div className="flex items-center gap-2 rounded-lg border border-violet-700/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-300">
-                    <Hash className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>ONU ID se asigna automáticamente del pool por puerto PON (1–128).</span>
-                  </div>
-                </div>
-
-                <div className="mt-2 flex items-start gap-2 rounded-lg border border-blue-700/30 bg-blue-500/5 px-3 py-2 text-[11px] text-blue-700 dark:text-blue-300">
-                  <Zap className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                  <span>
-                    {wanMode === 'routing' ? (
-                      <>Registra la ONU en la OLT (GPON), espera que esté online, luego inyecta las
-                        credenciales PPPoE <strong>{(contrato as any).usuarioPppoe ?? '—'}</strong> en
-                        la ONU vía OMCI (modo routing).</>
-                    ) : (
-                      <>Registra la ONU en la OLT (GPON + service-port) en <strong>modo bridge</strong>:
-                        la ONU va transparente y el PPPoE lo maneja el router del cliente contra el BRAS.
-                        No se inyecta WAN en la ONU.</>
-                    )}
-                  </span>
                 </div>
               </div>
             )}
