@@ -1244,6 +1244,10 @@ export class ContratosService {
           ro.nombre              AS "routerNombre",
           ro.version_ros         AS "versionRos",
           pl.ppp_profile         AS "pppProfile",
+          -- Necesarias para crear el perfil PPPoE en el router con el rate-limit del
+          -- plan si aún no existe (ver MikrotikService.crearReglasControl).
+          pl.velocidad_bajada    AS "velocidadBajada",
+          pl.velocidad_subida    AS "velocidadSubida",
           pl.crear_reglas_en_router AS "crearReglas"
         FROM contratos co
         JOIN clientes cl ON cl.id = co.cliente_id

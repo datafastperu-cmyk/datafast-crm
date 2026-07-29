@@ -1628,10 +1628,31 @@ export class MikrotikService implements OnModuleInit {
       if (!co.usuarioPppoe)
         throw new Error('El contrato no tiene usuario PPPoE asignado');
       const password = co.passwordPppoe ? decrypt(co.passwordPppoe) : '';
+
+      // Asegurar el perfil ANTES del secret: el ERP inyecta su configuración canónica y
+      // no da por hecho que exista en el equipo (directriz de aprovisionamiento). Sin
+      // esto RouterOS rechaza el secret con "input does not match any value of profile",
+      // un mensaje que no dice qué perfil falta — y ningún plan puede activarse en un
+      // router donde nadie lo creó a mano (observado el 2026-07-29 al activar un plan de
+      // 20 Mbps cuyo perfil `plan-20mbps` no existía en el Router Malvinas).
+      const perfilPpp = co.pppProfile ?? 'default';
+      if (perfilPpp !== 'default') {
+        await this.pppoeSvc.crearPerfilSiNoExiste(creds, perfilPpp, {
+          // rate-limit de RouterOS: "subida/bajada" desde la perspectiva del cliente.
+          rateLimit: co.velocidadSubida && co.velocidadBajada
+            ? `${co.velocidadSubida}M/${co.velocidadBajada}M`
+            : undefined,
+        }).catch((e: any) =>
+          // No aborta: si ya existe con otra config o el router no deja crearlo, el
+          // `crear` de abajo dirá con claridad si el problema persiste.
+          this.logger.warn(`No se pudo asegurar el perfil "${perfilPpp}" en ${creds.ip}: ${e.message}`),
+        );
+      }
+
       await this.pppoeSvc.crear(creds, {
         name: co.usuarioPppoe,
         password,
-        profile: co.pppProfile ?? 'default',
+        profile: perfilPpp,
         service: 'pppoe',
         remoteAddress: co.ipAsignada || undefined,
         comment,
