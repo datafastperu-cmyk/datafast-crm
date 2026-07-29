@@ -146,10 +146,27 @@ export class ReportesService {
       FROM clientes WHERE empresa_id = $1 AND deleted_at IS NULL
     `, [empresaId]);
 
+    // Rango SEMIABIERTO con casts explícitos: `created_at` y `updated_at` son `timestamptz`,
+    // no `date` como las columnas de los otros reportes (fecha_emision, fecha_pago), que sí
+    // funcionan con un BETWEEN de dos parámetros string.
+    //
+    // La versión anterior intentaba abarcar el último día con `$3 || ' 23:59:59'`. Ese `||`
+    // fija el lado derecho como `text`, y Postgres no compara `timestamptz` con `text`:
+    // el reporte de clientes devolvía 400 SIEMPRE (observado en producción el 2026-07-29,
+    // `operator does not exist: timestamp with time zone <= text`). Nunca funcionó — no es
+    // una regresión, es que nadie lo había abierto.
+    //
+    // `< día_siguiente` en vez de `<= 23:59:59` también corrige un error silencioso de la
+    // intención original: con ese corte se perdía lo ocurrido en el último segundo del mes.
     const [periodo] = await this.ds.query(`
       SELECT
-        COUNT(*) FILTER (WHERE created_at BETWEEN $2 AND $3 || ' 23:59:59') AS nuevos,
-        COUNT(*) FILTER (WHERE estado = 'baja_definitiva' AND updated_at BETWEEN $2 AND $3 || ' 23:59:59') AS bajas
+        COUNT(*) FILTER (
+          WHERE created_at >= $2::date AND created_at < ($3::date + INTERVAL '1 day')
+        ) AS nuevos,
+        COUNT(*) FILTER (
+          WHERE estado = 'baja_definitiva'
+            AND updated_at >= $2::date AND updated_at < ($3::date + INTERVAL '1 day')
+        ) AS bajas
       FROM clientes WHERE empresa_id = $1 AND deleted_at IS NULL
     `, [empresaId, startDate, endDate]);
 
