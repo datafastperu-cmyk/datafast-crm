@@ -45,6 +45,24 @@ export class VpnClienteController {
     return StdResponse.ok({ script }, 'Script generado');
   }
 
+  // ── Reconciliar estado de TODOS los clientes ──────────────────
+  // El cron lo hace cada 5 min; este endpoint permite forzarlo cuando el operador ve un
+  // estado que no cuadra y no quiere esperar. Va ANTES de las rutas con `:id` para que
+  // "reconciliar" no se interprete como un identificador.
+
+  @Post('reconciliar-estado')
+  @RequirePermission('mikrotik:manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sincronizar el estado de los clientes VPN con las sesiones reales del servidor' })
+  async reconciliar() {
+    const r = await this.svc.reconciliarEstadoConexion();
+    return StdResponse.ok(
+      r,
+      `Revisados ${r.revisados} | conectados ${r.conectados} | desconectados ${r.desconectados}` +
+      (r.incidencias ? ` | INCIDENCIAS ${r.incidencias}` : ''),
+    );
+  }
+
   // ── Validar túnel (polling del status.log) ────────────────────
 
   @Post(':id/validar')

@@ -60,8 +60,124 @@ export class VpnClienteService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     const tz = await this.empresaConfig.getTimezone().catch(() => 'America/Lima');
+
     const job = new CronJob('0 */10 * * * *', () => this.limpiarWizardsAbandonados(), null, true, tz);
     this.schedulerRegistry.addCronJob('vpn-cleanup-abandonados', job);
+
+    // Reconciliación de estado contra las sesiones reales del servidor OpenVPN.
+    // Desfasada 3' del barrido de wizards para no abrir dos conexiones al management
+    // en el mismo instante.
+    // `void` explícito: el método devuelve contadores para quien lo llame a mano, pero
+    // CronJob espera un callback sin retorno. Y el `.catch` evita que un fallo del
+    // management se convierta en un rechazo no manejado.
+    const rec = new CronJob('0 3-59/5 * * * *', () => {
+      void this.reconciliarEstadoConexion().catch((e) =>
+        this.logger.error(`[VPN reconciliar] falló: ${e instanceof Error ? e.message : String(e)}`),
+      );
+    }, null, true, tz);
+    this.schedulerRegistry.addCronJob('vpn-reconciliar-estado', rec);
+  }
+
+  /**
+   * Sincroniza `vpn_clientes.estado` con las sesiones que el servidor OpenVPN reporta
+   * de verdad.
+   *
+   * Por qué hace falta (2026-07-28): hasta hoy el estado SOLO lo actualizaba
+   * `validarTunel`, que corre cuando el operador pulsa "Validar túnel" en el wizard. El
+   * resultado observado: el Router Malvinas figuraba `desconectado` con último handshake
+   * del 20/06 mientras llevaba todo el día conectado y con 10 MB de tráfico. El ERP no
+   * mentía por un bug de lectura —lee y parsea bien el status— sino porque nadie le
+   * había vuelto a preguntar en cinco semanas.
+   *
+   * Es el mismo patrón que ya se corrigió en `olt_onu_inventario`: un estado persistido
+   * que solo se refresca por acción manual envejece y termina afirmando algo falso. La
+   * diferencia con aquel caso es que aquí SÍ corresponde escribir lo observado: esta
+   * columna representa "¿está conectado ahora?", que es estado observado por
+   * definición, no el estado deseado por el ERP.
+   *
+   * Nunca toca `revocado`: es un veredicto administrativo, no una observación. Un cert
+   * revocado que apareciera conectado sería un incidente de seguridad a investigar, no
+   * un dato que reescribir en silencio.
+   */
+  async reconciliarEstadoConexion(): Promise<{
+    revisados: number; conectados: number; desconectados: number; incidencias: number;
+  }> {
+    const sesiones = await this._leerManagement().catch(() => [] as VpnConnectedClient[]);
+
+    // Sin lectura del management no se concluye nada. Marcar todo como desconectado
+    // porque no pudimos preguntar sería inventar un diagnóstico: exactamente el error
+    // que este cron viene a corregir.
+    if (!sesiones.length) {
+      const [{ count }] = await this.repo.query(
+        `SELECT count(*)::int AS count FROM vpn_clientes
+         WHERE activo = true AND estado = 'conectado' AND deleted_at IS NULL`,
+      );
+      if (count > 0) {
+        this.logger.warn(
+          `[VPN reconciliar] el management no reportó sesiones y hay ${count} cliente(s) ` +
+          `marcados como conectados — no se toca nada (puede ser el management caído, no los túneles).`,
+        );
+      }
+      return { revisados: 0, conectados: 0, desconectados: 0, incidencias: 0 };
+    }
+
+    const porCn = new Map(sesiones.map((s) => [s.commonName, s]));
+
+    const clientes = await this.repo.find({
+      where: { activo: true },
+    });
+
+    let conectados = 0, desconectados = 0, incidencias = 0;
+
+    for (const c of clientes) {
+      // El CN con el que el router se autentica es `vpnUsuario` (df-…), no `nombreCert`
+      // (user-…). Confundirlos haría que ninguna sesión casara jamás.
+      const sesion = (c.vpnUsuario && porCn.get(c.vpnUsuario)) || porCn.get(c.nombreCert);
+
+      if (c.estado === 'revocado') {
+        if (sesion) {
+          incidencias++;
+          this.logger.error(
+            `[VPN reconciliar] SEGURIDAD: el cert revocado "${c.nombreCert}" tiene una sesión ` +
+            `ACTIVA desde ${sesion.realAddress}. El estado NO se modifica: revisar por qué el ` +
+            `servidor sigue aceptándolo (¿CRL sin recargar?).`,
+          );
+        }
+        continue;
+      }
+
+      if (sesion) {
+        const ipReal = sesion.realAddress.includes(':')
+          ? sesion.realAddress.split(':')[0]
+          : sesion.realAddress;
+
+        // Se escribe siempre el handshake: es la prueba de que la sesión sigue viva, y
+        // sirve para detectar túneles zombis (estado conectado con handshake rancio).
+        await this.repo.update(c.id, {
+          estado:          'conectado',
+          vpnIp:           sesion.vpnAddress || c.vpnIp,
+          ipReal,
+          ultimoHandshake: new Date(),
+        });
+        if (c.estado !== 'conectado') {
+          conectados++;
+          this.logger.log(`[VPN reconciliar] ${c.nombre} → conectado (${ipReal})`);
+        }
+      } else if (c.estado === 'conectado') {
+        await this.repo.update(c.id, { estado: 'desconectado' });
+        desconectados++;
+        this.logger.warn(`[VPN reconciliar] ${c.nombre} → desconectado (sin sesión en el servidor)`);
+      }
+    }
+
+    if (conectados || desconectados || incidencias) {
+      this.logger.log(
+        `[VPN reconciliar] revisados=${clientes.length} nuevos_conectados=${conectados} ` +
+        `nuevos_desconectados=${desconectados} incidencias=${incidencias}`,
+      );
+    }
+
+    return { revisados: clientes.length, conectados, desconectados, incidencias };
   }
 
   // ── Crear cliente VPN ─────────────────────────────────────────
