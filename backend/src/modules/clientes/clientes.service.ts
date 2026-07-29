@@ -752,10 +752,32 @@ export class ClientesService {
             true,
           ).catch(e => this.logger.error(`onboarding rollback ip: ${e?.message}`));
         }
-        // Limpiar facturas y pagos del cliente antes del soft-delete para no dejar huérfanos
-        await this.dataSource.query(`DELETE FROM pagos    WHERE cliente_id = $1`, [cliente.id]).catch(() => {});
-        await this.dataSource.query(`DELETE FROM facturas WHERE cliente_id = $1`, [cliente.id]).catch(() => {});
-        await this.clienteRepo.softDelete(cliente.id, user.empresaId).catch(() => {});
+        // Limpiar facturas y pagos del cliente antes del soft-delete para no dejar huérfanos.
+        //
+        // Los tres pasos van en UNA transacción: antes se encadenaban sueltos y con
+        // `.catch(() => {})`, así que un fallo a mitad dejaba al cliente soft-deleted con
+        // facturas vivas —o pagos sin factura— y NADIE se enteraba, porque el error se
+        // descartaba sin registrarlo. Un rollback que puede fallar en silencio no es un
+        // rollback. Ahora o se deshace entero, o el fallo queda escrito con el id del
+        // cliente para poder repararlo a mano.
+        //
+        // Es seguro borrar en duro: se trata de un alta que acaba de fallar, así que
+        // facturas y pagos son los que el propio onboarding creó segundos antes.
+        try {
+          await this.dataSource.transaction(async (m) => {
+            await m.query(`DELETE FROM pagos    WHERE cliente_id = $1`, [cliente.id]);
+            await m.query(`DELETE FROM facturas WHERE cliente_id = $1`, [cliente.id]);
+            await m.query(
+              `UPDATE clientes SET deleted_at = NOW() WHERE id = $1 AND empresa_id = $2`,
+              [cliente.id, user.empresaId],
+            );
+          });
+        } catch (limpieza: any) {
+          this.logger.error(
+            `onboarding: el rollback del cliente ${cliente.id} FALLÓ (${limpieza?.message}). ` +
+            `Requiere revisión manual: pueden quedar facturas o pagos sin cliente.`,
+          );
+        }
         throw err;
       }
     }

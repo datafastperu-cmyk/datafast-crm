@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Contrato, ContratoHistorial, EstadoContrato } from '../entities/contrato.entity';
 import { SegmentoIpv4, IpAsignada } from '../entities/red.entity';
@@ -247,11 +247,31 @@ export class ContratoRepository {
     return (await this.ipRepo.count({ where:{ ipAddress:ip, segmentoId, activa:true } })) > 0;
   }
 
-  async generarNumeroContrato(empresaId: string): Promise<string> {
+  /**
+   * Número de contrato correlativo, serializado por (empresa, año).
+   *
+   * `MAX()+1` es un TOCTOU: dos altas simultáneas leen el mismo máximo y proponen el mismo
+   * número. El índice `uq_contratos_empresa_numero` impide el duplicado —así que nunca se
+   * corrompió nada— pero el segundo operador recibía un 500 sin explicación ni reintento.
+   *
+   * `pg_advisory_xact_lock` serializa a los concurrentes y se libera SOLO al terminar la
+   * transacción. Por eso importa pasar el `manager` de la transacción que inserta el
+   * contrato: así el número queda reservado hasta el commit. Llamarlo fuera de la
+   * transacción reabre la ventana, porque el lock se soltaría antes del INSERT.
+   *
+   * Los otros dos correlativos del ERP ya se generaban de forma segura —`nextval` para el
+   * código de cliente, `UPDATE ... RETURNING` para el de comprobante—; este se había
+   * quedado atrás.
+   */
+  async generarNumeroContrato(empresaId: string, manager?: EntityManager): Promise<string> {
+    const ejecutor = manager ?? this.repo.manager;
     const year   = new Date().getFullYear();
     const prefix = `CNT-${year}-`;
     const pos    = prefix.length + 1; // posición literal, no parámetro (pg envía números como text)
-    const rows = await this.repo.manager.query<{ max_num: string }[]>(
+
+    await ejecutor.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`contrato:${empresaId}:${year}`]);
+
+    const rows = await ejecutor.query<{ max_num: string }[]>(
       `SELECT COALESCE(MAX(CAST(SUBSTRING(numero_contrato, ${pos}) AS INTEGER)), 0) AS max_num
        FROM contratos
        WHERE empresa_id = $1 AND numero_contrato LIKE $2`,

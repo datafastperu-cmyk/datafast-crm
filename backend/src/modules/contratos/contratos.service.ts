@@ -139,7 +139,9 @@ export class ContratosService {
       }
     }
 
-    const numeroContrato = await this.contratoRepo.generarNumeroContrato(user.empresaId);
+    // El número de contrato NO se genera aquí: se genera DENTRO de la transacción de abajo,
+    // porque su serialización depende de un advisory lock de transacción que debe seguir
+    // tomado hasta el INSERT. Generarlo antes reabriría la ventana que el lock cierra.
 
     // Generar usuario PPPoE único: sufijo _N si el cliente ya tiene contratos activos
     const [{ total: totalContratos }] = await this.dataSource.query<any[]>(
@@ -198,6 +200,10 @@ export class ContratosService {
       } else if (dto.segmentoId) {
         ipAsignada = await this.calcularNextIpDesdePool(qr, dto.segmentoId, user.empresaId);
       }
+
+      // Serializado por (empresa, año) con advisory lock de transacción: el número queda
+      // reservado hasta el commit, así que dos altas simultáneas no pueden proponer el mismo.
+      const numeroContrato = await this.contratoRepo.generarNumeroContrato(user.empresaId, qr.manager);
 
       // Guardar contrato (dentro de la tx)
       const entity = qr.manager.create(Contrato, {

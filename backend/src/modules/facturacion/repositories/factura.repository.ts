@@ -228,6 +228,34 @@ export class FacturaRepository {
     return count > 0;
   }
 
+  /**
+   * Clientes que YA tienen factura viva en el periodo, en UNA sola consulta.
+   *
+   * La generación masiva preguntaba cliente por cliente con `existeFacturaClientePeriodo`
+   * dentro del bucle: un roundtrip por abonado. Con los 5000+ que se está dimensionando,
+   * son 5000 consultas secuenciales antes de emitir la primera factura. Aquí se resuelve
+   * con una, y el bucle solo consulta un Set en memoria.
+   *
+   * Mismo criterio que la versión unitaria (que se conserva para las llamadas sueltas):
+   * cuenta las facturas no anuladas y no borradas del periodo exacto.
+   */
+  async clientesYaFacturados(
+    empresaId: string,
+    periodoInicio: string,
+    periodoFin: string,
+  ): Promise<Set<string>> {
+    const filas = await this.repo.manager.query<Array<{ cliente_id: string }>>(
+      `SELECT DISTINCT cliente_id
+         FROM facturas
+        WHERE empresa_id = $1
+          AND periodo_inicio = $2 AND periodo_fin = $3
+          AND estado <> 'anulada'
+          AND deleted_at IS NULL`,
+      [empresaId, periodoInicio, periodoFin],
+    );
+    return new Set(filas.map((f) => f.cliente_id));
+  }
+
   // ── Contratos que requieren factura este mes ───────────────
   async findContratosParaFacturar(
     empresaId: string,

@@ -188,13 +188,19 @@ export class FacturacionService {
     const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
     const periodoFin    = this.ultimoDiaMes(anio, mes);
 
+    // Los ya facturados se resuelven en UNA consulta, no una por abonado. Preguntarlo dentro
+    // del bucle costaba un roundtrip por cliente: con los 5000+ abonados que se está
+    // dimensionando, 5000 consultas secuenciales antes de emitir la primera factura.
+    // Es seguro leerlo una vez porque la generación está serializada por (empresa, periodo):
+    // nadie más puede estar emitiendo facturas de este periodo mientras corremos.
+    const yaFacturados = await this.facturaRepo.clientesYaFacturados(
+      user.empresaId, periodoInicio, periodoFin,
+    );
+
     for (const [clienteId, grupo] of porCliente) {
       const primer = grupo[0];
       try {
-        const yaFacturado = await this.facturaRepo.existeFacturaClientePeriodo(
-          clienteId, periodoInicio, periodoFin,
-        );
-        if (yaFacturado) {
+        if (yaFacturados.has(clienteId)) {
           resultado.omitidas++;
           grupo.forEach(c => resultado.detalles.push({
             contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
