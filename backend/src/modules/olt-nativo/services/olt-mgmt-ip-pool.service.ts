@@ -62,6 +62,36 @@ export class OltMgmtIpPoolService {
     const ips: string[] = [];
     for (let i = inicio; i <= fin; i++) ips.push(intToIp(i));
 
+    // ── INVARIANTE: los tramos de dos OLTs jamás se solapan ──────────────────
+    // La VLAN 1600 es un único dominio L2 compartido por todas las OLTs, y cada OLT usa un
+    // tramo disjunto dentro de él (p.ej. un /22 por OLT). Esa disjunción es lo ÚNICO que
+    // garantiza que dos ONUs no reciban la misma IP estática: la unicidad del pool es
+    // `(olt_id, ip_address)`, así que la misma IP en dos OLTs distintas es perfectamente
+    // insertable — y en un L2 compartido eso es un conflicto de IP con gestión intermitente
+    // en ambas ONUs y un diagnóstico infernal, porque cada OLT reporta su lado como correcto.
+    //
+    // Hasta 2026-07-29 la disjunción era una convención que nadie verificaba. Un invariante
+    // que solo vive en la documentación no es un invariante: se comprueba aquí, que es el
+    // único punto por donde entran IPs al pool.
+    const [colision] = await this.ds.query<Array<{ ip_address: string; olt: string }>>(
+      `SELECT p.ip_address::text, COALESCE(o.nombre, p.olt_id::text) AS olt
+         FROM olt_mgmt_ip_pool p
+         LEFT JOIN olt_dispositivos o ON o.id = p.olt_id
+        WHERE p.empresa_id = $1
+          AND p.olt_id <> $2
+          AND p.deleted_at IS NULL
+          AND p.ip_address = ANY($3::inet[])
+        LIMIT 1`,
+      [empresaId, oltId, ips],
+    );
+    if (colision) {
+      throw new UnprocessableEntityException(
+        `El rango ${dto.inicio}-${dto.fin} se solapa con el de la OLT "${colision.olt}" ` +
+        `(por ejemplo ${colision.ip_address}). En una VLAN de gestión compartida cada OLT debe ` +
+        `tener un tramo propio y disjunto: dos ONUs con la misma IP se anulan mutuamente.`,
+      );
+    }
+
     const rows = await this.ds.query<{ ip_address: string }[]>(
       `INSERT INTO olt_mgmt_ip_pool
          (id, empresa_id, olt_id, ip_address, estado, created_at, updated_at, version)
