@@ -739,9 +739,21 @@ export class ContratosService {
       if (contrato.macAddress)  partes.push(`MAC: ${contrato.macAddress}`);
       if (partes.length > 0) {
         const fecha = new Date().toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        // La nota es el aviso "este abonado se fue, estas eran sus credenciales" que pinta
+        // el banner ámbar del detalle. Solo tiene sentido si el abonado se quedó SIN
+        // servicio: antes se escribía al dar de baja cualquier contrato y un cliente con
+        // otro servicio activo aparecía rotulado como baja definitiva (2026-07-29).
+        // Mismo criterio que la cascada contrato→cliente de más abajo: manda lo que le
+        // queda vivo al cliente, no el contrato que se está tocando.
         await this.dataSource.query(
-          `UPDATE clientes SET nota_baja = $1 WHERE id = $2`,
-          [`Última conexión (${fecha}): ${partes.join(' | ')}`, contrato.clienteId],
+          `UPDATE clientes SET nota_baja = $1
+           WHERE id = $2
+             AND NOT EXISTS (
+               SELECT 1 FROM contratos
+               WHERE cliente_id = $2 AND id <> $3
+                 AND estado <> 'baja_definitiva' AND deleted_at IS NULL
+             )`,
+          [`Última conexión (${fecha}): ${partes.join(' | ')}`, contrato.clienteId, id],
         );
       }
     }
@@ -1089,7 +1101,11 @@ export class ContratosService {
       // navegando cuyo perfil seguía marcado como dado de baja.
       const [promovido] = filasUpdateReturning<{ estado_anterior: string }>(
         await this.dataSource.query(
-          `UPDATE clientes c SET estado = 'activo', fecha_estado = NOW(), updated_at = NOW(), updated_by = $3
+          // `nota_baja = NULL`: el abonado vuelve a tener servicio, así que el banner de
+          // baja definitiva deja de corresponder. Se limpia aquí —en el mismo UPDATE que
+          // lo pone activo— y no en una llamada aparte, para que no exista un instante en
+          // que el cliente esté activo y siga rotulado como dado de baja.
+          `UPDATE clientes c SET estado = 'activo', fecha_estado = NOW(), nota_baja = NULL, updated_at = NOW(), updated_by = $3
            FROM (SELECT id, estado FROM clientes WHERE id = $1) AS prev
            WHERE c.id = prev.id AND c.empresa_id = $2
              AND c.estado IN ('pendiente_activacion', 'suspendido', 'baja_definitiva')
