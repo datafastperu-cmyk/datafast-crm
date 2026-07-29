@@ -27,7 +27,9 @@ import {
   CreateCuentaBancariaDto, ResumenCobranzaDto,
 } from './dto/pago.dto';
 import { QUEUES, JOBS, PayloadReactivarContrato } from '../workers/workers.constants';
+import { Cron } from '@nestjs/schedule';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
+import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
 import { filasUpdateReturning }    from '../../common/utils/pg-result.util';
 
 @Injectable()
@@ -43,6 +45,7 @@ export class PagosService {
     private readonly config:       ConfigService,
     private readonly events:       EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
+    private readonly heartbeat: WatcherHeartbeatService,
     @InjectQueue(QUEUES.COBRANZA) private readonly cobranzaQueue: Queue,
   ) {}
 
@@ -623,13 +626,105 @@ export class PagosService {
         }
       }
 
+      // El pago SURTIÓ EFECTO. Marcarlo es lo que lo saca de la cola del watcher; mientras
+      // `aplicado_en` siga NULL, el pago se considera trabajo pendiente y se reintenta.
+      await this.pagoRepo.update(pago.id, { aplicadoEn: new Date() });
     } catch (err) {
-      // Loggear pero no fallar — el pago ya quedó registrado
+      // No se relanza —el pago YA está cobrado y registrado, y tumbar la request no lo
+      // desharía—, pero tampoco se traga: `aplicado_en` queda NULL y el watcher
+      // `reconciliarPagosNoAplicados` lo reintenta hasta que surta efecto.
+      //
+      // Antes esto era solo un log. Si fallaba, el abonado quedaba CORTADO con su pago
+      // cobrado y nadie se enteraba: el reconciliador compara ERP contra hardware, así que
+      // confirmaba que el corte estaba bien aplicado — reafirmaba el error en vez de
+      // corregirlo. Se descubría cuando el cliente reclamaba.
       this.logger.error(
-        `Error aplicando pago ${pago.id} a factura/contrato: ${err.message}`,
+        `Error aplicando pago ${pago.id} a factura/contrato — queda PENDIENTE de aplicar, ` +
+        `el watcher lo reintentará: ${err.message}`,
         err.stack,
       );
     }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // reconciliarPagosNoAplicados — red de seguridad del cobro
+  //
+  // Dos defensas distintas, porque los modos de fallo son distintos:
+  //
+  //  A) Pagos verificados que nunca surtieron efecto (`aplicado_en` NULL). Ataca la CAUSA:
+  //     la aplicación murió a mitad. Se reintenta, y es idempotente porque `aplicarPago`
+  //     recalcula el saldo real de la factura.
+  //
+  //  B) Contratos suspendidos/morosos/cortados SIN deuda. Ataca el SÍNTOMA, venga de donde
+  //     venga: un ajuste manual, una nota de crédito que saldó la cuenta, un camino que
+  //     todavía no conocemos. Un abonado sin deuda no puede estar cortado, y esa afirmación
+  //     es verdadera con independencia de por qué llegó ahí.
+  //
+  // Solo la instancia con RUN_CRONS ejecuta esto (igual que el resto de watchers).
+  // ────────────────────────────────────────────────────────────
+  @Cron('0 */10 * * * *')
+  async reconciliarPagosNoAplicados(): Promise<void> {
+    if (process.env.RUN_CRONS !== 'true') return;
+    await this.heartbeat.ejecutar('pagos-reconciliacion', 600, async () => {
+      // ── A. Pagos cobrados que no llegaron a aplicarse ──────────────
+      // Margen de 2 minutos: un pago recién verificado puede estar aplicándose ahora mismo
+      // en otro proceso. Reintentarlo en paralelo no corrompe (aplicarPago es idempotente)
+      // pero ensucia los logs con un fallo que no existe.
+      const pendientes = await this.ds.query<Array<{ id: string }>>(
+        `SELECT id FROM pagos
+          WHERE estado = 'verificado' AND aplicado_en IS NULL AND deleted_at IS NULL
+            AND verificado_en < NOW() - INTERVAL '2 minutes'
+          ORDER BY verificado_en
+          LIMIT 25`,
+      );
+
+      for (const { id } of pendientes) {
+        try {
+          const pago = await this.ds.getRepository(Pago).findOne({ where: { id } });
+          if (!pago) continue;
+          const userSistema = {
+            sub: 'sistema', empresaId: pago.empresaId, email: 'sistema@erp',
+          } as JwtPayload;
+          await this.aplicarPagoAFacturaYContrato(pago, userSistema);
+          this.logger.warn(`Pago ${id} aplicado por reconciliación — su aplicación original falló.`);
+        } catch (e: any) {
+          this.logger.error(`Reconciliación: el pago ${id} sigue sin aplicarse: ${e?.message}`);
+        }
+      }
+
+      // ── B. Cortados sin deuda ──────────────────────────────────────
+      const cortadosSinDeuda = await this.ds.query<Array<{ id: string; empresa_id: string; numero: string }>>(
+        `SELECT co.id, co.empresa_id, co.numero_contrato AS numero
+           FROM contratos co
+          WHERE co.estado IN ('suspendido', 'moroso', 'cortado')
+            AND co.deleted_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM facturas f
+               WHERE f.contrato_id = co.id
+                 AND f.estado IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
+                 AND f.deleted_at IS NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM facturas f
+               WHERE f.cliente_id = co.cliente_id AND f.contrato_id IS NULL
+                 AND f.estado IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
+                 AND f.deleted_at IS NULL
+            )
+          LIMIT 25`,
+      );
+
+      for (const c of cortadosSinDeuda) {
+        try {
+          const userSistema = { sub: 'sistema', empresaId: c.empresa_id, email: 'sistema@erp' } as JwtPayload;
+          await this.verificarYReactivarContrato(c.id, c.empresa_id, userSistema);
+          this.logger.warn(
+            `Contrato ${c.numero} estaba cortado SIN deuda — reactivado por reconciliación.`,
+          );
+        } catch (e: any) {
+          this.logger.error(`Reconciliación: no se pudo reactivar ${c.numero}: ${e?.message}`);
+        }
+      }
+    });
   }
 
   // ────────────────────────────────────────────────────────────

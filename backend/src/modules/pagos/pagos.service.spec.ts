@@ -7,6 +7,7 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { EventEmitter2 }      from '@nestjs/event-emitter';
 import { getQueueToken }      from '@nestjs/bull';
 import { QUEUES }             from '../workers/workers.constants';
+import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
 import { PagosService }        from './pagos.service';
 import { PagoRepository }      from './repositories/pago.repository';
 import { MercadoPagoService }  from './mercadopago.service';
@@ -157,6 +158,11 @@ describe('PagosService', () => {
         // la reactivación se aplicó. Un mock sin él hacía fallar el pago entero.
         { provide: EventEmitter2,        useValue: { emit: jest.fn(), emitAsync: jest.fn().mockResolvedValue([]) } },
         { provide: getQueueToken(QUEUES.COBRANZA), useValue: { add: jest.fn() } },
+        // El doble EJECUTA la función, no solo la registra: si solo la registrara, el
+        // watcher de reconciliación parecería no hacer nada y sus tests pasarían en falso.
+        { provide: WatcherHeartbeatService, useValue: {
+          ejecutar: jest.fn(async (_n: string, _i: number, fn: any) => fn()),
+        } },
       ],
     }).compile();
     service = m.get<PagosService>(PagosService);

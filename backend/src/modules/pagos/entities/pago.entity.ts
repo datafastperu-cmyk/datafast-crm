@@ -78,6 +78,15 @@ export class Pago {
   @Column({ name: 'verificado_en', type: 'timestamptz', nullable: true })
   verificadoEn: Date;
 
+  /**
+   * Cuándo el pago llegó a SURTIR EFECTO (factura saldada + contrato reevaluado), que no es
+   * lo mismo que quedar registrado. Un pago verificado con esto en NULL es trabajo pendiente:
+   * significa que la aplicación falló a mitad y el abonado puede estar cortado habiendo
+   * pagado. Lo recoge `reconciliarPagosNoAplicados`.
+   */
+  @Column({ name: 'aplicado_en', type: 'timestamptz', nullable: true })
+  aplicadoEn: Date | null;
+
   @Column({ name: 'motivo_rechazo', type: 'text', nullable: true })
   motivoRechazo: string;
 

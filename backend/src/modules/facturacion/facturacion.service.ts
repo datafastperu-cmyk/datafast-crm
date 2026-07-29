@@ -114,6 +114,18 @@ export class FacturacionService {
   // GENERACIÓN MASIVA MENSUAL
   // Idempotente: omite clientes ya facturados en el periodo.
   // Resuelve el tipo de comprobante por cliente individualmente.
+  //
+  // SERIALIZADA POR (empresa, periodo) con un advisory lock de Postgres. La idempotencia
+  // se apoyaba solo en `existeFacturaClientePeriodo`, que es un TOCTOU: entre consultar y
+  // emitir hay una ventana, y basta que el cron y un operador pulsen "Generar" a la vez
+  // —o dos instancias PM2— para que ambos pasen el chequeo y el cliente reciba DOS facturas
+  // del mismo mes. Cobrarle dos veces a un abonado es de los daños más difíciles de
+  // deshacer: hay que emitir nota de crédito y explicárselo.
+  //
+  // Se serializa en vez de imponer un índice único (empresa, cliente, periodo) porque ese
+  // índice también bloquearía emisiones legítimas —una nota de crédito o un cargo manual
+  // extra en el mismo mes—, y el sistema no distingue hoy la factura de ciclo de la manual.
+  // El lock ataca exactamente la carrera, sin restringir qué puede facturar el operador.
   // ────────────────────────────────────────────────────────────
   async generarMensual(
     dto: GenerarFacturasMensualesDto,
@@ -123,6 +135,35 @@ export class FacturacionService {
     const hoy  = new Date();
     const mes  = dto.mes  ?? hoy.getMonth() + 1;
     const anio = dto.anio ?? hoy.getFullYear();
+
+    // Lock de SESIÓN (no de transacción): esta generación no corre dentro de una, emite
+    // factura por factura. Se libera siempre en el `finally` de _generarMensualInterno.
+    const claveLock = `facturacion:${user.empresaId}:${anio}-${mes}`;
+    const [{ obtenido }] = await this.ds.query<Array<{ obtenido: boolean }>>(
+      `SELECT pg_try_advisory_lock(hashtext($1)) AS obtenido`, [claveLock],
+    );
+    if (!obtenido) {
+      this.logger.warn(`Generación mensual ${anio}/${mes} ya en curso — se omite este disparo.`);
+      return { total: 0, exitosas: 0, omitidas: 0, errores: 0, detalles: [
+        { contratoId: '', numeroContrato: '', resultado: 'omitida — ya hay una generación en curso para este periodo' },
+      ] };
+    }
+
+    try {
+      return await this._generarMensualInterno(dto, user, mes, anio, req);
+    } finally {
+      await this.ds.query(`SELECT pg_advisory_unlock(hashtext($1))`, [claveLock])
+        .catch((e) => this.logger.error(`No se pudo liberar el lock de facturación: ${e?.message}`));
+    }
+  }
+
+  private async _generarMensualInterno(
+    dto:  GenerarFacturasMensualesDto,
+    user: JwtPayload,
+    mes:  number,
+    anio: number,
+    req?: any,
+  ): Promise<ResultadoGeneracion> {
 
     this.logger.log(`Generación mensual: ${anio}/${mes} | empresa: ${user.empresaId}`);
 
