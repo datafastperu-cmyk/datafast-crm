@@ -79,3 +79,48 @@ describe('ProvisionFtthService — auto-config inmediato tras converger el carri
     await expect(svc._autoConfigInmediato('c-1', 'e-1')).resolves.toBe('');
   });
 });
+
+// El carril TR-069 se encola FUERA del lock de provisión. Encolarlo desde dentro hacía que
+// el outbox lo recogiera al instante y chocara contra ese mismo lock ("Ya hay un
+// aprovisionamiento en curso"): el rechazo es reintentable, pero el reintento caía en el
+// cron. Medido en campo el 2026-07-29: encolado 13:11:40, aplicado 13:15:33 — 3,5 minutos
+// de espera por una colisión contra nosotros mismos.
+describe('ProvisionFtthService — el carril se encola tras soltar el lock', () => {
+  const hacer = (resInterno: any) => {
+    const svc = Object.create(ProvisionFtthService.prototype) as any;
+    const emitidos: Array<{ ev: string; payload: any }> = [];
+    let lockTomado = false;
+    let lockSueltoAlEmitir: boolean | null = null;
+
+    svc.events = { emit: jest.fn((ev: string, payload: any) => {
+      lockSueltoAlEmitir = !lockTomado;
+      emitidos.push({ ev, payload });
+      return true;
+    }) };
+    svc.opLock = { conLock: jest.fn(async (_c: string, _op: string, fn: any) => {
+      lockTomado = true;
+      try { return await fn(); } finally { lockTomado = false; }
+    }) };
+    svc._provisionarFtthInterno = jest.fn(async () => resInterno);
+
+    return { svc, emitidos, verLockSuelto: () => lockSueltoAlEmitir };
+  };
+
+  it('emite el evento del carril SOLO cuando el lock ya se soltó', async () => {
+    const { svc, emitidos, verLockSuelto } = hacer({
+      estado: 'activo', registroId: 'r-1', mensaje: 'ok', pendienteCarrilTr069: true,
+    });
+
+    await svc.provisionarFtth('olt-1', 'e-1', { contratoId: 'c-1' } as any);
+
+    expect(emitidos.map((e) => e.ev)).toContain('ftth.carril.activar');
+    // La aserción que importa: si esto es false, el outbox volverá a chocar con el lock.
+    expect(verLockSuelto()).toBe(true);
+  });
+
+  it('no encola nada si la provisión no lo pidió (flag apagado o OLT sin TR-069)', async () => {
+    const { svc, emitidos } = hacer({ estado: 'activo', registroId: 'r-1', mensaje: 'ok' });
+    await svc.provisionarFtth('olt-1', 'e-1', { contratoId: 'c-1' } as any);
+    expect(emitidos).toHaveLength(0);
+  });
+});

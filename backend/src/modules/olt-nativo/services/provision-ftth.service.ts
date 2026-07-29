@@ -99,6 +99,13 @@ export interface FtthProvisionResult {
   registroId: string;
   mensaje:  string;
   error?:   string;
+  /**
+   * El carril TR-069 debe encolarse, pero SOLO una vez liberado el lock de provisión.
+   * Encolarlo desde dentro hace que el outbox lo recoja al instante y choque contra ese
+   * mismo lock; el rechazo es reintentable, pero el reintento cae en el cron (medido en
+   * campo: 3,5 minutos de espera por una colisión contra nosotros mismos).
+   */
+  pendienteCarrilTr069?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -189,9 +196,25 @@ export class ProvisionFtthService {
     empresaId: string,
     dto:       ProvisionarFtthDto,
   ): Promise<FtthProvisionResult> {
-    return this.opLock.conLock(dto.contratoId, 'provision', () =>
+    const res = await this.opLock.conLock(dto.contratoId, 'provision', () =>
       this._provisionarFtthInterno(oltId, empresaId, dto),
     );
+
+    // El carril TR-069 se encola AQUÍ, con el lock de provisión ya liberado.
+    //
+    // Antes se emitía desde `_ensureCarrilGestion`, es decir DENTRO del lock: el outbox lo
+    // recogía al instante, intentaba tomar el lock 'tr069' del mismo contrato y era
+    // rechazado —correctamente— con "Ya hay un aprovisionamiento en curso". El rechazo es
+    // reintentable, pero el reintento caía en el cron: medido en campo el 2026-07-29, el
+    // carril se encoló a las 13:11:40 y no se aplicó hasta las 13:15:33. De esos casi cuatro
+    // minutos, 3,5 fueron espera pura por una colisión evitable contra nosotros mismos.
+    //
+    // El lock hacía bien su trabajo; el error era pedirle permiso mientras nosotros mismos
+    // lo teníamos tomado.
+    if (res.pendienteCarrilTr069) {
+      this.events.emit('ftth.carril.activar', { contratoId: dto.contratoId, empresaId });
+    }
+    return res;
   }
 
   private async _provisionarFtthInterno(
@@ -594,7 +617,8 @@ export class ProvisionFtthService {
     // no improbable. Sigue siendo best-effort: nunca lanza.
     await this._aplicarPresetAuto(olt.id, dto.contratoId, empresaId, dto.sn.toUpperCase());
 
-    const carrilNota = await this._ensureCarrilGestion(olt, dto.contratoId);
+    const carril = await this._ensureCarrilGestion(olt, dto.contratoId);
+    const carrilNota = carril.nota;
 
     // Punto único común tras confirmar el service-port de datos en la OLT — ver
     // _syncVlanContrato para la causa raíz que esto corrige (contratos.vlan_id NULL).
@@ -614,6 +638,7 @@ export class ProvisionFtthService {
         registroId,
         mensaje: 'ONU aprovisionada (modo bridge). GPON + service-port OK. ' +
                  'El PPPoE lo maneja el router del cliente contra el BRAS.' + carrilNota,
+        pendienteCarrilTr069: carril.encolar,
       };
     }
 
@@ -629,6 +654,7 @@ export class ProvisionFtthService {
       return {
         estado: FtthOnuEstado.ACTIVO, registroId,
         mensaje: `ONU aprovisionada (GPON + service-port OK). WAN pendiente: ${wanInject.error}` + carrilNota,
+        pendienteCarrilTr069: carril.encolar,
       };
     }
 
@@ -651,6 +677,7 @@ export class ProvisionFtthService {
         estado:     FtthOnuEstado.ACTIVO,
         registroId,
         mensaje:    `ONU aprovisionada (GPON + service-port OK). ${notaWanManual}` + carrilNota,
+      pendienteCarrilTr069: carril.encolar,
         error:      wanRes.error,
       };
     }
@@ -669,6 +696,7 @@ export class ProvisionFtthService {
       estado:     FtthOnuEstado.ACTIVO,
       registroId,
       mensaje:    `ONU aprovisionada correctamente. GPON registrada y WAN PPPoE inyectada.` + carrilNota,
+      pendienteCarrilTr069: carril.encolar,
     };
   }
 
@@ -705,14 +733,17 @@ export class ProvisionFtthService {
   private async _ensureCarrilGestion(
     olt:        OltDispositivo,
     contratoId: string,
-  ): Promise<string> {
-    if (!olt.tr069Enabled) return '';
+  ): Promise<{ nota: string; encolar: boolean }> {
+    if (!olt.tr069Enabled) return { nota: '', encolar: false };
 
     // Fase 4: carril desacoplado de la provisión. Sin el flag, la ONU queda con el plano de
     // datos OK y carril_estado='inactivo'; el operador lo activa cuando lo necesite (Ver ONU →
     // Activar TR-069). El drift-watcher IGNORA carriles 'inactivo', así que no lo revive.
     if (!this._inyectarCarrilAutomatico) {
-      return ' El carril TR-069 no se inyectó (activación bajo demanda desde Ver ONU → Activar TR-069).';
+      return {
+        nota: ' El carril TR-069 no se inyectó (activación bajo demanda desde Ver ONU → Activar TR-069).',
+        encolar: false,
+      };
     }
 
     // WIRING ÚNICO (directriz feedback_arquitectura_multicanal_provisioning): el carril SIEMPRE
@@ -732,9 +763,18 @@ export class ProvisionFtthService {
     // una tarea sobreviviendo al wizard que la creó).
     //
     // Ahora se encola: hereda reintento resiliente, auditoría y el lock por contrato.
-    this.events.emit('ftth.carril.activar', { contratoId, empresaId: olt.empresaId });
-
-    return ' Carril TR-069 encolado (se aplica y se confirma en segundo plano; la ONU aparecerá en el ACS al informar).';
+    //
+    // NO se emite aquí: esto corre DENTRO del lock de provisión, y el outbox recogería el
+    // trabajo de inmediato solo para chocar contra ese mismo lock. Se devuelve la señal y la
+    // emite `provisionarFtth` cuando ya lo ha soltado.
+    //
+    // Se propaga por el RETORNO y no por un campo del servicio: esto es un singleton, así
+    // que un flag de instancia lo compartirían dos provisiones simultáneas de contratos
+    // distintos — cambiar una carrera por otra.
+    return {
+      nota: ' Carril TR-069 encolado (se aplica y se confirma en segundo plano; la ONU aparecerá en el ACS al informar).',
+      encolar: true,
+    };
   }
 
   // Puebla la config del contrato desde el preset de auto-config de la OLT (si está habilitado)
