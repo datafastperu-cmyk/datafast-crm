@@ -248,6 +248,36 @@ export class ContratosService {
       [dto.clienteId],
     );
 
+    // ── READMISIÓN del ex-cliente ────────────────────────────────────────────
+    // Caso corriente del negocio: el abonado se va, la empresa recoge los equipos y le da
+    // baja definitiva conservando su facturación; meses después vuelve y se reutiliza su
+    // perfil. Contratarle un servicio ES el acto de readmisión — exigir además que un
+    // operador cambie el estado a mano antes de poder activar era un paso invisible que
+    // nadie descubría (2026-07-29: el contrato de un ex-cliente no se dejaba activar y el
+    // error hablaba del MikroTik, no del estado del cliente).
+    //
+    // Se readmite a `pendiente_activacion`, NO a `activo`: tener contrato no es tener
+    // servicio. La promoción a `activo` la hace `activar()` cuando el aprovisionamiento
+    // sale bien, igual que para un cliente nuevo — un solo camino, sin atajos.
+    const [readmitido] = filasUpdateReturning<{ id: string }>(
+      await this.dataSource.query(
+        `UPDATE clientes SET estado = 'pendiente_activacion', fecha_estado = NOW(), updated_by = $2
+         WHERE id = $1 AND estado = 'baja_definitiva'
+         RETURNING id`,
+        [dto.clienteId, user.sub],
+      ),
+    );
+    if (readmitido) {
+      await this.dataSource.query(
+        `INSERT INTO clientes_historial_estados
+           (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id)
+         VALUES ($1, $2, 'baja_definitiva', 'pendiente_activacion', $3, $4)`,
+        [dto.clienteId, user.empresaId,
+         `Readmisión automática — nuevo contrato ${saved.numeroContrato}`, user.sub],
+      ).catch((e) => this.logger.error(`create → historial readmisión: ${e?.message}`));
+      this.logger.log(`Cliente ${dto.clienteId} readmitido (baja_definitiva → pendiente_activacion) por contrato ${saved.numeroContrato}`);
+    }
+
     // Alta automática de line IPTV si el plan lo trae habilitado — no bloquea
     // ni revierte la creación del contrato si XUI falla (módulo degradable).
     if (plan?.cuentaIptv) {
@@ -1051,11 +1081,31 @@ export class ContratosService {
     // ── S5: Promover cliente → ACTIVO ─────────────────────────────────────────
     const t5 = Date.now();
     try {
-      await this.dataSource.query(
-        `UPDATE clientes SET estado = 'activo', updated_at = NOW(), updated_by = $3
-         WHERE id = $1 AND empresa_id = $2 AND estado = 'pendiente_activacion'`,
-        [c.clienteId, user.empresaId, user.sub],
+      // Orígenes: además del alta normal, el ex-cliente que vuelve (`baja_definitiva`, si
+      // `create` no alcanzó a readmitirlo) y el moroso reconectado (`suspendido`). El
+      // criterio es el mismo en los tres: un contrato aprovisionado CON ÉXITO significa
+      // servicio en producción, y el estado del abonado tiene que decirlo. Antes el WHERE
+      // solo aceptaba `pendiente_activacion` y el resto quedaba en silencio — un cliente
+      // navegando cuyo perfil seguía marcado como dado de baja.
+      const [promovido] = filasUpdateReturning<{ estado_anterior: string }>(
+        await this.dataSource.query(
+          `UPDATE clientes c SET estado = 'activo', fecha_estado = NOW(), updated_at = NOW(), updated_by = $3
+           FROM (SELECT id, estado FROM clientes WHERE id = $1) AS prev
+           WHERE c.id = prev.id AND c.empresa_id = $2
+             AND c.estado IN ('pendiente_activacion', 'suspendido', 'baja_definitiva')
+           RETURNING prev.estado AS estado_anterior`,
+          [c.clienteId, user.empresaId, user.sub],
+        ),
       );
+      if (promovido) {
+        await this.dataSource.query(
+          `INSERT INTO clientes_historial_estados
+             (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id)
+           VALUES ($1, $2, $3, 'activo', $4, $5)`,
+          [c.clienteId, user.empresaId, promovido.estado_anterior,
+           `Servicio activado — contrato ${c.numeroContrato}`, user.sub],
+        ).catch((e) => this.logger.error(`activar → historial cliente: ${e?.message}`));
+      }
       await this.sagaLog.registrarPaso(sagaId, 5, 'promover_cliente_activo', 'OK', undefined, Date.now() - t5);
     } catch (e: any) {
       this.logger.error(`activar → cliente ${c.clienteId} | fallo promover estado: ${e?.message}`);
