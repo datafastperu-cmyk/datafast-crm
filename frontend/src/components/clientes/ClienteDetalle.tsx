@@ -1230,10 +1230,20 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
-                      {c.estado === 'activo' && (c as any).tipoServicio === 'ftth' && (
+                      {/* Dos operaciones distintas tras el mismo botón:
+                          · APROVISIONAR — solo con el contrato activo. Instalar servicio a un
+                            abonado suspendido dejaría la ONU viva en la OLT con el ERP
+                            diciendo que está cortado: la discordancia físico↔lógico que el
+                            resto del sistema existe para evitar.
+                          · GESTIONAR — siempre que exista la ONU, en cualquier estado del
+                            contrato. Antes se ocultaba con el contrato suspendido, y eso
+                            dejaba sin acceso al equipo justo cuando hay que diagnosticarlo,
+                            o cuando hay que reemplazar una ONU robada o quemada: obligaba a
+                            reactivarle el servicio a un moroso para poder tocar su equipo. */}
+                      {(c as any).tipoServicio === 'ftth' && (c.estado === 'activo' || (c as any).onuSn) && (
                         <button
                           onClick={() => setFtthContrato(c)}
-                          title="Aprovisionar ONU FTTH"
+                          title={(c as any).onuSn ? `Ver ONU ${(c as any).onuSn}` : 'Aprovisionar ONU FTTH'}
                           className="p-1.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-muted-foreground hover:text-emerald-600 transition-colors"
                         >
                           <Zap className="w-3 h-3" />

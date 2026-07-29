@@ -65,10 +65,17 @@ export class ContratoRepository {
         pl.nombre AS "planNombre",
         pl.velocidad_bajada AS "velocidadBajada",
         pl.velocidad_subida AS "velocidadSubida",
-        ro.nombre AS "routerNombre"
+        ro.nombre AS "routerNombre",
+        -- Presencia de ONU FTTH: permite distinguir en la UI "aprovisionar" (no hay equipo)
+        -- de "gestionar" (ya lo hay). Sin este dato, el botón se ocultaba con el contrato
+        -- suspendido y dejaba sin acceso al equipo de un abonado cortado — justo cuando hay
+        -- que diagnosticarlo, o reemplazar una ONU robada o quemada.
+        fo.sn     AS "onuSn",
+        fo.estado AS "onuEstado"
       FROM contratos co
       LEFT JOIN planes pl ON pl.id = co.plan_id
       LEFT JOIN routers ro ON ro.id = co.router_id
+      LEFT JOIN ftth_onu_registro fo ON fo.contrato_id = co.id AND fo.deleted_at IS NULL
       WHERE co.cliente_id = $1 AND co.empresa_id = $2 AND co.deleted_at IS NULL
       ORDER BY co.created_at DESC
     `, [clienteId, empresaId]);
