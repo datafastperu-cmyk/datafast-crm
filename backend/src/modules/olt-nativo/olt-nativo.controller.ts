@@ -988,6 +988,24 @@ export class OltNativoController {
     return this.mgmtIpPool.configurarRango(oltId, user.empresaId, dto);
   }
 
+  @Get(':oltId/mgmt-ip-pool/detalle')
+  @ApiOperation({ summary: 'Segmento de gestión: qué IP tiene cada ONU y qué queda libre' })
+  @ApiParam({ name: 'oltId' })
+  async mgmtIpPoolDetalle(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('estado') estado?: 'libre' | 'ocupado',
+    @Query('q')      q?: string,
+    @Query('page')   page?: string,
+    @Query('limit')  limit?: string,
+  ) {
+    return this.mgmtIpPool.listar(oltId, user.empresaId, {
+      estado, q,
+      page:  page  ? parseInt(page, 10)  : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
   @Post(':oltId/mgmt-ip-pool/retirar')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Retirar del pool un tramo de IPs de gestión (solo las libres)' })

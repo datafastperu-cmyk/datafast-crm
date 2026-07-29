@@ -13,6 +13,20 @@ export class ConfigurarMgmtIpPoolDto {
   @IsIP('4') fin:    string;
 }
 
+export interface MgmtIpItem {
+  ip:             string;
+  estado:         'libre' | 'ocupado';
+  contratoId:     string | null;
+  numeroContrato: string | null;
+  cliente:        string | null;
+  sn:             string | null;
+  onuId:          number | null;
+  slot:           number | null;
+  port:           number | null;
+  carrilEstado:   string | null;
+  actualizado:    Date;
+}
+
 export interface EstadoMgmtIpPool {
   total:    number;
   libres:   number;
@@ -253,5 +267,75 @@ export class OltMgmtIpPoolService {
       [oltId, empresaId],
     );
     return { total: Number(s.total), libres: Number(s.libres), ocupados: Number(s.ocupados) };
+  }
+
+  // ── listar ────────────────────────────────────────────────────────
+  // Detalle del segmento de gestión: qué IP tiene cada ONU y qué queda libre. Hasta ahora el
+  // pool solo se podía observar como tres contadores, así que la pregunta operativa más
+  // corriente —"¿quién tiene la 10.16.4.37?"— solo se respondía consultando la base de datos.
+  // Con el carril inyectado en cada aprovisionamiento este pool pasa a ser un recurso de
+  // primera línea: se agota, se dimensiona y se audita, y nada de eso se puede hacer a ciegas.
+  async listar(
+    oltId:     string,
+    empresaId: string,
+    filtros:   { estado?: 'libre' | 'ocupado'; q?: string; page?: number; limit?: number } = {},
+  ): Promise<{ items: MgmtIpItem[]; total: number; page: number; limit: number; rango: { desde: string | null; hasta: string | null } }> {
+    const page  = Math.max(1, filtros.page ?? 1);
+    const limit = Math.min(200, Math.max(1, filtros.limit ?? 50));
+
+    // El filtro de texto busca por lo que el operador tiene a mano en cada caso: la IP que ve
+    // en un log, el SN de la etiqueta de la ONU, el número de contrato o el nombre del cliente.
+    const where: string[] = ['p.olt_id = $1', 'p.empresa_id = $2', 'p.deleted_at IS NULL'];
+    const params: any[] = [oltId, empresaId];
+    if (filtros.estado) {
+      params.push(filtros.estado);
+      where.push(`p.estado = $${params.length}`);
+    }
+    if (filtros.q?.trim()) {
+      params.push(`%${filtros.q.trim()}%`);
+      const i = params.length;
+      where.push(`(p.ip_address::text ILIKE $${i} OR r.sn ILIKE $${i} OR co.numero_contrato ILIKE $${i} OR cl.nombre_completo ILIKE $${i})`);
+    }
+    const filtro = where.join(' AND ');
+
+    const base = `
+      FROM olt_mgmt_ip_pool p
+      LEFT JOIN ftth_onu_registro r ON r.contrato_id = p.contrato_id AND r.deleted_at IS NULL
+      LEFT JOIN contratos co        ON co.id = p.contrato_id
+      LEFT JOIN clientes cl         ON cl.id = co.cliente_id
+      WHERE ${filtro}`;
+
+    const [conteo] = await this.ds.query<Array<{ n: string; desde: string | null; hasta: string | null }>>(
+      `SELECT COUNT(*)::text AS n,
+              MIN(p.ip_address)::text AS desde,
+              MAX(p.ip_address)::text AS hasta
+       ${base}`,
+      params,
+    );
+
+    params.push(limit, (page - 1) * limit);
+    const items = await this.ds.query<MgmtIpItem[]>(
+      `SELECT p.ip_address::text AS "ip",
+              p.estado           AS "estado",
+              p.contrato_id      AS "contratoId",
+              co.numero_contrato AS "numeroContrato",
+              cl.nombre_completo AS "cliente",
+              r.sn               AS "sn",
+              r.onu_id           AS "onuId",
+              r.slot, r.port,
+              r.carril_estado    AS "carrilEstado",
+              p.updated_at       AS "actualizado"
+       ${base}
+       ORDER BY p.ip_address
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    return {
+      items,
+      total: Number(conteo?.n ?? 0),
+      page, limit,
+      rango: { desde: conteo?.desde ?? null, hasta: conteo?.hasta ?? null },
+    };
   }
 }

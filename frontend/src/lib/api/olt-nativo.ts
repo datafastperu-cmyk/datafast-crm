@@ -1555,6 +1555,54 @@ export const oltTr069ProfileApi = {
   },
 };
 
+// ── Segmento de gestión TR-069 (pool de IPs estáticas por OLT) ──
+// Las IPs de gestión NO las reparte un DHCP: el ERP las asigna estáticamente desde este pool
+// y las escribe en el IP-host de la ONU (el modo DHCP nunca materializó en las EG8145V5).
+export interface MgmtIpItem {
+  ip:             string;
+  estado:         'libre' | 'ocupado';
+  contratoId:     string | null;
+  numeroContrato: string | null;
+  cliente:        string | null;
+  sn:             string | null;
+  onuId:          number | null;
+  slot:           number | null;
+  port:           number | null;
+  carrilEstado:   string | null;
+  actualizado:    string;
+}
+export interface MgmtIpPoolEstado { total: number; libres: number; ocupados: number }
+export interface MgmtIpPoolDetalle {
+  items: MgmtIpItem[];
+  total: number;
+  page:  number;
+  limit: number;
+  rango: { desde: string | null; hasta: string | null };
+}
+export const oltMgmtIpPoolApi = {
+  estado: async (oltId: string): Promise<MgmtIpPoolEstado> => {
+    const res = await api.get<ApiRespuesta<MgmtIpPoolEstado>>(`/olt-nativo/${oltId}/mgmt-ip-pool`);
+    return res.data.data;
+  },
+  detalle: async (
+    oltId: string,
+    params: { estado?: 'libre' | 'ocupado'; q?: string; page?: number; limit?: number } = {},
+  ): Promise<MgmtIpPoolDetalle> => {
+    const res = await api.get<ApiRespuesta<MgmtIpPoolDetalle>>(`/olt-nativo/${oltId}/mgmt-ip-pool/detalle`, { params });
+    return res.data.data;
+  },
+  configurar: async (oltId: string, inicio: string, fin: string): Promise<{ insertados: number; omitidos: number }> => {
+    const res = await api.post<ApiRespuesta<{ insertados: number; omitidos: number }>>(
+      `/olt-nativo/${oltId}/mgmt-ip-pool/configurar`, { inicio, fin });
+    return res.data.data;
+  },
+  retirar: async (oltId: string, inicio: string, fin: string): Promise<{ retiradas: number }> => {
+    const res = await api.post<ApiRespuesta<{ retiradas: number }>>(
+      `/olt-nativo/${oltId}/mgmt-ip-pool/retirar`, { inicio, fin });
+    return res.data.data;
+  },
+};
+
 // ── Preset de auto-config por OLT (SSID/clave WiFi + admin web) ──
 export interface OltPresetView {
   oltId: string;

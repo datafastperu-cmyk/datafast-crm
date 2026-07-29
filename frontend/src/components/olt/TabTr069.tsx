@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Save, Radio, Lock, Wifi, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Save, Radio, Lock, Wifi, Eye, EyeOff, Network } from 'lucide-react';
+import { SegmentoGestionSection } from './SegmentoGestionSection';
 import { oltTr069ProfileApi, oltOnuPresetApi, type Tr069ProfileDto, type UpsertOltPresetDto } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
@@ -17,10 +18,38 @@ const lockedInputCls = cn(
   'border-border',
 );
 
+type SubTab = 'perfil' | 'segmento';
+
+function SubTabs({ sub, setSub }: { sub: SubTab; setSub: (s: SubTab) => void }) {
+  const items: Array<{ id: SubTab; label: string; icon: React.ReactNode }> = [
+    { id: 'perfil',   label: 'Perfil y auto-config', icon: <Radio   className="w-3.5 h-3.5" /> },
+    { id: 'segmento', label: 'Segmento de gestión',  icon: <Network className="w-3.5 h-3.5" /> },
+  ];
+  return (
+    <div className="flex gap-1 border-b border-border">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          onClick={() => setSub(it.id)}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors',
+            sub === it.id
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {it.icon} {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Perfil TR-069 por OLT — equivalente al "TR069 Profile" de SmartOLT.
 export function TabTr069({ oltId }: { oltId: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [sub, setSub] = useState<SubTab>('perfil');
 
   const { data, isLoading } = useQuery({
     queryKey: ['olt-tr069-profile', oltId],
@@ -109,8 +138,21 @@ export function TabTr069({ oltId }: { oltId: string }) {
     return <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>;
   }
 
+  // Sub-pestañas: la configuración del carril y el inventario del segmento de gestión son dos
+  // cosas distintas —una se edita de vez en cuando, la otra se consulta a diario— y mezclarlas
+  // en una sola vista larga obligaba a bajar por todo el formulario para llegar a la tabla.
+  if (sub === 'segmento') {
+    return (
+      <div className="space-y-5">
+        <SubTabs sub={sub} setSub={setSub} />
+        <SegmentoGestionSection oltId={oltId} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
+      <SubTabs sub={sub} setSub={setSub} />
       <div className="flex items-start gap-3">
         <Radio className="w-5 h-5 text-primary mt-0.5" />
         <div>
