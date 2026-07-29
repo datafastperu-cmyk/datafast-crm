@@ -242,7 +242,11 @@ export class OltAutomationClient {
       `→ Python verify-onu | OLT=${payload.connection.ip} ` +
       `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id}`,
     );
-    const res = await this.post<PythonVerifyOnuResponse>('/api/v1/olt/verify-onu', payload);
+    // 90 s explícitos: con el timeout por defecto (30 s) esta verificación falla SIEMPRE
+    // contra el MA5800 —comprobado el 2026-07-29 sobre dos ONUs distintas—, y una sonda de
+    // verificación que nunca puede confirmar nada es peor que no tenerla: convierte cada
+    // comprobación VIO en un "no confirmado" que no distingue el fallo real del reloj corto.
+    const res = await this.post<PythonVerifyOnuResponse>('/api/v1/olt/verify-onu', payload, 90_000);
     this.logger.log(
       `← Python verify-onu | success=${res.success} | run_state=${res.run_state}`,
     );
@@ -458,7 +462,10 @@ export class OltAutomationClient {
       `→ Python ftth/suspend | OLT=${payload.connection.ip} ` +
       `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} sp=${payload.service_port_id}`,
     );
-    const res = await this.post<PythonOntSuspendResponse>('/api/v1/olt/ftth/suspend', payload, 30_000);
+    // 90 s. Hoy suspende en ~8 s, pero comparte carril CLI con la rehabilitación: cuando la
+    // OLT está ocupada, la que tarda es la sesión VTY, no el comando. Dejarlo en 30 s era
+    // apostar a que la contención nunca le tocara a esta operación.
+    const res = await this.post<PythonOntSuspendResponse>('/api/v1/olt/ftth/suspend', payload, 90_000);
     this.logger.log(`← ftth/suspend | success=${res.success}`);
     return res;
   }
@@ -468,7 +475,10 @@ export class OltAutomationClient {
       `→ Python ftth/change-lineprofile | OLT=${payload.connection.ip} ` +
       `sp=${payload.service_port_id} down=${payload.traffic_index_down} up=${payload.traffic_index_up}`,
     );
-    const res = await this.post<PythonChangeLineprofileResponse>('/api/v1/olt/ftth/change-lineprofile', payload, 30_000);
+    // 90 s: cambiar de plan a un abonado toca el service-port en la OLT, mismo carril CLI
+    // y mismo riesgo de contención que suspender/rehabilitar. Con 30 s, un cambio de plan
+    // aplicado de verdad se reportaría como fallido.
+    const res = await this.post<PythonChangeLineprofileResponse>('/api/v1/olt/ftth/change-lineprofile', payload, 90_000);
     this.logger.log(`← ftth/change-lineprofile | success=${res.success}`);
     return res;
   }
@@ -478,7 +488,15 @@ export class OltAutomationClient {
       `→ Python ftth/rehabilitate | OLT=${payload.connection.ip} ` +
       `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} sp=${payload.service_port_id}`,
     );
-    const res = await this.post<PythonOntSuspendResponse>('/api/v1/olt/ftth/rehabilitate', payload, 30_000);
+    // 120 s, no 30. Medido en producción el 2026-07-29 con una ONU real: la reactivación
+    // superó los 30 s, el cliente HTTP se rindió y el comando volvió a la cola — pero la
+    // operación SÍ se había aplicado (el abonado ya tenía internet). El reintento tuvo que
+    // esperar al cron, así que reactivar a un cliente que acaba de pagar tardó 4m38s en vez
+    // de segundos, y el operador vio la ONU "suspendida" todo ese rato.
+    //
+    // Es el mismo ajuste que ya se hizo en rollback-gpon (150 s) e inject-wan-pppoe (90 s):
+    // un timeout corto contra el MA5800 no cancela nada, solo hace que el ERP deje de mirar.
+    const res = await this.post<PythonOntSuspendResponse>('/api/v1/olt/ftth/rehabilitate', payload, 120_000);
     this.logger.log(`← ftth/rehabilitate | success=${res.success}`);
     return res;
   }
