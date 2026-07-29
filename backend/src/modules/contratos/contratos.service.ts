@@ -757,6 +757,56 @@ export class ContratosService {
       }
     }
 
+    // ── Cliente sin servicio → baja definitiva ────────────────
+    // La cascada existía SOLO en el sentido cliente → contratos
+    // (`terminarContratosCliente`). Dar de baja el último contrato dejaba al cliente como
+    // estuviera: el 2026-07-29 se encontró a un cliente `activo` cuyo único contrato
+    // estaba dado de baja y borrado — activo sin servicio, que no es un estado que el
+    // negocio admita.
+    //
+    // `automatico` distingue el origen y evita el bucle: cuando la baja del contrato
+    // VIENE de la baja del cliente, no hay nada que propagar hacia arriba.
+    if (dto.estado === EstadoContrato.BAJA_DEFINITIVA && !automatico) {
+      const [clienteBaja] = filasUpdateReturning<{ id: string; estado_anterior: string }>(
+        await this.dataSource.query(`
+          UPDATE clientes c
+          SET estado = 'baja_definitiva', fecha_estado = NOW()
+          FROM (SELECT id, estado FROM clientes WHERE id = $1) AS prev
+          WHERE c.id = prev.id
+            AND c.estado <> 'baja_definitiva'
+            -- Solo si NO le queda ningún contrato vigente. Un cliente con otro servicio
+            -- en curso no puede caer de baja porque uno de sus contratos termine.
+            AND NOT EXISTS (
+              SELECT 1 FROM contratos
+              WHERE cliente_id = $1
+                AND estado <> 'baja_definitiva'
+                AND deleted_at IS NULL
+                AND id <> $2
+            )
+          RETURNING c.id, prev.estado AS estado_anterior
+        `, [contrato.clienteId, id]),
+      );
+
+      if (clienteBaja) {
+        this.logger.warn(
+          `Cliente ${contrato.clienteId} → baja_definitiva: se dio de baja su último contrato (${id}).`,
+        );
+        await this.dataSource.query(`
+          INSERT INTO clientes_historial_estados
+            (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+          VALUES ($1, $2, $3, 'baja_definitiva', $4, $5, TRUE)
+        `, [
+          contrato.clienteId,
+          user.empresaId,
+          clienteBaja.estado_anterior,
+          `Sin contratos vigentes tras la baja del contrato ${id}`,
+          user.sub,
+        ]).catch((e: any) =>
+          this.logger.warn?.(`contratos.cambiarEstado historial baja cliente: ${e.message}`),
+        );
+      }
+    }
+
     if (dto.estado === EstadoContrato.SUSPENDIDO) {
       // ── Aplicar suspensión en MikroTik (firewall + PPPoE) ──────
       // Requiere solo routerId: firewall necesita ipAsignada pero secret PPPoE no.

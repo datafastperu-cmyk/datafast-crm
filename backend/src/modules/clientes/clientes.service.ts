@@ -37,7 +37,16 @@ const TRANSICIONES_VALIDAS: Record<EstadoCliente, EstadoCliente[]> = {
   [EstadoCliente.PENDIENTE_ACTIVACION]: [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
   [EstadoCliente.ACTIVO]:               [EstadoCliente.SUSPENDIDO, EstadoCliente.BAJA_DEFINITIVA],
   [EstadoCliente.SUSPENDIDO]:           [EstadoCliente.ACTIVO, EstadoCliente.BAJA_DEFINITIVA],
-  [EstadoCliente.BAJA_DEFINITIVA]:      [],
+  // READMISIÓN (2026-07-29): `baja_definitiva` era un callejón sin salida —sin ninguna
+  // transición—, y el índice `uq_clientes_empresa_documento` impide crear otro cliente
+  // con el mismo DNI mientras el anterior no esté borrado. Resultado: un ex-cliente que
+  // vuelve a contratar NI se podía reactivar NI se podía registrar de nuevo. No era una
+  // decisión de diseño: era un bloqueo de negocio.
+  //
+  // Se readmite a `pendiente_activacion`, no a `activo`: volver no es tener servicio.
+  // El cliente vuelve exactamente al estado con el que nació y activa cuando su nuevo
+  // contrato se aprovisione, conservando historial, documento y contratos anteriores.
+  [EstadoCliente.BAJA_DEFINITIVA]:      [EstadoCliente.PENDIENTE_ACTIVACION],
 };
 
 @Injectable()

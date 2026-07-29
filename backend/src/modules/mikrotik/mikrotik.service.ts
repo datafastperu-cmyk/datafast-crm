@@ -846,13 +846,39 @@ export class MikrotikService implements OnModuleInit {
         `PPPoE=${dto.usuarioPppoe} | IP=${dto.ipAsignada} | ${dto.uploadMbps}/${dto.downloadMbps} Mbps`,
     );
 
+    // ── PASO A0: Asegurar el perfil PPPoE del plan ─────────
+    // El ERP INYECTA su configuración canónica; no da por hecho que exista en el equipo
+    // (directriz de aprovisionamiento). Sin esto, activar un contrato cuyo plan tiene un
+    // perfil que nadie creó a mano en el router falla con el mensaje opaco de RouterOS
+    // "input does not match any value of profile" — que no dice qué perfil ni por qué.
+    // Observado el 2026-07-29: ningún plan podía activarse en un router recién dado de
+    // alta, porque el perfil solo existía si un operador lo había creado antes.
+    //
+    // `crearPerfilSiNoExiste` es idempotente: si ya está, no lo toca. Eso respeta la
+    // regla de no pisar configuración preexistente del equipo.
+    const perfil = dto.perfilPppoe || 'default';
+    if (perfil !== 'default') {
+      try {
+        await this.pppoeSvc.crearPerfilSiNoExiste(creds, perfil, {
+          // rate-limit de RouterOS es "subida/bajada" desde la perspectiva del cliente.
+          rateLimit: `${dto.uploadMbps}M/${dto.downloadMbps}M`,
+        });
+      } catch (errPerfil: any) {
+        // No aborta: si el perfil ya existía con otra config, o el router no permite
+        // crearlo, el paso A dirá con claridad si el problema persiste.
+        this.logger.warn(
+          `[SAGA] No se pudo asegurar el perfil "${perfil}" en ${creds.ip}: ${errPerfil.message}`,
+        );
+      }
+    }
+
     // ── PASO A: Crear usuario PPPoE ────────────────────────
     let ppppoeId = '';
     try {
       ppppoeId = await this.pppoeSvc.crear(creds, {
         name: dto.usuarioPppoe,
         password: dto.passwordPppoe,
-        profile: dto.perfilPppoe || 'default',
+        profile: perfil,
         service: 'pppoe',
         remoteAddress: dto.ipAsignada,
         comment: `DATAFAST:ClienteID:${dto.clienteId}`,
