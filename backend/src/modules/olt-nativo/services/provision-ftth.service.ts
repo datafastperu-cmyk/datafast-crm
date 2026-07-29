@@ -2033,18 +2033,55 @@ export class ProvisionFtthService {
     return Number.isFinite(n) && n > 0 ? n : 3;
   }
 
+  // Tope de desactivaciones por corrida. Cada una abre una sesión SSH contra la OLT para el
+  // teardown, y el MA5800 admite pocas VTY concurrentes: sin tope, un parque grande cuyo TTL
+  // vence en bloque (p.ej. tras un fin de semana) martillaría la OLT con cientos de sesiones
+  // seguidas. Mismo criterio que el cap del watcher de staleness. Lo que no entra en esta
+  // corrida entra en la siguiente — el TTL no es un plazo perentorio.
+  private get _tr069BarridoMax(): number {
+    const n = Number(process.env.TR069_CARRIL_BARRIDO_MAX);
+    return Number.isFinite(n) && n > 0 ? n : 25;
+  }
+
   async barrerCarrilesTr069Inactivos(): Promise<
     Array<{ contratoId: string; estado: FtthCarrilEstado; ok: boolean; mensaje: string }>
   > {
     const dias = this._tr069TtlDias;
+    // MEDICIÓN DEL "NO USO" — `tr069_ultimo_uso_at` y NADA MÁS.
+    //
+    // Antes era `COALESCE(tr069_ultimo_uso_at, updated_at)`, y `updated_at` lo toca cualquier
+    // proceso ajeno al TR-069 (drift-watcher, refresh de inventario, cualquier UPDATE sobre la
+    // fila). Un carril sin un solo uso real podía no vencer NUNCA porque otro cron rozó el
+    // registro: la señal decía medir uso del carril y medía "actividad de la tabla".
+    // A escala de miles de ONUs esto deja de ser pool desperdiciado y pasa a ser la defensa
+    // de capacidad del ACS — con PeriodicInform=300s, cada carril vivo son informs por segundo
+    // sostenidos contra GenieACS.
+    //
+    // `tr069_ultimo_uso_at` no puede ser NULL en un carril `activo`: `activarCarril` lo escribe
+    // en el mismo write-ahead que marca `activando`. Si aun así lo fuera (fila anterior a la
+    // Fase 2), NO se barre a ciegas — se deja fuera y se registra, porque desactivar por un dato
+    // ausente es exactamente el falso positivo que este cambio elimina.
+    //
+    // GUARD DE AUTO-CONFIG: una ONU cuyo auto-config (WiFi + credenciales web) todavía no quedó
+    // aplicado NO es candidata, tenga la antigüedad que tenga. El carril es el único medio de
+    // aplicarlo; cerrarlo antes deja a la ONU sin configurar y sin que nadie se entere. Sale del
+    // barrido cuando `last_applied_revision` alcanza la revisión deseada.
     const candidatos = await this.ds.query<Array<{ contrato_id: string; empresa_id: string }>>(
-      `SELECT contrato_id, empresa_id
-         FROM ftth_onu_registro
-        WHERE deleted_at IS NULL
-          AND estado = 'activo'
-          AND carril_estado = 'activo'
-          AND COALESCE(tr069_ultimo_uso_at, updated_at) < NOW() - ($1 || ' days')::interval`,
-      [String(dias)],
+      `SELECT r.contrato_id, r.empresa_id
+         FROM ftth_onu_registro r
+         LEFT JOIN contrato_onu_config cfg ON cfg.contrato_id = r.contrato_id
+        WHERE r.deleted_at IS NULL
+          AND r.estado = 'activo'
+          AND r.carril_estado = 'activo'
+          AND r.tr069_ultimo_uso_at IS NOT NULL
+          AND r.tr069_ultimo_uso_at < NOW() - ($1 || ' days')::interval
+          AND (cfg.contrato_id IS NULL
+               OR cfg.provisioning_enabled IS NOT TRUE
+               OR (cfg.last_applied_revision IS NOT NULL
+                   AND cfg.last_applied_revision >= cfg.revision))
+        ORDER BY r.tr069_ultimo_uso_at ASC
+        LIMIT $2`,
+      [String(dias), this._tr069BarridoMax],
     );
 
     const resultados: Array<{ contratoId: string; estado: FtthCarrilEstado; ok: boolean; mensaje: string }> = [];
@@ -2065,8 +2102,23 @@ export class ProvisionFtthService {
 
     if (resultados.length > 0) {
       this.logger.log(
-        `barrerCarrilesTr069Inactivos: ttl=${dias}d candidatos=${candidatos.length} ` +
+        `barrerCarrilesTr069Inactivos: ttl=${dias}d cap=${this._tr069BarridoMax} candidatos=${candidatos.length} ` +
         `desactivados=${resultados.filter(r => r.ok).length} fallidos=${resultados.filter(r => !r.ok).length}`,
+      );
+    }
+
+    // Los carriles activos SIN marca de uso quedan deliberadamente fuera del barrido (arriba).
+    // Se avisa porque son invisibles de otro modo: nunca vencerán, y a escala eso es capacidad
+    // del ACS consumida para siempre por filas que el barrido no puede juzgar.
+    const [huerfanos] = await this.ds.query<Array<{ n: string }>>(
+      `SELECT COUNT(*)::text AS n FROM ftth_onu_registro
+        WHERE deleted_at IS NULL AND estado = 'activo'
+          AND carril_estado = 'activo' AND tr069_ultimo_uso_at IS NULL`,
+    );
+    if (Number(huerfanos?.n ?? 0) > 0) {
+      this.logger.warn(
+        `barrerCarrilesTr069Inactivos: ${huerfanos.n} carril(es) activos SIN tr069_ultimo_uso_at — ` +
+        `no se barren (no hay con qué medir el uso). Requieren backfill.`,
       );
     }
     return resultados;
