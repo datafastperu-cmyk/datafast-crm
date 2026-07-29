@@ -121,6 +121,43 @@ describe('OutboxRedService — reclamo atómico', () => {
     expect(consultaRouter!.params).toEqual(['r-1']);
   });
 
+  it('encolar una acción de ONU dispara el drenado de inmediato', async () => {
+    // Sin esto la orden del operador esperaba al cron de 5 minutos aunque la OLT estuviera
+    // disponible: medido en producción el 2026-07-29, SUSPENDER_ONU tardó 152 s y
+    // REACTIVAR_ONU 287 s, ambos a la primera y sin reintentos — todo fue espera al reloj.
+    // Para el operador eso es indistinguible de un fallo, y volver a pulsar encola órdenes
+    // contradictorias que luego se ejecutan en ráfaga (el "bucle" de la ONU).
+    filasReclamo = [];
+    // `encolarOnu` corta si el contrato no tiene registro FTTH vivo (contrato WISP o ONU ya
+    // retirada). Aquí sí lo tiene, que es el caso que interesa.
+    const dsMock = (svc as any).ds;
+    dsMock.query.mockImplementation(async (sql: string) => {
+      if (/FROM\s+ftth_onu_registro/i.test(sql)) return [{ '?column?': 1 }];
+      return /^\s*(UPDATE|DELETE)/i.test(sql) ? [[], 0] : [];
+    });
+    const spy = jest.spyOn(svc, 'procesarPendientes');
+
+    await svc.encolarOnu('SUSPENDER_ONU', 'c-1', 'e-1');
+    await new Promise((r) => setImmediate(r)); // el disparo es fire-and-forget
+
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('el drenado inmediato NO se espera: la respuesta al operador no depende de la OLT', async () => {
+    jest.spyOn(svc, 'procesarPendientes').mockImplementation(
+      () => new Promise(() => { /* nunca resuelve: simula una OLT colgada */ }),
+    );
+
+    // Si `encolarOnu` esperara el resultado, esto quedaría colgado para siempre y el
+    // operador vería su request bloqueada por un equipo que no contesta.
+    await expect(
+      Promise.race([
+        svc.encolarOnu('REACTIVAR_ONU', 'c-1', 'e-1'),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('se quedó esperando')), 300)),
+      ]),
+    ).resolves.toBeUndefined();
+  });
+
   it('el barrido programado respeta RUN_CRONS; el trigger por evento no', async () => {
     delete process.env.RUN_CRONS;
     await svc.barridoProgramado();

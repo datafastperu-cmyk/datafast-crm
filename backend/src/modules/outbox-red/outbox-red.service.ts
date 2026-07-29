@@ -194,6 +194,27 @@ export class OutboxRedService {
 
     await this.encolar(accion, contratoId, 'none', { empresaId } as any);
     this.logger.warn(`[OutboxRed] ${accion} encolado → contrato=${contratoId}`);
+
+    // DRENADO INMEDIATO. El comando ya está persistido, así que el outbox conserva su
+    // garantía de entrega; esto solo evita esperar al reloj cuando no hay nada que esperar.
+    //
+    // Sin esto, una orden del operador quedaba hasta 5 minutos en la cola aunque la OLT
+    // estuviera disponible (medido en producción el 2026-07-29: SUSPENDER_ONU tardó 152 s y
+    // REACTIVAR_ONU 287 s, ambos ejecutados a la primera y sin un solo reintento — todo el
+    // tiempo fue espera al cron). Para el operador eso es indistinguible de un fallo: ve la
+    // ONU en el estado anterior, no sabe si está esperando o si se rompió, y vuelve a pulsar.
+    // Suspender y reactivar en esa ventana encola órdenes contradictorias que luego se
+    // ejecutan en ráfaga y hacen parpadear la ONU entre estados — el "bucle" reportado.
+    //
+    // El disparo por evento ya existía para el router que se reconecta
+    // (`onRouterReconectado`); la ruta que usa el operador se había quedado sin él.
+    //
+    // No se espera el resultado: la respuesta al operador no debe depender de que la OLT
+    // conteste. Si esta pasada falla o no alcanza, el barrido programado lo recoge igual.
+    // El reclamo atómico impide que esta ejecución y la del cron tomen el mismo comando.
+    void this.procesarPendientes().catch((e) =>
+      this.logger.error(`[OutboxRed] drenado inmediato tras encolar falló (lo recoge el cron): ${e?.message}`),
+    );
   }
 
   // Escucha las transiciones de servicio que ya emiten cobranza y contratos,
