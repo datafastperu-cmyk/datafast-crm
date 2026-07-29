@@ -300,7 +300,17 @@ export function ClienteDetalle({ id }: { id: string }) {
   const deuda        = formatPEN((facturasResumen as any[])
     .filter(f => PENDIENTE_ESTADOS.has(f.estado))
     .reduce((s, f) => s + (+(f.saldo ?? 0)), 0));
-  const routerNombre = (contratos as any[]).map((c) => c.nodo ?? c.router ?? '').filter(Boolean).join(', ') || '—';
+  // El campo que entrega el backend es `routerNombre` (LEFT JOIN routers en
+  // findByClienteCompleto); antes se leían `nodo`/`router`, que no existen en esa
+  // respuesta, así que el dato salía siempre vacío. Se listan solo los routers de
+  // servicios VIGENTES —un router de un contrato dado de baja ya no es "dónde está
+  // conectado"— y se deduplican: dos servicios en el mismo router son un router.
+  const routerNombre = Array.from(new Set(
+    (contratos as any[])
+      .filter((c) => c.estado !== 'baja_definitiva')
+      .map((c) => c.routerNombre)
+      .filter(Boolean),
+  )).join(', ') || '—';
 
   return (
     <>
