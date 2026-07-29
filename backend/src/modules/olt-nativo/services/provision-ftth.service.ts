@@ -2401,6 +2401,27 @@ export class ProvisionFtthService {
       carrilEstado: FtthCarrilEstado.INACTIVO,
       lockedAt:     null,
     });
+
+    // La config de negocio deja de estar aplicada: se fue con el equipo.
+    //
+    // `last_applied_revision` vive en `contrato_onu_config` —atado al CONTRATO— pero lo que
+    // describe es lo que hay escrito en un EQUIPO. Al retirar la ONU esa correspondencia se
+    // rompe: el contrato seguiría afirmando "aplicado" mientras la ONU que se instale después
+    // llega de fábrica, sin SSID ni credenciales. El caso corriente es el reemplazo por
+    // avería o robo, y el resultado sería un abonado con equipo nuevo y sin configurar,
+    // porque el ERP cree que ya lo hizo.
+    //
+    // Ponerlo en NULL es lo honesto: el ERP no sabe qué tiene el equipo que venga. El
+    // aprovisionamiento siguiente lo detecta como drift y escribe la config desde cero.
+    await this.ds.query(
+      `UPDATE contrato_onu_config
+          SET last_applied_revision = NULL, updated_at = NOW()
+        WHERE contrato_id = $1 AND empresa_id = $2`,
+      [dto.contratoId, empresaId],
+    ).catch((e) => this.logger.warn(
+      `desaprovisionar | no se pudo marcar la config como no aplicada (contrato=${dto.contratoId}): ${e?.message}`,
+    ));
+
     await this.ftthRepo.softDelete(registro.id);
 
     // El caso que originó el reporte: sin esto, /red/olt seguía mostrando la ONU `online`
