@@ -1,6 +1,6 @@
 import {
   Injectable, Logger, NotFoundException,
-  ConflictException, BadRequestException, OnModuleInit,
+  ConflictException, BadRequestException, OnModuleInit, Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not, LessThan, In } from 'typeorm';
@@ -10,6 +10,7 @@ import * as fs              from 'fs/promises';
 import * as path            from 'path';
 import * as net             from 'net';
 import * as crypto          from 'crypto';
+import { EventosSistemaService } from '../../sistema/eventos-sistema.service';
 import { Response }         from 'express';
 
 import { VpnCliente, EstadoVpnCliente } from '../entities/vpn-cliente.entity';
@@ -55,6 +56,9 @@ export class VpnClienteService implements OnModuleInit {
     private readonly routerRepo: Repository<Router>,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly empresaConfig: EmpresaConfigService,
+    // @Optional: la alerta de invariante es valiosa, pero que el módulo de eventos no
+    // esté disponible no puede impedir que arranque la gestión VPN.
+    @Optional() private readonly eventos?: EventosSistemaService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -73,6 +77,12 @@ export class VpnClienteService implements OnModuleInit {
     const rec = new CronJob('0 3-59/5 * * * *', () => {
       void this.reconciliarEstadoConexion().catch((e) =>
         this.logger.error(`[VPN reconciliar] falló: ${e instanceof Error ? e.message : String(e)}`),
+      );
+      // El invariante se comprueba en el mismo tick pero por separado: reconciliar el
+      // estado observado y verificar la integridad estructural son dos preguntas
+      // distintas, y si una falla la otra debe seguir corriendo.
+      void this.verificarInvariantes().catch((e) =>
+        this.logger.error(`[VPN invariantes] falló: ${e instanceof Error ? e.message : String(e)}`),
       );
     }, null, true, tz);
     this.schedulerRegistry.addCronJob('vpn-reconciliar-estado', rec);
@@ -178,6 +188,79 @@ export class VpnClienteService implements OnModuleInit {
     }
 
     return { revisados: clientes.length, conectados, desconectados, incidencias };
+  }
+
+  /**
+   * Verifica los INVARIANTES de la capa VPN — el equivalente a lo que FTTH ya tiene con
+   * `reintentarRollbacksFallidos` y `adoptarOnusHuerfanas`.
+   *
+   * Por qué hacía falta (2026-07-28): la directriz de ciclo de vida de IPs VPN dice que
+   * al eliminar un router se revocan sus certs y se libera la IP, y `removeRouter` lo
+   * cumple. Pero ese invariante NO vivía en ninguna parte del código: si la eliminación
+   * fallaba a mitad —revoca el cert pero no borra el router, o al revés— o si alguien
+   * modificaba la BD por fuera, el sistema quedaba con un cert huérfano reservando una IP
+   * y NADIE se enteraba. Ocurrió de verdad: un router desactivado con un `UPDATE` directo
+   * dejó su cert vivo durante horas sin que ninguna alarma saltara.
+   *
+   * Un invariante que solo existe en la documentación no es un invariante: es una
+   * intención. Este método lo convierte en algo que el sistema comprueba solo.
+   *
+   * DETECTA Y REPORTA, no corrige. Revocar un cert automáticamente podría cortar el
+   * túnel de un router en producción si el diagnóstico fuese erróneo; la reparación es
+   * una decisión del operador, que tiene el flujo `removeRouter` para ejecutarla bien.
+   */
+  async verificarInvariantes(): Promise<{ huerfanos: number; ccdsSinDueno: number }> {
+    const problemas: string[] = [];
+
+    // ── Invariante 1: ningún cert activo puede apuntar a un router eliminado ──
+    const huerfanos = await this.repo.query(`
+      SELECT v.id, v.nombre, v.nombre_cert, v.vpn_ip, r.nombre AS router_nombre
+      FROM   vpn_clientes v
+      JOIN   routers r ON r.id::text = v.router_id
+      WHERE  v.activo = true
+        AND  v.estado <> 'revocado'
+        AND  r.deleted_at IS NOT NULL
+    `);
+
+    for (const h of huerfanos) {
+      problemas.push(
+        `Cert "${h.nombre_cert}" sigue ACTIVO y reserva la IP ${h.vpn_ip ?? '(sin IP)'}, ` +
+        `pero su router "${h.router_nombre}" está eliminado. Debió revocarse al eliminarlo.`,
+      );
+    }
+
+    // ── Invariante 2: ningún cert activo puede apuntar a un router inexistente ──
+    // Un `router_id` que no resuelve es peor que uno eliminado: no hay ni rastro que
+    // explique de dónde salió la reserva de esa IP.
+    const colgados = await this.repo.query(`
+      SELECT v.id, v.nombre, v.nombre_cert, v.vpn_ip, v.router_id
+      FROM   vpn_clientes v
+      WHERE  v.activo = true
+        AND  v.router_id IS NOT NULL
+        AND  NOT EXISTS (SELECT 1 FROM routers r WHERE r.id::text = v.router_id)
+    `);
+
+    for (const c of colgados) {
+      problemas.push(
+        `Cert "${c.nombre_cert}" apunta al router ${c.router_id}, que no existe en BD. ` +
+        `IP ${c.vpn_ip ?? '(sin IP)'} reservada sin dueño identificable.`,
+      );
+    }
+
+    if (problemas.length) {
+      this.logger.error(`[VPN invariantes] ${problemas.length} violación(es):\n  - ${problemas.join('\n  - ')}`);
+      await this.eventos?.registrar({
+        nivel:   'error',
+        origen:  'vpn',
+        codigo:  'VPN_INVARIANTE_VIOLADO',
+        mensaje:
+          `${problemas.length} cert(s) VPN activos sin router válido — reservan IPs que deberían estar libres. ` +
+          `Reparar eliminando el router por el flujo del ERP (no por BD): ${problemas[0]}`,
+        contexto: { total: problemas.length, detalle: problemas.slice(0, 5) },
+      }).catch(() => { /* best-effort: la alerta no puede romper el barrido */ });
+    }
+
+    return { huerfanos: huerfanos.length, ccdsSinDueno: colgados.length };
   }
 
   // ── Crear cliente VPN ─────────────────────────────────────────
