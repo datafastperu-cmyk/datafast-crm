@@ -12,6 +12,7 @@ import { appConfig, databaseConfig, redisConfig, jwtConfig, validationSchema } f
 
 
 import { ModuleHealthModule }    from './common/module-health.module';
+import { WatcherHeartbeatModule } from './common/watcher-heartbeat.module';
 import { RedisLockModule }      from './common/redis/redis.module';
 import { LicenciaGuard }         from './modules/licencia/licencia.guard';
 import { JwtAuthGuard }          from './common/guards/jwt-auth.guard';
@@ -181,6 +182,7 @@ import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pag
       inject: [ConfigService],
     }),
     ModuleHealthModule,  // global — inyectable en todos los módulos sin importar
+    WatcherHeartbeatModule, // global — latido de los procesos de fondo
     RedisLockModule,     // global — locks distribuidos y CB para todos los módulos
     LicenciaModule,
     HealthModule,

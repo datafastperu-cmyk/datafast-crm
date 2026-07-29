@@ -19,6 +19,7 @@ import { ModuleHealthService } from '../../../common/services/module-health.serv
 import { OltServicePortPoolService } from './olt-service-port-pool.service';
 import { OltOnuIdPoolService }       from './olt-onu-id-pool.service';
 import { OltConnService }            from './olt-conn.service';
+import { WatcherHeartbeatService }   from '../../../common/services/watcher-heartbeat.service';
 
 // ─── Eventos WebSocket (emitidos por EventEmitter2, escuchados por OltGateway) ──
 export const OLT_SYNC_PROGRESS  = 'olt.sync.progress';
@@ -103,6 +104,7 @@ export class OltSyncService implements OnModuleInit {
     private readonly servicePortPool: OltServicePortPoolService,
     private readonly onuIdPool:       OltOnuIdPoolService,
     private readonly connService:     OltConnService,
+    private readonly hb:              WatcherHeartbeatService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -138,25 +140,35 @@ export class OltSyncService implements OnModuleInit {
     if (this._syncPeriodicoEnCurso) return;
     this._syncPeriodicoEnCurso = true;
     try {
-      const olts = await this.ds.query<Array<{ id: string; empresa_id: string; ip_gestion: string }>>(
-        `SELECT id, empresa_id, ip_gestion
-         FROM   olt_dispositivos
-         WHERE  deleted_at IS NULL AND activo = true
-           AND  metodo_conexion = 'nativo_ssh'`,
-      ).catch(() => []);
-
-      for (const olt of olts) {
-        try {
-          await this.iniciarSync(olt.id, olt.empresa_id);
-          this.logger.log(`[SyncPeriódico] job encolado | olt=${olt.ip_gestion}`);
-        } catch (e) {
-          // Una OLT inalcanzable no puede impedir que se sincronicen las demás.
-          this.logger.warn(`[SyncPeriódico] olt=${olt.ip_gestion}: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
+      await this.hb.ejecutar('olt-sync-periodico', 21600, () => this._syncPeriodicoInterno());
     } finally {
       this._syncPeriodicoEnCurso = false;
     }
+  }
+
+  private async _syncPeriodicoInterno(): Promise<{ olts: number; encoladas: number }> {
+    const olts = await this.ds.query<Array<{ id: string; empresa_id: string; ip_gestion: string }>>(
+      `SELECT id, empresa_id, ip_gestion
+       FROM   olt_dispositivos
+       WHERE  deleted_at IS NULL AND activo = true
+         AND  metodo_conexion = 'nativo_ssh'`,
+    ).catch(() => []);
+
+    let encoladas = 0;
+    for (const olt of olts) {
+      try {
+        await this.iniciarSync(olt.id, olt.empresa_id);
+        encoladas++;
+        this.logger.log(`[SyncPeriódico] job encolado | olt=${olt.ip_gestion}`);
+      } catch (e) {
+        // Una OLT inalcanzable no puede impedir que se sincronicen las demás.
+        this.logger.warn(`[SyncPeriódico] olt=${olt.ip_gestion}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    // El resultado queda en el latido: permite ver de un vistazo si el barrido corre
+    // pero no encola nada (p.ej. todas las OLTs inactivas), que es distinto de no correr.
+    return { olts: olts.length, encoladas };
   }
 
   private _syncPeriodicoEnCurso = false;

@@ -15,6 +15,7 @@ import { QueueService }      from '../mikrotik/services/queue.service';
 import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
 import { decrypt }           from '../../common/utils/encryption.util';
 import { filasUpdateReturning } from '../../common/utils/pg-result.util';
+import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
 import { EventosSistemaService } from '../sistema/eventos-sistema.service';
 import {
   NOTIFICATION_EVENTS,
@@ -107,6 +108,7 @@ export class OutboxRedService {
     private readonly queueSvc:    QueueService,
     private readonly ftthSvc:     ProvisionFtthService,
     private readonly events:      EventEmitter2,
+    private readonly hb:          WatcherHeartbeatService,
     @Optional() private readonly eventos?: EventosSistemaService,
   ) {}
 
@@ -324,7 +326,7 @@ export class OutboxRedService {
   @Cron('0 */5 * * * *')
   async barridoProgramado(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
-    await this.procesarPendientes();
+    await this.hb.ejecutar('outbox-barrido', 300, () => this.procesarPendientes());
   }
 
   async procesarPendientes(): Promise<void> {
@@ -389,6 +391,10 @@ export class OutboxRedService {
   @Cron('30 */5 * * * *')
   async barrerClaimsExpirados(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
+    await this.hb.ejecutar('outbox-claims-expirados', 300, () => this._barrerClaims());
+  }
+
+  private async _barrerClaims(): Promise<{ recuperados: number }> {
     const huerfanos = this._filasDe(await this.ds.query(`
       UPDATE comandos_red_pendientes
       SET    estado          = 'PENDIENTE',
@@ -418,6 +424,8 @@ export class OutboxRedService {
         contexto: { comandoId: h.id, accion: h.accion, contratoId: h.contrato_id, dueño: h.reclamado_por },
       });
     }
+
+    return { recuperados: huerfanos.length };
   }
 
   // ────────────────────────────────────────────────────────────

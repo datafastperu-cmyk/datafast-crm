@@ -6,6 +6,7 @@ import { FirewallService } from '../mikrotik/services/firewall.service';
 import { PppoeService } from '../mikrotik/services/pppoe.service';
 import { QueueService } from '../mikrotik/services/queue.service';
 import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
+import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
 
 // Directriz "VIO hacia adentro": el barrido del outbox afirma exclusión mutua entre
 // instancias PM2. La versión anterior lo afirmaba en un comentario y era FALSA — el
@@ -53,6 +54,11 @@ describe('OutboxRedService — reclamo atómico', () => {
         { provide: QueueService,         useValue: noop() },
         { provide: ProvisionFtthService, useValue: noop() },
         { provide: EventEmitter2,        useValue: { emit: jest.fn() } },
+        // El heartbeat envuelve la ejecución del barrido: el doble tiene que INVOCAR la
+        // función, no solo registrarla, o el cron parecería no hacer nada.
+        { provide: WatcherHeartbeatService, useValue: {
+          ejecutar: jest.fn(async (_n: string, _i: number, fn: any) => fn()),
+        } },
       ],
     }).compile();
 

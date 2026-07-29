@@ -8,6 +8,7 @@ import { ApiResponse } from '../../common/dto/response.dto';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
 import { SistemaService, CronHorarios, ProveedorActivo } from './sistema.service';
 import { EventosSistemaService } from './eventos-sistema.service';
+import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
 
 @ApiTags('Sistema — Admin')
 @ApiBearerAuth('JWT')
@@ -19,7 +20,21 @@ export class SistemaController {
   constructor(
     private readonly sistema: SistemaService,
     private readonly eventos: EventosSistemaService,
+    private readonly heartbeat: WatcherHeartbeatService,
   ) {}
+
+  // ── GET /admin/sistema/watchers ───────────────────────────────
+  // Prueba de vida de los procesos de fondo. Sin esto, un watcher muerto y uno sin
+  // trabajo se ven exactamente igual: ambos callan.
+  @Get('watchers')
+  @ApiOperation({ summary: 'Latido de los watchers del sistema (y cuáles llevan sin correr)' })
+  async getWatchers() {
+    const [todos, rancios] = await Promise.all([
+      this.heartbeat.listar(),
+      this.heartbeat.rancios(),
+    ]);
+    return ApiResponse.ok({ todos, rancios, hayProblemas: rancios.length > 0 });
+  }
 
   // ── GET /admin/sistema/eventos ────────────────────────────────
   @Get('eventos')

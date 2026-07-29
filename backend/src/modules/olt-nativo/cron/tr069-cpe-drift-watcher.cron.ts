@@ -5,6 +5,7 @@ import { EventosSistemaService } from '../../sistema/eventos-sistema.service';
 import { GenieAcsDriver } from '../ztp/genieacs.driver';
 import { CwmpAuthService } from '../ztp/cwmp-auth.service';
 import { Tr069StalenessService } from '../services/tr069-staleness.service';
+import { WatcherHeartbeatService } from '../../../common/services/watcher-heartbeat.service';
 
 // Corre cada 20 min (desfasado de FtthWanWatcherCron, que corre cada 10) para
 // no concentrar carga sobre la OLT/GenieACS en el mismo instante.
@@ -22,6 +23,7 @@ export class Tr069CpeDriftWatcherCron {
     private readonly genie: GenieAcsDriver,
     private readonly cwmpAuth: CwmpAuthService,
     private readonly staleness: Tr069StalenessService,
+    private readonly hb: WatcherHeartbeatService,
   ) {}
 
   // Desendurecimiento residual (2026-07-28). Con la política de endurecimiento CWMP
@@ -38,7 +40,8 @@ export class Tr069CpeDriftWatcherCron {
     if (this.cwmpAuth.isEnforcementEnabled()) return; // política activa: no tocar nada
     this.desendureciendo = true;
     try {
-      const r = await this.genie.desendurecerAuthResidual();
+      const r = await this.hb.ejecutar('tr069-desendurecer', 86400,
+        () => this.genie.desendurecerAuthResidual());
       if (r.revisados === 0) return; // nada que hacer, sin ruido
       await this.eventos.registrar({
         nivel:    r.fallidos > 0 ? 'error' : 'warn',
@@ -68,7 +71,10 @@ export class Tr069CpeDriftWatcherCron {
     if (this.verificandoStaleness) return;
     this.verificandoStaleness = true;
     try {
-      const r = await this.staleness.revisar();
+      // 30 min de intervalo esperado (corre a :12 y :42). El latido se registra aunque
+      // no haya nada que reportar: es la única forma de distinguir "sin novedad" de
+      // "este watcher murió", que hasta hoy se veían igual.
+      const r = await this.hb.ejecutar('tr069-staleness', 1800, () => this.staleness.revisar());
       if (r.rancias === 0 && r.recuperadas === 0) return; // sin novedad, sin ruido
 
       this.logger.warn(
@@ -102,7 +108,7 @@ export class Tr069CpeDriftWatcherCron {
     if (this.running) return;
     this.running = true;
     try {
-      await this.ftth.reconciliarTr069Drift();
+      await this.hb.ejecutar('tr069-drift', 1200, () => this.ftth.reconciliarTr069Drift());
     } catch (e) {
       this.logger.error(`Tr069CpeDriftWatcherCron falló: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -118,7 +124,9 @@ export class Tr069CpeDriftWatcherCron {
     if (this.barriendo) return;
     this.barriendo = true;
     try {
-      const resultados = await this.ftth.barrerCarrilesTr069Inactivos();
+      // Diario: 86400s de intervalo esperado.
+      const resultados = await this.hb.ejecutar('tr069-barrido-ttl', 86400,
+        () => this.ftth.barrerCarrilesTr069Inactivos());
       for (const r of resultados) {
         await this.eventos.registrar({
           nivel:   r.ok ? 'warn' : 'error',

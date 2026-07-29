@@ -11,6 +11,7 @@ import * as path            from 'path';
 import * as net             from 'net';
 import * as crypto          from 'crypto';
 import { EventosSistemaService } from '../../sistema/eventos-sistema.service';
+import { WatcherHeartbeatService } from '../../../common/services/watcher-heartbeat.service';
 import { Response }         from 'express';
 
 import { VpnCliente, EstadoVpnCliente } from '../entities/vpn-cliente.entity';
@@ -56,6 +57,7 @@ export class VpnClienteService implements OnModuleInit {
     private readonly routerRepo: Repository<Router>,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly empresaConfig: EmpresaConfigService,
+    private readonly hb: WatcherHeartbeatService,
     // @Optional: la alerta de invariante es valiosa, pero que el módulo de eventos no
     // esté disponible no puede impedir que arranque la gestión VPN.
     @Optional() private readonly eventos?: EventosSistemaService,
@@ -75,15 +77,14 @@ export class VpnClienteService implements OnModuleInit {
     // CronJob espera un callback sin retorno. Y el `.catch` evita que un fallo del
     // management se convierta en un rechazo no manejado.
     const rec = new CronJob('0 3-59/5 * * * *', () => {
-      void this.reconciliarEstadoConexion().catch((e) =>
-        this.logger.error(`[VPN reconciliar] falló: ${e instanceof Error ? e.message : String(e)}`),
-      );
+      void this.hb.ejecutar('vpn-reconciliar-estado', 300, () => this.reconciliarEstadoConexion())
+        .catch((e) => this.logger.error(`[VPN reconciliar] falló: ${e instanceof Error ? e.message : String(e)}`));
       // El invariante se comprueba en el mismo tick pero por separado: reconciliar el
       // estado observado y verificar la integridad estructural son dos preguntas
-      // distintas, y si una falla la otra debe seguir corriendo.
-      void this.verificarInvariantes().catch((e) =>
-        this.logger.error(`[VPN invariantes] falló: ${e instanceof Error ? e.message : String(e)}`),
-      );
+      // distintas, y si una falla la otra debe seguir corriendo — y cada una deja su
+      // propio latido, para poder distinguir cuál de las dos murió.
+      void this.hb.ejecutar('vpn-invariantes', 300, () => this.verificarInvariantes())
+        .catch((e) => this.logger.error(`[VPN invariantes] falló: ${e instanceof Error ? e.message : String(e)}`));
     }, null, true, tz);
     this.schedulerRegistry.addCronJob('vpn-reconciliar-estado', rec);
   }
