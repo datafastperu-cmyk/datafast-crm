@@ -30,10 +30,13 @@ export class AddPagoAplicadoEn1791800000021 implements MigrationInterface {
     // Índice parcial: el watcher solo pregunta por la cola de pendientes, que en régimen
     // normal está vacía. Sin el predicado, el barrido escanearía toda la tabla de pagos
     // cada pocos minutos — y esa tabla solo crece.
+    //
+    // `pagos` NO tiene `deleted_at`: los pagos no se borran, se anulan por estado. Darlo
+    // por hecho por costumbre hizo fallar la primera versión de esta migración.
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS idx_pagos_sin_aplicar
       ON pagos (verificado_en)
-      WHERE estado = 'verificado' AND aplicado_en IS NULL AND deleted_at IS NULL
+      WHERE estado = 'verificado' AND aplicado_en IS NULL
     `);
   }
 

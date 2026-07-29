@@ -38,9 +38,19 @@ describe('PagosService — reconciliación del cobro', () => {
     return { svc, ds, queries };
   };
 
+  // `RUN_CRONS` es estado GLOBAL del proceso: con --runInBand todos los specs comparten el
+  // mismo `process.env`. Borrarlo a ciegas al terminar filtra el cambio a la siguiente suite
+  // y produce fallos intermitentes que no se reproducen al correr el spec aislado. Se guarda
+  // y se restaura el valor previo, sea cual sea.
   const conCrons = async (fn: () => Promise<void>) => {
+    const previo = process.env.RUN_CRONS;
     process.env.RUN_CRONS = 'true';
-    try { await fn(); } finally { delete process.env.RUN_CRONS; }
+    try {
+      await fn();
+    } finally {
+      if (previo === undefined) delete process.env.RUN_CRONS;
+      else process.env.RUN_CRONS = previo;
+    }
   };
 
   it('reintenta los pagos verificados que nunca llegaron a aplicarse', async () => {
@@ -103,10 +113,14 @@ describe('PagosService — reconciliación del cobro', () => {
 
   it('sin RUN_CRONS no hace nada: solo una instancia PM2 reconcilia', async () => {
     const { svc, ds } = hacer({ pendientes: [{ id: 'p-1' }] });
+    const previo = process.env.RUN_CRONS;
     delete process.env.RUN_CRONS;
 
-    await svc.reconciliarPagosNoAplicados();
-
-    expect(ds.query).not.toHaveBeenCalled();
+    try {
+      await svc.reconciliarPagosNoAplicados();
+      expect(ds.query).not.toHaveBeenCalled();
+    } finally {
+      if (previo !== undefined) process.env.RUN_CRONS = previo;
+    }
   });
 });

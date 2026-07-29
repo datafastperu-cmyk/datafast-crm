@@ -672,7 +672,7 @@ export class PagosService {
       // pero ensucia los logs con un fallo que no existe.
       const pendientes = await this.ds.query<Array<{ id: string }>>(
         `SELECT id FROM pagos
-          WHERE estado = 'verificado' AND aplicado_en IS NULL AND deleted_at IS NULL
+          WHERE estado = 'verificado' AND aplicado_en IS NULL
             AND verificado_en < NOW() - INTERVAL '2 minutes'
           ORDER BY verificado_en
           LIMIT 25`,
