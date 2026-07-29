@@ -1258,6 +1258,31 @@ export class ProvisionFtthService {
   // anterior. Nunca lanza: una excepción aquí revertiría un carril que está bien.
   private async _autoConfigInmediato(contratoId: string, empresaId: string): Promise<string> {
     try {
+      // SOLO SI HAY DRIFT. El auto-config pertenece al aprovisionamiento: escribe la config
+      // de fábrica del ERP (SSID, claves WiFi, acceso web) UNA vez. Pasado eso, la ONU es del
+      // abonado — puede haberle cambiado la clave del WiFi, y reescribirla porque alguien
+      // activó el carril para mirar un dato sería pisarle su configuración sin pedírselo.
+      //
+      // `provisionContract` no comprueba la revisión: aplica siempre. Como esta ruta corre en
+      // el cierre del bootstrap —que es común al aprovisionamiento Y al toggle manual de
+      // TR-069—, sin este guard cada activación del carril reescribiría la ONU entera.
+      //
+      // El criterio es el mismo que usa el reconcile de drift, y cubre los tres casos que
+      // SÍ deben reescribir:
+      //   · aprovisionamiento inicial     → last_applied_revision NULL
+      //   · factory reset                 → la re-inyección lo vuelve a poner en NULL
+      //   · cambio de config en el ERP    → revision sube por encima de la aplicada
+      const [cfg] = await this.ds.query<Array<{ pendiente: boolean }>>(
+        `SELECT (last_applied_revision IS NULL OR last_applied_revision < revision) AS pendiente
+           FROM contrato_onu_config
+          WHERE contrato_id = $1 AND empresa_id = $2`,
+        [contratoId, empresaId],
+      );
+      if (cfg && !cfg.pendiente) {
+        this.logger.log(`auto-config | contrato=${contratoId} ya aplicado y sin cambios — no se reescribe la ONU.`);
+        return '';
+      }
+
       const r = await this.ztp.provisionContract(contratoId, empresaId);
       if (r.skipped) {
         this.logger.log(`auto-config | contrato=${contratoId} omitido: ${r.mensaje}`);
