@@ -54,9 +54,24 @@ export class OltSrvProfileService {
 
     const nombre = conSelloDatafast(dto.modelo.trim().toUpperCase());
 
+    // IDEMPOTENTE: si el tipo de ONU ya existe, la operación YA ESTÁ EN SU DESTINO y eso es
+    // un éxito, no un conflicto. El nombre lleva el sello DATAFAST y se deriva del modelo,
+    // así que un perfil con el mismo nombre ES el mismo perfil — no hay ambigüedad posible.
+    //
+    // Antes lanzaba 409 y eso BLOQUEABA el aprovisionamiento: la ONU que llega es del mismo
+    // modelo que otra ya aprovisionada —el caso normal, no la excepción— y el modal moría
+    // con "ya existe en esta OLT (profile-id 19)" sin ofrecer salida (observado en campo el
+    // 2026-07-29, con el técnico y la ONU delante).
+    //
+    // Es la misma regla que ya está escrita para las operaciones FTTH tras el incidente de
+    // los 1788 reintentos: la idempotencia se DERIVA del estado destino. Este servicio y el
+    // de line-profiles se habían quedado fuera de ella.
     const existente = await this.repo.findOne({ where: { oltId, nombre } });
     if (existente) {
-      throw new ConflictException(`El tipo de ONU "${nombre}" ya existe en esta OLT (profile-id ${existente.profileId}).`);
+      this.logger.log(
+        `Tipo de ONU "${nombre}" ya existe (profile-id ${existente.profileId}) — se reutiliza.`,
+      );
+      return existente;
     }
 
     const conn = await this.connService.buildConn(olt);

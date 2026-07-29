@@ -54,11 +54,16 @@ export class OltLineProfileService {
     const nombre    = conSelloDatafast(dto.nombre.trim().toUpperCase());
     const dbaNombre = `${nombre}-DBA`;
 
+    // IDEMPOTENTE, por la misma razón que el service-profile: un line-profile con el mismo
+    // nombre sellado es el mismo perfil canónico, y volver a pedirlo significa que el estado
+    // deseado ya existe. Devolverlo es el resultado correcto; un 409 solo rompía al llamador,
+    // que en la práctica es el aprovisionamiento de una ONU en campo.
     const existente = await this.repo.findOne({ where: { oltId, nombre } });
     if (existente) {
-      throw new ConflictException(
-        `El line-profile "${nombre}" ya existe en esta OLT (profile-id ${existente.profileId}).`,
+      this.logger.log(
+        `Line-profile "${nombre}" ya existe (profile-id ${existente.profileId}) — se reutiliza.`,
       );
+      return existente;
     }
 
     const conn = await this.connService.buildConn(olt);
