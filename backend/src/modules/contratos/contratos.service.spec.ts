@@ -53,7 +53,13 @@ const mockDs = {
     manager: {
       save:   jest.fn(async (_e: any, d: any) => ({ ...mockContrato, ...(d ?? {}) })),
       create: jest.fn((_e: any, d: any) => ({ ...mockContrato, ...(d ?? {}) })),
-      query:  jest.fn().mockResolvedValue(filaAgregado),
+      // Discrimina por PATRÓN de consulta, igual que `mockDs.query`. Devolver siempre
+      // `filaAgregado` hacía que el chequeo de unicidad del usuario PPPoE —que corre dentro
+      // de la transacción desde 2026-07-29— creyera que el usuario ya existe y rechazara
+      // toda alta. Un mock que responde lo mismo a cualquier pregunta no modela nada.
+      query:  jest.fn(async (sql: string) =>
+        /COUNT\(|SUM\(|\bAS\s+total\b/i.test(String(sql)) ? filaAgregado : [],
+      ),
       update: jest.fn(),
       findOne: jest.fn(async () => null),
       // La IP se asigna con bloqueo pesimista sobre el segmento, para serializar el

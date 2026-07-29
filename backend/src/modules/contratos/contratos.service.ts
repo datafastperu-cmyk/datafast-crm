@@ -143,22 +143,11 @@ export class ContratosService {
     // porque su serialización depende de un advisory lock de transacción que debe seguir
     // tomado hasta el INSERT. Generarlo antes reabriría la ventana que el lock cierra.
 
-    // Generar usuario PPPoE único: sufijo _N si el cliente ya tiene contratos activos
-    const [{ total: totalContratos }] = await this.dataSource.query<any[]>(
-      `SELECT COUNT(*)::int AS total FROM contratos WHERE cliente_id = $1 AND empresa_id = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL`,
-      [dto.clienteId, user.empresaId],
-    );
-    const base = `cli_${dto.clienteId.replace(/-/g, '').substring(0, 8)}`;
-    const pppoeBase = dto.usuarioPppoe || (totalContratos > 0 ? `${base}_${totalContratos + 1}` : base);
-
-    // Verificar unicidad PPPoE en el ERP
-    const [pppoeExistente] = await this.dataSource.query<any[]>(
-      `SELECT numero_contrato FROM contratos WHERE empresa_id = $1 AND usuario_pppoe = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL LIMIT 1`,
-      [user.empresaId, pppoeBase],
-    );
-    if (pppoeExistente) throw new ConflictException(`El usuario PPPoE "${pppoeBase}" ya está en uso (contrato ${pppoeExistente.numero_contrato})`);
-
-    const usuarioPppoe = pppoeBase;
+    // El usuario PPPoE tampoco se genera aquí, por la MISMA razón que el número de contrato:
+    // se derivaba de un `COUNT(*)` leído fuera de la transacción, así que dos altas
+    // simultáneas del mismo cliente calculaban el mismo sufijo y la segunda moría contra
+    // `uq_contratos_empresa_pppoe`. Verificado en producción el 2026-07-29 lanzando tres
+    // altas concurrentes: el correlativo aguantó y esta colisionó, que es como se encontró.
     const passwordPlain  = dto.passwordPppoePlain || this.generarPassword(12);
     let passwordCifrado: string;
     try { passwordCifrado = encrypt(passwordPlain); }
@@ -204,6 +193,30 @@ export class ContratosService {
       // Serializado por (empresa, año) con advisory lock de transacción: el número queda
       // reservado hasta el commit, así que dos altas simultáneas no pueden proponer el mismo.
       const numeroContrato = await this.contratoRepo.generarNumeroContrato(user.empresaId, qr.manager);
+
+      // Usuario PPPoE — bajo el MISMO lock, ya tomado por la línea anterior. Se calcula aquí
+      // y no antes para que el `COUNT` que decide el sufijo y el INSERT que lo consume estén
+      // dentro de la misma sección crítica.
+      const [{ total: totalContratos }] = await qr.manager.query(
+        `SELECT COUNT(*)::int AS total FROM contratos
+          WHERE cliente_id = $1 AND empresa_id = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL`,
+        [dto.clienteId, user.empresaId],
+      );
+      const base      = `cli_${dto.clienteId.replace(/-/g, '').substring(0, 8)}`;
+      const pppoeBase = dto.usuarioPppoe || (totalContratos > 0 ? `${base}_${totalContratos + 1}` : base);
+
+      const [pppoeExistente] = await qr.manager.query(
+        `SELECT numero_contrato FROM contratos
+          WHERE empresa_id = $1 AND usuario_pppoe = $2 AND estado != 'baja_definitiva' AND deleted_at IS NULL
+          LIMIT 1`,
+        [user.empresaId, pppoeBase],
+      );
+      if (pppoeExistente) {
+        throw new ConflictException(
+          `El usuario PPPoE "${pppoeBase}" ya está en uso (contrato ${pppoeExistente.numero_contrato})`,
+        );
+      }
+      const usuarioPppoe = pppoeBase;
 
       // Guardar contrato (dentro de la tx)
       const entity = qr.manager.create(Contrato, {
