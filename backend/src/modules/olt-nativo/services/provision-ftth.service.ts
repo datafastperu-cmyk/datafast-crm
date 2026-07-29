@@ -1,5 +1,5 @@
 import {
-  BadRequestException, ConflictException, Injectable, Logger,
+  BadRequestException, ConflictException, Inject, Injectable, Logger, forwardRef,
   NotFoundException, ServiceUnavailableException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -29,6 +29,7 @@ import { ProvisioningStrategyResolver } from './cpe-provisioning/provisioning-st
 import { Tr069GenieacsClient } from '../../tr069/tr069-genieacs.client';
 import { GenieAcsDriver } from '../ztp/genieacs.driver';
 import { OltOnuPresetService } from '../ztp/olt-onu-preset.service';
+import { ZtpProvisioningService } from '../ztp/ztp.service';
 import {
   getTr069AcsUrl, getTr069AcsUsername, getTr069AcsPassword,
   getTr069ConnReqUsername, getTr069ConnReqPassword,
@@ -141,6 +142,13 @@ export class ProvisionFtthService {
 
     private readonly opLock: FtthOperacionLockService,
     private readonly pasos:  OperacionWizardPasoService,
+
+    // Inyección directa (no por evento): el auto-config se aplica DENTRO del bootstrap del
+    // carril y su resultado forma parte del mensaje que ve el técnico en campo. Un evento
+    // devolvería el control sin saber si la ONU quedó configurada. No hay ciclo: el módulo
+    // ZTP no depende de este servicio.
+    @Inject(forwardRef(() => ZtpProvisioningService))
+    private readonly ztp: ZtpProvisioningService,
 
     // Desacoplado por evento a propósito: OutboxRedModule ya importa OltNativoModule,
     // así que inyectar el outbox aquí crearía una dependencia circular. Mismo patrón
@@ -575,16 +583,22 @@ export class ProvisionFtthService {
     // OLT con TR-069 activo y en CUALQUIER ruta (botón Aprovisionar, reaplicar, recovery).
     // Idempotente (reusa el service-port de gestión del contrato) y best-effort (no tumba
     // el aprovisionamiento del plano de datos si el carril falla).
+    // ORDEN OBLIGATORIO: el preset ANTES del carril, y esperado.
+    //
+    // El preset puebla `contrato_onu_config` (SSID, claves, acceso web) y enciende
+    // `provisioning_enabled`. El carril, al converger, aplica esa config de inmediato. Si el
+    // preset siguiera siendo `void` y posterior —como estuvo hasta 2026-07-29—, el auto-config
+    // podría llegar a leer una config que aún no existe: una carrera que en la práctica gana
+    // casi siempre el preset (milisegundos contra los minutos que tarda el Inform), y por eso
+    // fallaría de forma intermitente e imposible de reproducir. Se elimina haciéndola imposible,
+    // no improbable. Sigue siendo best-effort: nunca lanza.
+    await this._aplicarPresetAuto(olt.id, dto.contratoId, empresaId, dto.sn.toUpperCase());
+
     const carrilNota = await this._ensureCarrilGestion(olt, dto.contratoId);
 
     // Punto único común tras confirmar el service-port de datos en la OLT — ver
     // _syncVlanContrato para la causa raíz que esto corrige (contratos.vlan_id NULL).
     await this._syncVlanContrato(dto.contratoId, empresaId, dto.vlan);
-
-    // Auto-config (preset por OLT): puebla la config del contrato desde el preset y enciende el
-    // pipeline ZTP; el watcher de re-inyección (cron 2 min) la escribe en la ONU en cuanto informe.
-    // Fire-and-forget best-effort: nunca bloquea ni tumba el aprovisionamiento del plano de datos.
-    void this._aplicarPresetAuto(olt.id, dto.contratoId, empresaId, dto.sn.toUpperCase());
 
     // ── Modo BRIDGE: sin inyección WAN ────────────────────────
     // La ONU va transparente; el PPPoE lo hace el router del cliente contra el BRAS
@@ -1215,10 +1229,54 @@ export class ProvisionFtthService {
     this.logger.log(
       `FTTH bootstrapTr069 OK | contrato=${dto.contratoId} mgmtVlan=${mgmtVlan} canal=${resolverResult.canalUsado}`,
     );
+
+    // AUTO-CONFIG INMEDIATO — aquí y no en un cron.
+    //
+    // Este punto es el primer instante en que aplicar es posible: el carril está confirmado
+    // por convergencia real (el CPE informó, VIO) y el device existe y está vivo en el ACS.
+    // Antes la config (SSID, clave WiFi, credenciales web) la escribía el watcher de
+    // re-inyección, que hace polling cada 2 minutos, o el reconcile nocturno de las 03:30.
+    // Para una instalación de campo eso es inaceptable: el técnico no puede esperar un ciclo
+    // de polling —y menos hasta la madrugada— para saber si la ONU quedó configurada.
+    // Aplicándolo aquí, la latencia desde que la ONU informa es la de las tasks TR-069.
+    //
+    // Los watchers NO se retiran: siguen siendo la red de seguridad para las ONUs que
+    // informan más tarde (instaladas y energizadas después) o cuya config cambie luego.
+    // Este camino les gana por tiempo; no los reemplaza.
+    const notaConfig = await this._autoConfigInmediato(dto.contratoId, empresaId);
+
     return {
       exitoso: true,
-      mensaje: resolverResult.mensaje,
+      mensaje: resolverResult.mensaje + notaConfig,
     };
+  }
+
+  // Aplica la config de negocio de la ONU (WiFi + acceso web) en cuanto el carril converge.
+  // Best-effort por diseño: el carril YA está materializado y el servicio del cliente no
+  // depende de esto. Si falla, se reporta con precisión —nunca como éxito silencioso (VIO)—
+  // y el watcher de re-inyección lo recoge, porque `last_applied_revision` sigue en su valor
+  // anterior. Nunca lanza: una excepción aquí revertiría un carril que está bien.
+  private async _autoConfigInmediato(contratoId: string, empresaId: string): Promise<string> {
+    try {
+      const r = await this.ztp.provisionContract(contratoId, empresaId);
+      if (r.skipped) {
+        this.logger.log(`auto-config | contrato=${contratoId} omitido: ${r.mensaje}`);
+        return '';
+      }
+      if (r.ok) {
+        this.logger.log(`auto-config | contrato=${contratoId} aplicado (${r.applied}/${r.total}).`);
+        return ' Configuración de la ONU (WiFi y acceso web) aplicada.';
+      }
+      this.logger.warn(`auto-config | contrato=${contratoId} NO aplicado: ${r.mensaje}`);
+      return ` La configuración de la ONU no se aplicó todavía (${r.mensaje}) — se reintenta automáticamente.`;
+    } catch (e) {
+      // Sin `contrato_onu_config` no hay nada que aplicar (la OLT no tiene preset, o está
+      // deshabilitado). No es un fallo y no se le anuncia nada al operador.
+      if (e instanceof NotFoundException) return '';
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`auto-config | contrato=${contratoId} falló: ${msg}`);
+      return ' La configuración de la ONU no se aplicó todavía — se reintenta automáticamente.';
+    }
   }
 
   // ────────────────────────────────────────────────────────────
