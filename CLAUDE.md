@@ -260,6 +260,39 @@ Referencia de patrón ya aplicado correctamente: el wizard de registro de router
 (`fireRevoke` al cerrar sin completar el paso 3 + cron `limpiarWizardsAbandonados` como red
 de seguridad).
 
+## ⚠️ MIGRACIONES DE ONUs — Advertencia Obligatoria Antes de Programar Ninguna
+
+**Antes de diseñar, programar o ejecutar cualquier migración que incorpore ONUs existentes
+al ERP (SmartOLT, MikroWISP, adopción masiva de huérfanas), leer esto y actuar en
+consecuencia. No es opcional.**
+
+Una ONU que entra al ERP con `contrato_onu_config.provisioning_enabled = true` y
+`last_applied_revision` en NULL queda marcada como **drift**, y el reconcile de las 03:30
+(`ZtpReconcileCron.reconciliarDiario`) le **reescribe el SSID, la clave del WiFi y las
+credenciales de acceso web** con el preset de la OLT.
+
+En una migración eso no afecta a una ONU: afecta a **todas a la vez, de madrugada, sin que
+nadie lo pida**. Son clientes reales en producción que llevan años con su configuración —
+muchos con su propia clave de WiFi. A la mañana siguiente, ninguno tiene internet en sus
+dispositivos y nadie sabe por qué.
+
+Hoy el ERP está a salvo por construcción, no por precaución: hay 205 ONUs en la OLT y solo
+las que el ERP aprovisionó tienen `contrato_onu_config`. `adoptarOnusHuerfanas` inserta solo
+en `ftth_onu_registro` y NO crea config, así que una ONU adoptada queda fuera del reconcile.
+**La migración es exactamente el proceso que rompería esa garantía.**
+
+**Reglas para cualquier migración de ONUs:**
+
+1. Una ONU migrada/adoptada nace con `provisioning_enabled = false`, o con
+   `last_applied_revision = revision` para que nunca figure como drift.
+2. El auto-config **solo** se aplica a aprovisionamientos nuevos hechos desde el ERP. Una
+   ONU que ya funcionaba se ADOPTA (se observa y se respeta), nunca se reconfigura — es la
+   directriz de "implementación desde cero": el ERP inyecta su config canónica en equipos
+   que él provisiona, y respeta como intocable lo preexistente.
+3. Antes de activar el reconcile sobre el parque migrado, verificar con
+   `SELECT COUNT(*) FROM contrato_onu_config WHERE provisioning_enabled AND (last_applied_revision IS NULL OR last_applied_revision < revision)`
+   que el número sea el esperado. Si devuelve cientos, la madrugada siguiente es un incidente.
+
 ## Portabilidad Multi-VPS — Regla Crítica de Configuración
 
 Este ERP se instala en múltiples servidores VPS con IPs y dominios distintos.

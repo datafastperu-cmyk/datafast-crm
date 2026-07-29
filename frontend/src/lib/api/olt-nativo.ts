@@ -631,6 +631,10 @@ export interface FtthProvisionDto {
   trafficIndexUp?:   number;  // inbound subida;  undefined = índice 0 sin límite
   description?:      string;
   wanMode?:          'bridge' | 'routing';  // bridge = PPPoE en router cliente (default)
+  // Escribir el auto-config del preset (SSID, claves WiFi, acceso web) en esta ONU.
+  // Default true. Se desmarca cuando el equipo ya viene configurado y no debe pisarse.
+  // Omitirlo es definitivo: sin config poblada, nada posterior intentará escribirla.
+  aplicarAutoConfig?: boolean;
   // Procedimiento operativo (wizard) al que pertenece esta provisión. Si viene, cada paso
   // mutante se anota en la bitácora de compensación del backend y el cierre sin confirmar
   // puede deshacerlo. Opcional: sin él, el comportamiento es el histórico.

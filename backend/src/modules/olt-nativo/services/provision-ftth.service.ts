@@ -5,7 +5,7 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, In, LessThan } from 'typeorm';
 import {
-  IsIn, IsInt, IsOptional, IsString, IsUUID,
+  IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID,
   Max, MaxLength, Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -57,6 +57,20 @@ export class ProvisionarFtthDto {
   // deshacerlo. Si no viene, el comportamiento es el histórico: la red de seguridad es
   // FtthRecoveryCron. Opcional a propósito — no rompe llamadores existentes (outbox, reaplicar).
   @IsOptional() @IsUUID('4')                          operacionId?:      string;
+  /**
+   * Aplicar el auto-config del preset (SSID, claves WiFi, acceso web) a esta ONU.
+   *
+   * Por defecto SÍ: es el comportamiento esperado en un alta normal. El operador puede
+   * desmarcarlo cuando la ONU no debe recibir la config canónica del ERP — típicamente un
+   * equipo que ya venía configurado y funcionando, o uno que el cliente trajo con ajustes
+   * propios que no hay que pisar.
+   *
+   * Decidirlo en el momento del aprovisionamiento y no después es lo correcto: el
+   * auto-config se escribe UNA vez, en el alta. Si aquí se omite, el contrato queda sin
+   * config poblada y nada posterior (ni el carril, ni el reconcile nocturno) intentará
+   * escribirla — no hay revisión que alcanzar.
+   */
+  @IsOptional() @IsBoolean() @Type(() => Boolean)     aplicarAutoConfig?: boolean;
   // Modo WAN de la ONU:
   //  - 'bridge'  → ONU transparente; el PPPoE lo hace el router del cliente (BRAS).
   //                El OLT solo hace GPON + service-port. NO se inyecta WAN por OMCI.
@@ -615,7 +629,15 @@ export class ProvisionFtthService {
     // casi siempre el preset (milisegundos contra los minutos que tarda el Inform), y por eso
     // fallaría de forma intermitente e imposible de reproducir. Se elimina haciéndola imposible,
     // no improbable. Sigue siendo best-effort: nunca lanza.
-    await this._aplicarPresetAuto(olt.id, dto.contratoId, empresaId, dto.sn.toUpperCase());
+    // El operador puede desmarcarlo en el modal: una ONU que ya venía configurada y
+    // funcionando no debe recibir la config canónica del ERP encima. Omitirlo aquí es
+    // definitivo por diseño — sin config poblada no hay revisión que alcanzar, así que ni el
+    // carril ni el reconcile nocturno intentarán escribir nada después.
+    if (dto.aplicarAutoConfig !== false) {
+      await this._aplicarPresetAuto(olt.id, dto.contratoId, empresaId, dto.sn.toUpperCase());
+    } else {
+      this.logger.log(`preset auto | contrato=${dto.contratoId}: OMITIDO por decisión del operador.`);
+    }
 
     const carril = await this._ensureCarrilGestion(olt, dto.contratoId);
     const carrilNota = carril.nota;

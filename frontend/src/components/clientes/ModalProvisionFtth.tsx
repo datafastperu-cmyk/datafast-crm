@@ -217,6 +217,10 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   // efecto de auto-relleno lo pisa con el modo REAL del registro, así que esto solo aplica
   // a provisiones nuevas.
   const [wanMode,       setWanMode]      = useState<'bridge' | 'routing'>('routing');
+  // Auto-config del preset (SSID, claves WiFi, acceso web). Marcado por defecto: es lo
+  // esperado en un alta normal. Se desmarca cuando la ONU ya venía configurada y su
+  // configuración no debe pisarse — decisión que solo el operador que la instala puede tomar.
+  const [aplicarAutoConfig, setAplicarAutoConfig] = useState(true);
 
   // Perfiles OLT (Phase 4)
   const { data: perfiles } = useQuery<OltPerfilesResult>({
@@ -476,6 +480,7 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
       // (backend rechaza el submit si no hay pool — ver aviso poolConfigurado abajo).
       description:      description.trim() || undefined,
       wanMode,
+      aplicarAutoConfig,
       });
     },
     onSuccess: async (res) => {
@@ -776,6 +781,24 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
                       </select>
                       <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                     </div>
+                  </Field>
+                  <Field label="Auto-config de la ONU" span2>
+                    <label className="flex items-start gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={aplicarAutoConfig}
+                        onChange={(e) => setAplicarAutoConfig(e.target.checked)}
+                        className="mt-0.5 w-3.5 h-3.5 rounded border-border accent-primary cursor-pointer"
+                      />
+                      <span className="text-xs text-foreground leading-snug">
+                        Escribir SSID, clave WiFi y acceso web del preset
+                        <span className="block text-[10px] text-muted-foreground mt-0.5">
+                          Desmárcalo si la ONU ya viene configurada y no debe sobrescribirse. Se
+                          aplica solo en este aprovisionamiento: después, la configuración es del
+                          abonado y el ERP no la vuelve a tocar.
+                        </span>
+                      </span>
+                    </label>
                   </Field>
                   <Field label="Lineprofile ID">
                     {perfiles?.lineprofiles?.length ? (
