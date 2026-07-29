@@ -988,6 +988,18 @@ export class OltNativoController {
     return this.mgmtIpPool.configurarRango(oltId, user.empresaId, dto);
   }
 
+  @Post(':oltId/mgmt-ip-pool/retirar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Retirar del pool un tramo de IPs de gestión (solo las libres)' })
+  @ApiParam({ name: 'oltId' })
+  async mgmtIpPoolRetirar(
+    @Param('oltId', ParseUUIDPipe) oltId: string,
+    @Body() dto: ConfigurarMgmtIpPoolDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.mgmtIpPool.retirarRango(oltId, user.empresaId, dto);
+  }
+
   // ── FTTH Two-Phase Provisioning ───────────────────────────────
 
   @Post(':oltId/ftth/provision')

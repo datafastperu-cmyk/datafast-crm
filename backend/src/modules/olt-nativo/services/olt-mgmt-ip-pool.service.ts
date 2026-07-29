@@ -5,6 +5,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { IsIP, IsInt, Min } from 'class-validator';
 import { Type } from 'class-transformer';
+import { filasUpdateReturning } from '../../../common/utils/pg-result.util';
 
 // ─── DTO ──────────────────────────────────────────────────────────
 export class ConfigurarMgmtIpPoolDto {
@@ -186,6 +187,56 @@ export class OltMgmtIpPoolService {
       [oltId, contratoId],
     );
     this.logger.log(`Mgmt IP release | olt=${oltId} contrato=${contratoId}`);
+  }
+
+  // ── retirarRango ──────────────────────────────────────────────────
+  // Saca del pool un tramo que ya no corresponde a esta OLT (re-direccionamiento, tramo
+  // sembrado por error, migración a otro bloque). Sin esto solo se podían AÑADIR IPs, y la
+  // única salida era un UPDATE a mano contra la tabla — justo lo que el ERP no debe requerir.
+  //
+  // NUNCA retira una IP OCUPADA: esa IP está escrita en el IP-host de una ONU viva. Sacarla
+  // del pool dejaría al ERP sin saber que le pertenece, y el tramo podría reasignarse a otra
+  // OLT: dos ONUs con la misma IP en el mismo L2. Para retirar una IP ocupada primero hay que
+  // desaprovisionar o desactivar el carril de esa ONU, que es lo que la libera de verdad.
+  async retirarRango(
+    oltId:     string,
+    empresaId: string,
+    dto:       ConfigurarMgmtIpPoolDto,
+  ): Promise<{ retiradas: number }> {
+    const inicio = ipToInt(dto.inicio);
+    const fin    = ipToInt(dto.fin);
+    if (fin < inicio) {
+      throw new UnprocessableEntityException(`"fin" (${dto.fin}) debe ser ≥ "inicio" (${dto.inicio}).`);
+    }
+
+    const ocupadas = await this.ds.query<Array<{ ip_address: string; contrato_id: string }>>(
+      `SELECT ip_address::text, contrato_id::text
+         FROM olt_mgmt_ip_pool
+        WHERE olt_id = $1 AND empresa_id = $2 AND deleted_at IS NULL
+          AND estado = 'ocupado'
+          AND ip_address BETWEEN $3::inet AND $4::inet
+        LIMIT 5`,
+      [oltId, empresaId, dto.inicio, dto.fin],
+    );
+    if (ocupadas.length > 0) {
+      throw new UnprocessableEntityException(
+        `El tramo ${dto.inicio}-${dto.fin} tiene ${ocupadas.length}+ IP(s) en uso por ONUs vivas ` +
+        `(p.ej. ${ocupadas[0].ip_address}). Desaprovisiona o desactiva su carril antes de retirarlo.`,
+      );
+    }
+
+    const filas = await this.ds.query<Array<{ ip_address: string }>>(
+      `UPDATE olt_mgmt_ip_pool
+          SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
+        WHERE olt_id = $1 AND empresa_id = $2 AND deleted_at IS NULL
+          AND estado = 'libre'
+          AND ip_address BETWEEN $3::inet AND $4::inet
+        RETURNING ip_address::text`,
+      [oltId, empresaId, dto.inicio, dto.fin],
+    );
+    const retiradas = filasUpdateReturning<{ ip_address: string }>(filas).length;
+    this.logger.log(`Mgmt IP pool retirar | olt=${oltId} rango=${dto.inicio}-${dto.fin} retiradas=${retiradas}`);
+    return { retiradas };
   }
 
   // ── obtenerEstado ─────────────────────────────────────────────────

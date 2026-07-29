@@ -58,6 +58,38 @@ describe('OltMgmtIpPoolService — tramos disjuntos por OLT', () => {
     expect(guard![0]).toMatch(/empresa_id\s*=\s*\$1/i);
   });
 
+  it('retirar NUNCA saca una IP en uso: esa IP vive en el IP-host de una ONU', async () => {
+    // Retirarla dejaría al ERP sin saber que le pertenece, y el tramo podría reasignarse a
+    // otra OLT: dos ONUs con la misma IP en el mismo L2, que es exactamente lo que el guard
+    // de solapamiento existe para impedir.
+    const ds = {
+      query: jest.fn(async (sql: string) =>
+        /estado\s*=\s*'ocupado'/i.test(sql)
+          ? [{ ip_address: '10.16.4.7', contrato_id: 'c-1' }]
+          : [],
+      ),
+    };
+    const svc = new OltMgmtIpPoolService(ds as any);
+
+    await expect(svc.retirarRango('olt-1', 'e-1', { inicio: '10.16.4.1', fin: '10.16.4.50' }))
+      .rejects.toThrow(/en uso.*10\.16\.4\.7/s);
+    // Y no llegó a ejecutar el UPDATE.
+    expect(ds.query.mock.calls.some(([s]) => /^\s*UPDATE/i.test(s as string))).toBe(false);
+  });
+
+  it('retirar libera solo las libres y devuelve cuántas', async () => {
+    const ds = {
+      query: jest.fn(async (sql: string) => {
+        if (/estado\s*=\s*'ocupado'/i.test(sql)) return [];
+        return [[{ ip_address: '10.16.0.10' }, { ip_address: '10.16.0.11' }], 2];
+      }),
+    };
+    const svc = new OltMgmtIpPoolService(ds as any);
+
+    await expect(svc.retirarRango('olt-1', 'e-1', { inicio: '10.16.0.10', fin: '10.16.0.90' }))
+      .resolves.toEqual({ retiradas: 2 });
+  });
+
   it('sigue rechazando rangos invertidos o desmedidos antes de tocar la BD', async () => {
     const { svc } = hacer([]);
     await expect(svc.configurarRango('olt-1', 'e-1', { inicio: '10.16.4.50', fin: '10.16.4.1' }))
