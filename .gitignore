@@ -89,3 +89,24 @@ tools/generate-license.js
 
 # ── Credenciales locales (NUNCA versionar ni subir a VPS) ─────
 ACCESOS.local.md
+
+# ── Artefactos PWA generados por next-pwa/workbox ──────────────
+# Se regeneran en CADA build con los hashes de los chunks, así que versionarlos
+# garantiza un conflicto en cada despliegue: el 2026-07-28 un `sw.js` modificado en la
+# VPS abortó un `git pull` y el deploy reportó "Updating..." sin haber aplicado nada.
+# Un artefacto de build no se versiona.
+frontend/public/sw.js
+frontend/public/sw.js.map
+frontend/public/workbox-*.js
+frontend/public/workbox-*.js.map
+
+# ── Artefactos de build de TypeScript ──────────────────────────
+frontend/tsconfig.tsbuildinfo
+backend/tsconfig.tsbuildinfo
+
+# ── Scripts ad-hoc de depuración contra la VPS ─────────────────
+# La directriz del proyecto es que los scripts de red viven en
+# Proyecto_CRM_ISP/mikrotik-network/, nunca dentro del repo del ERP. Se ignoran en vez
+# de borrarse: son del operador, no del proyecto.
+_*.mjs
+vps.config.mjs
