@@ -2255,6 +2255,17 @@ export class ProvisionFtthService {
         .catch((e) => this.logger.warn(`desaprovisionar | ACS wipe sn=${registro.sn} falló (no bloquea baja): ${e instanceof Error ? e.message : String(e)}`));
     }
 
+    // El registro se archiva LIMPIO. Antes se borraba conservando el `ultimo_error` de un
+    // intento fallido previo y el `carril_estado = activo` de cuando la ONU vivía: un
+    // registro exitosamente desaprovisionado que decía "Desaprovisionamiento falló: timeout"
+    // y aparentaba tener carril TR-069 vivo. Eso costó una auditoría entera contra la OLT el
+    // 2026-07-29 para concluir que el hardware estaba impecable. Un archivo que miente sobre
+    // su propio desenlace no es un archivo, es una trampa para el próximo diagnóstico.
+    await this.ftthRepo.update(registro.id, {
+      ultimoError:  null,
+      carrilEstado: FtthCarrilEstado.INACTIVO,
+      lockedAt:     null,
+    });
     await this.ftthRepo.softDelete(registro.id);
 
     // El caso que originó el reporte: sin esto, /red/olt seguía mostrando la ONU `online`
