@@ -18,12 +18,13 @@ const lockedInputCls = cn(
   'border-border',
 );
 
-type SubTab = 'perfil' | 'segmento';
+type SubTab = 'perfil' | 'autoconfig' | 'segmento';
 
 function SubTabs({ sub, setSub }: { sub: SubTab; setSub: (s: SubTab) => void }) {
   const items: Array<{ id: SubTab; label: string; icon: React.ReactNode }> = [
-    { id: 'perfil',   label: 'Perfil y auto-config', icon: <Radio   className="w-3.5 h-3.5" /> },
-    { id: 'segmento', label: 'Segmento de gestión',  icon: <Network className="w-3.5 h-3.5" /> },
+    { id: 'perfil',     label: 'Perfil TR-069',       icon: <Radio   className="w-3.5 h-3.5" /> },
+    { id: 'autoconfig', label: 'Auto-config de ONUs', icon: <Wifi    className="w-3.5 h-3.5" /> },
+    { id: 'segmento',   label: 'Segmento de gestión', icon: <Network className="w-3.5 h-3.5" /> },
   ];
   return (
     <div className="flex gap-1 border-b border-border">
@@ -153,6 +154,7 @@ export function TabTr069({ oltId }: { oltId: string }) {
   return (
     <div className="space-y-5">
       <SubTabs sub={sub} setSub={setSub} />
+      {sub === 'perfil' && (<>
       <div className="flex items-start gap-3">
         <Radio className="w-5 h-5 text-primary mt-0.5" />
         <div>
@@ -236,8 +238,11 @@ export function TabTr069({ oltId }: { oltId: string }) {
         </div>
       </div>
 
+      </>)}
+
       {/* ── Preset de auto-config de ONUs ── */}
-      <div className="flex items-start gap-3 pt-2 border-t border-border">
+      {sub === 'autoconfig' && (<>
+      <div className="flex items-start gap-3">
         <Wifi className="w-5 h-5 text-primary mt-0.5" />
         <div>
           <h3 className="text-sm font-semibold text-foreground">Auto-config de ONUs (preset)</h3>
@@ -321,6 +326,7 @@ export function TabTr069({ oltId }: { oltId: string }) {
           </button>
         </div>
       </div>
+      </>)}
     </div>
   );
 }
