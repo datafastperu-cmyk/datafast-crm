@@ -294,7 +294,7 @@ export class OltMgmtIpPoolService {
     if (filtros.q?.trim()) {
       params.push(`%${filtros.q.trim()}%`);
       const i = params.length;
-      where.push(`(p.ip_address::text ILIKE $${i} OR r.sn ILIKE $${i} OR co.numero_contrato ILIKE $${i} OR cl.nombre_completo ILIKE $${i})`);
+      where.push(`(host(p.ip_address) ILIKE $${i} OR r.sn ILIKE $${i} OR co.numero_contrato ILIKE $${i} OR cl.nombre_completo ILIKE $${i})`);
     }
     const filtro = where.join(' AND ');
 
@@ -307,15 +307,15 @@ export class OltMgmtIpPoolService {
 
     const [conteo] = await this.ds.query<Array<{ n: string; desde: string | null; hasta: string | null }>>(
       `SELECT COUNT(*)::text AS n,
-              MIN(p.ip_address)::text AS desde,
-              MAX(p.ip_address)::text AS hasta
+              host(MIN(p.ip_address)) AS desde,
+              host(MAX(p.ip_address)) AS hasta
        ${base}`,
       params,
     );
 
     params.push(limit, (page - 1) * limit);
     const items = await this.ds.query<MgmtIpItem[]>(
-      `SELECT p.ip_address::text AS "ip",
+      `SELECT host(p.ip_address) AS "ip",
               p.estado           AS "estado",
               p.contrato_id      AS "contratoId",
               co.numero_contrato AS "numeroContrato",
