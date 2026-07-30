@@ -5,6 +5,7 @@ import { BullModule } from '@nestjs/bull';
 import { FacturacionController }       from './facturacion.controller';
 import { ComprobantesConfigController } from './comprobantes-config.controller';
 
+import { DeudaPorContratoService } from './deuda-por-contrato.service';
 import { FacturacionService }          from './facturacion.service';
 import { ComprobantesConfigService }   from './comprobantes-config.service';
 import { FacturaRepository }           from './repositories/factura.repository';
@@ -50,6 +51,7 @@ import { ConfiguracionModule }         from '../config/config.module';
   ],
   providers: [
     FacturacionService,
+    DeudaPorContratoService,
     ComprobantesConfigService,
     FacturaRepository,
     PdfService,
@@ -58,6 +60,7 @@ import { ConfiguracionModule }         from '../config/config.module';
   ],
   exports: [
     FacturacionService,
+    DeudaPorContratoService,
     ComprobantesConfigService,
     FacturaRepository,
   ],

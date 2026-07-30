@@ -6,6 +6,7 @@ import { FacturaRepository } from './repositories/factura.repository';
 import { ComprobantesConfigService } from './comprobantes-config.service';
 import { PdfService } from './pdf.service';
 import { AuditoriaService } from '../auth/auditoria.service';
+import { DeudaPorContratoService } from './deuda-por-contrato.service';
 import { Factura, EstadoFactura } from './entities/factura.entity';
 
 // NOTA (2026-07-28): esta suite llevaba tiempo SIN EJECUTARSE — no compilaba porque
@@ -113,6 +114,8 @@ describe('FacturacionService', () => {
         { provide: ComprobantesConfigService,  useValue: mockComprobantesSvc },
         { provide: PdfService,                 useValue: mockPdfSvc },
         { provide: AuditoriaService,           useValue: mockAuditoria },
+        // La deuda por contrato se recalcula tras emitir; aquí no se ejercita.
+        { provide: DeudaPorContratoService,    useValue: { recalcularPorCliente: jest.fn(), calcular: jest.fn() } },
         { provide: getDataSourceToken(),       useValue: mockDs },
       ],
     }).compile();

@@ -13,6 +13,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PagoRepository }       from './repositories/pago.repository';
 import { MercadoPagoService }   from './mercadopago.service';
 import { FacturacionService }   from '../facturacion/facturacion.service';
+import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 import { ContratosService }     from '../contratos/contratos.service';
 import { AuditoriaService }     from '../auth/auditoria.service';
 import { JwtPayload }           from '../../common/decorators/current-user.decorator';
@@ -40,6 +41,7 @@ export class PagosService {
     private readonly pagoRepo:     PagoRepository,
     private readonly mpSvc:        MercadoPagoService,
     private readonly facturacionSvc: FacturacionService,
+    private readonly deudaSvc:     DeudaPorContratoService,
     private readonly contratosSvc: ContratosService,
     private readonly auditoria:    AuditoriaService,
     private readonly config:       ConfigService,
@@ -233,6 +235,14 @@ export class PagosService {
       return saved;
     });
     // ── FIN TRANSACCIÓN ───────────────────────────────────────
+
+    // Un pago cambia el saldo de las facturas, y `contratos.deuda_total` es una
+    // proyección de esos saldos: hay que refrescarla o el ERP y el portal muestran una
+    // deuda que el abonado ya pagó. Fuera de la transacción a propósito — el pago está
+    // registrado y no puede deshacerse por no poder actualizar una caché.
+    if (savedPago?.clienteId) {
+      await this.deudaSvc.recalcularPorCliente(savedPago.clienteId, empresaId);
+    }
 
     // PASO 5 — Encolar jobs de MikroTik fuera de la TX (solo si commit fue exitoso)
     for (const c of contratosParaReactivar) {

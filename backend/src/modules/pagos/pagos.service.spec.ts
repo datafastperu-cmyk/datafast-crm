@@ -12,6 +12,7 @@ import { PagosService }        from './pagos.service';
 import { PagoRepository }      from './repositories/pago.repository';
 import { MercadoPagoService }  from './mercadopago.service';
 import { FacturacionService }  from '../facturacion/facturacion.service';
+import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 import { ContratosService }    from '../contratos/contratos.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
 import { ConfigService }       from '@nestjs/config';
@@ -148,6 +149,8 @@ describe('PagosService', () => {
         { provide: PagoRepository,      useValue: mockRepo },
         { provide: MercadoPagoService,  useValue: mockMpSvc },
         { provide: FacturacionService,  useValue: mockFacturacionSvc },
+        // Recalcula deuda_total tras el pago; aquí no se ejercita.
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn(), calcular: jest.fn() } },
         { provide: ContratosService,    useValue: mockContratosSvc },
         { provide: AuditoriaService,    useValue: mockAuditoria },
         { provide: ConfigService,       useValue: mockConfig },

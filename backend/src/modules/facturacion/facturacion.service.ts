@@ -10,6 +10,7 @@ import { FacturaRepository }          from './repositories/factura.repository';
 import { ComprobantesConfigService }   from './comprobantes-config.service';
 import { PdfService, EmpresaPdfData, ClientePdfData } from './pdf.service';
 import { AuditoriaService }            from '../auth/auditoria.service';
+import { DeudaPorContratoService }      from './deuda-por-contrato.service';
 import { JwtPayload }                  from '../../common/decorators/current-user.decorator';
 
 import { Factura, EstadoFactura, ItemFactura } from './entities/factura.entity';
@@ -39,6 +40,7 @@ export class FacturacionService {
     private readonly comprobantesSvc: ComprobantesConfigService,
     private readonly pdfSvc:         PdfService,
     private readonly auditoria:      AuditoriaService,
+    private readonly deudaSvc:       DeudaPorContratoService,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
@@ -239,6 +241,9 @@ export class FacturacionService {
             descuento:      0,
             subtotal:       sub,
             tipoItem:       'servicio',
+            // La descripción es para el cliente; esto es para el sistema. Sin el id, la
+            // deuda de un consolidado no se puede imputar a ningún servicio.
+            contratoId:     contrato.contrato_id,
           });
           totalSubtotal += sub;
           totalIgv      += igvItem;
@@ -298,6 +303,11 @@ export class FacturacionService {
           }
           return f;
         });
+
+        // La deuda del contrato se recalcula desde las facturas: es una proyeccion, no un
+        // valor propio. Fuera de la transaccion a proposito — un fallo al refrescar la
+        // caché no puede deshacer una factura ya emitida.
+        await this.deudaSvc.recalcularPorCliente(clienteId, user.empresaId);
 
         this.generarPdfAsync(saved, user.empresaId, {
           razonSocial: primer.empresa_nombre, ruc: primer.empresa_ruc,
@@ -391,6 +401,7 @@ export class FacturacionService {
           items.push({
             descripcion: this.descripcionItem(contrato, mes, anio),
             cantidad: 1, precioUnitario: sub, descuento: 0, subtotal: sub, tipoItem: 'servicio',
+            contratoId: contrato.contrato_id,
           });
           totalSubtotal += sub; totalIgv += igvItem; totalTotal += tot;
         }
@@ -434,6 +445,8 @@ export class FacturacionService {
           }
           return f;
         });
+
+        await this.deudaSvc.recalcularPorCliente(clienteId, empresaId);
 
         this.generarPdfAsync(saved, empresaId, {
           razonSocial: primer.empresa_nombre, ruc: primer.empresa_ruc,

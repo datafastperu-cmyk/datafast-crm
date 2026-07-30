@@ -68,8 +68,8 @@ export class PortalFacturacionService {
     if (!contrato) throw new NotFoundException('Servicio no encontrado');
 
     // Los nombres son los de la TABLA, no los de la entidad: el correlativo se llama
-    // `correlativo` (no `numero`) y `facturas` NO tiene `deleted_at` — filtrar por él
-    // hacía fallar la consulta entera con SCHEMA_ERROR y la sección no cargaba nunca.
+    // `correlativo`, no `numero`. Usar el nombre de la propiedad hacía fallar la consulta
+    // entera con SCHEMA_ERROR y la sección no cargaba nunca.
     // `saldo` ya lo calcula la base de datos: se usa el suyo para que el portal y el ERP
     // no puedan mostrar cifras distintas de la misma factura.
     const filas = await this.dataSource.query<FilaFactura[]>(
@@ -79,6 +79,7 @@ export class PortalFacturacionService {
          FROM facturas
         WHERE cliente_id  = $2
           AND empresa_id  = $3
+          AND deleted_at IS NULL
           -- contrato_id es NULLABLE y en la práctica muchas facturas se emiten sin él
           -- (la facturación las ata al CLIENTE). Filtrar solo por contrato dejaba la
           -- sección vacía aunque el abonado tuviera recibos pendientes: veía "no tienes

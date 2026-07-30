@@ -12,6 +12,14 @@ export interface ItemFacturaExtendido {
   descuento?:        number;
   subtotal:          number;
   tipoItem?:         TipoItem;
+  // Contrato al que pertenece la línea. El comprobante es CONSOLIDADO por cliente —un
+  // abonado con dos servicios recibe uno solo— y sin esto la deuda deja de ser
+  // atribuible: `contratos.deuda_total` no se puede actualizar, el corte por morosidad
+  // no sabe a qué servicio aplicar y un pago parcial no se puede imputar.
+  // El vínculo vivía solo en el TEXTO de la descripción, y un texto no es una relación.
+  // Opcional: los cargos (mora, reconexión) y las facturas anteriores a este campo no
+  // lo tienen.
+  contratoId?:       string | null;
   // null = heredar carga fiscal del comprobante padre
   // true/false = override explícito (mora siempre false, reconexión siempre true)
   aplicaIgvOverride?: boolean | null;
