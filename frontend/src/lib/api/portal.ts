@@ -313,8 +313,15 @@ export const portalApi = {
     try { await portalHttp.post(`/onu/${contratoId}/heartbeat`); } catch { /* ignorado */ }
   },
 
-  onuWifi: (contratoId: string) =>
-    pedir<PortalWifi>(() => portalHttp.get(`/onu/${contratoId}/wifi`)),
+  // Carga normal: sirve la última lectura conocida (rápida). `refrescar` fuerza una
+  // lectura viva contra el equipo, que espera al CPE y puede tardar varios segundos —
+  // por eso es opt-in y no lo que ocurre al abrir la sección.
+  onuWifi: (contratoId: string, refrescar = false) =>
+    pedir<PortalWifi>(() =>
+      portalHttp.get(`/onu/${contratoId}/wifi`, {
+        params: refrescar ? { refrescar: '1' } : undefined,
+        timeout: refrescar ? 45_000 : undefined,
+      })),
 
   onuGuardarWifi: (contratoId: string, banda: '2.4' | '5', dto: { ssid?: string; password?: string }) =>
     pedir<ResultadoWifi>(() => portalHttp.put(`/onu/${contratoId}/wifi/${banda}`, dto)),

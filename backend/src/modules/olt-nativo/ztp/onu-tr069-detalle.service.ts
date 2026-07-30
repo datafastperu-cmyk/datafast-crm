@@ -237,6 +237,33 @@ export class OnuTr069DetalleService {
   }
 
   /** ConnectionRequest + refreshObject de los árboles del panel → devuelve el detalle fresco. */
+  // Refresco ACOTADO al subárbol WiFi.
+  //
+  // `refresh()` encola 7 lecturas con connection request, cada una esperando al CPE:
+  // sirve para el panel del operador, que muestra todo, pero supera los 30 s del
+  // interceptor global. El portal solo necesita el WLANConfiguration, y para el abonado
+  // una sección que tarda 30 s y acaba en timeout es una sección que "no muestra nada".
+  async refrescarWifi(serial: string): Promise<OnuTr069Detalle> {
+    const deviceId = await this._deviceIdOrThrow(serial);
+
+    // Misma higiene que en `refresh`: las lecturas pendientes se descartan para que la
+    // cola no crezca sin límite si la ONU está inalcanzable (CNT-2026-000004).
+    const pendientes = await this.nbi.listTasks(deviceId).catch(() => []);
+    await Promise.all(
+      pendientes
+        .filter((t) => t.name === 'refreshObject' || t.name === 'getParameterValues')
+        .map((t) => this.nbi.deleteTask(t._id).catch(() => {})),
+    );
+
+    await this.nbi.queueTask(
+      deviceId,
+      { name: 'refreshObject', objectName: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration' },
+      true,
+    ).catch(() => {});
+
+    return this.getDetalle(serial);
+  }
+
   async refresh(serial: string): Promise<OnuTr069Detalle> {
     const deviceId = await this._deviceIdOrThrow(serial);
     // Acotar la cola (CNT-2026-000004, fase gestión continua): si la ONU está inalcanzable,

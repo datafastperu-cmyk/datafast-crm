@@ -102,11 +102,20 @@ export function PortalWifi() {
 }
 
 function BandasWifi({ contratoId }: { contratoId: string }) {
+  const queryClient = useQueryClient();
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['portal-wifi', contratoId],
     queryFn:  () => portalApi.onuWifi(contratoId),
-    // Cada lectura hace un refresh vivo contra el equipo: no se repite sola.
     refetchOnWindowFocus: false,
+  });
+
+  // Releer del equipo es explícito: espera al CPE y puede tardar. Al abrir la sección se
+  // muestra la última lectura conocida con su hora — antes se forzaba el refresco y la
+  // pantalla se quedaba en blanco al agotarse el tiempo.
+  const { mutate: releer, isPending: releyendo } = useMutation({
+    mutationFn: () => portalApi.onuWifi(contratoId, true),
+    onSuccess: (fresco) => queryClient.setQueryData(['portal-wifi', contratoId], fresco),
   });
 
   if (isLoading) {
@@ -135,12 +144,25 @@ function BandasWifi({ contratoId }: { contratoId: string }) {
 
   return (
     <div className="space-y-4">
-      {data.ultimaLectura && (
-        <p className="text-xs text-muted-foreground px-1 flex items-center gap-1.5">
-          <Clock className="w-3.5 h-3.5" />
-          Última lectura del equipo: {new Date(data.ultimaLectura).toLocaleString('es-PE')}
+      {/* La hora de la lectura va SIEMPRE a la vista: es lo que le dice al abonado si lo
+          que ve es de ahora o de hace un rato. */}
+      <div className="flex items-center justify-between gap-3 px-1">
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
+          <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+          {data.ultimaLectura
+            ? `Datos de ${new Date(data.ultimaLectura).toLocaleString('es-PE')}`
+            : 'Sin lectura previa del equipo'}
         </p>
-      )}
+        <button
+          type="button"
+          onClick={() => releer()}
+          disabled={releyendo}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline flex-shrink-0"
+        >
+          {releyendo && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          {releyendo ? 'Consultando tu router…' : 'Actualizar'}
+        </button>
+      </div>
 
       {!data.editable && data.motivoNoEditable && (
         <Aviso icono={AlertTriangle} titulo="Solo lectura" mensaje={data.motivoNoEditable} />

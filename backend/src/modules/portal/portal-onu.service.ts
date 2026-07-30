@@ -197,14 +197,30 @@ export class PortalOnuService implements OnModuleInit {
   }
 
   // ── WiFi ────────────────────────────────────────────────────
-  async wifi(clienteId: string, empresaId: string, contratoId: string): Promise<PortalWifi> {
+  async wifi(
+    clienteId: string,
+    empresaId: string,
+    contratoId: string,
+    refrescar = false,
+  ): Promise<PortalWifi> {
     const registro = await this.exigirRegistro(clienteId, empresaId, contratoId);
     this.exigirAcs();
 
-    // Lectura VIVA antes de pintar: GenieACS sirve el último Inform, que puede ser de
-    // hace horas. Mostrar un SSID rancio en un campo editable hace que el abonado
-    // sobrescriba, sin saberlo, una configuración distinta a la que ve.
-    const detalle = await this.detalle.refresh(registro.sn).catch(() => null);
+    // Por defecto se sirve la ÚLTIMA lectura conocida, no se fuerza una nueva.
+    //
+    // Forzar el refresco al abrir parecía lo correcto —un formulario editable sobre datos
+    // rancios sobrescribe lo que nadie está viendo— pero en la práctica hacía lo
+    // contrario: cada lectura espera al CPE y superaba los 30 s del interceptor, así que
+    // la sección terminaba en timeout y el abonado no veía NADA. Una pantalla vacía es
+    // peor que un dato de hace tres minutos etiquetado con su hora.
+    //
+    // La garantía se mantiene por otra vía: `ultimaLectura` va siempre a la vista, y
+    // editar exige que la sesión TR-069 esté VIVA (lastInform < 12 min), así que el dato
+    // mostrado no puede ser viejo cuando los campos están habilitados. El refresco
+    // explícito queda a un botón.
+    const detalle = refrescar
+      ? await this.detalle.refrescarWifi(registro.sn).catch(() => null)
+      : await this.detalle.getDetalle(registro.sn).catch(() => null);
 
     if (!detalle?.informing) {
       throw new ServiceUnavailableException(

@@ -244,9 +244,14 @@ export class PortalController {
   async onuWifi(
     @ClientePortal() sesion: PortalJwtPayload,
     @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    // `?refrescar=1` fuerza una lectura viva contra el equipo. Es opt-in porque esa
+    // lectura espera al CPE y puede tardar: la carga normal usa el último Inform.
+    @Query('refrescar') refrescar?: string,
   ) {
     await this.exigirSeccion(sesion.empresaId, 'mostrarWifi');
-    return ApiResponse.ok(await this.onu.wifi(sesion.sub, sesion.empresaId, contratoId));
+    return ApiResponse.ok(
+      await this.onu.wifi(sesion.sub, sesion.empresaId, contratoId, refrescar === '1'),
+    );
   }
 
   @Put('onu/:contratoId/wifi/:banda')
