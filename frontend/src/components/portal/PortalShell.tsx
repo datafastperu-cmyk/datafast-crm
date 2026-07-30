@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   Home, User, LogOut, ChevronDown, Wifi, AlertTriangle, Loader2, MapPin, Receipt, Smartphone,
+  Gauge, LifeBuoy,
 } from 'lucide-react';
 
 import { portalApi, PortalError, type PortalServicio } from '@/lib/api/portal';
@@ -17,6 +18,10 @@ interface ItemNav {
   href:  string;
   label: string;
   icon:  typeof Home;
+  // La barra inferior de móvil admite 5 destinos legibles; a partir de ahí los íconos se
+  // aprietan y se vuelven intocables con el pulgar. Las secciones secundarias viven en el
+  // menú de escritorio y se alcanzan desde las tarjetas de Inicio.
+  movil: boolean;
 }
 
 // La navegación crece por fases y respeta los toggles del panel: si el operador apaga
@@ -24,18 +29,25 @@ interface ItemNav {
 // control de acceso, solo su reflejo.
 function construirNav(secciones?: {
   comprobantes: boolean; wifi: boolean; dispositivos: boolean;
+  soporte: boolean; consumo: boolean;
 }): ItemNav[] {
-  const items: ItemNav[] = [{ href: '/portal', label: 'Inicio', icon: Home }];
+  const items: ItemNav[] = [{ href: '/portal', label: 'Inicio', icon: Home, movil: true }];
   if (secciones?.comprobantes) {
-    items.push({ href: '/portal/facturas', label: 'Facturas', icon: Receipt });
+    items.push({ href: '/portal/facturas', label: 'Facturas', icon: Receipt, movil: true });
   }
   if (secciones?.wifi) {
-    items.push({ href: '/portal/wifi', label: 'Mi WiFi', icon: Wifi });
+    items.push({ href: '/portal/wifi', label: 'Mi WiFi', icon: Wifi, movil: true });
   }
   if (secciones?.dispositivos) {
-    items.push({ href: '/portal/dispositivos', label: 'Equipos', icon: Smartphone });
+    items.push({ href: '/portal/dispositivos', label: 'Equipos', icon: Smartphone, movil: false });
   }
-  items.push({ href: '/portal/mis-datos', label: 'Mis datos', icon: User });
+  if (secciones?.consumo) {
+    items.push({ href: '/portal/consumo', label: 'Consumo', icon: Gauge, movil: false });
+  }
+  if (secciones?.soporte) {
+    items.push({ href: '/portal/soporte', label: 'Soporte', icon: LifeBuoy, movil: true });
+  }
+  items.push({ href: '/portal/mis-datos', label: 'Mis datos', icon: User, movil: true });
   return items;
 }
 
@@ -188,7 +200,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           justo donde más se usa es el error clásico de portar un layout de escritorio. */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border">
         <ul className="flex">
-          {nav.map((item) => {
+          {nav.filter((i) => i.movil).map((item) => {
             const activo = esActivo(pathname, item.href);
             const Icono  = item.icon;
             return (

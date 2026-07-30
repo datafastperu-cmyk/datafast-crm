@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Wifi, WifiOff, Loader2, AlertTriangle, CheckCircle2, Clock,
-  Eye, EyeOff, Router,
+  Eye, EyeOff, Router, Smartphone,
 } from 'lucide-react';
 
 import {
@@ -153,6 +154,16 @@ function BandasWifi({ contratoId }: { contratoId: string }) {
           editable={data.editable}
         />
       ))}
+
+      {/* Único acceso a Equipos desde un móvil: la barra inferior solo admite 5 destinos
+          legibles y esta es la sección con la que se relaciona de forma natural. */}
+      <Link
+        href="/portal/dispositivos"
+        className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4 hover:border-primary/50 transition-colors"
+      >
+        <span className="text-sm text-foreground">Ver los equipos conectados a mi red</span>
+        <Smartphone className="w-4 h-4 text-muted-foreground" />
+      </Link>
     </div>
   );
 }

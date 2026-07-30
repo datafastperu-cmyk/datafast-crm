@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 
 import { OltNativoModule } from '../olt-nativo/olt-nativo.module';
+import { TicketsModule } from '../tickets/tickets.module';
 
 import { Cliente } from '../clientes/entities/cliente.entity';
 import { PortalConfig } from './entities/portal-config.entity';
@@ -13,6 +14,8 @@ import { PortalAuthService } from './portal-auth.service';
 import { PortalClienteService } from './portal-cliente.service';
 import { PortalFacturacionService } from './portal-facturacion.service';
 import { PortalOnuService } from './portal-onu.service';
+import { PortalConsumoService } from './portal-consumo.service';
+import { PortalSoporteService } from './portal-soporte.service';
 import { PortalTenantService } from './portal-tenant.service';
 import { PortalController } from './portal.controller';
 import { PortalJwtGuard } from './portal-auth.guard';
@@ -34,6 +37,8 @@ import { PortalJwtGuard } from './portal-auth.guard';
     // El portal reutiliza el plano TR-069 y el carril bajo demanda del modulo OLT:
     // no reimplementa nada del plano de red.
     OltNativoModule,
+    // El portal abre tickets reutilizando la numeracion y el esquema de soporte.
+    TicketsModule,
   ],
   controllers: [PortalConfigController, PortalController],
   providers: [
@@ -42,6 +47,8 @@ import { PortalJwtGuard } from './portal-auth.guard';
     PortalClienteService,
     PortalFacturacionService,
     PortalOnuService,
+    PortalConsumoService,
+    PortalSoporteService,
     PortalTenantService,
     PortalJwtGuard,
   ],

@@ -194,6 +194,42 @@ export interface ResultadoWifi {
   mensaje: string;
 }
 
+export interface ConsumoDia {
+  fecha:   string;
+  rxBytes: number;
+  txBytes: number;
+}
+
+export interface PortalConsumo {
+  desde:        string;
+  hasta:        string;
+  totalRxBytes: number;
+  totalTxBytes: number;
+  dias:         ConsumoDia[];
+  // 'no_disponible' NO significa 0 GB: significa que nadie lo midió. La UI debe
+  // distinguirlos o le atribuye al abonado un consumo que nunca se registró.
+  fuente:       'medido' | 'no_disponible';
+}
+
+export interface PortalTicket {
+  id:           string;
+  numero:       string;
+  titulo:       string;
+  descripcion:  string;
+  categoria:    string;
+  estado:       string;
+  abierto:      boolean;
+  solucion:     string | null;
+  calificacion: number | null;
+  creadoEn:     string;
+  cerradoEn:    string | null;
+}
+
+export interface PortalSoporte {
+  categorias: Array<{ id: string; label: string }>;
+  tickets:    PortalTicket[];
+}
+
 export interface PortalSesion {
   clienteId:      string;
   usuario:        string;
@@ -247,4 +283,21 @@ export const portalApi = {
 
   onuDispositivos: (contratoId: string) =>
     pedir<PortalDispositivo[]>(() => portalHttp.get(`/onu/${contratoId}/dispositivos`)),
+
+  // ── Consumo ────────────────────────────────────────────────
+  consumo: (contratoId: string) =>
+    pedir<PortalConsumo>(() => portalHttp.get(`/consumo/${contratoId}`)),
+
+  // ── Soporte ────────────────────────────────────────────────
+  soporte: () => pedir<PortalSoporte>(() => portalHttp.get('/tickets')),
+
+  crearTicket: (dto: { contratoId: string; categoria: string; descripcion: string }) =>
+    pedir<PortalTicket>(() => portalHttp.post('/tickets', dto)),
+
+  calificarTicket: async (
+    id: string,
+    dto: { calificacion: number; comentario?: string },
+  ): Promise<void> => {
+    await portalHttp.post(`/tickets/${id}/calificar`, dto);
+  },
 };

@@ -1,6 +1,10 @@
 'use client';
 
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { CreditCard, Activity, Gauge, CalendarClock } from 'lucide-react';
+
+import { portalApi } from '@/lib/api/portal';
 
 import { useServicioActual } from './useServicioActual';
 import { cn } from '@/lib/utils';
@@ -86,16 +90,9 @@ export function PortalInicio() {
 
         {/* Consumo: la única tarjeta sin fuente medida todavía. Se muestra vacía a
             propósito — una cifra que nadie midió es una cifra que el abonado puede
-            reclamar y que no podríamos sustentar. */}
-        <Tarjeta
-          etiqueta="Consumo del mes"
-          icono={Gauge}
-          colorIcono="bg-slate-400"
-          valor="Sin datos"
-          valorClase="text-muted-foreground"
-          pie="Aún no medimos el consumo de este servicio"
-          atenuada
-        />
+            reclamar y que no podríamos sustentar. Enlaza al detalle, que es también la
+            única vía para llegar a Consumo desde un móvil (no cabe en la barra inferior). */}
+        <TarjetaConsumo />
       </div>
 
       {/* Resumen del plan */}
@@ -117,6 +114,37 @@ export function PortalInicio() {
         </p>
       </div>
     </div>
+  );
+}
+
+// Lee el consumo real: si algún día hay colector, esta tarjeta muestra los GB sin tocar
+// nada más. Mientras no lo haya, dice que no se mide — nunca "0 GB".
+function TarjetaConsumo() {
+  const { servicio } = useServicioActual();
+  const { data } = useQuery({
+    queryKey: ['portal-consumo', servicio?.contratoId],
+    queryFn:  () => portalApi.consumo(servicio!.contratoId),
+    enabled:  Boolean(servicio?.contratoId),
+    // La sección puede estar apagada por el operador: el 404 es una respuesta, no un
+    // fallo que valga la pena reintentar.
+    retry: false,
+  });
+
+  const medido = data?.fuente === 'medido';
+  const gb = (data?.totalRxBytes ?? 0) / 1e9;
+
+  return (
+    <Link href="/portal/consumo" className="block">
+      <Tarjeta
+        etiqueta="Consumo del mes"
+        icono={Gauge}
+        colorIcono={medido ? 'bg-sky-500' : 'bg-slate-400'}
+        valor={medido ? `${gb.toFixed(1)} GB` : 'Sin datos'}
+        valorClase={medido ? undefined : 'text-muted-foreground'}
+        pie={medido ? 'Descarga acumulada del mes' : 'Aún no medimos el consumo de este servicio'}
+        atenuada={!medido}
+      />
+    </Link>
   );
 }
 
