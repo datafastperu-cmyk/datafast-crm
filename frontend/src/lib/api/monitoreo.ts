@@ -167,18 +167,37 @@ export const monitoreoApi = {
   },
 
   // ── Alertas ────────────────────────────────────────────────
+  // El backend pagina: devuelve `{ items, total, page, limit }`, no un array. Devolver
+  // `res.data.data` directamente entregaba un OBJETO donde la UI espera lista, y el
+  // `.map()` de la pantalla reventaba. Además hay que pedir explícitamente las ACTIVAS:
+  // sin filtro vienen también las resueltas.
   getAlertasActivas: async (): Promise<Alerta[]> => {
-    const res = await api.get<ApiRespuesta<Alerta[]>>('/monitoreo/alertas');
-    return res.data.data ?? [];
+    const res = await api.get<ApiRespuesta<{ items: Alerta[] } | Alerta[]>>('/monitoreo/alertas', {
+      params: { status: 'ACTIVA', limit: 100 },
+    });
+    const data = res.data.data;
+    return Array.isArray(data) ? data : (data?.items ?? []);
   },
 
   // El backend sirve el historial desde el mismo `/monitoreo/alertas` filtrando por
   // parámetros; no existe un `/historial` aparte.
+  //
+  // Los nombres de los filtros TAMPOCO coincidían: el backend acepta `status` y `nivel`
+  // con valores en MAYÚSCULAS ('ACTIVA'|'RESUELTA', 'CRITICA'|'WARNING'), y el frontend
+  // hablaba de `estado` en minúsculas. Un `estado` que el backend ignora devuelve la
+  // lista sin filtrar — peor que un error, porque parece que funciona. `nodoId` no lo
+  // acepta: se descarta aquí en vez de mandarlo y creer que filtra.
   getHistorialAlertas: async (filtros: FiltrosAlerta = {}): Promise<Alerta[]> => {
-    const res = await api.get<ApiRespuesta<Alerta[]>>('/monitoreo/alertas', {
-      params: filtros,
+    const res = await api.get<ApiRespuesta<{ items: Alerta[] } | Alerta[]>>('/monitoreo/alertas', {
+      params: {
+        status: filtros.estado ? filtros.estado.toUpperCase() : undefined,
+        nivel:  filtros.nivel  ? filtros.nivel.toUpperCase()  : undefined,
+        page:   filtros.page,
+        limit:  filtros.limit,
+      },
     });
-    return res.data.data ?? [];
+    const data = res.data.data;
+    return Array.isArray(data) ? data : (data?.items ?? []);
   },
 
   resolverAlerta: async (id: string, motivo?: string): Promise<void> => {
