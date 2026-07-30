@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 
 import { OltNativoModule } from '../olt-nativo/olt-nativo.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { MikrotikModule } from '../mikrotik/mikrotik.module';
 
 import { Cliente } from '../clientes/entities/cliente.entity';
 import { PortalConfig } from './entities/portal-config.entity';
@@ -17,6 +18,8 @@ import { PortalOnuService } from './portal-onu.service';
 import { PortalConsumoService } from './portal-consumo.service';
 import { PortalSoporteService } from './portal-soporte.service';
 import { PortalPlanesService } from './portal-planes.service';
+import { ConsumoColectorService } from './consumo-colector.service';
+import { ConsumoColectorCron } from './consumo-colector.cron';
 import { PortalTenantService } from './portal-tenant.service';
 import { PortalController } from './portal.controller';
 import { PortalJwtGuard } from './portal-auth.guard';
@@ -40,6 +43,8 @@ import { PortalJwtGuard } from './portal-auth.guard';
     OltNativoModule,
     // El portal abre tickets reutilizando la numeracion y el esquema de soporte.
     TicketsModule,
+    // Colector de consumo: lee los contadores de las simple queues.
+    MikrotikModule,
   ],
   controllers: [PortalConfigController, PortalController],
   providers: [
@@ -51,6 +56,8 @@ import { PortalJwtGuard } from './portal-auth.guard';
     PortalConsumoService,
     PortalSoporteService,
     PortalPlanesService,
+    ConsumoColectorService,
+    ConsumoColectorCron,
     PortalTenantService,
     PortalJwtGuard,
   ],
