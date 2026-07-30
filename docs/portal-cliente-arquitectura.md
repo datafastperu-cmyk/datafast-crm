@@ -25,12 +25,11 @@ Fecha: 2026-07-30
 
 ### 1.1 URL y despliegue
 
-- **Subdominio dedicado**, no path. Aísla cookies, CSP y rate-limit del ERP interno; un XSS en el portal no alcanza la sesión del operador.
+- **Subdominio dedicado** cuando hay dominio: aísla cookies, CSP y rate-limit del ERP interno; un XSS en el portal no alcanza la sesión del operador. **Pero no es obligatorio** — exigirlo dejaba sin portal a las instalaciones locales o con solo IP, que también existen. Sin `PORTAL_DOMAIN` el portal se sirve en `/portal` del mismo host; los dos modos y el precio de cada uno están en §14.
 - Dominio **parametrizado por instalación** (regla de portabilidad multi-VPS):
   `PORTAL_DOMAIN=portal.miempresa.pe` en `.env.production` + `.env.example`.
   `20-portal.conf` pasa a plantilla `20-portal.conf.template` con `envsubst` en el arranque del contenedor. Se elimina `portal.tudominio.com` del repo.
-- **Mismo proceso Next**, route group `(portal)`. El `middleware.ts` enruta por `Host`:
-  `host === PORTAL_DOMAIN` → reescribe a `/portal/*` y usa la cookie del portal; cualquier otra ruta bajo ese host → 404. Y al revés: el host del ERP no sirve `/portal/*`.
+- **Mismo proceso Next**, rutas reales bajo `/portal/*` (no rewrite: con rewrite la ruta del navegador y la del router divergen y `usePathname` deja de coincidir con los `href`). El `middleware.ts` enruta por `Host` **solo en modo subdominio**: `host === PORTAL_DOMAIN` → portal; el host del ERP responde 404 a `/portal/*`. Sin `PORTAL_DOMAIN`, `/portal/*` se sirve en el mismo host que el ERP.
 - **PWA instalable** (`next-pwa` ya está). Manifest propio del portal, `display: standalone`, sin service worker de datos (nada de cachear facturas o estado de servicio).
 
 ### 1.2 Autenticación
