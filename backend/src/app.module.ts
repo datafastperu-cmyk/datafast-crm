@@ -67,6 +67,7 @@ import { SchemaGuardModule }           from './modules/schema-guard/schema-guard
 import { SagasModule }                from './modules/sagas/sagas.module';
 import { ReconciliadorModule }        from './modules/reconciliador/reconciliador.module';
 import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pago.module';
+import { PortalModule }               from './modules/portal/portal.module';
 
 @Module({
   imports: [
@@ -225,6 +226,7 @@ import { PromesasPagoModule }         from './modules/promesas-pago/promesas-pag
     SagasModule,
     ReconciliadorModule,
     PromesasPagoModule,
+    PortalModule,
   ],
   providers: [
     { provide: APP_GUARD,       useClass: LicenciaGuard },   // ← PRIMERO: bloquea sin licencia
