@@ -10,6 +10,7 @@ import {
   oltNativoApi, type BaselinePlan, type BaselineAplicacionResultado, type OltBaselineItem,
 } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
+import { useConfirmar } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { BaselineEditorModal } from './BaselineEditorModal';
 
@@ -184,6 +185,7 @@ function PlanPanel({ oltId }: { oltId: string }) {
 // ─── Tab principal ─────────────────────────────────────────────────
 
 export function TabBaseline({ oltId }: { oltId: string }) {
+  const confirmar = useConfirmar();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [mostrarForm, setMostrarForm] = useState(false);
@@ -289,16 +291,26 @@ export function TabBaseline({ oltId }: { oltId: string }) {
           <div className="relative">
             <select
               value={baselineId ?? ''}
-              onChange={e => {
+              onChange={async e => {
                 const nuevo = e.target.value || null;
                 if (nuevo === baselineId) return;
                 const b = baselines.find(x => x.id === nuevo);
                 // Confirmación explícita: reasignar cambia la meta de convergencia
                 // de la OLT (incidente real: un cambio accidental del selector
                 // dejó la OLT apuntando a un baseline de prueba).
-                const ok = window.confirm(
-                  b ? `¿Asignar "${b.nombre}" v${b.version} a esta OLT? El plan de convergencia pasará a medir contra esa versión.`
-                    : '¿Quitar el baseline de esta OLT? Las reglas de baseline dejarán de aplicar.',
+                const ok = await confirmar(
+                  b
+                    ? {
+                        titulo:    'Asignar baseline',
+                        mensaje:   `"${b.nombre}" v${b.version} pasará a ser la meta de convergencia de esta OLT.`,
+                        confirmar: 'Asignar',
+                      }
+                    : {
+                        titulo:    'Quitar baseline',
+                        mensaje:   'Las reglas de baseline dejarán de aplicar a esta OLT.',
+                        confirmar: 'Quitar',
+                        variante:  'peligro' as const,
+                      },
                 );
                 if (ok) asignar.mutate(nuevo);
                 else e.target.value = baselineId ?? '';

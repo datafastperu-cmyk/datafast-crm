@@ -33,6 +33,7 @@ import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
 import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
 import { useToast }                  from '@/components/ui/toaster';
+import { useConfirmar }              from '@/components/ui/confirm-dialog';
 import { formatDate, formatPEN, cn, parseApiError, simboloMoneda, mesNombre } from '@/lib/utils';
 import { ScrollableTabs } from '@/components/ui/ScrollableTabs';
 import type { Contrato, Factura, Pago } from '@/types';
@@ -83,6 +84,7 @@ export function ClienteDetalle({ id }: { id: string }) {
   const router        = useRouter();
   const queryClient   = useQueryClient();
   const { toast }     = useToast();
+  const confirmar     = useConfirmar();
   const [tab, setTab]           = useState<TabKey>('resumen');
   const [reniecStatus, setReniecStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [reniecMsg, setReniecMsg]       = useState('');
@@ -2278,6 +2280,7 @@ const F_SUBTABS: { key: FSubTab; label: string }[] = [
 
 function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos: Contrato[] }) {
   const { toast }         = useToast();
+  const confirmar         = useConfirmar();
   const queryClient       = useQueryClient();
   const puedeEliminarPago = useAuthStore((s) => s.tienePermiso)('pagos:delete');
   const [subTab, setSubTab]         = useState<FSubTab>('facturas');
@@ -2465,8 +2468,14 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                             )}
                             {f.estado !== 'anulada' && f.estado !== 'pagada' && (
                               <button
-                                onClick={() => {
-                                  if (window.confirm('¿Anular esta factura?')) anularFactura(f.id);
+                                onClick={async () => {
+                                  const ok = await confirmar({
+                                    titulo:    'Anular comprobante',
+                                    mensaje:   `Se anulará el comprobante ${f.numeroCompleto ?? ''}. Deja de ser exigible al cliente.`,
+                                    confirmar: 'Anular',
+                                    variante:  'peligro',
+                                  });
+                                  if (ok) anularFactura(f.id);
                                 }}
                                 title="Anular"
                                 className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
@@ -2476,8 +2485,14 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                             )}
                             {f.estado !== 'pagada' && (
                               <button
-                                onClick={() => {
-                                  if (window.confirm('¿Eliminar esta factura? Esta acción no se puede deshacer.')) eliminarFactura(f.id);
+                                onClick={async () => {
+                                  const ok = await confirmar({
+                                    titulo:    'Eliminar comprobante',
+                                    mensaje:   'Se eliminará de forma permanente. Esta acción no se puede deshacer.',
+                                    confirmar: 'Eliminar',
+                                    variante:  'peligro',
+                                  });
+                                  if (ok) eliminarFactura(f.id);
                                 }}
                                 title="Eliminar"
                                 className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
@@ -2569,10 +2584,14 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                             )}
                             {!(p as any).conciliado && puedeEliminarPago && (
                               <button
-                                onClick={() => {
-                                  if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
-                                    eliminarPago(p.id);
-                                  }
+                                onClick={async () => {
+                                  const ok = await confirmar({
+                                    titulo:    'Eliminar pago',
+                                    mensaje:   'Se eliminará el pago y el saldo del comprobante volverá a quedar pendiente. Esta acción no se puede deshacer.',
+                                    confirmar: 'Eliminar',
+                                    variante:  'peligro',
+                                  });
+                                  if (ok) eliminarPago(p.id);
                                 }}
                                 title="Eliminar"
                                 className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"

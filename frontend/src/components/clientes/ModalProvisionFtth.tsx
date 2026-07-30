@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toaster';
+import { useConfirmar } from '@/components/ui/confirm-dialog';
 import {
   oltNativoApi,
   type OltDispositivo,
@@ -157,6 +158,7 @@ const fmtVel = (pirKbps: number | null): string =>
 // ─── Main Modal ────────────────────────────────────────────────
 
 export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; onClose: () => void }) {
+  const confirmar = useConfirmar();
   const qc = useQueryClient();
 
   // Procedimiento operativo: heartbeat mientras el operador está a cargo; lo NO confirmado
@@ -557,18 +559,20 @@ export function ModalProvisionFtth({ contrato, onClose }: { contrato: Contrato; 
   // hay trabajo SIN CONFIRMAR se pide confirmación explícita porque ese trabajo se va a
   // deshacer. Si el procedimiento ya se confirmó (ONU activa y verificada), cierra sin
   // fricción — lo confirmado no se anula por un cierre.
-  const handleClose = () => {
+  const handleClose = async () => {
     const est = estadoExistente?.estado;
     const enProceso = !!est && est !== 'activo' && est !== 'suspendido';
     const hayQueAnular = wizard.hayTrabajoSinConfirmar || enProceso || provIsPending;
 
     if (hayQueAnular) {
-      const ok = window.confirm(
-        'Este procedimiento no ha terminado.\n\n' +
-        'Al cerrar se deshará TODO lo que se ejecutó en esta sesión: la ONU se quitará de la ' +
-        'OLT y se liberarán los recursos reservados. Tendrás que empezar el proceso desde cero.\n\n' +
-        '¿Cerrar de todos modos?',
-      );
+      const ok = await confirmar({
+        titulo:  'El procedimiento no ha terminado',
+        mensaje:
+          'Al cerrar se deshará TODO lo ejecutado en esta sesión: la ONU se quitará de la ' +
+          'OLT y se liberarán los recursos reservados. Tendrás que empezar desde cero.',
+        confirmar: 'Cerrar y deshacer',
+        variante:  'peligro',
+      });
       if (!ok) return;
 
       // Anulación por saga (bitácora de compensación). `ftthCancelar` queda como respaldo

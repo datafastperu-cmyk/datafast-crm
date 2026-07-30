@@ -5,6 +5,7 @@ import { Toaster }           from '@/components/ui/toaster';
 import { QueryProvider }     from '@/components/shared/QueryProvider';
 import { LicenciaProvider }  from '@/components/licencia/LicenciaProvider';
 import { ErrorBoundary }     from '@/components/ui/error-boundary';
+import { ConfirmProvider }   from '@/components/ui/confirm-dialog';
 import { ThemeCustomizer }   from '@/components/layout/ThemeCustomizer';
 import '@/styles/globals.css';
 
@@ -47,7 +48,11 @@ export default function RootLayout({
           <QueryProvider>
             <LicenciaProvider>
               <ErrorBoundary>
-                {children}
+                {/* Las confirmaciones se piden con el diseño del ERP, no con el diálogo
+                    nativo del navegador (que antepone la IP del servidor al mensaje). */}
+                <ConfirmProvider>
+                  {children}
+                </ConfirmProvider>
               </ErrorBoundary>
               <ThemeCustomizer />
             </LicenciaProvider>

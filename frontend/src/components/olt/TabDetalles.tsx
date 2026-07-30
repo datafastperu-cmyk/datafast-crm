@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Loader2, KeyRound, PlugZap, CheckCircle2, XCircle, Info, MapPin } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
 import { useToast } from '@/components/ui/toaster';
+import { useConfirmar } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { ServicePortPoolSection } from './ServicePortPoolSection';
 
@@ -156,6 +157,7 @@ export function TabDetalles({ olt, oltId }: Props) {
 // operaciones FTTH en vuelo contra la OLT.
 
 function ConectividadSection({ olt, oltId }: { olt: OltDispositivo; oltId: string }) {
+  const confirmar = useConfirmar();
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -226,13 +228,17 @@ function ConectividadSection({ olt, oltId }: { olt: OltDispositivo; oltId: strin
     onError: (e: any) => toast(e?.response?.data?.message ?? 'Error al guardar la conectividad', { type: 'error' }),
   });
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     if (!probado?.ok) {
-      const seguir = window.confirm(
-        'No hay una prueba SSH exitosa con estos valores. Si guardas credenciales ' +
-        'incorrectas, TODAS las operaciones contra esta OLT fallarán (sync, provisión, señal).\n\n' +
-        '¿Guardar sin probar? (solo para una OLT temporalmente inalcanzable)',
-      );
+      const seguir = await confirmar({
+        titulo:  'Guardar sin prueba SSH',
+        mensaje:
+          'No hay una prueba SSH exitosa con estos valores. Con credenciales incorrectas, ' +
+          'TODAS las operaciones contra esta OLT fallarán: sync, provisión y lectura de señal. ' +
+          'Continúa solo si la OLT está temporalmente inalcanzable.',
+        confirmar: 'Guardar igual',
+        variante:  'peligro',
+      });
       if (!seguir) return;
     }
     guardarMut.mutate();

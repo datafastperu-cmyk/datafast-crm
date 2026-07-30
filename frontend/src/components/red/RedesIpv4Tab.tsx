@@ -6,11 +6,13 @@ import { Plus, Trash2, Wifi, ChevronDown, X, Network, Pencil, AlertTriangle } fr
 import { redesApi, type SegmentoIpv4, type CreateSegmentoDto, type DisponibilidadSegmento } from '@/lib/api/contratos';
 import type { Router } from '@/lib/api/mikrotik';
 import { useToast } from '@/components/ui/toaster';
+import { useConfirmar } from '@/components/ui/confirm-dialog';
 import { parseApiError, cn } from '@/lib/utils';
 import { Portal } from '@/components/ui/portal';
 
 // ─── Main component ───────────────────────────────────────────
 export function RedesIpv4Tab() {
+  const confirmar = useConfirmar();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [showForm,  setShowForm]  = useState(false);
@@ -36,10 +38,14 @@ export function RedesIpv4Tab() {
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
-  const eliminar = (seg: SegmentoIpv4) => {
-    // eslint-disable-next-line no-restricted-globals
-    if (!confirm(`¿Eliminar el segmento "${seg.nombre}" (${seg.redCidr})? Esta acción no se puede deshacer.`)) return;
-    eliminarMutation(seg.id);
+  const eliminar = async (seg: SegmentoIpv4) => {
+    const ok = await confirmar({
+      titulo:    'Eliminar segmento',
+      mensaje:   `Se eliminará el segmento "${seg.nombre}" (${seg.redCidr}). Esta acción no se puede deshacer.`,
+      confirmar: 'Eliminar',
+      variante:  'peligro',
+    });
+    if (ok) eliminarMutation(seg.id);
   };
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['segmentos-ipv4'] });

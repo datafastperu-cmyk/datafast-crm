@@ -15,6 +15,7 @@ import {
 import { zonasApi } from '@/lib/api/zonas';
 import { proyectosInversionApi } from '@/lib/api/proyectos-inversion';
 import { useToast } from '@/components/ui/toaster';
+import { useConfirmar } from '@/components/ui/confirm-dialog';
 import { cn, formatPEN, formatDate, parseApiError } from '@/lib/utils';
 
 // ─── Tipos locales ────────────────────────────────────────────
@@ -48,6 +49,7 @@ const FORM_EMPTY: CreateEgresoIngresoDto = {
 // ─── Componente ───────────────────────────────────────────────
 
 export function GastosContent() {
+  const confirmar = useConfirmar();
   const queryClient = useQueryClient();
   const { toast }   = useToast();
 
@@ -393,8 +395,14 @@ export function GastosContent() {
                         </button>
                       )}
                       <button
-                        onClick={() => {
-                          if (window.confirm('¿Eliminar este registro?')) borrarMut.mutate(r.id);
+                        onClick={async () => {
+                          const ok = await confirmar({
+                            titulo:    'Eliminar registro',
+                            mensaje:   'Se eliminará este movimiento de forma permanente.',
+                            confirmar: 'Eliminar',
+                            variante:  'peligro',
+                          });
+                          if (ok) borrarMut.mutate(r.id);
                         }}
                         disabled={borrarMut.isPending}
                         title="Eliminar"

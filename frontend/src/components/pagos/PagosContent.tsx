@@ -15,6 +15,7 @@ import { useAuthStore }               from '@/store/auth.store';
 import { zonasApi }                   from '@/lib/api/zonas';
 import { mikrotikApi }                from '@/lib/api/mikrotik';
 import { useToast }    from '@/components/ui/toaster';
+import { useConfirmar } from '@/components/ui/confirm-dialog';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn, formatPEN, formatDate, parseApiError } from '@/lib/utils';
 import type { Pago }   from '@/types';
@@ -36,6 +37,7 @@ export function PagosContent() {
   const router      = useRouter();
   const queryClient = useQueryClient();
   const { toast }   = useToast();
+  const confirmar   = useConfirmar();
 
   const puedeEliminarPago = useAuthStore((s) => s.tienePermiso)('pagos:delete');
 
@@ -422,10 +424,14 @@ export function PagosContent() {
                         )}
                         {!p.conciliado && puedeEliminarPago && (
                           <button
-                            onClick={() => {
-                              if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
-                                eliminar(p.id);
-                              }
+                            onClick={async () => {
+                              const ok = await confirmar({
+                                titulo:    'Eliminar pago',
+                                mensaje:   'Se eliminará el pago y el saldo del comprobante volverá a quedar pendiente. Esta acción no se puede deshacer.',
+                                confirmar: 'Eliminar',
+                                variante:  'peligro',
+                              });
+                              if (ok) eliminar(p.id);
                             }}
                             className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             title="Eliminar"
@@ -502,10 +508,14 @@ export function PagosContent() {
                   )}
                   {!p.conciliado && puedeEliminarPago && (
                     <button
-                      onClick={() => {
-                        if (window.confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) {
-                          eliminar(p.id);
-                        }
+                      onClick={async () => {
+                        const ok = await confirmar({
+                          titulo:    'Eliminar pago',
+                          mensaje:   'Se eliminará el pago y el saldo del comprobante volverá a quedar pendiente. Esta acción no se puede deshacer.',
+                          confirmar: 'Eliminar',
+                          variante:  'peligro',
+                        });
+                        if (ok) eliminar(p.id);
                       }}
                       title="Eliminar"
                       className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
