@@ -67,9 +67,15 @@ export class PortalFacturacionService {
               periodo_inicio, periodo_fin, fecha_emision, fecha_vencimiento, fecha_pago,
               total, monto_pagado, saldo, estado::text AS estado
          FROM facturas
-        WHERE contrato_id = $1
-          AND cliente_id  = $2
+        WHERE cliente_id  = $2
           AND empresa_id  = $3
+          -- `contrato_id` es NULLABLE y en la práctica muchas facturas se emiten sin él
+          -- (la facturación las ata al CLIENTE). Filtrar solo por contrato dejaba la
+          -- sección vacía aunque el abonado tuviera recibos pendientes: veía "no tienes
+          -- deudas" debiendo dinero, que es la peor forma de fallar de esta pantalla.
+          -- Una factura sin contrato es del abonado y se le muestra siempre; con varios
+          -- servicios aparecerá en todos, que es preferible a esconderle una deuda.
+          AND (contrato_id = $1 OR contrato_id IS NULL)
           -- Un borrador todavía no es un compromiso de pago y una anulada dejó de
           -- serlo: mostrar cualquiera de las dos genera un reclamo, no información.
           AND estado NOT IN ('borrador', 'anulada')
