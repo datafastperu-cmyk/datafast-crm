@@ -3534,10 +3534,23 @@ def provision_mgmt_bootstrap(
                 f'provision_mgmt_bootstrap falló en {conn.ip}: {exc}'
             ) from exc
 
-        # parts: [0]config [1]interface [2]ipconfig-static [3]tr069-server-config
-        #        [4]quit [5]service-port [6]interface [7]display-verify
-        raw_create = '\n'.join(parts[:7])
-        verify_out = parts[7] if len(parts) > 7 else ''
+        # La salida de la verificación se localiza POR CONTENIDO, no por índice.
+        #
+        # Antes era `parts[7]`, atado a la posición del `display ont ipconfig` en la lista de
+        # comandos. Al añadir el `ont wan-config` (paso 2c del procedimiento Huawei) todos los
+        # índices se desplazaron y la sonda pasó a leer otro bloque: dio FALSO NEGATIVO sobre
+        # un carril correctamente aplicado (verificado en vivo 2026-07-29 — el ipconfig decía
+        # "Static config" y el bootstrap devolvió success=false). Un falso negativo aquí es
+        # peligroso: el llamador puede revertir un carril que está bien.
+        #
+        # Parsear por posición es frágil por definición: cualquiera que añada un comando rompe
+        # la sonda en silencio, y el síntoma aparece lejos de la causa.
+        idx_verify = next(
+            (i for i, p in enumerate(parts) if 'ONT IP host index' in p or 'ONT config type' in p),
+            None,
+        )
+        verify_out = parts[idx_verify] if idx_verify is not None else ''
+        raw_create = '\n'.join(p for i, p in enumerate(parts) if i != idx_verify)
 
         hubo_error = False
         for pat in error_patterns:
@@ -3650,10 +3663,32 @@ def provision_mgmt_bootstrap(
     # Inform) la confirma el drift-watcher / check_ont_mgmt_ip aparte.
     v = verify_out.lower()
     expect_token = 'static' if modo_l == 'static' else 'dhcp'
-    if expect_token not in v:
+    contrario = 'dhcp' if modo_l == 'static' else 'static'
+
+    if not v.strip():
+        # NO SE PUDO LEER ≠ FALLÓ. Es la distinción que exige la regla VIO del proyecto:
+        # "aceptado, sin confirmar" no es lo mismo que "rechazado". Abortar aquí llevaría al
+        # llamador a revertir un carril que puede estar perfectamente aplicado — y de hecho
+        # lo estaba cuando esto ocurrió (2026-07-29). El drift-watcher y check_ont_mgmt_ip
+        # confirman la materialización real más tarde; esa es la red que cubre este hueco.
+        logger.warning(
+            'provision_mgmt_bootstrap: no se pudo LEER el ipconfig de ont %d/%d/%d en %s — '
+            'el carril queda ACEPTADO SIN CONFIRMAR (no se trata como fallo).',
+            slot, port, onu_id, conn.ip,
+        )
+    elif expect_token not in v and contrario in v:
+        # Leído y CONTRADICE lo pedido: este sí es un fallo real y verificado.
         raise ProvisioningError(
-            f'El IP host de gestión (ip-index 0, {expect_token}) no se configuró en {conn.ip} '
-            f'(ont {slot}/{port}/{onu_id}). Verificación: {verify_out[-200:].strip()}'
+            f'El IP host de gestión (ip-index 0) quedó en "{contrario}" y se pidió '
+            f'"{expect_token}" en {conn.ip} (ont {slot}/{port}/{onu_id}). '
+            f'Verificación: {verify_out[-200:].strip()}'
+        )
+    elif expect_token not in v:
+        # Se leyó algo, pero no se reconoce ninguno de los dos modos: tampoco es un veredicto.
+        logger.warning(
+            'provision_mgmt_bootstrap: ipconfig de ont %d/%d/%d en %s sin modo reconocible '
+            '(ni %s ni %s) — ACEPTADO SIN CONFIRMAR. Salida: %s',
+            slot, port, onu_id, conn.ip, expect_token, contrario, verify_out[-200:].strip(),
         )
 
     # FEC — estabilidad del enlace. Best-effort: no aborta el bootstrap si el modelo no lo soporta.

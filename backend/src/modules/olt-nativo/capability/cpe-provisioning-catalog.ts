@@ -14,11 +14,25 @@
 // GenieACS (VIO: accepted ≠ materialized). Un modelo no catalogado => CPE_MODEL_NOT_SUPPORTED,
 // jamás un intento a ciegas.
 //
-// Evidencia EG8145V5/V5R020C10S195 (CNT-2026-000004): `omci_management_server` NO materializa
-// el ME137 en este firmware (validado con sniffer); `dhcp_bootstrap` (WAN mgmt DHCP + Option 43)
-// SÍ converge (validado end-to-end). Por eso aquí dhcp_bootstrap es CERTIFIED y omci EXPERIMENTAL.
-// En otro firmware donde el ME137 sí funcione, omci_management_server sería el CERTIFIED — la
-// decisión es POR MODELO, nunca una dependencia global de un mecanismo.
+// Evidencia EG8145V5/V5R020C10S195 — CORREGIDA el 2026-07-29:
+//
+// La conclusión previa (CNT-2026-000004) decía que `omci_management_server` NO materializaba el
+// ME137 en este firmware. Era un FALSO NEGATIVO: al procedimiento le faltaban tres pasos del
+// manual oficial de Huawei —`gpon ont home-gateway config-method omci`,
+// `tr069-management ip-index 0` y sobre todo el binding `ont wan-config ip-index 0 profile-id X`—.
+// Sin ese binding el IP-host nunca llega a ser una WAN, así que la config TR-069 no tiene dónde
+// materializarse: el sniffer veía 0 tramas y se atribuyó al firmware.
+//
+// Con el procedimiento completo, AMBOS canales convergen. Se prefiere OMCI porque devuelve al ERP
+// la propiedad del direccionamiento de gestión (IP estática del pool propio) en lugar de depender
+// del pool de leases del MikroTik y de Option 43.
+//
+// LECCIÓN: una conclusión negativa sobre hardware vale lo que vale el procedimiento con que se
+// obtuvo. "No funciona" puede significar "lo estábamos haciendo incompleto", y eso no se distingue
+// sin comparar contra el manual del fabricante o contra un sistema que sí lo logre — aquí, SmartOLT
+// gestionando 204 ONUs del mismo modelo en esta misma OLT con IP estática.
+//
+// La decisión es POR MODELO, nunca una dependencia global de un mecanismo.
 //
 // RIESGO CONFIRMADO: el panel web del EG8145V5 se autobloquea tras 3 logins fallidos
 // (LoginTimes=3, LockLeftTime=42s) y solo escucha en la LAN del cliente (inalcanzable desde
@@ -58,19 +72,38 @@ export const CPE_PROVISIONING_CATALOG: CpeModelCapability[] = [
     firmwaresValidados: ['V5R020C10S195'],
     canales: [
       {
+        // PRIMERO desde 2026-07-29. La conclusión anterior ("el ME137 no materializa en este
+        // firmware") era un FALSO NEGATIVO: al procedimiento le faltaban tres pasos del manual
+        // oficial de Huawei, y el decisivo es el binding `ont wan-config ip-index 0 profile-id X`
+        // — sin él el IP-host nunca llega a ser una WAN, así que la config TR-069 no tiene dónde
+        // aplicarse. También faltaban `gpon ont home-gateway config-method omci` (que en esta OLT
+        // ya estaba... puesto por SmartOLT, no por el ERP) y `tr069-management ip-index 0`.
+        //
+        // Verificado en hardware el 2026-07-29: la ONU pasó de informar por la IP del DHCP
+        // (10.16.0.197) a informar por la IP ESTÁTICA del pool del ERP (10.16.0.10), y siguió
+        // informando con normalidad. Evidencia coincidente: SmartOLT gestiona 204 ONUs del mismo
+        // modelo y firmware en esta misma OLT con IP de gestión estática "via Mgmt IP".
+        //
+        // Se prefiere a DHCP porque devuelve al ERP la propiedad del direccionamiento: IPs
+        // predecibles y estables, sin depender del pool de leases del MikroTik ni de Option 43.
+        canal: 'omci_management_server',
+        confidence: 'CERTIFIED',
+        notas: 'OMCI ME137 (ont tr069-server-config) + IP de gestión ESTÁTICA del pool del ERP, con el ' +
+               'procedimiento oficial completo: config-method omci, tr069-management ip-index 0, ' +
+               'ont wan-config ip-index 0 y tr069-server-config. Validado en hardware 2026-07-29 ' +
+               '(ONU informando por la IP estática del ERP). Su resultado SIEMPRE se verifica contra ' +
+               'GenieACS — nunca se asume éxito.',
+      },
+      {
+        // Sigue CERTIFIED y actúa como red de seguridad: si el OMCI no converge, el resolver
+        // cae aquí solo. No se retira — es un canal probado y es el único que funciona si la
+        // ONU no aplica el ME137 (otro firmware, otro modelo).
         canal: 'dhcp_bootstrap',
         confidence: 'CERTIFIED',
         notas: 'WAN de gestión en DHCP + ACS URL por DHCP Option 43 (servida por el MikroTik de la ' +
                'VLAN de gestión). Validado end-to-end 2026-07-19: lease real + Inform a GenieACS con la ' +
-               'config ACS borrada (solo Option 43 pudo entregar la URL).',
-      },
-      {
-        canal: 'omci_management_server',
-        confidence: 'EXPERIMENTAL',
-        notas: 'OMCI ME137 (ont tr069-server-config, WAN mgmt estática). Aceptado por el CLI de la OLT ' +
-               'pero NO materializa la ACS URL en este firmware (CNT-2026-000004, confirmado con sniffer). ' +
-               'Se mantiene catalogado por ser el estándar y para futuras variantes; su resultado SIEMPRE ' +
-               'se verifica contra GenieACS — nunca se asume éxito.',
+               'config ACS borrada (solo Option 43 pudo entregar la URL). Contrapartida: la IP la decide ' +
+               'el MikroTik, así que el ERP pierde el control del direccionamiento de gestión.',
       },
       {
         canal: 'cpe_local',
