@@ -1,6 +1,6 @@
 # Portal del Cliente — Documento de Arquitectura
 
-Estado: **estructuración aprobada, sin código escrito**
+Estado: **Fases 0 a 6 implementadas y desplegadas al repositorio.** Fase 7 (pasarela real) fuera de alcance por decisión de negocio.
 Fecha: 2026-07-30
 
 ---
@@ -12,7 +12,7 @@ Fecha: 2026-07-30
 | Credenciales | `clientes.usuario_portal` + `password_portal` (bcrypt, `clientes.service.ts:110`). Obligatorias en `ClienteDetalle.tsx:247-248`. **Sin índice único** y **sin endpoint de login**. |
 | WiFi + hosts LAN | `OnuTr069DetalleService.getDetalle/setWifi` → `OnuWifiBand[]`, `OnuHost[]`. Expuesto en `onu/:sn/tr069/*`. Funciona. |
 | Carril TR-069 | Bajo demanda: `POST onu/:contratoId/tr069/activar \| desactivar \| uso`. Barrido por inactividad (TTL 3 d). |
-| Consumo | Tabla `consumo_datos` (fecha, hora, rx/tx bytes, Mbps avg) creada en `1700000009000`. **Nadie la escribe ni la lee — tabla muerta.** |
+| Consumo | Tabla `consumo_datos` creada en `1700000009000`. Al arrancar el proyecto **nadie la escribía**; desde la Fase 6 la alimenta `ConsumoColectorService` — apagado por defecto (`CONSUMO_COLECTOR_ENABLED`). |
 | Facturas / pagos | Módulos completos. Pasarela: MercadoPago. |
 | Planes | `planes.visible_en_portal` **ya existe** (`plan.entity.ts:49`) + `descripcion`. Resuelve el catálogo del portal sin schema nuevo. |
 | Tickets | `tickets.abierto_por_portal` ya existe. |
@@ -380,14 +380,14 @@ La configuración se **cachea en el backend** con invalidación al guardar. El p
 | Fase | Contenido | Bloqueantes |
 |---|---|---|
 | **0** ✅ | Migración de índice único `usuario_portal` + parametrizar `APP_DOMAIN`/`PORTAL_DOMAIN` en nginx/env | Hecha — ver §12 |
-| **0.5** | `portal_config` (tabla + módulo) y panel `/configuracion/portal-cliente`: General, Opciones, Reporte pago, Banners, Diseño | Fase 0 — el portal lee su branding y sus flags de aquí |
-| **1** | Shell del portal: route group `(portal)`, middleware por Host, login, `/me`, selector de contrato, perfil del titular | Fase 0 |
-| **2** | Dashboard + Facturación + botón de pago (maqueta) | Fase 1 |
-| **3** | Mi WiFi: conectar router, lectura de SSID reales, edición con VIO, dispositivos conectados | Fase 1; ONU física para validar |
-| **4** | Consumo (vista + estado `no_disponible`) y Soporte/tickets | Fase 1 |
-| **5** | Catálogo de planes + solicitud de cambio + bandeja en el ERP | Fase 1 |
-| **6** | Colector de consumo real desde MikroTik | Fase 4 |
-| **7** | Pasarela de pago real | Fase 2 |
+| **0.5** ✅ | `portal_config` (tabla + módulo) y panel `/configuracion/portal-cliente`: General, Opciones, Reporte pago, Banners, Diseño | Fase 0 — el portal lee su branding y sus flags de aquí |
+| **1** ✅ | Shell del portal: route group `(portal)`, middleware por Host, login, `/me`, selector de contrato, perfil del titular | Fase 0 |
+| **2** ✅ | Dashboard + Facturación + botón de pago (maqueta) | Fase 1 |
+| **3** ✅ | Mi WiFi: conectar router, lectura de SSID reales, edición con VIO, dispositivos conectados | Fase 1; ONU física para validar |
+| **4** ✅ | Consumo (vista + estado `no_disponible`) y Soporte/tickets | Fase 1 |
+| **5** ✅ | Catálogo de planes + solicitud de cambio + bandeja en el ERP | Fase 1 |
+| **6** ✅ | Colector de consumo real desde MikroTik | Hecha — apagada por defecto (`CONSUMO_COLECTOR_ENABLED`) |
+| **7** | Pasarela de pago real | **Fuera de alcance por decisión de negocio**: los pagos quedan como maqueta hasta nuevo aviso |
 
 ---
 

@@ -96,10 +96,15 @@ export class PortalConfigService {
       );
     }
 
-    if (config.mostrarConsumo) {
+    // La advertencia se emite contra el estado REAL del colector, no contra una
+    // suposición escrita cuando aún no existía: un aviso que no se corresponde con el
+    // servidor entrena al operador a ignorarlos todos.
+    const colectorActivo =
+      (process.env.CONSUMO_COLECTOR_ENABLED ?? 'false').toLowerCase() === 'true';
+    if (config.mostrarConsumo && !colectorActivo) {
       avisos.push(
-        'La sección de consumo está habilitada, pero todavía no existe colector de datos: ' +
-          'el cliente verá la tarjeta vacía.',
+        'La sección de consumo está habilitada pero el colector está apagado en este ' +
+          'servidor (CONSUMO_COLECTOR_ENABLED): el cliente verá la tarjeta sin datos.',
       );
     }
 

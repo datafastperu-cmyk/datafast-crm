@@ -38,7 +38,7 @@ const SECCIONES: Array<{ campo: keyof PortalConfig; label: string; ayuda?: strin
   { campo: 'mostrarPlanes',         label: 'Catálogo de planes', ayuda: 'Lista los planes marcados como visibles en el portal.' },
   { campo: 'mostrarBanner',         label: 'Banner de publicidad' },
   { campo: 'mostrarMenuPersonalizado', label: 'Menú personalizado' },
-  { campo: 'mostrarConsumo',        label: 'Consumo de datos',   ayuda: 'Aún no hay colector de consumo: la sección se verá vacía.' },
+  { campo: 'mostrarConsumo',        label: 'Consumo de datos',   ayuda: 'Requiere el colector activo (CONSUMO_COLECTOR_ENABLED en el servidor). Sin él, la sección se muestra sin datos.' },
 ];
 
 export function PortalClienteTab() {
