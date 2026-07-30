@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { QueueService } from '../mikrotik/services/queue.service';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 // Colector de consumo: convierte los contadores acumulados de las simple queues de
 // RouterOS en consumo por hora y contrato (`consumo_datos`).
@@ -43,13 +44,30 @@ interface FilaContrato {
 interface Snapshot { rx: number; tx: number }
 
 @Injectable()
-export class ConsumoColectorService {
+export class ConsumoColectorService implements OnModuleInit {
   private readonly logger = new Logger(ConsumoColectorService.name);
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly queues: QueueService,
+    private readonly moduleHealth: ModuleHealthService,
   ) {}
+
+  // El colector apagado NO es una avería, pero sí explica un síntoma visible: el abonado
+  // ve "Sin datos" en su consumo. Publicarlo en /health/modules con el motivo evita que
+  // alguien lo diagnostique como un bug del portal. Se registra como `degraded` porque
+  // la función no está entregando datos — con la razón dejando claro que es deliberado.
+  onModuleInit(): void {
+    if (this.habilitado()) {
+      this.moduleHealth.registrar('portal-consumo', 'ok');
+      return;
+    }
+    this.moduleHealth.registrar(
+      'portal-consumo', 'degraded',
+      'Colector apagado por configuración (CONSUMO_COLECTOR_ENABLED=false). El portal ' +
+      'declara el consumo como "sin datos" en vez de mostrar 0 GB.',
+    );
+  }
 
   habilitado(): boolean {
     return getColectorHabilitado();

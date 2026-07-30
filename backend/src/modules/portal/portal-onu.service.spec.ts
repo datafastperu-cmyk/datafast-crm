@@ -5,6 +5,7 @@ import { Cache } from 'cache-manager';
 import { PortalOnuService } from './portal-onu.service';
 import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
 import { OnuTr069DetalleService, OnuTr069Detalle } from '../olt-nativo/ztp/onu-tr069-detalle.service';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 // VIO en el portal: "aceptado" y "materializado" son estados distintos, y al abonado
 // NUNCA se le dice "guardado" sin haberlo releído del equipo.
@@ -38,6 +39,7 @@ describe('PortalOnuService — WiFi del abonado', () => {
   let svc: PortalOnuService;
   let detalle: jest.Mocked<Pick<OnuTr069DetalleService, 'isReady' | 'getDetalle' | 'refresh' | 'setWifi'>>;
   let cache: jest.Mocked<Pick<Cache, 'get' | 'set' | 'del'>>;
+  let salud: jest.Mocked<Pick<ModuleHealthService, 'registrar'>>;
 
   const filaRegistro = {
     registro_id: 'reg-1',
@@ -71,6 +73,10 @@ describe('PortalOnuService — WiFi del abonado', () => {
       del: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<Pick<Cache, 'get' | 'set' | 'del'>>;
 
+    salud = { registrar: jest.fn() } as unknown as jest.Mocked<
+      Pick<ModuleHealthService, 'registrar'>
+    >;
+
     const ftth = {
       activarCarril: jest.fn().mockResolvedValue({ estado: 'activando', mensaje: '' }),
       marcarUsoTr069: jest.fn().mockResolvedValue(undefined),
@@ -80,6 +86,7 @@ describe('PortalOnuService — WiFi del abonado', () => {
       dataSource,
       ftth,
       detalle as unknown as OnuTr069DetalleService,
+      salud as unknown as ModuleHealthService,
       cache as unknown as Cache,
     );
   });
@@ -211,6 +218,7 @@ describe('PortalOnuService — WiFi del abonado', () => {
         dataSourceVacio,
         { activarCarril: jest.fn(), marcarUsoTr069: jest.fn() } as unknown as ProvisionFtthService,
         detalle as unknown as OnuTr069DetalleService,
+        salud as unknown as ModuleHealthService,
         cache as unknown as Cache,
       );
 
@@ -227,6 +235,36 @@ describe('PortalOnuService — WiFi del abonado', () => {
         disponible: false,
         motivo: 'acs_degradado',
       });
+    });
+  });
+
+  // La degradación tiene que ser VISIBLE para el operador, no solo para el abonado: sin
+  // esto, un ACS caído se descubre cuando alguien llama diciendo que no puede cambiar su
+  // WiFi, en vez de mirando /health/modules.
+  describe('salud publicada del módulo', () => {
+    it('con GenieACS configurado se registra ok', () => {
+      detalle.isReady.mockReturnValue(true);
+      svc.onModuleInit();
+
+      expect(salud.registrar).toHaveBeenCalledWith('portal-red', 'ok');
+    });
+
+    it('sin GenieACS se registra degradado con el motivo', () => {
+      detalle.isReady.mockReturnValue(false);
+      svc.onModuleInit();
+
+      expect(salud.registrar).toHaveBeenCalledWith(
+        'portal-red', 'degraded', expect.stringContaining('GenieACS'),
+      );
+    });
+
+    it('si el probe revienta NO relanza: crashearía el backend por una sección opcional', () => {
+      detalle.isReady.mockImplementation(() => { throw new Error('boom'); });
+
+      expect(() => svc.onModuleInit()).not.toThrow();
+      expect(salud.registrar).toHaveBeenCalledWith(
+        'portal-red', 'degraded', expect.stringContaining('boom'),
+      );
     });
   });
 });

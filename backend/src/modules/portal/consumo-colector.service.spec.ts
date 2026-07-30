@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 
 import { ConsumoColectorService } from './consumo-colector.service';
 import { QueueService } from '../mikrotik/services/queue.service';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 // Los contadores de RouterOS son ACUMULADOS desde que la queue se creó. Todo el colector
 // se sostiene sobre convertirlos en deltas correctamente; estos tests fijan los tres casos
@@ -58,12 +59,18 @@ function colectorCon({ snapshotPrevio, bytesQueue }: Escenario) {
     ]),
   } as unknown as QueueService;
 
-  const svc = new ConsumoColectorService({ query } as unknown as DataSource, queues);
+  const salud = { registrar: jest.fn() } as unknown as ModuleHealthService;
+
+  const svc = new ConsumoColectorService(
+    { query } as unknown as DataSource,
+    queues,
+    salud,
+  );
 
   const consumoEscrito = () =>
     escrituras.find((e) => e.sql.includes('INSERT INTO consumo_datos'));
 
-  return { svc, consumoEscrito, escrituras };
+  return { svc, consumoEscrito, escrituras, salud };
 }
 
 describe('ConsumoColectorService', () => {
@@ -162,6 +169,27 @@ describe('ConsumoColectorService', () => {
     expect(
       (svc as unknown as { queues: QueueService }).queues.listarSimpleQueues,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  // El colector apagado no es una avería, pero explica el "Sin datos" que ve el abonado.
+  // Publicarlo con su motivo evita que se diagnostique como un bug del portal.
+  it('apagado: se publica en la salud del módulo con el motivo', () => {
+    process.env.CONSUMO_COLECTOR_ENABLED = 'false';
+    const { svc, salud } = colectorCon({ bytesQueue: '1000/2000' });
+
+    svc.onModuleInit();
+
+    expect(salud.registrar).toHaveBeenCalledWith(
+      'portal-consumo', 'degraded', expect.stringContaining('CONSUMO_COLECTOR_ENABLED'),
+    );
+  });
+
+  it('encendido: se publica como ok', () => {
+    const { svc, salud } = colectorCon({ bytesQueue: '1000/2000' });
+
+    svc.onModuleInit();
+
+    expect(salud.registrar).toHaveBeenCalledWith('portal-consumo', 'ok');
   });
 
   it('un router inalcanzable no detiene la recolección', async () => {

@@ -321,7 +321,18 @@ Todos bajo `PortalJwtGuard` salvo `login`. Todos validan pertenencia del recurso
 ## 9. Módulo degradable
 
 `PortalModule` **no** es Core Indestructible en su parte de red: WiFi, dispositivos y consumo dependen de GenieACS/OLT/MikroTik.
-`implements OnModuleInit` con probe ligero; si GenieACS no responde, el módulo arranca `degraded` y **las secciones de red se muestran no disponibles**, mientras facturas, perfil y tickets siguen funcionando. El portal nunca cae entero porque un ACS esté caído.
+La degradación es **por sección, no por módulo**: autenticación, perfil, servicios, facturación, soporte y planes solo dependen de la BD principal y no pueden caerse por hardware. El portal nunca cae entero porque un ACS esté caído.
+
+Dos servicios publican su salud en `GET /health/modules` (`implements OnModuleInit`, probe ligero, sin relanzar nunca):
+
+| Módulo | `ok` | `degraded` |
+|---|---|---|
+| `portal-red` | GenieACS configurado | `GENIEACS_NBI_URL` vacío → Mi WiFi y Dispositivos no disponibles; el resto del portal funciona |
+| `portal-consumo` | colector activo | `CONSUMO_COLECTOR_ENABLED=false` → el portal declara el consumo como "sin datos" |
+
+**El colector apagado se publica como `degraded` a propósito**, aunque sea una decisión deliberada: no es una avería, pero **es** la explicación del "Sin datos" que ve el abonado. Sin ese registro, el síntoma se diagnostica como un bug del portal.
+
+`portal-red` sondea **configuración, no liveness**: `isReady()` mira si el NBI está configurado, y eso no cambia en caliente. La salud del ACS vivo la publica el módulo `tr069`, que sí lo sondea — duplicar ese sondeo aquí sería un segundo poller contra GenieACS que puede contradecir al primero.
 
 ---
 

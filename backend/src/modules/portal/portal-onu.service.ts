@@ -1,6 +1,6 @@
 import {
   Injectable, NotFoundException, BadRequestException,
-  ForbiddenException, ServiceUnavailableException, Logger, Inject,
+  ForbiddenException, ServiceUnavailableException, Logger, Inject, OnModuleInit,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -8,6 +8,7 @@ import { Cache } from 'cache-manager';
 
 import { ProvisionFtthService } from '../olt-nativo/services/provision-ftth.service';
 import { OnuTr069DetalleService, OnuHost } from '../olt-nativo/ztp/onu-tr069-detalle.service';
+import { ModuleHealthService } from '../../common/services/module-health.service';
 
 // Mi WiFi y dispositivos conectados, desde la óptica del abonado.
 //
@@ -70,15 +71,47 @@ interface FilaRegistro {
 }
 
 @Injectable()
-export class PortalOnuService {
+export class PortalOnuService implements OnModuleInit {
   private readonly logger = new Logger(PortalOnuService.name);
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly ftth: ProvisionFtthService,
     private readonly detalle: OnuTr069DetalleService,
+    private readonly moduleHealth: ModuleHealthService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
+
+  // Las secciones de red del portal (Mi WiFi, dispositivos) dependen de GenieACS. Ya se
+  // degradaban de cara al abonado —muestran "no disponible" con motivo mientras el resto
+  // del portal sigue en pie—, pero esa degradación era INVISIBLE para el operador: no
+  // figuraba en /health/modules. Con el portal en producción, ese es justo el dato que se
+  // mira primero cuando alguien reporta "no puedo cambiar mi WiFi".
+  //
+  // El probe es un chequeo de configuración, no de liveness: `isReady()` mira si el NBI
+  // está configurado, y eso no cambia en caliente. La salud del ACS vivo la publica el
+  // módulo `tr069`, que sí lo sondea; duplicar ese sondeo aquí sería un segundo poller
+  // contra GenieACS que puede contradecir al primero.
+  onModuleInit(): void {
+    try {
+      if (this.detalle.isReady()) {
+        this.moduleHealth.registrar('portal-red', 'ok');
+      } else {
+        this.moduleHealth.registrar(
+          'portal-red', 'degraded',
+          'GenieACS no configurado (GENIEACS_NBI_URL vacío): Mi WiFi y Dispositivos ' +
+          'quedan no disponibles en el portal. El resto del portal funciona.',
+        );
+      }
+    } catch (err) {
+      // NUNCA relanzar en onModuleInit: crashearía el backend por una sección opcional
+      // del portal, cuando facturas y perfil pueden seguir sirviéndose sin problema.
+      this.moduleHealth.registrar(
+        'portal-red', 'degraded',
+        `No se pudo determinar el estado del plano TR-069: ${(err as Error).message}`,
+      );
+    }
+  }
 
   // ── Estado del carril ───────────────────────────────────────
   async estado(
