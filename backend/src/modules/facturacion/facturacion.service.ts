@@ -230,7 +230,10 @@ export class FacturacionService {
             this.calcularMontosDesdeBase(precioBase, 0, contratoAplicaIgv, igvRate);
 
           items.push({
-            descripcion:    `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
+            // Con el comprobante consolidado, la línea es lo único que ata un importe a
+            // un servicio concreto: sin el número de contrato el cliente no puede
+            // reconocer cuál de sus servicios está pagando.
+            descripcion:    this.descripcionItem(contrato, mes, anio),
             cantidad:       1,
             precioUnitario: sub,
             descuento:      0,
@@ -261,9 +264,7 @@ export class FacturacionService {
         const diaFact         = parseInt(primer.dia_facturacion || '1', 10);
         const vencimientoDate = new Date(anio, mes - 1, diaFact + diasGracia);
         const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
-        const descripcion = grupo.length === 1
-          ? `${comprobante.nombre} — ${primer.plan_nombre} · ${this.mesNombre(mes)} ${anio}`
-          : `${comprobante.nombre} — Servicios contratados · ${this.mesNombre(mes)} ${anio}`;
+        const descripcion = this.descripcionConsolidada(comprobante.nombre, grupo, mes, anio);
 
         const factura = this.facturaRepo.create({
           empresaId:               user.empresaId,
@@ -388,7 +389,7 @@ export class FacturacionService {
             this.calcularMontosDesdeBase(precioBase, 0, contratoAplicaIgv, igvRate);
 
           items.push({
-            descripcion: `${contrato.plan_nombre} — ${this.mesNombre(mes)} ${anio}`,
+            descripcion: this.descripcionItem(contrato, mes, anio),
             cantidad: 1, precioUnitario: sub, descuento: 0, subtotal: sub, tipoItem: 'servicio',
           });
           totalSubtotal += sub; totalIgv += igvItem; totalTotal += tot;
@@ -410,9 +411,7 @@ export class FacturacionService {
         const serie = comprobante.serie;
         const vencimientoDate  = new Date(anio, mes - 1, dia + diasGracia);
         const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
-        const descripcion = grupo.length === 1
-          ? `${comprobante.nombre} — ${primer.plan_nombre} · ${this.mesNombre(mes)} ${anio}`
-          : `${comprobante.nombre} — Servicios contratados · ${this.mesNombre(mes)} ${anio}`;
+        const descripcion = this.descripcionConsolidada(comprobante.nombre, grupo, mes, anio);
 
         const factura = this.facturaRepo.create({
           empresaId, clienteId, contratoId: null,
@@ -885,6 +884,57 @@ export class FacturacionService {
   private ultimoDiaMes(anio: number, mes: number): string {
     const ultimo = new Date(anio, mes, 0).getDate();
     return `${anio}-${String(mes).padStart(2, '0')}-${ultimo}`;
+  }
+
+  // Línea de detalle de un servicio dentro del comprobante. Lleva el contrato porque en
+  // un consolidado es lo único que identifica de forma inequívoca a qué servicio
+  // corresponde el importe — dos servicios pueden tener el mismo plan.
+  private descripcionItem(
+    contrato: { numero_contrato?: string; plan_nombre?: string; direccion_instalacion?: string },
+    mes: number,
+    anio: number,
+  ): string {
+    const partes = [contrato.plan_nombre ?? 'Servicio de internet'];
+    if (contrato.numero_contrato) partes.push(`Contrato ${contrato.numero_contrato}`);
+    if (contrato.direccion_instalacion) partes.push(contrato.direccion_instalacion);
+    return `${partes.join(' · ')} — ${this.mesNombre(mes)} ${anio}`;
+  }
+
+  // ── Descripción de un comprobante consolidado ────────────────────────────
+  //
+  // El comprobante se emite a nombre del CLIENTE, no del contrato: un abonado con dos
+  // servicios recibe uno solo (por eso `contrato_id` va en null, es diseño, no un hueco).
+  // La contrapartida es que "Servicios contratados" no le dice al cliente por qué paga
+  // ese importe: no puede reconocer qué servicio corresponde a qué monto ni a qué
+  // contrato, y esa es justo la pregunta que llega a soporte.
+  //
+  // Así que la descripción enumera cada servicio con su contrato y su importe. Un solo
+  // servicio conserva la forma corta: repetir el contrato en una línea que ya es
+  // inequívoca solo añade ruido.
+  private descripcionConsolidada(
+    nombreComprobante: string,
+    grupo: Array<{ numero_contrato?: string; plan_nombre?: string; precio?: string }>,
+    mes: number,
+    anio: number,
+    simbolo = 'S/',
+  ): string {
+    const periodo = `${this.mesNombre(mes)} ${anio}`;
+
+    if (grupo.length === 1) {
+      const c = grupo[0];
+      const contrato = c.numero_contrato ? ` (${c.numero_contrato})` : '';
+      return `${nombreComprobante} — ${c.plan_nombre ?? 'Servicio'}${contrato} · ${periodo}`;
+    }
+
+    const detalle = grupo
+      .map((c) => {
+        const contrato = c.numero_contrato ? `${c.numero_contrato}: ` : '';
+        const monto = `${simbolo} ${Number(c.precio ?? 0).toFixed(2)}`;
+        return `${contrato}${c.plan_nombre ?? 'Servicio'} ${monto}`;
+      })
+      .join(' | ');
+
+    return `${nombreComprobante} — ${periodo} · ${detalle}`;
   }
 
   private mesNombre(mes: number): string {

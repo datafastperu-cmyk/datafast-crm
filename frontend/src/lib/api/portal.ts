@@ -133,10 +133,18 @@ export interface PortalPerfil {
 
 export type EstadoFacturaVisible = 'pagada' | 'pendiente' | 'vencida';
 
+export interface PortalDetalleFactura {
+  descripcion: string;
+  importe:     number;
+}
+
 export interface PortalFactura {
   id:               string;
   numero:           string;
   concepto:         string;
+  // Desglose por servicio: el comprobante es consolidado por cliente, asi que el total
+  // no dice cuanto corresponde a cada servicio.
+  detalle:          PortalDetalleFactura[];
   periodoInicio:    string;
   periodoFin:       string;
   fechaEmision:     string;

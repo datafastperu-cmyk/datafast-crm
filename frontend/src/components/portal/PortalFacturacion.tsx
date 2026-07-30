@@ -138,6 +138,23 @@ export function PortalFacturacion() {
                   </span>
                 </div>
 
+                {/* Desglose por servicio. El recibo es consolidado: sin esto, un abonado
+                    con dos servicios ve un importe y no puede saber a qué corresponde.
+                    Cada línea trae plan, contrato y dirección. */}
+                {f.detalle.length > 0 && (
+                  <ul className="mt-3 space-y-1">
+                    {f.detalle.map((d, i) => (
+                      <li
+                        key={`${f.id}-${i}`}
+                        className="flex items-baseline justify-between gap-3 text-xs"
+                      >
+                        <span className="text-muted-foreground min-w-0">{d.descripcion}</span>
+                        <span className="text-foreground flex-shrink-0">{soles(d.importe)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
                 <div className="mt-3 pt-3 border-t border-border flex items-baseline justify-between gap-3">
                   <span className="text-xs text-muted-foreground">
                     {f.estado === 'pagada'

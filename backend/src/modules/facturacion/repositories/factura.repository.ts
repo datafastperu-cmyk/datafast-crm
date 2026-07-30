@@ -268,6 +268,9 @@ export class FacturaRepository {
       SELECT
         co.id                   AS contrato_id,
         co.numero_contrato,
+        -- Va al detalle del comprobante: con un consolidado, dos servicios del MISMO
+        -- plan solo se distinguen por su contrato y su dirección de instalación.
+        co.direccion_instalacion,
         CAST(co.precio_final AS FLOAT) AS precio,
         CAST(co.descuento_pct AS FLOAT) AS descuento_pct,
         co.dia_facturacion,

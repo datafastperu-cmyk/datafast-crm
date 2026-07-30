@@ -9,10 +9,19 @@ import { DataSource } from 'typeorm';
 
 export type EstadoVisible = 'pagada' | 'pendiente' | 'vencida';
 
+export interface PortalDetalleFactura {
+  descripcion: string;
+  importe:     number;
+}
+
 export interface PortalFactura {
   id:               string;
   numero:           string;
   concepto:         string;
+  // Desglose por servicio. El comprobante es CONSOLIDADO por cliente: con dos servicios,
+  // el importe total no le dice al abonado cuánto corresponde a cada uno. Sin esto, la
+  // pregunta "¿por qué pago esto?" acaba en soporte.
+  detalle:          PortalDetalleFactura[];
   periodoInicio:    string;
   periodoFin:       string;
   fechaEmision:     string;
@@ -37,6 +46,7 @@ interface FilaFactura {
   descripcion: string; periodo_inicio: string; periodo_fin: string;
   fecha_emision: string; fecha_vencimiento: string; fecha_pago: string | null;
   total: string; monto_pagado: string; saldo: string | null; estado: string;
+  items: Array<{ descripcion?: string; subtotal?: number; total?: number }> | null;
 }
 
 @Injectable()
@@ -65,7 +75,7 @@ export class PortalFacturacionService {
     const filas = await this.dataSource.query<FilaFactura[]>(
       `SELECT id, numero_completo, serie, correlativo, descripcion,
               periodo_inicio, periodo_fin, fecha_emision, fecha_vencimiento, fecha_pago,
-              total, monto_pagado, saldo, estado::text AS estado
+              total, monto_pagado, saldo, items, estado::text AS estado
          FROM facturas
         WHERE cliente_id  = $2
           AND empresa_id  = $3
@@ -112,6 +122,14 @@ export class PortalFacturacionService {
       id:               f.id,
       numero:           f.numero_completo ?? `${f.serie}-${f.correlativo}`,
       concepto:         f.descripcion,
+      // Cada línea ya trae plan, contrato y dirección; aquí solo se proyecta lo que el
+      // abonado necesita ver. `items` es jsonb: puede venir nulo en facturas antiguas.
+      detalle: (f.items ?? [])
+        .filter((i) => i?.descripcion)
+        .map((i) => ({
+          descripcion: String(i.descripcion),
+          importe:     Number(i.total ?? i.subtotal ?? 0),
+        })),
       periodoInicio:    f.periodo_inicio,
       periodoFin:       f.periodo_fin,
       fechaEmision:     f.fecha_emision,
