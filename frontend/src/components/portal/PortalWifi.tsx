@@ -253,6 +253,14 @@ function BandasWifi({
     refetchOnWindowFocus: false,
   });
 
+  // Arranca en la vista separada solo si las bandas YA están distintas: ese abonado las
+  // separó a propósito y colapsarlas le borraría la configuración sin avisar.
+  const bandasDistintas =
+    (data?.bandas.length ?? 0) === 2 &&
+    data!.bandas[0].ssid !== data!.bandas[1].ssid;
+  const [porBanda, setPorBanda] = useState(false);
+  useEffect(() => { if (bandasDistintas) setPorBanda(true); }, [bandasDistintas]);
+
   // Releer del equipo es explícito: espera al CPE y puede tardar. Al abrir la sección se
   // muestra la última lectura conocida con su hora — antes se forzaba el refresco y la
   // pantalla se quedaba en blanco al agotarse el tiempo.
@@ -325,15 +333,40 @@ function BandasWifi({
         />
       )}
 
-      {data.bandas.map((banda) => (
-        <TarjetaBanda
-          key={banda.banda}
+      {/* Vista unificada por defecto: para el abonado su WiFi es UNA red, no dos. El
+          formulario por banda solo le daba dos oportunidades de dejarlas desincronizadas.
+          La separada sigue disponible para quien la necesita — hay equipos IoT que solo
+          funcionan en 2.4 y se confunden si ven el mismo nombre en 5 GHz. */}
+      {porBanda ? (
+        <>
+          {data.bandas.map((banda) => (
+            <TarjetaBanda
+              key={banda.banda}
+              contratoId={contratoId}
+              banda={banda}
+              editable={data.editable}
+              ubicacion={servicio?.direccion ?? null}
+            />
+          ))}
+        </>
+      ) : (
+        <TarjetaWifiUnificada
           contratoId={contratoId}
-          banda={banda}
+          bandas={data.bandas}
           editable={data.editable}
           ubicacion={servicio?.direccion ?? null}
         />
-      ))}
+      )}
+
+      <button
+        type="button"
+        onClick={() => setPorBanda((v) => !v)}
+        className="text-xs font-medium text-primary hover:underline px-1"
+      >
+        {porBanda
+          ? 'Usar el mismo nombre y clave en ambas redes'
+          : 'Configurar cada banda por separado'}
+      </button>
 
       {/* Único acceso a Equipos desde un móvil: la barra inferior solo admite 5 destinos
           legibles y esta es la sección con la que se relaciona de forma natural. */}
@@ -344,6 +377,170 @@ function BandasWifi({
         <span className="text-sm text-foreground">Ver los equipos conectados a mi red</span>
         <Smartphone className="w-4 h-4 text-muted-foreground" />
       </Link>
+    </div>
+  );
+}
+
+// Un solo nombre y una sola clave para las dos bandas. El equipo elige la mejor para
+// cada dispositivo (band steering), que es como funciona cualquier router doméstico hoy.
+function TarjetaWifiUnificada({
+  contratoId, bandas, editable, ubicacion,
+}: {
+  contratoId: string;
+  bandas: PortalBandaWifi[];
+  editable: boolean;
+  ubicacion: string | null;
+}) {
+  const queryClient = useQueryClient();
+  // Si ambas coinciden se muestra ese nombre; si no, se deja vacío para no dar por bueno
+  // el de una de las dos.
+  const comun = bandas.length === 2 && bandas[0].ssid === bandas[1].ssid
+    ? bandas[0].ssid ?? ''
+    : '';
+
+  const [ssid, setSsid]           = useState(comun);
+  const [clave, setClave]         = useState('');
+  const [verClave, setVerClave]   = useState(false);
+  const [confirmar, setConfirmar] = useState(false);
+  const [resultado, setResultado] = useState<ResultadoWifi | null>(null);
+  const [error, setError]         = useState<string | null>(null);
+
+  useEffect(() => { setSsid(comun); }, [comun]);
+
+  const cambioSsid  = ssid.trim() !== comun.trim() && ssid.trim() !== '';
+  const cambioClave = clave.length > 0;
+  const hayCambios  = cambioSsid || cambioClave;
+
+  const { mutate: guardar, isPending } = useMutation({
+    mutationFn: () =>
+      portalApi.onuGuardarWifiAmbas(contratoId, {
+        ssid: cambioSsid ? ssid.trim() : undefined,
+        password: cambioClave ? clave : undefined,
+      }),
+    onSuccess: (res) => {
+      setResultado(res); setError(null); setClave(''); setConfirmar(false);
+      queryClient.invalidateQueries({ queryKey: ['portal-wifi', contratoId] });
+    },
+    onError: (e) => {
+      setError(e instanceof PortalError ? e.message : 'No pudimos aplicar el cambio.');
+      setConfirmar(false);
+    },
+  });
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+        <Wifi className="w-4 h-4 text-primary" />
+        <p className="text-sm font-semibold text-foreground">Mi red WiFi</p>
+        <span className="ml-auto text-xs text-muted-foreground">2.4 y 5 GHz</span>
+      </div>
+
+      <div className="p-5 space-y-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-foreground">Nombre de la red (SSID)</label>
+          <input
+            value={ssid}
+            onChange={(e) => setSsid(e.target.value)}
+            disabled={!editable || isPending}
+            maxLength={32}
+            className={campo()}
+            placeholder="MiRedWiFi"
+          />
+          {!comun && bandas.length === 2 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Ahora tus dos redes tienen nombres distintos. Al guardar quedarán con el mismo.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-foreground">Contraseña</label>
+          <div className="relative">
+            <input
+              type={verClave ? 'text' : 'password'}
+              value={clave}
+              onChange={(e) => setClave(e.target.value)}
+              disabled={!editable || isPending}
+              maxLength={63}
+              className={cn(campo(), 'pr-11')}
+              placeholder="Déjala vacía para no cambiarla"
+              autoComplete="new-password"
+            />
+            <button
+              type="button"
+              onClick={() => setVerClave((v) => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground"
+              aria-label={verClave ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+            >
+              {verClave ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">Mínimo 8 caracteres.</p>
+        </div>
+
+        {error && (
+          <p className="text-sm text-destructive flex items-start gap-1.5">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            {error}
+          </p>
+        )}
+
+        {resultado && (
+          <p className={cn(
+            'text-sm flex items-start gap-1.5',
+            resultado.clase === 'confirmado'
+              ? 'text-emerald-700 dark:text-emerald-400'
+              : 'text-amber-700 dark:text-amber-400',
+          )}>
+            {resultado.clase === 'confirmado'
+              ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              : <Clock className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+            {resultado.mensaje}
+          </p>
+        )}
+
+        {confirmar ? (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-3">
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Se desconectarán todos los dispositivos conectados a tu WiFi
+              {ubicacion ? <> de <strong>{ubicacion}</strong></> : null}. Tendrás que volver
+              a conectarlos con los datos nuevos.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => guardar()}
+                disabled={isPending}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Sí, aplicar cambios
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmar(false)}
+                disabled={isPending}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-muted text-foreground hover:opacity-90"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setResultado(null); setError(null); setConfirmar(true); }}
+            disabled={!editable || !hayCambios || isPending}
+            className={cn(
+              'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+              'bg-primary text-primary-foreground hover:opacity-90 transition-opacity',
+              'disabled:opacity-40 disabled:cursor-not-allowed',
+            )}
+          >
+            Guardar cambios
+          </button>
+        )}
+      </div>
     </div>
   );
 }

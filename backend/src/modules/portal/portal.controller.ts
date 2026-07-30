@@ -254,6 +254,26 @@ export class PortalController {
     );
   }
 
+  // Mismo nombre y clave en las dos bandas: el caso normal. Una sola operación, no dos
+  // llamadas al endpoint por banda — eso chocaría con la espera entre cambios y dejaría
+  // la segunda banda sin aplicar.
+  @Put('onu/:contratoId/wifi')
+  @UseGuards(PortalJwtGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Cambiar nombre y/o contraseña en ambas bandas WiFi' })
+  @ApiParam({ name: 'contratoId' })
+  async onuGuardarWifiAmbas(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @Body() dto: PortalWifiDto,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarWifi');
+    const resultado = await this.onu.guardarWifiAmbasBandas(
+      sesion.sub, sesion.empresaId, contratoId, dto,
+    );
+    return ApiResponse.ok(resultado, resultado.mensaje);
+  }
+
   @Put('onu/:contratoId/wifi/:banda')
   @UseGuards(PortalJwtGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })

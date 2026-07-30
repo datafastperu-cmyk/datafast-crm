@@ -302,6 +302,107 @@ export class PortalOnuService implements OnModuleInit {
     return this.verificarWifi(registro.sn, banda, ssid, Boolean(password));
   }
 
+  /**
+   * Mismo nombre y clave en las dos bandas — el caso normal.
+   *
+   * Para el abonado su WiFi es UNA red, no dos; el formulario por banda solo le daba dos
+   * oportunidades de dejarlas desincronizadas. Se escribe en una sola operación:
+   *   · una comprobación de límite y un solo consumo de cupo (dos escrituras separadas
+   *     chocarían con la espera entre cambios y la segunda banda sería rechazada);
+   *   · un único plan contra el equipo, para que no pueda aplicarse una banda y la otra no.
+   */
+  async guardarWifiAmbasBandas(
+    clienteId: string,
+    empresaId: string,
+    contratoId: string,
+    dto: { ssid?: string; password?: string },
+  ): Promise<ResultadoWifi> {
+    const registro = await this.exigirRegistro(clienteId, empresaId, contratoId);
+    this.exigirAcs();
+
+    const ssid     = dto.ssid?.trim();
+    const password = dto.password;
+
+    if (!ssid && !password) throw new BadRequestException('No indicaste ningún cambio.');
+    if (ssid !== undefined && ssid !== '') this.validarSsid(ssid);
+    if (password) this.validarPassword(password, ssid);
+
+    const vivo = await this.sesionViva(registro.sn);
+    const bloqueo = this.motivoNoEditable(registro, vivo);
+    if (bloqueo) throw new ForbiddenException(bloqueo);
+
+    await this.verificarLimiteCambios(contratoId);
+
+    await this.detalle.setWifiAmbasBandas(registro.sn, {
+      ssid: ssid || undefined,
+      password: password || undefined,
+    });
+
+    await this.registrarCambio(contratoId);
+
+    this.logger.log(
+      `Portal: abonado ${clienteId} cambió el WiFi (ambas bandas) del contrato ${contratoId} ` +
+        `(ssid=${ssid ? 'sí' : 'no'}, clave=${password ? 'sí' : 'no'})`,
+    );
+
+    return this.verificarAmbasBandas(registro.sn, ssid, Boolean(password));
+  }
+
+  // VIO sobre las dos bandas. Un "Listo" global cuando solo una convergió sería
+  // exactamente la mentira que la pantalla unificada podría introducir.
+  private async verificarAmbasBandas(
+    sn: string,
+    ssidEsperado: string | undefined,
+    huboClave: boolean,
+  ): Promise<ResultadoWifi> {
+    if (!ssidEsperado) {
+      // Solo cambió la clave: es write-only en TR-069, no hay lectura que confirme.
+      return {
+        clase: 'sin_confirmar',
+        mensaje:
+          'Enviamos la nueva contraseña a tu router para las dos redes. Conéctate con ella ' +
+          'en unos minutos; si tus equipos siguen pidiendo la anterior, escríbenos.',
+      };
+    }
+
+    for (let intento = 1; intento <= 4; intento++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const leido = await this.detalle.getDetalle(sn).catch(() => null);
+      const bandas = leido?.wifi ?? [];
+      const b24 = bandas.find((w) => w.band === '2.4')?.ssid;
+      const b5  = bandas.find((w) => w.band === '5')?.ssid;
+
+      if (b24 === ssidEsperado && b5 === ssidEsperado) {
+        return {
+          clase: 'confirmado',
+          mensaje: huboClave
+            ? `Listo. Tus dos redes se llaman "${ssidEsperado}". Vuelve a conectar tus equipos con la nueva contraseña.`
+            : `Listo. Tus dos redes se llaman "${ssidEsperado}".`,
+        };
+      }
+
+      // Una sí y la otra no: se dice cuál, porque el abonado tiene que saber con qué red
+      // conectarse mientras tanto.
+      if (intento === 4 && (b24 === ssidEsperado) !== (b5 === ssidEsperado)) {
+        const aplicada = b24 === ssidEsperado ? '2.4 GHz' : '5 GHz';
+        const pendiente = b24 === ssidEsperado ? '5 GHz' : '2.4 GHz';
+        return {
+          clase: 'sin_confirmar',
+          mensaje:
+            `El cambio se aplicó en tu red de ${aplicada}, pero en la de ${pendiente} aún no ` +
+            'pudimos confirmarlo. Revisa en unos minutos; si sigue distinto, escríbenos.',
+        };
+      }
+    }
+
+    return {
+      clase: 'sin_confirmar',
+      mensaje:
+        'Enviamos el cambio a tu router, pero todavía no pudimos confirmarlo. ' +
+        'Revisa en unos minutos; si tus redes no cambiaron, escríbenos.',
+    };
+  }
+
   // VIO: encolar el cambio solo confirma "aceptado". Se relee del equipo para confirmar
   // que se materializó — y se dice la verdad cuando no se puede confirmar.
   private async verificarWifi(

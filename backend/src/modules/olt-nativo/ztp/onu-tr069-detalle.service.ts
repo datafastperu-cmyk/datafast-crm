@@ -401,6 +401,23 @@ export class OnuTr069DetalleService {
     ]);
   }
 
+  /**
+   * Mismo nombre y clave en las DOS bandas, en UNA sola escritura.
+   *
+   * No es `setWifi` llamado dos veces: eso serían dos planes y dos tandas de tareas
+   * contra el mismo equipo, con la posibilidad de que una se aplique y la otra no y el
+   * abonado acabe con dos redes de credenciales distintas — peor que no haber tocado
+   * nada, porque la pantalla le prometió una sola red.
+   */
+  setWifiAmbasBandas(serial: string, dto: { ssid?: string; password?: string }) {
+    return this._applyKeys(serial, [
+      { key: 'wifi.ssid',       value: dto.ssid },
+      { key: 'wifi.password',   value: dto.password },
+      { key: 'wifi5g.ssid',     value: dto.ssid },
+      { key: 'wifi5g.password', value: dto.password },
+    ]);
+  }
+
   setPppoe(serial: string, dto: { username?: string; password?: string }) {
     return this._applyKeys(serial, [
       { key: 'internet.username', value: dto.username },

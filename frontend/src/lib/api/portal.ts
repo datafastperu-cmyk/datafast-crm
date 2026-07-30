@@ -326,6 +326,11 @@ export const portalApi = {
   onuGuardarWifi: (contratoId: string, banda: '2.4' | '5', dto: { ssid?: string; password?: string }) =>
     pedir<ResultadoWifi>(() => portalHttp.put(`/onu/${contratoId}/wifi/${banda}`, dto)),
 
+  // Mismo nombre y clave en las dos bandas: una sola operación, no dos llamadas al
+  // endpoint por banda (chocarían con la espera entre cambios).
+  onuGuardarWifiAmbas: (contratoId: string, dto: { ssid?: string; password?: string }) =>
+    pedir<ResultadoWifi>(() => portalHttp.put(`/onu/${contratoId}/wifi`, dto)),
+
   onuDispositivos: (contratoId: string) =>
     pedir<PortalDispositivo[]>(() => portalHttp.get(`/onu/${contratoId}/dispositivos`)),
 
