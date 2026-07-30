@@ -182,7 +182,11 @@ export function ClienteDetalle({ id }: { id: string }) {
       toast('Datos guardados correctamente', { type: 'success' });
       setDirty(false);
     },
-    onError: () => toast('Error al guardar los datos', { type: 'error' }),
+    // El servidor explica QUÉ campo rechazó ("Email inválido", "zonaId must be a UUID",
+    // "los datos fueron modificados por otro usuario"). Sustituirlo por un genérico
+    // dejaba al operador sin nada que corregir y a nosotros sin diagnóstico: el 400 real
+    // estuvo oculto detrás de este mensaje.
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
   const { mutate: cambiarEstado, isPending: cambiandoEstado } = useMutation({
@@ -195,7 +199,7 @@ export function ClienteDetalle({ id }: { id: string }) {
       }
       toast('Estado actualizado', { type: 'success' });
     },
-    onError: () => toast('No se pudo cambiar el estado', { type: 'error' }),
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
   const { mutate: eliminarCliente, isPending: eliminando } = useMutation({
@@ -205,7 +209,7 @@ export function ClienteDetalle({ id }: { id: string }) {
       toast('Abonado eliminado definitivamente', { type: 'success' });
       router.push('/clientes');
     },
-    onError: () => toast('No se pudo eliminar el abonado', { type: 'error' }),
+    onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
   const consultarReniec = async () => {

@@ -9,6 +9,22 @@ import { Transform, Type } from 'class-transformer';
 import { PaginationDto } from '../../../common/dto/response.dto';
 import { EstadoCliente, TipoDocumento, TipoServicio } from '../entities/cliente.entity';
 
+/**
+ * Un formulario web manda `''` cuando el usuario deja el campo vacío, no `undefined`.
+ * `@IsOptional()` de class-validator SOLO ignora `null` y `undefined`: con `''` la
+ * validación de formato sí se ejecuta y falla.
+ *
+ * Eso hacía que guardar un cliente SIN email o SIN zona devolviera
+ * 400 "Email inválido / zonaId must be a UUID" — con el campo intacto y vacío, que es
+ * justamente lo que el usuario quería. Se normaliza a `null` (no a `undefined`) para
+ * que vaciar un campo signifique BORRARLO y no "no lo toques".
+ *
+ * Va en el DTO y no en el formulario: es el contrato de la API el que decide qué
+ * significa un campo vacío, y así vale para cualquier cliente de esta API.
+ */
+const VacioComoNulo = () =>
+  Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? null : value));
+
 export class CreateClienteDto {
   @ApiPropertyOptional({ enum: TipoDocumento, default: TipoDocumento.DNI })
   @IsOptional()
@@ -47,7 +63,8 @@ export class CreateClienteDto {
   @IsOptional()
   @IsEmail({}, { message: 'Email inválido' })
   @MaxLength(150)
-  @Transform(({ value }) => value?.toLowerCase().trim())
+  @VacioComoNulo()
+  @Transform(({ value }) => (typeof value === 'string' ? value.toLowerCase().trim() : value))
   email?: string;
 
   @ApiPropertyOptional({ example: '987654321' })
@@ -72,6 +89,7 @@ export class CreateClienteDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
+  @VacioComoNulo()
   zonaId?: string;
 
   @ApiPropertyOptional({ example: 'Av. Sánchez Cerro 1234' })
