@@ -1,6 +1,6 @@
 import {
   Controller, Get, Put, Post, Delete,
-  Body, Param, ParseUUIDPipe, HttpCode, HttpStatus,
+  Body, Param, Query, ParseUUIDPipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 
@@ -9,7 +9,8 @@ import { RequirePermission }       from '../../common/decorators/roles.decorator
 import { ApiResponse }             from '../../common/dto/response.dto';
 
 import { PortalConfigService } from './portal-config.service';
-import { UpdatePortalConfigDto, UpsertPortalBannerDto } from './dto/portal-config.dto';
+import { UpdatePortalConfigDto, UpsertPortalBannerDto, ResolverSolicitudPlanDto } from './dto/portal-config.dto';
+import { PortalPlanesService } from './portal-planes.service';
 
 // Administración del Portal del Cliente desde el ERP (/configuracion/portal-cliente).
 // Este controller lo consume el OPERADOR con su JWT interno. El portal del abonado
@@ -18,7 +19,10 @@ import { UpdatePortalConfigDto, UpsertPortalBannerDto } from './dto/portal-confi
 @ApiBearerAuth('JWT')
 @Controller('config/portal')
 export class PortalConfigController {
-  constructor(private readonly svc: PortalConfigService) {}
+  constructor(
+    private readonly svc: PortalConfigService,
+    private readonly planes: PortalPlanesService,
+  ) {}
 
   @Get()
   @RequirePermission('configuracion:view')
@@ -36,6 +40,34 @@ export class PortalConfigController {
   ) {
     const resultado = await this.svc.actualizar(user.empresaId, dto);
     return ApiResponse.ok(resultado, 'Configuración guardada');
+  }
+
+  // ── Bandeja de solicitudes de cambio de plan ────────────────
+  // Vive junto a la configuración del portal porque es donde el operador administra todo
+  // lo que llega desde ahí. Resolver NO aplica el cambio de plan: registra el veredicto.
+  // El cambio se ejecuta por el flujo de negocio existente, nunca por un UPDATE directo
+  // —eso se saltaría la cola del MikroTik, el precio del contrato y el prorrateo—.
+  @Get('solicitudes-plan')
+  @RequirePermission('configuracion:view')
+  @ApiOperation({ summary: 'Solicitudes de cambio de plan enviadas desde el portal' })
+  async solicitudesPlan(
+    @CurrentUser() user: JwtPayload,
+    @Query('estado') estado?: string,
+  ) {
+    return ApiResponse.ok(await this.planes.bandeja(user.empresaId, estado));
+  }
+
+  @Post('solicitudes-plan/:id/resolver')
+  @RequirePermission('configuracion:manage')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Aprobar, rechazar o marcar como aplicada una solicitud' })
+  @ApiParam({ name: 'id' })
+  async resolverSolicitud(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolverSolicitudPlanDto,
+  ): Promise<void> {
+    await this.planes.resolver(user.empresaId, id, user.sub, dto.decision, dto.motivo);
   }
 
   // ── Banners ─────────────────────────────────────────────────

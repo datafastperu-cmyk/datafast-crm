@@ -59,6 +59,16 @@ export class UpdatePortalConfigDto {
   tema?: string;
 }
 
+export class ResolverSolicitudPlanDto {
+  // 'aplicada' es el acuse de que el cambio YA se ejecutó por el flujo de negocio, no el
+  // disparador: esta API no toca el contrato ni la red.
+  @IsIn(['aprobada', 'rechazada', 'aplicada'])
+  decision: 'aprobada' | 'rechazada' | 'aplicada';
+
+  @IsOptional() @IsString() @MaxLength(500)
+  motivo?: string;
+}
+
 export class UpsertPortalBannerDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120)
   titulo?: string;

@@ -54,6 +54,27 @@ export interface PortalBanner {
 
 export type UpsertPortalBannerDto = Omit<PortalBanner, 'id' | 'empresaId'>;
 
+// Solicitudes de cambio de plan enviadas desde el portal. Resolver NO aplica el cambio:
+// registra el veredicto. El cambio se ejecuta por el flujo de negocio existente (queue
+// del MikroTik, precio del contrato, prorrateo de la factura en curso).
+export interface SolicitudPlan {
+  id:               string;
+  estado:           'pendiente' | 'aprobada' | 'rechazada' | 'aplicada' | 'cancelada';
+  numeroContrato:   string;
+  clienteNombre:    string;
+  clienteWhatsapp:  string | null;
+  planOrigen:       string;
+  planDestino:      string;
+  precio_origen:    string;
+  precio_destino:   string;
+  deudaTotal:       string;
+  tipoPago:         string | null;
+  nota_cliente:     string | null;
+  motivo_resolucion: string | null;
+  created_at:       string;
+  resuelta_en:      string | null;
+}
+
 export const portalConfigApi = {
   get: async (): Promise<PortalConfigResultado> => {
     const { data } = await api.get<ApiRespuesta<PortalConfigResultado>>('/config/portal');
@@ -63,6 +84,20 @@ export const portalConfigApi = {
   update: async (dto: UpdatePortalConfigDto): Promise<PortalConfigResultado> => {
     const { data } = await api.put<ApiRespuesta<PortalConfigResultado>>('/config/portal', dto);
     return data.data;
+  },
+
+  listarSolicitudesPlan: async (estado?: string): Promise<SolicitudPlan[]> => {
+    const { data } = await api.get<ApiRespuesta<SolicitudPlan[]>>('/config/portal/solicitudes-plan', {
+      params: estado ? { estado } : undefined,
+    });
+    return data.data;
+  },
+
+  resolverSolicitudPlan: async (
+    id: string,
+    dto: { decision: 'aprobada' | 'rechazada' | 'aplicada'; motivo?: string },
+  ): Promise<void> => {
+    await api.post(`/config/portal/solicitudes-plan/${id}/resolver`, dto);
   },
 
   listarBanners: async (): Promise<PortalBanner[]> => {

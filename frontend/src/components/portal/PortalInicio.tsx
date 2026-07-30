@@ -112,8 +112,30 @@ export function PortalInicio() {
         <p className="text-sm text-foreground">
           Pago mensual: <span className="font-semibold">{soles(servicio.precioMensual)}</span>
         </p>
+        <EnlacePlanes />
       </div>
     </div>
+  );
+}
+
+// Enlace al catálogo — y única vía para llegar a Planes desde un móvil, donde la barra
+// inferior se limita a 5 destinos. Solo aparece si el operador habilitó la sección.
+function EnlacePlanes() {
+  const { data: config } = useQuery({
+    queryKey: ['portal-config-publica'],
+    queryFn:  portalApi.config,
+    staleTime: 10 * 60_000,
+  });
+
+  if (!config?.secciones.planes) return null;
+
+  return (
+    <Link
+      href="/portal/planes"
+      className="inline-block text-sm font-medium text-primary hover:underline"
+    >
+      Ver otros planes disponibles
+    </Link>
   );
 }
 

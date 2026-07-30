@@ -230,6 +230,36 @@ export interface PortalSoporte {
   tickets:    PortalTicket[];
 }
 
+export interface PortalPlan {
+  id:              string;
+  nombre:          string;
+  descripcion:     string | null;
+  velocidadBajada: number;
+  velocidadSubida: number;
+  precio:          number;
+  esActual:        boolean;
+  // Motivo por el que NO se puede solicitar, en lenguaje del abonado. null = disponible.
+  bloqueo:         string | null;
+}
+
+export interface PortalSolicitudPlan {
+  id:               string;
+  estado:           string;
+  planOrigen:       string;
+  planDestino:      string;
+  precioOrigen:     number;
+  precioDestino:    number;
+  notaCliente:      string | null;
+  motivoResolucion: string | null;
+  creadaEn:         string;
+  resueltaEn:       string | null;
+}
+
+export interface PortalCatalogoPlanes {
+  planes:             PortalPlan[];
+  solicitudPendiente: PortalSolicitudPlan | null;
+}
+
 export interface PortalSesion {
   clienteId:      string;
   usuario:        string;
@@ -293,6 +323,15 @@ export const portalApi = {
 
   crearTicket: (dto: { contratoId: string; categoria: string; descripcion: string }) =>
     pedir<PortalTicket>(() => portalHttp.post('/tickets', dto)),
+
+  // ── Planes ─────────────────────────────────────────────────
+  planes: (contratoId: string) =>
+    pedir<PortalCatalogoPlanes>(() => portalHttp.get(`/planes/${contratoId}`)),
+
+  // SOLICITA el cambio; no lo aplica. Lo ejecuta el operador por el flujo de negocio.
+  solicitarPlan: (contratoId: string, planDestinoId: string, nota?: string) =>
+    pedir<PortalSolicitudPlan>(() =>
+      portalHttp.post(`/planes/${contratoId}/solicitud`, { planDestinoId, nota })),
 
   calificarTicket: async (
     id: string,

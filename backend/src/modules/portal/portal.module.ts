@@ -16,6 +16,7 @@ import { PortalFacturacionService } from './portal-facturacion.service';
 import { PortalOnuService } from './portal-onu.service';
 import { PortalConsumoService } from './portal-consumo.service';
 import { PortalSoporteService } from './portal-soporte.service';
+import { PortalPlanesService } from './portal-planes.service';
 import { PortalTenantService } from './portal-tenant.service';
 import { PortalController } from './portal.controller';
 import { PortalJwtGuard } from './portal-auth.guard';
@@ -49,6 +50,7 @@ import { PortalJwtGuard } from './portal-auth.guard';
     PortalOnuService,
     PortalConsumoService,
     PortalSoporteService,
+    PortalPlanesService,
     PortalTenantService,
     PortalJwtGuard,
   ],

@@ -18,6 +18,7 @@ import { PortalFacturacionService } from './portal-facturacion.service';
 import { PortalOnuService } from './portal-onu.service';
 import { PortalConsumoService } from './portal-consumo.service';
 import { PortalSoporteService } from './portal-soporte.service';
+import { PortalPlanesService } from './portal-planes.service';
 import { PortalConfigService }  from './portal-config.service';
 import { PortalTenantService }  from './portal-tenant.service';
 import { PortalJwtGuard, ClientePortal, PortalJwtPayload } from './portal-auth.guard';
@@ -54,6 +55,14 @@ export class PortalTicketDto {
   descripcion: string;
 }
 
+export class PortalSolicitudPlanDto {
+  @IsUUID()
+  planDestinoId: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  nota?: string;
+}
+
 export class PortalCalificarDto {
   @IsInt() @Min(1) @Max(5)
   calificacion: number;
@@ -78,6 +87,7 @@ export class PortalController {
     private readonly onu:         PortalOnuService,
     private readonly consumoSvc:  PortalConsumoService,
     private readonly soporte:     PortalSoporteService,
+    private readonly planesSvc:   PortalPlanesService,
   ) {}
 
   // Los toggles del panel son feature flags REALES: con la sección apagada el endpoint
@@ -323,6 +333,40 @@ export class PortalController {
     await this.exigirSeccion(sesion.empresaId, 'mostrarSoporte');
     await this.soporte.calificar(
       sesion.sub, sesion.empresaId, id, dto.calificacion, dto.comentario,
+    );
+  }
+
+  // ── Planes ──────────────────────────────────────────────────
+  @Get('planes/:contratoId')
+  @UseGuards(PortalJwtGuard)
+  @ApiOperation({ summary: 'Planes disponibles y solicitud en curso' })
+  @ApiParam({ name: 'contratoId' })
+  async planes(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarPlanes');
+    return ApiResponse.ok(await this.planesSvc.catalogo(sesion.sub, sesion.empresaId, contratoId));
+  }
+
+  // SOLICITA, no cambia. La aplicación real la hace el operador por el flujo de negocio.
+  @Post('planes/:contratoId/solicitud')
+  @UseGuards(PortalJwtGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Solicitar un cambio de plan' })
+  @ApiParam({ name: 'contratoId' })
+  async solicitarPlan(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @Body() dto: PortalSolicitudPlanDto,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarPlanes');
+    const solicitud = await this.planesSvc.solicitar(
+      sesion.sub, sesion.empresaId, contratoId, dto.planDestinoId, dto.nota,
+    );
+    return ApiResponse.ok(
+      solicitud,
+      'Recibimos tu solicitud. Te contactaremos para confirmarla.',
     );
   }
 

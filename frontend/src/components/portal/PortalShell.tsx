@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   Home, User, LogOut, ChevronDown, Wifi, AlertTriangle, Loader2, MapPin, Receipt, Smartphone,
-  Gauge, LifeBuoy,
+  Gauge, LifeBuoy, Layers,
 } from 'lucide-react';
 
 import { portalApi, PortalError, type PortalServicio } from '@/lib/api/portal';
@@ -29,7 +29,7 @@ interface ItemNav {
 // control de acceso, solo su reflejo.
 function construirNav(secciones?: {
   comprobantes: boolean; wifi: boolean; dispositivos: boolean;
-  soporte: boolean; consumo: boolean;
+  soporte: boolean; consumo: boolean; planes: boolean;
 }): ItemNav[] {
   const items: ItemNav[] = [{ href: '/portal', label: 'Inicio', icon: Home, movil: true }];
   if (secciones?.comprobantes) {
@@ -43,6 +43,9 @@ function construirNav(secciones?: {
   }
   if (secciones?.consumo) {
     items.push({ href: '/portal/consumo', label: 'Consumo', icon: Gauge, movil: false });
+  }
+  if (secciones?.planes) {
+    items.push({ href: '/portal/planes', label: 'Planes', icon: Layers, movil: false });
   }
   if (secciones?.soporte) {
     items.push({ href: '/portal/soporte', label: 'Soporte', icon: LifeBuoy, movil: true });

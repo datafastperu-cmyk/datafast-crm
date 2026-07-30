@@ -13,12 +13,14 @@ import {
 import { Switch }   from '@/components/ui/Switch';
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
+import { PortalSolicitudesPlan } from './PortalSolicitudesPlan';
 
-type Pestana = 'general' | 'reporte-pago' | 'banners' | 'diseno';
+type Pestana = 'general' | 'reporte-pago' | 'solicitudes' | 'banners' | 'diseno';
 
 const PESTANAS: Array<{ id: Pestana; label: string }> = [
   { id: 'general',      label: 'General' },
   { id: 'reporte-pago', label: 'Reporte de pago' },
+  { id: 'solicitudes',  label: 'Solicitudes de plan' },
   { id: 'banners',      label: 'Banners' },
   { id: 'diseno',       label: 'Diseño' },
 ];
@@ -231,6 +233,8 @@ export function PortalClienteTab() {
           </Campo>
         </Card>
       )}
+
+      {pestana === 'solicitudes' && <PortalSolicitudesPlan />}
 
       {pestana === 'banners' && <BannersSeccion />}
 
