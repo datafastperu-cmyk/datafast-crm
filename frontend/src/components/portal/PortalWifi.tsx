@@ -24,6 +24,10 @@ const POLL_MS = 5_000;
 // y eso no se arregla esperando: sin este límite el abonado mira un spinner indefinido
 // sin saber que la solución está en su propia casa.
 const ESPERA_MAX_MS = 5 * 60_000;
+// Con el carril arriba, cada cuánto se revisa si el router sigue respondiendo. Por
+// debajo de los 12 min con que el backend considera viva la sesión, para que el
+// indicador no se entere tarde.
+const LATIDO_ESTADO_MS = 60_000;
 
 export function PortalWifi() {
   const queryClient = useQueryClient();
@@ -39,10 +43,16 @@ export function PortalWifi() {
     queryKey: ['portal-onu-estado', contratoId],
     queryFn:  () => portalApi.onuEstado(contratoId!),
     enabled:  Boolean(contratoId),
-    // Solo se repregunta mientras hay algo en curso. Un poll permanente contra el ACS
-    // multiplicado por todos los abonados es carga que nadie necesita.
-    refetchInterval: (q) =>
-      q.state.data?.carril === 'conectando' && !seAgotoLaEspera ? POLL_MS : false,
+    refetchInterval: (q) => {
+      // Mientras se abre el carril, ritmo corto para no hacer esperar de más.
+      if (q.state.data?.carril === 'conectando') return seAgotoLaEspera ? false : POLL_MS;
+      // Ya conectado, ritmo lento: solo para mantener honesto el indicador de "está
+      // respondiendo". Un semáforo que se consulta una vez al abrir miente a los cinco
+      // minutos, y este decide si los campos se pueden editar. Es una lectura del ACS,
+      // no una llamada al equipo: barata.
+      if (q.state.data?.carril === 'conectado') return LATIDO_ESTADO_MS;
+      return false;
+    },
   });
 
   const conectado = estado?.carril === 'conectado';
@@ -184,6 +194,33 @@ export function PortalWifi() {
   );
 }
 
+// Estado del router, junto a la fecha de la lectura.
+//
+// Muestra si el equipo RESPONDE AHORA, no si el carril está abierto: en esta pantalla el
+// carril siempre lo está —si no, se vería la de "Conectar router"—, así que un
+// "Conectado" permanente sería decorativo y daría confianza justo cuando no toca. Lo que
+// varía, y lo que decide si los campos se pueden editar, es esto.
+//
+// El color acompaña al texto, nunca lo sustituye: el estado se lee, no se deduce.
+function EstadoRouter({ vivo }: { vivo: boolean }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-medium flex-shrink-0',
+        vivo
+          ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+          : 'text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/30',
+      )}
+      title={vivo
+        ? 'Tu router está en contacto con nosotros'
+        : 'Tu router no ha respondido en los últimos minutos'}
+    >
+      <span className={cn('w-1.5 h-1.5 rounded-full', vivo ? 'bg-emerald-500' : 'bg-amber-500')} />
+      {vivo ? 'Router conectado' : 'Sin respuesta'}
+    </span>
+  );
+}
+
 // Qué servicio se está configurando. Solo aparece con más de un servicio: cambiar el
 // nombre o la clave del WiFi de la casa equivocada es un error caro y silencioso — el
 // afectado no se entera hasta que sus equipos dejan de conectar.
@@ -254,13 +291,16 @@ function BandasWifi({
 
       {/* La hora de la lectura va SIEMPRE a la vista: es lo que le dice al abonado si lo
           que ve es de ahora o de hace un rato. */}
-      <div className="flex items-center justify-between gap-3 px-1">
-        <p className="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
-          <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-          {data.ultimaLectura
-            ? `Datos de ${new Date(data.ultimaLectura).toLocaleString('es-PE')}`
-            : 'Sin lectura previa del equipo'}
-        </p>
+      <div className="flex items-center justify-between gap-3 px-1 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <EstadoRouter vivo={sesionViva} />
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
+            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+            {data.ultimaLectura
+              ? `Datos de ${new Date(data.ultimaLectura).toLocaleString('es-PE')}`
+              : 'Sin lectura previa del equipo'}
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => releer()}
