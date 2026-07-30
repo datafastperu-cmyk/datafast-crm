@@ -163,8 +163,13 @@ export class PortalController {
   @Post('auth/logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Cerrar sesión del portal' })
-  logout(@Res({ passthrough: true }) res: Response): void {
-    this.auth.logout(res);
+  logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): void {
+    // Se pasa el request porque borrar la cookie exige los MISMOS atributos con que se
+    // escribió (incluido `Secure`, que depende del protocolo de la petición).
+    this.auth.logout(req, res);
   }
 
   // ── Datos del abonado ───────────────────────────────────────

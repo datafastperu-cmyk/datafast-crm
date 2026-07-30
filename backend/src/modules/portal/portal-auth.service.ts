@@ -96,7 +96,7 @@ export class PortalAuthService {
     const access  = await this.firmar({ ...payloadBase, tipo: 'access'  }, secreto, ACCESS_TTL);
     const refresh = await this.firmar({ ...payloadBase, tipo: 'refresh' }, secreto, REFRESH_TTL);
 
-    this.escribirCookies(res, access, refresh);
+    this.escribirCookies(req, res, access, refresh);
 
     this.logger.log(`Portal login: ${cliente.usuarioPortal} (empresa ${empresaId}) desde ${ip}`);
 
@@ -130,14 +130,14 @@ export class PortalAuthService {
       where: { id: payload.sub, empresaId: payload.empresaId },
     });
     if (!cliente || !cliente.usuarioPortal || cliente.estado === EstadoCliente.BAJA_DEFINITIVA) {
-      this.borrarCookies(res);
+      this.borrarCookies(req, res);
       throw new UnauthorizedException('Tu acceso ya no está disponible.');
     }
 
     const base = { sub: cliente.id, empresaId: payload.empresaId, usuario: cliente.usuarioPortal };
     const access     = await this.firmar({ ...base, tipo: 'access'  }, secreto, ACCESS_TTL);
     const refreshNew = await this.firmar({ ...base, tipo: 'refresh' }, secreto, REFRESH_TTL);
-    this.escribirCookies(res, access, refreshNew);
+    this.escribirCookies(req, res, access, refreshNew);
 
     return {
       clienteId:      cliente.id,
@@ -146,8 +146,8 @@ export class PortalAuthService {
     };
   }
 
-  logout(res: Response): void {
-    this.borrarCookies(res);
+  logout(req: Request, res: Response): void {
+    this.borrarCookies(req, res);
   }
 
   // ── Internos ────────────────────────────────────────────────
@@ -184,19 +184,42 @@ export class PortalAuthService {
     });
   }
 
-  private escribirCookies(res: Response, access: string, refresh: string): void {
-    const seguro = process.env.NODE_ENV === 'production';
-    const comun = { httpOnly: true, secure: seguro, sameSite: 'lax' as const, path: '/' };
-    // HttpOnly: el token no es legible por JavaScript, así que un XSS en el portal no
-    // se lleva la sesión del abonado. El middleware de Next sí puede leerlo: corre en
-    // el servidor.
+  // `Secure` NO se deduce del entorno, se deduce del PROTOCOLO de la petición.
+  //
+  // Deducirlo de NODE_ENV rompía el portal en toda instalación servida por HTTP: PM2
+  // fuerza NODE_ENV=production, así que las cookies salían con `Secure`, el navegador
+  // las DESCARTABA en silencio sobre http://, el middleware no encontraba sesión y
+  // devolvía al login. Desde fuera se ve como "las credenciales no entran" — sin ningún
+  // error, porque el login sí había respondido 200.
+  //
+  // Esto no es un caso de laboratorio: es exactamente el modo ruta (§14), pensado para
+  // instalaciones locales o con solo IP, donde no hay TLS que valga.
+  //
+  // Contrapartida asumida y explícita: sobre HTTP la cookie viaja en claro. Es inherente
+  // a servir sin TLS; la alternativa era que no hubiera portal. Con nginx delante y
+  // certificado, `x-forwarded-proto` llega como https y la cookie vuelve a ser `Secure`
+  // sin tocar una línea (main.ts ya configura `trust proxy`).
+  private opcionesCookie(req: Request) {
+    const porHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    return {
+      httpOnly: true,          // ningún JavaScript la lee: un XSS no se lleva la sesión
+      secure:   porHttps,
+      sameSite: 'lax' as const,
+      path:     '/',
+    };
+  }
+
+  private escribirCookies(req: Request, res: Response, access: string, refresh: string): void {
+    const comun = this.opcionesCookie(req);
+    // El middleware de Next sí puede leerlas aunque sean HttpOnly: corre en el servidor.
     res.cookie(COOKIE_ACCESS,  access,  { ...comun, maxAge: 30 * 60 * 1000 });
     res.cookie(COOKIE_REFRESH, refresh, { ...comun, maxAge: REFRESH_MAX_AGE_MS });
   }
 
-  private borrarCookies(res: Response): void {
-    const seguro = process.env.NODE_ENV === 'production';
-    const comun = { httpOnly: true, secure: seguro, sameSite: 'lax' as const, path: '/' };
+  // Borrar debe usar los MISMOS atributos con que se escribió, o el navegador considera
+  // que es otra cookie y la original sobrevive al cierre de sesión.
+  private borrarCookies(req: Request, res: Response): void {
+    const comun = this.opcionesCookie(req);
     res.clearCookie(COOKIE_ACCESS, comun);
     res.clearCookie(COOKIE_REFRESH, comun);
   }
