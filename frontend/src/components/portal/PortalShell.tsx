@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Home, User, LogOut, ChevronDown, Wifi, AlertTriangle, Loader2, MapPin,
+  Home, User, LogOut, ChevronDown, Wifi, AlertTriangle, Loader2, MapPin, Receipt, Smartphone,
 } from 'lucide-react';
 
 import { portalApi, PortalError, type PortalServicio } from '@/lib/api/portal';
 import { usePortalStore } from '@/store/portal.store';
+import { BotonPagoFlotante } from './PortalFacturacion';
 import { cn } from '@/lib/utils';
 
 interface ItemNav {
@@ -18,12 +19,25 @@ interface ItemNav {
   icon:  typeof Home;
 }
 
-// La navegación crece por fases. Aquí solo lo que ya existe: un menú que enlaza a
-// pantallas vacías es peor que un menú corto.
-const NAV: ItemNav[] = [
-  { href: '/portal',           label: 'Inicio',    icon: Home },
-  { href: '/portal/mis-datos', label: 'Mis datos', icon: User },
-];
+// La navegación crece por fases y respeta los toggles del panel: si el operador apaga
+// una sección, su enlace desaparece Y su endpoint responde 404 — el menú no es el
+// control de acceso, solo su reflejo.
+function construirNav(secciones?: {
+  comprobantes: boolean; wifi: boolean; dispositivos: boolean;
+}): ItemNav[] {
+  const items: ItemNav[] = [{ href: '/portal', label: 'Inicio', icon: Home }];
+  if (secciones?.comprobantes) {
+    items.push({ href: '/portal/facturas', label: 'Facturas', icon: Receipt });
+  }
+  if (secciones?.wifi) {
+    items.push({ href: '/portal/wifi', label: 'Mi WiFi', icon: Wifi });
+  }
+  if (secciones?.dispositivos) {
+    items.push({ href: '/portal/dispositivos', label: 'Equipos', icon: Smartphone });
+  }
+  items.push({ href: '/portal/mis-datos', label: 'Mis datos', icon: User });
+  return items;
+}
 
 export function PortalShell({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
@@ -69,6 +83,8 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (servicio && servicio.contratoId !== contratoId) setContratoId(servicio.contratoId);
   }, [servicio, contratoId, setContratoId]);
+
+  const nav = useMemo(() => construirNav(config?.secciones), [config]);
 
   const cerrarSesion = async () => {
     await portalApi.logout();
@@ -139,7 +155,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
             Menú
           </p>
           <ul className="space-y-1">
-            {NAV.map((item) => (
+            {nav.map((item) => (
               <li key={item.href}>
                 <EnlaceNav item={item} activo={esActivo(pathname, item.href)} />
               </li>
@@ -172,7 +188,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           justo donde más se usa es el error clásico de portar un layout de escritorio. */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border">
         <ul className="flex">
-          {NAV.map((item) => {
+          {nav.map((item) => {
             const activo = esActivo(pathname, item.href);
             const Icono  = item.icon;
             return (
@@ -192,6 +208,10 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           })}
         </ul>
       </nav>
+
+      {/* Se monta en el shell, no por página: la deuda es la misma en toda la sesión y
+          el abonado debe poder pagar desde donde esté. Solo aparece si debe algo. */}
+      <BotonPagoFlotante />
     </div>
   );
 }

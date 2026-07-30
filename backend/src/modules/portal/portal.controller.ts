@@ -1,17 +1,19 @@
 import {
-  Controller, Get, Post, Body, Req, Res, Param, ParseUUIDPipe,
+  Controller, Get, Post, Put, Body, Req, Res, Param, ParseUUIDPipe, NotFoundException,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
-import { IsString, MinLength, MaxLength } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional } from 'class-validator';
 
 import { Public }      from '../../common/decorators/public.decorator';
 import { ApiResponse } from '../../common/dto/response.dto';
 
 import { PortalAuthService }   from './portal-auth.service';
 import { PortalClienteService } from './portal-cliente.service';
+import { PortalFacturacionService } from './portal-facturacion.service';
+import { PortalOnuService } from './portal-onu.service';
 import { PortalConfigService }  from './portal-config.service';
 import { PortalTenantService }  from './portal-tenant.service';
 import { PortalJwtGuard, ClientePortal, PortalJwtPayload } from './portal-auth.guard';
@@ -24,6 +26,17 @@ export class PortalLoginDto {
   password: string;
 }
 
+export class PortalWifiDto {
+  @IsOptional() @IsString() @MaxLength(32)
+  ssid?: string;
+
+  // El mínimo de 8 es de WPA2: por debajo, el propio equipo rechaza la clave. El resto
+  // de reglas (triviales, igual al SSID) vive en el servicio, junto al mensaje que las
+  // explica.
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(63)
+  password?: string;
+}
+
 // Superficie que consume el ABONADO. Va marcada @Public() para saltar el guard JWT del
 // ERP —que exige un token de operador— y protegida por PortalJwtGuard, que solo acepta
 // tokens con audiencia `datafast-portal`. Las dos audiencias no se cruzan.
@@ -32,11 +45,25 @@ export class PortalLoginDto {
 @Public()
 export class PortalController {
   constructor(
-    private readonly auth:    PortalAuthService,
-    private readonly cliente: PortalClienteService,
-    private readonly config:  PortalConfigService,
-    private readonly tenant:  PortalTenantService,
+    private readonly auth:        PortalAuthService,
+    private readonly cliente:     PortalClienteService,
+    private readonly config:      PortalConfigService,
+    private readonly tenant:      PortalTenantService,
+    private readonly facturacion: PortalFacturacionService,
+    private readonly onu:         PortalOnuService,
   ) {}
+
+  // Los toggles del panel son feature flags REALES: con la sección apagada el endpoint
+  // deja de existir para el abonado. Ocultar el botón dejando la API viva no es un
+  // control de acceso, es maquillaje.
+  private async exigirSeccion(
+    empresaId: string,
+    flag: 'mostrarComprobantes' | 'mostrarWifi' | 'mostrarDispositivos'
+        | 'mostrarSoporte' | 'mostrarPlanes' | 'mostrarConsumo',
+  ): Promise<void> {
+    const { config } = await this.config.obtener(empresaId);
+    if (!config[flag]) throw new NotFoundException('Sección no disponible');
+  }
 
   // ── Configuración pública del portal (branding y secciones) ──
   @Get('config')
@@ -109,6 +136,109 @@ export class PortalController {
   @ApiOperation({ summary: 'Perfil del titular y sus servicios' })
   async me(@ClientePortal() sesion: PortalJwtPayload) {
     return ApiResponse.ok(await this.cliente.perfil(sesion.sub, sesion.empresaId));
+  }
+
+  // ── Facturación ─────────────────────────────────────────────
+  @Get('facturas/:contratoId')
+  @UseGuards(PortalJwtGuard)
+  @ApiOperation({ summary: 'Estado de cuenta y facturas del servicio' })
+  @ApiParam({ name: 'contratoId' })
+  async facturas(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarComprobantes');
+    return ApiResponse.ok(
+      await this.facturacion.estadoCuenta(sesion.sub, sesion.empresaId, contratoId),
+    );
+  }
+
+  // ── Mi WiFi y dispositivos ──────────────────────────────────
+  @Get('onu/:contratoId/estado')
+  @UseGuards(PortalJwtGuard)
+  @ApiOperation({ summary: 'Estado de la conexión con el router del abonado' })
+  @ApiParam({ name: 'contratoId' })
+  async onuEstado(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarWifi');
+    return ApiResponse.ok(await this.onu.estado(sesion.sub, sesion.empresaId, contratoId));
+  }
+
+  // Responde de inmediato: la activación del carril la ejecuta el outbox (hasta ~5 min).
+  // El portal consulta `estado` hasta ver "conectado" — no hay request colgada esperando
+  // a la OLT.
+  @Post('onu/:contratoId/conectar')
+  @UseGuards(PortalJwtGuard)
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Conectar el router (abre el carril de gestión)' })
+  @ApiParam({ name: 'contratoId' })
+  async onuConectar(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarWifi');
+    return ApiResponse.ok(await this.onu.conectar(sesion.sub, sesion.empresaId, contratoId));
+  }
+
+  @Post('onu/:contratoId/heartbeat')
+  @UseGuards(PortalJwtGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Marcar uso del carril (evita que se cierre por inactividad)' })
+  @ApiParam({ name: 'contratoId' })
+  async onuHeartbeat(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ): Promise<void> {
+    await this.onu.heartbeat(sesion.sub, sesion.empresaId, contratoId);
+  }
+
+  @Get('onu/:contratoId/wifi')
+  @UseGuards(PortalJwtGuard)
+  @ApiOperation({ summary: 'Redes WiFi del abonado (lectura viva del equipo)' })
+  @ApiParam({ name: 'contratoId' })
+  async onuWifi(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarWifi');
+    return ApiResponse.ok(await this.onu.wifi(sesion.sub, sesion.empresaId, contratoId));
+  }
+
+  @Put('onu/:contratoId/wifi/:banda')
+  @UseGuards(PortalJwtGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Cambiar nombre y/o contraseña de una banda WiFi' })
+  @ApiParam({ name: 'contratoId' })
+  @ApiParam({ name: 'banda', enum: ['2.4', '5'] })
+  async onuGuardarWifi(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @Param('banda') banda: string,
+    @Body() dto: PortalWifiDto,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarWifi');
+    if (banda !== '2.4' && banda !== '5') {
+      throw new NotFoundException('Banda no válida');
+    }
+    const resultado = await this.onu.guardarWifi(
+      sesion.sub, sesion.empresaId, contratoId, banda, dto,
+    );
+    return ApiResponse.ok(resultado, resultado.mensaje);
+  }
+
+  @Get('onu/:contratoId/dispositivos')
+  @UseGuards(PortalJwtGuard)
+  @ApiOperation({ summary: 'Dispositivos conectados a la red del abonado' })
+  @ApiParam({ name: 'contratoId' })
+  async onuDispositivos(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ) {
+    await this.exigirSeccion(sesion.empresaId, 'mostrarDispositivos');
+    return ApiResponse.ok(await this.onu.dispositivos(sesion.sub, sesion.empresaId, contratoId));
   }
 
   @Get('servicios/:contratoId')

@@ -131,6 +131,69 @@ export interface PortalPerfil {
   servicios:       PortalServicio[];
 }
 
+export type EstadoFacturaVisible = 'pagada' | 'pendiente' | 'vencida';
+
+export interface PortalFactura {
+  id:               string;
+  numero:           string;
+  concepto:         string;
+  periodoInicio:    string;
+  periodoFin:       string;
+  fechaEmision:     string;
+  fechaVencimiento: string;
+  fechaPago:        string | null;
+  total:            number;
+  montoPagado:      number;
+  saldo:            number;
+  estado:           EstadoFacturaVisible;
+}
+
+export interface PortalEstadoCuenta {
+  totalPendiente:    number;
+  cantidadPendiente: number;
+  cantidadVencida:   number;
+  facturaMasAntigua: string | null;
+  facturas:          PortalFactura[];
+}
+
+export type CarrilVisible = 'desconectado' | 'conectando' | 'conectado' | 'error';
+
+export interface PortalOnuEstado {
+  disponible: boolean;
+  motivo:     string | null;
+  carril:     CarrilVisible;
+  vivo:       boolean;
+  mensaje:    string;
+}
+
+export interface PortalBandaWifi {
+  banda:  '2.4' | '5';
+  ssid:   string | null;
+  activa: boolean | null;
+}
+
+export interface PortalWifi {
+  bandas:           PortalBandaWifi[];
+  ultimaLectura:    string | null;
+  editable:         boolean;
+  motivoNoEditable: string | null;
+}
+
+export interface PortalDispositivo {
+  nombre:   string;
+  ip:       string | null;
+  mac:      string | null;
+  conexion: '2.4' | '5' | 'wifi' | 'lan';
+  activo:   boolean;
+}
+
+export interface ResultadoWifi {
+  // "confirmado" = releído del equipo. "sin_confirmar" = enviado y sin confirmar; nunca
+  // se le dice al abonado "guardado" cuando no se pudo verificar.
+  clase:   'confirmado' | 'sin_confirmar';
+  mensaje: string;
+}
+
 export interface PortalSesion {
   clienteId:      string;
   usuario:        string;
@@ -159,4 +222,29 @@ export const portalApi = {
 
   servicio: (contratoId: string) =>
     pedir<PortalServicio>(() => portalHttp.get(`/servicios/${contratoId}`)),
+
+  estadoCuenta: (contratoId: string) =>
+    pedir<PortalEstadoCuenta>(() => portalHttp.get(`/facturas/${contratoId}`)),
+
+  // ── Mi WiFi ────────────────────────────────────────────────
+  onuEstado: (contratoId: string) =>
+    pedir<PortalOnuEstado>(() => portalHttp.get(`/onu/${contratoId}/estado`)),
+
+  onuConectar: (contratoId: string) =>
+    pedir<PortalOnuEstado>(() => portalHttp.post(`/onu/${contratoId}/conectar`)),
+
+  onuHeartbeat: async (contratoId: string): Promise<void> => {
+    // Best-effort: si un latido se pierde, el siguiente lo cubre. Nunca debe romper la
+    // pantalla ni mostrar un error al abonado.
+    try { await portalHttp.post(`/onu/${contratoId}/heartbeat`); } catch { /* ignorado */ }
+  },
+
+  onuWifi: (contratoId: string) =>
+    pedir<PortalWifi>(() => portalHttp.get(`/onu/${contratoId}/wifi`)),
+
+  onuGuardarWifi: (contratoId: string, banda: '2.4' | '5', dto: { ssid?: string; password?: string }) =>
+    pedir<ResultadoWifi>(() => portalHttp.put(`/onu/${contratoId}/wifi/${banda}`, dto)),
+
+  onuDispositivos: (contratoId: string) =>
+    pedir<PortalDispositivo[]>(() => portalHttp.get(`/onu/${contratoId}/dispositivos`)),
 };

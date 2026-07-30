@@ -258,6 +258,7 @@ import { Tr069StalenessService }           from './services/tr069-staleness.serv
     OltProviderRegistry,    // diagnóstico y listado de proveedores disponibles
     ProvisionFtthService,   // aprovisionamiento FTTH bifásico
     OltSyncService,         // sincronización asíncrona OLT → ERP
+    OnuTr069DetalleService, // lectura/escritura TR-069 del CPE (lo consume el portal)
   ],
 })
 export class OltNativoModule {}
