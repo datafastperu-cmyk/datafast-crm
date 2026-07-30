@@ -172,9 +172,18 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Los vhosts son plantillas: el entrypoint oficial de nginx corre envsubst sobre
+    # /etc/nginx/templates/*.template y escribe el resultado en /etc/nginx/conf.d.
+    # Por eso conf.d NO se monta — debe ser escribible por el contenedor.
+    # NGINX_ENVSUBST_FILTER acota la sustitución a estas dos variables, para que las
+    # variables propias de nginx ($host, $scheme, $request_uri…) queden intactas.
+    environment:
+      APP_DOMAIN:             ${APP_DOMAIN:-localhost}
+      PORTAL_DOMAIN:          ${PORTAL_DOMAIN:-portal.localhost}
+      NGINX_ENVSUBST_FILTER:  "^(APP_DOMAIN|PORTAL_DOMAIN)$$"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
       - certbot-conf:/etc/letsencrypt:ro
       - certbot-www:/var/www/certbot:ro
       - /var/log/nginx:/var/log/nginx

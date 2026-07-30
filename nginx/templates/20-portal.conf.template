@@ -1,15 +1,20 @@
 # ==============================================================
-# CRM ISP DATAFAST — Portal del Cliente (portal.tudominio.com)
+# CRM ISP DATAFAST — Portal del Cliente (${PORTAL_DOMAIN})
 # Subdominio separado para autogestión del cliente
+#
+# PLANTILLA: ${PORTAL_DOMAIN} lo resuelve envsubst al arrancar, desde el .env del VPS.
+# Este dominio es el que SIRVE el portal (server_name + certificado). La URL pública
+# que el ERP incluye en los avisos al cliente se configura aparte, en
+# /configuracion/portal-cliente, y debe coincidir con este valor.
 # ==============================================================
 
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name portal.tudominio.com;
+    server_name ${PORTAL_DOMAIN};
 
-    ssl_certificate     /etc/nginx/ssl/live/portal.tudominio.com/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/live/portal.tudominio.com/privkey.pem;
+    ssl_certificate     /etc/nginx/ssl/live/${PORTAL_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/${PORTAL_DOMAIN}/privkey.pem;
 
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
 

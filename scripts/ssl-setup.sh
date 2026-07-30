@@ -13,9 +13,21 @@ warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 # Cargar .env si existe
 [ -f .env ] && source .env || { echo "Crear .env primero (cp .env.example .env)"; exit 1; }
 
-DOMAIN_APP=${APP_URL#https://}    # Extraer dominio de APP_URL
-DOMAIN_PORTAL=${FRONTEND_URL#https://}
+# Los dominios se leen de APP_DOMAIN / PORTAL_DOMAIN — las mismas variables que
+# consume nginx vía envsubst. Antes el portal se derivaba de FRONTEND_URL, que en
+# .env.example apunta al MISMO host que APP_URL: se pedía dos veces el certificado
+# del panel y ninguno para el portal, sin que el script fallara.
+DOMAIN_APP=${APP_DOMAIN:-}
+DOMAIN_PORTAL=${PORTAL_DOMAIN:-}
 EMAIL=${SMTP_FROM_EMAIL:-admin@tudominio.com}
+
+if [ -z "$DOMAIN_APP" ] || [ -z "$DOMAIN_PORTAL" ]; then
+    echo "Falta APP_DOMAIN y/o PORTAL_DOMAIN en .env (solo el host, sin https://)"; exit 1
+fi
+if [ "$DOMAIN_APP" = "$DOMAIN_PORTAL" ]; then
+    echo "APP_DOMAIN y PORTAL_DOMAIN no pueden ser el mismo host: el portal del cliente"
+    echo "debe servirse en un subdominio propio para aislar cookies y rate-limit."; exit 1
+fi
 
 warn "Dominio admin: $DOMAIN_APP"
 warn "Dominio portal: $DOMAIN_PORTAL"
