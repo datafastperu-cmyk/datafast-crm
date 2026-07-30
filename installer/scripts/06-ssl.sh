@@ -16,6 +16,10 @@ setup_ssl() {
     local domains="-d ${DOMINIO_FRONTEND}"
     [[ -n "${DOMINIO_BACKEND:-}" && "${DOMINIO_BACKEND}" != "${DOMINIO_FRONTEND}" ]] && \
         domains+=" -d ${DOMINIO_BACKEND}"
+    # El portal del cliente entra en el MISMO certificado: pedirlo aparte multiplicaría
+    # renovaciones y dejaría el subdominio sin HTTPS si una de ellas falla en silencio.
+    [[ -n "${DOMINIO_PORTAL:-}" && "${DOMINIO_PORTAL}" != "${DOMINIO_FRONTEND}" ]] && \
+        domains+=" -d ${DOMINIO_PORTAL}"
 
     info "Solicitando certificado SSL para ${DOMINIO_FRONTEND}..."
     if certbot --nginx ${domains} \

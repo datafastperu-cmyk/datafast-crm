@@ -441,6 +441,15 @@ JWT_EXPIRES_IN=15m
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
 JWT_REFRESH_EXPIRES_IN=7d
 
+# Portal del Cliente. Sin PORTAL_JWT_SECRET el portal no emite sesiones (falla cerrado):
+# es deliberado, para que un .env incompleto se note en el primer login y no en silencio.
+PORTAL_JWT_SECRET=${PORTAL_JWT_SECRET}
+# El backend resuelve por este host a qué empresa pertenece el portal servido.
+PORTAL_DOMAIN=${DOMINIO_PORTAL:-}
+# Colector de consumo: apagado hasta que el operador decida encender un poller contra
+# los routers de producción.
+CONSUMO_COLECTOR_ENABLED=false
+
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
 EVOLUTION_API_URL=http://localhost:8080
@@ -471,6 +480,10 @@ NEXT_PUBLIC_WS_URL=${api_url/http/ws}
 NEXT_PUBLIC_APP_NAME=${EMPRESA_NOMBRE:-CRM ISP DATAFAST}
 NEXT_PUBLIC_VERSION=${DATAFAST_VERSION}
 NEXT_TELEMETRY_DISABLED=1
+# El middleware de Next enruta por Host: con este valor, y solo con él, el dominio del
+# portal sirve /portal/* y el del ERP responde 404 a esa ruta. Vacío = no hay portal y
+# el ERP se comporta exactamente igual que antes.
+PORTAL_DOMAIN=${DOMINIO_PORTAL:-}
 ENVEOF
     chown datafast:datafast "${INSTALL_DIR}/frontend/.env.production"
     chmod 640 "${INSTALL_DIR}/frontend/.env.production"

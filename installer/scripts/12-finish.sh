@@ -50,11 +50,14 @@ _prepare_config() {
     # Sin dominio por defecto — se configura después desde el panel
     DOMINIO_FRONTEND="${DOMINIO_FRONTEND:-}"
     DOMINIO_BACKEND="${DOMINIO_BACKEND:-}"
+    # Portal del Cliente: subdominio propio, sin fallback a la IP. Servirlo en el mismo
+    # host que el ERP anularia el aislamiento de cookies y rate-limit que lo justifica.
+    DOMINIO_PORTAL="${DOMINIO_PORTAL:-}"
 
     _generate_secrets
 
     export PUBLIC_IP SERVER_TYPE EMPRESA_NOMBRE EMPRESA_RUC ADMIN_EMAIL ADMIN_PASSWORD
-    export DOMINIO_FRONTEND DOMINIO_BACKEND
+    export DOMINIO_FRONTEND DOMINIO_BACKEND DOMINIO_PORTAL
 
     _log "INFO" "Configuración: tipo=${SERVER_TYPE} | direccion=${PUBLIC_IP} | empresa=${EMPRESA_NOMBRE}"
 }
@@ -124,7 +127,10 @@ _generate_secrets() {
     JWT_SECRET=$(openssl rand -hex 64)
     JWT_REFRESH_SECRET=$(openssl rand -hex 64)
     ENCRYPTION_KEY=$(openssl rand -hex 32)
-    export DB_PASSWORD REDIS_PASSWORD JWT_SECRET JWT_REFRESH_SECRET ENCRYPTION_KEY
+    # Secreto PROPIO del portal: compartir el del ERP dejaria un token de abonado a una
+    # sola comprobacion de distancia de valer como token de operador.
+    PORTAL_JWT_SECRET=$(openssl rand -hex 64)
+    export DB_PASSWORD REDIS_PASSWORD JWT_SECRET JWT_REFRESH_SECRET ENCRYPTION_KEY PORTAL_JWT_SECRET
 }
 
 # ── CLI principal ─────────────────────────────────────────────
@@ -191,6 +197,7 @@ _create_secrets_file() {
 DB_PASSWORD="${DB_PASSWORD}"
 REDIS_PASSWORD="${REDIS_PASSWORD}"
 JWT_SECRET="${JWT_SECRET}"
+PORTAL_JWT_SECRET="${PORTAL_JWT_SECRET}"
 ENCRYPTION_KEY="${ENCRYPTION_KEY}"
 SECEOF
     chmod 600 "${INSTALL_DIR}/config/secrets.conf"

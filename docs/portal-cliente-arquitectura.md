@@ -433,4 +433,46 @@ Todas las preguntas de estructuración están resueltas. Quedan estos supuestos 
 ### Deuda detectada, NO corregida aquí
 
 1. **`/etc/nginx/ssl/` no se monta en `docker-compose.yml`.** Ambos vhosts referencian `/etc/nginx/ssl/live/<dominio>/…` pero el único volumen de certificados es `certbot-conf:/etc/letsencrypt`. En la ruta docker, nginx no encontraría los certificados. Es preexistente y no se tocó porque producción **no corre nginx por docker**: usa PM2 + nginx nativo generado por `installer/scripts/05-nginx.sh`. Corregirlo a ciegas podía romper la ruta que sí funciona.
-2. **El instalador real no tiene vhost del portal.** `05-nginx.sh` genera vhosts para `${BE_HOST}` y `${FE_HOST}` únicamente. Añadir el del portal es parte del despliegue de Fase 1.
+2. ~~El instalador real no tiene vhost del portal~~ — **resuelto**. `05-nginx.sh` genera `datafast-portal` cuando existe `DOMINIO_PORTAL`; ver §13.
+
+---
+
+## 13. Despliegue del portal en el instalador real
+
+Producción no usa la ruta docker: corre PM2 + nginx nativo generado por `installer/scripts/`. El portal se publica ahí.
+
+### Variable que lo gobierna: `DOMINIO_PORTAL`
+
+Sin ella **no se publica nada** y el ERP se comporta exactamente igual que antes. No hay fallback a la IP: servir el portal en el mismo host que el panel anularía el aislamiento de cookies, CSP y rate-limit que justifica el subdominio.
+
+| Script | Qué hace con `DOMINIO_PORTAL` |
+|---|---|
+| `12-finish.sh` | La declara y exporta; genera `PORTAL_JWT_SECRET` con `openssl rand -hex 64` y lo guarda en `config/secrets.conf` |
+| `05-nginx.sh` | Genera y enlaza el vhost `datafast-portal`. Si la variable está vacía, **retira** el enlace (una reinstalación sin portal no deja un vhost huérfano sirviendo un dominio que ya nadie administra) |
+| `06-ssl.sh` | Añade el subdominio al **mismo** certificado de Certbot. Pedirlo aparte multiplicaría renovaciones y dejaría el portal sin HTTPS si una fallara en silencio |
+| `07-app.sh` | Escribe `PORTAL_DOMAIN` en el `.env.production` de **backend y frontend**, más `PORTAL_JWT_SECRET` y `CONSUMO_COLECTOR_ENABLED=false` |
+
+### El vhost
+
+- **Allowlist de API en el borde**: solo `/api/v1/portal/*`. Cualquier otra ruta bajo `/api/` devuelve **404**. El backend ya lo protege por audiencia de token, pero un dominio público que enruta a `/api/v1/clientes` es superficie que no tiene por qué existir.
+- `/api/v1/portal/auth/` tiene su propia zona (`portal_auth`, 10 r/m): ahí un usuario es un DNI adivinable. El resto del portal usa `portal` (120 r/m), más holgada que la del panel porque los abonados llegan desde CGNAT móvil compartiendo IP.
+- **Sin WebSocket**: el portal no usa `socket.io`. Exponerlo abriría un canal que nadie consume y que el guard del portal ni siquiera cubre.
+- `client_max_body_size 2M` — el abonado no sube archivos.
+- `X-Robots-Tag: noindex, nofollow`: zona privada.
+- `proxy_set_header Host $host` **no es cosmético**: el portal comparte proceso Next con el ERP (puerto 3000) y el middleware separa por `Host`. Sin esa cabecera, el portal no existe.
+
+### Verificado
+
+- `bash -n` sobre los 4 scripts modificados: sintaxis correcta.
+- Vhost renderizado con `DOMINIO_PORTAL=cliente.datafastperu.com`: dominio sustituido, las variables de nginx (`$host`, `$remote_addr`, `$request_uri`) intactas, llaves balanceadas (10/10), y el `return 404` de la allowlist presente.
+- **`PORTAL_DOMAIN` se lee en RUNTIME, no se inlinea en build.** Comprobado construyendo el frontend con un valor de prueba: el literal no aparece en `.next/server/src/middleware.js`, y sí `process.env.PORTAL_DOMAIN`. Consecuencia práctica: en el VPS actual basta añadir la variable al `.env.production` y reiniciar PM2 — **no hace falta recompilar el frontend**.
+- **No ejecutado**: `nginx -t` sobre el vhost final. No hay nginx en el entorno local. El propio instalador lo corre antes de recargar y avisa si falla.
+
+### Para el VPS que ya está instalado
+
+El instalador cubre instalaciones nuevas. En el servidor existente hay que hacerlo a mano, una vez:
+
+1. `DOMINIO_PORTAL` + `PORTAL_JWT_SECRET` (`openssl rand -hex 64`, **distinto** de `JWT_SECRET`) en `backend/.env.production`; `PORTAL_DOMAIN` en `frontend/.env.production`.
+2. Apuntar el DNS del subdominio al VPS.
+3. Correr `setup_nginx` (o copiar el vhost que genera) y `certbot --nginx -d <portal>` para sumarlo al certificado.
+4. `pm2 reload datafast-api-core datafast-worker-auxiliary datafast-frontend --update-env`.
