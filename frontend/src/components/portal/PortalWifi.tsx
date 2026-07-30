@@ -20,11 +20,20 @@ import { cn } from '@/lib/utils';
 const HEARTBEAT_MS = 60_000;
 // Mientras el carril se está abriendo, se consulta el estado cada 5 s.
 const POLL_MS = 5_000;
+// Tope de espera. La causa más común de que no converja es una ONU apagada o sin fibra,
+// y eso no se arregla esperando: sin este límite el abonado mira un spinner indefinido
+// sin saber que la solución está en su propia casa.
+const ESPERA_MAX_MS = 5 * 60_000;
 
 export function PortalWifi() {
   const queryClient = useQueryClient();
-  const { servicio } = useServicioActual();
+  const { servicio, perfil } = useServicioActual();
   const contratoId = servicio?.contratoId;
+  const variosServicios = (perfil?.servicios.length ?? 0) > 1;
+
+  // Momento en que empezó la conexión en curso, para poder rendirse a tiempo.
+  const [conectandoDesde, setConectandoDesde] = useState<number | null>(null);
+  const [seAgotoLaEspera, setSeAgotoLaEspera] = useState(false);
 
   const { data: estado, isLoading } = useQuery({
     queryKey: ['portal-onu-estado', contratoId],
@@ -32,10 +41,35 @@ export function PortalWifi() {
     enabled:  Boolean(contratoId),
     // Solo se repregunta mientras hay algo en curso. Un poll permanente contra el ACS
     // multiplicado por todos los abonados es carga que nadie necesita.
-    refetchInterval: (q) => (q.state.data?.carril === 'conectando' ? POLL_MS : false),
+    refetchInterval: (q) =>
+      q.state.data?.carril === 'conectando' && !seAgotoLaEspera ? POLL_MS : false,
   });
 
   const conectado = estado?.carril === 'conectado';
+
+  // Cambiar de servicio reinicia la espera: cada contrato tiene su propio carril.
+  useEffect(() => {
+    setConectandoDesde(null);
+    setSeAgotoLaEspera(false);
+  }, [contratoId]);
+
+  useEffect(() => {
+    if (estado?.carril !== 'conectando') {
+      setConectandoDesde(null);
+      setSeAgotoLaEspera(false);
+      return undefined;
+    }
+    // El carril puede estar "conectando" desde antes de abrir la pantalla; se cuenta
+    // desde que ESTA sesión lo observa, que es lo que el abonado percibe como espera.
+    const inicio = conectandoDesde ?? Date.now();
+    if (conectandoDesde === null) setConectandoDesde(inicio);
+
+    const restante = ESPERA_MAX_MS - (Date.now() - inicio);
+    if (restante <= 0) { setSeAgotoLaEspera(true); return undefined; }
+
+    const id = setTimeout(() => setSeAgotoLaEspera(true), restante);
+    return () => clearTimeout(id);
+  }, [estado?.carril, conectandoDesde]);
 
   // El latido solo tiene sentido con el carril arriba.
   useEffect(() => {
@@ -47,7 +81,11 @@ export function PortalWifi() {
 
   const { mutate: conectar, isPending: conectando } = useMutation({
     mutationFn: () => portalApi.onuConectar(contratoId!),
-    onSuccess: (res) => queryClient.setQueryData(['portal-onu-estado', contratoId], res),
+    onSuccess: (res) => {
+      setConectandoDesde(Date.now());
+      setSeAgotoLaEspera(false);
+      queryClient.setQueryData(['portal-onu-estado', contratoId], res);
+    },
   });
 
   if (isLoading || !servicio) {
@@ -66,42 +104,110 @@ export function PortalWifi() {
   }
 
   if (!conectado) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-6 text-center space-y-4">
-        <Router className="w-10 h-10 text-primary mx-auto" />
-        <div className="space-y-1">
-          <p className="text-base font-semibold text-foreground">Conecta tu router</p>
-          <p className="text-sm text-muted-foreground">{estado.mensaje}</p>
-        </div>
+    const esperando = estado.carril === 'conectando' && !seAgotoLaEspera;
 
-        {estado.carril === 'conectando' ? (
-          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Conectando… puede tomar unos minutos
+    return (
+      <div className="space-y-4">
+        {variosServicios && <ServicioEnUso servicio={servicio} />}
+
+        <div className="rounded-xl border border-border bg-card p-6 text-center space-y-4">
+          <Router className="w-10 h-10 text-primary mx-auto" />
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-foreground">Conecta tu router</p>
+            <p className="text-sm text-muted-foreground">
+              {seAgotoLaEspera
+                ? 'No conseguimos contactar tu router.'
+                : estado.mensaje}
+            </p>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => conectar()}
-            disabled={conectando}
-            className={cn(
-              'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg',
-              'text-sm font-medium bg-primary text-primary-foreground',
-              'hover:opacity-90 transition-opacity disabled:opacity-50',
-            )}
-          >
-            {conectando && <Loader2 className="w-4 h-4 animate-spin" />}
-            Conectar router
-          </button>
-        )}
+
+          {esperando ? (
+            <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Conectando… puede tomar unos minutos
+            </div>
+          ) : (
+            <>
+              {/* Rendirse a tiempo y decir qué hacer: la causa habitual está en casa del
+                  abonado, y esperar más no la resuelve. */}
+              {seAgotoLaEspera && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-left space-y-1.5">
+                  <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
+                    Revisa antes de reintentar:
+                  </p>
+                  <ul className="text-sm text-amber-800 dark:text-amber-300 list-disc pl-5 space-y-0.5">
+                    <li>Que el router esté encendido y con las luces habituales.</li>
+                    <li>Que el cable de fibra no se haya desconectado.</li>
+                  </ul>
+                  <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                    Si todo está bien y sigue sin conectar, escríbenos por soporte.
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => conectar()}
+                disabled={conectando}
+                className={cn(
+                  'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg',
+                  'text-sm font-medium bg-primary text-primary-foreground',
+                  'hover:opacity-90 transition-opacity disabled:opacity-50',
+                )}
+              >
+                {conectando && <Loader2 className="w-4 h-4 animate-spin" />}
+                {seAgotoLaEspera ? 'Reintentar' : 'Conectar router'}
+              </button>
+            </>
+          )}
+
+          {/* El carril es una SESIÓN de gestión, no un estado permanente: se cierra solo
+              tras unos días sin uso. Sin decirlo, el abonado vuelve la semana siguiente,
+              ve este mismo botón y cree que algo se rompió. */}
+          <p className="text-xs text-muted-foreground">
+            La conexión con tu router se cierra sola tras unos días sin usarla. Volver a
+            abrirla no afecta a tu servicio de internet.
+          </p>
+        </div>
       </div>
     );
   }
 
-  return <BandasWifi contratoId={contratoId!} />;
+  return (
+    <BandasWifi
+      contratoId={contratoId!}
+      servicio={variosServicios ? servicio : null}
+      sesionViva={estado.vivo}
+      onReconectar={() => conectar()}
+      reconectando={conectando}
+    />
+  );
 }
 
-function BandasWifi({ contratoId }: { contratoId: string }) {
+// Qué servicio se está configurando. Solo aparece con más de un servicio: cambiar el
+// nombre o la clave del WiFi de la casa equivocada es un error caro y silencioso — el
+// afectado no se entera hasta que sus equipos dejan de conectar.
+function ServicioEnUso({ servicio }: { servicio: { planNombre: string; direccion: string | null; numeroContrato: string } }) {
+  return (
+    <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+      <p className="text-xs text-muted-foreground">Estás configurando el WiFi de</p>
+      <p className="text-sm font-medium text-foreground">
+        {servicio.planNombre} · {servicio.direccion ?? `Contrato ${servicio.numeroContrato}`}
+      </p>
+    </div>
+  );
+}
+
+function BandasWifi({
+  contratoId, servicio, sesionViva, onReconectar, reconectando,
+}: {
+  contratoId: string;
+  /** Solo con más de un servicio: recordar cuál se está tocando. */
+  servicio: { planNombre: string; direccion: string | null; numeroContrato: string } | null;
+  sesionViva: boolean;
+  onReconectar: () => void;
+  reconectando: boolean;
+}) {
   const queryClient = useQueryClient();
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -144,6 +250,8 @@ function BandasWifi({ contratoId }: { contratoId: string }) {
 
   return (
     <div className="space-y-4">
+      {servicio && <ServicioEnUso servicio={servicio} />}
+
       {/* La hora de la lectura va SIEMPRE a la vista: es lo que le dice al abonado si lo
           que ve es de ahora o de hace un rato. */}
       <div className="flex items-center justify-between gap-3 px-1">
@@ -164,8 +272,17 @@ function BandasWifi({ contratoId }: { contratoId: string }) {
         </button>
       </div>
 
+      {/* Sin sesión viva la edición está cerrada. Explicarlo no basta: hay que ofrecer la
+          salida, o el abonado queda en un callejón. Reconectar re-despierta el carril. */}
       {!data.editable && data.motivoNoEditable && (
-        <Aviso icono={AlertTriangle} titulo="Solo lectura" mensaje={data.motivoNoEditable} />
+        <Aviso
+          icono={AlertTriangle}
+          titulo="Solo lectura"
+          mensaje={data.motivoNoEditable}
+          onReintentar={!sesionViva ? onReconectar : undefined}
+          textoReintentar={reconectando ? 'Reconectando…' : 'Reintentar conexión'}
+          reintentando={reconectando}
+        />
       )}
 
       {data.bandas.map((banda) => (
@@ -174,6 +291,7 @@ function BandasWifi({ contratoId }: { contratoId: string }) {
           contratoId={contratoId}
           banda={banda}
           editable={data.editable}
+          ubicacion={servicio?.direccion ?? null}
         />
       ))}
 
@@ -191,11 +309,13 @@ function BandasWifi({ contratoId }: { contratoId: string }) {
 }
 
 function TarjetaBanda({
-  contratoId, banda, editable,
+  contratoId, banda, editable, ubicacion,
 }: {
   contratoId: string;
   banda: PortalBandaWifi;
   editable: boolean;
+  /** Dirección del servicio: solo con más de uno, para nombrarlo al confirmar. */
+  ubicacion: string | null;
 }) {
   const queryClient = useQueryClient();
   const [ssid, setSsid]         = useState(banda.ssid ?? '');
@@ -308,7 +428,8 @@ function TarjetaBanda({
         {confirmar ? (
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-3">
             <p className="text-sm text-amber-800 dark:text-amber-300">
-              Se desconectarán todos los dispositivos conectados a esta red. Tendrás que
+              Se desconectarán todos los dispositivos conectados a la red {banda.banda} GHz
+              {ubicacion ? <> de <strong>{ubicacion}</strong></> : null}. Tendrás que
               volver a conectarlos con los datos nuevos.
             </p>
             <div className="flex gap-2">
@@ -352,11 +473,14 @@ function TarjetaBanda({
 
 function Aviso({
   icono: Icono, titulo, mensaje, onReintentar,
+  textoReintentar = 'Reintentar', reintentando = false,
 }: {
   icono: typeof Wifi;
   titulo: string;
   mensaje: string;
   onReintentar?: () => void;
+  textoReintentar?: string;
+  reintentando?: boolean;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-6 text-center space-y-3">
@@ -367,9 +491,11 @@ function Aviso({
         <button
           type="button"
           onClick={onReintentar}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90"
+          disabled={reintentando}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
-          Reintentar
+          {reintentando && <Loader2 className="w-4 h-4 animate-spin" />}
+          {textoReintentar}
         </button>
       )}
     </div>
