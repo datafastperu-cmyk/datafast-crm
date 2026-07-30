@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { SinServiceWorker } from '@/components/portal/SinServiceWorker';
 
 export const metadata: Metadata = {
   title: 'Portal del Cliente',
@@ -10,5 +11,12 @@ export const metadata: Metadata = {
 // servicio) vive en el grupo (privado), porque el login NO puede renderizarse dentro de
 // un shell que exige sesión.
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      {/* El portal nunca se sirve desde el service worker del ERP: ni su caché ni sus
+          respuestas viejas. Ver SinServiceWorker para el porqué. */}
+      <SinServiceWorker />
+      {children}
+    </>
+  );
 }

@@ -55,7 +55,24 @@ module.exports = withPWA({
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: false,
   reloadOnOnline: true,
+  // El Portal del Cliente queda FUERA del service worker.
+  //
+  // El SW se registra con alcance '/' y el portal vive en el mismo origen que el ERP
+  // (modo ruta), así que sin esta exclusión intercepta también /portal/*. Dos motivos
+  // para sacarlo, y el segundo ya mordió en producción:
+  //
+  //   1. Es lo que dice el diseño (§1.1): nada de servir desde caché la deuda, el estado
+  //      del servicio o las facturas. Un abonado mirando un saldo viejo reclama por algo
+  //      que ya pagó.
+  //   2. Una respuesta cacheada sobrevive al despliegue que la corrige. Tras arreglar el
+  //      bucle de redirección del login, el navegador seguía sirviendo la versión vieja
+  //      desde el SW: el portal "no abría" con el servidor respondiendo en 50 ms.
+  //
+  // `exclude` deja /portal fuera del precaché y el denylist impide que el SW responda
+  // navegaciones del portal con el fallback offline.
+  exclude: [/^\/portal/],
   workboxOptions: {
     disableDevLogs: true,
+    navigateFallbackDenylist: [/^\/portal/, /^\/api\//],
   },
 })(nextConfig);
