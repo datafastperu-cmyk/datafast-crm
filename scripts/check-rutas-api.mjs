@@ -35,27 +35,11 @@ const VERBOS = ['get', 'post', 'put', 'patch', 'delete'];
  * de aquí. La lista solo puede encoger.
  */
 const DEUDA_CONOCIDA = new Set([
-  // ── Monitoreo: endpoints que NO EXISTEN en el backend ─────────────────────
-  // No es un problema de path (los "nodos" ya se repuntaron a "dispositivos"): estas
-  // rutas no están implementadas en monitoreo.controller.ts. Rompen pantallas vivas:
-  //   NodoDetalle.tsx      → ping del nodo, interfaces SNMP, test SNMP
-  //   MonitoreoWidgets.tsx → mediciones históricas
-  // Requieren decisión: implementar el endpoint o retirar la funcionalidad de la UI.
-  'POST /monitoreo/nodos/:p/ping',
+  // ── Único pendiente real: SNMP ────────────────────────────────────────────
+  // No hay servicio SNMP en el módulo de monitoreo (`net-snmp` está en las dependencias
+  // pero nadie lo usa). Lo consume NodoDetalle.tsx. Construirlo es una feature, no un
+  // arreglo: queda a la espera de decisión.
   'GET /monitoreo/nodos/:p/snmp/interfaces',
-  'GET /monitoreo/nodos/:p/snmp/test',
-  'GET /monitoreo/nodos/:p/mediciones',
-  // Sin uso en la UI, pero se conservan por si la pantalla se retoma:
-  'POST /monitoreo/ping',
-  'POST /monitoreo/scan',
-  'GET /monitoreo/dashboard',
-  'GET /monitoreo/ws/stats',
-
-  // ── SmartOLT: sin backend y sin uso ───────────────────────────────────────
-  // Lo más parecido que existe (`/onus/:id/senal`, `/onus/sin-aprovisionar`) NO es
-  // equivalente, así que no se remapean a ciegas.
-  'GET /smartolt/onus/sin-contrato',
-  'GET /smartolt/onus/:p/estado-real',
 
   // ── Falso positivo conocido ───────────────────────────────────────────────
   // `/reportes/${tipo}/exportar` con tipo ∈ {cobranza, clientes} SÍ existe; el

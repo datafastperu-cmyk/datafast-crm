@@ -4,7 +4,7 @@ import {
   Body, Controller, DefaultValuePipe, Delete, Get, Param,
   ParseIntPipe, ParseUUIDPipe, Patch, Post, Query,
 }                            from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 
 import {
   MonitoreoService, ProbarConexionDto, CreateDispositivoDto, UpdateDispositivoDto,
@@ -120,6 +120,34 @@ export class MonitoreoController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.monitoreoSvc.deleteDispositivo(id, user.empresaId);
+  }
+
+  // ── GET /monitoreo/dispositivos/:id/mediciones ───────────────
+  // El worker llevaba tiempo escribiendo el histórico sin que nadie pudiera leerlo.
+  @Get('dispositivos/:id/mediciones')
+  @RequirePermission('monitoring:view')
+  @ApiOperation({ summary: 'Histórico de métricas del dispositivo' })
+  @ApiParam({ name: 'id' })
+  getMediciones(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('horas', new DefaultValuePipe(24), ParseIntPipe) horas = 24,
+  ) {
+    return this.monitoreoSvc.getMediciones(id, user.empresaId, horas);
+  }
+
+  // ── POST /monitoreo/dispositivos/:id/ping ────────────────────
+  // Sondeo bajo demanda: delega en el worker, que ya hace el ping ICMP, evalúa umbrales
+  // y persiste la métrica.
+  @Post('dispositivos/:id/ping')
+  @RequirePermission('monitoring:view')
+  @ApiOperation({ summary: 'Sondear el dispositivo ahora (ping ICMP)' })
+  @ApiParam({ name: 'id' })
+  pingDispositivo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.monitoreoSvc.pingDispositivo(id, user.empresaId);
   }
 
   // ── GET /monitoreo/alertas ───────────────────────────────────

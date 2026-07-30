@@ -199,10 +199,14 @@ export function NodoDetalle({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* Resultado del ping manual */}
+        {/* Resultado del ping manual.
+            Se muestran latencia media y pérdida porque es lo que el sondeo persiste;
+            min/max no se guardan y mostrarlos exigiría inventarlos. */}
         {pingResult && (
           <div className="mt-4 p-3 rounded-lg bg-muted/50 text-xs font-mono">
-            Ping: avg={pingResult.avg}ms | min={pingResult.min}ms | max={pingResult.max}ms | pérdida={pingResult.loss}%
+            Ping: latencia={pingResult.latenciaMs != null ? `${pingResult.latenciaMs}ms` : 'sin respuesta'}
+            {' | '}pérdida={pingResult.perdidaPct}%
+            {' | '}{pingResult.online ? 'en línea' : 'sin respuesta'}
           </div>
         )}
       </div>

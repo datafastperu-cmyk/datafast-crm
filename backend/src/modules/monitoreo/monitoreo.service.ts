@@ -2,10 +2,10 @@
 
 import {
   BadRequestException, Injectable,
-  Logger, NotFoundException,
+  Logger, NotFoundException, ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository }     from 'typeorm';
+import { DataSource, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
 
 import { DispositivoMonitoreo }  from './entities/dispositivo-monitoreo.entity';
 import { MetricasMonitoreo }     from './entities/metricas-monitoreo.entity';
@@ -506,6 +506,83 @@ export class MonitoreoService {
 
     await this.dispoRepo.softDelete(id);
     return StdResponse.ok({ deleted: true });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // GET /monitoreo/dispositivos/:id/mediciones
+  //
+  // El worker lleva tiempo escribiendo en `metricas_monitoreo` (decenas de miles de
+  // filas en producción) pero no había forma de leerlas: el frontend pedía
+  // `/monitoreo/nodos/:id/mediciones`, que nunca existió. Se exponen aquí.
+  // ═══════════════════════════════════════════════════════════════
+  async getMediciones(id: string, empresaId: string, horas = 24) {
+    // La pertenencia del dispositivo a la empresa se valida ANTES de leer métricas: sin
+    // esto, cualquier id ajeno devolvería el histórico de otra empresa.
+    const dispositivo = await this.dispoRepo.findOne({ where: { id, empresaId } });
+    if (!dispositivo) throw new NotFoundException('Dispositivo no encontrado');
+
+    // Ventana acotada: el histórico crece sin límite y una petición sin techo podría
+    // pedir años de muestras cada 60 s.
+    const horasSeguras = Math.min(Math.max(Math.trunc(horas) || 24, 1), 24 * 30);
+    const desde = new Date(Date.now() - horasSeguras * 3_600_000);
+
+    const filas = await this.metricasRepo.find({
+      where: { dispositivoId: id, timestamp: MoreThanOrEqual(desde) },
+      order: { timestamp: 'ASC' },
+      take:  5000,
+    });
+
+    // Se traduce al vocabulario que ya usa la UI (MedicionHistorica), en vez de filtrar
+    // la entidad cruda: el nombre de las columnas del worker no es contrato público.
+    return StdResponse.ok(
+      filas.map((m) => ({
+        timestamp:    m.timestamp,
+        latenciaMs:   m.pingLatenciaMs,
+        perdidaPct:   m.pingLossPct ?? 0,
+        // `online` no se guarda: se deriva. 100% de pérdida es el criterio con el que el
+        // propio worker da un sondeo por fallido.
+        online:       (m.pingLossPct ?? 100) < 100,
+        cpuPct:       m.cpuUsagePct ?? undefined,
+        memoriaPct:   m.memoryUsagePct ?? undefined,
+        traficoRxBps: m.trafficDownBps != null ? Number(m.trafficDownBps) : undefined,
+        traficoTxBps: m.trafficUpBps   != null ? Number(m.trafficUpBps)   : undefined,
+      })),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // POST /monitoreo/dispositivos/:id/ping
+  //
+  // Sondeo bajo demanda. Reutiliza el worker (`sondearInmediato`), que ya hace el ping
+  // ICMP, evalúa umbrales y persiste la métrica: duplicar esa lógica aquí habría creado
+  // dos caminos que pueden divergir.
+  // ═══════════════════════════════════════════════════════════════
+  async pingDispositivo(id: string, empresaId: string) {
+    const dispositivo = await this.dispoRepo.findOne({ where: { id, empresaId } });
+    if (!dispositivo) throw new NotFoundException('Dispositivo no encontrado');
+
+    await this.worker.sondearInmediato(dispositivo);
+
+    // VIO: el resultado no se infiere de que el sondeo no lanzara excepción — se LEE la
+    // métrica que el worker acaba de persistir. Si no hay ninguna, se dice que no se
+    // pudo medir en vez de devolver ceros que parecerían un enlace perfecto.
+    const ultima = await this.metricasRepo.findOne({
+      where: { dispositivoId: id },
+      order: { timestamp: 'DESC' },
+    });
+
+    if (!ultima) {
+      throw new ServiceUnavailableException(
+        'El sondeo no dejó ninguna medición — el dispositivo no respondió.',
+      );
+    }
+
+    return StdResponse.ok({
+      latenciaMs: ultima.pingLatenciaMs,
+      perdidaPct: ultima.pingLossPct ?? 0,
+      online:     (ultima.pingLossPct ?? 100) < 100,
+      timestamp:  ultima.timestamp,
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════

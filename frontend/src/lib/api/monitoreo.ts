@@ -119,26 +119,21 @@ export const monitoreoApi = {
     await api.delete(`/monitoreo/dispositivos/${id}`);
   },
 
-  // ── Ping y SNMP ────────────────────────────────────────────
-  // ⚠ SIN BACKEND. Ninguna de las rutas de esta sección existe en monitoreo.controller.ts
-  // — no es que estén en otro path: el endpoint no está implementado. Lo que rompen:
-  //   · pingNodo / getSnmpInterfaces / testSnmp  → NodoDetalle.tsx
-  //   · getMediciones                           → MonitoreoWidgets.tsx
-  //   · pingIp / getDashboard / getWsStats / forzarScan → sin uso en la UI
-  // Se dejan aquí, marcadas, en vez de borrarlas: quitarlas dejaría las pantallas sin
-  // compilar y esconder el problema no lo resuelve. Requieren decisión: implementar el
-  // endpoint o retirar la funcionalidad de la UI. Listadas en DEUDA_CONOCIDA del
-  // verificador (scripts/check-rutas-api.mjs).
-  pingNodo: async (id: string): Promise<{ avg: number; min: number; max: number; loss: number }> => {
-    const res = await api.post<ApiRespuesta<{ avg: number; min: number; max: number; loss: number }>>(`/monitoreo/nodos/${id}/ping`);
+  // ── Ping bajo demanda ──────────────────────────────────────
+  // El backend sondea con el worker (ping ICMP real), persiste la métrica y devuelve la
+  // que acaba de escribir — no un eco del comando.
+  pingNodo: async (id: string): Promise<{
+    latenciaMs: number | null; perdidaPct: number; online: boolean; timestamp: string;
+  }> => {
+    const res = await api.post<ApiRespuesta<{
+      latenciaMs: number | null; perdidaPct: number; online: boolean; timestamp: string;
+    }>>(`/monitoreo/dispositivos/${id}/ping`);
     return res.data.data;
   },
 
-  pingIp: async (ip: string, count = 4) => {
-    const res = await api.post<ApiRespuesta>('/monitoreo/ping', { ip, count });
-    return res.data.data;
-  },
-
+  // ⚠ SIN BACKEND: no hay servicio SNMP en el módulo (`net-snmp` está en las
+  // dependencias pero nadie lo usa). Construirlo es una feature, no un arreglo, así que
+  // se deja marcado en vez de borrarlo — lo consume NodoDetalle.tsx. En DEUDA_CONOCIDA.
   getSnmpInterfaces: async (id: string): Promise<SnmpInterface[]> => {
     const res = await api.get<ApiRespuesta<SnmpInterface[]>>(
       `/monitoreo/nodos/${id}/snmp/interfaces`,
@@ -146,24 +141,13 @@ export const monitoreoApi = {
     return res.data.data ?? [];
   },
 
-  testSnmp: async (id: string) => {
-    const res = await api.get<ApiRespuesta>(`/monitoreo/nodos/${id}/snmp/test`);
-    return res.data.data;
-  },
-
   // ── Mediciones históricas ──────────────────────────────────
   getMediciones: async (id: string, horas = 24): Promise<MedicionHistorica[]> => {
     const res = await api.get<ApiRespuesta<MedicionHistorica[]>>(
-      `/monitoreo/nodos/${id}/mediciones`,
+      `/monitoreo/dispositivos/${id}/mediciones`,
       { params: { horas } },
     );
     return res.data.data ?? [];
-  },
-
-  // ── Dashboard ──────────────────────────────────────────────
-  getDashboard: async () => {
-    const res = await api.get<ApiRespuesta>('/monitoreo/dashboard');
-    return res.data.data;
   },
 
   // ── Alertas ────────────────────────────────────────────────
@@ -226,18 +210,12 @@ export const monitoreoApi = {
     await api.delete(`/monitoreo/umbrales/${id}`);
   },
 
-  // ── WebSocket stats ────────────────────────────────────────
-  getWsStats: async () => {
-    const res = await api.get<ApiRespuesta>('/monitoreo/ws/stats');
-    return res.data.data;
-  },
-
-  // ── Scan manual ───────────────────────────────────────────
-  forzarScan: async (): Promise<{ encolados: number }> => {
-    const res = await api.post<ApiRespuesta<{ encolados: number }>>('/monitoreo/scan');
-    return res.data.data;
-  },
 };
+
+// Se eliminaron de esta API: `pingIp`, `testSnmp`, `getDashboard`, `getWsStats`,
+// `forzarScan` y `testConexionNodo`. Ninguna la invocaba un componente y ninguna tenía
+// endpoint detrás: eran restos de una API que se pensó y no se terminó. Una función
+// muerta en esta capa es una trampa — el siguiente que la vea asumirá que funciona.
 
 // ── Tipos de nodo ─────────────────────────────────────────────
 export const TIPOS_NODO = [

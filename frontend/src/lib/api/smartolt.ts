@@ -54,14 +54,9 @@ export const smartoltApi = {
   listarOnus: (filtros?: { oltId?: string; estado?: EstadoOnu; sinContrato?: boolean; page?: number; limit?: number }) =>
     api.get<ApiRespuesta<any>>('/smartolt/onus', { params: filtros }).then(r => r.data),
 
-  // ⚠ SIN BACKEND y SIN USO en la UI. `/onus/:id/estado-real` y `/onus/sin-contrato` no
-  // existen en smartolt.controller.ts; lo más parecido que sí existe es
-  // `/onus/:id/senal` y `/onus/sin-aprovisionar`, que NO son lo mismo (una ONU sin
-  // aprovisionar no es una ONU sin contrato). No se remapean por eso: adivinar la
-  // equivalencia sería peor que dejar el hueco visible. Requieren decisión.
-  getOnuEstadoReal: (id: string) =>
-    api.get<ApiRespuesta<any>>(`/smartolt/onus/${id}/estado-real`).then(r => r.data.data),
-
-  sinContrato: () =>
-    api.get<ApiRespuesta<Onu[]>>('/smartolt/onus/sin-contrato').then(r => r.data.data ?? []),
+  // Se eliminaron `getOnuEstadoReal` y `sinContrato`: ninguna la usaba un componente y
+  // ninguna tenía endpoint. Lo más parecido que sí existe (`/onus/:id/senal`,
+  // `/onus/sin-aprovisionar`) NO es equivalente —una ONU sin aprovisionar no es una ONU
+  // sin contrato—, así que no se remapearon a ciegas: si alguna vez hacen falta, se
+  // implementan contra el endpoint correcto.
 };
