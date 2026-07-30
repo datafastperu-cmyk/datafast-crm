@@ -411,7 +411,10 @@ server {
 }
 EOF
     else
-        info "Sin DOMINIO_PORTAL: el portal del cliente no se publica."
+        # Sin subdominio el portal NO desaparece: el frontend lo sirve en /portal del
+        # mismo host (modo ruta), que es lo que permite tener portal en una instalación
+        # local o con solo IP. No hace falta vhost porque el de la app ya enruta / y /api.
+        info "Sin DOMINIO_PORTAL: el portal se sirve en http(s)://<host>/portal (modo ruta)."
     fi
 
     # ── SSL auto-firmado inicial (se reemplaza con Certbot) ───────────────

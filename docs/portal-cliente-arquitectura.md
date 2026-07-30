@@ -476,3 +476,35 @@ El instalador cubre instalaciones nuevas. En el servidor existente hay que hacer
 2. Apuntar el DNS del subdominio al VPS.
 3. Correr `setup_nginx` (o copiar el vhost que genera) y `certbot --nginx -d <portal>` para sumarlo al certificado.
 4. `pm2 reload datafast-api-core datafast-worker-auxiliary datafast-frontend --update-env`.
+
+---
+
+## 14. Dos modos de publicación (portabilidad)
+
+El diseño original exigía subdominio y **eso era un defecto**: el ERP también se instala en
+redes locales sin IP pública ni dominio, y esas instalaciones se habrían quedado sin
+portal. `PORTAL_DOMAIN` es **opcional** y el modo se decide solo.
+
+| | Modo **subdominio** (`PORTAL_DOMAIN` con valor) | Modo **ruta** (sin valor) |
+|---|---|---|
+| URL del portal | `https://cliente.miempresa.pe` | `http(s)://<host-del-ERP>/portal` |
+| Host del ERP | responde **404** a `/portal` | sirve ERP y portal a la vez |
+| nginx | vhost propio + allowlist de API en el borde | ninguno: el vhost de la app ya enruta `/` y `/api` |
+| Requiere DNS/certificado | sí | **no** |
+| Aislamiento cookies/CSP | **completo** | **parcial** (mismo origen) |
+
+**El precio del modo ruta, dicho claro:** portal y ERP comparten origen, así que la
+separación entre la sesión del abonado y la del operador **deja de ser estructural**. Las
+cookies del portal siguen siendo `HttpOnly` y con nombres propios, y el guard sigue
+exigiendo `aud: datafast-portal` — pero un XSS servido desde el portal ya no está aislado
+del panel. La superficie es pequeña a propósito (el único campo de texto libre que se
+muestra al abonado, el menú personalizado, es **texto plano** y rechaza HTML), y aun así:
+**en cuanto haya dominio, subdominio.**
+
+Lo que **no** cambia entre modos: el host decide la empresa, nunca el usuario. Sin dominio
+y con una sola empresa la resolución es determinista; con varias empresas y ningún host que
+las distinga se **rechaza** en vez de adivinar — servirle a un abonado los datos de otra
+empresa no es un fallback aceptable.
+
+Fijado por `portal-tenant.service.spec.ts`: resolución por subdominio, por IP, por
+`localhost`, con URL mal escrita en el panel, y el rechazo multi-empresa.

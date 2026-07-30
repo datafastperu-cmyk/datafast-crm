@@ -8,10 +8,19 @@ function isPublic(pathname: string) {
 }
 
 // ─── Portal del Cliente ───────────────────────────────────────
-// El portal se sirve en su propio subdominio (PORTAL_DOMAIN). El aislamiento es por
-// Host, no por ruta: el dominio del ERP no sirve /portal/* y el dominio del portal no
-// sirve nada del ERP. Sin PORTAL_DOMAIN definido el comportamiento es el de siempre —
-// una instalación sin portal no cambia en nada.
+// DOS MODOS, y el que aplica se decide solo. El ERP se instala en VPS distintos y también
+// en redes locales sin IP pública ni dominio: exigir un subdominio dejaría sin portal
+// justo a esas instalaciones.
+//
+//   · CON `PORTAL_DOMAIN` — modo SUBDOMINIO (recomendado). El aislamiento es por Host:
+//     el dominio del ERP no sirve `/portal/*` y el del portal no sirve nada del ERP.
+//     Cookies, CSP y rate-limit quedan separados de la sesión del operador.
+//
+//   · SIN `PORTAL_DOMAIN` — modo RUTA. El portal vive en `/portal/*` del mismo host, sea
+//     una IP, `localhost` o lo que sea. No hay nada que configurar y funciona en una LAN.
+//     El precio está en §14 del documento y es real: mismo origen que el ERP, así que la
+//     separación entre la sesión del abonado y la del operador deja de ser estructural.
+//     Por eso el subdominio sigue siendo lo recomendado en cuanto haya dominio.
 const PORTAL_LOGIN  = '/portal/login';
 const PORTAL_INICIO = '/portal';
 
@@ -23,22 +32,26 @@ function hostDe(request: NextRequest): string {
   return (request.headers.get('host') ?? '').split(':')[0].trim().toLowerCase();
 }
 
-function middlewarePortal(request: NextRequest) {
+// `dedicado` = el portal es dueño del host (modo subdominio). En modo ruta el mismo host
+// sirve el ERP, así que ni se redirige la raíz ni se 404ea lo que no es del portal.
+function middlewarePortal(request: NextRequest, dedicado: boolean) {
   const { pathname } = request.nextUrl;
 
-  // El abonado escribe "cliente.miempresa.pe" a secas → se le lleva al portal.
-  // Es un redirect y no un rewrite a propósito: con rewrite, la ruta del navegador y
-  // la del router de Next divergen, y `usePathname` deja de coincidir con los `href`
-  // de la navegación (menú activo equivocado, enlaces que no resuelven).
-  if (pathname === '/') {
-    const url = request.nextUrl.clone();
-    url.pathname = PORTAL_INICIO;
-    return NextResponse.redirect(url);
-  }
+  if (dedicado) {
+    // El abonado escribe "cliente.miempresa.pe" a secas → se le lleva al portal.
+    // Es un redirect y no un rewrite a propósito: con rewrite, la ruta del navegador y
+    // la del router de Next divergen, y `usePathname` deja de coincidir con los `href`
+    // de la navegación (menú activo equivocado, enlaces que no resuelven).
+    if (pathname === '/') {
+      const url = request.nextUrl.clone();
+      url.pathname = PORTAL_INICIO;
+      return NextResponse.redirect(url);
+    }
 
-  // Cualquier otra ruta fuera de /portal no existe en este dominio.
-  if (!pathname.startsWith('/portal')) {
-    return NextResponse.rewrite(new URL('/not-found', request.url));
+    // Cualquier otra ruta fuera de /portal no existe en este dominio.
+    if (!pathname.startsWith('/portal')) {
+      return NextResponse.rewrite(new URL('/not-found', request.url));
+    }
   }
 
   // portal_refresh_token es HttpOnly: el navegador no la lee, el middleware sí —
@@ -66,14 +79,20 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const portal = dominioPortal();
-  if (portal && hostDe(request) === portal) {
-    return middlewarePortal(request);
-  }
 
-  // Dominio del ERP: el portal no existe aquí. 404 en vez de redirigir, para no
-  // confirmar que el portal está desplegado en este servidor.
-  if (pathname.startsWith('/portal')) {
-    return NextResponse.rewrite(new URL('/not-found', request.url));
+  if (portal) {
+    // Modo subdominio: el host manda.
+    if (hostDe(request) === portal) return middlewarePortal(request, true);
+
+    // Dominio del ERP: el portal no existe aquí. 404 en vez de redirigir, para no
+    // confirmar que el portal está desplegado en este servidor.
+    if (pathname.startsWith('/portal')) {
+      return NextResponse.rewrite(new URL('/not-found', request.url));
+    }
+  } else if (pathname.startsWith('/portal')) {
+    // Modo ruta: sin dominio configurado, el portal convive con el ERP en el mismo host.
+    // Es lo que permite que una instalación local o con solo IP tenga portal.
+    return middlewarePortal(request, false);
   }
 
   // El refresh_token es la cookie de larga duración (7 días).

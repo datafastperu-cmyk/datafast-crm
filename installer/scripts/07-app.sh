@@ -480,9 +480,9 @@ NEXT_PUBLIC_WS_URL=${api_url/http/ws}
 NEXT_PUBLIC_APP_NAME=${EMPRESA_NOMBRE:-CRM ISP DATAFAST}
 NEXT_PUBLIC_VERSION=${DATAFAST_VERSION}
 NEXT_TELEMETRY_DISABLED=1
-# El middleware de Next enruta por Host: con este valor, y solo con él, el dominio del
-# portal sirve /portal/* y el del ERP responde 404 a esa ruta. Vacío = no hay portal y
-# el ERP se comporta exactamente igual que antes.
+# Con valor: el portal vive en ese subdominio y el host del ERP responde 404 a /portal.
+# Vacío: el portal se sirve en /portal del mismo host (modo ruta) — es lo que permite
+# tener portal en una instalación local o con solo IP, sin dominio ni DNS.
 PORTAL_DOMAIN=${DOMINIO_PORTAL:-}
 ENVEOF
     chown datafast:datafast "${INSTALL_DIR}/frontend/.env.production"
