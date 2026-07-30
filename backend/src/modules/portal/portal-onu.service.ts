@@ -16,7 +16,16 @@ import { ModuleHealthService } from '../../common/services/module-health.service
 // este servicio traduce, valida y protege — no reimplementa nada del plano de red.
 
 const MINUTOS_ENTRE_CONEXIONES = 10;
-const MAX_CAMBIOS_WIFI_DIA     = 3;
+
+// Límite de escrituras WiFi. Lo que hay que evitar es MARTILLEAR el equipo, no que el
+// abonado configure su casa: dejar las dos bandas a su gusto son ya 2 escrituras, y si
+// una no converge a la primera querrá repetir. Un tope diario de 3 se agotaba antes de
+// terminar de configurar.
+//
+// Se protege con lo que ataca el riesgo real —una espera corta entre escrituras— más un
+// techo diario amplio contra el abuso sostenido.
+const ESPERA_ENTRE_CAMBIOS_MS = 20_000;
+const MAX_CAMBIOS_WIFI_DIA    = 12;
 // Una sesión TR-069 se considera viva con el mismo criterio que usa el ERP (12 min).
 const VIVO_MS = 12 * 60_000;
 
@@ -270,15 +279,20 @@ export class PortalOnuService implements OnModuleInit {
     const bloqueo = this.motivoNoEditable(registro, vivo);
     if (bloqueo) throw new ForbiddenException(bloqueo);
 
-    // Un abonado que cambia su clave tres veces en un día está resolviendo otra cosa
-    // (probablemente sin internet), y cada cambio desconecta todos sus equipos.
-    await this.limitarCambios(contratoId);
+    // Se comprueba ANTES de escribir, pero solo se CONSUME si la escritura llegó a
+    // despacharse: un intento que falla —ACS caído, modelo sin perfil— no puede gastarle
+    // el cupo al abonado por algo que no es culpa suya.
+    await this.verificarLimiteCambios(contratoId);
 
-    this.detalle.setWifi(registro.sn, {
+    // Con `await`: sin él, un fallo del write quedaba como rechazo no capturado y el
+    // abonado veía "enviado" cuando no se había enviado nada.
+    await this.detalle.setWifi(registro.sn, {
       band: banda,
       ssid: ssid || undefined,
       password: password || undefined,
     });
+
+    await this.registrarCambio(contratoId);
 
     this.logger.log(
       `Portal: abonado ${clienteId} cambió WiFi ${banda}GHz del contrato ${contratoId} ` +
@@ -469,14 +483,40 @@ export class PortalOnuService implements OnModuleInit {
     }
   }
 
-  private async limitarCambios(contratoId: string): Promise<void> {
-    const clave = `portal_wifi_cambios:${contratoId}`;
-    const usados = (await this.cache.get<number>(clave)) ?? 0;
+  private claveCambios(contratoId: string): string {
+    return `portal_wifi_cambios:${contratoId}`;
+  }
+
+  private claveUltimoCambio(contratoId: string): string {
+    return `portal_wifi_ultimo:${contratoId}`;
+  }
+
+  private async verificarLimiteCambios(contratoId: string): Promise<void> {
+    // Espera entre escrituras: es lo que evita martillear el equipo. Se dice CUÁNTO
+    // falta — "inténtalo más tarde" obliga a probar a ciegas.
+    const ultimo = await this.cache.get<number>(this.claveUltimoCambio(contratoId));
+    if (ultimo) {
+      const restante = ESPERA_ENTRE_CAMBIOS_MS - (Date.now() - ultimo);
+      if (restante > 0) {
+        throw new BadRequestException(
+          `Tu router está aplicando el cambio anterior. Espera ${Math.ceil(restante / 1000)} ` +
+          'segundos e inténtalo de nuevo.',
+        );
+      }
+    }
+
+    const usados = (await this.cache.get<number>(this.claveCambios(contratoId))) ?? 0;
     if (usados >= MAX_CAMBIOS_WIFI_DIA) {
       throw new BadRequestException(
-        'Alcanzaste el máximo de cambios de WiFi por hoy. Inténtalo mañana o escríbenos.',
+        'Hiciste muchos cambios de WiFi hoy. Inténtalo mañana o escríbenos si algo no quedó bien.',
       );
     }
-    await this.cache.set(clave, usados + 1, 24 * 60 * 60_000);
+  }
+
+  /** Solo se llama cuando la escritura SÍ se despachó al equipo. */
+  private async registrarCambio(contratoId: string): Promise<void> {
+    const usados = (await this.cache.get<number>(this.claveCambios(contratoId))) ?? 0;
+    await this.cache.set(this.claveCambios(contratoId), usados + 1, 24 * 60 * 60_000);
+    await this.cache.set(this.claveUltimoCambio(contratoId), Date.now(), ESPERA_ENTRE_CAMBIOS_MS);
   }
 }

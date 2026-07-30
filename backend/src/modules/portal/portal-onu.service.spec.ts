@@ -191,11 +191,54 @@ describe('PortalOnuService — WiFi del abonado', () => {
     });
 
     it('alcanzado el máximo de cambios diarios, se rechaza', async () => {
-      cache.get.mockResolvedValue(3);
+      // Solo el contador diario; sin marca de escritura reciente.
+      cache.get.mockImplementation(async (clave: string) =>
+        clave.startsWith('portal_wifi_cambios') ? 99 : undefined);
 
       await expect(
         svc.guardarWifi(CLIENTE, EMPRESA, CONTRATO, '2.4', { ssid: 'RED-NUEVA' }),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('dos escrituras seguidas: la segunda espera, y dice cuántos segundos', async () => {
+      // Configurar las dos bandas son dos escrituras seguidas; lo que hay que evitar es
+      // martillear el equipo, no que el abonado termine de configurar su casa.
+      cache.get.mockImplementation(async (clave: string) =>
+        clave.startsWith('portal_wifi_ultimo') ? Date.now() - 5_000 : 0);
+
+      await expect(
+        svc.guardarWifi(CLIENTE, EMPRESA, CONTRATO, '5', { ssid: 'RED-5G-NUEVA' }),
+      ).rejects.toThrow(/\d+\s*segundos/);
+    });
+  });
+
+  // Un intento que falla no puede gastarle el cupo al abonado: no es culpa suya.
+  describe('el cupo solo lo consume una escritura despachada', () => {
+    it('si la escritura falla, NO se registra el cambio', async () => {
+      cache.get.mockResolvedValue(0);
+      detalle.setWifi.mockImplementation(() => {
+        throw new Error('ACS no disponible');
+      });
+
+      await expect(
+        svc.guardarWifi(CLIENTE, EMPRESA, CONTRATO, '2.4', { ssid: 'RED-NUEVA' }),
+      ).rejects.toThrow();
+
+      const registros = cache.set.mock.calls.filter(
+        ([clave]) => String(clave).startsWith('portal_wifi_'),
+      );
+      expect(registros).toHaveLength(0);
+    });
+
+    it('si la escritura se despacha, se registra el cambio y la marca de tiempo', async () => {
+      cache.get.mockResolvedValue(0);
+      detalle.getDetalle.mockResolvedValue(detalleCon('RED-NUEVA'));
+
+      await svc.guardarWifi(CLIENTE, EMPRESA, CONTRATO, '2.4', { ssid: 'RED-NUEVA' });
+
+      const claves = cache.set.mock.calls.map(([c]) => String(c));
+      expect(claves.some((c) => c.startsWith('portal_wifi_cambios'))).toBe(true);
+      expect(claves.some((c) => c.startsWith('portal_wifi_ultimo'))).toBe(true);
     });
   });
 
