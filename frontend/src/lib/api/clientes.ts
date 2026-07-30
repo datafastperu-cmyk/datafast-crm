@@ -71,8 +71,11 @@ export const clientesApi = {
     return res.data.data;
   },
 
+  // PATCH, no PUT: el backend expone `@Patch(':id')` (clientes.controller.ts) y el DTO es
+  // parcial. Con PUT, Nest no encuentra ruta y devuelve 404 "Cannot PUT /api/v1/clientes/:id"
+  // — guardar desde Detalle del Cliente fallaba siempre, para cualquier campo.
   update: async (id: string, dto: Partial<CreateClienteDto> & { version?: number }): Promise<Cliente> => {
-    const res = await api.put<ApiRespuesta<Cliente>>(`/clientes/${id}`, dto);
+    const res = await api.patch<ApiRespuesta<Cliente>>(`/clientes/${id}`, dto);
     return res.data.data;
   },
 
