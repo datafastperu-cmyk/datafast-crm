@@ -2150,6 +2150,10 @@ def add_ont_lineprofile(
         f'dba-profile add profile-name {safe_dba} type4 max {dba_max_kbps}',
         f'ont-lineprofile gpon profile-name {safe_name}',
         'mapping-mode priority',
+        # `ip-index 0` ANTES de `enable`: le dice a la ONT CUÁL de sus IP-hosts es el canal
+        # TR-069. Faltaba —solo se enviaba `enable`— y sin él la ONT no tiene forma de saber
+        # qué WAN usar para la gestión. Es el paso 2b del procedimiento oficial de Huawei.
+        'tr069-management ip-index 0',
         'tr069-management enable',
         f'tcont 1 dba-profile-name {safe_dba}',
         'gem add 1 eth tcont 1',
@@ -3288,6 +3292,104 @@ def _get_or_create_tr069_server_profile(
     return new_id
 
 
+_WAN_PROFILE_ERP_NAME = 'DATAFAST-MGMT'
+
+
+def _get_or_create_wan_profile_erp(conn: OltConnectionSchema) -> int:
+    """
+    WAN-profile PROPIO del ERP para la WAN de gestión TR-069 (ip-index 0).
+
+    Por qué hace falta (procedimiento oficial Huawei, paso 2c): `ont ipconfig` crea un
+    IP-host, pero ese IP-host NO es una WAN hasta que se vincula a un wan-profile con
+    `ont wan-config`. Sin ese binding la configuración TR-069 no tiene interfaz donde
+    materializarse — y ese es el síntoma que se venía atribuyendo al firmware
+    ("la OLT acepta el ME137 pero la ONU nunca lo aplica").
+
+    Por qué uno PROPIO y no el existente: la OLT tiene `profile-id 0 "smartolt"`, y el
+    ERP lo estaba reutilizando para sus ONUs. Eso contradice la directriz de
+    implementación desde cero — el ERP inyecta su configuración canónica y respeta lo
+    preexistente como INTOCABLE, nunca se cuelga de ello. Si SmartOLT edita o borra su
+    perfil, no puede arrastrarse a las ONUs del ERP.
+
+    Idempotente: si el perfil con sello ya existe, devuelve su id sin tocar la OLT.
+    """
+    try:
+        out = _paramiko_huawei_run(
+            conn, ['display current-configuration | include wan-profile'],
+            timeout=settings.ssh_command_timeout,
+        )
+    except Exception as exc:                                    # noqa: BLE001
+        raise RuntimeError(f'No se pudo leer los wan-profile en {conn.ip}: {exc}') from exc
+
+    existentes: dict[int, str] = {}
+    for m in re.finditer(r'ont wan-profile profile-id (\d+) profile-name "([^"]*)"', out):
+        existentes[int(m.group(1))] = m.group(2)
+
+    for pid, nombre in existentes.items():
+        if nombre == _WAN_PROFILE_ERP_NAME:
+            logger.info('wan-profile del ERP ya existe | profile_id=%d en %s', pid, conn.ip)
+            return pid
+
+    new_id = next((i for i in range(0, 128) if i not in existentes), None)
+    if new_id is None:
+        raise RuntimeError(f'Sin profile-id libre para el wan-profile del ERP en {conn.ip}')
+
+    # `connection-type route` + `nat disable`: la WAN de gestión enruta hacia el ACS y no
+    # debe hacer NAT — es un canal de gestión, no la WAN de datos del abonado.
+    cmds = [
+        'config',
+        f'ont wan-profile profile-id {new_id} profile-name "{_WAN_PROFILE_ERP_NAME}"',
+        'connection-type route',
+        'nat disable',
+        'commit',
+        'quit',
+        'quit',
+    ]
+    out = _paramiko_huawei_run(conn, cmds, timeout=settings.ssh_command_timeout)
+    low = out.lower()
+    if 'failure' in low or 'error' in low:
+        raise RuntimeError(f'La OLT rechazó crear el wan-profile del ERP: {out[-300:]}')
+
+    logger.info('wan-profile del ERP creado | profile_id=%d name=%s en %s',
+                new_id, _WAN_PROFILE_ERP_NAME, conn.ip)
+    return new_id
+
+
+def _asegurar_config_method_omci(conn: OltConnectionSchema) -> bool:
+    """
+    `gpon ont home-gateway config-method omci` — paso 1 del procedimiento oficial.
+
+    Sin esto la ONT en modo home-gateway IGNORA la configuración que le llega por OMCI.
+    En el MA5800 de producción ya estaba puesto... **pero lo puso SmartOLT, no el ERP**.
+    O sea: el flujo del ERP venía funcionando apoyado en configuración ajena. En una OLT
+    nueva, sin SmartOLT, no estaría — y el OMCI fallaría sin ninguna pista del motivo.
+
+    Idempotente y best-effort: devuelve si quedó habilitado. No lanza, porque una OLT
+    donde esto falle igual puede aprovisionar por el canal DHCP.
+    """
+    try:
+        out = _paramiko_huawei_run(
+            conn, ['display current-configuration | include home-gateway'],
+            timeout=settings.ssh_command_timeout,
+        )
+        if 'config-method omci' in out:
+            return True
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning('No se pudo leer config-method en %s: %s', conn.ip, exc)
+        return False
+
+    try:
+        _paramiko_huawei_run(
+            conn, ['config', 'gpon ont home-gateway config-method omci', 'quit'],
+            timeout=settings.ssh_command_timeout,
+        )
+        logger.warning('config-method omci HABILITADO en %s (no estaba)', conn.ip)
+        return True
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning('No se pudo habilitar config-method omci en %s: %s', conn.ip, exc)
+        return False
+
+
 def provision_mgmt_bootstrap(
     conn:                 OltConnectionSchema,
     slot:                 int,
@@ -3332,6 +3434,19 @@ def provision_mgmt_bootstrap(
     Síncrono — llamar desde asyncio.to_thread().
     """
     tr069_profile_id = _get_or_create_tr069_server_profile(conn, acs_url)
+
+    # PASOS 1 y 2c del procedimiento oficial de Huawei, que faltaban.
+    #
+    # El flujo anterior enviaba `ont ipconfig` + `ont tr069-server-config` y nada más. Con
+    # DHCP funciona porque la ONT crea la WAN sola al obtener el lease; en modo ESTÁTICO no
+    # hay lease, así que el IP-host se queda sin WAN y la config TR-069 no tiene dónde
+    # materializarse. De ahí la conclusión —falsa— de que el ME137 no funcionaba en este
+    # firmware: el procedimiento estaba incompleto, no el firmware.
+    #
+    # Referencia: procedimiento oficial Huawei (foro o3community) y la propia OLT, donde
+    # SmartOLT gestiona 204 ONUs del mismo modelo con IP de gestión ESTÁTICA.
+    _asegurar_config_method_omci(conn)
+    wan_profile_id = _get_or_create_wan_profile_erp(conn)
     logger.info(
         'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d '
         'tr069_profile_id=%d (DHCP, WAN tr069)',
@@ -3366,6 +3481,9 @@ def provision_mgmt_bootstrap(
         'config',
         f'interface gpon 0/{slot}',
         ipcfg,
+        # Binding del IP-host a una WAN real (paso 2c). Va ANTES del tr069-server-config:
+        # primero existe la WAN, después se le asocia el perfil del ACS.
+        f'ont wan-config {port} {onu_id} ip-index 0 profile-id {wan_profile_id}',
         f'ont tr069-server-config {port} {onu_id} profile-id {tr069_profile_id}',
         'quit',
         (
