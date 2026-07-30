@@ -55,7 +55,7 @@ export function PortalFacturacion() {
       <div className="rounded-xl border border-border bg-card p-8 text-center space-y-3">
         <AlertTriangle className="w-7 h-7 text-amber-500 mx-auto" />
         <p className="text-sm text-foreground">
-          {error instanceof PortalError ? error.message : 'No pudimos cargar tus comprobantes.'}
+          {error instanceof PortalError ? error.message : 'No pudimos cargar tus recibos.'}
         </p>
       </div>
     );
@@ -82,7 +82,7 @@ export function PortalFacturacion() {
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
           {data?.cantidadPendiente
-            ? `${data.cantidadPendiente} comprobante(s) por pagar${
+            ? `${data.cantidadPendiente} recibo(s) por pagar${
                 data.cantidadVencida ? ` · ${data.cantidadVencida} vencido(s)` : ''
               }`
             : 'No tienes deudas pendientes'}
@@ -111,7 +111,7 @@ export function PortalFacturacion() {
       {/* Listado */}
       {facturas.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">No hay comprobantes en esta vista.</p>
+          <p className="text-sm text-muted-foreground">No hay recibos en esta vista.</p>
         </div>
       ) : (
         <ul className="space-y-3">
@@ -160,7 +160,7 @@ export function PortalFacturacion() {
           Se dice explícitamente para que el abonado sepa a dónde ir, en vez de buscar
           un botón que no existe. */}
       <p className="text-xs text-muted-foreground px-1">
-        ¿Necesitas tu comprobante impreso? Solicítalo por soporte y te lo hacemos llegar.
+        ¿Necesitas tu recibo impreso? Solicítalo por soporte y te lo hacemos llegar.
       </p>
     </div>
   );

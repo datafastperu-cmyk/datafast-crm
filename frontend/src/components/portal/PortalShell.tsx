@@ -33,7 +33,7 @@ function construirNav(secciones?: {
 }): ItemNav[] {
   const items: ItemNav[] = [{ href: '/portal', label: 'Inicio', icon: Home, movil: true }];
   if (secciones?.comprobantes) {
-    items.push({ href: '/portal/facturas', label: 'Facturas', icon: Receipt, movil: true });
+    items.push({ href: '/portal/recibos', label: 'Recibos', icon: Receipt, movil: true });
   }
   if (secciones?.wifi) {
     items.push({ href: '/portal/wifi', label: 'Mi WiFi', icon: Wifi, movil: true });

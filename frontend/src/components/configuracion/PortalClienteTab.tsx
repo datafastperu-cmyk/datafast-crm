@@ -28,7 +28,9 @@ const PESTANAS: Array<{ id: Pestana; label: string }> = [
 // Cada toggle es un feature flag real: al apagarlo el backend deja de servir la sección,
 // no se limita a ocultar el ítem del menú.
 const SECCIONES: Array<{ campo: keyof PortalConfig; label: string; ayuda?: string }> = [
-  { campo: 'mostrarComprobantes',   label: 'Mis comprobantes',   ayuda: 'Se muestran en pantalla; el portal no entrega archivos descargables.' },
+  // El abonado ve esta sección como "Recibos": el nombre de la columna
+  // (`mostrar_comprobantes`) se mantiene para no migrar la BD por una etiqueta.
+  { campo: 'mostrarComprobantes',   label: 'Recibos',            ayuda: 'Se muestran en pantalla; el portal no entrega archivos descargables.' },
   { campo: 'mostrarSoporte',        label: 'Soporte técnico',    ayuda: 'El cliente abre y sigue sus tickets.' },
   { campo: 'mostrarInformarPago',   label: 'Informar pago',      ayuda: 'El cliente reporta un pago hecho por transferencia o billetera.' },
   { campo: 'mostrarTestVelocidad',  label: 'Test de velocidad',  ayuda: 'Enlace externo, se abre en una pestaña nueva.' },

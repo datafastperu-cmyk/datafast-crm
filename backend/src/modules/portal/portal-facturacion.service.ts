@@ -33,10 +33,10 @@ export interface PortalEstadoCuenta {
 }
 
 interface FilaFactura {
-  id: string; numero_completo: string | null; serie: string; numero: number;
+  id: string; numero_completo: string | null; serie: string; correlativo: number;
   descripcion: string; periodo_inicio: string; periodo_fin: string;
   fecha_emision: string; fecha_vencimiento: string; fecha_pago: string | null;
-  total: string; monto_pagado: string; estado: string;
+  total: string; monto_pagado: string; saldo: string | null; estado: string;
 }
 
 @Injectable()
@@ -57,19 +57,23 @@ export class PortalFacturacionService {
     );
     if (!contrato) throw new NotFoundException('Servicio no encontrado');
 
+    // Los nombres son los de la TABLA, no los de la entidad: el correlativo se llama
+    // `correlativo` (no `numero`) y `facturas` NO tiene `deleted_at` — filtrar por él
+    // hacía fallar la consulta entera con SCHEMA_ERROR y la sección no cargaba nunca.
+    // `saldo` ya lo calcula la base de datos: se usa el suyo para que el portal y el ERP
+    // no puedan mostrar cifras distintas de la misma factura.
     const filas = await this.dataSource.query<FilaFactura[]>(
-      `SELECT id, numero_completo, serie, numero, descripcion,
+      `SELECT id, numero_completo, serie, correlativo, descripcion,
               periodo_inicio, periodo_fin, fecha_emision, fecha_vencimiento, fecha_pago,
-              total, monto_pagado, estado::text AS estado
+              total, monto_pagado, saldo, estado::text AS estado
          FROM facturas
         WHERE contrato_id = $1
           AND cliente_id  = $2
           AND empresa_id  = $3
-          AND deleted_at IS NULL
           -- Un borrador todavía no es un compromiso de pago y una anulada dejó de
           -- serlo: mostrar cualquiera de las dos genera un reclamo, no información.
           AND estado NOT IN ('borrador', 'anulada')
-        ORDER BY fecha_emision DESC, numero DESC
+        ORDER BY fecha_emision DESC, correlativo DESC
         LIMIT 60`,
       [contratoId, clienteId, empresaId],
     );
@@ -93,11 +97,14 @@ export class PortalFacturacionService {
   private mapear(f: FilaFactura, hoy: string): PortalFactura {
     const total       = Number(f.total);
     const montoPagado = Number(f.monto_pagado);
-    const saldo       = Number((total - montoPagado).toFixed(2));
+    // El saldo de la BD manda; el cálculo solo cubre el caso de que venga nulo.
+    const saldo = f.saldo != null
+      ? Number(f.saldo)
+      : Number((total - montoPagado).toFixed(2));
 
     return {
       id:               f.id,
-      numero:           f.numero_completo ?? `${f.serie}-${f.numero}`,
+      numero:           f.numero_completo ?? `${f.serie}-${f.correlativo}`,
       concepto:         f.descripcion,
       periodoInicio:    f.periodo_inicio,
       periodoFin:       f.periodo_fin,
