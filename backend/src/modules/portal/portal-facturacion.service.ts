@@ -69,7 +69,7 @@ export class PortalFacturacionService {
          FROM facturas
         WHERE cliente_id  = $2
           AND empresa_id  = $3
-          -- `contrato_id` es NULLABLE y en la práctica muchas facturas se emiten sin él
+          -- contrato_id es NULLABLE y en la práctica muchas facturas se emiten sin él
           -- (la facturación las ata al CLIENTE). Filtrar solo por contrato dejaba la
           -- sección vacía aunque el abonado tuviera recibos pendientes: veía "no tienes
           -- deudas" debiendo dinero, que es la peor forma de fallar de esta pantalla.
