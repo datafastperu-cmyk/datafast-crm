@@ -3341,7 +3341,9 @@ def _get_or_create_wan_profile_erp(conn: OltConnectionSchema) -> int:
         f'ont wan-profile profile-id {new_id} profile-name "{_WAN_PROFILE_ERP_NAME}"',
         'connection-type route',
         'nat disable',
-        'commit',
+        # SIN `commit`: el contexto wan-profile no lo acepta ("% Unknown command",
+        # verificado en vivo 2026-07-29). El line-profile sí lo lleva y copiar ese patrón
+        # aquí fue el error — el procedimiento oficial no lo incluye para wan-profile.
         'quit',
         'quit',
     ]
