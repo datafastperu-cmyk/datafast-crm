@@ -137,19 +137,24 @@ export const configApi = {
     return res.data.data;
   },
 
-  // Usuarios
+  // Usuarios — viven en /usuarios, no bajo /auth. Con las rutas anteriores
+  // (`/auth/usuarios`, `/auth/registro`) el backend devolvía 404 y la pestaña de
+  // Personal no podía listar ni crear usuarios.
   getUsuarios: async (): Promise<UsuarioAdmin[]> => {
-    const res = await api.get<ApiRespuesta<UsuarioAdmin[]>>('/auth/usuarios');
+    const res = await api.get<ApiRespuesta<UsuarioAdmin[]>>('/usuarios');
     return res.data.data ?? [];
   },
 
   createUsuario: async (dto: CreateUsuarioDto): Promise<UsuarioAdmin> => {
-    const res = await api.post<ApiRespuesta<UsuarioAdmin>>('/auth/registro', dto);
+    const res = await api.post<ApiRespuesta<UsuarioAdmin>>('/usuarios', dto);
     return res.data.data;
   },
 
+  // El desajuste no era solo de ruta: el backend espera `{ estado }` con un enum
+  // ('activo' | 'inactivo' | 'bloqueado'), no `{ activo: boolean }`. Enviar el booleano
+  // habría fallado igual con un 400 de validación tras corregir la URL.
   toggleUsuario: async (id: string, activo: boolean): Promise<void> => {
-    await api.patch(`/auth/usuarios/${id}/estado`, { activo });
+    await api.patch(`/usuarios/${id}/estado`, { estado: activo ? 'activo' : 'inactivo' });
   },
 
   changePassword: async (dto: ChangePasswordDto): Promise<void> => {
@@ -161,9 +166,16 @@ export const configApi = {
     return res.data.data;
   },
 
+  // /roles, no /auth/roles. El backend devuelve los roles con sus permisos; aquí solo
+  // se necesitan los nombres, así que se proyectan. El fallback se conserva: si la
+  // llamada falla, la UI sigue ofreciendo los roles base en vez de un desplegable vacío.
   getRoles: async (): Promise<string[]> => {
-    const res = await api.get<ApiRespuesta<string[]>>('/auth/roles');
-    return res.data.data ?? ['Administrador', 'Supervisor', 'Cajero', 'Técnico'];
+    const res = await api.get<ApiRespuesta<Array<{ nombre: string } | string>>>('/roles');
+    const roles = res.data.data ?? [];
+    const nombres = roles
+      .map((r) => (typeof r === 'string' ? r : r?.nombre))
+      .filter((n): n is string => Boolean(n));
+    return nombres.length ? nombres : ['Administrador', 'Supervisor', 'Cajero', 'Técnico'];
   },
 
   getFacturacionResumen: async (): Promise<FacturacionResumen> => {
@@ -199,6 +211,10 @@ export const reportesApi = {
     return res.data.data;
   },
 
+  // OJO: el backend solo expone `cobranza/exportar` y `clientes/exportar`. La pestaña
+  // "red" llama a `/reportes/red/exportar`, que NO existe → 404 al pulsar Exportar.
+  // Se marca aquí porque el verificador no puede resolver `${tipo}` estáticamente: para
+  // él la ruta es siempre `/reportes/:p/exportar` y no distingue qué valores son válidos.
   exportar: async (tipo: string, filtros: FiltrosReporte): Promise<Blob> => {
     const res = await api.get(`/reportes/${tipo}/exportar`, {
       params:       { ...filtros, formato: filtros.formato || 'csv' },

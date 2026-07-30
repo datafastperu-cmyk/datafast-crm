@@ -94,8 +94,9 @@ export const proyectosInversionApi = {
     return res.data.data;
   },
 
+  // PUT, no PATCH: el backend expone @Put(':id').
   update: async (id: string, dto: UpdateProyectoInversionDto): Promise<ProyectoInversion> => {
-    const res = await api.patch<ApiRespuesta<ProyectoInversion>>(`/proyectos-inversion/${id}`, dto);
+    const res = await api.put<ApiRespuesta<ProyectoInversion>>(`/proyectos-inversion/${id}`, dto);
     return res.data.data;
   },
 

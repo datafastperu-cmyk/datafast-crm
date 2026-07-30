@@ -154,8 +154,10 @@ export const contratosApi = {
     return res.data.data;
   },
 
+  // PATCH, no POST: el backend expone @Patch(':id/prorroga'). Con POST devolvia 404 y
+  // otorgar una prorroga desde Detalle del Contrato fallaba siempre.
   aplicarProrroga: async (id: string, dto: ProrrogaDto): Promise<Contrato> => {
-    const res = await api.post<ApiRespuesta<Contrato>>(`/contratos/${id}/prorroga`, dto);
+    const res = await api.patch<ApiRespuesta<Contrato>>(`/contratos/${id}/prorroga`, dto);
     return res.data.data;
   },
 
@@ -185,8 +187,10 @@ export const contratosApi = {
     return res.data.data;
   },
 
+  // El backend lo expone como 'resumen'. No lo consume ninguna pantalla hoy, pero se
+  // corrige en vez de borrarse: la siguiente que lo use no debería redescubrir el 404.
   getStats: async (): Promise<Record<string, number>> => {
-    const res = await api.get<ApiRespuesta<Record<string, number>>>('/contratos/stats');
+    const res = await api.get<ApiRespuesta<Record<string, number>>>('/contratos/resumen');
     return res.data.data;
   },
 
@@ -299,8 +303,9 @@ export const redesApi = {
     const res = await api.get<ApiRespuesta<Olt[]>>('/smartolt/olts');
     return res.data.data ?? [];
   },
+  // En el backend los "nodos" se llaman dispositivos (/monitoreo/dispositivos).
   listNodos: async (): Promise<Nodo[]> => {
-    const res = await api.get<ApiRespuesta<Nodo[]>>('/monitoreo/nodos');
+    const res = await api.get<ApiRespuesta<Nodo[]>>('/monitoreo/dispositivos');
     return res.data.data ?? [];
   },
   listSegmentos: async (routerId?: string): Promise<SegmentoIpv4[]> => {

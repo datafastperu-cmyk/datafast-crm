@@ -521,7 +521,18 @@ export class MonitoreoService {
 
     const page  = filtro.page  ?? 1;
     const limit = filtro.limit ?? 50;
-    qb.orderBy('a.created_at', 'DESC').skip((page - 1) * limit).take(limit);
+    // `a.createdAt`, no `a.created_at`: en orderBy hay que dar el nombre de PROPIEDAD,
+    // no el de columna. Aquí es obligatorio porque se combinan `skip/take` con
+    // `leftJoinAndSelect`: TypeORM genera una subconsulta de ids distintos y tiene que
+    // mapear el ORDER BY contra los metadatos de la entidad. Con `created_at` el lookup
+    // devuelve undefined y revienta con "Cannot read properties of undefined (reading
+    // 'databaseName')" → 500 en CADA llamada a GET /monitoreo/alertas.
+    //
+    // Por eso otros `orderBy('x.columna_snake')` del backend no fallan: sin paginación
+    // sobre un join, TypeORM deja la cadena como SQL crudo y la columna existe.
+    // No se veía porque el frontend llamaba a /monitoreo/alertas/historial, que no
+    // existe: un 404 tapaba un 500.
+    qb.orderBy('a.createdAt', 'DESC').skip((page - 1) * limit).take(limit);
 
     const [items, total] = await qb.getManyAndCount();
     return StdResponse.ok({ items, total, page, limit });

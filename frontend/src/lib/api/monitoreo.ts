@@ -81,18 +81,21 @@ export interface SnmpInterface {
 export const monitoreoApi = {
 
   // ── Nodos ──────────────────────────────────────────────────
+  // En el backend estos recursos se llaman DISPOSITIVOS (`/monitoreo/dispositivos`).
+  // El renombrado se hizo de un lado y no del otro, así que toda esta sección apuntaba
+  // a rutas inexistentes: la pantalla de Monitoreo llamaba y recibía 404 en silencio.
   listNodos: async (): Promise<Nodo[]> => {
-    const res = await api.get<ApiRespuesta<Nodo[]>>('/monitoreo/nodos');
+    const res = await api.get<ApiRespuesta<Nodo[]>>('/monitoreo/dispositivos');
     return res.data.data;
   },
 
   getNodo: async (id: string): Promise<Nodo> => {
-    const res = await api.get<ApiRespuesta<Nodo>>(`/monitoreo/nodos/${id}`);
+    const res = await api.get<ApiRespuesta<Nodo>>(`/monitoreo/dispositivos/${id}`);
     return res.data.data;
   },
 
   createNodo: async (dto: CreateNodoDto): Promise<Nodo> => {
-    const res = await api.post<ApiRespuesta<Nodo>>('/monitoreo/nodos', dto);
+    const res = await api.post<ApiRespuesta<Nodo>>('/monitoreo/dispositivos', dto);
     return res.data.data;
   },
 
@@ -101,25 +104,31 @@ export const monitoreoApi = {
     fabricante: string; puertoApi?: number; usarSsl?: boolean;
     routerId?: string;
   }): Promise<TestConexionResult> => {
-    const res = await api.post<ApiRespuesta<TestConexionResult>>('/monitoreo/test-conexion', params);
-    return res.data.data;
-  },
-
-  testConexionNodo: async (id: string): Promise<TestConexionResult> => {
-    const res = await api.post<ApiRespuesta<TestConexionResult>>(`/monitoreo/nodos/${id}/test-conexion`);
+    const res = await api.post<ApiRespuesta<TestConexionResult>>(
+      '/monitoreo/dispositivos/probar-conexion', params,
+    );
     return res.data.data;
   },
 
   updateNodo: async (id: string, dto: Partial<CreateNodoDto>): Promise<Nodo> => {
-    const res = await api.put<ApiRespuesta<Nodo>>(`/monitoreo/nodos/${id}`, dto);
+    const res = await api.patch<ApiRespuesta<Nodo>>(`/monitoreo/dispositivos/${id}`, dto);
     return res.data.data;
   },
 
   deleteNodo: async (id: string): Promise<void> => {
-    await api.delete(`/monitoreo/nodos/${id}`);
+    await api.delete(`/monitoreo/dispositivos/${id}`);
   },
 
   // ── Ping y SNMP ────────────────────────────────────────────
+  // ⚠ SIN BACKEND. Ninguna de las rutas de esta sección existe en monitoreo.controller.ts
+  // — no es que estén en otro path: el endpoint no está implementado. Lo que rompen:
+  //   · pingNodo / getSnmpInterfaces / testSnmp  → NodoDetalle.tsx
+  //   · getMediciones                           → MonitoreoWidgets.tsx
+  //   · pingIp / getDashboard / getWsStats / forzarScan → sin uso en la UI
+  // Se dejan aquí, marcadas, en vez de borrarlas: quitarlas dejaría las pantallas sin
+  // compilar y esconder el problema no lo resuelve. Requieren decisión: implementar el
+  // endpoint o retirar la funcionalidad de la UI. Listadas en DEUDA_CONOCIDA del
+  // verificador (scripts/check-rutas-api.mjs).
   pingNodo: async (id: string): Promise<{ avg: number; min: number; max: number; loss: number }> => {
     const res = await api.post<ApiRespuesta<{ avg: number; min: number; max: number; loss: number }>>(`/monitoreo/nodos/${id}/ping`);
     return res.data.data;
@@ -163,8 +172,10 @@ export const monitoreoApi = {
     return res.data.data ?? [];
   },
 
+  // El backend sirve el historial desde el mismo `/monitoreo/alertas` filtrando por
+  // parámetros; no existe un `/historial` aparte.
   getHistorialAlertas: async (filtros: FiltrosAlerta = {}): Promise<Alerta[]> => {
-    const res = await api.get<ApiRespuesta<Alerta[]>>('/monitoreo/alertas/historial', {
+    const res = await api.get<ApiRespuesta<Alerta[]>>('/monitoreo/alertas', {
       params: filtros,
     });
     return res.data.data ?? [];
@@ -180,18 +191,20 @@ export const monitoreoApi = {
   },
 
   // ── Configuración de alertas ───────────────────────────────
+  // El backend las llama UMBRALES (`/monitoreo/umbrales`). Con `/alertas/configuracion`
+  // la pantalla de Configuración de Alertas no podía listar, crear ni borrar nada.
   getConfigAlertas: async (): Promise<ConfigAlerta[]> => {
-    const res = await api.get<ApiRespuesta<ConfigAlerta[]>>('/monitoreo/alertas/configuracion');
+    const res = await api.get<ApiRespuesta<ConfigAlerta[]>>('/monitoreo/umbrales');
     return res.data.data ?? [];
   },
 
   createConfigAlerta: async (dto: CreateConfigAlertaDto) => {
-    const res = await api.post<ApiRespuesta>('/monitoreo/alertas/configuracion', dto);
+    const res = await api.post<ApiRespuesta>('/monitoreo/umbrales', dto);
     return res.data.data;
   },
 
   deleteConfigAlerta: async (id: string): Promise<void> => {
-    await api.delete(`/monitoreo/alertas/configuracion/${id}`);
+    await api.delete(`/monitoreo/umbrales/${id}`);
   },
 
   // ── WebSocket stats ────────────────────────────────────────

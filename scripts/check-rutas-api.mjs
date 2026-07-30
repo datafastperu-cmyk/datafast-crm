@@ -35,40 +35,32 @@ const VERBOS = ['get', 'post', 'put', 'patch', 'delete'];
  * de aquí. La lista solo puede encoger.
  */
 const DEUDA_CONOCIDA = new Set([
-  // Monitoreo: el frontend habla de "nodos" y el backend expone "dispositivos". La API
-  // se renombró de un lado y no del otro; `nodosApi` quedó entero apuntando al vacío.
-  'GET /monitoreo/nodos',
-  'GET /monitoreo/nodos/:p',
-  'POST /monitoreo/nodos',
-  'PUT /monitoreo/nodos/:p',
-  'DELETE /monitoreo/nodos/:p',
+  // ── Monitoreo: endpoints que NO EXISTEN en el backend ─────────────────────
+  // No es un problema de path (los "nodos" ya se repuntaron a "dispositivos"): estas
+  // rutas no están implementadas en monitoreo.controller.ts. Rompen pantallas vivas:
+  //   NodoDetalle.tsx      → ping del nodo, interfaces SNMP, test SNMP
+  //   MonitoreoWidgets.tsx → mediciones históricas
+  // Requieren decisión: implementar el endpoint o retirar la funcionalidad de la UI.
   'POST /monitoreo/nodos/:p/ping',
-  'POST /monitoreo/nodos/:p/test-conexion',
+  'GET /monitoreo/nodos/:p/snmp/interfaces',
   'GET /monitoreo/nodos/:p/snmp/test',
+  'GET /monitoreo/nodos/:p/mediciones',
+  // Sin uso en la UI, pero se conservan por si la pantalla se retoma:
   'POST /monitoreo/ping',
   'POST /monitoreo/scan',
-  'POST /monitoreo/test-conexion',
   'GET /monitoreo/dashboard',
   'GET /monitoreo/ws/stats',
-  'GET /monitoreo/alertas/configuracion',
-  'POST /monitoreo/alertas/configuracion',
-  'DELETE /monitoreo/alertas/configuracion/:p',
-  'GET /monitoreo/alertas/historial',
 
-  // Auth: el frontend llama endpoints de gestión de usuarios bajo /auth que viven en
-  // /usuarios, o que no existen.
-  'GET /auth/usuarios',
-  'GET /auth/roles',
-  'POST /auth/registro',
-  'PATCH /auth/usuarios/:p/estado',
-
-  // Varios
-  'GET /reportes/:p/exportar',
-  'GET /contratos/stats',
-  'POST /contratos/:p/prorroga',
-  'PATCH /proyectos-inversion/:p',
+  // ── SmartOLT: sin backend y sin uso ───────────────────────────────────────
+  // Lo más parecido que existe (`/onus/:id/senal`, `/onus/sin-aprovisionar`) NO es
+  // equivalente, así que no se remapean a ciegas.
   'GET /smartolt/onus/sin-contrato',
   'GET /smartolt/onus/:p/estado-real',
+
+  // ── Falso positivo conocido ───────────────────────────────────────────────
+  // `/reportes/${tipo}/exportar` con tipo ∈ {cobranza, clientes} SÍ existe; el
+  // verificador no puede resolver la interpolación. La pestaña "red" sí está rota.
+  'GET /reportes/:p/exportar',
 ]);
 
 function archivos(dir, sufijo) {
@@ -135,9 +127,13 @@ function llamadasFrontend() {
 
   for (const archivo of archivos(FRONTEND, '.ts')) {
     const src = readFileSync(archivo, 'utf8');
-    const lineas = src.split('\n');
 
-    lineas.forEach((linea, i) => {
+    // Se recorre el ARCHIVO ENTERO, no línea a línea: media API está escrita con la
+    // ruta en la línea siguiente a `api.get<...>(`. Con un escaneo por líneas esas
+    // llamadas eran invisibles y el verificador daba por buenas rutas que no existen.
+    {
+      const linea = src;   // el "renglón" es el archivo entero
+
       for (const verbo of VERBOS) {
         // api.put<Tipo>(`/ruta`)  |  api.put('/ruta')  |  api.put<A<B>>(`/ruta`)
         //
@@ -146,6 +142,7 @@ function llamadasFrontend() {
         // segundo sin consumir y la llamada no casa. Con esa versión el verificador
         // se saltaba en silencio justo el tipo de línea que debía revisar — incluida
         // la que motivó todo esto.
+        // `[\s\S]` en vez de `.`: la ruta suele ir en la línea SIGUIENTE al `api.get(`.
         const re = new RegExp(`\\bapi\\.${verbo}\\s*[^(]*\\(\\s*['"\`]([^'"\`]+)['"\`]`, 'g');
         let m;
         while ((m = re.exec(linea)) !== null) {
@@ -156,11 +153,12 @@ function llamadasFrontend() {
             verbo:   verbo.toUpperCase(),
             ruta:    normalizar(ruta),
             archivo: relative(RAIZ, archivo).replace(/\\/g, '/'),
-            linea:   i + 1,
+            // Número de línea real: se cuenta cuántos saltos hay antes de la coincidencia.
+            linea:   src.slice(0, m.index).split('\n').length,
           });
         }
       }
-    });
+    }
   }
   return llamadas;
 }
