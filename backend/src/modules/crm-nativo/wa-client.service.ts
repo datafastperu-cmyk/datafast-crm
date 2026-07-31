@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, Optional, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import * as fs     from 'fs';
 import * as path   from 'path';
 import * as crypto from 'crypto';
@@ -24,6 +24,7 @@ import { CrmNativoService }   from './crm-nativo.service';
 import { CrmNativoGateway }   from './crm-nativo.gateway';
 import { WaStateService }     from './wa-state.service';
 import { ModuleHealthService } from '../../common/services/module-health.service';
+import { EventosSistemaService } from '../sistema/eventos-sistema.service';
 
 // whatsapp-web.js + qrcode importados dinámicamente para evitar
 // errores de arranque si la librería aún no está instalada.
@@ -40,6 +41,15 @@ const CLIENT_ID    = 'datafast-crm';
 // Delays exponenciales: 8s → 16s → 32s → 64s → 120s
 const MAX_RESTARTS   = 5;
 const RESTART_DELAYS = [8_000, 16_000, 32_000, 64_000, 120_000];
+
+// Corte por QR no escaneado. El circuit breaker de arriba solo cubre
+// 'disconnected' y 'auth_failure'; un cliente que pide QR y nadie escanea NO
+// dispara ninguno de los dos: sigue vivo emitiendo un QR cada ~20 s para
+// siempre, con Chromium residente. Ocurrió en producción entre el 22/07 y el
+// 30/07 de 2026 — 35.369 QR emitidos, cero handshakes, y el ERP reportando
+// 'ok' todo el tiempo. A ~20 s por QR, 15 intentos ≈ 5 min de espera real de
+// un operador frente a la pantalla; pasado eso nadie va a escanear.
+const MAX_QR_SIN_ESCANEAR = 15;
 
 // Guard de instancia única: solo UN proceso puede manejar el cliente de WhatsApp,
 // porque whatsapp-web.js abre Chromium sobre un perfil de sesión exclusivo.
@@ -79,6 +89,10 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   private client: any = null;
   private restarting   = false;
   private restartCount = 0;
+  private qrSinEscanear = 0;
+  // Cortado por QR no escaneado: no se relanza solo. Reactivación manual
+  // (hoy: `pm2 restart` del proceso que aloja el cliente).
+  private detenidoPorQr = false;
   private readonly crmSentIds      = new Set<string>();
   private readonly sendingByChatId = new Set<string>();
 
@@ -87,6 +101,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     private readonly gateway:      CrmNativoGateway,
     private readonly state:        WaStateService,
     private readonly moduleHealth: ModuleHealthService,
+    @Optional() private readonly eventos?: EventosSistemaService,
   ) {}
 
   onModuleInit(): void {
@@ -332,23 +347,31 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       });
 
       this.client.on('qr', async (qr: string) => {
+        this.qrSinEscanear++;
+        if (this.qrSinEscanear > MAX_QR_SIN_ESCANEAR) {
+          await this.detenerPorQrNoEscaneado();
+          return;
+        }
         try {
           const qrBase64 = await QRCode.toDataURL(qr);
           this.gateway.emitStatus({ estado: 'REQUERIDO_QR', qr: qrBase64 });
-          this.logger.log('QR generado — esperando escaneo');
+          this.logger.log(`QR generado — esperando escaneo (${this.qrSinEscanear}/${MAX_QR_SIN_ESCANEAR})`);
         } catch (err) {
           this.logger.error(`Error generando QR: ${err}`);
         }
       });
 
       this.client.on('authenticated', () => {
-        this.restartCount = 0;
+        this.restartCount   = 0;
+        this.qrSinEscanear  = 0;
         this.logger.log('WhatsApp: autenticado — sesión válida');
         this.gateway.emitStatus({ estado: 'CONECTADO' });
       });
 
       this.client.on('ready', () => {
-        this.restartCount = 0;
+        this.restartCount  = 0;
+        this.qrSinEscanear = 0;
+        this.moduleHealth.registrar('crm-whatsapp', 'ok');
         this.logger.log('WhatsApp Web listo!');
         this.gateway.emitStatus({ estado: 'CONECTADO' });
         this.aplicarLidPatches();
@@ -506,7 +529,39 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // ── Corte por QR no escaneado ───────────────────────────────────
+  // Libera Chromium y deja el módulo en DEGRADED con constancia auditable.
+  // No relanza: si nadie escaneó en 15 QR, reintentar solo vuelve al bucle.
+  private async detenerPorQrNoEscaneado(): Promise<void> {
+    if (this.detenidoPorQr) return;
+    this.detenidoPorQr = true;
+
+    const razon =
+      `Vinculación no completada: ${MAX_QR_SIN_ESCANEAR} QR emitidos sin escaneo. ` +
+      `Cliente detenido para liberar Chromium — reactivar reiniciando el proceso y escaneando el QR.`;
+
+    this.logger.error(`[WA] ${razon}`);
+    this.moduleHealth.registrar('crm-whatsapp', 'degraded', razon);
+    this.gateway.emitStatus({ estado: 'DESCONECTADO' });
+
+    void this.eventos?.registrar({
+      nivel:    'error',
+      origen:   'whatsapp',
+      codigo:   'WA_QR_NO_ESCANEADO',
+      mensaje:  razon,
+      contexto: { qrEmitidos: this.qrSinEscanear, maximo: MAX_QR_SIN_ESCANEAR },
+    });
+
+    if (this.client) {
+      await this.client.destroy().catch((err: any) =>
+        this.logger.warn(`[WA] destroy tras corte por QR: ${err?.message}`),
+      );
+      this.client = null;
+    }
+  }
+
   private async reiniciarConRetraso(ms: number): Promise<void> {
+    if (this.detenidoPorQr) return;
     if (this.restarting) return;
     if (this.restartCount >= MAX_RESTARTS) {
       this.logger.error(

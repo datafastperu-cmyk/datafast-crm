@@ -5,8 +5,6 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-import * as fs   from 'fs';
-import * as path from 'path';
 import { WaStateService, WaStatusPayload } from './wa-state.service';
 import { CrmNativoService } from './crm-nativo.service';
 import { CrmChat }    from './entities/crm-chat.entity';
@@ -43,17 +41,11 @@ export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnec
         .then(chats => { if (chats.length) client.emit('wa:chats', chats); })
         .catch(() => {});
 
-    // Fallback: si memoria dice INICIANDO pero sesión existe en disco → CONECTADO
-    if (snap.estado === 'INICIANDO') {
-      const sessionPath = process.env.WA_SESSION_PATH || '/opt/datafast/.wwebjs_auth';
-      const sessionDir  = path.join(sessionPath, 'session-datafast-crm');
-      if (fs.existsSync(sessionDir)) {
-        client.emit('wa:status', { estado: 'CONECTADO' });
-        enviarChats();
-        return;
-      }
-    }
-
+    // El estado que se emite es el que reporta el cliente WA, nunca uno inferido.
+    // Antes, un `INICIANDO` con directorio de sesión en disco se traducía a
+    // CONECTADO: entre el 22/07 y el 30/07 de 2026 el operador vio "conectado"
+    // mientras WhatsApp llevaba 8 días pidiendo QR. Un directorio en disco prueba
+    // que hubo una sesión alguna vez, no que la haya ahora.
     client.emit('wa:status', snap);
 
     // Si ya está conectado, enviar chats al nuevo cliente inmediatamente
