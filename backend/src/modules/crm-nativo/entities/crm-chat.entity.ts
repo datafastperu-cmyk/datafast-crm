@@ -29,6 +29,11 @@ export class CrmChat {
   @Column({ name: 'no_leidos', type: 'smallint', default: 0 })
   noLeidos: number;
 
+  // `telefono` guarda un identificador LID de Meta, no un número de abonado:
+  // no sirve para cruzar con la ficha del cliente ni para marcar.
+  @Column({ name: 'es_lid', type: 'boolean', default: false })
+  esLid: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

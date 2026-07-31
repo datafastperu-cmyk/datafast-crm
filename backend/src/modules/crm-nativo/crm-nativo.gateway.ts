@@ -3,7 +3,8 @@ import {
   OnGatewayConnection, OnGatewayDisconnect,
   SubscribeMessage, MessageBody, ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Logger }     from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { WaStateService, WaStatusPayload } from './wa-state.service';
 import { CrmNativoService } from './crm-nativo.service';
@@ -44,15 +45,39 @@ export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnec
   constructor(
     private readonly state:   WaStateService,
     private readonly crmSvc:  CrmNativoService,
+    private readonly jwt:     JwtService,
   ) {}
 
+  // El namespace emitía la lista completa de conversaciones a cualquier socket que
+  // conectara, sin credencial alguna, y aceptaba `crm:leer_chat` sobre cualquier
+  // chatId. El token viaja en el handshake (auth.token o Authorization).
+  private empresaDe(client: Socket): string | null {
+    try {
+      const raw =
+        (client.handshake.auth as Record<string, string> | undefined)?.token ??
+        (client.handshake.headers?.authorization ?? '').replace(/^Bearer\s+/i, '');
+      if (!raw) return null;
+      const payload = this.jwt.verify<{ empresaId?: string }>(raw);
+      return payload?.empresaId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   handleConnection(client: Socket) {
-    this.logger.debug(`WS conectado: ${client.id}`);
+    const empresaId = this.empresaDe(client);
+    if (!empresaId) {
+      this.logger.warn(`WS rechazado (sin token válido): ${client.id}`);
+      client.emit('wa:error', { mensaje: 'Sesión no válida' });
+      client.disconnect(true);
+      return;
+    }
+    client.data.empresaId = empresaId;
+    this.logger.debug(`WS conectado: ${client.id} (empresa=${empresaId})`);
     const snap = this.state.snapshot();
 
     const enviarChats = () =>
-      this.crmSvc.resolverEmpresaId()
-        .then(eid => eid ? this.crmSvc.listarChats(eid) : [])
+      this.crmSvc.listarChats(empresaId)
         .then(chats => { if (chats.length) client.emit('wa:chats', chats); })
         .catch(() => {});
 
@@ -98,8 +123,10 @@ export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('crm:leer_chat')
   async onLeerChat(
     @MessageBody() data: { chatId: string },
-    @ConnectedSocket() _client: Socket,
+    @ConnectedSocket() client: Socket,
   ) {
-    await this.crmSvc.resetNoLeidos(data.chatId);
+    const empresaId = client.data?.empresaId as string | undefined;
+    if (!empresaId || !data?.chatId) return;
+    await this.crmSvc.resetNoLeidos(data.chatId, empresaId);
   }
 }

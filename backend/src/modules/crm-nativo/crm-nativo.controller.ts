@@ -123,10 +123,12 @@ export class CrmNativoController {
     @Param('chatId') chatId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    const mensajes = await this.crmSvc.listarMensajes(chatId);
+    const mensajes = await this.crmSvc.listarMensajes(chatId, user.empresaId);
 
     if (mensajes.length === 0) {
-      const chat = await this.crmSvc.findChat(chatId);
+      // findChat va acotado por empresa: un chatId ajeno no abre nada, ni siquiera
+      // dispara la descarga del historial desde WhatsApp.
+      const chat = await this.crmSvc.findChat(chatId, user.empresaId);
       if (chat?.waChatId) {
         const cargados = await this.waClient.cargarHistorialEnDB(
           chat.waChatId,
@@ -134,7 +136,7 @@ export class CrmNativoController {
           user.empresaId,
         );
         if (cargados > 0) {
-          return ApiResponse.ok(await this.crmSvc.listarMensajes(chatId));
+          return ApiResponse.ok(await this.crmSvc.listarMensajes(chatId, user.empresaId));
         }
       }
     }
@@ -145,9 +147,20 @@ export class CrmNativoController {
   // ── GET /api/v1/crm-nativo/media/:filename ───────────────────
   @Get('media/:filename')
   @ApiOperation({ summary: 'Descargar archivo multimedia CRM (JWT requerido)' })
-  servirMedia(@Param('filename') filename: string, @Res() res: Response) {
+  async servirMedia(
+    @Param('filename') filename: string,
+    @CurrentUser() user: JwtPayload,
+    @Res() res: Response,
+  ) {
     const safe     = path.basename(filename);
     const filePath = path.join(MEDIA_DIR, safe);
+
+    // El adjunto debe pertenecer a una conversación de la empresa del usuario.
+    // Antes bastaba con conocer el nombre del archivo: cualquier sesión válida
+    // descargaba el voucher o el documento de cualquier otra empresa.
+    if (!await this.crmSvc.mediaPerteneceAEmpresa(safe, user.empresaId)) {
+      throw new NotFoundException('Archivo no encontrado');
+    }
 
     if (!fs.existsSync(filePath)) throw new NotFoundException('Archivo no encontrado');
 

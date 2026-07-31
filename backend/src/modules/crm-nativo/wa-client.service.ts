@@ -241,7 +241,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
     const telefonoLimpio = telefono.replace(/\D/g, '');
     // Prefer the stored waChatId (may be @lid) over assuming @c.us
-    const storedChatId = await this.crmSvc.findWaChatId(telefonoLimpio);
+    const storedChatId = await this.crmSvc.findWaChatId(telefonoLimpio, empresaId);
     let chatId         = storedChatId ?? `${telefonoLimpio}@c.us`;
     const textoConFirma = `*${agente}:* ${texto}`;
 
@@ -312,7 +312,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     }
 
     const telefonoLimpio = telefono.replace(/\D/g, '');
-    const storedChatId   = await this.crmSvc.findWaChatId(telefonoLimpio);
+    const storedChatId   = await this.crmSvc.findWaChatId(telefonoLimpio, empresaId);
     let chatId           = storedChatId ?? `${telefonoLimpio}@c.us`;
 
     if (!storedChatId) {
@@ -554,17 +554,17 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const nombre   = contact?.name || contact?.pushname || null;
       const telefono = telefonoReal.replace(/\D/g, '');
 
+      const empresaId = await this.crmSvc.resolverEmpresaId();
+      if (!empresaId) return;
+
       if (isOutbound) {
         // Fallback DB: cubre el caso extremo donde llegó tras liberar ambos locks
         if (waMsgId) {
-          const existing = await this.crmSvc.findMensajePorWaMsgId(waMsgId);
+          const existing = await this.crmSvc.findMensajePorWaMsgId(waMsgId, empresaId);
           if (existing) return;
         }
         // Continúa: mensaje enviado desde el celular físico — procesar como "Desde Celular"
       }
-
-      const empresaId = await this.crmSvc.resolverEmpresaId();
-      if (!empresaId) return;
 
       // Descargar media si existe (voucheres, imágenes, audios)
       let mediaUrl: string | null = null;

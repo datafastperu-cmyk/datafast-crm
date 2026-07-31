@@ -9,11 +9,14 @@ import { CrmNativoGateway }   from './crm-nativo.gateway';
 import { CrmNativoController } from './crm-nativo.controller';
 import { PurgaMediaCron }     from './purga-media.cron';
 import { ConfiguracionModule } from '../config/config.module';
+import { AuthModule }          from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CrmChat, CrmMensaje]),
     ConfiguracionModule,
+    // JwtService para autenticar el handshake del WebSocket del CRM.
+    AuthModule,
   ],
   controllers: [CrmNativoController],
   providers: [

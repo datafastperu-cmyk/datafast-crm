@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import Cookies from 'js-cookie';
 import {
   MessageSquare, Search, Send, Loader2,
   Wifi, WifiOff, RefreshCw, CheckCheck, User,
@@ -759,6 +760,9 @@ export default function WhatsAppWebPage() {
       // único que aloja el cliente. El namespace no sirve para enrutar porque
       // viaja dentro del payload de socket.io.
       path:               '/api/wa-socket/',
+      // El servidor exige credencial en el handshake: el namespace emitía la lista
+      // completa de conversaciones a cualquier socket que conectara.
+      auth:               { token: Cookies.get('access_token') ?? '' },
       // polling primero: cuando el ERP se sirve por el puerto de Next, el proxy
       // de rewrites transporta HTTP con seguridad pero no garantiza el upgrade a
       // WebSocket. socket.io sube a websocket solo si el canal lo permite.

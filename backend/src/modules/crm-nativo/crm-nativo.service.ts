@@ -32,41 +32,81 @@ export class CrmNativoService {
   ) {}
 
   // ── Upsert chat ──────────────────────────────────────────────
+  // Una sola sentencia atómica. Antes era leer → mutar en memoria → guardar, con
+  // `uq_crm_chat_empresa_id` esperando en la BD: dos mensajes simultáneos del mismo
+  // contacto (una ráfaga normal de WhatsApp) chocaban con un 23505 sin manejar y el
+  // mensaje se perdía. El contador de no leídos se sumaba sobre el valor leído, así
+  // que dos entrantes a la vez dejaban uno solo contado (lost update clásico).
   async upsertChat(empresaId: string, dto: ChatDto): Promise<CrmChat> {
     if (dto.waChatId?.endsWith('@g.us')) return null!;
 
-    let chat = await this.chatRepo.findOne({
-      where: { empresaId, waChatId: dto.waChatId },
-    });
+    // Un LID de Meta son 15+ dígitos y NO es un teléfono: no puede pisar un número
+    // ya conocido ni presentarse en la UI como si se pudiera marcar. La bandera
+    // describe lo que quedó guardado en `telefono`, no el sufijo del chat: si más
+    // adelante se resuelve el número real de un chat @lid, deja de ser opaco.
+    const telefonoUtil = !!dto.telefono && dto.telefono.length <= 13;
+    const esLid        = !telefonoUtil;
+    const incremento   = Number.isFinite(dto.noLeidos) && dto.noLeidos > 0 ? dto.noLeidos : 0;
 
-    if (!chat) {
-      chat = this.chatRepo.create({
-        empresaId,
-        waChatId:       dto.waChatId,
-        telefono:       dto.telefono,
-        nombreContacto: dto.nombreContacto,
-        noLeidos:       0,
-      });
-    }
+    const [row] = await this.chatRepo.query(`
+      INSERT INTO crm_chats
+        (empresa_id, wa_chat_id, telefono, nombre_contacto, ultimo_mensaje, ultimo_msg_at, no_leidos, es_lid)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (empresa_id, wa_chat_id) DO UPDATE SET
+        telefono        = CASE WHEN $9 THEN EXCLUDED.telefono ELSE crm_chats.telefono END,
+        nombre_contacto = COALESCE(EXCLUDED.nombre_contacto, crm_chats.nombre_contacto),
+        ultimo_mensaje  = COALESCE(EXCLUDED.ultimo_mensaje,  crm_chats.ultimo_mensaje),
+        ultimo_msg_at   = COALESCE(EXCLUDED.ultimo_msg_at,   crm_chats.ultimo_msg_at),
+        no_leidos       = crm_chats.no_leidos + $7,
+        es_lid          = CASE WHEN $9 THEN false ELSE crm_chats.es_lid END,
+        updated_at      = now()
+      RETURNING id, empresa_id AS "empresaId", wa_chat_id AS "waChatId", telefono,
+                nombre_contacto AS "nombreContacto", ultimo_mensaje AS "ultimoMensaje",
+                ultimo_msg_at AS "ultimoMsgAt", no_leidos AS "noLeidos", es_lid AS "esLid",
+                created_at AS "createdAt", updated_at AS "updatedAt"
+    `, [
+      empresaId,
+      dto.waChatId,
+      dto.telefono,
+      dto.nombreContacto,
+      dto.ultimoMensaje,
+      dto.ultimoMsgAt,
+      incremento,
+      esLid,
+      telefonoUtil,
+    ]);
 
-    chat.ultimoMensaje  = dto.ultimoMensaje  ?? chat.ultimoMensaje;
-    chat.ultimoMsgAt    = dto.ultimoMsgAt    ?? chat.ultimoMsgAt;
-    chat.nombreContacto = dto.nombreContacto ?? chat.nombreContacto;
-    // Actualizar teléfono solo si el nuevo valor parece un número real (≤13 dígitos).
-    // Valores de 15+ dígitos son LIDs de Meta y no deben sobrescribir un número legítimo.
-    if (dto.telefono && dto.telefono.length <= 13) chat.telefono = dto.telefono;
-    const addLeidos = Number.isFinite(dto.noLeidos) && dto.noLeidos > 0 ? dto.noLeidos : 0;
-    if (addLeidos > 0) chat.noLeidos = (Number.isFinite(chat.noLeidos) ? chat.noLeidos : 0) + addLeidos;
-
-    return this.chatRepo.save(chat);
+    return row as CrmChat;
   }
 
   // ── Guardar mensaje ──────────────────────────────────────────
+  // La deduplicación la sostiene `uq_crm_mensajes_wa_msg_id`, no una consulta
+  // previa: entre un SELECT y su INSERT caben dos eventos del mismo mensaje.
+  // Si ya existía, se devuelve la fila que ya estaba — reprocesar un mensaje es
+  // un no-op, no un error.
   async guardarMensaje(
     empresaId: string,
     chatId:    string,
     dto:       MensajeDto,
   ): Promise<CrmMensaje> {
+    if (dto.waMsgId) {
+      const [row] = await this.mensajeRepo.query(`
+        INSERT INTO crm_mensajes (chat_id, empresa_id, wa_msg_id, direction, agente, body, media_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (wa_msg_id) WHERE wa_msg_id IS NOT NULL DO NOTHING
+        RETURNING id, chat_id AS "chatId", empresa_id AS "empresaId", wa_msg_id AS "waMsgId",
+                  direction, agente, body, media_url AS "mediaUrl", created_at AS "createdAt"
+      `, [chatId, empresaId, dto.waMsgId, dto.direction, dto.agente, dto.body, dto.mediaUrl ?? null]);
+
+      if (row) return row as CrmMensaje;
+
+      const existente = await this.mensajeRepo.findOne({
+        where: { waMsgId: dto.waMsgId, empresaId },
+      });
+      if (existente) return existente;
+      // Sin fila y sin conflicto localizable: cae al INSERT normal de abajo.
+    }
+
     const msg = this.mensajeRepo.create({
       chatId,
       empresaId,
@@ -80,8 +120,9 @@ export class CrmNativoService {
   }
 
   // ── Resetear no_leidos al abrir chat ─────────────────────────
-  async resetNoLeidos(chatId: string): Promise<void> {
-    await this.chatRepo.update(chatId, { noLeidos: 0 });
+  // Con empresa: un chatId de otra empresa no puede marcarse como leído.
+  async resetNoLeidos(chatId: string, empresaId: string): Promise<void> {
+    await this.chatRepo.update({ id: chatId, empresaId }, { noLeidos: 0 });
   }
 
   // ── Listar chats ─────────────────────────────────────────────
@@ -112,48 +153,68 @@ export class CrmNativoService {
   // Acepta UUID de chat o número telefónico limpio.
   // Fusiona mensajes de todos los chats con el mismo telefono para resolver
   // el caso donde el mismo contacto tiene chats @lid y @c.us separados.
-  async listarMensajes(chatIdOrPhone: string, limit = 50): Promise<CrmMensaje[]> {
+  // Todas las consultas van acotadas por empresa: sin ese filtro, un chatId de
+  // otra empresa devolvía su conversación completa a cualquier usuario con sesión
+  // válida (el controller tampoco comprobaba la propiedad del chat).
+  async listarMensajes(chatIdOrPhone: string, empresaId: string, limit = 50): Promise<CrmMensaje[]> {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chatIdOrPhone);
 
     let chatIds: string[];
     if (isUuid) {
-      const mainChat = await this.chatRepo.findOne({ where: { id: chatIdOrPhone } });
-      if (mainChat?.telefono) {
-        const related = await this.chatRepo.find({ where: { telefono: mainChat.telefono } });
+      const mainChat = await this.chatRepo.findOne({ where: { id: chatIdOrPhone, empresaId } });
+      if (!mainChat) return [];
+      if (mainChat.telefono && !mainChat.esLid) {
+        // Un mismo contacto puede tener chat @lid y @c.us: se fusionan por teléfono.
+        // Los LID quedan fuera porque su "teléfono" es un identificador opaco y
+        // fusionar por él mezclaría conversaciones de contactos distintos.
+        const related = await this.chatRepo.find({
+          where: { telefono: mainChat.telefono, empresaId, esLid: false },
+        });
         chatIds = related.map(c => c.id);
       } else {
-        chatIds = [chatIdOrPhone];
+        chatIds = [mainChat.id];
       }
     } else {
       const cleaned = chatIdOrPhone.replace(/\D/g, '');
-      const chats = await this.chatRepo.find({ where: { telefono: cleaned } });
+      const chats = await this.chatRepo.find({ where: { telefono: cleaned, empresaId } });
       chatIds = chats.map(c => c.id);
     }
 
     if (chatIds.length === 0) return [];
 
     const tresAtras = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-    return this.mensajeRepo.find({
-      where: { chatId: In(chatIds), createdAt: MoreThan(tresAtras) },
-      order: { createdAt: 'ASC' },
+    // Los últimos `limit`, no los primeros: con ASC + take, abrir un chat con
+    // historial mostraba la conversación de hace tres meses y ocultaba la de hoy.
+    const recientes = await this.mensajeRepo.find({
+      where: { chatId: In(chatIds), empresaId, createdAt: MoreThan(tresAtras) },
+      order: { createdAt: 'DESC' },
       take:  limit,
     });
+    return recientes.reverse();
   }
 
   // ── Buscar chat por ID ────────────────────────────────────────
-  async findChat(chatId: string): Promise<CrmChat | null> {
-    return this.chatRepo.findOne({ where: { id: chatId } });
+  async findChat(chatId: string, empresaId: string): Promise<CrmChat | null> {
+    return this.chatRepo.findOne({ where: { id: chatId, empresaId } });
   }
 
   // ── Buscar waChatId real por número de teléfono ───────────────
-  async findWaChatId(telefono: string): Promise<string | null> {
-    const chat = await this.chatRepo.findOne({ where: { telefono } });
+  async findWaChatId(telefono: string, empresaId: string): Promise<string | null> {
+    const chat = await this.chatRepo.findOne({ where: { telefono, empresaId, esLid: false } });
     return chat?.waChatId ?? null;
   }
 
   // ── Buscar mensaje por waMsgId (deduplicación) ────────────────
-  async findMensajePorWaMsgId(waMsgId: string): Promise<CrmMensaje | null> {
-    return this.mensajeRepo.findOne({ where: { waMsgId } });
+  async findMensajePorWaMsgId(waMsgId: string, empresaId: string): Promise<CrmMensaje | null> {
+    return this.mensajeRepo.findOne({ where: { waMsgId, empresaId } });
+  }
+
+  // ── ¿Este adjunto pertenece a la empresa del usuario? ─────────
+  // `/media/:filename` servía cualquier archivo del directorio con solo conocer
+  // su nombre, sin comprobar de qué conversación —ni de qué empresa— venía.
+  async mediaPerteneceAEmpresa(filename: string, empresaId: string): Promise<boolean> {
+    const count = await this.mensajeRepo.count({ where: { mediaUrl: filename, empresaId } });
+    return count > 0;
   }
 
   // ── Purgar mensajes de más de N días (cron nocturno) ─────────
