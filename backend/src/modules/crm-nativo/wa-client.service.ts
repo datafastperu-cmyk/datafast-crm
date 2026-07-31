@@ -601,11 +601,60 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // `getChats()` justo tras 'ready' falla con un error minificado ("r: r"): el
+  // store interno de WhatsApp Web todavía no está poblado. Visto el 31/07/2026 en
+  // la primera vinculación real — la sesión quedó CONECTADA y sin un solo chat en
+  // BD, sin más rastro que esa línea. Se reintenta con backoff y, si aun así no
+  // hay chats, se dice explícitamente en vez de dejar la pantalla vacía sin causa.
+  private static readonly REINTENTOS_CHATS = [3_000, 6_000, 12_000, 20_000];
+
   private async cargarChatsIniciales(): Promise<void> {
-    try {
+    let ultimoError: unknown = null;
+
+    for (let intento = 0; intento <= WaClientService.REINTENTOS_CHATS.length; intento++) {
+      try {
+        const n = await this.intentarCargarChats();
+        if (n > 0) {
+          this.logger.log(`[CRM] ${n} chats sincronizados desde WhatsApp`);
+          return;
+        }
+        ultimoError = null;
+        this.logger.warn(`[CRM] WhatsApp devolvió 0 chats (intento ${intento + 1})`);
+      } catch (err) {
+        ultimoError = err;
+        this.logger.warn(
+          `[CRM] getChats falló (intento ${intento + 1}): ${(err as Error)?.message ?? err}`,
+        );
+      }
+
+      const espera = WaClientService.REINTENTOS_CHATS[intento];
+      if (espera === undefined) break;
+      await new Promise(r => setTimeout(r, espera));
+    }
+
+    const detalle = ultimoError
+      ? `getChats falló tras ${WaClientService.REINTENTOS_CHATS.length + 1} intentos: ${(ultimoError as Error)?.message ?? ultimoError}`
+      : 'WhatsApp no devolvió ningún chat: la sesión está vinculada pero sin conversaciones sincronizadas';
+
+    this.logger.error(`[CRM] ${detalle}`);
+    void this.eventos?.registrar({
+      nivel:    'warn',
+      origen:   'whatsapp',
+      codigo:   'WA_SIN_CHATS_INICIALES',
+      mensaje:  detalle,
+      stack:    (ultimoError as Error)?.stack ?? null,
+    });
+    // Los mensajes entrantes siguen entrando por 'message_create', así que el
+    // módulo NO está caído: solo le falta el historial previo a la vinculación.
+  }
+
+  private async intentarCargarChats(): Promise<number> {
+    {
       const todosLosChats = await this.client.getChats();
       const empresaId     = await this.crmSvc.resolverEmpresaId();
-      if (!empresaId) return;
+      if (!empresaId) {
+        throw new Error('No se pudo resolver la empresa (tabla empresas vacía o WA_EMPRESA_ID inválido)');
+      }
 
       const chatsIndividuales = todosLosChats.filter(
         (c: any) => !c.isGroup && !c.id?._serialized?.endsWith('@g.us'),
@@ -626,8 +675,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
       const saved = await this.crmSvc.listarChats(empresaId);
       this.gateway.emitChats(saved);
-    } catch (err) {
-      this.logger.error(`Error cargando chats iniciales: ${err}`);
+      return saved.length;
     }
   }
 
