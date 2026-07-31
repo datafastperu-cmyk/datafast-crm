@@ -484,12 +484,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
       // message_create captura INBOUND + mensajes enviados desde el celular físico (fromMe)
       this.client.on('message_create', async (msg: any) => {
-        if (
-          msg.from === 'status@broadcast' ||
-          msg.from?.endsWith('@g.us') ||
-          msg.to?.endsWith('@g.us') ||
-          msg.isGroup
-        ) return;
+        if (!WaClientService.esConversacionIndividual(msg)) return;
         await this.procesarMensajeEntrante(msg);
       });
 
@@ -509,6 +504,20 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`Error inicializando WA: ${err?.message}`);
       await this.reiniciarConRetraso(15_000);
     }
+  }
+
+  // El CRM solo gestiona conversaciones uno a uno. El filtro anterior descartaba
+  // grupos y `status@broadcast`, pero no las LISTAS DE DIFUSIÓN, cuyo id es
+  // `<numero>@broadcast`: en la primera vinculación real (31/07/2026) entraron 10
+  // listas —"CLIENTES MOROSOS CORTE", "15 de cada mes"— como si fueran clientes,
+  // con el id de la lista guardado en la columna `telefono`.
+  // Los canales (`@newsletter`) son igual de inválidos como chat de atención.
+  private static esConversacionIndividual(msg: any): boolean {
+    if (msg?.isGroup) return false;
+    const partes = [msg?.from, msg?.to].filter(Boolean).map(String);
+    return !partes.some(p =>
+      p.endsWith('@g.us') || p.endsWith('@broadcast') || p.endsWith('@newsletter'),
+    );
   }
 
   private async procesarMensajeEntrante(msg: any): Promise<void> {
