@@ -366,6 +366,59 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     return { messageId: msgId, filename };
   }
 
+  // Lectura de mensajes de un chat, tolerante a mensajes que no se dejan modelar.
+  //
+  // `chat.fetchMessages()` de la librería termina en
+  // `msgs.map(m => WWebJS.getMessageModel(m))`: un solo mensaje ilegible tira toda
+  // la carga con el mismo error minificado ("r") que rompía el listado. Además
+  // resuelve el chat vía `createWid`, que falla con los identificadores @lid —
+  // por eso el historial nunca se cargó en los chats migrados a LID (31/07/2026).
+  //
+  // Aquí el chat se toma directamente de la colección por su id, se paginan
+  // mensajes antiguos con el mismo mecanismo que usa la librería, y de cada
+  // mensaje se extrae solo lo que el CRM guarda, con su propio try/catch.
+  private async leerMensajesTolerante(waChatId: string, limite: number): Promise<any[]> {
+    return this.client.pupPage.evaluate(async (chatId: string, max: number) => {
+      const w = window as any;
+      let chat: any;
+      try {
+        chat = w.require('WAWebCollections').Chat.get(chatId);
+      } catch (e: any) {
+        return { error: `No se pudo obtener el chat: ${e?.message ?? e}` } as any;
+      }
+      if (!chat) return { error: 'El chat no está en la colección de WhatsApp Web' } as any;
+
+      const utiles = () => {
+        try {
+          return (chat.msgs?.getModelsArray?.() ?? []).filter((m: any) => !m.isNotification);
+        } catch { return []; }
+      };
+
+      // Paginación acotada: cada vuelta pide un bloque anterior. El corte por
+      // número de vueltas evita quedarse recorriendo años de conversación.
+      for (let vuelta = 0; vuelta < 5 && utiles().length < max; vuelta++) {
+        try {
+          const previos = await w.require('WAWebChatLoadMessages').loadEarlierMsgs({ chat });
+          if (!previos || previos.length === 0) break;
+        } catch { break; }
+      }
+
+      const salida: any[] = [];
+      for (const m of utiles().slice(-max)) {
+        try {
+          salida.push({
+            id:        { _serialized: m.id?._serialized ?? null },
+            body:      typeof m.body === 'string' ? m.body : '',
+            type:      m.type ?? null,
+            fromMe:    !!(m.id?.fromMe ?? m.fromMe),
+            timestamp: typeof m.t === 'number' ? m.t : 0,
+          });
+        } catch { /* este mensaje no se pudo leer: se omite solo él */ }
+      }
+      return salida as any;
+    }, waChatId, limite);
+  }
+
   // ── Carga historial bajo demanda (primer acceso al chat) ─────────
   // Descarga hasta 100 msgs de los últimos 3 meses desde WA y los
   // persiste + emite vía WebSocket.  Solo se llama cuando el chat
@@ -377,8 +430,10 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   ): Promise<number> {
     if (!this.client || this.state.estado !== 'CONECTADO') return 0;
     try {
-      const chatWa     = await this.client.getChatById(waChatId);
-      const raw: any[] = await chatWa.fetchMessages({ limit: 100 });
+      const raw = await this.leerMensajesTolerante(waChatId, 100);
+      if (!Array.isArray(raw)) {
+        throw new Error((raw as any)?.error ?? 'Lectura de mensajes no devolvió una lista');
+      }
       const limite3m   = Date.now() - 90 * 24 * 60 * 60 * 1000;
       const filtrados  = raw.filter((m: any) => (m.timestamp as number) * 1000 >= limite3m);
 
