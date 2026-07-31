@@ -125,6 +125,51 @@ server {
     }
 
     # ═══════════════════════════════════════════════════════════
+    # CRM WHATSAPP — proceso propio (datafast-whatsapp), aloja Chromium
+    # ═══════════════════════════════════════════════════════════
+    # Estas dos rutas —y solo estas— van al proceso de WhatsApp. Antes el módulo
+    # estaba en el worker mientras el frontend hablaba con api-core: el operador
+    # nunca podía enviar ni recibir nada porque preguntaba al proceso equivocado.
+    location /api/v1/crm-nativo/ {
+        proxy_pass http://whatsapp_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+
+        # Adjuntos del CRM: 10 MB por archivo (límite del propio módulo)
+        client_max_body_size 12M;
+
+        # Enviar por WhatsApp Web pasa por Chromium: más lento que una query
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+
+    # WebSocket del CRM. Path propio porque el namespace de socket.io viaja en el
+    # payload y nginx no puede enrutar por él.
+    location /wa-socket/ {
+        proxy_pass http://whatsapp_api;
+        proxy_http_version 1.1;
+
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_connect_timeout 10s;
+
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # ═══════════════════════════════════════════════════════════
     # WEBSOCKET — /socket.io/* y /ws/*
     # ═══════════════════════════════════════════════════════════
     location /socket.io/ {

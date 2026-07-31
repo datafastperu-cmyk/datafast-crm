@@ -1,4 +1,7 @@
-import { Injectable, Logger, Optional, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable, Logger, Optional, OnModuleInit, OnModuleDestroy,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import * as fs     from 'fs';
 import * as path   from 'path';
 import * as crypto from 'crypto';
@@ -61,14 +64,18 @@ const MAX_QR_SIN_ESCANEAR = 15;
 // procesos se creían primarios, ambos lanzaban Chromium, y api-core moría con
 // "Failed to launch the browser process" mientras el worker se quedaba con el perfil.
 //
-// La discriminación correcta es la misma que usa el resto del backend para decidir qué
-// proceso hace el trabajo de fondo: el worker. `WA_ENABLED` permite override explícito
-// por si alguna instalación quiere separarlo del resto de los jobs.
-const IS_PRIMARY = (() => {
-  const explicito = process.env.WA_ENABLED;
-  if (explicito !== undefined) return explicito.toLowerCase() === 'true';
-  return process.env.RUN_CRONS === 'true';
-})();
+// La discriminación es ahora EXPLÍCITA y de un solo criterio: `WA_ENABLED=true`.
+//
+// Antes se derivaba de `RUN_CRONS`, lo que ataba el cliente al worker — el mismo
+// proceso que corre el outbox de red y los crons de facturación. Es un módulo
+// complementario: Chromium no puede competir por la memoria de lo que sí es core
+// (el 30/07 el VPS llegó a 87 MB libres). Vive en su propio proceso PM2
+// `datafast-whatsapp`, y nginx le enruta /api/v1/crm-nativo/ y /wa-socket/.
+//
+// Sin la variable puesta, ningún proceso lo arranca: es preferible a que dos
+// procesos se peleen el perfil de Chromium, y el estado degradado ahora sí es
+// visible en /status.
+const IS_PRIMARY = (process.env.WA_ENABLED ?? '').toLowerCase() === 'true';
 
 // Prefer the real Google Chrome binary over the snap wrapper
 const CHROME_PATH = process.env.WA_CHROME_PATH
@@ -106,8 +113,10 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!IS_PRIMARY) {
-      this.moduleHealth.registrar('crm-whatsapp', 'ok');
-      this.logger.log('Proceso secundario — WaClient delegado al worker (RUN_CRONS/WA_ENABLED)');
+      // No se registra salud aquí: este proceso no aloja el cliente, así que no
+      // sabe nada de su estado. Antes registraba 'ok' — una afirmación sobre algo
+      // que ni siquiera corre en él.
+      this.logger.log('Este proceso no aloja el cliente WhatsApp (WA_ENABLED != true)');
       return;
     }
     if (!CHROME_PATH) {
@@ -133,10 +142,24 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     return this.state.snapshot();
   }
 
+  // Un proceso que no aloja el cliente no puede opinar sobre WhatsApp. Si una
+  // petición llega aquí es un fallo de enrutamiento (nginx manda /crm-nativo/ al
+  // proceso datafast-whatsapp), y decirlo así ahorra diagnosticar un
+  // "no está conectado" que en realidad significa "preguntaste al proceso equivocado".
+  private assertEsHost(): void {
+    if (!IS_PRIMARY) {
+      throw new ServiceUnavailableException(
+        'Este proceso no aloja el cliente de WhatsApp (WA_ENABLED != true). ' +
+        'Revisa el enrutamiento de /api/v1/crm-nativo/ hacia el proceso datafast-whatsapp.',
+      );
+    }
+  }
+
   // ── Enviar mensaje desde el CRM ────────────────────────────────
   async enviarMensaje(telefono: string, texto: string, agente: string, empresaId: string) {
+    this.assertEsHost();
     if (!this.client || this.state.estado !== 'CONECTADO') {
-      throw new Error('WhatsApp Web no está conectado');
+      throw new ServiceUnavailableException('WhatsApp Web no está conectado');
     }
 
     const telefonoLimpio = telefono.replace(/\D/g, '');
@@ -206,8 +229,9 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     agente:       string,
     empresaId:    string,
   ) {
+    this.assertEsHost();
     if (!this.client || this.state.estado !== 'CONECTADO') {
-      throw new Error('WhatsApp Web no está conectado');
+      throw new ServiceUnavailableException('WhatsApp Web no está conectado');
     }
 
     const telefonoLimpio = telefono.replace(/\D/g, '');

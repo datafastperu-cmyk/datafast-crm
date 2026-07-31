@@ -727,6 +727,10 @@ export default function WhatsAppWebPage() {
   // ── Conectar socket.io ────────────────────────────────────────
   useEffect(() => {
     const sock = io(`${WS_URL}/crm-nativo`, {
+      // Path propio: nginx lo enruta al proceso datafast-whatsapp, que es el
+      // único que aloja el cliente. El namespace no sirve para enrutar porque
+      // viaja dentro del payload de socket.io.
+      path:               '/wa-socket/',
       transports:         ['websocket', 'polling'],
       reconnectionDelay:  3000,
       reconnectionAttempts: 20,

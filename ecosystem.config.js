@@ -34,6 +34,9 @@ module.exports = {
         // ÚNICO proceso que migra: api-core y worker arrancan a la vez y competían por las
         // migraciones (2026-07-21, "duplicate key ... pg_type_typname_nsp_index").
         RUN_MIGRATIONS: 'true',
+        // Chromium no arranca aquí: es un módulo complementario y no puede competir
+        // por la memoria del proceso que atiende al ERP (ver datafast-whatsapp).
+        WA_ENABLED:     'false',
         PORT:           4000,
         DB_POOL_MAX:    '15',
         DB_POOL_MIN:    '2',
@@ -63,6 +66,11 @@ module.exports = {
         NODE_ENV:       'production',
         RUN_CRONS:      'true',
         RUN_MIGRATIONS: 'false',
+        // Tampoco aquí: este proceso corre el outbox de red y los crons de
+        // facturación. Hasta el 30/07/2026 alojaba Chromium por derivar el host de
+        // RUN_CRONS, y el VPS llegó a 87 MB libres con el worker en riesgo de que
+        // PM2 lo matara por memoria.
+        WA_ENABLED:     'false',
         PORT:           4001,
         DB_POOL_MAX:    '15',
         DB_POOL_MIN:    '2',
@@ -76,6 +84,44 @@ module.exports = {
 
       out_file:        '/opt/datafast/logs/worker-out.log',
       error_file:      '/opt/datafast/logs/worker-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      watch:           false,
+    },
+
+    // ── CRM WhatsApp — único proceso que aloja Chromium. NO migra, NO crons. ─
+    // Aislado a propósito: es un módulo complementario (atención al cliente desde
+    // el ERP, y a futuro un chatbot). Si Chromium se descontrola muere solo, sin
+    // arrastrar ni la API ni el outbox de red. nginx le enruta /api/v1/crm-nativo/
+    // y /wa-socket/; el resto de rutas de este proceso no las usa nadie.
+    {
+      name:      'datafast-whatsapp',
+      script:    'dist/main.js',
+      cwd:       '/opt/datafast/backend',
+      exec_mode: 'fork',
+      instances: 1,
+
+      env: {
+        NODE_ENV:       'production',
+        RUN_CRONS:      'false',
+        RUN_MIGRATIONS: 'false',
+        WA_ENABLED:     'true',
+        PORT:           4002,
+        // Pool mínimo: este proceso solo persiste chats y mensajes del CRM.
+        DB_POOL_MAX:    '5',
+        DB_POOL_MIN:    '1',
+        TZ:             'America/Lima',
+      },
+
+      // Node + Chromium en un VPS de 1.9 GB. El límite es del proceso Node; los
+      // hijos de Chromium no cuentan a este RSS, por eso el corte por QR no
+      // escaneado (wa-client.service.ts) es lo que realmente los libera.
+      max_memory_restart: '600M',
+      restart_delay:      8000,
+      min_uptime:         '20s',
+      max_restarts:       10,
+
+      out_file:        '/opt/datafast/logs/whatsapp-out.log',
+      error_file:      '/opt/datafast/logs/whatsapp-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       watch:           false,
     },

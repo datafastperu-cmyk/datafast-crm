@@ -15,10 +15,22 @@ export interface WaMensajeEvento {
   mensaje: Partial<CrmMensaje>;
 }
 
+// `path` propio: el cliente de WhatsApp vive en su propio proceso PM2
+// (datafast-whatsapp), separado de api-core y del worker porque es un módulo
+// complementario y Chromium no puede poner en riesgo al core. nginx enruta este
+// path — y sólo este — a ese proceso; el namespace viaja en el payload de
+// socket.io, así que no sirve para enrutar.
+//
+// Orígenes por env (regla de Portabilidad Multi-VPS): antes el dominio de una
+// instalación concreta estaba escrito en el código.
+const CRM_WS_ORIGINS = (process.env.CRM_WS_ORIGINS ?? process.env.APP_URL ?? '')
+  .split(',').map(o => o.trim()).filter(Boolean);
+
 @WebSocketGateway({
+  path:      '/wa-socket/',
   namespace: '/crm-nativo',
   cors: {
-    origin: ['https://erp.datafastperu.com', 'http://localhost:3000', 'http://localhost:4000'],
+    origin: [...CRM_WS_ORIGINS, 'http://localhost:3000', 'http://localhost:4000'],
     credentials: true,
   },
 })
