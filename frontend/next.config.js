@@ -5,6 +5,13 @@ const withPWA = require('@ducanh2912/next-pwa').default;
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
+
+  // socket.io pide su endpoint con barra final (`/api/wa-socket/?EIO=4`). Next la
+  // normaliza con un 308 hacia la versión sin barra, que ya no casa con el rewrite:
+  // el WebSocket del CRM quedaba en un bucle de redirecciones al entrar por el
+  // puerto de Next (por nginx sí funcionaba). Esto solo desactiva ese redirect
+  // automático; las páginas siguen sirviéndose con y sin barra.
+  skipTrailingSlashRedirect: true,
   poweredByHeader: false,
   compress: true,
   typescript: {
