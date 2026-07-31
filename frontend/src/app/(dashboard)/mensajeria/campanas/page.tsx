@@ -16,7 +16,7 @@ export default function CampanasPage() {
           href="/mensajeria"
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ChevronLeft className="w-3.5 h-3.5" />Mensajería
+          <ChevronLeft className="w-3.5 h-3.5" />CRM WhatsApp
         </Link>
         <span className="text-xs text-muted-foreground">/</span>
         <span className="text-xs text-foreground font-medium">Campañas Masivas</span>

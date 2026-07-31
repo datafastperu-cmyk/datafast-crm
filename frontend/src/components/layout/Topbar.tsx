@@ -26,7 +26,7 @@ const LABELS: Record<string, string> = {
   servicios:     'Servicios',
   finanzas:      'Finanzas',
   tickets:       'Soporte',
-  mensajeria:    'Mensajería',
+  mensajeria:    'CRM WhatsApp',
   reportes:      'Reportes',
   configuracion: 'Configuración',
   tecnicos:      'Técnicos',
