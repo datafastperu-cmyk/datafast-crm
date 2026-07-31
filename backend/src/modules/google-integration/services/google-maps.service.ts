@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { GoogleOAuthService } from './google-oauth.service';
 import { GoogleSyncService, GoogleSyncResult } from '../entities/google-sync-log.entity';
+import { ModuleHealthService } from '../../../common/services/module-health.service';
 
 export interface GeocodeResult {
   lat:             number;
@@ -37,16 +38,88 @@ interface GoogleGeocodeResponse {
 }
 
 @Injectable()
-export class GoogleMapsService {
+export class GoogleMapsService implements OnModuleInit {
   private readonly logger = new Logger(GoogleMapsService.name);
   private readonly mapsApiKey: string;
 
+  /** Caché de geocodificación por dirección normalizada. Ver `geocodeSeguro`. */
+  private readonly cacheGeocode = new Map<string, GeocodeResult>();
+
   constructor(
-    private readonly http:      HttpService,
-    private readonly config:    ConfigService,
-    private readonly oauthSvc:  GoogleOAuthService,
+    private readonly http:         HttpService,
+    private readonly config:       ConfigService,
+    private readonly oauthSvc:     GoogleOAuthService,
+    private readonly moduleHealth: ModuleHealthService,
   ) {
     this.mapsApiKey = this.config.get<string>('GOOGLE_MAPS_API_KEY', '');
+  }
+
+  /**
+   * Probe ligero: ¿hay API key configurada?
+   *
+   * No se hace una llamada real de prueba a propósito — costaría cuota en cada arranque
+   * del backend, que es lo mismo que dice el módulo de facturación sobre no consultar
+   * al proveedor "por si acaso". La ausencia de key es el 100% de los casos reales de
+   * "Maps no configurado" en una instalación nueva.
+   *
+   * NUNCA relanza: un throw aquí crashearía el backend entero por una integración
+   * opcional. La geocodificación es una comodidad; las coordenadas manuales son el
+   * camino garantizado.
+   */
+  onModuleInit(): void {
+    if (!this.mapsApiKey) {
+      this.moduleHealth.registrar(
+        'google-maps',
+        'degraded',
+        'GOOGLE_MAPS_API_KEY no configurada: la geocodificación por dirección no está disponible. ' +
+        'Las coordenadas se siguen pudiendo fijar por mapa o a mano.',
+      );
+      return;
+    }
+    this.moduleHealth.registrar('google-maps', 'ok');
+  }
+
+  /**
+   * Geocodificación que NO puede tumbar un alta.
+   *
+   * `geocode()` lanza, y está bien que lo haga donde el llamador quiere saber del fallo.
+   * Pero el alta de una mufa o de una NAP sólo usa la geocodificación para AUTOCOMPLETAR
+   * un campo que el operador puede llenar por mapa o a mano. Que Google esté caído, sin
+   * cuota o sin key no puede impedir documentar la planta: el ERP quedaría inutilizable
+   * en campo por una dependencia externa que ni siquiera es necesaria para el dato final.
+   *
+   * Devuelve `null` en vez de lanzar. El llamador decide, y el formulario sigue.
+   *
+   * La caché es por dirección normalizada porque la misma dirección se geocodifica varias
+   * veces en un alta típica (el operador corrige el texto, vuelve atrás, reintenta) y cada
+   * llamada a Google cuesta dinero.
+   */
+  async geocodeSeguro(empresaId: string, address: string): Promise<GeocodeResult | null> {
+    if (!this.mapsApiKey) return null;
+
+    const clave = `${empresaId}::${address.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    const enCache = this.cacheGeocode.get(clave);
+    if (enCache) return enCache;
+
+    try {
+      const res = await this.geocode(empresaId, address);
+      this.cacheGeocode.set(clave, res);
+      // Estaba degradado y volvió a responder: se reporta la recuperación, porque un
+      // estado 'degraded' que nunca vuelve a 'ok' deja de significar algo.
+      this.moduleHealth.registrar('google-maps', 'ok');
+      return res;
+    } catch (err) {
+      this.moduleHealth.registrar(
+        'google-maps',
+        'degraded',
+        `Geocodificación falló: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      // El log describe lo que ocurrió, no lo que el código pretendía hacer.
+      this.logger.warn(
+        `Geocodificación no disponible para "${address}"; el operador debe fijar la coordenada a mano.`,
+      );
+      return null;
+    }
   }
 
   async geocode(empresaId: string, address: string): Promise<GeocodeResult> {

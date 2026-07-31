@@ -59,6 +59,7 @@ import { WebhooksModule }         from './modules/webhooks/webhooks.module';
 import { CrmNativoModule }        from './modules/crm-nativo/crm-nativo.module';
 import { OltNativoModule }        from './modules/olt-nativo/olt-nativo.module';
 import { SitesModule }            from './modules/sites/sites.module';
+import { PlantaExternaModule }    from './modules/planta-externa/planta-externa.module';
 import { Tr069Module }            from './modules/tr069/tr069.module';
 import { FinanzasOpexModule }          from './modules/finanzas-opex/finanzas-opex.module';
 import { ProyectosInversionModule }    from './modules/proyectos-inversion/proyectos-inversion.module';
@@ -218,6 +219,7 @@ import { PortalModule }               from './modules/portal/portal.module';
     CrmNativoModule,
     OltNativoModule,
     SitesModule,
+    PlantaExternaModule,
     Tr069Module,
     FinanzasOpexModule,
     ProyectosInversionModule,

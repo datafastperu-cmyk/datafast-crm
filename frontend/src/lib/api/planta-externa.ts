@@ -1,0 +1,151 @@
+import api from '@/lib/api';
+
+// ─── Types ────────────────────────────────────────────────────
+
+export type ElementoEstado =
+  | 'planificado' | 'instalado' | 'operativo' | 'averiado' | 'retirado';
+
+/**
+ * `no_habilitado` es la distinción que el módulo existe para hacer: el adaptador
+ * físico está en la caja pero no hay splitter detrás. Contarlo como "libre" —que es
+ * lo que hacía el diseño original— hace que el planificador vea capacidad donde no
+ * puede conectar a nadie.
+ */
+export type PuertoEstado =
+  | 'no_habilitado' | 'libre' | 'reservado' | 'ocupado' | 'averiado' | 'retirado';
+
+export type SplitterRelacion = '1x2' | '1x4' | '1x8' | '1x16' | '1x32';
+
+export interface Nap {
+  id:                    string;
+  codigo:                string;
+  descripcion:           string | null;
+  direccion:             string | null;
+  latitud:               number;
+  longitud:              number;
+  precisionGpsM:         number | null;
+  capacidadPuertos:      number;
+  /** Con splitter detrás y sin cliente: se puede conectar hoy. */
+  puertosLibres:         number;
+  /** Sin splitter detrás: la caja necesita inversión, no un técnico. */
+  puertosNoHabilitados:  number;
+  mufaOrigenId:          string | null;
+  estado:                ElementoEstado;
+  createdAt:             string;
+}
+
+export interface NapPuerto {
+  id:               string;
+  napId:            string;
+  numero:           number;
+  estado:           PuertoEstado;
+  splitterSalidaId: string | null;
+  reservadoHasta:   string | null;
+}
+
+export interface Mufa {
+  id:            string;
+  codigo:        string;
+  jerarquia:     'primer_nivel' | 'segundo_nivel';
+  descripcion:   string | null;
+  direccion:     string | null;
+  latitud:       number;
+  longitud:      number;
+  precisionGpsM: number | null;
+  estado:        ElementoEstado;
+}
+
+export interface CrearNapDto {
+  codigo:            string;
+  latitud:           number;
+  longitud:          number;
+  capacidadPuertos:  number;
+  direccion?:        string;
+  descripcion?:      string;
+  precisionGpsM?:    number;
+  mufaOrigenId?:     string;
+}
+
+export interface CrearMufaDto {
+  codigo:         string;
+  latitud:        number;
+  longitud:       number;
+  jerarquia?:     'primer_nivel' | 'segundo_nivel';
+  direccion?:     string;
+  descripcion?:   string;
+  precisionGpsM?: number;
+}
+
+/**
+ * Respuesta del borde HTTP cuando el backend habla en vocabulario de dominio.
+ * `clase` viaja hasta aquí a propósito: la UI necesita distinguir un rechazo
+ * definitivo (mostrar el motivo y parar) de uno reintentable (ofrecer reintentar).
+ */
+export interface ResultadoHttp {
+  exitoso: boolean;
+  mensaje: string;
+  error?:  string;
+  clase:   'aplicado' | 'ya_en_destino' | 'no_aplica' | 'reintentable' | 'indeterminado';
+  id?:     string;
+}
+
+// ─── Client ───────────────────────────────────────────────────
+
+export const plantaExternaApi = {
+  listarNaps: async (): Promise<Nap[]> => {
+    const { data } = await api.get('/planta-externa/naps');
+    return data.data;
+  },
+
+  listarPuertos: async (napId: string): Promise<NapPuerto[]> => {
+    const { data } = await api.get(`/planta-externa/naps/${napId}/puertos`);
+    return data.data;
+  },
+
+  crearNap: async (dto: CrearNapDto): Promise<ResultadoHttp> => {
+    const { data } = await api.post('/planta-externa/naps', dto);
+    return data.data;
+  },
+
+  listarMufas: async (): Promise<Mufa[]> => {
+    const { data } = await api.get('/planta-externa/mufas');
+    return data.data;
+  },
+
+  crearMufa: async (dto: CrearMufaDto): Promise<Mufa> => {
+    const { data } = await api.post('/planta-externa/mufas', dto);
+    return data.data;
+  },
+
+  instalarSplitter: async (
+    napId: string,
+    dto: { relacion: SplitterRelacion; codigo?: string; perdidaDb?: number },
+  ): Promise<ResultadoHttp> => {
+    const { data } = await api.post(`/planta-externa/naps/${napId}/splitters`, dto);
+    return data.data;
+  },
+
+  reservarPuerto: async (puertoId: string): Promise<ResultadoHttp> => {
+    const { data } = await api.post(`/planta-externa/puertos/${puertoId}/reservar`);
+    return data.data;
+  },
+
+  /** Extiende la reserva del wizard. Tiene techo absoluto en el servidor. */
+  heartbeatPuerto: async (puertoId: string): Promise<ResultadoHttp> => {
+    const { data } = await api.post(`/planta-externa/puertos/${puertoId}/heartbeat`);
+    return data.data;
+  },
+
+  asignarPuerto: async (
+    puertoId: string,
+    dto: { contratoId: string; longitudM?: number },
+  ): Promise<ResultadoHttp> => {
+    const { data } = await api.post(`/planta-externa/puertos/${puertoId}/asignar`, dto);
+    return data.data;
+  },
+
+  liberarPuerto: async (puertoId: string): Promise<ResultadoHttp> => {
+    const { data } = await api.post(`/planta-externa/puertos/${puertoId}/liberar`);
+    return data.data;
+  },
+};
