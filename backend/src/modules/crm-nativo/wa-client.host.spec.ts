@@ -78,6 +78,25 @@ describe('WaClientService — quién aloja el cliente (WA_ENABLED)', () => {
     expect(iniciar).toHaveBeenCalled();
   });
 
+  // Chromium recrea el directorio de sesión al abrirse aunque nadie escanee nunca
+  // el QR (visto en producción el 31/07: se borró el perfil, el proceso arrancó y
+  // el directorio volvió a existir sin ninguna sesión detrás). Por eso la señal de
+  // "hay sesión" es una marca que el ERP escribe solo al llegar a 'ready'.
+  it('el directorio de sesión no cuenta como sesión vinculada; la marca sí', () => {
+    const { svc } = cargarCon('true');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs');
+    const marca = (svc as any).marcaVinculado;
+
+    jest.spyOn(fs, 'existsSync').mockImplementation((p: any) => String(p) === marca);
+    expect((svc as any).haySesionEnDisco()).toBe(true);
+
+    jest.spyOn(fs, 'existsSync').mockImplementation((p: any) => String(p).includes('session-datafast-crm'));
+    expect((svc as any).haySesionEnDisco()).toBe(false);
+
+    jest.restoreAllMocks();
+  });
+
   it('enviar desde un proceso que no es el host falla diciendo POR QUÉ, no "no conectado"', async () => {
     const { svc } = cargarCon('false');
 

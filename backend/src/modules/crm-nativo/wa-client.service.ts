@@ -147,11 +147,33 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     setImmediate(() => this.iniciarCliente().catch((err) => this.logger.error(`WA init fatal: ${err?.message}`)));
   }
 
+  // Marca propia del ERP: se escribe cuando el cliente llega a 'ready' — es decir,
+  // cuando la vinculación ocurrió de verdad — y se borra al perderse.
+  // NO sirve mirar el directorio de sesión: Chromium lo crea al abrirse aunque
+  // nadie escanee nunca el QR, así que "existe el directorio" es cierto también
+  // cuando no hay ninguna sesión (comprobado en producción el 31/07).
+  private get marcaVinculado(): string {
+    return path.join(SESSION_PATH, `.vinculado-${CLIENT_ID}`);
+  }
+
   private haySesionEnDisco(): boolean {
     try {
-      return fs.existsSync(path.join(SESSION_PATH, `session-${CLIENT_ID}`));
+      return fs.existsSync(this.marcaVinculado);
     } catch {
       return false;
+    }
+  }
+
+  private marcarVinculado(vinculado: boolean): void {
+    try {
+      if (vinculado) {
+        fs.mkdirSync(SESSION_PATH, { recursive: true });
+        fs.writeFileSync(this.marcaVinculado, new Date().toISOString());
+      } else if (fs.existsSync(this.marcaVinculado)) {
+        fs.unlinkSync(this.marcaVinculado);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[WA] No se pudo actualizar la marca de vinculación: ${err?.message}`);
     }
   }
 
@@ -451,6 +473,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         this.restartCount  = 0;
         this.qrSinEscanear = 0;
         this.moduleHealth.registrar('crm-whatsapp', 'ok');
+        this.marcarVinculado(true);
         this.logger.log('WhatsApp Web listo!');
         this.gateway.emitStatus({ estado: 'CONECTADO' });
         this.aplicarLidPatches();
@@ -621,6 +644,9 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
 
     this.logger.error(`[WA] ${razon}`);
     this.moduleHealth.registrar('crm-whatsapp', 'degraded', razon);
+    // Sin vinculación: que el próximo arranque del proceso no vuelva a emitir QR
+    // en vacío y se coma la ventana antes de que llegue el operador.
+    this.marcarVinculado(false);
     this.gateway.emitStatus({ estado: 'DESCONECTADO' });
 
     void this.eventos?.registrar({
@@ -663,6 +689,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       await this.client.destroy().catch(() => {});
       this.client = null;
     }
+    this.marcarVinculado(false);
     const sessionDir = path.join(SESSION_PATH, `session-${CLIENT_ID}`);
     if (fs.existsSync(sessionDir)) {
       fs.rmSync(sessionDir, { recursive: true, force: true });
