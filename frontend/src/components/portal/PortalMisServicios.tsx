@@ -115,7 +115,9 @@ function FichaServicio({ servicio }: { servicio: PortalServicio }) {
           />
         )}
 
-        {servicio.velocidadGarantizada != null && (
+        {/* Un porcentaje garantizado sobre una velocidad que no está cargada no dice
+            nada: "10% de 0 Mbps" es ruido, no información. */}
+        {conVelocidad && servicio.velocidadGarantizada != null && (
           <Caracteristica
             icono={Shield}
             etiqueta="Velocidad mínima garantizada"
