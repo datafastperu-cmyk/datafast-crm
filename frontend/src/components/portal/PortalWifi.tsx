@@ -431,8 +431,7 @@ function TarjetaWifiUnificada({
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="px-5 py-3 border-b border-border flex items-center gap-2">
         <Wifi className="w-4 h-4 text-primary" />
-        <p className="text-sm font-semibold text-foreground">Mi red WiFi</p>
-        <span className="ml-auto text-sm font-semibold text-foreground">2.4 y 5 GHz</span>
+        <p className="text-sm font-semibold text-foreground">Mi red WiFi 2.4 y 5 GHz</p>
       </div>
 
       <div className="p-5 space-y-4">
