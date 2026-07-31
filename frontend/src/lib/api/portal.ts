@@ -7,7 +7,10 @@ import type { ApiRespuesta } from '@/types';
 //     el navegador las envía con `withCredentials`.
 //   · El interceptor del ERP redirige a /login y usa las cookies del operador. Aquí un
 //     401 debe llevar a /portal/login y nunca tocar la sesión del ERP.
-const portalHttp = axios.create({
+// Exportada SOLO para que el test pueda sustituir el adaptador HTTP y ejercitar el
+// interceptor de renovación. Ningún componente debe usarla directamente: para eso está
+// `portalApi`, que traduce los errores al vocabulario del abonado.
+export const portalHttp = axios.create({
   baseURL: '/api/v1/portal',
   timeout: 30_000,
   headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -26,9 +29,8 @@ const portalHttp = axios.create({
 // consultas en paralelo y todas verían el 401 a la vez; N POST /auth/refresh simultáneos
 // rotarían el token N veces y los últimos reintentos irían con una cookie ya sustituida.
 //
-// SIN TEST: el frontend no tiene runner (no hay jest ni vitest en package.json), así que
-// esto NO es una garantía verificada — es la intención del mecanismo. Si alguien toca
-// este bloque, no hay red que lo atrape.
+// Verificado en `portal.test.ts`: sustituir el `??=` por una asignación directa hace
+// fallar la prueba con 3 refrescos en vez de 1.
 let refrescoEnCurso: Promise<unknown> | null = null;
 
 function renovarSesion(): Promise<unknown> {
