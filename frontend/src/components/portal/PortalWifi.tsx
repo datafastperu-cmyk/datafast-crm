@@ -537,7 +537,7 @@ function TarjetaWifiUnificada({
               'disabled:opacity-40 disabled:cursor-not-allowed',
             )}
           >
-            Guardar cambios
+            Aplicar cambios
           </button>
         )}
       </div>
@@ -700,7 +700,7 @@ function TarjetaBanda({
               'disabled:opacity-40 disabled:cursor-not-allowed',
             )}
           >
-            Guardar cambios
+            Aplicar cambios
           </button>
         )}
       </div>
