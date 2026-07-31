@@ -99,6 +99,15 @@ export class CrmNativoController {
     return ApiResponse.ok(this.waClient.getEstado());
   }
 
+  // ── POST /api/v1/crm-nativo/vincular ─────────────────────────
+  @Post('vincular')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Iniciar la vinculación: levanta el cliente y emite el QR' })
+  async vincular() {
+    const result = await this.waClient.vincular();
+    return ApiResponse.ok(result, result.mensaje);
+  }
+
   // ── GET /api/v1/crm-nativo/chats ─────────────────────────────
   @Get('chats')
   @ApiOperation({ summary: 'Lista de chats activos' })

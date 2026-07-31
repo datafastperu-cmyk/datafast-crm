@@ -648,6 +648,8 @@ export default function WhatsAppWebPage() {
   const [uploadError,    setUploadError]    = useState<string | null>(null);
   const [modalPlantilla, setModalPlantilla] = useState(false);
   const [isChatOpen,    setIsChatOpen]    = useState(false);
+  const [vinculando,    setVinculando]    = useState(false);
+  const [errorVinculo,  setErrorVinculo]  = useState<string | null>(null);
 
   const mensajesRef  = useRef<HTMLDivElement>(null);
   const inputRef     = useRef<HTMLInputElement>(null);
@@ -695,6 +697,32 @@ export default function WhatsAppWebPage() {
       inputRef.current?.focus();
     }
   }, [archivo, limpiarArchivo]);
+
+  // ── Vincular: levanta el cliente y pide el QR ────────────────
+  // El servidor no lo levanta solo cuando no hay sesión: un QR emitido sin nadie
+  // delante solo consume la ventana de intentos y deja el módulo cortado.
+  const vincular = useCallback(async () => {
+    setVinculando(true);
+    setErrorVinculo(null);
+    try {
+      await api.post('/crm-nativo/vincular');
+      setStatus({ estado: 'INICIANDO' });
+      // El QR llega por WebSocket; si el socket no estuviera vivo, este sondeo
+      // corto lo recupera igual.
+      const t = setInterval(async () => {
+        const { data } = await api.get<{ data: WaStatus }>('/crm-nativo/estado');
+        if (data.data?.estado !== 'INICIANDO') {
+          setStatus(data.data);
+          clearInterval(t);
+        }
+      }, 2000);
+      setTimeout(() => clearInterval(t), 60_000);
+    } catch (err: any) {
+      setErrorVinculo(err?.response?.data?.message ?? 'No se pudo iniciar la vinculación');
+    } finally {
+      setVinculando(false);
+    }
+  }, []);
 
   // ── Scroll al fondo de mensajes ──────────────────────────────
   const scrollFondo = useCallback(() => {
@@ -863,14 +891,34 @@ export default function WhatsAppWebPage() {
   }
 
   // ── Estado "DESCONECTADO" ─────────────────────────────────────
+  // El servidor NO reconecta solo: el cliente se levanta cuando el operador lo
+  // pide, porque el QR solo sirve si hay alguien delante para escanearlo.
   if (status.estado === 'DESCONECTADO') {
     return (
       <div className="flex items-center justify-center h-[calc(100dvh-120px)]">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <WifiOff className="w-8 h-8 text-rose-400" />
-          <p className="text-sm font-medium text-foreground">WhatsApp desconectado</p>
-          <p className="text-xs">El servidor reconectará automáticamente…</p>
-          <Loader2 className="w-4 h-4 animate-spin mt-1" />
+        <div className="bg-card border border-border rounded-2xl p-8 flex flex-col items-center gap-4 max-w-sm w-full shadow-xl">
+          <div className="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center">
+            <WifiOff className="w-6 h-6 text-rose-400" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium text-foreground">WhatsApp no está vinculado</p>
+            <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+              Genera el código QR y escanéalo desde el celular de la empresa.
+              Ten el teléfono a mano: el código caduca a los pocos minutos.
+            </p>
+          </div>
+          <button
+            onClick={vincular}
+            disabled={vinculando}
+            className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            {vinculando
+              ? (<><Loader2 className="w-4 h-4 animate-spin" />Generando QR…</>)
+              : 'Generar código QR'}
+          </button>
+          {errorVinculo && (
+            <p className="text-[11px] text-rose-400 text-center">{errorVinculo}</p>
+          )}
         </div>
       </div>
     );

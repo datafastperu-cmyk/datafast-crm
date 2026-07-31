@@ -17,6 +17,8 @@ describe('WaClientService — quién aloja el cliente (WA_ENABLED)', () => {
   const cargarCon = (waEnabled?: string) => {
     if (waEnabled === undefined) delete process.env.WA_ENABLED;
     else process.env.WA_ENABLED = waEnabled;
+    // CHROME_PATH se resuelve al cargar el módulo y en CI no hay navegador.
+    process.env.WA_CHROME_PATH = '/usr/bin/google-chrome-stable';
 
     jest.resetModules();
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -53,6 +55,27 @@ describe('WaClientService — quién aloja el cliente (WA_ENABLED)', () => {
     } finally {
       process.env.RUN_CRONS = cronsPrevio;
     }
+  });
+
+  // El corte por QR dejaba el módulo inalcanzable: al arrancar el proceso se
+  // gastaban los 15 QR contra una pantalla que nadie miraba, y cuando el operador
+  // entraba ya estaba DESCONECTADO sin forma de pedir uno nuevo.
+  it('vincular() rearma la ventana de QR tras un corte previo', async () => {
+    const { svc } = cargarCon('true');
+    const iniciar = jest.spyOn(svc as any, 'iniciarCliente').mockResolvedValue(undefined);
+    (svc as any).state.estado = 'DESCONECTADO';
+    (svc as any).client = { destroy: jest.fn().mockResolvedValue(undefined) };
+
+    await (svc as any).detenerPorQrNoEscaneado();
+    expect((svc as any).detenidoPorQr).toBe(true);
+
+    const res = await svc.vincular();
+
+    expect((svc as any).detenidoPorQr).toBe(false);
+    expect((svc as any).qrSinEscanear).toBe(0);
+    expect(res.estado).toBe('INICIANDO');
+    await new Promise(r => setImmediate(r));
+    expect(iniciar).toHaveBeenCalled();
   });
 
   it('enviar desde un proceso que no es el host falla diciendo POR QUÉ, no "no conectado"', async () => {

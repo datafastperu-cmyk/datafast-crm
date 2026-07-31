@@ -127,9 +127,64 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn('[CrmWhatsapp] Chrome no encontrado — módulo degradado');
       return;
     }
+    // Arranque bajo demanda: Chromium solo se levanta solo si hay una sesión
+    // previa que reanudar. Sin sesión, arrancar aquí significa emitir QR contra
+    // una pantalla que nadie está mirando: se agotan los 15 intentos y el módulo
+    // queda cortado justo cuando el operador llega a vincularlo. La vinculación
+    // la inicia el operador (`vincular()`), que es cuando el QR sirve de algo.
+    if (!this.haySesionEnDisco()) {
+      this.moduleHealth.registrar(
+        'crm-whatsapp', 'degraded',
+        'Sin sesión de WhatsApp vinculada — abre Mensajería › CRM WhatsApp y escanea el QR',
+      );
+      this.state.setEstado('DESCONECTADO');
+      this.logger.log('[WA] Sin sesión en disco — esperando vinculación del operador');
+      return;
+    }
+
     this.moduleHealth.registrar('crm-whatsapp', 'ok');
     // Non-blocking: let NestJS finish booting before Chrome starts
     setImmediate(() => this.iniciarCliente().catch((err) => this.logger.error(`WA init fatal: ${err?.message}`)));
+  }
+
+  private haySesionEnDisco(): boolean {
+    try {
+      return fs.existsSync(path.join(SESSION_PATH, `session-${CLIENT_ID}`));
+    } catch {
+      return false;
+    }
+  }
+
+  // ── Vinculación iniciada por el operador ────────────────────────
+  // La ventana de QR empieza a contar AQUÍ, no en el arranque del proceso:
+  // es el único momento en que hay alguien mirando la pantalla.
+  async vincular(): Promise<{ estado: string; mensaje: string }> {
+    this.assertEsHost();
+
+    if (this.state.estado === 'CONECTADO') {
+      return { estado: this.state.estado, mensaje: 'WhatsApp ya está vinculado' };
+    }
+    if (this.state.estado === 'REQUERIDO_QR' && this.client) {
+      return { estado: this.state.estado, mensaje: 'Ya hay un QR activo — escanéalo desde el celular' };
+    }
+    if (!CHROME_PATH) {
+      throw new ServiceUnavailableException(
+        'Chrome/Chromium no está instalado en el servidor (apt install google-chrome-stable)',
+      );
+    }
+
+    this.detenidoPorQr  = false;
+    this.qrSinEscanear  = 0;
+    this.restartCount   = 0;
+    this.moduleHealth.registrar('crm-whatsapp', 'ok');
+    this.logger.log('[WA] Vinculación solicitada por el operador — iniciando cliente');
+
+    // No se espera al handshake: el QR llega por WebSocket en unos segundos.
+    setImmediate(() =>
+      this.iniciarCliente().catch(err => this.logger.error(`[WA] vincular: ${err?.message}`)),
+    );
+
+    return { estado: 'INICIANDO', mensaje: 'Generando código QR…' };
   }
 
   async onModuleDestroy(): Promise<void> {
