@@ -92,7 +92,9 @@ function FichaServicio({ servicio }: { servicio: PortalServicio }) {
 
       {/* Lo que el abonado compró, en tarjetas: es la parte que mira antes de llamar a
           preguntar "¿qué velocidad tengo contratada?". */}
-      <div className="p-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* A una sola columna por debajo de 400 px: con `grid-cols-2` fijo, una tarjeta
+          suelta quedaba a media anchura y su texto se partía en cuatro renglones. */}
+      <div className="p-4 sm:p-5 grid grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-4 gap-3">
         {conVelocidad ? (
           <>
             <Caracteristica
@@ -167,7 +169,7 @@ function FichaServicio({ servicio }: { servicio: PortalServicio }) {
           label="Día de pago"
           valor={servicio.diaFacturacion ? `Cada día ${servicio.diaFacturacion}` : '—'}
         />
-        <Dato label="Próximo corte" valor={fecha(servicio.fechaCorte)} />
+        <Dato label="Próximo pago" valor={fecha(servicio.fechaCorte)} />
         {servicio.enProrroga && (
           <Dato label="Prórroga vigente hasta" valor={fecha(servicio.prorrogaHasta)} />
         )}

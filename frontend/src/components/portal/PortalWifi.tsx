@@ -299,13 +299,17 @@ function BandasWifi({
 
       {/* La hora de la lectura va SIEMPRE a la vista: es lo que le dice al abonado si lo
           que ve es de ahora o de hace un rato. */}
-      <div className="flex items-center justify-between gap-3 px-1 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center justify-between gap-x-3 gap-y-2 px-1 flex-wrap">
+        <div className="flex items-center gap-x-3 gap-y-1 min-w-0 flex-wrap">
           <EstadoRouter vivo={sesionViva} />
           <p className="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
             <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+            {/* Sin segundos: la hora exacta no le dice nada al abonado y en un móvil
+                empujaba el botón «Actualizar» a un renglón huérfano. */}
             {data.ultimaLectura
-              ? `Datos de ${new Date(data.ultimaLectura).toLocaleString('es-PE')}`
+              ? `Datos de ${new Date(data.ultimaLectura).toLocaleString('es-PE', {
+                  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                })}`
               : 'Sin lectura previa del equipo'}
           </p>
         </div>
@@ -313,7 +317,7 @@ function BandasWifi({
           type="button"
           onClick={() => releer()}
           disabled={releyendo}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline flex-shrink-0"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline flex-shrink-0 ml-auto"
         >
           {releyendo && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           {releyendo ? 'Consultando tu router…' : 'Actualizar'}

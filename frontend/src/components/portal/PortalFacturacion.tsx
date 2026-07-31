@@ -195,7 +195,20 @@ export function BotonPagoFlotante() {
     staleTime: 10 * 60_000,
   });
 
-  if (!servicio || servicio.deudaTotal <= 0) return null;
+  // Los comprobantes pendientes, NO `contratos.deuda_total`. Ese contador denormalizado
+  // marcaba 0 con una factura de S/ 64 emitida y sin pagar, así que el botón de pago no
+  // le aparecía justamente a quien debía. Misma fuente que «Recibos» y que la tarjeta
+  // de deuda de Inicio: si las tres leyeran de sitios distintos volverían a discrepar.
+  const { data: cuenta } = useQuery({
+    queryKey: ['portal-estado-cuenta', servicio?.contratoId],
+    queryFn:  () => portalApi.estadoCuenta(servicio!.contratoId),
+    enabled:  Boolean(servicio?.contratoId),
+    retry: false,
+  });
+
+  const deuda = cuenta?.totalPendiente ?? 0;
+
+  if (!servicio || deuda <= 0) return null;
 
   return (
     <>
@@ -203,12 +216,12 @@ export function BotonPagoFlotante() {
         type="button"
         onClick={() => setAbierto(true)}
         className={cn(
-          'fixed right-4 bottom-20 lg:bottom-6 z-40 inline-flex items-center gap-2',
+          'fixed right-4 bottom-24 md:bottom-6 z-40 inline-flex items-center gap-2',
           'px-5 py-3 rounded-full shadow-lg text-sm font-semibold',
           'bg-primary text-primary-foreground hover:opacity-90 transition-opacity',
         )}
       >
-        Pagar {soles(servicio.deudaTotal)}
+        Pagar {soles(deuda)}
       </button>
 
       {abierto && (
@@ -227,7 +240,7 @@ export function BotonPagoFlotante() {
             <div>
               <p className="text-lg font-semibold text-foreground">Pagar mi servicio</p>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Total pendiente: <span className="font-semibold">{soles(servicio.deudaTotal)}</span>
+                Total pendiente: <span className="font-semibold">{soles(deuda)}</span>
               </p>
             </div>
 

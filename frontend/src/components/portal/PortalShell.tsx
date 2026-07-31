@@ -17,10 +17,13 @@ import { cn } from '@/lib/utils';
 interface ItemNav {
   href:  string;
   label: string;
+  // Etiqueta corta para la barra inferior: con 6 destinos en 360 px, "Mis servicios" no
+  // cabe sin partirse en dos líneas y desalinear toda la fila.
+  labelMovil?: string;
   icon:  typeof Home;
-  // La barra inferior de móvil admite 5 destinos legibles; a partir de ahí los íconos se
-  // aprietan y se vuelven intocables con el pulgar. Las secciones secundarias viven en el
-  // menú de escritorio y se alcanzan desde las tarjetas de Inicio.
+  // La barra inferior admite 6 destinos legibles; a partir de ahí los íconos se aprietan
+  // y se vuelven intocables con el pulgar. Las secciones secundarias viven en el menú
+  // lateral y se alcanzan desde las tarjetas de Inicio.
   movil: boolean;
 }
 
@@ -35,7 +38,10 @@ function construirNav(secciones?: {
   // «Mis servicios» no depende de ningún flag: es el detalle de lo que el abonado ya
   // tiene contratado. El flag `planes` solo decide si además se le ofrece el catálogo
   // de cambio dentro de la sección.
-  items.push({ href: '/portal/servicios', label: 'Mis servicios', icon: Layers, movil: false });
+  items.push({
+    href: '/portal/servicios', label: 'Mis servicios', labelMovil: 'Servicios',
+    icon: Layers, movil: true,
+  });
   if (secciones?.comprobantes) {
     items.push({ href: '/portal/recibos', label: 'Recibos', icon: Receipt, movil: true });
   }
@@ -51,7 +57,10 @@ function construirNav(secciones?: {
   if (secciones?.soporte) {
     items.push({ href: '/portal/soporte', label: 'Soporte', icon: LifeBuoy, movil: true });
   }
-  items.push({ href: '/portal/mis-datos', label: 'Mis datos', icon: User, movil: true });
+  items.push({
+    href: '/portal/mis-datos', label: 'Mis datos', labelMovil: 'Datos',
+    icon: User, movil: true,
+  });
   return items;
 }
 
@@ -164,9 +173,12 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-4 py-5 lg:flex lg:gap-6">
-        {/* ── Navegación lateral (escritorio) ─────────────────── */}
-        <nav className="hidden lg:block w-56 flex-shrink-0">
+      {/* Relleno escalado y conmutación en `md`, igual que el DashboardShell del ERP:
+          antes el lateral solo aparecía en `lg` y la franja 768–1023 px se quedaba sin
+          menú lateral y con la barra inferior, desperdiciando todo el costado. */}
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 sm:py-6 md:flex md:gap-6">
+        {/* ── Navegación lateral (escritorio y tablet) ────────── */}
+        <nav className="hidden md:block w-48 lg:w-56 flex-shrink-0">
           <ul className="space-y-1">
             {nav.map((item) => (
               <li key={item.href}>
@@ -177,7 +189,7 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* ── Contenido ───────────────────────────────────────── */}
-        <main className="flex-1 min-w-0 space-y-4 pb-24 lg:pb-0">
+        <main className="flex-1 min-w-0 space-y-4 pb-24 md:pb-0">
           {servicios.length === 0 ? (
             <ErrorPantalla
               mensaje="No encontramos servicios activos asociados a tu cuenta. Comunícate con nosotros."
@@ -199,22 +211,27 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
       {/* ── Navegación inferior (móvil) ───────────────────────── */}
       {/* En móvil la lateral no se convierte en hamburguesa: esconder la navegación
           justo donde más se usa es el error clásico de portar un layout de escritorio. */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border">
+      {/* `pb-[env(safe-area-inset-bottom)]`: en iPhone la barra de gestos se come el
+          último renglón y los destinos quedan medio tapados. */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border pb-[env(safe-area-inset-bottom)]">
         <ul className="flex">
           {nav.filter((i) => i.movil).map((item) => {
             const activo = esActivo(pathname, item.href);
             const Icono  = item.icon;
             return (
-              <li key={item.href} className="flex-1">
+              <li key={item.href} className="flex-1 min-w-0">
                 <Link
                   href={item.href}
                   className={cn(
-                    'flex flex-col items-center gap-0.5 py-2.5 text-xs transition-colors',
+                    'flex flex-col items-center gap-0.5 py-2.5 px-0.5 transition-colors',
+                    // 10px a partir de 6 destinos: con `text-xs` las etiquetas se parten
+                    // en dos líneas por debajo de 380 px y desalinean la fila entera.
+                    'text-[10px] leading-tight',
                     activo ? 'text-primary' : 'text-muted-foreground',
                   )}
                 >
-                  <Icono className="w-5 h-5" />
-                  {item.label}
+                  <Icono className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate max-w-full">{item.labelMovil ?? item.label}</span>
                 </Link>
               </li>
             );
@@ -315,7 +332,9 @@ function ResumenServicio({ servicio }: { servicio: PortalServicio }) {
   return (
     <div className="min-w-0">
       <p className="text-sm font-medium text-foreground truncate">
-        {servicio.planNombre} · {servicio.velocidadBajada} Mbps
+        {servicio.planNombre}
+        {/* Un plan sin velocidad cargada se calla: "· 0 Mbps" se lee como una avería. */}
+        {servicio.velocidadBajada > 0 && ` · ${servicio.velocidadBajada} Mbps`}
       </p>
       <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
         <MapPin className="w-3 h-3 flex-shrink-0" />
