@@ -98,10 +98,10 @@ const NAV: NavEntry[] = [
   },
 
   {
-    id: 'mensajeria', label: 'CRM WhatsApp', icon: MessageSquare,
+    id: 'mensajeria', label: 'Mensajería', icon: MessageSquare,
     items: [
       { href: '/mensajeria/enviados',   label: 'Mensajes Enviados', icon: Send,          permiso: null },
-      { href: '/mensajeria/whatsapp',   label: 'WhatsApp Web',      icon: MessageSquare, permiso: null },
+      { href: '/mensajeria/whatsapp',   label: 'CRM WhatsApp',      icon: MessageSquare, permiso: null },
       { href: '/mensajeria/campanas',   label: 'Campañas Masivas',  icon: Megaphone,     permiso: null },
     ],
   },
