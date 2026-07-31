@@ -759,7 +759,10 @@ export default function WhatsAppWebPage() {
       // único que aloja el cliente. El namespace no sirve para enrutar porque
       // viaja dentro del payload de socket.io.
       path:               '/wa-socket/',
-      transports:         ['websocket', 'polling'],
+      // polling primero: cuando el ERP se sirve por el puerto de Next, el proxy
+      // de rewrites transporta HTTP con seguridad pero no garantiza el upgrade a
+      // WebSocket. socket.io sube a websocket solo si el canal lo permite.
+      transports:         ['polling', 'websocket'],
       reconnectionDelay:  3000,
       reconnectionAttempts: 20,
     });
