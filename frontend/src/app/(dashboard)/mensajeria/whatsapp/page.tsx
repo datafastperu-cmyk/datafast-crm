@@ -758,7 +758,7 @@ export default function WhatsAppWebPage() {
       // Path propio: nginx lo enruta al proceso datafast-whatsapp, que es el
       // único que aloja el cliente. El namespace no sirve para enrutar porque
       // viaja dentro del payload de socket.io.
-      path:               '/wa-socket/',
+      path:               '/api/wa-socket/',
       // polling primero: cuando el ERP se sirve por el puerto de Next, el proxy
       // de rewrites transporta HTTP con seguridad pero no garantiza el upgrade a
       // WebSocket. socket.io sube a websocket solo si el canal lo permite.

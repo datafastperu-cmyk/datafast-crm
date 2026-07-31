@@ -44,9 +44,10 @@ const nextConfig = {
         destination: `${WA_API}/api/v1/crm-nativo/:path*`,
       },
       {
-        // WebSocket del CRM (socket.io con path propio)
-        source: '/wa-socket/:path*',
-        destination: `${WA_API}/wa-socket/:path*`,
+        // WebSocket del CRM (socket.io con path propio, bajo /api/ para quedar
+        // fuera del middleware y del redirect de barra final)
+        source: '/api/wa-socket/:path*',
+        destination: `${WA_API}/api/wa-socket/:path*`,
       },
       {
         source: '/api/:path*',

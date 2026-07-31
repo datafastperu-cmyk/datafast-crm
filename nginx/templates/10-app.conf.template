@@ -149,7 +149,7 @@ server {
 
     # WebSocket del CRM. Path propio porque el namespace de socket.io viaja en el
     # payload y nginx no puede enrutar por él.
-    location /wa-socket/ {
+    location /api/wa-socket/ {
         proxy_pass http://whatsapp_api;
         proxy_http_version 1.1;
 

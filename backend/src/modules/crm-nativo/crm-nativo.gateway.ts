@@ -26,8 +26,11 @@ export interface WaMensajeEvento {
 const CRM_WS_ORIGINS = (process.env.CRM_WS_ORIGINS ?? process.env.APP_URL ?? '')
   .split(',').map(o => o.trim()).filter(Boolean);
 
+// El path va bajo /api/ a propósito: el middleware de Next intercepta todo lo
+// demás (redirige a /login) y además normaliza la barra final con un 308, así que
+// un path propio fuera de /api/ no sobrevive al proxy por el que entra el operador.
 @WebSocketGateway({
-  path:      '/wa-socket/',
+  path:      '/api/wa-socket/',
   namespace: '/crm-nativo',
   cors: {
     origin: [...CRM_WS_ORIGINS, 'http://localhost:3000', 'http://localhost:4000'],
