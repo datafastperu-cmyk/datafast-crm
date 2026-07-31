@@ -206,6 +206,32 @@ export class CrmNativoService {
     `, [empresaId, limite]);
   }
 
+  // ── Mensajes con adjunto que quedó sin descargar ──────────────
+  // El historial se carga una sola vez por chat (cuando está vacío), así que un
+  // adjunto que no se bajó entonces no se reintentaría jamás. Estos son los que
+  // quedaron como el texto "[image]", "[ptt]"… sin archivo detrás.
+  async mensajesSinAdjunto(
+    empresaId: string,
+    limite: number,
+  ): Promise<{ id: string; waMsgId: string; chatId: string }[]> {
+    return this.mensajeRepo.query(`
+      SELECT id, wa_msg_id AS "waMsgId", chat_id AS "chatId"
+      FROM crm_mensajes
+      WHERE empresa_id = $1
+        AND media_url IS NULL
+        AND wa_msg_id IS NOT NULL
+        AND body IN ('[image]', '[video]', '[audio]', '[ptt]', '[document]', '[sticker]')
+      ORDER BY created_at DESC
+      LIMIT $2
+    `, [empresaId, limite]);
+  }
+
+  async asignarMedia(mensajeId: string, filename: string): Promise<void> {
+    // El body pasa a llevar el nombre del archivo, igual que en los mensajes en
+    // vivo: es lo que el frontend usa para renderizar la imagen.
+    await this.mensajeRepo.update(mensajeId, { mediaUrl: filename, body: filename });
+  }
+
   // ── Buscar chat por ID ────────────────────────────────────────
   async findChat(chatId: string, empresaId: string): Promise<CrmChat | null> {
     return this.chatRepo.findOne({ where: { id: chatId, empresaId } });

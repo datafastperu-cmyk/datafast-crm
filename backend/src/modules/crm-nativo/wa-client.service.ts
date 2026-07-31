@@ -54,6 +54,12 @@ const RESTART_DELAYS = [8_000, 16_000, 32_000, 64_000, 120_000];
 // un operador frente a la pantalla; pasado eso nadie va a escanear.
 const MAX_QR_SIN_ESCANEAR = 15;
 
+// Tipos de mensaje que llevan un archivo adjunto. El resto (call_log,
+// notification_template, revoked, location, interactive…) no tiene nada que bajar.
+const TIPOS_CON_ADJUNTO = new Set([
+  'image', 'video', 'audio', 'ptt', 'document', 'sticker',
+]);
+
 // Adjuntos que se bajan al cargar el historial de un chat (los más recientes).
 // Bajar el histórico completo de 514 conversaciones sería un barrido enorme
 // contra Chromium y contra el disco del VPS.
@@ -62,6 +68,8 @@ const MAX_MEDIA_HISTORIAL = 15;
 // Conversaciones cuyo contenido se precarga tras sincronizar, de más reciente a
 // más antigua. Son las que el operador abre; el resto se cargan al abrirlas.
 const CHATS_PRECARGA      = 25;
+// Adjuntos pendientes que se reintentan por pasada.
+const MAX_ADJUNTOS_RECUPERAR = 60;
 // Pausa entre chats: la precarga corre en segundo plano y no puede competir con
 // la atención en vivo por el mismo Chromium.
 const PAUSA_PRECARGA_MS   = 400;
@@ -378,6 +386,32 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     return { messageId: msgId, filename };
   }
 
+  // Segunda pasada para los adjuntos que quedaron sin bajar. El historial de un
+  // chat se carga una sola vez —cuando está vacío—, así que sin esto un mensaje
+  // que quedó como "[image]" no volvería a intentarse nunca.
+  private async recuperarAdjuntosPendientes(empresaId: string): Promise<void> {
+    const pendientes = await this.crmSvc.mensajesSinAdjunto(empresaId, MAX_ADJUNTOS_RECUPERAR);
+    if (pendientes.length === 0) return;
+
+    this.logger.log(`[CRM] Recuperando ${pendientes.length} adjuntos pendientes…`);
+    let ok = 0;
+    for (const m of pendientes) {
+      if (this.state.estado !== 'CONECTADO') break;
+      const filename = await this.descargarMediaDeMensaje(m.waMsgId);
+      if (filename) {
+        await this.crmSvc.asignarMedia(m.id, filename);
+        ok++;
+      }
+      await new Promise(r => setTimeout(r, PAUSA_PRECARGA_MS));
+    }
+    // Los que no se bajaron suelen ser adjuntos ya caducados en los servidores de
+    // WhatsApp: no hay nada que reintentar, y decirlo evita buscar un fallo propio.
+    this.logger.log(
+      `[CRM] Adjuntos recuperados: ${ok}/${pendientes.length}` +
+      `${ok < pendientes.length ? ' (el resto ya no está disponible en WhatsApp)' : ''}`,
+    );
+  }
+
   // Persiste un adjunto ya descargado y devuelve su nombre de archivo.
   private guardarMediaEnDisco(media: { data: string; mimetype: string }): string | null {
     try {
@@ -453,7 +487,12 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
             type:      m.type ?? null,
             fromMe:    !!(m.id?.fromMe ?? m.fromMe),
             timestamp: typeof m.t === 'number' ? m.t : 0,
-            hasMedia:  !!(m.mediaData || m.isMedia || m.mediaKey),
+            // El tipo es el criterio fiable: en el objeto crudo del store las
+            // propiedades de media (mediaData/mediaKey) no siempre están pobladas
+            // hasta que WhatsApp resuelve el adjunto, así que mirarlas daba
+            // "sin adjunto" para todas las imágenes (31/07/2026: 23 mensajes
+            // [image] y 0 descargas).
+            tipo:      String(m.type ?? ''),
           });
         } catch { /* este mensaje no se pudo leer: se omite solo él */ }
       }
@@ -485,7 +524,9 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       // existentes (31/07/2026). Se descargan los más recientes con adjunto —
       // bajar el histórico completo de 514 conversaciones sería un barrido enorme
       // contra Chromium y contra el disco.
-      const conMedia = filtrados.filter((m: any) => m.hasMedia).slice(-MAX_MEDIA_HISTORIAL);
+      const conMedia = filtrados
+        .filter((m: any) => TIPOS_CON_ADJUNTO.has(m.tipo ?? m.type))
+        .slice(-MAX_MEDIA_HISTORIAL);
       const idsConMedia = new Set(conMedia.map((m: any) => m.id?._serialized).filter(Boolean));
 
       for (const m of filtrados) {
@@ -764,6 +805,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         await new Promise(r => setTimeout(r, PAUSA_PRECARGA_MS));
       }
       this.logger.log(`[CRM] Precarga terminada: ${cargados}/${pendientes.length} con historial`);
+      await this.recuperarAdjuntosPendientes(empresaId);
     } catch (err: any) {
       this.logger.warn(`[CRM] Precarga interrumpida: ${err?.message}`);
     } finally {
