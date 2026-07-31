@@ -207,6 +207,9 @@ function TarjetaDeuda() {
     queryKey: ['portal-estado-cuenta', servicio?.contratoId],
     queryFn:  () => portalApi.estadoCuenta(servicio!.contratoId),
     enabled:  Boolean(servicio?.contratoId),
+    // El saldo cambia cuando el operador registra un pago: debe refrescarse al volver
+    // a la pestaña, no quedarse en la cifra de hace media hora.
+    refetchOnWindowFocus: true,
     retry: false,
   });
 

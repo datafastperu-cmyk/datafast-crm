@@ -16,6 +16,11 @@ export function useServicioActual(): {
   const { data: perfil, isLoading } = useQuery({
     queryKey: ['portal-me'],
     queryFn:  portalApi.me,
+    // El portal cachea 2 min y NO refresca al volver a la pestaña (config global,
+    // compartida con el ERP). Con la pestaña abierta y quieta, un abonado suspendido
+    // seguía leyendo "ACTIVO" indefinidamente. Aquí sí se refresca al volver: estado del
+    // contrato, plan y precio son justo lo que no puede quedarse viejo en pantalla.
+    refetchOnWindowFocus: true,
   });
 
   const servicios = perfil?.servicios ?? [];

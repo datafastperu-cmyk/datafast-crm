@@ -59,7 +59,23 @@ export interface OltSyncErrorPayload {
 // - La OLT no tiene proveedor SSH → job falla inmediatamente.
 // - Sync concurrente del mismo OLT → el segundo start() detecta
 //   un job 'running' y retorna el jobId existente sin duplicar.
+// - PROCESO MUERTO a mitad del sync → la fila queda 'running' para
+//   siempre. Incidente 2026-07-29: el worker se reinició durante un
+//   sync y dejó un job colgado a las 06:50; durante 40 h TODAS las
+//   ejecuciones del cron encontraron ese zombi, devolvieron su id y
+//   no sincronizaron nada. El inventario de ONUs (y con él el estado
+//   del equipo en el portal y en /red/olt) se congeló 25 h mostrando
+//   un snapshot viejo como si fuera el estado actual.
+//   Por eso un 'running' más viejo que TTL_JOB_MS se da por muerto y
+//   se libera: sin TTL, "hay uno corriendo" es indistinguible de
+//   "hay uno que murió".
 // ─────────────────────────────────────────────────────────────
+
+// Un sync completo del MA5800 tarda ~4 min (medido en el historial de
+// olt_sync_jobs). 30 min deja margen de sobra para una OLT lenta sin
+// dejar el bloqueo puesto medio día.
+const TTL_JOB_MS = 30 * 60 * 1000;
+
 @Injectable()
 export class OltSyncService implements OnModuleInit {
   private readonly logger = new Logger(OltSyncService.name);
@@ -146,7 +162,7 @@ export class OltSyncService implements OnModuleInit {
     }
   }
 
-  private async _syncPeriodicoInterno(): Promise<{ olts: number; encoladas: number }> {
+  private async _syncPeriodicoInterno(): Promise<{ olts: number; encoladas: number; yaEnCurso: number }> {
     const olts = await this.ds.query<Array<{ id: string; empresa_id: string; ip_gestion: string }>>(
       `SELECT id, empresa_id, ip_gestion
        FROM   olt_dispositivos
@@ -155,9 +171,19 @@ export class OltSyncService implements OnModuleInit {
     ).catch(() => []);
 
     let encoladas = 0;
+    let yaEnCurso = 0;
     for (const olt of olts) {
       try {
-        await this.iniciarSync(olt.id, olt.empresa_id);
+        // `nuevo` distingue "lancé un sync" de "ya había uno". Antes se contaba como
+        // encolada cualquier llamada que devolviera un id, así que el latido informaba
+        // `{olts:1, encoladas:1, exito:true}` mientras el job devuelto era un zombi de
+        // hacía 40 h y no se sincronizaba nada. Un latido describe lo que ocurrió.
+        const { nuevo } = await this.iniciarSync(olt.id, olt.empresa_id);
+        if (!nuevo) {
+          yaEnCurso++;
+          this.logger.log(`[SyncPeriódico] ya había un sync en curso | olt=${olt.ip_gestion}`);
+          continue;
+        }
         encoladas++;
         this.logger.log(`[SyncPeriódico] job encolado | olt=${olt.ip_gestion}`);
       } catch (e) {
@@ -168,7 +194,8 @@ export class OltSyncService implements OnModuleInit {
 
     // El resultado queda en el latido: permite ver de un vistazo si el barrido corre
     // pero no encola nada (p.ej. todas las OLTs inactivas), que es distinto de no correr.
-    return { olts: olts.length, encoladas };
+    // `yaEnCurso` alto de forma sostenida es la señal de que algo no avanza.
+    return { olts: olts.length, encoladas, yaEnCurso };
   }
 
   private _syncPeriodicoEnCurso = false;
@@ -176,7 +203,7 @@ export class OltSyncService implements OnModuleInit {
   // ── API pública ───────────────────────────────────────────────
 
   /** Inicia un job de sincronización. Si ya hay uno 'running', retorna su id. */
-  async iniciarSync(oltId: string, empresaId: string): Promise<{ jobId: string }> {
+  async iniciarSync(oltId: string, empresaId: string): Promise<{ jobId: string; nuevo: boolean }> {
     // Una OLT inactiva o eliminada no se sincroniza: el job solo puede terminar en
     // 'failed' por timeout SSH tras esperar la conexión, y deja basura en el historial.
     // Comprobado el 2026-07-28 lanzando por error un sync contra una OLT desactivada.
@@ -192,10 +219,31 @@ export class OltSyncService implements OnModuleInit {
       );
     }
 
+    // Libera primero los 'running' que ya no puede estar ejecutando nadie. Se hace con
+    // UPDATE condicional y no con "leer → decidir → escribir": así, si dos instancias
+    // llegan a la vez, solo una toca la fila y la otra ve 0 afectadas.
+    const liberados = await this.ds.query<Array<{ id: string }>>(
+      `UPDATE olt_sync_jobs
+          SET estado = 'failed',
+              error  = 'Job abandonado: el proceso murió durante el sync (TTL excedido)',
+              completado_en = now()
+        WHERE olt_id = $1 AND empresa_id = $2 AND estado = 'running'
+          AND iniciado_en < now() - ($3::int * interval '1 millisecond')
+        RETURNING id`,
+      [oltId, empresaId, TTL_JOB_MS],
+    );
+    for (const j of liberados) {
+      this.logger.warn(
+        `[sync] job ${j.id} liberado por TTL: llevaba más de ${TTL_JOB_MS / 60000} min en 'running'. `
+        + 'El proceso que lo inició ya no existe.',
+      );
+    }
+
     const running = await this.syncJobRepo.findOne({
       where: { oltId, empresaId, estado: 'running' as SyncJobEstado },
     });
-    if (running) return { jobId: running.id };
+    // Sigue vivo y dentro de su TTL: es un sync real en curso, no se duplica.
+    if (running) return { jobId: running.id, nuevo: false };
 
     const job = this.syncJobRepo.create({ oltId, empresaId, estado: 'running', progreso: 0 });
     await this.syncJobRepo.save(job);
@@ -205,7 +253,7 @@ export class OltSyncService implements OnModuleInit {
       this.logger.error(`[sync:${job.id}] Error no capturado: ${e?.message}`);
     });
 
-    return { jobId: job.id };
+    return { jobId: job.id, nuevo: true };
   }
 
   /**
