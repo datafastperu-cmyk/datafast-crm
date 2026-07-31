@@ -52,7 +52,13 @@ const nextConfig = {
       },
       {
         // WebSocket del CRM (socket.io con path propio, bajo /api/ para quedar
-        // fuera del middleware y del redirect de barra final)
+        // fuera del middleware). socket.io llama exactamente a
+        // `/api/wa-socket/?EIO=4`, sin segmento adicional: `:path*` no lo captura,
+        // así que la barra final necesita su propia regla.
+        source: '/api/wa-socket/',
+        destination: `${WA_API}/api/wa-socket/`,
+      },
+      {
         source: '/api/wa-socket/:path*',
         destination: `${WA_API}/api/wa-socket/:path*`,
       },
