@@ -794,17 +794,22 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       if (!empresaId) return;
 
       const pendientes = await this.crmSvc.chatsSinMensajes(empresaId, CHATS_PRECARGA);
-      if (pendientes.length === 0) return;
 
-      this.logger.log(`[CRM] Precargando ${pendientes.length} conversaciones recientes…`);
-      let cargados = 0;
-      for (const chat of pendientes) {
-        if (this.state.estado !== 'CONECTADO') break;
-        const n = await this.cargarHistorialEnDB(chat.waChatId, chat.id, empresaId);
-        if (n > 0) cargados++;
-        await new Promise(r => setTimeout(r, PAUSA_PRECARGA_MS));
+      if (pendientes.length > 0) {
+        this.logger.log(`[CRM] Precargando ${pendientes.length} conversaciones recientes…`);
+        let cargados = 0;
+        for (const chat of pendientes) {
+          if (this.state.estado !== 'CONECTADO') break;
+          const n = await this.cargarHistorialEnDB(chat.waChatId, chat.id, empresaId);
+          if (n > 0) cargados++;
+          await new Promise(r => setTimeout(r, PAUSA_PRECARGA_MS));
+        }
+        this.logger.log(`[CRM] Precarga terminada: ${cargados}/${pendientes.length} con historial`);
       }
-      this.logger.log(`[CRM] Precarga terminada: ${cargados}/${pendientes.length} con historial`);
+
+      // Fuera del bloque anterior a propósito: los adjuntos pendientes son de
+      // chats que YA tienen mensajes, así que salir antes por "no hay chats que
+      // precargar" dejaba las imágenes sin recuperar para siempre.
       await this.recuperarAdjuntosPendientes(empresaId);
     } catch (err: any) {
       this.logger.warn(`[CRM] Precarga interrumpida: ${err?.message}`);
