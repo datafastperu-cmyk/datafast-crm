@@ -481,8 +481,21 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const salida: any[] = [];
       for (const m of utiles().slice(-max)) {
         try {
+          // El id del mensaje: en los modelos del store `_serialized` no siempre
+          // viene poblado, y sin él el historial se guardaba con wa_msg_id NULL —
+          // los 24 mensajes con imagen quedaron sin identificador, imposibles de
+          // localizar para bajar el adjunto y fuera del alcance del índice único
+          // que sostiene la deduplicación. Se reconstruye con el formato estándar
+          // `fromMe_remote_id` cuando hace falta.
+          let serial: string | null = m.id?._serialized ?? null;
+          if (!serial && m.id?.id) {
+            const remoto = m.id.remote?._serialized ?? m.id.remote ?? chatId;
+            serial = `${m.id.fromMe ? 'true' : 'false'}_${remoto}_${m.id.id}`;
+          }
+          if (!serial && typeof m.id === 'string') serial = m.id;
+
           salida.push({
-            id:        { _serialized: m.id?._serialized ?? null },
+            id:        { _serialized: serial },
             body:      typeof m.body === 'string' ? m.body : '',
             type:      m.type ?? null,
             fromMe:    !!(m.id?.fromMe ?? m.fromMe),
