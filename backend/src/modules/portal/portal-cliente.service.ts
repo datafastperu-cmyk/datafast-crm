@@ -45,8 +45,16 @@ export interface PortalServicio {
 // El precio de esa decisión es que el dato puede estar viejo, y por eso `observadoEn`
 // viaja siempre: presentar un snapshot de ayer como estado actual es exactamente la
 // ilusión que VIO prohíbe.
+// Los estados salen de `olt_onu_inventario.estado_operativo`, la MISMA columna que pinta
+// /red/olt en el ERP. La clasificación la hace el colector Python (`_map_estado_operativo`)
+// cruzando control-flag, run-state, causa de caída y dying-gasp; aquí solo se traduce al
+// vocabulario del abonado. Leer `run_state` crudo —como se hacía— colapsaba "apagada",
+// "desactivada" y "ruptura_fibra" en un único "offline": el operador veía un diagnóstico
+// y el abonado otro distinto sobre el mismo equipo.
 export type EstadoRouterOnu =
   | 'encendido'
+  | 'apagado'
+  | 'fibra_cortada'
   | 'sin_conexion'
   | 'suspendido'
   | 'sin_datos';
@@ -218,7 +226,7 @@ export class PortalClienteService {
     const [fila] = await this.dataSource.query<
       Array<{
         contrato_estado: string;
-        run_state: string | null;
+        estado_operativo: string | null;
         rx_power_dbm: number | null;
         observado_en: string | null;
       }>
@@ -226,7 +234,7 @@ export class PortalClienteService {
       // LEFT JOIN: un contrato sin ONU observada debe responder "sin datos", no 404 —
       // el 404 lo reserva la ausencia del contrato, que sí es un intento de acceso ajeno.
       `SELECT c.estado::text AS contrato_estado,
-              i.run_state,
+              i.estado_operativo,
               i.rx_power_dbm,
               i.updated_at   AS observado_en
          FROM contratos c
@@ -257,35 +265,68 @@ export class PortalClienteService {
       };
     }
 
-    if (!fila.run_state) {
-      return {
-        estado:      'sin_datos',
-        detalle:     'Aún no tenemos lectura de tu equipo.',
-        observadoEn,
-        senalDbm:    null,
-      };
-    }
+    // Traducción 1 a 1 de lo que /red/olt muestra al operador. Si el ERP dice "ONU
+    // Apagada", el abonado lee "Apagado" — nunca un diagnóstico distinto del mismo equipo.
+    switch (fila.estado_operativo) {
+      case 'online':
+        return {
+          estado:      'encendido',
+          detalle:     'Tu equipo está encendido y conectado a nuestra red.',
+          observadoEn,
+          // El dBm solo tiene sentido con el enlace arriba; en un equipo caído es basura.
+          senalDbm:    fila.rx_power_dbm != null ? Number(fila.rx_power_dbm) : null,
+        };
 
-    if (fila.run_state === 'online') {
-      return {
-        estado:      'encendido',
-        detalle:     'Tu equipo está encendido y conectado a nuestra red.',
-        observadoEn,
-        senalDbm:    fila.rx_power_dbm != null ? Number(fila.rx_power_dbm) : null,
-      };
-    }
+      case 'apagada':
+        // La OLT lo distingue por dying-gasp: la ONU avisó al perder la alimentación.
+        return {
+          estado:      'apagado',
+          detalle:     'Tu equipo está apagado o sin corriente. Revisa que esté enchufado '
+                     + 'y que tenga luz encendida.',
+          observadoEn,
+          senalDbm:    null,
+        };
 
-    // Distinguir "apagado" de "fibra cortada" exige la causa de caída que reporta la OLT
-    // (dying-gasp vs LOSi), que hoy NO se recoge en el inventario. Afirmar cuál de las dos
-    // es sin ese dato sería inventar: se describe el hecho observable y se ofrecen las dos
-    // causas para que el abonado descarte la que puede comprobar él mismo.
-    return {
-      estado:      'sin_conexion',
-      detalle:     'No vemos tu equipo en la red. Revisa que esté enchufado y encendido; '
-                 + 'si lo está, puede ser un corte en la fibra y conviene avisarnos.',
-      observadoEn,
-      senalDbm:    null,
-    };
+      case 'ruptura_fibra':
+        // Pérdida de señal óptica (LOS/LOF) con el equipo alimentado: el corte está en
+        // la fibra, no en casa del abonado. Se le dice para que no pierda tiempo
+        // reiniciando un equipo que funciona.
+        return {
+          estado:      'fibra_cortada',
+          detalle:     'Detectamos un corte en la fibra que llega a tu domicilio. '
+                     + 'No es un problema de tu equipo; ya podemos verlo desde aquí.',
+          observadoEn,
+          senalDbm:    null,
+        };
+
+      case 'desactivada':
+        // Desactivada en la propia OLT: es el corte administrativo materializado.
+        return {
+          estado:      'suspendido',
+          detalle:     'Tu servicio está suspendido. Regulariza tu pago para reactivarlo.',
+          observadoEn,
+          senalDbm:    null,
+        };
+
+      case 'offline':
+        // Caída sin causa concluyente en la lectura. No se inventa cuál de las dos es.
+        return {
+          estado:      'sin_conexion',
+          detalle:     'No vemos tu equipo en la red. Revisa que esté enchufado y encendido; '
+                     + 'si lo está, puede ser un corte en la fibra y conviene avisarnos.',
+          observadoEn,
+          senalDbm:    null,
+        };
+
+      default:
+        // null (nunca observada) o 'no_aprovisionada'.
+        return {
+          estado:      'sin_datos',
+          detalle:     'Aún no tenemos lectura de tu equipo.',
+          observadoEn,
+          senalDbm:    null,
+        };
+    }
   }
 
   // Fecha de corte visible para el abonado. Una prórroga vigente manda sobre el cálculo

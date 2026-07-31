@@ -183,7 +183,15 @@ export interface PortalServicio {
   tieneOnu:        boolean;
 }
 
-export type EstadoRouterOnu = 'encendido' | 'sin_conexion' | 'suspendido' | 'sin_datos';
+// Mismos estados que `/red/olt` en el ERP: salen de `olt_onu_inventario.estado_operativo`,
+// clasificado por el colector. Operador y abonado leen el mismo diagnostico.
+export type EstadoRouterOnu =
+  | 'encendido'
+  | 'apagado'
+  | 'fibra_cortada'
+  | 'sin_conexion'
+  | 'suspendido'
+  | 'sin_datos';
 
 export interface PortalEstadoRouter {
   estado:      EstadoRouterOnu;

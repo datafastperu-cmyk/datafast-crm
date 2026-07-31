@@ -253,11 +253,16 @@ function TarjetaDeuda() {
 // Estado del equipo del abonado. El dato viene del último snapshot que el ERP tomó de
 // la OLT, no de una consulta en vivo: por eso se dice cuándo se observó. Presentar una
 // lectura de ayer como "ahora" es la mentira que esta línea existe para evitar.
+// Etiquetas y colores espejo de los que /red/olt le muestra al operador: «ONU Apagada»
+// allí es «Apagado» aquí, y «Ruptura de Fibra» es «Corte de fibra». Mismo diagnóstico
+// dicho en el idioma de cada uno.
 const ROUTER: Record<EstadoRouterOnu, { etiqueta: string; punto: string; texto: string }> = {
-  encendido:    { etiqueta: 'Encendido',    punto: 'bg-emerald-500', texto: 'text-emerald-600 dark:text-emerald-400' },
-  sin_conexion: { etiqueta: 'Sin conexión', punto: 'bg-red-500',     texto: 'text-red-600 dark:text-red-400' },
-  suspendido:   { etiqueta: 'Suspendido',   punto: 'bg-amber-500',   texto: 'text-amber-600 dark:text-amber-400' },
-  sin_datos:    { etiqueta: 'Sin datos',    punto: 'bg-slate-400',   texto: 'text-muted-foreground' },
+  encendido:     { etiqueta: 'Encendido',      punto: 'bg-emerald-500', texto: 'text-emerald-600 dark:text-emerald-400' },
+  apagado:       { etiqueta: 'Apagado',        punto: 'bg-zinc-500',    texto: 'text-zinc-600 dark:text-zinc-400' },
+  fibra_cortada: { etiqueta: 'Corte de fibra', punto: 'bg-red-500',     texto: 'text-red-600 dark:text-red-400' },
+  sin_conexion:  { etiqueta: 'Sin conexión',   punto: 'bg-orange-500',  texto: 'text-orange-600 dark:text-orange-400' },
+  suspendido:    { etiqueta: 'Suspendido',     punto: 'bg-amber-500',   texto: 'text-amber-600 dark:text-amber-400' },
+  sin_datos:     { etiqueta: 'Sin datos',      punto: 'bg-slate-400',   texto: 'text-muted-foreground' },
 };
 
 function EstadoRouter() {
@@ -275,13 +280,20 @@ function EstadoRouter() {
 
   const info = ROUTER[data?.estado ?? 'sin_datos'];
 
+  const conProblema = Boolean(data) && data!.estado !== 'encendido' && data!.estado !== 'sin_datos';
+
   return (
-    <div className="space-y-1" title={data?.detalle}>
+    <div className="space-y-1">
       <div className="flex items-center gap-1.5">
         <span className={cn('w-2 h-2 rounded-full flex-shrink-0', info.punto)} />
         <span className="text-xs text-muted-foreground">Router:</span>
         <span className={cn('text-xs font-semibold', info.texto)}>{info.etiqueta}</span>
       </div>
+      {/* Si algo va mal, el qué hacer se LEE. Estaba solo en un `title`, que en un
+          teléfono no existe: justo donde el abonado mira cuando se queda sin internet. */}
+      {conProblema && (
+        <p className="text-[11px] text-muted-foreground">{data!.detalle}</p>
+      )}
       {data?.observadoEn && (
         <p className="text-[11px] text-muted-foreground">
           Última lectura {hace(data.observadoEn)}
