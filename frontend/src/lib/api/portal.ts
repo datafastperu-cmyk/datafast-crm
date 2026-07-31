@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type { ApiRespuesta } from '@/types';
 
 // Cliente HTTP del PORTAL DEL ABONADO — instancia propia, deliberadamente separada de
@@ -13,6 +13,59 @@ const portalHttp = axios.create({
   headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
   withCredentials: true,
 });
+
+// ── Renovación silenciosa de la sesión ───────────────────────
+// El token de acceso dura 30 min y el de refresco 12 h deslizantes. Sin este interceptor
+// el abonado quedaba fuera a los 30 min de haber entrado — no de inactividad, sino
+// contados desde el login — aunque tuviera un refresco válido: `/auth/refresh` existía y
+// NADIE lo llamaba. Cambiar la clave del WiFi implica esperar a la ONU, y esa espera
+// cruzaba el límite.
+//
+// El `??=` comparte una única promesa de refresco entre las peticiones que fallen
+// mientras esa renovación está en vuelo. Motivo: al abrir el dashboard se disparan varias
+// consultas en paralelo y todas verían el 401 a la vez; N POST /auth/refresh simultáneos
+// rotarían el token N veces y los últimos reintentos irían con una cookie ya sustituida.
+//
+// SIN TEST: el frontend no tiene runner (no hay jest ni vitest en package.json), así que
+// esto NO es una garantía verificada — es la intención del mecanismo. Si alguien toca
+// este bloque, no hay red que lo atrape.
+let refrescoEnCurso: Promise<unknown> | null = null;
+
+function renovarSesion(): Promise<unknown> {
+  refrescoEnCurso ??= portalHttp
+    .post('/auth/refresh')
+    .finally(() => { refrescoEnCurso = null; });
+  return refrescoEnCurso;
+}
+
+type PeticionReintentable = InternalAxiosRequestConfig & { _reintentada?: boolean };
+
+portalHttp.interceptors.response.use(
+  (respuesta) => respuesta,
+  async (error: AxiosError) => {
+    const peticion = error.config as PeticionReintentable | undefined;
+
+    const renovable =
+      error.response?.status === 401 &&
+      peticion != null &&
+      !peticion._reintentada &&
+      // Un 401 en login/refresh/logout ES el veredicto, no algo que renovar: reintentarlo
+      // sería un bucle contra el propio endpoint que acaba de rechazarnos.
+      !(peticion.url ?? '').includes('/auth/');
+
+    if (!renovable) return Promise.reject(error);
+
+    peticion._reintentada = true;
+    try {
+      await renovarSesion();
+    } catch {
+      // El refresco tampoco vale: se propaga el 401 original para que la UI mande al
+      // login. Enmascararlo dejaría al abonado en una pantalla que no carga nunca.
+      return Promise.reject(error);
+    }
+    return portalHttp(peticion);
+  },
+);
 
 // ── Errores con vocabulario de portal ────────────────────────
 // El abonado no puede leer un stack ni un status code. Estas clases distinguen los tres

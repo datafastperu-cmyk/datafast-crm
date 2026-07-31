@@ -17,9 +17,18 @@ import {
   COOKIE_ACCESS, COOKIE_REFRESH, leerCookie,
 } from './portal-auth.guard';
 
+// Sesión deslizante: el acceso dura poco y se renueva en silencio mientras el abonado
+// use el portal (el interceptor del cliente reintenta una vez ante un 401). Lo que
+// realmente decide cuánto vive la sesión es el refresco, que se reemite en cada
+// renovación — 12 h SIN ACTIVIDAD la cierran.
+//
+// 12 h y no 7 días porque esta sesión permite cambiar el SSID y la clave del WiFi del
+// abonado: no es un portal de solo lectura. Sobrevive a una sesión de uso completa
+// (cambiar el WiFi implica esperar a la ONU) y muere durante la noche, que es cuando un
+// teléfono prestado o perdido deja de estar bajo control de su dueño.
 const ACCESS_TTL  = '30m';
-const REFRESH_TTL = '7d';
-const REFRESH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const REFRESH_TTL = '12h';
+const REFRESH_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 const MAX_INTENTOS   = 5;
 const VENTANA_MS     = 15 * 60 * 1000;
