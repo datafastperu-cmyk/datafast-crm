@@ -426,24 +426,58 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   // Descarga el adjunto de un mensaje del historial. Va por mensaje individual y
   // con su propio try/catch: un adjunto caducado en el servidor de WhatsApp
   // —habitual en conversaciones viejas— no puede arrastrar al resto del historial.
+  // `client.getMessageById()` pasa por `getMessageModel`, el mismo modelador que
+  // rompe el listado y el historial: todas las descargas fallaban con el error
+  // minificado "r" (31/07/2026, 0 de 46 adjuntos). Aquí se toma el mensaje de la
+  // colección por su id y se usa el mismo pipeline de descarga que la librería,
+  // sin modelarlo.
   private async descargarMediaDeMensaje(waMsgId: string): Promise<string | null> {
     try {
-      const msg = await this.client.getMessageById(waMsgId);
-      if (!msg) {
-        this.logger.warn(`[CRM] Adjunto: mensaje no encontrado (${waMsgId})`);
+      const res: any = await this.client.pupPage.evaluate(async (id: string) => {
+        const w = window as any;
+        try {
+          const col = w.require('WAWebCollections').Msg;
+          const msg = col.get(id) ?? (await col.getMessagesById([id]))?.messages?.[0];
+          if (!msg)           return { error: 'mensaje no encontrado en la colección' };
+          if (!msg.mediaData) return { error: 'el mensaje no tiene datos de media' };
+
+          if (msg.mediaData.mediaStage !== 'RESOLVED') {
+            try {
+              await msg.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1 });
+            } catch { /* se evalúa el stage a continuación */ }
+          }
+          const stage = String(msg.mediaData.mediaStage ?? '');
+          // REUPLOADING/ERROR/FETCHING: el adjunto ya no está disponible o sigue
+          // resolviéndose. Es el único caso en que "caducado" es una afirmación cierta.
+          if (stage.includes('ERROR') || stage === 'FETCHING' || stage === 'REUPLOADING') {
+            return { error: `adjunto no disponible (stage=${stage})` };
+          }
+
+          const qpl = { addAnnotations() { return this; }, addPoint() { return this; } };
+          const buffer = await w.require('WAWebDownloadManager').downloadManager
+            .downloadAndMaybeDecrypt({
+              directPath:        msg.directPath,
+              encFilehash:       msg.encFilehash,
+              filehash:          msg.filehash,
+              mediaKey:          msg.mediaKey,
+              mediaKeyTimestamp: msg.mediaKeyTimestamp,
+              type:              msg.type,
+              signal:            new AbortController().signal,
+              downloadQpl:       qpl,
+            });
+
+          const data = await w.WWebJS.arrayBufferToBase64Async(buffer);
+          return { data, mimetype: msg.mimetype ?? 'application/octet-stream' };
+        } catch (e: any) {
+          return { error: e?.message ?? String(e) };
+        }
+      }, waMsgId);
+
+      if (!res || res.error || !res.data) {
+        this.logger.warn(`[CRM] Adjunto no descargado (${waMsgId}): ${res?.error ?? 'sin datos'}`);
         return null;
       }
-      if (!msg.hasMedia) {
-        this.logger.warn(`[CRM] Adjunto: el mensaje no declara media (${waMsgId}, tipo=${msg.type})`);
-        return null;
-      }
-      const media = await msg.downloadMedia();
-      if (!media?.data) {
-        // Caducado en los servidores de WhatsApp: no hay nada que reintentar.
-        this.logger.warn(`[CRM] Adjunto expirado o no descargable (${waMsgId})`);
-        return null;
-      }
-      return this.guardarMediaEnDisco(media);
+      return this.guardarMediaEnDisco(res);
     } catch (err: any) {
       this.logger.warn(`[CRM] Adjunto: error al descargar (${waMsgId}): ${err?.message}`);
       return null;
