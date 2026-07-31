@@ -167,9 +167,6 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
       <div className="mx-auto max-w-6xl px-4 py-5 lg:flex lg:gap-6">
         {/* ── Navegación lateral (escritorio) ─────────────────── */}
         <nav className="hidden lg:block w-56 flex-shrink-0">
-          <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Menú
-          </p>
           <ul className="space-y-1">
             {nav.map((item) => (
               <li key={item.href}>
