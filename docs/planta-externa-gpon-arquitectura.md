@@ -1,6 +1,6 @@
 # Módulo Planta Externa FTTH/GPON — Propuesta de Arquitectura
 
-Estado: **propuesta para aprobación**. No implementar hasta validación del punto 11.
+Estado: **Fase 1 implementada y validada contra base de datos** (ver §13). Fases 2-4 pendientes de aprobación.
 Base: expediente técnico "Módulo Avanzado de Diseño y Gestión de Redes FTTH/GPON" (Julio 2026),
 corregido contra el estado real del repositorio y las directrices de `CLAUDE.md`.
 
@@ -391,11 +391,11 @@ de las 03:30 (ver memoria `project_revisar_reconciliador_nocturno`).
 
 ## 10. Plan de fases
 
-> **Estado al 2026-07-31: Fase 1 implementada, pendiente de validación contra BD.**
+> **Estado al 2026-07-31: Fase 1 implementada y VALIDADA contra base de datos.**
 > Código completo y con typecheck limpio (backend y frontend); 41 tests propios en verde
-> y la suite completa del backend (451) sin regresiones. **Las migraciones NO se han
-> ejecutado contra ninguna base de datos**: no hay Postgres local ni Docker en el entorno
-> de desarrollo, y la única BD disponible es producción. Ver §13.
+> y la suite completa del backend (451) sin regresiones. Migraciones probadas con ciclo
+> `up`/`down`/`up` y test de concurrencia real (50 sesiones → 1 ganador) sobre una BD
+> desechable con el esquema de producción. Falta desplegar. Ver §13.
 
 **Fase 1 — Fundación (crítica).** Migraciones `pe_*` con hilos, puertos y splitters como
 entidades; máquina de estados declarativa; CRUD con `ResultadoOperacion`; hardening de
@@ -496,7 +496,7 @@ que nadie sostiene es peor que ninguno.
 | Componente | Archivos | Verificación |
 |---|---|---|
 | Máquina de estados declarativa | `modules/planta-externa/domain/planta-externa-maquina-estados.ts` + spec | 21 tests verdes |
-| Migraciones (grafo / óptica / acceso) | `migrations/core/1791800000028..30` | typecheck OK — **sin ejecutar** |
+| Migraciones (grafo / óptica / acceso) | `migrations/core/1791800000028..30` | **`up`/`down`/`up` limpio contra BD real** (ver abajo) |
 | Entidades TypeORM (8) | `modules/planta-externa/entities/` | typecheck OK, `type:` explícito en toda columna nullable |
 | Servicio de puertos (atómico + TTL) | `planta-externa-puertos.service.ts` + spec | 20 tests verdes |
 | Servicio CRUD (altas transaccionales, guard de capacidad) | `planta-externa.service.ts` | typecheck OK |
@@ -508,27 +508,67 @@ que nadie sostiene es peor que ninguno.
 
 Suite completa del backend: **451 tests, sin regresiones**.
 
-### NO validado — requiere una base de datos
+### Validado contra base de datos real
 
-Estas tres cosas no están verificadas y no deben darse por buenas hasta que lo estén:
+Se clonó el **esquema** de producción (`pg_dump --schema-only`, sin datos, lectura pura) a
+una base desechable `pe_test` en el Postgres de la VPS, se corrieron ahí las migraciones y
+se eliminó la base al terminar. **Producción no se tocó en ningún momento.**
 
-1. **Las migraciones nunca se ejecutaron.** No hay Postgres local ni Docker en el entorno
-   de desarrollo; la única BD disponible es producción, y correr DDL contra ella sin
-   supervisión no es una decisión que corresponda tomar sola. Falta un `up`/`down` limpio.
-2. **El criterio de aceptación de la fase sigue abierto**: 50 asignaciones paralelas al
-   mismo puerto → exactamente 1 éxito. Los tests actuales demuestran que el código emite
-   un `UPDATE` condicional de una sola sentencia y que interpreta bien 0 filas afectadas
-   —que es lo que un refactor puede romper en silencio— pero **no** demuestran que
-   Postgres serialice, porque eso exige una BD real.
-3. **El trigger de contadores (`pe_recalcular_contadores_nap`) no se ha ejercitado.**
+El SQL probado se extrae de las propias clases de migración con
+`backend/scripts/dump-planta-externa-sql.ts` (un `QueryRunner` falso que graba las
+sentencias), de modo que lo validado es exactamente lo que correrá en producción y no una
+copia manual que se desincroniza al primer cambio.
 
-**Riesgo de despliegue a tener presente:** `database.config.ts` tiene `migrationsRun: true`.
-Las migraciones corren solas al arrancar el backend — no hay un paso manual que sirva de
-control. Desplegar es ejecutarlas.
+**Criterio de aceptación de la fase — CUMPLIDO.**
+`pgbench -c 50 -j 10 -t 1` ejecutando el mismo `UPDATE` condicional que emite
+`asignarPuerto()` sobre un único puerto:
 
-Recomendación: levantar un Postgres desechable (Docker o una BD de staging en la VPS),
-correr `up`/`down` y escribir ahí el test de concurrencia, antes de que esto llegue a
-producción.
+| Métrica | Resultado |
+|---|---|
+| Transacciones ejecutadas | 50 / 50 |
+| **Sesiones que reclamaron el puerto** | **1** |
+| `version` del puerto | 1 → 2 (un solo UPDATE efectivo) |
+| `puertos_libres` tras la carrera | 1 → 0, actualizado por el trigger |
+
+Es la race condition del expediente reproducida y cerrada: con
+"puertos libres = capacidad − clientes" las 50 habrían leído "libre" y las 50 habrían
+asignado.
+
+**Invariantes ejercitados** — cada uno se intentó violar y Postgres lo rechazó, sin dejar
+una sola fila basura:
+
+| # | Intento | Restricción que lo frenó |
+|---|---|---|
+| 1 | Puerto `libre` sin salida de splitter | `chk_pe_puerto_habilitado_tiene_salida` |
+| 2 | Puerto `reservado` sin dueño ni vencimiento | `chk_pe_puerto_reserva_completa` |
+| 3 | Número de puerto duplicado en la caja | `uq_pe_puerto_nap_numero` |
+| 4 | Segmento con dos orígenes | `chk_pe_segmento_origen_unico` |
+| 5 | Segmento con 13 hilos | `chk_pe_segmento_hilos` |
+| 6 | Splitter sin contenedor | `chk_pe_splitter_alojamiento_unico` |
+| 7 | Latitud 95° | `chk_pe_nap_coords` |
+| 8 | Caja de 13 puertos | `chk_pe_nap_capacidad` |
+| 9 | Código de NAP duplicado | `uq_pe_nap_codigo` |
+| 10 | Acometida `verificado` sin evidencia | `chk_pe_acometida_verificada_con_evidencia` |
+| 11 | Dos acometidas en el mismo puerto | `uq_pe_acometida_puerto` |
+| 12 | Un contrato con dos acometidas | `uq_pe_acometida_contrato` |
+| 13 | Un hilo fusionado dos veces | `uq_pe_fusion_hilo_a` |
+| 14 | Hilo fusionado consigo mismo | `chk_pe_fusion_distintos` |
+
+Además se confirmó que el **soft-delete libera el puerto**: al marcar `deleted_at` en una
+acometida, el índice único parcial deja entrar la siguiente. Sin eso, dar de baja a un
+cliente inutilizaría su puerto para siempre.
+
+**Ciclo `up → down → up` limpio.** El `down` deja 0 tablas `pe_*` y elimina la función del
+trigger; el `up` posterior reconstruye las 9 tablas y el trigger.
+
+### Sigue pendiente
+
+- **Desplegar.** `database.config.ts` tiene `migrationsRun: true`: las migraciones corren
+  solas al arrancar el backend, así que **desplegar es ejecutarlas**. El esquema está
+  validado, pero el despliegue en sí no se ha hecho.
+- **Dato de campo confirmado:** este VPS sirve el ERP en `http://149.34.48.224:3000`, sin
+  HTTPS. La captura por GPS no estará disponible ahí — el formulario lo detecta y lo dice,
+  y el alta sigue funcionando con la coordenada a mano (§11.1).
 
 ### Decisiones tomadas durante la implementación
 
