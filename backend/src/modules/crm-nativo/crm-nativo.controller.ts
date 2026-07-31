@@ -108,6 +108,15 @@ export class CrmNativoController {
     return ApiResponse.ok(result, result.mensaje);
   }
 
+  // ── POST /api/v1/crm-nativo/sincronizar ──────────────────────
+  @Post('sincronizar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Releer el listado de conversaciones desde WhatsApp' })
+  async sincronizar() {
+    const result = await this.waClient.sincronizarChats();
+    return ApiResponse.ok(result, `${result.chats} conversaciones sincronizadas`);
+  }
+
   // ── GET /api/v1/crm-nativo/chats ─────────────────────────────
   @Get('chats')
   @ApiOperation({ summary: 'Lista de chats activos' })

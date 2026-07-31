@@ -617,6 +617,19 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   // hay chats, se dice explícitamente en vez de dejar la pantalla vacía sin causa.
   private static readonly REINTENTOS_CHATS = [3_000, 6_000, 12_000, 20_000];
 
+  // Resincronización a petición del operador: hasta ahora el listado solo se leía
+  // en el evento 'ready', así que un fallo de sincronización obligaba a reiniciar
+  // el proceso para reintentarlo.
+  async sincronizarChats(): Promise<{ chats: number }> {
+    this.assertEsHost();
+    if (!this.client || this.state.estado !== 'CONECTADO') {
+      throw new ServiceUnavailableException('WhatsApp Web no está conectado');
+    }
+    const chats = await this.intentarCargarChats();
+    this.logger.log(`[CRM] Sincronización manual: ${chats} chats`);
+    return { chats };
+  }
+
   private async cargarChatsIniciales(): Promise<void> {
     let ultimoError: unknown = null;
 
@@ -657,28 +670,96 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     // módulo NO está caído: solo le falta el historial previo a la vinculación.
   }
 
+  // Lectura del listado tolerante a chats individuales rotos.
+  //
+  // `client.getChats()` de whatsapp-web.js 1.34 mapea TODOS los chats con
+  // `getChatModel` dentro de un `Promise.all`: basta con que uno falle —una lista
+  // de difusión, un canal, un chat con metadatos incompletos— para que se caiga la
+  // sincronización entera con un error minificado ("r"). Eso dejó el CRM con solo
+  // los chats que tuvieron actividad nueva: 22 de un parque mucho mayor (31/07/2026).
+  //
+  // Aquí se lee la colección directamente y se extrae, chat por chat y con su
+  // propio try/catch, únicamente lo que el CRM necesita. Un chat ilegible se
+  // pierde solo a sí mismo.
+  private async leerChatsTolerante(): Promise<any[]> {
+    return this.client.pupPage.evaluate(() => {
+      const w = window as any;
+      const salida: any[] = [];
+      let modelos: any[] = [];
+      try {
+        modelos = w.require('WAWebCollections').Chat.getModelsArray() ?? [];
+      } catch (e: any) {
+        return { error: `No se pudo leer la colección de chats: ${e?.message ?? e}` } as any;
+      }
+
+      for (const chat of modelos) {
+        try {
+          const id = chat?.id?._serialized ?? String(chat?.id ?? '');
+          if (!id) continue;
+
+          let ultimoMensaje: string | null = null;
+          let ultimoTs: number | null = null;
+          try {
+            const last = chat.msgs?.getModelsArray?.()?.slice(-1)?.[0];
+            if (last) {
+              ultimoMensaje = typeof last.body === 'string' ? last.body.substring(0, 200) : null;
+              ultimoTs      = typeof last.t === 'number' ? last.t : null;
+            }
+          } catch { /* chat sin mensajes accesibles */ }
+
+          if (ultimoTs === null && typeof chat.t === 'number') ultimoTs = chat.t;
+
+          salida.push({
+            id,
+            user:        chat?.id?.user ?? id.split('@')[0],
+            isGroup:     !!chat.isGroup,
+            nombre:      chat.name ?? chat.formattedTitle ?? chat.contact?.pushname ?? null,
+            unreadCount: typeof chat.unreadCount === 'number' ? chat.unreadCount : 0,
+            ultimoMensaje,
+            ultimoTs,
+          });
+        } catch { /* este chat no se pudo leer: se omite solo él */ }
+      }
+      return salida as any;
+    });
+  }
+
   private async intentarCargarChats(): Promise<number> {
     {
-      const todosLosChats = await this.client.getChats();
+      const leidos = await this.leerChatsTolerante();
+      if (!Array.isArray(leidos)) {
+        throw new Error((leidos as any)?.error ?? 'Lectura de chats no devolvió una lista');
+      }
+
+      const todosLosChats = leidos
+        .filter(c => !c.isGroup)
+        .filter(c => WaClientService.esConversacionIndividual({ from: c.id }))
+        .map(c => ({
+          id:          { _serialized: c.id, user: c.user },
+          name:        c.nombre,
+          unreadCount: c.unreadCount,
+          lastMessage: c.ultimoMensaje !== null || c.ultimoTs !== null
+            ? { body: c.ultimoMensaje ?? '', timestamp: c.ultimoTs }
+            : undefined,
+        }));
       const empresaId     = await this.crmSvc.resolverEmpresaId();
       if (!empresaId) {
         throw new Error('No se pudo resolver la empresa (tabla empresas vacía o WA_EMPRESA_ID inválido)');
       }
 
-      const chatsIndividuales = todosLosChats.filter(
-        (c: any) => !c.isGroup && !c.id?._serialized?.endsWith('@g.us'),
-      );
-
-      for (const c of chatsIndividuales.slice(0, 50)) {
-        const contact = await this.client.getContactById(c.id._serialized).catch(() => null);
-        const nombre  = (contact as any)?.name || (contact as any)?.pushname || c.name || null;
+      // Sin recorte a 50: ese límite dejaba fuera el resto del parque y no había
+      // segunda pasada que los recuperase. El nombre sale del propio store; pedir
+      // `getContactById` por chat era un viaje a Chromium por cada uno.
+      for (const c of todosLosChats) {
         await this.crmSvc.upsertChat(empresaId, {
           waChatId:       c.id._serialized,
           telefono:       c.id.user,
-          nombreContacto: nombre,
-          ultimoMensaje:  c.lastMessage?.body?.substring(0, 200) ?? null,
+          nombreContacto: c.name ?? null,
+          ultimoMensaje:  c.lastMessage?.body?.substring(0, 200) || null,
           ultimoMsgAt:    c.lastMessage?.timestamp ? new Date(c.lastMessage.timestamp * 1000) : null,
-          noLeidos:       (Number.isFinite(c.unreadCount) && c.unreadCount > 0) ? c.unreadCount : 0,
+          // La sincronización refleja el contador de WhatsApp; no puede sumarse al
+          // que ya hay en BD o cada pasada inflaría los no leídos.
+          noLeidos:       0,
         });
       }
 
