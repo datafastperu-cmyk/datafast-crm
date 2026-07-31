@@ -412,4 +412,19 @@ export class PortalController {
       await this.cliente.servicio(sesion.sub, sesion.empresaId, contratoId),
     );
   }
+
+  // Sin `exigirSeccion`: no es la gestión WiFi (que el operador puede apagar), es saber
+  // si el equipo propio está encendido. Lee del último snapshot, no de la OLT.
+  @Get('servicios/:contratoId/router')
+  @UseGuards(PortalJwtGuard)
+  @ApiOperation({ summary: 'Estado del equipo (ONU) del abonado' })
+  @ApiParam({ name: 'contratoId' })
+  async estadoRouter(
+    @ClientePortal() sesion: PortalJwtPayload,
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+  ) {
+    return ApiResponse.ok(
+      await this.cliente.estadoRouter(sesion.sub, sesion.empresaId, contratoId),
+    );
+  }
 }

@@ -128,6 +128,17 @@ export interface PortalServicio {
   tieneOnu:        boolean;
 }
 
+export type EstadoRouterOnu = 'encendido' | 'sin_conexion' | 'suspendido' | 'sin_datos';
+
+export interface PortalEstadoRouter {
+  estado:      EstadoRouterOnu;
+  detalle:     string;
+  // Momento en que el ERP observó el equipo en la OLT. El dato NO es en vivo: se muestra
+  // su antigüedad para que el abonado sepa qué está leyendo.
+  observadoEn: string | null;
+  senalDbm:    number | null;
+}
+
 export interface PortalPerfil {
   clienteId:       string;
   nombreCompleto:  string;
@@ -305,6 +316,9 @@ export const portalApi = {
 
   estadoCuenta: (contratoId: string) =>
     pedir<PortalEstadoCuenta>(() => portalHttp.get(`/facturas/${contratoId}`)),
+
+  estadoRouter: (contratoId: string) =>
+    pedir<PortalEstadoRouter>(() => portalHttp.get(`/servicios/${contratoId}/router`)),
 
   // ── Mi WiFi ────────────────────────────────────────────────
   onuEstado: (contratoId: string) =>

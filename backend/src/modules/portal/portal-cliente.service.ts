@@ -39,6 +39,28 @@ export interface PortalServicio {
   tieneOnu:        boolean;
 }
 
+// Estado del equipo del abonado, leído del último snapshot que el ERP tomó de la OLT.
+// NO se consulta la OLT en cada carga del portal: 200 abonados abriendo el dashboard
+// serían 200 sesiones SSH contra un MA5800 que admite muy pocas VTY concurrentes.
+// El precio de esa decisión es que el dato puede estar viejo, y por eso `observadoEn`
+// viaja siempre: presentar un snapshot de ayer como estado actual es exactamente la
+// ilusión que VIO prohíbe.
+export type EstadoRouterOnu =
+  | 'encendido'
+  | 'sin_conexion'
+  | 'suspendido'
+  | 'sin_datos';
+
+export interface PortalEstadoRouter {
+  estado:       EstadoRouterOnu;
+  // Texto ya resuelto para el abonado: la UI no debe inventar el matiz.
+  detalle:      string;
+  // Última vez que el ERP observó la ONU en la OLT. null = nunca se observó.
+  observadoEn:  string | null;
+  // Solo se envía si el equipo está conectado; un dBm de un equipo caído es basura.
+  senalDbm:     number | null;
+}
+
 export interface PortalPerfil {
   clienteId:      string;
   nombreCompleto: string;
@@ -184,6 +206,86 @@ export class PortalClienteService {
     const encontrado = servicios.find((s) => s.contratoId === contratoId);
     if (!encontrado) throw new NotFoundException('Servicio no encontrado');
     return encontrado;
+  }
+
+  async estadoRouter(
+    clienteId: string,
+    empresaId: string,
+    contratoId: string,
+  ): Promise<PortalEstadoRouter> {
+    // La pertenencia del contrato al abonado se valida en la MISMA consulta: separarlo
+    // en dos pasos es como aparecen los IDOR.
+    const [fila] = await this.dataSource.query<
+      Array<{
+        contrato_estado: string;
+        run_state: string | null;
+        rx_power_dbm: number | null;
+        observado_en: string | null;
+      }>
+    >(
+      // LEFT JOIN: un contrato sin ONU observada debe responder "sin datos", no 404 —
+      // el 404 lo reserva la ausencia del contrato, que sí es un intento de acceso ajeno.
+      `SELECT c.estado::text AS contrato_estado,
+              i.run_state,
+              i.rx_power_dbm,
+              i.updated_at   AS observado_en
+         FROM contratos c
+         LEFT JOIN olt_onu_inventario i
+                ON i.contrato_id = c.id AND i.empresa_id = c.empresa_id
+        WHERE c.id = $1 AND c.cliente_id = $2 AND c.empresa_id = $3
+          AND c.deleted_at IS NULL
+        ORDER BY i.updated_at DESC NULLS LAST
+        LIMIT 1`,
+      [contratoId, clienteId, empresaId],
+    );
+
+    if (!fila) throw new NotFoundException('Servicio no encontrado');
+
+    const observadoEn = fila.observado_en
+      ? new Date(fila.observado_en).toISOString()
+      : null;
+
+    // El corte administrativo manda sobre la lectura del hardware: una ONU suspendida
+    // puede seguir figurando `online` en la OLT, y decirle "encendido" a quien no tiene
+    // servicio por falta de pago es la contradicción que genera la llamada a soporte.
+    if (fila.contrato_estado === 'suspendido' || fila.contrato_estado === 'cortado') {
+      return {
+        estado:      'suspendido',
+        detalle:     'Tu servicio está suspendido. Regulariza tu pago para reactivarlo.',
+        observadoEn,
+        senalDbm:    null,
+      };
+    }
+
+    if (!fila.run_state) {
+      return {
+        estado:      'sin_datos',
+        detalle:     'Aún no tenemos lectura de tu equipo.',
+        observadoEn,
+        senalDbm:    null,
+      };
+    }
+
+    if (fila.run_state === 'online') {
+      return {
+        estado:      'encendido',
+        detalle:     'Tu equipo está encendido y conectado a nuestra red.',
+        observadoEn,
+        senalDbm:    fila.rx_power_dbm != null ? Number(fila.rx_power_dbm) : null,
+      };
+    }
+
+    // Distinguir "apagado" de "fibra cortada" exige la causa de caída que reporta la OLT
+    // (dying-gasp vs LOSi), que hoy NO se recoge en el inventario. Afirmar cuál de las dos
+    // es sin ese dato sería inventar: se describe el hecho observable y se ofrecen las dos
+    // causas para que el abonado descarte la que puede comprobar él mismo.
+    return {
+      estado:      'sin_conexion',
+      detalle:     'No vemos tu equipo en la red. Revisa que esté enchufado y encendido; '
+                 + 'si lo está, puede ser un corte en la fibra y conviene avisarnos.',
+      observadoEn,
+      senalDbm:    null,
+    };
   }
 
   // Fecha de corte visible para el abonado. Una prórroga vigente manda sobre el cálculo
