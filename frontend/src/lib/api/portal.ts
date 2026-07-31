@@ -355,8 +355,10 @@ export const portalApi = {
     pedir<PortalDispositivo[]>(() => portalHttp.get(`/onu/${contratoId}/dispositivos`)),
 
   // ── Consumo ────────────────────────────────────────────────
-  consumo: (contratoId: string) =>
-    pedir<PortalConsumo>(() => portalHttp.get(`/consumo/${contratoId}`)),
+  // `rango` es opcional: sin él el backend devuelve el mes en curso.
+  consumo: (contratoId: string, rango?: { desde: string; hasta: string }) =>
+    pedir<PortalConsumo>(() =>
+      portalHttp.get(`/consumo/${contratoId}`, { params: rango })),
 
   // ── Soporte ────────────────────────────────────────────────
   soporte: () => pedir<PortalSoporte>(() => portalHttp.get('/tickets')),

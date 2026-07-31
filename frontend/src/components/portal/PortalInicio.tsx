@@ -7,6 +7,7 @@ import { CreditCard, Activity, Gauge, CalendarClock } from 'lucide-react';
 import { portalApi, type EstadoRouterOnu } from '@/lib/api/portal';
 
 import { useServicioActual } from './useServicioActual';
+import { PortalConsumoGrafico } from './PortalConsumoGrafico';
 import { cn } from '@/lib/utils';
 
 // Estados del contrato traducidos a lo que el abonado entiende. El color acompaña al
@@ -85,6 +86,8 @@ export function PortalInicio() {
             única vía para llegar a Consumo desde un móvil (no cabe en la barra inferior). */}
         <TarjetaConsumo />
       </div>
+
+      <PortalConsumoGrafico />
 
       {/* Resumen del plan */}
       <div className="rounded-xl border border-border bg-card p-5 space-y-3">
