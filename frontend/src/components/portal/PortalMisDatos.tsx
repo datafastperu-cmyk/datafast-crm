@@ -1,5 +1,8 @@
 'use client';
 
+import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
+
 import { useServicioActual } from './useServicioActual';
 
 const DOCUMENTO: Record<string, string> = {
@@ -40,34 +43,20 @@ export function PortalMisDatos() {
         <Dato label="Dirección del servicio" valor={servicio.direccion ?? '—'} />
       </Bloque>
 
-      <Bloque titulo="Tu plan">
-        <Dato label="Plan" valor={servicio.planNombre} />
-        <Dato
-          label="Velocidad"
-          valor={`${servicio.velocidadBajada} Mbps de bajada · ${servicio.velocidadSubida} Mbps de subida`}
-        />
-        {servicio.planDescripcion && (
-          <Dato label="Incluye" valor={servicio.planDescripcion} />
-        )}
-        {/* Precio del CONTRATO (con su descuento aplicado), nunca el de la lista de
-            planes: mostrar el de lista le cobraría de más en pantalla a todo abonado
-            con descuento. */}
-        <Dato label="Pago mensual" valor={soles(servicio.precioMensual)} />
-        <Dato label="Contrato" valor={servicio.numeroContrato} />
-      </Bloque>
-
-      <Bloque titulo="Fechas y saldo">
-        <Dato
-          label="Día de pago"
-          valor={servicio.diaFacturacion ? `Cada día ${servicio.diaFacturacion}` : '—'}
-        />
+      {/* El detalle del plan y sus fechas viven en «Mis servicios». Duplicarlos aquí
+          garantizaba que ambas pantallas se contradijeran en cuanto una cambiara. */}
+      <Bloque titulo="Saldo">
         <Dato label="Último pago registrado" valor={fecha(servicio.fechaUltimoPago)} />
-        <Dato label="Próximo corte" valor={fecha(servicio.fechaCorte)} />
-        {servicio.enProrroga && (
-          <Dato label="Prórroga vigente hasta" valor={fecha(servicio.prorrogaHasta)} />
-        )}
         <Dato label="Deuda" valor={soles(servicio.deudaTotal)} />
       </Bloque>
+
+      <Link
+        href="/portal/servicios"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline px-1"
+      >
+        Ver el detalle de mi servicio
+        <ArrowRight className="w-4 h-4" />
+      </Link>
 
       {/* El abonado no edita sus datos: DNI y dirección afectan facturación e
           instalación. Se le dice a dónde ir en lugar de dejarle un formulario que

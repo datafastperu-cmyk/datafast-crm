@@ -1,8 +1,8 @@
-import type { Metadata } from 'next';
-import { PortalPlanes } from '@/components/portal/PortalPlanes';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Planes — Portal del Cliente' };
-
+// El catálogo se absorbió en «Mis servicios», donde el abonado lo compara contra su
+// plan actual. La ruta se conserva porque puede estar en un marcador del navegador o
+// haberse enviado por soporte en un mensaje anterior.
 export default function PlanesPage() {
-  return <PortalPlanes />;
+  redirect('/portal/servicios');
 }

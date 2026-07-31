@@ -32,6 +32,10 @@ function construirNav(secciones?: {
   soporte: boolean; consumo: boolean; planes: boolean;
 }): ItemNav[] {
   const items: ItemNav[] = [{ href: '/portal', label: 'Inicio', icon: Home, movil: true }];
+  // «Mis servicios» no depende de ningún flag: es el detalle de lo que el abonado ya
+  // tiene contratado. El flag `planes` solo decide si además se le ofrece el catálogo
+  // de cambio dentro de la sección.
+  items.push({ href: '/portal/servicios', label: 'Mis servicios', icon: Layers, movil: false });
   if (secciones?.comprobantes) {
     items.push({ href: '/portal/recibos', label: 'Recibos', icon: Receipt, movil: true });
   }
@@ -43,9 +47,6 @@ function construirNav(secciones?: {
   }
   if (secciones?.consumo) {
     items.push({ href: '/portal/consumo', label: 'Consumo', icon: Gauge, movil: false });
-  }
-  if (secciones?.planes) {
-    items.push({ href: '/portal/planes', label: 'Planes', icon: Layers, movil: false });
   }
   if (secciones?.soporte) {
     items.push({ href: '/portal/soporte', label: 'Soporte', icon: LifeBuoy, movil: true });

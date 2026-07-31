@@ -111,6 +111,12 @@ export interface PortalServicio {
   planDescripcion: string | null;
   velocidadBajada: number;
   velocidadSubida: number;
+  // Porcentaje de la velocidad contratada que el ISP compromete como mínimo.
+  velocidadGarantizada: number | null;
+  incluyeTv:       boolean;
+  dispositivosTv:  number | null;
+  limiteDatosGb:   number | null;
+  accionAlLimite:  string | null;
   precioMensual:   number;
   diaFacturacion:  number | null;
   fechaUltimoPago: string | null;

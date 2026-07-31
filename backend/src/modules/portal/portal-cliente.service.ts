@@ -16,6 +16,16 @@ export interface PortalServicio {
   planDescripcion: string | null;
   velocidadBajada: number;
   velocidadSubida: number;
+  // Velocidad mínima comprometida. Es lo que el abonado puede exigir; la contratada es
+  // el máximo alcanzable.
+  velocidadGarantizada: number | null;
+  // TV incluida y en cuántos equipos a la vez. `sesiones_iptv` es el límite real del
+  // panel: decirlo evita el reclamo de "lo puse en el cuarto y se cayó el del salón".
+  incluyeTv:       boolean;
+  dispositivosTv:  number | null;
+  // Solo si el plan tiene tope de datos; la mayoría no lo tiene.
+  limiteDatosGb:   number | null;
+  accionAlLimite:  string | null;
   // Lo que paga ESTE contrato, con su descuento aplicado — no el precio de lista.
   precioMensual:   number;
   diaFacturacion:  number | null;
@@ -44,6 +54,9 @@ interface FilaServicio {
   direccion_instalacion: string | null;
   plan_nombre: string; plan_descripcion: string | null;
   velocidad_bajada: number; velocidad_subida: number;
+  velocidad_garantizada: number | null;
+  cuenta_iptv: boolean; sesiones_iptv: number | null;
+  tiene_limite_datos: boolean; limite_datos_gb: number | null; accion_al_limite: string | null;
   precio_final: string | null; precio_mensual: string;
   dia_facturacion: number | null; fecha_ultimo_pago: string | null;
   dias_prorroga: number | null; en_prorroga: boolean; prorroga_hasta: string | null;
@@ -100,6 +113,12 @@ export class PortalClienteService {
               p.descripcion            AS plan_descripcion,
               p.velocidad_bajada,
               p.velocidad_subida,
+              p.velocidad_garantizada,
+              p.cuenta_iptv,
+              p.sesiones_iptv,
+              p.tiene_limite_datos,
+              p.limite_datos_gb,
+              p.accion_al_limite::text  AS accion_al_limite,
               c.precio_final,
               c.precio_mensual,
               c.dia_facturacion,
@@ -131,6 +150,14 @@ export class PortalClienteService {
       planDescripcion: f.plan_descripcion,
       velocidadBajada: Number(f.velocidad_bajada),
       velocidadSubida: Number(f.velocidad_subida),
+      // 0 en la BD significa "no comprometido", no "0 Mbps garantizados".
+      velocidadGarantizada: f.velocidad_garantizada ? Number(f.velocidad_garantizada) : null,
+      incluyeTv:       Boolean(f.cuenta_iptv),
+      dispositivosTv:  f.cuenta_iptv ? (f.sesiones_iptv ?? 1) : null,
+      // El tope solo se anuncia si el plan lo tiene activo: un `limite_datos_gb`
+      // residual de una edición anterior no debe aparecer como restricción vigente.
+      limiteDatosGb:   f.tiene_limite_datos ? f.limite_datos_gb : null,
+      accionAlLimite:  f.tiene_limite_datos ? f.accion_al_limite : null,
       // precio_final es columna generada (precio con descuento). Si faltara, se cae a
       // precio_mensual del contrato — nunca al precio de lista del plan, que le
       // cobraría de más en pantalla a todo cliente con descuento.

@@ -118,8 +118,10 @@ export function PortalInicio() {
   );
 }
 
-// Enlace al catálogo — y única vía para llegar a Planes desde un móvil, donde la barra
-// inferior se limita a 5 destinos. Solo aparece si el operador habilitó la sección.
+// Enlace a «Mis servicios» — y única vía para llegar desde un móvil, donde la barra
+// inferior se limita a 5 destinos. El texto cambia según el operador ofrezca o no el
+// catálogo de cambio: prometer "otros planes" con la sección apagada llevaría a una
+// pantalla que solo muestra el plan que el abonado ya tiene.
 function EnlacePlanes() {
   const { data: config } = useQuery({
     queryKey: ['portal-config-publica'],
@@ -127,14 +129,14 @@ function EnlacePlanes() {
     staleTime: 10 * 60_000,
   });
 
-  if (!config?.secciones.planes) return null;
-
   return (
     <Link
-      href="/portal/planes"
+      href="/portal/servicios"
       className="inline-block text-sm font-medium text-primary hover:underline"
     >
-      Ver otros planes disponibles
+      {config?.secciones.planes
+        ? 'Ver mi servicio y otros planes disponibles'
+        : 'Ver el detalle de mi servicio'}
     </Link>
   );
 }

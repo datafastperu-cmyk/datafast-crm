@@ -35,6 +35,7 @@ const schema = z.object({
   crearCuentaIptv:      z.boolean().default(false),
   sesionesIptv:         z.coerce.number().int().min(1).max(5).default(1),
   xuiBouquetIds:        z.array(z.number()).default([]),
+  visibleEnPortal:      z.boolean().default(false),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -57,6 +58,7 @@ const DEFAULTS: FormValues = {
   velocidadGarantizada: 10, burstKbps: 0, burstUmbral: 0,
   burstTiempo: 0, prioridad: 8, addresslist: '',
   crearCuentaIptv: false, sesionesIptv: 1, xuiBouquetIds: [],
+  visibleEnPortal: false,
 };
 
 function planToForm(p: Plan): FormValues {
@@ -77,6 +79,7 @@ function planToForm(p: Plan): FormValues {
     crearCuentaIptv:      p.cuentaIptv ?? false,
     sesionesIptv:         p.sesionesIptv ?? 1,
     xuiBouquetIds:        (p as any).xuiBouquetIds ?? [],
+    visibleEnPortal:      p.visibleEnPortal ?? false,
   };
 }
 
@@ -99,6 +102,7 @@ function formToPayload(v: FormValues) {
     cuentaIptv:           v.crearCuentaIptv,
     sesionesIptv:         v.crearCuentaIptv ? v.sesionesIptv : null,
     xuiBouquetIds:        v.crearCuentaIptv ? v.xuiBouquetIds : [],
+    visibleEnPortal:      v.visibleEnPortal,
   };
 }
 
@@ -218,6 +222,7 @@ export function PlanesTab() {
 
   const noCrearReglas    = watch('noCrearReglas');
   const crearCuentaIptv  = watch('crearCuentaIptv');
+  const visibleEnPortal  = watch('visibleEnPortal');
   const xuiBouquetIds    = watch('xuiBouquetIds');
 
   const { data: bouquets = [], isLoading: cargandoBouquets } = useQuery({
@@ -560,6 +565,35 @@ export function PlanesTab() {
                   </div>
                 )}
                 <p className="text-[11px] text-amber-600 dark:text-amber-400">* Se creará cuenta IPTV al contratar</p>
+              </div>
+
+              {/* Publicación en el portal del cliente */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 py-1">
+                  <label className="text-sm text-foreground">Publicar en el portal del cliente</label>
+                  <Controller
+                    name="visibleEnPortal"
+                    control={control}
+                    render={({ field }) => (
+                      <button type="button"
+                        onClick={() => field.onChange(!field.value)}
+                        className={cn(
+                          'relative w-10 h-5 rounded-full transition-colors',
+                          field.value ? 'bg-primary' : 'bg-muted-foreground/30',
+                        )}>
+                        <span className={cn(
+                          'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                          field.value ? 'translate-x-5' : 'translate-x-0',
+                        )} />
+                      </button>
+                    )}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {visibleEnPortal
+                    ? 'Los abonados verán este plan en «Mis servicios» y podrán solicitar el cambio. La solicitud llega a la bandeja del operador; no se aplica sola.'
+                    : 'El plan no aparecerá en el portal. Los abonados que ya lo tienen contratado siguen viendo el suyo con normalidad.'}
+                </p>
               </div>
 
               {/* Velocidades (oculto si noCrearReglas) */}
