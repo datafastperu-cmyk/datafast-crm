@@ -212,17 +212,27 @@ export function BotonPagoFlotante() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setAbierto(true)}
-        className={cn(
-          'fixed right-4 bottom-24 md:bottom-6 z-40 inline-flex items-center gap-2',
-          'px-5 py-3 rounded-full shadow-lg text-sm font-semibold',
-          'bg-primary text-primary-foreground hover:opacity-90 transition-opacity',
-        )}
-      >
-        Pagar {soles(deuda)}
-      </button>
+      {/* Anclado al borde de la COLUMNA de contenido, no al de la ventana. Con `right-4`
+          a secas, en una pantalla ancha el botón quedaba solo en la franja gris del
+          margen, a cientos de píxeles de lo que el abonado está mirando: estaba, pero no
+          se veía. La capa no captura pulsaciones (`pointer-events-none`) para no tapar el
+          contenido que hay debajo; solo el botón las recibe.
+          `bottom-24` en móvil deja libre la barra inferior de navegación. */}
+      <div className="fixed inset-x-0 bottom-24 md:bottom-6 z-40 pointer-events-none">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setAbierto(true)}
+            className={cn(
+              'pointer-events-auto inline-flex items-center gap-2',
+              'px-5 py-3 rounded-full shadow-lg text-sm font-semibold',
+              'bg-primary text-primary-foreground hover:opacity-90 transition-opacity',
+            )}
+          >
+            Pagar {soles(deuda)}
+          </button>
+        </div>
+      </div>
 
       {abierto && (
         <div
