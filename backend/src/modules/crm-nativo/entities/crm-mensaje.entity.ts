@@ -30,6 +30,14 @@ export class CrmMensaje {
   @Column({ name: 'media_url', type: 'text', nullable: true })
   mediaUrl: string | null;
 
+  // Ciclo de vida del envío. `en_vuelo` se escribe ANTES de hablar con WhatsApp;
+  // `indeterminado` es el veredicto honesto de un timeout: pudo haber salido.
+  @Column({ name: 'estado_envio', type: 'varchar', length: 14, default: 'confirmado' })
+  estadoEnvio: 'en_vuelo' | 'confirmado' | 'indeterminado' | 'fallido';
+
+  @Column({ name: 'error_envio', type: 'text', nullable: true })
+  errorEnvio: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

@@ -125,13 +125,52 @@ export class CrmNativoService {
     await this.chatRepo.update({ id: chatId, empresaId }, { noLeidos: 0 });
   }
 
-  // ── Listar chats ─────────────────────────────────────────────
-  async listarChats(empresaId: string): Promise<CrmChat[]> {
-    return this.chatRepo.find({
-      where:  { empresaId },
-      order:  { ultimoMsgAt: 'DESC' },
-      take:   500,
-    });
+  // ── Listar chats (keyset, por última actividad) ───────────────
+  // El listado devolvía 500 filas de golpe y sin cursor: con el parque real
+  // (505 conversaciones) era una carga completa en cada apertura de la pantalla,
+  // y al superar ese número las más antiguas quedaban inalcanzables.
+  // Keyset y no OFFSET: la lista se reordena sola cada vez que entra un mensaje,
+  // así que paginar por posición duplica y salta conversaciones.
+  async listarChats(
+    empresaId: string,
+    opciones: { limite?: number; cursor?: string | null; busqueda?: string | null } = {},
+  ): Promise<{ chats: CrmChat[]; siguienteCursor: string | null }> {
+    const limite = Math.min(Math.max(opciones.limite ?? 60, 1), 200);
+    const params: unknown[] = [empresaId];
+    let filtro = '';
+
+    if (opciones.busqueda) {
+      params.push(`%${opciones.busqueda}%`);
+      filtro += ` AND (nombre_contacto ILIKE $${params.length} OR telefono ILIKE $${params.length})`;
+    }
+
+    // El cursor es la última actividad de la última fila entregada. NULLS LAST en
+    // el orden ⇒ los chats sin actividad van al final y se paginan aparte.
+    if (opciones.cursor) {
+      params.push(opciones.cursor);
+      filtro += ` AND ultimo_msg_at IS NOT NULL AND ultimo_msg_at < $${params.length}`;
+    }
+
+    params.push(limite + 1);
+    const filas: CrmChat[] = await this.chatRepo.query(`
+      SELECT id, empresa_id AS "empresaId", wa_chat_id AS "waChatId", telefono,
+             nombre_contacto AS "nombreContacto", ultimo_mensaje AS "ultimoMensaje",
+             ultimo_msg_at AS "ultimoMsgAt", no_leidos AS "noLeidos", es_lid AS "esLid",
+             created_at AS "createdAt", updated_at AS "updatedAt"
+      FROM crm_chats
+      WHERE empresa_id = $1 ${filtro}
+      ORDER BY ultimo_msg_at DESC NULLS LAST
+      LIMIT $${params.length}
+    `, params);
+
+    const hayMas = filas.length > limite;
+    const chats  = hayMas ? filas.slice(0, limite) : filas;
+    const ultimo = chats[chats.length - 1]?.ultimoMsgAt ?? null;
+
+    return {
+      chats,
+      siguienteCursor: hayMas && ultimo ? new Date(ultimo).toISOString() : null,
+    };
   }
 
   // Resuelve el empresaId de la empresa activa.
@@ -204,6 +243,46 @@ export class CrmNativoService {
       ORDER BY c.ultimo_msg_at DESC NULLS LAST
       LIMIT $2
     `, [empresaId, limite]);
+  }
+
+  // ── Registro write-ahead del envío ────────────────────────────
+  // Se escribe ANTES de hablar con WhatsApp. Si el proceso muere entre el envío y
+  // el guardado, el mensaje que ya salió al cliente deja rastro en vez de
+  // desaparecer del ERP y hacer que el operador lo repita.
+  async registrarEnvioEnVuelo(
+    empresaId: string,
+    chatId:    string,
+    dto:       { agente: string; body: string; mediaUrl?: string | null },
+  ): Promise<CrmMensaje> {
+    const msg = this.mensajeRepo.create({
+      chatId,
+      empresaId,
+      waMsgId:     null,
+      direction:   'OUTBOUND',
+      agente:      dto.agente,
+      body:        dto.body,
+      mediaUrl:    dto.mediaUrl ?? null,
+      estadoEnvio: 'en_vuelo',
+    });
+    return this.mensajeRepo.save(msg);
+  }
+
+  async confirmarEnvio(mensajeId: string, waMsgId: string | null): Promise<CrmMensaje | null> {
+    await this.mensajeRepo.update(mensajeId, { waMsgId, estadoEnvio: 'confirmado' });
+    return this.mensajeRepo.findOne({ where: { id: mensajeId } });
+  }
+
+  // Un timeout NO es un fallo: la operación pudo aplicarse y solo tardar más que
+  // el límite del cliente. Se marca aparte para que nadie lo lea como "no salió".
+  async marcarEnvioNoConfirmado(
+    mensajeId: string,
+    estado: 'indeterminado' | 'fallido',
+    error: string,
+  ): Promise<void> {
+    await this.mensajeRepo.update(mensajeId, {
+      estadoEnvio: estado,
+      errorEnvio:  error.substring(0, 500),
+    });
   }
 
   // ── Mensajes con adjunto que quedó sin descargar ──────────────

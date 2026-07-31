@@ -77,8 +77,9 @@ export class CrmNativoGateway implements OnGatewayConnection, OnGatewayDisconnec
     const snap = this.state.snapshot();
 
     const enviarChats = () =>
-      this.crmSvc.listarChats(empresaId)
-        .then(chats => { if (chats.length) client.emit('wa:chats', chats); })
+      // Primera página: el resto lo pide el cliente al desplazarse.
+      this.crmSvc.listarChats(empresaId, { limite: 60 })
+        .then(({ chats }) => { if (chats.length) client.emit('wa:chats', chats); })
         .catch(() => {});
 
     // El estado que se emite es el que reporta el cliente WA, nunca uno inferido.

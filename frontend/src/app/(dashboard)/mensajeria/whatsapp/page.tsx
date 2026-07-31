@@ -651,6 +651,9 @@ export default function WhatsAppWebPage() {
   const [isChatOpen,    setIsChatOpen]    = useState(false);
   const [vinculando,    setVinculando]    = useState(false);
   const [errorVinculo,  setErrorVinculo]  = useState<string | null>(null);
+  // Paginación por cursor: el listado traía las 505 conversaciones de una vez.
+  const [cursor,        setCursor]        = useState<string | null>(null);
+  const [cargandoMas,   setCargandoMas]   = useState(false);
 
   const mensajesRef  = useRef<HTMLDivElement>(null);
   const inputRef     = useRef<HTMLInputElement>(null);
@@ -698,6 +701,51 @@ export default function WhatsAppWebPage() {
       inputRef.current?.focus();
     }
   }, [archivo, limpiarArchivo]);
+
+  // ── Paginación de la lista de chats ──────────────────────────
+  const cargarMasChats = useCallback(async () => {
+    if (!cursor || cargandoMas) return;
+    setCargandoMas(true);
+    try {
+      const { data } = await api.get<{ data: { chats: Chat[]; siguienteCursor: string | null } }>(
+        '/crm-nativo/chats', { params: { cursor } },
+      );
+      const nuevos = data.data?.chats ?? [];
+      // Puede llegar un mensaje nuevo mientras se pagina y reordenar la lista:
+      // se descartan los que ya estaban en vez de duplicarlos.
+      setChats(prev => {
+        const vistos = new Set(prev.map(c => c.id));
+        return [...prev, ...nuevos.filter(c => !vistos.has(c.id))];
+      });
+      setCursor(data.data?.siguienteCursor ?? null);
+    } catch {
+      /* se reintenta al siguiente scroll */
+    } finally {
+      setCargandoMas(false);
+    }
+  }, [cursor, cargandoMas]);
+
+  // La búsqueda va al servidor: filtrar en el cliente solo miraba la página
+  // cargada, así que un contacto de la posición 300 no aparecía nunca.
+  useEffect(() => {
+    const termino = busqueda.trim();
+    if (termino.length < 2) return undefined;
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get<{ data: { chats: Chat[]; siguienteCursor: string | null } }>(
+          '/crm-nativo/chats', { params: { busqueda: termino, limite: 60 } },
+        );
+        setChats(data.data?.chats ?? []);
+        setCursor(data.data?.siguienteCursor ?? null);
+      } catch { /* la lista local sigue siendo válida */ }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [busqueda]);
+
+  const onScrollChats = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 240) void cargarMasChats();
+  }, [cargarMasChats]);
 
   // ── Vincular: levanta el cliente y pide el QR ────────────────
   // El servidor no lo levanta solo cuando no hay sesión: un QR emitido sin nadie
@@ -774,13 +822,23 @@ export default function WhatsAppWebPage() {
     sock.on('wa:status', (payload: WaStatus) => {
       setStatus(payload);
       if (payload.estado === 'CONECTADO') {
-        api.get<{ data: Chat[] }>('/crm-nativo/chats')
-          .then(r => setChats(r.data.data ?? []));
+        api.get<{ data: { chats: Chat[]; siguienteCursor: string | null } }>('/crm-nativo/chats')
+          .then(r => {
+            setChats(r.data.data?.chats ?? []);
+            setCursor(r.data.data?.siguienteCursor ?? null);
+          });
       }
     });
 
     sock.on('wa:chats', (lista: Chat[]) => {
-      setChats(lista);
+      // Llega la primera página; no puede borrar lo que el operador ya paginó.
+      setChats(prev => {
+        if (prev.length === 0) return lista;
+        const nuevos = new Map(lista.map(c => [c.id, c]));
+        const fusion = prev.map(c => nuevos.get(c.id) ?? c);
+        const yaHay  = new Set(fusion.map(c => c.id));
+        return [...lista.filter(c => !yaHay.has(c.id)), ...fusion];
+      });
     });
 
     sock.on('wa:chat_update', (chat: Chat) => {
@@ -967,7 +1025,7 @@ export default function WhatsAppWebPage() {
         </div>
 
         {/* Lista */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" onScroll={onScrollChats}>
           {chatsFiltrados.length === 0 && (
             <div className="flex flex-col items-center justify-center h-32 gap-2 text-muted-foreground">
               <MessageSquare className="w-6 h-6 opacity-30" />
@@ -1008,6 +1066,11 @@ export default function WhatsAppWebPage() {
               </div>
             </button>
           ))}
+          {cargandoMas && (
+            <div className="flex justify-center py-3">
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            </div>
+          )}
         </div>
       </div>
 

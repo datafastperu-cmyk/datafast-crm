@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param,
+  Controller, Get, Post, Body, Param, Query,
   HttpCode, HttpStatus, Logger, BadRequestException,
   Res, NotFoundException, UploadedFile, UseInterceptors,
   UseFilters, ExceptionFilter, Catch, ArgumentsHost,
@@ -120,9 +120,18 @@ export class CrmNativoController {
   // ── GET /api/v1/crm-nativo/chats ─────────────────────────────
   @Get('chats')
   @ApiOperation({ summary: 'Lista de chats activos' })
-  async getChats(@CurrentUser() user: JwtPayload) {
-    const chats = await this.crmSvc.listarChats(user.empresaId);
-    return ApiResponse.ok(chats);
+  async getChats(
+    @CurrentUser() user: JwtPayload,
+    @Query('cursor')   cursor?: string,
+    @Query('limite')   limite?: string,
+    @Query('busqueda') busqueda?: string,
+  ) {
+    const resultado = await this.crmSvc.listarChats(user.empresaId, {
+      limite:   limite ? parseInt(limite, 10) : undefined,
+      cursor:   cursor   || null,
+      busqueda: busqueda || null,
+    });
+    return ApiResponse.ok(resultado);
   }
 
   // ── GET /api/v1/crm-nativo/mensajes/:chatId ──────────────────

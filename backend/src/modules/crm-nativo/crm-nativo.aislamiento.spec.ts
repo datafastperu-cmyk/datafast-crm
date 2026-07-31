@@ -20,6 +20,7 @@ describe('CrmNativoService — aislamiento por empresa y atomicidad', () => {
       findOne: jest.fn().mockResolvedValue(null),
       find:    jest.fn().mockResolvedValue([]),
       count:   jest.fn().mockResolvedValue(0),
+      update:  jest.fn().mockResolvedValue({ affected: 1 }),
       query:   jest.fn().mockResolvedValue([{ id: 'msg-1' }]),
       create:  jest.fn(d => d),
       save:    jest.fn(d => Promise.resolve(d)),
@@ -110,6 +111,41 @@ describe('CrmNativoService — aislamiento por empresa y atomicidad', () => {
     expect(chatRepo.update).toHaveBeenCalledWith(
       { id: 'chat-ajeno', empresaId: EMPRESA }, { noLeidos: 0 },
     );
+  });
+
+  it('el listado pagina por cursor, no por posición', async () => {
+    const { svc, chatRepo } = construir();
+    chatRepo.query.mockResolvedValue([]);
+
+    await svc.listarChats(EMPRESA, { limite: 60, cursor: '2026-07-31T10:00:00.000Z' });
+
+    const [sql, params] = chatRepo.query.mock.calls[0];
+    // OFFSET sobre una lista que se reordena con cada mensaje entrante duplica
+    // y salta conversaciones; el corte va por la última actividad entregada.
+    expect(sql).not.toMatch(/OFFSET/i);
+    expect(sql).toMatch(/ultimo_msg_at < \$/i);
+    // Se pide una fila de más para saber si hay página siguiente sin contar todo.
+    expect(params[params.length - 1]).toBe(61);
+  });
+
+  it('el envío se registra ANTES de hablar con WhatsApp (write-ahead)', async () => {
+    const { svc, mensajeRepo } = construir();
+
+    await svc.registrarEnvioEnVuelo(EMPRESA, 'chat-1', { agente: 'Ana', body: 'hola' });
+
+    expect(mensajeRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ estadoEnvio: 'en_vuelo', waMsgId: null, direction: 'OUTBOUND' }),
+    );
+  });
+
+  it('un timeout se marca indeterminado, no fallido: el mensaje pudo salir', async () => {
+    const { svc, mensajeRepo } = construir();
+
+    await svc.marcarEnvioNoConfirmado('msg-1', 'indeterminado', 'Timed out after 30s');
+
+    expect(mensajeRepo.update).toHaveBeenCalledWith('msg-1', expect.objectContaining({
+      estadoEnvio: 'indeterminado',
+    }));
   });
 
   it('un adjunto de otra empresa no se sirve', async () => {

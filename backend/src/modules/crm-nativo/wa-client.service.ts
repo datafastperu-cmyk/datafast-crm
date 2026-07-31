@@ -286,31 +286,40 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       chatId = resolvedWid;
     }
 
+    // Write-ahead: la fila existe ANTES de hablar con WhatsApp. Antes se enviaba
+    // primero y se guardaba después, así que un fallo de BD —o la muerte del
+    // proceso entre ambos pasos— dejaba un mensaje entregado al cliente y sin
+    // rastro en el ERP: el operador lo daba por no enviado y lo repetía.
+    const chat = await this.crmSvc.upsertChat(empresaId, {
+      waChatId:       chatId,
+      telefono:       telefonoLimpio,
+      nombreContacto: null,
+      ultimoMensaje:  textoConFirma,
+      ultimoMsgAt:    new Date(),
+      noLeidos:       0,
+    });
+    const enVuelo = await this.crmSvc.registrarEnvioEnVuelo(empresaId, chat.id, {
+      agente,
+      body: textoConFirma,
+    });
+
     // Registrar chatId en lock ANTES de sendMessage — message_create puede disparar
     // mientras sendMessage aún no resolvió, antes de que tengamos el msgId
     this.sendingByChatId.add(chatId);
-    const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
-    const msgId   = sentMsg?.id?._serialized ?? null;
-    if (msgId) this.crmSentIds.add(msgId);
+    let msgId: string | null = null;
+    try {
+      const sentMsg = await this.client.sendMessage(chatId, textoConFirma);
+      msgId = sentMsg?.id?._serialized ?? null;
+      if (msgId) this.crmSentIds.add(msgId);
+    } catch (err: any) {
+      await this.registrarEnvioNoConfirmado(enVuelo.id, err);
+      this.sendingByChatId.delete(chatId);
+      throw err;
+    }
 
     try {
-      const chat = await this.crmSvc.upsertChat(empresaId, {
-        waChatId:       chatId,
-        telefono:       telefonoLimpio,
-        nombreContacto: null,
-        ultimoMensaje:  textoConFirma,
-        ultimoMsgAt:    new Date(),
-        noLeidos:       0,
-      });
-
-      const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
-        waMsgId:   msgId,
-        direction: 'OUTBOUND',
-        agente,
-        body:      textoConFirma,
-      });
-
-      this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
+      const savedMsg = await this.crmSvc.confirmarEnvio(enVuelo.id, msgId);
+      if (savedMsg) this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
       this.gateway.emitChatUpdate(chat);
     } finally {
       this.sendingByChatId.delete(chatId);
@@ -318,6 +327,29 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     }
 
     return { messageId: msgId };
+  }
+
+  // Un timeout contra WhatsApp NO significa "no pasó nada": el mensaje pudo salir
+  // y solo tardar más que el límite del cliente. Se distingue de un rechazo real
+  // para que nadie lo reenvíe a ciegas ni lo dé por perdido.
+  private async registrarEnvioNoConfirmado(mensajeId: string, err: any): Promise<void> {
+    const mensaje = String(err?.message ?? err);
+    const esTimeout = /timeout|timed out|ETIMEDOUT|protocolTimeout/i.test(mensaje);
+    await this.crmSvc.marcarEnvioNoConfirmado(
+      mensajeId,
+      esTimeout ? 'indeterminado' : 'fallido',
+      mensaje,
+    ).catch(() => {});
+    if (esTimeout) {
+      this.logger.warn(`[CRM] Envío sin confirmar (pudo haberse entregado): ${mensaje}`);
+      void this.eventos?.registrar({
+        nivel:   'warn',
+        origen:  'whatsapp',
+        codigo:  'WA_ENVIO_INDETERMINADO',
+        mensaje: `Envío del CRM sin confirmar — verificar en el chat antes de reenviar: ${mensaje}`,
+        contexto: { mensajeId },
+      });
+    }
   }
 
   // ── Enviar media (imagen / PDF) desde el CRM ──────────────────
@@ -352,34 +384,42 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       chatId = resolvedWid;
     }
 
-    const media   = MessageMedia.fromFilePath(rutaFisica);
-    const caption = `*${agente}:* ${captionTexto || ''}`.trimEnd();
-    this.sendingByChatId.add(chatId);
-    const sentMsg = await this.client.sendMessage(chatId, media, { caption });
-    const msgId   = sentMsg?.id?._serialized ?? null;
-    if (msgId) this.crmSentIds.add(msgId);
-
+    const media     = MessageMedia.fromFilePath(rutaFisica);
+    const caption   = `*${agente}:* ${captionTexto || ''}`.trimEnd();
     const tipoLabel = filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'Imagen';
 
+    // Write-ahead, igual que en el texto: el adjunto ya está en disco y la fila
+    // debe existir antes de que WhatsApp lo entregue. Enviar primero y guardar
+    // después dejaba al cliente con el archivo recibido y al ERP sin constancia.
+    const chat = await this.crmSvc.upsertChat(empresaId, {
+      waChatId:       chatId,
+      telefono:       telefonoLimpio,
+      nombreContacto: null,
+      ultimoMensaje:  `[${tipoLabel}] ${captionTexto || ''}`.trim(),
+      ultimoMsgAt:    new Date(),
+      noLeidos:       0,
+    });
+    const enVuelo = await this.crmSvc.registrarEnvioEnVuelo(empresaId, chat.id, {
+      agente,
+      body:     caption,
+      mediaUrl: filename,
+    });
+
+    this.sendingByChatId.add(chatId);
+    let msgId: string | null = null;
     try {
-      const chat = await this.crmSvc.upsertChat(empresaId, {
-        waChatId:       chatId,
-        telefono:       telefonoLimpio,
-        nombreContacto: null,
-        ultimoMensaje:  `[${tipoLabel}] ${captionTexto || ''}`.trim(),
-        ultimoMsgAt:    new Date(),
-        noLeidos:       0,
-      });
+      const sentMsg = await this.client.sendMessage(chatId, media, { caption });
+      msgId = sentMsg?.id?._serialized ?? null;
+      if (msgId) this.crmSentIds.add(msgId);
+    } catch (err: any) {
+      await this.registrarEnvioNoConfirmado(enVuelo.id, err);
+      this.sendingByChatId.delete(chatId);
+      throw err;
+    }
 
-      const savedMsg = await this.crmSvc.guardarMensaje(empresaId, chat.id, {
-        waMsgId:   msgId,
-        direction: 'OUTBOUND',
-        agente,
-        body:      caption,
-        mediaUrl:  filename,
-      });
-
-      this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
+    try {
+      const savedMsg = await this.crmSvc.confirmarEnvio(enVuelo.id, msgId);
+      if (savedMsg) this.gateway.emitMensaje({ chatId: chat.id, mensaje: savedMsg });
       this.gateway.emitChatUpdate(chat);
     } finally {
       this.sendingByChatId.delete(chatId);
@@ -1030,9 +1070,12 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      const saved = await this.crmSvc.listarChats(empresaId);
-      this.gateway.emitChats(saved);
-      return saved.length;
+      // Se emite la primera página al frontend, pero el resultado que cuenta es
+      // cuántas conversaciones trajo WhatsApp: emitir 60 y devolver 60 haría
+      // parecer que la sincronización no avanza cuando el parque es mayor.
+      const { chats } = await this.crmSvc.listarChats(empresaId, { limite: 60 });
+      this.gateway.emitChats(chats);
+      return todosLosChats.length;
     }
   }
 
