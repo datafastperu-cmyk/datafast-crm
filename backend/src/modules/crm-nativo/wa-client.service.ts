@@ -70,6 +70,9 @@ const MAX_MEDIA_HISTORIAL = 15;
 const CHATS_PRECARGA      = 25;
 // Adjuntos pendientes que se reintentan por pasada.
 const MAX_ADJUNTOS_RECUPERAR = 60;
+// Tope de lotes por corrida: acota el barrido sin dejar pendientes en un parque
+// normal, y evita quedarse descargando indefinidamente si algo va mal.
+const MAX_VUELTAS_ADJUNTOS   = 20;
 // Pausa entre chats: la precarga corre en segundo plano y no puede competir con
 // la atención en vivo por el mismo Chromium.
 const PAUSA_PRECARGA_MS   = 400;
@@ -390,24 +393,39 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   // chat se carga una sola vez —cuando está vacío—, así que sin esto un mensaje
   // que quedó como "[image]" no volvería a intentarse nunca.
   private async recuperarAdjuntosPendientes(empresaId: string): Promise<void> {
-    const pendientes = await this.crmSvc.mensajesSinAdjunto(empresaId, MAX_ADJUNTOS_RECUPERAR);
-    if (pendientes.length === 0) return;
+    let ok = 0, intentados = 0;
+    const fallidos = new Set<string>();
 
-    this.logger.log(`[CRM] Recuperando ${pendientes.length} adjuntos pendientes…`);
-    let ok = 0;
-    for (const m of pendientes) {
+    // Por lotes hasta agotar: una sola pasada dejaba pendientes los que no
+    // entraban en el lote, y solo se reintentaban al siguiente arranque.
+    for (let vuelta = 0; vuelta < MAX_VUELTAS_ADJUNTOS; vuelta++) {
       if (this.state.estado !== 'CONECTADO') break;
-      const filename = await this.descargarMediaDeMensaje(m.waMsgId);
-      if (filename) {
-        await this.crmSvc.asignarMedia(m.id, filename);
-        ok++;
+
+      const lote = (await this.crmSvc.mensajesSinAdjunto(empresaId, MAX_ADJUNTOS_RECUPERAR))
+        .filter(m => !fallidos.has(m.id));   // no repetir en esta corrida lo ya fallido
+      if (lote.length === 0) break;
+
+      if (vuelta === 0) this.logger.log('[CRM] Recuperando adjuntos pendientes…');
+
+      for (const m of lote) {
+        if (this.state.estado !== 'CONECTADO') break;
+        intentados++;
+        const filename = await this.descargarMediaDeMensaje(m.waMsgId);
+        if (filename) {
+          await this.crmSvc.asignarMedia(m.id, filename);
+          ok++;
+        } else {
+          fallidos.add(m.id);
+        }
+        await new Promise(r => setTimeout(r, PAUSA_PRECARGA_MS));
       }
-      await new Promise(r => setTimeout(r, PAUSA_PRECARGA_MS));
     }
+
+    if (intentados === 0) return;
     // El motivo de cada fallo queda en su propia línea: afirmar aquí una causa
     // ("ya no está disponible") sin haberla comprobado es justo lo que hace que
     // un defecto propio se lea como una limitación de WhatsApp.
-    this.logger.log(`[CRM] Adjuntos recuperados: ${ok}/${pendientes.length}`);
+    this.logger.log(`[CRM] Adjuntos recuperados: ${ok}/${intentados}`);
   }
 
   // Persiste un adjunto ya descargado y devuelve su nombre de archivo.
@@ -643,6 +661,10 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         puppeteer: {
           headless: true,
           executablePath: CHROME_PATH,
+          // Descargar un adjunto puede tardar más que el tope por defecto de
+          // Puppeteer (180 s) en una conexión lenta: esas descargas morían con
+          // "Runtime.callFunctionOn timed out" y la imagen se quedaba sin bajar.
+          protocolTimeout: 300_000,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
