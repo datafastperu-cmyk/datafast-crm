@@ -54,6 +54,18 @@ const RESTART_DELAYS = [8_000, 16_000, 32_000, 64_000, 120_000];
 // un operador frente a la pantalla; pasado eso nadie va a escanear.
 const MAX_QR_SIN_ESCANEAR = 15;
 
+// Adjuntos que se bajan al cargar el historial de un chat (los más recientes).
+// Bajar el histórico completo de 514 conversaciones sería un barrido enorme
+// contra Chromium y contra el disco del VPS.
+const MAX_MEDIA_HISTORIAL = 15;
+
+// Conversaciones cuyo contenido se precarga tras sincronizar, de más reciente a
+// más antigua. Son las que el operador abre; el resto se cargan al abrirlas.
+const CHATS_PRECARGA      = 25;
+// Pausa entre chats: la precarga corre en segundo plano y no puede competir con
+// la atención en vivo por el mismo Chromium.
+const PAUSA_PRECARGA_MS   = 400;
+
 // Guard de instancia única: solo UN proceso puede manejar el cliente de WhatsApp,
 // porque whatsapp-web.js abre Chromium sobre un perfil de sesión exclusivo.
 //
@@ -366,6 +378,35 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     return { messageId: msgId, filename };
   }
 
+  // Persiste un adjunto ya descargado y devuelve su nombre de archivo.
+  private guardarMediaEnDisco(media: { data: string; mimetype: string }): string | null {
+    try {
+      if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+      const filename = crypto.randomUUID() + mimeToExt(media.mimetype);
+      fs.writeFileSync(path.join(MEDIA_DIR, filename), Buffer.from(media.data, 'base64'));
+      return filename;
+    } catch (err: any) {
+      this.logger.warn(`[CRM] No se pudo guardar el adjunto: ${err?.message}`);
+      return null;
+    }
+  }
+
+  // Descarga el adjunto de un mensaje del historial. Va por mensaje individual y
+  // con su propio try/catch: un adjunto caducado en el servidor de WhatsApp
+  // —habitual en conversaciones viejas— no puede arrastrar al resto del historial.
+  private async descargarMediaDeMensaje(waMsgId: string): Promise<string | null> {
+    try {
+      const msg = await this.client.getMessageById(waMsgId);
+      if (!msg?.hasMedia) return null;
+      const media = await msg.downloadMedia();
+      if (!media?.data) return null;
+      return this.guardarMediaEnDisco(media);
+    } catch (err: any) {
+      this.logger.debug?.(`[CRM] Adjunto no descargable (${waMsgId}): ${err?.message}`);
+      return null;
+    }
+  }
+
   // Lectura de mensajes de un chat, tolerante a mensajes que no se dejan modelar.
   //
   // `chat.fetchMessages()` de la librería termina en
@@ -412,6 +453,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
             type:      m.type ?? null,
             fromMe:    !!(m.id?.fromMe ?? m.fromMe),
             timestamp: typeof m.t === 'number' ? m.t : 0,
+            hasMedia:  !!(m.mediaData || m.isMedia || m.mediaKey),
           });
         } catch { /* este mensaje no se pudo leer: se omite solo él */ }
       }
@@ -437,13 +479,31 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       const limite3m   = Date.now() - 90 * 24 * 60 * 60 * 1000;
       const filtrados  = raw.filter((m: any) => (m.timestamp as number) * 1000 >= limite3m);
 
+      // Las imágenes del historial se guardaban como el texto "[image]" y nunca se
+      // descargaban: solo se bajaba el adjunto de los mensajes que llegaban en
+      // vivo. Resultado: 0 archivos en disco y ninguna imagen visible en chats ya
+      // existentes (31/07/2026). Se descargan los más recientes con adjunto —
+      // bajar el histórico completo de 514 conversaciones sería un barrido enorme
+      // contra Chromium y contra el disco.
+      const conMedia = filtrados.filter((m: any) => m.hasMedia).slice(-MAX_MEDIA_HISTORIAL);
+      const idsConMedia = new Set(conMedia.map((m: any) => m.id?._serialized).filter(Boolean));
+
       for (const m of filtrados) {
+        const waMsgId = m.id?._serialized ?? null;
+        let mediaUrl: string | null = null;
+
+        if (waMsgId && idsConMedia.has(waMsgId)) {
+          mediaUrl = await this.descargarMediaDeMensaje(waMsgId);
+        }
+
         const saved = await this.crmSvc.guardarMensaje(empresaId, chatDbId, {
-          waMsgId:   m.id?._serialized ?? null,
+          waMsgId,
           direction: m.fromMe ? 'OUTBOUND' : 'INBOUND',
           agente:    null,
-          body:      m.body || `[${(m.type as string) ?? 'media'}]`,
-          mediaUrl:  null,
+          // Igual que en los mensajes en vivo: con adjunto, el body lleva el
+          // nombre del archivo para que el frontend lo renderice.
+          body:      mediaUrl ?? (m.body || `[${(m.type as string) ?? 'media'}]`),
+          mediaUrl,
         }).catch(() => null);
         if (saved) this.gateway.emitMensaje({ chatId: chatDbId, mensaje: saved });
       }
@@ -626,13 +686,8 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       if (msg.hasMedia) {
         try {
           const media = await msg.downloadMedia();
-          if (media?.data) {
-            if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
-            const ext      = mimeToExt(media.mimetype);
-            const filename = crypto.randomUUID() + ext;
-            fs.writeFileSync(path.join(MEDIA_DIR, filename), Buffer.from(media.data, 'base64'));
-            mediaUrl = filename;   // solo el nombre; URL construida en frontend con token
-          }
+          // solo el nombre; la URL la construye el frontend con su token
+          if (media?.data) mediaUrl = this.guardarMediaEnDisco(media);
         } catch (e) {
           this.logger.warn(`No se pudo descargar media: ${e}`);
         }
@@ -682,7 +737,38 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
     }
     const chats = await this.intentarCargarChats();
     this.logger.log(`[CRM] Sincronización manual: ${chats} chats`);
+    void this.precargarRecientes();
     return { chats };
+  }
+
+  // Precarga en segundo plano del contenido de las conversaciones más recientes.
+  // Sin esto, el operador abre un chat y espera a que WhatsApp entregue el
+  // historial: justo en los chats que más se abren, que son los de hoy.
+  private precargando = false;
+  private async precargarRecientes(): Promise<void> {
+    if (this.precargando) return;
+    this.precargando = true;
+    try {
+      const empresaId = await this.crmSvc.resolverEmpresaId();
+      if (!empresaId) return;
+
+      const pendientes = await this.crmSvc.chatsSinMensajes(empresaId, CHATS_PRECARGA);
+      if (pendientes.length === 0) return;
+
+      this.logger.log(`[CRM] Precargando ${pendientes.length} conversaciones recientes…`);
+      let cargados = 0;
+      for (const chat of pendientes) {
+        if (this.state.estado !== 'CONECTADO') break;
+        const n = await this.cargarHistorialEnDB(chat.waChatId, chat.id, empresaId);
+        if (n > 0) cargados++;
+        await new Promise(r => setTimeout(r, PAUSA_PRECARGA_MS));
+      }
+      this.logger.log(`[CRM] Precarga terminada: ${cargados}/${pendientes.length} con historial`);
+    } catch (err: any) {
+      this.logger.warn(`[CRM] Precarga interrumpida: ${err?.message}`);
+    } finally {
+      this.precargando = false;
+    }
   }
 
   private async cargarChatsIniciales(): Promise<void> {
@@ -693,6 +779,7 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
         const n = await this.intentarCargarChats();
         if (n > 0) {
           this.logger.log(`[CRM] ${n} chats sincronizados desde WhatsApp`);
+          void this.precargarRecientes();
           return;
         }
         ultimoError = null;

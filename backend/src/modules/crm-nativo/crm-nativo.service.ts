@@ -193,6 +193,19 @@ export class CrmNativoService {
     return recientes.reverse();
   }
 
+  // ── Conversaciones recientes que aún no tienen contenido ──────
+  // Alimenta la precarga: son las que el operador va a abrir primero.
+  async chatsSinMensajes(empresaId: string, limite: number): Promise<{ id: string; waChatId: string }[]> {
+    return this.chatRepo.query(`
+      SELECT c.id, c.wa_chat_id AS "waChatId"
+      FROM crm_chats c
+      WHERE c.empresa_id = $1
+        AND NOT EXISTS (SELECT 1 FROM crm_mensajes m WHERE m.chat_id = c.id)
+      ORDER BY c.ultimo_msg_at DESC NULLS LAST
+      LIMIT $2
+    `, [empresaId, limite]);
+  }
+
   // ── Buscar chat por ID ────────────────────────────────────────
   async findChat(chatId: string, empresaId: string): Promise<CrmChat | null> {
     return this.chatRepo.findOne({ where: { id: chatId, empresaId } });
