@@ -404,12 +404,10 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
       }
       await new Promise(r => setTimeout(r, PAUSA_PRECARGA_MS));
     }
-    // Los que no se bajaron suelen ser adjuntos ya caducados en los servidores de
-    // WhatsApp: no hay nada que reintentar, y decirlo evita buscar un fallo propio.
-    this.logger.log(
-      `[CRM] Adjuntos recuperados: ${ok}/${pendientes.length}` +
-      `${ok < pendientes.length ? ' (el resto ya no está disponible en WhatsApp)' : ''}`,
-    );
+    // El motivo de cada fallo queda en su propia línea: afirmar aquí una causa
+    // ("ya no está disponible") sin haberla comprobado es justo lo que hace que
+    // un defecto propio se lea como una limitación de WhatsApp.
+    this.logger.log(`[CRM] Adjuntos recuperados: ${ok}/${pendientes.length}`);
   }
 
   // Persiste un adjunto ya descargado y devuelve su nombre de archivo.
@@ -431,12 +429,23 @@ export class WaClientService implements OnModuleInit, OnModuleDestroy {
   private async descargarMediaDeMensaje(waMsgId: string): Promise<string | null> {
     try {
       const msg = await this.client.getMessageById(waMsgId);
-      if (!msg?.hasMedia) return null;
+      if (!msg) {
+        this.logger.warn(`[CRM] Adjunto: mensaje no encontrado (${waMsgId})`);
+        return null;
+      }
+      if (!msg.hasMedia) {
+        this.logger.warn(`[CRM] Adjunto: el mensaje no declara media (${waMsgId}, tipo=${msg.type})`);
+        return null;
+      }
       const media = await msg.downloadMedia();
-      if (!media?.data) return null;
+      if (!media?.data) {
+        // Caducado en los servidores de WhatsApp: no hay nada que reintentar.
+        this.logger.warn(`[CRM] Adjunto expirado o no descargable (${waMsgId})`);
+        return null;
+      }
       return this.guardarMediaEnDisco(media);
     } catch (err: any) {
-      this.logger.debug?.(`[CRM] Adjunto no descargable (${waMsgId}): ${err?.message}`);
+      this.logger.warn(`[CRM] Adjunto: error al descargar (${waMsgId}): ${err?.message}`);
       return null;
     }
   }
