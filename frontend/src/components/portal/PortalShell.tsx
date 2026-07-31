@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   Home, User, LogOut, ChevronDown, Wifi, AlertTriangle, Loader2, MapPin, Receipt, Smartphone,
-  Gauge, LifeBuoy, Layers,
+  Gauge, LifeBuoy, Layers, Menu, X,
 } from 'lucide-react';
 
 import { portalApi, PortalError, type PortalServicio } from '@/lib/api/portal';
@@ -68,6 +68,18 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname() ?? '';
   const { contratoId, setContratoId, limpiar } = usePortalStore();
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
+  // Se cierra al navegar: si no, el cajón tapa la sección que el abonado acaba de elegir.
+  useEffect(() => { setMenuAbierto(false); }, [pathname]);
+
+  // Escape cierra, como cualquier capa modal del ERP.
+  useEffect(() => {
+    if (!menuAbierto) return undefined;
+    const alPulsar = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuAbierto(false); };
+    window.addEventListener('keydown', alPulsar);
+    return () => window.removeEventListener('keydown', alPulsar);
+  }, [menuAbierto]);
 
   const { data: config } = useQuery({
     queryKey: ['portal-config-publica'],
@@ -135,9 +147,68 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-muted/40">
+      {/* ── Menú lateral en móvil (cajón) ────────────────────── */}
+      {/* Lleva TODOS los destinos, incluidos los que no caben en la barra inferior. */}
+      {menuAbierto && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setMenuAbierto(false)}
+          role="presentation"
+        />
+      )}
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border md:hidden',
+          'transition-transform duration-300 ease-in-out flex flex-col',
+          menuAbierto ? 'translate-x-0' : '-translate-x-full',
+        )}
+        aria-hidden={!menuAbierto}
+      >
+        <div className="h-16 px-4 flex items-center justify-between border-b border-border">
+          <span className="font-semibold text-foreground truncate">
+            {config?.titulo ?? 'Portal del Cliente'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMenuAbierto(false)}
+            className="p-2 -mr-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+            aria-label="Cerrar menú"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <ul className="p-3 space-y-1 overflow-y-auto">
+          {nav.map((item) => (
+            <li key={item.href}>
+              <EnlaceNav item={item} activo={esActivo(pathname, item.href)} />
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={cerrarSesion}
+          className="mt-auto m-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-3"
+        >
+          <LogOut className="w-4 h-4" />
+          Cerrar sesión
+        </button>
+      </aside>
+
       {/* ── Cabecera ─────────────────────────────────────────── */}
       <header className="sticky top-0 z-30 bg-card border-b border-border">
-        <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-4">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center gap-3">
+          {/* Mismo botón y mismo breakpoint que el Topbar del ERP. Abre el menú completo:
+              la barra inferior solo lleva los 6 destinos frecuentes, así que sin esto
+              Equipos y Consumo eran inalcanzables desde un teléfono. */}
+          <button
+            type="button"
+            onClick={() => setMenuAbierto(true)}
+            className="md:hidden p-2 -ml-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Abrir menú"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
           <div className="flex items-center gap-2 min-w-0">
             {config?.logoUrl ? (
               // eslint-disable-next-line
