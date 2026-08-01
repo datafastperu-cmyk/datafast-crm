@@ -19,6 +19,80 @@ export interface Coordenadas {
   precisionGpsM?: number;
 }
 
+/**
+ * Ambas variantes declaran los cuatro campos (los ausentes como `undefined`) en vez de ser
+ * un union discriminado puro: el `tsconfig` del frontend tiene `strict: false`, y sin
+ * `strictNullChecks` el compilador no estrecha por `ok`. Declararlos así mantiene el tipado
+ * útil sin obligar a cada lector a saber por qué hace falta un cast.
+ */
+type Parseo =
+  | { ok: true;  latitud: number;     longitud: number;     motivo?: undefined }
+  | { ok: false; latitud?: undefined; longitud?: undefined; motivo: string | null };
+
+/**
+ * Interpreta un par de coordenadas escrito o pegado en UN SOLO campo.
+ *
+ * En la base de datos son dos columnas —el visor consulta por bounding box sobre un índice
+ * compuesto `(empresa_id, latitud, longitud)`, y con un texto concatenado ese índice no
+ * existe—. Pero el operador no escribe coordenadas: las PEGA, y Google Maps las entrega
+ * como una sola cadena. Obligarlo a partirla a mano en dos campos es exactamente donde se
+ * cuelan los errores de pegado.
+ *
+ * Acepta los separadores que aparecen en la práctica: coma, punto y coma, o espacios.
+ */
+export function parsearCoordenadas(entrada: string): Parseo {
+  const texto = entrada.trim();
+  if (texto === '') return { ok: false, motivo: null };
+
+  // Grados/minutos/segundos: es lo que Google Maps MUESTRA en pantalla (12°02'47.0"S),
+  // aunque "copiar coordenadas" entregue decimales. Se detecta para explicarlo en vez de
+  // fallar con un "formato inválido" que no dice qué hacer.
+  if (/[°'"′″]|[NSEWO]\s*$/i.test(texto)) {
+    return {
+      ok: false,
+      motivo: 'Formato en grados/minutos/segundos. Usa decimales: en Google Maps, clic derecho sobre el punto → la primera opción copia el par decimal.',
+    };
+  }
+
+  const partes = texto.split(/[,;\s]+/).filter(Boolean);
+  if (partes.length !== 2) {
+    return { ok: false, motivo: 'Escribe dos valores: latitud y longitud, separados por coma.' };
+  }
+
+  const [lat, lng] = partes.map(Number);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { ok: false, motivo: 'Alguno de los dos valores no es un número.' };
+  }
+
+  // Inversión de orden: si el PRIMER valor supera ±90 no puede ser una latitud.
+  //
+  // ALCANCE REAL, medido: sólo detecta la inversión cuando la longitud supera 90°, es
+  // decir buena parte de Asia, Oceanía y el Pacífico. **En Perú NO se dispara** —la
+  // longitud ronda −77, dentro del rango válido de latitud— así que un par invertido de
+  // Lima pasa este control sin problema. Es matemáticamente indetectable: ambos valores
+  // son latitudes y longitudes plausibles.
+  //
+  // Lo que protege ese caso es el eco de abajo ("Lat … · Lng …"), que muestra lo que el
+  // sistema ENTENDIÓ y deja que el operador lo confirme. Por eso el eco no es decoración.
+  if (Math.abs(lat) > 90 && Math.abs(lng) <= 90) {
+    return {
+      ok: false,
+      motivo: `Parecen invertidos: el primer valor debe ser la latitud. ¿Querías ${lng}, ${lat}?`,
+    };
+  }
+
+  if (Math.abs(lat) > 90)  return { ok: false, motivo: 'La latitud debe estar entre −90 y 90.' };
+  if (Math.abs(lng) > 180) return { ok: false, motivo: 'La longitud debe estar entre −180 y 180.' };
+
+  // 0,0 es el "null island" del Atlántico: casi siempre significa un campo sin llenar que
+  // se guardó igual, no una coordenada real. Rechazarlo evita un pin en medio del océano.
+  if (lat === 0 && lng === 0) {
+    return { ok: false, motivo: 'Coordenada 0, 0 — eso apunta al Atlántico. Revisa el valor.' };
+  }
+
+  return { ok: true, latitud: lat, longitud: lng };
+}
+
 interface Props {
   value: Partial<Coordenadas>;
   onChange: (_coords: Partial<Coordenadas>) => void;
@@ -56,6 +130,35 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
   const [capturando, setCapturando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
+  /**
+   * Lo que el operador tiene escrito, tal cual. Es estado propio y no derivado de `value`
+   * a propósito: mientras teclea "-12.04, " el texto todavía no es una coordenada válida,
+   * y reconstruirlo desde el valor padre le borraría lo escrito a media palabra.
+   */
+  const [texto, setTexto] = useState(
+    value.latitud != null && value.longitud != null
+      ? `${value.latitud}, ${value.longitud}`
+      : '',
+  );
+
+  const parseado = parsearCoordenadas(texto);
+  /** Motivo del rechazo, o `null` si el texto es válido o está vacío (nada que explicar). */
+  const errorParseo = parseado.ok ? null : parseado.motivo;
+
+  const escribir = (raw: string) => {
+    setTexto(raw);
+    const r = parsearCoordenadas(raw);
+
+    // Sólo se propaga una coordenada VÁLIDA. Mientras el texto está a medias, el
+    // formulario padre ve `undefined` y su botón de guardar sigue deshabilitado — no hay
+    // forma de guardar media coordenada.
+    onChange(
+      r.ok
+        ? { latitud: r.latitud, longitud: r.longitud, precisionGpsM: undefined }
+        : { latitud: undefined, longitud: undefined, precisionGpsM: undefined },
+    );
+  };
+
   // Al montar, no al hacer clic. `isSecureContext` no existe en SSR, de ahí el estado
   // inicial `null` (= "todavía no se sabe") en vez de un `false` que parpadearía como
   // "no disponible" en cada render del servidor.
@@ -88,11 +191,14 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
           return;
         }
 
-        onChange({
-          latitud: Number(pos.coords.latitude.toFixed(7)),
-          longitud: Number(pos.coords.longitude.toFixed(7)),
-          precisionGpsM: precision,
-        });
+        const lat = Number(pos.coords.latitude.toFixed(7));
+        const lng = Number(pos.coords.longitude.toFixed(7));
+
+        // El campo de texto se sincroniza con lo capturado: el operador ve la coordenada
+        // que se va a guardar y puede corregirla, en vez de un campo vacío que aparenta
+        // que el GPS no hizo nada.
+        setTexto(`${lat}, ${lng}`);
+        onChange({ latitud: lat, longitud: lng, precisionGpsM: precision });
       },
       (err) => {
         setCapturando(false);
@@ -106,12 +212,6 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
       // Perú suele apuntar al centro de Lima. Sería una coordenada plausible y falsa.
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
     );
-  };
-
-  const setCampo = (campo: 'latitud' | 'longitud', raw: string) => {
-    const n = raw === '' ? undefined : Number(raw);
-    // Editar a mano invalida la precisión GPS: ya no describe este dato.
-    onChange({ ...value, [campo]: n, precisionGpsM: undefined });
   };
 
   return (
@@ -133,26 +233,28 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          className={inputCls}
-          type="number"
-          step="0.0000001"
-          placeholder="Latitud"
-          value={value.latitud ?? ''}
-          onChange={(e) => setCampo('latitud', e.target.value)}
-          disabled={disabled}
-        />
-        <input
-          className={inputCls}
-          type="number"
-          step="0.0000001"
-          placeholder="Longitud"
-          value={value.longitud ?? ''}
-          onChange={(e) => setCampo('longitud', e.target.value)}
-          disabled={disabled}
-        />
-      </div>
+      <input
+        className={inputCls}
+        type="text"
+        inputMode="text"
+        placeholder="-12.0464, -77.0428"
+        value={texto}
+        onChange={(e) => escribir(e.target.value)}
+        disabled={disabled}
+      />
+
+      {/* Se muestra lo que el sistema ENTENDIÓ, no lo que el operador escribió. Un pegado
+          con un carácter de más se ve idéntico al ojo; el eco separado en lat y lng lo
+          delata de un vistazo, antes de guardar. */}
+      {parseado.ok && (
+        <p className="text-[11px] text-emerald-500">
+          Lat {parseado.latitud.toFixed(6)} · Lng {parseado.longitud.toFixed(6)}
+        </p>
+      )}
+
+      {errorParseo && texto.trim() !== '' && (
+        <p className="text-[11px] text-destructive">{errorParseo}</p>
+      )}
 
       {value.precisionGpsM != null && (
         <p className="text-[11px] text-muted-foreground">
