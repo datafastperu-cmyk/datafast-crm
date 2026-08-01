@@ -441,7 +441,25 @@ export class MikrotikService implements OnModuleInit {
     // ── Eliminación ──────────────────────────────────────────────
     if (router.subnetsLocales?.length) {
       const gw = router.vpnIp || router.ipGestion;
-      await this.subnetSvc.removeVpsRoutes(gw, router.subnetsLocales);
+      const r = await this.subnetSvc.removeVpsRoutes(gw, router.subnetsLocales);
+
+      // Un residuo NO se reporta como éxito silencioso. La baja continúa —una ruta que se
+      // resiste no puede dejar un router indeleteable— pero queda constancia con el
+      // comando exacto para resolverlo a mano.
+      if (r.residuales.length) {
+        this.logger.error(
+          `Router ${router.nombre} dado de baja con ${r.residuales.length} ruta(s) ` +
+          `residual(es) en el VPS: ${r.residuales.join(', ')}. Limpiar manualmente.`,
+        );
+      }
+    } else {
+      // Sólo se limpia lo que el ERP registró. Descubrir rutas "propias" por inspección
+      // sería peor: las directivas `route` del propio servidor OpenVPN (10.0.0.0/8,
+      // 172.16.0.0/12, 192.168.0.0/16) viven en la misma tabla y borrarlas dejaría al
+      // servidor VPN sin rutas hacia ningún sitio.
+      this.logger.log(
+        `Router ${router.nombre} no tenía subnets registradas: no hay rutas del VPS que limpiar.`,
+      );
     }
 
     // Quitar la interfaz OVPN del ROUTER FÍSICO antes de revocar el cert.

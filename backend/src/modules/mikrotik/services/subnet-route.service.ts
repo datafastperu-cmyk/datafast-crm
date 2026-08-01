@@ -159,12 +159,102 @@ export class SubnetRouteService implements OnApplicationBootstrap {
     }
   }
 
-  // Elimina rutas del VPS (cuando se borra un router o cambian sus subnets)
-  async removeVpsRoutes(gateway: string, subnets: string[]): Promise<void> {
+  /**
+   * Elimina rutas del VPS (al borrar un router o cuando cambian sus subnets).
+   *
+   * VIO hacia adentro: la versión anterior era `ip route del ... 2>/dev/null || true`
+   * dentro de un `catch {}` vacío. Esa combinación hacía **imposible** que el método
+   * reportara un fallo: afirmaba "rutas eliminadas" sin haberlo comprobado nunca, que es
+   * el mismo `success: true` sin verificar que la regla VIO existe para impedir.
+   *
+   * Tenía tres formas de fallar en silencio, y las tres son reales:
+   *
+   *  1. `ip route del <subnet> via <gateway>` sólo borra si el gateway coincide EXACTO.
+   *     Si el `vpnIp` del router cambió desde que se creó la ruta —cosa que pasa al
+   *     re-registrar un router— el `del` no encuentra nada y no se entera nadie.
+   *  2. El llamador sólo invoca este método `if (router.subnetsLocales?.length)`. Si esa
+   *     columna quedó vacía, no se limpia nada aunque el kernel tenga las rutas.
+   *  3. Cualquier otro error (permisos, subnet mal formada) quedaba tragado.
+   *
+   * Ahora se verifica el efecto con una lectura independiente (`ip route show`) y se
+   * devuelve qué pasó realmente con cada subnet. Un residuo NO se reporta como éxito.
+   *
+   * No lanza: la baja de un router no debe abortarse porque una ruta se resista. El
+   * llamador decide qué hacer con el reporte — pero ahora existe un reporte.
+   */
+  async removeVpsRoutes(
+    gateway: string,
+    subnets: string[],
+  ): Promise<{ eliminadas: string[]; noExistian: string[]; residuales: string[] }> {
+    const eliminadas: string[] = [];
+    const noExistian: string[] = [];
+    const residuales: string[] = [];
+
     for (const subnet of subnets) {
+      const existiaAntes = await this._rutaExiste(subnet);
+
+      if (!existiaAntes) {
+        // Ya no estaba: es ÉXITO idempotente, no un fallo. Reejecutar una limpieza ya
+        // aplicada no puede contar como error.
+        noExistian.push(subnet);
+        continue;
+      }
+
       try {
-        await execAsync(`ip route del ${subnet} via ${gateway} 2>/dev/null || true`);
-      } catch {}
+        // Sin `via <gateway>`: se borra la ruta a esa subnet exista con el gateway que
+        // exista. Filtrar por gateway era justamente lo que dejaba residuos cuando la IP
+        // de VPN del router había cambiado. La subnet es del router que se está dando de
+        // baja, así que su ruta le pertenece sin importar por dónde apunte hoy.
+        await this._ejecutar(`ip route del ${subnet}`);
+      } catch (e: any) {
+        this.logger.warn(`Fallo al borrar ruta ${subnet}: ${e?.message ?? e}`);
+      }
+
+      // VERIFICACIÓN: comando de lectura independiente, no el eco del anterior.
+      if (await this._rutaExiste(subnet)) {
+        residuales.push(subnet);
+        this.logger.error(
+          `Ruta ${subnet} SIGUE presente en el VPS tras intentar eliminarla ` +
+          `(gateway esperado: ${gateway}). Requiere revisión manual: ip route del ${subnet}`,
+        );
+      } else {
+        eliminadas.push(subnet);
+      }
+    }
+
+    // El log describe lo que ocurrió, no lo que se pretendía hacer.
+    if (subnets.length) {
+      this.logger.log(
+        `Rutas VPS (gw ${gateway}): ${eliminadas.length} eliminadas, ` +
+        `${noExistian.length} ya no existían, ${residuales.length} residuales.`,
+      );
+    }
+
+    return { eliminadas, noExistian, residuales };
+  }
+
+  /**
+   * Único punto donde este servicio toca la tabla de rutas del sistema.
+   *
+   * Existe como método y no como llamada directa a `execAsync` para que la verificación
+   * VIO sea testeable: `promisify(exec)` se resuelve al cargar el módulo, así que
+   * interceptarlo después es imposible. Sin este punto de corte, la garantía de que un
+   * residuo se detecta no tendría test — y una garantía sin test es un comentario.
+   */
+  private async _ejecutar(cmd: string): Promise<{ stdout: string }> {
+    return execAsync(cmd);
+  }
+
+  /** Lectura independiente del plano operativo. Es la sonda de verificación de VIO. */
+  private async _rutaExiste(subnet: string): Promise<boolean> {
+    try {
+      const { stdout } = await this._ejecutar(`ip route show ${subnet}`);
+      return stdout.trim().length > 0;
+    } catch {
+      // `ip route show` con una subnet inválida falla; tratarlo como "no existe" evitaría
+      // el borrado y ocultaría el problema. Se reporta como existente para que la
+      // verificación lo marque como residual y quede constancia.
+      return true;
     }
   }
 
