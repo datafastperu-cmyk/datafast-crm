@@ -135,6 +135,25 @@ export class InstalarSplitterDto {
   hiloEntradaId?: string;
 }
 
+export class CrearFusionDto {
+  @ApiProperty() @IsUUID()
+  hiloAId: string;
+
+  @ApiProperty() @IsUUID()
+  hiloBId: string;
+
+  /**
+   * Pérdida medida con la fusionadora. El default (0.10 dB) es el valor típico de un
+   * empalme bien hecho; el real se registra cuando el técnico lo mide, porque una fusión
+   * sucia de 0.8 dB es justo lo que el presupuesto óptico debe poder delatar.
+   */
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(4.99)
+  perdidaDb?: number;
+
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  observacion?: string;
+}
+
 export class AsignarPuertoDto {
   @ApiProperty() @IsUUID()
   contratoId: string;

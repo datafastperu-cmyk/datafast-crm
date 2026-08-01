@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Param, ParseUUIDPipe, Post, Query,
+  Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -16,7 +16,7 @@ import { PeNap } from './entities/pe-nap.entity';
 import { PeNapPuerto } from './entities/pe-nap-puerto.entity';
 import { PeFibraSegmento } from './entities/pe-fibra-segmento.entity';
 import {
-  AsignarPuertoDto, CrearMufaDto, CrearNapDto, CrearSegmentoDto,
+  AsignarPuertoDto, CrearFusionDto, CrearMufaDto, CrearNapDto, CrearSegmentoDto,
   InstalarSplitterDto, TransicionDto,
 } from './dto/planta-externa.dto';
 
@@ -64,6 +64,67 @@ export class PlantaExternaController {
       descripcion: `Mufa ${dto.codigo} creada`, datosNuevos: dto,
     });
     return mufa;
+  }
+
+  @Get('mufas/:mufaId')
+  @ApiOperation({ summary: 'Detalle de mufa: cables que llegan, hilos, fusiones y splitters' })
+  async detalleMufa(
+    @Param('mufaId', ParseUUIDPipe) mufaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const detalle = await this.service.detalleMufa(user.empresaId, mufaId);
+    if (!detalle) throw new NotFoundException('La mufa no existe.');
+    return detalle;
+  }
+
+  @Post('mufas/:mufaId/fusiones')
+  @ApiOperation({ summary: 'Fusionar dos hilos dentro de la mufa' })
+  async crearFusion(
+    @Param('mufaId', ParseUUIDPipe) mufaId: string,
+    @Body() dto: CrearFusionDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const r = await this.service.crearFusion(user.empresaId, mufaId, dto);
+    // Se audita también el rechazo: una fusión mal intentada es información de campo.
+    await this.auditoria.logCreate({
+      empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+      modulo: 'planta-externa', entidadId: r.id ?? mufaId,
+      descripcion: `Fusión en mufa: ${r.clase}`, datosNuevos: dto,
+    });
+    return { ...traducirAHttp(r), id: r.id };
+  }
+
+  @Delete('fusiones/:fusionId')
+  @ApiOperation({ summary: 'Deshacer una fusión y liberar sus hilos' })
+  async eliminarFusion(
+    @Param('fusionId', ParseUUIDPipe) fusionId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const r = await this.service.eliminarFusion(user.empresaId, fusionId);
+    await this.auditoria.logDelete({
+      empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+      modulo: 'planta-externa', entidadId: fusionId,
+      descripcion: `Fusión deshecha: ${r.clase}`,
+    });
+    return traducirAHttp(r);
+  }
+
+  @Post('mufas/:mufaId/splitters')
+  @ApiOperation({ summary: 'Instalar un splitter dentro de la mufa' })
+  async instalarSplitterMufa(
+    @Param('mufaId', ParseUUIDPipe) mufaId: string,
+    @Body() dto: InstalarSplitterDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const r = await this.service.instalarSplitterEnMufa(user.empresaId, { mufaId, ...dto });
+    if (r.clase === 'aplicado') {
+      await this.auditoria.logCreate({
+        empresaId: user.empresaId, usuarioId: user.sub, usuarioEmail: user.email,
+        modulo: 'planta-externa', entidadId: r.id,
+        descripcion: `Splitter ${dto.relacion} instalado en mufa`, datosNuevos: { mufaId, ...dto },
+      });
+    }
+    return { ...traducirAHttp(r), id: r.id };
   }
 
   // ── Segmentos de fibra ──────────────────────────────────────────

@@ -42,8 +42,8 @@ function SelectorExtremo({
   label: string;
   tipo: TipoNodo;
   id: string;
-  onTipo: (t: TipoNodo) => void;
-  onId: (v: string) => void;
+  onTipo: (_tipo: TipoNodo) => void;
+  onId: (_id: string) => void;
   sites: { id: string; nombre: string }[];
   mufas: { id: string; codigo: string }[];
   naps:  { id: string; codigo: string }[];

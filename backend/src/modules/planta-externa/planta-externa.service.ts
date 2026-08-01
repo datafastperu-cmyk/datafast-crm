@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, IsNull } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
 import { ResultadoOperacion } from '../../common/domain/resultado-operacion';
 import {
@@ -13,7 +13,8 @@ import { PeMufa } from './entities/pe-mufa.entity';
 import { PeNap } from './entities/pe-nap.entity';
 import { PeNapPuerto } from './entities/pe-nap-puerto.entity';
 import { PeFibraSegmento } from './entities/pe-fibra-segmento.entity';
-import { PeFibraHilo, COLORES_EIA598 } from './entities/pe-fibra-hilo.entity';
+import { PeFibraHilo, COLORES_EIA598, HiloEstado } from './entities/pe-fibra-hilo.entity';
+import { PeFusion, PERDIDA_FUSION_DB } from './entities/pe-fusion.entity';
 import {
   PeSplitter,
   SplitterRelacion,
@@ -350,6 +351,262 @@ export class PlantaExternaService {
       await em.softDelete(PeSplitter, { id: splitterId });
 
       return { clase: 'aplicado' as const, mensaje: 'Splitter retirado y puertos deshabilitados.' };
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Detalle de mufa: lo que hace recorrible el grafo
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Todo lo necesario para trabajar dentro de una mufa: qué cables llegan, qué hilos
+   * traen, cómo están fusionados y qué splitters aloja.
+   *
+   * Devuelve los segmentos que TOCAN la mufa por cualquiera de sus dos extremos. Un
+   * técnico frente a la caja no piensa en "origen" y "destino" —eso es una convención del
+   * modelo—; ve cables que entran y cables que salen, y fusiona entre ellos.
+   */
+  async detalleMufa(empresaId: string, mufaId: string) {
+    const mufa = await this.ds.getRepository(PeMufa).findOne({
+      where: { id: mufaId, empresaId, deletedAt: IsNull() },
+    });
+    if (!mufa) return null;
+
+    const segmentos = await this.ds
+      .getRepository(PeFibraSegmento)
+      .createQueryBuilder('s')
+      .where('s.empresa_id = :empresaId', { empresaId })
+      .andWhere('s.deleted_at IS NULL')
+      .andWhere('(s.origen_mufa_id = :mufaId OR s.destino_mufa_id = :mufaId)', { mufaId })
+      .orderBy('s.codigo', 'ASC')
+      .getMany();
+
+    const segmentoIds = segmentos.map((s) => s.id);
+
+    const hilos = segmentoIds.length
+      ? await this.ds
+          .getRepository(PeFibraHilo)
+          .createQueryBuilder('h')
+          .where('h.segmento_id IN (:...ids)', { ids: segmentoIds })
+          .andWhere('h.deleted_at IS NULL')
+          .orderBy('h.segmento_id', 'ASC')
+          .addOrderBy('h.numero', 'ASC')
+          .getMany()
+      : [];
+
+    const [fusiones, splitters] = await Promise.all([
+      this.ds.getRepository(PeFusion).find({
+        where: { mufaId, empresaId, deletedAt: IsNull() },
+      }),
+      this.ds.getRepository(PeSplitter).find({
+        where: { alojadoEnMufaId: mufaId, empresaId, deletedAt: IsNull() },
+      }),
+    ]);
+
+    return { mufa, segmentos, hilos, fusiones, splitters };
+  }
+
+  /**
+   * Fusiona dos hilos dentro de una mufa.
+   *
+   * El invariante "un hilo se fusiona una sola vez" lo garantizan dos índices únicos
+   * parciales en la BD; aquí no se reimplementa. Lo que SÍ vive aquí, porque la BD no
+   * puede expresarlo, es la regla de pertenencia: **ambos hilos deben venir de un cable
+   * que llega a ESTA mufa**. Sin ese guard, un typo en un UUID permitiría fusionar el
+   * hilo de un cable de otra zona con el de acá, y el recorrido del grafo devolvería una
+   * ruta que no existe físicamente — un error indetectable después, porque el dato
+   * resultante es perfectamente válido para el esquema.
+   */
+  async crearFusion(
+    empresaId: string,
+    mufaId: string,
+    dto: { hiloAId: string; hiloBId: string; perdidaDb?: number; observacion?: string },
+  ): Promise<ResultadoOperacion & { id?: string }> {
+    if (dto.hiloAId === dto.hiloBId) {
+      return { clase: 'rechazado_definitivo', motivo: 'Un hilo no puede fusionarse consigo mismo.' };
+    }
+
+    return this.ds.transaction(async (em) => {
+      const mufa = await em.findOne(PeMufa, {
+        where: { id: mufaId, empresaId, deletedAt: IsNull() },
+      });
+      if (!mufa) {
+        return { clase: 'rechazado_definitivo' as const, motivo: 'La mufa no existe.' };
+      }
+
+      // Segmentos que tocan esta mufa. Es el universo legal de hilos fusionables aquí.
+      const segmentos = await em
+        .createQueryBuilder(PeFibraSegmento, 's')
+        .select('s.id', 'id')
+        .where('s.empresa_id = :empresaId', { empresaId })
+        .andWhere('s.deleted_at IS NULL')
+        .andWhere('(s.origen_mufa_id = :mufaId OR s.destino_mufa_id = :mufaId)', { mufaId })
+        .getRawMany<{ id: string }>();
+
+      const idsLegales = new Set(segmentos.map((s) => s.id));
+
+      const hilos = await em.find(PeFibraHilo, {
+        where: [{ id: dto.hiloAId, empresaId }, { id: dto.hiloBId, empresaId }],
+      });
+
+      if (hilos.length !== 2) {
+        return { clase: 'rechazado_definitivo' as const, motivo: 'Alguno de los hilos no existe.' };
+      }
+
+      const ajeno = hilos.find((h) => !idsLegales.has(h.segmentoId));
+      if (ajeno) {
+        return {
+          clase: 'rechazado_definitivo' as const,
+          motivo:
+            `El hilo ${ajeno.numero} pertenece a un cable que no llega a la mufa ` +
+            `${mufa.codigo}. Sólo se pueden fusionar hilos de los cables que entran aquí.`,
+        };
+      }
+
+      // Idempotencia explícita: la misma pareja ya fusionada en esta mufa es ÉXITO, no
+      // error. Reintentar un alta que ya se aplicó no puede reportarse como fallo.
+      const yaFusionados = await em
+        .createQueryBuilder(PeFusion, 'f')
+        .where('f.mufa_id = :mufaId', { mufaId })
+        .andWhere('f.deleted_at IS NULL')
+        .andWhere(
+          '((f.hilo_a_id = :a AND f.hilo_b_id = :b) OR (f.hilo_a_id = :b AND f.hilo_b_id = :a))',
+          { a: dto.hiloAId, b: dto.hiloBId },
+        )
+        .getOne();
+
+      if (yaFusionados) {
+        return { clase: 'ya_en_destino' as const, mensaje: 'Esos dos hilos ya estaban fusionados.' };
+      }
+
+      try {
+        const fusion = await em.save(
+          em.create(PeFusion, {
+            empresaId,
+            mufaId,
+            hiloAId: dto.hiloAId,
+            hiloBId: dto.hiloBId,
+            perdidaDb: dto.perdidaDb ?? PERDIDA_FUSION_DB,
+            observacion: dto.observacion ?? null,
+          } as Partial<PeFusion>),
+        );
+
+        await em.update(
+          PeFibraHilo,
+          { id: In([dto.hiloAId, dto.hiloBId]) },
+          { estado: HiloEstado.EN_USO },
+        );
+
+        return { clase: 'aplicado' as const, mensaje: 'Fusión registrada.', id: fusion.id };
+      } catch (err: any) {
+        // Los índices únicos son la autoridad. Si saltan, es porque alguno de los hilos ya
+        // está fusionado con OTRO hilo — un dato que el chequeo anterior no cubre y que no
+        // se puede resolver leyendo primero sin abrir una ventana de carrera.
+        if (String(err?.message ?? '').includes('uq_pe_fusion_hilo')) {
+          return {
+            clase: 'rechazado_definitivo' as const,
+            motivo:
+              'Uno de los hilos ya está fusionado con otro hilo. Deshaz esa fusión antes ' +
+              'de crear esta.',
+          };
+        }
+        throw err;
+      }
+    });
+  }
+
+  /**
+   * Deshace una fusión y devuelve sus hilos a `libre`.
+   *
+   * Idempotente: deshacer una fusión que ya no existe es ÉXITO. Un operador que hace
+   * doble clic, o un reintento, no deben ver un error por algo que ya está como se quería.
+   */
+  async eliminarFusion(empresaId: string, fusionId: string): Promise<ResultadoOperacion> {
+    return this.ds.transaction(async (em) => {
+      const fusion = await em.findOne(PeFusion, {
+        where: { id: fusionId, empresaId, deletedAt: IsNull() },
+      });
+      if (!fusion) {
+        return { clase: 'ya_en_destino' as const, mensaje: 'Esa fusión ya no existe.' };
+      }
+
+      await em.softDelete(PeFusion, { id: fusionId });
+
+      // Los hilos vuelven a `libre` sólo si no quedan en otra fusión viva. Marcarlos
+      // libres a ciegas los dejaría disponibles mientras siguen empalmados en otra caja.
+      for (const hiloId of [fusion.hiloAId, fusion.hiloBId]) {
+        const otras = await em.count(PeFusion, {
+          where: [
+            { hiloAId: hiloId, deletedAt: IsNull() },
+            { hiloBId: hiloId, deletedAt: IsNull() },
+          ],
+        });
+        if (otras === 0) {
+          await em.update(PeFibraHilo, { id: hiloId }, { estado: HiloEstado.LIBRE });
+        }
+      }
+
+      return { clase: 'aplicado' as const, mensaje: 'Fusión deshecha.' };
+    });
+  }
+
+  /**
+   * Instala un splitter dentro de una mufa (derivación con división de potencia).
+   *
+   * A diferencia del de NAP, no crea puertos: sus salidas alimentan hilos de otros cables
+   * (cascada hacia otra mufa o hacia una NAP), no acometidas de cliente.
+   */
+  async instalarSplitterEnMufa(
+    empresaId: string,
+    dto: {
+      mufaId: string;
+      relacion: SplitterRelacion;
+      codigo?: string;
+      perdidaDb?: number;
+      hiloEntradaId?: string;
+    },
+  ): Promise<ResultadoOperacion & { id?: string }> {
+    return this.ds.transaction(async (em) => {
+      const mufa = await em.findOne(PeMufa, {
+        where: { id: dto.mufaId, empresaId, deletedAt: IsNull() },
+      });
+      if (!mufa) {
+        return { clase: 'rechazado_definitivo' as const, motivo: 'La mufa no existe.' };
+      }
+
+      const splitter = await em.save(
+        em.create(PeSplitter, {
+          empresaId,
+          codigo: dto.codigo ?? null,
+          relacion: dto.relacion,
+          perdidaDb: dto.perdidaDb ?? PERDIDA_TIPICA_DB[dto.relacion],
+          alojadoEnMufaId: mufa.id,
+          alojadoEnNapId: null,
+          hiloEntradaId: dto.hiloEntradaId ?? null,
+          estado: ElementoEstado.INSTALADO,
+        } as Partial<PeSplitter>),
+      );
+
+      const salidas = SALIDAS_POR_RELACION[dto.relacion];
+      await em.insert(
+        PeSplitterSalida,
+        Array.from({ length: salidas }, (_, i) => ({
+          empresaId,
+          splitterId: splitter.id,
+          numero: i + 1,
+          hiloSalidaId: null,
+        })),
+      );
+
+      if (dto.hiloEntradaId) {
+        await em.update(PeFibraHilo, { id: dto.hiloEntradaId }, { estado: HiloEstado.EN_USO });
+      }
+
+      return {
+        clase: 'aplicado' as const,
+        mensaje: `Splitter ${dto.relacion} instalado en ${mufa.codigo} (${salidas} salidas).`,
+        id: splitter.id,
+      };
     });
   }
 

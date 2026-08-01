@@ -6,6 +6,7 @@ import { GitMerge, Plus, X, Loader2, AlertCircle, MapPin } from 'lucide-react';
 
 import { plantaExternaApi, type CrearMufaDto } from '@/lib/api/planta-externa';
 import { CapturaCoordenadas, type Coordenadas } from './CapturaCoordenadas';
+import { MufaDetalleModal } from './MufaDetalleModal';
 import { useToast } from '@/components/ui/toaster';
 import { Portal } from '@/components/ui/portal';
 import { parseApiError, cn } from '@/lib/utils';
@@ -114,6 +115,7 @@ function CrearMufaModal({ onClose, onCreated }: { onClose: () => void; onCreated
 export function MufasTab() {
   const qc = useQueryClient();
   const [crear, setCrear] = useState(false);
+  const [detalleId, setDetalleId] = useState<string | null>(null);
 
   const { data: mufas = [], isLoading, isError, error } = useQuery({
     queryKey: ['planta-externa-mufas'],
@@ -155,7 +157,8 @@ export function MufasTab() {
       {mufas.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {mufas.map((m) => (
-            <div key={m.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+            <button key={m.id} onClick={() => setDetalleId(m.id)}
+              className="text-left rounded-xl border border-border bg-card p-4 space-y-2 hover:border-primary/40 transition-colors">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">{m.codigo}</p>
@@ -177,7 +180,9 @@ export function MufasTab() {
                   {Number(m.latitud).toFixed(5)}, {Number(m.longitud).toFixed(5)}
                 </span>
               </div>
-            </div>
+
+              <p className="text-[11px] text-primary">Ver empalmes y splitters →</p>
+            </button>
           ))}
         </div>
       )}
@@ -187,6 +192,10 @@ export function MufasTab() {
           onClose={() => setCrear(false)}
           onCreated={() => { setCrear(false); qc.invalidateQueries({ queryKey: ['planta-externa-mufas'] }); }}
         />
+      )}
+
+      {detalleId && (
+        <MufaDetalleModal mufaId={detalleId} onClose={() => setDetalleId(null)} />
       )}
     </div>
   );

@@ -21,7 +21,7 @@ export interface Coordenadas {
 
 interface Props {
   value: Partial<Coordenadas>;
-  onChange: (c: Partial<Coordenadas>) => void;
+  onChange: (_coords: Partial<Coordenadas>) => void;
   disabled?: boolean;
 }
 

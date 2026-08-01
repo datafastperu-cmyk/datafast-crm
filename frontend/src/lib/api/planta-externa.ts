@@ -123,6 +123,49 @@ export interface CrearSegmentoDto {
  * expresa como un selector de tipo + un selector de elemento, que es cómo lo piensa un
  * operador — "de la mufa X a la caja Y" — en vez de seis campos donde cinco van vacíos.
  */
+export type HiloEstado = 'libre' | 'en_uso' | 'averiado' | 'reservado';
+
+export interface FibraHilo {
+  id:         string;
+  segmentoId: string;
+  numero:     number;
+  color:      string | null;
+  estado:     HiloEstado;
+}
+
+export interface Fusion {
+  id:          string;
+  mufaId:      string;
+  hiloAId:     string;
+  hiloBId:     string;
+  perdidaDb:   number;
+  observacion: string | null;
+}
+
+export interface Splitter {
+  id:              string;
+  codigo:          string | null;
+  relacion:        SplitterRelacion;
+  perdidaDb:       number;
+  alojadoEnMufaId: string | null;
+  alojadoEnNapId:  string | null;
+  hiloEntradaId:   string | null;
+  estado:          ElementoEstado;
+}
+
+/**
+ * Todo lo que hay dentro de una mufa. `segmentos` son los cables que la TOCAN por
+ * cualquiera de sus dos extremos: un técnico frente a la caja no piensa en "origen" y
+ * "destino" —eso es convención del modelo—, ve cables que entran y salen.
+ */
+export interface MufaDetalle {
+  mufa:      Mufa;
+  segmentos: FibraSegmento[];
+  hilos:     FibraHilo[];
+  fusiones:  Fusion[];
+  splitters: Splitter[];
+}
+
 export type TipoNodo = 'site' | 'mufa' | 'nap';
 
 export function extremoADto(
@@ -172,6 +215,32 @@ export const plantaExternaApi = {
 
   crearMufa: async (dto: CrearMufaDto): Promise<Mufa> => {
     const { data } = await api.post('/planta-externa/mufas', dto);
+    return data.data;
+  },
+
+  detalleMufa: async (mufaId: string): Promise<MufaDetalle> => {
+    const { data } = await api.get(`/planta-externa/mufas/${mufaId}`);
+    return data.data;
+  },
+
+  crearFusion: async (
+    mufaId: string,
+    dto: { hiloAId: string; hiloBId: string; perdidaDb?: number; observacion?: string },
+  ): Promise<ResultadoHttp> => {
+    const { data } = await api.post(`/planta-externa/mufas/${mufaId}/fusiones`, dto);
+    return data.data;
+  },
+
+  eliminarFusion: async (fusionId: string): Promise<ResultadoHttp> => {
+    const { data } = await api.delete(`/planta-externa/fusiones/${fusionId}`);
+    return data.data;
+  },
+
+  instalarSplitterEnMufa: async (
+    mufaId: string,
+    dto: { relacion: SplitterRelacion; codigo?: string; perdidaDb?: number; hiloEntradaId?: string },
+  ): Promise<ResultadoHttp> => {
+    const { data } = await api.post(`/planta-externa/mufas/${mufaId}/splitters`, dto);
     return data.data;
   },
 
