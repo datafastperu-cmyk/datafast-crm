@@ -1,7 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Crosshair, Loader2, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { useEffect, useState, lazy, Suspense } from 'react';
+import { Crosshair, Loader2, ShieldAlert, AlertTriangle, Map as MapIcon } from 'lucide-react';
+
+// Carga diferida: MapLibre pesa ~250 kB y este componente vive en formularios que la
+// mayoría de las veces se completan pegando o con GPS, sin abrir el mapa nunca.
+const MapaPickerModal = lazy(() =>
+  import('./MapaPickerModal').then((m) => ({ default: m.MapaPickerModal })),
+);
 
 /**
  * Precisión máxima aceptable de una captura GPS, en metros.
@@ -141,9 +147,22 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
       : '',
   );
 
+  const [pickerAbierto, setPickerAbierto] = useState(false);
+
   const parseado = parsearCoordenadas(texto);
   /** Motivo del rechazo, o `null` si el texto es válido o está vacío (nada que explicar). */
   const errorParseo = parseado.ok ? null : parseado.motivo;
+
+  /**
+   * Coordenada elegida en el mapa. Se escribe en el MISMO campo de texto y se vuelve a
+   * parsear, en vez de saltar directo al valor: así los tres caminos —tecleado, GPS y
+   * mapa— pasan por una sola regla de validación. Dos rutas distintas para el mismo dato
+   * terminan con una desactualizada.
+   */
+  const aplicarDelMapa = (lat: number, lng: number) => {
+    escribir(`${lat}, ${lng}`);
+    setPickerAbierto(false);
+  };
 
   const escribir = (raw: string) => {
     setTexto(raw);
@@ -219,18 +238,32 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
       <div className="flex items-center justify-between">
         <label className={labelCls}>Coordenadas *</label>
 
-        {gpsDisponible === true && (
+        <div className="flex items-center gap-3">
+          {/* El mapa NO depende de secure context, así que está siempre disponible. Es el
+              camino principal desde escritorio, donde se documenta la mayor parte de la
+              planta — y el único que funciona en instalaciones sin HTTPS. */}
           <button
             type="button"
-            onClick={capturar}
-            disabled={disabled || capturando}
+            onClick={() => setPickerAbierto(true)}
+            disabled={disabled}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50"
           >
-            {capturando
-              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Ubicando…</>
-              : <><Crosshair className="w-3.5 h-3.5" /> Usar mi ubicación</>}
+            <MapIcon className="w-3.5 h-3.5" /> Elegir en el mapa
           </button>
-        )}
+
+          {gpsDisponible === true && (
+            <button
+              type="button"
+              onClick={capturar}
+              disabled={disabled || capturando}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline disabled:opacity-50"
+            >
+              {capturando
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Ubicando…</>
+                : <><Crosshair className="w-3.5 h-3.5" /> Usar mi ubicación</>}
+            </button>
+          )}
+        </div>
       </div>
 
       <input
@@ -281,6 +314,17 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
           <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
           <p className="text-[11px] text-destructive leading-relaxed">{aviso}</p>
         </div>
+      )}
+
+      {pickerAbierto && (
+        <Suspense fallback={null}>
+          <MapaPickerModal
+            latitud={parseado.ok ? parseado.latitud : undefined}
+            longitud={parseado.ok ? parseado.longitud : undefined}
+            onConfirmar={aplicarDelMapa}
+            onCerrar={() => setPickerAbierto(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

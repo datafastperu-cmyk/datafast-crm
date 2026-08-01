@@ -9,6 +9,7 @@ import {
   type CrearOltIntegracionDto,
 } from '@/lib/api/olt-nativo';
 import { type Router } from '@/lib/api/mikrotik';
+import { CapturaCoordenadas, type Coordenadas } from '@/components/planta-externa/CapturaCoordenadas';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 
@@ -46,6 +47,7 @@ const FORM_INIT: CrearOltIntegracionDto & { _marcaKey: string } = {
 export function CrearOltModal({ tipo, routers, onClose, onSaved }: CrearOltModalProps) {
   const { toast } = useToast();
   const [form, setForm]     = useState({ ...FORM_INIT, routerId: routers[0]?.id ?? '' });
+  const [coords, setCoords] = useState<Partial<Coordenadas>>({});
   const [saving, setSaving] = useState(false);
   const [ipStatus, setIpStatus] = useState<IpStatus>('idle');
   const [ipMensaje, setIpMensaje] = useState('');
@@ -106,6 +108,8 @@ export function CrearOltModal({ tipo, routers, onClose, onSaved }: CrearOltModal
         slotsTotales:   form.slotsTotales,
         puertosPorSlot: form.puertosPorSlot,
         ubicacion:      form.ubicacion.trim() || undefined,
+        latitud:        coords.latitud,
+        longitud:       coords.longitud,
         baseUrl:        form.baseUrl.trim(),
         apiKey:         form.apiKey.trim(),
         oltIdExterno:   form.oltIdExterno.trim() || undefined,
@@ -275,6 +279,13 @@ export function CrearOltModal({ tipo, routers, onClose, onSaved }: CrearOltModal
                   placeholder="Cabecera Norte — Av. Panamericana km 4.5"
                   className={INPUT_CLS}
                 />
+              </div>
+
+              {/* Este modal se había quedado sin captura de coordenadas mientras el wizard
+                  nativo y la edición sí la tenían: una OLT creada por aquí no aparecía en
+                  la capa 1 del mapa y nadie sabía por qué. */}
+              <div className="col-span-2">
+                <CapturaCoordenadas value={coords} onChange={setCoords} />
               </div>
             </div>
           </div>
