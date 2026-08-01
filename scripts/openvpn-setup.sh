@@ -319,6 +319,41 @@ explicit-exit-notify 0
 EOF
     chmod 640 "${SERVER_DIR}/mikrotik.conf"
     ok "mikrotik.conf generado (puerto ${MIKROTIK_PORT})"
+
+    generate_logrotate
+}
+
+# ── Rotación del log de OpenVPN ─────────────────────────────────
+# Origen (2026-07-31): el log de un VPS en producción había llegado a 160 MB.
+# Un MikroTik cuyo cert fue revocado reintenta conectar cada ~15 s indefinidamente
+# —nadie le avisó que dejara de intentar— y cada intento escribe ~12 líneas. Sin
+# rotación eso crece sin techo hasta llenar el disco.
+#
+# copytruncate es OBLIGATORIO aquí: la config usa `log-append`, así que OpenVPN
+# mantiene el descriptor abierto. Sin copytruncate, logrotate renombra el archivo y
+# OpenVPN sigue escribiendo en el inodo viejo: el log "rotado" crece invisible y el
+# nuevo queda vacío para siempre.
+#
+# Sólo mikrotik.log: status-mikrotik.log lo reescribe OpenVPN cada 10 s, rotarlo no
+# aporta nada y sólo genera archivos .1 sin contenido útil.
+generate_logrotate() {
+    step "Configurando rotación del log de OpenVPN"
+
+    cat > /etc/logrotate.d/openvpn-datafast << EOF
+${VPN_LOG_DIR}/mikrotik.log {
+    daily
+    rotate 7
+    maxsize 50M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    create 0600 root root
+}
+EOF
+    chmod 644 /etc/logrotate.d/openvpn-datafast
+    ok "logrotate configurado (diario, 7 días, corte a 50 MB)"
 }
 
 generate_vpn_auth_script() {

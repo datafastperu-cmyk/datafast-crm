@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Delete,
   Body, Param, Res, HttpCode, HttpStatus,
-  UnauthorizedException, ForbiddenException, Req,
+  ForbiddenException, Req, Logger,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -17,6 +17,20 @@ import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 @ApiBearerAuth('JWT')
 @Controller('openvpn/mikrotik-clients')
 export class VpnClienteController {
+  private readonly logger = new Logger(VpnClienteController.name);
+
+  /**
+   * Última vez que se registró un rechazo de auth por usuario.
+   *
+   * Un MikroTik cuyo cert fue revocado reintenta cada ~15 s PARA SIEMPRE: nadie le avisó
+   * que dejara de intentar. Sin throttle son ~5 700 líneas por día por router zombi, y el
+   * ruido tapa justamente los fallos que sí importan. Se registra el primer rechazo y
+   * luego uno cada VENTANA — suficiente para que un operador lo note, no tanto como para
+   * enterrar el log.
+   */
+  private readonly ultimoRechazo = new Map<string, number>();
+  private static readonly VENTANA_LOG_RECHAZO_MS = 10 * 60 * 1000;
+
   constructor(private readonly svc: VpnClienteService) {}
 
   // ── Crear cliente VPN ─────────────────────────────────────────
@@ -115,6 +129,29 @@ export class VpnClienteController {
   // ── Verificar credenciales VPN (llamado por vpn-auth.sh en el servidor) ─
   // Endpoint público — protegido solo por red interna (llamado solo desde localhost)
 
+  /**
+   * Un rechazo de credenciales NO se expresa como excepción, a propósito.
+   *
+   * Incidente 2026-07-31: el log de errores del backend estaba saturado por este endpoint
+   * —cientos de entradas de nivel `error` con stack trace completo— y ninguna decía QUÉ
+   * usuario fallaba. Era imposible diagnosticarlo, y llevaba días así.
+   *
+   * Dos defectos distintos, ambos corregidos aquí:
+   *
+   *  1. Una contraseña incorrecta es el resultado ESPERADO de un verificador de
+   *     credenciales, no una condición excepcional. Lanzar `UnauthorizedException`
+   *     hacía que el filtro global la registrara como error con stack trace, y el ruido
+   *     tapaba los fallos reales. El único consumidor es `vpn-auth.sh`, un orquestador
+   *     automático: por la directriz de "vocabulario de dominio, no de transporte", el
+   *     veredicto viaja como DATO (`success: false`), no como excepción HTTP.
+   *
+   *     El comportamiento del script no cambia: hace `curl -sf` y luego
+   *     `grep -q '"success":true'`. Con 200 + `success:false`, curl tiene éxito, el grep
+   *     falla y el script devuelve exit 1 — deniega igual que antes.
+   *
+   *  2. El log no nombraba al usuario. Un log describe lo que ocurrió; "Credenciales
+   *     inválidas" sin identidad no describe nada accionable.
+   */
   @Post('verify-auth')
   @Public()
   @HttpCode(HttpStatus.OK)
@@ -127,9 +164,37 @@ export class VpnClienteController {
     if (!ip.includes('127.0.0.1') && !ip.includes('::1')) {
       throw new ForbiddenException('Solo accesible desde localhost');
     }
-    const ok = await this.svc.verifyAuth(body.username ?? '', body.password ?? '');
-    if (!ok) throw new UnauthorizedException('Credenciales inválidas');
+
+    const username = body.username ?? '';
+    const ok = await this.svc.verifyAuth(username, body.password ?? '');
+
+    if (!ok) {
+      this._registrarRechazo(username, ip);
+      return StdResponse.error('Credenciales inválidas');
+    }
+
+    this.ultimoRechazo.delete(username); // volvió a autenticar: la racha terminó
     return StdResponse.ok(null, 'Autenticado');
+  }
+
+  /**
+   * Registra el rechazo nombrando al usuario, con throttle por ventana.
+   *
+   * Nivel `warn` y no `error`: un cliente con credenciales viejas reintentando es una
+   * condición operativa conocida —típicamente un MikroTik al que se le revocó el cert
+   * pero conserva la interfaz `vpndatafast` configurada— no una falla del backend.
+   */
+  private _registrarRechazo(username: string, ip: string): void {
+    const ahora = Date.now();
+    const previo = this.ultimoRechazo.get(username) ?? 0;
+    if (ahora - previo < VpnClienteController.VENTANA_LOG_RECHAZO_MS) return;
+
+    this.ultimoRechazo.set(username, ahora);
+    this.logger.warn(
+      `VPN auth rechazada para "${username || '(sin usuario)'}" desde ${ip}. ` +
+      `Si reintenta en bucle, el equipo conserva una interfaz ovpn-client con ` +
+      `credenciales revocadas: hay que eliminarla en el router.`,
+    );
   }
 
   // ── Verificar sesión CN antes de permitir nueva conexión (client-connect) ─
