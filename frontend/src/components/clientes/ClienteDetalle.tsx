@@ -26,6 +26,8 @@ import { clientesApi }                          from '@/lib/api/clientes';
 import { contratosApi, planesApi, redesApi }    from '@/lib/api/contratos';
 import { xuiApi, type XuiLine, type EditarXuiLineDto } from '@/lib/api/xui';
 import { zonasApi }                             from '@/lib/api/zonas';
+import { plantaExternaApi }                     from '@/lib/api/planta-externa';
+import { SelectorAcometida }                    from '@/components/planta-externa/SelectorAcometida';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
 import { ModalProvisionFtth }                from './ModalProvisionFtth';
 import { TabConfigFacturacion, calcularFechas, calcularFechaRecordatorio } from './TabConfigFacturacion';
@@ -1649,6 +1651,17 @@ function ServicioPanel({
 }) {
   const e = editing as any;
   const { toast } = useToast();
+  const qc = useQueryClient();
+
+  // Acometida vigente del contrato. Se necesita para dos cosas: preseleccionar el puerto
+  // al abrir el modal, y saber cuál liberar si el operador lo cambia.
+  const { data: acometidaActual } = useQuery({
+    queryKey: ['acometida', editing?.id],
+    queryFn:  () => plantaExternaApi.acometidaDeContrato(editing!.id),
+    enabled:  !!editing?.id,
+    select:   (d) => d?.acometida ?? null,
+  });
+
   const [costoInstalacion, setCostoInstalacion]           = useState(false);
   const [montoCostoInstalacion, setMontoCostoInstalacion] = useState(0);
   const cascadeReady = useRef(false);
@@ -1670,8 +1683,11 @@ function ServicioPanel({
       passwordPppoe:        '',
       macAddress:           e?.macAddress            ?? '',
       routes:               e?.routes               ?? '',
-      cajaNap:              e?.cajaNap              ?? '',
-      puertoNap:            e?.puertoNap            ?? '',
+      // Arrancan vacíos y los rellena la acometida real cuando llega (efecto de abajo).
+      // NO se leen de `e.cajaNap`/`e.puertoNap`: esas columnas guardan el texto libre
+      // obsoleto ("NAP-03", "Puerto 2"), que no son ids y romperían los selectores.
+      cajaNap:              '',
+      puertoNap:            '',
       fechaInicio:          e?.fechaInicio
         ? String(e.fechaInicio).split('T')[0]
         : new Date().toISOString().split('T')[0],
@@ -1798,9 +1814,47 @@ function ServicioPanel({
     }
   }, [planId]);
 
-  const PUERTOS_NAP = cajaNap
-    ? Array.from({ length: 8 }, (_, i) => `Puerto ${i + 1}`)
-    : [];
+
+  /**
+   * Deja la acometida del contrato apuntando al puerto elegido.
+   *
+   * Cambiar de puerto es liberar el anterior y reclamar el nuevo. El orden importa: se
+   * libera primero, porque `pe_acometida` tiene único por contrato — intentar reclamar sin
+   * soltar chocaría contra ese índice y el cambio quedaría a medias.
+   *
+   * Un fallo aquí NO tumba el guardado del servicio: se avisa y el puerto se corrige
+   * aparte. Revertir un cambio de plan porque un puerto estaba ocupado sería un remedio
+   * peor que la enfermedad.
+   */
+  // Preselecciona el puerto ya asignado cuando llega la acometida. Va en efecto y no en
+  // los defaults porque es una consulta asíncrona: el formulario se monta antes.
+  useEffect(() => {
+    if (!acometidaActual?.napPuertoId) return;
+    plantaExternaApi.acometidaDeContrato(editing!.id).then((d) => {
+      if (!d?.puerto) return;
+      setValue('cajaNap', d.puerto.napId);
+      setValue('puertoNap', d.puerto.id);
+    }).catch(() => { /* la acometida es informativa: su fallo no bloquea editar el servicio */ });
+  }, [acometidaActual?.napPuertoId]);
+
+  const sincronizarAcometida = async (contratoId: string, puertoIdNuevo: string) => {
+    const puertoActual = acometidaActual?.napPuertoId ?? '';
+    if (puertoActual === puertoIdNuevo) return; // nada que hacer
+
+    try {
+      if (puertoActual) await plantaExternaApi.liberarPuerto(puertoActual);
+      if (puertoIdNuevo) {
+        const r = await plantaExternaApi.asignarPuerto(puertoIdNuevo, { contratoId });
+        if (!r.exitoso) {
+          toast(`El puerto no se pudo asignar: ${r.error ?? r.mensaje}`, { type: 'error' });
+        }
+      }
+      qc.invalidateQueries({ queryKey: ['acometida', contratoId] });
+      qc.invalidateQueries({ queryKey: ['planta-externa-naps'] });
+    } catch (err) {
+      toast('El servicio se guardó, pero falló la asignación del puerto.', { type: 'error' });
+    }
+  };
 
   const onSubmit = async (data: ServicioForm) => {
     if ((requiereMac || !!data.antenaApId) && !data.macAddress?.trim()) {
@@ -1833,8 +1887,9 @@ function ServicioPanel({
         excluirFirewall:      data.excluirFirewall      ?? false,
         macAddress:           data.macAddress           || undefined,
         routes:               data.routes               || undefined,
-        cajaNap:              data.cajaNap              || undefined,
-        puertoNap:            data.puertoNap            || undefined,
+        // `cajaNap`/`puertoNap` (texto libre) quedan OBSOLETOS: el vínculo real vive en
+        // `pe_acometida`, que relaciona contrato ↔ puerto con único en ambos lados. Se
+        // asigna después de guardar el servicio, con el reclamo atómico del backend.
         fechaInicio:          data.fechaInicio,
         nodoId:               undefined,
         antenaApId:           (data as any).antenaApId  || undefined,
@@ -1850,6 +1905,7 @@ function ServicioPanel({
           payload.ipManual   = data.ipManual || undefined;
         }
         await contratosApi.actualizarServicio(editing.id, { ...payload, version: editing.version });
+        await sincronizarAcometida(editing.id, data.puertoNap ?? '');
         toast('Servicio actualizado', { type: 'success' });
       } else {
         payload.clienteId     = clienteId;
@@ -1858,7 +1914,11 @@ function ServicioPanel({
         payload.usuarioPppoe  = data.usuarioPppoe   || undefined;
         payload.passwordPppoe = data.passwordPppoe  || undefined;
         if (data.precioMensual) payload.precioMensual = parseFloat(data.precioMensual);
-        await contratosApi.create(payload);
+        const creado: any = await contratosApi.create(payload);
+        // Mismo criterio que el wizard: el puerto se reclama tras crear el contrato, y un
+        // fallo no tumba el alta — se avisa y se corrige desde aquí mismo.
+        const idCreado = creado?.id ?? creado?.data?.id;
+        if (idCreado) await sincronizarAcometida(idCreado, data.puertoNap ?? '');
         try {
           const factuConfig = await clientesApi.getFacturacionConfig(clienteId);
           const esPrepago   = (factuConfig?.facturacion as any)?.tipo === 'prepago';
@@ -2071,25 +2131,17 @@ function ServicioPanel({
               {/* Terminales FTTH — solo FTTH */}
               {esFtth && (
                 <SP_Section title="Terminales FTTH" icon={Cable} compact>
-                  <div className="grid grid-cols-2 gap-3">
-                    <SP_Field label="Caja Nap">
-                      <select {...register('cajaNap')} className={sp_input()}>
-                        <option value="">Ninguno</option>
-                        {['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].map(n => (
-                          <option key={n} value={n}>{n}</option>
-                        ))}
-                        {cajaNap && !['NAP-01','NAP-02','NAP-03','NAP-04','NAP-05','NAP-06','NAP-07','NAP-08'].includes(cajaNap) && (
-                          <option value={cajaNap}>{cajaNap}</option>
-                        )}
-                      </select>
-                    </SP_Field>
-                    <SP_Field label="Puerto Nap">
-                      <select {...register('puertoNap')} className={sp_input()} disabled={!cajaNap}>
-                        <option value="">Ninguno</option>
-                        {PUERTOS_NAP.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    </SP_Field>
-                  </div>
+                  {/* Antes: 8 códigos de NAP escritos a mano ('NAP-01'…'NAP-08') y sus
+                      puertos generados por bucle. Nada de eso existía en la planta; el
+                      operador elegía un valor inventado que se guardaba como texto libre.
+                      Ahora sale de `pe_nap` / `pe_nap_puerto`. */}
+                  <SelectorAcometida
+                    puertoIdActual={acometidaActual?.napPuertoId ?? null}
+                    napIdSeleccionada={cajaNap ?? ''}
+                    puertoIdSeleccionado={watch('puertoNap') ?? ''}
+                    onNap={(v) => setValue('cajaNap', v)}
+                    onPuerto={(v) => setValue('puertoNap', v)}
+                  />
                 </SP_Section>
               )}
 

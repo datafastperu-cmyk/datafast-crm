@@ -147,6 +147,21 @@ export interface ColeccionMapa {
  */
 export type RespuestaMapa = Partial<Record<CapaMapa, ColeccionMapa>>;
 
+export interface Acometida {
+  id:            string;
+  contratoId:    string;
+  napPuertoId:   string;
+  /** `declarado` = lo tecleó un humano; `verificado` = coincide con el puerto PON real. */
+  confianza:     'declarado' | 'verificado' | 'discrepante';
+  presupuestoOpticoDb: number | null;
+}
+
+export interface AcometidaDeContrato {
+  acometida: Acometida;
+  puerto:    NapPuerto | null;
+  nap:       Nap | null;
+}
+
 export type HiloEstado = 'libre' | 'en_uso' | 'averiado' | 'reservado';
 
 export interface FibraHilo {
@@ -250,6 +265,12 @@ export const plantaExternaApi = {
       params: { ...params, capas: params.capas.join(',') },
     });
     return data.data;
+  },
+
+  /** `null` cuando el contrato no tiene puerto asignado — estado legítimo, no un error. */
+  acometidaDeContrato: async (contratoId: string): Promise<AcometidaDeContrato | null> => {
+    const { data } = await api.get(`/planta-externa/acometidas/contrato/${contratoId}`);
+    return data.data ?? null;
   },
 
   detalleMufa: async (mufaId: string): Promise<MufaDetalle> => {

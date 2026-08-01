@@ -20,6 +20,8 @@ import { facturacionApi }                    from '@/lib/api/facturacion';
 import { plantillasAbonadosApi }             from '@/lib/api/plantillas-abonados';
 import { plantillasApi }                     from '@/lib/api/plantillas';
 import { zonasApi }                          from '@/lib/api/zonas';
+import { plantaExternaApi }                  from '@/lib/api/planta-externa';
+import { SelectorAcometida }                 from '@/components/planta-externa/SelectorAcometida';
 import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
 import { useToast }                          from '@/components/ui/toaster';
 import { parseApiError, cn }                 from '@/lib/utils';
@@ -100,13 +102,10 @@ const MOCK_PERFILES = [
   { id: 'prf-7', nombre: '300 Mbps — Fibra Plus' },
 ];
 
-const MOCK_CAJAS_NAP = [
-  { id: '',      nombre: 'Ninguno' },
-  { id: 'nap-1', nombre: 'NAP-01 Malvinas' },
-  { id: 'nap-2', nombre: 'NAP-02 Loreto' },
-  { id: 'nap-3', nombre: 'NAP-03 Castilla' },
-  { id: 'nap-4', nombre: 'NAP-04 Norte' },
-];
+// MOCK_CAJAS_NAP y los 8 puertos generados con Array.from se eliminaron: eran datos
+// inventados que el operador elegía creyendo que significaban algo, y que se guardaban
+// como texto libre sin ninguna relación con la planta real. Ahora se leen de `pe_nap` y
+// `pe_nap_puerto` mediante <SelectorAcometida />.
 
 // ── Steps ─────────────────────────────────────────────────────
 const STEPS = [
@@ -375,8 +374,10 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
             })(),
             macAddress:          data.mac                     || undefined,
             excluirFirewall:     data.excluirFirewall         ?? false,
-            cajaNap:             data.cajaNapId               || undefined,
-            puertoNap:           data.puertoNapId             || undefined,
+            // `cajaNap`/`puertoNap` (texto libre) quedan OBSOLETOS y ya no se escriben:
+            // el vínculo real vive en `pe_acometida`, que relaciona contrato ↔ puerto con
+            // único en ambos lados. Escribir aquí el UUID del puerto duplicaría la verdad
+            // en una columna que nadie más lee.
             direccionInstalacion: data.direccion              || undefined,
             latitudInstalacion,
             longitudInstalacion,
@@ -393,6 +394,33 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
     }
 
     const { cliente, contrato } = resultado;
+
+    // ── Acometida FTTH: reclamo del puerto ────────────────────────
+    // Va DESPUÉS de crear el contrato porque la asignación necesita su id, y usa el
+    // reclamo atómico del backend (UPDATE condicional de una sentencia): si otro operador
+    // tomó el puerto en el intervalo, aquí se entera uno solo.
+    //
+    // Un fallo NO revierte el alta: el abonado y su servicio quedan creados y sólo falta
+    // asignarle un puerto, cosa que se resuelve desde la ficha en diez segundos. Tirar
+    // abajo un alta completa por un puerto ocupado sería un remedio peor que la
+    // enfermedad — y el operador tendría que recargar todos los datos.
+    if (contrato?.id && data.puertoNapId) {
+      try {
+        const r = await plantaExternaApi.asignarPuerto(data.puertoNapId, { contratoId: contrato.id });
+        if (!r.exitoso) {
+          toast(
+            `Servicio creado, pero el puerto no se pudo asignar: ${r.error ?? r.mensaje}. ` +
+            `Asígnalo desde la ficha del cliente.`,
+            { type: 'error' },
+          );
+        }
+      } catch (err) {
+        toast(
+          `Servicio creado, pero falló la asignación del puerto. Asígnalo desde la ficha del cliente.`,
+          { type: 'error' },
+        );
+      }
+    }
 
     // Factura inicial (prepago o costo de instalación)
     const esPrepago      = s2?.facturacion?.tipo === 'prepago';
@@ -1042,9 +1070,6 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
     }
   }, [perfilId]);
 
-  const PUERTOS_NAP = cajaNap
-    ? Array.from({ length: 8 }, (_, i) => ({ id: `p${i + 1}`, nombre: `Puerto ${i + 1}` }))
-    : [];
 
   const onFormSubmit = async (data: S3) => {
     if (data.routerId && !data.perfilId?.trim()) {
@@ -1225,25 +1250,18 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
         {/* ── Terminales FTTH — solo FTTH ── */}
         {esFtth && <Section title="Terminales FTTH" icon={Cable} compact>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Caja Nap">
-              <select {...register('cajaNapId')} className={INPUT_CLS}>
-                <option value="">Ninguno</option>
-                {MOCK_CAJAS_NAP.filter(n => n.id).map((n) => (
-                  <option key={n.id} value={n.nombre}>{n.nombre}</option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Puerto Nap">
-              <select {...register('puertoNapId')} className={INPUT_CLS} disabled={!cajaNap}>
-                <option value="">Ninguno</option>
-                {PUERTOS_NAP.map((p) => (
-                  <option key={p.id} value={p.nombre}>{p.nombre}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
+          <SelectorAcometida
+            napIdSeleccionada={cajaNap ?? ''}
+            puertoIdSeleccionado={watch('puertoNapId') ?? ''}
+            onNap={(v) => setValue('cajaNapId', v)}
+            onPuerto={(v) => setValue('puertoNapId', v)}
+          />
+          {/* El puerto se reclama DESPUÉS de crear el contrato, porque la asignación
+              necesita su id. Si otro operador lo toma en el intervalo, el alta no se
+              pierde: el servicio queda creado y se avisa para asignarlo desde la ficha. */}
+          <p className="text-[11px] text-muted-foreground mt-2">
+            El puerto se reserva al confirmar el alta.
+          </p>
         </Section>}
 
           {/* Equipo receptor — solo WISP */}

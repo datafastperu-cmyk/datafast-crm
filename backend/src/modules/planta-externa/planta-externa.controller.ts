@@ -18,6 +18,7 @@ import { PeMufa } from './entities/pe-mufa.entity';
 import { PeNap } from './entities/pe-nap.entity';
 import { PeNapPuerto } from './entities/pe-nap-puerto.entity';
 import { PeFibraSegmento } from './entities/pe-fibra-segmento.entity';
+import { PeAcometida } from './entities/pe-acometida.entity';
 import {
   AsignarPuertoDto, CrearFusionDto, CrearMufaDto, CrearNapDto, CrearSegmentoDto,
   InstalarSplitterDto, TransicionDto,
@@ -340,6 +341,30 @@ export class PlantaExternaController {
       descripcion: `Liberación de puerto: ${r.clase}`,
     });
     return traducirAHttp(r);
+  }
+
+  @Get('acometidas/contrato/:contratoId')
+  @ApiOperation({ summary: 'Acometida de un contrato (puerto NAP asignado), o null si no tiene' })
+  async acometidaDeContrato(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    // Devuelve `null` y no 404 cuando no hay acometida: un contrato sin puerto es un
+    // estado LEGÍTIMO —todo cliente WISP lo está— y tratarlo como error obligaría al
+    // frontend a distinguir "no tiene" de "falló la consulta" por el status code.
+    const acometida = await this.ds.getRepository(PeAcometida).findOne({
+      where: { contratoId, empresaId: user.empresaId, deletedAt: IsNull() },
+    });
+    if (!acometida) return null;
+
+    const puerto = await this.ds.getRepository(PeNapPuerto).findOne({
+      where: { id: acometida.napPuertoId, empresaId: user.empresaId },
+    });
+    const nap = puerto
+      ? await this.ds.getRepository(PeNap).findOne({ where: { id: puerto.napId } })
+      : null;
+
+    return { acometida, puerto, nap };
   }
 
   // ── Transiciones de estado ──────────────────────────────────────
