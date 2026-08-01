@@ -123,6 +123,30 @@ export interface CrearSegmentoDto {
  * expresa como un selector de tipo + un selector de elemento, que es cómo lo piensa un
  * operador — "de la mufa X a la caja Y" — en vez de seis campos donde cinco van vacíos.
  */
+/** Capas del visor. `clientes` exige el permiso `red:mapa:clientes` (PII). */
+export type CapaMapa = 'sites' | 'mufas' | 'naps' | 'fibra' | 'clientes';
+
+export interface FeatureMapa {
+  type: 'Feature';
+  geometry:
+    | { type: 'Point'; coordinates: [number, number] }
+    | { type: 'LineString'; coordinates: [number, number][] };
+  properties: Record<string, any>;
+}
+
+export interface ColeccionMapa {
+  type: 'FeatureCollection';
+  features: FeatureMapa[];
+  /** `true` cuando el backend devolvió conglomerados en vez de elementos individuales. */
+  agregado?: boolean;
+}
+
+/**
+ * Una capa ausente NO significa "vacía": la capa `clientes` se omite por completo cuando
+ * el usuario no tiene `red:mapa:clientes`. El frontend debe distinguir ambos casos.
+ */
+export type RespuestaMapa = Partial<Record<CapaMapa, ColeccionMapa>>;
+
 export type HiloEstado = 'libre' | 'en_uso' | 'averiado' | 'reservado';
 
 export interface FibraHilo {
@@ -215,6 +239,16 @@ export const plantaExternaApi = {
 
   crearMufa: async (dto: CrearMufaDto): Promise<Mufa> => {
     const { data } = await api.post('/planta-externa/mufas', dto);
+    return data.data;
+  },
+
+  mapa: async (params: {
+    minLat: number; maxLat: number; minLng: number; maxLng: number;
+    zoom: number; capas: CapaMapa[];
+  }): Promise<RespuestaMapa> => {
+    const { data } = await api.get('/planta-externa/mapa', {
+      params: { ...params, capas: params.capas.join(',') },
+    });
     return data.data;
   },
 

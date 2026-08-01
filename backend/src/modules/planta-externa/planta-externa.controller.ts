@@ -1,5 +1,6 @@
 import {
-  Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Post,
+  BadRequestException, Body, Controller, Delete, Get, NotFoundException,
+  Param, ParseUUIDPipe, Post, Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -9,8 +10,10 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { traducirAHttp } from '../../common/domain/resultado-operacion';
 import { AuditoriaService } from '../auth/auditoria.service';
 
+import { Permission } from '../../common/decorators/roles.decorator';
 import { PlantaExternaService } from './planta-externa.service';
 import { PlantaExternaPuertosService } from './planta-externa-puertos.service';
+import { PlantaExternaMapaService, type CapaMapa } from './planta-externa-mapa.service';
 import { PeMufa } from './entities/pe-mufa.entity';
 import { PeNap } from './entities/pe-nap.entity';
 import { PeNapPuerto } from './entities/pe-nap-puerto.entity';
@@ -37,9 +40,59 @@ export class PlantaExternaController {
   constructor(
     private readonly service: PlantaExternaService,
     private readonly puertos: PlantaExternaPuertosService,
+    private readonly mapaSvc: PlantaExternaMapaService,
     private readonly auditoria: AuditoriaService,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
+
+  // ── Visor cartográfico ──────────────────────────────────────────
+
+  /**
+   * Datos del mapa, acotados al rectángulo visible.
+   *
+   * Consulta por bounding box y no "todo lo de la empresa": es lo que hace que el visor
+   * responda en milisegundos con la planta completa cargada, y la razón por la que las
+   * coordenadas viven en dos columnas numéricas indexadas.
+   *
+   * La capa `clientes` exige `red:mapa:clientes`, separado de `mikrotik:view`. El guard se
+   * resuelve AQUÍ, en el borde, y se pasa como dato al servicio: la autorización debe ser
+   * visible donde entra el request, no escondida en una consulta.
+   */
+  @Get('mapa')
+  @ApiOperation({ summary: 'Capas del mapa de red en formato GeoJSON, acotadas por bounding box' })
+  async mapa(
+    @Query('minLat') minLat: string,
+    @Query('maxLat') maxLat: string,
+    @Query('minLng') minLng: string,
+    @Query('maxLng') maxLng: string,
+    @Query('zoom')   zoom: string,
+    @Query('capas')  capas: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const bbox = {
+      minLat: Number(minLat), maxLat: Number(maxLat),
+      minLng: Number(minLng), maxLng: Number(maxLng),
+    };
+
+    // Un bbox inválido devolvería una consulta con NaN que Postgres rechaza con un error
+    // críptico. Se corta acá con un motivo legible.
+    if (Object.values(bbox).some((v) => !Number.isFinite(v))) {
+      throw new BadRequestException('Bounding box inválido: se esperan minLat, maxLat, minLng y maxLng numéricos.');
+    }
+
+    const solicitadas = (capas ?? '')
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean) as CapaMapa[];
+
+    return this.mapaSvc.obtener({
+      empresaId: user.empresaId,
+      bbox,
+      zoom: Number(zoom) || 12,
+      capas: solicitadas.length ? solicitadas : ['sites', 'mufas', 'naps', 'fibra'],
+      puedeVerClientes: (user.permisos ?? []).includes(Permission.MAPA_CLIENTES),
+    });
+  }
 
   // ── Mufas ───────────────────────────────────────────────────────
 

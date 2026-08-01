@@ -14,6 +14,7 @@ import { PeSplitterSalida } from './entities/pe-splitter-salida.entity';
 
 import { PlantaExternaService } from './planta-externa.service';
 import { PlantaExternaPuertosService } from './planta-externa-puertos.service';
+import { PlantaExternaMapaService } from './planta-externa-mapa.service';
 import { PlantaExternaBarridoCron } from './planta-externa-barrido.cron';
 import { PlantaExternaController } from './planta-externa.controller';
 
@@ -41,6 +42,7 @@ import { PlantaExternaController } from './planta-externa.controller';
   providers: [
     PlantaExternaService,
     PlantaExternaPuertosService,
+    PlantaExternaMapaService,
     PlantaExternaBarridoCron,
   ],
   exports: [PlantaExternaService, PlantaExternaPuertosService],

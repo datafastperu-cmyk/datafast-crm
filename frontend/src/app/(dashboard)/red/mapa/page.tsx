@@ -1,10 +1,16 @@
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
+
 export const metadata: Metadata = { title: 'Mapa de Red' };
+
+// MapLibre toca `window` al construirse, así que no puede prerenderizarse en el servidor.
+// `ssr: false` lo carga sólo en el navegador; además evita meter la librería en el bundle
+// inicial de todo el dashboard, que la usa una sola pantalla.
+const MapaRedContent = dynamic(
+  () => import('@/components/planta-externa/MapaRedContent').then((m) => m.MapaRedContent),
+  { ssr: false },
+);
+
 export default function MapaRedPage() {
-  return (
-    <div className="p-8 flex flex-col items-center justify-center min-h-[400px] text-gray-400">
-      <p className="text-lg font-medium">Mapa de Red</p>
-      <p className="text-sm mt-1">Próximamente disponible</p>
-    </div>
-  );
+  return <MapaRedContent />;
 }

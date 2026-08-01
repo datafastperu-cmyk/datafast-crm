@@ -47,6 +47,17 @@ export enum Permission {
   ONU_PROVISION   = 'onu:provision',
   ONU_VIEW        = 'onu:view',
 
+  /**
+   * Capa de clientes del mapa de red. Separado de `mikrotik:view` a propósito.
+   *
+   * Es la única capa que expone PII —nombre y domicilio georreferenciado de cada
+   * abonado— sobre un mapa navegable y con zoom. Un técnico de campo necesita ver la
+   * planta (fibra, mufas, NAPs) para trabajar; no necesita el padrón completo ubicado
+   * casa por casa. Compartir permiso con "ver routers" convertiría el mapa de red en un
+   * directorio de domicilios para cualquiera con acceso a la sección.
+   */
+  MAPA_CLIENTES   = 'red:mapa:clientes',
+
   // Monitoreo
   MONITORING_VIEW = 'monitoring:view',
 
