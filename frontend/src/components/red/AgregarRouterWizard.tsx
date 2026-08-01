@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { mikrotikApi }              from '@/lib/api/mikrotik';
 import { vpnApi }                   from '@/lib/api/vpn';
 import { getAccessToken }           from '@/lib/api';
+import { CapturaCoordenadas, type Coordenadas } from '@/components/planta-externa/CapturaCoordenadas';
 import { useToast }     from '@/components/ui/toaster';
 import { Portal }       from '@/components/ui/portal';
 import { parseApiError, cn } from '@/lib/utils';
@@ -52,6 +53,7 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
   const [nombre,      setNombre]      = useState('');
   const [ubicacion,   setUbicacion]   = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [coords,      setCoords]      = useState<Partial<Coordenadas>>({});
 
   // Paso 2 — conexión
   const [tipoConexion, setTipoConexion] = useState<TipoConexion>('api');
@@ -339,6 +341,8 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
         nombre,
         ubicacion:            ubicacion   || undefined,
         descripcion:          descripcion || undefined,
+        latitud:              coords.latitud,
+        longitud:             coords.longitud,
         versionRos:           'v7',
         ipGestion:            ip,
         vpnIp:                tipoConexion === 'vpn_tunnel' ? vpnIp : undefined,
@@ -439,6 +443,13 @@ export function AgregarRouterWizard({ onClose, onSaved }: Props) {
                   onChange={(e) => setUbicacion(e.target.value)}
                   placeholder="Av. Sánchez Cerro 1234, Piura" />
               </div>
+
+              {/* Un router es un pin de la capa 1 del mapa de red, junto a sites y OLTs.
+                  Es opcional: un router se da de alta para administrarlo, no para
+                  dibujarlo, y exigir la coordenada bloquearía el alta de un equipo que se
+                  configura desde escritorio. Pero se pide aquí y no "después", porque
+                  cargarla después equipo por equipo es el trabajo que nadie termina. */}
+              <CapturaCoordenadas value={coords} onChange={setCoords} />
 
               <div>
                 <label className={labelCls}>Descripción / notas</label>

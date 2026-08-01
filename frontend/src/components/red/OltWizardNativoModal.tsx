@@ -8,6 +8,7 @@ import {
   Loader2, Network, Server, Sprout, Factory, X, XCircle,
 } from 'lucide-react';
 import { oltNativoApi } from '@/lib/api/olt-nativo';
+import { CapturaCoordenadas } from '@/components/planta-externa/CapturaCoordenadas';
 import { useToast } from '@/components/ui/toaster';
 import { Portal } from '@/components/ui/portal';
 import { cn } from '@/lib/utils';
@@ -309,22 +310,21 @@ export function OltWizardNativoModal({ open, onClose }: Props) {
                     />
                   </div>
 
-                  {/* Coordenadas GPS */}
-                  <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">Coordenadas GPS</label>
-                    <input
-                      className="w-full px-3 py-2 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                      placeholder="-12.046374, -77.042793"
-                      value={form.latitud && form.longitud ? `${form.latitud}, ${form.longitud}` : form.latitud}
-                      onChange={e => {
-                        const val = e.target.value;
-                        const parts = val.split(',').map(s => s.trim());
-                        set('latitud',  parts[0] ?? '');
-                        set('longitud', parts[1] ?? '');
-                      }}
-                    />
-                    <p className="text-[10px] text-muted-foreground/60 mt-0.5">Formato: latitud, longitud</p>
-                  </div>
+                  {/* Coordenadas — capa 1 del mapa de red.
+                      Antes esto partía por coma sin validar nada: "abc, def" se guardaba
+                      como NaN y una latitud de 95° entraba sin chistar. Ahora usa el mismo
+                      componente que mufas, NAPs y sites, con GPS, validación y el eco de
+                      lo que entendió. */}
+                  <CapturaCoordenadas
+                    value={{
+                      latitud:  form.latitud  ? Number(form.latitud)  : undefined,
+                      longitud: form.longitud ? Number(form.longitud) : undefined,
+                    }}
+                    onChange={(c) => {
+                      set('latitud',  c.latitud  != null ? String(c.latitud)  : '');
+                      set('longitud', c.longitud != null ? String(c.longitud) : '');
+                    }}
+                  />
 
                   {/* Descripción adicional */}
                   <div>

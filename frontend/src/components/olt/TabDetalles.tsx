@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Loader2, KeyRound, PlugZap, CheckCircle2, XCircle, Info, MapPin } from 'lucide-react';
 import { oltNativoApi, type OltDispositivo } from '@/lib/api/olt-nativo';
+import { CapturaCoordenadas, type Coordenadas } from '@/components/planta-externa/CapturaCoordenadas';
 import { useToast } from '@/components/ui/toaster';
 import { useConfirmar } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
@@ -21,9 +22,10 @@ export function TabDetalles({ olt, oltId }: Props) {
   const [nombre,      setNombre]      = useState(olt.nombre);
   const [descripcion, setDescripcion] = useState(olt.descripcion ?? '');
   const [ubicacion,   setUbicacion]   = useState(olt.ubicacion ?? '');
-  const [gps,         setGps]         = useState(
-    olt.latitud != null && olt.longitud != null ? `${olt.latitud}, ${olt.longitud}` : '',
-  );
+  const [coords, setCoords] = useState<Partial<Coordenadas>>({
+    latitud:  olt.latitud  != null ? Number(olt.latitud)  : undefined,
+    longitud: olt.longitud != null ? Number(olt.longitud) : undefined,
+  });
 
   const saveMut = useMutation({
     mutationFn: (body: Record<string, unknown>) => oltNativoApi.patch(oltId, body),
@@ -38,13 +40,14 @@ export function TabDetalles({ olt, oltId }: Props) {
   // Solo los campos que DEFINE el ERP. Modelo, estado, slots y puertos son
   // estado observado (detect-version / sync / health poller) — no se editan.
   const handleSave = () => {
-    const gpsParts = gps.split(',').map(s => s.trim());
     const body: Record<string, unknown> = {
       nombre:      nombre.trim(),
       descripcion: descripcion.trim() || null,
       ubicacion:   ubicacion.trim() || null,
-      latitud:     gpsParts[0] ? parseFloat(gpsParts[0]) : null,
-      longitud:    gpsParts[1] ? parseFloat(gpsParts[1]) : null,
+      // `CapturaCoordenadas` sólo propaga un par VÁLIDO o `undefined`; nunca llega aquí
+      // media coordenada ni un NaN, que era lo que producía el `parseFloat` de antes.
+      latitud:     coords.latitud  ?? null,
+      longitud:    coords.longitud ?? null,
     };
     saveMut.mutate(body);
   };
@@ -111,15 +114,12 @@ export function TabDetalles({ olt, oltId }: Props) {
             <Field label="Dirección física">
               <input className={inputCls} value={ubicacion} onChange={e => setUbicacion(e.target.value)} placeholder="Ej: Av. Los Pinos 123, Zona Norte" />
             </Field>
-            <Field label="Coordenadas GPS">
-              <input
-                className={inputCls}
-                value={gps}
-                onChange={e => setGps(e.target.value)}
-                placeholder="-12.046374, -77.042793"
-              />
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">Formato: latitud, longitud</p>
-            </Field>
+            <div>
+              {/* Mismo componente que mufas, NAPs y sites: una OLT es un pin de la capa 1
+                  del mapa de red, y si su coordenada se captura con otras reglas termina
+                  siendo la única que nadie validó. */}
+              <CapturaCoordenadas value={coords} onChange={setCoords} />
+            </div>
           </div>
         </Seccion>
 
