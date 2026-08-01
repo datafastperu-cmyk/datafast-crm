@@ -59,6 +59,12 @@ export class PlantaExternaController {
    * resuelve AQUÍ, en el borde, y se pasa como dato al servicio: la autorización debe ser
    * visible donde entra el request, no escondida en una consulta.
    */
+  @Get('mapa/extension')
+  @ApiOperation({ summary: 'Rectángulo que envuelve toda la planta; null si no hay coordenadas' })
+  async extensionMapa(@CurrentUser() user: JwtPayload) {
+    return this.mapaSvc.extension(user.empresaId);
+  }
+
   @Get('mapa')
   @ApiOperation({ summary: 'Capas del mapa de red en formato GeoJSON, acotadas por bounding box' })
   async mapa(

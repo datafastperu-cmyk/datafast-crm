@@ -26,7 +26,12 @@ const TILE_URL =
 const TILE_ATTRIB =
   process.env.NEXT_PUBLIC_TILE_ATTRIB || '© OpenStreetMap contributors';
 
-/** Centro inicial cuando no hay nada cargado todavía. Configurable por instalación. */
+/**
+ * Centro de RESPALDO, sólo para el primer día: cuando todavía no hay ni un elemento con
+ * coordenadas, no hay planta que encuadrar. En cuanto exista una, el mapa se centra en
+ * ella (ver `fitBounds` más abajo) y estas variables dejan de intervenir — por eso una
+ * instalación en cualquier país funciona sin configurarlas.
+ */
 const CENTRO_INICIAL: [number, number] = [
   Number(process.env.NEXT_PUBLIC_MAPA_LNG ?? -77.0428),
   Number(process.env.NEXT_PUBLIC_MAPA_LAT ?? -12.0464),
@@ -114,6 +119,26 @@ export function MapaRedContent() {
     m.addControl(new maplibregl.ScaleControl({}), 'bottom-left');
 
     m.on('load', () => {
+      // Encuadre automático sobre la planta de la empresa.
+      //
+      // El centro por variable de entorno era una configuración que el sistema puede
+      // deducir solo: una instalación en España abría el mapa sobre Lima —el valor por
+      // defecto— y el operador tenía que navegar medio mundo a mano, o alguien tenía que
+      // acordarse de cambiar la variable el día de la instalación.
+      //
+      // Falla en silencio a propósito: si la consulta no responde, el mapa se queda en el
+      // centro por defecto y sigue siendo usable. Un visor que no abre porque no pudo
+      // calcular dónde centrarse sería peor que uno mal centrado.
+      plantaExternaApi.extensionMapa()
+        .then((ext) => {
+          if (!ext) return; // sin coordenadas cargadas: no hay nada que encuadrar
+          m.fitBounds(
+            [[ext.minLng, ext.minLat], [ext.maxLng, ext.maxLat]],
+            { padding: 60, animate: false, maxZoom: 17 },
+          );
+        })
+        .catch(() => { /* el centro por defecto sigue siendo válido */ });
+
       // Una fuente y sus capas por cada capa lógica. Se crean vacías y después sólo se
       // reemplaza el GeoJSON: recrear capas en cada movimiento haría parpadear el mapa.
       for (const c of CAPAS) {

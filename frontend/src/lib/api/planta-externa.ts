@@ -257,6 +257,17 @@ export const plantaExternaApi = {
     return data.data;
   },
 
+  /**
+   * Rectángulo que envuelve toda la planta de la empresa. `null` si nadie cargó
+   * coordenadas todavía. Sirve para abrir el visor donde ESTÁ la red, sin configurarlo.
+   */
+  extensionMapa: async (): Promise<
+    { minLat: number; maxLat: number; minLng: number; maxLng: number } | null
+  > => {
+    const { data } = await api.get('/planta-externa/mapa/extension');
+    return data.data ?? null;
+  },
+
   mapa: async (params: {
     minLat: number; maxLat: number; minLng: number; maxLng: number;
     zoom: number; capas: CapaMapa[];

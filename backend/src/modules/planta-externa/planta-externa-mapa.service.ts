@@ -86,6 +86,60 @@ export class PlantaExternaMapaService {
     return salida;
   }
 
+  /**
+   * Rectángulo que envuelve TODA la planta de la empresa.
+   *
+   * Existe para que el visor se abra donde está la red, sin que nadie lo configure. El
+   * centro inicial por variable de entorno era un defecto disfrazado de opción: una
+   * instalación en España abría el mapa sobre Lima —el valor por defecto— y el operador
+   * tenía que navegar medio mundo a mano cada vez, o alguien tenía que acordarse de
+   * cambiar la variable el día de la instalación. Una configuración que el sistema puede
+   * deducir solo no debería existir.
+   *
+   * Devuelve `null` cuando no hay ningún elemento con coordenadas: ahí sí corresponde el
+   * centro por defecto, porque no hay nada que encuadrar.
+   */
+  async extension(empresaId: string): Promise<BoundingBox | null> {
+    // UNION ALL de las tablas con coordenadas. Se agregan en SQL de una sola pasada en
+    // vez de cuatro consultas: es una llamada por apertura del mapa, no vale la pena
+    // pagarla cuatro veces.
+    const [fila] = await this.ds.query(
+      `SELECT MIN(lat)::float AS min_lat, MAX(lat)::float AS max_lat,
+              MIN(lng)::float AS min_lng, MAX(lng)::float AS max_lng,
+              COUNT(*)::int   AS total
+         FROM (
+           SELECT latitud AS lat, longitud AS lng FROM pe_mufa
+            WHERE empresa_id = $1 AND deleted_at IS NULL
+           UNION ALL
+           SELECT latitud, longitud FROM pe_nap
+            WHERE empresa_id = $1 AND deleted_at IS NULL
+           UNION ALL
+           SELECT latitud, longitud FROM sites
+            WHERE empresa_id = $1 AND deleted_at IS NULL AND latitud IS NOT NULL
+           UNION ALL
+           SELECT latitud, longitud FROM clientes
+            WHERE empresa_id = $1 AND deleted_at IS NULL
+              AND latitud IS NOT NULL AND latitud <> 0
+         ) t`,
+      [empresaId],
+    );
+
+    if (!fila || fila.total === 0 || fila.min_lat == null) return null;
+
+    // Un solo elemento da un rectángulo de área cero, que `fitBounds` no sabe encuadrar
+    // (haría zoom infinito). Se le da un margen de ~500 m para que quede centrado a una
+    // escala en la que se vea la calle.
+    const margen = 0.005;
+    const plano = fila.min_lat === fila.max_lat && fila.min_lng === fila.max_lng;
+
+    return {
+      minLat: fila.min_lat - (plano ? margen : 0),
+      maxLat: fila.max_lat + (plano ? margen : 0),
+      minLng: fila.min_lng - (plano ? margen : 0),
+      maxLng: fila.max_lng + (plano ? margen : 0),
+    };
+  }
+
   /** Puntos de una tabla con lat/lng. Agrega por celda cuando el zoom es bajo. */
   private async _puntos(
     tabla: string,
