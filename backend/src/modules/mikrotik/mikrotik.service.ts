@@ -444,6 +444,11 @@ export class MikrotikService implements OnModuleInit {
       await this.subnetSvc.removeVpsRoutes(gw, router.subnetsLocales);
     }
 
+    // Quitar la interfaz OVPN del ROUTER FÍSICO antes de revocar el cert.
+    // El orden no es negociable: revocar mata el túnel, y el túnel es el único
+    // camino para llegar al router. Ver `_eliminarInterfazVpnDelRouter`.
+    await this._eliminarInterfazVpnDelRouter(router);
+
     // Revocar VPN ANTES del softDelete para garantizar que si la revocación falla
     // el router siga visible en la UI y el operador pueda reintentar.
     const vpnClientes = await this.vpnSvc.listarPorRouterId(id, user.empresaId);
@@ -490,6 +495,62 @@ export class MikrotikService implements OnModuleInit {
       entidadId: id,
       descripcion: `Router eliminado: ${router.nombre} (${router.ipGestion})`,
     });
+  }
+
+  /**
+   * Elimina la interfaz `vpndatafast` del router FÍSICO antes de revocar su certificado.
+   *
+   * Incidente 2026-07-31 — el "router zombi". Al eliminar un router, el ERP revocaba el
+   * cert y borraba el CCD del lado servidor, pero nadie tocaba el MikroTik: el equipo
+   * conservaba su interfaz `vpndatafast` y seguía reintentando conectar **cada ~15 s,
+   * indefinidamente**, porque nadie le avisó que dejara de intentar. Un router dado de
+   * baja en junio seguía martillando el servidor VPN en julio (~5 700 intentos al día),
+   * inflando el log de OpenVPN hasta 160 MB.
+   *
+   * Se ejecuta ANTES de `revocar()` y el orden no es negociable: revocar mata el túnel, y
+   * ese túnel es el único camino para llegar al router. Después de revocar ya no hay forma
+   * de limpiarlo remotamente — hay que ir al equipo. Eso es exactamente lo que dejó a
+   * `df-san-jacinto-8872e0` reintentando durante semanas.
+   *
+   * NO bloquea la eliminación si el router no responde. Un equipo apagado, robado o
+   * quemado también se da de baja, y un guard duro aquí lo volvería indeleteable: el
+   * operador quedaría atrapado entre un router que no existe y un ERP que se niega a
+   * olvidarlo. Cuando no se pudo limpiar, se deja constancia con el nombre exacto de la
+   * interfaz para que alguien lo haga en campo.
+   */
+  private async _eliminarInterfazVpnDelRouter(router: Router): Promise<void> {
+    if (!router.vpnIp) return; // nunca tuvo túnel: no hay nada que limpiar
+
+    try {
+      const creds = await this.getCredentials(router.id, router.empresaId);
+
+      const eliminadas = await this.pool.execute(creds, async (api) => {
+        const existentes = await api.write('/interface/ovpn-client/print', [
+          '?name=vpndatafast',
+        ]);
+        for (const iface of existentes) {
+          await api.write('/interface/ovpn-client/remove', [`=.id=${iface['.id']}`]);
+        }
+        return existentes.length;
+      });
+
+      // El log dice lo que OCURRIÓ, no lo que se pretendía hacer. "0 interfaces" es un
+      // resultado legítimo y distinto de "1 eliminada": significa que el operador ya la
+      // había quitado a mano, o que ese router nunca llegó a aplicar el script.
+      this.logger.log(
+        eliminadas > 0
+          ? `Interfaz vpndatafast eliminada del router ${router.nombre} antes de revocar el cert.`
+          : `Router ${router.nombre}: no tenía interfaz vpndatafast que eliminar.`,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `No se pudo eliminar la interfaz vpndatafast del router ${router.nombre} ` +
+        `(${router.vpnIp}): ${err?.message ?? err}. La baja continúa. ` +
+        `ATENCIÓN: si el equipo sigue encendido, reintentará conectar cada ~15 s para ` +
+        `siempre — hay que ejecutar en él: ` +
+        `/interface ovpn-client remove [find name=vpndatafast]`,
+      );
+    }
   }
 
   // ════════════════════════════════════════════════════════════
