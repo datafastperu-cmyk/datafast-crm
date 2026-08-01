@@ -3294,6 +3294,34 @@ def _get_or_create_tr069_server_profile(
 
 _WAN_PROFILE_ERP_NAME = 'DATAFAST-MGMT'
 
+# ── Caché de descubrimiento POR OLT ────────────────────────────────────────────
+# El bootstrap de gestión hace tres consultas de descubrimiento antes de tocar nada:
+# el tr069-server-profile, el config-method y el wan-profile. Las tres son idempotentes
+# y su respuesta es la MISMA para todas las ONUs de una OLT — no cambian de un
+# aprovisionamiento a otro.
+#
+# Medido el 2026-07-31 contra el MA5800: ~5s cada una (usan
+# `display current-configuration | include ...`, que el propio CLI advierte que es lento).
+# Repetirlas por cada ONU sumaba ~15s a cada bootstrap y empujó la operación por encima
+# del timeout de 60s del cliente: "POST /ftth/bootstrap-tr069 → timeout of 60000ms".
+#
+# TTL corto a propósito: si alguien borra un perfil a mano, en 10 minutos se vuelve a
+# descubrir. Y las funciones siguen siendo idempotentes — el caché evita el viaje, no
+# cambia el resultado.
+_DESCUBRIMIENTO_TTL_S = 600
+_descubrimiento_cache: dict[str, tuple[float, Any]] = {}
+
+
+def _cacheado_por_olt(clave: str, ip: str, calcular):
+    """Memoiza por (clave, OLT) durante _DESCUBRIMIENTO_TTL_S. Un fallo NO se cachea."""
+    k = f'{clave}:{ip}'
+    hit = _descubrimiento_cache.get(k)
+    if hit and (_time_read.time() - hit[0]) < _DESCUBRIMIENTO_TTL_S:
+        return hit[1]
+    valor = calcular()
+    _descubrimiento_cache[k] = (_time_read.time(), valor)
+    return valor
+
 
 def _get_or_create_wan_profile_erp(conn: OltConnectionSchema) -> int:
     """
@@ -3435,7 +3463,12 @@ def provision_mgmt_bootstrap(
     conservan en la firma por compatibilidad con los llamadores. Requiere ONU online.
     Síncrono — llamar desde asyncio.to_thread().
     """
-    tr069_profile_id = _get_or_create_tr069_server_profile(conn, acs_url)
+    # Las tres consultas de descubrimiento van cacheadas por OLT: son idempotentes y su
+    # respuesta no cambia entre ONUs. Sin caché sumaban ~15s a CADA bootstrap y desbordaban
+    # el timeout del cliente (incidente 2026-07-31).
+    tr069_profile_id = _cacheado_por_olt(
+        f'tr069prof:{acs_url}', conn.ip, lambda: _get_or_create_tr069_server_profile(conn, acs_url),
+    )
 
     # PASOS 1 y 2c del procedimiento oficial de Huawei, que faltaban.
     #
@@ -3447,8 +3480,8 @@ def provision_mgmt_bootstrap(
     #
     # Referencia: procedimiento oficial Huawei (foro o3community) y la propia OLT, donde
     # SmartOLT gestiona 204 ONUs del mismo modelo con IP de gestión ESTÁTICA.
-    _asegurar_config_method_omci(conn)
-    wan_profile_id = _get_or_create_wan_profile_erp(conn)
+    _cacheado_por_olt('cfgmethod', conn.ip, lambda: _asegurar_config_method_omci(conn))
+    wan_profile_id = _cacheado_por_olt('wanprof', conn.ip, lambda: _get_or_create_wan_profile_erp(conn))
     logger.info(
         'provision_mgmt_bootstrap: OLT=%s slot=%d port=%d onu_id=%d mgmt_vlan=%d svc_port=%d '
         'tr069_profile_id=%d (DHCP, WAN tr069)',

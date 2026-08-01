@@ -339,7 +339,12 @@ export class OltAutomationClient {
       `slot=${payload.slot} port=${payload.port} onu_id=${payload.onu_id} mgmt_vlan=${payload.mgmt_vlan}`,
     );
     const res = await this.post<PythonFtthBootstrapResponse>(
-      '/api/v1/olt/ftth/bootstrap-tr069', payload, 60_000,
+      // 120 s, no 60. El bootstrap encadena varios comandos OMCI contra la OLT más la
+      // verificación, y el MA5800 no es rápido: con 60 s el cliente se rendía sobre una
+      // operación que seguía en curso (observado 2026-07-31), y el carril quedaba reportado
+      // como fallido aunque pudiera haberse aplicado — el mismo error que ya corregimos en
+      // rollback-gpon (150 s), inject-wan-pppoe (90 s) y rehabilitate (120 s).
+      '/api/v1/olt/ftth/bootstrap-tr069', payload, 120_000,
     );
     this.logger.log(`← ftth/bootstrap-tr069 | success=${res.success}`);
     return res;
