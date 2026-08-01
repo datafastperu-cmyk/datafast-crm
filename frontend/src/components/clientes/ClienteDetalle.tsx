@@ -28,6 +28,7 @@ import { xuiApi, type XuiLine, type EditarXuiLineDto } from '@/lib/api/xui';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { plantaExternaApi }                     from '@/lib/api/planta-externa';
 import { SelectorAcometida }                    from '@/components/planta-externa/SelectorAcometida';
+import { CapturaCoordenadas, parsearCoordenadas } from '@/components/planta-externa/CapturaCoordenadas';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
 import { ModalProvisionFtth }                from './ModalProvisionFtth';
 import { TabConfigFacturacion, calcularFechas, calcularFechaRecordatorio } from './TabConfigFacturacion';
@@ -1837,6 +1838,17 @@ function ServicioPanel({
     }).catch(() => { /* la acometida es informativa: su fallo no bloquea editar el servicio */ });
   }, [acometidaActual?.napPuertoId]);
 
+  /**
+   * Coordenadas del domicilio de instalación, derivadas del campo `coordenadas` del
+   * formulario (que sigue siendo un string por compatibilidad con el resto del schema).
+   * `parsearCoordenadas` es la MISMA regla que usa toda la planta externa: un domicilio
+   * validado con criterio propio sería el único punto del mapa que nadie comprobó.
+   */
+  const coordsInstalacion = (() => {
+    const r = parsearCoordenadas(watch('coordenadas') ?? '');
+    return r.ok ? { latitud: r.latitud, longitud: r.longitud } : {};
+  })();
+
   const sincronizarAcometida = async (contratoId: string, puertoIdNuevo: string) => {
     const puertoActual = acometidaActual?.napPuertoId ?? '';
     if (puertoActual === puertoIdNuevo) return; // nada que hacer
@@ -1872,12 +1884,12 @@ function ServicioPanel({
       setError('passwordPppoe', { message: 'Contraseña PPPoE requerida' });
       return;
     }
-    let latitudInstalacion: number | undefined;
-    let longitudInstalacion: number | undefined;
-    if (data.coordenadas) {
-      const [lat, lng] = data.coordenadas.split(',').map(v => parseFloat(v.trim()));
-      if (!isNaN(lat) && !isNaN(lng)) { latitudInstalacion = lat; longitudInstalacion = lng; }
-    }
+    // Última frontera antes de la BD: se reparsea con la misma regla del formulario en vez
+    // de confiar en que el campo venga limpio. El `parseFloat` suelto de antes dejaba pasar
+    // NaN y latitudes fuera de rango.
+    const coordParse = parsearCoordenadas(data.coordenadas ?? '');
+    const latitudInstalacion  = coordParse.ok ? coordParse.latitud  : undefined;
+    const longitudInstalacion = coordParse.ok ? coordParse.longitud : undefined;
     try {
       const payload: any = {
         tipoServicio:         data.tipoServicio         || 'wisp',
@@ -2248,12 +2260,21 @@ function ServicioPanel({
                     <input {...register('direccionInstalacion')} placeholder="Los Olivos 4ta etapa, mz D lte 17" className={cn(sp_input(), 'pl-9')} />
                   </div>
                 </SP_Field>
-                <SP_Field label="Coordenadas" hint="* Latitud,longitud">
-                  <div className="relative">
-                    <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                    <input {...register('coordenadas')} placeholder="-5.1944,-80.6328" className={cn(sp_input(), 'pl-9')} />
-                  </div>
-                </SP_Field>
+                {/* Antes era un input suelto con split(',') + parseFloat: "abc,def" se
+                    guardaba como NaN y una latitud de 95° pasaba sin chistar. Es el
+                    domicilio de instalación —el pin del abonado en el mapa— así que usa
+                    el mismo componente que el resto de la planta, con mapa y GPS. */}
+                <div className="col-span-2">
+                  <CapturaCoordenadas
+                    value={coordsInstalacion}
+                    onChange={(c) =>
+                      setValue(
+                        'coordenadas',
+                        c.latitud != null && c.longitud != null ? `${c.latitud}, ${c.longitud}` : '',
+                      )
+                    }
+                  />
+                </div>
                 <SP_Field label="Fecha Instalación" error={errors.fechaInicio?.message}>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />

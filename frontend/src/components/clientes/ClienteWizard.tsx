@@ -22,6 +22,7 @@ import { plantillasApi }                     from '@/lib/api/plantillas';
 import { zonasApi }                          from '@/lib/api/zonas';
 import { plantaExternaApi }                  from '@/lib/api/planta-externa';
 import { SelectorAcometida }                 from '@/components/planta-externa/SelectorAcometida';
+import { CapturaCoordenadas, parsearCoordenadas } from '@/components/planta-externa/CapturaCoordenadas';
 import type { FacturacionConfig, NotificacionesConfig } from '@/lib/api/plantillas-abonados';
 import { useToast }                          from '@/components/ui/toaster';
 import { parseApiError, cn }                 from '@/lib/utils';
@@ -325,15 +326,12 @@ export function ClienteWizard({ onClose }: { onClose?: () => void } = {}) {
   const handleRegistrar = async (data: S3 & { _costoInstalacion?: boolean; _montoCostoInstalacion?: number }) => {
     if (!s1) return;
 
-    // Parsear coordenadas de instalación "lat,lng"
-    let latitudInstalacion: number | undefined;
-    let longitudInstalacion: number | undefined;
-    if (data.coordenadas?.trim()) {
-      const [latStr, lngStr] = data.coordenadas.split(',');
-      const lat = parseFloat(latStr?.trim());
-      const lng = parseFloat(lngStr?.trim());
-      if (!isNaN(lat) && !isNaN(lng)) { latitudInstalacion = lat; longitudInstalacion = lng; }
-    }
+    // Coordenadas de instalación. Se reparsean aquí con la misma regla del formulario en
+    // vez de confiar en que el campo ya venga limpio: es la última frontera antes de la
+    // BD, y un `parseFloat` suelto dejaba pasar NaN y latitudes fuera de rango.
+    const coordParse = parsearCoordenadas(data.coordenadas ?? '');
+    const latitudInstalacion  = coordParse.ok ? coordParse.latitud  : undefined;
+    const longitudInstalacion = coordParse.ok ? coordParse.longitud : undefined;
 
     let resultado: { cliente: any; contrato: any | null };
     try {
@@ -973,6 +971,17 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
 
   const excluirFirewall  = watch('excluirFirewall') ?? false;
   const cajaNap          = watch('cajaNapId');
+
+  /**
+   * Coordenadas del domicilio, derivadas del campo `coordenadas` del formulario (que sigue
+   * siendo string por el schema). Se parsean con la MISMA regla que usa toda la planta
+   * externa: validar el domicilio con criterio propio lo dejaría como el único punto del
+   * mapa que nadie comprobó.
+   */
+  const coordsInstalacion = (() => {
+    const r = parsearCoordenadas(watch('coordenadas') ?? '');
+    return r.ok ? { latitud: r.latitud, longitud: r.longitud } : {};
+  })();
   const perfilId         = watch('perfilId');
   const conectadoAIdVal  = watch('conectadoAId');
   const routerId         = watch('routerId');
@@ -1371,17 +1380,21 @@ function Step3Form({ initial, direccionDefault, onBack, onSubmit }: {
               </div>
             </Field>
 
-            {/* Coordenadas */}
-            <Field label="Coordenadas" hint="* Latitud,longitud">
-              <div className="relative">
-                <Navigation className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input
-                  {...register('coordenadas')}
-                  placeholder="-5.1944, -80.6328"
-                  className={cn(INPUT_CLS, 'pl-9')}
-                />
-              </div>
-            </Field>
+            {/* Coordenadas del domicilio de instalación — el pin del abonado en el mapa.
+                Antes era un input suelto que el submit partía con split(',') + parseFloat:
+                "abc,def" se guardaba como NaN. Ahora comparte componente y reglas con el
+                resto de la planta, con mapa y GPS. */}
+            <div className="col-span-2">
+              <CapturaCoordenadas
+                value={coordsInstalacion}
+                onChange={(c) =>
+                  setValue(
+                    'coordenadas',
+                    c.latitud != null && c.longitud != null ? `${c.latitud}, ${c.longitud}` : '',
+                  )
+                }
+              />
+            </div>
 
             {/* Fecha Instalación */}
             <Field label="Fecha Instalación">
