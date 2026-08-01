@@ -10,6 +10,7 @@ import {
 
 import { sitesApi, type Site, type CreateSiteDto } from '@/lib/api/sites';
 import { mikrotikApi } from '@/lib/api/mikrotik';
+import { CapturaCoordenadas, type Coordenadas } from '@/components/planta-externa/CapturaCoordenadas';
 import { useToast } from '@/components/ui/toaster';
 import { Portal } from '@/components/ui/portal';
 import { parseApiError, cn } from '@/lib/utils';
@@ -22,6 +23,7 @@ const labelCls = 'text-xs font-medium text-muted-foreground block mb-1';
 function CrearSiteModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState<CreateSiteDto>({ nombre: '', ubicacion: '', routerId: '' });
+  const [coords, setCoords] = useState<Partial<Coordenadas>>({});
 
   const { data: routers = [], isLoading: loadingRouters } = useQuery({
     queryKey: ['routers-lista'],
@@ -31,8 +33,10 @@ function CrearSiteModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const crear = useMutation({
     mutationFn: () => sitesApi.crear({
       ...form,
-      routerId: form.routerId || undefined,
+      routerId:  form.routerId || undefined,
       ubicacion: form.ubicacion || undefined,
+      latitud:   coords.latitud,
+      longitud:  coords.longitud,
     }),
     onSuccess: () => {
       toast(`Site "${form.nombre}" creado`, { type: 'success' });
@@ -86,6 +90,13 @@ function CrearSiteModal({ onClose, onCreated }: { onClose: () => void; onCreated
                 onChange={(e) => setForm(f => ({ ...f, ubicacion: e.target.value }))}
               />
             </div>
+
+            {/* Un Site es la cabecera de la fibra: sin coordenada no puede ser el origen
+                de un tendido en el mapa de planta externa, ni aparecer en la capa de
+                nodos. Es opcional para no bloquear el alta de un nodo que se documenta
+                desde escritorio, pero se pide desde el principio porque cargarla después,
+                elemento por elemento, es el trabajo que nadie termina haciendo. */}
+            <CapturaCoordenadas value={coords} onChange={setCoords} />
 
             <div>
               <label className={labelCls}>Router de cabecera</label>

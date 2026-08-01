@@ -10,7 +10,7 @@ import {
   type CrearNapDto,
   type SplitterRelacion,
 } from '@/lib/api/planta-externa';
-import { CapturaCoordenadas, type Coordenadas } from '@/components/planta-externa/CapturaCoordenadas';
+import { CapturaCoordenadas, type Coordenadas } from './CapturaCoordenadas';
 import { useToast } from '@/components/ui/toaster';
 import { Portal } from '@/components/ui/portal';
 import { parseApiError, cn } from '@/lib/utils';
@@ -219,7 +219,7 @@ function InstalarSplitterModal({ nap, onClose, onDone }: { nap: Nap; onClose: ()
 
 // ─── Contenido principal ────────────────────────────────────────
 
-export function CajasNapContent() {
+export function CajasNapTab() {
   const qc = useQueryClient();
   const [crear, setCrear] = useState(false);
   const [splitterEn, setSplitterEn] = useState<Nap | null>(null);
@@ -232,14 +232,11 @@ export function CajasNapContent() {
   const refrescar = () => qc.invalidateQueries({ queryKey: ['planta-externa-naps'] });
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Cajas NAP</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Puntos de acceso de la red de distribución
-          </p>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Puntos de acceso de la red de distribución
+        </p>
         <button onClick={() => setCrear(true)}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium">
           <Plus className="w-4 h-4" /> Nueva caja

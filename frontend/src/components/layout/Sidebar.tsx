@@ -29,13 +29,15 @@ const NAV: NavEntry[] = [
   {
     id: 'red', label: 'Gestión de Red', icon: Network,
     items: [
-      { href: '/red/sites',      label: 'Sites',            icon: Layers,   permiso: 'mikrotik:view'   },
+      // Planta Externa absorbe Sites: un site es la cabecera del grafo óptico (el origen
+      // de una troncal), así que tenerlo en otra entrada obligaba a saltar de sección
+      // para documentar una sola cosa física. Dentro es una pestaña más.
+      { href: '/red/planta-externa', label: 'Planta Externa', icon: Layers, permiso: 'mikrotik:view' },
       { href: '/red/routers',    label: 'Routers MikroTik', icon: Router,   permiso: 'mikrotik:view'   },
       { href: '/red/vpn',        label: 'OpenVPN',          icon: Shield,   permiso: 'mikrotik:manage' },
       { href: '/red/olt',        label: 'OLT / GPON',       icon: Server,   permiso: 'mikrotik:view'   },
       { href: '/red/redes-ipv4', label: 'Redes IPv4',       icon: Globe,    permiso: 'mikrotik:view'   },
 
-      { href: '/red/cajas-nap',  label: 'Cajas NAP',        icon: Box,      permiso: 'mikrotik:view'   },
       { href: '/red/mapa',       label: 'Mapa de Red',      icon: MapPin,        permiso: 'mikrotik:view'   },
       { href: '/red/drift',      label: 'Panel de Drift',   icon: AlertTriangle, permiso: 'mikrotik:view'   },
     ],
