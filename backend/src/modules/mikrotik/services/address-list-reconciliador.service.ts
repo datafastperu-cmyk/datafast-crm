@@ -49,6 +49,14 @@ export interface EntradaSobrante {
   motivo:     string;
 }
 
+export interface InformeAddressLists {
+  sobrantes:   EntradaSobrante[];
+  /** Routers efectivamente revisados. Sin esto, `sobrantes: []` es ambiguo. */
+  revisados:   string[];
+  /** Routers cuyo estado se desconoce, con el motivo. */
+  noRevisados: Array<{ router: string; motivo: string }>;
+}
+
 interface FilaRouter {
   id: string; nombre: string; empresa_id: string;
   ip_gestion: string | null; vpn_ip: string | null;
@@ -77,16 +85,29 @@ export class AddressListReconciliadorService {
     this.enCurso = true;
     try {
       await this.hb.ejecutar('address-list-reconciliador', 86400, async () => {
-        const sobrantes = await this.revisarTodos();
-        return { sobrantes: sobrantes.length };
+        const inf = await this.revisarTodos();
+        // El latido guarda los tres números: "0 sobrantes" con routers sin revisar no es
+        // lo mismo que "0 sobrantes" habiéndolos mirado todos.
+        return {
+          sobrantes:   inf.sobrantes.length,
+          revisados:   inf.revisados.length,
+          noRevisados: inf.noRevisados.length,
+        };
       });
     } finally {
       this.enCurso = false;
     }
   }
 
-  /** Revisa todos los routers activos. Nunca lanza: un router caído no cancela el resto. */
-  async revisarTodos(): Promise<EntradaSobrante[]> {
+  /**
+   * Revisa todos los routers activos. Nunca lanza: un router caído no cancela el resto.
+   *
+   * Devuelve también qué NO se pudo revisar. La primera versión devolvía solo la lista de
+   * sobrantes, y con el router ilegible informaba `[]` — indistinguible de "todo limpio".
+   * Un informe que no puede fallar en voz alta es peor que no tenerlo: da tranquilidad
+   * sin haber mirado.
+   */
+  async revisarTodos(): Promise<InformeAddressLists> {
     const routers = await this.ds.query<FilaRouter[]>(
       `SELECT id, nombre, empresa_id, ip_gestion, vpn_ip, usuario, password_cifrado,
               usar_ssl, puerto_api, puerto_api_ssl, version_ros, timeout_conexion
@@ -94,33 +115,42 @@ export class AddressListReconciliadorService {
         WHERE deleted_at IS NULL AND activo = true`,
     ).catch(() => []);
 
-    const sobrantes: EntradaSobrante[] = [];
+    const informe: InformeAddressLists = { sobrantes: [], revisados: [], noRevisados: [] };
+
     for (const router of routers) {
       try {
-        sobrantes.push(...await this.revisarRouter(router));
+        informe.sobrantes.push(...await this.revisarRouter(router));
+        informe.revisados.push(router.nombre);
       } catch (e: any) {
         // Un router inalcanzable no es un hallazgo: es falta de información. Se dice, y
         // no se concluye nada sobre sus listas.
-        this.logger.warn(
-          `[AddressList] no se pudo revisar ${router.nombre}: ${e?.message}`,
-        );
+        informe.noRevisados.push({ router: router.nombre, motivo: e?.message ?? 'error desconocido' });
+        this.logger.warn(`[AddressList] no se pudo revisar ${router.nombre}: ${e?.message}`);
       }
     }
 
-    if (sobrantes.length === 0) {
-      this.logger.log('[AddressList] sin entradas sobrantes en las listas del ERP');
-    } else {
+    if (informe.sobrantes.length > 0) {
       this.logger.warn(
-        `[AddressList] ${sobrantes.length} entrada(s) sobrante(s) — NO se borra nada, revisar:`,
+        `[AddressList] ${informe.sobrantes.length} entrada(s) sobrante(s) — NO se borra nada, revisar:`,
       );
-      for (const s of sobrantes) {
+      for (const s of informe.sobrantes) {
         this.logger.warn(
           `[AddressList]   ${s.routerNombre} | ${s.lista} | ${s.ip} | ${s.motivo}`
           + (s.comentario ? ` | comentario: "${s.comentario}"` : ''),
         );
       }
+    } else if (informe.revisados.length > 0) {
+      this.logger.log(
+        `[AddressList] listas del ERP limpias en: ${informe.revisados.join(', ')}`,
+      );
     }
-    return sobrantes;
+
+    if (informe.noRevisados.length > 0) {
+      this.logger.warn(
+        `[AddressList] ${informe.noRevisados.length} router(s) SIN revisar — su estado se desconoce`,
+      );
+    }
+    return informe;
   }
 
   private async revisarRouter(router: FilaRouter): Promise<EntradaSobrante[]> {
@@ -156,10 +186,12 @@ export class AddressListReconciliadorService {
     const contratos = await this.ds.query<
       Array<{ ip_asignada: string; estado: string; en_prorroga: boolean }>
     >(
-      `SELECT ip_asignada, estado::text AS estado, en_prorroga
+      // `ip_asignada` es `inet`, no texto: sin el cast Postgres responde
+      // «operator does not exist: inet = text» y la revisión entera se cae.
+      `SELECT ip_asignada::text AS ip_asignada, estado::text AS estado, en_prorroga
          FROM contratos
         WHERE router_id = $1
-          AND ip_asignada = ANY($2::text[])
+          AND ip_asignada::text = ANY($2::text[])
           AND deleted_at IS NULL
           AND estado <> 'baja_definitiva'`,
       [router.id, ips],
