@@ -11,6 +11,7 @@ import {
 import { Request } from 'express';
 
 import { MikrotikService }    from './mikrotik.service';
+import { AddressListReconciliadorService } from './services/address-list-reconciliador.service';
 import {
   CreateRouterDto, UpdateRouterDto,
   ProvisionarClienteDto, SuspenderClienteDto,
@@ -29,7 +30,10 @@ import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 export class MikrotikController {
   private readonly logger = new Logger(MikrotikController.name);
 
-  constructor(private readonly svc: MikrotikService) {}
+  constructor(
+    private readonly svc: MikrotikService,
+    private readonly reconciliador: AddressListReconciliadorService,
+  ) {}
 
   // ─── TEST DE CONEXIÓN DIRECTA (antes de guardar) ─────────
 
@@ -213,6 +217,18 @@ export class MikrotikController {
     @CurrentUser() user: JwtPayload,
   ) {
     return StdResponse.ok(await this.svc.getSesionesPppoe(id, user.empresaId));
+  }
+
+  // Informe de entradas sobrantes en las address-lists que gestiona el ERP.
+  // SOLO LEE: no borra nada. Quitar una IP de morosos devuelve el servicio y quitarla de
+  // prórroga puede cortarlo, así que la decisión es de un humano hasta que el informe
+  // salga limpio varios ciclos seguidos.
+  @Get('address-lists/sobrantes')
+  @RequirePermission('mikrotik:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Entradas huérfanas o inconsistentes en las address-lists del ERP' })
+  async getAddressListsSobrantes() {
+    return StdResponse.ok(await this.reconciliador.revisarTodos());
   }
 
   @Get('routers/:id/morosos')

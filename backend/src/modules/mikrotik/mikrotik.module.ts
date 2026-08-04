@@ -8,6 +8,7 @@ import { RouterConnectionPool }      from './services/connection-pool.service';
 import { PppoeService }              from './services/pppoe.service';
 import { QueueService }              from './services/queue.service';
 import { FirewallService }           from './services/firewall.service';
+import { AddressListReconciliadorService } from './services/address-list-reconciliador.service';
 import { InterfaceService }          from './services/interface.service';
 import { SubnetRouteService }        from './services/subnet-route.service';
 import { ArpService }               from './services/arp.service';
@@ -60,6 +61,7 @@ import { ConfiguracionModule }       from '../config/config.module';
     PppoeService,
     QueueService,
     FirewallService,
+    AddressListReconciliadorService,
     ArpService,
     WirelessService,
     InterfaceService,

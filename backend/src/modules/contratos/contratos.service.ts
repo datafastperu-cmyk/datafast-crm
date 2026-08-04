@@ -701,6 +701,13 @@ export class ContratosService {
       upd.routerId   = null as any;
       upd.segmentoId = null as any;
       upd.ipAsignada = null as any;
+      // Un contrato dado de baja no puede seguir "en prórroga": la prórroga es un permiso
+      // para seguir navegando unos días más, y aquí ya no hay servicio que prorrogar.
+      // Sin esto el flag quedaba pegado, y `findProrrogasVencidas` —que no mira el
+      // estado— lo devolvería como prórroga viva. La limpieza en el router la hace S3
+      // (`desaprovisionarMikrotik` quita la IP de morosos y prorroga_datafast).
+      upd.enProrroga    = false;
+      upd.prorrogaHasta = null as any;
 
       // S1: Liberar IP
       const t1 = Date.now();
@@ -728,7 +735,20 @@ export class ContratosService {
           this.logger.warn(`cambiarEstado baja MikroTik: ${e?.message}`);
           await this.sagaLog.registrarPaso(sagaBajaId, 3, 'desprovisionar_mikrotik', 'FAIL', e?.message, Date.now() - t3);
           // Encolar para reintento automático — el outbox reintenta cada 5 min hasta 12 veces
-          await this.outboxRed.encolarDesprovisionar(id, 'baja_definitiva_hardware_fallo').catch(() => void 0);
+          // Router e IP se toman del contrato ANTES de que el `update` de más abajo los
+          // ponga a NULL. Si el reintento los buscara luego, no encontraría ninguno.
+          //
+          // El `.catch` no se traga el error en silencio: así estuvo meses el encolado
+          // roto (routerId 'none' contra una columna uuid) sin que nadie lo notara.
+          await this.outboxRed.encolarDesprovisionar(id, contrato.routerId ?? null, {
+            ipAsignada:   contrato.ipAsignada,
+            usuarioPppoe: contrato.usuarioPppoe,
+            motivo:       'baja_definitiva_hardware_fallo',
+          }).catch((e2: any) => this.logger.error(
+            `cambiarEstado baja: NO se pudo encolar el reintento de limpieza MikroTik `
+            + `| contrato ${id} | ${e2?.message}. La IP ${contrato.ipAsignada ?? '(sin IP)'} `
+            + 'puede quedar en las address-lists del router.',
+          ));
         });
 
       // S4: Eliminar de access list antena (soft)

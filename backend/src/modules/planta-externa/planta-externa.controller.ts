@@ -14,6 +14,7 @@ import { Permission } from '../../common/decorators/roles.decorator';
 import { PlantaExternaService } from './planta-externa.service';
 import { PlantaExternaPuertosService } from './planta-externa-puertos.service';
 import { PlantaExternaMapaService, type CapaMapa } from './planta-externa-mapa.service';
+import { PlantaExternaTrazaService } from './planta-externa-traza.service';
 import { PeMufa } from './entities/pe-mufa.entity';
 import { PeNap } from './entities/pe-nap.entity';
 import { PeNapPuerto } from './entities/pe-nap-puerto.entity';
@@ -42,6 +43,7 @@ export class PlantaExternaController {
     private readonly service: PlantaExternaService,
     private readonly puertos: PlantaExternaPuertosService,
     private readonly mapaSvc: PlantaExternaMapaService,
+    private readonly traza: PlantaExternaTrazaService,
     private readonly auditoria: AuditoriaService,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
@@ -371,6 +373,33 @@ export class PlantaExternaController {
       : null;
 
     return { acometida, puerto, nap };
+  }
+
+  @Get('traza/contrato/:contratoId')
+  @ApiOperation({ summary: 'Camino óptico del abonado a la cabecera, con presupuesto y contraste real' })
+  async trazaContrato(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    // Lectura óptica real de la ONU del contrato, si existe. Es lo que convierte el
+    // cálculo teórico en diagnóstico: sin ella la traza sigue sirviendo para ver el camino,
+    // pero no valida nada — y el veredicto lo dice explícitamente en vez de callarlo.
+    const [medicion] = await this.ds.query(
+      `SELECT inv.rx_power_dbm
+         FROM contratos c
+         JOIN ftth_onu_registro r ON r.contrato_id = c.id
+         JOIN olt_onu_inventario inv
+           ON inv.olt_id = r.olt_id AND inv.sn = r.sn
+        WHERE c.id = $1 AND c.empresa_id = $2
+        LIMIT 1`,
+      [contratoId, user.empresaId],
+    ).catch(() => [null]);
+
+    return this.traza.trazarContrato(
+      user.empresaId,
+      contratoId,
+      medicion?.rx_power_dbm != null ? Number(medicion.rx_power_dbm) : null,
+    );
   }
 
   // ── Transiciones de estado ──────────────────────────────────────

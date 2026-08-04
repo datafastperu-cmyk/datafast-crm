@@ -140,8 +140,40 @@ export class OutboxRedService {
    * Encola desprovisión cuando la baja definitiva falla en hardware.
    * Usa router_id = 'none' porque se re-consulta en ejecución.
    */
-  async encolarDesprovisionar(contratoId: string, motivo: string): Promise<void> {
-    await this.encolar('DESPROVISIONAR', contratoId, 'none', { contratoId, motivo });
+  /**
+   * Reintento de la limpieza en MikroTik cuando la baja no pudo completarla.
+   *
+   * Incidente 2026-07-30: se encolaba con `routerId = 'none'`. La columna es `uuid`, así
+   * que el INSERT reventaba con «invalid input syntax for type uuid», y el punto de
+   * llamada lo tragaba con `.catch(() => void 0)`. Resultado: NUNCA se encoló ni un solo
+   * comando —la tabla no tiene una sola fila DESPROVISIONAR— y una limpieza fallida se
+   * quedaba sin red de seguridad, dejando la IP en `morosos`/`prorroga_datafast` del
+   * router para siempre.
+   *
+   * El router y la IP viajan en el comando, no se releen del contrato: la saga de baja
+   * pone `ip_asignada` y `router_id` a NULL al terminar, así que un reintento posterior
+   * encontraría el contrato vacío y no sabría ni qué IP limpiar ni dónde.
+   */
+  async encolarDesprovisionar(
+    contratoId: string,
+    routerId:   string | null,
+    datos: { ipAsignada?: string | null; usuarioPppoe?: string | null; motivo: string },
+  ): Promise<void> {
+    if (!routerId) {
+      // Sin router no hay nada que limpiar en MikroTik (contrato solo-FTTH, o baja de un
+      // contrato que nunca llegó a aprovisionarse). Se dice, no se encola un comando
+      // imposible de ejecutar.
+      this.logger.log(
+        `[OutboxRed] DESPROVISIONAR omitido | contrato ${contratoId}: sin router asociado`,
+      );
+      return;
+    }
+    await this.encolar('DESPROVISIONAR', contratoId, routerId, {
+      contratoId,
+      ipAsignada:   datos.ipAsignada   ?? null,
+      usuarioPppoe: datos.usuarioPppoe ?? null,
+      motivo:       datos.motivo,
+    });
   }
 
   async encolarProvisionar(
@@ -512,7 +544,11 @@ export class OutboxRedService {
           await this.pppoeSvc.setEstado(creds, payload.usuarioPppoe, false);
         }
       } else if (cmd.accion === 'DESPROVISIONAR') {
-        // Para DESPROVISIONAR: eliminar PPPoE secret o regla ARP del router
+        // El payload manda sobre el contrato. La saga de baja deja `ip_asignada` y
+        // `router_id` en NULL al terminar, así que releer el contrato aquí —como se
+        // hacía— devolvía una IP nula y la limpieza de address-lists se saltaba en
+        // silencio. La lectura queda solo como respaldo para comandos encolados por
+        // otras vías, y para el tipo de autenticación, que no viaja en el payload.
         const [contratoRow] = await this.ds.query<any[]>(`
           SELECT co.usuario_pppoe AS "usuarioPppoe",
                  co.ip_asignada   AS "ipAsignada",
@@ -524,21 +560,24 @@ export class OutboxRedService {
           WHERE co.id = $1
         `, [cmd.contrato_id]).catch(() => [null]);
 
-        if (contratoRow) {
-          // Limpiar address-lists morosos/prorroga (evita IPs huérfanas en el router)
-          if (contratoRow.ipAsignada) {
-            try {
-              await this.firewallSvc.reactivarCliente(creds, contratoRow.ipAsignada);
-            } catch (e: any) {
-              this.logger.warn(`[OutboxRed] DESPROVISIONAR address-list error: ${e?.message}`);
-            }
-          }
+        const ip = payload.ipAsignada ?? contratoRow?.ipAsignada ?? null;
+        const usuarioPppoe = payload.usuarioPppoe ?? contratoRow?.usuarioPppoe ?? null;
 
-          const rawTipo = contratoRow.tipoAuth ?? contratoRow.tipoControl ?? 'ninguna';
-          const tipo    = rawTipo === 'pppoe_addresslist' ? 'pppoe' : rawTipo;
-          if (tipo === 'pppoe' && contratoRow.usuarioPppoe) {
-            await this.pppoeSvc.eliminar(creds, contratoRow.usuarioPppoe);
+        // Limpiar address-lists morosos/prorroga (evita IPs huérfanas en el router).
+        // Se intenta aunque el contrato ya no exista: el borrado del cliente no debe
+        // dejar la IP colgada en el firewall.
+        if (ip) {
+          try {
+            await this.firewallSvc.reactivarCliente(creds, ip);
+          } catch (e: any) {
+            this.logger.warn(`[OutboxRed] DESPROVISIONAR address-list error: ${e?.message}`);
           }
+        }
+
+        const rawTipo = contratoRow?.tipoAuth ?? contratoRow?.tipoControl ?? 'ninguna';
+        const tipo    = rawTipo === 'pppoe_addresslist' ? 'pppoe' : rawTipo;
+        if (usuarioPppoe && (tipo === 'pppoe' || !contratoRow)) {
+          await this.pppoeSvc.eliminar(creds, usuarioPppoe);
         }
       } else if (cmd.accion === 'APLICAR_PRORROGA') {
         const p = payload as PayloadAplicarProrroga;

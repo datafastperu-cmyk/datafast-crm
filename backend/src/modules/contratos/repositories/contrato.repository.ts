@@ -314,8 +314,13 @@ export class ContratoRepository {
 
   async findProrrogasVencidas(): Promise<Contrato[]> {
     const hoy = new Date().toISOString().split('T')[0];
+    // Se excluyen los estados terminales: un contrato dado de baja no tiene prórroga que
+    // vencer, y actuar sobre él (suspender, tocar el router) sería operar sobre un
+    // servicio que ya no existe. El filtro va aquí y no en el llamador porque este método
+    // es la definición de "prórroga vencida" para todo el que pregunte.
     return this.repo.createQueryBuilder('c')
       .where('c.en_prorroga = true').andWhere('c.prorroga_hasta < :hoy', { hoy })
+      .andWhere('c.estado <> :baja', { baja: EstadoContrato.BAJA_DEFINITIVA })
       .andWhere('c.deleted_at IS NULL').getMany();
   }
 
