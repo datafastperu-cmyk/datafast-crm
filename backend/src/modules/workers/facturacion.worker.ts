@@ -16,6 +16,7 @@ import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
 import { FacturacionService }        from '../facturacion/facturacion.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
+import { ComprobantesConfigService } from '../facturacion/comprobantes-config.service';
 import { GatewayMensajeriaService }  from '../notificaciones/services/gateway-mensajeria.service';
 import { TipoNotificacion }          from '../notificaciones/services/whatsapp.service';
 import { AuditoriaService }          from '../auth/auditoria.service';
@@ -192,6 +193,7 @@ export class FacturacionWorker {
     private readonly events:         EventEmitter,
     @InjectDataSource() private readonly ds: DataSource,
     private readonly deudaSvc:       DeudaPorContratoService,
+    private readonly comprobantesSvc: ComprobantesConfigService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -321,10 +323,20 @@ export class FacturacionWorker {
           }
         }
 
-        // ── Calcular monto por cada contrato del cliente ────
+        // ── Comprobante DEL CLIENTE ─────────────────────────
+        // Antes este worker no consultaba nada: escribía `tipo_comprobante = 'boleta'`
+        // a fuego —un tipo que puede no existir en la configuración—, tomaba la serie del
+        // comprobante por defecto de la EMPRESA y decidía el IGV con `planes.aplica_igv`.
+        // Resultado medido el 2026-08-04: los comprobantes 34 y 35 salieron como 'boleta'
+        // sin vínculo a la config, mientras ambos clientes tenían asignado «Comprobante
+        // Interno». La emisión manual sí lo resolvía bien: eran dos criterios distintos
+        // para el mismo acto.
+        const comprobante = await this.comprobantesSvc.resolverParaCliente(empresaId, clienteId);
+
         const primer    = grupo[0];
-        const serie     = serieComprobante;
-        const aplicaIgv = primer.aplica_igv === true || primer.aplica_igv === 'true';
+        const serie     = comprobante.serie || serieComprobante;
+        // El IGV es propiedad del DOCUMENTO, no del producto.
+        const aplicaIgv = comprobante.tieneCargaFiscal;
         const items: Array<{ descripcion: string; cantidad: number; precioUnitario: number; subtotal: number }> = [];
         let   totalFactura  = 0;
         let   totalSubtotal = 0;
@@ -386,22 +398,25 @@ export class FacturacionWorker {
         const [factura] = await this.ds.query(`
           INSERT INTO facturas (
             empresa_id, cliente_id, contrato_id,
-            tipo_comprobante, serie, correlativo,
+            tipo_comprobante, tipo_comprobante_nombre, comprobante_config_id,
+            serie, correlativo,
             periodo_inicio, periodo_fin,
             descripcion, subtotal, descuento, igv, total,
             monto_pagado, estado, fecha_emision, fecha_vencimiento,
             moneda, generada_automaticamente, items, created_at
           ) VALUES (
             $1, $2, NULL,
-            'boleta', $3, $4,
-            $5, $6,
-            $7, $8, 0, $9, $10,
-            0, 'emitida', CURRENT_DATE, $11,
-            'PEN', true, $12, NOW()
+            $3, $4, $5,
+            $6, $7,
+            $8, $9,
+            $10, $11, 0, $12, $13,
+            0, 'emitida', CURRENT_DATE, $14,
+            'PEN', true, $15, NOW()
           )
           RETURNING id, numero_completo
         `, [
           empresaId, clienteId,
+          comprobante.codigo, comprobante.nombre, comprobante.id,
           serie, correlativo,
           periodoInicio, periodoFin,
           descripcion, totalSubtotal, totalIgv, totalFactura,

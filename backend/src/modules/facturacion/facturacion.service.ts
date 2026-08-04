@@ -225,8 +225,11 @@ export class FacturacionService {
         for (const contrato of grupo) {
           const precioBase = parseFloat(contrato.precio || '0');
           // IGV leído de configGlobal, no del primer contrato del lote
-          const contratoAplicaIgv = comprobante.tieneCargaFiscal &&
-            (contrato.aplica_igv === true || contrato.aplica_igv === 'true');
+          // El IGV es propiedad del DOCUMENTO, no del producto: lo decide la carga fiscal
+          // del comprobante, no una bandera del plan. Antes se exigían ambas y bastaba con
+          // que el plan tuviera `aplica_igv = false` para emitir una factura fiscal sin
+          // IGV — o al revés, según qué plan hubiera contratado el cliente.
+          const contratoAplicaIgv = comprobante.tieneCargaFiscal;
 
           const { subtotal: sub, igv: igvItem, total: tot } =
             this.calcularMontosDesdeBase(precioBase, 0, contratoAplicaIgv, igvRate);
@@ -392,8 +395,11 @@ export class FacturacionService {
 
         for (const contrato of grupo) {
           const precioBase = parseFloat(contrato.precio || '0');
-          const contratoAplicaIgv = comprobante.tieneCargaFiscal &&
-            (contrato.aplica_igv === true || contrato.aplica_igv === 'true');
+          // El IGV es propiedad del DOCUMENTO, no del producto: lo decide la carga fiscal
+          // del comprobante, no una bandera del plan. Antes se exigían ambas y bastaba con
+          // que el plan tuviera `aplica_igv = false` para emitir una factura fiscal sin
+          // IGV — o al revés, según qué plan hubiera contratado el cliente.
+          const contratoAplicaIgv = comprobante.tieneCargaFiscal;
 
           const { subtotal: sub, igv: igvItem, total: tot } =
             this.calcularMontosDesdeBase(precioBase, 0, contratoAplicaIgv, igvRate);
