@@ -16,9 +16,18 @@
 # el vhost existe siempre; lo que cambia es si alguien puede llegar a él. Un vhost
 # inalcanzable no molesta a nadie y evita tener dos caminos de arranque distintos.
 #
-# El certificado se emite aparte, con el mismo flujo que los otros dos hosts. Mientras no
-# exista, nginx no arranca este server: por eso la emisión debe hacerse ANTES de apuntar
-# el DNS, no después.
+# ORDEN OBLIGATORIO al activar este host, y el motivo de cada paso:
+#
+#   1. DNS → apuntar ${WEB_DOMAIN} a la IP del servidor.
+#      Let's Encrypt valida por HTTP-01: entra desde fuera al dominio para comprobar que
+#      es tuyo. Sin DNS resuelto, la emisión falla. No se puede emitir "por adelantado".
+#   2. Definir WEB_DOMAIN en el .env y emitir el certificado (scripts/ssl-setup.sh).
+#   3. Recién entonces reiniciar nginx.
+#
+# El paso 3 va último porque este server referencia el certificado por ruta: si nginx
+# arranca con WEB_DOMAIN definido y el archivo no existe, NO LEVANTA — y nginx es el
+# frente de todo, así que se cae el ERP entero, no sólo la web. `ssl-setup.sh` ya hace 2
+# y 3 en ese orden y sólo emite lo que esté configurado.
 # ==============================================================
 
 server {
