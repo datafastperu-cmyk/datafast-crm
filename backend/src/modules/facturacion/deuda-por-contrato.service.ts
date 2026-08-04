@@ -88,6 +88,15 @@ export class DeudaPorContratoService {
       [clienteId, empresaId],
     );
 
+    // Contratos con ciclo de vida vivo: los que pueden cargar con una deuda. Un contrato
+    // dado de baja no debe recibir imputaciones nuevas.
+    const contratosVivos = (await this.ds.query<Array<{ id: string }>>(
+      `SELECT id FROM contratos
+        WHERE cliente_id = $1 AND empresa_id = $2
+          AND deleted_at IS NULL AND estado <> 'baja_definitiva'`,
+      [clienteId, empresaId],
+    )).map((c) => c.id);
+
     const deudas = new Map<string, { monto: number; comprobantes: number }>();
     const sumar = (contratoId: string, monto: number) => {
       if (monto <= 0) return;
@@ -112,11 +121,22 @@ export class DeudaPorContratoService {
 
       const lineas = this.lineasPorContrato(f.items);
 
-      // Consolidada sin líneas atribuibles: facturas anteriores a `contratoId` en el
-      // ítem, o compuestas solo de cargos. No se reparte a ciegas —repartir a partes
-      // iguales inventaría una imputación—; queda como deuda del cliente sin contrato,
-      // visible en el portal pero fuera del corte automático.
-      if (!lineas.size) continue;
+      // Consolidada sin líneas atribuibles: facturas emitidas antes de que el ítem
+      // llevara `contratoId`, o compuestas solo de cargos.
+      if (!lineas.size) {
+        // Con UN solo contrato vivo no hay ambigüedad: esa deuda es suya y de nadie más.
+        // Sin esto, la factura no se imputaba a ningún contrato y `deuda_total` mostraba
+        // menos de lo que el cliente debía — el operador cobraba esa cifra y luego la
+        // reactivación, que sí mira todas las facturas del cliente, se negaba a levantar
+        // el servicio (incidente 2026-08-04, Piero Escobar: ERP decía S/64, debía S/128).
+        if (contratosVivos.length === 1) {
+          sumar(contratosVivos[0], saldo);
+        }
+        // Con varios contratos NO se reparte a ciegas: repartir a partes iguales
+        // inventaría una imputación que nadie decidió. Queda como deuda del cliente sin
+        // contrato — visible en su estado de cuenta, fuera del corte por contrato.
+        continue;
+      }
 
       const baseAtribuible = [...lineas.values()].reduce((s, v) => s + v, 0);
       if (baseAtribuible <= 0) continue;

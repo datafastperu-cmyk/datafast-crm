@@ -15,6 +15,7 @@ import { DataSource }          from 'typeorm';
 import { EventEmitter2 as EventEmitter } from '@nestjs/event-emitter';
 
 import { FacturacionService }        from '../facturacion/facturacion.service';
+import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 import { GatewayMensajeriaService }  from '../notificaciones/services/gateway-mensajeria.service';
 import { TipoNotificacion }          from '../notificaciones/services/whatsapp.service';
 import { AuditoriaService }          from '../auth/auditoria.service';
@@ -190,6 +191,7 @@ export class FacturacionWorker {
     private readonly auditoria:      AuditoriaService,
     private readonly events:         EventEmitter,
     @InjectDataSource() private readonly ds: DataSource,
+    private readonly deudaSvc:       DeudaPorContratoService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -407,15 +409,15 @@ export class FacturacionWorker {
           JSON.stringify(items),
         ]);
 
-        // ── Actualizar deuda en cada contrato individualmente ─
-        for (const { id, monto } of montoPorContrato) {
-          await this.ds.query(`
-            UPDATE contratos SET
-              deuda_total = COALESCE(deuda_total, 0) + $1,
-              meses_deuda = COALESCE(meses_deuda, 0) + 1
-            WHERE id = $2
-          `, [monto, id]);
-        }
+        // ── Refrescar la deuda proyectada de los contratos del cliente ──
+        // Antes esto era `deuda_total = deuda_total + monto`: un CONTADOR incremental que
+        // nunca volvía a mirar las facturas. Cualquier salto —una emisión que no llegó a
+        // sumar, un pago aplicado por otra vía— quedaba fijado para siempre, y como el
+        // corte selecciona por `deuda_total > 0` y la reactivación calcula la deuda desde
+        // las facturas, el ERP acababa cobrando con un criterio y decidiendo con otro
+        // (incidente 2026-08-04: ficha S/64, deuda real S/128, reactivación denegada tras
+        // pagar). Ahora se recalcula desde `facturas`, la única fuente.
+        await this.deudaSvc.recalcularPorCliente(clienteId, empresaId);
 
         resultado.exitosas++;
         resultado.montoTotal += totalFactura;

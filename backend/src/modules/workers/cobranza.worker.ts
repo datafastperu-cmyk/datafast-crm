@@ -27,6 +27,7 @@ import {
   EventNotificacionPagoRecibido,
 } from '../notificaciones/events/notification.events';
 import { FacturacionService }        from '../facturacion/facturacion.service';
+import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
 import { IProvisionamientoProvider } from '../aprovisionamiento/interfaces/provisionamiento-provider.interface';
 
@@ -400,6 +401,7 @@ export class CobranzaWorker {
     private readonly pppoeSvc:       PppoeService,
     private readonly gatewaySvc:     GatewayMensajeriaService,
     private readonly facturacionSvc: FacturacionService,
+    private readonly deudaSvc:       DeudaPorContratoService,
     private readonly auditoria:      AuditoriaService,
     private readonly events:         EventEmitter,
     private readonly outboxSvc:      OutboxRedService,
@@ -731,10 +733,11 @@ export class CobranzaWorker {
     }
 
     if (deudaRestante > 0) {
-      await this.ds.query(
-        `UPDATE contratos SET deuda_total = $1, meses_deuda = $2 WHERE id = $3`,
-        [deudaRestante, mesesRestantes, contratoId],
-      ).catch(() => void 0);
+      // Se refresca la proyección con el MISMO cálculo que usa el resto del ERP, en vez
+      // de escribir aquí el total del cliente sobre un solo contrato. Escribirlo a mano
+      // era lo que hacía que la ficha mostrara una cifra y esta puerta decidiera con
+      // otra: el operador cobraba lo que veía y la reactivación se negaba igual.
+      await this.deudaSvc.recalcularPorCliente(clienteId, empresaId).catch(() => void 0);
       this.logger.warn(
         `[REACTIVAR] Cancelado: contrato ${contratoId} aún tiene deuda S/ ${deudaRestante} ` +
         `en ${mesesRestantes} factura(s) — el servicio permanece suspendido`,
