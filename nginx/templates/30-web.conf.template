@@ -1,0 +1,76 @@
+# ==============================================================
+# CRM ISP DATAFAST — Web pública (${WEB_DOMAIN})
+#
+# Tercer rol del esquema de hosts. Los tres son OPCIONALES: el ERP no está atado a
+# ningún dominio, subdominio ni IP —ni pública ni local—.
+#
+#   ${WEB_DOMAIN}     web pública          ← este archivo
+#   ${ERP_DOMAIN}     panel administrativo
+#   ${PORTAL_DOMAIN}  portal del abonado
+#
+# PLANTILLA: envsubst resuelve las variables al arrancar el contenedor, desde el .env
+# del VPS. Nunca hay un dominio escrito en el repositorio.
+#
+# SIN `WEB_DOMAIN` definido, docker-compose le pasa `web.invalid` — un TLD reservado por
+# la RFC 2606 que ningún DNS resuelve. nginx no admite plantillas condicionales, así que
+# el vhost existe siempre; lo que cambia es si alguien puede llegar a él. Un vhost
+# inalcanzable no molesta a nadie y evita tener dos caminos de arranque distintos.
+#
+# El certificado se emite aparte, con el mismo flujo que los otros dos hosts. Mientras no
+# exista, nginx no arranca este server: por eso la emisión debe hacerse ANTES de apuntar
+# el DNS, no después.
+# ==============================================================
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${WEB_DOMAIN};
+
+    ssl_certificate     /etc/nginx/ssl/live/${WEB_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/${WEB_DOMAIN}/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    access_log /var/log/nginx/web_access.log json_combined;
+    error_log  /var/log/nginx/web_error.log warn;
+
+    # Rate limit de cara a internet abierto: aquí entra cualquiera, no un operador
+    # autenticado ni un abonado con contrato.
+    limit_conn conn_limit 20;
+
+    # ── Superficie deliberadamente MÍNIMA ─────────────────────────
+    # Este host NO expone la API del ERP ni el portal. Es la razón de separar por host en
+    # vez de por ruta: una web pública es la superficie más expuesta de la instalación, y
+    # compartir origen con el panel haría que un fallo aquí alcanzara la sesión del
+    # operador. Cuando exista la sección de web pública en el ERP, se abrirán aquí sólo
+    # las rutas que le correspondan.
+    location = / {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass http://frontend_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Recursos estáticos de Next (la web pública se sirve desde el mismo frontend).
+    location /_next/ {
+        proxy_pass http://frontend_app;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        allow all;
+    }
+
+    # Todo lo demás devuelve 404 en vez de caer al ERP. Un dominio público que sirve el
+    # panel administrativo por una ruta olvidada es exactamente lo que este vhost evita.
+    location / {
+        return 404;
+    }
+}

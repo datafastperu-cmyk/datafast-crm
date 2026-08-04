@@ -13,24 +13,41 @@ warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 # Cargar .env si existe
 [ -f .env ] && source .env || { echo "Crear .env primero (cp .env.example .env)"; exit 1; }
 
-# Los dominios se leen de APP_DOMAIN / PORTAL_DOMAIN — las mismas variables que
-# consume nginx vía envsubst. Antes el portal se derivaba de FRONTEND_URL, que en
-# .env.example apunta al MISMO host que APP_URL: se pedía dos veces el certificado
-# del panel y ninguno para el portal, sin que el script fallara.
-DOMAIN_APP=${APP_DOMAIN:-}
+# Los dominios se leen de las MISMAS variables que consume nginx vía envsubst. Antes el
+# portal se derivaba de FRONTEND_URL, que en .env.example apunta al MISMO host que
+# APP_URL: se pedía dos veces el certificado del panel y ninguno para el portal, sin que
+# el script fallara.
+#
+# ERP_DOMAIN con respaldo en APP_DOMAIN: renombrar sin periodo de gracia rompería toda
+# instalación existente en su próxima actualización.
+DOMAIN_ERP=${ERP_DOMAIN:-${APP_DOMAIN:-}}
 DOMAIN_PORTAL=${PORTAL_DOMAIN:-}
+DOMAIN_WEB=${WEB_DOMAIN:-}
 EMAIL=${SMTP_FROM_EMAIL:-admin@tudominio.com}
 
-if [ -z "$DOMAIN_APP" ] || [ -z "$DOMAIN_PORTAL" ]; then
-    echo "Falta APP_DOMAIN y/o PORTAL_DOMAIN en .env (solo el host, sin https://)"; exit 1
+# Sólo el del ERP es imprescindible para emitir algo. El portal y la web son opcionales
+# por diseño: una instalación en LAN o servida por IP no tiene ninguno de los tres, y
+# exigirlos dejaría fuera justo a esas.
+if [ -z "$DOMAIN_ERP" ]; then
+    echo "Falta ERP_DOMAIN en .env (solo el host, sin https://)."
+    echo "Si esta instalación se sirve por IP, no necesitas certificados: omite este paso."
+    exit 1
 fi
-if [ "$DOMAIN_APP" = "$DOMAIN_PORTAL" ]; then
-    echo "APP_DOMAIN y PORTAL_DOMAIN no pueden ser el mismo host: el portal del cliente"
+if [ -n "$DOMAIN_PORTAL" ] && [ "$DOMAIN_ERP" = "$DOMAIN_PORTAL" ]; then
+    echo "ERP_DOMAIN y PORTAL_DOMAIN no pueden ser el mismo host: el portal del cliente"
     echo "debe servirse en un subdominio propio para aislar cookies y rate-limit."; exit 1
 fi
+if [ -n "$DOMAIN_WEB" ] && { [ "$DOMAIN_WEB" = "$DOMAIN_ERP" ] || [ "$DOMAIN_WEB" = "$DOMAIN_PORTAL" ]; }; then
+    echo "WEB_DOMAIN no puede coincidir con ERP_DOMAIN ni PORTAL_DOMAIN: la web pública es"
+    echo "la superficie más expuesta y por eso vive en un host propio."; exit 1
+fi
 
-warn "Dominio admin: $DOMAIN_APP"
-warn "Dominio portal: $DOMAIN_PORTAL"
+# Compatibilidad con el resto del script, que usa el nombre viejo.
+DOMAIN_APP="$DOMAIN_ERP"
+
+warn "Dominio ERP: $DOMAIN_ERP"
+warn "Dominio portal: ${DOMAIN_PORTAL:-(sin portal dedicado — modo ruta)}"
+warn "Dominio web: ${DOMAIN_WEB:-(sin web pública)}"
 warn "Email: $EMAIL"
 echo ""
 read -p "¿Los datos son correctos? (s/n): " confirm
@@ -53,17 +70,36 @@ certbot certonly --standalone \
     --email "$EMAIL" \
     -d "$DOMAIN_APP"
 
-log "Obteniendo certificado para $DOMAIN_PORTAL..."
-certbot certonly --standalone \
-    --non-interactive \
-    --agree-tos \
-    --email "$EMAIL" \
-    -d "$DOMAIN_PORTAL"
+# Portal y web son OPCIONALES: se emite sólo lo que esté configurado. Llamar a certbot
+# con `-d ""` aborta el script y dejaría al ERP sin su propio certificado, que sí se
+# había emitido bien.
+if [ -n "$DOMAIN_PORTAL" ]; then
+    log "Obteniendo certificado para $DOMAIN_PORTAL..."
+    certbot certonly --standalone \
+        --non-interactive \
+        --agree-tos \
+        --email "$EMAIL" \
+        -d "$DOMAIN_PORTAL"
+else
+    warn "Sin PORTAL_DOMAIN: el portal se sirve en /portal del mismo host, sin certificado propio."
+fi
+
+if [ -n "$DOMAIN_WEB" ]; then
+    log "Obteniendo certificado para $DOMAIN_WEB..."
+    certbot certonly --standalone \
+        --non-interactive \
+        --agree-tos \
+        --email "$EMAIL" \
+        -d "$DOMAIN_WEB"
+else
+    warn "Sin WEB_DOMAIN: no se publica web pública."
+fi
 
 # Crear symlinks en directorio del proyecto
 mkdir -p ./nginx/ssl/live
 ln -sfn /etc/letsencrypt/live/$DOMAIN_APP ./nginx/ssl/live/$DOMAIN_APP
-ln -sfn /etc/letsencrypt/live/$DOMAIN_PORTAL ./nginx/ssl/live/$DOMAIN_PORTAL
+[ -n "$DOMAIN_PORTAL" ] && ln -sfn /etc/letsencrypt/live/$DOMAIN_PORTAL ./nginx/ssl/live/$DOMAIN_PORTAL
+[ -n "$DOMAIN_WEB" ]    && ln -sfn /etc/letsencrypt/live/$DOMAIN_WEB    ./nginx/ssl/live/$DOMAIN_WEB
 
 # Configurar renovación automática (cron)
 (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet && docker compose exec nginx nginx -s reload") | crontab -

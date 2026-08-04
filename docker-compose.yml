@@ -177,10 +177,25 @@ services:
     # Por eso conf.d NO se monta — debe ser escribible por el contenedor.
     # NGINX_ENVSUBST_FILTER acota la sustitución a estas dos variables, para que las
     # variables propias de nginx ($host, $scheme, $request_uri…) queden intactas.
+    # Tres roles, tres hosts, ninguno obligatorio: el ERP no está atado a ningún dominio
+    # ni IP. Una instalación puede servirse por IP a secas, en una LAN, o con los tres
+    # nombres — y ninguna de las tres es un caso especial en el código.
+    #
+    #   ERP_DOMAIN    panel administrativo   (antes APP_DOMAIN)
+    #   PORTAL_DOMAIN portal del abonado     (sin él, portal en modo ruta)
+    #   WEB_DOMAIN    web pública            (sin él, el apex no se sirve)
+    #
+    # ERP_DOMAIN cae en APP_DOMAIN si no está definido: renombrar una variable sin
+    # periodo de gracia rompe toda instalación existente en su próxima actualización.
     environment:
-      APP_DOMAIN:             ${APP_DOMAIN:-localhost}
+      ERP_DOMAIN:             ${ERP_DOMAIN:-${APP_DOMAIN:-localhost}}
+      APP_DOMAIN:             ${ERP_DOMAIN:-${APP_DOMAIN:-localhost}}
       PORTAL_DOMAIN:          ${PORTAL_DOMAIN:-portal.localhost}
-      NGINX_ENVSUBST_FILTER:  "^(APP_DOMAIN|PORTAL_DOMAIN)$$"
+      # Sin WEB_DOMAIN el vhost de la web pública queda con un server_name inalcanzable
+      # en vez de desaparecer: nginx no admite plantillas condicionales, y un vhost que
+      # nadie resuelve es inofensivo.
+      WEB_DOMAIN:             ${WEB_DOMAIN:-web.invalid}
+      NGINX_ENVSUBST_FILTER:  "^(ERP_DOMAIN|APP_DOMAIN|PORTAL_DOMAIN|WEB_DOMAIN)$$"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/templates:/etc/nginx/templates:ro
