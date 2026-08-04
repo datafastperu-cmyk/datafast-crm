@@ -162,6 +162,40 @@ export interface AcometidaDeContrato {
   nap:       Nap | null;
 }
 
+export interface PasoTraza {
+  tipo: 'acometida' | 'nap' | 'splitter' | 'fibra' | 'mufa' | 'fusion' | 'site';
+  descripcion: string;
+  perdidaDb?: number;
+}
+
+export interface ComponentePerdida {
+  tipo: 'fibra' | 'splitter' | 'fusion' | 'conector';
+  descripcion: string;
+  perdidaDb: number;
+}
+
+export interface Presupuesto {
+  componentes: ComponentePerdida[];
+  perdidaTotalDb: number;
+  /** Potencia que DEBERÍA leer la ONU si la documentación refleja la planta real. */
+  potenciaEsperadaDbm: number;
+  dentroDePresupuesto: boolean;
+  margenRestanteDb: number;
+}
+
+export type VeredictoMedicion =
+  | { clase: 'sin_medicion'; mensaje: string; desviacionDb?: undefined }
+  | { clase: 'coherente';    mensaje: string; desviacionDb: number }
+  | { clase: 'anomalia';     mensaje: string; desviacionDb: number };
+
+/**
+ * Una traza incompleta NO es un error: devuelve los pasos recorridos y dice dónde se
+ * rompe la documentación. Ese motivo es el entregable — señala qué empalme falta cargar.
+ */
+export type ResultadoTraza =
+  | { completa: true;  pasos: PasoTraza[]; presupuesto: Presupuesto; veredicto: VeredictoMedicion; motivo?: undefined }
+  | { completa: false; pasos: PasoTraza[]; presupuesto?: undefined; veredicto?: undefined; motivo: string };
+
 export type HiloEstado = 'libre' | 'en_uso' | 'averiado' | 'reservado';
 
 export interface FibraHilo {
@@ -282,6 +316,12 @@ export const plantaExternaApi = {
   acometidaDeContrato: async (contratoId: string): Promise<AcometidaDeContrato | null> => {
     const { data } = await api.get(`/planta-externa/acometidas/contrato/${contratoId}`);
     return data.data ?? null;
+  },
+
+  /** Camino óptico del abonado a la cabecera, con presupuesto y contraste contra la ONU. */
+  trazaContrato: async (contratoId: string): Promise<ResultadoTraza> => {
+    const { data } = await api.get(`/planta-externa/traza/contrato/${contratoId}`);
+    return data.data;
   },
 
   detalleMufa: async (mufaId: string): Promise<MufaDetalle> => {

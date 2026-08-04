@@ -8,7 +8,7 @@ import { z }                           from 'zod';
 import { useRouter }                   from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Search, Calendar, Monitor, MessageSquare,
+  ArrowLeft, Search, Calendar, Monitor, MessageSquare, Activity,
   CreditCard, Wifi, WifiOff, Loader2, Radio, Cable, Shuffle,
   XCircle, ScrollText, FolderOpen, Wrench, Save, AlertCircle,
   Receipt, BarChart2, Ticket, Plus, FileText, ChevronDown,
@@ -28,6 +28,7 @@ import { xuiApi, type XuiLine, type EditarXuiLineDto } from '@/lib/api/xui';
 import { zonasApi }                             from '@/lib/api/zonas';
 import { plantaExternaApi }                     from '@/lib/api/planta-externa';
 import { SelectorAcometida }                    from '@/components/planta-externa/SelectorAcometida';
+import { TrazaOpticaModal }                     from '@/components/planta-externa/TrazaOpticaModal';
 import { CapturaCoordenadas, parsearCoordenadas } from '@/components/planta-externa/CapturaCoordenadas';
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
 import { ModalProvisionFtth }                from './ModalProvisionFtth';
@@ -1131,6 +1132,7 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
 
   const openCreate = () => { setEditingContrato(null); setShowPanel(true); };
   const openEdit   = (c: Contrato) => { setEditingContrato(c); setShowPanel(true); };
+  const [trazaContrato, setTrazaContrato] = useState<Contrato | null>(null);
   const closePanel = () => { setShowPanel(false); setEditingContrato(null); };
   const onSaved    = () => {
     queryClient.invalidateQueries({ queryKey: ['cliente-contratos', clienteId] });
@@ -1239,6 +1241,18 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
                       >
                         <Pencil className="w-3 h-3" />
                       </button>
+                      {/* Traza óptica: por dónde pasa el servicio de este cliente y si la
+                          señal que recibe se explica por la planta documentada. Sólo FTTH
+                          —un enlace inalámbrico no tiene camino de fibra que recorrer—. */}
+                      {c.tipoServicio === 'ftth' && (
+                        <button
+                          onClick={() => setTrazaContrato(c)}
+                          title="Traza óptica"
+                          className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <Activity className="w-3 h-3" />
+                        </button>
+                      )}
                       {/* Dos operaciones distintas tras el mismo botón:
                           · APROVISIONAR — solo con el contrato activo. Instalar servicio a un
                             abonado suspendido dejaría la ONU viva en la OLT con el ERP
@@ -1374,6 +1388,14 @@ function TabServicios({ clienteId, contratos }: { clienteId: string; contratos: 
         </div>
         <SvcPagination total={xuiLinesFiltered.length} />
       </div>
+
+      {trazaContrato && (
+        <TrazaOpticaModal
+          contratoId={trazaContrato.id}
+          titulo={`Contrato ${trazaContrato.numeroContrato}`}
+          onClose={() => setTrazaContrato(null)}
+        />
+      )}
 
       {editingXuiLine && (
         <XuiLineEditModal
