@@ -202,6 +202,7 @@ export class PlantaExternaService {
       codigo?: string;
       perdidaDb?: number;
       hiloEntradaId?: string;
+      descripcion?: string;
     },
   ): Promise<ResultadoOperacion & { id?: string }> {
     const salidasNuevas = SALIDAS_POR_RELACION[dto.relacion];
@@ -263,6 +264,7 @@ export class PlantaExternaService {
         em.create(PeSplitter, {
           empresaId,
           codigo: dto.codigo ?? null,
+          descripcion: dto.descripcion ?? null,
           relacion: dto.relacion,
           // El default es sólo el valor típico: la pérdida real varía por fabricante y
           // generación, y forzar la tabla haría que el presupuesto óptico arrastre un
@@ -564,6 +566,7 @@ export class PlantaExternaService {
       codigo?: string;
       perdidaDb?: number;
       hiloEntradaId?: string;
+      descripcion?: string;
     },
   ): Promise<ResultadoOperacion & { id?: string }> {
     return this.ds.transaction(async (em) => {
@@ -578,6 +581,7 @@ export class PlantaExternaService {
         em.create(PeSplitter, {
           empresaId,
           codigo: dto.codigo ?? null,
+          descripcion: dto.descripcion ?? null,
           relacion: dto.relacion,
           perdidaDb: dto.perdidaDb ?? PERDIDA_TIPICA_DB[dto.relacion],
           alojadoEnMufaId: mufa.id,

@@ -344,7 +344,7 @@ export const plantaExternaApi = {
 
   instalarSplitterEnMufa: async (
     mufaId: string,
-    dto: { relacion: SplitterRelacion; codigo?: string; perdidaDb?: number; hiloEntradaId?: string },
+    dto: { relacion: SplitterRelacion; codigo?: string; perdidaDb?: number; hiloEntradaId?: string; descripcion?: string },
   ): Promise<ResultadoHttp> => {
     const { data } = await api.post(`/planta-externa/mufas/${mufaId}/splitters`, dto);
     return data.data;
@@ -362,7 +362,7 @@ export const plantaExternaApi = {
 
   instalarSplitter: async (
     napId: string,
-    dto: { relacion: SplitterRelacion; codigo?: string; perdidaDb?: number },
+    dto: { relacion: SplitterRelacion; codigo?: string; perdidaDb?: number; descripcion?: string },
   ): Promise<ResultadoHttp> => {
     const { data } = await api.post(`/planta-externa/naps/${napId}/splitters`, dto);
     return data.data;

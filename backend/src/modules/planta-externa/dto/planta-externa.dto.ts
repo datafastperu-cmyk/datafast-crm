@@ -133,6 +133,10 @@ export class InstalarSplitterDto {
   @ApiPropertyOptional({ description: 'Hilo que lo alimenta. En el 2º splitter suele ser un hilo de paso.' })
   @IsOptional() @IsUUID()
   hiloEntradaId?: string;
+
+  /** Texto libre: marca, modelo, serie, bandeja, o una advertencia para el próximo técnico. */
+  @ApiPropertyOptional() @IsOptional() @IsString()
+  descripcion?: string;
 }
 
 export class CrearFusionDto {

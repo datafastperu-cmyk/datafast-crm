@@ -132,6 +132,19 @@ function CrearNapModal({ onClose, onCreated }: { onClose: () => void; onCreated:
               />
             </div>
 
+            {/* Texto libre del operador. Lo que ninguna columna captura y el técnico
+                necesita en campo: cómo se abre, dónde está la llave, si el poste es de
+                terceros, qué advertir al siguiente que suba. */}
+            <div>
+              <label className={labelCls}>Notas del operador</label>
+              <textarea
+                className={cn(inputCls, 'resize-none h-16')}
+                placeholder="Marca de la caja, cómo se abre, acceso, advertencias…"
+                value={form.descripcion ?? ''}
+                onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+              />
+            </div>
+
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={onClose}
                 className="flex-1 px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:bg-muted">
@@ -155,9 +168,12 @@ function CrearNapModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 function InstalarSplitterModal({ nap, onClose, onDone }: { nap: Nap; onClose: () => void; onDone: () => void }) {
   const { toast } = useToast();
   const [relacion, setRelacion] = useState<SplitterRelacion>('1x8');
+  const [descripcion, setDescripcion] = useState('');
 
   const instalar = useMutation({
-    mutationFn: () => plantaExternaApi.instalarSplitter(nap.id, { relacion }),
+    mutationFn: () => plantaExternaApi.instalarSplitter(nap.id, {
+      relacion, descripcion: descripcion.trim() || undefined,
+    }),
     onSuccess: (r) => {
       toast(r.mensaje || r.error || '', { type: r.exitoso ? 'success' : 'error' });
       if (r.exitoso) onDone();
@@ -198,6 +214,17 @@ function InstalarSplitterModal({ nap, onClose, onDone }: { nap: Nap; onClose: ()
                 onChange={(e) => setRelacion(e.target.value as SplitterRelacion)}>
                 {RELACIONES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
+            </div>
+
+            {/* El splitter era el único elemento sin campo de texto libre. Aquí va lo que
+                ninguna columna captura: marca y modelo real, número de serie, si es de
+                casete o módulo, en qué bandeja quedó. */}
+            <div>
+              <label className={labelCls}>Notas del operador</label>
+              <textarea className={cn(inputCls, 'resize-none h-16')}
+                placeholder="Marca, modelo, serie, bandeja donde quedó instalado…"
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)} />
             </div>
 
             <div className="flex gap-2 pt-1">

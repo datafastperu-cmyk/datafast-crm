@@ -50,6 +50,15 @@ export class PeSplitter extends BaseModel {
   @Column({ type: 'varchar', length: 50, nullable: true })
   codigo: string | null;
 
+  /**
+   * Texto libre del operador: marca y modelo real, número de serie, tipo de casete, en
+   * qué bandeja está dentro de la caja, o una advertencia para el próximo que lo abra.
+   * Es información que ninguna columna estructurada captura y que, sin este campo, vive
+   * sólo en la cabeza de quien lo instaló.
+   */
+  @Column({ type: 'text', nullable: true })
+  descripcion: string | null;
+
   @Column({ type: 'varchar', length: 10 })
   relacion: SplitterRelacion;
 

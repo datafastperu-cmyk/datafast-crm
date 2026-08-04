@@ -606,6 +606,42 @@ export class PromesasPagoService {
   // EJECUTAR CORTE (interno — llamado por el scheduler)
   // ────────────────────────────────────────────────────────────
   private async ejecutarCorte(promesa: PromesaPago): Promise<void> {
+    // GUARDA ANTES DE CORTAR: se comprueba la deuda AHORA, no se confía en que alguien
+    // haya cerrado la promesa al cobrar.
+    //
+    // Motivo (2026-08-04): con facturas consolidadas el pago no cancelaba la promesa
+    // —resolvía el contrato como `null` y se saltaba la rama— así que este cron cortaba
+    // a clientes que ya habían pagado, con su factura saldada. Aquel camino ya está
+    // corregido, pero esta comprobación es la que impide que un fallo equivalente en
+    // CUALQUIER otro punto se convierta otra vez en un corte indebido: cortar el servicio
+    // de quien no debe nada es el peor error posible de este cron.
+    const [deudaRow] = await this.ds.query<Array<{ deuda: string }>>(
+      `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
+         FROM facturas f
+         JOIN contratos c ON c.id = $1
+        WHERE (f.contrato_id = c.id OR (f.contrato_id IS NULL AND f.cliente_id = c.cliente_id))
+          AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+          AND f.deleted_at IS NULL`,
+      [promesa.contratoId],
+    ).catch(() => [{ deuda: '' }]);
+
+    // Cadena vacía = la consulta falló. Ante la duda NO se corta: un corte indebido se
+    // paga en reputación y en llamadas; un corte que llega un día tarde, no.
+    const deuda = deudaRow?.deuda;
+    if (deuda === '') {
+      this.logger.warn(
+        `[Promesa] No se pudo comprobar la deuda de ${promesa.contratoId} — corte aplazado al próximo tick`,
+      );
+      return;
+    }
+    if (parseFloat(deuda ?? '0') <= 0) {
+      this.logger.log(
+        `[Promesa] ${promesa.id} vencida pero el cliente NO debe nada: se marca cumplida en vez de cortar`,
+      );
+      await this.onPagoVerificado({ contratoId: promesa.contratoId, pagoId: '', deuda: 0 });
+      return;
+    }
+
     // Marcar como VENCIDA_PENDIENTE ANTES de tocar el router
     // Si el proceso muere aquí, el scheduler lo reintenta en el siguiente tick
     await this.repo.update(promesa.id, { estado: EstadoPromesa.VENCIDA_PENDIENTE });

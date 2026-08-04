@@ -95,6 +95,17 @@ function CrearMufaModal({ onClose, onCreated }: { onClose: () => void; onCreated
                 onChange={(e) => setForm({ ...form, direccion: e.target.value })} />
             </div>
 
+            {/* Texto libre: lo que ninguna columna estructurada captura y el técnico
+                necesita al abrir la caja. Sin este campo, esa información vive sólo en la
+                cabeza de quien la instaló y se pierde cuando esa persona no está. */}
+            <div>
+              <label className={labelCls}>Notas del operador</label>
+              <textarea className={cn(inputCls, 'resize-none h-16')}
+                placeholder="Marca y modelo, altura del poste, llave necesaria, advertencias…"
+                value={form.descripcion ?? ''}
+                onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+            </div>
+
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={onClose}
                 className="flex-1 px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:bg-muted">

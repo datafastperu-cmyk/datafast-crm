@@ -201,6 +201,18 @@ function CrearSegmentoModal({ onClose, onCreated }: { onClose: () => void; onCre
               La longitud entra en el cálculo de pérdida óptica.
             </p>
 
+            {/* Texto libre. En un tendido es donde se anota el recorrido real —"por la
+                azotea del edificio 4", "cruza la avenida por el semáforo"—, que es lo que
+                el cuadrilla necesita para encontrarlo y que ningún campo estructurado
+                puede representar hasta que se levante el trazado. */}
+            <div>
+              <label className={labelCls}>Notas del operador</label>
+              <textarea className={cn(inputCls, 'resize-none h-16')}
+                placeholder="Recorrido real, propietario del poste, permisos, observaciones…"
+                value={form.descripcion ?? ''}
+                onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+            </div>
+
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={onClose}
                 className="flex-1 px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:bg-muted">

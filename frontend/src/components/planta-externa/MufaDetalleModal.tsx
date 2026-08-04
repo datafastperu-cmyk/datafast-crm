@@ -48,6 +48,9 @@ export function MufaDetalleModal({ mufaId, onClose }: Props) {
   /** Hilos seleccionados para fusionar. Máximo dos: una fusión une exactamente dos. */
   const [seleccion, setSeleccion] = useState<string[]>([]);
   const [relacionSplitter, setRelacionSplitter] = useState<SplitterRelacion>('1x8');
+  const [descripcionSplitter, setDescripcionSplitter] = useState('');
+  /** Pérdida medida con la fusionadora; vacío usa el valor típico del backend. */
+  const [obsFusion, setObsFusion] = useState('');
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['mufa-detalle', mufaId],
@@ -62,10 +65,11 @@ export function MufaDetalleModal({ mufaId, onClose }: Props) {
   const fusionar = useMutation({
     mutationFn: () => plantaExternaApi.crearFusion(mufaId, {
       hiloAId: seleccion[0], hiloBId: seleccion[1],
+      observacion: obsFusion.trim() || undefined,
     }),
     onSuccess: (r) => {
       toast(r.mensaje || r.error || '', { type: r.exitoso ? 'success' : 'error' });
-      if (r.exitoso) { setSeleccion([]); refrescar(); }
+      if (r.exitoso) { setSeleccion([]); setObsFusion(''); refrescar(); }
     },
     onError: (err) => toast(parseApiError(err), { type: 'error' }),
   });
@@ -80,7 +84,10 @@ export function MufaDetalleModal({ mufaId, onClose }: Props) {
   });
 
   const instalarSplitter = useMutation({
-    mutationFn: () => plantaExternaApi.instalarSplitterEnMufa(mufaId, { relacion: relacionSplitter }),
+    mutationFn: () => plantaExternaApi.instalarSplitterEnMufa(mufaId, {
+      relacion: relacionSplitter,
+      descripcion: descripcionSplitter.trim() || undefined,
+    }),
     onSuccess: (r) => {
       toast(r.mensaje || r.error || '', { type: r.exitoso ? 'success' : 'error' });
       if (r.exitoso) refrescar();
@@ -227,16 +234,27 @@ export function MufaDetalleModal({ mufaId, onClose }: Props) {
                         </span>
                       )}
                     </p>
-                    <button
-                      onClick={() => fusionar.mutate()}
-                      disabled={seleccion.length !== 2 || fusionar.isPending}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-                    >
-                      {fusionar.isPending
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Link2 className="w-3.5 h-3.5" />}
-                      Fusionar
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {/* Observación del empalme: qué se hizo y por qué. Un "reempalmada
+                          tras corte del 12/03" explica meses después por qué esa fusión
+                          tiene más pérdida que sus vecinas. */}
+                      <input
+                        className="w-52 bg-background border border-input rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60"
+                        placeholder="Observación del empalme…"
+                        value={obsFusion}
+                        onChange={(e) => setObsFusion(e.target.value)}
+                      />
+                      <button
+                        onClick={() => fusionar.mutate()}
+                        disabled={seleccion.length !== 2 || fusionar.isPending}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+                      >
+                        {fusionar.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Link2 className="w-3.5 h-3.5" />}
+                        Fusionar
+                      </button>
+                    </div>
                   </div>
                 </section>
               )}
@@ -296,6 +314,16 @@ export function MufaDetalleModal({ mufaId, onClose }: Props) {
                     ))}
                   </div>
                 )}
+
+                {/* Texto libre del splitter: marca, modelo, serie, bandeja. Es lo que
+                    ninguna columna estructurada captura y que el técnico necesita al
+                    abrir la mufa. */}
+                <input
+                  className="w-full mb-2 bg-background border border-input rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60"
+                  placeholder="Notas: marca, modelo, serie, bandeja…"
+                  value={descripcionSplitter}
+                  onChange={(e) => setDescripcionSplitter(e.target.value)}
+                />
 
                 <div className="flex items-center gap-2">
                   <select

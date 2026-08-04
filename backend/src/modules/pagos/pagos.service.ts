@@ -102,13 +102,37 @@ export class PagosService {
           where: { id: factura.contratoId },
         });
       }
-      // Fallback: facturas sin contratoId directo (mora generada sin vínculo explícito)
-      // → busca el contrato suspendido del cliente para poder reactivarlo al pagar
+      // Fallback para facturas CONSOLIDADAS (contrato_id nulo, el caso normal cuando un
+      // cliente tiene varios servicios en un solo comprobante).
+      //
+      // Incidente 2026-08-04, reproducido en producción con CNT-2026-000007: aquí solo se
+      // buscaba `SUSPENDIDO`. Pero otorgar una prórroga devuelve el contrato a `ACTIVO`
+      // —correcto, la prórroga ES permiso para seguir navegando— y la rama que cancela la
+      // prórroga exige `ACTIVO && enProrroga`. Las dos condiciones no se cruzaban jamás:
+      // el contrato quedaba en `null`, no se cancelaba la promesa ni se sacaba la IP de
+      // `prorroga_datafast`, y el cron de vencidas cortaba días después a un cliente que
+      // ya había pagado.
+      //
+      // Mismo agujero, otro sabor: un contrato `cortado` o `moroso` pagando una factura
+      // consolidada tampoco se encontraba, así que tampoco se reactivaba.
       if (!contrato && factura.clienteId) {
+        // Prioridad a los que están sin servicio: es lo urgente.
         contrato = await manager.findOne(Contrato, {
-          where: { clienteId: factura.clienteId, empresaId, estado: EstadoContrato.SUSPENDIDO },
+          where: [EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO, EstadoContrato.MOROSO]
+            .map((estado) => ({ clienteId: factura.clienteId, empresaId, estado })),
           order: { fechaEstado: 'DESC' },
         });
+        // Si ninguno está bloqueado, puede haber uno con el servicio activo por una
+        // prórroga que este pago acaba de saldar.
+        if (!contrato) {
+          contrato = await manager.findOne(Contrato, {
+            where: {
+              clienteId: factura.clienteId, empresaId,
+              estado: EstadoContrato.ACTIVO, enProrroga: true,
+            },
+            order: { fechaEstado: 'DESC' },
+          });
+        }
       }
 
       // PASO 3 — Determinar estado inicial del pago
@@ -219,7 +243,21 @@ export class PagosService {
               AND f.deleted_at IS NULL
           `, [contrato.id, factura.clienteId]);
           if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
-            contratosEnProrroga.push(contrato.id);
+            if (factura.contratoId) {
+              contratosEnProrroga.push(contrato.id);
+            } else {
+              // Consolidada: el pago salda la deuda de TODO el cliente, así que cancela
+              // todas sus prórrogas. Simétrico a `contratosParaReactivar` de más arriba;
+              // sin esto, un cliente con dos servicios en prórroga solo veía limpiarse uno
+              // y el otro lo cortaba el cron días después.
+              const enProrroga = await manager.find(Contrato, {
+                where: {
+                  clienteId: factura.clienteId, empresaId,
+                  estado: EstadoContrato.ACTIVO, enProrroga: true,
+                },
+              });
+              contratosEnProrroga.push(...enProrroga.map((c) => c.id));
+            }
           }
         } else if (contrato && contrato.estado === EstadoContrato.PENDIENTE_ACTIVACION) {
           this.logger.warn(
