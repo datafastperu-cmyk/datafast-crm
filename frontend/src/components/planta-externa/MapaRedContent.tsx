@@ -7,6 +7,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { Layers, Loader2, AlertCircle, Info } from 'lucide-react';
 
 import { plantaExternaApi, type CapaMapa, type RespuestaMapa } from '@/lib/api/planta-externa';
+import { urlComoLlegar } from './BotonComoLlegar';
 import { parseApiError, cn } from '@/lib/utils';
 
 /**
@@ -36,6 +37,24 @@ const CENTRO_INICIAL: [number, number] = [
   Number(process.env.NEXT_PUBLIC_MAPA_LNG ?? -77.0428),
   Number(process.env.NEXT_PUBLIC_MAPA_LAT ?? -12.0464),
 ];
+
+/**
+ * Escapa texto antes de meterlo en el HTML del popup.
+ *
+ * NO es opcional: la etiqueta sale de la base de datos —el nombre de un abonado, el código
+ * de una caja— y `setHTML` de MapLibre inyecta la cadena tal cual. Un cliente registrado
+ * como `<img src=x onerror=...>` ejecutaría ese script en la sesión de quien abra el mapa.
+ * Es XSS almacenado, y el vector de entrada es un formulario de alta que cualquier
+ * vendedor puede rellenar.
+ */
+function escaparHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 interface DefCapa {
   key: CapaMapa;
@@ -190,6 +209,36 @@ export function MapaRedContent() {
             paint: { 'text-color': '#374151', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
           });
         }
+      }
+
+      // Popup al pulsar un pin, con el enlace de navegación. Es la razón principal por la
+      // que soporte y campo abren este mapa: ubicar un elemento y arrancar hacia él.
+      for (const c of CAPAS.filter((x) => x.tipo === 'punto')) {
+        m.on('click', `${c.key}-punto`, (ev) => {
+          const f = ev.features?.[0];
+          if (!f) return;
+          const props = f.properties ?? {};
+          if (props.cluster) return; // un conglomerado no es un destino
+
+          const [lng, lat] = (f.geometry as any).coordinates as [number, number];
+          const etiqueta = String(props.etiqueta ?? c.label);
+
+          new maplibregl.Popup({ closeButton: true, offset: 12 })
+            .setLngLat([lng, lat])
+            .setHTML(
+              `<div style="font-size:12px;line-height:1.5">
+                 <strong>${escaparHtml(etiqueta)}</strong><br/>
+                 <span style="color:#6b7280">${lat.toFixed(6)}, ${lng.toFixed(6)}</span><br/>
+                 <a href="${escaparHtml(urlComoLlegar(lat, lng, etiqueta))}" target="_blank"
+                    rel="noopener noreferrer"
+                    style="color:#2563eb;font-weight:500">Cómo llegar →</a>
+               </div>`,
+            )
+            .addTo(m);
+        });
+
+        m.on('mouseenter', `${c.key}-punto`, () => { m.getCanvas().style.cursor = 'pointer'; });
+        m.on('mouseleave', `${c.key}-punto`, () => { m.getCanvas().style.cursor = ''; });
       }
 
       setListo(true);

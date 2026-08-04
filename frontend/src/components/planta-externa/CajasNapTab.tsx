@@ -11,6 +11,7 @@ import {
   type SplitterRelacion,
 } from '@/lib/api/planta-externa';
 import { CapturaCoordenadas, type Coordenadas } from './CapturaCoordenadas';
+import { BotonComoLlegar } from './BotonComoLlegar';
 import { useToast } from '@/components/ui/toaster';
 import { Portal } from '@/components/ui/portal';
 import { parseApiError, cn } from '@/lib/utils';
@@ -285,6 +286,10 @@ export function CajasNapTab() {
                   <span>{nap.capacidadPuertos} puertos</span>
                   <span className="opacity-40">·</span>
                   <span className="capitalize">{nap.estado}</span>
+                  <BotonComoLlegar
+                    latitud={nap.latitud} longitud={nap.longitud} etiqueta={nap.codigo}
+                    className="ml-auto"
+                  />
                 </div>
 
                 {nap.puertosNoHabilitados > 0 && (

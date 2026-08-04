@@ -7,6 +7,7 @@ import { GitMerge, Plus, X, Loader2, AlertCircle, MapPin } from 'lucide-react';
 import { plantaExternaApi, type CrearMufaDto } from '@/lib/api/planta-externa';
 import { CapturaCoordenadas, type Coordenadas } from './CapturaCoordenadas';
 import { MufaDetalleModal } from './MufaDetalleModal';
+import { BotonComoLlegar } from './BotonComoLlegar';
 import { useToast } from '@/components/ui/toaster';
 import { Portal } from '@/components/ui/portal';
 import { parseApiError, cn } from '@/lib/utils';
@@ -181,7 +182,10 @@ export function MufasTab() {
                 </span>
               </div>
 
-              <p className="text-[11px] text-primary">Ver empalmes y splitters →</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] text-primary">Ver empalmes y splitters →</p>
+                <BotonComoLlegar latitud={m.latitud} longitud={m.longitud} etiqueta={m.codigo} />
+              </div>
             </button>
           ))}
         </div>
