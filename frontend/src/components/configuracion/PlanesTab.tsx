@@ -22,7 +22,6 @@ const schema = z.object({
   nombre:               z.string().min(2, 'Mínimo 2 caracteres'),
   descripcion:          z.string().optional(),
   precio:               z.coerce.number().min(0, 'Precio requerido'),
-  impuesto:             z.coerce.number().min(0).max(100).default(0),
   noCrearReglas:        z.boolean().default(false),
   velocidadBajada:      z.coerce.number().int().min(0).default(0),
   velocidadSubida:      z.coerce.number().int().min(0).default(0),
@@ -53,7 +52,7 @@ const PRIORIDADES = [
 ];
 
 const DEFAULTS: FormValues = {
-  nombre: '', descripcion: '', precio: 0, impuesto: 0,
+  nombre: '', descripcion: '', precio: 0,
   noCrearReglas: false, velocidadBajada: 0, velocidadSubida: 0,
   velocidadGarantizada: 10, burstKbps: 0, burstUmbral: 0,
   burstTiempo: 0, prioridad: 8, addresslist: '',
@@ -66,7 +65,6 @@ function planToForm(p: Plan): FormValues {
     nombre:               p.nombre,
     descripcion:          p.descripcion ?? '',
     precio:               Number(p.precio),
-    impuesto:             p.aplicaIgv ? 18 : 0,
     noCrearReglas:        p.tipoQueue === 'sin_limite',
     velocidadBajada:      p.velocidadBajada,
     velocidadSubida:      p.velocidadSubida,
@@ -88,7 +86,6 @@ function formToPayload(v: FormValues) {
     nombre:               v.nombre,
     descripcion:          v.descripcion,
     precio:               v.precio,
-    aplicaIgv:            v.impuesto > 0,
     tipoQueue:            v.noCrearReglas ? 'sin_limite' : 'simple_queue',
     velocidadBajada:      v.velocidadBajada,
     velocidadSubida:      v.velocidadSubida,
@@ -364,7 +361,7 @@ export function PlanesTab() {
               <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
                 <div className="sm:text-right flex-shrink-0">
                   <p className="text-sm font-bold text-[#050D51] dark:text-foreground">{formatPEN(p.precio)}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-muted-foreground">/mes {p.aplicaIgv ? '+ IGV' : ''}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-muted-foreground">/mes</p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button onClick={() => toggleActivo({ id: p.id, activo: !p.activo })}

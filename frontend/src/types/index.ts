@@ -117,7 +117,6 @@ export interface Plan {
   velocidadGarantizada?: number;
   precio:               number;
   precioInstalacion:    number;
-  aplicaIgv:            boolean;
   tipoQueue:            TipoQueue;
   pppProfile?:          string;
   prioridad?:           number;

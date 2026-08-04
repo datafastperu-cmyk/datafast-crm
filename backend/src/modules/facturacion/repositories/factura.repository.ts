@@ -276,7 +276,7 @@ export class FacturaRepository {
         co.dia_facturacion,
         co.cliente_id,
         co.empresa_id,
-        pl.aplica_igv,
+
         pl.nombre               AS plan_nombre,
         cl.nombres              AS cliente_nombres,
         cl.apellido_paterno,

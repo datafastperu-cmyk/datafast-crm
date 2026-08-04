@@ -8,6 +8,8 @@ import { FacturacionWorker }   from './facturacion.worker';
 import { FirewallService }     from '../mikrotik/services/firewall.service';
 import { PppoeService }        from '../mikrotik/services/pppoe.service';
 import { FacturacionService }  from '../facturacion/facturacion.service';
+import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
+import { ComprobantesConfigService } from '../facturacion/comprobantes-config.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
 import { OutboxRedService } from '../outbox-red/outbox-red.service';
 import { RedisLockService } from '../../common/redis/redis-lock.service';
@@ -101,9 +103,13 @@ describe('CobranzaWorker', () => {
   // Sequence: router, cliente
   const buildDsMock = (extraRows?: any[]) => {
     const m = jest.fn();
+    // El orden importa: son `mockResolvedValueOnce` encadenados, así que una consulta
+    // nueva en el worker desplaza todas las siguientes. La cascada al cliente (2026-08-04)
+    // se coló justo antes del SELECT del cliente y dejó la notificación sin nombre.
     m.mockResolvedValueOnce([mockRouter])       // getRouter
       .mockResolvedValueOnce([])                // UPDATE contratos (suspender)
-      .mockResolvedValueOnce([])                // INSERT historial
+      .mockResolvedValueOnce([])                // INSERT contratos_historial
+      .mockResolvedValueOnce([])                // UPDATE clientes (cascada) → ninguno bloqueado
       .mockResolvedValueOnce([mockCliente])     // getCliente para WhatsApp
       .mockResolvedValue([]);                   // resto
     return m;
@@ -116,6 +122,8 @@ describe('CobranzaWorker', () => {
         { provide: FirewallService,    useValue: mockFirewall },
         { provide: PppoeService,       useValue: mockPppoe },
         { provide: FacturacionService, useValue: mockFacturacionSvc },
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
         { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
         { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
@@ -180,6 +188,8 @@ describe('CobranzaWorker', () => {
           { provide: FirewallService,    useValue: mockFirewall },
           { provide: PppoeService,       useValue: mockPppoe },
           { provide: FacturacionService, useValue: mockFacturacionSvc },
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
         { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
@@ -229,10 +239,11 @@ describe('CobranzaWorker', () => {
 
     it('debe notificar por WhatsApp cuando notificar=true', async () => {
       const dsMock = jest.fn()
-        .mockResolvedValueOnce([mockRouter])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([mockCliente])
+        .mockResolvedValueOnce([mockRouter])   // getRouter
+        .mockResolvedValueOnce([])             // UPDATE contratos (suspender)
+        .mockResolvedValueOnce([])             // INSERT contratos_historial
+        .mockResolvedValueOnce([])             // UPDATE clientes (cascada) → ninguno
+        .mockResolvedValueOnce([mockCliente])  // getCliente para WhatsApp
         .mockResolvedValue([]);
 
       const m = await Test.createTestingModule({
@@ -241,6 +252,8 @@ describe('CobranzaWorker', () => {
           { provide: FirewallService,    useValue: mockFirewall },
           { provide: PppoeService,       useValue: mockPppoe },
           { provide: FacturacionService, useValue: mockFacturacionSvc },
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
         { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
@@ -316,6 +329,8 @@ describe('CobranzaWorker', () => {
           { provide: FirewallService,    useValue: mockFirewall },
           { provide: PppoeService,       useValue: mockPppoe },
           { provide: FacturacionService, useValue: mockFacturacionSvc },
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
         { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
@@ -377,6 +392,8 @@ describe('CobranzaWorker', () => {
           { provide: FirewallService,    useValue: mockFirewall },
           { provide: PppoeService,       useValue: mockPppoe },
           { provide: FacturacionService, useValue: mockFacturacionSvc },
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
         { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
@@ -454,6 +471,8 @@ describe('FacturacionWorker', () => {
       providers: [
         FacturacionWorker,
         { provide: FacturacionService, useValue: mockFacturacionSvc },
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
         { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
         { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
@@ -519,6 +538,8 @@ describe('FacturacionWorker', () => {
         providers: [
           FacturacionWorker,
           { provide: FacturacionService, useValue: mockFacturacionSvc },
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
         { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
@@ -588,6 +609,8 @@ describe('FacturacionWorker', () => {
         providers: [
           FacturacionWorker,
           { provide: FacturacionService, useValue: mockFacturacionSvc },
+        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
           { provide: AuditoriaService,   useValue: mockAuditoria },
         { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
         { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },

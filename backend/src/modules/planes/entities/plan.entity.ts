@@ -25,7 +25,6 @@ export class Plan extends BaseModel {
   @Column({ length:100, nullable:true }) addresslist: string;
   @Column({ type:'decimal', precision:10, scale:2 }) precio: number;
   @Column({ name:'precio_instalacion', type:'decimal', precision:10, scale:2, default:0 }) precioInstalacion: number;
-  @Column({ name:'aplica_igv', default:true }) aplicaIgv: boolean;
   @Column({ name:'tipo_queue', type:'enum', enum:TipoQueue, default:TipoQueue.SIMPLE_QUEUE }) tipoQueue: TipoQueue;
   @Column({ name:'ppp_profile', length:100, nullable:true }) pppProfile: string;
   @Column({ name:'ppp_service', length:50, default:'pppoe' }) pppService: string;

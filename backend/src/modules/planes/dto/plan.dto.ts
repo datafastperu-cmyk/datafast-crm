@@ -20,7 +20,6 @@ export class CreatePlanDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) addresslist?: string;
   @ApiProperty({ example:85 }) @IsNumber() @Min(0) @Type(()=>Number) precio: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Type(()=>Number) precioInstalacion?: number;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() aplicaIgv?: boolean;
   @ApiProperty({ enum:TipoQueue }) @IsEnum(TipoQueue) tipoQueue: TipoQueue;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) pppProfile?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) pppService?: string;

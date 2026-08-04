@@ -239,7 +239,7 @@ export class FacturacionWorker {
         cl.whatsapp,
         cl.telefono,
         cl.email,
-        pl.aplica_igv,
+
         pl.nombre            AS plan_nombre
       FROM contratos co
       JOIN clientes cl ON cl.id = co.cliente_id
