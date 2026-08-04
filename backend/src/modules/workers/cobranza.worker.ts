@@ -508,6 +508,45 @@ export class CobranzaWorker {
       VALUES ($1, $2, 'activo', 'suspendido', $3, NULL, true)
     `, [contratoId, empresaId, `Corte automático: deuda S/ ${deudaTotal}`]);
 
+    // Propagar al cliente. Este worker escribe `contratos` con SQL directo, así que no
+    // pasa por la cascada de `ContratosService.cambiarEstado`: sin esto, el corte
+    // automático dejaba al cliente figurando «activo» en el listado del ERP con su
+    // servicio cortado y su PPPoE deshabilitado en el router (incidente 2026-08-04,
+    // CNT-2026-000014).
+    //
+    // Solo si NO le queda ningún contrato dando servicio: con dos servicios y uno
+    // cortado, el cliente sigue activo, que es la verdad.
+    const [clienteBloqueado] = await this.ds.query<Array<{ id: string; cliente_id: string }>>(`
+      UPDATE clientes cl
+      SET    estado = 'suspendido', fecha_estado = NOW()
+      FROM   contratos co
+      WHERE  co.id = $1
+        AND  cl.id = co.cliente_id
+        AND  cl.estado = 'activo'
+        AND  NOT EXISTS (
+          SELECT 1 FROM contratos otro
+          WHERE otro.cliente_id = cl.id
+            AND otro.estado IN ('activo', 'pendiente_activacion')
+            AND otro.deleted_at IS NULL
+            AND otro.id != $1
+        )
+      RETURNING cl.id
+    `, [contratoId]).catch((e: any) => {
+      this.logger.warn(`[Cobranza] No se pudo sincronizar el estado del cliente: ${e?.message}`);
+      return [];
+    });
+
+    if (clienteBloqueado?.id) {
+      await this.ds.query(`
+        INSERT INTO clientes_historial_estados
+          (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+        VALUES ($1, $2, 'activo', 'suspendido', $3, NULL, true)
+      `, [
+        clienteBloqueado.id, empresaId,
+        `Corte automático por deuda S/ ${deudaTotal}`,
+      ]).catch(() => void 0);
+    }
+
     // ── 6. Notificar al cliente ────────────────────────────
     await job.progress(80);
     const [cliente] = await this.ds.query(`

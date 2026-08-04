@@ -800,6 +800,49 @@ export class ContratosService {
     await this.contratoRepo.guardarHistorial({ contratoId:id, empresaId:user.empresaId, estadoAnterior:anterior, estadoNuevo:dto.estado, motivo:dto.motivo, usuarioId:user.sub, automatico });
     await this.auditoria.logUpdate({ empresaId:user.empresaId, usuarioId:user.sub, usuarioEmail:user.email, modulo:'contratos', entidadId:id, descripcion:`Estado: ${anterior} → ${dto.estado}`, req });
 
+    // Sincronizar clientes.estado cuando se BLOQUEA un contrato.
+    //
+    // Incidente 2026-08-04 (CNT-2026-000014): la cascada existía solo para la reactivación
+    // y para la baja. Al suspender no se tocaba el cliente, así que Piero figuraba
+    // «activo» en el listado con su único servicio cortado y su PPPoE deshabilitado en el
+    // router. El operador que mira la ficha del cliente ve lo contrario de lo que le pasa
+    // al abonado.
+    //
+    // Espejo exacto de la reactivación de más abajo: el cliente pasa a suspendido solo si
+    // NO le queda ningún contrato dando servicio. Con dos servicios y uno cortado, el
+    // cliente sigue activo — que es la verdad.
+    if (
+      [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.CORTADO]
+        .includes(dto.estado as EstadoContrato)
+    ) {
+      const [clienteBloqueado] = filasUpdateReturning<{ id: string }>(await this.dataSource.query(`
+        UPDATE clientes
+        SET estado = 'suspendido', fecha_estado = NOW()
+        WHERE id = $1
+          AND estado = 'activo'
+          AND NOT EXISTS (
+            SELECT 1 FROM contratos
+            WHERE cliente_id = $1
+              AND estado IN ('activo', 'pendiente_activacion')
+              AND deleted_at IS NULL
+              AND id != $2
+          )
+        RETURNING id
+      `, [contrato.clienteId, id]));
+
+      if (clienteBloqueado) {
+        await this.dataSource.query(`
+          INSERT INTO clientes_historial_estados
+            (cliente_id, empresa_id, estado_anterior, estado_nuevo, motivo, usuario_id, automatico)
+          VALUES ($1, $2, 'activo', 'suspendido', $3, $4, $5)
+        `, [
+          contrato.clienteId, user.empresaId,
+          `Contrato ${contrato.numeroContrato} → ${dto.estado}`,
+          automatico ? null : user.sub, automatico,
+        ]).catch((e: any) => this.logger.warn(`cambiarEstado: historial cliente: ${e?.message}`));
+      }
+    }
+
     // Sincronizar clientes.estado cuando se reactiva un contrato suspendido.
     // Solo pone 'activo' si el cliente no tiene otros contratos suspendidos.
     if (
