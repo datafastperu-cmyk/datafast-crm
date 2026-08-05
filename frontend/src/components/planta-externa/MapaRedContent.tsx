@@ -28,6 +28,26 @@ const TILE_ATTRIB =
   process.env.NEXT_PUBLIC_TILE_ATTRIB || '© OpenStreetMap contributors';
 
 /**
+ * Vista satélite. Esri World Imagery no exige clave de API, que es la razón de elegirla:
+ * una instalación nueva la tiene funcionando sin registrarse en ningún servicio.
+ *
+ * Ojo al orden de los ejes: esta capa es `{z}/{y}/{x}`, no `{z}/{x}/{y}` como OSM. Con el
+ * orden equivocado devuelve teselas válidas del sitio equivocado — un error que no falla,
+ * sólo miente.
+ *
+ * Sirve para verificar en gabinete lo que se documentó en campo: sobre el plano callejero
+ * un poste es una coordenada, sobre la imagen se ve el techo, el patio y por dónde entra
+ * la acometida.
+ */
+const SAT_URL = process.env.NEXT_PUBLIC_TILE_SAT_URL
+  || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SAT_ATTRIB = process.env.NEXT_PUBLIC_TILE_SAT_ATTRIB
+  || 'Esri, Maxar, Earthstar Geographics';
+
+type VistaBase = 'normal' | 'satelite';
+const CLAVE_VISTA = 'red-mapa-vista';
+
+/**
  * Centro de RESPALDO, sólo para el primer día: cuando todavía no hay ni un elemento con
  * coordenadas, no hay planta que encuadrar. En cuanto exista una, el mapa se centra en
  * ella (ver `fitBounds` más abajo) y estas variables dejan de intervenir — por eso una
@@ -108,6 +128,16 @@ function leerCapasGuardadas(): Set<CapaMapa> {
   }
 }
 
+/** Última vista base elegida. Se recuerda por el mismo motivo que las capas. */
+function leerVistaGuardada(): VistaBase {
+  if (typeof window === 'undefined') return 'normal';
+  try {
+    return window.localStorage.getItem(CLAVE_VISTA) === 'satelite' ? 'satelite' : 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+
 export function MapaRedContent() {
   const contenedor = useRef<HTMLDivElement>(null);
   const mapa = useRef<MapLibreMap | null>(null);
@@ -116,6 +146,7 @@ export function MapaRedContent() {
   const [error, setError] = useState<string | null>(null);
   const [datos, setDatos] = useState<RespuestaMapa>({});
   const [activas, setActivas] = useState<Set<CapaMapa>>(leerCapasGuardadas);
+  const [vista, setVista] = useState<VistaBase>(leerVistaGuardada);
 
   /** Se guarda en ref además del estado: el handler de `moveend` de MapLibre captura el
    *  valor del closure, y sin la ref pediría siempre las capas del primer render. */
@@ -151,6 +182,11 @@ export function MapaRedContent() {
   useEffect(() => {
     if (!contenedor.current || mapa.current) return undefined;
 
+    // Se lee del almacenamiento y no del estado: incluir `vista` en las dependencias de
+    // este efecto recrearía el mapa entero al alternar, perdiendo posición y zoom. El
+    // cambio en caliente lo hace el efecto de abajo.
+    const vistaInicial = leerVistaGuardada();
+
     const m = new maplibregl.Map({
       container: contenedor.current,
       style: {
@@ -162,8 +198,24 @@ export function MapaRedContent() {
             tileSize: 256,
             attribution: TILE_ATTRIB,
           },
+          // Dos fuentes en vez de reescribir la URL de una sola: así cada proveedor
+          // conserva su atribución y su zoom máximo, y al alternar no se descartan las
+          // teselas ya descargadas de la otra vista.
+          satelite: {
+            type: 'raster',
+            tiles: [SAT_URL],
+            tileSize: 256,
+            maxzoom: 19,
+            attribution: SAT_ATTRIB,
+          },
         },
-        layers: [{ id: 'base', type: 'raster', source: 'base' }],
+        layers: [
+          { id: 'base', type: 'raster', source: 'base' },
+          {
+            id: 'satelite', type: 'raster', source: 'satelite',
+            layout: { visibility: vistaInicial === 'satelite' ? 'visible' : 'none' },
+          },
+        ],
         // Sin `glyphs` no hay tipografías que rasterizar, y toda capa `symbol` con
         // `text-field` —las etiquetas de mufas, NAPs y abonados— falla al renderizar.
         // Configurable porque una instalación sin salida a internet necesita servirlas
@@ -327,6 +379,20 @@ export function MapaRedContent() {
     }
   }, [datos, activas, listo]);
 
+  // ── Vista base ────────────────────────────────────────────────
+  useEffect(() => {
+    const m = mapa.current;
+    if (!m || !listo || !m.getLayer('satelite')) return;
+    m.setLayoutProperty('satelite', 'visibility', vista === 'satelite' ? 'visible' : 'none');
+  }, [vista, listo]);
+
+  const cambiarVista = (v: VistaBase) => {
+    setVista(v);
+    try {
+      window.localStorage.setItem(CLAVE_VISTA, v);
+    } catch { /* localStorage bloqueado: se pierde la preferencia, no la vista */ }
+  };
+
   const alternar = (key: CapaMapa) => {
     setActivas((prev) => {
       const s = new Set(prev);
@@ -389,6 +455,22 @@ export function MapaRedContent() {
             </label>
           );
         })}
+
+        {/* Vista base. Va en el mismo panel y no en un control aparte: es la misma
+            decisión —qué se ve— y separarla obligaría a buscarla en otro sitio. */}
+        <div className="pt-2 mt-1 border-t border-border flex gap-1">
+          {([['normal', 'Mapa'], ['satelite', 'Satélite']] as const).map(([v, etiqueta]) => (
+            <button key={v} type="button" onClick={() => cambiarVista(v)}
+              className={cn(
+                'flex-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors',
+                vista === v
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted',
+              )}>
+              {etiqueta}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Estados que el operador necesita distinguir */}
