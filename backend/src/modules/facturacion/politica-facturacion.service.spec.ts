@@ -31,6 +31,7 @@ describe('PoliticaFacturacionService', () => {
   });
 
   const politica = (over: Partial<PoliticaFacturacion> = {}): PoliticaFacturacion => ({
+    tipo: 'postpago',
     diaPago: 28,
     diasAntesEmision: 5,
     diasGracia: 7,
@@ -98,7 +99,7 @@ describe('PoliticaFacturacionService', () => {
       }]);
 
       expect(await svc.resolver('c1', 'e1')).toEqual({
-        diaPago: 28, diasAntesEmision: 5, diasGracia: 7,
+        tipo: 'postpago', diaPago: 28, diasAntesEmision: 5, diasGracia: 7,
         mesesVencidosParaCorte: 1, origen: 'cliente',
       });
     });
@@ -109,7 +110,7 @@ describe('PoliticaFacturacionService', () => {
       }]);
 
       expect(await svc.resolver('c1', 'e1')).toEqual({
-        diaPago: 12, diasAntesEmision: null, diasGracia: 5,
+        tipo: 'postpago', diaPago: 12, diasAntesEmision: null, diasGracia: 5,
         mesesVencidosParaCorte: 1, origen: 'heredada',
       });
     });
@@ -135,6 +136,71 @@ describe('PoliticaFacturacionService', () => {
       }]);
 
       expect((await svc.resolver('c1', 'e1')).diaPago).toBe(28);
+    });
+  });
+
+  describe('prepago vs postpago', () => {
+    // Hasta 2026-08-05 el campo se guardaba y no lo leía nadie: todo se facturaba como
+    // postpago aunque el abonado estuviera marcado como prepago.
+    const vencimiento = new Date(Date.UTC(2026, 7, 28)); // 28/08/2026
+
+    it('postpago ampara el mes ya consumido: el del vencimiento', () => {
+      const p = svc.periodoServicio(politica({ tipo: 'postpago' }), vencimiento);
+      expect(p).toMatchObject({ inicio: '2026-08-01', fin: '2026-08-31', mes: 8, anio: 2026 });
+    });
+
+    it('prepago ampara el mes que empieza: el siguiente', () => {
+      const p = svc.periodoServicio(politica({ tipo: 'prepago' }), vencimiento);
+      expect(p).toMatchObject({ inicio: '2026-09-01', fin: '2026-09-30', mes: 9, anio: 2026 });
+    });
+
+    it('el fin de mes sale del calendario real, incluido febrero bisiesto', () => {
+      expect(svc.periodoServicio(politica(), new Date(Date.UTC(2026, 1, 10))).fin)
+        .toBe('2026-02-28');
+      expect(svc.periodoServicio(politica(), new Date(Date.UTC(2028, 1, 10))).fin)
+        .toBe('2028-02-29');
+    });
+
+    it('prepago en diciembre cruza de año', () => {
+      const p = svc.periodoServicio(politica({ tipo: 'prepago' }), new Date(Date.UTC(2026, 11, 28)));
+      expect(p).toMatchObject({ inicio: '2027-01-01', mes: 1, anio: 2027 });
+    });
+  });
+
+  describe('preferencias de notificación', () => {
+    it('el interruptor general apaga los tres recordatorios', () => {
+      const prefs = svc.notificacionesDesde({
+        recordatoriosPago: 'desactivado',
+        recordatorio1: '-3', recordatorio2: '-1', recordatorio3: '2',
+      });
+      expect(prefs.recordatorios).toHaveLength(0);
+    });
+
+    it('conserva el signo del offset: negativo antes, positivo después', () => {
+      const prefs = svc.notificacionesDesde({
+        recordatoriosPago: 'whatsapp',
+        recordatorio1: '-3', recordatorio2: 'desactivado', recordatorio3: '2',
+      });
+      expect(prefs.recordatorios).toEqual([
+        { dias: -3, plantilla: null, indice: 1 },
+        { dias:  2, plantilla: null, indice: 3 },
+      ]);
+    });
+
+    it('sin configuración no se envía nada: el silencio es el valor seguro', () => {
+      const prefs = svc.notificacionesDesde(null);
+      expect(prefs.avisoNuevaFactura).toBeNull();
+      expect(prefs.recordatoriosPago).toBeNull();
+      expect(prefs.recordatorios).toHaveLength(0);
+    });
+
+    it('la plantilla del aviso de factura se lee de facturacion_config', () => {
+      const prefs = svc.notificacionesDesde(
+        { avisoNuevaFactura: 'whatsapp' },
+        { plantillaAvisoFactura: 'nueva_factura' },
+      );
+      expect(prefs.avisoNuevaFactura).toBe('whatsapp');
+      expect(prefs.plantillaAvisoFactura).toBe('nueva_factura');
     });
   });
 

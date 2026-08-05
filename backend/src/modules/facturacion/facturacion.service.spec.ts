@@ -8,6 +8,7 @@ import { PdfService } from './pdf.service';
 import { AuditoriaService } from '../auth/auditoria.service';
 import { DeudaPorContratoService } from './deuda-por-contrato.service';
 import { PoliticaFacturacionService } from './politica-facturacion.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Factura, EstadoFactura } from './entities/factura.entity';
 
 // NOTA (2026-07-28): esta suite llevaba tiempo SIN EJECUTARSE — no compilaba porque
@@ -118,6 +119,7 @@ describe('FacturacionService', () => {
         // La deuda por contrato se recalcula tras emitir; aquí no se ejercita.
         { provide: DeudaPorContratoService,    useValue: { recalcularPorCliente: jest.fn(), calcular: jest.fn() } },
         { provide: PoliticaFacturacionService, useValue: new PoliticaFacturacionService(mockDs as never) },
+        { provide: EventEmitter2,              useValue: { emit: jest.fn() } },
         { provide: getDataSourceToken(),       useValue: mockDs },
       ],
     }).compile();

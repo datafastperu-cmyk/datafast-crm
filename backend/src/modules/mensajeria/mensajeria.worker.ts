@@ -11,6 +11,8 @@ import { QUEUES, JOBS }                      from '../workers/workers.constants'
 interface PayloadNotifEnvio {
   telefono:    string;
   tipo:        string;
+  /** Override del código de plantilla elegido por el abonado. */
+  codigoPlantilla?: string;
   variables:   Record<string, string>;
   empresaId?:  string;
   contratoId?: string;
@@ -33,7 +35,7 @@ export class MensajeriaWorker {
 
   @Process({ name: JOBS.NOTIF_ENVIO, concurrency: 5 })
   async procesarNotificacionIndividual(job: Job<PayloadNotifEnvio>): Promise<any> {
-    const { telefono, tipo, variables, empresaId, contratoId, clienteId, logId } = job.data;
+    const { telefono, tipo, variables, empresaId, contratoId, clienteId, logId, codigoPlantilla } = job.data;
 
     if (logId) {
       await this.ds.query(
@@ -46,6 +48,7 @@ export class MensajeriaWorker {
     const result = await this.gatewaySvc.despachar({
       telefono,
       tipo:      tipo as TipoNotificacion,
+      codigoPlantilla,
       variables,
       empresaId,
       contratoId,

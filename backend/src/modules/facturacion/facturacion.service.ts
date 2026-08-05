@@ -4,6 +4,9 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+
+import { NOTIFICATION_EVENTS } from '../notificaciones/events/notification.events';
 
 import { filasUpdateReturning }       from '../../common/utils/pg-result.util';
 import { FacturaRepository }          from './repositories/factura.repository';
@@ -43,6 +46,7 @@ export class FacturacionService {
     private readonly auditoria:      AuditoriaService,
     private readonly deudaSvc:       DeudaPorContratoService,
     private readonly politicaSvc:    PoliticaFacturacionService,
+    private readonly events:         EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
@@ -416,8 +420,10 @@ export class FacturacionService {
       // le emite a fines del mes anterior, y esa factura pertenece al mes que vence.
       const politica     = politicas.get(clienteId)!;
       const vencimiento  = this.politicaSvc.proximoVencimiento(politica, hoy);
-      const periodoInicio = `${vencimiento.getUTCFullYear()}-${String(vencimiento.getUTCMonth() + 1).padStart(2, '0')}-01`;
-      const periodoFin    = this.ultimoDiaMes(vencimiento.getUTCFullYear(), vencimiento.getUTCMonth() + 1);
+      // Prepago ampara el mes que empieza; postpago, el que ya se consumió.
+      const periodo       = this.politicaSvc.periodoServicio(politica, vencimiento);
+      const periodoInicio = periodo.inicio;
+      const periodoFin    = periodo.fin;
       try {
         if (await this.facturaRepo.existeFacturaClientePeriodo(clienteId, periodoInicio, periodoFin)) {
           resultado.omitidas++;
@@ -446,7 +452,7 @@ export class FacturacionService {
             this.calcularMontosDesdeBase(precioBase, 0, contratoAplicaIgv, igvRate);
 
           items.push({
-            descripcion: this.descripcionItem(contrato, mes, anio),
+            descripcion: this.descripcionItem(contrato, periodo.mes, periodo.anio),
             cantidad: 1, precioUnitario: sub, descuento: 0, subtotal: sub, tipoItem: 'servicio',
             contratoId: contrato.contrato_id,
           });
@@ -468,7 +474,7 @@ export class FacturacionService {
         const { correlativo } = await this.comprobantesSvc.siguienteCorrelativo(comprobante.id);
         const serie = comprobante.serie;
         const fechaVencimiento = this.politicaSvc.aIso(vencimiento);
-        const descripcion = this.descripcionConsolidada(comprobante.nombre, grupo, mes, anio);
+        const descripcion = this.descripcionConsolidada(comprobante.nombre, grupo, periodo.mes, periodo.anio);
 
         const factura = this.facturaRepo.create({
           empresaId, clienteId, contratoId: null,
@@ -503,6 +509,16 @@ export class FacturacionService {
           email: primer.cliente_email, telefono: primer.cliente_telefono,
         });
 
+        // Aviso de comprobante disponible, si el abonado lo tiene activado en su pestaña
+        // de Notificaciones. Nadie emitía este evento: el listener existía sin disparador,
+        // así que la opción "Aviso nueva factura" no enviaba nada.
+        this.avisarFacturaEmitida(saved, {
+          clienteId, empresaId,
+          contratoId: grupo[0].contrato_id,
+          nombre:     primer.cliente_nombre,
+          telefono:   primer.cliente_telefono,
+        });
+
         resultado.exitosas++;
         grupo.forEach(c => resultado.detalles.push({
           contratoId: c.contrato_id, numeroContrato: c.numero_contrato,
@@ -525,6 +541,55 @@ export class FacturacionService {
     });
 
     return resultado;
+  }
+
+  /**
+   * Emite el aviso de comprobante disponible SI el abonado lo tiene activado.
+   *
+   * Fire-and-forget a propósito: un fallo del gateway de mensajería no puede tumbar una
+   * generación de facturas ya confirmada en BD. El envío tiene su propia bitácora en
+   * `notificaciones_logs` y sus reintentos en Bull.
+   */
+  private avisarFacturaEmitida(
+    factura: Factura,
+    destino: {
+      clienteId: string; empresaId: string; contratoId?: string;
+      nombre?: string; telefono?: string;
+    },
+  ): void {
+    void (async () => {
+      try {
+        const prefs = await this.politicaSvc.resolverNotificaciones(
+          destino.clienteId, destino.empresaId,
+        );
+        // 'desactivado' → el operador decidió que este abonado no recibe el aviso.
+        if (!prefs.avisoNuevaFactura) return;
+        if (!destino.telefono) {
+          this.logger.warn(
+            `[AVISO] Cliente ${destino.clienteId} tiene aviso de factura activo pero no tiene teléfono`,
+          );
+          return;
+        }
+
+        this.events.emit(NOTIFICATION_EVENTS.FACTURA_EMITIDA, {
+          empresaId:        destino.empresaId,
+          clienteId:        destino.clienteId,
+          contratoId:       destino.contratoId,
+          telefono:         destino.telefono,
+          clienteNombre:    destino.nombre ?? '',
+          numeroFactura:    factura.numeroCompleto ?? `${factura.serie}-${factura.correlativo}`,
+          montoTotal:       String(factura.total),
+          fechaVencimiento: factura.fechaVencimiento,
+          // La plantilla elegida en la pestaña del cliente; sin ella, la genérica del tipo.
+          plantilla:        prefs.plantillaAvisoFactura ?? undefined,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `[AVISO] No se pudo emitir el aviso de factura para ${destino.clienteId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    })();
   }
 
   // ────────────────────────────────────────────────────────────

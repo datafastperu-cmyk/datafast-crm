@@ -33,6 +33,8 @@ export interface PayloadNotificacionEnvio {
   logId?:           string;
   telefono:         string;
   tipo:             string;
+  /** Override del código de plantilla; sin él manda el mapeo por tipo. */
+  codigoPlantilla?: string;
   variables:        Record<string, string>;
   empresaId?:       string;
   contratoId?:      string;
@@ -169,6 +171,7 @@ export class NotificationEventListener implements OnModuleInit {
     await this.encolar('factura_emitida', {
       telefono:    event.telefono,
       tipo:        'factura_emitida',
+      codigoPlantilla: event.plantilla,
       variables: {
         numero_factura:    event.numeroFactura,
         monto:             event.montoTotal,

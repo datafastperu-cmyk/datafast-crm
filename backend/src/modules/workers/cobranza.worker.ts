@@ -28,6 +28,7 @@ import {
 } from '../notificaciones/events/notification.events';
 import { FacturacionService }        from '../facturacion/facturacion.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
+import { PoliticaFacturacionService } from '../facturacion/politica-facturacion.service';
 import { AuditoriaService }    from '../auth/auditoria.service';
 import { IProvisionamientoProvider } from '../aprovisionamiento/interfaces/provisionamiento-provider.interface';
 
@@ -56,6 +57,7 @@ export class CobranzaScheduler implements OnModuleInit {
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly empresaConfig: EmpresaConfigService,
+    private readonly politicaSvc: PoliticaFacturacionService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -317,32 +319,67 @@ export class CobranzaScheduler implements OnModuleInit {
     if (!lockKey || !campoRec) return;
     await this.cache.set(`cron:ran:${lockKey}:${hoy}`, '1', 23 * 60 * 60 * 1000);
 
-    // Busca contratos donde HOY coincide exactamente con la fecha calculada
-    // por el campo dias_recordatorio_N específico de ese contrato.
-    // Safe: campoRec proviene de un switch interno, no de input externo.
-    const porVencer = await this.ds.query(`
+    const indiceRec = parseInt(lockKey.replace('rec', ''), 10) as 1 | 2 | 3;
+
+    // Candidatos con deuda: el offset lo decide cada abonado en su pestaña de
+    // Notificaciones, así que el filtro por fecha se hace en TS y no en SQL. La fecha de
+    // referencia es el vencimiento GRABADO en la factura impaga —igual que el corte—, no
+    // `contratos.fecha_vencimiento`, que es una copia que puede quedar desfasada.
+    const candidatos = await this.ds.query(`
       SELECT co.id              AS contrato_id,
              co.empresa_id,
              co.cliente_id,
-             co.fecha_vencimiento,
              co.deuda_total,
+             co.${campoRec}     AS dias_contrato,
              cl.nombre_completo,
              cl.whatsapp,
              cl.telefono,
-             (co.fecha_vencimiento - CURRENT_DATE)::int AS dias_restantes
+             cl.notificaciones_config,
+             cl.facturacion_config,
+             im.vencimiento,
+             (im.vencimiento - CURRENT_DATE)::int AS dias_restantes
       FROM contratos co
       JOIN clientes cl  ON cl.id  = co.cliente_id AND cl.deleted_at IS NULL
-      JOIN empresas em  ON em.id  = co.empresa_id
+      JOIN (
+        SELECT cliente_id, MIN(fecha_vencimiento) AS vencimiento
+          FROM facturas
+         WHERE deleted_at IS NULL
+           AND estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+           AND COALESCE(saldo, total - monto_pagado) > 0
+         GROUP BY cliente_id
+      ) im ON im.cliente_id = co.cliente_id
       WHERE co.estado = 'activo'
         AND co.deuda_total > 0
         AND co.deleted_at IS NULL
         AND (cl.whatsapp IS NOT NULL OR cl.telefono IS NOT NULL)
-        AND co.${campoRec} IS NOT NULL
-        AND (co.fecha_vencimiento - co.${campoRec}) = CURRENT_DATE
       LIMIT 1000
     `);
 
-    for (const c of porVencer) {
+    let encolados = 0;
+
+    for (const c of candidatos) {
+      const prefs = this.politicaSvc.notificacionesDesde(
+        c.notificaciones_config ?? null, c.facturacion_config ?? null,
+      );
+
+      let toca: boolean;
+      if (prefs.recordatoriosPago) {
+        // Configuración del abonado: el offset es relativo al vencimiento, negativo para
+        // "antes" y positivo para "después", tal como lo ofrece la pantalla.
+        const rec = prefs.recordatorios.find((r) => r.indice === indiceRec);
+        toca = !!rec && parseInt(c.dias_restantes, 10) === -rec.dias;
+      } else if (c.notificaciones_config) {
+        // Configuró sus notificaciones y dejó los recordatorios apagados: no se le escribe.
+        continue;
+      } else {
+        // Sin configuración propia: se conserva el criterio anterior por contrato, donde
+        // `dias_recordatorio_N` cuenta días ANTES del vencimiento (signo contrario).
+        const dias = c.dias_contrato === null ? null : parseInt(c.dias_contrato, 10);
+        toca = dias !== null && parseInt(c.dias_restantes, 10) === dias;
+      }
+
+      if (!toca) continue;
+
       await this.queue.add(
         JOBS.NOTIF_COBRO_PREVIO,
         {
@@ -357,10 +394,11 @@ export class CobranzaScheduler implements OnModuleInit {
         } as PayloadNotificacionCobro,
         JOB_OPTIONS.NOTIFICACION,
       );
+      encolados++;
     }
 
     this.logger.log(
-      `[NOTIF-PREV] ${lockKey.toUpperCase()} | campo: ${campoRec} | ${porVencer.length} contratos encolados`,
+      `[NOTIF-PREV] ${lockKey.toUpperCase()} | ${candidatos.length} candidatos | ${encolados} encolados`,
     );
   }
 

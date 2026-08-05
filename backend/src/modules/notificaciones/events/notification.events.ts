@@ -41,6 +41,11 @@ export interface EventNotificacionFacturaEmitida {
   empresaId:       string;
   contratoId?:     string;
   clienteId?:      string;
+  /**
+   * Código de plantilla elegido por el abonado en su pestaña de Facturación. Sin él se
+   * usa el mapeo por defecto del tipo (`TIPO_A_CODIGO`).
+   */
+  plantilla?:      string;
 }
 
 export interface EventNotificacionPagoRecibido {

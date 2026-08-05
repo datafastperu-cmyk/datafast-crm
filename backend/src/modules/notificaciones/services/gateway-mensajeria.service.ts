@@ -325,7 +325,7 @@ export class GatewayMensajeriaService {
       const asunto = SMTP_ASUNTOS[params.tipo as string] ?? (params.tipo as string);
       const textoEmail = await this.resolveTexto(
         params.empresaId, params.tipo as string,
-        params.contratoId, params.clienteId, params.variables ?? {}, 'email',
+        params.contratoId, params.clienteId, params.variables ?? {}, 'email', params.codigoPlantilla,
       );
       if (textoEmail === null) {
         return { resultado: { enviado: false, error: `Sin plantilla email para '${params.tipo}'` }, noEnviado: true };
@@ -346,7 +346,7 @@ export class GatewayMensajeriaService {
     } else {
       const texto = await this.resolveTexto(
         params.empresaId, params.tipo as string,
-        params.contratoId, params.clienteId, params.variables ?? {},
+        params.contratoId, params.clienteId, params.variables ?? {}, 'whatsapp', params.codigoPlantilla,
       );
       if (texto === null) {
         return { resultado: { enviado: false, error: `Sin plantilla para '${params.tipo}'` }, noEnviado: true };
@@ -685,8 +685,10 @@ export class GatewayMensajeriaService {
     clienteId: string | undefined,
     eventVars: Record<string, string>,
     canalPlantilla: 'whatsapp' | 'email' = 'whatsapp',
+    codigoPlantilla?: string,
   ): Promise<string | null> {
-    const codigo = TIPO_A_CODIGO[tipo];
+    // La plantilla elegida por el abonado manda sobre el mapeo por tipo.
+    const codigo = codigoPlantilla || TIPO_A_CODIGO[tipo];
     if (!codigo) {
       this.logger.warn(`[GW] Tipo '${tipo}' no tiene mapping en TIPO_A_CODIGO`);
       return null;

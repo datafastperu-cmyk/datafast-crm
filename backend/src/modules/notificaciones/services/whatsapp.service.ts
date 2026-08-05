@@ -19,6 +19,11 @@ export enum TipoNotificacion {
 export interface WhatsAppParams {
   telefono:    string;
   tipo:        TipoNotificacion | string;
+  /**
+   * Código de plantilla que sustituye al del mapeo por tipo. Lo usa la configuración por
+   * abonado (pestaña Facturación → "Aviso de factura disponible").
+   */
+  codigoPlantilla?: string;
   variables:   Record<string, string>;
   empresaId?:  string;
   clienteId?:  string;

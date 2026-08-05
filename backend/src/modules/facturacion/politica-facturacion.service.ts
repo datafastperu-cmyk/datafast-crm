@@ -38,6 +38,11 @@ import { DataSource } from 'typeorm';
 export const DIA_PAGO_MAXIMO = 28;
 
 export interface PoliticaFacturacion {
+  /**
+   * `prepago` cobra por adelantado el periodo que el abonado va a consumir; `postpago`
+   * cobra el que ya consumió. Decide qué mes de servicio ampara el comprobante.
+   */
+  tipo: 'prepago' | 'postpago';
   /** Día del mes en que vence la factura (1..28). */
   diaPago: number;
   /** Días antes del vencimiento en que se emite. `null` = no emitir automáticamente. */
@@ -50,8 +55,32 @@ export interface PoliticaFacturacion {
   origen: 'cliente' | 'heredada';
 }
 
+/**
+ * Preferencias de aviso del abonado (pestaña Facturación → Notificaciones).
+ *
+ * Sobre el canal: el gateway de mensajería soporta WhatsApp (varios proveedores) y SMTP.
+ * NO existe proveedor de SMS, así que las opciones 'sms' y 'ambos' de la UI se comportan
+ * como 'activado' y salen por el gateway configurado en la empresa. El campo se respeta
+ * como interruptor —'desactivado' no envía nada—, que es lo que decide si el abonado
+ * recibe el mensaje o no.
+ */
+export interface PreferenciasNotificacion {
+  /** Aviso al emitir el comprobante. `null` = desactivado. */
+  avisoNuevaFactura: string | null;
+  /** Plantilla del aviso de factura; `null` = la genérica del tipo. */
+  plantillaAvisoFactura: string | null;
+  /** Interruptor de los tres recordatorios. `null` = desactivados todos. */
+  recordatoriosPago: string | null;
+  /**
+   * Offsets en días respecto al vencimiento: negativo = antes, positivo = después.
+   * Solo se incluyen los recordatorios activos, con su plantilla si la tienen.
+   */
+  recordatorios: Array<{ dias: number; plantilla: string | null; indice: 1 | 2 | 3 }>;
+}
+
 interface FilaPolitica {
   facturacion_config: Record<string, unknown> | null;
+  notificaciones_config?: Record<string, unknown> | null;
   dia_facturacion: number | null;
   dias_gracia: number | null;
 }
@@ -119,6 +148,72 @@ export class PoliticaFacturacionService {
     return mapa;
   }
 
+  /**
+   * Preferencias de aviso de un abonado. Devuelve todo desactivado si no configuró nada:
+   * el silencio es el valor por defecto seguro — nadie recibe mensajes que el operador no
+   * pidió enviar.
+   */
+  async resolverNotificaciones(
+    clienteId: string, empresaId: string,
+  ): Promise<PreferenciasNotificacion> {
+    const [fila] = await this.ds.query<Array<{
+      notificaciones_config: Record<string, unknown> | null;
+      facturacion_config: Record<string, unknown> | null;
+    }>>(
+      `SELECT notificaciones_config, facturacion_config FROM clientes
+        WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL`,
+      [clienteId, empresaId],
+    );
+    return this.notificacionesDesde(
+      fila?.notificaciones_config ?? null,
+      fila?.facturacion_config ?? null,
+    );
+  }
+
+  /**
+   * `cfg` es `notificaciones_config`; la plantilla del aviso de factura vive en
+   * `facturacion_config` porque la pantalla la presenta junto al comprobante.
+   */
+  notificacionesDesde(
+    cfg: Record<string, unknown> | null,
+    cfgFacturacion: Record<string, unknown> | null = null,
+  ): PreferenciasNotificacion {
+    const activo = (v: unknown): string | null => {
+      const s = typeof v === 'string' ? v.trim() : '';
+      return s && s !== 'desactivado' ? s : null;
+    };
+    const texto = (v: unknown): string | null => {
+      const s = typeof v === 'string' ? v.trim() : '';
+      return s || null;
+    };
+
+    const recordatoriosPago = activo(cfg?.['recordatoriosPago']);
+    const recordatorios: PreferenciasNotificacion['recordatorios'] = [];
+
+    // Los tres recordatorios cuelgan del interruptor general: apagarlo los silencia todos
+    // sin tener que desactivarlos uno a uno, que es como lo presenta la pantalla.
+    if (recordatoriosPago) {
+      for (const indice of [1, 2, 3] as const) {
+        const bruto = cfg?.[`recordatorio${indice}`];
+        if (typeof bruto === 'string' && bruto === 'desactivado') continue;
+        const dias = typeof bruto === 'number' ? bruto : parseInt(String(bruto ?? ''), 10);
+        if (!Number.isFinite(dias)) continue; // 0 no es un offset válido: es el día mismo
+        recordatorios.push({
+          dias,
+          plantilla: texto(cfg?.[`plantillaRecordatorio${indice}`]),
+          indice,
+        });
+      }
+    }
+
+    return {
+      avisoNuevaFactura: activo(cfg?.['avisoNuevaFactura']),
+      plantillaAvisoFactura: texto(cfgFacturacion?.['plantillaAvisoFactura']),
+      recordatoriosPago,
+      recordatorios,
+    };
+  }
+
   private desdeFila(fila: FilaPolitica | null): PoliticaFacturacion {
     const cfg = fila?.facturacion_config ?? null;
 
@@ -137,6 +232,9 @@ export class PoliticaFacturacionService {
     );
 
     return {
+      // Postpago por defecto: es lo que el ERP venía haciendo (la factura ampara el mes
+      // del vencimiento). Un cliente sin configurar no cambia de periodo por este cambio.
+      tipo: cfg?.['tipo'] === 'prepago' ? 'prepago' : 'postpago',
       diaPago,
       // 'desactivado' llega como null: no se emite sola, la factura se crea a mano.
       diasAntesEmision: tieneConfigPropia ? emisionCfg : null,
@@ -193,6 +291,34 @@ export class PoliticaFacturacionService {
     const emision = new Date(vencimiento.getTime());
     emision.setUTCDate(emision.getUTCDate() - politica.diasAntesEmision);
     return emision;
+  }
+
+  /**
+   * Mes de servicio que ampara un comprobante que vence en `vencimiento`.
+   *
+   * `postpago` (mes vencido) cobra el mes que ya se consumió: el del vencimiento.
+   * `prepago` (adelantado) cobra el que empieza: el mes siguiente. Es la diferencia real
+   * entre las dos opciones y hasta ahora no la aplicaba nadie — todo se facturaba como
+   * postpago aunque el abonado estuviera marcado como prepago.
+   */
+  periodoServicio(
+    politica: PoliticaFacturacion,
+    vencimiento: Date,
+  ): { inicio: string; fin: string; mes: number; anio: number } {
+    const desplazamiento = politica.tipo === 'prepago' ? 1 : 0;
+    const base = new Date(Date.UTC(
+      vencimiento.getUTCFullYear(), vencimiento.getUTCMonth() + desplazamiento, 1,
+    ));
+    const anio = base.getUTCFullYear();
+    const mes  = base.getUTCMonth() + 1;
+    // Día 0 del mes siguiente = último día de este, sin tablas de 30/31 ni bisiestos.
+    const ultimo = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+
+    return {
+      inicio: `${anio}-${String(mes).padStart(2, '0')}-01`,
+      fin:    `${anio}-${String(mes).padStart(2, '0')}-${String(ultimo).padStart(2, '0')}`,
+      mes, anio,
+    };
   }
 
   /** `YYYY-MM-DD` — el formato en que viajan las fechas a Postgres y al frontend. */
