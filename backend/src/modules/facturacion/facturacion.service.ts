@@ -15,6 +15,7 @@ import { PdfService, EmpresaPdfData, ClientePdfData } from './pdf.service';
 import { AuditoriaService }            from '../auth/auditoria.service';
 import { DeudaPorContratoService }      from './deuda-por-contrato.service';
 import { PoliticaFacturacionService }   from './politica-facturacion.service';
+import { AdelantosService }             from '../pagos/adelantos.service';
 import { JwtPayload }                  from '../../common/decorators/current-user.decorator';
 
 import { Factura, EstadoFactura, ItemFactura } from './entities/factura.entity';
@@ -47,6 +48,7 @@ export class FacturacionService {
     private readonly deudaSvc:       DeudaPorContratoService,
     private readonly politicaSvc:    PoliticaFacturacionService,
     private readonly events:         EventEmitter2,
+    private readonly adelantosSvc:   AdelantosService,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
@@ -321,6 +323,9 @@ export class FacturacionService {
               [f.id, cargosPendientes.ids],
             );
           }
+          // Mismo criterio que en la generación diaria: el saldo a favor del abonado se
+          // consume aquí, para que su comprobante nazca pagado si ya adelantó el dinero.
+          await this.adelantosSvc.aplicarSaldoAFactura(manager, f.id, clienteId, user.empresaId);
           return f;
         });
 
@@ -495,6 +500,10 @@ export class FacturacionService {
               [f.id, cargosPendientes.ids],
             );
           }
+          // Si el abonado adelantó dinero, su comprobante nace pagado: es lo que esperaba
+          // al adelantar, y evita que el cron lo persiga por una deuda que ya cubrió.
+          // Dentro de la TX: factura emitida y saldo consumido son el mismo hecho.
+          await this.adelantosSvc.aplicarSaldoAFactura(manager, f.id, clienteId, empresaId);
           return f;
         });
 

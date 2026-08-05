@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -20,6 +20,7 @@ import { JwtPayload }           from '../../common/decorators/current-user.decor
 
 import { Pago, EstadoPago, CuentaBancaria } from './entities/pago.entity';
 import { PagoAplicacion } from './entities/pago-aplicacion.entity';
+import { AdelantosService } from './adelantos.service';
 import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto';
@@ -49,6 +50,7 @@ export class PagosService {
     private readonly events:       EventEmitter2,
     @InjectDataSource() private readonly ds: DataSource,
     private readonly heartbeat: WatcherHeartbeatService,
+    private readonly adelantosSvc: AdelantosService,
     @InjectQueue(QUEUES.COBRANZA) private readonly cobranzaQueue: Queue,
   ) {}
 
@@ -93,8 +95,26 @@ export class PagosService {
       const idsSolicitados = dto.facturaIds?.length
         ? [...new Set(dto.facturaIds)]
         : (dto.facturaId ? [dto.facturaId] : []);
+
+      // ── ADELANTO: pago sin comprobante ──────────────────────
+      // Dinero cobrado que aún no pertenece a ninguna factura. Se guarda como pago sin
+      // imputar y el saldo a favor se DERIVA de ahí (ver AdelantosService). Se consume
+      // solo al emitir el siguiente comprobante.
       if (!idsSolicitados.length) {
-        throw new BadRequestException('Indica el comprobante a pagar (facturaId o facturaIds)');
+        if (!dto.esAdelanto) {
+          throw new BadRequestException(
+            'Indica el comprobante a pagar, o marca el cobro como adelanto',
+          );
+        }
+        if (!dto.clienteId) {
+          throw new BadRequestException('Un adelanto necesita el cliente al que pertenece');
+        }
+        // Un adelanto no puede convivir con deuda: entregar dinero con comprobantes
+        // impagos no es adelantar, es pagar. Registrarlo como adelanto dejaría al abonado
+        // con saldo a favor y en mora a la vez, y el cron lo cortaría con su dinero en caja.
+        await this.adelantosSvc.assertSinDeuda(dto.clienteId, empresaId);
+
+        return this.registrarAdelanto(manager, dto, user, empresaId);
       }
 
       const facturas = await manager.find(Factura, {
@@ -193,15 +213,7 @@ export class PagosService {
       }
 
       // PASO 3 — Determinar estado inicial del pago
-      // Auto-verificado si: MercadoPago (confirmación automática), Yape con OTP,
-      // o el cajero marca autoVerificar: true (pagos presenciales inmediatos).
-      const metodoLower    = dto.metodoPago?.toLowerCase() ?? '';
-      const esYapeConOtp   = metodoLower === 'yape' && !!dto.otpYape;
-      const puedeAutoverificar = user.roles.includes('Administrador')
-                              || user.permisos.includes('pagos:autoverificar');
-      const autoVerificado = metodoLower === 'mercadopago'
-                          || esYapeConOtp
-                          || (dto.autoVerificar === true && puedeAutoverificar);
+      const autoVerificado = this.esAutoVerificado(dto, user);
       const estadoInicial  = autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION;
 
       const pago = manager.create(Pago, {
@@ -419,6 +431,65 @@ export class PagosService {
     );
 
     return savedPago;
+  }
+
+  /**
+   * Auto-verificado si: MercadoPago (confirmación automática), Yape con OTP, o el cajero
+   * marca `autoVerificar` teniendo permiso (pagos presenciales inmediatos).
+   */
+  private esAutoVerificado(dto: RegistrarPagoDto, user: JwtPayload): boolean {
+    const metodoLower  = dto.metodoPago?.toLowerCase() ?? '';
+    const esYapeConOtp = metodoLower === 'yape' && !!dto.otpYape;
+    const puedeAutoverificar = user.roles.includes('Administrador')
+                            || user.permisos.includes('pagos:autoverificar');
+    return metodoLower === 'mercadopago'
+        || esYapeConOtp
+        || (dto.autoVerificar === true && puedeAutoverificar);
+  }
+
+  /**
+   * Adelanto: cobro sin comprobante asignado.
+   *
+   * Se guarda como un pago con `factura_id` NULL y SIN aplicaciones — eso es exactamente
+   * lo que significa "dinero que todavía no pertenece a ninguna factura". El saldo a favor
+   * se deriva de ahí y se consume al emitir el siguiente comprobante
+   * (`AdelantosService.aplicarSaldoAFactura`), sin contadores que mantener.
+   */
+  private async registrarAdelanto(
+    manager: EntityManager,
+    dto: RegistrarPagoDto,
+    user: JwtPayload,
+    empresaId: string,
+  ): Promise<Pago> {
+    const autoVerificado = this.esAutoVerificado(dto, user);
+
+    const pago = manager.create(Pago, {
+      empresaId,
+      clienteId:       dto.clienteId!,
+      facturaId:       null,
+      contratoId:      null,
+      monto:           dto.monto,
+      moneda:          'PEN',
+      metodoPago:      dto.metodoPago,
+      banco:           dto.banco ?? null,
+      numeroOperacion: dto.numeroOperacion ?? null,
+      fechaPago:       dto.fechaPago ?? new Date().toISOString().split('T')[0],
+      estado:          autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION,
+      cajeroId:        user.sub,
+      verificadoPor:   autoVerificado ? user.sub : null,
+      verificadoEn:    autoVerificado ? new Date() : null,
+      comprobanteUrl:  dto.voucherUrl ?? null,
+      notas:           dto.notas ?? 'Adelanto de pago',
+      mpDetail: (dto.celularYape || dto.otpYape)
+        ? { celularYape: dto.celularYape ?? null, otpYape: dto.otpYape ?? null }
+        : null,
+    });
+
+    const saved = await manager.save(Pago, pago);
+    this.logger.log(
+      `Adelanto registrado: ${saved.id} | cliente ${dto.clienteId} | S/ ${dto.monto} | ${saved.estado}`,
+    );
+    return saved;
   }
 
   // ────────────────────────────────────────────────────────────

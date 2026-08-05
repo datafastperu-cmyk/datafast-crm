@@ -13,6 +13,7 @@ import { MercadoPagoService }  from './mercadopago.service';
 
 import { Pago, CuentaBancaria } from './entities/pago.entity';
 import { PagoAplicacion } from './entities/pago-aplicacion.entity';
+import { AdelantosModule } from './adelantos.module';
 
 // Importar módulos con los que interactúa
 import { FacturacionModule }  from '../facturacion/facturacion.module';
@@ -23,6 +24,7 @@ import { AuthModule }         from '../auth/auth.module';
   imports: [
     TypeOrmModule.forFeature([Pago, CuentaBancaria, PagoAplicacion]),
     BullModule.registerQueue({ name: QUEUES.COBRANZA }),
+    AdelantosModule,
 
     // HTTP client para llamadas a la API de MercadoPago
     HttpModule.register({

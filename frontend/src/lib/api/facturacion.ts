@@ -46,11 +46,40 @@ export interface FiltrosPago {
   limit?:         number;
 }
 
+/** Adelanto: pago sin comprobante asignado. La situación se deriva de lo ya imputado. */
+export interface AdelantoRow {
+  id: string;
+  clienteId: string;
+  clienteNombre: string;
+  monto: number;
+  aplicado: number;
+  disponible: number;
+  metodoPago: string;
+  numeroOperacion: string | null;
+  fechaPago: string;
+  estado: string;
+  situacion: 'disponible' | 'parcial' | 'efectuado' | 'devuelto';
+  facturasAplicadas: string[];
+  createdAt: string;
+}
+
+export interface SaldoAFavorResp {
+  clienteId: string;
+  disponible: number;
+  totalAdelantado: number;
+  aplicado: number;
+  deudaPendiente: number;
+  /** El backend resuelve la regla para que la UI no la reimplemente. */
+  puedeAdelantar: boolean;
+}
+
 export interface RegistrarPagoDto {
   clienteId:       string;
   facturaId?:      string;
   /** Pago consolidado: un solo ingreso salda varios comprobantes. Es todo o nada. */
   facturaIds?:     string[];
+  /** Cobro sin comprobante: queda como saldo a favor del abonado. */
+  esAdelanto?:     boolean;
   contratoId?:     string;
   monto:           number;
   metodoPago:      string;
@@ -221,6 +250,26 @@ export const pagosApi = {
 
   registrar: async (dto: RegistrarPagoDto): Promise<Pago> => {
     const res = await api.post<ApiRespuesta<Pago>>('/pagos', dto);
+    return res.data.data;
+  },
+
+  // ── Adelantos (saldo a favor) ───────────────────────────────
+  listarAdelantos: async (
+    params: { clienteId?: string; situacion?: string } = {},
+  ): Promise<AdelantoRow[]> => {
+    const res = await api.get<ApiRespuesta<AdelantoRow[]>>('/pagos/adelantos', { params });
+    return res.data.data ?? [];
+  },
+
+  saldoAFavor: async (clienteId: string): Promise<SaldoAFavorResp> => {
+    const res = await api.get<ApiRespuesta<SaldoAFavorResp>>(`/pagos/adelantos/saldo/${clienteId}`);
+    return res.data.data;
+  },
+
+  devolverAdelanto: async (id: string, motivo: string): Promise<{ devuelto: number }> => {
+    const res = await api.post<ApiRespuesta<{ devuelto: number }>>(
+      `/pagos/adelantos/${id}/devolver`, { motivo },
+    );
     return res.data.data;
   },
 

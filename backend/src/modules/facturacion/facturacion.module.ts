@@ -7,6 +7,7 @@ import { ComprobantesConfigController } from './comprobantes-config.controller';
 
 import { DeudaPorContratoService } from './deuda-por-contrato.service';
 import { PoliticaFacturacionService } from './politica-facturacion.service';
+import { AdelantosModule } from '../pagos/adelantos.module';
 import { FacturacionService }          from './facturacion.service';
 import { ComprobantesConfigService }   from './comprobantes-config.service';
 import { FacturaRepository }           from './repositories/factura.repository';
@@ -44,6 +45,7 @@ import { ConfiguracionModule }         from '../config/config.module';
     }),
 
     AuthModule,
+    AdelantosModule,
     ConfiguracionModule,
   ],
   controllers: [

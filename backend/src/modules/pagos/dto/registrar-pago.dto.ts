@@ -37,6 +37,25 @@ export class RegistrarPagoDto {
   @IsUUID('4', { each: true })
   facturaIds?: string[];
 
+  /** Requerido para un adelanto: el dinero es de un abonado, aunque aún no de una factura. */
+  @IsOptional()
+  @IsUUID('4')
+  clienteId?: string;
+
+  /**
+   * Adelanto: cobro sin comprobante asignado. Queda como saldo a favor del abonado y se
+   * consume al emitir su siguiente comprobante. Se exige explícito para que un `facturaId`
+   * olvidado no acabe convertido en adelanto por accidente.
+   */
+  @IsOptional()
+  @IsBoolean()
+  esAdelanto?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notas?: string;
+
   @IsNumber({ allowInfinity: false, allowNaN: false, maxDecimalPlaces: 2 })
   @IsPositive()
   monto: number;

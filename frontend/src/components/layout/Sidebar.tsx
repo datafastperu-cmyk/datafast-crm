@@ -11,7 +11,7 @@ import {
   UserCheck, Zap,
   Tv,
   ChevronRight, Gift, Trophy, Settings2,
-  AlertTriangle, Layers,
+  AlertTriangle, Layers, CalendarDays,
 } from 'lucide-react';
 import { cn }          from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -77,6 +77,7 @@ const NAV: NavEntry[] = [
       { href: '/facturacion',       label: 'Facturas',          icon: Receipt,    permiso: 'facturacion:view' },
       { href: '/finanzas/registro', label: 'Registrar Pago',    icon: DollarSign, permiso: 'pagos:view'       },
       { href: '/pagos',             label: 'Pagos',             icon: TrendingUp, permiso: 'pagos:view'       },
+      { href: '/finanzas/adelanto-prorroga', label: 'Adelantos y Prórrogas', icon: CalendarDays, permiso: 'pagos:view' },
       { href: '/finanzas/gastos',     label: 'Gastos / Ingresos',    icon: Wallet,  permiso: 'pagos:view'       },
       { href: '/finanzas/proyectos',  label: 'Proyectos Expansión',  icon: Target,  permiso: 'pagos:view'       },
       { href: '/reportes',          label: 'Reportes',          icon: BarChart2,  permiso: 'reportes:view'    },

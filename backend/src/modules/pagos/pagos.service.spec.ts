@@ -10,6 +10,7 @@ import { QUEUES }             from '../workers/workers.constants';
 import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
 import { PagosService }        from './pagos.service';
 import { PagoRepository }      from './repositories/pago.repository';
+import { AdelantosService }     from './adelantos.service';
 import { MercadoPagoService }  from './mercadopago.service';
 import { FacturacionService }  from '../facturacion/facturacion.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
@@ -177,6 +178,10 @@ describe('PagosService', () => {
         { provide: getQueueToken(QUEUES.COBRANZA), useValue: { add: jest.fn() } },
         // El doble EJECUTA la función, no solo la registra: si solo la registrara, el
         // watcher de reconciliación parecería no hacer nada y sus tests pasarían en falso.
+        // Saldo a favor: el registro de adelantos consulta la deuda antes de admitirlos.
+        { provide: AdelantosService, useValue: {
+          assertSinDeuda: jest.fn(), saldoAFavor: jest.fn(), aplicarSaldoAFactura: jest.fn(),
+        } },
         { provide: WatcherHeartbeatService, useValue: {
           ejecutar: jest.fn(async (_n: string, _i: number, fn: any) => fn()),
         } },

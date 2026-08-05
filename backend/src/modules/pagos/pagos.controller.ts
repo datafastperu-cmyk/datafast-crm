@@ -16,6 +16,7 @@ import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 
 import { PagosService }   from './pagos.service';
+import { AdelantosService } from './adelantos.service';
 import {
   RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
   ActualizarPagoDto, FilterPagoDto, CrearPreferenciaDto,
@@ -33,7 +34,10 @@ import { ApiResponse as StdResponse } from '../../common/dto/response.dto';
 export class PagosController {
   private readonly logger = new Logger(PagosController.name);
 
-  constructor(private readonly svc: PagosService) {}
+  constructor(
+    private readonly svc: PagosService,
+    private readonly adelantosSvc: AdelantosService,
+  ) {}
 
   // ── POST /pagos — Registrar pago ──────────────────────────
   @Post()
@@ -159,6 +163,64 @@ export class PagosController {
 
     // MP espera HTTP 200 — si retornamos otro código lo reintenta
     return { received: true };
+  }
+
+  // ── GET /pagos/adelantos — Listado de adelantos ───────────
+  @Get('adelantos')
+  @RequirePermission('pagos:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({
+    summary: 'Adelantos de pago (saldo a favor)',
+    description:
+      'Pagos cobrados sin comprobante asignado. La situación (disponible / parcial / ' +
+      'efectuado / devuelto) se deriva de lo aplicado, no es un estado guardado.',
+  })
+  async listarAdelantos(
+    @Query('clienteId') clienteId: string | undefined,
+    @Query('situacion') situacion: string | undefined,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return StdResponse.ok(
+      await this.adelantosSvc.listar(user.empresaId, { clienteId, situacion }),
+    );
+  }
+
+  // ── GET /pagos/adelantos/saldo/:clienteId — Saldo a favor ─
+  @Get('adelantos/saldo/:clienteId')
+  @RequirePermission('pagos:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Saldo a favor disponible de un abonado' })
+  @ApiParam({ name: 'clienteId' })
+  async saldoAFavor(
+    @Param('clienteId', ParseUUIDPipe) clienteId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const [saldo, deuda] = await Promise.all([
+      this.adelantosSvc.saldoAFavor(clienteId, user.empresaId),
+      this.adelantosSvc.deudaPendiente(clienteId, user.empresaId),
+    ]);
+    // `puedeAdelantar` viaja resuelto para que la UI no reimplemente la regla —y no se
+    // desincronice de ella— al habilitar o bloquear el formulario.
+    return StdResponse.ok({ ...saldo, deudaPendiente: deuda, puedeAdelantar: deuda <= 0 });
+  }
+
+  // ── POST /pagos/adelantos/:id/devolver — Devolver ─────────
+  @Post('adelantos/:id/devolver')
+  @RequirePermission('pagos:update')
+  @ApiOperation({
+    summary: 'Devolver un adelanto no consumido',
+    description:
+      'Solo se devuelve lo que aún no se aplicó a ningún comprobante. Si ya se aplicó, ' +
+      'ese dinero pagó una deuda real y deshacerlo exige una nota de crédito.',
+  })
+  @ApiParam({ name: 'id' })
+  async devolverAdelanto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { motivo: string },
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    return StdResponse.ok(await this.adelantosSvc.devolver(id, body?.motivo, user, req));
   }
 
   // ── GET /pagos/cliente-deuda/:clienteId — Verificar deuda ─

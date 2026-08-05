@@ -33,6 +33,7 @@ import { CapturaCoordenadas, parsearCoordenadas } from '@/components/planta-exte
 import { ModalProvisionOnu }                  from './ModalProvisionOnu';
 import { ModalProvisionFtth }                from './ModalProvisionFtth';
 import { TabConfigFacturacion, calcularFechas, calcularFechaRecordatorio } from './TabConfigFacturacion';
+import { TabSaldosCliente } from './TabSaldosCliente';
 import { facturacionApi, pagosApi, METODOS_PAGO } from '@/lib/api/facturacion';
 import type { CreateFacturaDto, UpdateFacturaDto } from '@/lib/api/facturacion';
 import { ClienteEstadoBadge }        from './ClienteEstadoBadge';
@@ -2707,11 +2708,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
       )}
 
       {/* ── Saldos / Config ───────────────────────────────────── */}
-      {subTab === 'saldos' && (
-        <div className="p-6">
-          <PlaceholderTab icon={Receipt} title="Saldos" desc="Balance de cuenta y créditos disponibles del cliente." badge="Próximamente" />
-        </div>
-      )}
+      {subTab === 'saldos' && <TabSaldosCliente clienteId={clienteId} />}
       {subTab === 'config' && (
         <TabConfigFacturacion clienteId={clienteId} />
       )}
