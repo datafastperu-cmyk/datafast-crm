@@ -99,7 +99,7 @@ export class AuditoriaService {
                 a.datos_anteriores, a.datos_nuevos, a.created_at,
                 COALESCE(cl.nombre_completo, cl_co.nombre_completo, co.numero_contrato) AS entidad_nombre
            FROM auditoria_logs a
-           -- `entidad_id` es varchar y no siempre contiene un UUID (hay ids de otras
+           -- entidad_id es varchar y no siempre contiene un UUID (hay ids de otras
            -- formas), así que se castea solo cuando lo parece: un cast directo revienta la
            -- consulta entera con "invalid input syntax for type uuid" en cuanto aparece
            -- una fila con otro formato, y comparar como texto impediría usar el índice.
@@ -117,7 +117,7 @@ export class AuditoriaService {
         // total distinto al de las filas mostradas.
         `SELECT COUNT(*) as total
            FROM auditoria_logs a
-           -- `entidad_id` es varchar y no siempre contiene un UUID (hay ids de otras
+           -- entidad_id es varchar y no siempre contiene un UUID (hay ids de otras
            -- formas), así que se castea solo cuando lo parece: un cast directo revienta la
            -- consulta entera con "invalid input syntax for type uuid" en cuanto aparece
            -- una fila con otro formato, y comparar como texto impediría usar el índice.
