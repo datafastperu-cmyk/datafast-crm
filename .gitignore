@@ -16,12 +16,12 @@ __pycache__/
 .playwright-mcp/
 *.BACKUP
 build-log-*.txt
-audit_*.png
-verify_*.png
-debug_*.png
-red_redes_*.png
-redes_*.png
-verificacion_*.png
+# Cualquier PNG suelto en la RAIZ del repositorio: son capturas de diagnostico.
+# Sustituye a la lista de prefijos (audit_*, verify_*, debug_*, …) que se llevaba antes:
+# nombrarlos uno a uno solo atrapa los que alguien recordo declarar, y trece capturas
+# entraron igual por `git add -A` porque no encajaban en ningun prefijo.
+# La barra inicial acota a la raiz — los PNG del codigo (frontend/public/, etc.) no se tocan.
+/*.png
 
 # ── SSL y certificados ────────────────────────────────────────
 nginx/ssl/live/
