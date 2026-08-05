@@ -6,9 +6,10 @@ import { promesasApi } from '@/lib/api/promesas';
 import type { PromesaRow, PromesaStats } from '@/lib/api/promesas';
 import { useToast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
+import { ModalNuevaProrroga } from './ModalNuevaProrroga';
 import {
   RefreshCw, Clock, Ban, CheckCircle, Loader2, AlertCircle,
-  ChevronLeft, ChevronRight, CalendarDays, Wifi, WifiOff,
+  ChevronLeft, ChevronRight, CalendarDays, Wifi, WifiOff, Plus,
 } from 'lucide-react';
 
 const fmt = (n: number | string | null | undefined) => (+(n ?? 0)).toFixed(2);
@@ -44,6 +45,7 @@ export function TabPromesas() {
   const [filtroEstado, setFiltroEstado]      = useState('');
   const [page, setPage]                      = useState(1);
   const [confirmCancel, setConfirmCancel]    = useState<string | null>(null);
+  const [nuevaAbierta, setNuevaAbierta]      = useState(false);
 
   const { data: statsData, isLoading: statsLoading } = useQuery<PromesaStats>({
     queryKey: ['promesas-stats'],
@@ -100,6 +102,12 @@ export function TabPromesas() {
 
       {/* Filters + refresh */}
       <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setNuevaAbierta(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-amber-500 hover:bg-amber-600 text-white"
+        >
+          <Plus className="w-4 h-4" /> Nueva prórroga
+        </button>
         <select
           value={filtroEstado}
           onChange={e => { setFiltroEstado(e.target.value); setPage(1); }}
@@ -281,6 +289,8 @@ export function TabPromesas() {
           </div>
         )}
       </div>
+
+      {nuevaAbierta && <ModalNuevaProrroga onClose={() => setNuevaAbierta(false)} />}
     </div>
   );
 }

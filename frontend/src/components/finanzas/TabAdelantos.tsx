@@ -6,7 +6,8 @@ import { pagosApi } from '@/lib/api/facturacion';
 import type { AdelantoRow } from '@/lib/api/facturacion';
 import { useToast } from '@/components/ui/toaster';
 import { cn, formatPEN, parseApiError } from '@/lib/utils';
-import { Loader2, RefreshCw, Undo2, Wallet, AlertCircle } from 'lucide-react';
+import { Loader2, RefreshCw, Undo2, Wallet, AlertCircle, Plus } from 'lucide-react';
+import { ModalNuevoAdelanto } from './ModalNuevoAdelanto';
 
 /**
  * Adelantos de pago (saldo a favor).
@@ -34,6 +35,7 @@ export function TabAdelantos() {
   const [filtro, setFiltro] = useState('');
   const [devolviendo, setDevolviendo] = useState<AdelantoRow | null>(null);
   const [motivo, setMotivo] = useState('');
+  const [nuevoAbierto, setNuevoAbierto] = useState(false);
 
   const { data: adelantos = [], isLoading, refetch } = useQuery({
     queryKey: ['adelantos', filtro],
@@ -67,6 +69,12 @@ export function TabAdelantos() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setNuevoAbierto(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Plus className="w-4 h-4" /> Nuevo adelanto
+          </button>
           <select
             value={filtro}
             onChange={e => setFiltro(e.target.value)}
@@ -99,8 +107,9 @@ export function TabAdelantos() {
             <Wallet className="w-10 h-10 text-muted-foreground/50" />
             <p className="text-sm font-medium text-foreground">Sin adelantos registrados</p>
             <p className="text-xs text-muted-foreground max-w-md">
-              Un adelanto se registra desde Registrar pago, eligiendo “Registrar como
-              adelanto”. Solo se admite si el cliente no tiene deuda pendiente.
+              Puedes registrar uno con “Nuevo adelanto”, o desde Registrar pago eligiendo
+              “Registrar como adelanto”. Solo se admite si el cliente no tiene deuda
+              pendiente.
             </p>
           </div>
         ) : (
@@ -204,6 +213,8 @@ export function TabAdelantos() {
           </div>
         </div>
       )}
+
+      {nuevoAbierto && <ModalNuevoAdelanto onClose={() => setNuevoAbierto(false)} />}
     </div>
   );
 }
