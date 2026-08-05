@@ -23,6 +23,12 @@ export class AuditoriaController {
     return this.svc.getLogs(user.empresaId, filtros);
   }
 
+  // ── Cifras de cabecera y catálogo de filtros del Log ──────────
+  @Get('resumen')
+  getResumen(@CurrentUser() user: JwtPayload) {
+    return this.svc.getResumen(user.empresaId);
+  }
+
   // ── Estado undo/redo para el usuario actual ───────────────────
   @Get('estado')
   getEstado(@CurrentUser() user: JwtPayload) {

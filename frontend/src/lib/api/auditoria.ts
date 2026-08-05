@@ -10,6 +10,8 @@ export interface AuditLog {
   accion:          string;
   modulo:          string;
   entidad_id:      string;
+  /** Nombre del cliente o contrato afectado, resuelto en la lectura. */
+  entidad_nombre?: string | null;
   descripcion:     string;
   ip_address:      string;
   metodo_http:     string;
@@ -50,6 +52,21 @@ export interface FiltrosAuditoria {
   hasta?:     string;
   page?:      number;
   limit?:     number;
+  /** Oculta el eco de peticiones HTTP y deja solo actividad de negocio. */
+  soloNegocio?: boolean;
+  /** Quién lo hizo: una persona o un automatismo del sistema. */
+  origen?:    'usuario' | 'sistema';
+}
+
+export interface ResumenAuditoria {
+  total:                 number;
+  hoy:                   number;
+  hoyUsuarios:           number;
+  hoySistema:            number;
+  accesosFallidosSemana: number;
+  peticionesTecnicas:    number;
+  modulos:               string[];
+  acciones:              string[];
 }
 
 // ─── API ──────────────────────────────────────────────────────
@@ -57,6 +74,11 @@ export const auditoriaApi = {
 
   getLogs: async (filtros: FiltrosAuditoria = {}): Promise<AuditLogsResponse> => {
     const res = await api.get<ApiRespuesta<AuditLogsResponse>>('/auditoria/logs', { params: filtros });
+    return res.data.data;
+  },
+
+  getResumen: async (): Promise<ResumenAuditoria> => {
+    const res = await api.get<ApiRespuesta<ResumenAuditoria>>('/auditoria/resumen');
     return res.data.data;
   },
 

@@ -40,35 +40,93 @@ export class AuditoriaService {
 
   // ── Audit log paginado ────────────────────────────────────────
   async getLogs(empresaId: string, filtros: FiltrosAuditoriaDto = {}) {
-    const { page = 1, limit = 50, search, modulo, accion, usuarioId, desde, hasta } = filtros;
+    const {
+      page = 1, limit = 50, search, modulo, accion, usuarioId, desde, hasta,
+      soloNegocio, origen,
+    } = filtros;
     const offset = (page - 1) * limit;
 
-    const conditions: string[] = ['empresa_id = $1'];
+    // Todas las condiciones se escriben con el alias `a`, porque el listado hace JOIN para
+    // resolver el nombre del afectado y el conteo reutiliza este mismo WHERE.
+    const conditions: string[] = ['a.empresa_id = $1'];
     const params: any[]        = [empresaId];
     let   pIdx                 = 2;
 
+    // El AuditInterceptor escribe una fila por CADA request HTTP, con la descripción
+    // "POST /api/v1/... (123ms)". Eso es un access log, no actividad de negocio, y supone
+    // el 95% de la tabla: sin separarlo, buscar quién cobró o a quién se cortó es
+    // imposible. Se distingue por la forma de la descripción para no necesitar migrar
+    // 25.000 filas ya escritas.
+    if (soloNegocio) {
+      conditions.push(`a.descripcion !~ '^(GET|POST|PATCH|PUT|DELETE) /'`);
+    }
+    // Sin usuario = lo hizo el sistema (cron, worker, watcher). Es la distinción que pide
+    // el operador cuando pregunta "¿esto lo hizo alguien o se hizo solo?".
+    if (origen === 'sistema') {
+      conditions.push(`(a.usuario_email IS NULL OR a.usuario_email = '')`);
+    } else if (origen === 'usuario') {
+      conditions.push(`(a.usuario_email IS NOT NULL AND a.usuario_email <> '')`);
+    }
+
     if (search) {
-      conditions.push(`(descripcion ILIKE $${pIdx} OR usuario_email ILIKE $${pIdx} OR entidad_id::text ILIKE $${pIdx})`);
+      // Se busca también por el nombre del cliente afectado: es como lo busca una persona
+      // ("qué pasó con Piero"), no por el UUID que guarda el registro.
+      conditions.push(
+        `(a.descripcion ILIKE $${pIdx} OR a.usuario_email ILIKE $${pIdx}` +
+        ` OR a.entidad_id::text ILIKE $${pIdx}` +
+        ` OR cl.nombre_completo ILIKE $${pIdx} OR cl_co.nombre_completo ILIKE $${pIdx}` +
+        ` OR co.numero_contrato ILIKE $${pIdx})`,
+      );
       params.push(`%${search}%`); pIdx++;
     }
-    if (modulo)    { conditions.push(`modulo = $${pIdx}`);      params.push(modulo);    pIdx++; }
-    if (accion)    { conditions.push(`accion = $${pIdx}`);      params.push(accion);    pIdx++; }
-    if (usuarioId) { conditions.push(`usuario_id = $${pIdx}`);  params.push(usuarioId); pIdx++; }
-    if (desde)     { conditions.push(`created_at >= $${pIdx}`); params.push(desde);     pIdx++; }
-    if (hasta)     { conditions.push(`created_at <= $${pIdx}`); params.push(hasta);     pIdx++; }
+    if (modulo)    { conditions.push(`a.modulo = $${pIdx}`);      params.push(modulo);    pIdx++; }
+    if (accion)    { conditions.push(`a.accion = $${pIdx}`);      params.push(accion);    pIdx++; }
+    if (usuarioId) { conditions.push(`a.usuario_id = $${pIdx}`);  params.push(usuarioId); pIdx++; }
+    if (desde)     { conditions.push(`a.created_at >= $${pIdx}`); params.push(desde);     pIdx++; }
+    if (hasta)     { conditions.push(`a.created_at <= $${pIdx}`); params.push(hasta);     pIdx++; }
 
     const where = conditions.join(' AND ');
 
     const [rows, [{ total }]] = await Promise.all([
       this.ds.query(
-        `SELECT id, empresa_id, usuario_id, usuario_email, accion, modulo, entidad_id,
-                descripcion, ip_address, metodo_http, ruta, datos_anteriores, datos_nuevos, created_at
-         FROM auditoria_logs WHERE ${where}
-         ORDER BY created_at DESC LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+        // `entidad_nombre`: los eventos identifican al afectado por UUID o por IP
+        // ("Cliente: 0e814d05-…", "Suspensión automática: IP 172.16.201.2"), que no le
+        // dice nada a quien lee el log. Se resuelve el nombre aquí, en la lectura, en vez
+        // de tocar los ~40 puntos que escriben auditoría. El LEFT JOIN no filtra nada: si
+        // el id no es de un cliente ni de un contrato, la columna viene en null.
+        `SELECT a.id, a.empresa_id, a.usuario_id, a.usuario_email, a.accion, a.modulo,
+                a.entidad_id, a.descripcion, a.ip_address, a.metodo_http, a.ruta,
+                a.datos_anteriores, a.datos_nuevos, a.created_at,
+                COALESCE(cl.nombre_completo, cl_co.nombre_completo, co.numero_contrato) AS entidad_nombre
+           FROM auditoria_logs a
+           -- `entidad_id` es varchar y no siempre contiene un UUID (hay ids de otras
+           -- formas), así que se castea solo cuando lo parece: un cast directo revienta la
+           -- consulta entera con "invalid input syntax for type uuid" en cuanto aparece
+           -- una fila con otro formato, y comparar como texto impediría usar el índice.
+           LEFT JOIN clientes  cl    ON cl.id = NULLIF(a.entidad_id, '')::uuid
+                                        AND a.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+           LEFT JOIN contratos co    ON co.id = NULLIF(a.entidad_id, '')::uuid
+                                        AND a.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+           LEFT JOIN clientes  cl_co ON cl_co.id = co.cliente_id
+          WHERE ${where}
+          ORDER BY a.created_at DESC LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
         [...params, limit, offset],
       ),
       this.ds.query(
-        `SELECT COUNT(*) as total FROM auditoria_logs WHERE ${where}`,
+        // Los mismos JOIN que el listado: sin ellos, buscar por nombre de cliente daría un
+        // total distinto al de las filas mostradas.
+        `SELECT COUNT(*) as total
+           FROM auditoria_logs a
+           -- `entidad_id` es varchar y no siempre contiene un UUID (hay ids de otras
+           -- formas), así que se castea solo cuando lo parece: un cast directo revienta la
+           -- consulta entera con "invalid input syntax for type uuid" en cuanto aparece
+           -- una fila con otro formato, y comparar como texto impediría usar el índice.
+           LEFT JOIN clientes  cl    ON cl.id = NULLIF(a.entidad_id, '')::uuid
+                                        AND a.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+           LEFT JOIN contratos co    ON co.id = NULLIF(a.entidad_id, '')::uuid
+                                        AND a.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+           LEFT JOIN clientes  cl_co ON cl_co.id = co.cliente_id
+          WHERE ${where}`,
         params,
       ),
     ]);
@@ -79,6 +137,55 @@ export class AuditoriaService {
       page,
       limit,
       totalPages: Math.ceil(Number(total) / limit),
+    };
+  }
+
+  /**
+   * Cifras de cabecera del Log del Sistema y catálogo de filtros.
+   *
+   * No hay "niveles" (info/warning/error) en la tabla: inventarlos sería etiquetar a ojo.
+   * Se cuenta lo que el operador realmente pregunta — cuánta actividad hubo hoy, cuánta la
+   * hizo una persona y cuánta el sistema solo, y si hubo intentos de acceso fallidos.
+   */
+  async getResumen(empresaId: string) {
+    const negocio = `descripcion !~ '^(GET|POST|PATCH|PUT|DELETE) /'`;
+
+    const [[cifras], modulos, acciones] = await Promise.all([
+      this.ds.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE ${negocio})                                     AS total,
+           COUNT(*) FILTER (WHERE ${negocio} AND created_at >= CURRENT_DATE)      AS hoy,
+           COUNT(*) FILTER (WHERE ${negocio} AND created_at >= CURRENT_DATE
+                              AND usuario_email IS NOT NULL AND usuario_email <> '') AS hoy_usuarios,
+           COUNT(*) FILTER (WHERE ${negocio} AND created_at >= CURRENT_DATE
+                              AND (usuario_email IS NULL OR usuario_email = ''))     AS hoy_sistema,
+           COUNT(*) FILTER (WHERE accion = 'LOGIN_FAIL'
+                              AND created_at >= CURRENT_DATE - INTERVAL '7 days')    AS accesos_fallidos_semana,
+           COUNT(*) FILTER (WHERE NOT (${negocio}))                               AS peticiones_tecnicas
+         FROM auditoria_logs WHERE empresa_id = $1`,
+        [empresaId],
+      ),
+      this.ds.query(
+        `SELECT DISTINCT modulo FROM auditoria_logs
+          WHERE empresa_id = $1 AND modulo IS NOT NULL ORDER BY modulo`,
+        [empresaId],
+      ),
+      this.ds.query(
+        `SELECT DISTINCT accion FROM auditoria_logs
+          WHERE empresa_id = $1 AND accion IS NOT NULL AND ${negocio} ORDER BY accion`,
+        [empresaId],
+      ),
+    ]);
+
+    return {
+      total:                  Number(cifras?.total ?? 0),
+      hoy:                    Number(cifras?.hoy ?? 0),
+      hoyUsuarios:            Number(cifras?.hoy_usuarios ?? 0),
+      hoySistema:             Number(cifras?.hoy_sistema ?? 0),
+      accesosFallidosSemana:  Number(cifras?.accesos_fallidos_semana ?? 0),
+      peticionesTecnicas:     Number(cifras?.peticiones_tecnicas ?? 0),
+      modulos:  (modulos  as Array<{ modulo: string }>).map((m) => m.modulo),
+      acciones: (acciones as Array<{ accion: string }>).map((a) => a.accion),
     };
   }
 
