@@ -210,7 +210,10 @@ export function MapaRedContent() {
           },
         },
         layers: [
-          { id: 'base', type: 'raster', source: 'base' },
+          {
+            id: 'base', type: 'raster', source: 'base',
+            layout: { visibility: vistaInicial === 'satelite' ? 'none' : 'visible' },
+          },
           {
             id: 'satelite', type: 'raster', source: 'satelite',
             layout: { visibility: vistaInicial === 'satelite' ? 'visible' : 'none' },
@@ -383,7 +386,12 @@ export function MapaRedContent() {
   useEffect(() => {
     const m = mapa.current;
     if (!m || !listo || !m.getLayer('satelite')) return;
-    m.setLayoutProperty('satelite', 'visibility', vista === 'satelite' ? 'visible' : 'none');
+    const sat = vista === 'satelite';
+    m.setLayoutProperty('satelite', 'visibility', sat ? 'visible' : 'none');
+    // La capa de calles se apaga, no se deja tapada debajo: si sigue activa, su atribución
+    // se muestra junto a la del satélite —acreditando a OSM por una imagen que no es suya—
+    // y además se siguen descargando teselas que nadie ve.
+    m.setLayoutProperty('base', 'visibility', sat ? 'none' : 'visible');
   }, [vista, listo]);
 
   const cambiarVista = (v: VistaBase) => {
