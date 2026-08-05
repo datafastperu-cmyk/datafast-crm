@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, lazy, Suspense } from 'react';
-import { Crosshair, Loader2, ShieldAlert, AlertTriangle, Map as MapIcon } from 'lucide-react';
+import { Crosshair, Loader2, ShieldAlert, AlertTriangle, Settings, Map as MapIcon } from 'lucide-react';
 
 // Carga diferida: MapLibre pesa ~250 kB y este componente vive en formularios que la
 // mayoría de las veces se completan pegando o con GPS, sin abrir el mapa nunca.
@@ -115,6 +115,26 @@ interface Props {
 const TIEMPO_MAX_MS = 60_000;
 
 /**
+ * Enlace a la pantalla de ajustes de ubicación de Android.
+ *
+ * Es lo MÁS que puede hacer una página web, y conviene tenerlo claro: el diálogo nativo de
+ * "Activar ubicación / Aceptar" que muestran las apps de reparto viene de Google Play
+ * Services (`SettingsClient`), una API exclusiva de aplicaciones. Una web no puede
+ * encender el GPS ni pedirlo; como mucho puede llevar al operador a la pantalla correcta.
+ *
+ * Best-effort a propósito: Chrome en Android suele abrir estos `intent://`, pero otros
+ * navegadores los ignoran en silencio. Por eso las instrucciones escritas se muestran
+ * SIEMPRE junto al botón — si el enlace no hace nada, la salida sigue estando a la vista.
+ */
+const INTENT_AJUSTES_UBICACION =
+  'intent:#Intent;action=android.settings.LOCATION_SOURCE_SETTINGS;end';
+
+/** Android es el único donde existe ese atajo; iOS no expone nada equivalente. */
+function esAndroid(): boolean {
+  return typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+}
+
+/**
  * Traduce el fallo del navegador a algo sobre lo que el operador pueda actuar.
  *
  * El mensaje nativo (`err.message`) suele venir vacío o decir "Timeout expired", que no
@@ -123,19 +143,35 @@ const TIEMPO_MAX_MS = 60_000;
  * apagada, ningún permiso concedido en el sitio va a servir, y pedirle al operador que
  * "habilite el permiso" lo manda al lugar equivocado.
  */
-function explicarErrorGps(err: GeolocationPositionError): string {
+interface AvisoGps {
+  texto: string;
+  /** Si el fallo se resuelve encendiendo la ubicación del sistema, no dentro del navegador. */
+  ajustesDelSistema: boolean;
+}
+
+function explicarErrorGps(err: GeolocationPositionError): AvisoGps {
   if (err.code === err.PERMISSION_DENIED) {
-    return 'El navegador tiene bloqueada la ubicación para este sitio. Ábrelo desde el candado ' +
-           'junto a la dirección → Permisos → Ubicación. Si ya la rechazaste antes, el navegador ' +
-           'lo recuerda y no vuelve a preguntar hasta que lo restablezcas.';
+    // Este NO se arregla en los ajustes del teléfono: es permiso del sitio en el navegador.
+    // Ofrecer ahí el botón de ubicación mandaría al operador a dar vueltas.
+    return {
+      ajustesDelSistema: false,
+      texto: 'El navegador tiene bloqueada la ubicación para este sitio. Ábrelo desde el candado ' +
+             'junto a la dirección → Permisos → Ubicación. Si ya la rechazaste antes, el navegador ' +
+             'lo recuerda y no vuelve a preguntar hasta que lo restablezcas.',
+    };
   }
   if (err.code === err.POSITION_UNAVAILABLE) {
-    return 'La ubicación del dispositivo está apagada o sin señal. Enciéndela en los ajustes del ' +
-           'teléfono —el navegador no puede encenderla por ti— y sal a cielo abierto. Mientras ' +
-           'tanto puedes marcar el punto en el mapa o escribir la coordenada.';
+    return {
+      ajustesDelSistema: true,
+      texto: 'La ubicación del dispositivo está apagada o sin señal. Hay que encenderla en los ' +
+             'ajustes del teléfono: el navegador no puede hacerlo por ti.',
+    };
   }
-  return 'El GPS tardó demasiado en responder. Comprueba que la ubicación del teléfono esté ' +
-         'encendida y reintenta a cielo abierto, o marca el punto en el mapa.';
+  return {
+    ajustesDelSistema: true,
+    texto: 'El GPS tardó demasiado en responder. Suele ser que la ubicación del teléfono esté ' +
+           'apagada, o que estés bajo techo.',
+  };
 }
 
 const inputCls =
@@ -167,7 +203,7 @@ const labelCls = 'text-xs font-medium text-muted-foreground block mb-1';
 export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
   const [gpsDisponible, setGpsDisponible] = useState<boolean | null>(null);
   const [capturando, setCapturando] = useState(false);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<AvisoGps | null>(null);
   /** Qué está haciendo el GPS ahora mismo. Un botón que gira en silencio parece colgado. */
   const [progreso, setProgreso] = useState<string | null>(null);
 
@@ -308,11 +344,20 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
       terminar();
       setAviso(
         alcanzada == null
-          ? 'El GPS no devolvió ninguna lectura en 60 segundos. Comprueba que la ubicación del ' +
-            'teléfono esté encendida —el navegador no puede encenderla por ti— y que estés a ' +
-            'cielo abierto. También puedes marcar el punto en el mapa o escribirlo a mano.'
-          : `La mejor precisión en 60 segundos fue ±${alcanzada} m, y se necesita ±${PRECISION_MAX_M} m. ` +
-            'Aléjate de paredes y techos y reintenta, o marca el punto en el mapa.',
+          // Ninguna lectura en 60 s apunta casi siempre a la ubicación del sistema apagada.
+          ? {
+            ajustesDelSistema: true,
+            texto: 'El GPS no devolvió ninguna lectura en 60 segundos. Suele ser que la ubicación ' +
+                   'del teléfono esté apagada.',
+          }
+          // Aquí SÍ hubo señal: el receptor funciona y el problema es el entorno. Mandar a los
+          // ajustes sería el consejo equivocado.
+          : {
+            ajustesDelSistema: false,
+            texto: `La mejor precisión en 60 segundos fue ±${alcanzada} m, y se necesita ` +
+                   `±${PRECISION_MAX_M} m. Aléjate de paredes y techos y reintenta, o marca el ` +
+                   'punto en el mapa.',
+          },
       );
     }, TIEMPO_MAX_MS);
 
@@ -406,9 +451,33 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
       )}
 
       {aviso && (
-        <div className="flex items-start gap-2 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2">
-          <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
-          <p className="text-[11px] text-destructive leading-relaxed">{aviso}</p>
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 space-y-2">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+            <p className="text-[11px] text-destructive leading-relaxed">{aviso.texto}</p>
+          </div>
+
+          {aviso.ajustesDelSistema && (
+            <div className="pl-6 space-y-1.5">
+              {/* Sólo Android: iOS no expone ningún atajo a los ajustes desde el navegador. */}
+              {esAndroid() && (
+                <a href={INTENT_AJUSTES_UBICACION}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-destructive/15
+                             text-[11px] font-medium text-destructive hover:bg-destructive/25 transition-colors">
+                  <Settings className="w-3 h-3" /> Abrir ajustes de ubicación
+                </a>
+              )}
+              {/* Las instrucciones se muestran SIEMPRE, también junto al botón: el enlace es
+                  best-effort —hay navegadores que lo ignoran sin avisar— y un botón que no
+                  hace nada, sin alternativa a la vista, deja al técnico parado en la calle. */}
+              <p className="text-[11px] text-destructive/80 leading-relaxed">
+                {esAndroid()
+                  ? 'Si el botón no abre nada: desliza desde arriba y toca el icono de Ubicación, o entra en Ajustes → Ubicación.'
+                  : 'Actívala en Ajustes → Privacidad → Localización.'}
+                {' '}Luego vuelve aquí y pulsa «Usar mi ubicación». También puedes marcar el punto en el mapa.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
