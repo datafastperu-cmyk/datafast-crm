@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Crosshair, Loader2, ShieldAlert, AlertTriangle, Map as MapIcon } from 'lucide-react';
 
 // Carga diferida: MapLibre pesa ~250 kB y este componente vive en formularios que la
@@ -105,6 +105,39 @@ interface Props {
   disabled?: boolean;
 }
 
+/**
+ * Tiempo máximo esperando una lectura suficientemente precisa.
+ *
+ * 60 s y no 15: un GPS que arranca en frío tarda entre 20 y 60 segundos en fijar
+ * satélites. El corte anterior expiraba antes de que el receptor llegara a funcionar y
+ * reportaba un fallo donde sólo había prisa.
+ */
+const TIEMPO_MAX_MS = 60_000;
+
+/**
+ * Traduce el fallo del navegador a algo sobre lo que el operador pueda actuar.
+ *
+ * El mensaje nativo (`err.message`) suele venir vacío o decir "Timeout expired", que no
+ * indica qué hacer. Y la distinción que más importa no aparece en ninguna parte: **el
+ * navegador no puede encender el GPS del teléfono**. Si la ubicación del sistema está
+ * apagada, ningún permiso concedido en el sitio va a servir, y pedirle al operador que
+ * "habilite el permiso" lo manda al lugar equivocado.
+ */
+function explicarErrorGps(err: GeolocationPositionError): string {
+  if (err.code === err.PERMISSION_DENIED) {
+    return 'El navegador tiene bloqueada la ubicación para este sitio. Ábrelo desde el candado ' +
+           'junto a la dirección → Permisos → Ubicación. Si ya la rechazaste antes, el navegador ' +
+           'lo recuerda y no vuelve a preguntar hasta que lo restablezcas.';
+  }
+  if (err.code === err.POSITION_UNAVAILABLE) {
+    return 'La ubicación del dispositivo está apagada o sin señal. Enciéndela en los ajustes del ' +
+           'teléfono —el navegador no puede encenderla por ti— y sal a cielo abierto. Mientras ' +
+           'tanto puedes marcar el punto en el mapa o escribir la coordenada.';
+  }
+  return 'El GPS tardó demasiado en responder. Comprueba que la ubicación del teléfono esté ' +
+         'encendida y reintenta a cielo abierto, o marca el punto en el mapa.';
+}
+
 const inputCls =
   'w-full bg-background border border-input rounded-lg px-3 py-2 text-sm text-foreground ' +
   'placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50 transition-colors';
@@ -135,6 +168,8 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
   const [gpsDisponible, setGpsDisponible] = useState<boolean | null>(null);
   const [capturando, setCapturando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  /** Qué está haciendo el GPS ahora mismo. Un botón que gira en silencio parece colgado. */
+  const [progreso, setProgreso] = useState<string | null>(null);
 
   /**
    * Lo que el operador tiene escrito, tal cual. Es estado propio y no derivado de `value`
@@ -189,27 +224,65 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
     );
   }, []);
 
+  /**
+   * Captura por GPS con lecturas sucesivas.
+   *
+   * `watchPosition` y no `getCurrentPosition`: un GPS en frío —el teléfono recién sacado
+   * del bolsillo, que es el caso real en campo— tarda entre 20 y 60 segundos en fijar
+   * satélites, y mientras tanto entrega lecturas que van mejorando: primero ±2000 m por
+   * antenas de telefonía, luego ±100 m, y al final ±5 m. Una sola consulta con 15 s de
+   * espera fallaba justo en el escenario para el que existe este botón.
+   *
+   * Se acepta la primera lectura que baje del umbral y se corta el seguimiento. Mientras
+   * tanto se muestra la precisión actual, porque un botón que gira sin decir nada durante
+   * un minuto parece colgado y el operador lo abandona antes de que el GPS fije.
+   */
+  /**
+   * Seguimiento en curso, para poder cortarlo al desmontar.
+   *
+   * Sin esto, cerrar el modal mientras el GPS busca deja el `watchPosition` vivo: sigue
+   * consumiendo batería en el teléfono del técnico y escribiendo estado en un componente
+   * que ya no existe. Es la misma regla que rige los wizards — lo que se cierra no deja
+   * nada corriendo detrás.
+   */
+  const enCurso = useRef<{ watch: number; limite: number } | null>(null);
+
+  useEffect(() => () => {
+    if (!enCurso.current) return;
+    navigator.geolocation.clearWatch(enCurso.current.watch);
+    window.clearTimeout(enCurso.current.limite);
+  }, []);
+
   const capturar = () => {
-    if (!gpsDisponible) return;
+    if (!gpsDisponible || capturando) return;
     setCapturando(true);
     setAviso(null);
+    setProgreso('Buscando satélites…');
 
-    navigator.geolocation.getCurrentPosition(
+    let mejor: GeolocationPosition | null = null;
+
+    const terminar = () => {
+      navigator.geolocation.clearWatch(id);
+      window.clearTimeout(limite);
+      enCurso.current = null;
+      setCapturando(false);
+      setProgreso(null);
+    };
+
+    const id = navigator.geolocation.watchPosition(
       (pos) => {
-        setCapturando(false);
         const precision = Math.round(pos.coords.accuracy);
+        if (!mejor || pos.coords.accuracy < mejor.coords.accuracy) mejor = pos;
 
         // Una captura imprecisa se RECHAZA, no se guarda con una advertencia que nadie
         // lee. Guardarla igual sería documentar una mufa en el lugar equivocado con la
         // misma confianza que una bien medida.
         if (precision > PRECISION_MAX_M) {
-          setAviso(
-            `Señal GPS débil: precisión de ±${precision} m (máximo aceptado: ${PRECISION_MAX_M} m). ` +
-            `Muévete a cielo abierto y reintenta, o ingresa la coordenada a mano.`,
-          );
+          setProgreso(`Afinando… precisión actual ±${precision} m (se necesita ±${PRECISION_MAX_M} m)`);
           return;
         }
 
+        terminar();
         const lat = Number(pos.coords.latitude.toFixed(7));
         const lng = Number(pos.coords.longitude.toFixed(7));
 
@@ -220,17 +293,30 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
         onChange({ latitud: lat, longitud: lng, precisionGpsM: precision });
       },
       (err) => {
-        setCapturando(false);
-        setAviso(
-          err.code === err.PERMISSION_DENIED
-            ? 'Permiso de ubicación denegado. Habilítalo en el navegador o ingresa la coordenada a mano.'
-            : `No se pudo obtener la ubicación: ${err.message}`,
-        );
+        terminar();
+        setAviso(explicarErrorGps(err));
       },
       // Alta precisión: sin esto el navegador puede devolver la posición por IP, que en
       // Perú suele apuntar al centro de Lima. Sería una coordenada plausible y falsa.
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+      // Sin `timeout` propio: lo gobierna el corte de abajo, que sí sabe qué se llegó a
+      // medir y puede decirlo.
+      { enableHighAccuracy: true, maximumAge: 0 },
     );
+
+    const limite = window.setTimeout(() => {
+      const alcanzada = mejor ? Math.round(mejor.coords.accuracy) : null;
+      terminar();
+      setAviso(
+        alcanzada == null
+          ? 'El GPS no devolvió ninguna lectura en 60 segundos. Comprueba que la ubicación del ' +
+            'teléfono esté encendida —el navegador no puede encenderla por ti— y que estés a ' +
+            'cielo abierto. También puedes marcar el punto en el mapa o escribirlo a mano.'
+          : `La mejor precisión en 60 segundos fue ±${alcanzada} m, y se necesita ±${PRECISION_MAX_M} m. ` +
+            'Aléjate de paredes y techos y reintenta, o marca el punto en el mapa.',
+      );
+    }, TIEMPO_MAX_MS);
+
+    enCurso.current = { watch: id, limite };
   };
 
   return (
@@ -306,6 +392,16 @@ export function CapturaCoordenadas({ value, onChange, disabled }: Props) {
             certificado, o un certificado autofirmado / CA interna en instalaciones
             locales.
           </p>
+        </div>
+      )}
+
+      {/* Estado en vivo del GPS. Fijar satélites puede tardar un minuto, y sin decir qué
+          está pasando el operador cree que se colgó y abandona antes de que llegue la
+          lectura buena. La precisión que se va alcanzando también le dice si moverse. */}
+      {progreso && (
+        <div className="flex items-start gap-2 rounded-lg bg-muted/40 border border-border px-3 py-2">
+          <Loader2 className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5 animate-spin" />
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{progreso}</p>
         </div>
       )}
 
