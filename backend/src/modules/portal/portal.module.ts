@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { OltNativoModule } from '../olt-nativo/olt-nativo.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { MikrotikModule } from '../mikrotik/mikrotik.module';
+import { FacturacionModule } from '../facturacion/facturacion.module';
 
 import { Cliente } from '../clientes/entities/cliente.entity';
 import { PortalConfig } from './entities/portal-config.entity';
@@ -45,6 +46,9 @@ import { PortalJwtGuard } from './portal-auth.guard';
     TicketsModule,
     // Colector de consumo: lee los contadores de las simple queues.
     MikrotikModule,
+    // La fecha de corte que ve el abonado sale de la MISMA política que la usa el cron
+    // que corta: si el portal la calculara por su cuenta, volverían a divergir.
+    FacturacionModule,
   ],
   controllers: [PortalConfigController, PortalController],
   providers: [

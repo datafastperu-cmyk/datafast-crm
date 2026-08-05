@@ -103,6 +103,9 @@ function DecimalInput({ value, onChange, className, placeholder }: {
 }
 
 // ── Date calculations ─────────────────────────────────────────────
+// Mismas fórmulas que `PoliticaFacturacionService` en el backend, que es quien decide de
+// verdad: emisión = diaPago − crearFactura, vence = diaPago, corte = diaPago + diasGracia.
+// Aquí solo se previsualizan las fechas mientras el operador configura.
 export function calcularFechas(diaPago: string, crearFactura: string, diasGracia: string) {
   const hoy = new Date();
   const dia = parseInt(diaPago, 10) || 1;

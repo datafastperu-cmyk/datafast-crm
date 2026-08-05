@@ -112,21 +112,27 @@ export class CobranzaScheduler implements OnModuleInit {
 
     this.logger.log('[CRON] Iniciando detección diaria de morosos');
 
-    // El vencimiento de la FACTURA impaga más antigua es lo que define la mora, no
-    // `co.fecha_ultimo_pago`: ese campo lo mantiene el job PROCESAR_PAGO, pero la ruta de
-    // cobro real (`pagos.service`) no pasa por él, así que se queda en NULL aunque el
-    // abonado haya pagado. Con el criterio anterior, `COALESCE(fecha_ultimo_pago,
-    // fecha_inicio)` medía días desde el alta del contrato y cortaba a todo el que llevara
-    // más de `dias_gracia` instalado con cualquier saldo abierto — aunque la factura
-    // venciera al día siguiente (incidente 2026-08-05: James Pena, pagó el 04/08 y fue
-    // cortado el 05/08 con su única factura pendiente venciendo el 06/08).
+    // El corte se decide contra la FACTURA, no contra el alta del contrato. Antes se
+    // medían días desde `COALESCE(fecha_ultimo_pago, fecha_inicio)`: ese campo lo mantenía
+    // el job PROCESAR_PAGO, por el que la ruta de cobro real (`pagos.service`) no pasa, así
+    // que quedaba en NULL aunque el abonado hubiera pagado y el criterio degeneraba en
+    // "días desde que se instaló". Incidente 2026-08-05: James Pena pagó el 04/08 y fue
+    // cortado el 05/08 con su única factura pendiente venciendo el 06/08.
+    //
+    // Las tres fechas del ciclo salen ahora de la configuración del abonado
+    // (`PoliticaFacturacionService`): vence el día de pago, se corta `diasGracia` después.
+    // Aquí se lee el `fecha_vencimiento` GRABADO en cada factura, nunca recalculado: un
+    // cambio de configuración no puede mover la fecha de una deuda ya notificada.
     const morosos = await this.ds.query(`
       WITH impagas AS (
-        SELECT cliente_id, MIN(fecha_vencimiento) AS vencimiento_mas_antiguo
+        SELECT cliente_id,
+               MIN(fecha_vencimiento) AS vencimiento_mas_antiguo,
+               COUNT(*)::int          AS comprobantes_vencidos
           FROM facturas
          WHERE deleted_at IS NULL
            AND estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
            AND COALESCE(saldo, total - monto_pagado) > 0
+           AND fecha_vencimiento < CURRENT_DATE
          GROUP BY cliente_id
       )
       SELECT
@@ -138,7 +144,10 @@ export class CobranzaScheduler implements OnModuleInit {
         co.usuario_pppoe,
         co.deuda_total,
         co.meses_deuda,
-        em.dias_gracia AS dias_gracia_corte,
+        cl.facturacion_config,
+        em.dias_gracia     AS dias_gracia_empresa,
+        im.vencimiento_mas_antiguo,
+        im.comprobantes_vencidos,
         (CURRENT_DATE - im.vencimiento_mas_antiguo)::int AS dias_vencido,
         cl.nombre_completo AS nombre_cliente
       FROM contratos co
@@ -152,8 +161,8 @@ export class CobranzaScheduler implements OnModuleInit {
         AND co.ip_asignada IS NOT NULL
         AND co.usuario_pppoe IS NOT NULL
         -- Una prórroga vigente es una promesa de pago que el operador ya concedió: el
-        -- corte no puede pasarle por encima. Su vencimiento lo evalúa el job
-        -- VERIFICAR_PRORROGA, que suspende cuando llega la fecha.
+        -- corte no puede pasarle por encima, aunque la fecha de corte ya haya llegado.
+        -- Su vencimiento lo evalúa el job VERIFICAR_PRORROGA.
         AND NOT (co.en_prorroga = true AND co.prorroga_hasta >= CURRENT_DATE)
       ORDER BY co.deuda_total DESC
     `);
@@ -161,9 +170,26 @@ export class CobranzaScheduler implements OnModuleInit {
     let suspender = 0;
 
     for (const c of morosos) {
-      const diasGracia = parseInt(c.dias_gracia_corte || '5', 10);
+      const cfg = (c.facturacion_config ?? {}) as Record<string, unknown>;
+      const entero = (v: unknown): number | null => {
+        const n = typeof v === 'number' ? v : parseInt(String(v ?? ''), 10);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      };
 
-      if (parseInt(c.dias_vencido, 10) > diasGracia) {
+      // `diasGracia` es la distancia entre el vencimiento y el corte. En 0 la UI lo
+      // presenta como "sin corte automático", así que no se corta.
+      const diasGracia = cfg.diaPago !== undefined
+        ? entero(cfg.diasGracia)
+        : parseInt(c.dias_gracia_empresa || '5', 10);
+      if (!diasGracia) continue;
+
+      // `aplicarCorte` = cuántos comprobantes vencidos deben acumularse antes de cortar.
+      // "Desactivado" significa que a este abonado no se le corta por mora.
+      const mesesParaCorte = cfg.diaPago !== undefined ? entero(cfg.aplicarCorte) : 1;
+      if (!mesesParaCorte) continue;
+      if (parseInt(c.comprobantes_vencidos, 10) < mesesParaCorte) continue;
+
+      if (parseInt(c.dias_vencido, 10) >= diasGracia) {
         await this.queue.add(
           JOBS.SUSPENDER_CONTRATO,
           {

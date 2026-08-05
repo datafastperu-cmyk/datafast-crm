@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
+import {
+  PoliticaFacturacionService,
+  PoliticaFacturacion,
+} from '../facturacion/politica-facturacion.service';
+
 // Perfil del abonado y sus servicios. Todo lo que sale de aquí está acotado al
 // `clienteId` del token: el portal nunca recibe un identificador de cliente por
 // parámetro, porque sería un IDOR sobre todo el parque.
@@ -97,7 +102,10 @@ interface FilaServicio {
 export class PortalClienteService {
   private readonly logger = new Logger(PortalClienteService.name);
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly politicaSvc: PoliticaFacturacionService,
+  ) {}
 
   async perfil(clienteId: string, empresaId: string): Promise<PortalPerfil> {
     const [cliente] = await this.dataSource.query<
@@ -169,6 +177,20 @@ export class PortalClienteService {
       [clienteId, empresaId],
     );
 
+    const politica = await this.politicaSvc.resolver(clienteId, empresaId);
+
+    // El vencimiento GRABADO en la factura impaga más antigua: el mismo dato con el que el
+    // cron decide el corte. Recalcularlo aquí sería volver a tener dos fuentes.
+    const [impaga] = await this.dataSource.query<Array<{ fecha_vencimiento: string }>>(
+      `SELECT MIN(fecha_vencimiento) AS fecha_vencimiento
+         FROM facturas
+        WHERE cliente_id = $1 AND empresa_id = $2
+          AND deleted_at IS NULL
+          AND estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+          AND COALESCE(saldo, total - monto_pagado) > 0`,
+      [clienteId, empresaId],
+    );
+
     return filas.map((f) => ({
       contratoId:      f.contrato_id,
       numeroContrato:  f.numero_contrato,
@@ -194,7 +216,7 @@ export class PortalClienteService {
       precioMensual:   Number(f.precio_final ?? f.precio_mensual),
       diaFacturacion:  f.dia_facturacion,
       fechaUltimoPago: f.fecha_ultimo_pago,
-      fechaCorte:      this.calcularFechaCorte(f),
+      fechaCorte:      this.calcularFechaCorte(f, politica, impaga?.fecha_vencimiento ?? null),
       enProrroga:      f.en_prorroga,
       prorrogaHasta:   f.prorroga_hasta,
       deudaTotal:      Number(f.deuda_total),
@@ -331,25 +353,30 @@ export class PortalClienteService {
 
   // Fecha de corte visible para el abonado. Una prórroga vigente manda sobre el cálculo
   // ordinario: es justamente la fecha que le prometieron por teléfono.
-  private calcularFechaCorte(f: FilaServicio): string | null {
+  /**
+   * Fecha de corte que se le anuncia al abonado. Sale de la MISMA política y del MISMO
+   * vencimiento que usa el cron para cortar de verdad.
+   *
+   * Antes se calculaba aquí con `contratos.dias_prorroga` mientras la factura se emitía
+   * con `empresas.dias_gracia`: al abonado se le anunciaba el corte para el día 4 cuando
+   * su factura vencía el 6 — una fecha de corte anterior al vencimiento de la deuda que
+   * la motiva (incidente 2026-08-05).
+   */
+  private calcularFechaCorte(
+    f: FilaServicio,
+    politica: PoliticaFacturacion,
+    vencimientoImpago: string | null,
+  ): string | null {
+    // Una prórroga concedida manda sobre el ciclo: es la fecha que el operador pactó.
     if (f.en_prorroga && f.prorroga_hasta) return f.prorroga_hasta;
-    if (!f.dia_facturacion) return null;
 
-    const hoy    = new Date();
-    const gracia = f.dias_prorroga ?? 0;
+    // Con deuda vencida, la fecha que le importa es el corte de ESA factura. Sin deuda,
+    // la del próximo ciclo, que es informativa.
+    const vencimiento = vencimientoImpago
+      ? new Date(`${vencimientoImpago}T00:00:00Z`)
+      : this.politicaSvc.proximoVencimiento(politica, new Date());
 
-    const corte = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
-    // Día 31 en un mes de 30 cae al 1 del siguiente: se ancla al último día del mes
-    // para no anunciar una fecha que no existe en el calendario.
-    const ultimoDiaMes = new Date(
-      Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() + 1, 0),
-    ).getUTCDate();
-    corte.setUTCDate(Math.min(f.dia_facturacion, ultimoDiaMes));
-    corte.setUTCDate(corte.getUTCDate() + gracia);
-
-    // Si la fecha de este mes ya pasó, la próxima que le interesa es la del mes que viene.
-    if (corte < hoy) corte.setUTCMonth(corte.getUTCMonth() + 1);
-
-    return corte.toISOString().slice(0, 10);
+    const corte = this.politicaSvc.fechaCorte(politica, vencimiento);
+    return corte ? this.politicaSvc.aIso(corte) : null; // sin gracia = sin corte automático
   }
 }

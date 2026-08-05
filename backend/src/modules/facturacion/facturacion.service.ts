@@ -11,6 +11,7 @@ import { ComprobantesConfigService }   from './comprobantes-config.service';
 import { PdfService, EmpresaPdfData, ClientePdfData } from './pdf.service';
 import { AuditoriaService }            from '../auth/auditoria.service';
 import { DeudaPorContratoService }      from './deuda-por-contrato.service';
+import { PoliticaFacturacionService }   from './politica-facturacion.service';
 import { JwtPayload }                  from '../../common/decorators/current-user.decorator';
 
 import { Factura, EstadoFactura, ItemFactura } from './entities/factura.entity';
@@ -41,6 +42,7 @@ export class FacturacionService {
     private readonly pdfSvc:         PdfService,
     private readonly auditoria:      AuditoriaService,
     private readonly deudaSvc:       DeudaPorContratoService,
+    private readonly politicaSvc:    PoliticaFacturacionService,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
@@ -199,6 +201,12 @@ export class FacturacionService {
       user.empresaId, periodoInicio, periodoFin,
     );
 
+    // La política de cada abonado en UNA consulta, por la misma razón que `yaFacturados`:
+    // resolverla dentro del bucle es un roundtrip por cliente.
+    const politicas = await this.politicaSvc.resolverLote(
+      [...porCliente.keys()], user.empresaId,
+    );
+
     for (const [clienteId, grupo] of porCliente) {
       const primer = grupo[0];
       try {
@@ -214,10 +222,9 @@ export class FacturacionService {
         // Resolver comprobante por jerarquía para este cliente específico
         const comprobante = await this.comprobantesSvc.resolverParaCliente(user.empresaId, clienteId);
 
-        // Leer IGV y días de gracia por contrato (no del primer elemento del lote)
+        // Leer IGV por contrato (no del primer elemento del lote)
         const aplicaIgv  = comprobante.tieneCargaFiscal;
         const igvRate    = Number(configGlobal.igvRate);
-        const diasGracia = parseInt(primer.dias_gracia || '5', 10);
 
         let totalSubtotal = 0, totalIgv = 0, totalTotal = 0;
         const items: ItemFactura[] = [];
@@ -269,9 +276,15 @@ export class FacturacionService {
         const { correlativo } = await this.comprobantesSvc.siguienteCorrelativo(comprobante.id);
         const serie = comprobante.serie;
 
-        const diaFact         = parseInt(primer.dia_facturacion || '1', 10);
-        const vencimientoDate = new Date(anio, mes - 1, diaFact + diasGracia);
-        const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
+        // El vencimiento es el DÍA DE PAGO del abonado, no "día de facturación + gracia":
+        // los días de gracia son la distancia hasta el CORTE, no hasta el vencimiento.
+        // Sumarlos aquí producía una factura que vencía después de la fecha de corte que
+        // se le anunciaba al cliente (incidente 2026-08-05). Ver PoliticaFacturacionService.
+        const politica = politicas.get(clienteId)
+          ?? await this.politicaSvc.resolver(clienteId, user.empresaId);
+        const fechaVencimiento = this.politicaSvc.aIso(
+          this.politicaSvc.proximoVencimiento(politica, new Date(Date.UTC(anio, mes - 1, 1))),
+        );
         const descripcion = this.descripcionConsolidada(comprobante.nombre, grupo, mes, anio);
 
         const factura = this.facturaRepo.create({
@@ -348,13 +361,21 @@ export class FacturacionService {
   }
 
   // ────────────────────────────────────────────────────────────
-  // GENERACIÓN AUTOMÁTICA DIARIA (desde CobranzaScheduler)
+  // GENERACIÓN AUTOMÁTICA DIARIA (desde FacturacionScheduler)
+  //
+  // Corre todos los días y emite solo a los abonados cuyo día de emisión es HOY, según la
+  // configuración de SU pestaña Facturación (`diaPago − crearFactura`). Antes el disparo
+  // era por `empresas.dia_facturacion`: un único día al mes para todo el parque, con lo
+  // que la configuración por cliente no llegaba a usarse nunca.
   // ────────────────────────────────────────────────────────────
   async generarFacturasDelDia(
-    empresaId: string, dia: number, mes: number, anio: number,
+    empresaId: string, hoy: Date,
   ): Promise<ResultadoGeneracion> {
+    const mes  = hoy.getUTCMonth() + 1;
+    const anio = hoy.getUTCFullYear();
+
     const contratos = await this.facturaRepo.findContratosParaFacturar(
-      empresaId, mes, anio, undefined, dia,
+      empresaId, mes, anio,
     );
     if (!contratos.length) {
       return { total: 0, exitosas: 0, omitidas: 0, errores: 0, detalles: [] };
@@ -368,14 +389,35 @@ export class FacturacionService {
       porCliente.get(c.cliente_id)!.push(c);
     }
 
+    // Cada abonado tiene su propio ciclo: se emite a quien le toca hoy y a nadie más.
+    const politicas = await this.politicaSvc.resolverLote([...porCliente.keys()], empresaId);
+    const hoyIso    = this.politicaSvc.aIso(hoy);
+
+    for (const clienteId of [...porCliente.keys()]) {
+      const politica = politicas.get(clienteId);
+      const vence    = politica && this.politicaSvc.proximoVencimiento(politica, hoy);
+      const emite    = politica && vence && this.politicaSvc.fechaEmision(politica, vence);
+      // Sin fecha de emisión la factura se crea a mano: no es un error, es la opción
+      // "Desactivado" de `crearFactura`.
+      if (!emite || this.politicaSvc.aIso(emite) !== hoyIso) porCliente.delete(clienteId);
+    }
+
+    if (!porCliente.size) {
+      return { total: 0, exitosas: 0, omitidas: 0, errores: 0, detalles: [] };
+    }
+
     const resultado: ResultadoGeneracion = {
       total: porCliente.size, exitosas: 0, omitidas: 0, errores: 0, detalles: [],
     };
-    const periodoInicio = `${anio}-${String(mes).padStart(2, '0')}-01`;
-    const periodoFin    = this.ultimoDiaMes(anio, mes);
 
     for (const [clienteId, grupo] of porCliente) {
       const primer = grupo[0];
+      // El periodo es el del VENCIMIENTO, no el de hoy: a un abonado que vence el día 1 se
+      // le emite a fines del mes anterior, y esa factura pertenece al mes que vence.
+      const politica     = politicas.get(clienteId)!;
+      const vencimiento  = this.politicaSvc.proximoVencimiento(politica, hoy);
+      const periodoInicio = `${vencimiento.getUTCFullYear()}-${String(vencimiento.getUTCMonth() + 1).padStart(2, '0')}-01`;
+      const periodoFin    = this.ultimoDiaMes(vencimiento.getUTCFullYear(), vencimiento.getUTCMonth() + 1);
       try {
         if (await this.facturaRepo.existeFacturaClientePeriodo(clienteId, periodoInicio, periodoFin)) {
           resultado.omitidas++;
@@ -388,7 +430,6 @@ export class FacturacionService {
 
         const comprobante = await this.comprobantesSvc.resolverParaCliente(empresaId, clienteId);
         const igvRate     = Number(configGlobal.igvRate);
-        const diasGracia  = parseInt(primer.dias_gracia || '5', 10);
 
         let totalSubtotal = 0, totalIgv = 0, totalTotal = 0;
         const items: ItemFactura[] = [];
@@ -426,8 +467,7 @@ export class FacturacionService {
 
         const { correlativo } = await this.comprobantesSvc.siguienteCorrelativo(comprobante.id);
         const serie = comprobante.serie;
-        const vencimientoDate  = new Date(anio, mes - 1, dia + diasGracia);
-        const fechaVencimiento = vencimientoDate.toISOString().split('T')[0];
+        const fechaVencimiento = this.politicaSvc.aIso(vencimiento);
         const descripcion = this.descripcionConsolidada(comprobante.nombre, grupo, mes, anio);
 
         const factura = this.facturaRepo.create({
@@ -481,7 +521,7 @@ export class FacturacionService {
 
     await this.auditoria.log({
       empresaId, accion: 'AUTO_GENERATE_DAILY', modulo: 'facturacion',
-      descripcion: `Auto-generación día ${dia}/${mes}/${anio}: ${resultado.exitosas} exitosas, ${resultado.omitidas} omitidas, ${resultado.errores} errores`,
+      descripcion: `Auto-generación ${this.politicaSvc.aIso(hoy)}: ${resultado.exitosas} exitosas, ${resultado.omitidas} omitidas, ${resultado.errores} errores`,
     });
 
     return resultado;

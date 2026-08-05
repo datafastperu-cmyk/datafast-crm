@@ -6,6 +6,7 @@ import { FacturacionController }       from './facturacion.controller';
 import { ComprobantesConfigController } from './comprobantes-config.controller';
 
 import { DeudaPorContratoService } from './deuda-por-contrato.service';
+import { PoliticaFacturacionService } from './politica-facturacion.service';
 import { FacturacionService }          from './facturacion.service';
 import { ComprobantesConfigService }   from './comprobantes-config.service';
 import { FacturaRepository }           from './repositories/factura.repository';
@@ -52,6 +53,7 @@ import { ConfiguracionModule }         from '../config/config.module';
   providers: [
     FacturacionService,
     DeudaPorContratoService,
+    PoliticaFacturacionService,
     ComprobantesConfigService,
     FacturaRepository,
     PdfService,
@@ -61,6 +63,7 @@ import { ConfiguracionModule }         from '../config/config.module';
   exports: [
     FacturacionService,
     DeudaPorContratoService,
+    PoliticaFacturacionService,
     ComprobantesConfigService,
     FacturaRepository,
   ],

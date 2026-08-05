@@ -52,22 +52,28 @@ export class FacturacionScheduler implements OnModuleInit {
       removeOnComplete: true,
     });
 
-    // 2. Generar facturas para empresas activas
+    // 2. Generar facturas del día para empresas activas.
+    //    Se encola TODOS los días: quién se factura hoy lo decide el ciclo de cada
+    //    abonado (`diaPago − crearFactura` de su pestaña Facturación), no un día único
+    //    para todo el parque. Con el disparo por `empresas.dia_facturacion`, un cliente
+    //    configurado para vencer el 28 se facturaba igual el día 1.
     const empresas = await this.ds.query(`
-      SELECT id, dia_facturacion FROM empresas
+      SELECT id FROM empresas
       WHERE estado = 'activo' AND deleted_at IS NULL
     `);
 
-    const diaHoy = hoy.getDate();
     const mes    = hoy.getMonth() + 1;
     const anio   = hoy.getFullYear();
+    const diaHoy = hoy.getDate();
     let   delaySlot = 0;
 
     for (let i = 0; i < empresas.length; i++) {
       const emp = empresas[i];
-      if (parseInt(emp.dia_facturacion, 10) !== diaHoy) continue;
 
-      const jobId = `gen-mensual-${emp.id}-${anio}-${String(mes).padStart(2, '0')}`;
+      // El jobId lleva el día porque ahora hay una corrida por día: con el jobId mensual
+      // anterior, Bull deduplicaba la del día 2 contra la del día 1 y no se emitía nada
+      // el resto del mes.
+      const jobId = `gen-dia-${emp.id}-${anio}-${String(mes).padStart(2, '0')}-${String(diaHoy).padStart(2, '0')}`;
       await this.queue.add('generar-mensual', {
         empresaId: emp.id,
         usuarioId: 'sistema',
@@ -80,7 +86,7 @@ export class FacturacionScheduler implements OnModuleInit {
         removeOnFail:     500,
         delay: delaySlot++ * 1000,
       });
-      this.logger.log(`Facturación mensual encolada: empresa ${emp.id} | job: ${jobId}`);
+      this.logger.log(`Facturación del día encolada: empresa ${emp.id} | job: ${jobId}`);
     }
   }
 }
@@ -107,24 +113,14 @@ export class FacturacionWorker {
   // ── Job: generación mensual de facturas ──────────────────
   @Process('generar-mensual')
   async processGenerarMensual(job: Job<GenerarMensualPayload>) {
-    const { empresaId, usuarioId, mes, anio } = job.data;
-    this.logger.log(`Procesando generación mensual: empresa ${empresaId} | ${mes}/${anio}`);
+    const { empresaId, mes, anio } = job.data;
+    this.logger.log(`Procesando generación del día: empresa ${empresaId} | ${mes}/${anio}`);
 
-    // Construir un user mock para el servicio (el sistema actúa como admin)
-    const userSistema = {
-      sub:           usuarioId,
-      email:         'sistema@datafast.pe',
+    // Emite solo a los abonados cuyo ciclo cae hoy. El tipo de comprobante se resuelve
+    // por jerarquía dentro del servicio (cliente → empresa default).
+    const resultado = await this.facturacionSvc.generarFacturasDelDia(
       empresaId,
-      nombreCompleto: 'Sistema',
-      roles:         ['Administrador'],
-      permisos:      [],
-      tema:          'dark',
-    } as any;
-
-    // El tipo de comprobante se resuelve automáticamente por jerarquía (cliente → empresa default)
-    const resultado = await this.facturacionSvc.generarMensual(
-      { mes, anio },
-      userSistema,
+      new Date(),
     );
 
     this.logger.log(
