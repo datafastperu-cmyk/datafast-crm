@@ -338,6 +338,81 @@ const getVpsIp   = () => process.env.VPN_SERVER_IP || process.env.APP_URL?.repla
 - [ ] ¿`ecosystem.config.js` sigue sin IPs ni dominios?
 - [ ] ¿`.env.example` documenta la variable?
 
+## Causa raíz antes que parche — Regla de Corrección Obligatoria
+
+**Ante un error, un bug o cualquier comportamiento incorrecto, primero se indaga la causa
+raíz y después se aplica una solución definitiva. No se aplican soluciones superficiales.**
+
+Un parche que hace desaparecer el síntoma deja el defecto vivo y, peor, lo deja invisible:
+el siguiente que lo encuentre partirá de un sistema que "ya se revisó". El coste de buscar
+la raíz se paga una vez; el de no buscarla se paga en cada aparición.
+
+Origen: 2026-08-05, el mapa de red. Tres fallos encadenados, ninguno ruidoso:
+
+- Los abonados no aparecían. **Parche superficial disponible:** copiar las coordenadas a
+  `clientes.latitud` con un UPDATE y "listo". **Raíz:** el mismo dato vivía en dos sitios y
+  la consulta leía el equivocado — los formularios escriben `contratos.latitud_instalacion`.
+  El UPDATE habría funcionado ese día y habría vuelto a fallar con cada alta nueva.
+- Ninguna capa vectorial se dibujaba. **Parche superficial disponible:** quitar las capas de
+  etiquetas, que era lo que parecía sospechoso. **Raíz:** `maplibre-gl` 6.1.0 no procesa
+  GeoJSON bajo el empaquetado de Next 14 — el mapa nunca alcanzaba `loaded()`. Quitar las
+  etiquetas no habría cambiado nada y habría enterrado la pista.
+- El GPS del móvil decía "permiso denegado". **Parche superficial disponible:** mejorar el
+  texto del mensaje. **Raíz:** la cabecera `Permissions-Policy` declaraba `geolocation=()`
+  —lista vacía, que prohíbe la ubicación al propio sitio—, así que el navegador respondía sin
+  llegar a preguntar. Ningún texto habría arreglado eso.
+
+**Checklist antes de dar por corregido un fallo:**
+
+1. **Reproducirlo y observarlo**, no deducirlo. Si el diagnóstico no se apoya en una medición
+   —una consulta, un header, un valor leído en ejecución— es una hipótesis, y debe decirse así.
+2. **Explicar por qué el sistema llegó a ese estado.** Si la explicación es "no sé por qué
+   pasaba, pero con esto ya no pasa", no está corregido: está oculto.
+3. **Preguntar dónde más ocurre lo mismo.** Un defecto de criterio suele estar repetido: la
+   capa del mapa y el encuadre inicial tenían el mismo error, en dos consultas distintas.
+4. **Corregir en el punto común**, no en cada sitio donde se manifiesta. De ahí salió el CTE
+   `PUNTOS_SERVICIO`: una sola definición de dónde está un abonado, en vez de cuatro consultas
+   que pueden divergir.
+5. **Dejar constancia de la causa**, no del arreglo. El commit y el comentario explican qué
+   estaba mal y por qué no se veía; eso es lo que evita que se reintroduzca.
+
+## Reutilizar antes de construir — Regla de Consulta de Datos Obligatoria
+
+**Antes de escribir una consulta o un servicio para obtener datos, hay que verificar si esos
+datos ya se obtienen en otra sección o por otro servicio del ERP, y tomarlos de ahí.** No se
+reconstruye un trabajo que el sistema ya hace para llegar al mismo resultado.
+
+No es solo ahorro de esfuerzo. Dos caminos hacia el mismo dato son dos verdades que empiezan
+idénticas y divergen en la primera modificación que alguien haga en una sola de ellas — y
+entonces el ERP responde distinto según por dónde se le pregunte, que es peor que no
+responder.
+
+Origen: 2026-08-05, al diseñar el estado de los abonados en el mapa. Se estuvo a punto de
+proponer una clasificación de estados de ONU desde cero. Ya existía: `clasificarOnus`
+(`GET /olt-nativo/:oltId/onus`) lee la OLT por SSH, cruza `display ont info` con la causa de
+caída y distingue `online | apagada | ruptura_fibra | desactivada | offline` — incluido el
+`ruptura_fibra` que se había dado por imposible de determinar. Construirlo de nuevo habría
+producido una segunda clasificación, peor y destinada a contradecir a la primera.
+
+**Checklist antes de escribir una consulta o un servicio de lectura:**
+
+1. **Buscar primero.** ¿Existe ya un endpoint, un servicio o una consulta que devuelva esto?
+   Un `grep` por el concepto de negocio cuesta un minuto.
+2. **Si existe y sirve, usarlo.** Aunque devuelva de más: filtrar sobra es barato, mantener
+   dos fuentes no.
+3. **Si existe pero no encaja, extenderlo**, no clonarlo. Un parámetro nuevo en el servicio
+   existente es preferible a un servicio paralelo.
+4. **Si de verdad hace falta uno nuevo, dejar UNA definición** reutilizable (constante, CTE,
+   servicio) y que los demás consumidores pasen por ella.
+5. **Justificar la duplicación cuando sea inevitable.** A veces lo es —una consulta masiva no
+   puede usar el camino de una lectura en vivo contra hardware—, pero eso se escribe en el
+   código: qué se duplicó, por qué, y qué hay que cambiar en los dos sitios si cambia la regla.
+
+**Antes de reutilizar, comprobar que el coste encaja con el uso.** Un servicio pensado para
+una consulta puntual puede ser inviable en bucle: leer el estado en vivo de una ONU está bien
+al abrir una ficha, y tumba la gestión del MA5800 si se hace por cada pin del mapa en cada
+movimiento. Reutilizar no significa ignorar el patrón de acceso.
+
 ## Perfiles y Especialidades Obligatorias del Agente
 - **Al trabajar en `backend/src/`:** Asume el rol de **Ingeniero de Software Senior Especialista en NestJS y Arquitecturas de Microservicios** [INDEX]. Aplica patrones de inyección de dependencias estrictos, tipado fuerte de TypeScript, optimización de consultas TypeORM y manejo de excepciones robusto [INDEX].
 - **Al trabajar en scripts de red:** Asume el rol de **Ingeniero de Redes y Telecomunicaciones (Especialista MikroTik MTCNA/MTCRE y Redes WISP/FTTH)** [INDEX]. Prioriza la estabilidad de los sockets, control de concurrencia en la API de RouterOS y logs preventivos de fallos de conexión [INDEX].
