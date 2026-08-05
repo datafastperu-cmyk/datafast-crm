@@ -372,7 +372,16 @@ export function MapaRedContent() {
                 onChange={() => alternar(c.key)} className="accent-primary" />
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
               <span className="text-foreground">{c.label}</span>
-              {denegada && <span className="text-[10px] text-muted-foreground ml-auto">sin permiso</span>}
+              {denegada
+                ? <span className="text-[10px] text-muted-foreground ml-auto">sin permiso</span>
+                // Cuántos elementos hay en la vista actual, por capa. Sin esto, "no veo
+                // nada" es ambiguo: no se distingue una capa vacía de una que trae datos
+                // pero no llega a dibujarse, y son dos averías distintas.
+                : activas.has(c.key) && (
+                  <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
+                    {datos[c.key]?.features.length ?? 0}
+                  </span>
+                )}
             </label>
           );
         })}
