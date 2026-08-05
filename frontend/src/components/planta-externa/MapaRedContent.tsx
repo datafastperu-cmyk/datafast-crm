@@ -302,6 +302,10 @@ export function MapaRedContent() {
     m.on('moveend', (): void => { void cargar(); });
 
     mapa.current = m;
+    // Referencia para diagnóstico desde la consola del navegador. El mapa falla de formas
+    // que no dejan rastro —una capa que no se crea, una fuente vacía, una expresión que se
+    // descarta— y sin poder interrogarlo hay que deducir el estado a ciegas.
+    (window as unknown as { __mapaRed?: MapLibreMap }).__mapaRed = m;
     return () => { m.remove(); mapa.current = null; };
   }, [cargar]);
 
