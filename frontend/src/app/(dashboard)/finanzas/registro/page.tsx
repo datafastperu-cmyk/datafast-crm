@@ -309,7 +309,8 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
     return d.toISOString().split('T')[0];
   })();
 
-  const [facturaId,      setFacturaId]      = useState<string>(pendientes[0]?.id ?? '');
+  // Ids de los comprobantes marcados para cobrar. El total sale de aquí.
+  const [seleccion,      setSeleccion]      = useState<string[]>(pendientes.map(f => f.id));
   const [metodoPago,     setMetodoPago]     = useState('');
   const [numOp,          setNumOp]          = useState('');
   const [notas,          setNotas]          = useState('');
@@ -348,28 +349,36 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   // el siguiente. Solo tiene sentido si el cliente NO debe nada.
   const esAdelanto = tipoPago === 'adelanto';
 
-  // Valor centinela del consolidado: no es el id de ningún comprobante, así que no puede
-  // colisionar con uno real.
-  const TODOS = '__todos__';
-  const esConsolidado = facturaId === TODOS;
+  // Deuda total del cliente: la referencia para el adelanto (no se admite con deuda).
   const totalConsolidado = pendientes.reduce(
     (s, f) => s + (f.saldo > 0 ? +f.saldo : +f.total), 0,
   );
 
-  // Auto-fill monto from selected factura
-  useEffect(() => {
-    if (facturaId === TODOS) { setMonto(fmt(totalConsolidado)); return; }
-    const f = facturas.find(f => f.id === facturaId);
-    if (f) setMonto(fmt(f.saldo > 0 ? f.saldo : f.total));
-    else    setMonto('');
-  }, [facturaId, facturas]); // eslint-disable-line
+  // Importe de lo MARCADO: es el total a cobrar y se recalcula con cada casilla.
+  const totalSeleccion = pendientes
+    .filter(f => seleccion.includes(f.id))
+    .reduce((s, f) => s + (f.saldo > 0 ? +f.saldo : +f.total), 0);
 
-  // Default to first pending on load
-  useEffect(() => {
-    if (pendientes[0] && !facturaId) setFacturaId(pendientes[0].id);
-  }, [pendientes]); // eslint-disable-line
+  const todosMarcados = pendientes.length > 0 && seleccion.length === pendientes.length;
 
-  const selectedFactura = facturas.find(f => f.id === facturaId);
+  // El monto sigue a la selección. Con UN comprobante el operador puede editarlo (cobro
+  // parcial); con varios el backend exige el total exacto, así que cambiarlo a mano solo
+  // llevaría a un rechazo.
+  useEffect(() => {
+    setMonto(seleccion.length ? fmt(totalSeleccion) : '');
+  }, [seleccion, facturas]); // eslint-disable-line
+
+  // Al cargar el cliente se marcan todos sus pendientes: cobrar la deuda completa es lo
+  // más frecuente, y desmarcar es más rápido que ir marcando uno a uno.
+  useEffect(() => {
+    setSeleccion(pendientes.map(f => f.id));
+  }, [facturas]); // eslint-disable-line
+
+  // Con un único comprobante marcado el pago se ata a él (y admite parcial); con varios
+  // viaja la lista y el backend lo trata como consolidado.
+  const esConsolidado    = seleccion.length > 1;
+  const facturaUnicaId   = seleccion.length === 1 ? seleccion[0] : '';
+  const selectedFactura  = facturas.find(f => f.id === facturaUnicaId);
 
   // Cuando es promesa, cargar contratos del cliente para obtener el contratoId aunque
   // la factura no lo tenga enlazado (contrato_id nullable en facturas)
@@ -401,10 +410,10 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
         // Adelanto: cobro sin comprobante. El backend lo rechaza si el cliente tiene deuda
         // pendiente — con comprobantes impagos eso no es adelantar, es pagar.
         esAdelanto:      esAdelanto || undefined,
-        // Consolidado: van todos los pendientes y el backend exige que el importe los
-        // cubra por completo (es todo o nada).
-        facturaId:       esAdelanto || esConsolidado ? undefined : (facturaId || undefined),
-        facturaIds:      esConsolidado ? pendientes.map(f => f.id) : undefined,
+        // Varios marcados: viaja la lista y el backend exige que el importe los cubra por
+        // completo (es todo o nada). Uno solo: se ata a ese comprobante y admite parcial.
+        facturaId:       esAdelanto || esConsolidado ? undefined : (facturaUnicaId || undefined),
+        facturaIds:      esConsolidado ? seleccion : undefined,
         contratoId:      esAdelanto ? undefined : selectedFactura?.contratoId,
         monto:           parseFloat(monto) || 0,
         metodoPago,
@@ -479,39 +488,82 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
           </div>
         ) : (
         <div>
-          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-            Comprobante a pagar
-          </label>
-          <select
-            value={facturaId}
-            onChange={e => setFacturaId(e.target.value)}
-            className={inputCls}
-          >
-            <option value="">— Sin comprobante —</option>
-            {/* Consolidado: un solo pago y un solo número de operación para toda la
-                deuda. Solo aparece con más de un comprobante pendiente — con uno, la
-                opción individual ya hace lo mismo. */}
+          {/* Selección de comprobantes.
+              El operador marca los que va a cobrar y el total sale de esa selección: uno,
+              varios o todos. Antes era un desplegable de UNO o la opción "todas las
+              deudas", que no cubría el caso normal de cobrar dos de tres comprobantes.
+              Todos los marcados se saldan con un único pago y un único número de
+              operación (ver pago_aplicaciones en el backend). */}
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs text-gray-500 dark:text-gray-400 font-medium">
+              Comprobantes a pagar
+            </label>
             {pendientes.length > 1 && (
-              <option value={TODOS}>
-                ★ TODAS LAS DEUDAS — {pendientes.length} comprobantes (S/. {fmt(totalConsolidado)})
-              </option>
+              <button
+                type="button"
+                onClick={() => setSeleccion(
+                  todosMarcados ? [] : pendientes.map(f => f.id),
+                )}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                {todosMarcados ? 'Quitar todos' : 'Seleccionar todos'}
+              </button>
             )}
-            {facturas
-              .filter(f => f.estado !== 'anulada')
-              .map(f => (
-                <option key={f.id} value={f.id}>
-                  N° {f.numeroCompleto} — (S/. {fmt(f.saldo > 0 ? f.saldo : f.total)}{' '}
-                  {f.tipoComprobante} — {f.fechaVencimiento})
-                </option>
-              ))}
-          </select>
-          {esConsolidado && (
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Se saldarán {pendientes.length} comprobantes con un único pago:{' '}
-              {pendientes.map(f => f.numeroCompleto).join(', ')}. El importe debe cubrir el
-              total.
+          </div>
+
+          {!pendientes.length ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 rounded p-3">
+              Este cliente no tiene comprobantes pendientes.
             </p>
+          ) : (
+            <div className="border border-gray-300 dark:border-gray-600 rounded divide-y divide-gray-200 dark:divide-gray-700 max-h-56 overflow-y-auto">
+              {pendientes.map(f => {
+                const marcado = seleccion.includes(f.id);
+                const saldoF  = f.saldo > 0 ? +f.saldo : +f.total;
+                return (
+                  <label
+                    key={f.id}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors',
+                      marcado
+                        ? 'bg-blue-50 dark:bg-blue-900/20'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      onChange={() => setSeleccion(
+                        marcado
+                          ? seleccion.filter(id => id !== f.id)
+                          : [...seleccion, f.id],
+                      )}
+                      className="w-4 h-4 accent-blue-600 flex-shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-gray-900 dark:text-gray-100 truncate">
+                        N° {f.numeroCompleto}
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-1.5">
+                          {f.tipoComprobante} · vence {f.fechaVencimiento}
+                        </span>
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex-shrink-0">
+                      S/. {fmt(saldoF)}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           )}
+
+          <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+            {seleccion.length === 0
+              ? 'Marca al menos un comprobante. Para cobrar dinero sin comprobante, elige “Registrar como adelanto” en Forma de Registro.'
+              : seleccion.length === 1
+                ? 'Un solo comprobante: puedes cobrar un importe parcial.'
+                : `${seleccion.length} comprobantes con un único pago y un único N° de operación. El importe debe cubrir el total.`}
+          </p>
         </div>
         )}
 
@@ -672,10 +724,23 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                 onChange={e => setMonto(e.target.value)}
                 step="0.01"
                 min="0"
-                className="flex-1 px-3 py-2 text-lg font-bold text-emerald-600 dark:text-emerald-400
-                           bg-white dark:bg-gray-800 focus:outline-none"
+                // Con varios comprobantes marcados el importe lo fija la selección: el
+                // backend exige el total exacto, así que dejar teclear otra cifra solo
+                // llevaría a un rechazo tras rellenar todo el formulario.
+                readOnly={esConsolidado}
+                className={cn(
+                  'flex-1 px-3 py-2 text-lg font-bold text-emerald-600 dark:text-emerald-400',
+                  'bg-white dark:bg-gray-800 focus:outline-none',
+                  esConsolidado && 'cursor-not-allowed opacity-90',
+                )}
               />
             </div>
+            {esConsolidado && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Suma de los {seleccion.length} comprobantes marcados. Desmarca alguno para
+                cambiar el total.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -751,6 +816,8 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
               // Con deuda pendiente no hay adelanto posible: el backend lo rechaza igual,
               // pero bloquearlo aquí evita que el cajero llegue al error tras teclear todo.
               || (esAdelanto && totalConsolidado > 0)
+              // Un cobro que no es adelanto ni promesa tiene que aplicarse a algo.
+              || (!esPromesa && !esAdelanto && seleccion.length === 0)
             }
             onClick={() => mutate()}
             className={cn(
