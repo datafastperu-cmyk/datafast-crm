@@ -427,6 +427,31 @@ describe('PagosService', () => {
   // ── Reactivación automática ────────────────────────────────
   describe('reactivación automática', () => {
 
+    // "Solo registrar": el abonado se da de baja y paga su último comprobante. Saldar la
+    // deuda disparaba la reactivación y el ERP le devolvía el servicio a alguien que se
+    // está yendo. La decisión se toma al cobrar y se respeta al verificar, que puede ser
+    // días después y por otra persona.
+    it('NO reactiva cuando el pago se registró como "Solo registrar" (baja voluntaria)', async () => {
+      mockRepo.findById
+        .mockResolvedValueOnce({
+          ...mockPago, estado: EstadoPago.PENDIENTE_VERIFICACION, reactivarServicio: false,
+        })
+        .mockResolvedValueOnce({
+          ...mockPago, estado: EstadoPago.VERIFICADO, reactivarServicio: false,
+        });
+      mockRepo.update.mockResolvedValue(undefined);
+      mockFacturacionSvc.aplicarPago.mockResolvedValue(undefined);
+      // El contrato SÍ está suspendido y la deuda queda en cero: sin la marca, este es
+      // exactamente el caso en el que se reactivaría.
+      mockContratosSvc.findOne.mockResolvedValue(mockContratoSuspendido);
+      mockRepo.calcularDeudaContrato.mockResolvedValue({ deuda: 0, meses: 0 });
+      mockDs.query.mockResolvedValue([{ contrato_id: 'cnt-001' }]);
+
+      await service.verificar('pag-001', { aprobado: true }, mockUser as any);
+
+      expect(mockContratosSvc.cambiarEstado).not.toHaveBeenCalled();
+    });
+
     it('NO reactiva si el contrato ya está activo', async () => {
       mockRepo.findById
         .mockResolvedValueOnce({ ...mockPago, estado: EstadoPago.PENDIENTE_VERIFICACION })

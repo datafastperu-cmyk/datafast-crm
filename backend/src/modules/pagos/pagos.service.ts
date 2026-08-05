@@ -234,6 +234,10 @@ export class PagosService {
         verificadoPor:   autoVerificado ? user.sub : null,
         verificadoEn:    autoVerificado ? new Date() : null,
         comprobanteUrl: dto.voucherUrl ?? null,
+        // Se guarda en la fila porque la reactivación puede ocurrir mucho después, al
+        // verificar el pago: quien lo apruebe días más tarde tiene que saber qué se
+        // decidió en el mostrador.
+        reactivarServicio: dto.reactivarServicio !== false,
         // Metadatos Yape en mpDetail hasta que se añadan columnas dedicadas
         mpDetail: (dto.celularYape || dto.otpYape)
           ? { celularYape: dto.celularYape ?? null, otpYape: dto.otpYape ?? null }
@@ -300,12 +304,21 @@ export class PagosService {
         // deuda_total=0, meses_deuda=0, en_prorroga=false, fecha_vencimiento, historial).
         // Solo encolar si la deuda total quedó en cero tras este pago.
         // Cubre facturas con contrato_id directo y las sin vínculo (por cliente_id).
+        //
+        // `reactivarServicio: false` ("Solo registrar") se salta todo esto: es la baja
+        // voluntaria que salda su último comprobante. Sin esta salida, saldar la deuda le
+        // devolvía el servicio a un abonado que se está yendo.
         const estadosReactivables = [
           EstadoContrato.SUSPENDIDO,
           EstadoContrato.CORTADO,
           EstadoContrato.MOROSO,
         ];
-        if (contrato && estadosReactivables.includes(contrato.estado)) {
+        if (dto.reactivarServicio === false) {
+          this.logger.log(
+            `[PAGO] Cobro sin reactivación (Solo registrar) — contrato ${contrato?.id ?? 'sin contrato'} ` +
+            `queda en ${contrato?.estado ?? 'n/a'} por decisión del operador`,
+          );
+        } else if (contrato && estadosReactivables.includes(contrato.estado)) {
           const [deudaRow] = await manager.query<{ deuda: string }[]>(`
             SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
             FROM facturas f
@@ -417,7 +430,15 @@ export class PagosService {
       usuarioEmail: user.email,
       modulo:       'pagos',
       entidadId:    savedPago.id,
-      descripcion:  `Pago ${dto.metodoPago} S/ ${dto.monto} | factura: ${dto.facturaId} | ${savedPago.estado}`,
+      // El detalle de qué se cobró y si se decidió NO devolver el servicio: sin esto,
+      // mañana nadie sabe por qué un abonado sin deuda sigue cortado.
+      descripcion:
+        `Pago ${dto.metodoPago} S/ ${dto.monto} | ` +
+        (dto.esAdelanto
+          ? 'ADELANTO (sin comprobante)'
+          : `comprobantes: ${(dto.facturaIds?.length ? dto.facturaIds : [dto.facturaId]).join(', ')}`) +
+        ` | ${savedPago.estado}` +
+        (dto.reactivarServicio === false ? ' | SIN reactivar servicio (Solo registrar)' : ''),
       req,
     });
 
@@ -812,7 +833,15 @@ export class PagosService {
       }
 
       // ── B. Si hay contrato, verificar si se saldó la deuda ─
-      if (contratoId) {
+      //
+      // La decisión de NO reactivar se tomó al registrar el pago y viaja en la fila: este
+      // camino corre cuando un supervisor verifica días después, y tiene que respetar lo
+      // que se acordó en el mostrador con el abonado que se daba de baja.
+      if (pago.reactivarServicio === false) {
+        this.logger.log(
+          `[PAGO] ${pago.id} verificado sin reactivar servicio (registrado como "Solo registrar")`,
+        );
+      } else if (contratoId) {
         await this.verificarYReactivarContrato(contratoId, empresaId, user, pago.id);
       } else if (pago.clienteId) {
         // Factura unificada (contrato_id null): verificar deuda total del cliente

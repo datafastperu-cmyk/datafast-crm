@@ -56,6 +56,17 @@ export class RegistrarPagoDto {
   @MaxLength(1000)
   notas?: string;
 
+  /**
+   * `false` = cobrar SIN devolver el servicio ("Solo registrar" en la caja).
+   *
+   * Existe para la baja voluntaria que salda su último comprobante: con la reactivación
+   * automática, el ERP le devolvía el servicio a un abonado que se está yendo. Por defecto
+   * se reactiva, que es el comportamiento normal de un cobro.
+   */
+  @IsOptional()
+  @IsBoolean()
+  reactivarServicio?: boolean;
+
   @IsNumber({ allowInfinity: false, allowNaN: false, maxDecimalPlaces: 2 })
   @IsPositive()
   monto: number;

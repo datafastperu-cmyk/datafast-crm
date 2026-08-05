@@ -348,6 +348,9 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   // Adelanto: dinero sin comprobante que queda como saldo a favor y se consume al emitir
   // el siguiente. Solo tiene sentido si el cliente NO debe nada.
   const esAdelanto = tipoPago === 'adelanto';
+  // "Solo registrar": se cobra pero NO se devuelve el servicio. Es la baja voluntaria que
+  // salda su último comprobante — reactivarlo sería devolverle internet a quien se va.
+  const soloRegistrar = tipoPago === 'registrar';
 
   // Deuda total del cliente: la referencia para el adelanto (no se admite con deuda).
   const totalConsolidado = pendientes.reduce(
@@ -410,6 +413,8 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
         // Adelanto: cobro sin comprobante. El backend lo rechaza si el cliente tiene deuda
         // pendiente — con comprobantes impagos eso no es adelantar, es pagar.
         esAdelanto:      esAdelanto || undefined,
+        // Solo se manda cuando es false: por defecto un cobro reactiva el servicio.
+        reactivarServicio: soloRegistrar ? false : undefined,
         // Varios marcados: viaja la lista y el backend exige que el importe los cubra por
         // completo (es todo o nada). Uno solo: se ata a ese comprobante y admite parcial.
         facturaId:       esAdelanto || esConsolidado ? undefined : (facturaUnicaId || undefined),
@@ -554,6 +559,15 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                   </label>
                 );
               })}
+            </div>
+          )}
+
+          {soloRegistrar && (
+            <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-900/20 p-3 text-xs text-amber-700 dark:text-amber-400">
+              <strong>El servicio NO se reactivará.</strong> El cobro queda registrado y la
+              deuda saldada, pero el abonado seguirá sin servicio — es lo que corresponde a
+              una baja que paga su último comprobante. Para devolverle el servicio, usa
+              “Registrar pago y Activar”.
             </div>
           )}
 

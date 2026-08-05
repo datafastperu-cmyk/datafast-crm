@@ -121,6 +121,17 @@ export class Pago {
   @Column({ type: 'text', nullable: true })
   notas: string;
 
+  /**
+   * `false` = cobrar sin devolver el servicio.
+   *
+   * La decide el operador al registrar ("Solo registrar"), pero la reactivación puede
+   * ocurrir mucho después —cuando alguien verifica un pago pendiente—, así que viaja en la
+   * fila del pago: quien verifica días más tarde tiene que saber qué se decidió en el
+   * mostrador. El caso típico es una baja voluntaria que salda su último comprobante.
+   */
+  @Column({ name: 'reactivar_servicio', type: 'boolean', default: true })
+  reactivarServicio: boolean;
+
   // ── Conciliación bancaria ─────────────────────────────────
   @Column({ default: false })
   conciliado: boolean;

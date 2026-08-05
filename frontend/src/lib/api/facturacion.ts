@@ -80,6 +80,8 @@ export interface RegistrarPagoDto {
   facturaIds?:     string[];
   /** Cobro sin comprobante: queda como saldo a favor del abonado. */
   esAdelanto?:     boolean;
+  /** `false` = cobrar sin devolver el servicio (baja que salda su último comprobante). */
+  reactivarServicio?: boolean;
   contratoId?:     string;
   monto:           number;
   metodoPago:      string;
