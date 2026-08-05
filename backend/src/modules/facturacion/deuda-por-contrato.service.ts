@@ -49,11 +49,27 @@ export class DeudaPorContratoService {
 
       const deudas = await this.calcular(clienteId, empresaId);
 
+      // `fecha_ultimo_pago` es otra proyección del mismo tipo y se refresca aquí por la
+      // misma razón: la ruta de cobro (`pagos.service`) no la escribía y solo el job
+      // PROCESAR_PAGO —que esa ruta no usa— la tocaba, así que se quedaba en NULL aunque
+      // el abonado hubiera pagado. El portal mostraba "sin pagos" y el corte automático
+      // la leía como fecha de referencia de mora (incidente 2026-08-05).
+      const [ultimo] = await this.ds.query<Array<{ fecha: string | null }>>(
+        `SELECT MAX(fecha_pago) AS fecha FROM pagos
+          WHERE cliente_id = $1 AND empresa_id = $2
+            AND estado = 'verificado'`,
+        [clienteId, empresaId],
+      );
+
       for (const { id } of contratos) {
         const d = deudas.get(id) ?? { monto: 0, comprobantes: 0 };
         await this.ds.query(
-          `UPDATE contratos SET deuda_total = $1, meses_deuda = $2 WHERE id = $3`,
-          [d.monto, d.comprobantes, id],
+          `UPDATE contratos
+              SET deuda_total = $1,
+                  meses_deuda = $2,
+                  fecha_ultimo_pago = COALESCE($3::date, fecha_ultimo_pago)
+            WHERE id = $4`,
+          [d.monto, d.comprobantes, ultimo?.fecha ?? null, id],
         );
       }
     } catch (e) {

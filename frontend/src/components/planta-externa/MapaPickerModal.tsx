@@ -39,7 +39,12 @@ interface Props {
  * dato — y una de ellas acabaría desactualizada.
  */
 export function MapaPickerModal({ latitud, longitud, onConfirmar, onCerrar }: Props) {
-  const contenedor = useRef<HTMLDivElement>(null);
+  // Callback ref en vez de `useRef` + deps `[]`: este modal vive dentro de `<Portal>`, que
+  // devuelve `null` en su primer render y se monta desde su propio efecto. Los efectos de un
+  // commit corren TODOS antes de que ese `setState` re-renderice, así que un `useEffect` con
+  // deps vacías se ejecutaba cuando el div todavía no existía —`ref.current` null— y no se
+  // reintentaba jamás: modal abierto, contenedor vacío, cero errores en consola.
+  const [nodo, setNodo] = useState<HTMLDivElement | null>(null);
   const mapa = useRef<MapLibreMap | null>(null);
   const marcador = useRef<Marker | null>(null);
 
@@ -49,10 +54,10 @@ export function MapaPickerModal({ latitud, longitud, onConfirmar, onCerrar }: Pr
   const [pos, setPos] = useState<[number, number]>(inicial);
 
   useEffect(() => {
-    if (!contenedor.current || mapa.current) return undefined;
+    if (!nodo || mapa.current) return undefined;
 
     const m = new maplibregl.Map({
-      container: contenedor.current,
+      container: nodo,
       style: {
         version: 8,
         sources: {
@@ -88,10 +93,10 @@ export function MapaPickerModal({ latitud, longitud, onConfirmar, onCerrar }: Pr
     marcador.current = marker;
 
     return () => { m.remove(); mapa.current = null; marcador.current = null; };
-    // Deps vacías a propósito: el mapa se construye UNA vez. Incluir `inicial`/`latitud`
-    // lo recrearía cada vez que el operador mueve el pin —el estado cambia en cada
-    // arrastre— y perdería la posición justo mientras la está eligiendo.
-  }, []); // eslint-disable-line
+    // Única dep: el nodo del contenedor. El mapa se construye una vez, cuando el div existe.
+    // Incluir `inicial`/`latitud` lo recrearía cada vez que el operador mueve el pin —el
+    // estado cambia en cada arrastre— y perdería la posición justo mientras la está eligiendo.
+  }, [nodo]); // eslint-disable-line
 
   return (
     <Portal>
@@ -118,7 +123,10 @@ export function MapaPickerModal({ latitud, longitud, onConfirmar, onCerrar }: Pr
             </button>
           </div>
 
-          <div ref={contenedor} className="h-[60vh] w-full" />
+          {/* `h-[60vh]` y no `absolute inset-0`: el CSS de MapLibre declara
+              `.maplibregl-map { position: relative }` y se carga después de las utilities de
+              Tailwind, así que gana a `.absolute` y el contenedor colapsaría a 0 de alto. */}
+          <div ref={setNodo} className="h-[60vh] w-full" />
 
           <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-border">
             {/* La coordenada se muestra mientras se mueve el pin: el operador confirma un

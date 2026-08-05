@@ -112,7 +112,23 @@ export class CobranzaScheduler implements OnModuleInit {
 
     this.logger.log('[CRON] Iniciando detección diaria de morosos');
 
+    // El vencimiento de la FACTURA impaga más antigua es lo que define la mora, no
+    // `co.fecha_ultimo_pago`: ese campo lo mantiene el job PROCESAR_PAGO, pero la ruta de
+    // cobro real (`pagos.service`) no pasa por él, así que se queda en NULL aunque el
+    // abonado haya pagado. Con el criterio anterior, `COALESCE(fecha_ultimo_pago,
+    // fecha_inicio)` medía días desde el alta del contrato y cortaba a todo el que llevara
+    // más de `dias_gracia` instalado con cualquier saldo abierto — aunque la factura
+    // venciera al día siguiente (incidente 2026-08-05: James Pena, pagó el 04/08 y fue
+    // cortado el 05/08 con su única factura pendiente venciendo el 06/08).
     const morosos = await this.ds.query(`
+      WITH impagas AS (
+        SELECT cliente_id, MIN(fecha_vencimiento) AS vencimiento_mas_antiguo
+          FROM facturas
+         WHERE deleted_at IS NULL
+           AND estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+           AND COALESCE(saldo, total - monto_pagado) > 0
+         GROUP BY cliente_id
+      )
       SELECT
         co.id              AS contrato_id,
         co.empresa_id,
@@ -123,18 +139,22 @@ export class CobranzaScheduler implements OnModuleInit {
         co.deuda_total,
         co.meses_deuda,
         em.dias_gracia AS dias_gracia_corte,
-        EXTRACT(DAY FROM (NOW() - COALESCE(co.fecha_ultimo_pago, co.fecha_inicio)::timestamptz))::int
-          AS dias_sin_pago,
+        (CURRENT_DATE - im.vencimiento_mas_antiguo)::int AS dias_vencido,
         cl.nombre_completo AS nombre_cliente
       FROM contratos co
       JOIN empresas em ON em.id = co.empresa_id
       JOIN clientes cl ON cl.id = co.cliente_id
+      JOIN impagas  im ON im.cliente_id = co.cliente_id
       WHERE co.estado = 'activo'
         AND co.deuda_total > 0
         AND co.deleted_at IS NULL
         AND co.router_id IS NOT NULL
         AND co.ip_asignada IS NOT NULL
         AND co.usuario_pppoe IS NOT NULL
+        -- Una prórroga vigente es una promesa de pago que el operador ya concedió: el
+        -- corte no puede pasarle por encima. Su vencimiento lo evalúa el job
+        -- VERIFICAR_PRORROGA, que suspende cuando llega la fecha.
+        AND NOT (co.en_prorroga = true AND co.prorroga_hasta >= CURRENT_DATE)
       ORDER BY co.deuda_total DESC
     `);
 
@@ -143,7 +163,7 @@ export class CobranzaScheduler implements OnModuleInit {
     for (const c of morosos) {
       const diasGracia = parseInt(c.dias_gracia_corte || '5', 10);
 
-      if (parseInt(c.dias_sin_pago, 10) > diasGracia) {
+      if (parseInt(c.dias_vencido, 10) > diasGracia) {
         await this.queue.add(
           JOBS.SUSPENDER_CONTRATO,
           {
