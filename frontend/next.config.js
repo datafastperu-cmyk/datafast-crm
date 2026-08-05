@@ -32,7 +32,13 @@ const nextConfig = {
           { key: 'X-Frame-Options',           value: 'SAMEORIGIN' },
           { key: 'X-Content-Type-Options',     value: 'nosniff' },
           { key: 'Referrer-Policy',            value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy',         value: 'camera=(), microphone=(), geolocation=()' },
+          // `geolocation=(self)`: el ERP captura coordenadas por GPS al documentar planta
+          // externa. Estaba en `geolocation=()` —lista de origenes VACIA, que prohibe la
+          // ubicacion a TODOS, incluido el propio sitio—, asi que el navegador respondia
+          // PERMISSION_DENIED sin llegar a mostrar el dialogo de permiso. El operador veia
+          // "permiso denegado" y no habia nada que habilitar: no era su decision.
+          // `nginx/nginx.conf` ya declaraba `(self)`; esta cabecera la sobreescribia.
+          { key: 'Permissions-Policy',         value: 'camera=(), microphone=(), geolocation=(self)' },
           { key: 'X-DNS-Prefetch-Control',     value: 'on' },
         ],
       },
