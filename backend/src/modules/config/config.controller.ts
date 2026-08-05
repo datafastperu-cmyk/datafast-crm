@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Put, Post,
+  Controller, Get, Put, Post, Param, BadRequestException,
   Body, UploadedFile, UseInterceptors,
   HttpCode, HttpStatus,
 } from '@nestjs/common';
@@ -11,7 +11,8 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { RequirePermission }       from '../../common/decorators/roles.decorator';
 import { ApiResponse }             from '../../common/dto/response.dto';
 import { ConfigEmpresaService, UpdateEmpresaDto, FacturacionResumen } from './config-empresa.service';
-import { DominiosService } from './dominios.service';
+import { DominiosService, type RolHost } from './dominios.service';
+import { SslService } from './ssl.service';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -22,6 +23,7 @@ export class ConfigController {
   constructor(
     private readonly svc: ConfigEmpresaService,
     private readonly dominios: DominiosService,
+    private readonly ssl: SslService,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
@@ -104,25 +106,70 @@ export class ConfigController {
     );
   }
 
+  // ── Certificados TLS, por rol ───────────────────────────────────
+
+  /**
+   * Estado de HTTPS de los tres roles: si hay dominio, si la validación llega y si existe
+   * certificado con su vencimiento.
+   */
+  @Get('ssl')
+  @RequirePermission('configuracion:view')
+  @ApiOperation({ summary: 'Estado de los certificados TLS de ERP, portal y web' })
+  async getSsl() {
+    return ApiResponse.ok(await this.ssl.estado());
+  }
+
+  /**
+   * Emite el certificado de un rol. Operable por cualquier operador con permiso de
+   * configuración: no hace falta entrar por SSH ni saber usar certbot.
+   */
+  @Post('ssl/:rol')
+  @RequirePermission('configuracion:manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Emitir o renovar el certificado TLS de un rol (erp | portal | web)' })
+  async emitirSsl(@Param('rol') rol: RolHost, @CurrentUser() user: JwtPayload) {
+    if (!['erp', 'portal', 'web'].includes(rol)) {
+      throw new BadRequestException('Rol inválido: usa erp, portal o web.');
+    }
+    const empresa = await this.svc.getEmpresa(user.empresaId);
+    const r = await this.ssl.emitir(rol, empresa.email ?? '');
+    return ApiResponse.ok(r, r.mensaje);
+  }
+
+  /**
+   * @deprecated Reemplazado por `GET /config/ssl`, que informa de los tres roles.
+   * Se conserva para no romper una UI antigua que aún lo llame.
+   */
   @Get('ssl-status')
   @RequirePermission('configuracion:view')
-  @ApiOperation({ summary: 'Estado del certificado SSL del dominio configurado' })
+  @ApiOperation({ summary: 'OBSOLETO — usa GET /config/ssl' })
   async getSslStatus(@CurrentUser() user: JwtPayload) {
     const empresa = await this.svc.getEmpresa(user.empresaId);
     const status  = await this.svc.getSslStatus(empresa.dominio);
     return ApiResponse.ok(status);
   }
 
+  /**
+   * OBSOLETO y DESACTIVADO a propósito.
+   *
+   * Generaba vhosts completos en `/etc/nginx/sites-enabled/datafast`, incluido el
+   * `location /` del ERP. Con la separación por roles ya montada, eso crea un segundo
+   * server con el mismo `server_name`: nginx carga los archivos por orden alfabético, así
+   * que `datafast` ganaría a `datafast-frontend` y el portal del abonado volvería a servir
+   * el panel administrativo. Un botón de la UI no puede tener ese poder.
+   *
+   * El reemplazo (`POST /config/ssl/:rol`) sólo añade bloques de escucha en 443 y reutiliza
+   * los mismos snippets que el vhost de 80, así que no puede alterar el enrutado.
+   */
   @Post('provisionar-ssl')
   @RequirePermission('configuracion:manage')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Obtener certificado SSL automáticamente para el dominio configurado' })
-  async provisionarSsl(@CurrentUser() user: JwtPayload) {
-    const empresa = await this.svc.getEmpresa(user.empresaId);
-    if (!empresa.dominio) {
-      return ApiResponse.ok({ success: false, message: 'Configura primero el dominio de tu servidor.' });
-    }
-    const result = await this.svc.provisionSsl(empresa.dominio, empresa.email ?? '');
-    return ApiResponse.ok(result, result.message);
+  @ApiOperation({ summary: 'OBSOLETO — usa POST /config/ssl/:rol' })
+  async provisionarSsl() {
+    return ApiResponse.ok(
+      { success: false },
+      'Este proceso fue reemplazado. Emite el certificado desde Configuración → HTTPS, ' +
+      'que lo hace por rol (ERP, portal, web) sin alterar el enrutado del servidor.',
+    );
   }
 }

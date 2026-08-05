@@ -14,6 +14,7 @@ import { configApi, type UpdateEmpresaDto } from '@/lib/api/configuracion';
 import api from '@/lib/api';
 import type { ApiRespuesta } from '@/types';
 import { useToast }  from '@/components/ui/toaster';
+import { HttpsCard } from './HttpsCard';
 import { parseApiError, cn } from '@/lib/utils';
 import { PAISES_TIMEZONE, timezoneDePais } from '@/lib/paises-timezone';
 
@@ -222,7 +223,7 @@ export function EmpresaTab() {
           </p>
         </Field>
 
-        <SslStatusCard />
+        <HttpsCard />
       </CategoryCard>
 
     </form>
