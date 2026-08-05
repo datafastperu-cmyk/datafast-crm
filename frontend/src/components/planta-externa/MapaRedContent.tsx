@@ -164,9 +164,23 @@ export function MapaRedContent() {
           },
         },
         layers: [{ id: 'base', type: 'raster', source: 'base' }],
+        // Sin `glyphs` no hay tipografías que rasterizar, y toda capa `symbol` con
+        // `text-field` —las etiquetas de mufas, NAPs y abonados— falla al renderizar.
+        // Configurable porque una instalación sin salida a internet necesita servirlas
+        // desde su propia red; el default sólo evita que haya que configurarlo el día uno.
+        glyphs: process.env.NEXT_PUBLIC_MAPA_GLYPHS
+          || 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
       },
       center: CENTRO_INICIAL,
       zoom: 13,
+    });
+
+    // Los errores de MapLibre —estilo inválido, tipografía que no carga, expresión que no
+    // evalúa— se emiten por este evento. Sin un manejador quedan mudos: la capa no se pinta
+    // y la consola no dice nada, que es exactamente lo que costó diagnosticar por qué los
+    // abonados no aparecían aunque el backend devolvía sus coordenadas.
+    m.on('error', (ev: { error?: Error }) => {
+      console.error('[mapa-red] MapLibre:', ev?.error?.message ?? ev); // eslint-disable-line
     });
 
     m.addControl(new maplibregl.NavigationControl({}), 'top-right');
@@ -212,7 +226,10 @@ export function MapaRedContent() {
               'line-width': 3,
               // Punteado = trazado no levantado en campo. Muestra la conectividad real
               // sin afirmar por dónde va el cable.
-              'line-dasharray': ['case', ['get', 'trazadoLevantado'], ['literal', [1]], ['literal', [2, 1.5]]],
+              // `== true` y no `['get', …]` a secas: en una feature sin esa propiedad el
+              // `get` devuelve null, y `case` exige un booleano — la expresión falla al
+              // evaluar y la regla de pintado se descarta entera.
+              'line-dasharray': ['case', ['==', ['get', 'trazadoLevantado'], true], ['literal', [1]], ['literal', [2, 1.5]]],
             },
           });
         } else {
@@ -220,7 +237,7 @@ export function MapaRedContent() {
             id: `${c.key}-punto`, type: 'circle', source: c.key,
             paint: {
               // Los conglomerados crecen con la cantidad que representan.
-              'circle-radius': ['case', ['get', 'cluster'], 14, 6],
+              'circle-radius': ['case', ['==', ['get', 'cluster'], true], 14, 6],
               'circle-color': c.key === 'clientes'
                 // Un cliente cuya NAP documentada NO coincide con su puerto PON real se
                 // pinta distinto. Es lo que convierte el mapa en detector de errores de
@@ -235,7 +252,7 @@ export function MapaRedContent() {
           m.addLayer({
             id: `${c.key}-etiqueta`, type: 'symbol', source: c.key,
             layout: {
-              'text-field': ['case', ['get', 'cluster'], ['to-string', ['get', 'total']], ['get', 'etiqueta']],
+              'text-field': ['case', ['==', ['get', 'cluster'], true], ['to-string', ['get', 'total']], ['get', 'etiqueta']],
               'text-size': 10,
               'text-offset': [0, 1.2],
               'text-anchor': 'top',
