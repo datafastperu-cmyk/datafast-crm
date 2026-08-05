@@ -11,6 +11,9 @@ import { ejecutarDespliegue } from './deploy-lib.mjs';
  */
 const PASOS = [
   'cd /opt/datafast && git pull origin main',
+  // Un cambio de dependencia no llega al servidor sin esto, y el despliegue reporta
+  // "aplicado" mientras corre con la version anterior. Idempotente.
+  'cd /opt/datafast/backend && npm install --no-audit --no-fund 2>&1 | tail -5',
   'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc -p tsconfig.build.json --skipLibCheck 2>&1 | tail -20',
   'pm2 restart datafast-api-core --update-env',
   'pm2 status',
