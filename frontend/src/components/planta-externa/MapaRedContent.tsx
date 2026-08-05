@@ -71,6 +71,43 @@ const CAPAS: DefCapa[] = [
   { key: 'clientes', label: 'Clientes',     color: '#3b82f6', tipo: 'punto' },
 ];
 
+const CLAVE_CAPAS = 'red-mapa-capas';
+
+/**
+ * Capas visibles al abrir. Se recuerda la última elección del operador.
+ *
+ * Sin esto, cada visita reiniciaba la selección: quien encendía "Clientes" lo encontraba
+ * apagado al volver y lo leía como que la capa se desmarca sola. El estado de un panel de
+ * capas es una preferencia de trabajo, no algo que deba reconstruirse en cada navegación.
+ *
+ * `clientes` NO va en el arranque por defecto: son datos personales y hay roles —Operador
+ * NOC, Técnico— que ni siquiera tienen permiso para verla. Mostrarla de entrada a quien no
+ * la pidió es lo contrario del criterio con que se otorgó ese permiso. En cuanto alguien la
+ * enciende una vez, se recuerda.
+ */
+function leerCapasGuardadas(): Set<CapaMapa> {
+  const porDefecto = new Set<CapaMapa>(['fibra', 'sites', 'mufas', 'naps']);
+  // `typeof window` porque este componente se renderiza también en el servidor, donde no
+  // existe localStorage: leerlo sin comprobar rompe el render antes de llegar al navegador.
+  if (typeof window === 'undefined') return porDefecto;
+
+  try {
+    const crudo = window.localStorage.getItem(CLAVE_CAPAS);
+    if (!crudo) return porDefecto;
+    const claves = CAPAS.map((c) => c.key);
+    // Se filtra contra las capas que existen HOY: un valor guardado hace meses puede
+    // nombrar una capa retirada, y no debe llegar como parámetro al backend.
+    const guardadas = (JSON.parse(crudo) as string[]).filter((k): k is CapaMapa =>
+      claves.includes(k as CapaMapa),
+    );
+    return guardadas.length ? new Set(guardadas) : porDefecto;
+  } catch {
+    // localStorage puede estar bloqueado (modo privado, políticas del navegador) o el valor
+    // corrupto. Ninguna de las dos cosas justifica dejar al operador sin mapa.
+    return porDefecto;
+  }
+}
+
 export function MapaRedContent() {
   const contenedor = useRef<HTMLDivElement>(null);
   const mapa = useRef<MapLibreMap | null>(null);
@@ -78,9 +115,7 @@ export function MapaRedContent() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [datos, setDatos] = useState<RespuestaMapa>({});
-  const [activas, setActivas] = useState<Set<CapaMapa>>(
-    new Set<CapaMapa>(['fibra', 'sites', 'mufas', 'naps']),
-  );
+  const [activas, setActivas] = useState<Set<CapaMapa>>(leerCapasGuardadas);
 
   /** Se guarda en ref además del estado: el handler de `moveend` de MapLibre captura el
    *  valor del closure, y sin la ref pediría siempre las capas del primer render. */
@@ -275,6 +310,9 @@ export function MapaRedContent() {
     setActivas((prev) => {
       const s = new Set(prev);
       if (s.has(key)) s.delete(key); else s.add(key);
+      try {
+        window.localStorage.setItem(CLAVE_CAPAS, JSON.stringify(Array.from(s)));
+      } catch { /* localStorage bloqueado: se pierde la preferencia, no el mapa */ }
       return s;
     });
     // Encender una capa exige pedirla: el backend sólo devuelve lo solicitado.

@@ -27,6 +27,43 @@ const MAX_FEATURES = 500;
  */
 const ZOOM_DETALLE = 13;
 
+/**
+ * Dónde está un abonado en el mapa de planta. Definición ÚNICA, reutilizada por el conteo,
+ * el agregado, el detalle y el encuadre inicial.
+ *
+ * La unidad es el CONTRATO, no el cliente, y la coordenada es la de INSTALACIÓN. Es lo que
+ * este mapa documenta: el punto que se conecta a una NAP. El domicilio del cliente puede
+ * estar en otra ciudad —quien contrata no siempre vive donde se instala— y un mismo cliente
+ * con dos servicios en sitios distintos son dos puntos de planta, no uno.
+ *
+ * `COALESCE` al domicilio como respaldo: en altas antiguas la coordenada se capturaba en la
+ * ficha del cliente, y descartarlas dejaría fuera del mapa a abonados que sí están ubicados.
+ *
+ * Esta duplicidad —`clientes.latitud` y `contratos.latitud_instalacion`— fue exactamente el
+ * fallo que motivó esta función: la capa leía el domicilio mientras los formularios de alta
+ * y de servicio escribían la instalación, así que dos abonados con coordenadas correctas no
+ * aparecían en el mapa y nada lo señalaba. Cualquier consulta nueva sobre ubicación de
+ * abonados usa este CTE; escribir otra variante reabre el mismo fallo.
+ *
+ * `$1` es siempre `empresaId`.
+ */
+const PUNTOS_SERVICIO = `
+  WITH punto_servicio AS (
+    SELECT co.id AS contrato_id,
+           COALESCE(co.latitud_instalacion,  c.latitud)::float  AS lat,
+           COALESCE(co.longitud_instalacion, c.longitud)::float AS lng,
+           TRIM(CONCAT(c.nombres, ' ', COALESCE(c.apellido_paterno, ''))) AS etiqueta
+      FROM contratos co
+      JOIN clientes  c ON c.id = co.cliente_id AND c.deleted_at IS NULL
+     WHERE co.empresa_id = $1 AND co.deleted_at IS NULL
+       AND COALESCE(co.latitud_instalacion,  c.latitud)  IS NOT NULL
+       AND COALESCE(co.longitud_instalacion, c.longitud) IS NOT NULL
+       -- (0,0) es el Golfo de Guinea: es el valor que deja un formulario a medio llenar,
+       -- no una ubicación. Colarlo arrastraría el encuadre inicial al Atlántico.
+       AND COALESCE(co.latitud_instalacion,  c.latitud)  <> 0
+       AND COALESCE(co.longitud_instalacion, c.longitud) <> 0
+  )`;
+
 type Feature = {
   type: 'Feature';
   geometry: { type: 'Point'; coordinates: [number, number] }
@@ -104,7 +141,8 @@ export class PlantaExternaMapaService {
     // vez de cuatro consultas: es una llamada por apertura del mapa, no vale la pena
     // pagarla cuatro veces.
     const [fila] = await this.ds.query(
-      `SELECT MIN(lat)::float AS min_lat, MAX(lat)::float AS max_lat,
+      `${PUNTOS_SERVICIO}
+       SELECT MIN(lat)::float AS min_lat, MAX(lat)::float AS max_lat,
               MIN(lng)::float AS min_lng, MAX(lng)::float AS max_lng,
               COUNT(*)::int   AS total
          FROM (
@@ -117,9 +155,11 @@ export class PlantaExternaMapaService {
            SELECT latitud, longitud FROM sites
             WHERE empresa_id = $1 AND deleted_at IS NULL AND latitud IS NOT NULL
            UNION ALL
-           SELECT latitud, longitud FROM clientes
-            WHERE empresa_id = $1 AND deleted_at IS NULL
-              AND latitud IS NOT NULL AND latitud <> 0
+           -- Abonados: el punto de INSTALACION del contrato. Leer aqui clientes.latitud
+           -- era el mismo fallo que en la capa: el encuadre ignoraba a los unicos abonados
+           -- ubicados y extension() devolvia null, asi que el mapa abria en el centro por
+           -- defecto como si no hubiera nada cargado.
+           SELECT lat, lng FROM punto_servicio
          ) t`,
       [empresaId],
     );
@@ -288,25 +328,37 @@ export class PlantaExternaMapaService {
    */
   private async _clientes(empresaId: string, bbox: BoundingBox, zoom: number) {
     const [{ total }] = await this.ds.query(
-      `SELECT COUNT(*)::int AS total FROM clientes
-        WHERE empresa_id = $1 AND deleted_at IS NULL
-          AND latitud BETWEEN $2 AND $3 AND longitud BETWEEN $4 AND $5`,
+      `${PUNTOS_SERVICIO} SELECT COUNT(*)::int AS total FROM punto_servicio
+        WHERE lat BETWEEN $2 AND $3 AND lng BETWEEN $4 AND $5`,
       [empresaId, bbox.minLat, bbox.maxLat, bbox.minLng, bbox.maxLng],
     );
 
     if (zoom < ZOOM_DETALLE || total > MAX_FEATURES) {
-      return this._agregar('clientes', empresaId, bbox, zoom);
+      // Agregado propio en vez de `_agregar('clientes', …)`: esa función agrupa por las
+      // columnas de UNA tabla, y el punto de servicio es una expresión sobre dos.
+      const celda = Math.max(0.0005, 0.5 / Math.pow(2, Math.max(0, zoom - 6)));
+      const grupos = await this.ds.query(
+        `${PUNTOS_SERVICIO}
+         SELECT COUNT(*)::int AS total, AVG(lat)::float AS lat, AVG(lng)::float AS lng
+           FROM punto_servicio
+          WHERE lat BETWEEN $2 AND $3 AND lng BETWEEN $4 AND $5
+          GROUP BY FLOOR(lat / $6), FLOOR(lng / $6)
+          LIMIT ${MAX_FEATURES}`,
+        [empresaId, bbox.minLat, bbox.maxLat, bbox.minLng, bbox.maxLng, celda],
+      );
+      return {
+        type: 'FeatureCollection' as const,
+        agregado: true,
+        features: grupos.map((f: any) => this._punto(f.lng, f.lat, { cluster: true, total: f.total })),
+      };
     }
 
     const filas = await this.ds.query(
-      `SELECT c.id, c.latitud, c.longitud,
-              TRIM(CONCAT(c.nombres, ' ', COALESCE(c.apellido_paterno, ''))) AS etiqueta,
-              a.confianza
-         FROM clientes c
-         LEFT JOIN contratos co ON co.cliente_id = c.id AND co.deleted_at IS NULL
-         LEFT JOIN pe_acometida a ON a.contrato_id = co.id AND a.deleted_at IS NULL
-        WHERE c.empresa_id = $1 AND c.deleted_at IS NULL
-          AND c.latitud BETWEEN $2 AND $3 AND c.longitud BETWEEN $4 AND $5
+      `${PUNTOS_SERVICIO}
+       SELECT p.contrato_id AS id, p.lat, p.lng, p.etiqueta, a.confianza
+         FROM punto_servicio p
+         LEFT JOIN pe_acometida a ON a.contrato_id = p.contrato_id AND a.deleted_at IS NULL
+        WHERE p.lat BETWEEN $2 AND $3 AND p.lng BETWEEN $4 AND $5
         LIMIT ${MAX_FEATURES}`,
       [empresaId, bbox.minLat, bbox.maxLat, bbox.minLng, bbox.maxLng],
     );
@@ -314,7 +366,7 @@ export class PlantaExternaMapaService {
     return {
       type: 'FeatureCollection' as const,
       features: filas.map((f: any) =>
-        this._punto(Number(f.longitud), Number(f.latitud), {
+        this._punto(Number(f.lng), Number(f.lat), {
           id: f.id,
           etiqueta: f.etiqueta,
           // `confianza` es lo que hace útil esta capa: distingue al cliente cuya NAP
