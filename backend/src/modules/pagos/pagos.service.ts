@@ -19,6 +19,7 @@ import { AuditoriaService }     from '../auth/auditoria.service';
 import { JwtPayload }           from '../../common/decorators/current-user.decorator';
 
 import { Pago, EstadoPago, CuentaBancaria } from './entities/pago.entity';
+import { PagoAplicacion } from './entities/pago-aplicacion.entity';
 import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto';
@@ -72,29 +73,85 @@ export class PagosService {
     // ── TRANSACCIÓN ACID ──────────────────────────────────────
     const savedPago = await this.ds.transaction(async (manager) => {
 
-      // PASO 1 — Idempotencia
+      // PASO 1 — Idempotencia por número de operación.
+      // La comprobación NO incluye el método de pago: un código de operación no se repite
+      // aunque uno sea Yape y otro transferencia. Un consolidado no necesita excepción a
+      // esta regla porque es UN pago —una fila— aplicado a varios comprobantes.
       const duplicado = dto.numeroOperacion
         ? await manager.findOne(Pago, {
-            where: { empresaId, metodoPago: dto.metodoPago, numeroOperacion: dto.numeroOperacion },
+            where: { empresaId, numeroOperacion: dto.numeroOperacion },
           })
         : null;
       if (duplicado) {
         throw new ConflictException(
           `Ya existe un pago con el número de operación '${dto.numeroOperacion}' ` +
-          `(${dto.metodoPago}). ID existente: ${duplicado.id}`,
+          `(${duplicado.metodoPago}). ID existente: ${duplicado.id}`,
         );
       }
 
-      // PASO 2 — Validar factura y cargar contrato
-      const factura = await manager.findOne(Factura, {
-        where: { id: dto.facturaId, empresaId },
+      // PASO 2 — Validar comprobante(s) y cargar contrato
+      const idsSolicitados = dto.facturaIds?.length
+        ? [...new Set(dto.facturaIds)]
+        : (dto.facturaId ? [dto.facturaId] : []);
+      if (!idsSolicitados.length) {
+        throw new BadRequestException('Indica el comprobante a pagar (facturaId o facturaIds)');
+      }
+
+      const facturas = await manager.find(Factura, {
+        where: idsSolicitados.map((id) => ({ id, empresaId })),
+        order: { fechaVencimiento: 'ASC' },
       });
-      if (!factura) {
-        throw new NotFoundException(`Factura ${dto.facturaId} no encontrada`);
+
+      const faltante = idsSolicitados.find((id) => !facturas.some((f) => f.id === id));
+      if (faltante) throw new NotFoundException(`Factura ${faltante} no encontrada`);
+
+      const yaPagada = facturas.find((f) => f.estado === EstadoFactura.PAGADA);
+      if (yaPagada) {
+        throw new BadRequestException(
+          facturas.length === 1
+            ? 'La factura ya está completamente pagada'
+            : `El comprobante ${yaPagada.numeroCompleto ?? yaPagada.id} ya está pagado — actualiza la lista de deudas`,
+        );
       }
-      if (factura.estado === EstadoFactura.PAGADA) {
-        throw new BadRequestException('La factura ya está completamente pagada');
+      const anulada = facturas.find((f) => f.estado === EstadoFactura.ANULADA);
+      if (anulada) {
+        throw new BadRequestException(
+          `El comprobante ${anulada.numeroCompleto ?? anulada.id} está anulado`,
+        );
       }
+
+      // Un pago pertenece a UN abonado: mezclar clientes haría imposible imputar la deuda
+      // y reactivaría contratos ajenos.
+      const clientesDistintos = new Set(facturas.map((f) => f.clienteId));
+      if (clientesDistintos.size > 1) {
+        throw new BadRequestException(
+          'Un mismo pago no puede saldar comprobantes de clientes distintos',
+        );
+      }
+
+      // Saldo pendiente de cada comprobante, con el mismo criterio que el resto del
+      // módulo: `saldo` si existe, y si no, total − pagado.
+      const saldoDe = (f: Factura): number => Number(
+        (Number(f.saldo ?? (Number(f.total) - Number(f.montoPagado)))).toFixed(2),
+      );
+      const saldoTotal = Number(
+        facturas.reduce((s, f) => s + saldoDe(f), 0).toFixed(2),
+      );
+
+      // El consolidado es TODO O NADA. Con un importe menor habría que repartirlo entre
+      // comprobantes con un criterio que nadie decidió; para pagar de menos está el pago
+      // individual del más antiguo, que sí admite parcial.
+      if (facturas.length > 1 && Math.abs(dto.monto - saldoTotal) > 0.01) {
+        throw new BadRequestException(
+          `Un pago consolidado debe cubrir el total de los ${facturas.length} comprobantes ` +
+          `(S/ ${saldoTotal.toFixed(2)}). Recibido: S/ ${dto.monto.toFixed(2)}. ` +
+          `Para un importe menor, registra el pago del comprobante más antiguo.`,
+        );
+      }
+
+      // El más antiguo representa al pago cuando se necesita un único comprobante
+      // (contrato asociado, PDF, histórico).
+      const factura = facturas[0];
 
       let contrato: Contrato | null = null;
       if (factura.contratoId) {
@@ -150,7 +207,9 @@ export class PagosService {
       const pago = manager.create(Pago, {
         empresaId,
         clienteId:       factura.clienteId,
-        facturaId:       dto.facturaId,
+        // En un consolidado apunta al comprobante más antiguo: el reparto completo vive en
+        // `pago_aplicaciones`, esta columna es la referencia principal para el histórico.
+        facturaId:       factura.id,
         contratoId:      factura.contratoId ?? null,
         monto:           dto.monto,
         moneda:          'PEN',
@@ -171,32 +230,58 @@ export class PagosService {
 
       const saved = await manager.save(Pago, pago);
 
-      // PASO 4 — Si auto-verificado: actualizar factura y contrato dentro de la TX
-      if (autoVerificado) {
-        // UPDATE atómico: evita la race condition leer-calcular-escribir.
-        // Si el monto excede el saldo, el WHERE lo rechaza y lanzamos error.
-        const result = filasUpdateReturning<{ id: string }>(await manager.query(`
-          UPDATE facturas
-          SET
-            monto_pagado = monto_pagado::numeric + $1::numeric,
-            estado = CASE
-              WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN 'pagada'::estado_factura
-              ELSE 'pagada_parcial'::estado_factura
-            END,
-            fecha_pago = CASE
-              WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN CURRENT_DATE
-              ELSE fecha_pago
-            END
-          WHERE id = $2 AND deleted_at IS NULL
-            AND estado NOT IN ('pagada', 'anulada')
-            AND $1::numeric <= (total::numeric - monto_pagado::numeric + 0.01)
-          RETURNING id
-        `, [dto.monto, factura.id]));
+      // Reparto: en un consolidado cada comprobante recibe su saldo íntegro (por eso es
+      // todo o nada). Con uno solo, lo que el cajero haya cobrado — que puede ser parcial.
+      const imputaciones = facturas.length > 1
+        ? facturas.map((f) => ({ factura: f, monto: saldoDe(f) }))
+        : [{ factura, monto: dto.monto }];
 
-        if (!result.length) {
-          throw new BadRequestException(
-            `No se pudo aplicar el pago: la factura ya está pagada o el monto S/ ${dto.monto} excede el saldo`,
-          );
+      // La imputación se registra SIEMPRE —también si el pago queda pendiente de
+      // verificación y también con un solo comprobante—, porque es la DECLARACIÓN de qué
+      // comprobantes cubre este dinero. El efecto sobre las facturas es otra cosa y ocurre
+      // al verificar. Sin esto, aprobar un consolidado pendiente aplicaría el importe
+      // entero al primer comprobante y dejaría el resto impago.
+      for (const { factura: f, monto } of imputaciones) {
+        await manager.insert(PagoAplicacion, {
+          empresaId,
+          pagoId:        saved.id,
+          facturaId:     f.id,
+          montoAplicado: monto,
+        });
+      }
+
+      // PASO 4 — Si auto-verificado: actualizar comprobantes y contrato dentro de la TX
+      if (autoVerificado) {
+        for (const { factura: f, monto } of imputaciones) {
+          // UPDATE atómico: evita la race condition leer-calcular-escribir.
+          // Si el monto excede el saldo, el WHERE lo rechaza y lanzamos error.
+          const result = filasUpdateReturning<{ id: string }>(await manager.query(`
+            UPDATE facturas
+            SET
+              monto_pagado = monto_pagado::numeric + $1::numeric,
+              estado = CASE
+                WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN 'pagada'::estado_factura
+                ELSE 'pagada_parcial'::estado_factura
+              END,
+              fecha_pago = CASE
+                WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN CURRENT_DATE
+                ELSE fecha_pago
+              END
+            WHERE id = $2 AND deleted_at IS NULL
+              AND estado NOT IN ('pagada', 'anulada')
+              AND $1::numeric <= (total::numeric - monto_pagado::numeric + 0.01)
+            RETURNING id
+          `, [monto, f.id]));
+
+          if (!result.length) {
+            // Dentro de la TX: si un comprobante del consolidado no admite su parte, se
+            // deshace el pago entero. Un consolidado a medias dejaría dinero cobrado sin
+            // imputar y al abonado creyendo que pagó todo.
+            throw new BadRequestException(
+              `No se pudo aplicar el pago a ${f.numeroCompleto ?? f.id}: ` +
+              `ya está pagada o el monto S/ ${monto} excede el saldo`,
+            );
+          }
         }
 
         // Marcar para reactivación vía worker (el worker hace el UPDATE completo:
@@ -622,15 +707,28 @@ export class PagosService {
       let contratoId  = pago.contratoId;
       const empresaId = pago.empresaId;
 
-      // ── A. Aplicar a factura específica ──────────────────
-      if (facturaId) {
-        await this.facturacionSvc.aplicarPago(
-          facturaId,
-          Number(pago.monto),
-          empresaId,
-          pago.fechaPago,
+      // ── A. Aplicar a los comprobantes imputados ──────────
+      // Un pago consolidado cubre varios: hay que aplicar a cada uno SU parte. Aplicar
+      // `pago.monto` entero a `pago.facturaId` —lo que se hacía antes— dejaría el resto
+      // de comprobantes impagos y al abonado creyendo que salió de deuda.
+      const aplicaciones: Array<{ factura_id: string; monto_aplicado: string }> =
+        await this.ds.query(
+          `SELECT factura_id, monto_aplicado FROM pago_aplicaciones WHERE pago_id = $1`,
+          [pago.id],
         );
-        this.logger.log(`Pago ${pago.id} aplicado a factura ${facturaId}`);
+
+      // Sin imputaciones registradas es un pago anterior a esta tabla: se conserva el
+      // comportamiento de entonces (todo el importe a su única factura).
+      const aImputar = aplicaciones.length
+        ? aplicaciones.map((a) => ({ facturaId: a.factura_id, monto: parseFloat(a.monto_aplicado) }))
+        : (facturaId ? [{ facturaId, monto: Number(pago.monto) }] : []);
+
+      for (const { facturaId: fId, monto } of aImputar) {
+        await this.facturacionSvc.aplicarPago(fId, monto, empresaId, pago.fechaPago);
+        this.logger.log(`Pago ${pago.id} aplicado a factura ${fId} por S/ ${monto}`);
+      }
+
+      if (facturaId) {
 
         // Obtener contratoId de la factura si no vino en el pago
         if (!contratoId) {

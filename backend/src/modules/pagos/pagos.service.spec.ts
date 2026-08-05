@@ -112,10 +112,15 @@ const mockConfig = { get: jest.fn((k, d) => d) };
 // tienen que ser atómicos, o el dinero se pierde entre ambos pasos) y resuelve todo por
 // `manager.findOne(Entidad, …)`. El mock despacha POR ENTIDAD para que cada test controle
 // qué existe: duplicado, factura y contrato son decisiones distintas del flujo.
-const mockEntidades: { pagoDuplicado: any; factura: any; contrato: any } = {
+const mockEntidades: {
+  pagoDuplicado: any; factura: any; contrato: any; facturas: any[] | null;
+} = {
   pagoDuplicado: null,
   factura:       null,
   contrato:      null,
+  // Consolidado: `registrar()` resuelve los comprobantes con `find`, no con `findOne`.
+  // Cuando es null se devuelve `[factura]`, que es el caso de un solo comprobante.
+  facturas:      null,
 };
 
 const managerMock = {
@@ -126,6 +131,15 @@ const managerMock = {
     if (nombre === 'Contrato') return mockEntidades.contrato;
     return null;
   }),
+  find: jest.fn(async (entidad: any) => {
+    const nombre = entidad?.name ?? '';
+    if (nombre === 'Factura') {
+      return mockEntidades.facturas ?? (mockEntidades.factura ? [mockEntidades.factura] : []);
+    }
+    return [];
+  }),
+  // Imputación pago→factura (`pago_aplicaciones`).
+  insert: jest.fn(),
   save:   jest.fn(async (_e: any, d: any) => ({ ...mockPago, ...(d ?? {}) })),
   update: jest.fn(),
   create: jest.fn((_e: any, d: any) => ({ ...mockPago, ...(d ?? {}) })),
@@ -182,6 +196,83 @@ describe('PagosService', () => {
       mockEntidades.pagoDuplicado = null;
       mockEntidades.factura       = { ...mockFacturaRow, contratoId: 'cnt-001', clienteId: 'cli-001' };
       mockEntidades.contrato      = mockContratoSuspendido;
+      mockEntidades.facturas      = null;
+    });
+
+    // ── Pago consolidado ────────────────────────────────────
+    // Un abonado con dos comprobantes se cobraba en dos pagos, y el operador tenía que
+    // repetir el número de operación en ambos — cosa que el índice único prohíbe. Se
+    // resuelve con UN pago imputado a N facturas, no con N pagos que compartan código.
+    describe('consolidado', () => {
+      const dosFacturas = [
+        { ...mockFacturaRow, id: 'fac-001', clienteId: 'cli-001', contratoId: 'cnt-001',
+          total: 64, montoPagado: 0, saldo: 64, numeroCompleto: 'CI-033' },
+        { ...mockFacturaRow, id: 'fac-002', clienteId: 'cli-001', contratoId: 'cnt-001',
+          total: 64, montoPagado: 0, saldo: 64, numeroCompleto: 'CI-035' },
+      ];
+
+      it('salda los dos comprobantes con UN pago y UN número de operación', async () => {
+        mockEntidades.facturas = dosFacturas;
+
+        await service.registrar({
+          clienteId: 'cli-001', facturaIds: ['fac-001', 'fac-002'],
+          monto: 128, metodoPago: MetodoPago.EFECTIVO,
+          numeroOperacion: 'OP-UNICA-1', autoVerificar: true,
+        } as any, mockUser as any);
+
+        // Una sola fila de pago: el dinero entró una vez.
+        expect(managerMock.save).toHaveBeenCalledTimes(1);
+        // Y dos imputaciones, una por comprobante.
+        expect(managerMock.insert).toHaveBeenCalledTimes(2);
+        const facturasImputadas = managerMock.insert.mock.calls.map((c: any[]) => c[1].facturaId);
+        expect(facturasImputadas.sort()).toEqual(['fac-001', 'fac-002']);
+      });
+
+      it('rechaza un importe que no cubre el total: el consolidado es todo o nada', async () => {
+        mockEntidades.facturas = dosFacturas;
+
+        await expect(service.registrar({
+          clienteId: 'cli-001', facturaIds: ['fac-001', 'fac-002'],
+          monto: 100, metodoPago: MetodoPago.EFECTIVO,
+          numeroOperacion: 'OP-PARCIAL', autoVerificar: true,
+        } as any, mockUser as any)).rejects.toThrow(/debe cubrir el total/i);
+
+        expect(managerMock.insert).not.toHaveBeenCalled();
+      });
+
+      it('no permite mezclar comprobantes de clientes distintos en un mismo pago', async () => {
+        mockEntidades.facturas = [
+          dosFacturas[0],
+          { ...dosFacturas[1], clienteId: 'cli-OTRO' },
+        ];
+
+        await expect(service.registrar({
+          clienteId: 'cli-001', facturaIds: ['fac-001', 'fac-002'],
+          monto: 128, metodoPago: MetodoPago.EFECTIVO, autoVerificar: true,
+        } as any, mockUser as any)).rejects.toThrow(/clientes distintos/i);
+      });
+
+      it('rechaza el consolidado si uno de los comprobantes ya está pagado', async () => {
+        mockEntidades.facturas = [
+          dosFacturas[0],
+          { ...dosFacturas[1], estado: EstadoFactura.PAGADA },
+        ];
+
+        await expect(service.registrar({
+          clienteId: 'cli-001', facturaIds: ['fac-001', 'fac-002'],
+          monto: 128, metodoPago: MetodoPago.EFECTIVO, autoVerificar: true,
+        } as any, mockUser as any)).rejects.toThrow(/ya está pagado/i);
+      });
+
+      it('un pago de un solo comprobante también deja su imputación registrada', async () => {
+        await service.registrar({
+          clienteId: 'cli-001', facturaId: 'fac-001',
+          monto: 85, metodoPago: MetodoPago.EFECTIVO,
+          numeroOperacion: 'OP-SIMPLE', autoVerificar: true,
+        } as any, mockUser as any);
+
+        expect(managerMock.insert).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('debe registrar pago Yape como PENDIENTE_VERIFICACION', async () => {

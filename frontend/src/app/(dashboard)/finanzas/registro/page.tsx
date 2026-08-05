@@ -352,12 +352,21 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
 
   const esPromesa = tipoPago === 'promesa';
 
+  // Valor centinela del consolidado: no es el id de ningún comprobante, así que no puede
+  // colisionar con uno real.
+  const TODOS = '__todos__';
+  const esConsolidado = facturaId === TODOS;
+  const totalConsolidado = pendientes.reduce(
+    (s, f) => s + (f.saldo > 0 ? +f.saldo : +f.total), 0,
+  );
+
   // Auto-fill monto from selected factura
   useEffect(() => {
+    if (facturaId === TODOS) { setMonto(fmt(totalConsolidado)); return; }
     const f = facturas.find(f => f.id === facturaId);
     if (f) setMonto(fmt(f.saldo > 0 ? f.saldo : f.total));
     else    setMonto('');
-  }, [facturaId, facturas]);
+  }, [facturaId, facturas]); // eslint-disable-line
 
   // Default to first pending on load
   useEffect(() => {
@@ -393,7 +402,10 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
 
       const pago = await pagosApi.registrar({
         clienteId:       cliente.id,
-        facturaId:       facturaId   || undefined,
+        // Consolidado: van todos los pendientes y el backend exige que el importe los
+        // cubra por completo (es todo o nada).
+        facturaId:       esConsolidado ? undefined : (facturaId || undefined),
+        facturaIds:      esConsolidado ? pendientes.map(f => f.id) : undefined,
         contratoId:      selectedFactura?.contratoId,
         monto:           parseFloat(monto) || 0,
         metodoPago,
@@ -456,6 +468,14 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
             className={inputCls}
           >
             <option value="">— Sin comprobante (adelanto) —</option>
+            {/* Consolidado: un solo pago y un solo número de operación para toda la
+                deuda. Solo aparece con más de un comprobante pendiente — con uno, la
+                opción individual ya hace lo mismo. */}
+            {pendientes.length > 1 && (
+              <option value={TODOS}>
+                ★ TODAS LAS DEUDAS — {pendientes.length} comprobantes (S/. {fmt(totalConsolidado)})
+              </option>
+            )}
             {facturas
               .filter(f => f.estado !== 'anulada')
               .map(f => (
@@ -465,6 +485,13 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
                 </option>
               ))}
           </select>
+          {esConsolidado && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Se saldarán {pendientes.length} comprobantes con un único pago:{' '}
+              {pendientes.map(f => f.numeroCompleto).join(', ')}. El importe debe cubrir el
+              total.
+            </p>
+          )}
         </div>
 
         {/* Comisión + N° Transacción — oculto en promesa */}

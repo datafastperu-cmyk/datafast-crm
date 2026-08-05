@@ -49,6 +49,8 @@ export interface FiltrosPago {
 export interface RegistrarPagoDto {
   clienteId:       string;
   facturaId?:      string;
+  /** Pago consolidado: un solo ingreso salda varios comprobantes. Es todo o nada. */
+  facturaIds?:     string[];
   contratoId?:     string;
   monto:           number;
   metodoPago:      string;
