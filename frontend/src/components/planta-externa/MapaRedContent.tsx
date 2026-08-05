@@ -292,7 +292,13 @@ export function MapaRedContent() {
 
   return (
     <div className="relative h-[calc(100vh-4rem)] w-full">
-      <div ref={contenedor} className="absolute inset-0" />
+      {/* `h-full` y no `absolute inset-0`: el CSS de MapLibre declara
+          `.maplibregl-map { position: relative }` y se carga DESPUÉS de las utilities de
+          Tailwind, así que gana a `.absolute`. Al dejar de ser absoluto, `inset-0` ya no
+          dimensiona nada y el contenedor colapsaba a 0 de alto — las tiles se descargaban
+          (200 OK) y el canvas se pintaba, pero quedaba recortado por su propio
+          `overflow:hidden`. Mapa en blanco, sin un solo error en consola. */}
+      <div ref={contenedor} className="h-full w-full" />
 
       {/* Panel de capas */}
       <div className="absolute top-3 left-3 z-10 rounded-xl border border-border bg-card/95 backdrop-blur shadow-lg p-3 space-y-2 min-w-[190px]">
