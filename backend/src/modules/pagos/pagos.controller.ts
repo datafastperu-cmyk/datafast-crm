@@ -18,6 +18,7 @@ import { memoryStorage } from 'multer';
 import { PagosService }   from './pagos.service';
 import { AdelantosService } from './adelantos.service';
 import { CanalPagoService } from './canal-pago.service';
+import { ArqueoCajaService } from './arqueo-caja.service';
 import {
   RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
   ActualizarPagoDto, FilterPagoDto, CrearPreferenciaDto,
@@ -39,6 +40,7 @@ export class PagosController {
     private readonly svc: PagosService,
     private readonly adelantosSvc: AdelantosService,
     private readonly canalSvc: CanalPagoService,
+    private readonly arqueoSvc: ArqueoCajaService,
   ) {}
 
   // ── POST /pagos — Registrar pago ──────────────────────────
@@ -115,6 +117,88 @@ export class PagosController {
     return StdResponse.ok(
       await this.canalSvc.listar(user.empresaId, soloManuales === 'true'),
     );
+  }
+
+  // ── Arqueo y cierre de caja ──────────────────────────────────
+  //
+  // El arqueo compara lo que el ERP dice que entró con lo que hay físicamente. La
+  // diferencia se DECLARA: una caja que cuadra siempre no es una caja que cuadra, es una
+  // donde el descuadre se absorbe en silencio.
+  @Get('arqueo')
+  @RequirePermission('cobranza:cerrar_caja')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Arqueo por cuenta receptora y cajero en un periodo' })
+  async getArqueo(
+    @CurrentUser() user: JwtPayload,
+    @Query('desde') desde: string,
+    @Query('hasta') hasta: string,
+  ) {
+    const hoy = new Date().toISOString().split('T')[0];
+    return StdResponse.ok(
+      await this.arqueoSvc.calcular(user.empresaId, desde || hoy, hasta || hoy),
+    );
+  }
+
+  @Post('arqueo/cerrar')
+  @RequirePermission('cobranza:cerrar_caja')
+  @ApiOperation({
+    summary: 'Cerrar caja',
+    description: 'Registra lo contado. Si hay diferencia, la nota es obligatoria.',
+  })
+  async cerrarCaja(@Body() dto: any, @CurrentUser() user: JwtPayload, @Req() req: Request) {
+    return StdResponse.ok(
+      await this.arqueoSvc.cerrar(user.empresaId, dto, user, req), 'Caja cerrada',
+    );
+  }
+
+  @Get('arqueo/historial')
+  @RequirePermission('cobranza:cerrar_caja')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Cierres de caja anteriores' })
+  async historialArqueo(@CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.arqueoSvc.historial(user.empresaId));
+  }
+
+  // ── GET /pagos/formas — Taxonomía cerrada ────────────────────
+  @Get('formas')
+  @RequirePermission('pagos:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Formas de pago (taxonomía cerrada, no configurable)' })
+  async getFormas() {
+    return StdResponse.ok(await this.canalSvc.formas());
+  }
+
+  // ── Ajustes de Cobranza: alta/edición/baja de canales ────────
+  @Post('canales')
+  @RequirePermission('cobranza:configurar')
+  @ApiOperation({ summary: 'Crear canal de cobro' })
+  async crearCanal(@Body() dto: any, @CurrentUser() user: JwtPayload) {
+    return StdResponse.ok(await this.canalSvc.crear(user.empresaId, dto), 'Canal creado');
+  }
+
+  @Patch('canales/:id')
+  @RequirePermission('cobranza:configurar')
+  @ApiOperation({ summary: 'Editar canal (el código y la forma son inmutables)' })
+  async actualizarCanal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: any,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return StdResponse.ok(
+      await this.canalSvc.actualizar(id, user.empresaId, dto), 'Canal actualizado',
+    );
+  }
+
+  // Baja LÓGICA: el histórico tiene que seguir diciendo por dónde entró cada cobro.
+  @Delete('canales/:id')
+  @RequirePermission('cobranza:configurar')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Desactivar canal (baja lógica — nunca se borra)' })
+  async desactivarCanal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.canalSvc.desactivar(id, user.empresaId);
   }
 
   // ── GET /pagos/cuentas — Cuentas bancarias ────────────────

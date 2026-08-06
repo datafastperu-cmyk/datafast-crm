@@ -32,6 +32,7 @@ const LABELS: Record<string, string> = {
   tecnicos:      'Técnicos',
   inventario:    'Inventario',
   gastos:        'Gastos / Ingresos',
+  'ajustes-cobranza': 'Ajustes de Cobranza',
   proyectos:     'Proyectos de Expansión',
   iptv:          'IPTV / Streaming',
   logs:          'Logs del Sistema',

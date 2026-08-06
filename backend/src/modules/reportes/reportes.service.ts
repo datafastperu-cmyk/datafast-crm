@@ -75,13 +75,26 @@ export class ReportesService {
       WHERE empresa_id = $1 AND fecha_emision BETWEEN $2 AND $3 AND deleted_at IS NULL
     `, [empresaId, startDate, endDate]);
 
+    // El eje del reporte es el CANAL, no la forma ni el texto libre de `metodo_pago`.
+    //
+    // La pregunta real del negocio es "cuánto entró por Yape", no "cuánto por billetera
+    // electrónica" — el corte por forma se obtiene agregando, el contrario no. Y el eje
+    // anterior era `metodo_pago`, un varchar libre donde cabía cualquier cosa: el
+    // diagnóstico F0 encontró `'Efectivo'` capitalizado conviviendo con `'efectivo'`, que
+    // el reporte habría contado como dos conceptos distintos.
+    //
+    // Los pagos sin canal (histórico previo a F1, o un método que el catálogo no cubre)
+    // se agrupan como "Sin clasificar" en vez de desaparecer: una fila incómoda es mejor
+    // que dinero que no aparece en ningún corte.
     const porMetodoRaw = await this.ds.query(`
-      SELECT metodo_pago, COALESCE(SUM(monto), 0) AS total
-      FROM pagos
-      WHERE empresa_id = $1
-        AND fecha_pago BETWEEN $2 AND $3
-        AND estado = 'verificado'
-      GROUP BY metodo_pago ORDER BY total DESC
+      SELECT COALESCE(c.nombre, 'Sin clasificar') AS metodo_pago,
+             COALESCE(SUM(p.monto), 0) AS total
+      FROM pagos p
+      LEFT JOIN canal_pago c ON c.id = p.canal_pago_id
+      WHERE p.empresa_id = $1
+        AND p.fecha_pago BETWEEN $2 AND $3
+        AND p.estado = 'verificado'
+      GROUP BY c.nombre ORDER BY total DESC
     `, [empresaId, startDate, endDate]);
 
     const topClientesRaw = await this.ds.query(`

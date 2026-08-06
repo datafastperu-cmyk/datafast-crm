@@ -1,6 +1,6 @@
 'use client';
 
-import { useState }       from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter }      from 'next/navigation';
 import { useForm }        from 'react-hook-form';
 import { zodResolver }    from '@hookform/resolvers/zod';
@@ -8,32 +8,30 @@ import { z }              from 'zod';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Loader2, ArrowLeft, Upload, X } from 'lucide-react';
 
-import { pagosApi, METODOS_PAGO, REQUIERE_NUM_OPERACION, type RegistrarPagoDto } from '@/lib/api/facturacion';
+import { pagosApi, type RegistrarPagoDto } from '@/lib/api/facturacion';
 import { facturacionApi }  from '@/lib/api/facturacion';
 import { clientesApi }     from '@/lib/api/clientes';
 import { useToast }        from '@/components/ui/toaster';
 import { formatPEN, parseApiError, cn } from '@/lib/utils';
 
+// Los tres ejes de un ingreso: cómo pagó (forma), por qué medio (canal) y dónde entró el
+// dinero (cuenta receptora). El tercero es el que faltaba: hasta F1 el ERP sabía que
+// entraron S/ 85 por Yape y no sabía en qué cuenta estaban.
+//
+// La obligatoriedad del número de operación la decide el CANAL, no una lista en el
+// frontend: si la regla viviera aquí, el portal y la app móvil tendrían otra.
 const schema = z.object({
   clienteId:       z.string().optional(),
   facturaId:       z.string().optional(),
   contratoId:      z.string().optional(),
   monto:           z.coerce.number().positive('El monto debe ser mayor a 0'),
-  metodoPago:      z.string().min(1, 'Selecciona el método'),
-  banco:           z.string().optional(),
+  formaPago:       z.string().min(1, 'Selecciona la forma de pago'),
+  canalPagoId:     z.string().min(1, 'Selecciona el canal'),
+  cuentaReceptoraId: z.string().optional(),
   numeroOperacion: z.string().optional(),
-  numeroCuenta:    z.string().optional(),
   fechaPago:       z.string().min(1, 'Fecha requerida'),
   notas:           z.string().optional(),
   autoVerificar:   z.boolean().optional(),
-}).superRefine((data, ctx) => {
-  if (REQUIERE_NUM_OPERACION.has(data.metodoPago as any) && !data.numeroOperacion?.trim()) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `El número de operación es obligatorio para ${data.metodoPago}`,
-      path: ['numeroOperacion'],
-    });
-  }
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -52,8 +50,15 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
   const [comprobanteUrl, setComprobanteUrl] = useState<string | null>(null);
   const [uploadingFile, setUploadingFile]   = useState(false);
 
+  // Una clave por apertura del formulario, repetida en cada intento. Es lo que impide que
+  // un doble clic o un reintento del navegador creen DOS cobros: el efectivo no tiene
+  // número de operación, así que sin esto no había nada que los distinguiera.
+  const [idempotencyKey] = useState(() =>
+    (globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+  );
+
   const {
-    register, handleSubmit, watch,
+    register, handleSubmit, watch, setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver:      zodResolver(schema),
@@ -62,16 +67,43 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
       facturaId,
       contratoId,
       fechaPago:     hoy,
-      metodoPago:    'efectivo',
+      formaPago:     'efectivo',
       autoVerificar: false,
     },
   });
 
-  const metodoPago    = watch('metodoPago');
+  const formaPago     = watch('formaPago');
+  const canalPagoId   = watch('canalPagoId');
   const facIdWatch    = watch('facturaId');
   const clienteIdW    = watch('clienteId');
-  const requiereNum   = REQUIERE_NUM_OPERACION.has(metodoPago as any);
-  const requiresBanco = ['transferencia_bancaria','deposito_bancario','cheque'].includes(metodoPago);
+
+  // Catálogos. `soloManuales` deja fuera los canales que solo crea una pasarela: ofrecer
+  // MercadoPago en la caja permitiría registrar a mano un cobro que el webhook va a
+  // registrar solo, y el ingreso acabaría contado dos veces.
+  const { data: formas = [] } = useQuery({
+    queryKey: ['formas-pago'], queryFn: pagosApi.getFormas, staleTime: Infinity,
+  });
+  const { data: canales = [] } = useQuery({
+    queryKey: ['canales-pago'], queryFn: () => pagosApi.getCanales(true), staleTime: 5 * 60_000,
+  });
+
+  const canalesDeLaForma = canales.filter((c) => c.formaPago === formaPago);
+  const canal            = canales.find((c) => c.id === canalPagoId);
+  const requiereNum      = !!canal?.requiereNumeroOperacion;
+
+  // Al cambiar de forma, el canal anterior deja de ser válido. Se preselecciona el único
+  // si solo hay uno — pedirle al cajero que elija entre una opción es fricción sin motivo.
+  useEffect(() => {
+    if (canal && canal.formaPago === formaPago) return;
+    setValue('canalPagoId', canalesDeLaForma.length === 1 ? canalesDeLaForma[0].id : '');
+  }, [formaPago, canales.length]); // eslint-disable-line
+
+  // La cuenta la SUGIERE el canal; el operador puede cambiarla si tiene permiso.
+  useEffect(() => {
+    if (canal?.cuentaReceptoraDefaultId) {
+      setValue('cuentaReceptoraId', canal.cuentaReceptoraDefaultId);
+    }
+  }, [canalPagoId]); // eslint-disable-line
 
   // Cargar datos de la factura si hay facturaId
   const { data: factura } = useQuery({
@@ -103,14 +135,18 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
         facturaId:       values.facturaId || undefined,
         contratoId:      values.contratoId || undefined,
         monto:           values.monto,
-        metodoPago:      values.metodoPago,
-        banco:           values.banco || undefined,
+        canalPagoId:     values.canalPagoId,
+        cuentaReceptoraId: values.cuentaReceptoraId || undefined,
+        // `metodoPago` se sigue enviando: la columna se conserva escrita para que el
+        // histórico se lea tal como se registró, y es lo que hace reversible la migración
+        // de catálogos. El backend deriva su valor del canal si no coincide.
+        metodoPago:      canal?.codigo ?? values.formaPago,
         numeroOperacion: values.numeroOperacion || undefined,
-        numeroCuenta:    values.numeroCuenta || undefined,
         fechaPago:       values.fechaPago,
         notas:           values.notas || undefined,
         comprobanteUrl:  comprobanteUrl || undefined,
-        autoVerificar:   values.autoVerificar || metodoPago === 'efectivo',
+        autoVerificar:   values.autoVerificar || values.formaPago === 'efectivo',
+        idempotencyKey,
       };
       return pagosApi.registrar(dto);
     },
@@ -195,68 +231,88 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
         )}
       </Section>
 
-      {/* ── SECCIÓN 2: Método ─────────────────────────── */}
-      <Section title="Método de pago">
-        <Field label="Método *" error={errors.metodoPago?.message}>
+      {/* ── SECCIÓN 2: Forma → Canal → Cuenta ─────────── */}
+      <Section title="Cómo pagó">
+        <Field label="Forma de pago *" error={errors.formaPago?.message}>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {METODOS_PAGO.slice(0, 6).map(({ value, label }) => (
-              <label key={value}
+            {formas.map(({ codigo, nombre }) => (
+              <label key={codigo}
                 className={cn(
                   'flex items-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer',
                   'text-sm transition-all',
-                  metodoPago === value
+                  formaPago === codigo
                     ? 'border-primary bg-primary/5 text-primary font-medium'
                     : 'border-input hover:border-muted-foreground',
                 )}>
-                <input type="radio" value={value} {...register('metodoPago')} className="sr-only" />
-                {label}
+                <input type="radio" value={codigo} {...register('formaPago')} className="sr-only" />
+                {nombre}
               </label>
             ))}
           </div>
-          {/* Otros métodos como select */}
-          <select {...register('metodoPago')}
-            className={cn(input(), 'mt-2 text-xs text-muted-foreground')}>
-            {METODOS_PAGO.map(({ value, label }) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
         </Field>
 
-        {/* Número de operación */}
+        {/* El canal depende de la forma. Sin canales configurados no se inventa uno:
+            se dice qué falta y dónde arreglarlo. */}
+        <Field label="Canal *" error={errors.canalPagoId?.message}>
+          {canalesDeLaForma.length === 0 ? (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              No hay canales configurados para esta forma de pago.
+              Créalos en Finanzas → Ajustes de Cobranza.
+            </p>
+          ) : (
+            <select {...register('canalPagoId')} className={input(!!errors.canalPagoId)}>
+              <option value="">— Seleccionar —</option>
+              {canalesDeLaForma.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
+              ))}
+            </select>
+          )}
+        </Field>
+
+        {/* Dónde entró el dinero. Se sugiere desde el canal; cambiarla es un movimiento
+            de tesorería, así que va como decisión explícita del operador. */}
+        {canal && (
+          <Field label="Cuenta receptora">
+            <select {...register('cuentaReceptoraId')} className={input()}>
+              <option value="">— Sin asignar —</option>
+              {cuentas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre ?? c.banco}
+                  {c.numeroCuenta ? ` ···${c.numeroCuenta.slice(-4)}` : ''} ({c.moneda})
+                </option>
+              ))}
+            </select>
+            {canal.cuentaReceptoraDefaultId ? (
+              <p className="text-xs text-muted-foreground">
+                Sugerida por el canal «{canal.nombre}». Cámbiala solo si el dinero entró en otra.
+              </p>
+            ) : (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Este canal no tiene cuenta por defecto — indica dónde entró el dinero.
+              </p>
+            )}
+          </Field>
+        )}
+
+        {/* La obligatoriedad la decide el canal, no una lista en el frontend. */}
         {requiereNum && (
-          <Field label={`N° de operación ${requiereNum ? '*' : ''}`} error={errors.numeroOperacion?.message}>
+          <Field label="N° de operación *" error={errors.numeroOperacion?.message}>
             <input
               {...register('numeroOperacion')}
-              placeholder={metodoPago === 'yape' ? 'Ej: 12345678' : 'N° de transacción'}
+              placeholder="N° de transacción"
               className={input(!!errors.numeroOperacion)}
             />
             <p className="text-xs text-muted-foreground">
-              Requerido para detectar pagos duplicados automáticamente.
+              Es lo que impide cobrar dos veces la misma operación.
             </p>
           </Field>
         )}
 
-        {/* Banco */}
-        {requiresBanco && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Banco">
-              <select {...register('banco')} className={input()}>
-                <option value="">— Seleccionar —</option>
-                {cuentas.length > 0
-                  ? cuentas.map((c) => (
-                    <option key={c.id} value={c.banco}>
-                      {c.banco} ···{c.numeroCuenta?.slice(-4)} ({c.moneda})
-                    </option>
-                  ))
-                  : ['BCP','BBVA','Interbank','Scotiabank','BanBif','Financiero'].map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-              </select>
-            </Field>
-            <Field label="Últimos 4 dígitos de cuenta">
-              <input {...register('numeroCuenta')} placeholder="6411" maxLength={4} className={input()} />
-            </Field>
-          </div>
+        {canal && (Number(canal.comisionPorcentaje) > 0 || Number(canal.comisionFija) > 0) && (
+          <p className="text-xs text-muted-foreground">
+            Este canal retiene comisión ({canal.comisionPorcentaje}% + S/ {canal.comisionFija}).
+            El abonado paga el importe completo; la comisión se registra como gasto.
+          </p>
         )}
       </Section>
 
@@ -298,7 +354,7 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
           <textarea {...register('notas')} rows={2} placeholder="Notas adicionales del cajero…"
             className={cn(input(), 'resize-none')} />
         </Field>
-        {metodoPago !== 'efectivo' && (
+        {formaPago !== 'efectivo' && (
           <label className="flex items-start gap-2.5 cursor-pointer">
             <input type="checkbox" {...register('autoVerificar')} className="rounded mt-0.5" />
             <div>

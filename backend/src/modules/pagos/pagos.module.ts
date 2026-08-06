@@ -11,6 +11,7 @@ import { PagosService }        from './pagos.service';
 import { PagoRepository }      from './repositories/pago.repository';
 import { MercadoPagoService }  from './mercadopago.service';
 import { CanalPagoService }    from './canal-pago.service';
+import { ArqueoCajaService }   from './arqueo-caja.service';
 
 import { Pago, CuentaBancaria } from './entities/pago.entity';
 import { PagoAplicacion } from './entities/pago-aplicacion.entity';
@@ -52,11 +53,13 @@ import { AuthModule }         from '../auth/auth.module';
     PagoRepository,
     MercadoPagoService,
     CanalPagoService,
+    ArqueoCajaService,
   ],
   exports: [
     PagosService,
     PagoRepository,
     CanalPagoService,
+    ArqueoCajaService,
   ],
 })
 export class PagosModule {}

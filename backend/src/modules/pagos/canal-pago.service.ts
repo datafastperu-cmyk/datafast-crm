@@ -85,6 +85,79 @@ export class CanalPagoService {
     return canales;
   }
 
+  /** Taxonomía cerrada. Se sirve desde la BD para que la UI y el dominio no diverjan. */
+  async formas(): Promise<Array<{ codigo: string; nombre: string }>> {
+    return this.ds.query(
+      `SELECT codigo, nombre FROM forma_pago ORDER BY orden, nombre`,
+    );
+  }
+
+  /**
+   * Alta de canal. `codigo` se deriva del nombre y es INMUTABLE: es lo que referencia el
+   * histórico. Cambiar el rótulo mañana no puede reescribir por dónde entró un cobro de
+   * hace dos años.
+   */
+  async crear(empresaId: string, dto: {
+    nombre: string; formaPago: FormaPago; cuentaReceptoraDefaultId?: string | null;
+    requiereNumeroOperacion?: boolean; requiereVoucher?: boolean;
+    comisionPorcentaje?: number; comisionFija?: number;
+  }): Promise<CanalPago> {
+    const codigo = `${dto.formaPago}-${dto.nombre}`
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+
+    const existe = await this.ds.getRepository(CanalPago)
+      .findOne({ where: { empresaId, codigo } });
+    if (existe) {
+      throw new BadRequestException(
+        `Ya existe un canal "${existe.nombre}" para esa forma de pago` +
+        (existe.activo ? '' : ' (está desactivado — reactívalo en vez de crear otro)'),
+      );
+    }
+
+    const canal = this.ds.getRepository(CanalPago).create({
+      empresaId, codigo, nombre: dto.nombre.trim(), formaPago: dto.formaPago,
+      cuentaReceptoraDefaultId: dto.cuentaReceptoraDefaultId ?? null,
+      requiereNumeroOperacion: dto.requiereNumeroOperacion ?? false,
+      requiereVoucher:         dto.requiereVoucher ?? false,
+      comisionPorcentaje:      dto.comisionPorcentaje ?? 0,
+      comisionFija:            dto.comisionFija ?? 0,
+      permiteRegistroManual:   true,
+      activo: true, esProtegido: false,
+    });
+    return this.ds.getRepository(CanalPago).save(canal);
+  }
+
+  /**
+   * Edición. `codigo` y `formaPago` NO se pueden cambiar: mover un canal de forma
+   * reescribiría el significado de todos los cobros que ya entraron por él. Para eso se
+   * desactiva y se crea otro.
+   */
+  async actualizar(id: string, empresaId: string, dto: Partial<{
+    nombre: string; cuentaReceptoraDefaultId: string | null;
+    requiereNumeroOperacion: boolean; requiereVoucher: boolean;
+    comisionPorcentaje: number; comisionFija: number; activo: boolean;
+  }>): Promise<CanalPago> {
+    const repo = this.ds.getRepository(CanalPago);
+    const canal = await repo.findOne({ where: { id, empresaId } });
+    if (!canal) throw new BadRequestException('Canal no encontrado');
+
+    Object.assign(canal, dto, { updatedAt: new Date() });
+    return repo.save(canal);
+  }
+
+  /**
+   * Baja LÓGICA, siempre. Un canal con pagos históricos no se puede borrar sin dejar esos
+   * cobros sin explicación de por dónde entraron; y uno sin pagos tampoco se borra, porque
+   * mañana puede tenerlos y la regla sería distinta según el día.
+   */
+  async desactivar(id: string, empresaId: string): Promise<void> {
+    const repo = this.ds.getRepository(CanalPago);
+    const canal = await repo.findOne({ where: { id, empresaId } });
+    if (!canal) throw new BadRequestException('Canal no encontrado');
+    canal.activo = false;
+    await repo.save(canal);
+  }
+
   /**
    * Resuelve el canal de un pago entrante.
    *

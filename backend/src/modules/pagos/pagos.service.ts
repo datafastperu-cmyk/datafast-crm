@@ -82,6 +82,27 @@ export class PagosService {
       // La comprobación NO incluye el método de pago: un código de operación no se repite
       // aunque uno sea Yape y otro transferencia. Un consolidado no necesita excepción a
       // esta regla porque es UN pago —una fila— aplicado a varios comprobantes.
+      // PASO 0 — Idempotencia por clave de request.
+      //
+      // Cierra el hueco del efectivo: un cobro en efectivo no tiene número de operación,
+      // así que hasta F5 nada impedía que un doble clic —o un reintento del navegador con
+      // la red lenta— creara dos filas de S/ 85 para el mismo abonado.
+      //
+      // Reenviar NO es un error del cajero: es la red o el ratón. Se devuelve el pago que
+      // ya existe con éxito, en vez de un rechazo que empujaría a registrar otro a mano.
+      if (dto.idempotencyKey) {
+        const yaRegistrado = await manager.findOne(Pago, {
+          where: { empresaId, idempotencyKey: dto.idempotencyKey },
+        });
+        if (yaRegistrado) {
+          this.logger.warn(
+            `[PAGO] Reenvío detectado (idempotencyKey ${dto.idempotencyKey}) — se devuelve ` +
+            `el pago ${yaRegistrado.id} en vez de crear un duplicado.`,
+          );
+          return yaRegistrado;
+        }
+      }
+
       const duplicado = dto.numeroOperacion
         ? await manager.findOne(Pago, {
             where: { empresaId, numeroOperacion: dto.numeroOperacion },
@@ -256,6 +277,7 @@ export class PagosService {
         metodoPago:      dto.metodoPago,
         banco:           dto.banco ?? null,
         // Modelo vivo.
+        idempotencyKey:  dto.idempotencyKey ?? null,
         canalPagoId:       canal?.id ?? null,
         cuentaReceptoraId,
         comision,

@@ -80,6 +80,7 @@ const NAV: NavEntry[] = [
       { href: '/finanzas/adelanto-prorroga', label: 'Adelantos y Prórrogas', icon: CalendarDays, permiso: 'pagos:view' },
       { href: '/finanzas/gastos',     label: 'Gastos / Ingresos',    icon: Wallet,  permiso: 'pagos:view'       },
       { href: '/finanzas/proyectos',  label: 'Proyectos Expansión',  icon: Target,  permiso: 'pagos:view'       },
+      { href: '/finanzas/ajustes-cobranza', label: 'Ajustes de Cobranza', icon: Settings, permiso: 'cobranza:configurar' },
       { href: '/reportes',          label: 'Reportes',          icon: BarChart2,  permiso: 'reportes:view'    },
     ],
   },

@@ -97,6 +97,16 @@ export class RegistrarPagoDto {
   canalPagoId?: string;
 
   /**
+   * Generada por el cliente UNA vez por apertura del formulario y repetida en cada
+   * intento. Sin ella, un cobro en efectivo (que no tiene número de operación) se puede
+   * duplicar con un doble clic.
+   */
+  @IsOptional()
+  @IsString()
+  @Length(8, 64)
+  idempotencyKey?: string;
+
+  /**
    * Dónde entró el dinero. Si no viene, se toma la cuenta por defecto del canal.
    * Enviarla explícitamente requiere permiso: cambiarla es un movimiento de tesorería.
    */

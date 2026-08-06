@@ -87,6 +87,17 @@ export class Pago {
   @Column({ name: 'numero_operacion', length: 100, nullable: true })
   numeroOperacion: string; // Número único de transacción (antiduplico)
 
+  /**
+   * Clave que el CLIENTE genera una vez por apertura del formulario y repite en cada
+   * intento. Cierra el hueco del efectivo: un cobro en efectivo no tiene número de
+   * operación, así que nada impedía que un doble clic creara dos filas de S/ 85.
+   *
+   * Un segundo envío con la misma clave devuelve el pago existente, no un error: repetir
+   * el envío no es una equivocación del cajero, es la red o el ratón.
+   */
+  @Column({ name: 'idempotency_key', length: 64, nullable: true })
+  idempotencyKey: string | null;
+
   @Column({ name: 'numero_cuenta', length: 50, nullable: true })
   numeroCuenta: string;  // Últimos 4 dígitos de la cuenta destino
 
