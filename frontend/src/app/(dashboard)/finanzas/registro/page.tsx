@@ -5,7 +5,6 @@ import { useAuthStore } from '@/store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clientesApi }                           from '@/lib/api/clientes';
 import { facturacionApi, pagosApi } from '@/lib/api/facturacion';
-import apiClient from '@/lib/api';
 import { contratosApi }                           from '@/lib/api/contratos';
 import { promesasApi }                            from '@/lib/api/promesas';
 import type { PromesaRow, PromesaStats }           from '@/lib/api/promesas';
@@ -311,7 +310,6 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
 
   // Ids de los comprobantes marcados para cobrar. El total sale de aquí.
   const [seleccion,      setSeleccion]      = useState<string[]>(pendientes.map(f => f.id));
-  const [metodoPago,     setMetodoPago]     = useState('');
   const [numOp,          setNumOp]          = useState('');
   const [notas,          setNotas]          = useState('');
   const [tipoPago,       setTipoPago]       = useState('activar');
@@ -322,27 +320,57 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
   const [fechaPago,      setFechaPago]      = useState(today);
   const [fechaProrroga,  setFechaProrroga]  = useState(defaultFechaProrroga);
   const [voucherFile,    setVoucherFile]    = useState<File | null>(null);
-  const [banco,          setBanco]          = useState('');
+  const [formaPago,      setFormaPago]      = useState('efectivo');
+  const [canalPagoId,    setCanalPagoId]    = useState('');
+  const [cuentaId,       setCuentaId]       = useState('');
 
-  const { data: bancosOpciones = [] } = useQuery<{ id: string; nombre: string }[]>({
-    queryKey: ['bancos-isp'],
-    queryFn:  () => apiClient.get('/facturacion-config/bancos').then(r => r.data.data ?? []),
-    staleTime: 5 * 60_000,
+  // Una clave por apertura del formulario: impide que un doble clic o un reintento del
+  // navegador registren dos cobros. El efectivo no tiene número de operación, así que sin
+  // esto no había nada que distinguiera un duplicado de un cobro legítimo.
+  const [idempotencyKey] = useState(() =>
+    (globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+  );
+
+  // ── Los tres ejes: forma → canal → cuenta receptora ──────────────────────────
+  //
+  // Aquí estaban "Seleccionar Banco" y "Forma de Pago", leídos de `bancos_isp` y
+  // `formas_pago_isp`. Ese par es la causa raíz de los dos defectos que midió el
+  // diagnóstico F0 sobre los únicos pagos que existían:
+  //
+  //   · `metodo_pago = 'Efectivo'` capitalizado — se enviaba el RÓTULO del catálogo, no un
+  //     valor de dominio, y como la columna era texto libre cualquier cosa cabía.
+  //   · Un pago en EFECTIVO con `banco = 'Banco 01'`, porque el select de banco
+  //     autoseleccionaba el primero de la lista y lo mandaba siempre, tuviera sentido o no.
+  //
+  // El banco no es un eje: es un canal de las formas bancarias. Y faltaba la pregunta que
+  // de verdad importa para tesorería — en qué cuenta entró el dinero.
+  const { data: formas = [] } = useQuery({
+    queryKey: ['formas-pago'], queryFn: pagosApi.getFormas, staleTime: Infinity,
+  });
+  const { data: canales = [] } = useQuery({
+    queryKey: ['canales-pago'], queryFn: () => pagosApi.getCanales(true), staleTime: 5 * 60_000,
+  });
+  const { data: cuentas = [] } = useQuery({
+    queryKey: ['cuentas-bancarias'], queryFn: pagosApi.getCuentasBancarias, staleTime: 5 * 60_000,
   });
 
-  const { data: formasPagoOpciones = [] } = useQuery<{ id: string; nombre: string }[]>({
-    queryKey: ['formas-pago-isp'],
-    queryFn:  () => apiClient.get('/facturacion-config/formas-pago').then(r => r.data.data ?? []),
-    staleTime: 5 * 60_000,
-  });
+  const canalesDeLaForma = canales.filter(c => c.formaPago === formaPago);
+  const canal            = canales.find(c => c.id === canalPagoId);
+  const requiereNumOp    = !!canal?.requiereNumeroOperacion;
 
+  // Al cambiar de forma el canal anterior deja de valer. Se preselecciona si solo hay uno:
+  // pedirle al cajero que elija entre una opción es fricción sin motivo.
   useEffect(() => {
-    if (bancosOpciones.length > 0 && !banco) setBanco(bancosOpciones[0].nombre);
-  }, [bancosOpciones]); // eslint-disable-line
+    if (canal && canal.formaPago === formaPago) return;
+    setCanalPagoId(canalesDeLaForma.length === 1 ? canalesDeLaForma[0].id : '');
+  }, [formaPago, canales.length]); // eslint-disable-line
 
+  // La cuenta la propone el canal. A diferencia del banco de antes, aquí NO se
+  // autoselecciona nada si el canal no la define: se deja vacía para que el operador diga
+  // dónde entró el dinero, en vez de que el ERP lo invente.
   useEffect(() => {
-    if (formasPagoOpciones.length > 0 && !metodoPago) setMetodoPago(formasPagoOpciones[0].nombre);
-  }, [formasPagoOpciones]); // eslint-disable-line
+    setCuentaId(canal?.cuentaReceptoraDefaultId ?? '');
+  }, [canalPagoId]); // eslint-disable-line
 
   const esPromesa  = tipoPago === 'promesa';
   // Adelanto: dinero sin comprobante que queda como saldo a favor y se consume al emitir
@@ -421,12 +449,17 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
         facturaIds:      esConsolidado ? seleccion : undefined,
         contratoId:      esAdelanto ? undefined : selectedFactura?.contratoId,
         monto:           parseFloat(monto) || 0,
-        metodoPago,
+        canalPagoId:     canalPagoId || undefined,
+        cuentaReceptoraId: cuentaId || undefined,
+        // Se sigue enviando: la columna se conserva escrita para leer el histórico tal
+        // como se registró, y es lo que hace reversible la migración de catálogos. Ahora
+        // lleva el CÓDIGO del canal, no el rótulo que el operador ve en pantalla.
+        metodoPago:      canal?.codigo ?? formaPago,
         numeroOperacion: numOp  || undefined,
         notas:           notas  || undefined,
         autoVerificar:   puedeAutoverificar && autoVerificar,
         fechaPago,
-        banco:           banco || undefined,
+        idempotencyKey,
       });
       if (voucherFile) {
         try {
@@ -581,62 +614,113 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
         </div>
         )}
 
-        {/* Comisión + N° Transacción — oculto en promesa */}
-        {!esPromesa && (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                Comisión S/.
-              </label>
-              <input type="number" defaultValue="0" min="0" step="0.01" className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                N° Transacción
-              </label>
-              <input
-                type="text"
-                value={numOp}
-                onChange={e => setNumOp(e.target.value)}
-                placeholder="Número de operación"
-                className={inputCls}
-              />
-            </div>
+        {/* N° de operación — solo si el CANAL lo exige.
+            Antes se pedía siempre, junto a un input de "Comisión S/." que no llevaba
+            estado ni se enviaba: era decorativo. La comisión no la teclea el cajero, la
+            define el canal, y se muestra abajo calculada sobre el importe real. */}
+        {!esPromesa && requiereNumOp && (
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+              N° Transacción *
+            </label>
+            <input
+              type="text"
+              value={numOp}
+              onChange={e => setNumOp(e.target.value)}
+              placeholder="Número de operación"
+              className={inputCls}
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Es lo que impide cobrar dos veces la misma operación.
+            </p>
           </div>
         )}
 
-        {/* Fila 1: Forma de Pago | Seleccionar Banco */}
+        {/* Forma → Canal → Cuenta receptora */}
         {!esPromesa && (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                Seleccionar Banco
-              </label>
-              <select
-                value={banco}
-                onChange={e => setBanco(e.target.value)}
-                className={inputCls}
-              >
-                {bancosOpciones.map(b => (
-                  <option key={b.id} value={b.nombre}>{b.nombre}</option>
-                ))}
-              </select>
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Forma de Pago
+                </label>
+                <select
+                  value={formaPago}
+                  onChange={e => setFormaPago(e.target.value)}
+                  className={inputCls}
+                >
+                  {formas.map(f => (
+                    <option key={f.codigo} value={f.codigo}>{f.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Canal
+                </label>
+                {canalesDeLaForma.length === 0 ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 pt-2">
+                    Sin canales para esta forma. Créalos en Finanzas → Ajustes de Cobranza.
+                  </p>
+                ) : (
+                  <select
+                    value={canalPagoId}
+                    onChange={e => setCanalPagoId(e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="">— Seleccionar —</option>
+                    {canalesDeLaForma.map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
-                Forma de Pago
-              </label>
-              <select
-                value={metodoPago}
-                onChange={e => setMetodoPago(e.target.value)}
-                className={inputCls}
-              >
-                {formasPagoOpciones.map(f => (
-                  <option key={f.id} value={f.nombre}>{f.nombre}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+
+            {/* Dónde entró el dinero. Es la pregunta que este formulario no hacía. */}
+            {canal && (
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">
+                  Cuenta receptora
+                </label>
+                <select
+                  value={cuentaId}
+                  onChange={e => setCuentaId(e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">— Sin asignar —</option>
+                  {cuentas.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre ?? c.banco}
+                      {c.numeroCuenta ? ` ···${c.numeroCuenta.slice(-4)}` : ''} ({c.moneda})
+                    </option>
+                  ))}
+                </select>
+                {!canal.cuentaReceptoraDefaultId && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    Este canal no tiene cuenta por defecto — indica dónde entró el dinero.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* La comisión se DERIVA del canal sobre el importe cobrado. El abonado paga
+                el bruto y eso es lo que salda su factura; el neto es lo que llega a la
+                cuenta, y por tanto lo que se busca en el extracto al conciliar. */}
+            {canal && (Number(canal.comisionPorcentaje) > 0 || Number(canal.comisionFija) > 0) && (() => {
+              const bruto    = parseFloat(monto) || 0;
+              const comision = Number((
+                (bruto * Number(canal.comisionPorcentaje)) / 100 + Number(canal.comisionFija)
+              ).toFixed(2));
+              return (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Comisión de «{canal.nombre}»: <strong>S/ {comision.toFixed(2)}</strong> —
+                  el abonado paga S/ {bruto.toFixed(2)} y a la cuenta llegan
+                  S/ {(bruto - comision).toFixed(2)}. La comisión se registra como gasto.
+                </p>
+              );
+            })()}
+          </>
         )}
 
         {/* Auto-verificar */}
@@ -832,6 +916,12 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
               || (esAdelanto && totalConsolidado > 0)
               // Un cobro que no es adelanto ni promesa tiene que aplicarse a algo.
               || (!esPromesa && !esAdelanto && seleccion.length === 0)
+              // Sin canal el pago nace sin clasificar: desaparecería de todo reporte de
+              // tesorería y nadie lo notaría. Se bloquea aquí, no al llegar al backend.
+              || (!esPromesa && !canalPagoId)
+              // Si el canal lo exige, el nº de operación es lo que impide cobrar dos veces
+              // la misma transacción.
+              || (!esPromesa && requiereNumOp && !numOp.trim())
             }
             onClick={() => mutate()}
             className={cn(

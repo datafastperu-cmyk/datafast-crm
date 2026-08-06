@@ -9,7 +9,7 @@ import {
   Loader2, Plus, Pencil, Trash2, Star, StarOff,
   BadgeDollarSign, TrendingUp, FileCheck, Receipt,
   CheckCircle2, XCircle, AlertTriangle, Lock,
-  Building2, CreditCard,
+  CreditCard,
 } from 'lucide-react';
 
 import { useToast } from '@/components/ui/toaster';
@@ -45,8 +45,6 @@ interface Resumen {
   montoDeudaPendiente: number;
 }
 
-interface BancoItem    { id: string; nombre: string; esProtegido: boolean; activo: boolean; }
-interface FormaPagoItem { id: string; nombre: string; esProtegido: boolean; activo: boolean; }
 
 // ─── API ──────────────────────────────────────────────────────
 const api = {
@@ -286,8 +284,19 @@ export default function FacturacionConfigPage() {
 
         {/* ── Columna derecha ────────────────────────────────────── */}
         <div className="space-y-4">
-          <BancosCard />
-          <FormasPagoCard />
+          {/* Aquí vivían "Bancos" y "Formas de Pago" (`bancos_isp` / `formas_pago_isp`).
+              Se retiran porque ya no los consume ningún formulario de cobro, y un
+              catálogo editable que nadie lee es una trampa: alguien da de alta un banco,
+              no aparece en ninguna parte, y acaba pensando que el ERP falla.
+
+              También eran la causa de dos defectos reales: el formulario mandaba el
+              RÓTULO de la forma como método de pago (por eso había pagos con 'Efectivo'
+              capitalizado, que no es ningún valor del dominio) y autoseleccionaba el
+              primer banco de la lista enviándolo siempre — incluso en cobros en efectivo.
+
+              Su reemplazo es Finanzas → Ajustes de Cobranza, donde un canal lleva además
+              su cuenta receptora, si exige nº de operación y qué comisión retiene. */}
+          <AvisoCatalogosMudados />
         </div>{/* fin columna derecha */}
 
       </div>{/* fin grid */}
@@ -568,230 +577,6 @@ function ConfirmDialog({ mensaje, advertencia, onConfirm, onCancel }: {
   );
 }
 
-// ─── Bancos ───────────────────────────────────────────────
-function BancosCard() {
-  const qc    = useQueryClient();
-  const toast = useToast().toast;
-  const [modal, setModal] = useState<'crear' | BancoItem | null>(null);
-
-  const { data: bancos = [] } = useQuery<BancoItem[]>({
-    queryKey: ['bancos-isp'],
-    queryFn:  () => apiClient.get('/facturacion-config/bancos').then(r => r.data.data ?? []),
-  });
-
-  const invalidar = () => qc.invalidateQueries({ queryKey: ['bancos-isp'] });
-
-  const { mutate: eliminar } = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/facturacion-config/bancos/${id}`),
-    onSuccess: () => { invalidar(); toast('Banco eliminado', { type: 'success' }); },
-    onError:   (e) => toast(parseApiError(e), { type: 'error' }),
-  });
-
-  return (
-    <>
-      <Card title="Bancos" icon={<Building2 className="w-4 h-4" />}
-        subtitle="Opciones disponibles al registrar pagos."
-        action={
-          <button onClick={() => setModal('crear')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg
-                       bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-            <Plus className="w-3.5 h-3.5" /> Agregar banco
-          </button>
-        }>
-        <div className="divide-y divide-border">
-          {bancos.map(b => (
-            <div key={b.id} className="flex items-center gap-3 py-3">
-              <div className="flex-shrink-0 w-2 h-8 rounded-full bg-blue-400 dark:bg-blue-500" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">{b.nombre}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setModal(b)}
-                  className="p-1.5 rounded-lg hover:bg-muted transition-colors">
-                  <Pencil className="w-4 h-4 text-muted-foreground" />
-                </button>
-                {b.esProtegido ? (
-                  <span title="Del sistema — no se puede eliminar"
-                    className="p-1.5 cursor-not-allowed opacity-40">
-                    <Lock className="w-4 h-4 text-muted-foreground" />
-                  </span>
-                ) : (
-                  <button onClick={() => eliminar(b.id)}
-                    className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors">
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-      {modal !== null && (
-        <ItemNombreModal
-          titulo={modal === 'crear' ? 'Agregar banco' : 'Editar banco'}
-          label="Nombre del Banco"
-          placeholder="Ej: BCP, Interbank, Scotiabank"
-          defaultValue={modal === 'crear' ? '' : (modal as BancoItem).nombre}
-          btnConfirmar={modal === 'crear' ? 'Agregar' : 'Guardar'}
-          mutationFn={(nombre) => modal === 'crear'
-            ? apiClient.post('/facturacion-config/bancos', { nombre }).then(r => r.data)
-            : apiClient.patch(`/facturacion-config/bancos/${(modal as BancoItem).id}`, { nombre }).then(r => r.data)
-          }
-          onClose={() => setModal(null)}
-          onSaved={() => {
-            const msg = modal === 'crear' ? 'Banco agregado' : 'Banco actualizado';
-            setModal(null);
-            invalidar();
-            toast(msg, { type: 'success' });
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-// ─── Formas de Pago ───────────────────────────────────────
-function FormasPagoCard() {
-  const qc    = useQueryClient();
-  const toast = useToast().toast;
-  const [modal, setModal] = useState<'crear' | FormaPagoItem | null>(null);
-
-  const { data: formas = [] } = useQuery<FormaPagoItem[]>({
-    queryKey: ['formas-pago-isp'],
-    queryFn:  () => apiClient.get('/facturacion-config/formas-pago').then(r => r.data.data ?? []),
-  });
-
-  const invalidar = () => qc.invalidateQueries({ queryKey: ['formas-pago-isp'] });
-
-  const { mutate: eliminar } = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/facturacion-config/formas-pago/${id}`),
-    onSuccess: () => { invalidar(); toast('Forma de pago eliminada', { type: 'success' }); },
-    onError:   (e) => toast(parseApiError(e), { type: 'error' }),
-  });
-
-  return (
-    <>
-      <Card title="Formas de Pago" icon={<CreditCard className="w-4 h-4" />}
-        subtitle="Opciones disponibles al registrar pagos."
-        action={
-          <button onClick={() => setModal('crear')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg
-                       bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-            <Plus className="w-3.5 h-3.5" /> Agregar
-          </button>
-        }>
-        <div className="divide-y divide-border">
-          {formas.map(f => (
-            <div key={f.id} className="flex items-center gap-3 py-3">
-              <div className="flex-shrink-0 w-2 h-8 rounded-full bg-emerald-400 dark:bg-emerald-500" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">{f.nombre}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setModal(f)}
-                  className="p-1.5 rounded-lg hover:bg-muted transition-colors">
-                  <Pencil className="w-4 h-4 text-muted-foreground" />
-                </button>
-                {f.esProtegido ? (
-                  <span title="Del sistema — no se puede eliminar"
-                    className="p-1.5 cursor-not-allowed opacity-40">
-                    <Lock className="w-4 h-4 text-muted-foreground" />
-                  </span>
-                ) : (
-                  <button onClick={() => eliminar(f.id)}
-                    className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors">
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-      {modal !== null && (
-        <ItemNombreModal
-          titulo={modal === 'crear' ? 'Agregar forma de pago' : 'Editar forma de pago'}
-          label="Nombre"
-          placeholder="Ej: Yape, Plin, Cheque"
-          defaultValue={modal === 'crear' ? '' : (modal as FormaPagoItem).nombre}
-          btnConfirmar={modal === 'crear' ? 'Aceptar' : 'Guardar'}
-          mutationFn={(nombre) => modal === 'crear'
-            ? apiClient.post('/facturacion-config/formas-pago', { nombre }).then(r => r.data)
-            : apiClient.patch(`/facturacion-config/formas-pago/${(modal as FormaPagoItem).id}`, { nombre }).then(r => r.data)
-          }
-          onClose={() => setModal(null)}
-          onSaved={() => {
-            const msg = modal === 'crear' ? 'Forma de pago agregada' : 'Forma de pago actualizada';
-            setModal(null);
-            invalidar();
-            toast(msg, { type: 'success' });
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-// ─── Modal genérico nombre ────────────────────────────────
-function ItemNombreModal({
-  titulo, label, placeholder, defaultValue, btnConfirmar,
-  onClose, onSaved, mutationFn,
-}: {
-  titulo: string;
-  label: string;
-  placeholder: string;
-  defaultValue: string;
-  btnConfirmar: string;
-  onClose: () => void;
-  onSaved: () => void;
-  mutationFn: (nombre: string) => Promise<unknown>;
-}) {
-  const toast = useToast().toast;
-  const [nombre, setNombre] = useState(defaultValue);
-
-  const { mutate, isPending } = useMutation({
-    mutationFn: () => mutationFn(nombre.trim()),
-    onSuccess:  () => onSaved(),
-    onError:    (e) => toast(parseApiError(e), { type: 'error' }),
-  });
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-card border border-border rounded-2xl w-full max-w-sm p-6 shadow-xl">
-        <h3 className="text-base font-semibold text-foreground mb-4">{titulo}</h3>
-        <Field label={label}>
-          <input
-            value={nombre}
-            onChange={e => setNombre(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && nombre.trim()) mutate(); }}
-            placeholder={placeholder}
-            className={inp()}
-            autoFocus
-          />
-        </Field>
-        <div className="flex gap-3 mt-5">
-          <button type="button" onClick={onClose}
-            className="flex-1 py-2 text-sm rounded-lg border border-input hover:bg-muted transition-colors">
-            Cancelar
-          </button>
-          <button
-            onClick={() => mutate()}
-            disabled={isPending || !nombre.trim()}
-            className="flex-1 flex items-center justify-center gap-2 py-2 text-sm rounded-lg
-                       bg-primary text-primary-foreground hover:bg-primary/90
-                       disabled:opacity-60 transition-colors">
-            {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-            {btnConfirmar}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Sub-components ───────────────────────────────────────────
 function StatCard({ icon, label, value, color }: {
@@ -870,5 +655,34 @@ function inp(hasError = false) {
     'w-full px-3 py-2 text-sm rounded-lg border bg-background placeholder:text-muted-foreground transition-colors',
     'focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent',
     hasError ? 'border-destructive' : 'border-input',
+  );
+}
+
+// ─── Aviso: los catálogos de cobro se mudaron ─────────────
+//
+// No es solo un cambio de sitio. Aquí había dos listas sueltas —bancos y formas de pago—
+// que el formulario de cobro cruzaba a mano, y de ahí salieron dos defectos reales:
+// se enviaba el RÓTULO de la forma como método de pago, y el select de banco
+// autoseleccionaba el primero de la lista mandándolo siempre, incluso en efectivo.
+//
+// Un canal responde las dos cosas a la vez y además dice dónde entra el dinero.
+function AvisoCatalogosMudados() {
+  return (
+    <Card title="Formas de pago y bancos" icon={<CreditCard className="w-4 h-4" />}>
+      <div className="space-y-3 text-sm">
+        <p className="text-muted-foreground">
+          Se configuran ahora en{' '}
+          <a href="/finanzas/ajustes-cobranza"
+             className="text-primary font-medium hover:underline">
+            Finanzas → Ajustes de Cobranza
+          </a>.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Allí un <strong>canal de cobro</strong> reúne lo que aquí eran dos listas sueltas
+          —la forma y el banco— y añade lo que faltaba: en qué cuenta entra el dinero, si
+          exige número de operación y qué comisión retiene.
+        </p>
+      </div>
+    </Card>
   );
 }
