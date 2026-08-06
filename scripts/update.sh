@@ -219,12 +219,57 @@ else
     warn "OLT service no instalado en ${OLT_DIR} — omitiendo"
 fi
 
-# ── 7. Reload backend (zero-downtime cluster) ─────────────────────────────────
+# ── 7. Reload backend ─────────────────────────────────────────────────────────
+#
+# INCIDENTE 2026-08-06: aquí decía `--only datafast-backend`, un nombre de proceso que ya
+# no existe — hoy son `datafast-api-core` y `datafast-worker-auxiliary`. pm2 no encontraba
+# nada que recargar, no fallaba de forma detectable, y `log "Backend recargado"` se
+# imprimía igual porque venía después e incondicionalmente.
+#
+# Resultado: el backend llevaba ONCE HORAS ejecutando código anterior mientras cada
+# despliegue informaba de éxito. Las migraciones sí corrían (son un paso aparte con node
+# directo), así que la base de datos avanzaba y el código no — que es la peor combinación
+# posible: el esquema decía una cosa y el proceso vivo entendía otra.
+#
+# Se detectó porque una pantalla nueva devolvía 400 "uuid expected": sus rutas no existían
+# en el proceso en ejecución y caían en `GET /pagos/:id`.
+#
+# Dos defensas, porque la causa fue justamente que un fallo silencioso pasó por éxito:
+#   1. Los nombres salen del propio ecosystem.config.js, no de una constante que se queda
+#      atrás cuando alguien renombra un proceso.
+#   2. Se VERIFICA que el proceso reinició de verdad (su uptime baja), y si no, se aborta
+#      el despliegue en vez de informar de un éxito que no ocurrió.
 step "Reload backend"
-pm2 reload "${ECOSYSTEM}" --only datafast-backend >> "$LOG_FILE" 2>&1 \
-    || pm2 restart datafast-backend               >> "$LOG_FILE" 2>&1 \
-    || warn "PM2 backend no reiniciado"
-log "Backend recargado"
+
+BACKEND_APPS=$(node -e "
+  const apps = require('${ECOSYSTEM}').apps || [];
+  console.log(apps.map(a => a.name)
+    .filter(n => /api-core|worker/.test(n))
+    .join(' '));
+" 2>/dev/null)
+
+[[ -n "$BACKEND_APPS" ]] || err "No se encontraron procesos de backend en ${ECOSYSTEM}"
+log "Procesos de backend: ${BACKEND_APPS}"
+
+for app in $BACKEND_APPS; do
+    # `restart`, no `reload`: en modo fork el reload de PM2 no recarga el código.
+    pm2 restart "$app" --update-env >> "$LOG_FILE" 2>&1 \
+        || err "No se pudo reiniciar ${app} — el despliegue queda a medias, revisa $LOG_FILE"
+
+    # Verificación: un proceso que acaba de reiniciar tiene uptime de segundos. Si sigue
+    # con horas, pm2 no hizo nada y el código nuevo NO está corriendo.
+    sleep 2
+    UPTIME_MS=$(pm2 jlist 2>/dev/null | node -e "
+      let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+        const p=(JSON.parse(d)||[]).find(x=>x.name===process.argv[1]);
+        console.log(p ? Date.now() - p.pm2_env.pm_uptime : -1);
+      });" "$app")
+
+    if [[ "$UPTIME_MS" -lt 0 ]] || [[ "$UPTIME_MS" -gt 60000 ]]; then
+        err "${app} NO reinició (uptime ${UPTIME_MS}ms). El código nuevo no está en ejecución."
+    fi
+    log "${app} reiniciado y verificado"
+done
 
 # ── 7. Restart frontend ───────────────────────────────────────────────────────
 # set -e desactivado en esta sección: ningún error aquí puede dejar el frontend caído.

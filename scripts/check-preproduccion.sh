@@ -79,7 +79,7 @@ check_servicios() {
     fi
 
     # PM2 backend
-    if pm2 list 2>/dev/null | grep -q "datafast-backend.*online"; then
+    if pm2 list 2>/dev/null | grep -q "datafast-api-core.*online"; then
         _ok "PM2 backend — estado online"
     else
         _fail "PM2 backend — no está online (pm2 list)"
