@@ -37,7 +37,6 @@ import {
   PayloadSuspenderContrato,
   PayloadReactivarContrato,
   PayloadEvaluarProrroga,
-  PayloadProcesarPago,
   PayloadNotificacionCobro,
 } from './workers.constants';
 import { decrypt } from '../../common/utils/encryption.util';
@@ -463,13 +462,6 @@ export class CobranzaScheduler implements OnModuleInit {
   async enqueueReactivacion(payload: PayloadReactivarContrato): Promise<void> {
     await this.queue.add(JOBS.REACTIVAR_CONTRATO, payload, JOB_OPTIONS.CRITICO);
     this.logger.log(`Reactivación encolada: contrato ${payload.contratoId}`);
-  }
-
-  async enqueueProcesarPago(payload: PayloadProcesarPago): Promise<void> {
-    await this.queue.add(JOBS.PROCESAR_PAGO, payload, {
-      ...JOB_OPTIONS.CRITICO,
-      priority: 1, // Alta prioridad
-    });
   }
 }
 
@@ -985,110 +977,23 @@ export class CobranzaWorker {
   }
 
   // ────────────────────────────────────────────────────────────
-  // JOB: PROCESAR PAGO Y REACTIVAR SI APLICA
-  // Cuando se registra un pago verificado, aplica a la factura
-  // y evalúa si el contrato puede reactivarse.
+  // AQUÍ VIVÍA EL JOB `PROCESAR_PAGO` — eliminado en F3 (2026-08-06)
+  //
+  // Era un SEGUNDO aplicador de dinero: llamaba a `aplicarPago`, recalculaba la deuda,
+  // escribía `fecha_ultimo_pago` y encolaba la reactivación. Nunca se encolaba —
+  // `enqueueProcesarPago` no tenía un solo llamador— porque la ruta de cobro real
+  // (`PagosService.registrar`) hace todo eso ella misma.
+  //
+  // No era código muerto inofensivo: ya causó un incidente. El corte por mora se medía
+  // contra `fecha_ultimo_pago`, un campo que SOLO mantenía este job, así que quedaba en
+  // NULL aunque el abonado hubiera pagado y el criterio degeneraba en "días desde que se
+  // instaló". El 05/08 cortaron a James Pena al día siguiente de pagar, con su factura
+  // venciendo el 06/08. El corte ya se arregló mirando la factura; esto es retirar el
+  // arma que quedó cargada.
+  //
+  // Si alguna vez hace falta aplicar un pago desde un job, se llama a
+  // `PagosService.registrar` o al `AplicadorFacturaService`. No se reescribe el flujo.
   // ────────────────────────────────────────────────────────────
-  @Process({ name: JOBS.PROCESAR_PAGO, concurrency: 10 })
-  async processPago(job: Job<PayloadProcesarPago>): Promise<any> {
-    const { pagoId, facturaId, contratoId, empresaId, montoPago, fechaPago } = job.data;
-
-    this.logger.log(`[PAGO] Procesando: pago=${pagoId} | factura=${facturaId} | monto=S/${montoPago}`);
-
-    // ── 1. Aplicar pago a la factura ──────────────────────
-    await job.progress(25);
-    const facturaActualizada = await this.facturacionSvc.aplicarPago(
-      facturaId, montoPago, empresaId, fechaPago,
-    );
-
-    // ── 2. Recalcular deuda del cliente (facturas por clienteId) ─
-    await job.progress(50);
-
-    // Obtener clienteId desde la factura (facturas unificadas tienen contrato_id = NULL)
-    const [facturaInfo] = await this.ds.query(
-      `SELECT cliente_id FROM facturas WHERE id = $1`,
-      [facturaId],
-    );
-    const clienteId = facturaInfo?.cliente_id ?? contratoId; // fallback a contratoId si no hay factura
-
-    const [deudaRow] = await this.ds.query(`
-      SELECT
-        COALESCE(SUM(saldo), 0)::DECIMAL AS deuda,
-        COUNT(*) FILTER (WHERE estado IN ('emitida','pagada_parcial','vencida','en_cobranza'))::INT AS meses
-      FROM facturas
-      WHERE cliente_id = $1 AND estado != 'anulada' AND deleted_at IS NULL
-    `, [clienteId]);
-
-    const nuevaDeuda  = parseFloat(deudaRow?.deuda || '0');
-    const nuevosMeses = parseInt(deudaRow?.meses || '0', 10);
-
-    // Actualizar deuda en todos los contratos activos del cliente
-    await this.ds.query(`
-      UPDATE contratos SET deuda_total = $1, meses_deuda = $2, fecha_ultimo_pago = $3
-      WHERE cliente_id = $4 AND estado != 'baja_definitiva' AND deleted_at IS NULL
-    `, [nuevaDeuda, nuevosMeses, fechaPago, clienteId]);
-
-    await job.progress(75);
-
-    // ── 3. Si la deuda quedó en cero y el contrato estaba suspendido → reactivar ─
-    const [contratoInfo] = await this.ds.query(`
-      SELECT co.estado, co.router_id, co.ip_asignada,
-             pl.nombre AS plan_nombre, cl.id AS cliente_id,
-             cl.nombre_completo, cl.whatsapp, cl.telefono,
-             COALESCE(p.metodo_pago, 'efectivo') AS metodo_pago
-      FROM contratos co
-      JOIN planes  pl ON pl.id = co.plan_id
-      JOIN clientes cl ON cl.id = co.cliente_id
-      LEFT JOIN pagos p ON p.id = $2
-      WHERE co.id = $1
-    `, [contratoId, pagoId]).catch(() => [null]);
-
-    if (contratoInfo && contratoInfo.estado === 'suspendido' && nuevaDeuda <= 0) {
-      // Encolar reactivación con alta prioridad
-      await this.enqueueCobranza(JOBS.REACTIVAR_CONTRATO, {
-        contratoId,
-        empresaId,
-        clienteId:   contratoInfo.cliente_id,
-        routerId:    contratoInfo.router_id,
-        ipAsignada:  contratoInfo.ip_asignada,
-        planNombre:  contratoInfo.plan_nombre,
-        notificar:   true,
-      } as PayloadReactivarContrato, { priority: 1 });
-
-      this.logger.log(
-        `[PAGO] 💰 Deuda saldada → reactivación encolada para contrato ${contratoId}`,
-      );
-    }
-
-    // ── 4. Notificar pago al cliente ────────────────────────
-    if (contratoInfo) {
-      const tel = contratoInfo.whatsapp || contratoInfo.telefono;
-      if (tel) {
-        this.events.emit(NOTIFICATION_EVENTS.PAGO_RECIBIDO, {
-          telefono:       tel,
-          clienteNombre:  contratoInfo.nombre_completo,
-          montoPago:      `S/ ${(montoPago as number).toFixed(2)}`,
-          metodoPago:     contratoInfo.metodo_pago,
-          saldoPendiente: `S/ ${nuevaDeuda.toFixed(2)}`,
-          empresaId,
-          contratoId,
-          clienteId:      contratoInfo.cliente_id,
-          pagoId,
-        } satisfies EventNotificacionPagoRecibido);
-
-        this.logger.log(`[PAGO] 📨 Evento pago.recibido emitido → ${tel.substring(0, 9)}...`);
-      }
-    }
-
-    await job.progress(100);
-
-    this.logger.log(
-      `[PAGO] ✅ Pago ${pagoId} procesado | ` +
-      `nueva deuda: S/ ${nuevaDeuda} | ${nuevosMeses} facturas pendientes`,
-    );
-
-    return { pagoId, contratoId, nuevaDeuda, reactivar: nuevaDeuda <= 0 };
-  }
 
   // ── Notificaciones preventivas (vía Event Emitter → NotificationEventListener → Bull) ─
   @Process({ name: JOBS.NOTIF_COBRO_PREVIO, concurrency: 20 })

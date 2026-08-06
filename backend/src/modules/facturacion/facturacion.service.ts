@@ -10,6 +10,7 @@ import { NOTIFICATION_EVENTS } from '../notificaciones/events/notification.event
 
 import { filasUpdateReturning }       from '../../common/utils/pg-result.util';
 import { FacturaRepository }          from './repositories/factura.repository';
+import { AplicadorFacturaService }     from './aplicador-factura.service';
 import { ComprobantesConfigService }   from './comprobantes-config.service';
 import { PdfService, EmpresaPdfData, ClientePdfData } from './pdf.service';
 import { AuditoriaService }            from '../auth/auditoria.service';
@@ -49,6 +50,7 @@ export class FacturacionService {
     private readonly politicaSvc:    PoliticaFacturacionService,
     private readonly events:         EventEmitter2,
     private readonly adelantosSvc:   AdelantosService,
+    private readonly aplicador:      AplicadorFacturaService,
     @InjectDataSource() private readonly ds: DataSource,
   ) {}
 
@@ -645,6 +647,14 @@ export class FacturacionService {
 
   // ────────────────────────────────────────────────────────────
   // MARCAR VENCIDAS — batch UPDATE en lugar de N+1 queries
+  //
+  // EXCEPCIÓN DECLARADA a la frontera del dinero (F3): esto escribe `facturas.estado`
+  // sin pasar por `AplicadorFacturaService`, y es correcto — no es una entrada de dinero.
+  // El paso del tiempo no mueve `monto_pagado` ni imputa nada; solo constata que una
+  // fecha ya pasó.
+  //
+  // Se deja escrito para que nadie lo "corrija" en la próxima limpieza, y para que el
+  // test de frontera pueda distinguir esta excepción de un escritor clandestino.
   // ────────────────────────────────────────────────────────────
   async marcarVencidas(): Promise<number> {
     const { affected } = await this.ds.createQueryBuilder()
@@ -666,46 +676,12 @@ export class FacturacionService {
     facturaId: string, montoPago: number, empresaId: string, fechaPago: string,
     manager?: EntityManager,
   ): Promise<Factura> {
-    // `manager` permite que quien llama meta este UPDATE en SU transacción, junto con la
-    // marca de la imputación. Los dos hechos —"el dinero entró en la factura" y "esta
-    // imputación ya se volcó"— tienen que confirmarse o deshacerse juntos: si se separan,
-    // una caída entre ambos vuelve a aplicar el mismo dinero al reintentar.
-    const ejecutar = manager
-      ? (sql: string, params: unknown[]) => manager.query(sql, params)
-      : (sql: string, params: unknown[]) => this.ds.query(sql, params);
-
-    // UPDATE atómico: elimina la race condition de leer-calcular-escribir.
-    // La condición del WHERE valida estado y que el monto no exceda el saldo
-    // pendiente (tolerancia de 1 centavo para redondeos de punto flotante).
-    const result = filasUpdateReturning<{ id: string; estado: string }>(await ejecutar(`
-      UPDATE facturas
-      SET
-        monto_pagado = monto_pagado::numeric + $3::numeric,
-        estado = CASE
-          WHEN monto_pagado::numeric + $3::numeric >= total::numeric THEN 'pagada'::estado_factura
-          ELSE 'pagada_parcial'::estado_factura
-        END,
-        fecha_pago = CASE
-          WHEN monto_pagado::numeric + $3::numeric >= total::numeric THEN $4
-          ELSE fecha_pago
-        END
-      WHERE id = $1 AND empresa_id = $2 AND deleted_at IS NULL
-        AND estado NOT IN ('pagada', 'anulada')
-        AND $3::numeric <= (total::numeric - monto_pagado::numeric + 0.01)
-      RETURNING id, estado
-    `, [facturaId, empresaId, montoPago, fechaPago]));
-
-    if (!result.length) {
-      const factura = await this.findOne(facturaId, empresaId);
-      if (factura.estado === EstadoFactura.ANULADA)
-        throw new BadRequestException('No se puede aplicar un pago a una factura anulada');
-      if (factura.estado === EstadoFactura.PAGADA)
-        throw new BadRequestException('La factura ya está completamente pagada');
-      const saldo = Number(factura.total) - Number(factura.montoPagado);
-      throw new BadRequestException(
-        `El monto S/ ${montoPago.toFixed(2)} excede el saldo pendiente S/ ${saldo.toFixed(2)}`,
-      );
-    }
+    // El movimiento del saldo vive en `AplicadorFacturaService` — el único escritor. Este
+    // método se conserva por sus efectos propios (el PDF) y por los llamadores que ya lo
+    // usaban; lo que NO puede volver a tener es su propia copia del UPDATE.
+    const { estado } = await this.aplicador.aplicar(
+      facturaId, montoPago, empresaId, fechaPago, manager,
+    );
 
     // Dentro de una transacción ajena, el estado definitivo aún no existe: leerlo por fuera
     // devolvería la fila previa al UPDATE, y generar el PDF aquí lo produciría a partir de
@@ -716,7 +692,7 @@ export class FacturacionService {
     }
 
     const actualizada = await this.findOne(facturaId, empresaId);
-    if (result[0].estado === EstadoFactura.PAGADA) {
+    if (estado === EstadoFactura.PAGADA) {
       this.generarPdfAsync(actualizada, empresaId);
     }
     return actualizada;

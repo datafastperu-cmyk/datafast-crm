@@ -7,6 +7,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { JwtPayload }           from '../../common/decorators/current-user.decorator';
 import { AuditoriaService }     from '../auth/auditoria.service';
 import { PagoAplicacion }       from './entities/pago-aplicacion.entity';
+import { AplicadorFacturaService } from '../facturacion/aplicador-factura.service';
 
 /**
  * Adelantos de pago (saldo a favor del abonado).
@@ -64,6 +65,7 @@ export class AdelantosService {
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly auditoria: AuditoriaService,
+    private readonly aplicador: AplicadorFacturaService,
   ) {}
 
   // ────────────────────────────────────────────────────────────
@@ -181,11 +183,16 @@ export class AdelantosService {
       const importe = Number(Math.min(adelanto.restante, porCubrir).toFixed(2));
       if (importe <= 0) continue;
 
+      // `aplicadoEn` va puesto desde el principio porque aquí la imputación se vuelca
+      // sobre la factura en esta misma transacción, unas líneas más abajo. Dejarlo en NULL
+      // metería el adelanto en la cola del reconciliador, que lo reintentaría contra una
+      // factura ya saldada — el bucle que corrigió F0.5, por otra puerta.
       await manager.insert(PagoAplicacion, {
         empresaId,
         pagoId:        adelanto.id,
         facturaId,
         montoAplicado: importe,
+        aplicadoEn:    new Date(),
       });
 
       porCubrir     = Number((porCubrir - importe).toFixed(2));
@@ -193,16 +200,20 @@ export class AdelantosService {
     }
 
     if (aplicadoTotal > 0) {
-      await manager.query(
-        `UPDATE facturas
-            SET monto_pagado = monto_pagado + $1,
-                estado = CASE WHEN monto_pagado + $1 >= total
-                              THEN 'pagada'::estado_factura
-                              ELSE 'pagada_parcial'::estado_factura END,
-                fecha_pago = CASE WHEN monto_pagado + $1 >= total
-                                  THEN CURRENT_DATE ELSE fecha_pago END
-          WHERE id = $2`,
-        [aplicadoTotal, facturaId],
+      // Un saldo a favor entra en la factura por el MISMO sitio que un cobro: el aplicador
+      // canónico del módulo de facturación. Aquí había una copia de ese UPDATE que había
+      // envejecido por su cuenta y había perdido dos cosas:
+      //
+      //   · el guard `estado NOT IN ('pagada','anulada')` — aplicaba saldo a favor a un
+      //     comprobante ANULADO, consumiendo el adelanto del abonado a cambio de nada;
+      //   · la tolerancia de 1 céntimo por redondeo que usa el resto del módulo.
+      //
+      // Eso es exactamente lo que produce tener varios escritores del mismo dato: no
+      // divergen de golpe, divergen en la corrección que solo se aplicó a uno.
+      await this.aplicador.aplicar(
+        facturaId, aplicadoTotal, empresaId,
+        new Date().toISOString().split('T')[0],
+        manager,
       );
       this.logger.log(
         `Saldo a favor aplicado: S/ ${aplicadoTotal} del cliente ${clienteId} a la factura ${facturaId}`,

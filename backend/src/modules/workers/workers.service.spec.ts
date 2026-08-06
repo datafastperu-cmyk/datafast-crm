@@ -378,64 +378,15 @@ describe('CobranzaWorker', () => {
     });
   });
 
+
   // ── Procesar pago ─────────────────────────────────────────
-  describe('processPago()', () => {
-    it('debe aplicar pago y calcular nueva deuda', async () => {
-      const dsMock = jest.fn()
-        .mockResolvedValueOnce([{ deuda: '0.00', meses: '0' }]) // deuda post-pago
-        .mockResolvedValueOnce([])   // UPDATE contratos
-        .mockResolvedValue([]);
-
-      const m = await Test.createTestingModule({
-        providers: [
-          CobranzaWorker,
-          { provide: FirewallService,    useValue: mockFirewall },
-          { provide: PppoeService,       useValue: mockPppoe },
-          { provide: FacturacionService, useValue: mockFacturacionSvc },
-        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn().mockResolvedValue(undefined), calcular: jest.fn().mockResolvedValue(new Map()) } },
-        { provide: ComprobantesConfigService, useValue: { resolverParaCliente: jest.fn().mockResolvedValue({ id: 'cc-1', codigo: 'ci', nombre: 'Comprobante Interno', serie: 'CI', tieneCargaFiscal: false }) } },
-          { provide: AuditoriaService,   useValue: mockAuditoria },
-        { provide: GatewayMensajeriaService, useValue: mockWhatsapp },
-        { provide: OutboxRedService,   useValue: { encolar: jest.fn().mockResolvedValue(undefined), encolarDesprovisionar: jest.fn().mockResolvedValue(undefined), encolarOnu: jest.fn().mockResolvedValue(undefined) } },
-        { provide: RedisLockService,   useValue: {
-          // Firma real: withLock(clave, ttlMs, fn). Ejecutar el 2º argumento (el TTL)
-          // hacía que el trabajo dentro del lock no corriera NUNCA y el test fallara
-          // sin ninguna llamada al hardware.
-          withLock: jest.fn(async (...args: any[]) => {
-            const fn = args.find((a) => typeof a === 'function');
-            return fn ? fn() : undefined;
-          }),
-          adquirir: jest.fn(), liberar: jest.fn(),
-        } },
-        { provide: SchedulerRegistry,  useValue: { addCronJob: jest.fn(), deleteCronJob: jest.fn(), doesExist: jest.fn(() => false) } },
-        { provide: EmpresaConfigService, useValue: { get: jest.fn(), obtener: jest.fn() } },
-        { provide: 'PROVISIONAMIENTO_PROVIDER', useValue: {
-          // El worker delega en el proveedor (patrón Estrategia) y ABORTA si devuelve
-          // falsy: sin un valor por defecto, jest.fn() devuelve undefined y la
-          // reactivación se rechaza siempre.
-          reactivarServicio:   jest.fn().mockResolvedValue(true),
-          suspenderServicio:   jest.fn().mockResolvedValue(true),
-          provisionarServicio: jest.fn().mockResolvedValue(true),
-        } },
-          { provide: EventEmitter2,      useValue: mockEvents },
-          { provide: getDataSourceToken(), useValue: { query: dsMock } },
-        ],
-      }).compile();
-      const w = m.get<CobranzaWorker>(CobranzaWorker);
-
-      const result = await w.processPago(createMockJob({
-        pagoId: 'pag-001', facturaId: 'fac-001',
-        contratoId: 'cnt-001', empresaId: 'emp-001',
-        montoPago: 85, fechaPago: '2024-01-20',
-      }) as any);
-
-      expect(mockFacturacionSvc.aplicarPago).toHaveBeenCalledWith(
-        'fac-001', 85, 'emp-001', '2024-01-20',
-      );
-      expect(result.nuevaDeuda).toBe(0);
-      expect(result.reactivar).toBe(true);
-    });
-  });
+  //
+  // Aquí se ejercitaba `processPago`, el job PROCESAR_PAGO. Se eliminó en F3 (2026-08-06)
+  // junto con el job: era un SEGUNDO aplicador de dinero que nadie encolaba, y el campo
+  // `fecha_ultimo_pago` que solo él mantenía hizo que se cortara a un abonado al día
+  // siguiente de pagar (05/08). El test se retira con el código que probaba; lo que
+  // impide que vuelva es `frontera-dinero.spec.ts`, que falla si reaparece la
+  // declaración del job.
 });
 
 // ─────────────────────────────────────────────────────────────

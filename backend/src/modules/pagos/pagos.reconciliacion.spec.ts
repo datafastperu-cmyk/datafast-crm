@@ -31,6 +31,7 @@ describe('PagosService — reconciliación del cobro', () => {
     svc.ds = ds;
     svc.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
     svc.heartbeat = { ejecutar: jest.fn(async (_n: string, _i: number, fn: any) => fn()) };
+    svc.aplicador = { aplicar: jest.fn(), divergencias: jest.fn(async () => []) };
     svc.aplicarPagoAFacturaYContrato = jest.fn(async () => undefined);
     svc.verificarYReactivarContrato  = jest.fn(async () => undefined);
     svc.pagoRepo = { update: jest.fn(async () => undefined) };
@@ -145,6 +146,7 @@ describe('PagosService — reconciliación del cobro', () => {
       svc.ds = ds;
       svc.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
       svc.facturacionSvc = facturacionSvc;
+      svc.aplicador = { aplicar: facturacionSvc.aplicarPago, divergencias: jest.fn(async () => []) };
       svc.pagoRepo = { update: jest.fn(async () => undefined) };
       svc.verificarYReactivarContrato = jest.fn(async () => undefined);
       return { svc, facturacionSvc, marcadas };

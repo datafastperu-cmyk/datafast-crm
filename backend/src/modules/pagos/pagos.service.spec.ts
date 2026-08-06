@@ -12,6 +12,7 @@ import { PagosService }        from './pagos.service';
 import { PagoRepository }      from './repositories/pago.repository';
 import { AdelantosService }     from './adelantos.service';
 import { CanalPagoService }     from './canal-pago.service';
+import { AplicadorFacturaService } from '../facturacion/aplicador-factura.service';
 import { MercadoPagoService }  from './mercadopago.service';
 import { FacturacionService }  from '../facturacion/facturacion.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
@@ -104,6 +105,11 @@ const mockAuditoria = {
   log: jest.fn(), logCreate: jest.fn(), logUpdate: jest.fn(),
 };
 
+// La frontera del dinero: el único escritor del saldo de un comprobante.
+const mockAplicador = {
+  aplicar:      jest.fn().mockResolvedValue({ estado: 'pagada' }),
+  divergencias: jest.fn().mockResolvedValue([]),
+};
 const mockConfig = { get: jest.fn((k, d) => d) };
 
 // `registrar()` pasó a ser TRANSACCIONAL (registrar un pago y aplicarlo a la factura
@@ -183,6 +189,10 @@ describe('PagosService', () => {
         { provide: AdelantosService, useValue: {
           assertSinDeuda: jest.fn(), saldoAFavor: jest.fn(), aplicarSaldoAFactura: jest.fn(),
         } },
+        // La frontera del dinero: el UPDATE se ejercita en
+        // `aplicador-factura.service.spec.ts`; aquí solo importa que este flujo delegue
+        // y le pase su transacción.
+        { provide: AplicadorFacturaService, useValue: mockAplicador },
         // Los tres ejes del ingreso (F1). Por defecto NO resuelve canal: es el escenario
         // del método legado que el catálogo todavía no cubre, y el cobro debe registrarse
         // igual — sin canal, pero registrado. Los tests del propio catálogo viven en
@@ -370,11 +380,19 @@ describe('PagosService', () => {
 
       expect(result.estado).toBe(EstadoPago.VERIFICADO);
 
-      // La factura se actualiza DENTRO de la transacción, no delegando en
-      // FacturacionService: cobrar y aplicar tienen que ser un solo hecho, o el dinero
-      // queda registrado sin imputar si algo falla en medio.
+      // Cobrar y aplicar siguen siendo UN SOLO HECHO — o el dinero queda registrado sin
+      // imputar si algo falla en medio. Lo que cambió en F3 es CÓMO se garantiza: antes
+      // este método tenía su propia copia del UPDATE dentro de la transacción; ahora
+      // delega en el aplicador y le PASA EL MANAGER, que es lo que mantiene la
+      // atomicidad sin tener un segundo escritor del saldo.
+      //
+      // La copia importaba: había cuatro, y la de `adelantos` había perdido el guard de
+      // estado y aplicaba saldo a favor contra comprobantes anulados.
+      expect(mockAplicador.aplicar).toHaveBeenCalledWith(
+        'fac-001', 85, 'emp-001', expect.any(String), managerMock,
+      );
       const sqls = managerMock.query.mock.calls.map((c: any[]) => String(c[0]));
-      expect(sqls.some((s) => /UPDATE\s+facturas/i.test(s))).toBe(true);
+      expect(sqls.some((s) => /UPDATE\s+facturas/i.test(s))).toBe(false);
       expect(mockDs.transaction).toHaveBeenCalled();
     });
   });
@@ -575,7 +593,10 @@ describe('PagosService', () => {
       );
 
       expect(mockRepo.save).toHaveBeenCalled();
-      expect(mockFacturacionSvc.aplicarPago).toHaveBeenCalled();
+      // Un cobro de pasarela entra en la factura por la MISMA puerta que uno de caja.
+      // Es la propiedad que hace que la Etapa II se construya sobre esto sin reescribir
+      // la lógica de negocio: el webhook no aplica dinero, lo registra.
+      expect(mockAplicador.aplicar).toHaveBeenCalled();
     });
   });
 });

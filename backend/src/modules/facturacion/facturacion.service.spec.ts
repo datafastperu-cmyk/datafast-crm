@@ -10,6 +10,7 @@ import { DeudaPorContratoService } from './deuda-por-contrato.service';
 import { PoliticaFacturacionService } from './politica-facturacion.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AdelantosService } from '../pagos/adelantos.service';
+import { AplicadorFacturaService } from './aplicador-factura.service';
 import { Factura, EstadoFactura } from './entities/factura.entity';
 
 // NOTA (2026-07-28): esta suite llevaba tiempo SIN EJECUTARSE — no compilaba porque
@@ -78,6 +79,12 @@ const mockRepo = {
   buildFilterQuery: jest.fn(),
 };
 
+// La frontera del dinero. El UPDATE real y sus rechazos se ejercitan en
+// `aplicador-factura.service.spec.ts`; aquí solo importa que este servicio delegue.
+const mockAplicador = {
+  aplicar:      jest.fn().mockResolvedValue({ estado: EstadoFactura.PAGADA }),
+  divergencias: jest.fn().mockResolvedValue([]),
+};
 const mockPdfSvc   = { generarFacturaPdf: jest.fn().mockResolvedValue('/uploads/facturas/test.pdf') };
 const mockAuditoria = { log: jest.fn(), logCreate: jest.fn(), logUpdate: jest.fn() };
 
@@ -123,6 +130,9 @@ describe('FacturacionService', () => {
         { provide: EventEmitter2,              useValue: { emit: jest.fn() } },
         // Consume el saldo a favor al emitir; aquí no hay adelantos que aplicar.
         { provide: AdelantosService,           useValue: { aplicarSaldoAFactura: jest.fn().mockResolvedValue(0) } },
+        // La frontera del dinero: el spec ejercita el flujo, no el UPDATE (eso lo cubre
+        // `aplicador-factura.service` y el test de frontera).
+        { provide: AplicadorFacturaService,    useValue: mockAplicador },
         { provide: getDataSourceToken(),       useValue: mockDs },
       ],
     }).compile();
@@ -225,52 +235,37 @@ describe('FacturacionService', () => {
   // El driver de Postgres devuelve `[filas, rowCount]` en un UPDATE ... RETURNING, así
   // que el mock IMITA ESA FORMA: un mock más cómodo dejaría pasar justo la clase de bug
   // que ya nos costó un outbox sin drenar.
-  describe('aplicarPago()', () => {
-    const updateDevuelve = (filas: any[]) => {
-      mockDs.query.mockResolvedValueOnce([filas, filas.length]);
-    };
-
-    it('marca como PAGADA cuando el pago cubre el total', async () => {
-      updateDevuelve([{ id: 'fac-001', estado: EstadoFactura.PAGADA }]);
+  // El UPDATE en sí y sus rechazos viven ahora en `aplicador-factura.service.spec.ts`,
+  // con el código que los ejecuta. Aquí solo queda lo que es de ESTE servicio: que delegue
+  // en la frontera en vez de tener su propia copia, y su efecto propio (el PDF).
+  describe('aplicarPago() — delega en la frontera del dinero', () => {
+    it('no ejecuta SQL propio: el saldo lo mueve el aplicador', async () => {
       mockRepo.findById.mockResolvedValue({ ...mockFactura, estado: EstadoFactura.PAGADA, montoPagado: 85 });
+      mockDs.query.mockClear();
 
       const result = await service.aplicarPago('fac-001', 85, 'emp-001', '2024-01-20');
 
+      expect(mockAplicador.aplicar).toHaveBeenCalledWith(
+        'fac-001', 85, 'emp-001', '2024-01-20', undefined,
+      );
+      // Ni un solo UPDATE de saldo desde aquí. Es el punto entero de F3.
+      const sqlsDeSaldo = mockDs.query.mock.calls
+        .map(([sql]: [string]) => sql)
+        .filter((sql: string) => /monto_pagado\s*=/.test(sql));
+      expect(sqlsDeSaldo).toEqual([]);
       expect(result.estado).toBe(EstadoFactura.PAGADA);
-      // El estado lo decide el SQL, no el código: se comprueba que la condición viaje
-      // en el WHERE en lugar de calcularse en memoria.
-      const [sql] = mockDs.query.mock.calls[0];
-      expect(sql).toMatch(/UPDATE\s+facturas/i);
-      expect(sql).toMatch(/estado NOT IN \('pagada', 'anulada'\)/i);
     });
 
-    it('marca como PAGADA_PARCIAL si el pago no cubre el total', async () => {
-      updateDevuelve([{ id: 'fac-001', estado: EstadoFactura.PAGADA_PARCIAL }]);
-      mockRepo.findById.mockResolvedValue({ ...mockFactura, estado: EstadoFactura.PAGADA_PARCIAL, montoPagado: 40 });
+    it('dentro de una transacción ajena NO genera el PDF', async () => {
+      // El commit todavía puede deshacer el cobro: un PDF emitido aquí describiría un
+      // estado que puede no llegar a existir.
+      const manager = { findOneOrFail: jest.fn().mockResolvedValue(mockFactura) };
+      const pdfSpy = jest.spyOn(service as any, 'generarPdfAsync').mockImplementation(() => undefined);
 
-      const result = await service.aplicarPago('fac-001', 40, 'emp-001', '2024-01-20');
+      await service.aplicarPago('fac-001', 85, 'emp-001', '2024-01-20', manager as any);
 
-      expect(result.estado).toBe(EstadoFactura.PAGADA_PARCIAL);
-    });
-
-    it('rechaza el pago a una factura anulada', async () => {
-      // El UPDATE no toca ninguna fila (lo impide el WHERE) → el servicio averigua por
-      // qué y devuelve el motivo concreto en vez de un fallo genérico.
-      updateDevuelve([]);
-      mockRepo.findById.mockResolvedValue({ ...mockFactura, estado: EstadoFactura.ANULADA });
-
-      await expect(
-        service.aplicarPago('fac-001', 85, 'emp-001', '2024-01-20'),
-      ).rejects.toThrow(/anulada/i);
-    });
-
-    it('rechaza un pago que excede el saldo pendiente', async () => {
-      updateDevuelve([]);
-      mockRepo.findById.mockResolvedValue({ ...mockFactura, estado: EstadoFactura.EMITIDA, total: 85, montoPagado: 80 });
-
-      await expect(
-        service.aplicarPago('fac-001', 50, 'emp-001', '2024-01-20'),
-      ).rejects.toThrow(/excede el saldo/i);
+      expect(manager.findOneOrFail).toHaveBeenCalled();
+      expect(pdfSpy).not.toHaveBeenCalled();
     });
   });
 

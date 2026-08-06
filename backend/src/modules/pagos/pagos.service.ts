@@ -22,6 +22,7 @@ import { Pago, EstadoPago, CuentaBancaria } from './entities/pago.entity';
 import { PagoAplicacion } from './entities/pago-aplicacion.entity';
 import { AdelantosService } from './adelantos.service';
 import { CanalPagoService } from './canal-pago.service';
+import { AplicadorFacturaService } from '../facturacion/aplicador-factura.service';
 import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto';
@@ -34,7 +35,6 @@ import { QUEUES, JOBS, PayloadReactivarContrato } from '../workers/workers.const
 import { Cron } from '@nestjs/schedule';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
-import { filasUpdateReturning }    from '../../common/utils/pg-result.util';
 
 @Injectable()
 export class PagosService {
@@ -53,6 +53,7 @@ export class PagosService {
     private readonly heartbeat: WatcherHeartbeatService,
     private readonly adelantosSvc: AdelantosService,
     private readonly canalSvc:     CanalPagoService,
+    private readonly aplicador:    AplicadorFacturaService,
     @InjectQueue(QUEUES.COBRANZA) private readonly cobranzaQueue: Queue,
   ) {}
 
@@ -215,6 +216,12 @@ export class PagosService {
       }
 
       // PASO 3 — Determinar estado inicial del pago
+      //
+      // La fecha del cobro se calcula UNA vez y se usa tanto en la fila del pago como al
+      // volcar sobre los comprobantes. Antes el volcado inline escribía `CURRENT_DATE` y
+      // el pago guardaba `dto.fechaPago`: un cobro registrado con fecha de ayer dejaba la
+      // factura diciendo que se pagó hoy.
+      const fechaPagoEfectiva = dto.fechaPago ?? new Date().toISOString().split('T')[0];
       const autoVerificado = this.esAutoVerificado(dto, user);
       const estadoInicial  = autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION;
 
@@ -254,7 +261,7 @@ export class PagosService {
         comision,
         montoNeto:         neto,
         numeroOperacion: dto.numeroOperacion ?? null,
-        fechaPago:       dto.fechaPago ?? new Date().toISOString().split('T')[0],
+        fechaPago:       fechaPagoEfectiva,
         estado:          estadoInicial,
         cajeroId:        user.sub,
         verificadoPor:   autoVerificado ? user.sub : null,
@@ -296,33 +303,21 @@ export class PagosService {
       if (autoVerificado) {
         const facturasVolcadas: string[] = [];
         for (const { factura: f, monto } of imputaciones) {
-          // UPDATE atómico: evita la race condition leer-calcular-escribir.
-          // Si el monto excede el saldo, el WHERE lo rechaza y lanzamos error.
-          const result = filasUpdateReturning<{ id: string }>(await manager.query(`
-            UPDATE facturas
-            SET
-              monto_pagado = monto_pagado::numeric + $1::numeric,
-              estado = CASE
-                WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN 'pagada'::estado_factura
-                ELSE 'pagada_parcial'::estado_factura
-              END,
-              fecha_pago = CASE
-                WHEN monto_pagado::numeric + $1::numeric >= total::numeric THEN CURRENT_DATE
-                ELSE fecha_pago
-              END
-            WHERE id = $2 AND deleted_at IS NULL
-              AND estado NOT IN ('pagada', 'anulada')
-              AND $1::numeric <= (total::numeric - monto_pagado::numeric + 0.01)
-            RETURNING id
-          `, [monto, f.id]));
-
-          if (!result.length) {
-            // Dentro de la TX: si un comprobante del consolidado no admite su parte, se
-            // deshace el pago entero. Un consolidado a medias dejaría dinero cobrado sin
-            // imputar y al abonado creyendo que pagó todo.
+          // El aplicador es UNO SOLO (`FacturacionService.aplicarPago`) y vive en el
+          // módulo dueño de la factura. Aquí había una copia del mismo UPDATE, y ese es
+          // el problema de fondo: cada copia envejece por su lado y nadie puede afirmar
+          // qué mueve el saldo de un comprobante. La copia de `adelantos` había perdido ya
+          // el guard de estado, así que aplicaba saldo a favor a facturas anuladas.
+          //
+          // Se le pasa el `manager` para que el volcado siga dentro de ESTA transacción:
+          // si un comprobante del consolidado no admite su parte, se deshace el pago
+          // entero. Un consolidado a medias dejaría dinero cobrado sin imputar y al
+          // abonado creyendo que pagó todo.
+          try {
+            await this.aplicador.aplicar(f.id, monto, empresaId, fechaPagoEfectiva, manager);
+          } catch (err: any) {
             throw new BadRequestException(
-              `No se pudo aplicar el pago a ${f.numeroCompleto ?? f.id}: ` +
-              `ya está pagada o el monto S/ ${monto} excede el saldo`,
+              `No se pudo aplicar el pago a ${f.numeroCompleto ?? f.id}: ${err.message}`,
             );
           }
           facturasVolcadas.push(f.id);
@@ -555,6 +550,10 @@ export class PagosService {
       cajeroId:        user.sub,
       verificadoPor:   autoVerificado ? user.sub : null,
       verificadoEn:    autoVerificado ? new Date() : null,
+      // Un adelanto verificado YA surtió efecto: el dinero está en caja y el saldo a favor
+      // se deriva de esta fila. No hay nada que aplicar después. Sin esto entraría en la
+      // cola del reconciliador y se quedaría ahí dando vueltas sin trabajo que hacer.
+      aplicadoEn:      autoVerificado ? new Date() : null,
       comprobanteUrl:  dto.voucherUrl ?? null,
       notas:           dto.notas ?? 'Adelanto de pago',
       mpDetail: (dto.celularYape || dto.otpYape)
@@ -897,7 +896,7 @@ export class PagosService {
         // aplicar el dinero en el siguiente reintento. Es la única forma de que la marca
         // signifique de verdad lo que dice.
         await this.ds.transaction(async (manager) => {
-          await this.facturacionSvc.aplicarPago(fId, monto, empresaId, pago.fechaPago, manager);
+          await this.aplicador.aplicar(fId, monto, empresaId, pago.fechaPago, manager);
           if (aplicacionId) {
             await manager.query(
               `UPDATE pago_aplicaciones SET aplicado_en = NOW() WHERE id = $1`,
@@ -1044,6 +1043,25 @@ export class PagosService {
         } catch (e: any) {
           this.logger.error(`Reconciliación: el pago ${id} sigue sin aplicarse: ${e?.message}`);
         }
+      }
+
+      // ── A2. Invariante de contabilidad ─────────────────────────────
+      //
+      // `facturas.monto_pagado` tiene que ser exactamente la suma de lo que los pagos le
+      // imputaron. Es lo que convierte la frontera del dinero en algo comprobable en vez
+      // de una intención escrita en un comentario.
+      //
+      // Cualquier divergencia posterior a la fecha de corte significa que hay un escritor
+      // de dinero fuera de `AplicadorFacturaService`. No se intenta reparar aquí: reparar
+      // a ciegas un descuadre contable puede empeorarlo, y quién lo causó es justo la
+      // información que hace falta. Se grita y se deja constancia.
+      const descuadres = await this.aplicador.divergencias(10);
+      if (descuadres.length) {
+        this.logger.error(
+          `[CONTABILIDAD] ${descuadres.length} comprobante(s) con monto_pagado distinto de ` +
+          `la suma de sus imputaciones. Hay un escritor de dinero fuera del aplicador. ` +
+          `Muestra: ${descuadres.map((d) => `${d.numero ?? d.id} (${d.monto_pagado} vs ${d.aplicado})`).join(', ')}`,
+        );
       }
 
       // ── B. Cortados sin deuda ──────────────────────────────────────

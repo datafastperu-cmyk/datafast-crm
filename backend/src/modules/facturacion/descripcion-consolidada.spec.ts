@@ -23,7 +23,7 @@ type Interno = {
 // Solo se ejercitan dos helpers puros: las dependencias no intervienen en ese camino.
 const svc = new FacturacionService(
   {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
-  {} as never, {} as never, {} as never,
+  {} as never, {} as never, {} as never, {} as never,
 ) as unknown as Interno;
 
 describe('Descripción del comprobante consolidado', () => {
