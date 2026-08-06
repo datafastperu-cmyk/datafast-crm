@@ -302,6 +302,16 @@ export const plantaExternaApi = {
     return data.data ?? null;
   },
 
+  /**
+   * Ficha del abonado para el popup del mapa. Incluye teléfono, así que exige el permiso
+   * `red:mapa:clientes` y se pide DE A UNO: llevar este dato en la capa convertiría cada
+   * movimiento del mapa en una descarga del padrón de la zona.
+   */
+  abonadoMapa: async (contratoId: string): Promise<AbonadoMapa | null> => {
+    const { data } = await api.get(`/planta-externa/mapa/abonado/${contratoId}`);
+    return data ?? null;
+  },
+
   mapa: async (params: {
     minLat: number; maxLat: number; minLng: number; maxLng: number;
     zoom: number; capas: CapaMapa[];

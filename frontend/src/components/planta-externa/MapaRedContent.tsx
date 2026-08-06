@@ -76,6 +76,173 @@ function escaparHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Estado físico del enlace del abonado, tal como lo clasifica la OLT.
+ *
+ * Los cuatro primeros salen de `_map_estado_operativo` en el microservicio: la OLT reporta
+ * la CAUSA de la caída, y por eso `apagada` (dying-gasp: se fue la luz en casa del cliente)
+ * se distingue de `ruptura_fibra` (LOS/LOF: pérdida de señal óptica). No es una inferencia
+ * nuestra, es lo que dice el equipo.
+ *
+ * `sin_datos` NO es un estado de red: es la ausencia de información —contrato sin ONU
+ * registrada, o ONU que no aparece en el inventario—. Pintarlo como una avería haría que un
+ * hueco de documentación mandara a un técnico a revisar una fibra sana.
+ */
+const ESTADOS_RED = {
+  online:        { color: '#10b981', etiqueta: 'En línea' },
+  apagada:       { color: '#f59e0b', etiqueta: 'Apagado (sin energía)' },
+  ruptura_fibra: { color: '#ef4444', etiqueta: 'Ruptura de fibra' },
+  desactivada:   { color: '#6b7280', etiqueta: 'Deshabilitado' },
+  offline:       { color: '#f97316', etiqueta: 'Fuera de línea' },
+  sin_datos:     { color: '#94a3b8', etiqueta: 'Sin datos' },
+} as const;
+
+type EstadoRed = keyof typeof ESTADOS_RED;
+
+/** Expresión MapLibre que traduce la propiedad `estadoRed` al color del pin. */
+const COLOR_POR_ESTADO: unknown[] = [
+  'match', ['get', 'estadoRed'],
+  ...Object.entries(ESTADOS_RED).flatMap(([k, v]) => [k, v.color]),
+  ESTADOS_RED.sin_datos.color,
+];
+
+/**
+ * Silueta de usuario, dibujada en un canvas y registrada como icono SDF.
+ *
+ * Se genera en código y no se carga de un archivo por portabilidad: un PNG en `public/`
+ * obligaría a servirlo, y este ERP se instala en servidores sin salida a internet donde
+ * cualquier recurso externo es un punto de fallo más.
+ *
+ * `sdf: true` es lo que permite recolorear el mismo icono por expresión. Sin eso haría
+ * falta un PNG por estado, y añadir un estado significaría añadir una imagen.
+ */
+function registrarIconoUsuario(m: MapLibreMap): void {
+  if (m.hasImage('usuario')) return;
+
+  const T = 64;
+  const cv = document.createElement('canvas');
+  cv.width = T; cv.height = T;
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+
+  ctx.fillStyle = '#ffffff';
+  // Cabeza
+  ctx.beginPath();
+  ctx.arc(T / 2, T * 0.34, T * 0.17, 0, Math.PI * 2);
+  ctx.fill();
+  // Hombros: media elipse, recortada abajo para que no parezca un óvalo suelto.
+  ctx.beginPath();
+  ctx.ellipse(T / 2, T * 0.82, T * 0.30, T * 0.24, 0, Math.PI, Math.PI * 2);
+  ctx.fill();
+
+  const { data, width, height } = ctx.getImageData(0, 0, T, T);
+  m.addImage('usuario', { width, height, data: new Uint8Array(data) }, { sdf: true });
+}
+
+/** "hace 6 h" en vez de una marca de tiempo: lo que importa es si el dato es reciente. */
+function antiguedad(minutos: number | null): string {
+  if (minutos == null) return 'sin fecha';
+  if (minutos < 2)  return 'ahora';
+  if (minutos < 60) return `hace ${minutos} min`;
+  const h = Math.floor(minutos / 60);
+  return h < 24 ? `hace ${h} h` : `hace ${Math.floor(h / 24)} d`;
+}
+
+function pastilla(estado: string, cuando: string): string {
+  const def = ESTADOS_RED[estado as EstadoRed] ?? ESTADOS_RED.sin_datos;
+  return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+                       background:${def.color};margin-right:5px"></span>
+          <strong>${escaparHtml(def.etiqueta)}</strong>
+          <span style="color:#6b7280"> · ${escaparHtml(cuando)}</span>`;
+}
+
+function fila(clave: string, valor: string): string {
+  return `<div style="display:flex;gap:6px"><span style="color:#6b7280;min-width:52px">${clave}</span>
+          <span>${valor}</span></div>`;
+}
+
+/**
+ * Ficha del abonado dentro del popup.
+ *
+ * Dos fases deliberadas:
+ *
+ *  1. Se pinta de inmediato lo que la BD ya sabe —incluido el estado del inventario, que se
+ *     sincroniza cada 6 h— con su antigüedad a la vista. El operador tiene algo útil al
+ *     instante en vez de un spinner.
+ *  2. En paralelo se pregunta a la OLT **en vivo**, reutilizando el endpoint que ya usa
+ *     `/red/olt` (`clasificarOnus`). Cuando responde, el estado se reemplaza y pasa a decir
+ *     "ahora". No se construyó una segunda lectura de hardware: la que existe clasifica la
+ *     causa de caída mejor de lo que haría una nueva.
+ *
+ * Por qué la lectura en vivo NO se usa para pintar los pines: es por PUERTO PON, no por
+ * abonado, y el mapa recarga en cada movimiento. Treinta abonados repartidos en ocho puertos
+ * serían ocho sesiones SSH por arrastre, contra una OLT que admite pocas sesiones VTY
+ * concurrentes — la misma razón por la que los crons de ONU van serializados y desfasados.
+ */
+async function abrirFichaAbonado(
+  popup: maplibregl.Popup,
+  contratoId: string,
+  etiqueta: string,
+  lat: number,
+  lng: number,
+): Promise<void> {
+  const pintar = (cuerpo: string) => {
+    // Si el operador ya cerró el popup, no se toca nada: escribir en un popup cerrado
+    // lanzaría al llegar la respuesta de la OLT, que puede tardar segundos.
+    if (!popup.isOpen()) return;
+    popup.setHTML(
+      `<div style="font-size:12px;line-height:1.6;min-width:210px">
+         <div style="font-weight:600;margin-bottom:4px">${escaparHtml(etiqueta)}</div>
+         ${cuerpo}
+         <div style="margin-top:6px;padding-top:6px;border-top:1px solid #e5e7eb">
+           <a href="${escaparHtml(urlComoLlegar(lat, lng, etiqueta))}" target="_blank"
+              rel="noopener noreferrer" style="color:#2563eb;font-weight:500">Cómo llegar →</a>
+         </div>
+       </div>`,
+    );
+  };
+
+  let datos: Awaited<ReturnType<typeof plantaExternaApi.abonadoMapa>>;
+  try {
+    datos = await plantaExternaApi.abonadoMapa(contratoId);
+  } catch {
+    // El popup básico ya está en pantalla con el nombre y "cómo llegar"; dejarlo es mejor
+    // que sustituirlo por un error que no aporta.
+    return;
+  }
+  if (!datos) return;
+
+  const bloque = (estado: string, cuando: string) => [
+    `<div style="margin-bottom:4px">${pastilla(estado, cuando)}</div>`,
+    datos.plan     ? fila('Plan', escaparHtml(datos.plan)) : '',
+    datos.telefono
+      // Enlace `tel:`: en el móvil del técnico, un toque llama. Es el uso real de este dato.
+      ? fila('Tel.', `<a href="tel:${escaparHtml(datos.telefono)}" style="color:#2563eb">${escaparHtml(datos.telefono)}</a>`)
+      : '',
+    datos.nap      ? fila('NAP', escaparHtml(`${datos.nap.codigo} · puerto ${datos.nap.puerto ?? '—'}`)) : '',
+    datos.rxPowerDbm != null ? fila('Señal', `${datos.rxPowerDbm.toFixed(2)} dBm`) : '',
+    datos.estadoContrato !== 'activo'
+      ? fila('Contrato', `<span style="color:#f59e0b">${escaparHtml(datos.estadoContrato)}</span>`) : '',
+  ].filter(Boolean).join('');
+
+  pintar(bloque(datos.estadoRed, antiguedad(datos.medidoHaceMin)));
+
+  // Sin ONU registrada no hay nada que consultar en la OLT.
+  if (!datos.onu) return;
+
+  try {
+    const vivo = await oltNativoApi.clasificarOnus(datos.onu.oltId, datos.onu.slot, datos.onu.port);
+    const mia = (vivo?.onus ?? []).find(
+      (o: any) => Number(o.onu_id) === Number(datos.onu!.onuId),
+    );
+    if (mia?.estado_operativo) pintar(bloque(String(mia.estado_operativo), 'ahora'));
+  } catch {
+    // La OLT puede estar inalcanzable. El estado del inventario ya está en pantalla CON su
+    // antigüedad, que es información honesta: no se degrada a un error ni se finge que el
+    // dato es actual.
+  }
+}
+
 interface DefCapa {
   key: CapaMapa;
   label: string;
@@ -264,6 +431,8 @@ export function MapaRedContent() {
 
       // Una fuente y sus capas por cada capa lógica. Se crean vacías y después sólo se
       // reemplaza el GeoJSON: recrear capas en cada movimiento haría parpadear el mapa.
+      registrarIconoUsuario(m);
+
       for (const c of CAPAS) {
         m.addSource(c.key, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
 
@@ -292,18 +461,38 @@ export function MapaRedContent() {
             id: `${c.key}-punto`, type: 'circle', source: c.key,
             paint: {
               // Los conglomerados crecen con la cantidad que representan.
-              'circle-radius': ['case', ['==', ['get', 'cluster'], true], 14, 6],
+              // Los abonados se pintan más grandes: llevan un icono dentro y compiten con
+              // la imagen del satélite, donde un punto de 6 px se pierde entre los techos.
+              'circle-radius': ['case', ['==', ['get', 'cluster'], true], 14, c.key === 'clientes' ? 10 : 6],
               'circle-color': c.key === 'clientes'
-                // Un cliente cuya NAP documentada NO coincide con su puerto PON real se
-                // pinta distinto. Es lo que convierte el mapa en detector de errores de
-                // documentación en vez de un dibujo bonito.
-                ? ['match', ['get', 'confianza'],
-                    'verificado', '#10b981', 'discrepante', '#ef4444', '#3b82f6']
+                // El color dice el ESTADO DEL SERVICIO, que es lo que se mira en el mapa
+                // cuando entra un reclamo. La discrepancia de documentación —que antes
+                // ocupaba este color— se muestra en el popup, donde se consulta al
+                // investigar un caso concreto y no compite con la operación diaria.
+                ? COLOR_POR_ESTADO
                 : c.color,
               'circle-stroke-width': 1.5,
               'circle-stroke-color': '#ffffff',
             },
           });
+          // Silueta blanca dentro del pin del abonado. Va en su propia capa symbol y no en
+          // el circle porque MapLibre no dibuja iconos dentro de un círculo: son dos capas
+          // superpuestas sobre la misma fuente, así que se mueven juntas siempre.
+          if (c.key === 'clientes') {
+            m.addLayer({
+              id: 'clientes-icono', type: 'symbol', source: c.key,
+              // Los conglomerados muestran su número, no una silueta: representan a muchos.
+              filter: ['!=', ['get', 'cluster'], true],
+              layout: {
+                'icon-image': 'usuario',
+                'icon-size': 0.22,
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+              },
+              paint: { 'icon-color': '#ffffff' },
+            });
+          }
+
           m.addLayer({
             id: `${c.key}-etiqueta`, type: 'symbol', source: c.key,
             layout: {
@@ -330,7 +519,7 @@ export function MapaRedContent() {
           const [lng, lat] = (f.geometry as any).coordinates as [number, number];
           const etiqueta = String(props.etiqueta ?? c.label);
 
-          new maplibregl.Popup({ closeButton: true, offset: 12 })
+          const popup = new maplibregl.Popup({ closeButton: true, offset: 14, maxWidth: '300px' })
             .setLngLat([lng, lat])
             .setHTML(
               `<div style="font-size:12px;line-height:1.5">
@@ -342,6 +531,12 @@ export function MapaRedContent() {
                </div>`,
             )
             .addTo(m);
+
+          // Los abonados abren una ficha: estado, teléfono y plan. El resto de las capas
+          // se quedan con el popup básico — una mufa no tiene titular al que llamar.
+          if (c.key === 'clientes' && props.id) {
+            void abrirFichaAbonado(popup, String(props.id), etiqueta, lat, lng);
+          }
         });
 
         m.on('mouseenter', `${c.key}-punto`, () => { m.getCanvas().style.cursor = 'pointer'; });
@@ -374,7 +569,7 @@ export function MapaRedContent() {
       src?.setData(datos[c.key] ?? { type: 'FeatureCollection', features: [] });
 
       const visible = activas.has(c.key) ? 'visible' : 'none';
-      for (const sufijo of ['-linea', '-punto', '-etiqueta']) {
+      for (const sufijo of ['-linea', '-punto', '-icono', '-etiqueta']) {
         if (m.getLayer(`${c.key}${sufijo}`)) {
           m.setLayoutProperty(`${c.key}${sufijo}`, 'visibility', visible);
         }

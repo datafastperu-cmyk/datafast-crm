@@ -10,7 +10,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { traducirAHttp } from '../../common/domain/resultado-operacion';
 import { AuditoriaService } from '../auth/auditoria.service';
 
-import { Permission } from '../../common/decorators/roles.decorator';
+import { Permission, RequirePermission } from '../../common/decorators/roles.decorator';
 import { PlantaExternaService } from './planta-externa.service';
 import { PlantaExternaPuertosService } from './planta-externa-puertos.service';
 import { PlantaExternaMapaService, type CapaMapa } from './planta-externa-mapa.service';
@@ -65,6 +65,26 @@ export class PlantaExternaController {
   @ApiOperation({ summary: 'Rectángulo que envuelve toda la planta; null si no hay coordenadas' })
   async extensionMapa(@CurrentUser() user: JwtPayload) {
     return this.mapaSvc.extension(user.empresaId);
+  }
+
+  /**
+   * Resumen de un abonado, para el popup del mapa.
+   *
+   * Exige el mismo permiso que la capa de clientes, y el guard se resuelve AQUÍ y no dentro
+   * de la consulta: incluye teléfono, que es dato personal. Se sirve de a uno y bajo demanda
+   * justamente para no llevar ese dato en la capa, que se recarga con cada movimiento del
+   * mapa y convertiría cada arrastre en una descarga del padrón de la zona.
+   */
+  @Get('mapa/abonado/:contratoId')
+  @RequirePermission(Permission.MAPA_CLIENTES)
+  @ApiOperation({ summary: 'Datos del abonado para el popup del mapa (incluye PII)' })
+  async abonadoMapa(
+    @Param('contratoId', ParseUUIDPipe) contratoId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const r = await this.mapaSvc.resumenAbonado(user.empresaId, contratoId);
+    if (!r) throw new NotFoundException('Contrato no encontrado.');
+    return r;
   }
 
   @Get('mapa')

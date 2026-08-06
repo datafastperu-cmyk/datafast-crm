@@ -46,87 +46,121 @@ export class AuditoriaService {
     } = filtros;
     const offset = (page - 1) * limit;
 
-    // Todas las condiciones se escriben con el alias `a`, porque el listado hace JOIN para
-    // resolver el nombre del afectado y el conteo reutiliza este mismo WHERE.
-    const conditions: string[] = ['a.empresa_id = $1'];
-    const params: any[]        = [empresaId];
-    let   pIdx                 = 2;
+    const params: any[] = [empresaId];
+    let   pIdx          = 2;
 
     // El AuditInterceptor escribe una fila por CADA request HTTP, con la descripción
     // "POST /api/v1/... (123ms)". Eso es un access log, no actividad de negocio, y supone
     // el 95% de la tabla: sin separarlo, buscar quién cobró o a quién se cortó es
     // imposible. Se distingue por la forma de la descripción para no necesitar migrar
-    // 25.000 filas ya escritas.
-    if (soloNegocio) {
-      conditions.push(`a.descripcion !~ '^(GET|POST|PATCH|PUT|DELETE) /'`);
-    }
+    // 25.000 filas ya escritas. Solo aplica a `auditoria_logs`: las demás fuentes son
+    // todas de negocio.
+    const filtroRuido = soloNegocio
+      ? `AND a.descripcion !~ '^(GET|POST|PATCH|PUT|DELETE) /'`
+      : '';
+
+    // Filtros comunes, ya sobre el conjunto unificado.
+    const conditions: string[] = [];
+
     // Sin usuario = lo hizo el sistema (cron, worker, watcher). Es la distinción que pide
     // el operador cuando pregunta "¿esto lo hizo alguien o se hizo solo?".
     if (origen === 'sistema') {
-      conditions.push(`(a.usuario_email IS NULL OR a.usuario_email = '')`);
+      conditions.push(`(e.usuario_email IS NULL OR e.usuario_email = '')`);
     } else if (origen === 'usuario') {
-      conditions.push(`(a.usuario_email IS NOT NULL AND a.usuario_email <> '')`);
+      conditions.push(`(e.usuario_email IS NOT NULL AND e.usuario_email <> '')`);
     }
 
     if (search) {
       // Se busca también por el nombre del cliente afectado: es como lo busca una persona
       // ("qué pasó con Piero"), no por el UUID que guarda el registro.
       conditions.push(
-        `(a.descripcion ILIKE $${pIdx} OR a.usuario_email ILIKE $${pIdx}` +
-        ` OR a.entidad_id::text ILIKE $${pIdx}` +
+        `(e.descripcion ILIKE $${pIdx} OR e.usuario_email ILIKE $${pIdx}` +
+        ` OR e.entidad_id ILIKE $${pIdx}` +
         ` OR cl.nombre_completo ILIKE $${pIdx} OR cl_co.nombre_completo ILIKE $${pIdx}` +
         ` OR co.numero_contrato ILIKE $${pIdx})`,
       );
       params.push(`%${search}%`); pIdx++;
     }
-    if (modulo)    { conditions.push(`a.modulo = $${pIdx}`);      params.push(modulo);    pIdx++; }
-    if (accion)    { conditions.push(`a.accion = $${pIdx}`);      params.push(accion);    pIdx++; }
-    if (usuarioId) { conditions.push(`a.usuario_id = $${pIdx}`);  params.push(usuarioId); pIdx++; }
-    if (desde)     { conditions.push(`a.created_at >= $${pIdx}`); params.push(desde);     pIdx++; }
-    if (hasta)     { conditions.push(`a.created_at <= $${pIdx}`); params.push(hasta);     pIdx++; }
+    if (modulo)    { conditions.push(`e.modulo = $${pIdx}`);      params.push(modulo);    pIdx++; }
+    if (accion)    { conditions.push(`e.accion = $${pIdx}`);      params.push(accion);    pIdx++; }
+    if (usuarioId) { conditions.push(`e.usuario_id = $${pIdx}`);  params.push(usuarioId); pIdx++; }
+    if (desde)     { conditions.push(`e.created_at >= $${pIdx}`); params.push(desde);     pIdx++; }
+    if (hasta)     { conditions.push(`e.created_at <= $${pIdx}`); params.push(hasta);     pIdx++; }
 
-    const where = conditions.join(' AND ');
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    /**
+     * Vista unificada de la actividad del sistema.
+     *
+     * Tres tablas guardan hechos de negocio con formatos distintos, y cada una tiene
+     * columnas propias que el formato genérico de auditoría no puede representar (estado
+     * de entrega de un mensaje, estado anterior/nuevo de un contrato). En vez de
+     * duplicar la escritura en `auditoria_logs` —que obligaría a tocar decenas de puntos y
+     * haría que el log mienta por omisión en cuanto alguien olvidara uno—, se normalizan
+     * AL LEER. Cada fuente sigue siendo dueña de su tabla.
+     *
+     * `reconciliation_log` queda fuera a propósito: son 755 filas al día comparando ERP y
+     * hardware, y ahogarían la actividad real igual que hacía el ruido HTTP. Su sitio es
+     * el panel de red.
+     */
+    const cte = `
+      WITH eventos AS (
+        -- 1. Auditoría: pagos, accesos, altas y bajas, cortes automáticos
+        SELECT 'auditoria'::text AS fuente, a.id::text AS id, a.created_at,
+               a.usuario_id::text AS usuario_id, a.usuario_email,
+               a.modulo, a.accion, a.descripcion, a.entidad_id, a.ip_address
+          FROM auditoria_logs a
+         WHERE a.empresa_id = $1 ${filtroRuido}
+
+        UNION ALL
+
+        -- 2. Cambios de estado del servicio: quién cortó, reactivó o dio de baja. Vive en
+        --    su tabla porque necesita el par estado_anterior/estado_nuevo.
+        SELECT 'contrato', h.id::text, h.created_at,
+               h.usuario_id::text, u.email,
+               'contratos',
+               CASE WHEN h.automatico THEN 'ESTADO_AUTO' ELSE 'ESTADO' END,
+               h.estado_anterior::text || ' → ' || h.estado_nuevo::text ||
+                 COALESCE(': ' || h.motivo, ''),
+               h.contrato_id::text, NULL
+          FROM contratos_historial h
+          LEFT JOIN usuarios u ON u.id = h.usuario_id
+         WHERE h.empresa_id = $1
+
+        UNION ALL
+
+        -- 3. Mensajes al abonado. El estado de entrega ES el evento: que un aviso de corte
+        --    quedara sin enviar importa tanto como el corte.
+        SELECT 'notificacion', n.id::text, n.created_at,
+               NULL, NULL,
+               'mensajeria',
+               'MSG_' || UPPER(n.estado_entrega::text),
+               n.tipo_template || ' → ' || COALESCE(n.telefono, 'sin teléfono') ||
+                 COALESCE(' · ' || NULLIF(n.error_detalle, ''), ''),
+               COALESCE(n.cliente_id::text, n.contrato_id::text), NULL
+          FROM notificaciones_logs n
+         WHERE n.empresa_id = $1
+      )
+      SELECT e.*,
+             COALESCE(cl.nombre_completo, cl_co.nombre_completo, co.numero_contrato) AS entidad_nombre
+        FROM eventos e
+        -- entidad_id es texto y no siempre contiene un UUID, así que se castea solo cuando
+        -- lo parece: un cast directo revienta la consulta entera con "invalid input syntax
+        -- for type uuid" en cuanto aparece una fila con otro formato.
+        LEFT JOIN clientes  cl    ON cl.id = NULLIF(e.entidad_id, '')::uuid
+                                     AND e.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        LEFT JOIN contratos co    ON co.id = NULLIF(e.entidad_id, '')::uuid
+                                     AND e.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        LEFT JOIN clientes  cl_co ON cl_co.id = co.cliente_id
+        ${where}`;
 
     const [rows, [{ total }]] = await Promise.all([
       this.ds.query(
-        // `entidad_nombre`: los eventos identifican al afectado por UUID o por IP
-        // ("Cliente: 0e814d05-…", "Suspensión automática: IP 172.16.201.2"), que no le
-        // dice nada a quien lee el log. Se resuelve el nombre aquí, en la lectura, en vez
-        // de tocar los ~40 puntos que escriben auditoría. El LEFT JOIN no filtra nada: si
-        // el id no es de un cliente ni de un contrato, la columna viene en null.
-        `SELECT a.id, a.empresa_id, a.usuario_id, a.usuario_email, a.accion, a.modulo,
-                a.entidad_id, a.descripcion, a.ip_address, a.metodo_http, a.ruta,
-                a.datos_anteriores, a.datos_nuevos, a.created_at,
-                COALESCE(cl.nombre_completo, cl_co.nombre_completo, co.numero_contrato) AS entidad_nombre
-           FROM auditoria_logs a
-           -- entidad_id es varchar y no siempre contiene un UUID (hay ids de otras
-           -- formas), así que se castea solo cuando lo parece: un cast directo revienta la
-           -- consulta entera con "invalid input syntax for type uuid" en cuanto aparece
-           -- una fila con otro formato, y comparar como texto impediría usar el índice.
-           LEFT JOIN clientes  cl    ON cl.id = NULLIF(a.entidad_id, '')::uuid
-                                        AND a.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-           LEFT JOIN contratos co    ON co.id = NULLIF(a.entidad_id, '')::uuid
-                                        AND a.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-           LEFT JOIN clientes  cl_co ON cl_co.id = co.cliente_id
-          WHERE ${where}
-          ORDER BY a.created_at DESC LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+        `${cte} ORDER BY e.created_at DESC LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
         [...params, limit, offset],
       ),
       this.ds.query(
-        // Los mismos JOIN que el listado: sin ellos, buscar por nombre de cliente daría un
-        // total distinto al de las filas mostradas.
-        `SELECT COUNT(*) as total
-           FROM auditoria_logs a
-           -- entidad_id es varchar y no siempre contiene un UUID (hay ids de otras
-           -- formas), así que se castea solo cuando lo parece: un cast directo revienta la
-           -- consulta entera con "invalid input syntax for type uuid" en cuanto aparece
-           -- una fila con otro formato, y comparar como texto impediría usar el índice.
-           LEFT JOIN clientes  cl    ON cl.id = NULLIF(a.entidad_id, '')::uuid
-                                        AND a.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-           LEFT JOIN contratos co    ON co.id = NULLIF(a.entidad_id, '')::uuid
-                                        AND a.entidad_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-           LEFT JOIN clientes  cl_co ON cl_co.id = co.cliente_id
-          WHERE ${where}`,
+        `SELECT COUNT(*) AS total FROM (${cte}) sub`,
         params,
       ),
     ]);
@@ -150,32 +184,70 @@ export class AuditoriaService {
   async getResumen(empresaId: string) {
     const negocio = `descripcion !~ '^(GET|POST|PATCH|PUT|DELETE) /'`;
 
-    const [[cifras], modulos, acciones] = await Promise.all([
+    // Las cifras cuentan las TRES fuentes que ve el listado; si contaran solo auditoría,
+    // la cabecera diría menos eventos de los que la tabla muestra debajo.
+    const [[cifras], catalogo] = await Promise.all([
       this.ds.query(
         `SELECT
-           COUNT(*) FILTER (WHERE ${negocio})                                     AS total,
-           COUNT(*) FILTER (WHERE ${negocio} AND created_at >= CURRENT_DATE)      AS hoy,
-           COUNT(*) FILTER (WHERE ${negocio} AND created_at >= CURRENT_DATE
-                              AND usuario_email IS NOT NULL AND usuario_email <> '') AS hoy_usuarios,
-           COUNT(*) FILTER (WHERE ${negocio} AND created_at >= CURRENT_DATE
-                              AND (usuario_email IS NULL OR usuario_email = ''))     AS hoy_sistema,
-           COUNT(*) FILTER (WHERE accion = 'LOGIN_FAIL'
-                              AND created_at >= CURRENT_DATE - INTERVAL '7 days')    AS accesos_fallidos_semana,
-           COUNT(*) FILTER (WHERE NOT (${negocio}))                               AS peticiones_tecnicas
-         FROM auditoria_logs WHERE empresa_id = $1`,
+           (SELECT COUNT(*) FROM auditoria_logs
+             WHERE empresa_id = $1 AND ${negocio})
+           + (SELECT COUNT(*) FROM contratos_historial WHERE empresa_id = $1)
+           + (SELECT COUNT(*) FROM notificaciones_logs WHERE empresa_id = $1)   AS total,
+
+           (SELECT COUNT(*) FROM auditoria_logs
+             WHERE empresa_id = $1 AND ${negocio} AND created_at >= CURRENT_DATE)
+           + (SELECT COUNT(*) FROM contratos_historial
+               WHERE empresa_id = $1 AND created_at >= CURRENT_DATE)
+           + (SELECT COUNT(*) FROM notificaciones_logs
+               WHERE empresa_id = $1 AND created_at >= CURRENT_DATE)            AS hoy,
+
+           (SELECT COUNT(*) FROM auditoria_logs
+             WHERE empresa_id = $1 AND ${negocio} AND created_at >= CURRENT_DATE
+               AND usuario_email IS NOT NULL AND usuario_email <> '')
+           + (SELECT COUNT(*) FROM contratos_historial
+               WHERE empresa_id = $1 AND created_at >= CURRENT_DATE
+                 AND automatico = false)                                        AS hoy_usuarios,
+
+           (SELECT COUNT(*) FROM auditoria_logs
+             WHERE empresa_id = $1 AND ${negocio} AND created_at >= CURRENT_DATE
+               AND (usuario_email IS NULL OR usuario_email = ''))
+           + (SELECT COUNT(*) FROM contratos_historial
+               WHERE empresa_id = $1 AND created_at >= CURRENT_DATE
+                 AND automatico = true)
+           + (SELECT COUNT(*) FROM notificaciones_logs
+               WHERE empresa_id = $1 AND created_at >= CURRENT_DATE)            AS hoy_sistema,
+
+           (SELECT COUNT(*) FROM auditoria_logs
+             WHERE empresa_id = $1 AND accion = 'LOGIN_FAIL'
+               AND created_at >= CURRENT_DATE - INTERVAL '7 days')              AS accesos_fallidos_semana,
+
+           (SELECT COUNT(*) FROM auditoria_logs
+             WHERE empresa_id = $1 AND NOT (${negocio}))                        AS peticiones_tecnicas,
+
+           -- Mensajes que nunca salieron: un aviso de corte sin enviar es un problema
+           -- operativo, no una anécdota técnica.
+           (SELECT COUNT(*) FROM notificaciones_logs
+             WHERE empresa_id = $1
+               AND estado_entrega::text IN ('NO_ENVIADO', 'FALLIDO'))           AS mensajes_no_entregados`,
         [empresaId],
       ),
       this.ds.query(
-        `SELECT DISTINCT modulo FROM auditoria_logs
-          WHERE empresa_id = $1 AND modulo IS NOT NULL ORDER BY modulo`,
-        [empresaId],
-      ),
-      this.ds.query(
-        `SELECT DISTINCT accion FROM auditoria_logs
-          WHERE empresa_id = $1 AND accion IS NOT NULL AND ${negocio} ORDER BY accion`,
+        `SELECT DISTINCT modulo, accion FROM (
+            SELECT modulo, accion FROM auditoria_logs
+             WHERE empresa_id = $1 AND ${negocio}
+            UNION ALL
+            SELECT 'contratos',
+                   CASE WHEN automatico THEN 'ESTADO_AUTO' ELSE 'ESTADO' END
+              FROM contratos_historial WHERE empresa_id = $1
+            UNION ALL
+            SELECT 'mensajeria', 'MSG_' || UPPER(estado_entrega::text)
+              FROM notificaciones_logs WHERE empresa_id = $1
+         ) c WHERE modulo IS NOT NULL AND accion IS NOT NULL`,
         [empresaId],
       ),
     ]);
+
+    const filas = catalogo as Array<{ modulo: string; accion: string }>;
 
     return {
       total:                  Number(cifras?.total ?? 0),
@@ -184,8 +256,9 @@ export class AuditoriaService {
       hoySistema:             Number(cifras?.hoy_sistema ?? 0),
       accesosFallidosSemana:  Number(cifras?.accesos_fallidos_semana ?? 0),
       peticionesTecnicas:     Number(cifras?.peticiones_tecnicas ?? 0),
-      modulos:  (modulos  as Array<{ modulo: string }>).map((m) => m.modulo),
-      acciones: (acciones as Array<{ accion: string }>).map((a) => a.accion),
+      mensajesNoEntregados:   Number(cifras?.mensajes_no_entregados ?? 0),
+      modulos:  [...new Set(filas.map((f) => f.modulo))].sort(),
+      acciones: [...new Set(filas.map((f) => f.accion))].sort(),
     };
   }
 

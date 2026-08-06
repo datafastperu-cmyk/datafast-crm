@@ -33,7 +33,7 @@ export function AuditoriaTab() {
   const [accion,  setAccion]  = useState('Todas');
   const [modulo,  setModulo]  = useState('Todos');
   const [page,    setPage]    = useState(1);
-  const [expand,  setExpand]  = useState<number | null>(null);
+  const [expand,  setExpand]  = useState<string | null>(null);
   const LIMIT = 30;
 
   const filtros: FiltrosAuditoria = {

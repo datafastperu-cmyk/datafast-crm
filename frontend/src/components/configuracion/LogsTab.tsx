@@ -37,6 +37,25 @@ const ACCION_STYLE: Record<string, string> = {
   BULK_INVOICE:        'bg-violet-500/10 text-violet-500',
   GENERATE_MONTHLY:    'bg-violet-500/10 text-violet-500',
   AUTO_GENERATE_DAILY: 'bg-violet-500/10 text-violet-500',
+  // Cambios de estado del servicio (historial de contratos)
+  ESTADO:              'bg-amber-500/10 text-amber-500',
+  ESTADO_AUTO:         'bg-amber-500/10 text-amber-500',
+  // Mensajería: el estado de entrega ES el evento
+  MSG_ENVIADO:         'bg-emerald-500/10 text-emerald-500',
+  MSG_ENTREGADO:       'bg-emerald-500/10 text-emerald-500',
+  MSG_LEIDO:           'bg-emerald-500/10 text-emerald-500',
+  MSG_ENCOLADO:        'bg-blue-500/10 text-blue-500',
+  MSG_EN_PROCESO:      'bg-blue-500/10 text-blue-500',
+  MSG_NO_ENVIADO:      'bg-orange-500/10 text-orange-500',
+  MSG_FALLIDO:         'bg-red-500/10 text-red-500',
+};
+
+// De qué tabla viene cada evento. Se muestra para que quede claro que el Log reúne varias
+// fuentes y no todo sale del mismo sitio.
+const FUENTE_LABEL: Record<string, string> = {
+  auditoria:    'Auditoría',
+  contrato:     'Servicio',
+  notificacion: 'Mensaje',
 };
 
 const LIMITE = 50;
@@ -91,12 +110,15 @@ export function LogsTab() {
     <div className="space-y-5">
 
       {/* Cifras reales: cuánto pasó hoy, cuánto lo hizo una persona y cuánto el sistema */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Eventos hoy',           value: resumen?.hoy ?? 0,                   color: 'text-foreground', bg: 'bg-muted/50' },
           { label: 'Hechos por usuarios',   value: resumen?.hoyUsuarios ?? 0,           color: 'text-blue-400',   bg: 'bg-blue-500/8' },
           { label: 'Hechos por el sistema', value: resumen?.hoySistema ?? 0,            color: 'text-violet-400', bg: 'bg-violet-500/8' },
-          { label: 'Accesos fallidos (7d)', value: resumen?.accesosFallidosSemana ?? 0, color: 'text-red-400',    bg: 'bg-red-500/8' },
+          // Un aviso de corte que nunca salió importa tanto como el corte: si el gateway
+          // de mensajería está caído, el ERP cree que avisa a los abonados y no avisa.
+          { label: 'Mensajes sin entregar',  value: resumen?.mensajesNoEntregados ?? 0,  color: 'text-orange-400', bg: 'bg-orange-500/8' },
+          { label: 'Accesos fallidos (7d)',  value: resumen?.accesosFallidosSemana ?? 0, color: 'text-red-400',    bg: 'bg-red-500/8' },
         ].map((s) => (
           <div key={s.label} className={cn('border border-border rounded-xl p-4', s.bg)}>
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{s.label}</p>
@@ -172,6 +194,9 @@ export function LogsTab() {
         />
         Mostrar peticiones técnicas (cada llamada HTTP
         {resumen ? `: ${resumen.peticionesTecnicas.toLocaleString('es-PE')} registros` : ''})
+        <span className="text-muted-foreground/60 ml-1">
+          · El log reúne auditoría, cambios de estado del servicio y mensajes enviados
+        </span>
       </label>
 
       {/* Listado */}
@@ -208,6 +233,7 @@ export function LogsTab() {
                 <tr>
                   <th className="text-left px-4 py-2.5 font-semibold whitespace-nowrap">Fecha</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Quién</th>
+                  <th className="text-left px-4 py-2.5 font-semibold">Origen</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Módulo</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Acción</th>
                   <th className="text-left px-4 py-2.5 font-semibold">Qué ocurrió</th>
@@ -230,6 +256,9 @@ export function LogsTab() {
                           {esSistema ? <Cpu className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                           {l.usuario_email || 'Sistema'}
                         </span>
+                      </td>
+                      <td className="px-4 py-2 text-[10px] text-muted-foreground/70 whitespace-nowrap">
+                        {FUENTE_LABEL[l.fuente ?? 'auditoria'] ?? l.fuente}
                       </td>
                       <td className="px-4 py-2 text-[11px] text-muted-foreground capitalize">{l.modulo}</td>
                       <td className="px-4 py-2 whitespace-nowrap">

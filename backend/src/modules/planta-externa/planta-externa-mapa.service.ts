@@ -355,9 +355,23 @@ export class PlantaExternaMapaService {
 
     const filas = await this.ds.query(
       `${PUNTOS_SERVICIO}
-       SELECT p.contrato_id AS id, p.lat, p.lng, p.etiqueta, a.confianza
+       SELECT p.contrato_id AS id, p.lat, p.lng, p.etiqueta, a.confianza,
+              inv.estado_operativo,
+              -- Antigüedad de la medición, en minutos. Va con el estado y no aparte: un
+              -- "en línea" sin fecha se lee como si fuera de ahora mismo, y el inventario
+              -- se sincroniza cada 6 h. El operador tiene derecho a saber qué antigüedad
+              -- tiene lo que está viendo antes de mandar a alguien a la calle.
+              EXTRACT(EPOCH FROM (now() - inv.updated_at))::int / 60 AS medido_hace_min
          FROM punto_servicio p
          LEFT JOIN pe_acometida a ON a.contrato_id = p.contrato_id AND a.deleted_at IS NULL
+         -- Estado físico del enlace, tal como lo reporta la OLT. El cruce pasa por
+         -- sn_onu_normalizado porque el registro guarda el serial de la etiqueta
+         -- (HWTC…) y el inventario el que emite el hardware (4857…): el mismo equipo en
+         -- dos codificaciones.
+         LEFT JOIN ftth_onu_registro f
+                ON f.contrato_id = p.contrato_id AND f.deleted_at IS NULL
+         LEFT JOIN olt_onu_inventario inv
+                ON sn_onu_normalizado(inv.sn) = sn_onu_normalizado(f.sn)
         WHERE p.lat BETWEEN $2 AND $3 AND p.lng BETWEEN $4 AND $5
         LIMIT ${MAX_FEATURES}`,
       [empresaId, bbox.minLat, bbox.maxLat, bbox.minLng, bbox.maxLng],
@@ -374,8 +388,82 @@ export class PlantaExternaMapaService {
           // el dato que alguien tecleó (declarado). Un mapa que los pinta igual no
           // delata errores de documentación.
           confianza: f.confianza ?? 'sin_acometida',
+          // `sin_datos` y no `offline`: un contrato sin ONU registrada, o cuya ONU no
+          // aparece en el inventario, es un caso DISTINTO de uno que la OLT reporta caído.
+          // Pintarlos igual haría que un hueco de documentación pareciera una avería, y
+          // mandaría a un técnico a revisar una fibra que está perfecta.
+          estadoRed: f.estado_operativo ?? 'sin_datos',
+          medidoHaceMin: f.medido_hace_min ?? null,
         }),
       ),
+    };
+  }
+
+  /**
+   * Resumen del abonado para el popup del mapa. SÓLO con permiso `red:mapa:clientes`.
+   *
+   * Va aparte de la capa y no dentro de sus features por una razón concreta: el teléfono es
+   * dato personal, y la capa se pide de nuevo en CADA movimiento del mapa. Incluirlo allí
+   * convertiría cada arrastre en una descarga del padrón de esa zona. Aquí se entrega un
+   * abonado, cuando alguien lo pide.
+   *
+   * Devuelve además `olt`, `slot`, `port` y `onuId`: son las coordenadas del equipo en la
+   * OLT, y con ellas el frontend refresca el estado EN VIVO llamando al endpoint que ya usa
+   * `/red/olt` (`GET /olt-nativo/:oltId/onus`). No se construye aquí una segunda lectura de
+   * hardware: ya existe una y clasifica mejor de lo que haría una nueva.
+   */
+  async resumenAbonado(empresaId: string, contratoId: string) {
+    const [fila] = await this.ds.query(
+      `SELECT co.id, co.numero_contrato, co.estado::text AS estado_contrato,
+              COALESCE(co.latitud_instalacion,  c.latitud)::float  AS lat,
+              COALESCE(co.longitud_instalacion, c.longitud)::float AS lng,
+              co.direccion_instalacion,
+              TRIM(CONCAT(c.nombres, ' ', COALESCE(c.apellido_paterno, ''))) AS cliente,
+              c.telefono,
+              pl.nombre AS plan,
+              f.olt_id, f.slot, f.port, f.onu_id, f.sn,
+              inv.estado_operativo, inv.rx_power_dbm,
+              EXTRACT(EPOCH FROM (now() - inv.updated_at))::int / 60 AS medido_hace_min,
+              nap.codigo AS nap_codigo, ap.numero AS nap_puerto
+         FROM contratos co
+         JOIN clientes c  ON c.id  = co.cliente_id AND c.deleted_at IS NULL
+         LEFT JOIN planes pl ON pl.id = co.plan_id
+         LEFT JOIN ftth_onu_registro f
+                ON f.contrato_id = co.id AND f.deleted_at IS NULL
+         LEFT JOIN olt_onu_inventario inv
+                ON sn_onu_normalizado(inv.sn) = sn_onu_normalizado(f.sn)
+         LEFT JOIN pe_acometida acom
+                ON acom.contrato_id = co.id AND acom.deleted_at IS NULL
+         LEFT JOIN pe_nap_puerto ap ON ap.id  = acom.nap_puerto_id
+         LEFT JOIN pe_nap        nap ON nap.id = ap.nap_id
+        WHERE co.id = $1 AND co.empresa_id = $2 AND co.deleted_at IS NULL`,
+      [contratoId, empresaId],
+    );
+
+    if (!fila) return null;
+
+    return {
+      contratoId:    fila.id,
+      numeroContrato: fila.numero_contrato,
+      cliente:       fila.cliente,
+      telefono:      fila.telefono ?? null,
+      plan:          fila.plan ?? null,
+      estadoContrato: fila.estado_contrato,
+      direccion:     fila.direccion_instalacion || null,
+      latitud:       fila.lat,
+      longitud:      fila.lng,
+      nap:           fila.nap_codigo ? { codigo: fila.nap_codigo, puerto: fila.nap_puerto } : null,
+      // Estado conocido, con su antigüedad. El frontend lo muestra de inmediato y lo
+      // reemplaza cuando llega la lectura en vivo.
+      estadoRed:     fila.estado_operativo ?? 'sin_datos',
+      rxPowerDbm:    fila.rx_power_dbm ?? null,
+      medidoHaceMin: fila.medido_hace_min ?? null,
+      // Coordenadas del equipo en la OLT, para pedir el estado en vivo. `null` si el
+      // contrato no tiene ONU registrada: entonces no hay nada que consultar y el frontend
+      // no debe ofrecerlo.
+      onu: fila.olt_id
+        ? { oltId: fila.olt_id, slot: fila.slot, port: fila.port, onuId: fila.onu_id, sn: fila.sn }
+        : null,
     };
   }
 

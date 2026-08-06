@@ -3,7 +3,9 @@ import type { ApiRespuesta } from '@/types';
 
 // ─── Tipos ────────────────────────────────────────────────────
 export interface AuditLog {
-  id:              number;
+  id:              string;
+  /** De qué registro viene: auditoría, historial de contrato o notificación. */
+  fuente?:         'auditoria' | 'contrato' | 'notificacion';
   empresa_id:      string;
   usuario_id:      string;
   usuario_email:   string;
@@ -65,6 +67,7 @@ export interface ResumenAuditoria {
   hoySistema:            number;
   accesosFallidosSemana: number;
   peticionesTecnicas:    number;
+  mensajesNoEntregados:  number;
   modulos:               string[];
   acciones:              string[];
 }
