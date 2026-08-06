@@ -14,6 +14,9 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { IsEnum } from 'class-validator';
+
+import { MotivoExtorno } from '../entities/pago.entity';
 
 export class RegistrarPagoDto {
   /**
@@ -131,4 +134,26 @@ export class RegistrarPagoDto {
   @IsOptional()
   @IsBoolean()
   autoVerificar?: boolean;
+}
+
+/**
+ * Anulación de un cobro ya registrado.
+ *
+ * El motivo es obligatorio y tipificado porque decide dos cosas que no se pueden inferir:
+ * si el dinero vuelve al abonado, y si cortarle el servicio es legítimo o es un error
+ * nuestro (`error_registro` es lo segundo, y es el caso más frecuente).
+ */
+export class ExtornarPagoDto {
+  @IsEnum(MotivoExtorno, {
+    message:
+      'motivo debe ser uno de: error_registro, devolucion_cliente, cheque_rebotado, ' +
+      'contracargo, pago_duplicado, fraude',
+  })
+  motivo: MotivoExtorno;
+
+  /** Obligatoria si el pago ya estaba conciliado — ver `PagosService.extornar`. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  nota?: string;
 }

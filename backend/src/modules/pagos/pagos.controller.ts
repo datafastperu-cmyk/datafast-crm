@@ -21,7 +21,7 @@ import { CanalPagoService } from './canal-pago.service';
 import {
   RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
   ActualizarPagoDto, FilterPagoDto, CrearPreferenciaDto,
-  CreateCuentaBancariaDto,
+  CreateCuentaBancariaDto, ExtornarPagoDto,
 } from './dto/pago.dto';
 import { EstadoPago } from './entities/pago.entity';
 import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
@@ -368,18 +368,43 @@ export class PagosController {
     return StdResponse.ok(pago, 'Pago actualizado');
   }
 
-  // ── DELETE /pagos/:id — Eliminar pago ────────────────────────
+  // ── POST /pagos/:id/extornar — Anular un cobro ───────────────
+  //
+  // Sustituye al DELETE. Un pago registrado es un hecho histórico: se anula, no se borra.
+  // El motivo es obligatorio porque decide si el dinero vuelve al abonado y si cortarle
+  // el servicio es legítimo o es un error nuestro.
+  @Post(':id/extornar')
+  @RequirePermission('pagos:extornar')
+  @ApiOperation({
+    summary: 'Extornar (anular) un pago',
+    description:
+      'Retira la imputación del pago y recalcula el saldo de los comprobantes afectados. ' +
+      'NO corta el servicio: la deuda vuelve a existir y el corte lo decide el ciclo de ' +
+      'cobranza con su periodo de gracia.',
+  })
+  @ApiParam({ name: 'id' })
+  async extornar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ExtornarPagoDto,
+    @CurrentUser() user: JwtPayload,
+    @Req() req: Request,
+  ) {
+    const pago = await this.svc.extornar(id, dto, user, req);
+    return StdResponse.ok(pago, 'Pago extornado. La deuda del abonado vuelve a estar vigente.');
+  }
+
+  // ── DELETE /pagos/:id — retirado ─────────────────────────────
+  // Se conserva la ruta para responder con el motivo en vez de un 404 despistante: quien
+  // la llame se lleva una explicación y la ruta correcta.
   @Delete(':id')
   @RequirePermission('pagos:delete')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Eliminar pago (revierte monto de la factura si estaba verificado)' })
+  @ApiOperation({ summary: 'RETIRADO — usa POST /pagos/:id/extornar' })
   @ApiParam({ name: 'id' })
   async eliminar(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: JwtPayload,
-    @Req() req: Request,
   ) {
-    await this.svc.eliminar(id, user.empresaId, user, req);
+    await this.svc.eliminar(id, user.empresaId, user);
   }
 
   // ── POST /pagos/:id/comprobante — Subir foto del voucher ─

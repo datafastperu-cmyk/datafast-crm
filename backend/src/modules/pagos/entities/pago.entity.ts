@@ -18,7 +18,28 @@ export enum EstadoPago {
   PENDIENTE_VERIFICACION = 'pendiente_verificacion',
   VERIFICADO             = 'verificado',
   RECHAZADO              = 'rechazado',
+  /** El dinero volvió al abonado por el mismo canal (devolución bancaria concreta). */
   DEVUELTO               = 'devuelto',
+  /**
+   * Anulado: el cobro deja de surtir efecto y su imputación se retira de los
+   * comprobantes. La fila NO se borra — un pago registrado es un hecho histórico, y
+   * borrarlo deja sin rastro dinero que alguien cobró. El motivo vive en `pago_extorno`.
+   */
+  EXTORNADO              = 'extornado',
+}
+
+/**
+ * Por qué se anula un cobro. Tipificado, no texto libre: de esto depende si el dinero se
+ * le devuelve al abonado y si cortarle el servicio es legítimo o es un error nuestro.
+ */
+export enum MotivoExtorno {
+  /** Equivocación del cajero al registrar. El más frecuente — y culpa nuestra. */
+  ERROR_REGISTRO     = 'error_registro',
+  DEVOLUCION_CLIENTE = 'devolucion_cliente',
+  CHEQUE_REBOTADO    = 'cheque_rebotado',
+  CONTRACARGO        = 'contracargo',
+  PAGO_DUPLICADO     = 'pago_duplicado',
+  FRAUDE             = 'fraude',
 }
 
 // ─── Entidad Pago ─────────────────────────────────────────────

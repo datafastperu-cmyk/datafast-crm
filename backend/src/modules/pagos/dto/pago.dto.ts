@@ -9,7 +9,7 @@ import { EstadoPago } from '../entities/pago.entity';
 import { PaginationDto } from '../../../common/dto/response.dto';
 
 // RegistrarPagoDto vive en registrar-pago.dto.ts — re-exportado para compatibilidad de imports
-export { RegistrarPagoDto } from './registrar-pago.dto';
+export { RegistrarPagoDto, ExtornarPagoDto } from './registrar-pago.dto';
 
 // ─── Verificar / Aprobar pago ─────────────────────────────────
 export class VerificarPagoDto {

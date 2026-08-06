@@ -96,6 +96,58 @@ export class AplicadorFacturaService {
   }
 
   /**
+   * Deshace lo que un pago imputó a un comprobante.
+   *
+   * **Recalcula, no resta.** `monto_pagado` se reconstruye desde la suma de las
+   * imputaciones que quedan vivas, así que ejecutar esto dos veces da el mismo resultado
+   * que ejecutarlo una: una reversión interrumpida se reintenta desde el principio sin
+   * efectos raros. Restar el importe sería correcto la primera vez y descuadraría la
+   * segunda, que es justo el caso que ocurre cuando algo falla a mitad.
+   *
+   * El estado se deriva del saldo resultante, nunca se adivina: una factura anulada sigue
+   * anulada —anular y cobrar son cosas distintas— y una que vuelve a tener saldo recupera
+   * `vencida` o `emitida` según su fecha, no según lo que era antes.
+   *
+   * @param aplicacionIds Imputaciones que se retiran. Deben haberse borrado o marcado ya
+   *                      en la MISMA transacción: esta consulta suma lo que queda.
+   */
+  async revertir(
+    facturaId: string,
+    empresaId: string,
+    manager: EntityManager,
+  ): Promise<{ estado: string; montoPagado: number }> {
+    const filas = filasUpdateReturning<{ estado: string; monto_pagado: string }>(
+      await manager.query(`
+        UPDATE facturas f
+        SET
+          monto_pagado = COALESCE(v.aplicado, 0),
+          estado = CASE
+            WHEN f.estado = 'anulada'::estado_factura       THEN 'anulada'::estado_factura
+            WHEN COALESCE(v.aplicado, 0) >= f.total::numeric THEN 'pagada'::estado_factura
+            WHEN COALESCE(v.aplicado, 0) > 0                 THEN 'pagada_parcial'::estado_factura
+            WHEN f.fecha_vencimiento < CURRENT_DATE          THEN 'vencida'::estado_factura
+            ELSE 'emitida'::estado_factura
+          END,
+          fecha_pago = CASE
+            WHEN COALESCE(v.aplicado, 0) >= f.total::numeric THEN f.fecha_pago
+            ELSE NULL
+          END,
+          updated_at = NOW()
+        FROM (
+          SELECT COALESCE(SUM(pa.monto_aplicado), 0)::numeric AS aplicado
+            FROM pago_aplicaciones pa
+           WHERE pa.factura_id = $1
+        ) v
+        WHERE f.id = $1 AND f.empresa_id = $2 AND f.deleted_at IS NULL
+        RETURNING f.estado, f.monto_pagado
+      `, [facturaId, empresaId]),
+    );
+
+    if (!filas.length) throw new BadRequestException('La factura no existe');
+    return { estado: filas[0].estado, montoPagado: Number(filas[0].monto_pagado) };
+  }
+
+  /**
    * Invariante de contabilidad: el saldo cobrado de un comprobante es exactamente la suma
    * de lo que los pagos le imputaron.
    *

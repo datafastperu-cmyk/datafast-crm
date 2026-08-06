@@ -25,7 +25,7 @@ import { CanalPagoService } from './canal-pago.service';
 import { AplicadorFacturaService } from '../facturacion/aplicador-factura.service';
 import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
-import { RegistrarPagoDto } from './dto/registrar-pago.dto';
+import { RegistrarPagoDto, ExtornarPagoDto } from './dto/registrar-pago.dto';
 import {
   VerificarPagoDto, ConciliarPagoDto, ActualizarPagoDto,
   FilterPagoDto, CrearPreferenciaDto,
@@ -1283,42 +1283,134 @@ export class PagosService {
   }
 
   // ────────────────────────────────────────────────────────────
-  // ELIMINAR PAGO — revierte el monto de la factura si verificado
+  // EXTORNAR PAGO
+  //
+  // Sustituye a `eliminar()`. Un pago registrado es un HECHO HISTÓRICO: lo que se
+  // registra es que fue anulado, por quién y por qué. Borrar la fila era perder el único
+  // rastro de que ese dinero existió — y de que alguien lo cobró.
+  //
+  // Es el flujo con más potencial de daño del módulo: un extorno mal hecho corta a un
+  // abonado que pagó, o deja pagada una factura que nunca se cobró.
   // ────────────────────────────────────────────────────────────
-  async eliminar(
+  async extornar(
     id:        string,
-    empresaId: string,
+    dto:       ExtornarPagoDto,
     user:      JwtPayload,
     req?:      any,
-  ): Promise<void> {
+  ): Promise<Pago> {
+    const empresaId = user.empresaId;
     const pago = await this.findOne(id, empresaId);
-    if (pago.conciliado) throw new BadRequestException('No se puede eliminar un pago conciliado');
 
-    await this.ds.transaction(async (manager) => {
-      if (pago.facturaId) {
-        await manager.query(
-          `UPDATE facturas
-              SET monto_pagado = GREATEST(0, monto_pagado - $1),
-                  updated_at   = NOW(),
-                  estado = CASE
-                    WHEN estado = 'anulada'::estado_factura THEN 'anulada'::estado_factura
-                    WHEN GREATEST(0, monto_pagado - $1) >= total THEN 'pagada'::estado_factura
-                    WHEN GREATEST(0, monto_pagado - $1) > 0     THEN 'pagada_parcial'::estado_factura
-                    WHEN fecha_vencimiento < CURRENT_DATE        THEN 'vencida'::estado_factura
-                    ELSE 'emitida'::estado_factura
-                  END
-            WHERE id = $2 AND empresa_id = $3`,
-          [pago.monto, pago.facturaId, empresaId],
+    if (pago.estado === EstadoPago.EXTORNADO) {
+      throw new BadRequestException('El pago ya está extornado');
+    }
+
+    // Extornar un pago ya conciliado rompe un cierre contable que alguien dio por cerrado
+    // contra el extracto del banco. Se permite —a veces es justo lo que hay que hacer, un
+    // contracargo llega después de conciliar— pero exige permiso aparte y nota obligatoria.
+    if (pago.conciliado) {
+      const puede = user.roles?.includes('Administrador')
+                 || user.permisos?.includes('pagos:extornar_conciliado');
+      if (!puede) {
+        throw new ForbiddenException(
+          'Este pago ya está conciliado con el extracto bancario. Extornarlo rompe un ' +
+          'cierre contable y requiere permiso de supervisor.',
         );
       }
-      await manager.delete(Pago, id);
+      if (!dto.nota?.trim()) {
+        throw new BadRequestException(
+          'Extornar un pago conciliado exige una nota explicando por qué',
+        );
+      }
+    }
+
+    const aplicaciones = await this.ds.query<Array<{ factura_id: string; monto_aplicado: string }>>(
+      `SELECT factura_id, monto_aplicado FROM pago_aplicaciones WHERE pago_id = $1`,
+      [id],
+    );
+
+    await this.ds.transaction(async (manager) => {
+      // La bitácora ANTES de tocar nada: si el proceso muere a mitad, queda constancia de
+      // que se intentó y de qué había. Al revés, un extorno a medias sería invisible.
+      await manager.query(
+        `INSERT INTO pago_extorno (empresa_id, pago_id, motivo, nota, monto_revertido,
+                                   facturas_afectadas, estaba_conciliado,
+                                   usuario_id, usuario_email)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+         ON CONFLICT (pago_id) DO NOTHING`,
+        [
+          empresaId, id, dto.motivo, dto.nota ?? null, pago.monto,
+          JSON.stringify(aplicaciones.map((a) => ({
+            facturaId: a.factura_id, monto: parseFloat(a.monto_aplicado),
+          }))),
+          pago.conciliado, user.sub, user.email,
+        ],
+      );
+
+      // Se retiran las imputaciones y DESPUÉS se recalcula: el aplicador reconstruye
+      // `monto_pagado` desde lo que queda, así que reintentar un extorno interrumpido da
+      // el mismo resultado. Restar habría descuadrado en el segundo intento.
+      await manager.query(`DELETE FROM pago_aplicaciones WHERE pago_id = $1`, [id]);
+
+      const facturas = [...new Set(aplicaciones.map((a) => a.factura_id))];
+      for (const facturaId of facturas) {
+        await this.aplicador.revertir(facturaId, empresaId, manager);
+      }
+
+      await manager.update(Pago, id, {
+        estado:     EstadoPago.EXTORNADO,
+        aplicadoEn: null,
+        notas: [pago.notas, `EXTORNADO (${dto.motivo}): ${dto.nota ?? 'sin nota'}`]
+          .filter(Boolean).join(' | '),
+      });
     });
 
-    await this.auditoria.logDelete({
+    // La deuda del abonado vuelve a existir: hay que refrescar la proyección o el portal
+    // seguiría mostrando una deuda saldada que ya no lo está.
+    if (pago.clienteId) {
+      await this.deudaSvc.recalcularPorCliente(pago.clienteId, empresaId).catch((e) =>
+        this.logger.error(`[EXTORNO] No se pudo recalcular la deuda de ${pago.clienteId}: ${e.message}`),
+      );
+    }
+
+    await this.auditoria.logUpdate({
       empresaId, usuarioId: user.sub, usuarioEmail: user.email,
       modulo: 'pagos', entidadId: id,
-      descripcion: `Pago eliminado: S/ ${pago.monto} | ${pago.metodoPago}`, req,
+      descripcion:
+        `Pago EXTORNADO S/ ${pago.monto} | motivo: ${dto.motivo} | ` +
+        `comprobantes afectados: ${aplicaciones.length}` +
+        (pago.conciliado ? ' | ESTABA CONCILIADO' : '') +
+        (dto.nota ? ` | ${dto.nota}` : ''),
+      req,
     });
+
+    // El corte del servicio NO se decide aquí, y es deliberado.
+    //
+    // El motivo más frecuente de extorno es `error_registro` —una equivocación del
+    // cajero—, y cortarle el servicio al abonado en el mismo request significaría que el
+    // ERP corta a un cliente al día por errores propios, en segundos, sin que nadie lo
+    // revise. El corte lo decide el ciclo de cobranza normal, con su periodo de gracia,
+    // exactamente igual que con cualquier otra deuda.
+    this.logger.warn(
+      `[EXTORNO] Pago ${id} extornado por ${user.email} (${dto.motivo}). ` +
+      `La deuda del abonado ${pago.clienteId} vuelve a existir; el corte, si procede, lo ` +
+      `decidirá el ciclo de cobranza con su periodo de gracia.`,
+    );
+
+    return this.findOne(id, empresaId);
+  }
+
+  /**
+   * @deprecated Borrar un pago perdía el rastro de que ese dinero existió, y restaba el
+   * importe en vez de recalcularlo (un reintento tras un fallo a mitad descuadraba el
+   * saldo). Usa `extornar`, que además exige un motivo tipificado.
+   */
+  async eliminar(id: string, _empresaId: string, _user: JwtPayload): Promise<void> {
+    throw new BadRequestException(
+      `Un pago no se elimina: se extorna, indicando el motivo. Un pago registrado es un ` +
+      `hecho histórico y borrarlo deja sin rastro dinero que alguien cobró. ` +
+      `Usa POST /pagos/${id}/extornar.`,
+    );
   }
 
   async findPendientes(empresaId: string): Promise<Pago[]> {

@@ -31,13 +31,6 @@ describe('Frontera del dinero — un solo escritor del saldo de una factura', ()
       archivo: 'modules/facturacion/aplicador-factura.service.ts',
       motivo:  'ES la frontera: el único aplicador.',
     },
-    {
-      archivo: 'modules/pagos/pagos.service.ts',
-      motivo:
-        'DEUDA CONOCIDA — `eliminar()` deshace un pago con su propio UPDATE. Lo sustituye ' +
-        'el extorno atómico de F4, que revierte recalculando desde `pago_aplicaciones` en ' +
-        'vez de restar. Hasta entonces queda aquí, a la vista.',
-    },
   ];
 
   const ficherosTs = (dir: string): string[] => {
@@ -75,11 +68,11 @@ describe('Frontera del dinero — un solo escritor del saldo de una factura', ()
     expect(clandestinos).toEqual([]);
   });
 
-  it('la lista de autorizados no crece sin que alguien lo note', () => {
+  it('la lista de autorizados es UNA entrada: la frontera, y nada más (F4 cerró la última)', () => {
     // Si esto falla porque añadiste una entrada, has tomado una decisión de arquitectura:
     // que hay un segundo sitio legítimo desde donde el dinero entra en una factura.
     // Justifícala en el commit, no en este número.
-    expect(AUTORIZADOS).toHaveLength(2);
+    expect(AUTORIZADOS).toHaveLength(1);
   });
 
   it('el aplicador conserva el guard de estado que la copia de adelantos había perdido', () => {
