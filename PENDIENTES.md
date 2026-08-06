@@ -35,6 +35,47 @@ funcionan hoy como un simple interruptor de encendido.
 
 ## 🟡 Abierto — funciones que faltan
 
+### 2-bis. Cobranza Etapa II — pasarelas de pago (PENDIENTE A PROPÓSITO)
+**Estado:** diseñada y contratada, **no construida**. Bloqueada por una puerta de
+estabilidad, no por falta de tiempo (2026-08-06).
+
+**⛔ Antes de escribir una sola línea, leer en este orden:**
+
+1. [`docs/cobranza-plan-implementacion.md`](docs/cobranza-plan-implementacion.md) §"⛔ ETAPA II"
+2. [`backend/src/modules/pagos/adaptadores/README.md`](backend/src/modules/pagos/adaptadores/README.md)
+3. `adaptador-cobro.interface.ts` — **el contrato ya existe y tiene tests. No se reinventa.**
+
+La Etapa I (registro de pagos) está completa y en producción: tres ejes forma/canal/cuenta
+receptora, un solo escritor del saldo de una factura, extorno atómico, arqueo de caja y
+clave de idempotencia por request.
+
+**Por qué importa que no se adelante:** faltan tres criterios que **no dependen de escribir
+código**, sino de que el ERP cobre dinero real unas semanas —30 días de invariante contable
+limpio (arrancó el 06/08, cierra ~05/09/2026), un extorno real revisado a mano y un cierre
+de caja mensual cuadrado—. Integrar proveedores sobre una frontera no demostrada se descubre
+con dinero de clientes en juego, y cada proveedor apilado multiplica el coste de corregirlo.
+
+**Orden correcto cuando la puerta se abra:** F8 (motor + `cobro_intento` + conciliador) →
+F9 (MercadoPago migrado al contrato; es el único con dinero real, y si la abstracción no lo
+absorbe se corrige con uno y no con tres) → F10 (nuevos proveedores) → F11 (POS/QR).
+
+**Lo que NO hay que hacer** —las tres ya salieron mal en este repo y hay tests que las
+bloquean—: crear un servicio de registro de pagos paralelo, aplicar dinero desde un
+adaptador o un webhook, e inferir reintentabilidad desde un código HTTP.
+
+```sql
+-- Criterio 1 de la puerta: debe dar 0 todos los días hasta el 05/09.
+SELECT COUNT(*) FROM (
+  SELECT f.id FROM facturas f JOIN pago_aplicaciones pa ON pa.factura_id = f.id
+   WHERE f.deleted_at IS NULL GROUP BY f.id, f.monto_pagado
+  HAVING ABS(f.monto_pagado::numeric - SUM(pa.monto_aplicado)::numeric) > 0.01) x;
+```
+
+**Tarea de negocio previa, sin código:** cargar las cuentas bancarias reales (número, CCI,
+titular) en Finanzas → Ajustes de Cobranza. La migración sembró las cajas pero no inventó
+cuentas de banco — eso es dato del negocio, y sin él los canales de transferencia no tienen
+cuenta que sugerir.
+
 ### 2. Campos de configuración del cliente que no hacen nada
 **Estado:** pendiente por decisión del usuario (2026-08-05).
 

@@ -452,9 +452,30 @@ invariante ya está roto hoy, F3 deja de ser la tercera fase y pasa a ser la pri
 
 ---
 
-# Qué falta para abrir la Etapa II
+# ⛔ ETAPA II — PENDIENTE. LEE ESTO ANTES DE ESCRIBIR UNA SOLA LÍNEA
 
 *Añadido 2026-08-06, al cerrar la Etapa I.*
+
+> **Si estás aquí porque te pidieron "conectar Niubiz" / "meter Culqi" / "cobrar con QR":
+> esta sección es el trabajo, no el preámbulo del trabajo.**
+>
+> La Etapa II está **diseñada y contratada, no construida**, y eso es una decisión tomada
+> con motivo — no una tarea que quedó a medias por falta de tiempo. Empezar a integrar
+> proveedores sin cumplir la puerta de estabilidad es el error concreto que este plan
+> existe para evitar.
+>
+> **Antes de tocar nada, lee en este orden:**
+>
+> 1. [`cobranza-arquitectura.md`](./cobranza-arquitectura.md) §6 (escenarios pesimistas)
+>    y §7.3 (el estado "en vuelo") — es el diseño, no una introducción.
+> 2. `backend/src/modules/pagos/adaptadores/adaptador-cobro.interface.ts` — el contrato
+>    ya existe, con sus reglas y sus tests. **No se reinventa.**
+> 3. Esta sección entera.
+>
+> **Lo que NO hay que hacer, por si la prisa aprieta:** crear un servicio de registro de
+> pagos nuevo, aplicar dinero desde un adaptador o un webhook, o inferir reintentabilidad
+> desde un código HTTP. Las tres cosas ya salieron mal una vez en este repositorio y hay
+> tests que las bloquean.
 
 La Etapa II (motor de cobro, `cobro_intento`, adaptadores de pasarela) está **diseñada y
 contratada, no construida**. El contrato del adaptador existe y está probado (F7); lo que

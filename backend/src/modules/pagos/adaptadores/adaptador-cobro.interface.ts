@@ -3,6 +3,11 @@ import { ResultadoOperacion } from '../../../common/domain/resultado-operacion';
 /**
  * CONTRATO DEL ADAPTADOR DE COBRO — la frontera hacia las pasarelas (F7).
  *
+ * ⛔ **ETAPA II PENDIENTE.** No hay ninguna implementación de este contrato, y no es un
+ * olvido: la Etapa II tiene una puerta de estabilidad que hay que cumplir antes.
+ * **Lee `./README.md` y `docs/cobranza-plan-implementacion.md` §"⛔ ETAPA II" antes de
+ * escribir el primer adaptador.**
+ *
  * Se define en la Etapa I aunque no exista todavía ninguna integración nueva. El motivo es
  * concreto: si se dejara para la Etapa II, **la primera integración lo definiría de facto**
  * y las demás se acomodarían a las peculiaridades de ese proveedor.
