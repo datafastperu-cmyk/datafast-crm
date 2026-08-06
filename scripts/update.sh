@@ -251,24 +251,48 @@ BACKEND_APPS=$(node -e "
 [[ -n "$BACKEND_APPS" ]] || err "No se encontraron procesos de backend en ${ECOSYSTEM}"
 log "Procesos de backend: ${BACKEND_APPS}"
 
+estado_pm2() {
+    # Devuelve "uptimeMs restarts status" del proceso indicado.
+    pm2 jlist 2>/dev/null | node -e "
+      let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+        let p=null; try { p=(JSON.parse(d)||[]).find(x=>x.name===process.argv[1]); } catch {}
+        if (!p) { console.log('-1 -1 missing'); return; }
+        console.log([Date.now()-p.pm2_env.pm_uptime, p.pm2_env.restart_time, p.pm2_env.status].join(' '));
+      });" "$1"
+}
+
 for app in $BACKEND_APPS; do
+    read -r _ REINICIOS_ANTES _ <<< "$(estado_pm2 "$app")"
+
+    # A través del ECOSYSTEM, no por nombre suelto.
+    #
+    # `pm2 restart <nombre> --update-env` relee el entorno DEL SHELL, no del fichero de
+    # configuración: el worker perdió así su `PORT: 4001`, arrancó en el 4000 —el de la
+    # API— y entró en bucle con EADDRINUSE. Con `--only` sobre el ecosystem, las variables
+    # salen de donde están declaradas.
+    #
     # `restart`, no `reload`: en modo fork el reload de PM2 no recarga el código.
-    pm2 restart "$app" --update-env >> "$LOG_FILE" 2>&1 \
+    pm2 restart "${ECOSYSTEM}" --only "$app" --update-env >> "$LOG_FILE" 2>&1 \
         || err "No se pudo reiniciar ${app} — el despliegue queda a medias, revisa $LOG_FILE"
 
-    # Verificación: un proceso que acaba de reiniciar tiene uptime de segundos. Si sigue
-    # con horas, pm2 no hizo nada y el código nuevo NO está corriendo.
-    sleep 2
-    UPTIME_MS=$(pm2 jlist 2>/dev/null | node -e "
-      let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-        const p=(JSON.parse(d)||[]).find(x=>x.name===process.argv[1]);
-        console.log(p ? Date.now() - p.pm2_env.pm_uptime : -1);
-      });" "$app")
+    # Se deja asentar ANTES de comprobar. Un proceso que arranca y muere también tiene
+    # uptime bajo, así que mirar solo el uptime da por bueno un bucle de reinicio — que es
+    # exactamente lo que pasó la primera vez que se escribió esta verificación.
+    sleep 15
+    read -r UPTIME_MS REINICIOS_DESPUES ESTADO <<< "$(estado_pm2 "$app")"
 
-    if [[ "$UPTIME_MS" -lt 0 ]] || [[ "$UPTIME_MS" -gt 60000 ]]; then
+    if [[ "$ESTADO" != "online" ]]; then
+        err "${app} no está online (estado: ${ESTADO}). Revisa: pm2 logs ${app} --err"
+    fi
+    if [[ "$UPTIME_MS" -lt 0 ]] || [[ "$UPTIME_MS" -gt 120000 ]]; then
         err "${app} NO reinició (uptime ${UPTIME_MS}ms). El código nuevo no está en ejecución."
     fi
-    log "${app} reiniciado y verificado"
+    # Un reinicio limpio incrementa el contador UNA vez. Si subió más, está reventando y
+    # volviendo a arrancar: online en el momento de mirar, inservible en realidad.
+    if [[ $((REINICIOS_DESPUES - REINICIOS_ANTES)) -gt 1 ]]; then
+        err "${app} está en BUCLE de reinicio (${REINICIOS_ANTES}→${REINICIOS_DESPUES}). Revisa: pm2 logs ${app} --err"
+    fi
+    log "${app} reiniciado y verificado (uptime ${UPTIME_MS}ms, reinicios ${REINICIOS_ANTES}→${REINICIOS_DESPUES})"
 done
 
 # ── 7. Restart frontend ───────────────────────────────────────────────────────
