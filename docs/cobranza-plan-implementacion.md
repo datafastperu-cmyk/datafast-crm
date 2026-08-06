@@ -112,10 +112,35 @@ No aplica.
 
 ---
 
-## F1 — Catálogos y backfill
+## F1 — Catálogos y backfill  ✅ EJECUTADA (2026-08-06)
 
-**La fase irreversible del proyecto.** Todo lo demás se puede rehacer; los datos migrados,
-no del todo.
+> **Riesgo revisado a la baja tras F0.** El plan la dimensionaba como *"la fase irreversible
+> del proyecto"*, con backfill por lotes, canal `LEGACY` y verificación de suma total. El
+> diagnóstico midió **2 pagos en total**: nada de eso hizo falta.
+>
+> **Hallazgo que cambió el diseño:** ya existían dos catálogos vivos —`formas_pago_isp`
+> (auto-sembrado con `Efectivo`, `Transferencia`, `Depósito`) y `bancos_isp` (auto-sembrado
+> con `Banco 01`)— servidos por `/facturacion-config/*` y consumidos por
+> `finanzas/registro`. **Son la causa raíz de H2 y H3**, no un operador despistado: ese
+> formulario manda el *rótulo* del catálogo como `metodoPago`, y autoselecciona el primer
+> banco de la lista enviándolo siempre, incluso en efectivo.
+>
+> Y son la razón de que hubiera dos verdades: `RegistrarPagoForm.tsx` habla el enum de
+> dominio en minúsculas y `finanzas/registro` habla estos catálogos. Los canales de banco se
+> **tradujeron** desde `bancos_isp` — no se perdió configuración del operador.
+>
+> Los catálogos legados siguen sirviendo su formulario hasta F5, que los retira. La
+> duplicación queda declarada en `canal-pago.service.ts` con qué hay que tocar en los dos
+> sitios si cambia el mapeo.
+
+**Resultado en producción:** 8 canales, 2 cajas (`Caja Principal`, `Caja Campo`), **0 pagos
+sin canal**, y los dos pagos existentes ya dicen dónde está su dinero. El pago en efectivo
+que arrastraba `banco = 'Banco 01'` se resolvió a `Oficina` ignorando el banco espurio.
+
+Las cuentas bancarias reales (número, CCI, titular) **no se sembraron**: las carga el
+operador. Inventarlas sería lo contrario de la directriz de "implementación desde cero".
+
+### Contenido original de la fase (referencia)
 
 ### Migraciones
 
