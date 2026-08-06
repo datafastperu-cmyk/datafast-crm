@@ -36,4 +36,18 @@ export class PagoAplicacion {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  /**
+   * Cuándo esta imputación se volcó sobre la factura.
+   *
+   * La fila se crea al registrar el pago —es la DECLARACIÓN de qué cubre ese dinero—, pero
+   * el efecto sobre el comprobante puede ocurrir después (un pago pendiente que un
+   * supervisor verifica días más tarde). Separarlos es lo que hace la aplicación
+   * idempotente: reintentar solo toca las filas con esto en NULL.
+   *
+   * Sin esta columna, reintentar era indistinguible de aplicar por primera vez, y el
+   * reconciliador reintentaba en bucle pagos ya aplicados (F0, 2026-08-06: 1123 pasadas).
+   */
+  @Column({ name: 'aplicado_en', type: 'timestamptz', nullable: true })
+  aplicadoEn: Date | null;
 }

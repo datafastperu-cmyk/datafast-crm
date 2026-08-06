@@ -111,6 +111,123 @@ describe('PagosService — reconciliación del cobro', () => {
     expect(svc.logger.error).toHaveBeenCalled();
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Bucle de reintentos sobre pagos YA aplicados (F0, 2026-08-06)
+  //
+  // Medido en producción: `pagos-reconciliacion` acumulaba 1123 ejecuciones reintentando
+  // cada 10 minutos DOS pagos cuyas facturas ya estaban saldadas. `aplicarPago` respondía
+  // "La factura ya está completamente pagada", el catch se lo tragaba, `aplicado_en` seguía
+  // NULL y volvía a empezar. Mismo patrón que los 1788 reintentos contra el MA5800.
+  //
+  // Dos causas encadenadas, y cada una ocultaba a la otra:
+  //  · `registrar()` aplicaba el dinero sin marcar `aplicado_en` (el 100% de los pagos
+  //    nacía en la cola de pendientes).
+  //  · reaplicar no era idempotente, así que nunca salían de esa cola.
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('un pago ya aplicado no se reaplica (bucle de 1123 pasadas, F0 06/08)', () => {
+    const conAplicaciones = (filas: any[]) => {
+      const facturacionSvc = { aplicarPago: jest.fn(async () => ({})) };
+      const marcadas: string[] = [];
+      const ds = {
+        query: jest.fn(async (sql: string) => {
+          if (/COUNT\(\*\)/i.test(sql))                    return [{ total: String(filas.length) }];
+          if (/FROM pago_aplicaciones/i.test(sql))         return filas.filter((f) => !f.aplicado_en);
+          return [];
+        }),
+        transaction: jest.fn(async (fn: any) => fn({
+          query: jest.fn(async (sql: string, params: any[]) => {
+            if (/UPDATE pago_aplicaciones/i.test(sql)) marcadas.push(params[0]);
+            return [];
+          }),
+        })),
+      };
+      const svc = Object.create(PagosService.prototype) as any;
+      svc.ds = ds;
+      svc.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
+      svc.facturacionSvc = facturacionSvc;
+      svc.pagoRepo = { update: jest.fn(async () => undefined) };
+      svc.verificarYReactivarContrato = jest.fn(async () => undefined);
+      return { svc, facturacionSvc, marcadas };
+    };
+
+    const pago = { id: 'p-1', empresaId: 'e-1', facturaId: 'f-1', fechaPago: '2026-08-06', monto: 128, reactivarServicio: false } as any;
+
+    it('con todas las imputaciones marcadas NO toca la factura, y aun así marca el pago', async () => {
+      const { svc, facturacionSvc } = conAplicaciones([
+        { id: 'a-1', factura_id: 'f-1', monto_aplicado: '64.00', aplicado_en: new Date() },
+        { id: 'a-2', factura_id: 'f-2', monto_aplicado: '64.00', aplicado_en: new Date() },
+      ]);
+
+      await svc.aplicarPagoAFacturaYContrato(pago, { sub: 'sistema' });
+
+      // Cero llamadas: es lo que rompe el bucle. Antes se llamaba siempre y siempre fallaba.
+      expect(facturacionSvc.aplicarPago).not.toHaveBeenCalled();
+      // Y el pago SALE de la cola: reintentar algo ya hecho es ÉXITO (`ya_en_destino`).
+      expect(svc.pagoRepo.update).toHaveBeenCalledWith('p-1', expect.objectContaining({
+        aplicadoEn: expect.any(Date),
+      }));
+    });
+
+    it('aplica solo las imputaciones pendientes de un consolidado a medias', async () => {
+      const { svc, facturacionSvc, marcadas } = conAplicaciones([
+        { id: 'a-1', factura_id: 'f-1', monto_aplicado: '64.00', aplicado_en: new Date() },
+        { id: 'a-2', factura_id: 'f-2', monto_aplicado: '64.00', aplicado_en: null },
+      ]);
+
+      await svc.aplicarPagoAFacturaYContrato(pago, { sub: 'sistema' });
+
+      expect(facturacionSvc.aplicarPago).toHaveBeenCalledTimes(1);
+      expect(facturacionSvc.aplicarPago).toHaveBeenCalledWith(
+        'f-2', 64, 'e-1', '2026-08-06', expect.anything(),
+      );
+      expect(marcadas).toEqual(['a-2']);
+    });
+
+    it('el volcado y su marca van en la MISMA transacción', async () => {
+      // Separarlos reabre el bucle por otra puerta: una caída entre ambos deja el dinero
+      // aplicado y la imputación sin marcar, y el siguiente reintento lo cuenta dos veces.
+      const { svc } = conAplicaciones([
+        { id: 'a-1', factura_id: 'f-1', monto_aplicado: '64.00', aplicado_en: null },
+      ]);
+
+      await svc.aplicarPagoAFacturaYContrato(pago, { sub: 'sistema' });
+
+      expect(svc.ds.transaction).toHaveBeenCalledTimes(1);
+      // El manager de esa TX es el que recibe `aplicarPago` — no una conexión suelta.
+      expect(svc.facturacionSvc.aplicarPago.mock.calls[0][4]).toBeDefined();
+    });
+
+    it('un pago anterior a pago_aplicaciones sigue aplicándose entero a su factura', async () => {
+      // Sin NINGUNA imputación registrada es histórico previo a la tabla. Se distingue de
+      // "todas ya aplicadas" por el total, no por las pendientes: confundirlos reaplicaría
+      // entero un pago ya volcado.
+      const { svc, facturacionSvc } = conAplicaciones([]);
+
+      await svc.aplicarPagoAFacturaYContrato(pago, { sub: 'sistema' });
+
+      expect(facturacionSvc.aplicarPago).toHaveBeenCalledWith(
+        'f-1', 128, 'e-1', '2026-08-06', expect.anything(),
+      );
+    });
+  });
+
+  it('el log de la reconciliación describe lo ocurrido, no lo intentado (F0 06/08)', async () => {
+    // Producción tenía, con el mismo timestamp, el error "queda PENDIENTE de aplicar" y el
+    // éxito "aplicado por reconciliación" del mismo pago. El segundo se emitía sin mirar
+    // nada: bastaba con que el catch interno no relanzara.
+    const { svc, ds } = hacer({ pendientes: [{ id: 'p-1' }] });
+    ds.query = jest.fn(async (sql: string) => {
+      if (/SELECT aplicado_en FROM pagos/i.test(sql)) return [{ aplicado_en: null }];
+      if (/FROM\s+pagos/i.test(sql))                  return [{ id: 'p-1' }];
+      return [];
+    }) as any;
+
+    await conCrons(() => svc.reconciliarPagosNoAplicados());
+
+    expect(svc.logger.warn).not.toHaveBeenCalledWith(expect.stringMatching(/aplicado por reconciliación/));
+    expect(svc.logger.error).toHaveBeenCalledWith(expect.stringMatching(/sigue SIN aplicarse/));
+  });
+
   it('sin RUN_CRONS no hace nada: solo una instancia PM2 reconcilia', async () => {
     const { svc, ds } = hacer({ pendientes: [{ id: 'p-1' }] });
     const previo = process.env.RUN_CRONS;

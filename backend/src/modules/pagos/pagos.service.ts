@@ -268,6 +268,7 @@ export class PagosService {
 
       // PASO 4 — Si auto-verificado: actualizar comprobantes y contrato dentro de la TX
       if (autoVerificado) {
+        const facturasVolcadas: string[] = [];
         for (const { factura: f, monto } of imputaciones) {
           // UPDATE atómico: evita la race condition leer-calcular-escribir.
           // Si el monto excede el saldo, el WHERE lo rechaza y lanzamos error.
@@ -298,7 +299,24 @@ export class PagosService {
               `ya está pagada o el monto S/ ${monto} excede el saldo`,
             );
           }
+          facturasVolcadas.push(f.id);
         }
+
+        // El dinero ya está en los comprobantes: marcarlo aquí, en la MISMA transacción que
+        // lo volcó, es lo que impide que estos dos hechos se separen.
+        //
+        // Este camino —el auto-verificado, que es el normal en caja— aplicaba el dinero sin
+        // dejar constancia: `aplicado_en` solo se escribía en `aplicarPagoAFacturaYContrato`,
+        // que es el camino de `verificar()`. Resultado medido en producción: el 100% de los
+        // pagos nacía marcado como trabajo pendiente y lo seguía estando para siempre, con
+        // el reconciliador reintentándolos en bucle (F0, 2026-08-06).
+        await manager.query(
+          `UPDATE pago_aplicaciones SET aplicado_en = NOW()
+            WHERE pago_id = $1 AND factura_id = ANY($2::uuid[])`,
+          [saved.id, facturasVolcadas],
+        );
+        saved.aplicadoEn = new Date();
+        await manager.update(Pago, saved.id, { aplicadoEn: saved.aplicadoEn });
 
         // Marcar para reactivación vía worker (el worker hace el UPDATE completo:
         // deuda_total=0, meses_deuda=0, en_prorroga=false, fecha_vencimiento, historial).
@@ -803,20 +821,52 @@ export class PagosService {
       // Un pago consolidado cubre varios: hay que aplicar a cada uno SU parte. Aplicar
       // `pago.monto` entero a `pago.facturaId` —lo que se hacía antes— dejaría el resto
       // de comprobantes impagos y al abonado creyendo que salió de deuda.
-      const aplicaciones: Array<{ factura_id: string; monto_aplicado: string }> =
+      // Solo las que NO se han volcado todavía. La idempotencia se DERIVA del estado de
+      // cada imputación en vez de implementarse en este método: si ya están todas marcadas
+      // no hay nada que hacer y eso es ÉXITO (`ya_en_destino`), no un fallo.
+      //
+      // Antes se releían todas y se reaplicaban siempre. Con el pago ya aplicado,
+      // `aplicarPago` respondía "La factura ya está completamente pagada", el catch de
+      // abajo se lo tragaba, `aplicado_en` seguía NULL y el reconciliador volvía a
+      // intentarlo diez minutos después — 1123 pasadas medidas en producción (F0,
+      // 2026-08-06). Es el mismo patrón de los 1788 reintentos contra el MA5800: una
+      // transición no idempotente en manos de un watcher.
+      const aplicaciones: Array<{ id: string; factura_id: string; monto_aplicado: string }> =
         await this.ds.query(
-          `SELECT factura_id, monto_aplicado FROM pago_aplicaciones WHERE pago_id = $1`,
+          `SELECT id, factura_id, monto_aplicado FROM pago_aplicaciones
+            WHERE pago_id = $1 AND aplicado_en IS NULL`,
           [pago.id],
         );
 
-      // Sin imputaciones registradas es un pago anterior a esta tabla: se conserva el
-      // comportamiento de entonces (todo el importe a su única factura).
-      const aImputar = aplicaciones.length
-        ? aplicaciones.map((a) => ({ facturaId: a.factura_id, monto: parseFloat(a.monto_aplicado) }))
-        : (facturaId ? [{ facturaId, monto: Number(pago.monto) }] : []);
+      // Sin NINGUNA imputación registrada es un pago anterior a esa tabla: se conserva el
+      // comportamiento de entonces (todo el importe a su única factura). Se distingue de
+      // "todas ya aplicadas" preguntando por el total, no por las pendientes — si no, un
+      // pago ya volcado se reaplicaría entero por este camino.
+      const [{ total }] = await this.ds.query<Array<{ total: string }>>(
+        `SELECT COUNT(*)::text AS total FROM pago_aplicaciones WHERE pago_id = $1`,
+        [pago.id],
+      );
+      const sinImputacionesJamas = Number(total) === 0;
 
-      for (const { facturaId: fId, monto } of aImputar) {
-        await this.facturacionSvc.aplicarPago(fId, monto, empresaId, pago.fechaPago);
+      const aImputar = sinImputacionesJamas
+        ? (facturaId ? [{ id: null, facturaId, monto: Number(pago.monto) }] : [])
+        : aplicaciones.map((a) => ({
+            id: a.id, facturaId: a.factura_id, monto: parseFloat(a.monto_aplicado),
+          }));
+
+      for (const { id: aplicacionId, facturaId: fId, monto } of aImputar) {
+        // El volcado y su marca, en la MISMA transacción: una caída entre ambos volvería a
+        // aplicar el dinero en el siguiente reintento. Es la única forma de que la marca
+        // signifique de verdad lo que dice.
+        await this.ds.transaction(async (manager) => {
+          await this.facturacionSvc.aplicarPago(fId, monto, empresaId, pago.fechaPago, manager);
+          if (aplicacionId) {
+            await manager.query(
+              `UPDATE pago_aplicaciones SET aplicado_en = NOW() WHERE id = $1`,
+              [aplicacionId],
+            );
+          }
+        });
         this.logger.log(`Pago ${pago.id} aplicado a factura ${fId} por S/ ${monto}`);
       }
 
@@ -914,8 +964,12 @@ export class PagosService {
     await this.heartbeat.ejecutar('pagos-reconciliacion', 600, async () => {
       // ── A. Pagos cobrados que no llegaron a aplicarse ──────────────
       // Margen de 2 minutos: un pago recién verificado puede estar aplicándose ahora mismo
-      // en otro proceso. Reintentarlo en paralelo no corrompe (aplicarPago es idempotente)
-      // pero ensucia los logs con un fallo que no existe.
+      // en otro proceso. Reintentarlo en paralelo no lo cuenta dos veces porque cada
+      // imputación se marca en la misma transacción que la vuelca, y solo se tocan las que
+      // siguen en NULL — lo sostiene `pagos.reconciliacion.spec.ts`, no este comentario.
+      //
+      // Aquí decía "aplicarPago es idempotente". Era falso, y nadie lo comprobó nunca: lo
+      // comprobó producción con 1123 reintentos sobre dos pagos ya aplicados.
       const pendientes = await this.ds.query<Array<{ id: string }>>(
         `SELECT id FROM pagos
           WHERE estado = 'verificado' AND aplicado_en IS NULL
@@ -932,7 +986,23 @@ export class PagosService {
             sub: 'sistema', empresaId: pago.empresaId, email: 'sistema@erp',
           } as JwtPayload;
           await this.aplicarPagoAFacturaYContrato(pago, userSistema);
-          this.logger.warn(`Pago ${id} aplicado por reconciliación — su aplicación original falló.`);
+
+          // El log describe lo que OCURRIÓ, no lo que se intentó. Antes cantaba
+          // "aplicado por reconciliación" siempre, incluso en el mismo milisegundo en que
+          // el catch interno acababa de tragarse el fallo: los logs de producción tenían
+          // el error y el éxito del mismo pago con el mismo timestamp. Ahora se relee el
+          // estado, que es la única fuente que puede confirmarlo.
+          const confirmacion = await this.ds.query<Array<{ aplicado_en: Date | null }>>(
+            `SELECT aplicado_en FROM pagos WHERE id = $1`, [id],
+          );
+          if (confirmacion?.[0]?.aplicado_en) {
+            this.logger.warn(`Pago ${id} aplicado por reconciliación — su aplicación original falló.`);
+          } else {
+            this.logger.error(
+              `Reconciliación: el pago ${id} sigue SIN aplicarse tras el reintento. ` +
+              `Requiere revisión manual — el abonado puede estar cortado habiendo pagado.`,
+            );
+          }
         } catch (e: any) {
           this.logger.error(`Reconciliación: el pago ${id} sigue sin aplicarse: ${e?.message}`);
         }

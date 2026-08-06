@@ -3,7 +3,7 @@ import {
   BadRequestException, ConflictException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { NOTIFICATION_EVENTS } from '../notificaciones/events/notification.events';
@@ -664,11 +664,20 @@ export class FacturacionService {
   // ────────────────────────────────────────────────────────────
   async aplicarPago(
     facturaId: string, montoPago: number, empresaId: string, fechaPago: string,
+    manager?: EntityManager,
   ): Promise<Factura> {
+    // `manager` permite que quien llama meta este UPDATE en SU transacción, junto con la
+    // marca de la imputación. Los dos hechos —"el dinero entró en la factura" y "esta
+    // imputación ya se volcó"— tienen que confirmarse o deshacerse juntos: si se separan,
+    // una caída entre ambos vuelve a aplicar el mismo dinero al reintentar.
+    const ejecutar = manager
+      ? (sql: string, params: unknown[]) => manager.query(sql, params)
+      : (sql: string, params: unknown[]) => this.ds.query(sql, params);
+
     // UPDATE atómico: elimina la race condition de leer-calcular-escribir.
     // La condición del WHERE valida estado y que el monto no exceda el saldo
     // pendiente (tolerancia de 1 centavo para redondeos de punto flotante).
-    const result = filasUpdateReturning<{ id: string; estado: string }>(await this.ds.query(`
+    const result = filasUpdateReturning<{ id: string; estado: string }>(await ejecutar(`
       UPDATE facturas
       SET
         monto_pagado = monto_pagado::numeric + $3::numeric,
@@ -696,6 +705,14 @@ export class FacturacionService {
       throw new BadRequestException(
         `El monto S/ ${montoPago.toFixed(2)} excede el saldo pendiente S/ ${saldo.toFixed(2)}`,
       );
+    }
+
+    // Dentro de una transacción ajena, el estado definitivo aún no existe: leerlo por fuera
+    // devolvería la fila previa al UPDATE, y generar el PDF aquí lo produciría a partir de
+    // datos que el commit todavía puede deshacer. Se lee por el mismo manager y el PDF lo
+    // dispara quien cierra la transacción.
+    if (manager) {
+      return manager.findOneOrFail(Factura, { where: { id: facturaId, empresaId } });
     }
 
     const actualizada = await this.findOne(facturaId, empresaId);

@@ -27,7 +27,12 @@ export enum EstadoPago {
 @Index(['empresaId', 'estado'])
 @Index(['clienteId', 'fechaPago'])
 @Index(['facturaId'])
-@Index(['empresaId', 'metodoPago', 'numeroOperacion'], { unique: true, where: 'numero_operacion IS NOT NULL' })
+// Unicidad del número de operación por empresa, SIN el método de pago: un mismo código no
+// se repite aunque uno sea Yape y otro transferencia. La declaración incluía `metodoPago` y
+// la base de datos no —la migración 035 lo quitó a propósito—, así que regenerar el esquema
+// desde las entidades habría reinstalado una restricción MÁS DÉBIL que la vigente y abierto
+// la puerta al duplicado que hoy está cerrado (deriva detectada en el diagnóstico F0).
+@Index(['empresaId', 'numeroOperacion'], { unique: true, where: 'numero_operacion IS NOT NULL' })
 export class Pago {
   @Column({ primary: true, generated: 'uuid' })
   id: string;
