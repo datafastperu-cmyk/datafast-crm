@@ -68,8 +68,11 @@ const CENTRO_INICIAL: [number, number] = [
  * Es XSS almacenado, y el vector de entrada es un formulario de alta que cualquier
  * vendedor puede rellenar.
  */
-function escaparHtml(s: string): string {
-  return s
+function escaparHtml(s: string | null | undefined): string {
+  // Tolera nulos: un campo vacío debe dejar un hueco en la ficha, no reventarla entera.
+  // Ocurrió — el cliente API devolvía el sobre de la respuesta en vez de su contenido, y el
+  // popup se quedó mudo porque el primer campo indefinido lanzó antes de pintar nada.
+  return String(s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

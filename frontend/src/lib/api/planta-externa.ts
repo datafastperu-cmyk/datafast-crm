@@ -328,8 +328,11 @@ export const plantaExternaApi = {
    * movimiento del mapa en una descarga del padrón de la zona.
    */
   abonadoMapa: async (contratoId: string): Promise<AbonadoMapa | null> => {
+    // `data.data`, como el resto de este archivo: la API envuelve todo en
+    // `{ success, message, data }`. Devolver `data` entrega el sobre en vez de la carta, y
+    // cada campo leído sale `undefined` sin que nada falle hasta que alguien lo usa.
     const { data } = await api.get(`/planta-externa/mapa/abonado/${contratoId}`);
-    return data ?? null;
+    return data.data ?? null;
   },
 
   mapa: async (params: {
