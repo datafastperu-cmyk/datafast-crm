@@ -211,9 +211,34 @@ efectivo no tiene nº de operación"*.
 
 ---
 
-## F3 — Frontera única
+## F3 — Frontera única  ✅ EJECUTADA (2026-08-06)
 
-**La fase que justifica el proyecto.** Sin UI, sin migraciones, y es la de mayor valor.
+> **El mapa real resultó ser más grande que el previsto.** No eran tres escritores sino
+> **cuatro copias del mismo UPDATE**, más un quinto camino latente.
+>
+> **Hallazgo principal:** las copias no divergieron de golpe — divergieron en la corrección
+> que solo se aplicó a una. La de `adelantos` había perdido el guard
+> `estado NOT IN ('pagada','anulada')` y la tolerancia de un céntimo: **aplicaba el saldo a
+> favor del abonado contra comprobantes ANULADOS**, consumiendo su adelanto a cambio de nada.
+>
+> **Corrección al plan:** el aplicador no podía quedarse dentro de `FacturacionService`.
+> `AdelantosModule` está deliberadamente fuera de pagos y de facturación para no crear el
+> ciclo entre ambos, así que no puede importar uno. La frontera se extrajo a
+> `AplicadorFacturaService` + su propio módulo, sin más dependencia que la conexión. Si es
+> una regla del sistema, tiene que ser una pieza que cualquiera pueda usar.
+>
+> **Quinto camino, eliminado:** el job `PROCESAR_PAGO` era un segundo aplicador que nadie
+> encolaba. No era código muerto inofensivo: mantenía `fecha_ultimo_pago`, el campo contra
+> el que se medía el corte por mora, y por eso el 05/08 se cortó a James Pena al día
+> siguiente de pagar. El corte ya se corrigió mirando la factura; esto retira el arma.
+>
+> **Deuda declarada, no escondida:** `eliminar()` sigue con su propio UPDATE y figura
+> **en la lista de autorizados del test**, con el motivo y su sustituto (F4). A la vista.
+
+**Verificado en producción:** invariante 0 divergencias, 0 pagos sin aplicar, y el primer
+tick del reconciliador tras el despliegue sin descuadres ni bucle. Suite completa: 570 tests.
+
+### Contenido original de la fase (referencia)
 
 ### Trabajo
 
