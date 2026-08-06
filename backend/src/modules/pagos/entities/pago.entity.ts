@@ -95,7 +95,11 @@ export class Pago {
    * Un segundo envío con la misma clave devuelve el pago existente, no un error: repetir
    * el envío no es una equivocación del cajero, es la red o el ratón.
    */
-  @Column({ name: 'idempotency_key', length: 64, nullable: true })
+  // `type` EXPLÍCITO: con SWC, un `string | null` sin él se emite como `Object` y TypeORM
+  // tumba el arranque con "Data type Object is not supported by postgres". Es un fallo en
+  // frío, así que no aparece hasta que el proceso se reinicia de verdad — y aquí no lo
+  // hizo durante once horas por el bug del `update.sh`, que lo mantuvo oculto.
+  @Column({ name: 'idempotency_key', type: 'varchar', length: 64, nullable: true })
   idempotencyKey: string | null;
 
   @Column({ name: 'numero_cuenta', length: 50, nullable: true })
