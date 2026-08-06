@@ -63,16 +63,12 @@ aparte que toca la numeración fiscal.
 
 ## 🟠 Deuda técnica
 
-### 4. `auditoria_logs` sin política de retención
-13 MB, de los cuales **24.670 filas (95%) son eco de peticiones HTTP** que escribe el
-`AuditInterceptor` para cada request. Crece sin límite y nadie la recorta.
-
 ### 5. Tests que faltan
-- Vista unificada del Log y su filtro de ruido: validados a mano contra la base real, sin
-  test que lo fije.
+- Vista unificada del Log: validada a mano contra la base real, sin test que lo fije.
 - La emisión diaria por ciclo de cliente tiene tests de la política de fechas
   (`politica-facturacion.service.spec.ts`, 11 casos) pero no de la selección de a quién se
-  emite cada día.
+  emite cada día. **Justo ahí estuvo el fallo del 06/08**, que no lo detectó ningún test
+  sino una verificación manual contra producción.
 
 ### 6. Colisión de timestamps en migraciones
 `FnSnOnuNormalizado1791800000035` y `CreatePagoAplicaciones1791800000035` comparten
@@ -98,9 +94,15 @@ por empresa a correr **todos los días** evaluando el ciclo de cada abonado
 (`diaPago − crearFactura`). Un fallo aquí no afecta a un cliente: afecta a todo el parque
 a la vez y de madrugada.
 
-Con la configuración actual (día de pago 28, emisión 5 días antes) la primera emisión real
-es **el día 23**. Verificación en seco disponible sin esperar: consultar qué abonados
-emitirían cada día y con qué vencimiento y periodo.
+**Verificación en seco hecha el 06/08** — y encontró un fallo que ya estaba tumbando la
+generación (ver "Cerrado"). Tras corregirlo, el próximo ciclo queda así:
+
+| Abonado | Se emite | Vence | Corte | Periodo (prepago) |
+|---|---|---|---|---|
+| James Pena / Piero Escobar | 23/08 | 28/08 | 04/09 | septiembre |
+
+Sigue sin ejercitarse la emisión REAL: la del 23/08 es la primera. Conviene mirar los logs
+del worker esa madrugada.
 
 ### 10. "Solo registrar" no tiene red de seguridad
 Cobra sin reactivar el servicio (baja voluntaria que salda su último comprobante). Si se
@@ -110,6 +112,18 @@ watcher lo levanta ni avisa. Queda en auditoría con la marca `SIN reactivar ser
 ---
 
 ## ✅ Cerrado (para no volver a levantarlo)
+
+- **La generación de facturas estaba MUERTA en producción (06/08).** `findContratosParaFacturar`
+  filtraba por `co.estado IN ('activo', 'prorroga')` y el estado `prorroga` no existe en el
+  enum: Postgres no devuelve menos filas, **rechaza la consulta entera**. El job falló sus
+  3 intentos esa madrugada y el día 23 no habría salido ni una factura. El literal era
+  preexistente pero estaba latente mientras la generación corría un día al mes. Corregido
+  en los tres sitios donde aparecía (facturación y dos consultas de velocidad) y fijado con
+  `estados-sql-validos.spec.ts`, que recorre el código y falla si algún SQL compara
+  `co.estado` con un valor fuera del enum.
+- **`auditoria_logs` sin retención y clasificada por el texto de la descripción (06/08).**
+  Ahora hay columna `tipo` que decide quien escribe, y un cron diario que caduca solo el eco
+  técnico con más de 90 días. Lo de negocio no se borra nunca.
 
 - **Corte indebido del 05/08** (James Pena): el cron medía la mora desde el alta del
   contrato y no respetaba prórrogas. Corregido y desplegado.
