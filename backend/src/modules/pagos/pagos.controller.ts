@@ -17,6 +17,7 @@ import { memoryStorage } from 'multer';
 
 import { PagosService }   from './pagos.service';
 import { AdelantosService } from './adelantos.service';
+import { CanalPagoService } from './canal-pago.service';
 import {
   RegistrarPagoDto, VerificarPagoDto, ConciliarPagoDto,
   ActualizarPagoDto, FilterPagoDto, CrearPreferenciaDto,
@@ -37,6 +38,7 @@ export class PagosController {
   constructor(
     private readonly svc: PagosService,
     private readonly adelantosSvc: AdelantosService,
+    private readonly canalSvc: CanalPagoService,
   ) {}
 
   // ── POST /pagos — Registrar pago ──────────────────────────
@@ -95,6 +97,24 @@ export class PagosController {
   @ApiOperation({ summary: 'Pagos pendientes de verificación manual' })
   async findPendientes(@CurrentUser() user: JwtPayload) {
     return StdResponse.ok(await this.svc.findPendientes(user.empresaId));
+  }
+
+  // ── GET /pagos/canales — Canales de cobro configurados ────
+  //
+  // `soloManuales` deja fuera los que solo crea una pasarela (MercadoPago): ofrecerlos en
+  // la caja permitiría registrar a mano un cobro que el webhook va a registrar solo, y el
+  // ingreso acabaría contado dos veces.
+  @Get('canales')
+  @RequirePermission('pagos:view')
+  @SetMetadata('skipAudit', true)
+  @ApiOperation({ summary: 'Canales de cobro activos (forma, cuenta sugerida, requisitos)' })
+  async getCanales(
+    @CurrentUser() user: JwtPayload,
+    @Query('soloManuales') soloManuales?: string,
+  ) {
+    return StdResponse.ok(
+      await this.canalSvc.listar(user.empresaId, soloManuales === 'true'),
+    );
   }
 
   // ── GET /pagos/cuentas — Cuentas bancarias ────────────────

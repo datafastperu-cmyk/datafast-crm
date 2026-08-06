@@ -10,9 +10,11 @@ import { PagosController }     from './pagos.controller';
 import { PagosService }        from './pagos.service';
 import { PagoRepository }      from './repositories/pago.repository';
 import { MercadoPagoService }  from './mercadopago.service';
+import { CanalPagoService }    from './canal-pago.service';
 
 import { Pago, CuentaBancaria } from './entities/pago.entity';
 import { PagoAplicacion } from './entities/pago-aplicacion.entity';
+import { CanalPago }      from './entities/canal-pago.entity';
 import { AdelantosModule } from './adelantos.module';
 
 // Importar módulos con los que interactúa
@@ -22,7 +24,7 @@ import { AuthModule }         from '../auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Pago, CuentaBancaria, PagoAplicacion]),
+    TypeOrmModule.forFeature([Pago, CuentaBancaria, PagoAplicacion, CanalPago]),
     BullModule.registerQueue({ name: QUEUES.COBRANZA }),
     AdelantosModule,
 
@@ -49,10 +51,12 @@ import { AuthModule }         from '../auth/auth.module';
     PagosService,
     PagoRepository,
     MercadoPagoService,
+    CanalPagoService,
   ],
   exports: [
     PagosService,
     PagoRepository,
+    CanalPagoService,
   ],
 })
 export class PagosModule {}

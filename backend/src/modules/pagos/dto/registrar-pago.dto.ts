@@ -81,6 +81,26 @@ export class RegistrarPagoDto {
   @MaxLength(100)
   banco?: string;
 
+  /**
+   * El medio concreto por el que entró el dinero (Yape, BCP, la oficina).
+   *
+   * Opcional durante la transición: los dos formularios vivos siguen mandando
+   * `metodoPago` + `banco`, y el backend resuelve el canal a partir de eso
+   * (`CanalPagoService.resolverDesdeLegacy`). Pasa a obligatorio en F5, cuando el
+   * formulario nuevo lo envíe y no haya nada que adivinar.
+   */
+  @IsOptional()
+  @IsUUID('4')
+  canalPagoId?: string;
+
+  /**
+   * Dónde entró el dinero. Si no viene, se toma la cuenta por defecto del canal.
+   * Enviarla explícitamente requiere permiso: cambiarla es un movimiento de tesorería.
+   */
+  @IsOptional()
+  @IsUUID('4')
+  cuentaReceptoraId?: string;
+
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

@@ -11,6 +11,7 @@ import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat
 import { PagosService }        from './pagos.service';
 import { PagoRepository }      from './repositories/pago.repository';
 import { AdelantosService }     from './adelantos.service';
+import { CanalPagoService }     from './canal-pago.service';
 import { MercadoPagoService }  from './mercadopago.service';
 import { FacturacionService }  from '../facturacion/facturacion.service';
 import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
@@ -181,6 +182,15 @@ describe('PagosService', () => {
         // Saldo a favor: el registro de adelantos consulta la deuda antes de admitirlos.
         { provide: AdelantosService, useValue: {
           assertSinDeuda: jest.fn(), saldoAFavor: jest.fn(), aplicarSaldoAFactura: jest.fn(),
+        } },
+        // Los tres ejes del ingreso (F1). Por defecto NO resuelve canal: es el escenario
+        // del método legado que el catálogo todavía no cubre, y el cobro debe registrarse
+        // igual — sin canal, pero registrado. Los tests del propio catálogo viven en
+        // `canal-pago.service.spec.ts`.
+        { provide: CanalPagoService, useValue: {
+          porId:              jest.fn(),
+          resolverDesdeLegacy: jest.fn().mockResolvedValue(null),
+          calcularComision:   jest.fn((_c: unknown, monto: number) => ({ comision: 0, neto: monto })),
         } },
         { provide: WatcherHeartbeatService, useValue: {
           ejecutar: jest.fn(async (_n: string, _i: number, fn: any) => fn()),

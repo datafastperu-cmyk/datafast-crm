@@ -69,6 +69,36 @@ export class Pago {
   @Column({ name: 'numero_cuenta', length: 50, nullable: true })
   numeroCuenta: string;  // Últimos 4 dígitos de la cuenta destino
 
+  // ── Los tres ejes del ingreso ────────────────────────────
+  //
+  // `metodoPago` y `banco` (arriba) son el modelo antiguo: dos columnas de texto libre que
+  // mezclaban forma y canal y no decían dónde entró el dinero. Se CONSERVAN escritas —el
+  // histórico se lee tal como se registró— pero el modelo vivo es este.
+
+  /** El medio concreto: Yape, BCP, la oficina. La forma se deriva del canal. */
+  @Column({ name: 'canal_pago_id', type: 'uuid', nullable: true })
+  canalPagoId: string | null;
+
+  /**
+   * Dónde entró el dinero. Sin esto el ERP sabía que entraron S/ 85 por Yape y no sabía
+   * en qué cuenta estaban: no había tesorería, solo un registro de cobros.
+   */
+  @Column({ name: 'cuenta_receptora_id', type: 'uuid', nullable: true })
+  cuentaReceptoraId: string | null;
+
+  /** Lo que retuvo el canal. Es GASTO, no un menor cobro. */
+  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0,
+            transformer: { to: (v: number) => v, from: (v: string | null) => (v === null ? 0 : parseFloat(v)) } })
+  comision: number;
+
+  /**
+   * `monto - comision`: lo que hay que buscar en el extracto bancario al conciliar.
+   * `monto` sigue siendo el bruto y es lo único que salda la factura — el abonado pagó eso.
+   */
+  @Column({ name: 'monto_neto', type: 'numeric', precision: 12, scale: 2, nullable: true,
+            transformer: { to: (v: number) => v, from: (v: string | null) => (v === null ? null : parseFloat(v)) } })
+  montoNeto: number | null;
+
   // ── Estado y verificación ────────────────────────────────
   @Column({
     type: 'enum',

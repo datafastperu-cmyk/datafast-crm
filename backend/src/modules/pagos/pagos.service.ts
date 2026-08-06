@@ -21,6 +21,7 @@ import { JwtPayload }           from '../../common/decorators/current-user.decor
 import { Pago, EstadoPago, CuentaBancaria } from './entities/pago.entity';
 import { PagoAplicacion } from './entities/pago-aplicacion.entity';
 import { AdelantosService } from './adelantos.service';
+import { CanalPagoService } from './canal-pago.service';
 import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
 import { RegistrarPagoDto } from './dto/registrar-pago.dto';
@@ -51,12 +52,13 @@ export class PagosService {
     @InjectDataSource() private readonly ds: DataSource,
     private readonly heartbeat: WatcherHeartbeatService,
     private readonly adelantosSvc: AdelantosService,
+    private readonly canalSvc:     CanalPagoService,
     @InjectQueue(QUEUES.COBRANZA) private readonly cobranzaQueue: Queue,
   ) {}
 
   // ────────────────────────────────────────────────────────────
   // REGISTRAR PAGO — Fase 2: Transacción ACID completa
-  // 1. Idempotencia por (empresaId, metodoPago, numeroOperacion)
+  // 1. Idempotencia por (empresaId, numeroOperacion)
   // 2. Validar factura + cargar contrato asociado
   // 3. Normalizar casing DTO→entity + determinar auto-verificación
   // 4. Persistir pago, actualizar factura y contrato dentro de la TX
@@ -216,6 +218,23 @@ export class PagosService {
       const autoVerificado = this.esAutoVerificado(dto, user);
       const estadoInicial  = autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION;
 
+      // ── Los tres ejes: forma, canal y cuenta receptora ──────────────────────
+      // Si el formulario ya manda el canal, manda el canal. Si no —los dos formularios
+      // vivos todavía envían `metodoPago` + `banco`—, se resuelve por compatibilidad.
+      // No se rechaza el cobro si no se reconoce: un pago sin clasificar es mejor que un
+      // abonado que no puede pagar porque el ERP no supo etiquetar su método.
+      const canal = dto.canalPagoId
+        ? await this.canalSvc.porId(dto.canalPagoId, empresaId, manager)
+        : await this.canalSvc.resolverDesdeLegacy(empresaId, dto.metodoPago, dto.banco, manager);
+
+      // La cuenta explícita gana sobre la del canal: el operador con permiso puede
+      // corregirla en el mostrador (un cobro de campo que acaba en la caja de oficina).
+      const cuentaReceptoraId = dto.cuentaReceptoraId ?? canal?.cuentaReceptoraDefaultId ?? null;
+
+      // `monto` es el BRUTO y es lo único que salda la factura. El neto es lo que llega a
+      // la cuenta, y por tanto lo que hay que buscar en el extracto al conciliar.
+      const { comision, neto } = this.canalSvc.calcularComision(canal, dto.monto);
+
       const pago = manager.create(Pago, {
         empresaId,
         clienteId:       factura.clienteId,
@@ -225,8 +244,15 @@ export class PagosService {
         contratoId:      factura.contratoId ?? null,
         monto:           dto.monto,
         moneda:          'PEN',
+        // Modelo antiguo: se sigue escribiendo. El histórico se lee tal como se registró,
+        // y conservarlo es lo que hace reversible la migración de catálogos.
         metodoPago:      dto.metodoPago,
         banco:           dto.banco ?? null,
+        // Modelo vivo.
+        canalPagoId:       canal?.id ?? null,
+        cuentaReceptoraId,
+        comision,
+        montoNeto:         neto,
         numeroOperacion: dto.numeroOperacion ?? null,
         fechaPago:       dto.fechaPago ?? new Date().toISOString().split('T')[0],
         estado:          estadoInicial,
@@ -502,6 +528,14 @@ export class PagosService {
   ): Promise<Pago> {
     const autoVerificado = this.esAutoVerificado(dto, user);
 
+    // Un adelanto es dinero que entró igual que cualquier otro: tiene canal y tiene cuenta
+    // receptora. Omitirlos aquí lo dejaría fuera del arqueo de caja, que es justo donde
+    // más se nota un cobro sin imputar.
+    const canal = dto.canalPagoId
+      ? await this.canalSvc.porId(dto.canalPagoId, empresaId, manager)
+      : await this.canalSvc.resolverDesdeLegacy(empresaId, dto.metodoPago, dto.banco, manager);
+    const { comision, neto } = this.canalSvc.calcularComision(canal, dto.monto);
+
     const pago = manager.create(Pago, {
       empresaId,
       clienteId:       dto.clienteId!,
@@ -511,6 +545,10 @@ export class PagosService {
       moneda:          'PEN',
       metodoPago:      dto.metodoPago,
       banco:           dto.banco ?? null,
+      canalPagoId:       canal?.id ?? null,
+      cuentaReceptoraId: dto.cuentaReceptoraId ?? canal?.cuentaReceptoraDefaultId ?? null,
+      comision,
+      montoNeto:         neto,
       numeroOperacion: dto.numeroOperacion ?? null,
       fechaPago:       dto.fechaPago ?? new Date().toISOString().split('T')[0],
       estado:          autoVerificado ? EstadoPago.VERIFICADO : EstadoPago.PENDIENTE_VERIFICACION,
