@@ -52,11 +52,11 @@ export class AuditoriaService {
     // El AuditInterceptor escribe una fila por CADA request HTTP, con la descripción
     // "POST /api/v1/... (123ms)". Eso es un access log, no actividad de negocio, y supone
     // el 95% de la tabla: sin separarlo, buscar quién cobró o a quién se cortó es
-    // imposible. Se distingue por la forma de la descripción para no necesitar migrar
-    // 25.000 filas ya escritas. Solo aplica a `auditoria_logs`: las demás fuentes son
+    // imposible. La clasificación la pone quien ESCRIBE (columna `tipo`), no se adivina
+    // aquí por la forma del texto. Solo aplica a `auditoria_logs`: las demás fuentes son
     // todas de negocio.
     const filtroRuido = soloNegocio
-      ? `AND a.descripcion !~ '^(GET|POST|PATCH|PUT|DELETE) /'`
+      ? `AND a.tipo = 'negocio'`
       : '';
 
     // Filtros comunes, ya sobre el conjunto unificado.
@@ -182,7 +182,7 @@ export class AuditoriaService {
    * hizo una persona y cuánta el sistema solo, y si hubo intentos de acceso fallidos.
    */
   async getResumen(empresaId: string) {
-    const negocio = `descripcion !~ '^(GET|POST|PATCH|PUT|DELETE) /'`;
+    const negocio = `tipo = 'negocio'`;
 
     // Las cifras cuentan las TRES fuentes que ve el listado; si contaran solo auditoría,
     // la cabecera diría menos eventos de los que la tabla muestra debajo.

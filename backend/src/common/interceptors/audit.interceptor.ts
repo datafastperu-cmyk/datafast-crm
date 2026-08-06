@@ -110,6 +110,9 @@ export class AuditInterceptor implements NestInterceptor {
                 modulo,
                 entidadId:    entidadIdFinal,
                 descripcion:  `${method} ${req.path} (${duracion}ms)`,
+                // Eco de una petición, no actividad de negocio: se marca para que el Log
+                // del Sistema lo separe y la retención pueda caducarlo.
+                tipo:         'http',
                 req,
                 datosAnteriores: snapshotAnterior ?? undefined,
                 datosNuevos:     entidadIdFinal

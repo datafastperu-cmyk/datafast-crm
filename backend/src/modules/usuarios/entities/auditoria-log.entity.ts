@@ -14,6 +14,8 @@ export class AuditoriaLog {
   @Column({ name: 'user_agent',    nullable: true }) userAgent: string;
   @Column({ name: 'metodo_http',   nullable: true }) metodoHttp: string;
   @Column({ name: 'ruta',          nullable: true }) ruta: string;
+  /** 'negocio' = actividad del ERP (se conserva) | 'http' = eco de petición (caduca). */
+  @Column({ name: 'tipo', type: 'varchar', length: 10, default: 'negocio' }) tipo: string;
   @Column({ name: 'datos_anteriores', type: 'jsonb', nullable: true }) datosAnteriores: any;
   @Column({ name: 'datos_nuevos',  type: 'jsonb', nullable: true }) datosNuevos: any;
   @CreateDateColumn({ name: 'created_at' }) createdAt: Date;

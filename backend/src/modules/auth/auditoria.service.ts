@@ -15,6 +15,8 @@ export interface AuditParams {
   req?: Request;
   datosAnteriores?: Record<string, any>;
   datosNuevos?: Record<string, any>;
+  /** 'http' = eco de una petición (caduca con la retención) | 'negocio' = actividad del ERP. */
+  tipo?: 'http' | 'negocio';
 }
 
 @Injectable()
@@ -43,6 +45,10 @@ export class AuditoriaService {
         userAgent:       params.req?.get('user-agent')?.substring(0, 300),
         metodoHttp:      params.req?.method,
         ruta:            params.req?.path,
+        // Lo decide quien escribe, que sabe lo que está escribiendo. Antes se adivinaba al
+        // leer, mirando si la descripción empezaba por un verbo HTTP: el día que un evento
+        // de negocio empezara así, desaparecía del Log sin que nadie lo notara.
+        tipo:            params.tipo ?? 'negocio',
       });
 
       // Guardar sin await para no bloquear el request principal
