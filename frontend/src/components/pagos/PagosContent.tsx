@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 
 import { pagosApi, type FiltrosPago } from '@/lib/api/facturacion';
-import apiClient from '@/lib/api';
 import { useAuthStore }               from '@/store/auth.store';
 import { zonasApi }                   from '@/lib/api/zonas';
 import { mikrotikApi }                from '@/lib/api/mikrotik';
@@ -39,7 +38,9 @@ export function PagosContent() {
   const { toast }   = useToast();
   const confirmar   = useConfirmar();
 
-  const puedeEliminarPago = useAuthStore((s) => s.tienePermiso)('pagos:delete');
+  // El permiso ahora es el del extorno: 'pagos:delete' autorizaba a BORRAR, que ya no
+  // es una operación posible. Un pago se anula, y eso lo decide quien puede extornar.
+  const puedeExtornar = useAuthStore((s) => s.tienePermiso)('pagos:extornar');
 
   const [filtros, setFiltros]   = useState<FiltrosPago>({ page: 1, limit: 25 });
   const [editandoPago, setEditandoPago] = useState<Pago | null>(null);
@@ -89,12 +90,19 @@ export function PagosContent() {
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
 
-  const { mutate: eliminar } = useMutation({
-    mutationFn: (id: string) => pagosApi.eliminar(id),
+  // Un pago no se elimina: se EXTORNA. Borrar la fila perdía el único rastro de que ese
+  // dinero existió y de quién lo cobró. El motivo es obligatorio porque decide si el
+  // dinero vuelve al abonado y si cortarle el servicio es legítimo o es un error nuestro.
+  const { mutate: extornar } = useMutation({
+    mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
+      pagosApi.extornar(id, motivo),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pagos'] });
       queryClient.invalidateQueries({ queryKey: ['pagos-resumen'] });
-      toast('Pago eliminado', { type: 'success' });
+      toast('Pago extornado', {
+        type: 'success',
+        description: 'La deuda del abonado vuelve a estar vigente.',
+      });
     },
     onError: (e) => toast(parseApiError(e), { type: 'error' }),
   });
@@ -422,19 +430,21 @@ export function PagosContent() {
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {!p.conciliado && puedeEliminarPago && (
+                        {!p.conciliado && puedeExtornar && (
                           <button
                             onClick={async () => {
                               const ok = await confirmar({
-                                titulo:    'Eliminar pago',
-                                mensaje:   'Se eliminará el pago y el saldo del comprobante volverá a quedar pendiente. Esta acción no se puede deshacer.',
-                                confirmar: 'Eliminar',
+                                titulo:    'Extornar pago',
+                                mensaje:   'El pago quedará anulado y la deuda del abonado volverá a estar vigente. El cobro NO se borra: queda registrado como extornado, con quién lo anuló. El servicio no se corta aquí — eso lo decide el ciclo de cobranza.',
+                                confirmar: 'Extornar',
                                 variante:  'peligro',
                               });
-                              if (ok) eliminar(p.id);
+                              // Motivo por defecto: el caso más frecuente es una
+                              // equivocación al registrar, y es culpa nuestra.
+                              if (ok) extornar({ id: p.id, motivo: 'error_registro' });
                             }}
                             className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                            title="Eliminar"
+                            title="Extornar"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -506,18 +516,18 @@ export function PagosContent() {
                       <Pencil className="w-4 h-4" />
                     </button>
                   )}
-                  {!p.conciliado && puedeEliminarPago && (
+                  {!p.conciliado && puedeExtornar && (
                     <button
                       onClick={async () => {
                         const ok = await confirmar({
-                          titulo:    'Eliminar pago',
-                          mensaje:   'Se eliminará el pago y el saldo del comprobante volverá a quedar pendiente. Esta acción no se puede deshacer.',
-                          confirmar: 'Eliminar',
+                          titulo:    'Extornar pago',
+                          mensaje:   'El pago quedará anulado y la deuda del abonado volverá a estar vigente. El cobro NO se borra: queda registrado como extornado, con quién lo anuló. El servicio no se corta aquí — eso lo decide el ciclo de cobranza.',
+                          confirmar: 'Extornar',
                           variante:  'peligro',
                         });
-                        if (ok) eliminar(p.id);
+                        if (ok) extornar({ id: p.id, motivo: 'error_registro' });
                       }}
-                      title="Eliminar"
+                      title="Extornar"
                       className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -626,32 +636,31 @@ function ModalEditarPago({
   onSuccess: () => void;
 }) {
   const { toast }                   = useToast();
-  const [metodoPago, setMetodoPago] = useState(pago.metodoPago ?? '');
-  const [banco, setBanco]           = useState(pago.banco ?? '');
+  const [canalId, setCanalId]       = useState((pago as any).canalPagoId ?? '');
+  const [cuentaId, setCuentaId]     = useState((pago as any).cuentaReceptoraId ?? '');
   const [fechaPago, setFechaPago]   = useState(pago.fechaPago ?? '');
   const [fechaHora]                 = useState(() => toDatetimeLocal((pago as any).registradoEn));
   const [numeroOp, setNumeroOp]     = useState(pago.numeroOperacion ?? '');
   const [notas, setNotas]           = useState(pago.notas ?? '');
   const [loading, setLoading]       = useState(false);
 
-  const { data: formasPago = [] } = useQuery<{ id: string; nombre: string }[]>({
-    queryKey: ['formas-pago-isp'],
-    queryFn:  () => apiClient.get('/facturacion-config/formas-pago').then(r => r.data.data ?? []),
-    staleTime: 5 * 60_000,
+  // Corregir por dónde entró un cobro se hace cambiando el CANAL, y el backend deriva de
+  // ahí el método y la cuenta. Editar el texto libre por su cuenta —como se hacía aquí
+  // leyendo `formas_pago_isp` y `bancos_isp`— desincronizaría los dos modelos: el reporte
+  // por canal diría una cosa y la columna histórica otra, sin que nada avisara.
+  const { data: canales = [] } = useQuery({
+    queryKey: ['canales-pago'], queryFn: () => pagosApi.getCanales(false), staleTime: 5 * 60_000,
   });
-
-  const { data: bancosOpciones = [] } = useQuery<{ id: string; nombre: string }[]>({
-    queryKey: ['bancos-isp'],
-    queryFn:  () => apiClient.get('/facturacion-config/bancos').then(r => r.data.data ?? []),
-    staleTime: 5 * 60_000,
+  const { data: cuentas = [] } = useQuery({
+    queryKey: ['cuentas-bancarias'], queryFn: pagosApi.getCuentasBancarias, staleTime: 5 * 60_000,
   });
 
   async function submit() {
     setLoading(true);
     try {
       await pagosApi.actualizar(pago.id, {
-        metodoPago:      metodoPago  || undefined,
-        banco:           banco        || undefined,
+        canalPagoId:     canalId      || undefined,
+        cuentaReceptoraId: cuentaId   || undefined,
         fechaPago:       fechaPago    || undefined,
         numeroOperacion: numeroOp     || undefined,
         notas:           notas        || undefined,
@@ -689,33 +698,36 @@ function ModalEditarPago({
         {/* Body */}
         <div className="px-5 py-4 space-y-4 overflow-y-auto">
 
-          {/* Forma de pago — lista dinámica */}
+          {/* Canal de cobro. Reemplaza al par "forma de pago" + "banco": eran dos listas
+              sueltas que el operador tenía que cruzar a mano, y de ahí salieron pagos en
+              efectivo con banco asignado. El backend deriva el método del canal. */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Forma de pago</label>
-            <select value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)} className={inputCls}>
-              <option value="">— Seleccionar —</option>
-              {formasPago.map((m) => (
-                <option key={m.id} value={m.nombre}>{m.nombre}</option>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Canal de cobro</label>
+            <select value={canalId} onChange={(e) => setCanalId(e.target.value)} className={inputCls}>
+              <option value="">— Sin cambios —</option>
+              {canales.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}{!c.activo && ' (desactivado)'}
+                </option>
               ))}
-              {/* Mantener el valor actual si no está en la lista dinámica */}
-              {metodoPago && !formasPago.some(m => m.nombre === metodoPago) && (
-                <option value={metodoPago}>{metodoPago}</option>
-              )}
             </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Registrado como: <strong>{pago.metodoPago}</strong>
+              {pago.banco ? ` · ${pago.banco}` : ''}
+            </p>
           </div>
 
-          {/* Banco — lista dinámica */}
+          {/* Dónde entró el dinero. Cambiarla es un movimiento de tesorería. */}
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Banco</label>
-            <select value={banco} onChange={(e) => setBanco(e.target.value)} className={inputCls}>
-              <option value="">— Sin banco —</option>
-              {bancosOpciones.map((b) => (
-                <option key={b.id} value={b.nombre}>{b.nombre}</option>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Cuenta receptora</label>
+            <select value={cuentaId} onChange={(e) => setCuentaId(e.target.value)} className={inputCls}>
+              <option value="">— Sin cambios —</option>
+              {cuentas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre ?? c.banco}
+                  {c.numeroCuenta ? ` ···${c.numeroCuenta.slice(-4)}` : ''} ({c.moneda})
+                </option>
               ))}
-              {/* Mantener el valor actual si no está en la lista dinámica */}
-              {banco && !bancosOpciones.some(b => b.nombre === banco) && (
-                <option value={banco}>{banco}</option>
-              )}
             </select>
           </div>
 

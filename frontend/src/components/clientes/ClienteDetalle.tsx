@@ -2378,7 +2378,8 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
   const { toast }         = useToast();
   const confirmar         = useConfirmar();
   const queryClient       = useQueryClient();
-  const puedeEliminarPago = useAuthStore((s) => s.tienePermiso)('pagos:delete');
+  // 'pagos:delete' autorizaba a BORRAR, que ya no es una operación posible.
+  const puedeExtornarPago = useAuthStore((s) => s.tienePermiso)('pagos:extornar');
   const [subTab, setSubTab]         = useState<FSubTab>('facturas');
   const [search, setSearch]         = useState('');
   const [showModal, setShowModal]     = useState(false);
@@ -2415,17 +2416,19 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
     onError: () => toast('No se pudo eliminar la factura', { type: 'error' }),
   });
 
-  const { mutate: eliminarPago } = useMutation({
-    mutationFn: (pagoId: string) => pagosApi.eliminar(pagoId),
+  // Un pago no se elimina: se EXTORNA. Borrar la fila perdía el único rastro de que ese
+  // dinero existió y de quién lo cobró.
+  const { mutate: extornarPago } = useMutation({
+    mutationFn: (pagoId: string) => pagosApi.extornar(pagoId, 'error_registro'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cliente-pagos',            clienteId] });
       queryClient.invalidateQueries({ queryKey: ['cliente-facturas',         clienteId] });
       queryClient.invalidateQueries({ queryKey: ['facturas-cliente-resumen', clienteId] });
       queryClient.invalidateQueries({ queryKey: ['cliente-contratos',        clienteId] });
       queryClient.invalidateQueries({ queryKey: ['cliente',                  clienteId] });
-      toast('Pago eliminado', { type: 'success' });
+      toast('Pago extornado', { type: 'success', description: 'La deuda del abonado vuelve a estar vigente.' });
     },
-    onError: (err: any) => toast(err?.response?.data?.message ?? 'No se pudo eliminar el pago', { type: 'error' }),
+    onError: (err: any) => toast(err?.response?.data?.message ?? 'No se pudo extornar el pago', { type: 'error' }),
   });
 
   const q         = search.toLowerCase();
@@ -2590,7 +2593,7 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                                   });
                                   if (ok) eliminarFactura(f.id);
                                 }}
-                                title="Eliminar"
+                                title="Extornar"
                                 className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -2678,16 +2681,16 @@ function TabFacturacion({ clienteId, contratos }: { clienteId: string; contratos
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {!(p as any).conciliado && puedeEliminarPago && (
+                            {!(p as any).conciliado && puedeExtornarPago && (
                               <button
                                 onClick={async () => {
                                   const ok = await confirmar({
-                                    titulo:    'Eliminar pago',
-                                    mensaje:   'Se eliminará el pago y el saldo del comprobante volverá a quedar pendiente. Esta acción no se puede deshacer.',
-                                    confirmar: 'Eliminar',
+                                    titulo:    'Extornar pago',
+                                    mensaje:   'El pago quedará anulado y la deuda del abonado volverá a estar vigente. El cobro NO se borra: queda registrado como extornado, con quién lo anuló.',
+                                    confirmar: 'Extornar',
                                     variante:  'peligro',
                                   });
-                                  if (ok) eliminarPago(p.id);
+                                  if (ok) extornarPago(p.id);
                                 }}
                                 title="Eliminar"
                                 className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-destructive transition-colors"

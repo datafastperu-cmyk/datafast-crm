@@ -39,6 +39,16 @@ export class ConciliarPagoDto {
 
 // ─── Editar metadatos de un pago ──────────────────────────────
 export class ActualizarPagoDto {
+  /** Corregir el canal es la forma correcta de corregir por dónde entró un cobro. */
+  @ApiPropertyOptional()
+  @IsOptional() @IsUUID('4')
+  canalPagoId?: string;
+
+  /** Mover solo la cuenta: el canal era correcto y el dinero acabó en otra caja. */
+  @ApiPropertyOptional()
+  @IsOptional() @IsUUID('4')
+  cuentaReceptoraId?: string;
+
   @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(100)
   metodoPago?: string;

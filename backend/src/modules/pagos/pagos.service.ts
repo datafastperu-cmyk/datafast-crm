@@ -1275,7 +1275,30 @@ export class PagosService {
     if (pago.conciliado) throw new BadRequestException('No se puede editar un pago conciliado');
 
     const updates: Record<string, any> = {};
-    if (dto.metodoPago      !== undefined) updates.metodoPago      = dto.metodoPago;
+
+    // Corregir por dónde entró un cobro se hace cambiando el CANAL, y entonces
+    // `metodo_pago` se deriva de él. Dejar que se edite el texto libre por su cuenta
+    // desincronizaría los dos modelos: el reporte por canal diría una cosa y la columna
+    // histórica otra, sin que nada avisara.
+    if (dto.canalPagoId !== undefined) {
+      const canal = await this.canalSvc.porId(dto.canalPagoId, empresaId);
+      updates.canalPagoId = canal.id;
+      updates.metodoPago  = canal.codigo;
+      // La cuenta explícita manda; si no viene, se hereda la del canal nuevo. Corregir el
+      // canal sin mover la cuenta dejaría el dinero contabilizado donde ya no entró.
+      updates.cuentaReceptoraId = dto.cuentaReceptoraId ?? canal.cuentaReceptoraDefaultId ?? null;
+      const { comision, neto } = this.canalSvc.calcularComision(canal, Number(pago.monto));
+      updates.comision  = comision;
+      updates.montoNeto = neto;
+    } else if (dto.cuentaReceptoraId !== undefined) {
+      // Mover solo la cuenta es legítimo: el canal era correcto y el dinero acabó en otra
+      // caja. Es un movimiento de tesorería y queda auditado como el resto.
+      updates.cuentaReceptoraId = dto.cuentaReceptoraId;
+    }
+
+    if (dto.metodoPago      !== undefined && dto.canalPagoId === undefined) {
+      updates.metodoPago    = dto.metodoPago;
+    }
     if (dto.banco           !== undefined) updates.banco           = dto.banco;
     if (dto.fechaPago       !== undefined) updates.fechaPago       = dto.fechaPago;
     if (dto.numeroOperacion !== undefined) updates.numeroOperacion = dto.numeroOperacion;
