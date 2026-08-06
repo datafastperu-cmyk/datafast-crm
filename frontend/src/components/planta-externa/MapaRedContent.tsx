@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as maplibregl from 'maplibre-gl';
-import type { Map as MapLibreMap, GeoJSONSource } from 'maplibre-gl';
+import type { Map as MapLibreMap, GeoJSONSource, DataDrivenPropertyValueSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Layers, Loader2, AlertCircle, Info } from 'lucide-react';
 
 import { plantaExternaApi, type CapaMapa, type RespuestaMapa } from '@/lib/api/planta-externa';
+import { oltNativoApi } from '@/lib/api/olt-nativo';
 import { urlComoLlegar } from './BotonComoLlegar';
 import { parseApiError, cn } from '@/lib/utils';
 
@@ -99,12 +100,22 @@ const ESTADOS_RED = {
 
 type EstadoRed = keyof typeof ESTADOS_RED;
 
-/** Expresión MapLibre que traduce la propiedad `estadoRed` al color del pin. */
-const COLOR_POR_ESTADO: unknown[] = [
+/**
+ * Expresión MapLibre que traduce `estadoRed` al color del pin.
+ *
+ * Se genera desde `ESTADOS_RED` en vez de escribirse a mano: añadir un estado es tocar UN
+ * sitio, y la leyenda del panel sale de la misma tabla, así que no puede acabar mostrando
+ * un color distinto del que pinta el mapa.
+ *
+ * El cast existe porque el tipo de MapLibre describe la expresión como una tupla posicional
+ * y un `spread` produce un array plano; la forma generada es válida, pero TypeScript no
+ * puede comprobarlo. Está acotado a esta constante.
+ */
+const COLOR_POR_ESTADO = [
   'match', ['get', 'estadoRed'],
   ...Object.entries(ESTADOS_RED).flatMap(([k, v]) => [k, v.color]),
   ESTADOS_RED.sin_datos.color,
-];
+] as unknown as DataDrivenPropertyValueSpecification<string>;
 
 /**
  * Silueta de usuario, dibujada en un canvas y registrada como icono SDF.
@@ -233,9 +244,9 @@ async function abrirFichaAbonado(
   try {
     const vivo = await oltNativoApi.clasificarOnus(datos.onu.oltId, datos.onu.slot, datos.onu.port);
     const mia = (vivo?.onus ?? []).find(
-      (o: any) => Number(o.onu_id) === Number(datos.onu!.onuId),
+      (o) => Number(o.onuId) === Number(datos.onu!.onuId),
     );
-    if (mia?.estado_operativo) pintar(bloque(String(mia.estado_operativo), 'ahora'));
+    if (mia?.estadoOperativo) pintar(bloque(String(mia.estadoOperativo), 'ahora'));
   } catch {
     // La OLT puede estar inalcanzable. El estado del inventario ya está en pantalla CON su
     // antigüedad, que es información honesta: no se degrada a un error ni se finge que el
@@ -658,6 +669,24 @@ export function MapaRedContent() {
             </label>
           );
         })}
+
+        {/* Leyenda del estado del abonado. Sale de la misma tabla que pinta el mapa, así
+            que no puede acabar describiendo un color que ya no se usa. Sólo aparece con la
+            capa encendida: sin abonados en pantalla no explica nada. */}
+        {activas.has('clientes') && (
+          <div className="pt-2 mt-1 border-t border-border space-y-1">
+            {Object.entries(ESTADOS_RED)
+              // `offline` se omite: es el cajón de sastre de la OLT cuando no precisa la
+              // causa, y en la leyenda sólo añadiría un color que nadie sabe interpretar.
+              .filter(([k]) => k !== 'offline')
+              .map(([k, v]) => (
+                <div key={k} className="flex items-center gap-2 text-[10px]">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: v.color }} />
+                  <span className="text-muted-foreground">{v.etiqueta}</span>
+                </div>
+              ))}
+          </div>
+        )}
 
         {/* Vista base. Va en el mismo panel y no en un control aparte: es la misma
             decisión —qué se ve— y separarla obligaría a buscarla en otro sitio. */}

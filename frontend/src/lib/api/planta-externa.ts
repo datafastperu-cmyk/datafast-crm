@@ -147,6 +147,26 @@ export interface ColeccionMapa {
  */
 export type RespuestaMapa = Partial<Record<CapaMapa, ColeccionMapa>>;
 
+/** Ficha del abonado en el popup del mapa. `onu` es null si el contrato no tiene ONU. */
+export interface AbonadoMapa {
+  contratoId: string;
+  numeroContrato: string;
+  cliente: string;
+  telefono: string | null;
+  plan: string | null;
+  estadoContrato: string;
+  direccion: string | null;
+  latitud: number;
+  longitud: number;
+  nap: { codigo: string; puerto: number | null } | null;
+  estadoRed: string;
+  rxPowerDbm: number | null;
+  /** Antigüedad de la medición del inventario. Null cuando no hay medición. */
+  medidoHaceMin: number | null;
+  /** Coordenadas del equipo en la OLT, para pedir el estado en vivo. */
+  onu: { oltId: string; slot: number; port: number; onuId: number; sn: string } | null;
+}
+
 export interface Acometida {
   id:            string;
   contratoId:    string;
