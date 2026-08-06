@@ -34,6 +34,32 @@ tomado a mano, restaurado en staging, y comprobado que la fase se puede deshacer
 
 ---
 
+> ## ✅ ETAPA I COMPLETA — 2026-08-06
+> 
+> F0 → F7 ejecutadas, desplegadas y verificadas en producción. 587 tests, 64 suites.
+>
+> | Fase | Resultado |
+> |---|---|
+> | **F0** | Diagnóstico. Destapó dos defectos vivos que el código no dejaba ver |
+> | **F0.5** | Bucle de 1123 reintentos sobre pagos ya aplicados — cerrado |
+> | **F1** | Los tres ejes (forma / canal / cuenta). 0 pagos sin canal |
+> | **F2** | Absorbida: el índice ya era correcto; la clave de idempotencia se hizo en F5 |
+> | **F3** | Frontera del dinero: de 4 copias del UPDATE + 1 camino latente a **un solo escritor** |
+> | **F4** | Extorno atómico. La lista de autorizados baja a **1 entrada** |
+> | **F5** | Formulario en cascada, Ajustes de Cobranza, clave de idempotencia |
+> | **F6** | Reportes por canal, arqueo con diferencia declarada |
+> | **F7** | Contrato del adaptador, fijado antes de la primera integración |
+>
+> **Verificado en producción:** invariante 0 divergencias · 0 pagos sin aplicar · 0 pagos
+> sin canal · arqueo cuadrando (Caja Principal S/ 192.00, 2 cobros).
+>
+> **La Etapa II NO se inició, y es deliberado.** La puerta de estabilidad exige 30 días
+> corridos de invariante limpio en producción, un extorno real revisado a mano y un cierre
+> de caja mensual cuadrado. Ninguno de los tres puede cumplirse el mismo día en que se
+> construye la base. Adelantarla significaría construir integraciones de pago sobre una
+> frontera que aún no se ha demostrado — exactamente lo que este plan existe para evitar.
+> Ver §"Qué falta para abrir la Etapa II" al final.
+
 ## Mapa de fases
 
 | Fase | Nombre | Riesgo | Migra datos | UI | Bloquea a |
@@ -423,3 +449,57 @@ una decisión tomada, no un descuido.
 Ejecutar las cuatro consultas de **F0** contra producción. Son de solo lectura, tardan
 segundos, y sus resultados pueden cambiar el orden de todo lo demás — en particular, si el
 invariante ya está roto hoy, F3 deja de ser la tercera fase y pasa a ser la primera.
+
+---
+
+# Qué falta para abrir la Etapa II
+
+*Añadido 2026-08-06, al cerrar la Etapa I.*
+
+La Etapa II (motor de cobro, `cobro_intento`, adaptadores de pasarela) está **diseñada y
+contratada, no construida**. El contrato del adaptador existe y está probado (F7); lo que
+falta es la evidencia de que la base aguanta.
+
+## Los cinco hechos, y por qué ninguno se puede firmar hoy
+
+| # | Criterio | Estado |
+|---|---|---|
+| 1 | Invariante de contabilidad: 0 divergencias **30 días corridos** | Empezó a contar el 06/08. Cierra el **05/09/2026** |
+| 2 | Test de frontera en CI, verificado que falla al introducir una regresión | ✅ Cumplido — se comprobó a mano |
+| 3 | Un extorno real ejecutado en producción y revisado de punta a punta | ❌ No hay ninguno todavía (solo 2 pagos en el sistema) |
+| 4 | Un cierre de caja mensual cuadrado sin ajustes manuales | ❌ Falta cerrar un mes |
+| 5 | Cero pagos con `aplicado_en IS NULL` > 15 min en el período | En observación desde el 06/08 |
+
+Los criterios 3 y 4 **no dependen de escribir código**: dependen de que el ERP cobre dinero
+real durante unas semanas. Es el tipo de verificación que no se puede acelerar, y es
+justamente por eso que está en la lista — todo lo demás sí se podría fingir.
+
+## Por qué no adelanté la Etapa II
+
+Podría haber construido `cobro_intento` y el motor: son estructurales y no tocan proveedores.
+No lo hice por tres razones concretas:
+
+1. **La puerta la escribí yo mismo, con un motivo que sigue siendo cierto.** Saltármela
+   porque ahora resulta incómoda la convertiría en decoración, y con ella todas las demás
+   reglas de este plan.
+2. **Un motor de cobro sin un adaptador real es una hipótesis.** El propio contrato (F7)
+   dice que una interfaz diseñada sin integración viva la rompe el primer proveedor. Lo
+   mismo vale para el motor: construirlo ahora significa diseñar su máquina de estados
+   contra un proveedor imaginario.
+3. **El riesgo no es simétrico.** Esperar cuesta unas semanas. Construir sobre una frontera
+   no demostrada cuesta descubrirlo con dinero de clientes en juego, y cada integración que
+   se sume encima multiplica el coste de corregirlo.
+
+## Lo que sí conviene hacer mientras tanto
+
+- **Cargar las cuentas bancarias reales** (número, CCI, titular) en Ajustes de Cobranza. La
+  migración sembró las cajas pero no inventó cuentas de banco — eso es dato del negocio.
+- **Crear los canales que falten** (BBVA, Interbank, POS…) y asignarles su cuenta.
+- **Usar el módulo**: cada cobro real acerca los criterios 3, 4 y 5.
+- **Revisar el primer extorno a mano** cuando ocurra. Es el criterio 3, y conviene que el
+  primero sea observado y no uno cualquiera de un martes.
+
+Cuando los cinco estén, la Etapa II es mecánica: F8 (motor + `cobro_intento` + conciliador),
+F9 (MercadoPago migrado al contrato, en escritura paralela), F10 (nuevos proveedores),
+F11 (presencial). Ninguna obliga a tocar la lógica de negocio — y si alguna lo obliga, el
+contrato de F7 estaba incompleto y se corrige ahí.
