@@ -239,21 +239,34 @@ async function abrirFichaAbonado(
       ? fila('Contrato', `<span style="color:#f59e0b">${escaparHtml(datos.estadoContrato)}</span>`) : '',
   ].filter(Boolean).join('');
 
-  pintar(bloque(datos.estadoRed, antiguedad(datos.medidoHaceMin)));
+  // Sin ONU registrada no hay nada que consultar en la OLT: se pinta el dato conocido y se
+  // acaba, sin prometer una actualización que no va a llegar.
+  if (!datos.onu) {
+    pintar(bloque(datos.estadoRed, antiguedad(datos.medidoHaceMin)));
+    return;
+  }
 
-  // Sin ONU registrada no hay nada que consultar en la OLT.
-  if (!datos.onu) return;
+  // Se anuncia que hay una consulta en curso. Leer un puerto PON completo tarda decenas de
+  // segundos —medido: ~35 s contra el MA5800— y sin avisar el operador toma por definitivo
+  // un estado de hace horas, justo cuando la respuesta buena está por llegar.
+  pintar(bloque(datos.estadoRed, `${antiguedad(datos.medidoHaceMin)} · consultando OLT…`));
 
   try {
     const vivo = await oltNativoApi.clasificarOnus(datos.onu.oltId, datos.onu.slot, datos.onu.port);
     const mia = (vivo?.onus ?? []).find(
       (o) => Number(o.onuId) === Number(datos.onu!.onuId),
     );
-    if (mia?.estadoOperativo) pintar(bloque(String(mia.estadoOperativo), 'ahora'));
+    // Si la ONU no aparece en el puerto, el "consultando…" no puede quedarse colgado: la
+    // consulta terminó. Que no esté es un dato en sí —el registro apunta a un puerto donde
+    // el equipo ya no está—, así que se dice, no se disimula volviendo al valor anterior.
+    pintar(mia?.estadoOperativo
+      ? bloque(String(mia.estadoOperativo), 'ahora')
+      : bloque(datos.estadoRed, `${antiguedad(datos.medidoHaceMin)} · no está en el puerto ${datos.onu.slot}/${datos.onu.port}`));
   } catch {
-    // La OLT puede estar inalcanzable. El estado del inventario ya está en pantalla CON su
-    // antigüedad, que es información honesta: no se degrada a un error ni se finge que el
-    // dato es actual.
+    // La OLT puede estar inalcanzable. Se vuelve al dato del inventario CON su antigüedad,
+    // que es información honesta: ni se degrada a un error ni se finge que es actual. Lo
+    // que no puede quedarse es el "consultando…", que mentiría sobre algo ya terminado.
+    pintar(bloque(datos.estadoRed, `${antiguedad(datos.medidoHaceMin)} · sin respuesta de la OLT`));
   }
 }
 
