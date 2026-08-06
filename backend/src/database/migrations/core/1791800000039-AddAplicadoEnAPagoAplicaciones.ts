@@ -25,8 +25,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 // reflejada en su factura. Si esa consulta hubiera devuelto filas, este backfill sería
 // incorrecto y habría que resolver las divergencias primero.
 // ─────────────────────────────────────────────────────────────────────────────
-export class AddAplicadoEnAPagoAplicaciones1791800000038 implements MigrationInterface {
-  name = 'AddAplicadoEnAPagoAplicaciones1791800000038';
+export class AddAplicadoEnAPagoAplicaciones1791800000039 implements MigrationInterface {
+  name = 'AddAplicadoEnAPagoAplicaciones1791800000039';
 
   public async up(qr: QueryRunner): Promise<void> {
     await qr.query(`

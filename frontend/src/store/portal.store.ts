@@ -16,7 +16,10 @@ interface PortalState {
 export const usePortalStore = create<PortalState>()(
   persist(
     (set) => ({
-      contratoId: null,
+      // Anotado como en `auth.store.ts`: con un `null` pelado, la inferencia del creador de
+      // estado dentro de `persist` se rompe y TS marca la propiedad como implicit any — el
+      // build de producción falla aunque `tsc` en local no lo vea.
+      contratoId: null as string | null,
       setContratoId: (contratoId) => set({ contratoId }),
       limpiar: () => set({ contratoId: null }),
     }),

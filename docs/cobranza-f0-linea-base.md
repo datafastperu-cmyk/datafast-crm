@@ -237,7 +237,7 @@ producción hoy, y el rediseño no los arregla.
 ### Lo implementado
 
 **1. Idempotencia derivada del estado** — migración
-[`1791800000038`](../backend/src/database/migrations/core/1791800000038-AddAplicadoEnAPagoAplicaciones.ts).
+[`1791800000039`](../backend/src/database/migrations/core/1791800000039-AddAplicadoEnAPagoAplicaciones.ts).
 
 `pago_aplicaciones` gana `aplicado_en`. La tabla declaraba *qué* comprobantes cubre un pago,
 pero no si esa imputación ya se había volcado; sin ese dato, reintentar era indistinguible de
