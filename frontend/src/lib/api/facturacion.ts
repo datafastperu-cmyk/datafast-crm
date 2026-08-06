@@ -429,6 +429,8 @@ export type MetodoPagoKey = typeof METODOS_PAGO[number]['value'];
 export interface FormaPagoDef {
   codigo: string;
   nombre: string;
+  /** Sugerencia con la que nace un canal nuevo de esta forma. El canal manda sobre ella. */
+  requiereOperacion: boolean;
 }
 
 export interface CanalPago {

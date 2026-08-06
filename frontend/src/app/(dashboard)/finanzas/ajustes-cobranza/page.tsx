@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Power, Pencil } from 'lucide-react';
 
-import { pagosApi, type CanalPago, type CuentaBancaria } from '@/lib/api/facturacion';
+import { pagosApi, type CanalPago, type CuentaBancaria, type FormaPagoDef } from '@/lib/api/facturacion';
 import { useToast } from '@/components/ui/toaster';
 import { parseApiError, cn } from '@/lib/utils';
 
@@ -397,7 +397,7 @@ function ModalCuenta({ cuenta, onClose, onSaved }: {
 // ─────────────────────────────────────────────────────────────────────────────
 function ModalCanal({ canal, formas, cuentas, onClose, onSaved }: {
   canal: CanalPago | null;
-  formas: Array<{ codigo: string; nombre: string }>;
+  formas: FormaPagoDef[];
   cuentas: CuentaBancaria[];
   onClose: () => void;
   onSaved: () => void;
@@ -411,6 +411,15 @@ function ModalCanal({ canal, formas, cuentas, onClose, onSaved }: {
     comisionPorcentaje:      Number(canal?.comisionPorcentaje ?? 0),
     comisionFija:            Number(canal?.comisionFija ?? 0),
   });
+
+  // Al elegir la forma en un canal NUEVO, se precarga si exige nº de operación. Una
+  // transferencia sin él no se puede antiduplicar, y confiar en que el operador se acuerde
+  // de marcar la casilla es delegarle una regla que el sistema ya conoce. Sigue pudiendo
+  // desmarcarla — el canal manda sobre la sugerencia de la forma.
+  const cambiarForma = (codigo: string) => {
+    const forma = formas.find((x) => x.codigo === codigo);
+    setF({ ...f, formaPago: codigo, requiereNumeroOperacion: !!forma?.requiereOperacion });
+  };
 
   const { mutate: guardar, isPending } = useMutation({
     mutationFn: () => {
@@ -451,7 +460,7 @@ function ModalCanal({ canal, formas, cuentas, onClose, onSaved }: {
         <label className="block space-y-1">
           <span className="text-sm text-foreground">Forma de pago</span>
           <select value={f.formaPago} disabled={!!canal}
-                  onChange={(e) => setF({ ...f, formaPago: e.target.value })}
+                  onChange={(e) => cambiarForma(e.target.value)}
                   className={cn(inputCls, canal && 'opacity-60')}>
             {formas.map((x) => <option key={x.codigo} value={x.codigo}>{x.nombre}</option>)}
           </select>

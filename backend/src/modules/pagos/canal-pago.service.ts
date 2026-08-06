@@ -85,10 +85,18 @@ export class CanalPagoService {
     return canales;
   }
 
-  /** Taxonomía cerrada. Se sirve desde la BD para que la UI y el dominio no diverjan. */
-  async formas(): Promise<Array<{ codigo: string; nombre: string }>> {
+  /**
+   * Taxonomía cerrada. Se sirve desde la BD para que la UI y el dominio no diverjan.
+   *
+   * `requiereOperacion` viaja con cada forma porque es la SUGERENCIA con la que nace un
+   * canal nuevo: una transferencia sin número de operación no se puede antiduplicar, y
+   * pedirle al operador que se acuerde de marcarlo es delegarle una regla que el sistema
+   * ya conoce. El canal sigue mandando — puede desmarcarlo si su caso lo justifica.
+   */
+  async formas(): Promise<Array<{ codigo: string; nombre: string; requiereOperacion: boolean }>> {
     return this.ds.query(
-      `SELECT codigo, nombre FROM forma_pago ORDER BY orden, nombre`,
+      `SELECT codigo, nombre, requiere_operacion AS "requiereOperacion"
+         FROM forma_pago ORDER BY orden, nombre`,
     );
   }
 
