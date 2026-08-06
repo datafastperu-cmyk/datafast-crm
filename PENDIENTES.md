@@ -13,6 +13,41 @@
 
 ## 🔴 Abierto — impacto en producción
 
+### 0. Despliegue: el backend estuvo 11 h ejecutando código viejo (RESUELTO, pero leer)
+**Estado:** corregido el 2026-08-06. Se documenta porque la clase de fallo se repitió tres
+veces en el mismo día y conviene reconocerla.
+
+`scripts/update.sh` recargaba `--only datafast-backend`, un nombre de proceso que ya no existe
+(hoy: `datafast-api-core` y `datafast-worker-auxiliary`). PM2 no encontraba nada, no
+fallaba de forma detectable, y el script imprimía «Backend recargado» igual. **Las
+migraciones sí corrían** —son un paso aparte—, así que la base de datos avanzaba y el
+código no: el esquema decía una cosa y el proceso vivo entendía otra.
+
+Se descubrió porque una pantalla nueva devolvía 400 «uuid expected»: sus rutas no existían
+en el proceso en ejecución y caían en `GET /pagos/:id`. El síntoma parecía de la pantalla;
+la causa estaba en el despliegue.
+
+Y escondía un segundo defecto: `idempotencyKey` sin `type` explícito tumbaba el arranque
+(el error de SWC ya conocido). Como el backend no reiniciaba nunca, el bug vivía en el
+código desplegado sin que nadie pudiera verlo. Salió en el primer reinicio real, con todo
+el ERP en 500.
+
+**El patrón, tres veces el mismo día:** una verificación que solo sabe confirmar el caso
+bueno no es una verificación. El deploy afirmaba éxito sin comprobarlo; la primera
+corrección miró solo el uptime, y un proceso en bucle de reinicio también tiene uptime
+bajo — de hecho el bucle lo provocó esa misma corrección, al usar `--update-env` sobre el
+nombre suelto en vez del ecosystem (el worker perdió su `PORT: 4001` y chocó con la API).
+
+Hoy el script comprueba tres cosas y **aborta** si fallan: proceso online, uptime de
+segundos, y contador de reinicios subiendo exactamente 1.
+
+**Qué mirar si vuelve a pasar algo raro tras un deploy:**
+
+```bash
+pm2 list                                      # ¿el uptime del backend bajó de verdad?
+pm2 logs datafast-api-core --err --lines 50   # ¿arrancó o está en bucle?
+```
+
 ### 1. Gateway de mensajería: NINGÚN mensaje sale
 **Estado:** pendiente por decisión del usuario (2026-08-06).
 
