@@ -333,10 +333,18 @@ export class PagoRepository {
   }
 
   // ── Cuentas bancarias ─────────────────────────────────────
-  async findCuentas(empresaId: string): Promise<CuentaBancaria[]> {
+  /**
+   * Cuentas receptoras.
+   *
+   * `incluirInactivas` es para la pantalla de configuración: allí hay que poder ver y
+   * reactivar una cuenta dada de baja. En el formulario de cobro solo se ofrecen las
+   * activas — cobrar contra una cuenta retirada es justo lo que se quiso evitar al
+   * darla de baja.
+   */
+  async findCuentas(empresaId: string, incluirInactivas = false): Promise<CuentaBancaria[]> {
     return this.cuentaRepo.find({
-      where: { empresaId, activa: true },
-      order: { esPrincipal: 'DESC', banco: 'ASC' },
+      where: incluirInactivas ? { empresaId } : { empresaId, activa: true },
+      order: { tipo: 'ASC', esPrincipal: 'DESC', nombre: 'ASC' },
     });
   }
 

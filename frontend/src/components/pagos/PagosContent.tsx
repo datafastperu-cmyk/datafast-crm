@@ -652,7 +652,7 @@ function ModalEditarPago({
     queryKey: ['canales-pago'], queryFn: () => pagosApi.getCanales(false), staleTime: 5 * 60_000,
   });
   const { data: cuentas = [] } = useQuery({
-    queryKey: ['cuentas-bancarias'], queryFn: pagosApi.getCuentasBancarias, staleTime: 5 * 60_000,
+    queryKey: ['cuentas-bancarias'], queryFn: () => pagosApi.getCuentasBancarias(), staleTime: 5 * 60_000,
   });
 
   async function submit() {

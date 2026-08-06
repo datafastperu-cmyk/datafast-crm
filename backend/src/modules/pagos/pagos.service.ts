@@ -26,6 +26,7 @@ import { AplicadorFacturaService } from '../facturacion/aplicador-factura.servic
 import { Contrato, EstadoContrato } from '../contratos/entities/contrato.entity';
 import { Factura, EstadoFactura }   from '../facturacion/entities/factura.entity';
 import { RegistrarPagoDto, ExtornarPagoDto } from './dto/registrar-pago.dto';
+import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import {
   VerificarPagoDto, ConciliarPagoDto, ActualizarPagoDto,
   FilterPagoDto, CrearPreferenciaDto,
@@ -1496,14 +1497,39 @@ export class PagosService {
   // ────────────────────────────────────────────────────────────
   // CUENTAS BANCARIAS
   // ────────────────────────────────────────────────────────────
-  async getCuentasBancarias(empresaId: string): Promise<CuentaBancaria[]> {
-    return this.pagoRepo.findCuentas(empresaId);
+  async getCuentasBancarias(empresaId: string, incluirInactivas = false): Promise<CuentaBancaria[]> {
+    return this.pagoRepo.findCuentas(empresaId, incluirInactivas);
   }
 
   async createCuentaBancaria(
     dto:  CreateCuentaBancariaDto,
     user: JwtPayload,
   ): Promise<CuentaBancaria> {
+    const tipo = dto.tipo ?? 'banco';
+
+    // Una cuenta de banco sin número no sirve para conciliar: el extracto se cruza por
+    // ahí. Se exige aquí y no en el DTO porque depende del tipo — una caja no lo tiene.
+    if (tipo === 'banco' && !dto.numeroCuenta?.trim()) {
+      throw new BadRequestException(
+        'Una cuenta bancaria necesita su número: es lo que permite cruzarla con el extracto.',
+      );
+    }
+    if (tipo === 'banco' && !dto.banco?.trim()) {
+      throw new BadRequestException('Indica a qué banco pertenece la cuenta');
+    }
+
+    const duplicada = await this.ds.query(
+      `SELECT id FROM cuentas_bancarias
+        WHERE empresa_id = $1 AND LOWER(COALESCE(nombre, banco)) = LOWER($2) LIMIT 1`,
+      [user.empresaId, dto.nombre.trim()],
+    );
+    if (duplicada.length) {
+      throw new BadRequestException(
+        `Ya existe una cuenta llamada "${dto.nombre}". Dos cuentas con el mismo rótulo ` +
+        `hacen que el cajero no sepa cuál elegir y el arqueo deje de significar nada.`,
+      );
+    }
+
     if (dto.esPrincipal) {
       // Desmarcar la cuenta principal anterior
       await this.ds.query(
@@ -1511,7 +1537,64 @@ export class PagosService {
         [user.empresaId],
       );
     }
-    return this.pagoRepo.createCuenta({ ...dto, empresaId: user.empresaId });
+
+    return this.pagoRepo.createCuenta({
+      ...dto,
+      tipo,
+      // Una caja se arquea siempre: es dinero físico que alguien tiene en la mano y el
+      // ERP solo sabe lo que le dijeron.
+      requiereArqueo: dto.requiereArqueo ?? tipo === 'caja',
+      banco:         dto.banco?.trim()        || null,
+      numeroCuenta:  dto.numeroCuenta?.trim() || null,
+      empresaId:     user.empresaId,
+    } as never);
+  }
+
+  /**
+   * Edición y baja de una cuenta receptora.
+   *
+   * La baja es LÓGICA (`activa = false`), como los canales: una cuenta con pagos
+   * históricos no se puede borrar sin dejar esos cobros sin explicación de dónde entraron.
+   */
+  async actualizarCuentaBancaria(
+    id: string,
+    dto: Partial<CreateCuentaBancariaDto> & { activa?: boolean },
+    user: JwtPayload,
+  ): Promise<CuentaBancaria> {
+    const [cuenta] = await this.ds.query(
+      `SELECT * FROM cuentas_bancarias WHERE id = $1 AND empresa_id = $2`,
+      [id, user.empresaId],
+    );
+    if (!cuenta) throw new NotFoundException('Cuenta no encontrada');
+
+    if (dto.esPrincipal) {
+      await this.ds.query(
+        'UPDATE cuentas_bancarias SET es_principal = false WHERE empresa_id = $1',
+        [user.empresaId],
+      );
+    }
+
+    const campos: Array<[string, unknown]> = [];
+    if (dto.nombre         !== undefined) campos.push(['nombre', dto.nombre.trim()]);
+    if (dto.banco          !== undefined) campos.push(['banco', dto.banco?.trim() || null]);
+    if (dto.numeroCuenta   !== undefined) campos.push(['numero_cuenta', dto.numeroCuenta?.trim() || null]);
+    if (dto.cci            !== undefined) campos.push(['cci', dto.cci || null]);
+    if (dto.titular        !== undefined) campos.push(['titular', dto.titular || null]);
+    if (dto.moneda         !== undefined) campos.push(['moneda', dto.moneda]);
+    if (dto.requiereArqueo !== undefined) campos.push(['requiere_arqueo', dto.requiereArqueo]);
+    if (dto.esPrincipal    !== undefined) campos.push(['es_principal', dto.esPrincipal]);
+    if (dto.activa         !== undefined) campos.push(['activa', dto.activa]);
+    // `tipo` NO se puede cambiar: mover una cuenta de caja a banco reescribiría el
+    // significado de todos los arqueos que ya se cerraron sobre ella.
+
+    if (!campos.length) return cuenta;
+
+    const sets = campos.map(([c], i) => `${c} = $${i + 3}`).join(', ');
+    const [fila] = filasUpdateReturning<CuentaBancaria>(await this.ds.query(
+      `UPDATE cuentas_bancarias SET ${sets} WHERE id = $1 AND empresa_id = $2 RETURNING *`,
+      [id, user.empresaId, ...campos.map(([, v]) => v)],
+    ));
+    return fila;
   }
 
   // ────────────────────────────────────────────────────────────

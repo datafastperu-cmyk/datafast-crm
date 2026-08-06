@@ -170,16 +170,48 @@ export class CrearPreferenciaDto {
 }
 
 // ─── Cuenta bancaria ─────────────────────────────────────────
+/**
+ * Alta de una cuenta receptora: dónde entra el dinero.
+ *
+ * `banco` y `numeroCuenta` dejan de ser obligatorios porque una CAJA no tiene ninguno de
+ * los dos. Mientras lo fueron, el catálogo solo admitía cuentas bancarias — y no había
+ * forma de dar de alta "Caja Campo" desde la aplicación.
+ */
 export class CreateCuentaBancariaDto {
-  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(100)
-  banco: string;
+  /**
+   * Rótulo operativo: "Caja Principal", "BCP Soles". Es lo que ve el cajero al elegir
+   * dónde entró el dinero, y por eso es lo único obligatorio para todos los tipos.
+   */
+  @ApiProperty({ example: 'BCP Soles' })
+  @IsString() @IsNotEmpty() @MaxLength(120)
+  nombre: string;
+
+  /** Dónde vive realmente el dinero. Una caja se arquea; una cuenta se concilia. */
+  @ApiPropertyOptional({ default: 'banco', enum: ['caja', 'banco', 'pasarela', 'virtual'] })
+  @IsOptional() @IsEnum(['caja', 'banco', 'pasarela', 'virtual'] as const, {
+    message: 'tipo debe ser caja, banco, pasarela o virtual',
+  })
+  tipo?: 'caja' | 'banco' | 'pasarela' | 'virtual';
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100)
+  banco?: string;
 
   @ApiPropertyOptional({ default: 'corriente', enum: ['corriente','ahorros','recaudadora'] })
   @IsOptional() @IsString()
   tipoCuenta?: string;
 
-  @ApiProperty() @IsString() @IsNotEmpty() @MaxLength(50)
-  numeroCuenta: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50)
+  numeroCuenta?: string;
+
+  /**
+   * Una caja con arqueo pertenece a UN responsable. Compartirla entre cobradores hace
+   * imposible saber a quién le falta dinero, que es justo para lo que existe una caja.
+   */
+  @ApiPropertyOptional({ default: false }) @IsOptional() @IsBoolean()
+  requiereArqueo?: boolean;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID('4')
+  cajeroResponsableId?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50)
   cci?: string;

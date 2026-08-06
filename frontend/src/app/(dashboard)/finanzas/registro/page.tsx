@@ -351,7 +351,7 @@ function FormPago({ cliente, facturas, pendientes, onSuccess }: FormPagoProps) {
     queryKey: ['canales-pago'], queryFn: () => pagosApi.getCanales(true), staleTime: 5 * 60_000,
   });
   const { data: cuentas = [] } = useQuery({
-    queryKey: ['cuentas-bancarias'], queryFn: pagosApi.getCuentasBancarias, staleTime: 5 * 60_000,
+    queryKey: ['cuentas-bancarias'], queryFn: () => pagosApi.getCuentasBancarias(), staleTime: 5 * 60_000,
   });
 
   const canalesDeLaForma = canales.filter(c => c.formaPago === formaPago);

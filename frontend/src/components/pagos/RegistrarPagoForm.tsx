@@ -124,7 +124,7 @@ export function RegistrarPagoForm({ clienteId, facturaId, contratoId, onSuccess 
   // Cuentas bancarias de la empresa
   const { data: cuentas = [] } = useQuery({
     queryKey: ['cuentas-bancarias'],
-    queryFn:  pagosApi.getCuentasBancarias,
+    queryFn:  () => pagosApi.getCuentasBancarias(),
     staleTime: Infinity,
   });
 

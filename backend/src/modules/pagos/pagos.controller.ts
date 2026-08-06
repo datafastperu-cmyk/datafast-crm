@@ -205,20 +205,45 @@ export class PagosController {
   @Get('cuentas')
   @RequirePermission('pagos:view')
   @SetMetadata('skipAudit', true)
-  @ApiOperation({ summary: 'Cuentas bancarias de la empresa' })
-  async getCuentas(@CurrentUser() user: JwtPayload) {
-    return StdResponse.ok(await this.svc.getCuentasBancarias(user.empresaId));
+  @ApiOperation({ summary: 'Cuentas receptoras de la empresa (cajas y cuentas bancarias)' })
+  async getCuentas(
+    @CurrentUser() user: JwtPayload,
+    @Query('incluirInactivas') incluirInactivas?: string,
+  ) {
+    return StdResponse.ok(
+      await this.svc.getCuentasBancarias(user.empresaId, incluirInactivas === 'true'),
+    );
   }
 
-  // ── POST /pagos/cuentas — Agregar cuenta bancaria ─────────
+  // ── POST /pagos/cuentas — Alta de cuenta receptora ────────
+  //
+  // Cubre los dos casos: una CAJA (dinero físico, se arquea) y una cuenta bancaria (se
+  // concilia contra el extracto). Antes solo admitía la segunda —`banco` y `numeroCuenta`
+  // eran obligatorios—, así que "Caja Campo" no se podía dar de alta desde la aplicación.
   @Post('cuentas')
-  @Roles('Administrador', 'Supervisor')
-  @ApiOperation({ summary: 'Registrar cuenta bancaria de la empresa' })
+  @RequirePermission('cobranza:configurar')
+  @ApiOperation({ summary: 'Registrar cuenta receptora (caja o cuenta bancaria)' })
   async createCuenta(
     @Body() dto: CreateCuentaBancariaDto,
     @CurrentUser() user: JwtPayload,
   ) {
     return StdResponse.ok(await this.svc.createCuentaBancaria(dto, user), 'Cuenta registrada');
+  }
+
+  // ── PATCH /pagos/cuentas/:id — Editar o dar de baja ───────
+  // La baja es LÓGICA (`activa = false`): una cuenta con pagos históricos no se puede
+  // borrar sin dejar esos cobros sin explicación de dónde entraron.
+  @Patch('cuentas/:id')
+  @RequirePermission('cobranza:configurar')
+  @ApiOperation({ summary: 'Editar cuenta receptora (el tipo es inmutable)' })
+  async actualizarCuenta(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: any,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return StdResponse.ok(
+      await this.svc.actualizarCuentaBancaria(id, dto, user), 'Cuenta actualizada',
+    );
   }
 
   // ── POST /pagos/mercadopago/preferencia — Link de pago ────

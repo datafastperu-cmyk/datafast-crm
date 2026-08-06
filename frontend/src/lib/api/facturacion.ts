@@ -356,9 +356,25 @@ export const pagosApi = {
     return res.data.data as Pago;
   },
 
-  getCuentasBancarias: async (): Promise<CuentaBancaria[]> => {
-    const res = await api.get<ApiRespuesta<CuentaBancaria[]>>('/pagos/cuentas');
+  getCuentasBancarias: async (incluirInactivas = false): Promise<CuentaBancaria[]> => {
+    const res = await api.get<ApiRespuesta<CuentaBancaria[]>>('/pagos/cuentas', {
+      params: incluirInactivas ? { incluirInactivas: 'true' } : {},
+    });
     return res.data.data ?? [];
+  },
+
+  // Alta de cuenta receptora: cubre CAJA (dinero fisico, se arquea) y cuenta bancaria
+  // (se concilia contra el extracto).
+  crearCuenta: async (dto: Partial<CuentaBancaria>): Promise<CuentaBancaria> => {
+    const res = await api.post<ApiRespuesta<CuentaBancaria>>('/pagos/cuentas', dto);
+    return res.data.data as CuentaBancaria;
+  },
+
+  // Incluye la baja lógica (`activa: false`): una cuenta con pagos históricos no se puede
+  // borrar sin dejar esos cobros sin explicación de dónde entraron.
+  actualizarCuenta: async (id: string, dto: Partial<CuentaBancaria>): Promise<CuentaBancaria> => {
+    const res = await api.patch<ApiRespuesta<CuentaBancaria>>(`/pagos/cuentas/${id}`, dto);
+    return res.data.data as CuentaBancaria;
   },
 
   uploadComprobante: async (pagoId: string, file: File): Promise<string> => {

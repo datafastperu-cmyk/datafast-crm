@@ -257,6 +257,26 @@ export class CuentaBancaria {
   @Column({ name: 'tipo_cuenta', length: 50, default: 'corriente' })
   tipoCuenta: string;
 
+  /**
+   * Dónde vive realmente el dinero. Una caja se ARQUEA (se cuenta a mano y se declara la
+   * diferencia); una cuenta bancaria se CONCILIA contra el extracto. Son controles
+   * distintos, y por eso el tipo es inmutable: cambiarlo reescribiría el significado de
+   * los cierres que ya se hicieron sobre ella.
+   */
+  @Column({ type: 'varchar', length: 20, default: 'banco' })
+  tipo: 'caja' | 'banco' | 'pasarela' | 'virtual';
+
+  /** Rótulo operativo — "Caja Principal", "BCP Soles". Es lo que ve el cajero. */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  nombre: string | null;
+
+  /** Una caja con arqueo pertenece a UN responsable, o el faltante no tiene dueño. */
+  @Column({ name: 'cajero_responsable_id', type: 'uuid', nullable: true })
+  cajeroResponsableId: string | null;
+
+  @Column({ name: 'requiere_arqueo', type: 'boolean', default: false })
+  requiereArqueo: boolean;
+
   @Column({ name: 'numero_cuenta', length: 50 })
   numeroCuenta: string;
 
