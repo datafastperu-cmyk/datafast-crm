@@ -302,7 +302,14 @@ export class FacturaRepository {
       JOIN planes   pl ON pl.id = co.plan_id
       JOIN empresas em ON em.id = co.empresa_id
       WHERE co.empresa_id = $1
-        AND co.estado IN ('activo', 'prorroga')
+        -- Solo 'activo'. El estado 'prorroga' NO existe en el enum estado_contrato: una
+        -- prórroga mantiene el contrato en 'activo' con en_prorroga = true (ver
+        -- cobranza.worker: "la prórroga ya no cambia estado"). El literal quedó huérfano
+        -- cuando se unificaron los estados y Postgres rechaza la consulta ENTERA con
+        -- "invalid input value for enum estado_contrato", así que no se emitía ni una
+        -- factura. Estuvo latente mientras la generación corría una vez al mes; al pasar a
+        -- evaluarse a diario (05/08) empezó a fallar cada madrugada.
+        AND co.estado = 'activo'
         AND co.deleted_at IS NULL
         AND cl.deleted_at IS NULL
     `;

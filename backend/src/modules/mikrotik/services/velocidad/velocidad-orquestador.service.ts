@@ -269,7 +269,10 @@ export class VelocidadOrquestador {
         FROM contratos co
         JOIN planes pl ON pl.id = co.plan_id
         WHERE co.router_id = $1
-          AND co.estado IN ('activo', 'prorroga')
+          -- 'prorroga' no existe en el enum estado_contrato: una prórroga deja el contrato
+          -- en 'activo' con en_prorroga = true. El literal huérfano hacía que Postgres
+          -- rechazara la consulta entera (invalid input value for enum).
+          AND co.estado = 'activo'
           AND co.deleted_at IS NULL
           AND co.usuario_pppoe IS NOT NULL
           AND co.ip_asignada IS NOT NULL
