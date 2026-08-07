@@ -840,7 +840,6 @@ con sus propios `package.json` / `requirements`, conviviendo en un repositorio.
 
 ```mermaid
 flowchart LR
-    usuarios --> nada1[ ]:::hidden
     auth --> usuarios
     auditoria --> usuarios
 
@@ -871,8 +870,6 @@ flowchart LR
     plantaexterna[planta-externa] --> auth
     aprovisionamiento --> auth
     xui --> auth
-
-    classDef hidden display:none
 ```
 
 ## 4.3 Dependencias circulares detectadas

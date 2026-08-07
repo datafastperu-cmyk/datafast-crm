@@ -1,0 +1,165 @@
+# Cuerpo Normativo y Documental — ERP Datafast
+
+**Índice maestro** · Versión 1.0 · 2026-08-06 · Rama `main`, commit base `f8d52b00`
+
+---
+
+## 1. Propósito de este cuerpo documental
+
+Hasta la fecha, el conocimiento arquitectónico del ERP Datafast vivía repartido entre
+`CLAUDE.md`, comentarios de código de altísima calidad, tests que nombran incidentes y la
+memoria del equipo. Ese conocimiento es **real y probado**, pero no es **consultable, citable ni
+exigible**.
+
+Este cuerpo documental convierte ese conocimiento en normativa: documentos con código, versión,
+estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una desviación pueda
+**detectarse**.
+
+## 2. Catálogo de documentos
+
+| Código | Documento | Estado | Archivo |
+|---|---|---|---|
+| **CON-001** | Constitución del ERP | Borrador para ratificación | [CON-001-constitucion.md](CON-001-constitucion.md) |
+| **AEM-001** | Arquitectura Empresarial | Vigente | [AEM-001-arquitectura-empresarial.md](AEM-001-arquitectura-empresarial.md) |
+| **ARS-001** | Arquitectura de Software | Vigente | [ARS-001-arquitectura-software.md](ARS-001-arquitectura-software.md) |
+| **DOM-001** | Modelo de Dominio | Vigente | [DOM-001-modelo-dominio.md](DOM-001-modelo-dominio.md) |
+| **DAT-001** | Arquitectura de Datos | Vigente | [DAT-001-arquitectura-datos.md](DAT-001-arquitectura-datos.md) |
+| **INT-001** | Arquitectura de Integraciones | Vigente | [INT-001-arquitectura-integraciones.md](INT-001-arquitectura-integraciones.md) |
+| **SEC-001** | Arquitectura de Seguridad | Vigente | [SEC-001-arquitectura-seguridad.md](SEC-001-arquitectura-seguridad.md) |
+| **POL-001** | Políticas Corporativas | Vigente | [POL-001-politicas-corporativas.md](POL-001-politicas-corporativas.md) |
+| **ADR-001…016** | Registros de Decisiones Arquitectónicas | Vigente | [ADR-000-registro-decisiones.md](ADR-000-registro-decisiones.md) |
+| **EST-001** | Estándares Técnicos | Vigente | [EST-001-estandares-tecnicos.md](EST-001-estandares-tecnicos.md) |
+| **GUI-001** | Guías de Desarrollo | Vigente | [GUI-001-guias-desarrollo.md](GUI-001-guias-desarrollo.md) |
+| **MOD-000** | Catálogo y plantilla de módulos | Vigente | [MOD-000-catalogo-modulos.md](MOD-000-catalogo-modulos.md) |
+| **MOD-001** | Módulo Contratos | Vigente | [MOD-001-contratos.md](MOD-001-contratos.md) |
+| **MOD-002** | Módulo Pagos | Vigente | [MOD-002-pagos.md](MOD-002-pagos.md) |
+| **MOD-003** | Módulo OLT-Nativo / FTTH | Vigente | [MOD-003-olt-nativo.md](MOD-003-olt-nativo.md) |
+| **PRO-001** | Procedimientos Operativos | Vigente | [PRO-001-procedimientos-operativos.md](PRO-001-procedimientos-operativos.md) |
+| **MAN-001** | Manual del Operador | Vigente | [MAN-001-manual-operador.md](MAN-001-manual-operador.md) |
+| **MAN-002** | Manual del Administrador | Vigente | [MAN-002-manual-administrador.md](MAN-002-manual-administrador.md) |
+| **RDM-001** | Roadmap del Producto | Vigente | [RDM-001-roadmap.md](RDM-001-roadmap.md) |
+
+## 3. Alcance de esta primera emisión — qué se entrega completo y qué no
+
+Se declara explícitamente para que nadie asuma cobertura donde no la hay.
+
+| Documento | Estado de la entrega |
+|---|---|
+| CON-001 … RDM-001 (los 13 singleton) | **Completos.** |
+| **ADR** | **16 ADR redactados**, todos correspondientes a decisiones **reales ya tomadas** y documentadas en el código o en incidentes. No son decisiones inventadas para llenar el registro. |
+| **MOD-XXX** | **3 de 44 módulos.** Se entregan la plantilla, el catálogo completo de los 44 con su ficha resumida, y la especificación completa de los 3 módulos de mayor criticidad (`contratos`, `pagos`, `olt-nativo`). Los 41 restantes se redactan bajo demanda o cuando el módulo se toque. **Documentar 44 módulos de golpe produciría documentación que nadie ha verificado y que envejece antes de leerse.** |
+| **MAN-XXX** | **2 manuales** (Operador y Administrador), construidos sobre las rutas y endpoints reales del sistema. **No incluyen capturas de pantalla ni recorridos pantalla-por-pantalla**, porque eso exige validación con el producto en ejecución y con usuarios reales; se marca como pendiente en RDM-001. |
+
+## 4. Jerarquía normativa
+
+En caso de contradicción entre documentos, prevalece el de mayor jerarquía:
+
+```mermaid
+flowchart TD
+    CON["**CON-001 · Constitución**<br/>Principios fundamentales — no negociables"]
+    POL["**POL-001 · Políticas Corporativas**<br/>Reglas obligatorias del proyecto"]
+    ARQ["**Documentos de Arquitectura**<br/>AEM · ARS · DOM · DAT · INT · SEC"]
+    ADR["**ADR**<br/>Decisiones puntuales con contexto"]
+    EST["**EST-001 · Estándares Técnicos**<br/>Cómo se implementa"]
+    GUI["**GUI-001 · Guías**<br/>Cómo se hace en la práctica"]
+    MOD["**MOD-XXX · Módulos**<br/>Qué hace cada pieza"]
+    OPS["**PRO / MAN**<br/>Cómo se opera y se usa"]
+
+    CON --> POL --> ARQ --> ADR --> EST --> GUI --> MOD --> OPS
+```
+
+**Regla de precedencia:** un ADR puede **matizar** un documento de arquitectura para un caso
+concreto, pero **nunca puede contradecir** CON-001 ni POL-001. Si una decisión lo exige, primero
+se modifica la política y se registra el cambio.
+
+## 5. Relación con la documentación previa
+
+Este cuerpo normativo **no reemplaza** los trabajos anteriores: los usa como fuente de evidencia.
+
+| Documento previo | Rol |
+|---|---|
+| `docs/auditoria/` (Etapa I) | Levantamiento del estado real. **Fuente de todos los datos medidos.** |
+| `docs/consolidacion/` (Etapa II) | Análisis y recomendaciones. **Fuente de riesgos y del roadmap.** |
+| `docs/directrices/` | Compilación de reglas desde sus fuentes primarias. **Fuente de POL-001 y CON-001.** |
+| `CLAUDE.md` | Reglas operativas del repositorio. **Sigue vigente**; POL-001 lo formaliza sin sustituirlo. |
+| `PENDIENTES.md` | Registro vivo de deuda. **Sigue vigente**; alimenta RDM-001. |
+
+## 6. Estructura base de todo documento
+
+Todos los documentos de este cuerpo siguen la misma estructura:
+
+1. Portada
+2. Control documental (código, versión, estado, autor, revisores, fecha)
+3. Historial de cambios
+4. Índice
+5. Objetivo
+6. Alcance
+7. Definiciones y glosario
+8. Contenido del documento *(estructura específica por tipo)*
+9. Referencias
+10. Anexos
+
+## 7. Estados posibles de un documento
+
+| # | Estado | Significado | Quién lo otorga |
+|---|---|---|---|
+| 1 | **Borrador** | Redactado, no revisado | Autor |
+| 2 | **Borrador para ratificación** | Contiene definiciones que requieren decisión del propietario del negocio | Autor |
+| 3 | **Ratificado por el propietario** | El propietario confirmó las definiciones de negocio. **Aún no es exigible técnicamente** | **Propietario del producto** |
+| 4 | **En revisión** | En proceso de revisión formal | Arquitecto |
+| 5 | **Vigente** | Aprobado y **exigible** | Arquitecto |
+| 6 | **Obsoleto** | Reemplazado; se conserva por trazabilidad | Arquitecto |
+
+### 7.1 Flujo de estados
+
+```mermaid
+flowchart TD
+    B["**1. Borrador**<br/>Arquitectura redacta"] --> D{"¿Contiene decisiones<br/>de negocio?"}
+    D -->|Sí| BR["**2. Borrador para ratificación**"]
+    D -->|No| RV["**4. En revisión**"]
+    BR --> RAT["**3. Ratificado por el propietario**<br/>decisión empresarial tomada"]
+    RAT --> RV
+    RV --> VIG["**5. Vigente**<br/>exigible"]
+    VIG --> OBS["**6. Obsoleto**"]
+```
+
+**Por qué existe el estado 3:** separa dos aprobaciones de naturaleza y de responsable
+distintos. Sin él, la ratificación empresarial y la aprobación técnica quedan indistinguibles en
+el historial, y dentro de un año nadie sabrá si la visión del ERP la decidió el propietario o la
+escribió el arquitecto.
+
+**Regla:** un documento en estado 2 **no puede pasar a 4 ni a 5** sin pasar por 3.
+
+### 7.2 Documentos que hoy requieren ratificación
+
+| Documento | Qué requiere decisión | Estado actual |
+|---|---|---|
+| **CON-001** | Visión (§8.3), Misión (§8.4) y Valores (§8.5) | **Borrador para ratificación** |
+
+El resto del cuerpo documental está **Vigente**: no contiene declaraciones de negocio que
+requieran ratificación, solo hechos verificables y reglas técnicas.
+
+### 7.3 Clasificación de desviaciones
+
+Toda desviación entre lo que una norma exige y lo que el sistema hace se clasifica en un nivel.
+El nivel determina la urgencia y quién debe autorizarla.
+
+| Nivel | Nombre | Definición | Autoriza | Plazo de cierre |
+|---|---|---|---|---|
+| **A** | **Incumplimiento crítico** | La norma existe y su incumplimiento puede causar **daño irreversible**: pérdida de datos, fuga entre empresas, corte indebido de servicio o dinero mal registrado | **Propietario del producto** | Debe tener fecha comprometida |
+| **B** | **Riesgo técnico** | La norma se incumple y degrada la mantenibilidad, la trazabilidad o la capacidad de detectar fallos. **No causa daño irreversible por sí sola** | Arquitecto | Debe tener condición de cierre |
+| **C** | **Mejora futura** | La norma se cumple parcialmente por adopción incremental. El código nuevo ya la respeta | Arquitecto | Sin plazo; se cierra por avance natural |
+
+**Regla:** toda desviación registrada declara su **nivel**, su **estado objetivo** (cómo debe
+quedar) y **qué la cierra**. Una desviación sin estado objetivo no es gobernable: nadie sabe hacia
+dónde va.
+
+El registro consolidado está en **POL-001 Anexo B**.
+
+## 8. Convención de versionado
+
+`MAYOR.MENOR` — **MAYOR** cambia cuando se modifica una regla exigible; **MENOR** cuando se
+amplía o precisa sin alterar obligaciones.
+
+Todo cambio se registra en la sección 3 del documento afectado, indicando **qué cambió y por qué**
+— nunca solo "actualización".

@@ -267,31 +267,50 @@ al ERP (SmartOLT, MikroWISP, adopción masiva de huérfanas), leer esto y actuar
 consecuencia. No es opcional.**
 
 Una ONU que entra al ERP con `contrato_onu_config.provisioning_enabled = true` y
-`last_applied_revision` en NULL queda marcada como **drift**, y el reconcile de las 03:30
-(`ZtpReconcileCron.reconciliarDiario`) le **reescribe el SSID, la clave del WiFi y las
-credenciales de acceso web** con el preset de la OLT.
+`last_applied_revision` en NULL queda marcada como **drift**, y el pipeline ZTP le
+**reescribe el SSID, la clave del WiFi y las credenciales de acceso web** con el preset de
+la OLT.
 
-En una migración eso no afecta a una ONU: afecta a **todas a la vez, de madrugada, sin que
-nadie lo pida**. Son clientes reales en producción que llevan años con su configuración —
-muchos con su propia clave de WiFi. A la mañana siguiente, ninguno tiene internet en sus
-dispositivos y nadie sabe por qué.
+**No hay una noche de margen: son dos minutos.** Son DOS los barridos que lo hacen, y el
+peligroso no es el nocturno:
 
-Hoy el ERP está a salvo por construcción, no por precaución: hay 205 ONUs en la OLT y solo
-las que el ERP aprovisionó tienen `contrato_onu_config`. `adoptarOnusHuerfanas` inserta solo
-en `ftth_onu_registro` y NO crea config, así que una ONU adoptada queda fuera del reconcile.
-**La migración es exactamente el proceso que rompería esa garantía.**
+| Barrido | Frecuencia | Filtro |
+|---|---|---|
+| `ztp.reconcile()` | 03:30 | `provisioning_enabled AND (rev NULL OR rev < revision)` |
+| **`ztp.reconcilePendingReinjection()`** | **cada 2 min** | `provisioning_enabled AND rev IS NULL` |
+
+Una ONU recién migrada tiene exactamente `last_applied_revision IS NULL`: **la captura el
+watcher de dos minutos**, no el de las 03:30.
+
+En una migración eso no afecta a una ONU: afecta a **todas a la vez, sin que nadie lo pida**.
+Son clientes reales en producción que llevan años con su configuración — muchos con su
+propia clave de WiFi — que se quedan sin internet en sus dispositivos sin que nadie sepa por
+qué.
+
+**Protección vigente (desde `AddOrigenAContratoOnuConfig1791800000045`):**
+`contrato_onu_config.origen` (`erp` | `adoptada` | `migrada`). **Los dos barridos y
+`provisionContract` filtran por `origen = 'erp'`.** Una ONU que el ERP no aprovisionó se
+observa y se respeta; sobrescribir su config exige `sobrescribirConfigAjena: true`, un acto
+deliberado del operador. Cubierto por tests en `ztp.service.reconcile.spec.ts`.
+
+Antes existía solo por composición de tres decisiones independientes (`_nuevo()` con
+`provisioning_enabled = false`, `adoptarOnusHuerfanas` que no crea config, y el preset
+invocado solo desde la provisión del ERP). Ninguna de las tres decía la regla, y un script
+de migración que hiciera `upsert()` + `setProvisioningEnabled(true)` las anulaba a la vez.
 
 **Reglas para cualquier migración de ONUs:**
 
-1. Una ONU migrada/adoptada nace con `provisioning_enabled = false`, o con
-   `last_applied_revision = revision` para que nunca figure como drift.
+1. Una ONU migrada/adoptada nace con **`origen = 'migrada'` o `'adoptada'`** — nunca con el
+   constructor por defecto, que asume `'erp'`. Adicionalmente puede nacer con
+   `provisioning_enabled = false` o `last_applied_revision = revision`.
 2. El auto-config **solo** se aplica a aprovisionamientos nuevos hechos desde el ERP. Una
    ONU que ya funcionaba se ADOPTA (se observa y se respeta), nunca se reconfigura — es la
    directriz de "implementación desde cero": el ERP inyecta su config canónica en equipos
    que él provisiona, y respeta como intocable lo preexistente.
-3. Antes de activar el reconcile sobre el parque migrado, verificar con
-   `SELECT COUNT(*) FROM contrato_onu_config WHERE provisioning_enabled AND (last_applied_revision IS NULL OR last_applied_revision < revision)`
-   que el número sea el esperado. Si devuelve cientos, la madrugada siguiente es un incidente.
+3. **Pre-flight obligatorio antes y después de la migración:**
+   `GET /api/v1/olt-nativo/ztp/preflight-migracion` (o
+   `ContratoOnuConfigService.preflightMigracion`). Devuelve `seguro: false` si alguna ONU de
+   origen distinto de `erp` entraría en el barrido. **Si devuelve `seguro: false`, PARAR.**
 
 ## Portabilidad Multi-VPS — Regla Crítica de Configuración
 

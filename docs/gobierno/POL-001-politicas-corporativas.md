@@ -1,0 +1,728 @@
+# POL-001 — Políticas Corporativas
+
+---
+
+## 2. Control documental
+
+| Campo | Valor |
+|---|---|
+| **Código** | POL-001 · **Versión** 1.0 · **Estado** Vigente |
+| **Autor** | Arquitectura · **Revisores** Pendientes de asignar |
+| **Fecha** | 2026-08-06 · **Documento superior** CON-001 |
+| **Carácter** | **Obligatorio.** Su incumplimiento requiere excepción registrada |
+
+## 3. Historial de cambios
+
+| Versión | Fecha | Cambio | Motivo |
+|---|---|---|---|
+| 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
+
+## 4. Índice
+
+1. Políticas de Desarrollo · 2. Políticas de Arquitectura · 3. Políticas de Seguridad ·
+4. Políticas de Calidad · 5. Políticas de Integración · 6. Políticas de Producción
+
+## 5. Objetivo
+
+Establecer las reglas obligatorias del proyecto: qué debe cumplirse siempre, qué está prohibido y
+qué requiere excepción registrada.
+
+## 6. Alcance
+
+Todo el código, la configuración, los datos y las operaciones del ERP Datafast. Aplica a todas
+las personas y agentes que lo modifiquen.
+
+## 7. Definiciones y glosario
+
+| Término | Definición |
+|---|---|
+| **DEBE / PROHIBIDO** | Obligación absoluta. Su incumplimiento exige excepción registrada |
+| **DEBERÍA** | Obligación fuerte; se puede desviar con justificación en el código |
+| **PUEDE** | Opcional |
+| **Excepción registrada** | Desviación documentada en un ADR o en `PENDIENTES.md`, con motivo y condición de cierre |
+
+**Regla de las excepciones:**
+
+> Una excepción documentada es gobernable. Una excepción silenciosa es deuda invisible, porque el
+> siguiente lector construirá encima creyendo que la regla se cumple.
+
+---
+
+# 8. Contenido
+
+# 8.1 Políticas de Desarrollo
+
+## PD-01 · No se programa sin contexto — **DEBE**
+
+Antes de escribir código: leer los archivos relevantes, revisar el historial y entender la
+arquitectura. Si el contexto es insuficiente, **preguntar**; no asumir.
+
+## PD-02 · Inspección integral antes de una solución — **DEBE**
+
+Orden obligatorio: código local → VPS → ERP en ejecución → routers/antenas si aplica.
+
+## PD-03 · Causa raíz antes que parche — **DEBE**
+
+No se da por corregido un fallo sin poder explicar **cómo llegó el sistema a ese estado**.
+
+**Checklist obligatorio:**
+1. Reproducirlo y **observarlo**, no deducirlo.
+2. Explicar por qué el sistema llegó a ese estado.
+3. Preguntar **dónde más ocurre lo mismo**.
+4. Corregir **en el punto común**.
+5. Dejar constancia **de la causa**, no del arreglo.
+
+> Si la explicación es *"no sé por qué pasaba, pero con esto ya no pasa"*, no está corregido:
+> **está oculto**.
+
+## PD-04 · Reutilizar antes de construir — **DEBE**
+
+Antes de escribir una consulta o servicio de lectura:
+1. Buscar si ya existe (un `grep` por el concepto de negocio cuesta un minuto).
+2. Si existe y sirve, **usarlo** — filtrar de más es barato, mantener dos fuentes no.
+3. Si no encaja, **extenderlo**; nunca clonarlo.
+4. Si hace falta uno nuevo, dejar **una** definición reutilizable.
+5. Si la duplicación es inevitable, **escribir en el código por qué** y qué hay que cambiar en los dos sitios si cambia la regla.
+
+**Matiz obligatorio:** comprobar que el **coste encaja con el uso**. Un servicio válido para una
+consulta puntual puede ser inviable en bucle.
+
+## PD-05 · Solución mínima — **DEBERÍA**
+
+Lo mínimo que resuelve el problema. Sin abstracciones, helpers, tipos ni validaciones que nadie
+pidió. **Tres líneas repetidas son preferibles a una abstracción prematura.**
+
+## PD-06 · No reescribir archivos completos — **DEBE**
+
+Cambio parcial, no sustitución. **PROHIBIDO** "limpiar" el código alrededor del cambio: mezcla
+correcciones con refactor y hace irrevisable el diff.
+
+## PD-07 · Validar antes de declarar hecho — **DEBE**
+
+Compilar, ejecutar tests o verificar contra el sistema real. **PROHIBIDO** declarar "listo" sin
+evidencia.
+
+## PD-08 · Idioma y tipado — **DEBE**
+
+Documentar y comentar **en español**. Tipado estricto en TypeScript: **PROHIBIDO `any`** salvo
+excepción justificada en el código.
+
+## PD-09 · Los comentarios explican por qué, no qué — **DEBE**
+
+Un comentario registra la **razón** de una decisión, no la traducción del código. Los comentarios
+más valiosos del repositorio explican qué incidente motivó una decisión.
+
+## PD-10 · Registro de deuda técnica — **DEBE**
+
+Todo trabajo que quede abierto se registra en `PENDIENTES.md` con: **qué falta**, **por qué
+importa** (la consecuencia real, no la tarea) y **cómo se comprueba**.
+
+> Una entrada sin consecuencia acaba siendo ignorada.
+
+---
+
+# 8.2 Políticas de Arquitectura
+
+## PA-01 · Módulos degradables nacen degradados — **DEBE**
+
+Todo módulo que dependa de hardware, API externa, servicio de terceros o infraestructura opcional
+implementa el patrón degradable **desde que se crea el archivo `.service.ts`**.
+
+**PROHIBIDO** construirlo primero y aplicar el patrón después.
+
+**Checklist:** `OnModuleInit` → probe ligero → `registrar('<nombre>', 'degraded'\|'ok', razón)` →
+`assertNotDegraded()` en los métodos que requieren el recurso → **nunca relanzar la excepción del
+probe**.
+
+## PA-02 · El Core Indestructible no se degrada — **PROHIBIDO**
+
+`auth` · `usuarios` · `licencia` · `clientes` · `contratos` · `planes` · `facturacion` · `pagos` ·
+`finanzas-opex` · `reportes` · `zonas` · `plantillas` · `config` · `schema-guard` · `auditoria`
+
+Si alguno falla al iniciar, **el backend debe crashear** para que PM2 conserve el proceso
+anterior.
+
+## PA-03 · VIO en toda mutación de hardware — **DEBE**
+
+1. Tras escribir, ejecutar un comando de **lectura independiente** que confirme el efecto.
+2. Sin confirmación, **PROHIBIDO reportar éxito**: se distingue "aceptado, sin confirmar" de "aplicado y confirmado".
+3. La verificación no bloquea indefinidamente: reintentos acotados (3–4 con backoff corto).
+4. Reutilizar las sondas existentes como patrón.
+
+## PA-04 · VIO hacia adentro — **DEBE**
+
+1. Todo comentario que garantice **concurrencia, atomicidad o exclusión mutua** lleva un test que lo ejercite, **o se borra**.
+2. Un **log describe lo que ocurrió**, nunca lo que el código pretendía hacer.
+3. Los tests de garantías **nombran el incidente** que las motivó.
+
+## PA-05 · Máquina de estados declarativa — **DEBE**
+
+Todo recurso con ciclo de vida contra hardware declara sus transiciones en **un solo archivo**
+(`domain/*-maquina-estados.ts`).
+
+- La idempotencia **se deriva** del estado destino (`ya_en_destino` = éxito).
+- Los guards **consultan** la máquina; **PROHIBIDO** que escriban su propio array de estados.
+- Retirar un estado de origen exige **justificar por qué**.
+
+## PA-06 · Vocabulario de dominio — **DEBE**
+
+Todo método invocable por un orquestador devuelve `ResultadoOperacion`, **no excepciones HTTP**.
+
+1. `indeterminado` es **obligatorio** ante un timeout contra hardware.
+2. Rechazos definitivos: **solo 400 y 404**. **PROHIBIDO** usar `status < 500`.
+3. Ante la duda: **reintentable**.
+4. **PROHIBIDO** inferir reintentabilidad de un código HTTP.
+
+## PA-07 · Toda mutación de hardware pasa por el outbox — **DEBE**
+
+La intención se escribe en `comandos_red_pendientes` **en la misma transacción** que el cambio de
+negocio.
+
+**PROHIBIDO** ejecutar una operación de hardware dentro del ciclo de vida de un request HTTP
+(el timeout global de 30 s la rompe).
+
+## PA-08 · Wizards: lo no confirmado se anula — **DEBE**
+
+La frontera de confirmación es el **estado terminal verificado**, **nunca** el clic del operador.
+
+**Obligatorio:** ruta de anulación en todos los caminos de cierre · fire-and-forget cancelable ·
+red de seguridad en servidor (heartbeat + TTL) · revertir hardware **y** liberar recursos ·
+prohibir operaciones concurrentes sobre el mismo recurso · **compensación registrada antes de
+ejecutar** · cada paso guarda cómo deshacerse **y** cómo verificarse · compensaciones idempotentes
+· VIO al deshacer · el heartbeat **suprime** el barrido con **techo absoluto** · anular es
+asíncrono.
+
+**PROHIBIDO** interrumpir una operación de hardware a mitad. Anular no es abortar: se **espera** a
+que termine y luego se revierte.
+
+## PA-09 · Contrato obligatorio de todo adaptador — **DEBE**
+
+1. **Nunca propagar excepciones** al llamador: resultado estructurado con `exitoso`, `mensaje`, `latenciaMs`.
+2. **Medir latencia** incluyendo el tiempo de conexión.
+3. **PROHIBIDO modificar la base de datos desde dentro del adaptador.**
+4. Las credenciales descifradas viven **solo en memoria** y **nunca se loguean**.
+
+## PA-10 · Implementación desde cero — **DEBE**
+
+El ERP inyecta **su** configuración canónica en los equipos que provisiona y **respeta como
+intocable** lo preexistente.
+
+**PROHIBIDO** reconfigurar un equipo que ya funcionaba. Una ONU que el ERP no aprovisionó **se
+adopta**: se observa y se respeta.
+
+**PROHIBIDO** reutilizar un recurso ajeno sin verificar que está libre.
+
+## PA-11 · Portabilidad multi-VPS — **PROHIBIDO** lo contrario
+
+**PROHIBIDO** que un archivo del repositorio contenga IPs, dominios, URLs de servidor o secretos.
+
+- Variables de entorno, **nunca** literales.
+- **Lazy getters** para constantes de módulo que lean `process.env`.
+- `ecosystem.config.js` **sin** IPs ni secretos.
+- Scripts y comandos enviados a hardware construidos **en tiempo de ejecución**.
+- Toda variable nueva documentada en `.env.example`.
+
+## PA-12 · Una tabla, un dueño — **DEBE**
+
+Cada tabla tiene un módulo que la escribe. Los demás la leen a través de él.
+
+**Única excepción registrada:** `comandos_red_pendientes`, que los módulos de negocio escriben
+para que la intención esté en su transacción, y que solo `outbox-red` lee y actualiza.
+
+## PA-13 · Toda tabla nace con entidad — **DEBE**
+
+Toda tabla nueva se declara como entidad TypeORM. Columnas `string | null` llevan `type:`
+explícito (sin él, SWC crashea el backend en frío).
+
+## PA-14 · El esquema solo cambia por migración — **PROHIBIDO** lo contrario
+
+`synchronize: false` sin excepciones. **PROHIBIDO** editar una migración ya desplegada: se
+corrige con otra. **Un solo proceso migra.**
+
+## PA-15 · Todo cron declara cap, lock y latido — **DEBE**
+
+**PROHIBIDO** un proceso de fondo que itere sin límite de trabajo. Todo cron declara su
+presupuesto de tiempo, su cap por ejecución y emite latido.
+
+## PA-16 · Los listeners de eventos no ejecutan lógica de negocio — **DEBE**
+
+El bus es **in-process**: un evento emitido en un proceso no llega a otro. Un listener **encola**;
+no ejecuta. Si ejecutara, su comportamiento dependería de dónde se emitió el evento.
+
+## PA-17 · Toda operación rutinaria se modela explícitamente — **DEBE**
+
+Componer una operación de negocio con operaciones destructivas **no es modelarla**.
+
+---
+
+# 8.3 Políticas de Seguridad
+
+## PS-01 · Ningún secreto en el repositorio — **PROHIBIDO**
+
+Ni en código, ni en `ecosystem.config.js`, ni en `docker-compose.yml`, ni en documentación.
+`ACCESOS.local.md` **nunca** sale del entorno local.
+
+## PS-02 · El proceso más expuesto tiene los menos secretos — **DEBE**
+
+El frontend **no recibe ningún secreto**. Su entorno se declara explícitamente, nunca se hereda
+de una shell.
+
+## PS-03 · Credenciales de terceros cifradas en base de datos — **DEBE**
+
+Con `encryption.util` (`ENCRYPTION_KEY`). **PROHIBIDO** loguear credenciales, tokens o
+contraseñas, incluso en depuración.
+
+## PS-04 · Toda consulta filtra por `empresa_id` — **DEBE**
+
+Ninguna consulta sobre una tabla con `empresa_id` puede omitir el filtro.
+
+> ⚠️ **Esta política está incumplida por diseño histórico**: la garantía es hoy convencional, no
+> mecánica. Registrada como riesgo crítico (RDM-001 R3). **Hasta que exista el mecanismo, la
+> política se cumple manualmente y se verifica en revisión.**
+
+## PS-05 · Autorización explícita en endpoints mutantes — **DEBERÍA** → **DEBE** para módulos nuevos
+
+Todo endpoint que muta declara `@RequirePermission('recurso:accion')`.
+
+**Estado actual:** aplicado en 4 de 44 módulos. **Todo módulo nuevo lo aplica sin excepción.**
+
+## PS-06 · Validación de entrada — **DEBE**
+
+DTO con `class-validator` en cada endpoint. **Sanitizar toda variable enviada a un CLI de hardware
+o a una API de RouterOS.**
+
+## PS-07 · La API interna no se expone — **PROHIBIDO**
+
+El servicio Python escucha **solo** en `127.0.0.1` y exige API key. **PROHIBIDO** publicarlo.
+
+## PS-08 · Swagger deshabilitado en producción — **DEBE**
+
+## PS-09 · Toda mutación queda auditada — **DEBE**
+
+Solo las lecturas de alto volumen pueden marcar `skipAudit`, y con justificación.
+
+---
+
+# 8.4 Políticas de Calidad
+
+## PC-01 · Todo invariante crítico lleva test — **DEBE**
+
+Se consideran críticos los que afectan a **dinero, aislamiento entre empresas, concurrencia o
+plano físico de red**.
+
+## PC-02 · Los tests nombran el incidente — **DEBE**
+
+**PROHIBIDO** un test llamado "no debería fallar". El nombre indica qué incidente previene.
+
+## PC-03 · Un comentario que garantiza concurrencia lleva test, o se borra — **DEBE**
+
+Borrarlo es una opción legítima: **una garantía que nadie sostiene es peor que ninguna**.
+
+## PC-04 · Verificación que confirme también el caso malo — **DEBE**
+
+> *"Una verificación que solo sabe confirmar el caso bueno no es una verificación."*
+
+Aplica a scripts de despliegue, healthchecks y comprobaciones automáticas.
+
+## PC-05 · El código compila y typechequea antes del commit — **DEBE**
+
+## PC-06 · Diseño cero-error — **DEBE**
+
+**PROHIBIDO:** placeholders · TODOs en código productivo · bloques `catch` genéricos sin lógica de
+recuperación · errores silenciados.
+
+## PC-07 · Evaluación pesimista obligatoria — **DEBE**
+
+Ante cualquier cambio que toque red o dinero, evaluar por escrito: timeouts, race conditions,
+desfase de estado hardware↔BD y sanitización de entrada.
+
+---
+
+# 8.5 Políticas de Integración
+
+## PI-01 · Toda integración nueva nace degradable — **DEBE**
+
+## PI-02 · Toda integración nueva pasa por un puerto — **DEBE**
+
+**PROHIBIDO** llamar a un proveedor externo directamente desde un servicio de dominio.
+
+## PI-03 · Antes de un segundo proveedor, el primero pasa por el contrato — **DEBE**
+
+> *"Si la abstracción no lo absorbe, la abstracción está mal y se corrige con un proveedor, no
+> con tres."*
+
+## PI-04 · Puerta de estabilidad del dinero — **PROHIBIDO** saltarla
+
+**PROHIBIDO** integrar una pasarela de pago antes de cumplir: 30 días de invariante de
+contabilidad limpio en producción, un extorno real revisado a mano y un cierre de caja mensual
+cuadrado.
+
+**PROHIBIDO** crear un segundo servicio que registre pagos o aplique dinero.
+
+## PI-05 · Un timeout cobrando es `indeterminado` — **DEBE**
+
+**PROHIBIDO** reintentar a ciegas (cobra dos veces) y **PROHIBIDO** reportar fallo (deja dinero
+sin registro). Se reporta `indeterminado` y lo resuelve el conciliador.
+
+## PI-06 · Sin dependencias sin consumidor — **DEBE**
+
+Una dependencia sin uso se retira. Si se conserva, se documenta por qué y hasta cuándo.
+
+## PI-07 · La decisión de canal es por modelo — **DEBE**
+
+**PROHIBIDA** una dependencia global de un mecanismo de bootstrap. Un modelo no catalogado
+produce un error explícito, **jamás un intento a ciegas**.
+
+---
+
+# 8.6 Políticas de Producción
+
+## PP-01 · El arranque se declara en un solo archivo — **PROHIBIDO** lo contrario
+
+`ecosystem.config.js` es la fuente de verdad única. **PROHIBIDO `pm2 start` manual.**
+
+## PP-02 · Un solo proceso migra — **DEBE**
+
+## PP-03 · Nunca `--reload` en producción — **PROHIBIDO**
+
+WatchFiles reinicia el servicio al tocar cualquier archivo, y un `git reset --hard` de despliegue
+lo dispara **en medio de una operación contra la OLT**.
+
+## PP-04 · Un worker uvicorn para el servicio de OLT — **DEBE**
+
+El MA5800 tiene un límite bajo de sesiones VTY concurrentes.
+
+## PP-05 · Aislamiento de procesos por causa — **DEBE**
+
+Un componente que puede descontrolarse (Chromium) vive en su **propio proceso**, para que muera
+solo sin arrastrar lo crítico.
+
+## PP-06 · Timeouts realistas contra hardware — **DEBE**
+
+WAN 90 s · rollback GPON 150 s. **PROHIBIDO** asumir que un timeout significa que no pasó nada.
+
+## PP-07 · Todo despliegue se verifica — **DEBE**
+
+**PROHIBIDO** un script de despliegue que afirme éxito sin comprobarlo. La verificación debe
+detectar también el proceso en bucle de reinicio, no solo el uptime.
+
+## PP-08 · Ningún dominio es obligatorio — **DEBE**
+
+Servirse por IP, en LAN o con tres dominios son **el caso normal**. Renombrar una variable de
+entorno exige **periodo de gracia**.
+
+## PP-09 · Usar el flujo de negocio, nunca SQL directo — **PROHIBIDO**
+
+Un `UPDATE` directo **se salta las cascadas** (revocar certs, quitar rutas, invalidar pools).
+
+## PP-10 · Antes de una migración de ONUs — **DEBE**
+
+**PROHIBIDO** iniciar una migración sin ejecutar el pre-flight **antes y después**, y sin declarar
+el `origen` de cada ONU incorporada.
+
+| # | Obligación |
+|---|---|
+| 1 | Toda ONU incorporada declara **`origen = 'migrada'` o `'adoptada'`**. **PROHIBIDO** usar el constructor por defecto, que asume `'erp'` |
+| 2 | Ejecutar `GET /olt-nativo/ztp/preflight-migracion` **antes** de empezar |
+| 3 | Ejecutar el mismo pre-flight **después** de incorporar. Si devuelve `seguro: false`, **PARAR y corregir el origen** antes de continuar |
+
+**La ventana de exposición son dos minutos, no una noche.** Son dos los barridos que aplican el
+auto-config, y el que captura una ONU recién migrada (`last_applied_revision IS NULL`) es
+`reconcilePendingReinjection`, que corre **cada 2 minutos** — no el de las 03:30.
+
+Consulta equivalente si no hay acceso a la API:
+
+```sql
+SELECT origen,
+       COUNT(*) FILTER (
+         WHERE provisioning_enabled
+           AND (last_applied_revision IS NULL OR last_applied_revision < revision)
+       ) AS en_barrido
+FROM   contrato_onu_config
+WHERE  deleted_at IS NULL
+GROUP BY origen;
+```
+
+**`en_barrido` debe ser 0 para todo origen distinto de `erp`.**
+
+## PP-11 · Todo proceso de fondo late y es vigilado — **DEBE**
+
+**PROHIBIDO** un watcher que no emita latido. Un fallo silencioso es peor que uno ruidoso.
+
+## PP-12 · Nunca modificar el balanceo de OASIS sin leer antes — **PROHIBIDO**
+
+Leer mangle, rutas y address-lists. El sistema usa `Linea1-8` por `src-address-list`, **no PCC**.
+
+## PP-13 · Scripts de red fuera del repositorio del ERP — **DEBE**
+
+Van en `Proyecto_CRM_ISP/mikrotik-network/`.
+
+---
+
+# 8.7 Verificación del cumplimiento
+
+> **Una política sin forma de verificarse es una intención.** Esta sección declara, para cada
+> política, **cómo se comprueba** que se cumple.
+
+## 8.7.1 Tipos de evidencia
+
+| Código | Mecanismo | Naturaleza |
+|---|---|---|
+| **T** | Test automatizado (`*.spec.ts`) | Automática |
+| **L** | Linter / compilador (ESLint, `tsc`) | Automática |
+| **D** | Restricción de base de datos (índice, constraint, trigger) | Automática |
+| **R** | Guard, interceptor o mecanismo en tiempo de ejecución | Automática |
+| **S** | Script de verificación (`sql:check`, `check-*.mjs`) | Automática, **ejecución manual hoy** |
+| **C** | Integrado en CI | Automática y sistemática |
+| **M** | Revisión manual en code review | Humana |
+| **O** | Observación en operación (health, watchers, drift) | Humana asistida |
+
+## 8.7.2 Grado de verificación
+
+| Grado | Significado |
+|---|---|
+| ✅ **Automático** | Un incumplimiento **falla** sin intervención humana |
+| ⚠️ **Parcial** | Existe mecanismo pero no cubre todos los casos, o no está en CI |
+| ❌ **Manual** | Solo se detecta si alguien lo busca |
+
+## 8.7.3 Matriz — Políticas de Desarrollo
+
+| Política | Evidencia | Grado | Cómo se comprueba hoy | Objetivo |
+|---|---|---|---|---|
+| PD-01 No programar sin contexto | M | ❌ | Revisión | Sin mecanismo posible |
+| PD-02 Inspección integral | M | ❌ | Revisión | Sin mecanismo posible |
+| PD-03 Causa raíz antes que parche | M | ❌ | El commit debe explicar la causa | Plantilla de commit en CI |
+| PD-04 Reutilizar antes de construir | M | ❌ | Revisión | Detección de consultas duplicadas por concepto |
+| PD-05 Solución mínima | M | ❌ | Revisión | Sin mecanismo posible |
+| PD-06 No reescribir archivos completos | M | ❌ | Tamaño del diff en revisión | Aviso automático si el diff sustituye >80 % del archivo |
+| PD-07 Validar antes de declarar hecho | L + C | ⚠️ | `typecheck` y `test` manuales | **Ambos en CI** (ADR-024) |
+| PD-08 Tipado estricto, sin `any` | L | ❌ | **El compilador NO lo exige** (§Anexo B, nivel B) | `strict: true` + regla activa (**ADR-018**) |
+| PD-09 Comentarios explican el porqué | M | ❌ | Revisión | Sin mecanismo posible |
+| PD-10 Registro de deuda técnica | M | ❌ | Revisión de `PENDIENTES.md` | Sin mecanismo posible |
+
+## 8.7.4 Matriz — Políticas de Arquitectura
+
+| Política | Evidencia | Grado | Cómo se comprueba hoy | Objetivo |
+|---|---|---|---|---|
+| PA-01 Módulos degradables nacen degradados | R + M | ⚠️ | `GET /health/modules` lo expone; nada obliga a implementarlo | Checklist verificado en revisión (ADR-024) |
+| PA-02 Core Indestructible no se degrada | R | ⚠️ | El backend crashea si falla el init | Test de arranque por módulo |
+| PA-03 VIO en toda mutación de hardware | T + R | ⚠️ | Sondas implementadas en FTTH; **ausentes en MikroTik** | Extender a MikroTik (**ADR-021**) |
+| PA-04 VIO hacia adentro | T + M | ⚠️ | Hay tests de los invariantes principales | Regla: comentario de concurrencia sin test **falla en CI** |
+| PA-05 Máquina de estados declarativa | T | ⚠️ | `ftth-maquina-estados.spec.ts`, `planta-externa-…spec.ts`. **WISP no tiene máquina** | Máquina para WISP (**ADR-021**) |
+| PA-06 Vocabulario de dominio | T | ⚠️ | `resultado-operacion.spec.ts`, `contrato-adaptador.spec.ts`. Solo plano de red | Extender al plano financiero |
+| PA-07 Toda mutación de hardware por outbox | T + M | ⚠️ | `outbox-red.claim.spec.ts`. **Las operaciones interactivas son síncronas** | Outbox también en interactivas (**ADR-028**) |
+| PA-08 Wizards anulan lo no confirmado | R + O | ⚠️ | Saga + watchers en producción. **Sin test de los 4 invariantes del compensador** | Tests del compensador |
+| PA-09 Contrato de todo adaptador | M | ❌ | Escrito en `IOltProvider`; revisión humana | Test de contrato por adaptador |
+| PA-10 Implementación desde cero | M | ❌ | Directriz | Campo de origen explícito (**ADR-014 → R1**) |
+| PA-11 Portabilidad multi-VPS | S | ⚠️ | `check-*.mjs`; inspección | Regla de CI que rechace IPs y dominios literales |
+| PA-12 Una tabla, un dueño | M | ❌ | Revisión | Detección de escrituras cruzadas |
+| PA-13 Toda tabla nace con entidad | S + M | ❌ | `db:check` manual; **39 tablas sin entidad** | Entidades para tablas críticas (**ADR-026**) |
+| PA-14 El esquema solo cambia por migración | R + D | ✅ | `synchronize: false` + `schema-guard` al arrancar | — |
+| PA-15 Todo cron declara cap, lock y latido | O | ❌ | `GET /admin/sistema/watchers`. **`reconciliar()` sin cap** | Cap y lock obligatorios (**ADR-027**) |
+| PA-16 Listeners no ejecutan lógica | M | ❌ | Revisión | Regla de lint sobre `@OnEvent` |
+| PA-17 Modelar lo rutinario | M | ❌ | Revisión | Cambio de ONU modelado (**ADR-022**) |
+
+## 8.7.5 Matriz — Políticas de Seguridad
+
+| Política | Evidencia | Grado | Cómo se comprueba hoy | Objetivo |
+|---|---|---|---|---|
+| PS-01 Ningún secreto en el repositorio | S + M | ⚠️ | `.gitignore` + revisión | **Escaneo de secretos en CI** |
+| PS-02 El proceso expuesto, con menos secretos | R | ✅ | `ecosystem.config.js` declara entorno mínimo | — |
+| PS-03 Credenciales cifradas en BD | R | ✅ | `encryption.util` en el camino de escritura | Test de que no se persiste en claro |
+| PS-04 Toda consulta filtra por `empresa_id` | M | ❌ | **Solo revisión. 445 consultas** (Anexo B, **nivel A**) | **RLS en PostgreSQL + barrido en CI** (**ADR-017**) |
+| PS-05 Permiso fino en endpoints mutantes | M | ❌ | **4 de 44 módulos** (Anexo B, nivel B) | Regla de CI: endpoint mutante sin `@RequirePermission` falla (**ADR-025**) |
+| PS-06 Validación de entrada | R | ✅ | `ValidationPipe` global con `whitelist` | `forbidNonWhitelisted: true` (nivel C) |
+| PS-07 La API interna no se expone | R | ✅ | Escucha en `127.0.0.1` + API key + red Docker interna | — |
+| PS-08 Swagger deshabilitado en producción | R | ✅ | Condicional en `main.ts` | — |
+| PS-09 Toda mutación queda auditada | R | ✅ | `AuditInterceptor` global | — |
+
+## 8.7.6 Matriz — Políticas de Calidad
+
+| Política | Evidencia | Grado | Cómo se comprueba hoy | Objetivo |
+|---|---|---|---|---|
+| PC-01 Todo invariante crítico lleva test | T | ⚠️ | ~30 specs de alta calidad; cobertura baja | Lista de invariantes con test obligatorio |
+| PC-02 Los tests nombran el incidente | M | ❌ | Revisión | Sin mecanismo posible |
+| PC-03 Comentario de concurrencia con test | M | ❌ | Revisión | Regla de CI |
+| PC-04 Verificación que confirme el caso malo | M + O | ❌ | Revisión y experiencia | Checklist de despliegue (PRO-001 §8.1.3) |
+| PC-05 Compila y typechequea antes del commit | L | ⚠️ | Manual | **CI obligatorio** |
+| PC-06 Diseño cero-error | L + M | ⚠️ | ESLint parcial | Regla que rechace `catch` vacío y TODOs |
+| PC-07 Evaluación pesimista obligatoria | M | ❌ | Revisión | ADR obligatorio en cambios de red o dinero |
+
+## 8.7.7 Matriz — Políticas de Integración
+
+| Política | Evidencia | Grado | Cómo se comprueba hoy | Objetivo |
+|---|---|---|---|---|
+| PI-01 Toda integración nace degradable | R + M | ⚠️ | `GET /health/modules` | Checklist en revisión |
+| PI-02 Toda integración pasa por un puerto | M | ❌ | Revisión. **Mercado Pago no lo cumple** (Anexo B, nivel B) | Migrar Mercado Pago (**R11**) |
+| PI-03 El primer proveedor pasa por el contrato antes que el segundo | M | ❌ | Revisión | Puerta documentada en ADR-013 |
+| PI-04 Puerta de estabilidad del dinero | T + M | ⚠️ | `frontera-dinero.spec.ts` bloquea el segundo escritor | Criterios 1–3 son de negocio: **no automatizables** |
+| PI-05 Un timeout cobrando es `indeterminado` | T | ✅ | `contrato-adaptador.spec.ts`, `resultado-operacion.spec.ts` | — |
+| PI-06 Sin dependencias sin consumidor | S | ❌ | Inspección | Auditoría de dependencias en CI |
+| PI-07 La decisión de canal es por modelo | T | ✅ | Catálogo + `olt-model-catalog.spec.ts` | — |
+
+## 8.7.8 Matriz — Políticas de Producción
+
+| Política | Evidencia | Grado | Cómo se comprueba hoy | Objetivo |
+|---|---|---|---|---|
+| PP-01 Arranque declarado en un solo archivo | M | ❌ | Revisión de `ecosystem.config.js` | Verificación de que los procesos vivos coinciden |
+| PP-02 Un solo proceso migra | R | ✅ | `RUN_MIGRATIONS` por proceso | — |
+| PP-03 Nunca `--reload` en producción | M | ❌ | Revisión | Verificación de argumentos en despliegue |
+| PP-04 Un worker uvicorn | M | ❌ | Revisión | Ídem |
+| PP-05 Aislamiento de procesos por causa | R | ✅ | Procesos PM2 separados | — |
+| PP-06 Timeouts realistas | M | ❌ | Revisión | Constantes centralizadas y testeadas |
+| PP-07 Todo despliegue se verifica | S | ⚠️ | Checklist de PRO-001 §8.1.3, **manual** | **Script que ejecute los 9 puntos** |
+| PP-08 Ningún dominio es obligatorio | R | ✅ | Plantillas Nginx con caída elegante | — |
+| PP-09 Usar el flujo de negocio, nunca SQL directo | M | ❌ | Revisión y disciplina | `verificarInvariantes()` ampliado |
+| PP-10 Pre-flight antes de migrar ONUs | S | ❌ | Consulta manual | **Pre-flight que falle en seco** (**R1**) |
+| PP-11 Todo proceso de fondo late y es vigilado | O | ⚠️ | `GET /admin/sistema/watchers`, **consultable, no vigilante** | **Alarma automática** (**R2**, ADR-020) |
+| PP-12 No modificar OASIS sin leer antes | M | ❌ | Directriz | Sin mecanismo posible |
+| PP-13 Scripts de red fuera del repo | M | ❌ | Revisión | Regla de CI sobre rutas |
+
+## 8.7.9 Resumen del estado de verificación
+
+| Grado | Nº de políticas | Porcentaje |
+|---|---|---|
+| ✅ Automático | 14 | 22 % |
+| ⚠️ Parcial | 20 | 32 % |
+| ❌ Manual | 29 | 46 % |
+
+**Lectura honesta:** menos de una cuarta parte de las políticas tiene hoy una barrera que las
+haga cumplir. Las demás dependen de disciplina y revisión.
+
+**Esto no invalida las políticas** —describen cómo debe construirse el sistema y en su mayoría se
+cumplen— pero sí explica por qué la cobertura de las garantías es desigual: **donde no hay
+mecanismo, el cumplimiento depende de que alguien recuerde**.
+
+**Objetivo declarado:** llevar a ✅ o ⚠️ todas las políticas de nivel A y B del Anexo B. Es el
+contenido de R17 (gobierno arquitectónico) en RDM-001.
+
+## 8.7.10 Políticas que no se pueden automatizar
+
+Se declaran explícitamente para no perseguir un imposible:
+
+| Política | Por qué no |
+|---|---|
+| PD-01, PD-02, PD-05, PD-09 | Son criterios de juicio profesional |
+| PC-02 (nombrar el incidente) | Requiere saber qué incidente lo motivó |
+| PC-07 (evaluación pesimista) | Es un ejercicio de análisis, no una comprobación |
+| PI-04 criterios 1–3 | Son criterios de negocio: 30 días de contabilidad limpia no lo verifica un script |
+| PP-12 (OASIS) | Requiere leer y entender una configuración de red |
+
+Para estas, el mecanismo es **la revisión y el ADR**, no la automatización.
+
+---
+
+# 9. Referencias
+
+CON-001 · AEM-001 · ARS-001 · DOM-001 · DAT-001 · INT-001 · SEC-001 · EST-001 · GUI-001 ·
+PRO-001 · RDM-001 · ADR-001…016 y ADR-017…028 (propuestas) · `CLAUDE.md` · `docs/directrices/`
+
+---
+
+# 10. Anexos
+
+## Anexo A — Índice rápido de prohibiciones
+
+| # | PROHIBIDO |
+|---|---|
+| 1 | Secretos, IPs o dominios en el repositorio |
+| 2 | `pm2 start` manual |
+| 3 | `--reload` de uvicorn en producción |
+| 4 | `synchronize: true` |
+| 5 | Editar una migración desplegada |
+| 6 | Ejecutar hardware dentro de un request HTTP |
+| 7 | Interrumpir una operación de hardware a mitad |
+| 8 | Inferir reintentabilidad de un código HTTP |
+| 9 | Usar `status < 500` como criterio de rechazo definitivo |
+| 10 | Reintentar a ciegas tras un timeout de cobro |
+| 11 | Un segundo servicio que registre pagos o aplique dinero |
+| 12 | Integrar una pasarela antes de la puerta de estabilidad |
+| 13 | `UPDATE` directo saltándose el flujo de negocio |
+| 14 | Reconfigurar una ONU que el ERP no aprovisionó |
+| 15 | Reutilizar un recurso ajeno sin verificar que está libre |
+| 16 | Retirar del pool una IP de gestión ocupada |
+| 17 | Editar una versión publicada de un baseline |
+| 18 | Crear VLANs sin consumidor |
+| 19 | Loguear credenciales, tokens o contraseñas |
+| 20 | Exponer la API interna del servicio Python |
+| 21 | Swagger en producción |
+| 22 | `any` en TypeScript sin justificación |
+| 23 | `catch` genérico sin lógica de recuperación |
+| 24 | TODOs y placeholders en código productivo |
+| 25 | Un test llamado "no debería fallar" |
+| 26 | Un cron que itere sin cap |
+| 27 | Un watcher sin latido |
+| 28 | Un listener de evento que ejecute lógica de negocio |
+| 29 | Un script de despliegue que afirme éxito sin comprobarlo |
+| 30 | Modificar el balanceo de OASIS sin leer mangle, rutas y address-lists |
+
+## Anexo B — Registro de desviaciones vigentes
+
+### B.1 Clasificación
+
+| Nivel | Nombre | Definición | Autoriza |
+|---|---|---|---|
+| **A** | **Incumplimiento crítico** | Puede causar **daño irreversible**: fuga entre empresas, pérdida de datos, corte indebido de servicio o dinero mal registrado | **Propietario del producto** |
+| **B** | **Riesgo técnico** | Degrada mantenibilidad, trazabilidad o capacidad de detectar fallos. No causa daño irreversible por sí solo | Arquitecto |
+| **C** | **Mejora futura** | Cumplimiento parcial por adopción incremental. El código nuevo ya la respeta | Arquitecto |
+
+**Toda desviación declara cuatro cosas:** nivel · estado actual · **estado objetivo** (cómo debe
+quedar) · qué la cierra.
+
+> Una desviación sin estado objetivo no es gobernable: nadie sabe hacia dónde va. Y una excepción
+> sin condición de cierre no es una excepción: es una política derogada de hecho.
+
+### B.2 Nivel A — Incumplimientos críticos
+
+| # | Política | Estado actual | **Estado objetivo** | Qué lo cierra | Riesgo si no se cierra |
+|---|---|---|---|---|---|
+| **A-1** | **PS-04** — toda consulta filtra por `empresa_id` | Garantía **convencional**: depende de que cada una de las 445 consultas crudas lo recuerde. Sin RLS ni guard central | **Una consulta que omita el filtro devuelve CERO filas, no filas ajenas.** Barrido en CI que detecte las que lo omiten | **ADR-017** + RDM-001 **R3** | **Fuga de datos entre empresas.** No produce error: produce datos ajenos, sin log ni síntoma |
+| ~~**A-2**~~ | ~~**PP-10** — pre-flight antes de migrar ONUs~~ | **CERRADA 2026-08-06** | Alcanzado: columna `origen`, guard en los dos barridos y en la ruta manual, pre-flight que devuelve `seguro: false`, y 4 tests que nombran el riesgo | **ADR-014** — implementado | — |
+| **A-3** | **PP-11** — todo proceso de fondo late y **es vigilado** | El latido existe y se expone, pero los endpoints son **consultables, no vigilantes**. Nadie mira lo que parece funcionar | **El proceso que responde denuncia al que no late**, con alerta persistente en la interfaz | **ADR-020** + RDM-001 **R2** | El ERP responde con normalidad mientras nadie se corta ni se reactiva, **sin señal alguna** |
+| **A-4** | **PD-04** — reutilizar antes de construir (aplicado a la deuda) | **4 implementaciones** del cálculo de deuda, una de las cuales **decide cortes de servicio** | **Una sola definición**, los cuatro consumidores pasan por ella, y un test verifica que coinciden | **ADR-019** + RDM-001 **R4** | Cortar a quien no debe y no cortar a quien sí; respuestas distintas según la pantalla |
+
+### B.3 Nivel B — Riesgos técnicos
+
+| # | Política | Estado actual | **Estado objetivo** | Qué lo cierra |
+|---|---|---|---|---|
+| **B-1** | **PD-08** — tipado estricto, sin `any` | `strict: false` · `strictNullChecks: false` · `noImplicitAny: false` · regla `no-explicit-any` **desactivada**. Se cumple por disciplina | `strict: true` · `strictNullChecks: true` · `noImplicitAny: true` · regla activa. **Adopción por fases**, no de golpe sobre ~96.000 LOC | **ADR-018** |
+| **B-2** | **PA-13** — toda tabla nace con entidad | **39 tablas sin entidad**, incluidas `comandos_red_pendientes`, `ftth_operacion_lock`, `operacion_wizard(_paso)`, `pago_extorno`, `cierre_caja` | **Cero tablas de coordinación y de dinero sin entidad.** El resto, incremental | **ADR-026** + RDM-001 **R7** |
+| **B-3** | **PS-05** — permiso fino en endpoints mutantes | **4 de 44 módulos**. En el resto la autorización es por rol al módulo completo | Todo endpoint mutante declara `@RequirePermission`; **regla de CI que lo exija en código nuevo** | **ADR-025** |
+| **B-4** | **PA-07** — toda mutación de hardware por outbox | Las operaciones interactivas de `/red/routers` son **síncronas**, sin outbox ni garantías | **Toda** mutación pasa por outbox; la operación interactiva devuelve "encolado" | **ADR-028** + RDM-001 **R5** |
+| **B-5** | **PA-03 / PA-05** — VIO y máquina de estados en MikroTik | El plano WISP tiene outbox parcial, **sin máquina de estados, sin saga**, y VIO solo como detección posterior | Puerto único `IRouterProvider` + máquina de estados WISP + VIO en el momento | **ADR-021** + RDM-001 **R5** |
+| **B-6** | **PA-15** — todo cron declara cap, lock y latido | `reconciliar()` **itera sin cap ni lock**; ningún cron declara presupuesto de tiempo | Cap, lock y presupuesto obligatorios; el que los excede lo registra en vez de correr indefinidamente | **ADR-027** + RDM-001 **R10** |
+| **B-7** | **PA-17** — modelar lo rutinario | **El cambio de ONU no existe.** Se improvisa como baja + alta | Transición `sustituir_onu` de primera clase, con saga que reserva antes de liberar y conserva la config del abonado | **ADR-022** + RDM-001 **R6** |
+| **B-8** | **PI-02 / PI-03** — toda integración pasa por un puerto | **Mercado Pago —el único que cobra dinero real— no usa el contrato de cobro.** La abstracción no está validada | Mercado Pago implementa `adaptador-cobro.interface.ts` **antes** que ningún proveedor nuevo | **ADR-013** (vigente) + RDM-001 **R11** |
+| **B-9** | **PC-05 / PD-07** — verificaciones en CI | `sql:check`, `typecheck` y la suite se ejecutan **a mano**. La suite de facturación **no compila** | Los tres en CI, bloqueando el merge. Suite de facturación reparada | RDM-001 **R16** |
+| **B-10** | **PA-11** — configuración fuera del repositorio | Credenciales de connreq de GenieACS duplicadas en el ACS y en el `.env`, **sin verificación de coincidencia**. CCD y crontab fuera de control de versiones | Probe al arrancar que verifique la coincidencia; inventario versionado de lo externo con su procedimiento de restauración | RDM-001 **R15** |
+| **B-11** | **PA-08** — invariantes del compensador | Implementados y en producción, **sin test que los ejercite** | Test de los cuatro invariantes (LIFO, parada al primer fallo, idempotencia, VIO al deshacer) | RDM-001 **R17** |
+
+### B.4 Nivel C — Mejoras futuras
+
+| # | Política | Estado actual | **Estado objetivo** | Qué lo cierra |
+|---|---|---|---|---|
+| **C-1** | **PS-06** — validación de entrada | `forbidNonWhitelisted: false`: los campos extra se descartan en silencio | `forbidNonWhitelisted: true`, rechazando la petición | Revisión de impacto en clientes existentes |
+| **C-2** | **PA-06** — vocabulario de dominio | Solo en el plano de red; el financiero lanza excepciones HTTP a consumidores que a veces son máquinas | `ResultadoOperacion` también en el plano financiero | Tras ADR-019 |
+| **C-3** | **PA-01** — módulos degradables | El patrón existe y se aplica, pero **nada obliga** a implementarlo en un módulo nuevo | Checklist de módulo nuevo verificado en revisión | RDM-001 **R17** |
+| **C-4** | **PI-06** — dependencias sin consumidor | `telegraf`, `twilio`, `net-snmp` instaladas sin uso; cola `mikrotik-jobs` declarada y no usada | Retiradas, o documentadas con motivo y fecha | RDM-001 **R14** |
+| **C-5** | **EST-001 §8.2** — convención del frontend | Tres convenciones simultáneas; `molecules/` vacío; 1,8 % de código reutilizable | Una convención (por dominio); directorios muertos eliminados; umbral de tamaño de componente | RDM-001 **R13** |
+| **C-6** | **PA-16** — listeners no ejecutan lógica | Se cumple, sin mecanismo que lo impida | Regla de lint sobre `@OnEvent` | RDM-001 **R17** |
+| **C-7** | **DAT-001 §8.6** — retención de datos | Seis tablas de serie temporal **sin política de retención ni particionado** | Política declarada por tabla + particionado por tiempo | **ADR-023** + RDM-001 **H3-1** |
+
+### B.5 Resumen
+
+| Nivel | Abiertas | Cerradas | Autoriza | Estado |
+|---|---|---|---|---|
+| **A — crítico** | **3** | **1** (A-2, 2026-08-06) | **Propietario del producto** | **Requieren fecha comprometida** |
+| **B — riesgo técnico** | 11 | 0 | Arquitecto | Con condición de cierre declarada |
+| **C — mejora futura** | 7 | 0 | Arquitecto | Cierre por avance natural |
+
+**Las desviaciones de nivel A son exactamente las iniciativas críticas del roadmap
+(RDM-001 §8.3.1).** No es coincidencia: el roadmap se ordenó por daño potencial, y el daño
+potencial es lo que define el nivel A.
+
+**Registro de cierres:**
+
+| Desviación | Cerrada | Cómo se verificó |
+|---|---|---|
+| **A-2** — pre-flight antes de migrar ONUs | 2026-08-06 | Columna `origen` + guard en el **filtro** de los dos barridos + guard en la ruta manual + pre-flight que devuelve `seguro: false` + 4 tests que nombran el riesgo. `tsc` limpio, suite 10/10. Ver ADR-014 §6 |

@@ -512,8 +512,11 @@ erDiagram
 | `planes`, `reconciliador` | 2 c/u | resto | 1 c/u |
 
 **Modelo de acceso a datos híbrido:** TypeORM Repository para CRUD simple + SQL crudo para todo
-lo agregado, todo lo transaccional complejo y todo lo que toca tablas sin entidad. No hay capa
-de repositorio propia: los servicios acceden directamente a `DataSource`/`Repository`.
+lo agregado, todo lo transaccional complejo y todo lo que toca tablas sin entidad.
+
+**La capa de repositorio existe, pero solo en 6 de 44 módulos** — `clientes`, `contratos`,
+`facturacion`, `pagos`, `smartolt`, `tickets` (`*/repositories/*.repository.ts`, 1.614 LOC).
+En los 38 módulos restantes los servicios acceden directamente a `DataSource`/`Repository`.
 
 ## 7.2 Consultas duplicadas y reutilizables detectadas
 
