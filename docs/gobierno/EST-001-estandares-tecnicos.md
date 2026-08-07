@@ -295,13 +295,37 @@ términos técnicos universales en inglés (`repository`, `service`, `guard`).
 
 `npm test` · `npm run test:cov` · `npm run test:e2e` · `npm run typecheck` · `npm run sql:check`
 
-## 8.5.4 Estado actual — brecha declarada
+## 8.5.4 Estado actual — verificado el 2026-08-06
 
-~30 specs para ~96.000 LOC de backend · **2 tests** para 57.435 LOC de frontend · la suite de
-facturación **no compila** · `sql:check` **no está en CI**.
+| Aspecto | Real |
+|---|---|
+| Suites backend | **65** |
+| Tests backend | **593** (+2 `todo`) |
+| Tiempo de la suite completa | **70 s** con `--runInBand --ci` |
+| Estado | **Toda en verde**, incluida la de facturación |
+| En CI | **Sí**, bloqueando el merge, junto con typecheck, instalación desde cero y `sql:check` |
+| Frontend | **2 tests** para 57.435 LOC — esta sí es una brecha real |
+
+**Corrección de la versión 1.0:** esta sección afirmaba "~30 specs", "la suite de facturación no
+compila" y "`sql:check` no está en CI". **Las tres eran falsas.** Procedían de una memoria del
+2026-07-28 cuyos problemas resolvió el commit de ese mismo día (`a36117fd`). Se propagaron sin
+ejecutar el comando.
 
 > Los tests existentes son de altísima calidad: cubren invariantes que ya fallaron y nombran el
-> incidente. **El problema es cobertura, no criterio.**
+> incidente. **La brecha real es el frontend, no el backend.**
+
+### Tests que verifican políticas, no solo comportamiento
+
+Merecen mención porque son el mecanismo que convierte una regla en barrera:
+
+| Test | Política que hace cumplir |
+|---|---|
+| `common/entities/columnas-tipadas.spec.ts` | Recorre **todas** las entidades y exige `type:` explícito en columnas de tipo unión. Sin él, SWC emite `Object` y el backend **crashea en frío** |
+| `facturacion/estados-sql-validos.spec.ts` | Los estados usados en SQL crudo existen |
+| `facturacion/frontera-dinero.spec.ts` | Un solo registrador y un solo aplicador del dinero |
+
+**Este es el patrón a replicar** cuando una política deba pasar de ⚠️ a ✅ en POL-001 §8.7: un
+test que recorre el código y falla si alguien la incumple.
 
 # 8.6 Logging
 
@@ -433,7 +457,7 @@ Clasificación según POL-001 Anexo B: **A** incumplimiento crítico · **B** ri
 | **B-2** | PA-13 entidad por tabla | 39 tablas sin entidad | **0** tablas de coordinación y dinero sin entidad | **ADR-026** |
 | **B-3** | PS-05 permiso fino | `@RequirePermission` en 4 de 44 módulos | Todo endpoint mutante lo declara; CI lo exige en código nuevo | **ADR-025** |
 | **B-6** | PA-15 cap y lock en crons | `reconciliar()` itera sin cap ni lock | Todo cron declara cap, lock y presupuesto de tiempo | **ADR-027** |
-| **B-9** | PC-05 verificaciones en CI | `typecheck`, `test` y `sql:check` manuales · suite de facturación **no compila** | Los tres en CI bloqueando el merge · suite reparada | RDM-001 **R16** |
+| ~~**B-9**~~ | ~~PC-05 verificaciones en CI~~ | **RETIRADA: nunca existió.** El CI ejecuta typecheck, 593 tests, instalación desde cero y `sql:check`, bloqueando el merge, desde 2026-07-28 | — | — |
 | **C-1** | PS-06 validación de entrada | `forbidNonWhitelisted: false` | `forbidNonWhitelisted: true` | Revisión de impacto |
 | **C-5** | EST-001 §8.2 frontend | 3 convenciones · `molecules/` vacío · 1,8 % reutilizable | 1 convención (por dominio) · sin directorios muertos · umbral de tamaño | RDM-001 **R13** |
 

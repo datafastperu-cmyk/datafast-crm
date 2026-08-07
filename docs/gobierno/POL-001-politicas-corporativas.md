@@ -464,6 +464,33 @@ Van en `Proyecto_CRM_ISP/mikrotik-network/`.
 > **Una política sin forma de verificarse es una intención.** Esta sección declara, para cada
 > política, **cómo se comprueba** que se cumple.
 
+## 8.7.0 El CI que ya existe
+
+`.github/workflows/ci.yml` (desde 2026-07-28, commit `a36117fd`) corre **en cada push a `main` y
+en cada pull request**, y **bloquea el merge**:
+
+| Paso | Qué verifica |
+|---|---|
+| `npm run typecheck` (backend) | Compilación estricta del backend |
+| `npx jest --runInBand --ci` | **65 suites · 593 tests** |
+| `npm run migration:run:all` sobre PostgreSQL 16 vacío | **Que el ERP se puede instalar desde cero** — la directriz de portabilidad multi-VPS |
+| Volcado de `information_schema` | Produce el esquema real, sin depender de un snapshot que envejece |
+| `npm run sql:check -- /tmp/schema.txt src` | **Columnas inexistentes dentro de template strings**, invisibles para el compilador |
+| `npx tsc --noEmit` (frontend) | Compilación del frontend |
+
+> *"La regla es que FALLE y bloquee el merge. Un CI que informa pero no bloquea envejece igual que
+> las suites que vinimos a rescatar."* — cabecera del propio workflow.
+
+**Corrección de la versión 1.0 de este documento (2026-08-06):** esta sección afirmaba que
+`typecheck`, `test` y `sql:check` se ejecutaban a mano y que la suite de facturación no compilaba.
+**Las tres afirmaciones eran falsas.** Procedían de una memoria del 2026-07-28 que registraba esos
+problemas; el commit de ese mismo día los resolvió. Se propagaron sin ejecutar el comando — el
+fallo que PI-2 prohíbe (*el diagnóstico se mide, no se deduce*), cometido sobre este mismo cuerpo
+normativo.
+
+**Verificado el 2026-08-06:** suite completa en verde (65/65, 593 tests, 70 s) con las mismas
+banderas que usa el CI.
+
 ## 8.7.1 Tipos de evidencia
 
 | Código | Mecanismo | Naturaleza |
@@ -495,7 +522,7 @@ Van en `Proyecto_CRM_ISP/mikrotik-network/`.
 | PD-04 Reutilizar antes de construir | M | ❌ | Revisión | Detección de consultas duplicadas por concepto |
 | PD-05 Solución mínima | M | ❌ | Revisión | Sin mecanismo posible |
 | PD-06 No reescribir archivos completos | M | ❌ | Tamaño del diff en revisión | Aviso automático si el diff sustituye >80 % del archivo |
-| PD-07 Validar antes de declarar hecho | L + C | ⚠️ | `typecheck` y `test` manuales | **Ambos en CI** (ADR-024) |
+| PD-07 Validar antes de declarar hecho | L + T + **C** | ✅ | **`typecheck` + 593 tests en CI, bloqueando el merge** | — |
 | PD-08 Tipado estricto, sin `any` | L | ❌ | **El compilador NO lo exige** (§Anexo B, nivel B) | `strict: true` + regla activa (**ADR-018**) |
 | PD-09 Comentarios explican el porqué | M | ❌ | Revisión | Sin mecanismo posible |
 | PD-10 Registro de deuda técnica | M | ❌ | Revisión de `PENDIENTES.md` | Sin mecanismo posible |
@@ -516,8 +543,8 @@ Van en `Proyecto_CRM_ISP/mikrotik-network/`.
 | PA-10 Implementación desde cero | M | ❌ | Directriz | Campo de origen explícito (**ADR-014 → R1**) |
 | PA-11 Portabilidad multi-VPS | S | ⚠️ | `check-*.mjs`; inspección | Regla de CI que rechace IPs y dominios literales |
 | PA-12 Una tabla, un dueño | M | ❌ | Revisión | Detección de escrituras cruzadas |
-| PA-13 Toda tabla nace con entidad | S + M | ❌ | `db:check` manual; **39 tablas sin entidad** | Entidades para tablas críticas (**ADR-026**) |
-| PA-14 El esquema solo cambia por migración | R + D | ✅ | `synchronize: false` + `schema-guard` al arrancar | — |
+| PA-13 Toda tabla nace con entidad | T + S + M | ⚠️ | La regla SWC del `type:` explícito **sí está testeada** (`columnas-tipadas.spec.ts`, recorre todas las entidades). Lo que falta es la cobertura: **39 tablas sin entidad** | Entidades para tablas críticas (**ADR-026**) |
+| PA-14 El esquema solo cambia por migración | R + D + **C** | ✅ | `synchronize: false` + `schema-guard` + **el CI instala desde cero en cada PR** | — |
 | PA-15 Todo cron declara cap, lock y latido | O | ❌ | `GET /admin/sistema/watchers`. **`reconciliar()` sin cap** | Cap y lock obligatorios (**ADR-027**) |
 | PA-16 Listeners no ejecutan lógica | M | ❌ | Revisión | Regla de lint sobre `@OnEvent` |
 | PA-17 Modelar lo rutinario | M | ❌ | Revisión | Cambio de ONU modelado (**ADR-022**) |
@@ -540,11 +567,11 @@ Van en `Proyecto_CRM_ISP/mikrotik-network/`.
 
 | Política | Evidencia | Grado | Cómo se comprueba hoy | Objetivo |
 |---|---|---|---|---|
-| PC-01 Todo invariante crítico lleva test | T | ⚠️ | ~30 specs de alta calidad; cobertura baja | Lista de invariantes con test obligatorio |
+| PC-01 Todo invariante crítico lleva test | T + **C** | ⚠️ | **65 suites · 593 tests en CI.** Alta calidad; cobertura aún parcial frente a ~96.000 LOC | Lista de invariantes con test obligatorio |
 | PC-02 Los tests nombran el incidente | M | ❌ | Revisión | Sin mecanismo posible |
 | PC-03 Comentario de concurrencia con test | M | ❌ | Revisión | Regla de CI |
 | PC-04 Verificación que confirme el caso malo | M + O | ❌ | Revisión y experiencia | Checklist de despliegue (PRO-001 §8.1.3) |
-| PC-05 Compila y typechequea antes del commit | L | ⚠️ | Manual | **CI obligatorio** |
+| PC-05 Compila y typechequea antes del commit | L + **C** | ✅ | **CI bloquea el merge** (backend y frontend) | — |
 | PC-06 Diseño cero-error | L + M | ⚠️ | ESLint parcial | Regla que rechace `catch` vacío y TODOs |
 | PC-07 Evaluación pesimista obligatoria | M | ❌ | Revisión | ADR obligatorio en cambios de red o dinero |
 
@@ -580,18 +607,25 @@ Van en `Proyecto_CRM_ISP/mikrotik-network/`.
 
 ## 8.7.9 Resumen del estado de verificación
 
-| Grado | Nº de políticas | Porcentaje |
-|---|---|---|
-| ✅ Automático | 14 | 22 % |
-| ⚠️ Parcial | 20 | 32 % |
-| ❌ Manual | 29 | 46 % |
+| Grado | Nº de políticas | Porcentaje | (v1.0, antes de verificar el CI) |
+|---|---|---|---|
+| ✅ Automático | **16** | **25 %** | 14 · 22 % |
+| ⚠️ Parcial | 19 | 30 % | 20 · 32 % |
+| ❌ Manual | 28 | 44 % | 29 · 46 % |
 
-**Lectura honesta:** menos de una cuarta parte de las políticas tiene hoy una barrera que las
-haga cumplir. Las demás dependen de disciplina y revisión.
+**Lectura honesta:** una cuarta parte de las políticas tiene hoy una barrera que las haga cumplir.
+Las demás dependen de disciplina y revisión.
 
 **Esto no invalida las políticas** —describen cómo debe construirse el sistema y en su mayoría se
 cumplen— pero sí explica por qué la cobertura de las garantías es desigual: **donde no hay
 mecanismo, el cumplimiento depende de que alguien recuerde**.
+
+**Lo que el CI ya cubre y no hay que construir:** compilación, la suite completa, la instalación
+desde cero sobre una base vacía, y la verificación de columnas dentro de template strings — las
+cuatro bloqueando el merge. La brecha de verificación **no está en la infraestructura de CI: está
+en cuántas políticas tienen una comprobación que ese CI pueda ejecutar.**
+
+Añadir una política verificable es hoy barato: hay dónde enchufarla.
 
 **Objetivo declarado:** llevar a ✅ o ⚠️ todas las políticas de nivel A y B del Anexo B. Es el
 contenido de R17 (gobierno arquitectónico) en RDM-001.
@@ -693,7 +727,7 @@ quedar) · qué la cierra.
 | **B-6** | **PA-15** — todo cron declara cap, lock y latido | `reconciliar()` **itera sin cap ni lock**; ningún cron declara presupuesto de tiempo | Cap, lock y presupuesto obligatorios; el que los excede lo registra en vez de correr indefinidamente | **ADR-027** + RDM-001 **R10** |
 | **B-7** | **PA-17** — modelar lo rutinario | **El cambio de ONU no existe.** Se improvisa como baja + alta | Transición `sustituir_onu` de primera clase, con saga que reserva antes de liberar y conserva la config del abonado | **ADR-022** + RDM-001 **R6** |
 | **B-8** | **PI-02 / PI-03** — toda integración pasa por un puerto | **Mercado Pago —el único que cobra dinero real— no usa el contrato de cobro.** La abstracción no está validada | Mercado Pago implementa `adaptador-cobro.interface.ts` **antes** que ningún proveedor nuevo | **ADR-013** (vigente) + RDM-001 **R11** |
-| **B-9** | **PC-05 / PD-07** — verificaciones en CI | `sql:check`, `typecheck` y la suite se ejecutan **a mano**. La suite de facturación **no compila** | Los tres en CI, bloqueando el merge. Suite de facturación reparada | RDM-001 **R16** |
+| ~~**B-9**~~ | ~~**PC-05 / PD-07** — verificaciones en CI~~ | **NUNCA EXISTIÓ. Error de este documento, corregido el 2026-08-06.** El CI existe desde 2026-07-28 (`a36117fd`) y ejecuta typecheck, 593 tests, instalación desde cero y `sql:check`, bloqueando el merge. La suite compila y está verde | — | — |
 | **B-10** | **PA-11** — configuración fuera del repositorio | Credenciales de connreq de GenieACS duplicadas en el ACS y en el `.env`, **sin verificación de coincidencia**. CCD y crontab fuera de control de versiones | Probe al arrancar que verifique la coincidencia; inventario versionado de lo externo con su procedimiento de restauración | RDM-001 **R15** |
 | **B-11** | **PA-08** — invariantes del compensador | Implementados y en producción, **sin test que los ejercite** | Test de los cuatro invariantes (LIFO, parada al primer fallo, idempotencia, VIO al deshacer) | RDM-001 **R17** |
 
@@ -711,10 +745,10 @@ quedar) · qué la cierra.
 
 ### B.5 Resumen
 
-| Nivel | Abiertas | Cerradas | Autoriza | Estado |
+| Nivel | Abiertas | Cerradas / retiradas | Autoriza | Estado |
 |---|---|---|---|---|
-| **A — crítico** | **3** | **1** (A-2, 2026-08-06) | **Propietario del producto** | **Requieren fecha comprometida** |
-| **B — riesgo técnico** | 11 | 0 | Arquitecto | Con condición de cierre declarada |
+| **A — crítico** | **3** | **1** — A-2 cerrada 2026-08-06 | **Propietario del producto** | **Requieren fecha comprometida** |
+| **B — riesgo técnico** | **10** | **1** — B-9 **retirada: nunca existió** | Arquitecto | Con condición de cierre declarada |
 | **C — mejora futura** | 7 | 0 | Arquitecto | Cierre por avance natural |
 
 **Las desviaciones de nivel A son exactamente las iniciativas críticas del roadmap
@@ -725,4 +759,5 @@ potencial es lo que define el nivel A.
 
 | Desviación | Cerrada | Cómo se verificó |
 |---|---|---|
-| **A-2** — pre-flight antes de migrar ONUs | 2026-08-06 | Columna `origen` + guard en el **filtro** de los dos barridos + guard en la ruta manual + pre-flight que devuelve `seguro: false` + 4 tests que nombran el riesgo. `tsc` limpio, suite 10/10. Ver ADR-014 §6 |
+| **A-2** — pre-flight antes de migrar ONUs | 2026-08-06 | Columna `origen` + guard en el **filtro** de los dos barridos + guard en la ruta manual + pre-flight que devuelve `seguro: false` + 4 tests que nombran el riesgo. `tsc` limpio, suite completa 65/65 · 593 tests. Ver ADR-014 §6 |
+| **B-9** — verificaciones en CI | **Retirada 2026-08-06** | **No era una desviación: era un error de este documento.** El CI existe desde 2026-07-28. Se verificó ejecutando `npx jest --runInBand --ci` (65/65, 593 tests, 70 s) y leyendo `.github/workflows/ci.yml`. **Origen del error: se propagó una memoria del 2026-07-28 sin ejecutar el comando** — el fallo que PI-2 prohíbe, cometido sobre el propio cuerpo normativo |

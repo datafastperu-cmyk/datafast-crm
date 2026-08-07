@@ -133,7 +133,7 @@ con muchas menos.
 |---|---|
 | **R14** | Higiene: retirar dependencias sin uso, artefactos muertos y scripts ad-hoc |
 | **R15** | Llevar la configuración externa al repositorio (credenciales del ACS, CCD, crontab) |
-| **R16** | Integrar las verificaciones en CI (`sql:check`, typecheck, suite completa) y reparar la suite de facturación |
+| ~~**R16**~~ | ~~Integrar las verificaciones en CI y reparar la suite de facturación~~ — **RETIRADA 2026-08-06: ya existía.** El CI corre desde 2026-07-28 (`a36117fd`) con typecheck, 593 tests, instalación desde cero y `sql:check`, bloqueando el merge. La suite compila y está verde. **Lo que queda no es infraestructura de CI: son políticas que aún no tienen comprobación que ese CI pueda ejecutar** |
 
 ### 8.3.5 TRANSVERSAL — condiciona el éxito de todo lo demás
 
@@ -150,7 +150,7 @@ con muchas menos.
 | Elemento | Origen |
 |---|---|
 | `reconciliar()` itera sin cap ni lock | `PENDIENTES.md` |
-| Suite de facturación que no compila | `PENDIENTES.md` |
+| ~~Suite de facturación que no compila~~ — **falso, ya compilaba** | Memoria obsoleta del 2026-07-28 |
 | Barrido SQL fuera de CI | `PENDIENTES.md` |
 | Revisión del reconciliador nocturno | `PENDIENTES.md` |
 | Señal FTTH vacía en el listado de ONUs | `PENDIENTES.md` |
@@ -323,7 +323,7 @@ CON-001 §8.11.3 · POL-001 Anexo B (excepciones con condición de cierre) · AE
 | R12 | Pools duplicados | PD-04 |
 | R13 | R-18 Deriva del frontend | EST-001 §8.2 |
 | R15 | R-20 Configuración externa | PA-11 |
-| R16 | R-15 Cobertura de tests | PC-01, PC-05 |
+| ~~R16~~ | ~~R-15 Cobertura de tests~~ — retirada, ya existía | PC-01, PC-05 (ya ✅) |
 
 ## Anexo B — Criterios de éxito por iniciativa crítica
 

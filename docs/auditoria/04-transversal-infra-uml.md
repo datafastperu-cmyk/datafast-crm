@@ -1205,7 +1205,7 @@ Crons: `ftth-recovery`, `ftth-wan-watcher`, `olt-health-poller`, `tr069-cpe-drif
 | `descripcion-consolidada.spec.ts` | Descripción del `ont` en la OLT |
 | `tr069-staleness.service.spec.ts` | Sesiones rancias |
 
-**Deuda registrada:** la suite de facturación no compila; el barrido SQL no está en CI.
+**[CORREGIDO 2026-08-06]** Medición real: **65 suites · 593 tests**, todas en verde en 70 s, ejecutadas por CI en cada push y PR junto con typecheck, instalación desde cero y `sql:check`. La cifra "~30" y las deudas "la suite no compila" y "el barrido SQL no está en CI" eran **falsas**: se propagaron desde una memoria del 2026-07-28 sin ejecutar el comando. **La brecha real de cobertura es el frontend (2 tests).**
 
 ## 19.7 Frontend
 

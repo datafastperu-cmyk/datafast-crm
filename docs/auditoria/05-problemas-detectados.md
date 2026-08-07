@@ -232,15 +232,27 @@ endpoints de health/watchers/colas y los scripts `check-*.mjs` / `_monitor*.mjs`
 No hay instrumentación de request. Toda estimación de frecuencia en esta auditoría es inferencia
 desde el consumidor frontend.
 
-### H3. ~30 tests para ~96.000 LOC de backend **[MEDIDO]**
-Los tests existentes son de alto valor (protegen invariantes de dinero, concurrencia e
-idempotencia, y nombran el incidente que los motivó), pero la cobertura es muy baja en volumen.
+### H3. ~~~30 tests~~ **65 suites y 593 tests** para ~96.000 LOC de backend **[CORREGIDO 2026-08-06]**
+La cifra original era errónea: se contaron mal los archivos spec. Los tests son de alto valor
+—protegen invariantes de dinero, concurrencia e idempotencia, y nombran el incidente que los
+motivó— y la suite completa corre en **70 s**. La cobertura sigue siendo mejorable en volumen
+frente a ~96.000 LOC, pero no es "muy baja".
 
-### H4. La suite de facturación no compila **[DOCUMENTADO]**
-Registrado como deuda en `PENDIENTES.md`.
+### ~~H4. La suite de facturación no compila~~ — **FALSO. Corregido 2026-08-06**
+**Verificado ejecutando `npx jest --runInBand --ci`: 65/65 suites, 593 tests, todo en verde**,
+incluida `facturacion`. La afirmación procedía de una memoria del 2026-07-28 cuyos problemas
+resolvió el commit `a36117fd` de ese mismo día.
 
-### H5. El barrido SQL no está en CI **[DOCUMENTADO]**
-`npm run sql:check` existe pero se ejecuta manualmente.
+### ~~H5. El barrido SQL no está en CI~~ — **FALSO. Corregido 2026-08-06**
+`.github/workflows/ci.yml` existe desde 2026-07-28 y ejecuta, **bloqueando el merge**: typecheck
+de backend y frontend, los 593 tests, `migration:run:all` sobre una base vacía (instalación desde
+cero), volcado del esquema real y `sql:check` contra él.
+
+> **Nota metodológica sobre H3, H4 y H5.** Las tres afirmaciones se marcaron **[MEDIDO]** y
+> **[DOCUMENTADO]** sin ejecutar el comando: se tomaron de una memoria previa. Es exactamente el
+> fallo que esta misma auditoría denuncia en el sistema —afirmar sin verificar— cometido por la
+> auditoría. Se conservan tachadas, y no borradas, porque el error importa más que la corrección:
+> **una fuente documental envejece, y citarla no es medir.**
 
 ### H6. Solo 2 tests en todo el frontend **[MEDIDO]**
 `como-llegar.test.ts`, `coordenadas.test.ts`.

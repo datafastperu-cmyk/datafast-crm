@@ -124,23 +124,34 @@ que R-001 previene.
 
 #### R-002 — Arquitectura Verificable · 🟡 **Parcial** · Crítica
 
-**Estado real medido hoy (POL-001 §8.7.9):**
+**Estado real medido y verificado el 2026-08-06 (POL-001 §8.7.9):**
 
 | Grado | Políticas | % |
 |---|---|---|
-| ✅ Automático | 14 | 22 % |
-| ⚠️ Parcial | 20 | 32 % |
-| ❌ Manual | 29 | 46 % |
+| ✅ Automático | 16 | **25 %** |
+| ⚠️ Parcial | 19 | 30 % |
+| ❌ Manual | 28 | 44 % |
 
-**Lo que existe:** la matriz de verificación completa, con el mecanismo declarado para cada una
-de las 63 políticas y el objetivo de cada una.
+**Lo que existe — más de lo que decía la versión 1.0 de este documento:**
 
-**Lo que falta:** el CI. Hoy `typecheck`, `test` y `sql:check` se ejecutan a mano, y la suite de
-facturación no compila.
+1. La matriz de verificación completa, con mecanismo y objetivo para las 63 políticas.
+2. **El CI, desde 2026-07-28** (`.github/workflows/ci.yml`, commit `a36117fd`): typecheck de backend y frontend, **593 tests en 65 suites**, **instalación desde cero** sobre PostgreSQL 16 vacío, volcado del esquema real y `sql:check` contra él — todo **bloqueando el merge**.
+3. Tests que verifican **políticas**, no solo comportamiento: `columnas-tipadas.spec.ts` recorre todas las entidades y exige `type:` explícito; `estados-sql-validos.spec.ts`; `frontera-dinero.spec.ts`.
 
-**Ajuste propuesto:** R-002 no debe medirse como "sí/no" sino con un indicador — **% de políticas
-con verificación automática** — que es exactamente el KPI arquitectónico nº 1 de R-014. Meta
-inicial propuesta: **llevar del 22 % al 60 %** cerrando las políticas de nivel A y B.
+> **Corrección:** la versión 1.0 afirmaba *"Lo que falta es el CI"* y *"la suite de facturación no
+> compila"*. Ambas eran falsas — procedían de una memoria del 2026-07-28 que el commit de ese
+> mismo día resolvió, propagada sin ejecutar el comando.
+
+**Lo que falta de verdad:** no infraestructura, sino **comprobaciones que enchufar al CI**. Hay
+28 políticas cuyo incumplimiento nadie detecta porque nadie ha escrito la comprobación, no porque
+no haya dónde ejecutarla.
+
+**Ajuste propuesto:** medir R-002 con un indicador —**% de políticas con verificación
+automática**, el KPI nº 1 de R-014— y fijar meta **del 25 % al 60 %** cerrando las de nivel A y B.
+
+**El patrón a replicar** ya existe en el repositorio: `columnas-tipadas.spec.ts` es un test que
+recorre el código y falla si alguien incumple una regla. Convertir una política de ❌ a ✅ es
+escribir uno de esos, no montar infraestructura.
 
 ---
 
@@ -895,7 +906,7 @@ elevan a documento.
 | Rec. | Bloqueada por |
 |---|---|
 | R-015, R-016 (parte), R-027, R-028 | **R-026 / RDM-001 R8** — observabilidad operativa |
-| R-002 (mecanismo), R-035 (automatización) | **CI** — RDM-001 R16 |
+| R-002 (ampliar cobertura), R-035 (automatización) | **No por falta de CI —ya existe—** sino por falta de comprobaciones ejecutables por política |
 | R-029 (cierre real) | **Desviación A-1** — aislamiento multi-tenant |
 
 ---
@@ -972,7 +983,7 @@ RDM-001 · ADR-000 (016 aceptados + 017–028 propuestos) · `docs/auditoria/` �
 | Rec. | Título | Veredicto | Destino |
 |---|---|---|---|
 | R-001 | Reutilización del conocimiento | 🟢 Nueva, con guard | POL-001 §8.2 · **Fase 2** |
-| R-002 | Arquitectura verificable | 🟡 Parcial (22 %) | POL-001 §8.7 ✓ · CI pendiente |
+| R-002 | Arquitectura verificable | 🟡 Parcial (25 %) | POL-001 §8.7 ✓ · **CI ya existe** · faltan comprobaciones que enchufarle |
 | R-003 | Gobierno continuo | ✅ Implementada | CON-001 §8.9 |
 | R-004 | Benchmark obligatorio | 🟢 Nueva, vía ADR | POL-001 §8.2 · **Fase 2** |
 | R-005 | Clasificación de dominios | ⚠️ Como segundo eje | AEM-001 §8.3 |

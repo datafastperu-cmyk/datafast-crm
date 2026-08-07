@@ -308,7 +308,7 @@ medida o en incidentes registrados.
 
 | Campo | Valor |
 |---|---|
-| **Causa** | ~30 specs para ~96.000 LOC de backend; **2 tests** para 57.435 LOC de frontend; la suite de facturación no compila; `sql:check` no está en CI |
+| **Causa** | **[CORREGIDO 2026-08-06]** 65 suites y **593 tests** para ~96.000 LOC de backend, **en CI bloqueando el merge**. La brecha real es el **frontend: 2 tests** para 57.435 LOC. Las afirmaciones "la suite de facturación no compila" y "`sql:check` no está en CI" eran **falsas**: se propagaron desde una memoria del 2026-07-28 sin ejecutar el comando |
 | **Impacto** | Medio-Alto — las regresiones se descubren en producción |
 | **Probabilidad** | **Alta** |
 | **Criticidad** | **MEDIA-ALTA** |

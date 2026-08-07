@@ -164,7 +164,7 @@ de a rutas.
 **3. Recomendación arquitectónica**
 Defensa en dos capas, ninguna de las cuales requiere reescribir consultas:
 - **Row-Level Security en PostgreSQL** sobre las tablas con `empresa_id`, con la empresa activa fijada por sesión de conexión. Convierte la omisión de "fuga silenciosa" en "cero filas".
-- **Un test de barrido** que detecte consultas crudas sobre tablas con `empresa_id` que no filtren por él, integrado en CI junto con el `sql:check` que ya existe y aún no está en CI.
+- **Un test de barrido** que detecte consultas crudas sobre tablas con `empresa_id` que no filtren por él, integrado en el CI existente, junto al `sql:check` que ya corre allí.
 
 **4. Justificación técnica**
 RLS mueve la garantía del lugar donde se puede olvidar (445 consultas) al lugar donde solo se
@@ -734,7 +734,7 @@ Tres mecanismos, ninguno burocrático:
 
 - **Decisiones arquitectónicas registradas (ADR).** Cada decisión estructural se registra con contexto, alternativas y consecuencias. El proyecto **ya escribe esto**, disperso en comentarios excelentes (`ecosystem.config.js`, `IOltProvider`, `pagos/adaptadores/README.md`); falta darle un lugar y un formato.
 - **Checklist de módulo nuevo**, verificado en revisión: ¿degradable o Core Indestructible? ¿repositorio? ¿entidad para toda tabla? ¿`ResultadoOperacion` si lo invoca un orquestador? ¿máquina de estados si tiene ciclo de vida? ¿outbox si muta hardware? ¿cap y lock si es un cron? ¿`@RequirePermission`? ¿filtra por `empresa_id`?
-- **Verificaciones automáticas en CI**: `sql:check` (existe y no está en CI), typecheck, la suite de tests (hoy no compila la de facturación), y detección de consultas sin `empresa_id`.
+- **Verificaciones automáticas en CI**: typecheck, la suite completa, instalación desde cero y `sql:check` **ya corren y bloquean el merge desde 2026-07-28**. Lo que falta añadir es la detección de consultas sin `empresa_id` y, en general, una comprobación por política.
 
 **4. Justificación técnica**
 El propio proyecto ya demostró que **el mecanismo vence a la disciplina**: el índice UNIQUE
@@ -833,7 +833,7 @@ mejor resueltas aquí que en productos comerciales del sector.
 El problema no es lo que falta por inventar. Es que **lo ya inventado no es obligatorio**, y por
 eso convive un plano FTTH con garantías de nivel industrial junto a un plano WISP casi sin ellas,
 seis módulos con repositorio junto a treinta y ocho sin él, y una cultura de tests quirúrgicos
-junto a una suite que no compila.
+junto a un frontend con dos tests para 57.435 LOC.
 
 Consolidar esta arquitectura no significa reconstruirla. Significa **tomar las decisiones que ya
 se demostraron correctas y convertirlas en la forma por defecto de construir**. Ese es el trabajo

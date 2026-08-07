@@ -193,7 +193,7 @@ Solo los términos propios del módulo.
 | Módulo | Motivo |
 |---|---|
 | `outbox-red` | Frontera transaccional del sistema; su tabla no tiene entidad |
-| `facturacion` | Fórmula única del ciclo de cobro; su suite de tests no compila |
+| `facturacion` | Fórmula única del ciclo de cobro; concentra 5.477 LOC y 6 servicios |
 | `workers` | Decide quién se queda sin servicio |
 | `openvpn` | Punto único de falla del plano de red |
 
