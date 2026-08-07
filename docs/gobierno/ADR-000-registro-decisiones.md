@@ -6,7 +6,7 @@
 
 | Campo | Valor |
 |---|---|
-| **Código** | ADR-000 (índice) + ADR-001 … ADR-016 · **Versión** 1.0 · **Estado** Vigente |
+| **Código** | ADR-000 (índice) + ADR-001…016 (aceptados) + ADR-017…029 (propuestos) · **Versión** 1.1 · **Estado** Vigente |
 | **Autor** | Arquitectura — reconstruido desde el código, los comentarios de diseño y los incidentes |
 | **Revisores** | Pendientes de asignar · **Fecha** 2026-08-06 |
 
@@ -15,6 +15,7 @@
 | Versión | Fecha | Cambio | Motivo |
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial con 16 ADR retroactivos | Las decisiones estaban tomadas y bien justificadas, pero dispersas en comentarios. Sin registro, la próxima persona no puede saber **qué se descartó y por qué** |
+| 1.1 | 2026-08-06 | ADR-014 pasa a **Aceptada** (implementado). Se reservan ADR-017…028 y se redacta **ADR-029 — Marco normativo externo de referencia** | ADR-014: cerrada la desviación A-2. ADR-029: se detectó que el cuerpo normativo **no declara filiación con ningún estándar externo** y que nunca se evaluó conformidad — el error que R-001/R-004 previenen, cometido sobre los propios documentos de gobierno |
 
 ## 4. Índice
 
@@ -96,6 +97,7 @@ Situación actual y desviaciones conocidas.
 | 015 | Bootstrap TR-069 por estrategia y decidido por modelo | Aceptada | El ME137 no materializa en EG8145V5 |
 | 016 | Módulos degradables vs Core Indestructible | Aceptada | Resiliencia de arranque |
 | **017–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
+| **029** | **Marco normativo externo de referencia** | **Propuesta — requiere decisión del propietario** | El cuerpo normativo no declara filiación con ningún estándar, y nunca se evaluó conformidad |
 
 ---
 
@@ -778,6 +780,130 @@ es consultable en `GET /health/modules` con su razón.
 
 ## 6. Estado
 Aceptada. **Brecha:** los endpoints de salud son consultables, **no vigilantes** — RDM-001 (R2).
+
+---
+
+# ADR-029 — Marco normativo externo de referencia
+
+**Estado:** **Propuesta — requiere decisión del propietario del producto**
+**Fecha:** 2026-08-06 · **Decide:** Propietario del producto, con recomendación del Arquitecto
+
+## 1. Problema
+
+El cuerpo normativo del ERP (21 documentos) **no declara filiación con ningún estándar externo**,
+y **nunca se ha evaluado si el sistema conforma con alguno**.
+
+Dos preguntas que hoy no se pueden responder:
+
+| Pregunta | Respuesta actual |
+|---|---|
+| ¿Nuestras políticas siguen algún marco reconocido? | **No se sabe. Cero referencias** en los 21 documentos |
+| ¿El sistema cumple normativas internacionales? | **No se sabe. Nunca se auditó contra ninguna** |
+
+Afirmar cualquiera de las dos sin haberlo comprobado sería exactamente el tipo de aserción sin
+verificar que este cuerpo normativo existe para impedir.
+
+## 2. Contexto
+
+### 2.1 Lo medido
+
+Búsqueda sobre los 21 documentos de gobierno, la auditoría, la consolidación y las directrices:
+**una sola referencia real** — "OWASP Top 10", heredada de `CLAUDE.md` como estándar de código y
+**nunca verificada**. Ninguna a ISO, TOGAF, ITIL, COBIT, NIST ni ISO 27001.
+
+### 2.2 El matiz: las prácticas sí son estándar, sin declararlo
+
+| Práctica usada | Origen no citado |
+|---|---|
+| Vistas C4 (Contexto / Contenedores / Componentes) | Simon Brown |
+| Formato de ADR (problema · contexto · alternativas · decisión · consecuencias) | Michael Nygard |
+| DOM-001 completo: lenguaje ubicuo, contextos delimitados, agregados, objetos de valor, eventos de dominio | **Domain-Driven Design** |
+| `IOltProvider` y los adaptadores | Ports & Adapters (hexagonal) |
+| Outbox, Saga con compensación, Circuit Breaker | Catálogos de patrones establecidos |
+| Estructura documental (control, historial, alcance, glosario, referencias, anexos) | Estilo de documentación técnica ISO |
+
+**No se inventó el método. Lo que falta es declarar la filiación y comprobar conformidad**, que
+son cosas distintas de usar la práctica.
+
+### 2.3 La observación que motiva este ADR
+
+El gobierno de arquitectura es un **dominio maduro**: la industria lo resolvió y lo estandarizó
+hace décadas. Construir un cuerpo normativo desde cero sin hacer benchmark es **precisamente el
+error que R-001 y R-004 previenen** (REC-001 §8.2), cometido sobre los documentos que los recogen.
+
+Aplicando la clasificación de REC-001 §8.2.5, "gobierno de arquitectura" caería en **Maduro**, y
+R-004 exigiría un ADR de benchmark **antes** de diseñarlo. Este ADR es ese benchmark, hecho tarde.
+
+### 2.4 Evaluación indicativa — **no es una certificación**
+
+Basada solo en lo que la auditoría midió. **No se ha hecho gap analysis formal contra ninguna
+norma.**
+
+| Norma | Qué exige | Indicio |
+|---|---|---|
+| **ISO/IEC 25010** — calidad de producto | 8 características | **Fiabilidad y portabilidad: fuertes.** Eficiencia: **no evaluable, no hay medición**. Mantenibilidad: desigual. Seguridad: con brechas |
+| **ISO/IEC 42010** — descripción de arquitectura | Stakeholders, concerns, viewpoints, vistas | **Cerca sin proponérselo.** AEM/ARS/DOM/DAT/INT/SEC funcionan como viewpoints. Faltan stakeholders y concerns declarados |
+| **ISO/IEC 27001** — SGSI | Inventario de activos, riesgos, tratamiento, revisión de accesos, incidentes, proveedores, datos personales | **Lejos.** Hay controles técnicos (cifrado, RBAC, auditoría) pero **no hay sistema de gestión**: sin ownership, sin revisión de accesos, sin modelo de riesgos vivo, **sin política de datos personales** |
+| **ITIL / ISO 20000** — gestión de servicios | Incidentes, problemas, cambios, releases, capacidad, continuidad | **Parcial.** PRO-001 cubre release, backup y recuperación. Faltan gestión formal de incidentes y problemas, SLA y gestión de capacidad |
+| **TOGAF** | Ciclo ADM, repositorio, planificación por capacidades | **Parcial.** Existen las cuatro arquitecturas; falta el ciclo formal y la planificación por capacidades (R-007) |
+| **COBIT** | Roles, responsabilidad, métricas | **Brecha central: R-009.** 21 documentos con *"Revisores: pendientes de asignar"* |
+| **OWASP Top 10 / ASVS** | Verificación de seguridad aplicativa | **Nunca verificado.** Lo medido apunta a **A01 Broken Access Control** (aislamiento multi-tenant por convención; permiso fino en 4 de 44 módulos) y **A06** (sin auditoría de dependencias) |
+
+### 2.5 Lo urgente no es ISO — es lo legal
+
+**Requiere verificación con especialista legal peruano; el arquitecto no es la fuente autorizada
+en esto.**
+
+| Obligación | Estado medido | Gravedad |
+|---|---|---|
+| **Ley 29733 — Protección de Datos Personales** | El ERP guarda documento de identidad, dirección, **coordenadas GPS del domicilio**, foto, **conversaciones de WhatsApp**, dispositivos conectados en la vivienda y claves WiFi del abonado. **Cero políticas de datos personales** en los 21 documentos: sin plazos de retención, sin supresión al dar de baja, sin anonimización en respaldos ni en entornos de prueba | **Alta** |
+| **SUNAT — comprobantes electrónicos** | **No implementado.** Hay página en la interfaz y no hay backend: ni firma XML, ni OSE, ni CDR | **Alta** |
+| **OSIPTEL — obligaciones del operador** | **Desconocido.** No se dispone del detalle vigente y **no se infiere** | **Verificar** |
+
+## 3. Alternativas
+
+| # | Alternativa | Ventaja | Coste / por qué se descarta |
+|---|---|---|---|
+| **A** | **No adoptar ninguna norma externa** (mantener el statu quo) | Coste cero. El cuerpo normativo ya funciona y es coherente | No es citable ante un tercero, no es auditable, y **repite trabajo que la industria ya hizo** — el error de R-001 |
+| **B** | **Certificación formal** (ISO 27001 y/o 9001) | Reconocimiento externo; exigible en licitaciones y contratos corporativos | **Desproporcionado para un ISP regional.** Exige un SGSI completo, auditorías periódicas y coste recurrente. Con 3 desviaciones de nivel A abiertas, certificar sería certificar un estado que sabemos incompleto |
+| **C** | **Adopción selectiva declarada, sin certificar** — tomar de ISO/IEC 42010, ISO/IEC 25010, COBIT y OWASP ASVS lo que aporte; declarar filiación; gap analysis acotado | Barato. Aprovecha conocimiento validado. Deja el camino abierto a certificar más adelante sin rehacer nada | Requiere disciplina para no convertirse en una lista de siglas decorativas |
+| **D** | **Solo cumplimiento legal** (Ley 29733 + SUNAT), ignorando marcos ISO | Ataca la exposición real e inmediata | Insuficiente por sí solo: no ordena el gobierno interno ni la calidad |
+
+## 4. Decisión
+
+**PENDIENTE — corresponde al propietario del producto.**
+
+### Recomendación del arquitecto: **D con prioridad, luego C. Descartar B.**
+
+| Orden | Qué | Por qué |
+|---|---|---|
+| **1º** | **D — cumplimiento legal**, empezando por **R-036 (protección de datos personales)** con asesoría legal | Es exposición real, no formal. Un respaldo de producción restaurado en pruebas contiene el padrón completo con domicilios georreferenciados y conversaciones privadas, y **hoy nada lo regula** |
+| **2º** | **C — adopción selectiva**: declarar filiación de los patrones ya usados (coste casi nulo) y adoptar de **ISO/IEC 42010** los stakeholders y concerns, de **ISO/IEC 25010** el vocabulario de atributos de calidad para R-016, y de **OWASP ASVS** una verificación acotada de A01 | Aprovecha lo maduro sin ceremonia. ISO 42010 es el que menos cuesta porque el cuerpo ya está cerca |
+| **3º** | **Descartar B** salvo que aparezca una exigencia comercial concreta | Certificar un sistema con desviaciones críticas abiertas es certificar el papel, no el sistema |
+
+**Regla propuesta si se adopta C:** ningún documento declara conformidad con una norma **hasta
+haber hecho el gap analysis correspondiente**. Escribir "conforme a ISO 25010" en una portada sin
+haberlo comprobado sería la misma clase de afirmación sin verificar que este registro existe para
+impedir.
+
+## 5. Consecuencias
+
+**Si se adopta D + C:**
+- *Positivas:* cierra la exposición legal, que es la única con consecuencia externa; el cuerpo gana vocabulario reconocible y trazable; queda abierta la vía a certificar sin rehacer.
+- *Negativas:* consume capacidad del Horizonte 1; la asesoría legal tiene coste; el gap analysis puede destapar más brechas de las esperadas —lo cual es el punto, pero hay que estar dispuesto a registrarlas.
+
+**Si se adopta A (statu quo):**
+- Aceptable técnicamente. **No aceptable en la parte legal**: la ausencia de política de datos personales no es una carencia de gobierno, es una exposición.
+
+**Condiciona:** R-036 (protección de datos personales), R-037 (entorno de pruebas — depende de la
+anonimización), R-016 (objetivos de calidad — su vocabulario saldría de ISO 25010), H2-1 (SUNAT).
+
+## 6. Estado
+
+**Propuesta.** Requiere decisión del propietario sobre §3 y §4.
+
+**Precondición para cerrar:** decidir el marco. **No requiere** haber terminado el gap analysis
+—eso es la consecuencia, no el requisito.
 
 ---
 
