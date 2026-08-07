@@ -14,6 +14,16 @@ function makeQb(rows: any[]) {
   return qb;
 }
 
+// Reúne todas las condiciones que el barrido añadió al query builder, para poder
+// afirmar sobre el FILTRO y no solo sobre el resultado: el riesgo de la migración
+// masiva no está en lo que el barrido hace con las filas, sino en cuáles selecciona.
+function condicionesDe(qb: any): string {
+  return [
+    ...qb.where.mock.calls.map((c: any[]) => String(c[0])),
+    ...qb.andWhere.mock.calls.map((c: any[]) => String(c[0])),
+  ].join(' | ');
+}
+
 describe('ZtpProvisioningService.reconcile', () => {
   let repo: any;
   let ds: any;
@@ -74,6 +84,48 @@ describe('ZtpProvisioningService.reconcile', () => {
     expect(spy).not.toHaveBeenCalled();
     expect(r.conDrift).toBe(0);
   });
+
+  // ── Riesgo de migración masiva de ONUs (ADR-014) ──────────────────────────
+  // Una ONU incorporada por migración queda con last_applied_revision IS NULL, que es
+  // justo el filtro del barrido. Sin el guard por origen, el reconcile le reescribe
+  // SSID, clave WiFi y credenciales de acceso web con el preset de la OLT: cientos de
+  // clientes reales, con años de configuración propia, sin internet a la mañana
+  // siguiente. El guard debe estar en el FILTRO, no en el cuerpo del bucle.
+  it('solo barre ONUs de origen erp — nunca adoptadas ni migradas (reescritura masiva de WiFi, ADR-014)', async () => {
+    const qb = makeQb([]);
+    repo.createQueryBuilder.mockReturnValue(qb);
+
+    await svc.reconcile('e1');
+
+    expect(condicionesDe(qb)).toContain(`c.origen = 'erp'`);
+  });
+});
+
+describe('ZtpProvisioningService.reconcilePendingReinjection', () => {
+  let repo: any;
+  let svc: ZtpProvisioningService;
+
+  beforeEach(() => {
+    repo = { findOne: jest.fn(), update: jest.fn(), createQueryBuilder: jest.fn() };
+    svc = new ZtpProvisioningService(
+      { query: jest.fn() } as any, repo, {} as any,
+      { ensureConnReq: jest.fn().mockResolvedValue({}) } as any,
+      { isEnabled: () => false } as never,
+    );
+  });
+
+  // Este watcher corre CADA 2 MINUTOS y su filtro es exactamente el estado de una ONU
+  // recién migrada. Es el camino por el que el daño llegaría antes — no el nocturno de
+  // las 03:30. Si este guard desaparece, una migración no tiene una noche de margen:
+  // tiene dos minutos.
+  it('solo re-inyecta ONUs de origen erp — el watcher de 2 min es el que llega primero (ADR-014)', async () => {
+    const qb = makeQb([]);
+    repo.createQueryBuilder.mockReturnValue(qb);
+
+    await svc.reconcilePendingReinjection();
+
+    expect(condicionesDe(qb)).toContain(`c.origen = 'erp'`);
+  });
 });
 
 describe('ZtpProvisioningService.provisionContract — estado aplicado', () => {
@@ -85,6 +137,7 @@ describe('ZtpProvisioningService.provisionContract — estado aplicado', () => {
 
   const cfgBase = {
     id: 'cfg1', contratoId: 'c1', empresaId: 'e1',
+    origen: 'erp' as const,
     provisioningEnabled: true, revision: 5,
     wifiEnabled: true, wifiSsid: 'DATAFAST-7777', wifiPassword: 'clave',
     wifi5gSsid: null, wifi5gPassword: null,
@@ -145,5 +198,31 @@ describe('ZtpProvisioningService.provisionContract — estado aplicado', () => {
     expect(r.skipped).toBe(true);
     expect(driver.applyExecutionPlan).not.toBeCalled();
     expect(repo.update).not.toBeCalled();
+  });
+
+  // Defensa en profundidad: los barridos ya filtran por origen, pero este método también
+  // lo invoca el operador a mano. La configuración de una ONU adoptada es del abonado.
+  it('origen adoptada → skip: no se reescribe la config del abonado por omisión (ADR-014)', async () => {
+    repo.findOne.mockResolvedValue({ ...cfgBase, origen: 'adoptada' });
+    const r = await svc.provisionContract('c1', 'e1');
+    expect(r.skipped).toBe(true);
+    expect(r.mensaje).toContain('adoptada');
+    expect(driver.applyExecutionPlan).not.toBeCalled();
+    expect(repo.update).not.toBeCalled();
+  });
+
+  it('origen migrada → skip por omisión, pero el operador puede sobrescribir deliberadamente', async () => {
+    repo.findOne.mockResolvedValue({ ...cfgBase, origen: 'migrada' });
+    driver.applyExecutionPlan.mockResolvedValue({
+      applied: 1, results: [{ key: 'wifi.ssid', ok: true, path: 'p' }],
+    });
+
+    const sinPermiso = await svc.provisionContract('c1', 'e1');
+    expect(sinPermiso.skipped).toBe(true);
+    expect(driver.applyExecutionPlan).not.toBeCalled();
+
+    const conPermiso = await svc.provisionContract('c1', 'e1', { sobrescribirConfigAjena: true });
+    expect(conPermiso.ok).toBe(true);
+    expect(driver.applyExecutionPlan).toBeCalled();
   });
 });

@@ -95,6 +95,17 @@ export class ContratoOnuConfig extends BaseModel {
   connReqPassword: string | null;
 
   // ── Control del pipeline ──
+  /**
+   * Quién trajo esta ONU al ERP. **Solo `erp` entra en el auto-config del pipeline ZTP.**
+   *
+   * Una ONU que ya funcionaba se ADOPTA —se observa y se respeta—, nunca se reconfigura:
+   * su SSID y su clave WiFi son del abonado, no del ERP. Sin esta columna, una ONU
+   * incorporada por migración queda con `last_applied_revision IS NULL` y el watcher de
+   * re-inyección (cada 2 min) le reescribe WiFi y credenciales web. Ver ADR-014.
+   */
+  @Column({ name: 'origen', type: 'varchar', length: 16, default: 'erp' })
+  origen: 'erp' | 'adoptada' | 'migrada';
+
   /** Activación del aprovisionamiento TR-069. false por defecto (seguridad). */
   @Column({ name: 'provisioning_enabled', type: 'boolean', default: false })
   provisioningEnabled: boolean;

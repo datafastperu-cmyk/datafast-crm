@@ -67,9 +67,71 @@ export class ContratoOnuConfigService {
   private _nuevo(contratoId: string, empresaId: string): ContratoOnuConfig {
     return this.repo.create({
       contratoId, empresaId,
+      // `origen: 'erp'` es correcto en TODAS las rutas que pasan por aquí: upsert(),
+      // generateWifi(), ensureConnReq() y el preset se invocan desde la provisión o la
+      // administración del propio ERP. Una incorporación por adopción o migración NO debe
+      // usar este constructor: debe declarar su origen explícitamente, o el auto-config
+      // le reescribirá el WiFi del abonado. Ver ADR-014.
+      origen: 'erp',
       wifiEnabled: true, wifiPasswordGenerated: true,
       voipEnabled: false, provisioningEnabled: false, revision: 0,
     });
+  }
+
+  // ── preflightMigracion ────────────────────────────────────────────────────
+  // Consulta OBLIGATORIA antes de cualquier incorporación masiva de ONUs (SmartOLT,
+  // MikroWISP, adopción en bloque). Cuenta, agrupado por origen, cuántas ONUs entrarían
+  // en el barrido de auto-config — es decir, a cuántos abonados se les reescribiría el
+  // SSID, la clave WiFi y las credenciales de acceso web.
+  //
+  // `enRiesgo` debe ser 0 para todo origen distinto de 'erp'. Si no lo es, la migración
+  // dejó filas que el watcher de re-inyección (cada 2 minutos) va a procesar.
+  //
+  // No devuelve un aviso: devuelve `seguro: false`. El llamador debe PARAR.
+  // Ver POL-001 PP-10 · ADR-014 · RDM-001 R1.
+  async preflightMigracion(empresaId?: string): Promise<{
+    seguro:   boolean;
+    porOrigen: { origen: string; total: number; enBarrido: number }[];
+    enRiesgo: number;
+    mensaje:  string;
+  }> {
+    const filas = await this.ds.query<{ origen: string; total: string; en_barrido: string }[]>(`
+      SELECT origen,
+             COUNT(*)                                                          AS total,
+             COUNT(*) FILTER (
+               WHERE provisioning_enabled
+                 AND (last_applied_revision IS NULL OR last_applied_revision < revision)
+             )                                                                 AS en_barrido
+      FROM   contrato_onu_config
+      WHERE  deleted_at IS NULL
+        AND  ($1::uuid IS NULL OR empresa_id = $1::uuid)
+      GROUP BY origen
+      ORDER BY origen
+    `, [empresaId ?? null]);
+
+    const porOrigen = filas.map(f => ({
+      origen:    f.origen,
+      total:     Number(f.total),
+      enBarrido: Number(f.en_barrido),
+    }));
+
+    // Lo que importa no es el total en barrido —las ONUs del ERP deben estar ahí—, sino
+    // que ninguna ONU ajena lo esté.
+    const enRiesgo = porOrigen
+      .filter(o => o.origen !== 'erp')
+      .reduce((acc, o) => acc + o.enBarrido, 0);
+
+    const seguro = enRiesgo === 0;
+    const mensaje = seguro
+      ? `Pre-flight OK: ninguna ONU adoptada o migrada entra en el auto-config. ` +
+        `Detalle: ${porOrigen.map(o => `${o.origen}=${o.total} (en barrido ${o.enBarrido})`).join(', ') || 'sin filas'}.`
+      : `PARAR: ${enRiesgo} ONU(s) de origen distinto de 'erp' entrarían en el auto-config. ` +
+        `El watcher de re-inyección corre cada 2 minutos y les reescribiría SSID, clave WiFi ` +
+        `y credenciales de acceso web. Poner provisioning_enabled = false o ` +
+        `last_applied_revision = revision antes de continuar.`;
+
+    if (!seguro) this.logger.error(mensaje);
+    return { seguro, porOrigen, enRiesgo, mensaje };
   }
 
   async upsert(contratoId: string, empresaId: string, dto: UpsertOnuConfigDto): Promise<ContratoOnuConfig> {

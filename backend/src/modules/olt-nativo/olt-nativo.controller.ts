@@ -1163,6 +1163,20 @@ export class OltNativoController {
     return this.onuConfig.generateWifi(contratoId, user.empresaId);
   }
 
+  // Ruta ESTÁTICA declarada antes que las paramétricas de `ztp/config/:contratoId`
+  // (en NestJS/Express gana la primera que coincide).
+  @Get('ztp/preflight-migracion')
+  @ApiOperation({
+    summary: 'ZTP: pre-flight OBLIGATORIO antes de una migración masiva de ONUs',
+    description:
+      'Cuenta, por origen, cuántas ONUs entrarían en el auto-config. Si alguna adoptada o ' +
+      'migrada está dentro, devuelve seguro=false: el watcher de re-inyección (cada 2 min) ' +
+      'les reescribiría SSID, clave WiFi y credenciales de acceso web. Ver ADR-014.',
+  })
+  async ztpPreflightMigracion(@CurrentUser() user: JwtPayload) {
+    return this.onuConfig.preflightMigracion(user.empresaId);
+  }
+
   @Post('ztp/config/:contratoId/provisioning')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'ZTP: activar/desactivar el aprovisionamiento TR-069 del contrato' })

@@ -175,7 +175,7 @@ export class ZtpProvisioningService {
   async provisionContract(
     contratoId: string,
     empresaId:  string,
-    opts:       { grantGrace?: boolean } = {},
+    opts:       { grantGrace?: boolean; sobrescribirConfigAjena?: boolean } = {},
   ): Promise<{ ok: boolean; skipped?: boolean; deviceId?: string; applied?: number; total?: number; fallidas?: string[]; mensaje: string }> {
     const cfg = await this.configRepo.findOne({ where: { contratoId, empresaId } });
     if (!cfg) {
@@ -184,6 +184,20 @@ export class ZtpProvisioningService {
     if (!cfg.provisioningEnabled) {
       return { ok: false, skipped: true,
         mensaje: 'provisioning_enabled = false. Actívalo explícitamente antes de aplicar (seguridad ZTP).' };
+    }
+    // Defensa en profundidad: los dos reconciliadores ya filtran por origen, pero este
+    // método también lo invoca el operador a mano. Reconfigurar una ONU adoptada o migrada
+    // es sobrescribir la configuración del abonado —su SSID y su clave—, y eso puede ser
+    // una decisión legítima: por eso se permite, pero NUNCA por omisión. Quien lo haga
+    // tiene que escribirlo. Ver ADR-014.
+    if (cfg.origen !== 'erp' && !opts.sobrescribirConfigAjena) {
+      return {
+        ok: false, skipped: true,
+        mensaje:
+          `ONU de origen '${cfg.origen}': el ERP no la aprovisionó, así que su configuración ` +
+          `(SSID, clave WiFi, acceso web) es del abonado y no se reescribe automáticamente. ` +
+          `Para sobrescribirla hace falta una acción deliberada del operador.`,
+      };
     }
     if (!this.driver.isReady()) {
       return { ok: false, mensaje: 'GenieACS NBI no configurado — el pipeline TR-069 está degradado.' };
@@ -296,6 +310,10 @@ export class ZtpProvisioningService {
     const qb = this.configRepo.createQueryBuilder('c')
       .where('c.provisioning_enabled = true')
       .andWhere('c.deleted_at IS NULL')
+      // El auto-config solo actúa sobre lo que el ERP aprovisionó. Una ONU adoptada o
+      // migrada trae la configuración del abonado —su SSID, su clave— y reescribirla es
+      // dejar sin internet a un cliente que no pidió nada. Ver ADR-014.
+      .andWhere(`c.origen = 'erp'`)
       .andWhere('(c.last_applied_revision IS NULL OR c.last_applied_revision < c.revision)');
     if (empresaId) qb.andWhere('c.empresa_id = :empresaId', { empresaId });
 
@@ -333,6 +351,11 @@ export class ZtpProvisioningService {
     const pendientes = await this.configRepo.createQueryBuilder('c')
       .where('c.provisioning_enabled = true')
       .andWhere('c.deleted_at IS NULL')
+      // MISMO guard que reconcile(), y aquí es MÁS crítico: este watcher corre cada 2
+      // minutos y su filtro (`last_applied_revision IS NULL`) es exactamente el estado en
+      // que queda una ONU recién incorporada por migración. Sin el guard, el daño de una
+      // migración no espera a la madrugada: empieza en dos minutos. Ver ADR-014.
+      .andWhere(`c.origen = 'erp'`)
       .andWhere('c.last_applied_revision IS NULL')
       .getMany();
 
