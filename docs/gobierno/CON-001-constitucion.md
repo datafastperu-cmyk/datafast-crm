@@ -8,9 +8,9 @@
 |---|---|
 | **Código** | CON-001 |
 | **Versión** | 1.0 |
-| **Estado** | **Borrador para ratificación** (§6.1 requiere decisión del propietario) |
+| **Estado** | **Vigente** — ratificado por Datafast el 2026-08-06 (§2.1) |
 | **Autor** | Arquitectura — compilado desde la evidencia del repositorio y del historial de incidentes |
-| **Revisores** | Pendientes de asignar |
+| **Propietario del producto** | **Datafast** (decisión D1, 2026-08-06) |
 | **Fecha de emisión** | 2026-08-06 |
 | **Jerarquía** | **Máxima.** Ningún documento puede contradecirla |
 | **Base** | Rama `main`, commit `f8d52b00` |
@@ -23,12 +23,12 @@ estado Vigente** (índice maestro §7.1).
 
 | Campo | Valor |
 |---|---|
-| **Ratificado por** | *(pendiente — nombre y cargo del propietario del producto)* |
-| **Fecha de ratificación** | *(pendiente)* |
-| **Acta / referencia** | *(pendiente — número de acta, correo o registro de la decisión)* |
-| **Versión ratificada** | *(pendiente — versión exacta del documento que se ratifica)* |
+| **Ratificado por** | **Datafast**, propietario del producto |
+| **Fecha de ratificación** | **2026-08-06** |
+| **Acta / referencia** | Decisión **D2** registrada en PLAN-001 §5 — sesión de 2026-08-06 |
+| **Versión ratificada** | **1.0** |
 | **Secciones ratificadas** | §8.3 Visión · §8.4 Misión · §8.5 Valores |
-| **Modificaciones introducidas al ratificar** | *(pendiente — si el propietario corrigió alguna declaración, se anota aquí y en el historial)* |
+| **Modificaciones introducidas al ratificar** | Ninguna. Las tres secciones se ratifican tal como fueron redactadas |
 
 **Regla de trazabilidad:** la ratificación se aplica a **una versión concreta**. Si el documento
 cambia sus secciones de negocio después de ratificado, la ratificación **caduca** y debe repetirse.
@@ -39,6 +39,7 @@ Los cambios que solo afectan a secciones técnicas (§8.6–§8.12) no la invali
 | Versión | Fecha | Cambio | Motivo |
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | El ERP operaba sin constitución. Los principios existían y se aplicaban, pero no eran citables ni exigibles |
+| 1.0-R | 2026-08-06 | **Ratificada.** Visión, misión y valores confirmados sin cambios por Datafast. Propietario del producto asignado | Decisiones D1 y D2 (PLAN-001 §5). El documento pasa de propuesta derivada de evidencia a norma exigible |
 
 ## 4. Índice
 
@@ -70,16 +71,15 @@ Aplica a **todas** las personas y agentes que modifiquen el sistema.
 
 **No aplica a** decisiones comerciales, de precios ni de estrategia de mercado.
 
-### 6.1 Advertencia sobre las secciones 3, 4 y 5 del contenido
+### 6.1 Nota sobre las secciones 3, 4 y 5 del contenido
 
-**Visión, Misión y Valores son declaraciones del propietario del negocio, no del arquitecto.**
-Lo que este documento presenta en §3, §4 y §5 es una **propuesta derivada de la evidencia**: de
-cómo el sistema está construido, qué prioriza cuando hay conflicto y qué decisiones ha tomado
+**Visión, Misión y Valores son declaraciones del propietario del negocio, no del arquitecto.** Lo
+que §8.3, §8.4 y §8.5 presentan fue redactado como **propuesta derivada de la evidencia**: de cómo
+el sistema está construido, qué prioriza cuando hay conflicto y qué decisiones ha tomado
 consistentemente durante su historia.
 
-Esa derivación es legítima —un sistema revela sus valores en sus decisiones difíciles— pero
-**debe ser ratificada o corregida** por el propietario antes de que este documento pase a estado
-Vigente.
+**Datafast las ratificó sin modificaciones el 2026-08-06** (§2.1). Si alguna de las tres cambia,
+la ratificación **caduca** y debe repetirse.
 
 ## 7. Definiciones y glosario
 
@@ -137,7 +137,7 @@ De este propósito se derivan tres obligaciones permanentes:
 
 ## 8.3 Visión
 
-*(Propuesta — requiere ratificación, ver §6.1)*
+*Ratificada por Datafast el 2026-08-06 sin modificaciones (§2.1).*
 
 > **Ser la plataforma de operación sobre la que un ISP pueda crecer de cientos a miles de
 > abonados sin que la complejidad de operarlo crezca al mismo ritmo.**
@@ -148,7 +148,7 @@ cada módulo por su cuenta.
 
 ## 8.4 Misión
 
-*(Propuesta — requiere ratificación, ver §6.1)*
+*Ratificada por Datafast el 2026-08-06 sin modificaciones (§2.1).*
 
 > **Dar al ISP control verificable sobre su planta y su cartera: que cada operación comercial
 > tenga su contraparte física garantizada, que cada peso cobrado tenga un único registro
@@ -156,7 +156,7 @@ cada módulo por su cuenta.
 
 ## 8.5 Valores
 
-*(Propuesta — requiere ratificación, ver §6.1)*
+*Ratificada por Datafast el 2026-08-06 sin modificaciones (§2.1).*
 
 Estos cinco valores no son aspiraciones: son **descripciones de decisiones que el sistema ya ha
 tomado repetidamente**, incluso cuando la alternativa era más cómoda.

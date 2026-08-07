@@ -97,7 +97,8 @@ Situación actual y desviaciones conocidas.
 | 015 | Bootstrap TR-069 por estrategia y decidido por modelo | Aceptada | El ME137 no materializa en EG8145V5 |
 | 016 | Módulos degradables vs Core Indestructible | Aceptada | Resiliencia de arranque |
 | **017–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
-| **029** | **Marco normativo externo de referencia** | **Propuesta — requiere decisión del propietario** | El cuerpo normativo no declara filiación con ningún estándar, y nunca se evaluó conformidad |
+| **029** | Marco normativo externo de referencia | **Aceptada parcialmente** (D3, 2026-08-06) | Certificación descartada · adopción selectiva aceptada · programa legal suspendido con excepción |
+| **030** | Referencia por tipo de módulo (incluye TM Forum) | **Aceptada** (D4, 2026-08-06) — pendiente de reescritura | ¿Cada módulo desde 0? |
 
 ---
 
@@ -785,8 +786,8 @@ Aceptada. **Brecha:** los endpoints de salud son consultables, **no vigilantes**
 
 # ADR-029 — Marco normativo externo de referencia
 
-**Estado:** **Propuesta — requiere decisión del propietario del producto**
-**Fecha:** 2026-08-06 · **Decide:** Propietario del producto, con recomendación del Arquitecto
+**Estado:** **Aceptada parcialmente** — 2026-08-06, Datafast
+**Fecha:** 2026-08-06 · **Decide:** Datafast (decisión D3, PLAN-001 §5)
 
 ## 1. Problema
 
@@ -900,10 +901,50 @@ anonimización), R-016 (objetivos de calidad — su vocabulario saldría de ISO 
 
 ## 6. Estado
 
-**Propuesta.** Requiere decisión del propietario sobre §3 y §4.
+**Aceptada parcialmente — 2026-08-06 (Datafast, decisión D3).**
 
-**Precondición para cerrar:** decidir el marco. **No requiere** haber terminado el gap analysis
-—eso es la consecuencia, no el requisito.
+| Componente | Decisión |
+|---|---|
+| **B — certificación formal** (ISO 27001/9001) | **DESCARTADA** |
+| **C — adopción selectiva declarada** | **ACEPTADA.** Se detalla en ADR-030 |
+| **D — cumplimiento legal como programa** | **SUSPENDIDO por el momento**, con una excepción (§6.1) |
+
+### 6.1 La excepción, y la regla que se deriva de ella
+
+Literal de la decisión: *el tema legal se suspende, **salvo cuando implique el diseño de algún
+módulo**; entonces se define en ese momento.*
+
+**Regla derivada — propuesta para POL-001:**
+
+> **Cuando un módulo nuevo toque materia regulada, el marco legal aplicable se define ANTES de
+> diseñarlo, no después.**
+
+Es una regla mejor que el programa que sustituye. Evita el coste de un programa de cumplimiento
+que hoy nadie va a mantener, y evita el fallo real: diseñar un módulo y descubrir después que la
+norma exigía otra estructura de datos. Módulos afectados hoy:
+
+| Módulo | Materia regulada | Cuándo se define |
+|---|---|---|
+| **Facturación electrónica (H2-1)** | SUNAT: firma XML, OSE, CDR, catálogos | **Antes de diseñarlo.** Determina el modelo de datos, no solo la integración |
+| **Portal / datos del abonado** | Ley 29733 | Al tocar retención, exportación o supresión |
+| Inventario (H2-4) | — | No aplica |
+
+### 6.2 Alcance de R-036 tras esta decisión
+
+D7 aprobó R-036 (protección de datos personales) y D3 suspendió lo legal. **Se interpretan como
+complementarias, no contradictorias:**
+
+| Parte de R-036 | Estado |
+|---|---|
+| **Técnica** — retención por tabla, anonimización en respaldos y entornos de prueba, quién accede a datos sensibles, registro de accesos | **ACTIVA.** No requiere abogado: son decisiones de ingeniería |
+| **Legal** — base de tratamiento, derechos del titular, plazos normativos, cláusulas | **SUSPENDIDA** hasta que un módulo la exija (§6.1) |
+
+**Si esta interpretación no es la correcta, corregir aquí antes de ejecutar R-036.**
+
+### 6.3 Pendiente de este ADR
+
+El alcance concreto de C —qué se adopta de ISO/IEC 42010, ISO 25010 y OWASP ASVS— se resuelve en
+**ADR-030**, ya decidido en D4.
 
 ---
 
