@@ -327,7 +327,7 @@ Nadie lo notó porque **con `aplicarCorte = 1` —el valor heredado por defecto�
 mismo comprobante** y el resultado coincide. El defecto solo aparecía en la configuración que el
 propietario usa de verdad.
 
-#### H-2 · `moroso` no lo escribe nadie, y dos módulos entienden lo contrario por él
+#### H-2 · `moroso` no lo escribe nadie, y dos módulos entienden lo contrario por él — **RESUELTO, ver §6.2**
 
 La respuesta 2 lo define como *«pasó la fecha de corte pero sigue con servicio, usando gracia o
 prórroga»*, y el comentario del enum dice exactamente eso: *«deuda activa, aún con servicio
@@ -448,38 +448,67 @@ resuelta; lo que cambiará es la forma de la serie y las reglas de anulación.
 |---|---|---|
 | **H-1** | El corte no contaba «N vencidos + N días desde el último» | ✅ **CORREGIDO 2026-08-08.** `MAX` en vez de `MIN`; barrera de 8 tests |
 | **H-3** | El primer comprobante del prepago lo emite el **navegador**, con `catch` vacío, sin el vencimiento de la política y sin `contratoId` | **Siguiente.** Mover la emisión al backend resuelve los cinco defectos de golpe y no cambia ninguna fecha de corte |
-| **H-2** | `moroso` no lo escribe nadie | **Decidido, pendiente de construir.** Ver §6.2 |
+| **H-2** | `moroso` no lo escribe nadie | ✅ **RESUELTO 2026-08-08, y no como se planteó**: la mora pasa a ser una **etiqueta derivada**, no un estado. Ver §6.2 |
 | — | Nota de crédito vs. anular/editar (respuesta 5) | **Aplazado por el propietario**, sin bloquear nada. Ver §6.3 |
 | — | Cambios masivos de configuración (respuesta 9) | Funcionalidad nueva, ya especificada |
 | — | Comprobante por contrato vs. consolidado (respuesta 3) | A estudiar |
 | — | Canales de cobranza (respuesta 7) | Rediseño, reconocido por el propietario |
 
-### 6.2 H-2 — qué se decidió, y por qué no es un cambio de una línea
+### 6.2 H-2 — resuelto, y no como se había planteado
 
-**Decisión del propietario (2026-08-08):** *«sería bueno que `moroso` sea un estado donde el
-cliente está activo pero ya pasó su fecha de pago; esto sirve para estadísticas — qué probabilidad
-tiene el cliente de pasar a moroso, si es un moroso recurrente»*.
+El propietario lo replanteó el mismo día, después de ver el radio del cambio:
 
-Es más amplio que la definición anterior (ya no es «dentro de la prórroga»): **desde el día
-siguiente al vencimiento, con servicio.** Y su propósito es analítico, no operativo — lo cual
-importa, porque marca lo que NO debe hacer: **`moroso` no puede cortar nada.**
+> *«Que `moroso` no sea un estado, sea una **etiqueta** para el análisis estadístico.»*
 
-**Por qué no es una línea.** El estado no se lee en un sitio: `estado = 'activo'` aparece en **57
-consultas**. Empezar a escribir `moroso` haría que un abonado en mora **desapareciera** de todas
-ellas sin que nada fallara. Las dos más graves:
+**Es mejor diseño que el que él mismo había pedido antes**, y conviene dejar por qué:
 
-- **`cobranza.worker.detectarMorosos` filtra `co.estado = 'activo'`.** Si el abonado pasa a
-  `moroso`, **deja de evaluarse para el corte**: el estado creado para medir la morosidad impediría
-  cortar a los morosos.
-- **`address-list-reconciliador.service.ts`** declara
-  `ESTADOS_CORTADOS = ['suspendido', 'cortado', 'moroso']` — trata `moroso` como **sin servicio**,
-  al revés de la decisión. Le cortaría el tráfico en MikroTik.
+1. **No se puede desincronizar.** Un estado almacenado es una segunda verdad que alguien
+   debe acordarse de mantener; una etiqueta derivada de las facturas **es** la verdad. Es la
+   lección de A-4 (la deuda en cuatro sitios) y la del latido derivado del `SchedulerRegistry`:
+   lo que se deriva no se olvida.
+2. **No toca el comportamiento operativo.** Era el problema real: `estado = 'activo'` aparece en
+   **57 consultas**, y escribir `moroso` habría hecho desaparecer al abonado de todas ellas sin
+   que nada fallara. La peor, `cobranza.worker.detectarMorosos`, filtra por `'activo'` — **el
+   estado creado para medir la morosidad habría impedido cortar a los morosos.**
+3. **Da historia gratis.** Un estado dice cómo está hoy. Las facturas dicen cómo estuvo siempre,
+   y eso es justo lo que se quiere saber: *«¿qué probabilidad tiene de pasar a moroso? ¿es un
+   moroso recurrente?»*.
 
-Dos módulos ya lo entienden bien y sirven de referencia: `olt-sync.service` y
-`reconciliador.service` tratan `['activo','moroso']` como «debe tener servicio».
+**Aplicado el 2026-08-08** (`facturacion/domain/mora.ts`):
 
-**Orden correcto:** primero auditar las 57 y decidir cuáles significan «con servicio» y cuáles
-«al día»; después escribir el estado. Al revés se rompe el corte en producción.
+| Pieza | Qué es |
+|---|---|
+| `SQL_COMPROBANTE_VENCIDO()` | Qué cuenta como vencido e impago: exigible (ni pagada, ni anulada, ni nota de crédito), con saldo, y `fecha_vencimiento < CURRENT_DATE` — **desde el día siguiente al día de pago**, sin gracia dentro de la cuenta |
+| `sqlEnMora(aliasCliente)` | La etiqueta: `EXISTS` de al menos uno. **Por cliente**, porque el comprobante es consolidado |
+| `SQL_HISTORIAL_MORA` | `comprobantes`, `pagados_tarde`, `vencidos_hoy` → `tasaMora` y `recurrente` |
+
+**El corte usa la misma definición.** `detectarMorosos` ya no reescribe las condiciones: importa
+`SQL_COMPROBANTE_VENCIDO()` y encima cuenta cuántos hay y cuántos días lleva el último. Dos
+preguntas distintas sobre **un solo criterio** — si divergieran, habría abonados etiquetados en
+mora que el corte no ve, o al revés.
+
+**Sin tabla nueva.** Una instantánea diaria habría dado lo mismo empezando desde hoy, con una
+política de retención que mantener (C-7) y una fuente más que puede divergir. `facturas` ya guarda
+`fecha_vencimiento` y `fecha_pago` desde el principio: la historia completa ya estaba escrita.
+
+**El estado quedó retirado, no borrado.** Se puede **salir** de `moroso` —una instalación antigua
+puede tener contratos ahí— pero no **entrar**: la tabla de transiciones no ofrece ninguna entrada.
+El valor sigue en el enum de PostgreSQL porque 26 consultas lo nombran y borrarlo sería una
+migración irreversible a cambio de nada.
+
+**Y se corrigió la contradicción latente.** `address-list-reconciliador` tenía `moroso` dentro de
+`ESTADOS_CORTADOS`, es decir lo leía como «sin servicio», al revés del enum y de la definición del
+propietario. Nunca dio la cara porque nadie asignaba el estado; un operador que lo pusiera a mano
+le habría cortado el tráfico a un abonado que por definición debía conservarlo. Producción tenía
+**0 contratos en `moroso`**, comprobado antes de tocarlo, así que el cambio no movió nada hoy.
+
+Primer consumidor real, para que la definición no naciera como código muerto: el dashboard expone
+`contratos.enMora`. Se **solapa con `activos` a propósito** — son dos preguntas, no dos casillas
+excluyentes.
+
+Barrera `mora-es-etiqueta.spec.ts`: nadie asigna el estado (distinguiendo escritura de `where`,
+porque buscar contratos en `moroso` sigue siendo legítimo), la tabla no ofrece entradas, y
+`ESTADOS_CORTADOS` no lo contiene.
 
 ### 6.3 Lo que queda anotado sin bloquear
 

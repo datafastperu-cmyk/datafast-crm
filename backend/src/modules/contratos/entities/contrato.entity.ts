@@ -12,7 +12,12 @@ export enum EstadoContrato {
   PENDIENTE_ACTIVACION = 'pendiente_activacion',
   ACTIVO                = 'activo',
   SUSPENDIDO            = 'suspendido',
-  MOROSO                = 'moroso',    // deuda activa, aún con servicio (dentro de prorroga)
+  // RETIRADO 2026-08-08. Nadie debe asignarlo: la mora es una ETIQUETA DERIVADA de las
+  // facturas (`facturacion/domain/mora.ts`), no un estado del contrato. Un abonado en mora
+  // sigue `activo` —con servicio— hasta que el corte por acumulación lo suspende.
+  // El valor permanece en el enum de PostgreSQL para que una instalación antigua pueda
+  // sacar de ahí sus contratos; no se puede entrar. Barrera: `mora-es-etiqueta.spec.ts`.
+  MOROSO                = 'moroso',
   CORTADO               = 'cortado',   // sin servicio, deuda vencida (post-prorroga)
   BAJA_DEFINITIVA       = 'baja_definitiva',
 }

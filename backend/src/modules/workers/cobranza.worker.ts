@@ -43,6 +43,7 @@ import { decrypt } from '../../common/utils/encryption.util';
 import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { RedisLockService } from '../../common/redis/redis-lock.service';
 import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
+import { SQL_COMPROBANTE_VENCIDO } from '../facturacion/domain/mora';
 
 // ─────────────────────────────────────────────────────────────
 // CobranzaScheduler — Encola los jobs en los momentos correctos
@@ -144,9 +145,7 @@ export class CobranzaScheduler implements OnModuleInit {
                COUNT(*)::int          AS comprobantes_vencidos
           FROM facturas
          WHERE deleted_at IS NULL
-           AND ${sqlDeudaExigible()}
-           AND COALESCE(saldo, total - monto_pagado) > 0
-           AND fecha_vencimiento < CURRENT_DATE
+           AND ${SQL_COMPROBANTE_VENCIDO()}
          GROUP BY cliente_id
       )
       SELECT

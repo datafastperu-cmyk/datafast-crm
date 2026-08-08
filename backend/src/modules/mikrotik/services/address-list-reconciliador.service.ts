@@ -36,8 +36,25 @@ import { WatcherHeartbeatService } from '../../../common/services/watcher-heartb
 
 const LISTAS_DEL_ERP = [ADDRESS_LIST_MOROSOS, ADDRESS_LIST_PRORROGA, 'prorroga'] as const;
 
-/** Estados en los que una IP SÍ debe estar en la lista de morosos. */
-const ESTADOS_CORTADOS = ['suspendido', 'cortado', 'moroso'];
+/**
+ * Estados en los que una IP SÍ debe estar en la lista de morosos.
+ *
+ * **`moroso` se quitó el 2026-08-08, y era un error grave.** Este array lo trataba como
+ * «sin servicio» mientras el enum lo definía como «deuda activa, AÚN CON SERVICIO» — dos
+ * módulos con lecturas opuestas del mismo estado. Nunca dio la cara porque nadie llegó a
+ * asignarlo (las 26 apariciones de `moroso` en el código eran lecturas), así que un
+ * operador que lo pusiera a mano le habría cortado el tráfico a un abonado que, por
+ * definición, debía conservarlo.
+ *
+ * El estado quedó retirado: la mora es ahora una **etiqueta derivada** de las facturas
+ * (`facturacion/domain/mora.ts`), no un estado del contrato. Un abonado en mora sigue
+ * `activo` y con servicio hasta que el corte por acumulación lo suspende — que es la única
+ * transición que debe sacar una IP a la lista.
+ *
+ * Referencia de la lectura correcta: `olt-sync.service` y `reconciliador.service`, que
+ * tratan `['activo','moroso']` como «debe tener servicio».
+ */
+const ESTADOS_CORTADOS = ['suspendido', 'cortado'];
 
 export interface EntradaSobrante {
   routerId:   string;

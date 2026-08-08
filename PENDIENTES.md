@@ -344,23 +344,24 @@ siempre que `aplicarCorte >= 2`**. Ahora agrega con `MAX`. Barrera `corte-por-ac
 (8 tests) que fija la decisión **y** la consulta: sin lo segundo, volver a poner `MIN` no rompería
 ningún test — que es exactamente cómo pasó inadvertido.
 
-**H-2 — DECIDIDO, pendiente de construir, y NO es un cambio de una línea.**
-Definición del propietario: *«un estado donde el cliente está activo pero ya pasó su fecha de pago;
-sirve para estadísticas — qué probabilidad tiene de pasar a moroso, si es moroso recurrente»*. Más
-amplio que la definición anterior (ya no es «dentro de la prórroga») y de propósito **analítico**:
-`moroso` no debe cortar nada.
+**~~H-2~~ — RESUELTO 2026-08-08, y NO como se había planteado.**
+El propietario lo replanteó al ver el radio: *«que `moroso` no sea un estado, sea una etiqueta para
+el análisis estadístico»*. Mejor diseño, por tres razones: una etiqueta derivada **no se puede
+desincronizar** (lección de A-4), **no toca el comportamiento operativo** —escribir el estado habría
+sacado al abonado de las 57 consultas que filtran por `'activo'`, incluida la que decide el corte—,
+y **da historia gratis**, que es justo lo que él quiere medir.
 
-Hoy las **26** apariciones son lecturas; ninguna escritura. Empezar a escribirlo tiene radio:
-**`estado = 'activo'` aparece en 57 consultas** y un abonado que pase a `moroso` desaparecería de
-todas sin que nada falle. Las dos graves:
+Aplicado en `facturacion/domain/mora.ts`: `SQL_COMPROBANTE_VENCIDO()` (qué cuenta como vencido),
+`sqlEnMora(cliente)` (la etiqueta, por cliente porque el comprobante es consolidado) y
+`SQL_HISTORIAL_MORA` (`tasaMora` y `recurrente`, derivados de `fecha_pago` vs `fecha_vencimiento`).
+**Sin tabla nueva:** las facturas ya guardan la historia completa desde el principio.
 
-- **`cobranza.worker.detectarMorosos` filtra `co.estado = 'activo'`** → el moroso **dejaría de
-  evaluarse para el corte**. El estado creado para medir la morosidad impediría cortar a los morosos.
-- **`address-list-reconciliador`** declara `ESTADOS_CORTADOS = ['suspendido','cortado','moroso']` →
-  lo trata como SIN servicio, al revés de la decisión: le cortaría el tráfico en MikroTik.
-
-`olt-sync.service` y `reconciliador.service` ya lo tratan bien (`['activo','moroso']` = debe tener
-servicio) y sirven de referencia. **Orden:** auditar las 57 primero, escribir el estado después.
+El corte usa **la misma definición** —`detectarMorosos` importa el fragmento en vez de reescribirlo—
+así que no pueden divergir. El estado quedó **retirado**: se sale de `moroso`, no se entra. Y se
+corrigió la contradicción latente: `address-list-reconciliador` lo tenía en `ESTADOS_CORTADOS`, o sea
+lo leía como «sin servicio» al revés del enum; producción tenía **0 contratos en `moroso`**
+(comprobado antes de tocarlo), así que el cambio no movió nada hoy. Primer consumidor:
+`dashboard.contratos.enMora`. Barrera: `mora-es-etiqueta.spec.ts`.
 
 **Anular emite una nota de crédito sin decirlo — APLAZADO por el propietario, no bloquea.**
 El frontend manda solo `{ motivo }` y el backend crea la NC salvo `crearNotaCredito: false`. El

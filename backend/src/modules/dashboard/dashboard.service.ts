@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
+import { sqlEnMora } from '../facturacion/domain/mora';
 
 @Injectable()
 export class DashboardService {
@@ -18,14 +19,19 @@ export class DashboardService {
           FROM clientes WHERE empresa_id = $1
         `, [empresaId]),
 
+        // `en_mora` NO es un estado del contrato: es la etiqueta derivada de las facturas
+        // (`facturacion/domain/mora.ts`). Un abonado en mora sigue `activo` y con servicio
+        // hasta que el corte por acumulación lo suspende, así que `activos` y `en_mora` se
+        // solapan a propósito — son dos preguntas distintas, no dos casillas excluyentes.
         this.dataSource.query(`
           SELECT
             COUNT(*)                                                                        AS total,
-            COUNT(*) FILTER (WHERE estado = 'activo')                                        AS activos,
-            COUNT(*) FILTER (WHERE estado = 'suspendido')                                   AS suspendidos,
-            COUNT(*) FILTER (WHERE fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
-                             AND estado = 'activo')                                         AS por_vencer
-          FROM contratos WHERE empresa_id = $1
+            COUNT(*) FILTER (WHERE c.estado = 'activo')                                      AS activos,
+            COUNT(*) FILTER (WHERE c.estado = 'suspendido')                                 AS suspendidos,
+            COUNT(*) FILTER (WHERE c.estado = 'activo' AND ${sqlEnMora('c.cliente_id')})     AS en_mora,
+            COUNT(*) FILTER (WHERE c.fecha_vencimiento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'
+                             AND c.estado = 'activo')                                       AS por_vencer
+          FROM contratos c WHERE c.empresa_id = $1
         `, [empresaId]),
 
         this.dataSource.query(`
@@ -74,6 +80,8 @@ export class DashboardService {
         total:       Number(contratos.total)       || 0,
         activos:     Number(contratos.activos)     || 0,
         suspendidos: Number(contratos.suspendidos) || 0,
+        // Etiqueta derivada, no estado: se solapa con `activos` a propósito.
+        enMora:      Number(contratos.en_mora)     || 0,
         porVencer:   Number(contratos.por_vencer)  || 0,
       },
       facturacion: {

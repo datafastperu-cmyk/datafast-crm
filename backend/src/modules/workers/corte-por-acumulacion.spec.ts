@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SQL_COMPROBANTE_VENCIDO } from '../facturacion/domain/mora';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // La regla del corte, dicha por el propietario el 2026-08-08:
@@ -93,15 +94,18 @@ describe('La consulta mide la gracia desde el último vencimiento (barrera)', ()
     expect(cte()).not.toContain('MIN(fecha_vencimiento)');
   });
 
-  it('un comprobante cuenta como vencido desde el día siguiente a su día de pago', () => {
-    // Sin gracia dentro de la cuenta: `< CURRENT_DATE`, no `< CURRENT_DATE - gracia`.
-    expect(cte()).toContain('fecha_vencimiento < CURRENT_DATE');
-  });
+  it('qué cuenta como comprobante vencido lo define `mora.ts`, no esta consulta', () => {
+    // El corte y la etiqueta de mora hacen dos preguntas distintas —«¿cuántos y desde
+    // cuándo?» frente a «¿hay alguno?»— sobre UN SOLO criterio. Si el corte reescribiera
+    // las condiciones a mano, podrían divergir: un abonado etiquetado en mora al que el
+    // corte no ve, o al revés. Es el defecto de A-4 en pequeño.
+    expect(cte()).toContain('SQL_COMPROBANTE_VENCIDO()');
 
-  it('solo cuenta deuda exigible: ni pagadas, ni anuladas, ni notas de crédito', () => {
-    // `sqlDeudaExigible()` aporta las dos condiciones (estado + documento de cargo).
-    // Contar un abono como comprobante vencido acercaba el corte (A-5).
-    expect(cte()).toContain('sqlDeudaExigible()');
-    expect(cte()).toContain('COALESCE(saldo, total - monto_pagado) > 0');
+    // Y ese criterio incluye lo que aquí importa: exigible (ni pagada, ni anulada, ni nota
+    // de crédito — A-5), con saldo, y vencido desde el día siguiente al día de pago. Lo
+    // fija `mora-es-etiqueta.spec.ts`.
+    expect(SQL_COMPROBANTE_VENCIDO()).toContain('fecha_vencimiento < CURRENT_DATE');
+    expect(SQL_COMPROBANTE_VENCIDO()).toContain('factura_original_id IS NULL');
+    expect(SQL_COMPROBANTE_VENCIDO()).toContain('COALESCE(saldo, total - monto_pagado) > 0');
   });
 });

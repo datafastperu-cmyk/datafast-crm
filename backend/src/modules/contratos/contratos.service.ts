@@ -40,10 +40,21 @@ export interface ActivarResultado {
 const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
   Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms}ms en ${label}`)), ms))]);
 
+/**
+ * `MOROSO` ya no tiene entradas: **se puede salir de él, no se puede entrar** (2026-08-08).
+ *
+ * El propietario decidió que la mora *«no sea un estado, sea una etiqueta para el análisis
+ * estadístico»*. Vive ahora derivada de las facturas en `facturacion/domain/mora.ts`, donde
+ * no puede desincronizarse y además da historia.
+ *
+ * Las salidas se conservan porque el valor sigue existiendo en el enum de PostgreSQL y una
+ * instalación antigua puede tener contratos ahí: hay que poder sacarlos. Una barrera
+ * (`mora-es-etiqueta.spec.ts`) impide que alguien vuelva a ofrecer la entrada.
+ */
 const TRANSICIONES: Record<EstadoContrato, EstadoContrato[]> = {
   [EstadoContrato.PENDIENTE_ACTIVACION]: [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.MOROSO, EstadoContrato.BAJA_DEFINITIVA],
-  [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.MOROSO, EstadoContrato.CORTADO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.ACTIVO]:               [EstadoContrato.SUSPENDIDO, EstadoContrato.BAJA_DEFINITIVA],
+  [EstadoContrato.SUSPENDIDO]:           [EstadoContrato.ACTIVO, EstadoContrato.CORTADO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.MOROSO]:               [EstadoContrato.ACTIVO, EstadoContrato.SUSPENDIDO, EstadoContrato.CORTADO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.CORTADO]:              [EstadoContrato.ACTIVO, EstadoContrato.BAJA_DEFINITIVA],
   [EstadoContrato.BAJA_DEFINITIVA]:      [],
