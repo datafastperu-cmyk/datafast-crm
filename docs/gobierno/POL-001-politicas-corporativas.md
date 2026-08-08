@@ -17,6 +17,7 @@
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
 | 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
+| **1.8** | **2026-08-08** | **Criterio de PD-11 corregido el mismo dia**: «hay autoridad» no bastaba — dejaba cinco modulos en 🔴 sin que existiera nadie que pudiera reclamar nada. Ahora 🔴 exige **al menos una de tres razones** (interoperabilidad, examen de un tercero, riesgo asimetrico) **y la fila dice cual** | Lo detecto el propietario al preguntar quien es esa autoridad. De cinco modulos en 🔴 quedo **uno**: si todo es 🔴, nada lo es |
 | **1.7** | **2026-08-08** | **PD-11 reformulada por ADR-034**: se clasifica por el ORIGEN DEL MODELO (🔴 conformidad / 🟠 referencia / 🟢 estratégico), con una sola pregunta que los separa — ¿hay una autoridad externa que pueda decir que lo hicimos mal? Sustituye la tabla de cinco naturalezas | La clasificación anterior mezclaba dos ejes: quién escribe el código (siempre nosotros) y de dónde sale el modelo (lo único que hay que decidir) |
 | **1.6** | **2026-08-08** | **PA-12 reforzada y verificable** (manifiesto de propiedad + barrera): la cifra de 15 tablas con varios escritores queda congelada. **Dos politicas nuevas: PA-17** (que es degradable) y **PA-18** (evento vs outbox) | ADR-032, propuesta del propietario. PA-12 llevaba escrita desde la emision y no impidio que **diez modulos escribieran `contratos`** |
 | **1.5** | **2026-08-08** | **A-1 RETIRADA como nivel A** por ADR-031: el propietario confirma que el ERP es mono-empresa, y la base lo impone. **Cero desviaciones criticas abiertas.** El barrido de aislamiento sale del CI el mismo dia que entro | La desviacion no se corrigio: **se verifico que su premisa era falsa**. Nadie habia comprobado que fuera a haber mas de una empresa |
@@ -138,15 +139,25 @@ deriva la deuda de los apuntes abiertos en vez de almacenarla.
 **La clasificación es por el ORIGEN DEL MODELO, no por la naturaleza del módulo.** Quién escribe el
 código no es la pregunta —siempre nosotros, es un monolito—; la pregunta es de dónde sale el modelo.
 
-Una sola pregunta separa los tres regímenes:
+**Un módulo es 🔴 cuando se cumple AL MENOS UNA de estas tres razones — y la clasificación debe
+decir cuál:**
 
-> **¿Existe una autoridad externa que pueda decir que lo hicimos mal?**
+| # | Razón | Qué pasa si nos desviamos |
+|---|---|---|
+| **1** | **Interoperabilidad** — alguien al otro lado debe aceptar lo que producimos | SUNAT rechaza · el banco no procesa · ninguna herramienta lee nuestras trazas |
+| **2** | **Examen de un tercero** — alguien puede revisarlo y declararlo inválido | Un auditor no acepta los libros |
+| **3** | **Riesgo asimétrico** — no hay nadie enfrente, pero inventar cuesta desproporcionadamente caro y **el error no se ve hasta que te explotan** | Criptografía o autenticación propias |
 
 | | Régimen | Cuándo | Consecuencia |
 |---|---|---|---|
-| 🔴 | **Conformidad** | Hay autoridad: organismo, norma o estándar de facto cuyo incumplimiento **es un defecto** | Desviarse **exige ADR**. Nadie declara conformidad sin *gap analysis* |
-| 🟠 | **Referencia** | Hay modelo maduro, **ninguna autoridad** | **Consultarlo es obligatorio** y queda en el ADR de diseño. Adaptarlo es libre |
+| 🔴 | **Conformidad** | Al menos una de las tres razones. **La fila dice cuál** | Desviarse **exige ADR**. Nadie declara conformidad sin *gap analysis* |
+| 🟠 | **Referencia** | Hay modelo maduro y **desviarse solo nos cuesta a nosotros** | **Consultarlo es obligatorio** y queda en el ADR de diseño. Adaptarlo es libre |
 | 🟢 | **Estratégico** | No hay modelo aplicable, o el nuestro es la ventaja | Diseño propio. Aquí va la innovación |
+
+**Las autoridades reales de Datafast son cuatro**: SUNAT, RENIEC, los bancos y pasarelas, y un
+auditor o la administración tributaria. Todo lo demás no lo es — y confundir «modelo maduro» con
+«autoridad» fue el error de la primera versión de este criterio: dejaba cinco módulos en 🔴 sin que
+hubiera nadie que pudiera reclamar nada. **Si todo es 🔴, nada lo es.**
 
 **La clasificación de los 45 módulos actuales está en ADR-034 §3**, y los dominios que aún no
 existen en §4 — separados a propósito de los que sí.

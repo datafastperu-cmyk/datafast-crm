@@ -31,22 +31,50 @@ caro no fue escribir código de más, sino **reinventar un concepto**:
 
 ## 2. El criterio
 
-Tres regímenes, con una sola pregunta que los separa:
+> **La primera versión de este criterio no aguantaba su propia tabla.** Preguntaba *«¿existe una
+> autoridad externa que pueda decir que lo hicimos mal?»* y después clasificaba como 🔴 a `auth`,
+> `auditoria`, `backup`, `outbox-red` y `health` — **cinco filas donde no hay ninguna autoridad**.
+> La columna se titulaba «Autoridad» y estaba rellena con **modelos**. Es el mismo defecto que este
+> ADR le señalaba a la propuesta original. Corregido aquí, el mismo día.
 
-> **¿Existe una autoridad externa que pueda decir que lo hicimos mal?**
+### 2.1 Las autoridades reales de Datafast son cuatro
+
+Conviene tenerlas nombradas, porque la lista es corta y todo lo demás **no** lo es:
+
+| Autoridad | Qué puede hacer |
+|---|---|
+| **SUNAT** | Rechazar un comprobante electrónico mal formado |
+| **RENIEC** | Su interfaz oficial, o ninguna |
+| **Bancos y pasarelas de pago** | Aceptar o no el mensaje |
+| **Un auditor o la administración tributaria** | Declarar los libros inválidos |
+
+### 2.2 Pero «autoridad» no es la única razón para no inventar
+
+Hay **tres**, y colapsarlas en una fue el error. Cada fila 🔴 debe decir **cuál** aplica:
+
+| # | Razón | Qué pasa si nos desviamos |
+|---|---|---|
+| **1** | **Interoperabilidad** — alguien al otro lado tiene que aceptar lo que producimos | SUNAT rechaza · el banco no procesa · ninguna herramienta lee nuestras trazas |
+| **2** | **Examen de un tercero** — alguien puede revisarlo y declararlo inválido | Un auditor no acepta los libros |
+| **3** | **Riesgo asimétrico** — no hay nadie enfrente, pero **inventar cuesta desproporcionadamente caro y el error no se ve hasta que te explotan** | Criptografía o autenticación propias |
+
+### 2.3 Los tres regímenes
 
 | | Régimen | Cuándo | Consecuencia |
 |---|---|---|---|
-| 🔴 | **Conformidad** | Hay una **autoridad**: un organismo, una norma o un estándar de facto cuyo incumplimiento **es un defecto** | Desviarse **exige un ADR**. Nadie declara conformidad sin *gap analysis* (ADR-030 §4.1) |
-| 🟠 | **Referencia** | Hay un **modelo maduro** pero ninguna autoridad. Se estudia y se adapta al negocio ISP | **Consultarlo es obligatorio** y queda registrado en el ADR de diseño. Adaptarlo es libre |
+| 🔴 | **Conformidad** | Se cumple **al menos una** de las tres razones de §2.2. **La fila debe decir cuál** | Desviarse **exige un ADR**. Nadie declara conformidad sin *gap analysis* (ADR-030 §4.1) |
+| 🟠 | **Referencia** | Hay un modelo maduro y **desviarse solo nos cuesta a nosotros**: más trabajo, peor diseño, ninguna consecuencia externa | **Consultarlo es obligatorio** y queda en el ADR de diseño. Adaptarlo es libre |
 | 🟢 | **Estratégico** | **No hay modelo aplicable**, o el nuestro es la ventaja competitiva | Diseño propio. Aquí va la innovación |
 
-**Por qué esta pregunta y no otra:** la propuesta original usaba 🔴 «no reinventar» y 🟠 «modelo
-establecido» como etiquetas distintas, pero varias filas llevaban ambas a la vez —*Proveedores 🔴
-Modelo establecido*, *Backups 🔴 Modelo establecido*—. Si no se distinguen leyendo la fila, la
-clasificación no sobrevive al primer módulo nuevo, que es para lo único que sirve.
+> **Si todo es 🔴, nada lo es.** Al aplicar bien el criterio, el 🔴 de los módulos existentes pasa de
+> cinco a **uno**. Esa reducción no es una rebaja de exigencia: es lo que hace que un 🔴 signifique
+> algo cuando aparezca.
 
-### 2.1 Los dos guards, que no cambian
+**El régimen puede cambiar.** `auditoria` es 🟠 hoy; el día que su registro sirva como evidencia
+ante un tercero pasa a 🔴 por la razón 2. Se reclasifica cuando cambia el hecho, no en un repaso
+por calendario.
+
+### 2.4 Los dos guards, que no cambian
 
 Se conservan intactos de PD-11, y sin ellos esta política hace daño:
 
@@ -75,17 +103,17 @@ propósito — este corpus ya se equivocó tres veces describiendo cosas inexist
 | `xui` · `tr069` · `aprovisionamiento` · `reconciliador` | 2.325 | IPTV, ACS, orquestación, reconciliación físico↔lógico |
 | **Total** | **~44.300** | **Es el activo tecnológico. Buscar aquí un modelo externo sería el error inverso.** |
 
-### 3.2 🔴 Conformidad — hay autoridad
+### 3.2 🔴 Conformidad — uno solo, y por riesgo asimétrico
 
-| Módulo | LOC | Autoridad | Estado |
-|---|---|---|---|
-| `auth` · `usuarios` | 2.143 | **RBAC/ABAC · OWASP ASVS** | **B-3 abierta**: permiso fino incompleto en endpoints mutantes |
-| `auditoria` | 792 | Modelo de *audit trail*: actor, acción, recurso, antes/después, correlación, retención | Sin declarar |
-| `backup` | 560 | Estrategia probada: copia, restauración, retención y **verificación de la restauración** | Sin declarar |
-| `outbox-red` | 971 | **Transactional outbox** — patrón con nombre propio | Implementado correctamente **tras** 1.788 reintentos contra el MA5800 (ADR-002/003). Se llegó al patrón por dolor |
-| `health` · `sistema` (actualizaciones) | 1.807 | Versionado, migraciones, *rollback*, *health checks* | Parcial |
+| Módulo | LOC | Razón | Referencia | Estado |
+|---|---|---|---|---|
+| `auth` · `usuarios` | 2.143 | **3 — riesgo asimétrico** | **OWASP ASVS · RBAC/ABAC** | **B-3 abierta**: permiso fino incompleto en endpoints mutantes |
 
-### 3.3 🟠 Referencia — hay modelo, no autoridad
+Nadie sanciona a Datafast por su modelo de permisos. Está en 🔴 porque **inventar autenticación,
+sesiones o control de acceso cuesta desproporcionadamente caro y el error no se manifiesta hasta
+que alguien lo explota** — no hay ciclo de realimentación que lo corrija por su cuenta.
+
+### 3.3 🟠 Referencia — hay modelo, desviarse solo nos cuesta a nosotros
 
 | Módulo | LOC | Modelo a consultar |
 |---|---|---|
@@ -97,6 +125,15 @@ propósito — este corpus ya se equivocó tres veces describiendo cosas inexist
 | `finanzas-opex` · `proyectos-inversion` | 1.045 | Modelos financieros de gasto e inversión |
 | `portal` | 3.526 | Autoservicio del abonado |
 | `config` · `licencia` · `tickets` · `reportes` · resto | ~3.400 | *Configuration management* · *entitlements* · ITIL · separación OLTP/reporting |
+| `auditoria` | 792 | *Audit trail*: actor, acción, recurso, antes/después, correlación, retención. **Pasaría a 🔴 (razón 2) el día que su registro sirva como evidencia ante un tercero** |
+| `backup` | 560 | Copia, restauración, retención y **verificación de la restauración** — la parte que casi nadie hace |
+| `health` · `sistema` (actualizaciones) | 1.807 | Versionado, migraciones, *rollback*, *health checks* |
+| `outbox-red` | 971 | *Transactional outbox*. **Ya resuelto correctamente** — ver nota |
+
+> **`outbox-red` no es un candidato a adoptar nada.** El patrón está bien implementado, con reclamo
+> atómico, dueño y TTL (ADR-002). Se llegó a él **por dolor** —1.788 reintentos contra el MA5800 en
+> cuatro días— en vez de por consulta previa, y esa es justamente la historia que este ADR existe
+> para no repetir. Figura aquí como referencia declarada, no como trabajo pendiente.
 
 ---
 
@@ -105,16 +142,16 @@ propósito — este corpus ya se equivocó tres veces describiendo cosas inexist
 **No están en §3 a propósito.** Aquí la clasificación es norma para cuando se construyan, no
 descripción de nada.
 
-| Dominio | | Nota |
-|---|---|---|
-| **Contabilidad** | 🔴 | Principios contables. `finanzas-opex` es gasto, no contabilidad |
-| **Facturación electrónica SUNAT** | 🔴 | **PD-12 aplica: el marco legal se fija antes del diseño** |
-| **RENIEC** | 🔴 | Interfaz oficial |
-| **Compras / Proveedores** | 🟠 | *Procure-to-Pay*, maestro de proveedores |
-| **Inventario / almacén** | 🟠 | Movimientos, valoración. Nace degradado (regla del CLAUDE.md) |
-| **Observabilidad** | 🔴 | **OpenTelemetry** — ver §6.1, su adopción está condicionada |
-| **Workflows** (motor genérico) | 🟠 | `sagas` no es un motor de workflow |
-| **Documentos** · **Calendario** · **BI** · **API Gateway** | 🟠 | Modelos consolidados |
+| Dominio | | Razón (§2.2) | Nota |
+|---|---|---|---|
+| **Facturación electrónica SUNAT** | 🔴 | **1 — interoperabilidad** | SUNAT rechaza el comprobante. **PD-12: el marco legal se fija antes del diseño** |
+| **RENIEC** | 🔴 | **1 — interoperabilidad** | Su interfaz oficial, o ninguna |
+| **Contabilidad** | 🔴 | **2 — examen de un tercero** | Un auditor puede declarar los libros inválidos. `finanzas-opex` es gasto, no contabilidad |
+| **Observabilidad** | 🔴 | **1 — interoperabilidad** | **OpenTelemetry**: sin él, ninguna herramienta lee nuestras trazas. **Adopción condicionada — §6.1** |
+| **Compras / Proveedores** | 🟠 | — | *Procure-to-Pay*, maestro de proveedores |
+| **Inventario / almacén** | 🟠 | — | Movimientos, valoración. **Nace degradado** (regla del CLAUDE.md) |
+| **Workflows** (motor genérico) | 🟠 | — | `sagas` no es un motor de workflow |
+| **Documentos** · **Calendario** · **BI** · **API Gateway** | 🟠 | — | Modelos consolidados |
 
 ---
 
