@@ -47,10 +47,23 @@ describe('Frontera del dinero — un solo escritor del saldo de una factura', ()
     return salida;
   };
 
+  /**
+   * Los comentarios NO son código. Hay que quitarlos antes de buscar, porque documentar el
+   * defecto es justo lo que exige el corpus y no puede costar un falso positivo: el
+   * comentario de `estados-con-saldo.ts` que explica por qué una nota de crédito nace con
+   * `monto_pagado = 0` marcó a ese fichero como escritor clandestino de dinero.
+   *
+   * Es el mismo fallo que tuvo el barrido de autorización, donde un comentario entre dos
+   * decoradores hacía invisible el `@Roles` de debajo. Una barrera que castiga explicar las
+   * cosas acaba enseñando a no explicarlas.
+   */
+  const sinComentarios = (fuente: string): string =>
+    fuente.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
   const escritoresDeSaldo = (): string[] => {
     const encontrados: string[] = [];
     for (const ruta of ficherosTs(SRC)) {
-      const contenido = readFileSync(ruta, 'utf8');
+      const contenido = sinComentarios(readFileSync(ruta, 'utf8'));
       // Cualquier UPDATE que toque `monto_pagado`. No se busca "UPDATE facturas" porque
       // el nombre de la tabla puede venir interpolado; lo que delata a un aplicador es
       // que mueva esa columna.

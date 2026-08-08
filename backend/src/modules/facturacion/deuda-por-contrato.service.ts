@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { SQL_ESTADOS_CON_SALDO } from './domain/estados-con-saldo';
+import { sqlDeudaExigible } from './domain/estados-con-saldo';
 
 /**
  * Imputa a cada contrato la parte de deuda que le corresponde.
@@ -97,7 +97,7 @@ export class DeudaPorContratoService {
         WHERE cliente_id = $1
           AND empresa_id = $2
           AND deleted_at IS NULL
-          AND estado IN ${SQL_ESTADOS_CON_SALDO}`,
+          AND ${sqlDeudaExigible()}`,
       [clienteId, empresaId],
     );
 

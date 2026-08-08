@@ -8,7 +8,7 @@ import { JwtPayload }           from '../../common/decorators/current-user.decor
 import { AuditoriaService }     from '../auth/auditoria.service';
 import { PagoAplicacion }       from './entities/pago-aplicacion.entity';
 import { AplicadorFacturaService } from '../facturacion/aplicador-factura.service';
-import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
+import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
 
 /**
  * Adelantos de pago (saldo a favor del abonado).
@@ -102,7 +102,7 @@ export class AdelantosService {
          FROM facturas
         WHERE cliente_id = $1 AND empresa_id = $2
           AND deleted_at IS NULL
-          AND estado IN ${SQL_ESTADOS_CON_SALDO}`,
+          AND ${sqlDeudaExigible()}`,
       [clienteId, empresaId],
     );
     return parseFloat(row?.deuda ?? '0');

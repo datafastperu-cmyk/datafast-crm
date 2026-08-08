@@ -118,3 +118,7 @@ vps.config.mjs
 # Artefacto de build: se regeneran con el pipeline de Mermaid+Chrome desde el
 # Markdown, que es la fuente. Versionarlos duplica la verdad y garantiza conflictos.
 docs/*/pdf/
+
+# Documentos generados (no versionados)
+docs/Recomendaciones.docx
+docs/*/pdf/

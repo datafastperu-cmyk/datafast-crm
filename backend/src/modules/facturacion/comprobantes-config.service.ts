@@ -14,7 +14,7 @@ import {
 } from './dto/comprobante-config.dto';
 import { JwtPayload } from '../../common/decorators/current-user.decorator';
 import { filasUpdateReturning } from '../../common/utils/pg-result.util';
-import { SQL_ESTADOS_CON_SALDO } from './domain/estados-con-saldo';
+import { sqlDeudaExigible } from './domain/estados-con-saldo';
 
 @Injectable()
 export class ComprobantesConfigService {
@@ -281,7 +281,7 @@ export class ComprobantesConfigService {
           WHERE fecha_vencimiento < CURRENT_DATE AND estado NOT IN ('pagada','anulada')
         ) AS total_vencidas,
         COALESCE(SUM(saldo) FILTER (
-          WHERE estado IN ${SQL_ESTADOS_CON_SALDO}
+          WHERE ${sqlDeudaExigible()}
         ), 0) AS monto_deuda
       FROM facturas
       WHERE empresa_id = $1 AND deleted_at IS NULL

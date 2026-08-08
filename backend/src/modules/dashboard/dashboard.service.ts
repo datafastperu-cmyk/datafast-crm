@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
+import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
 
 @Injectable()
 export class DashboardService {
@@ -38,7 +38,7 @@ export class DashboardService {
         this.dataSource.query(`
           SELECT COALESCE(SUM(total - monto_pagado), 0) AS cuentas_por_cobrar
           FROM facturas
-          WHERE empresa_id = $1 AND estado IN ${SQL_ESTADOS_CON_SALDO}
+          WHERE empresa_id = $1 AND ${sqlDeudaExigible()}
         `, [empresaId]),
 
         this.dataSource.query(`

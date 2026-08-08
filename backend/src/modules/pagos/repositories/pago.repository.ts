@@ -4,7 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { Pago, EstadoPago, MetodoPago, CuentaBancaria } from '../entities/pago.entity';
 import { FilterPagoDto } from '../dto/pago.dto';
 import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
-import { SQL_ESTADOS_CON_SALDO } from '../../facturacion/domain/estados-con-saldo';
+import { sqlDeudaExigible } from '../../facturacion/domain/estados-con-saldo';
 
 @Injectable()
 export class PagoRepository {
@@ -255,7 +255,7 @@ export class PagoRepository {
       FROM facturas
       WHERE contrato_id = $1
         AND empresa_id  = $2
-        AND estado IN ${SQL_ESTADOS_CON_SALDO}
+        AND ${sqlDeudaExigible()}
         AND deleted_at IS NULL
       ORDER BY fecha_emision ASC
     `, [contratoId, empresaId]);

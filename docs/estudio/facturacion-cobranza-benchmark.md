@@ -2,7 +2,9 @@
 
 **Naturaleza:** documento de **estudio**, no normativo. Es el insumo del ADR de benchmark que
 PD-11 exige antes de diseñar. **No decide nada todavía.**
-**Fecha:** 2026-08-08 · **Estado:** parcial — falta confirmar el flujo real de Datafast (§4)
+**Fecha:** 2026-08-08 · **Estado:** parcial — falta confirmar el flujo real de Datafast (§4) y la
+normativa SUNAT. Dos modelos externos ya contrastados (Odoo 18 y ERPNext).
+**Resultado ya aplicado:** un defecto de dinero latente encontrado y corregido (§3.3).
 
 ---
 
@@ -83,6 +85,31 @@ Esto es lo más distinto de Datafast.
 - **Automatic Closing = N días**: si se renueva el día 1 y el cierre está en 15 días, la
   suscripción se cierra el 16 si no hay pago. Es el equivalente directo del corte.
 
+### 2.6 El segundo modelo: ERPNext
+
+Se contrasta con un segundo producto **a propósito**: adoptar el criterio de uno solo sería
+copiar un producto, no identificar un modelo. Lo que importa aquí es **dónde convergen los dos
+de forma independiente** — eso ya no es la opinión de un fabricante.
+
+| Concepto | Odoo 18 | ERPNext | ¿Convergen? |
+|---|---|---|---|
+| Vencimiento | *Payment term* reutilizable con líneas | *«A Payment Terms Template combines reusable Payment Term records into a schedule»* — `Invoice Portion` + `Credit Days` + `Due Date Based On` | **Sí** |
+| Varias fechas por comprobante | Sí, cuotas | Sí: *«A 50% Advance, 50% Net 30 template contains two installments»* | **Sí** |
+| Dónde se asigna | Cliente y/o factura | *«Set the appropriate default on the relevant Customer»*, o en la transacción | **Sí** |
+| Nota de crédito | Mismo objeto + asiento de reversión | *«a Sales Invoice marked as a return, with negative quantities and amounts»*, creada desde la original, que *«preserves the reference»* | **Sí** |
+| Cobranza | *Follow-up levels* centrales | *Dunning*: *«a formal payment reminder for one or more overdue Sales Invoice instalments»*, con `Dunning Type` reutilizable (fee, interés anual, carta) | **Sí** |
+| Recurrencia | `Next Invoice Date` en la suscripción | `generate_invoice_at`: `Postpaid` · `Prepaid` · **`Bill N days before`**; más `days_until_due` | **Sí** |
+
+**Dos convergencias merecen atención especial, y una es a favor de Datafast:**
+
+- **`Bill N days before` + `days_until_due` es, literalmente, el modelo de Datafast.** La política
+  canónica emite en `diaPago − crearFactura` y vence en `diaPago`: emitir N días antes de un
+  vencimiento fijo. Un producto validado tiene ese mismo modo como una de sus tres opciones. **No
+  es una rareza del ERP; está bien.**
+- **El abono es NEGATIVO en los dos.** Odoo por asiento de reversión, ERPNext con cantidades en
+  negativo. Es la razón por la que en ambos un abono resta sin que nadie tenga que acordarse de
+  restarlo. Esto tuvo consecuencia directa aquí: ver §3.3.
+
 ---
 
 ## 3. La comparación estructural
@@ -94,7 +121,7 @@ Esto es lo más distinto de Datafast.
 | **Preaviso** | Un nivel más, con días negativos | Mecanismo aparte (`crearFactura`, `notif-preventivas`) |
 | **Corte** | *Automatic Closing* = N días sin pago | **Dos condiciones**: `diasGracia` **y** `aplicarCorte` (comprobantes acumulados) |
 | **Línea de factura** | Entidad con producto, cantidad, impuestos | **JSONB** |
-| **Nota de crédito** | Mismo objeto + **asiento de reversión** que la liga al original | Valor del enum `tipo_comprobante`, **sin relación al documento que rectifica** |
+| **Nota de crédito** | Mismo objeto + **asiento de reversión**; importes **negativos** | Mismo objeto, **con FK `factura_original_id`** y serie propia `NC-…`. Importe **positivo** (el CHECK prohíbe negativos) → §3.3 |
 | **Próxima emisión** | Campo `Next Invoice Date` en la suscripción | Se **deriva** del `diaPago` en cada corrida del cron |
 | **Inmutabilidad** | Publicada no se modifica; para cambiarla, se revierte | Estados `borrador → emitida`, sin regla equivalente escrita |
 
@@ -142,8 +169,8 @@ pero deja de ser de uno en uno.
 #### Lo que sigue en pie del lado externo
 
 Independientemente de dónde viva la configuración, estas diferencias de la tabla anterior no
-dependen de esa decisión y siguen siendo válidas: la línea de factura como entidad, la nota de
-crédito ligada al documento que rectifica, y el vencimiento capaz de producir varias fechas.
+dependen de esa decisión y siguen siendo válidas: la línea de factura como entidad y el
+vencimiento capaz de producir varias fechas.
 
 ### 3.2 Dos cosas de Datafast que el modelo externo NO trae
 
@@ -154,6 +181,61 @@ Van aquí para que el benchmark no las borre por parecer anomalías:
    primer impago sería comercialmente inviable. **Parece una adaptación correcta al negocio.**
 2. **La gracia como distancia vencimiento→corte.** Invariante ganado en el incidente del
    2026-08-05 y protegido por el guard 2 de PD-11. **No se toca.**
+
+### 3.3 Lo que el benchmark encontró que SÍ estaba mal — corregido el 2026-08-08
+
+Esto es lo que el estudio buscaba: **no un desvío del modelo externo, sino un defecto de dinero
+que el contraste con el modelo externo hizo visible.**
+
+#### La corrección previa
+
+La primera versión de esta tabla decía que la nota de crédito era *«un valor del enum
+`tipo_comprobante`, sin relación al documento que rectifica»*. **Falso, y es la cuarta afirmación
+equivocada que este estudio corrige sobre facturación.** `crearNotaCredito` existe, es completa y
+es buena: FK real `factura_original_id`, serie propia `NC-<serie>` con correlativo bajo
+`pg_advisory_xact_lock`, nota **parcial** vía `montoAcreditar`, emisión automática al anular, y
+`anular` rechaza una factura pagada diciendo *«emite una nota de crédito»*. Estructuralmente es
+lo mismo que hacen Odoo y ERPNext.
+
+#### El defecto, que estaba en otro sitio
+
+El abono nace `estado = 'emitida'` con **`total` POSITIVO**, porque el CHECK
+`facturas_total_check (total >= 0)` prohíbe el importe negativo con el que Odoo y ERPNext
+consiguen que un abono reste solo. Y `saldo` es `GENERATED ALWAYS AS (total - monto_pagado)`.
+
+**La nota de crédito nacía, por tanto, con saldo a cobrar** — y ninguno de los **dieciocho**
+consumidores de la deuda miraba qué documento era cada fila. Anular una factura de S/ 50 no
+bajaba la deuda: la original salía al pasar a `anulada`, y su propia nota de crédito entraba por
+el mismo importe. El descargo se convertía en una deuda nueva.
+
+Y seguía. La nota nace con `fecha_vencimiento` = hoy, así que al día siguiente
+`MARCAR_FACTURAS_VENCIDAS` la pasa a `vencida`. Desde ahí:
+
+| Consumidor | Qué hacía con el abono |
+|---|---|
+| `cobranza.worker` (barrido de morosos) | Un comprobante vencido más → **suma a los meses acumulados del corte** |
+| `pagos.service` (reactivación) | Exige `deuda <= 0` → el abonado **paga todo y no se le reactiva nunca** |
+| `promesas-pago` | Igual: la promesa no se puede cumplir |
+| `deuda_total` / portal / dashboard | Deuda inflada por el importe del abono |
+| Cobranza | **Le reclama al abonado el pago del abono que se le acaba de conceder** |
+
+**Anular una factura podía cortarle el servicio al abonado.**
+
+#### Estado medido y corrección aplicada
+
+Verificado contra producción el 2026-08-08: **0 notas de crédito y 0 facturas anuladas**. El
+defecto estaba **latente** — se dispara la primera vez que un operador anule algo, que es
+exactamente lo que va a pasar en la beta. Nada que reparar en los datos.
+
+Corregido en el punto común, no en los dieciocho sitios: `SQL_ESTADOS_CON_SALDO` **dejó de
+exportarse** y en su lugar hay `sqlDeudaExigible(alias?)`, que añade `factura_original_id IS
+NULL`. El estado suelto ya no se puede pedir, que es lo que permitía olvidar el tipo de
+documento. Barrera: un test marca cualquier fichero que consulte `facturas` sumando dinero sin
+pasar por el helper. La vista `v_resumen_financiero` lleva la misma condición.
+
+**Lo que este arreglo NO decide** es si el abono debe ser negativo, como en los dos modelos
+validados. Eso exige quitar el CHECK y revisar toda la agregación, y es materia del ADR. Que un
+abono no cuente como cargo no depende del modelo que se acabe eligiendo.
 
 ---
 
@@ -171,8 +253,8 @@ intención**, y responderlos mal produciría el peor resultado posible: cambiar 
 3. **Comprobante consolidado.** Un abonado con dos servicios recibe **uno solo**, con
    `contrato_id` en NULL. ¿Es siempre así, o hay casos de comprobante por contrato?
 4. **Prepago / postpago.** La política contempla ambos. ¿Se usa alguno de los dos hoy?
-5. **Nota de crédito.** ¿En qué casos se emite hoy, y quién la emite? ¿Se relaciona a mano con la
-   factura que corrige?
+5. **Nota de crédito.** ¿En qué casos se emite hoy, y quién la emite? (La relación con la factura
+   corregida **sí existe** y es automática — ver §3.3; lo que falta saber es el uso real.)
 6. **Tipo de comprobante** (boleta/factura). ¿Lo decide el cliente, el importe, o el operador?
 7. **Canales de cobranza.** Existen las tablas `canal_pago` y `forma_pago`. ¿Qué representa un
    canal en vuestro flujo, y quién lo elige?
@@ -188,10 +270,17 @@ intención**, y responderlos mal produciría el peor resultado posible: cambiar 
 **Parcial.** Falta:
 
 - Las respuestas de §4.
-- Contrastar con al menos **un segundo modelo** — ERPNext o similar— para no adoptar el criterio de
-  un solo producto.
 - **La normativa SUNAT** para el comprobante electrónico, que es 🔴 por interoperabilidad
   (ADR-034) y donde PD-12 exige fijar el marco legal **antes** del diseño.
+
+Ya hecho:
+
+- ~~Contrastar con un segundo modelo~~ → **ERPNext, §2.6.** Converge con Odoo en las seis
+  decisiones estructurales, así que lo de la tabla comparativa deja de ser el criterio de un
+  fabricante.
+- **El estudio ya se pagó solo**: el contraste con el abono negativo de ambos modelos destapó un
+  defecto de dinero latente en el ERP, corregido y con barrera (§3.3). No hizo falta esperar al
+  ADR para eso, porque no dependía de qué modelo se elija.
 
 Con eso, esto se convierte en el **ADR de benchmark** que decide qué modelo se adopta, qué se
 descarta y **qué invariantes propios se conservan pese a la adopción**.
@@ -206,3 +295,7 @@ descarta y **qué invariantes propios se conservan pese a la adopción**.
 - [Follow-up documents (dunning) — Odoo 18](https://www.odoo.com/documentation/18.0/applications/finance/accounting/payments/follow_up.html)
 - [Subscriptions — Odoo 18](https://www.odoo.com/documentation/18.0/applications/sales/subscriptions.html) ·
   [Scheduled actions](https://www.odoo.com/documentation/18.0/applications/sales/subscriptions/scheduled_actions.html)
+- [Payment Terms Template — ERPNext](https://docs.frappe.io/erpnext/user/manual/en/payment-terms-template)
+- [Dunning — ERPNext](https://docs.frappe.io/erpnext/user/manual/en/dunning)
+- [Credit Note — ERPNext](https://docs.frappe.io/erpnext/user/manual/en/credit-note)
+- [Subscription — ERPNext](https://docs.frappe.io/erpnext/user/manual/en/subscription)

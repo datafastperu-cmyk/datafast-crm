@@ -311,9 +311,22 @@ antes de H2-1 (SUNAT). No se toca antes: es cambio de modelo, no corrección.
 memoria: ADR-030 §4.1 prohíbe declarar conformidad con una norma sin *gap analysis*.
 
 **EN CURSO desde 2026-08-08.** El lado externo está en `docs/estudio/facturacion-cobranza-benchmark.md`:
-cinco páginas de Odoo 18 consultadas y citadas, con la comparación estructural.
+**dos** modelos contrastados —Odoo 18 y ERPNext, con fuentes citadas— y la comparación estructural.
+Convergen en las seis decisiones de fondo, así que la tabla ya no refleja el criterio de un solo
+fabricante.
 
-**Bloqueado en §4 de ese documento: ocho preguntas sobre el flujo real** que el código no revela.
+**Ya se pagó solo.** El contraste destapó un defecto de dinero LATENTE y se corrigió el mismo día
+(**A-5**): una nota de crédito se contaba como deuda en los 18 consumidores, así que anular una
+factura no bajaba la deuda y podía acabar cortándole el servicio al abonado. Ver **§3.3** del
+estudio.
+
+**Decisión que queda abierta y es del ADR:** si el abono debe pasar a ser **negativo**, como en
+los dos modelos validados. Hoy no puede serlo —`facturas_total_check (total >= 0)`— y por eso hizo
+falta distinguirlo por tipo de documento. Con importe negativo restaría solo, sin que nadie tenga
+que acordarse. **No se hizo ahora a propósito:** cambia el modelo de dinero y toca toda la
+agregación.
+
+**Bloqueado en §4 de ese documento: nueve preguntas sobre el flujo real** que el código no revela.
 Sin ellas no se puede convertir en ADR, porque marcaría como defecto lo que es adaptación
 deliberada al negocio ISP.
 

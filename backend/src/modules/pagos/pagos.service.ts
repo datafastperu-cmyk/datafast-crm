@@ -36,7 +36,7 @@ import { QUEUES, JOBS, PayloadReactivarContrato } from '../workers/workers.const
 import { Cron } from '@nestjs/schedule';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
-import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
+import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
 
 @Injectable()
 export class PagosService {
@@ -386,7 +386,7 @@ export class PagosService {
             SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
             FROM facturas f
             WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
-              AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
+              AND ${sqlDeudaExigible('f')}
               AND f.deleted_at IS NULL
           `, [contrato.id, factura.clienteId]);
           if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
@@ -412,7 +412,7 @@ export class PagosService {
             SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
             FROM facturas f
             WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
-              AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
+              AND ${sqlDeudaExigible('f')}
               AND f.deleted_at IS NULL
           `, [contrato.id, factura.clienteId]);
           if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
@@ -961,7 +961,7 @@ export class PagosService {
           `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
            FROM facturas f
            WHERE f.cliente_id = $1
-             AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
+             AND ${sqlDeudaExigible('f')}
              AND f.deleted_at IS NULL`,
           [pago.clienteId],
         );
@@ -1096,13 +1096,13 @@ export class PagosService {
           AND NOT EXISTS (
             SELECT 1 FROM facturas f
              WHERE f.contrato_id = co.id
-               AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
+               AND ${sqlDeudaExigible('f')}
                AND f.deleted_at IS NULL
           )
           AND NOT EXISTS (
             SELECT 1 FROM facturas f
              WHERE f.cliente_id = co.cliente_id AND f.contrato_id IS NULL
-               AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
+               AND ${sqlDeudaExigible('f')}
                AND f.deleted_at IS NULL
           )
         LIMIT 25`,
@@ -1628,7 +1628,7 @@ export class PagosService {
       FROM facturas
       WHERE cliente_id  = $1
         AND empresa_id  = $2
-        AND estado      IN ${SQL_ESTADOS_CON_SALDO}
+        AND ${sqlDeudaExigible()}
         AND deleted_at IS NULL
     `, [clienteId, empresaId]);
 

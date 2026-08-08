@@ -4,7 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { Factura, EstadoFactura } from '../entities/factura.entity';
 import { FilterFacturaDto } from '../dto/factura.dto';
 import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
-import { SQL_ESTADOS_CON_SALDO } from '../domain/estados-con-saldo';
+import { sqlDeudaExigible } from '../domain/estados-con-saldo';
 
 @Injectable()
 export class FacturaRepository {
@@ -343,7 +343,7 @@ export class FacturaRepository {
   async findPendientesPorContrato(contratoId: string): Promise<Factura[]> {
     return this.repo.createQueryBuilder('f')
       .where('f.contrato_id = :contratoId', { contratoId })
-      .andWhere(`f.estado IN ${SQL_ESTADOS_CON_SALDO}`)
+      .andWhere(sqlDeudaExigible('f'))
       .andWhere('f.deleted_at IS NULL')
       .orderBy('f.fecha_emision', 'ASC')
       .getMany();
@@ -384,7 +384,7 @@ export class FacturaRepository {
 
         -- Cuentas por cobrar
         COALESCE(SUM(f.saldo) FILTER (
-          WHERE f.estado IN ${SQL_ESTADOS_CON_SALDO}
+          WHERE ${sqlDeudaExigible('f')}
         ), 0) AS cuentas_por_cobrar,
 
         -- Totales por estado

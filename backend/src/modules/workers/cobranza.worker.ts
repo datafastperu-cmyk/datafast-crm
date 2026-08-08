@@ -42,7 +42,7 @@ import {
 import { decrypt } from '../../common/utils/encryption.util';
 import { filasUpdateReturning } from '../../common/utils/pg-result.util';
 import { RedisLockService } from '../../common/redis/redis-lock.service';
-import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
+import { sqlDeudaExigible } from '../facturacion/domain/estados-con-saldo';
 
 // ─────────────────────────────────────────────────────────────
 // CobranzaScheduler — Encola los jobs en los momentos correctos
@@ -132,7 +132,7 @@ export class CobranzaScheduler implements OnModuleInit {
                COUNT(*)::int          AS comprobantes_vencidos
           FROM facturas
          WHERE deleted_at IS NULL
-           AND estado IN ${SQL_ESTADOS_CON_SALDO}
+           AND ${sqlDeudaExigible()}
            AND COALESCE(saldo, total - monto_pagado) > 0
            AND fecha_vencimiento < CURRENT_DATE
          GROUP BY cliente_id
@@ -344,7 +344,7 @@ export class CobranzaScheduler implements OnModuleInit {
         SELECT cliente_id, MIN(fecha_vencimiento) AS vencimiento
           FROM facturas
          WHERE deleted_at IS NULL
-           AND estado IN ${SQL_ESTADOS_CON_SALDO}
+           AND ${sqlDeudaExigible()}
            AND COALESCE(saldo, total - monto_pagado) > 0
          GROUP BY cliente_id
       ) im ON im.cliente_id = co.cliente_id
@@ -800,7 +800,7 @@ export class CobranzaWorker {
                COUNT(f.id)::INTEGER               AS meses
         FROM facturas f
         WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
-          AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
+          AND ${sqlDeudaExigible('f')}
           AND f.deleted_at IS NULL
       `, [contratoId, clienteId]);
       deudaRestante  = parseFloat(deudaRow?.deuda ?? '0');
