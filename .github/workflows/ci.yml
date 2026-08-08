@@ -100,6 +100,19 @@ jobs:
         # facturación y notificaciones EN SILENCIO — sin tráfico real no se notaba nada.
         run: npm run sql:check -- /tmp/schema.txt src
 
+      - name: Barrido de aislamiento multi-tenant
+        # Sentencias que tocan una tabla con `empresa_id` sin filtrar por él. Esa omisión no
+        # produce un error: produce DATOS DE OTRA EMPRESA, sin log y sin síntoma.
+        #
+        # INFORMA, no rompe el build todavía (ADR-017 §3.1). La cifra de partida es 20
+        # abiertas / 171 transitivas, y una barrera que se estrena en rojo con 200 hallazgos
+        # sin triar es lo primero que alguien desactiva. Pasará a bloquear cuando las 20
+        # estén revisadas y la cifra congelada.
+        #
+        # Y no sustituye a RLS: previene la próxima consulta mal escrita, no protege de las
+        # ya escritas. Hoy RLS ni siquiera es aplicable — ver desviación B-15.
+        run: npm run aislamiento:check
+
   frontend:
     name: Frontend — typecheck
     runs-on: ubuntu-latest

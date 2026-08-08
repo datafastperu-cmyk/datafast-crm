@@ -119,9 +119,52 @@ En este orden, por relación seguridad/coste:
 |---|---|---|---|
 | ~~3.1~~ | ~~**A-3** — el worker puede morir en silencio~~ | **CERRADA 2026-08-07** — ver §3.1 más abajo | ADR-020 **aceptado** |
 | ~~3.2~~ | ~~**A-4** — la deuda se calcula en 4 sitios~~ | **CERRADA 2026-08-08** — ver §3.2 más abajo | **D11** resuelto · ADR-019 **aceptado** |
-| 3.3 | **A-1** — aislamiento multi-tenant por convención | RLS en PostgreSQL + barrido en CI. **El más delicado: mal configurado devuelve cero filas** | ADR-017 |
+| 3.3 | **A-1** — aislamiento multi-tenant por convención | **PARCIAL 2026-08-08** — barrido entregado; **RLS descartada por ahora: sería inerte**. Ver §3.3 | ADR-017 **aceptado** · bloqueada por **B-15** |
 
 **Salida:** cero desviaciones de nivel A. Es el hito que más cambia el perfil de riesgo del ERP.
+
+> **Corrección tras ejecutar la fase:** la salida NO se alcanza. A-2, A-3 y A-4 están cerradas;
+> **A-1 queda parcialmente abierta a propósito** porque su solución evidente (RLS) no funciona
+> sobre esta instalación y su prerrequisito es una decisión del propietario. Se deja escrito en vez
+> de forzar el hito: un plan que declara completo lo que no lo está deja de servir para planificar.
+
+#### 3.3 — PARCIAL 2026-08-08 · A-1
+
+**La medición impidió construir una falsa garantía.** El plan decía «RLS en PostgreSQL + barrido en
+CI». Antes de escribir la migración se comprobó si RLS podía siquiera aplicarse:
+
+```
+Usuario de la app : datafast_db_user
+Privilegios       : rolsuper: true, rolbypassrls: true
+Tablas en public  : 111 | DUEÑA de: 111
+```
+
+PostgreSQL exime del sistema de seguridad por filas a los superusuarios, a los roles con
+`BYPASSRLS` y al dueño de la tabla. **La aplicación cumple las tres.** `ALTER TABLE … ENABLE ROW
+LEVEL SECURITY` habría devuelto `ALTER TABLE` sin error y filtrado **cero filas** — y este corpus
+tendría escrito que el aislamiento está garantizado. Es ADR-001 (VIO) aplicado a nosotros.
+
+| Entregado | |
+|---|---|
+| `backend/scripts/barrido-aislamiento.mjs` | Análisis estático con clasificación: de **492** sentencias sobre tablas de empresa, **20 ABIERTAS · 171 TRANSITIVAS · 13 GLOBALES** |
+| **ADR-017** | Registra por qué RLS no funciona aquí y la secuencia obligatoria para que funcione |
+| **Desviación B-15** | La app se conecta a PostgreSQL **como superusuario**. Estaba oculta detrás de A-1 y es explotable por sí sola |
+
+**Por qué el barrido informa y todavía no rompe el build:** una barrera que se estrena con 204
+hallazgos sin triar es lo primero que alguien desactiva. La cifra accionable es **20**.
+
+**Y las peligrosas no son esas 20, son las 171 transitivas** — acotadas por `cliente_id`,
+`contrato_id`… y seguras *solo si* ese identificador se validó más arriba. El análisis estático no
+puede resolverlo. Es el incidente de `crm-nativo` (30/07): *«con un chatId ajeno, cualquier usuario
+con sesión válida se llevaba la conversación completa»*, y la consulta parecía correcta.
+
+**Lo que NO se hizo, y es deliberado:** quitarle `SUPERUSER` y `BYPASSRLS` al rol de base de datos.
+Su modo de fallo es que al ERP le falte un permiso **en producción**, y exige inventario de
+privilegios, `GRANT` mínimo y prueba sobre una instalación limpia. **Es decisión del propietario.**
+
+**Mitigación actual, y su fecha de caducidad:** esta instalación tiene **una sola empresa**, así que
+hoy no hay entre quién filtrar. Es circunstancial, no de diseño, y **desaparece con el primer
+cliente multi-empresa** — justo cuando nadie estará mirando esto.
 
 #### 3.1 — CERRADA 2026-08-07 · A-3, y de paso B-12 y B-13
 

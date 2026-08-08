@@ -97,9 +97,10 @@ Situación actual y desviaciones conocidas.
 | 014 | El reconcile solo actúa sobre ONUs aprovisionadas por el ERP | Aceptada (implementada 2026-08-06) | Riesgo de migración |
 | 015 | Bootstrap TR-069 por estrategia y decidido por modelo | Aceptada | El ME137 no materializa en EG8145V5 |
 | 016 | Módulos degradables vs Core Indestructible | Aceptada | Resiliencia de arranque |
+| **017** | RLS no es hoy un mecanismo de aislamiento: primero hay que poder aplicarla ([fichero propio](ADR-017-aislamiento-multi-tenant.md)) | **Aceptada** (2026-08-08) — **A-1 sigue parcialmente abierta** | La app es superusuario: RLS seria inerte |
 | **019** | La deuda se calcula en un servicio de dominio, no en la base ([fichero propio](ADR-019-destino-del-calculo-de-deuda.md)) | **Aceptada** (implementada 2026-08-08) | 4 cálculos; uno reactivaba morosos |
 | **020** | El latido se deriva del registro y lo vigila el proceso que responde ([fichero propio](ADR-020-latido-vigilado.md)) | **Aceptada** (implementada 2026-08-07) | De 47 crons latían 10 |
-| **017–018 · 021–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
+| **018 · 021–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
 | **029** | Marco normativo externo de referencia | **Aceptada parcialmente** (D3, 2026-08-06) | Certificación descartada · adopción selectiva aceptada · programa legal suspendido con excepción |
 | **030** | Referencia por tipo de módulo (incluye TM Forum) | **Aceptada** (D4, 2026-08-06) — pendiente de reescritura | ¿Cada módulo desde 0? |
 
@@ -972,7 +973,7 @@ reservado para que las desviaciones de POL-001 Anexo B puedan citarla.
 
 | ADR | Decisión pendiente | Cierra | Prioridad |
 |---|---|---|---|
-| **ADR-017** | **Mecanismo de aislamiento multi-tenant**: Row-Level Security en PostgreSQL frente a barrido en CI, o ambos | Desviación **A-1** · RDM-001 R3 | **Crítica** |
+| ~~**ADR-017**~~ | ~~Mecanismo de aislamiento multi-tenant~~ — **ACEPTADA 2026-08-08**, ver [ADR-017](ADR-017-aislamiento-multi-tenant.md). Entra el barrido; **RLS se descarta por ahora porque seria inerte** — la app conecta como superusuario con BYPASSRLS. A-1 queda parcialmente abierta a proposito, bloqueada por la nueva **B-15** | Desviación **A-1** · RDM-001 R3 | — |
 | **ADR-018** | **Estrategia de adopción del tipado estricto**: global, por archivo nuevo, por opción o por módulo (ver EST-001 Anexo B.1) | Desviación **B-1** | Alta |
 | ~~**ADR-019**~~ | ~~Destino único del cálculo de deuda~~ — **ACEPTADA 2026-08-08**, ver [ADR-019](ADR-019-destino-del-calculo-de-deuda.md). El criterio de D11 se resolvió midiendo: `facturas.saldo` es una columna GENERATED, el único escritor ajeno a la aplicación ya está en la base; la agregación no tiene ninguno → servicio de dominio | Desviación **A-4** · RDM-001 R4 | — |
 | ~~**ADR-020**~~ | ~~Segregación del plano automático y alarma del latido~~ — **ACEPTADA 2026-08-07**, ver [ADR-020](ADR-020-latido-vigilado.md). La **alarma** queda resuelta; la **segregación por criticidad** se traslada a ADR-027, porque decidirla exige la medición de duración que ADR-020 acaba de habilitar | Desviación **A-3** · RDM-001 R2 | — |
