@@ -15,9 +15,14 @@ const PASOS = [
   // "aplicado" mientras corre con la version anterior. Idempotente.
   'cd /opt/datafast/backend && npm install --no-audit --no-fund 2>&1 | tail -5',
   'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc -p tsconfig.build.json --skipLibCheck 2>&1 | tail -20',
-  // B-12: era , el patrón exacto que el
-  // 2026-08-06 dejó al worker sin su PORT y lo metió en bucle. La recarga verificada es
-  // ahora la misma función que usa update.sh.
+  // B-12: aquí decía `pm2 restart datafast-api-core --update-env`, el patrón exacto que el
+  // 2026-08-06 dejó al worker sin su PORT y lo metió en bucle de reinicio. `--update-env`
+  // relee el entorno DEL SHELL, no el del ecosystem. La recarga verificada es ahora la
+  // misma función que usa update.sh, y además cubre el worker, que este script ignoraba.
+  //
+  // Que este script ignorara al worker era un defecto por sí solo: recompila `dist/` —de
+  // donde también arranca el worker— y solo reiniciaba api-core, dejando los crons con el
+  // código anterior sin que nada lo dijera.
   'source /opt/datafast/scripts/lib/pm2-recargar.sh && pm2_recargar_backend /opt/datafast/ecosystem.config.js',
   'pm2 status',
 ];
