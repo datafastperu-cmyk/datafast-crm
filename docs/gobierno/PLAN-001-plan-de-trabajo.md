@@ -207,12 +207,39 @@ complementarias:
 
 | Fase | Estado | Cerrada |
 |---|---|---|
-| 0 — Cerrar lo hecho | **En ejecución** — despliegue en curso | — |
-| **1 — Decisiones** | **✅ CERRADA** | **2026-08-06** |
-| 2 — Poda del corpus | **Desbloqueada** — siguiente | — |
-| 3 — Desviaciones críticas | No iniciada | — |
+| **0 — Cerrar lo hecho** | **✅ CERRADA** — migración desplegada y pre-flight en verde | **2026-08-06** |
+| **1 — Decisiones** | **✅ CERRADA** — las 11 decididas por Datafast | **2026-08-06** |
+| **2 — Poda del corpus** | **✅ CERRADA** | **2026-08-06** |
+| 3 — Desviaciones críticas | **Desbloqueada** — siguiente | — |
 | 4 — Brechas estructurales | No iniciada | — |
 | 5 — Brechas funcionales | No iniciada | — |
+
+### 6.1 Evidencia de la Fase 0
+
+| Comprobación | Resultado |
+|---|---|
+| Commit desplegado | `60e3cc7` |
+| Migración 218 `AddOrigenAContratoOnuConfig` | **Aplicada** |
+| `api-core` / `worker-auxiliary` | online · **PORT 4000 / 4001** · sin bucle de reinicio |
+| `/health` | `ok` · PostgreSQL up · Redis 7.4.9 |
+| **Pre-flight** | **`seguro = TRUE`** · 4 filas, todas `origen = erp`, **0 en riesgo** |
+| Contexto | `olt_onu_inventario = 205` · `ftth_onu_registro = 1` |
+
+> **204 ONUs reales sin registro FTTH.** Es exactamente el parque que una migración incorporaría
+> — y el que el barrido de 2 minutos habría reconfigurado si esas filas hubieran nacido sin
+> `origen`. El riesgo no era teórico: eran 204 clientes.
+
+### 6.2 Qué hizo la Fase 2
+
+| # | Tarea | Resultado |
+|---|---|---|
+| 2.1 | Congelar evidencia | `auditoria/`, `consolidacion/` y `directrices/` con banner de congelado |
+| 2.2 | Duplicación `directrices/` ↔ POL-001 | Resuelta: **POL-001 es la única fuente normativa** |
+| 2.3 | Generados vs escritos | Índice maestro §7.4 — 7 tipos de inventario que **se regeneran, no se citan** |
+| 2.4 | Aplicar decisiones | **7 políticas nuevas**: PD-11, PD-12, PS-10, PI-08, PP-14, PP-15 · RDM-001 §8.0 |
+| 2.5 | REC-001 | **Obsoleto**, con tabla de dónde vive cada recomendación |
+| 2.6 | ADR-030 | Reescrito y **aceptado**: referencia por tipo de módulo |
+| — | Desviaciones nuevas | **B-12** (`be-deploy.mjs` con `--update-env`) · **B-13** (contador de reinicios sin comparar) |
 
 ---
 

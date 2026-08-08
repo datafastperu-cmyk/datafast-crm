@@ -1,3 +1,29 @@
+> # ⛔ DOCUMENTO OBSOLETO — 2026-08-06
+>
+> **Su contenido se incorporó a la norma y este documento dejó de ser fuente.**
+>
+> | Recomendación | Dónde vive ahora |
+> |---|---|
+> | R-001 / R-004 construir-vs-adoptar | **POL-001 PD-11** |
+> | Regla de materia regulada (D3) | **POL-001 PD-12** |
+> | R-036 datos personales | **POL-001 PS-10** |
+> | R-037 entorno de pruebas | **POL-001 PP-14** |
+> | R-038 fin de vida de dependencias | **POL-001 PI-08** |
+> | R-041 gestión de capacidad | **POL-001 PP-15** |
+> | R-011 roadmap con presupuesto | **RDM-001 §8.0** |
+> | R-005 clasificación de dominios | **POL-001 PD-11** |
+> | Marco normativo | **ADR-029** |
+> | Referencia por tipo de módulo | **ADR-030** |
+> | R-035 verificación de políticas | **POL-001 §8.7** |
+>
+> Se conserva por trazabilidad: es la evaluación razonada de las 35 recomendaciones recibidas y
+> las 8 propuestas, con sus 9 discrepancias argumentadas. **No se mantiene.**
+>
+> *Era su destino declarado desde la emisión (§8.6.1, paso 6): un documento de recomendaciones que
+> sobrevive junto a las políticas que generó crea dos fuentes de verdad.*
+
+---
+
 # REC-001 — Evaluación del Documento Maestro de Recomendaciones Arquitectónicas
 
 ---
@@ -6,7 +32,7 @@
 
 | Campo | Valor |
 |---|---|
-| **Código** | REC-001 · **Versión** 1.0 · **Estado** **Borrador para decisión** |
+| **Código** | REC-001 · **Versión** 1.1 · **Estado** **OBSOLETO desde 2026-08-06** |
 | **Autor** | Arquitectura · **Decide** Propietario del producto + Arquitecto |
 | **Fecha** | 2026-08-06 · **Entrada evaluada** Documento Maestro de Recomendaciones (R-001 … R-035) |
 | **Naturaleza** | **Evaluación, no normativa.** Ninguna recomendación entra en vigor hasta ser adoptada según §8.6 |

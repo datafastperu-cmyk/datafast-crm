@@ -1,3 +1,19 @@
+> # ⛔ DOCUMENTO CONGELADO — 2026-08-06
+>
+> **Auditoría Arquitectónica — Etapa I**
+>
+> Este cuerpo es **evidencia fechada**, no norma. Describe el sistema tal como estaba en el
+> commit `f8d52b00`. **No se mantiene y no debe citarse como fuente de obligación.**
+>
+> Ya contenía tres afirmaciones falsas que se detectaron el mismo día de su emisión (H3, H4, H5). Una fuente documental envejece; citarla no es medir.
+>
+> **Dónde vive lo vigente:** POL-001 (reglas), DOM-001/DAT-001/ARS-001 (descripción), RDM-001 (plan).
+>
+> *Congelado por PLAN-001 Fase 2.1. Se conserva por trazabilidad: es la prueba de dónde salió
+> cada regla.*
+
+---
+
 # Auditoría Arquitectónica — ERP Datafast ISP
 
 **Fecha de levantamiento:** 2026-08-06

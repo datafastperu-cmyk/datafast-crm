@@ -1,3 +1,19 @@
+> # ⛔ DOCUMENTO CONGELADO — 2026-08-06
+>
+> **Consolidación Arquitectónica — Etapa II**
+>
+> Este cuerpo es **evidencia fechada**, no norma. Describe el sistema tal como estaba en el
+> commit `f8d52b00`. **No se mantiene y no debe citarse como fuente de obligación.**
+>
+> Su contenido vivo ya migró: los riesgos a POL-001 Anexo B, las recomendaciones a RDM-001.
+>
+> **Dónde vive lo vigente:** POL-001 Anexo B (desviaciones) y RDM-001 (roadmap).
+>
+> *Congelado por PLAN-001 Fase 2.1. Se conserva por trazabilidad: es la prueba de dónde salió
+> cada regla.*
+
+---
+
 # Documento de Consolidación Arquitectónica — ERP Datafast
 
 **Etapa II** · Fecha: 2026-08-06 · Rama `main`, commit base `f8d52b00`

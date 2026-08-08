@@ -6,8 +6,8 @@
 
 | Campo | Valor |
 |---|---|
-| **Código** | POL-001 · **Versión** 1.0 · **Estado** Vigente |
-| **Autor** | Arquitectura · **Revisores** Pendientes de asignar |
+| **Código** | POL-001 · **Versión** 1.1 · **Estado** Vigente |
+| **Autor** | Arquitectura · **Propietario del producto** Datafast (D1) |
 | **Fecha** | 2026-08-06 · **Documento superior** CON-001 |
 | **Carácter** | **Obligatorio.** Su incumplimiento requiere excepción registrada |
 
@@ -16,6 +16,7 @@
 | Versión | Fecha | Cambio | Motivo |
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
+| 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
 
 ## 4. Índice
 
@@ -118,6 +119,52 @@ Todo trabajo que quede abierto se registra en `PENDIENTES.md` con: **qué falta*
 importa** (la consecuencia real, no la tarea) y **cómo se comprueba**.
 
 > Una entrada sin consecuencia acaba siendo ignorada.
+
+## PD-11 · Construir o adoptar: se decide antes de diseñar — **DEBE**
+
+*(Decisión D5, 2026-08-06)*
+
+**PROHIBIDO** empezar un módulo sin clasificarlo antes. Medido: unos **24.100 LOC** del backend
+reimplementan problemas que la industria resolvió.
+
+| Naturaleza | Qué se hace | Módulos actuales |
+|---|---|---|
+| **Estratégico** — ventaja competitiva | **Construir.** Diseño propio. Aquí va la innovación | olt-nativo · mikrotik · openvpn · outbox-red · monitoreo · planta-externa · reconciliador · tr069 |
+| **Maduro** — resuelto por la industria | **Adoptar el modelo**, con benchmark previo | facturacion · pagos · finanzas-opex · proyectos-inversion · tickets · *(futuros: SUNAT, inventario)* |
+| **Integración** | Puerto + adaptador. **Nunca lógica de negocio dentro** | smartolt · google-integration · xui · webhooks · crm-nativo · mensajeria |
+| **Soporte** | Construir según necesidad | clientes · contratos · planes · portal · notificaciones · zonas · sites · plantillas · reportes · dashboard |
+| **Transversal** | Estabilidad sobre funcionalidad | auth · usuarios · licencia · auditoria · config · sistema · backup · health · workers · sagas · schema-guard · mantenimiento · install |
+
+### Los dos guards, sin los cuales esta política hace daño
+
+| # | Guard |
+|---|---|
+| 1 | **Adoptar conocimiento externo NO es adoptar código externo.** Lo que se adopta es el modelo de datos, la máquina de estados, la terminología y las reglas. El código sigue siendo nuestro |
+| 2 | **Ningún invariante propio se elimina por adoptar un modelo externo sin un ADR que lo justifique.** Los dominios "maduros" de este ERP contienen invariantes ganados en incidentes propios que ningún producto de industria trae — p. ej. *la gracia es la distancia vencimiento→corte* |
+
+**Todo módulo clasificado como Maduro requiere un ADR de benchmark antes de su diseño**, que
+documente: qué se estudió, qué modelo y qué reglas se adoptan, qué se descarta y por qué, y qué
+invariantes propios deben preservarse pese a la adopción.
+
+**La referencia por tipo de módulo está en ADR-030.**
+
+## PD-12 · Materia regulada: el marco legal se define ANTES de diseñar — **DEBE**
+
+*(Decisión D3, 2026-08-06)*
+
+> **Cuando un módulo nuevo toque materia regulada, el marco legal aplicable se define antes de
+> diseñarlo, no después.**
+
+**PROHIBIDO** diseñar primero y revisar la norma después: en materia regulada la norma determina
+**el modelo de datos**, no solo la integración.
+
+| Módulo | Materia | Cuándo se define |
+|---|---|---|
+| **Facturación electrónica** | SUNAT: firma XML, OSE, CDR, catálogos | **Antes del diseño** |
+| Portal / datos del abonado | Ley 29733 | Al tocar retención, exportación o supresión |
+
+Esta política **sustituye** al programa de cumplimiento legal continuo, que queda suspendido por
+decisión D3 (ADR-029 §6).
 
 ---
 
@@ -301,6 +348,36 @@ El servicio Python escucha **solo** en `127.0.0.1` y exige API key. **PROHIBIDO*
 
 Solo las lecturas de alto volumen pueden marcar `skipAudit`, y con justificación.
 
+## PS-10 · Protección de datos personales — **DEBE**
+
+*(Decisión D7, 2026-08-06. Alcance **técnico**; el legal queda suspendido por D3 — ADR-029 §6.2)*
+
+El ERP guarda datos personales de alta sensibilidad:
+
+| Dato | Dónde |
+|---|---|
+| Documento de identidad y datos de RENIEC | `clientes` |
+| Dirección del domicilio | `clientes`, `contratos` |
+| **Coordenadas GPS del domicilio** | `contratos.latitud_instalacion` |
+| Foto del cliente | Uploads |
+| **Conversaciones de WhatsApp** | `crm_mensajes` |
+| **Dispositivos conectados dentro de la vivienda** | Portal / TR-069 |
+| **Clave WiFi del abonado** | `contrato_onu_config` |
+
+**Obligaciones técnicas:**
+
+| # | Regla |
+|---|---|
+| 1 | **PROHIBIDO restaurar un respaldo de producción en un entorno de prueba sin anonimizar.** Un dump contiene el padrón completo con domicilios georreferenciados y conversaciones privadas |
+| 2 | Toda tabla con datos personales **declara su plazo de retención**. Sin plazo declarado, no se crea |
+| 3 | Dar de baja a un cliente **no borra su historial**, pero debe existir un procedimiento explícito de supresión cuando se solicite |
+| 4 | **PROHIBIDO loguear** documento, dirección, coordenadas, contenido de mensajes o claves del abonado |
+| 5 | El acceso a datos sensibles **queda auditado** (PS-09) |
+| 6 | Los secretos del abonado (clave WiFi, credenciales) van **cifrados** (PS-03) y **nunca se devuelven en claro** salvo al generarlos una vez |
+
+> **Fuera de alcance por D3:** base legal del tratamiento, derechos del titular, plazos
+> normativos y cláusulas contractuales. Se definen cuando un módulo los exija (PD-12).
+
 ---
 
 # 8.4 Políticas de Calidad
@@ -372,6 +449,27 @@ Una dependencia sin uso se retira. Si se conserva, se documenta por qué y hasta
 
 **PROHIBIDA** una dependencia global de un mecanismo de bootstrap. Un modelo no catalogado
 produce un error explícito, **jamás un intento a ciegas**.
+
+## PI-08 · Fin de vida de dependencias externas — **DEBE**
+
+*(Decisión D9, 2026-08-06)*
+
+Toda dependencia externa **crítica** declara: qué pasa si desaparece, tiempo estimado de
+sustitución, y **si existe un puerto que permita sustituirla**.
+
+| Dependencia | Riesgo | Puerto |
+|---|---|---|
+| **`whatsapp-web.js`** | **No es API oficial.** Puede dejar de funcionar sin aviso | Strategy (mitigado) |
+| **Servidor de licencias** | **Su caída bloquea el ERP completo** | Ninguno — deliberado |
+| GenieACS | Sin soporte; credenciales duplicadas fuera del repositorio | Driver ZTP |
+| Evolution API | Versión fijada, proyecto de terceros | Strategy |
+| XUI.ONE | Software de terceros | Servicio degradable |
+| SmartOLT / AdminOLT | Camino legado | `IOltProvider` |
+
+> **Una dependencia sin puerto es una dependencia insustituible.** Hoy lo son MikroTik, OpenVPN,
+> Mercado Pago y WhatsApp Web: no se pueden cambiar sin tocar lógica de negocio.
+
+**Revisión de vigencia:** anual, o ante aviso de discontinuación.
 
 ---
 
@@ -457,6 +555,44 @@ Leer mangle, rutas y address-lists. El sistema usa `Linea1-8` por `src-address-l
 
 Van en `Proyecto_CRM_ISP/mikrotik-network/`.
 
+## PP-14 · Entorno de pruebas — **DEBE**
+
+*(Decisión D8, 2026-08-06)*
+
+**Hoy no existe entorno de pruebas: todo se verifica en producción, con clientes reales.** Ya se
+pagó: las 11 horas de código viejo, el crash por la columna sin `type:`, el `--reload` que abortó
+una provisión, y la certificación de bootstrap con falso positivo.
+
+**Alcance mínimo obligatorio, por tipo de cambio:**
+
+| Tipo de cambio | Dónde se prueba |
+|---|---|
+| Lógica de negocio, migraciones, API | **CI** — ya existe y bloquea el merge |
+| Operaciones contra hardware | **Laboratorio con equipo físico** si lo hay; si no, **simulación** |
+| Todo lo demás | Producción **con precauciones declaradas** |
+
+| # | Regla |
+|---|---|
+| 1 | **PROHIBIDO restaurar un dump de producción sin anonimizar** (PS-10) |
+| 2 | Un cambio que toque hardware declara **cómo se revierte** antes de ejecutarse |
+| 3 | Probar un bootstrap sobre un equipo que **ya tiene** la configuración buscada **no prueba nada** — su falso positivo es más caro que un falso negativo |
+
+## PP-15 · Gestión de capacidad — **DEBE**
+
+*(Decisión D10, 2026-08-06)*
+
+**Umbrales que disparan una decisión de capacidad:**
+
+| Señal | Umbral | Acción |
+|---|---|---|
+| Memoria libre del VPS | Los límites PM2 suman **3,17 GB sobre ~1,9 GB** | Ya sobrecomprometido: vigilar |
+| Conexiones a PostgreSQL | `max_connections=100`; 3 procesos × 15 | Revisar antes de añadir procesos |
+| Series temporales | `metricas_monitoreo` crece cada minuto × dispositivo | Particionado y retención (ADR-023) |
+| Profundidad de colas / edad del outbox | Acumulación sostenida | Segregar el worker (ADR-020) |
+
+**Lo que NO se puede escalar:** los workers del servicio OLT. El MA5800 tiene un límite bajo de
+sesiones VTY concurrentes (ADR-008). **Añadir workers empeora, no mejora.**
+
 ---
 
 # 8.7 Verificación del cumplimiento
@@ -526,6 +662,8 @@ banderas que usa el CI.
 | PD-08 Tipado estricto, sin `any` | L | ❌ | **El compilador NO lo exige** (§Anexo B, nivel B) | `strict: true` + regla activa (**ADR-018**) |
 | PD-09 Comentarios explican el porqué | M | ❌ | Revisión | Sin mecanismo posible |
 | PD-10 Registro de deuda técnica | M | ❌ | Revisión de `PENDIENTES.md` | Sin mecanismo posible |
+| **PD-11 Construir o adoptar** | M | ❌ | Revisión + ADR de benchmark obligatorio para módulos Maduros | Checklist verificado en PR (R-034) |
+| **PD-12 Materia regulada antes del diseño** | M | ❌ | ADR previo | Sin mecanismo posible — es criterio |
 
 ## 8.7.4 Matriz — Políticas de Arquitectura
 
@@ -562,6 +700,7 @@ banderas que usa el CI.
 | PS-07 La API interna no se expone | R | ✅ | Escucha en `127.0.0.1` + API key + red Docker interna | — |
 | PS-08 Swagger deshabilitado en producción | R | ✅ | Condicional en `main.ts` | — |
 | PS-09 Toda mutación queda auditada | R | ✅ | `AuditInterceptor` global | — |
+| **PS-10 Protección de datos personales** | M | ❌ | Solo revisión | Test que detecte logs con datos sensibles; procedimiento de anonimización de dumps |
 
 ## 8.7.6 Matriz — Políticas de Calidad
 
@@ -586,6 +725,7 @@ banderas que usa el CI.
 | PI-05 Un timeout cobrando es `indeterminado` | T | ✅ | `contrato-adaptador.spec.ts`, `resultado-operacion.spec.ts` | — |
 | PI-06 Sin dependencias sin consumidor | S | ❌ | Inspección | Auditoría de dependencias en CI |
 | PI-07 La decisión de canal es por modelo | T | ✅ | Catálogo + `olt-model-catalog.spec.ts` | — |
+| **PI-08 Fin de vida de dependencias** | M | ❌ | Revisión anual | Auditoría de dependencias en CI |
 
 ## 8.7.8 Matriz — Políticas de Producción
 
@@ -604,14 +744,20 @@ banderas que usa el CI.
 | PP-11 Todo proceso de fondo late y es vigilado | O | ⚠️ | `GET /admin/sistema/watchers`, **consultable, no vigilante** | **Alarma automática** (**R2**, ADR-020) |
 | PP-12 No modificar OASIS sin leer antes | M | ❌ | Directriz | Sin mecanismo posible |
 | PP-13 Scripts de red fuera del repo | M | ❌ | Revisión | Regla de CI sobre rutas |
+| **PP-14 Entorno de pruebas** | C + M | ⚠️ | El CI cubre lógica, migraciones y API. Hardware: sin entorno | Laboratorio o simulación para hardware |
+| **PP-15 Gestión de capacidad** | O | ❌ | Inspección manual | Métricas y umbrales (ADR-024) |
 
 ## 8.7.9 Resumen del estado de verificación
 
 | Grado | Nº de políticas | Porcentaje | (v1.0, antes de verificar el CI) |
 |---|---|---|---|
-| ✅ Automático | **16** | **25 %** | 14 · 22 % |
-| ⚠️ Parcial | 19 | 30 % | 20 · 32 % |
-| ❌ Manual | 28 | 44 % | 29 · 46 % |
+| ✅ Automático | **16** | **23 %** | 14 · 22 % |
+| ⚠️ Parcial | **20** | 29 % | 20 · 32 % |
+| ❌ Manual | **34** | 48 % | 29 · 46 % |
+
+> **El porcentaje BAJA al añadir políticas nuevas, y es correcto que baje.** Siete políticas
+> nuevas entran sin mecanismo: declararlas no las hace cumplirse. El indicador mide barreras, no
+> intenciones — si subiera al escribir texto, no serviría para nada.
 
 **Lectura honesta:** una cuarta parte de las políticas tiene hoy una barrera que las haga cumplir.
 Las demás dependen de disciplina y revisión.
@@ -730,6 +876,8 @@ quedar) · qué la cierra.
 | ~~**B-9**~~ | ~~**PC-05 / PD-07** — verificaciones en CI~~ | **NUNCA EXISTIÓ. Error de este documento, corregido el 2026-08-06.** El CI existe desde 2026-07-28 (`a36117fd`) y ejecuta typecheck, 593 tests, instalación desde cero y `sql:check`, bloqueando el merge. La suite compila y está verde | — | — |
 | **B-10** | **PA-11** — configuración fuera del repositorio | Credenciales de connreq de GenieACS duplicadas en el ACS y en el `.env`, **sin verificación de coincidencia**. CCD y crontab fuera de control de versiones | Probe al arrancar que verifique la coincidencia; inventario versionado de lo externo con su procedimiento de restauración | RDM-001 **R15** |
 | **B-11** | **PA-08** — invariantes del compensador | Implementados y en producción, **sin test que los ejercite** | Test de los cuatro invariantes (LIFO, parada al primer fallo, idempotencia, VIO al deshacer) | RDM-001 **R17** |
+| **B-12** | **PP-01** — recargar por ecosystem, nunca por nombre suelto | **`be-deploy.mjs` usa `pm2 restart datafast-api-core --update-env`** — exactamente el patrón que el 2026-08-06 dejó al worker sin su `PORT: 4001` y lo metió en bucle de reinicio. `deploy.mjs` también reinicia por nombre, sin `--update-env` | Todos los scripts recargan con `pm2 startOrRestart ecosystem.config.js --only <procesos>` | Cambio de dos líneas |
+| **B-13** | **PP-07** — todo despliegue se verifica | El checklist de PRO-001 §8.1.3 existe pero **se ejecuta a mano y nadie compara el contador de reinicios** antes y después. Hoy: `api-core` 148, `worker` 122 | Script de verificación que ejecute los 9 puntos y **falle** si el contador subió o falta un proceso | RDM-001 **R2** |
 
 ### B.4 Nivel C — Mejoras futuras
 

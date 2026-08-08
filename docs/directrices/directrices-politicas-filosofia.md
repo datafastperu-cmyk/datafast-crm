@@ -1,3 +1,19 @@
+> # ⛔ DOCUMENTO CONGELADO — 2026-08-06
+>
+> **Directrices, Políticas y Filosofía**
+>
+> Este cuerpo es **evidencia fechada**, no norma. Describe el sistema tal como estaba en el
+> commit `f8d52b00`. **No se mantiene y no debe citarse como fuente de obligación.**
+>
+> Duplicaba POL-001: dos fuentes para las mismas reglas es exactamente lo que R-006 (Single Source of Truth) prohíbe. **POL-001 es la única fuente normativa.**
+>
+> **Dónde vive lo vigente:** **POL-001** para las reglas · **CON-001** para los principios · **DOM-001 §8.8** para los invariantes.
+>
+> *Congelado por PLAN-001 Fase 2.1. Se conserva por trazabilidad: es la prueba de dónde salió
+> cada regla.*
+
+---
+
 # Directrices, Políticas y Filosofía — ERP Datafast
 
 **Documento normativo** · Compilado: 2026-08-06 · Rama `main`, commit base `f8d52b00`

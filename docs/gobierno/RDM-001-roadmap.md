@@ -48,6 +48,27 @@ las dependencias**, que sí son objetivos.
 
 # 8. Contenido
 
+## 8.0 Presupuesto arquitectónico — decisión D6 (2026-08-06)
+
+**Un solo roadmap**, no dos. Dos roadmaps compiten por la misma capacidad y el arquitectónico
+siempre pierde, porque no tiene un cliente esperándolo.
+
+| Elemento | Regla |
+|---|---|
+| **Etiquetado** | Cada iniciativa es `[ARQ]` o `[FUNC]` |
+| **Presupuesto** | Una fracción acordada y **protegida** de la capacidad va a `[ARQ]` |
+| **Bloqueo** | Una `[FUNC]` **no entra** si depende de una `[ARQ]` no cerrada |
+| **Excepción** | Solo Datafast puede consumir el presupuesto arquitectónico, y **queda registrado** |
+
+Ya se aplica de hecho: el Horizonte 1 es íntegramente `[ARQ]` y bloquea al Horizonte 2 por
+dependencias declaradas — R1 bloqueaba las migraciones, R4 bloquea las pasarelas. **Lo que falta
+es fijar la fracción.**
+
+> **Por qué no dos roadmaps** (contrapropuesta a R-011, aceptada en D6): un roadmap arquitectónico
+> separado existe, se cita en reuniones y no se ejecuta nunca, porque cuando el negocio presiona
+> es el que se pospone. Eso es **peor** que no tenerlo: da la impresión de que el problema está
+> gestionado.
+
 ## 8.1 Principio rector
 
 > **La plataforma se consolida antes de crecer** (CON-001 §8.11.3).

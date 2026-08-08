@@ -1,6 +1,6 @@
 # Cuerpo Normativo y Documental — ERP Datafast
 
-**Índice maestro** · Versión 1.0 · 2026-08-06 · Rama `main`, commit base `f8d52b00`
+**Índice maestro** · Versión 1.1 · 2026-08-06 · Rama `main`, commit base `f8d52b00`
 
 ---
 
@@ -19,7 +19,7 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 
 | Código | Documento | Estado | Archivo |
 |---|---|---|---|
-| **CON-001** | Constitución del ERP | Borrador para ratificación | [CON-001-constitucion.md](CON-001-constitucion.md) |
+| **CON-001** | Constitución del ERP | **Vigente** — ratificada por Datafast 2026-08-06 | [CON-001-constitucion.md](CON-001-constitucion.md) |
 | **AEM-001** | Arquitectura Empresarial | Vigente | [AEM-001-arquitectura-empresarial.md](AEM-001-arquitectura-empresarial.md) |
 | **ARS-001** | Arquitectura de Software | Vigente | [ARS-001-arquitectura-software.md](ARS-001-arquitectura-software.md) |
 | **DOM-001** | Modelo de Dominio | Vigente | [DOM-001-modelo-dominio.md](DOM-001-modelo-dominio.md) |
@@ -27,7 +27,9 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 | **INT-001** | Arquitectura de Integraciones | Vigente | [INT-001-arquitectura-integraciones.md](INT-001-arquitectura-integraciones.md) |
 | **SEC-001** | Arquitectura de Seguridad | Vigente | [SEC-001-arquitectura-seguridad.md](SEC-001-arquitectura-seguridad.md) |
 | **POL-001** | Políticas Corporativas | Vigente | [POL-001-politicas-corporativas.md](POL-001-politicas-corporativas.md) |
-| **ADR-001…016** | Registros de Decisiones Arquitectónicas | Vigente | [ADR-000-registro-decisiones.md](ADR-000-registro-decisiones.md) |
+| **ADR-001…029** | Registros de Decisiones Arquitectónicas | Vigente | [ADR-000-registro-decisiones.md](ADR-000-registro-decisiones.md) |
+| **ADR-030** | Referencia externa por tipo de módulo | Vigente | [ADR-030-marco-referencia-tmforum.md](ADR-030-marco-referencia-tmforum.md) |
+| **PLAN-001** | Plan de Trabajo | Vigente — **temporal** | [PLAN-001-plan-de-trabajo.md](PLAN-001-plan-de-trabajo.md) |
 | **EST-001** | Estándares Técnicos | Vigente | [EST-001-estandares-tecnicos.md](EST-001-estandares-tecnicos.md) |
 | **GUI-001** | Guías de Desarrollo | Vigente | [GUI-001-guias-desarrollo.md](GUI-001-guias-desarrollo.md) |
 | **MOD-000** | Catálogo y plantilla de módulos | Vigente | [MOD-000-catalogo-modulos.md](MOD-000-catalogo-modulos.md) |
@@ -38,6 +40,9 @@ estado, alcance y jerarquía, de modo que una decisión pueda **citarse** y una 
 | **MAN-001** | Manual del Operador | Vigente | [MAN-001-manual-operador.md](MAN-001-manual-operador.md) |
 | **MAN-002** | Manual del Administrador | Vigente | [MAN-002-manual-administrador.md](MAN-002-manual-administrador.md) |
 | **RDM-001** | Roadmap del Producto | Vigente | [RDM-001-roadmap.md](RDM-001-roadmap.md) |
+| ~~**REC-001**~~ | ~~Evaluación de recomendaciones~~ | **⛔ Obsoleto** — su contenido está en POL-001, ADR-029 y ADR-030 | [REC-001-evaluacion-recomendaciones.md](REC-001-evaluacion-recomendaciones.md) |
+
+**Documentos vivos: 20.** Congelados u obsoletos: REC-001 + los tres cuerpos de evidencia (§5).
 
 ## 3. Alcance de esta primera emisión — qué se entrega completo y qué no
 
@@ -45,8 +50,8 @@ Se declara explícitamente para que nadie asuma cobertura donde no la hay.
 
 | Documento | Estado de la entrega |
 |---|---|
-| CON-001 … RDM-001 (los 13 singleton) | **Completos.** |
-| **ADR** | **16 ADR redactados**, todos correspondientes a decisiones **reales ya tomadas** y documentadas en el código o en incidentes. No son decisiones inventadas para llenar el registro. |
+| CON-001 … RDM-001 (los singleton) | **Completos.** CON-001 **ratificada y Vigente** |
+| **ADR** | **16 aceptados** (decisiones reales ya tomadas y documentadas en el código o en incidentes) · **ADR-029 y ADR-030 decididos el 2026-08-06** · **ADR-017…028 propuestos** con número reservado. Ninguno es una decisión inventada para llenar el registro. |
 | **MOD-XXX** | **3 de 44 módulos.** Se entregan la plantilla, el catálogo completo de los 44 con su ficha resumida, y la especificación completa de los 3 módulos de mayor criticidad (`contratos`, `pagos`, `olt-nativo`). Los 41 restantes se redactan bajo demanda o cuando el módulo se toque. **Documentar 44 módulos de golpe produciría documentación que nadie ha verificado y que envejece antes de leerse.** |
 | **MAN-XXX** | **2 manuales** (Operador y Administrador), construidos sobre las rutas y endpoints reales del sistema. **No incluyen capturas de pantalla ni recorridos pantalla-por-pantalla**, porque eso exige validación con el producto en ejecución y con usuarios reales; se marca como pendiente en RDM-001. |
 
@@ -78,9 +83,9 @@ Este cuerpo normativo **no reemplaza** los trabajos anteriores: los usa como fue
 
 | Documento previo | Rol |
 |---|---|
-| `docs/auditoria/` (Etapa I) | Levantamiento del estado real. **Fuente de todos los datos medidos.** |
-| `docs/consolidacion/` (Etapa II) | Análisis y recomendaciones. **Fuente de riesgos y del roadmap.** |
-| `docs/directrices/` | Compilación de reglas desde sus fuentes primarias. **Fuente de POL-001 y CON-001.** |
+| `docs/auditoria/` (Etapa I) | **⛔ CONGELADO 2026-08-06.** Evidencia fechada. Contenía 3 afirmaciones falsas |
+| `docs/consolidacion/` (Etapa II) | **⛔ CONGELADO 2026-08-06.** Su contenido vivo migró a POL-001 Anexo B y RDM-001 |
+| `docs/directrices/` | **⛔ CONGELADO 2026-08-06.** Duplicaba POL-001. **POL-001 es la única fuente normativa** |
 | `CLAUDE.md` | Reglas operativas del repositorio. **Sigue vigente**; POL-001 lo formaliza sin sustituirlo. |
 | `PENDIENTES.md` | Registro vivo de deuda. **Sigue vigente**; alimenta RDM-001. |
 
@@ -155,6 +160,32 @@ quedar) y **qué la cierra**. Una desviación sin estado objetivo no es gobernab
 dónde va.
 
 El registro consolidado está en **POL-001 Anexo B**.
+
+## 7.4 Documentos que se GENERAN, no se escriben
+
+*(PLAN-001 Fase 2.3)*
+
+**Los inventarios se extraen del código en un minuto. Generados no mienten; escritos a mano
+mienten en seis meses.** Ese es exactamente el fallo que ya ocurrió: la auditoría afirmó "~30
+tests" y "la suite no compila" citando una memoria, cuando un comando devolvía 65 suites y 593
+tests en verde.
+
+| Contenido | Documento | Cómo se obtiene |
+|---|---|---|
+| Nº de módulos, LOC, servicios, entidades | AEM-001 §8.4 · MOD-000 §8.3 | `ls`/`find` sobre `backend/src/modules` |
+| Endpoints por controlador | ARS-001 · MOD-XXX §8.6 | `grep` de `@Controller` y `@Get/@Post/…` |
+| Tablas y entidades | DAT-001 §8.1 | `grep` de `@Entity` vs `information_schema` |
+| Crons, colas, listeners | ARS-001 §8.6 · MOD-003 §8.8 | `grep` de `@Cron`, `@Processor`, `@OnEvent` |
+| Nº de tests y suites | EST-001 §8.5.4 | `npx jest --runInBand --ci` |
+| Índices, triggers, funciones, vistas | DAT-001 §8.4 | Dump de `information_schema` (**el CI ya lo produce**) |
+| Grafo de dependencias entre módulos | AEM-001 §8.5 | `grep` de `imports` en cada `*.module.ts` |
+
+**Regla:** antes de citar cualquiera de estas cifras en una decisión, **se regenera**. Una cifra
+copiada de otro documento es una cita, no una medición (POL-001 PD-03, punto 1).
+
+**Lo que sí se escribe a mano** y no envejece igual: principios, políticas, decisiones (ADR),
+procedimientos, manuales y reglas de negocio. Cambian cuando alguien decide cambiarlas, no cuando
+alguien toca el código.
 
 ## 8. Convención de versionado
 
