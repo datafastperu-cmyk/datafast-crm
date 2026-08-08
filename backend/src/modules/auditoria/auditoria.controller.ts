@@ -36,7 +36,12 @@ export class AuditoriaController {
   }
 
   // ── Undo ──────────────────────────────────────────────────────
+  // Deshacer alcanza CUALQUIER tabla del sistema. Estaba sin autorización: `RolesGuard` deja
+  // pasar cuando no hay ni `@Roles` ni `@RequirePermission`, así que cualquier usuario
+  // autenticado podía revertir operaciones ajenas — incluido un rol de «Atención al Cliente»
+  // (desviación B-3, medido contra el código el 2026-08-08).
   @Post('undo')
+  @Roles('Administrador', 'Super Administrador')
   @HttpCode(HttpStatus.OK)
   undo(@CurrentUser() user: JwtPayload) {
     return this.svc.undo(user.sub, user.empresaId);
@@ -44,6 +49,7 @@ export class AuditoriaController {
 
   // ── Redo ──────────────────────────────────────────────────────
   @Post('redo')
+  @Roles('Administrador', 'Super Administrador')
   @HttpCode(HttpStatus.OK)
   redo(@CurrentUser() user: JwtPayload) {
     return this.svc.redo(user.sub, user.empresaId);
@@ -59,6 +65,7 @@ export class AuditoriaController {
   }
 
   @Post('papelera/restaurar')
+  @Roles('Administrador', 'Super Administrador')
   @HttpCode(HttpStatus.OK)
   restaurar(
     @CurrentUser() user: JwtPayload,
@@ -68,7 +75,11 @@ export class AuditoriaController {
   }
 
   @Delete('papelera/eliminar')
-  @Roles('admin', 'superadmin')
+  // Decía @Roles('admin', 'superadmin'): DOS ROLES QUE NO EXISTEN. Los reales se llaman
+  // 'Administrador' y 'Super Administrador', así que este endpoint era INALCANZABLE para
+  // todo el mundo — nadie podía purgar la papelera. Falla cerrado, que es la dirección
+  // segura, pero era una función muerta sin que nada lo dijera (2026-08-08).
+  @Roles('Administrador', 'Super Administrador')
   @HttpCode(HttpStatus.OK)
   eliminarPermanente(
     @CurrentUser() user: JwtPayload,
@@ -89,6 +100,7 @@ export class AuditoriaController {
 
   // ── Restaurar versión específica ──────────────────────────────
   @Post('version/:id/restaurar')
+  @Roles('Administrador', 'Super Administrador')
   @HttpCode(HttpStatus.OK)
   restaurarVersion(
     @CurrentUser() user: JwtPayload,
