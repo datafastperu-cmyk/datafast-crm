@@ -145,7 +145,7 @@ case "$cmd" in
   start)    pm2 start "${INSTALL_DIR}/ecosystem.config.js" 2>/dev/null || pm2 restart all; pm2 status ;;
   stop)     pm2 stop all ;;
   restart)  pm2 restart all; pm2 status ;;
-  reload)   pm2 reload datafast-backend; pm2 restart datafast-frontend; pm2 status ;;
+  reload)   pm2 reload datafast-api-core datafast-worker-auxiliary; pm2 restart datafast-frontend; pm2 status ;;
   logs)     pm2 logs "datafast-${2:-backend}" --lines "${3:-50}" ;;
   backup)   bash "${INSTALL_DIR}/scripts/backup.sh" ;;
   restore)  bash "${INSTALL_DIR}/scripts/restore.sh" ;;
@@ -421,8 +421,13 @@ _validate_install() {
         && ok "Redis — OK" || { warn "Redis — no responde"; (( errores++ )) || true; }
 
     # PM2 procesos
-    sudo -u datafast pm2 list 2>/dev/null | grep -q "datafast-backend.*online" \
-        && ok "PM2 backend — online" || { warn "PM2 backend — no está online"; (( errores++ )) || true; }
+    # Los DOS procesos de backend. Antes buscaba "datafast-backend", que no existe, así que
+    # esta comprobación no podía dar OK jamás — y el worker, que es quien ejecuta todo lo
+    # automático, no se comprobaba en absoluto.
+    for _app in datafast-api-core datafast-worker-auxiliary; do
+        sudo -u datafast pm2 list 2>/dev/null | grep -q "${_app}.*online" \
+            && ok "PM2 ${_app} — online" || { warn "PM2 ${_app} — no está online"; (( errores++ )) || true; }
+    done
 
     sudo -u datafast pm2 list 2>/dev/null | grep -q "datafast-frontend.*online" \
         && ok "PM2 frontend — online" || { warn "PM2 frontend — no está online"; (( errores++ )) || true; }
@@ -463,7 +468,7 @@ _validate_install_dev() {
         && ok "Evolution API (Docker) — corriendo" || warn "Evolution API (Docker) — no encontrado (no bloqueante)"
 
     # PM2 (en modo dev corre como root, no como datafast)
-    pm2 list 2>/dev/null | grep -q "datafast-backend.*online" \
+    pm2 list 2>/dev/null | grep -qE "datafast-(api-core|worker-auxiliary).*online" \
         && ok "PM2 backend — online" || { warn "PM2 backend — iniciando (puede tardar 60-90s)"; (( errores++ )) || true; }
 
     pm2 list 2>/dev/null | grep -q "datafast-frontend.*online" \

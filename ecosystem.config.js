@@ -17,6 +17,19 @@
 // Aplicar:  pm2 delete all && pm2 start ecosystem.config.js && pm2 save
 // ─────────────────────────────────────────────────────────────────────────────
 
+// La raiz se deduce de donde vive ESTE fichero, no se escribe.
+//
+// Antes eran 14 rutas absolutas a /opt/datafast. Eso obligaba al instalador a generar su
+// PROPIO ecosystem con ${INSTALL_DIR} interpolado -- y el suyo declaraba un unico proceso
+// `datafast-backend` sin RUN_CRONS, asi que toda instalacion nueva nacia SIN WORKER: sin
+// cortes por mora, sin reactivaciones, sin drenado del outbox hacia OLT y MikroTik, y sin
+// que nada diera error (desviacion B-14).
+//
+// Dos autores para el mismo fichero, y el que ganaba era el equivocado. Derivando la raiz,
+// este fichero sirve en cualquier directorio de instalacion y el instalador puede usarlo
+// tal cual, que es lo que ADR-011 manda desde el principio.
+const RAIZ = __dirname;
+
 module.exports = {
   apps: [
 
@@ -24,7 +37,7 @@ module.exports = {
     {
       name:      'datafast-api-core',
       script:    'dist/main.js',
-      cwd:       '/opt/datafast/backend',
+      cwd:       `${RAIZ}/backend`,
       exec_mode: 'fork',
       instances: 1,
 
@@ -48,8 +61,8 @@ module.exports = {
       min_uptime:         '10s',
       max_restarts:       10,
 
-      out_file:        '/opt/datafast/logs/api-core-out.log',
-      error_file:      '/opt/datafast/logs/api-core-error.log',
+      out_file:        `${RAIZ}/logs/api-core-out.log`,
+      error_file:      `${RAIZ}/logs/api-core-error.log`,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       watch:           false,
     },
@@ -58,7 +71,7 @@ module.exports = {
     {
       name:      'datafast-worker-auxiliary',
       script:    'dist/main.js',
-      cwd:       '/opt/datafast/backend',
+      cwd:       `${RAIZ}/backend`,
       exec_mode: 'fork',
       instances: 1,
 
@@ -82,8 +95,8 @@ module.exports = {
       min_uptime:         '10s',
       max_restarts:       10,
 
-      out_file:        '/opt/datafast/logs/worker-out.log',
-      error_file:      '/opt/datafast/logs/worker-error.log',
+      out_file:        `${RAIZ}/logs/worker-out.log`,
+      error_file:      `${RAIZ}/logs/worker-error.log`,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       watch:           false,
     },
@@ -96,7 +109,7 @@ module.exports = {
     {
       name:      'datafast-whatsapp',
       script:    'dist/main.js',
-      cwd:       '/opt/datafast/backend',
+      cwd:       `${RAIZ}/backend`,
       exec_mode: 'fork',
       instances: 1,
 
@@ -120,8 +133,8 @@ module.exports = {
       min_uptime:         '20s',
       max_restarts:       10,
 
-      out_file:        '/opt/datafast/logs/whatsapp-out.log',
-      error_file:      '/opt/datafast/logs/whatsapp-error.log',
+      out_file:        `${RAIZ}/logs/whatsapp-out.log`,
+      error_file:      `${RAIZ}/logs/whatsapp-error.log`,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       watch:           false,
     },
@@ -129,21 +142,21 @@ module.exports = {
     // ── OLT Automation Service (Python/FastAPI) ──────────────────────────────
     {
       name:        'olt-automation-service',
-      script:      '/opt/datafast/olt-automation-service/venv/bin/uvicorn',
+      script:      `${RAIZ}/olt-automation-service/venv/bin/uvicorn`,
       // NUNCA `--reload` en producción: WatchFiles reinicia uvicorn al tocar cualquier
       // archivo y un `git reset --hard` de deploy lo dispara en medio de una operación
       // contra la OLT. Causó el timeout que abortó una Fase 2 WAN y dejó un ONT huérfano
       // (2026-07-21). 1 worker a propósito: cada worker abre sus propias sesiones SSH y el
       // MA5800 tiene un límite bajo de VTY concurrentes.
       args:        'app.main:app --host 127.0.0.1 --port 8001 --workers 1',
-      cwd:         '/opt/datafast/olt-automation-service',
+      cwd:         `${RAIZ}/olt-automation-service`,
       interpreter: 'none',
       exec_mode:   'fork',
       instances:   1,
 
-      env_file: '/opt/datafast/olt-automation-service/.env',
+      env_file: `${RAIZ}/olt-automation-service/.env`,
       env: {
-        PYTHONPATH: '/opt/datafast/olt-automation-service',
+        PYTHONPATH: `${RAIZ}/olt-automation-service`,
         TZ:         'America/Lima',
       },
 
@@ -152,8 +165,8 @@ module.exports = {
       min_uptime:         '10s',
       max_restarts:       10,
 
-      out_file:        '/opt/datafast/logs/olt-out.log',
-      error_file:      '/opt/datafast/logs/olt-error.log',
+      out_file:        `${RAIZ}/logs/olt-out.log`,
+      error_file:      `${RAIZ}/logs/olt-error.log`,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       watch:           false,
     },
@@ -163,7 +176,7 @@ module.exports = {
       name:      'datafast-frontend',
       script:    'node_modules/.bin/next',
       args:      'start',
-      cwd:       '/opt/datafast/frontend',
+      cwd:       `${RAIZ}/frontend`,
       exec_mode: 'fork',
       instances: 1,
 
@@ -184,8 +197,8 @@ module.exports = {
       max_restarts:       10,
       listen_timeout:     30000,
 
-      out_file:        '/opt/datafast/logs/frontend-out.log',
-      error_file:      '/opt/datafast/logs/frontend-error.log',
+      out_file:        `${RAIZ}/logs/frontend-out.log`,
+      error_file:      `${RAIZ}/logs/frontend-error.log`,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       watch:           false,
     },

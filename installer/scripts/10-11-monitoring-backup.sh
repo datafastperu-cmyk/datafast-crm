@@ -280,7 +280,8 @@ fi
 
 # Parar aplicación
 echo "Pausando la aplicación..."
-sudo -u datafast pm2 stop datafast-backend 2>/dev/null || true
+# Ver 11-backup.sh: `datafast-backend` no existe y la restauración corría con el ERP vivo.
+sudo -u datafast pm2 stop datafast-api-core datafast-worker-auxiliary 2>/dev/null || true
 
 # Restaurar
 echo "Restaurando base de datos..."
@@ -293,7 +294,7 @@ echo ""
 echo "✓ Base de datos restaurada"
 
 # Reiniciar
-sudo -u datafast pm2 start datafast-backend 2>/dev/null || true
+sudo -u datafast pm2 start datafast-api-core datafast-worker-auxiliary 2>/dev/null || true
 echo "✓ Aplicación reiniciada"
 echo ""
 echo "Restauración completada."

@@ -502,13 +502,17 @@ upgrade_app() {
     # Recargar/iniciar procesos (startOrRestart tolera procesos caídos o inexistentes)
     local eco="${INSTALL_DIR}/ecosystem.config.js"
     if [[ -f "$eco" ]]; then
-        sudo -u datafast pm2 startOrReload  "$eco" --only datafast-backend        >> "${LOG_FILE}" 2>&1 || \
-            sudo -u datafast pm2 start      "$eco" --only datafast-backend        >> "${LOG_FILE}" 2>&1 || true
+        # api-core Y worker: recargar solo uno deja los crons con el código anterior, que
+        # es como el 2026-08-05 quedaron 11 h de backend viejo reportando OK (B-14).
+        for _app in datafast-api-core datafast-worker-auxiliary; do
+            sudo -u datafast pm2 startOrReload  "$eco" --only "$_app"              >> "${LOG_FILE}" 2>&1 || \
+                sudo -u datafast pm2 start      "$eco" --only "$_app"              >> "${LOG_FILE}" 2>&1 || true
+        done
         sudo -u datafast pm2 startOrRestart "$eco" --only datafast-frontend       >> "${LOG_FILE}" 2>&1 || \
             sudo -u datafast pm2 start      "$eco" --only datafast-frontend       >> "${LOG_FILE}" 2>&1 || true
         pm2 startOrRestart                  "$eco" --only olt-automation-service  >> "${LOG_FILE}" 2>&1 || true
     else
-        sudo -u datafast pm2 reload  datafast-backend      >> "${LOG_FILE}" 2>&1 || true
+        sudo -u datafast pm2 reload  datafast-api-core datafast-worker-auxiliary  >> "${LOG_FILE}" 2>&1 || true
         sudo -u datafast pm2 restart datafast-frontend     >> "${LOG_FILE}" 2>&1 || true
         pm2 restart olt-automation-service                 >> "${LOG_FILE}" 2>&1 || true
     fi

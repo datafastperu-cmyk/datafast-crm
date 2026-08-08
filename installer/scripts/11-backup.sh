@@ -40,10 +40,12 @@ backup_file=$(ls -t "${BACKUP_DIR}"/*.sql.gz 2>/dev/null | sed -n "${num}p")
 echo "⚠  Restaurar: $(basename $backup_file)"
 read -rp "Escribe 'RESTAURAR' para confirmar: " conf
 [ "$conf" != "RESTAURAR" ] && { echo "Cancelado."; exit 0; }
-sudo -u datafast pm2 stop datafast-backend 2>/dev/null || true
+# Parar api-core Y worker. Decía `datafast-backend`, que no existe: pm2 no encontraba
+# nada, no fallaba, y la restauración corría CON EL ERP ESCRIBIENDO ENCIMA.
+sudo -u datafast pm2 stop datafast-api-core datafast-worker-auxiliary 2>/dev/null || true
 PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U datafast_db_user -d datafast_db \
     < <(gunzip -c "$backup_file")
-sudo -u datafast pm2 start datafast-backend 2>/dev/null || true
+sudo -u datafast pm2 start datafast-api-core datafast-worker-auxiliary 2>/dev/null || true
 echo "✓ Restauración completada"
 RESTOREEOF
     chmod +x "${INSTALL_DIR}/scripts/restore.sh"

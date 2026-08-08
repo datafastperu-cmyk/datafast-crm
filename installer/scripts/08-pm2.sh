@@ -4,119 +4,77 @@
 setup_pm2() {
     step "Configurando PM2 Process Manager"
 
-    local cpus; cpus=$(nproc)
-    local instances=1
-    [[ $cpus -ge 4 ]] && instances=3
-    [[ $cpus -ge 2 && $cpus -lt 4 ]] && instances=2
+    local eco="${INSTALL_DIR}/ecosystem.config.js"
 
-    # ── ecosystem.config.js ────────────────────────────────────
-    info "Generando ecosystem.config.js..."
-    cat > "${INSTALL_DIR}/ecosystem.config.js" << EOF
-// CRM ISP DATAFAST — PM2 Ecosystem (producción)
-// Generado: $(date)
-// Instancias backend: ${instances} (CPUs: ${cpus})
+    # ── El ecosystem NO se genera: viene del repositorio ───────────────────────
+    #
+    # INCIDENTE B-14 (detectado 2026-08-08, corregido aquí). Esta función GENERABA su
+    # propio ecosystem.config.js y lo escribía encima del que acababa de traer
+    # `deploy_app` desde el repositorio. Los dos declaraban procesos distintos, y ganaba
+    # el generado aquí:
+    #
+    #     repositorio → datafast-api-core (RUN_CRONS=false) + datafast-worker-auxiliary
+    #                   (RUN_CRONS=true) + whatsapp + olt + frontend, todos en fork
+    #     generado    → un único 'datafast-backend' en cluster, SIN RUN_CRONS
+    #
+    # Consecuencia: **toda instalación nueva nacía sin worker**. Ningún cron llegaba a
+    # ejecutarse —todos empiezan con `if (process.env.RUN_CRONS !== 'true') return;`—, así
+    # que no se emitían facturas, no se cortaba a ningún moroso, no se reactivaba a nadie
+    # al pagar y no se drenaba el outbox hacia la OLT ni MikroTik. Sin un solo error: el
+    # ERP respondía con normalidad y no hacía nada por su cuenta.
+    #
+    # Y como el fichero está VERSIONADO, sobrescribirlo dejaba el árbol sucio y el primer
+    # `git pull` de una actualización fallaba por cambios locales.
+    #
+    # ADR-011 ya decía que el ecosystem es la fuente de verdad única del arranque. Había
+    # dos autores para el mismo fichero y no se conocían entre sí.
+    #
+    # Sus rutas se derivan de `__dirname`, así que sirve con cualquier INSTALL_DIR y no
+    # hay nada que interpolar. Lo que cambia por servidor va en los `.env`.
 
-module.exports = {
-  apps: [
+    [[ -f "$eco" ]] || error "No existe ${eco}.
+    Debe venir del repositorio (paso deploy_app). Sin él no se puede arrancar nada."
 
-    // ── Backend NestJS ────────────────────────────────────────
-    {
-      name:       'datafast-backend',
-      script:     './dist/main.js',
-      cwd:        '${INSTALL_DIR}/backend',
-      instances:  ${instances},
-      exec_mode:  'cluster',
+    # Se VERIFICA que declara los procesos esperados en vez de darlo por hecho: si alguien
+    # deja aquí un ecosystem antiguo o a medias, es mejor fallar la instalación que
+    # entregar un ERP que arranca y no trabaja.
+    local declarados
+    declarados=$(node -e "
+      const apps = require('$eco').apps || [];
+      console.log(apps.map(a => a.name).join(' '));
+    " 2>/dev/null) || error "No se pudo leer ${eco} — ¿es un JS válido?"
 
-      env_file: '${INSTALL_DIR}/backend/.env.production',
-      env: {
-        NODE_ENV:           'production',
-        PORT:               4000,
-        UV_THREADPOOL_SIZE: 8,
-        TZ:                 'America/Lima',
-      },
+    info "Procesos declarados: ${declarados:-(ninguno)}"
 
-      max_memory_restart:        '900M',
-      restart_delay:             5000,
-      exp_backoff_restart_delay: 100,
-      max_restarts:              10,
-      min_uptime:                '10s',
+    local faltan=""
+    for req in datafast-api-core datafast-worker-auxiliary datafast-frontend; do
+        [[ " $declarados " == *" $req "* ]] || faltan="$faltan $req"
+    done
+    [[ -z "$faltan" ]] || error "El ecosystem no declara:${faltan}.
+    Sin 'datafast-worker-auxiliary' el ERP no ejecuta NINGUNA tarea automática:
+    ni facturación, ni cortes por mora, ni reactivaciones, ni drenado hacia OLT/MikroTik.
+    Revisa ${eco} contra el del repositorio."
 
-      wait_ready:      true,
-      listen_timeout:  20000,
-      kill_timeout:    10000,
+    # El worker es quien ejecuta los crons, y eso lo decide RUN_CRONS. Comprobarlo aquí
+    # es barato; descubrirlo en producción cuesta días de facturación sin emitir.
+    local crons_worker
+    crons_worker=$(node -e "
+      const apps = require('$eco').apps || [];
+      const w = apps.find(a => a.name === 'datafast-worker-auxiliary');
+      console.log(String(w && w.env && w.env.RUN_CRONS));
+    " 2>/dev/null)
+    [[ "$crons_worker" == "true" ]] || error "datafast-worker-auxiliary no tiene RUN_CRONS='true' (vale: ${crons_worker}).
+    Arrancaría sin ejecutar una sola tarea automática."
 
-      out_file:        '${INSTALL_DIR}/logs/backend-out.log',
-      error_file:      '${INSTALL_DIR}/logs/backend-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs:      true,
-
-      node_args: ['--max-old-space-size=768', '--optimize-for-size'],
-      watch:     false,
-    },
-
-    // ── OLT Automation Service (Python/FastAPI) ───────────────
-    {
-      name:        'olt-automation-service',
-      script:      '${INSTALL_DIR}/olt-automation-service/venv/bin/uvicorn',
-      args:        'app.main:app --host 127.0.0.1 --port 8001 --workers 2',
-      cwd:         '${INSTALL_DIR}/olt-automation-service',
-      interpreter: 'none',
-      exec_mode:   'fork',
-      instances:   1,
-
-      env_file: '${INSTALL_DIR}/olt-automation-service/.env',
-      env: {
-        PYTHONPATH: '${INSTALL_DIR}/olt-automation-service',
-        TZ:         'America/Lima',
-      },
-
-      max_memory_restart: '256M',
-      restart_delay:      5000,
-      max_restarts:       10,
-      min_uptime:         '10s',
-
-      out_file:        '${INSTALL_DIR}/logs/olt-out.log',
-      error_file:      '${INSTALL_DIR}/logs/olt-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs:      true,
-      watch:           false,
-    },
-
-    // ── Frontend Next.js ──────────────────────────────────────
-    {
-      name:      'datafast-frontend',
-      script:    'node_modules/.bin/next',
-      args:      'start',
-      cwd:       '${INSTALL_DIR}/frontend',
-      instances: 1,
-      exec_mode: 'fork',
-
-      env_file: '${INSTALL_DIR}/frontend/.env.production',
-      env: {
-        NODE_ENV: 'production',
-        PORT:     3000,
-        HOSTNAME: '0.0.0.0',
-        TZ:       'America/Lima',
-      },
-
-      max_memory_restart: '512M',
-      restart_delay:      5000,
-      max_restarts:       10,
-      min_uptime:         '10s',
-
-      out_file:        '${INSTALL_DIR}/logs/frontend-out.log',
-      error_file:      '${INSTALL_DIR}/logs/frontend-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      watch:           false,
-    },
-  ],
-};
-EOF
-    chown datafast:datafast "${INSTALL_DIR}/ecosystem.config.js"
+    ok "Ecosystem del repositorio verificado (worker con RUN_CRONS=true)"
+    chown datafast:datafast "$eco"
 
     # ── Iniciar procesos ───────────────────────────────────────
     info "Iniciando procesos con PM2..."
-    sudo -u datafast pm2 delete datafast-backend datafast-frontend olt-automation-service >> "${LOG_FILE}" 2>&1 || true
+    # Se borran por los nombres que el ecosystem declara AHORA, leidos de el. Antes
+    # decia `datafast-backend`, un proceso que ya no existe: el delete no encontraba nada,
+    # PM2 no falla por eso, y quedaban procesos viejos conviviendo con los nuevos.
+    sudo -u datafast pm2 delete ${declarados} >> "${LOG_FILE}" 2>&1 || true
 
     cd "${INSTALL_DIR}"
     if ! sudo -u datafast pm2 start ecosystem.config.js >> "${LOG_FILE}" 2>&1; then
@@ -196,7 +154,7 @@ _wait_for_backend() {
         sleep 3
     done
     warn "Backend no respondió en 90s — puede estar compilando aún"
-    warn "Verifica con: pm2 logs datafast-backend --lines 30"
+    warn "Verifica con: pm2 logs datafast-api-core --lines 30"
 }
 
 _wait_for_olt() {
