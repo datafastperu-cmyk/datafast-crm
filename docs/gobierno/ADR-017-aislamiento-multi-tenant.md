@@ -179,3 +179,62 @@ quién filtrar. Es una mitigación circunstancial y **desaparece con el primer c
 | Que el barrido falle el build | Lo anterior |
 | **Des-privilegiar el rol de base de datos (B-15)** | **Decisión del propietario** |
 | RLS efectiva | B-15 + `empresa_id` nulables |
+
+---
+
+## 8. B-15 — el conjunto mínimo, medido contra la base real (2026-08-08)
+
+El riesgo de des-privilegiar el rol nunca fue quitar permisos: era **no saber cuáles usa la
+aplicación** y descubrirlo en producción. Se midió sin tocar el rol vivo — creando un rol de
+prueba con el mínimo propuesto, ejercitándolo y borrándolo.
+
+### 8.1 El conjunto propuesto
+
+```sql
+CREATE ROLE datafast_app LOGIN PASSWORD :clave
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+GRANT CONNECT ON DATABASE datafast_db TO datafast_app;
+GRANT USAGE   ON SCHEMA public        TO datafast_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES    IN SCHEMA public TO datafast_app;
+GRANT USAGE, SELECT                  ON ALL SEQUENCES IN SCHEMA public TO datafast_app;
+-- Imprescindible: sin esto, un objeto creado por una migración POSTERIOR no es usable.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES    TO datafast_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT                  ON SEQUENCES TO datafast_app;
+```
+
+### 8.2 Resultado
+
+| | |
+|---|---|
+| Operaciones reales del ERP que **funcionan** con el mínimo | **11 de 11** — lecturas del núcleo, `information_schema`, lock consultivo, `pg_stat_activity`, la vista financiera, INSERT/UPDATE/DELETE y el UPSERT del latido |
+| Operaciones peligrosas que quedan **bloqueadas** | **4 de 4** — `CREATE TABLE`, `CREATE SEQUENCE`, `DROP TABLE contratos`, leer `pg_authid` |
+
+### 8.3 El bloqueo que habría roto producción
+
+`generarCodigoCliente` ejecutaba `CREATE SEQUENCE IF NOT EXISTS` en **cada alta de cliente**.
+
+> **Y no bastaba con que la secuencia ya existiera: PostgreSQL comprueba el permiso del esquema
+> ANTES de evaluar el `IF NOT EXISTS`.** Medido: `permission denied for schema public` sobre una
+> secuencia ya creada. Con el rol mínimo, **el alta de clientes habría dejado de funcionar**.
+
+**Corregido** (migración `1791800000048`): la secuencia pasa a ser única, de nombre fijo y creada
+por migración. ADR-031 lo permite —una empresa por instalación— y de paso desaparece la
+interpolación de un identificador dentro de una sentencia DDL.
+
+**La aplicación ya no emite DDL en tiempo de ejecución**, y lo sostiene
+`sin-ddl-en-runtime.spec.ts`: un solo `CREATE INDEX` "inofensivo" en un servicio volvería a atar
+el ERP al superusuario, y se descubriría el día del cambio de rol.
+
+### 8.4 Lo que sigue faltando antes de aplicarlo
+
+1. **La batería es representativa, no exhaustiva.** Once operaciones contra 492 sentencias crudas
+   más el repositorio TypeORM. Lo no cubierto es el riesgo restante.
+2. **Falta el rol de migración.** `api-core` ejecuta las migraciones al arrancar (ADR-010) y eso
+   exige DDL. Son dos roles: uno de migración y otro de ejecución.
+3. **Falta probarlo sobre una instalación limpia**, no sobre la que da servicio.
+4. **La decisión de aplicarlo sigue siendo del propietario.**
+
+> Nota: la comprobación consumió un valor de la secuencia de códigos de cliente (`nextval`
+> devolvió 39). El correlativo salta un número; no hay otro efecto.

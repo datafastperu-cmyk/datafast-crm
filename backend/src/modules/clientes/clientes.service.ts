@@ -847,17 +847,24 @@ export class ClientesService {
     return `/uploads/clientes/${empresaId}/${filename}`;
   }
 
-  private async generarCodigoCliente(empresaId: string): Promise<string> {
+  private async generarCodigoCliente(_empresaId: string): Promise<string> {
     // Secuencia atómica: usa un contador de BD para evitar colisiones en concurrencia.
     // nextval garantiza que dos transacciones simultáneas nunca obtengan el mismo número.
-    const seqName = `seq_cod_cli_${empresaId.replace(/-/g, '_')}`;
+    //
+    // La secuencia la crea la migración `1791800000048`, NO este método. Antes había aquí un
+    // `CREATE SEQUENCE IF NOT EXISTS` por empresa, y eso obligaba al rol de la base a tener
+    // `CREATE` sobre el esquema — el privilegio que impide dejar de ser superusuario (B-15).
+    //
+    // No bastaba con que la secuencia ya existiera: **PostgreSQL comprueba el permiso del
+    // esquema ANTES de evaluar el `IF NOT EXISTS`**. Medido el 2026-08-08 con un rol mínimo:
+    // `permission denied for schema public` sobre una secuencia que ya estaba creada.
+    //
+    // Nombre fijo y no derivado de la empresa: ADR-031 fija una empresa por instalación. De
+    // paso desaparece la interpolación de un identificador dentro de una sentencia DDL.
     const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
-    await this.dataSource.query(
-      `CREATE SEQUENCE IF NOT EXISTS "${seqName}" START 1 INCREMENT 1`,
-    );
     const [{ nextval }] = await this.dataSource.query<{ nextval: string }[]>(
-      `SELECT nextval('${seqName}')`,
+      `SELECT nextval('seq_codigo_cliente')`,
     );
     return `CLI-${fecha}-${String(parseInt(nextval, 10)).padStart(4, '0')}`;
   }
