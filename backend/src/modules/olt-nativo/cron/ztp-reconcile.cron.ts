@@ -22,7 +22,7 @@ export class ZtpReconcileCron {
 
   constructor(private readonly ztp: ZtpProvisioningService) {}
 
-  @Cron('30 3 * * *', { timeZone: 'America/Lima' })
+  @Cron('30 3 * * *', { name: 'ztp-reconcile-diario', timeZone: 'America/Lima' })
   async reconciliarDiario(): Promise<void> {
     // Guard reentrante: si el barrido previo aún corre (muchas ONUs lentas), no solapar.
     if (this.running) {
@@ -46,7 +46,7 @@ export class ZtpReconcileCron {
   // Watcher de re-inyección post factory-reset (botón o físico): intervalo corto,
   // deliberadamente SEPARADO del reconcile nocturno de drift normal (edición admin) para no
   // aumentar la frecuencia de ese barrido más amplio. Solo toca last_applied_revision IS NULL.
-  @Cron('*/2 * * * *')
+  @Cron('*/2 * * * *', { name: 'ztp-reinyeccion-pendiente' })
   async watchPendingReinjection(): Promise<void> {
     if (this.runningReinjection) return;
     this.runningReinjection = true;

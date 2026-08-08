@@ -93,10 +93,11 @@ Situación actual y desviaciones conocidas.
 | 011 | `ecosystem.config.js` como fuente de verdad única del arranque | Aceptada | Instalación no reproducible |
 | 012 | Portabilidad multi-VPS sin literales | Aceptada | Instalaciones múltiples |
 | 013 | Fijar el contrato de cobro antes que las implementaciones | Aceptada | Prevención deliberada |
-| 014 | El reconcile solo actúa sobre ONUs aprovisionadas por el ERP | **Aceptada con excepción** | Riesgo de migración |
+| 014 | El reconcile solo actúa sobre ONUs aprovisionadas por el ERP | Aceptada (implementada 2026-08-06) | Riesgo de migración |
 | 015 | Bootstrap TR-069 por estrategia y decidido por modelo | Aceptada | El ME137 no materializa en EG8145V5 |
 | 016 | Módulos degradables vs Core Indestructible | Aceptada | Resiliencia de arranque |
-| **017–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
+| **020** | El latido se deriva del registro y lo vigila el proceso que responde ([fichero propio](ADR-020-latido-vigilado.md)) | **Aceptada** (implementada 2026-08-07) | De 47 crons latía 1 |
+| **017–019 · 021–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
 | **029** | Marco normativo externo de referencia | **Aceptada parcialmente** (D3, 2026-08-06) | Certificación descartada · adopción selectiva aceptada · programa legal suspendido con excepción |
 | **030** | Referencia por tipo de módulo (incluye TM Forum) | **Aceptada** (D4, 2026-08-06) — pendiente de reescritura | ¿Cada módulo desde 0? |
 
@@ -972,14 +973,14 @@ reservado para que las desviaciones de POL-001 Anexo B puedan citarla.
 | **ADR-017** | **Mecanismo de aislamiento multi-tenant**: Row-Level Security en PostgreSQL frente a barrido en CI, o ambos | Desviación **A-1** · RDM-001 R3 | **Crítica** |
 | **ADR-018** | **Estrategia de adopción del tipado estricto**: global, por archivo nuevo, por opción o por módulo (ver EST-001 Anexo B.1) | Desviación **B-1** | Alta |
 | **ADR-019** | **Destino único del cálculo de deuda**: función de base de datos o servicio de dominio. Criterio: si algún escritor no pasa por la aplicación, va en la base | Desviación **A-4** · RDM-001 R4 | **Crítica** |
-| **ADR-020** | **Segregación del plano automático por criticidad** y mecanismo de alarma del latido | Desviación **A-3** · RDM-001 R2 | **Crítica** |
+| ~~**ADR-020**~~ | ~~Segregación del plano automático y alarma del latido~~ — **ACEPTADA 2026-08-07**, ver [ADR-020](ADR-020-latido-vigilado.md). La **alarma** queda resuelta; la **segregación por criticidad** se traslada a ADR-027, porque decidirla exige la medición de duración que ADR-020 acaba de habilitar | Desviación **A-3** · RDM-001 R2 | — |
 | **ADR-021** | **Puerto único hacia MikroTik** (`IRouterProvider`) y máquina de estados del servicio WISP | Desviación **B-5** · RDM-001 R5 | Alta |
 | **ADR-022** | **Modelado de la sustitución de ONU** como transición de primera clase | Desviación **B-7** · RDM-001 R6 | Alta |
 | **ADR-023** | **Particionado y retención de series temporales** | Desviación **C-7** · RDM-001 H3-1 | Media |
 | **ADR-024** | **Stack de observabilidad** y qué se instrumenta primero | RDM-001 R8 | Alta |
 | **ADR-025** | **Cobertura del permiso fino**: alcance retroactivo y regla de CI | Desviación **B-3** | Media |
 | **ADR-026** | **Entidades para las tablas de coordinación y de dinero** | Desviación **B-2** · RDM-001 R7 | Alta |
-| **ADR-027** | **Contrato de proceso de fondo**: cap, lock, presupuesto y latido obligatorios | Desviación **B-6** · RDM-001 R10 | Media |
+| **ADR-027** | **Contrato de proceso de fondo**: cap, lock y presupuesto obligatorios, **más la segregación del worker por criticidad** heredada de ADR-020. El **latido** ya no forma parte de esta decisión: se deriva del registro desde 2026-08-07 | Desviación **B-6** · RDM-001 R10 | **Alta** (era Media: ahora arrastra la segregación) |
 | **ADR-028** | **Outbox también para las operaciones interactivas del operador** | Desviación **B-4** · RDM-001 R5 | Alta |
 
 ### Decisiones tomadas de hecho, sin ADR

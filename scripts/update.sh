@@ -241,59 +241,15 @@ fi
 #      el despliegue en vez de informar de un éxito que no ocurrió.
 step "Reload backend"
 
-BACKEND_APPS=$(node -e "
-  const apps = require('${ECOSYSTEM}').apps || [];
-  console.log(apps.map(a => a.name)
-    .filter(n => /api-core|worker/.test(n))
-    .join(' '));
-" 2>/dev/null)
+# La mecánica (nombres desde el ecosystem, --only, y la verificación de que reinició de
+# verdad sin entrar en bucle) vive en scripts/lib/pm2-recargar.sh, que es la ÚNICA
+# definición: los scripts de despliegue del desarrollador usan la misma función, porque
+# antes cada uno reiniciaba a su manera y solo este verificaba algo.
+# shellcheck source=lib/pm2-recargar.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/pm2-recargar.sh"
 
-[[ -n "$BACKEND_APPS" ]] || err "No se encontraron procesos de backend en ${ECOSYSTEM}"
-log "Procesos de backend: ${BACKEND_APPS}"
-
-estado_pm2() {
-    # Devuelve "uptimeMs restarts status" del proceso indicado.
-    pm2 jlist 2>/dev/null | node -e "
-      let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-        let p=null; try { p=(JSON.parse(d)||[]).find(x=>x.name===process.argv[1]); } catch {}
-        if (!p) { console.log('-1 -1 missing'); return; }
-        console.log([Date.now()-p.pm2_env.pm_uptime, p.pm2_env.restart_time, p.pm2_env.status].join(' '));
-      });" "$1"
-}
-
-for app in $BACKEND_APPS; do
-    read -r _ REINICIOS_ANTES _ <<< "$(estado_pm2 "$app")"
-
-    # A través del ECOSYSTEM, no por nombre suelto.
-    #
-    # `pm2 restart <nombre> --update-env` relee el entorno DEL SHELL, no del fichero de
-    # configuración: el worker perdió así su `PORT: 4001`, arrancó en el 4000 —el de la
-    # API— y entró en bucle con EADDRINUSE. Con `--only` sobre el ecosystem, las variables
-    # salen de donde están declaradas.
-    #
-    # `restart`, no `reload`: en modo fork el reload de PM2 no recarga el código.
-    pm2 restart "${ECOSYSTEM}" --only "$app" --update-env >> "$LOG_FILE" 2>&1 \
-        || err "No se pudo reiniciar ${app} — el despliegue queda a medias, revisa $LOG_FILE"
-
-    # Se deja asentar ANTES de comprobar. Un proceso que arranca y muere también tiene
-    # uptime bajo, así que mirar solo el uptime da por bueno un bucle de reinicio — que es
-    # exactamente lo que pasó la primera vez que se escribió esta verificación.
-    sleep 15
-    read -r UPTIME_MS REINICIOS_DESPUES ESTADO <<< "$(estado_pm2 "$app")"
-
-    if [[ "$ESTADO" != "online" ]]; then
-        err "${app} no está online (estado: ${ESTADO}). Revisa: pm2 logs ${app} --err"
-    fi
-    if [[ "$UPTIME_MS" -lt 0 ]] || [[ "$UPTIME_MS" -gt 120000 ]]; then
-        err "${app} NO reinició (uptime ${UPTIME_MS}ms). El código nuevo no está en ejecución."
-    fi
-    # Un reinicio limpio incrementa el contador UNA vez. Si subió más, está reventando y
-    # volviendo a arrancar: online en el momento de mirar, inservible en realidad.
-    if [[ $((REINICIOS_DESPUES - REINICIOS_ANTES)) -gt 1 ]]; then
-        err "${app} está en BUCLE de reinicio (${REINICIOS_ANTES}→${REINICIOS_DESPUES}). Revisa: pm2 logs ${app} --err"
-    fi
-    log "${app} reiniciado y verificado (uptime ${UPTIME_MS}ms, reinicios ${REINICIOS_ANTES}→${REINICIOS_DESPUES})"
-done
+pm2_recargar_backend "${ECOSYSTEM}" 2>&1 | tee -a "$LOG_FILE"
+[[ ${PIPESTATUS[0]} -eq 0 ]] || err "El reinicio del backend no se pudo verificar — revisa $LOG_FILE"
 
 # ── 7. Restart frontend ───────────────────────────────────────────────────────
 # set -e desactivado en esta sección: ningún error aquí puede dejar el frontend caído.

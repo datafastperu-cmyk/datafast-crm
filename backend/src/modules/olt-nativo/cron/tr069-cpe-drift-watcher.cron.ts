@@ -34,7 +34,7 @@ export class Tr069CpeDriftWatcherCron {
   //
   // Diario y desfasado del resto (03:40 Lima). Se detiene solo cuando ya no queda
   // ningún device con el tag, así que su costo en régimen es una query.
-  @Cron('40 3 * * *', { timeZone: 'America/Lima' })
+  @Cron('40 3 * * *', { name: 'tr069-desendurecer-auth-residual', timeZone: 'America/Lima' })
   async desendurecerAuthResidual(): Promise<void> {
     if (this.desendureciendo) return;
     if (this.cwmpAuth.isEnforcementEnabled()) return; // política activa: no tocar nada
@@ -65,7 +65,7 @@ export class Tr069CpeDriftWatcherCron {
   // agujero que dejaba el factory reset por BOTÓN FÍSICO: no genera ningún evento,
   // el cliente sigue navegando, y la ONU queda administrativamente muerta sin que
   // nadie se entere.
-  @Cron('12,42 * * * *')
+  @Cron('12,42 * * * *', { name: 'tr069-verificar-staleness' })
   async verificarStaleness(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     if (this.verificandoStaleness) return;
@@ -103,7 +103,7 @@ export class Tr069CpeDriftWatcherCron {
     }
   }
 
-  @Cron('5-59/20 * * * *')
+  @Cron('5-59/20 * * * *', { name: 'tr069-verificar-drift' })
   async verificarDrift(): Promise<void> {
     if (this.running) return;
     this.running = true;
@@ -119,7 +119,7 @@ export class Tr069CpeDriftWatcherCron {
   // Fase 3 — barrido TTL diario (04:20 Lima). Desactiva carriles TR-069 activos
   // sin uso por N días (default 3). Deja constancia en eventos_sistema por cada
   // carril tocado: es una acción del sistema sobre infraestructura, debe auditarse.
-  @Cron('20 4 * * *', { timeZone: 'America/Lima' })
+  @Cron('20 4 * * *', { name: 'tr069-barrer-ttl', timeZone: 'America/Lima' })
   async barrerTtl(): Promise<void> {
     if (this.barriendo) return;
     this.barriendo = true;

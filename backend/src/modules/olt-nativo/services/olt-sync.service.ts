@@ -150,7 +150,7 @@ export class OltSyncService implements OnModuleInit {
   // Cada 6 horas y a las :50, desfasado de los watchers de ONU (que corren a :00/:05/:12/
   // :20/:30/:42): un sync completo recorre todos los slots y puertos, y el MA5800 admite
   // pocas sesiones VTY concurrentes. Serializado por OLT.
-  @Cron('50 */6 * * *')
+  @Cron('50 */6 * * *', { name: 'olt-sync-periodico' })
   async syncPeriodico(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     if (this._syncPeriodicoEnCurso) return;

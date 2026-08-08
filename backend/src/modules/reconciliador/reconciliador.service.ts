@@ -51,7 +51,7 @@ export class ReconciliadorService {
   ) {}
 
   // ── Cron: cada 15 minutos ─────────────────────────────────────
-  @Cron('0 */15 * * * *')
+  @Cron('0 */15 * * * *', { name: 'reconciliador-general' })
   async reconciliar(): Promise<void> {
     if (this.corriendo) {
       this.logger.warn('[Reconciliador] Ciclo anterior aún en curso — saltando');
@@ -205,7 +205,7 @@ export class ReconciliadorService {
   // A nivel de conjunto (no por-fila): detecta y REPORTA, no corrige en caliente.
   //  1) ONU aprovisionada cuyo contrato ya no está vigente (baja/eliminado).
   //  2) Contrato FTTH activo sin ONU aprovisionada.
-  @Cron('0 */30 * * * *')
+  @Cron('0 */30 * * * *', { name: 'reconciliador-ftth-onu' })
   async reconciliarFtthOnu(): Promise<void> {
     const inicio = Date.now();
     const divergencias: string[] = [];

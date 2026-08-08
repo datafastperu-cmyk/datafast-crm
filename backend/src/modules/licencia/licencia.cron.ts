@@ -9,7 +9,7 @@ export class LicenciaCron {
   constructor(private readonly licenciaSvc: LicenciaService) {}
 
   // Valida online cada 24 horas
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'licencia-validacion-diaria' })
   async validacionDiaria() {
     this.logger.log('Ejecutando validación diaria de licencia...');
     await this.licenciaSvc.validarOnline().catch((e) => {
@@ -18,7 +18,7 @@ export class LicenciaCron {
   }
 
   // Re-carga y verifica la licencia cada 6 horas (por si se actualizó el .env)
-  @Cron('0 */6 * * *')
+  @Cron('0 */6 * * *', { name: 'licencia-recarga-periodica' })
   async recargaPeriodica() {
     await this.licenciaSvc.cargarYVerificar().catch(() => {});
   }

@@ -15,7 +15,10 @@ const PASOS = [
   // "aplicado" mientras corre con la version anterior. Idempotente.
   'cd /opt/datafast/backend && npm install --no-audit --no-fund 2>&1 | tail -5',
   'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc -p tsconfig.build.json --skipLibCheck 2>&1 | tail -20',
-  'pm2 restart datafast-api-core --update-env',
+  // B-12: era , el patrón exacto que el
+  // 2026-08-06 dejó al worker sin su PORT y lo metió en bucle. La recarga verificada es
+  // ahora la misma función que usa update.sh.
+  'source /opt/datafast/scripts/lib/pm2-recargar.sh && pm2_recargar_backend /opt/datafast/ecosystem.config.js',
   'pm2 status',
 ];
 

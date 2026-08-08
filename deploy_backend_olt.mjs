@@ -5,10 +5,11 @@ const c = new Client();
 const cmds = [
   `cd /opt/datafast && git pull origin main 2>&1 | tail -8`,
   `cd /opt/datafast/backend && NODE_OPTIONS='--max-old-space-size=2048' npm run build 2>&1 | tail -5`,
-  `pm2 restart datafast-api-core && sleep 3 && pm2 status`,
-  // El worker corre los crons (outbox-red, recovery, etc.) desde el MISMO dist del
-  // backend. Si no se reinicia, queda con código viejo → comandos descartados.
-  `pm2 restart datafast-worker-auxiliary && sleep 2 && pm2 status`,
+  // B-12/B-13: recarga verificada compartida; cubre api-core y worker de una vez.
+  `source /opt/datafast/scripts/lib/pm2-recargar.sh && pm2_recargar_backend /opt/datafast/ecosystem.config.js`,
+  // El worker ya va incluido arriba: corre los crons (outbox-red, recovery, etc.) desde el
+  // MISMO dist del backend, y `pm2_recargar_backend` recarga todo lo que el ecosystem
+  // declara como api-core o worker. Reiniciarlo aparte era duplicar el reinicio.
   `pm2 restart olt-automation-service && sleep 2 && pm2 status`,
 ];
 

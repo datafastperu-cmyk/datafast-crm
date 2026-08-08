@@ -78,7 +78,7 @@ export class AddressListReconciliadorService {
 
   // A las 04:40: después del sync de OLT de las 00:50 y fuera de la ventana de
   // facturación, para no competir por las sesiones del router.
-  @Cron('40 4 * * *')
+  @Cron('40 4 * * *', { name: 'mikrotik-address-list-reconciliacion' })
   async reconciliarDiario(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     if (this.enCurso) return;

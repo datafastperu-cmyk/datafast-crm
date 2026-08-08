@@ -69,6 +69,49 @@ export class EventosSistemaService implements OnModuleInit {
     }
   }
 
+  /**
+   * Registra el evento solo si no hay ya uno con el mismo código en los últimos N minutos.
+   *
+   * La comprobación va DENTRO del INSERT y no en un `existeDesde()` previo a propósito:
+   * hay más de un proceso sin crons (api-core y whatsapp), los dos pueden vigilar a la vez
+   * y un `SELECT` seguido de un `INSERT` deja una ventana en la que ambos deciden que no
+   * existe. Una sola sentencia no la tiene.
+   *
+   * Devuelve `true` si el evento se escribió, `false` si ya estaba cubierto por la ventana.
+   * Best-effort como `registrar()`: ante un fallo de BD devuelve `false` y no lanza.
+   */
+  async registrarSiNoExiste(
+    codigo: string,
+    ventanaMin: number,
+    dto: Omit<RegistrarEventoDto, 'codigo'>,
+  ): Promise<boolean> {
+    try {
+      const res = await this.ds.query(
+        `INSERT INTO eventos_sistema (nivel, origen, codigo, mensaje, stack, contexto)
+         SELECT $1, $2, $3, $4, $5, $6
+          WHERE NOT EXISTS (
+                SELECT 1 FROM eventos_sistema
+                 WHERE codigo = $3
+                   AND created_at >= now() - ($7 || ' minutes')::interval
+          )`,
+        [
+          dto.nivel ?? 'error',
+          dto.origen ?? 'api',
+          codigo,
+          (dto.mensaje || '(sin mensaje)').slice(0, 4000),
+          dto.stack?.slice(0, 8000) ?? null,
+          dto.contexto ? JSON.stringify(dto.contexto) : null,
+          String(ventanaMin),
+        ],
+      );
+      // node-postgres devuelve [filas, rowCount] para INSERT sin RETURNING.
+      return Number(res?.[1] ?? 0) > 0;
+    } catch (err) {
+      this.logger.warn(`No se pudo persistir evento deduplicado "${codigo}": ${(err as Error).message}`);
+      return false;
+    }
+  }
+
   async listar(opts: {
     nivel?: string; origen?: string; page?: number; limit?: number;
   }): Promise<{ items: EventoSistema[]; total: number }> {

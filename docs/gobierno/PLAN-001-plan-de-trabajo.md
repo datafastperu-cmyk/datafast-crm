@@ -117,11 +117,39 @@ En este orden, por relación seguridad/coste:
 
 | # | Desviación | Trabajo | Decisión previa |
 |---|---|---|---|
-| 3.1 | **A-3** — el worker puede morir en silencio | Alarma de latido: el proceso que responde denuncia al que no late. Cap y presupuesto por cron | ADR-020 |
+| ~~3.1~~ | ~~**A-3** — el worker puede morir en silencio~~ | **CERRADA 2026-08-07** — ver §3.1 más abajo | ADR-020 **aceptado** |
 | 3.2 | **A-4** — la deuda se calcula en 4 sitios | Una sola definición; los cuatro consumidores pasan por ella; test que verifica que coinciden | **D11** |
 | 3.3 | **A-1** — aislamiento multi-tenant por convención | RLS en PostgreSQL + barrido en CI. **El más delicado: mal configurado devuelve cero filas** | ADR-017 |
 
 **Salida:** cero desviaciones de nivel A. Es el hito que más cambia el perfil de riesgo del ERP.
+
+#### 3.1 — CERRADA 2026-08-07 · A-3, y de paso B-12 y B-13
+
+**Lo primero fue medir, y la medición corrigió el diagnóstico.** A-3 decía que el latido existía
+pero era «consultable, no vigilante». La realidad: **de 47 jobs programados latía 1**, y 26 de los
+29 `@Cron` no tenían `name:`, así que NestJS les asignaba un UUID distinto en cada arranque.
+
+| Entregado | |
+|---|---|
+| `common/services/cron-latido.service.ts` | El latido se **deriva** de estar en el `SchedulerRegistry`. 47/47, y el cron nº 48 lo hereda |
+| `common/services/latido-vigilante.service.ts` | Corre donde `RUN_CRONS !== 'true'`: el que responde denuncia al que no late |
+| `cron-nombres.barrera.spec.ts` | Falla si un `@Cron` no declara `name:` o lo duplica |
+| 26 `@Cron` nombrados · `pagos` desenvuelto | El wrapper manual sobraba: una sola mecánica |
+| `scripts/lib/pm2-recargar.sh` | Definición **única** de recargar y verificar. `update.sh` dejó de tener su copia; los cuatro scripts de despliegue la adoptan (**B-12**, **B-13**) |
+
+**Verificado:** `tsc` limpio · suite 68/68 · 610 tests (17 nuevos). Las dos suites que fallaron en
+la pasada completa (`dominios`, `wa-client.qr-corte`) pasan en aislado: era presión de recursos de
+la máquina, no regresión.
+
+**Lo que NO se entregó, y por qué:** la *segregación del plano automático por criticidad* que el
+título original de ADR-020 contemplaba. Decidirla exige saber cuánto dura cada cron — dato que
+**este trabajo acaba de empezar a registrar**. Se traslada a ADR-027 para tomarla sobre medidas y
+no sobre intuición. El cap por cron va con ella.
+
+**Hallazgo colateral → desviación B-14:** `installer/scripts/08-pm2.sh` genera un
+`ecosystem.config.js` que contradice al del repositorio (un solo `datafast-backend` en `cluster`,
+sin `RUN_CRONS`). **Una instalación nueva nace sin worker.** Fuera del alcance de 3.1; registrado,
+no arreglado.
 
 ---
 

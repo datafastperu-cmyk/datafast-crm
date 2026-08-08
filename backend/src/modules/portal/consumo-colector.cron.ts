@@ -16,7 +16,7 @@ export class ConsumoColectorCron {
 
   constructor(private readonly colector: ConsumoColectorService) {}
 
-  @Cron('3-59/15 * * * *')
+  @Cron('3-59/15 * * * *', { name: 'portal-consumo-colector' })
   async recolectar(): Promise<void> {
     // Un solo proceso recolecta: dos instancias PM2 leyendo los mismos contadores
     // duplicarían el consumo del abonado, porque cada una acumularía su propio delta

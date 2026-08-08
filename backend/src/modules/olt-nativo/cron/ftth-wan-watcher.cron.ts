@@ -29,7 +29,7 @@ export class FtthWanWatcherCron {
     private readonly compensador: CompensadorWizardService,
   ) {}
 
-  @Cron('*/10 * * * *')
+  @Cron('*/10 * * * *', { name: 'ftth-verificar-wan' })
   async verificarWan(): Promise<void> {
     if (this.running) return;
     this.running = true;
@@ -47,7 +47,7 @@ export class FtthWanWatcherCron {
   // registro. Horario disjunto del verificarWan (min 5-59/10) para no solapar sesiones SSH.
   private runningRollback = false;
 
-  @Cron('5-59/10 * * * *')
+  @Cron('5-59/10 * * * *', { name: 'ftth-reintentar-rollbacks' })
   async reintentarRollbacks(): Promise<void> {
     if (this.runningRollback) return;
     this.runningRollback = true;
@@ -65,7 +65,7 @@ export class FtthWanWatcherCron {
   // reconstruyendo el registro. Cada 30 min, horario disjunto de los otros dos watchers.
   private runningAdopt = false;
 
-  @Cron('7-59/30 * * * *')
+  @Cron('7-59/30 * * * *', { name: 'ftth-adoptar-huerfanas' })
   async adoptarHuerfanas(): Promise<void> {
     if (this.runningAdopt) return;
     this.runningAdopt = true;
@@ -84,7 +84,7 @@ export class FtthWanWatcherCron {
   // contra la OLT. Minutos 2,5,8… disjuntos del resto de watchers FTTH.
   private runningAnular = false;
 
-  @Cron('2-59/3 * * * *')
+  @Cron('2-59/3 * * * *', { name: 'ftth-procesar-anulaciones' })
   async procesarAnulaciones(): Promise<void> {
     if (this.runningAnular) return;
     this.runningAnular = true;

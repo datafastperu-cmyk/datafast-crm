@@ -376,7 +376,7 @@ export class OutboxRedService {
   // evento (onRouterReconectado) sigue activo en todos los procesos a propósito —
   // el router reconecta contra api-core y la latencia de segundos es el objetivo.
   // ────────────────────────────────────────────────────────────
-  @Cron('0 */5 * * * *')
+  @Cron('0 */5 * * * *', { name: 'outbox-red-barrido' })
   async barridoProgramado(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     await this.hb.ejecutar('outbox-barrido', 300, () => this.procesarPendientes());
@@ -441,7 +441,7 @@ export class OutboxRedService {
   // contrato. Pero se AUDITA: un reclamo expirado es indeterminado — la operación
   // pudo haberse aplicado en el hardware antes de morir el proceso.
   // ────────────────────────────────────────────────────────────
-  @Cron('30 */5 * * * *')
+  @Cron('30 */5 * * * *', { name: 'outbox-red-claims-expirados' })
   async barrerClaimsExpirados(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     await this.hb.ejecutar('outbox-claims-expirados', 300, () => this._barrerClaims());

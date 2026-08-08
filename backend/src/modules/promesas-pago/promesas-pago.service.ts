@@ -446,7 +446,7 @@ export class PromesasPagoService {
   // ────────────────────────────────────────────────────────────
   // SCHEDULER — Procesar promesas vencidas (cada minuto)
   // ────────────────────────────────────────────────────────────
-  @Cron('* * * * *')
+  @Cron('* * * * *', { name: 'promesas-procesar-vencidas' })
   async procesarVencidas(): Promise<void> {
     const LOTE = 50;
     const hoy  = new Date().toISOString().split('T')[0];
@@ -475,7 +475,7 @@ export class PromesasPagoService {
   // ────────────────────────────────────────────────────────────
   // SCHEDULER — Reintentar MikroTik en promesas activas sin apply (cada 5 min)
   // ────────────────────────────────────────────────────────────
-  @Cron('0 */5 * * * *')
+  @Cron('0 */5 * * * *', { name: 'promesas-reintentar-pendientes' })
   async reintentarPendientes(): Promise<void> {
     const pendientes = await this.repo.find({
       where: {

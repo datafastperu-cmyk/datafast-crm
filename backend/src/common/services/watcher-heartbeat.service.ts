@@ -117,6 +117,34 @@ export class WatcherHeartbeatService {
   }
 
   /**
+   * Estado agregado del plano automático: ¿ha latido ALGUIEN, y hace cuánto?
+   *
+   * Es una pregunta distinta de `rancios()`, y la distinción importa. Si el worker muere,
+   * `rancios()` devuelve los ~40 watchers a la vez y no dice cuál es la causa; esto dice
+   * "nadie late", que es un diagnóstico. Y funciona con la tabla casi vacía, donde
+   * `rancios()` no puede distinguir un proceso muerto de uno que aún no registró nada.
+   */
+  async estadoDelPlano(): Promise<{
+    totalWatchers: number;
+    ultimoLatido: string | null;
+    segundosDesdeUltimoLatido: number | null;
+  }> {
+    const filas = await this.ds.query(`
+      SELECT COUNT(*)::int                                              AS total,
+             MAX(ultima_ejecucion)                                      AS ultimo,
+             EXTRACT(EPOCH FROM (NOW() - MAX(ultima_ejecucion)))::int    AS segundos
+      FROM   watcher_heartbeat
+    `).catch(() => []);
+
+    const f = filas?.[0];
+    return {
+      totalWatchers:             Number(f?.total ?? 0),
+      ultimoLatido:              f?.ultimo ? new Date(f.ultimo).toISOString() : null,
+      segundosDesdeUltimoLatido: f?.segundos === null || f?.segundos === undefined ? null : Number(f.segundos),
+    };
+  }
+
+  /**
    * Watchers que llevan sin latir más de lo que deberían.
    *
    * El margen de 3× el intervalo no es arbitrario: un watcher puede saltarse una pasada

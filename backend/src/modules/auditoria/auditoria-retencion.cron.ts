@@ -31,7 +31,7 @@ export class AuditoriaRetencionCron {
 
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'auditoria-purga-retencion' })
   async purgar(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     // Una sola instancia PM2 purga: varias compitiendo por las mismas filas solo generan

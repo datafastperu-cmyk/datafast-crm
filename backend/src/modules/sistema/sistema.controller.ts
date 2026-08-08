@@ -9,6 +9,7 @@ import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.de
 import { SistemaService, CronHorarios, ProveedorActivo } from './sistema.service';
 import { EventosSistemaService } from './eventos-sistema.service';
 import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
+import { LatidoVigilanteService }  from '../../common/services/latido-vigilante.service';
 
 @ApiTags('Sistema — Admin')
 @ApiBearerAuth('JWT')
@@ -21,19 +22,29 @@ export class SistemaController {
     private readonly sistema: SistemaService,
     private readonly eventos: EventosSistemaService,
     private readonly heartbeat: WatcherHeartbeatService,
+    private readonly vigilante: LatidoVigilanteService,
   ) {}
 
   // ── GET /admin/sistema/watchers ───────────────────────────────
   // Prueba de vida de los procesos de fondo. Sin esto, un watcher muerto y uno sin
   // trabajo se ven exactamente igual: ambos callan.
+  //
+  // Desde 2026-08-07 devuelve además el veredicto del vigilante (`plano`). Este endpoint
+  // sigue siendo consultable —informa a quien pregunta—; quien no espera a que pregunten
+  // es `LatidoVigilanteService`, que escribe en `eventos_sistema`.
   @Get('watchers')
   @ApiOperation({ summary: 'Latido de los watchers del sistema (y cuáles llevan sin correr)' })
   async getWatchers() {
-    const [todos, rancios] = await Promise.all([
+    const [todos, plano] = await Promise.all([
       this.heartbeat.listar(),
-      this.heartbeat.rancios(),
+      this.vigilante.diagnosticar(),
     ]);
-    return ApiResponse.ok({ todos, rancios, hayProblemas: rancios.length > 0 });
+    return ApiResponse.ok({
+      todos,
+      rancios:      plano.rancios,
+      plano,
+      hayProblemas: plano.mudo || plano.rancios.length > 0,
+    });
   }
 
   // ── GET /admin/sistema/eventos ────────────────────────────────

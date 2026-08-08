@@ -1018,108 +1018,106 @@ export class PagosService {
   //
   // Solo la instancia con RUN_CRONS ejecuta esto (igual que el resto de watchers).
   // ────────────────────────────────────────────────────────────
-  @Cron('0 */10 * * * *')
+  @Cron('0 */10 * * * *', { name: 'pagos-reconciliacion' })
   async reconciliarPagosNoAplicados(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
-    await this.heartbeat.ejecutar('pagos-reconciliacion', 600, async () => {
-      // ── A. Pagos cobrados que no llegaron a aplicarse ──────────────
-      // Margen de 2 minutos: un pago recién verificado puede estar aplicándose ahora mismo
-      // en otro proceso. Reintentarlo en paralelo no lo cuenta dos veces porque cada
-      // imputación se marca en la misma transacción que la vuelca, y solo se tocan las que
-      // siguen en NULL — lo sostiene `pagos.reconciliacion.spec.ts`, no este comentario.
-      //
-      // Aquí decía "aplicarPago es idempotente". Era falso, y nadie lo comprobó nunca: lo
-      // comprobó producción con 1123 reintentos sobre dos pagos ya aplicados.
-      const pendientes = await this.ds.query<Array<{ id: string }>>(
-        `SELECT id FROM pagos
-          WHERE estado = 'verificado' AND aplicado_en IS NULL
-            AND verificado_en < NOW() - INTERVAL '2 minutes'
-          ORDER BY verificado_en
-          LIMIT 25`,
-      );
+    // ── A. Pagos cobrados que no llegaron a aplicarse ──────────────
+    // Margen de 2 minutos: un pago recién verificado puede estar aplicándose ahora mismo
+    // en otro proceso. Reintentarlo en paralelo no lo cuenta dos veces porque cada
+    // imputación se marca en la misma transacción que la vuelca, y solo se tocan las que
+    // siguen en NULL — lo sostiene `pagos.reconciliacion.spec.ts`, no este comentario.
+    //
+    // Aquí decía "aplicarPago es idempotente". Era falso, y nadie lo comprobó nunca: lo
+    // comprobó producción con 1123 reintentos sobre dos pagos ya aplicados.
+    const pendientes = await this.ds.query<Array<{ id: string }>>(
+      `SELECT id FROM pagos
+        WHERE estado = 'verificado' AND aplicado_en IS NULL
+          AND verificado_en < NOW() - INTERVAL '2 minutes'
+        ORDER BY verificado_en
+        LIMIT 25`,
+    );
 
-      for (const { id } of pendientes) {
-        try {
-          const pago = await this.ds.getRepository(Pago).findOne({ where: { id } });
-          if (!pago) continue;
-          const userSistema = {
-            sub: 'sistema', empresaId: pago.empresaId, email: 'sistema@erp',
-          } as JwtPayload;
-          await this.aplicarPagoAFacturaYContrato(pago, userSistema);
+    for (const { id } of pendientes) {
+      try {
+        const pago = await this.ds.getRepository(Pago).findOne({ where: { id } });
+        if (!pago) continue;
+        const userSistema = {
+          sub: 'sistema', empresaId: pago.empresaId, email: 'sistema@erp',
+        } as JwtPayload;
+        await this.aplicarPagoAFacturaYContrato(pago, userSistema);
 
-          // El log describe lo que OCURRIÓ, no lo que se intentó. Antes cantaba
-          // "aplicado por reconciliación" siempre, incluso en el mismo milisegundo en que
-          // el catch interno acababa de tragarse el fallo: los logs de producción tenían
-          // el error y el éxito del mismo pago con el mismo timestamp. Ahora se relee el
-          // estado, que es la única fuente que puede confirmarlo.
-          const confirmacion = await this.ds.query<Array<{ aplicado_en: Date | null }>>(
-            `SELECT aplicado_en FROM pagos WHERE id = $1`, [id],
-          );
-          if (confirmacion?.[0]?.aplicado_en) {
-            this.logger.warn(`Pago ${id} aplicado por reconciliación — su aplicación original falló.`);
-          } else {
-            this.logger.error(
-              `Reconciliación: el pago ${id} sigue SIN aplicarse tras el reintento. ` +
-              `Requiere revisión manual — el abonado puede estar cortado habiendo pagado.`,
-            );
-          }
-        } catch (e: any) {
-          this.logger.error(`Reconciliación: el pago ${id} sigue sin aplicarse: ${e?.message}`);
-        }
-      }
-
-      // ── A2. Invariante de contabilidad ─────────────────────────────
-      //
-      // `facturas.monto_pagado` tiene que ser exactamente la suma de lo que los pagos le
-      // imputaron. Es lo que convierte la frontera del dinero en algo comprobable en vez
-      // de una intención escrita en un comentario.
-      //
-      // Cualquier divergencia posterior a la fecha de corte significa que hay un escritor
-      // de dinero fuera de `AplicadorFacturaService`. No se intenta reparar aquí: reparar
-      // a ciegas un descuadre contable puede empeorarlo, y quién lo causó es justo la
-      // información que hace falta. Se grita y se deja constancia.
-      const descuadres = await this.aplicador.divergencias(10);
-      if (descuadres.length) {
-        this.logger.error(
-          `[CONTABILIDAD] ${descuadres.length} comprobante(s) con monto_pagado distinto de ` +
-          `la suma de sus imputaciones. Hay un escritor de dinero fuera del aplicador. ` +
-          `Muestra: ${descuadres.map((d) => `${d.numero ?? d.id} (${d.monto_pagado} vs ${d.aplicado})`).join(', ')}`,
+        // El log describe lo que OCURRIÓ, no lo que se intentó. Antes cantaba
+        // "aplicado por reconciliación" siempre, incluso en el mismo milisegundo en que
+        // el catch interno acababa de tragarse el fallo: los logs de producción tenían
+        // el error y el éxito del mismo pago con el mismo timestamp. Ahora se relee el
+        // estado, que es la única fuente que puede confirmarlo.
+        const confirmacion = await this.ds.query<Array<{ aplicado_en: Date | null }>>(
+          `SELECT aplicado_en FROM pagos WHERE id = $1`, [id],
         );
-      }
-
-      // ── B. Cortados sin deuda ──────────────────────────────────────
-      const cortadosSinDeuda = await this.ds.query<Array<{ id: string; empresa_id: string; numero: string }>>(
-        `SELECT co.id, co.empresa_id, co.numero_contrato AS numero
-           FROM contratos co
-          WHERE co.estado IN ('suspendido', 'moroso', 'cortado')
-            AND co.deleted_at IS NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM facturas f
-               WHERE f.contrato_id = co.id
-                 AND f.estado IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
-                 AND f.deleted_at IS NULL
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM facturas f
-               WHERE f.cliente_id = co.cliente_id AND f.contrato_id IS NULL
-                 AND f.estado IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
-                 AND f.deleted_at IS NULL
-            )
-          LIMIT 25`,
-      );
-
-      for (const c of cortadosSinDeuda) {
-        try {
-          const userSistema = { sub: 'sistema', empresaId: c.empresa_id, email: 'sistema@erp' } as JwtPayload;
-          await this.verificarYReactivarContrato(c.id, c.empresa_id, userSistema);
-          this.logger.warn(
-            `Contrato ${c.numero} estaba cortado SIN deuda — reactivado por reconciliación.`,
+        if (confirmacion?.[0]?.aplicado_en) {
+          this.logger.warn(`Pago ${id} aplicado por reconciliación — su aplicación original falló.`);
+        } else {
+          this.logger.error(
+            `Reconciliación: el pago ${id} sigue SIN aplicarse tras el reintento. ` +
+            `Requiere revisión manual — el abonado puede estar cortado habiendo pagado.`,
           );
-        } catch (e: any) {
-          this.logger.error(`Reconciliación: no se pudo reactivar ${c.numero}: ${e?.message}`);
         }
+      } catch (e: any) {
+        this.logger.error(`Reconciliación: el pago ${id} sigue sin aplicarse: ${e?.message}`);
       }
-    });
+    }
+
+    // ── A2. Invariante de contabilidad ─────────────────────────────
+    //
+    // `facturas.monto_pagado` tiene que ser exactamente la suma de lo que los pagos le
+    // imputaron. Es lo que convierte la frontera del dinero en algo comprobable en vez
+    // de una intención escrita en un comentario.
+    //
+    // Cualquier divergencia posterior a la fecha de corte significa que hay un escritor
+    // de dinero fuera de `AplicadorFacturaService`. No se intenta reparar aquí: reparar
+    // a ciegas un descuadre contable puede empeorarlo, y quién lo causó es justo la
+    // información que hace falta. Se grita y se deja constancia.
+    const descuadres = await this.aplicador.divergencias(10);
+    if (descuadres.length) {
+      this.logger.error(
+        `[CONTABILIDAD] ${descuadres.length} comprobante(s) con monto_pagado distinto de ` +
+        `la suma de sus imputaciones. Hay un escritor de dinero fuera del aplicador. ` +
+        `Muestra: ${descuadres.map((d) => `${d.numero ?? d.id} (${d.monto_pagado} vs ${d.aplicado})`).join(', ')}`,
+      );
+    }
+
+    // ── B. Cortados sin deuda ──────────────────────────────────────
+    const cortadosSinDeuda = await this.ds.query<Array<{ id: string; empresa_id: string; numero: string }>>(
+      `SELECT co.id, co.empresa_id, co.numero_contrato AS numero
+         FROM contratos co
+        WHERE co.estado IN ('suspendido', 'moroso', 'cortado')
+          AND co.deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM facturas f
+             WHERE f.contrato_id = co.id
+               AND f.estado IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
+               AND f.deleted_at IS NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM facturas f
+             WHERE f.cliente_id = co.cliente_id AND f.contrato_id IS NULL
+               AND f.estado IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
+               AND f.deleted_at IS NULL
+          )
+        LIMIT 25`,
+    );
+
+    for (const c of cortadosSinDeuda) {
+      try {
+        const userSistema = { sub: 'sistema', empresaId: c.empresa_id, email: 'sistema@erp' } as JwtPayload;
+        await this.verificarYReactivarContrato(c.id, c.empresa_id, userSistema);
+        this.logger.warn(
+          `Contrato ${c.numero} estaba cortado SIN deuda — reactivado por reconciliación.`,
+        );
+      } catch (e: any) {
+        this.logger.error(`Reconciliación: no se pudo reactivar ${c.numero}: ${e?.message}`);
+      }
+    }
   }
 
   // ────────────────────────────────────────────────────────────

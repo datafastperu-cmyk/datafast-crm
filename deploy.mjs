@@ -18,7 +18,9 @@ const PASOS = [
   'cd /opt/datafast/backend && git pull origin main',
   'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=1400" node_modules/.bin/tsc --noEmit 2>&1 | tail -5',
   'cd /opt/datafast/backend && npm run migration:run 2>&1 | tail -20',
-  'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=2048" node_modules/.bin/tsc --build && pm2 restart datafast-api-core datafast-worker-auxiliary',
+  'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=2048" node_modules/.bin/tsc --build',
+  // B-12/B-13: reiniciar por nombre no verificaba nada. Definición única en scripts/lib.
+  'source /opt/datafast/scripts/lib/pm2-recargar.sh && pm2_recargar_backend /opt/datafast/ecosystem.config.js',
 
   'cd /opt/datafast/frontend && git pull origin main',
   'cd /opt/datafast/frontend && npm install --production=false 2>&1 | tail -5',

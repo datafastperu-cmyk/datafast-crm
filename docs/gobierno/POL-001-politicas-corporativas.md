@@ -17,6 +17,7 @@
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
 | 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
+| **1.2** | **2026-08-07** | **Tres desviaciones cerradas** (A-3, B-12, B-13) por ADR-020. **PP-11 y PP-07 pasan a verificación automática**: la cobertura sube de 23 % a 26 %, por barreras construidas y no por texto escrito. **Una desviación nueva: B-14** — el instalador genera un `ecosystem.config.js` que contradice al del repositorio y deja una instalación nueva sin worker | Fase 3.1 de PLAN-001. El diagnóstico original de A-3 se quedaba corto: no era que el latido no se vigilara, es que **de 47 crons latía 1** |
 
 ## 4. Índice
 
@@ -737,11 +738,11 @@ banderas que usa el CI.
 | PP-04 Un worker uvicorn | M | ❌ | Revisión | Ídem |
 | PP-05 Aislamiento de procesos por causa | R | ✅ | Procesos PM2 separados | — |
 | PP-06 Timeouts realistas | M | ❌ | Revisión | Constantes centralizadas y testeadas |
-| PP-07 Todo despliegue se verifica | S | ⚠️ | Checklist de PRO-001 §8.1.3, **manual** | **Script que ejecute los 9 puntos** |
+| PP-07 Todo despliegue se verifica | S | ✅ | `scripts/lib/pm2-recargar.sh` — definición única que verifica estado, uptime y delta del contador de reinicios, consumida por `update.sh` y los cuatro scripts de despliegue | El checklist de PRO-001 §8.1.3 tiene puntos que siguen siendo manuales (humo funcional) |
 | PP-08 Ningún dominio es obligatorio | R | ✅ | Plantillas Nginx con caída elegante | — |
 | PP-09 Usar el flujo de negocio, nunca SQL directo | M | ❌ | Revisión y disciplina | `verificarInvariantes()` ampliado |
 | PP-10 Pre-flight antes de migrar ONUs | S | ❌ | Consulta manual | **Pre-flight que falle en seco** (**R1**) |
-| PP-11 Todo proceso de fondo late y es vigilado | O | ⚠️ | `GET /admin/sistema/watchers`, **consultable, no vigilante** | **Alarma automática** (**R2**, ADR-020) |
+| PP-11 Todo proceso de fondo late y es vigilado | O | ✅ | **Late:** `CronLatidoService` envuelve todo job del `SchedulerRegistry` (47/47) — no depende de que el autor lo llame. **Vigila:** `LatidoVigilanteService` en el proceso sin crons escribe `PLANO_AUTOMATICO_MUDO` en `eventos_sistema`. **Barrera:** test que falla si un `@Cron` no declara `name:` | — (**ADR-020**, 2026-08-07) |
 | PP-12 No modificar OASIS sin leer antes | M | ❌ | Directriz | Sin mecanismo posible |
 | PP-13 Scripts de red fuera del repo | M | ❌ | Revisión | Regla de CI sobre rutas |
 | **PP-14 Entorno de pruebas** | C + M | ⚠️ | El CI cubre lógica, migraciones y API. Hardware: sin entorno | Laboratorio o simulación para hardware |
@@ -749,15 +750,18 @@ banderas que usa el CI.
 
 ## 8.7.9 Resumen del estado de verificación
 
-| Grado | Nº de políticas | Porcentaje | (v1.0, antes de verificar el CI) |
-|---|---|---|---|
-| ✅ Automático | **16** | **23 %** | 14 · 22 % |
-| ⚠️ Parcial | **20** | 29 % | 20 · 32 % |
-| ❌ Manual | **34** | 48 % | 29 · 46 % |
+| Grado | Nº de políticas | Porcentaje | (v1.1, antes de ADR-020) | (v1.0, antes de verificar el CI) |
+|---|---|---|---|---|
+| ✅ Automático | **18** | **26 %** | 16 · 23 % | 14 · 22 % |
+| ⚠️ Parcial | **18** | 26 % | 20 · 29 % | 20 · 32 % |
+| ❌ Manual | **34** | 48 % | 34 · 48 % | 29 · 46 % |
 
-> **El porcentaje BAJA al añadir políticas nuevas, y es correcto que baje.** Siete políticas
-> nuevas entran sin mecanismo: declararlas no las hace cumplirse. El indicador mide barreras, no
-> intenciones — si subiera al escribir texto, no serviría para nada.
+> **El porcentaje BAJA al añadir políticas nuevas, y es correcto que baje.** En v1.1, siete
+> políticas nuevas entraron sin mecanismo: declararlas no las hace cumplirse. El indicador mide
+> barreras, no intenciones — si subiera al escribir texto, no serviría para nada.
+>
+> **Y SUBE cuando se construye una barrera, no cuando se escribe una regla.** En v1.2 sube por
+> dos: PP-11 y PP-07, ambas por ADR-020. Es el único movimiento al alza que el indicador admite.
 
 **Lectura honesta:** una cuarta parte de las políticas tiene hoy una barrera que las haga cumplir.
 Las demás dependen de disciplina y revisión.
@@ -858,7 +862,7 @@ quedar) · qué la cierra.
 |---|---|---|---|---|---|
 | **A-1** | **PS-04** — toda consulta filtra por `empresa_id` | Garantía **convencional**: depende de que cada una de las 445 consultas crudas lo recuerde. Sin RLS ni guard central | **Una consulta que omita el filtro devuelve CERO filas, no filas ajenas.** Barrido en CI que detecte las que lo omiten | **ADR-017** + RDM-001 **R3** | **Fuga de datos entre empresas.** No produce error: produce datos ajenos, sin log ni síntoma |
 | ~~**A-2**~~ | ~~**PP-10** — pre-flight antes de migrar ONUs~~ | **CERRADA 2026-08-06** | Alcanzado: columna `origen`, guard en los dos barridos y en la ruta manual, pre-flight que devuelve `seguro: false`, y 4 tests que nombran el riesgo | **ADR-014** — implementado | — |
-| **A-3** | **PP-11** — todo proceso de fondo late y **es vigilado** | El latido existe y se expone, pero los endpoints son **consultables, no vigilantes**. Nadie mira lo que parece funcionar | **El proceso que responde denuncia al que no late**, con alerta persistente en la interfaz | **ADR-020** + RDM-001 **R2** | El ERP responde con normalidad mientras nadie se corta ni se reactiva, **sin señal alguna** |
+| ~~**A-3**~~ | ~~**PP-11** — todo proceso de fondo late y **es vigilado**~~ | **CERRADA 2026-08-07.** El diagnóstico se quedaba corto: no es que el latido fuera consultable en vez de vigilante, es que **de 47 jobs latía 1**. Cerrada con latido derivado del registro, vigilante en el proceso que responde y barrera contra `@Cron` sin nombre | **ADR-020** — implementado | — |
 | **A-4** | **PD-04** — reutilizar antes de construir (aplicado a la deuda) | **4 implementaciones** del cálculo de deuda, una de las cuales **decide cortes de servicio** | **Una sola definición**, los cuatro consumidores pasan por ella, y un test verifica que coinciden | **ADR-019** + RDM-001 **R4** | Cortar a quien no debe y no cortar a quien sí; respuestas distintas según la pantalla |
 
 ### B.3 Nivel B — Riesgos técnicos
@@ -876,8 +880,9 @@ quedar) · qué la cierra.
 | ~~**B-9**~~ | ~~**PC-05 / PD-07** — verificaciones en CI~~ | **NUNCA EXISTIÓ. Error de este documento, corregido el 2026-08-06.** El CI existe desde 2026-07-28 (`a36117fd`) y ejecuta typecheck, 593 tests, instalación desde cero y `sql:check`, bloqueando el merge. La suite compila y está verde | — | — |
 | **B-10** | **PA-11** — configuración fuera del repositorio | Credenciales de connreq de GenieACS duplicadas en el ACS y en el `.env`, **sin verificación de coincidencia**. CCD y crontab fuera de control de versiones | Probe al arrancar que verifique la coincidencia; inventario versionado de lo externo con su procedimiento de restauración | RDM-001 **R15** |
 | **B-11** | **PA-08** — invariantes del compensador | Implementados y en producción, **sin test que los ejercite** | Test de los cuatro invariantes (LIFO, parada al primer fallo, idempotencia, VIO al deshacer) | RDM-001 **R17** |
-| **B-12** | **PP-01** — recargar por ecosystem, nunca por nombre suelto | **`be-deploy.mjs` usa `pm2 restart datafast-api-core --update-env`** — exactamente el patrón que el 2026-08-06 dejó al worker sin su `PORT: 4001` y lo metió en bucle de reinicio. `deploy.mjs` también reinicia por nombre, sin `--update-env` | Todos los scripts recargan con `pm2 startOrRestart ecosystem.config.js --only <procesos>` | Cambio de dos líneas |
-| **B-13** | **PP-07** — todo despliegue se verifica | El checklist de PRO-001 §8.1.3 existe pero **se ejecuta a mano y nadie compara el contador de reinicios** antes y después. Hoy: `api-core` 148, `worker` 122 | Script de verificación que ejecute los 9 puntos y **falle** si el contador subió o falta un proceso | RDM-001 **R2** |
+| ~~**B-12**~~ | ~~**PP-01** — recargar por ecosystem, nunca por nombre suelto~~ | **CERRADA 2026-08-07.** Los cinco scripts pasan por `scripts/lib/pm2-recargar.sh`: nombres leídos del ecosystem, `--only`, `--update-env` sobre el fichero y no sobre el shell | **ADR-020** §4.6 — implementado | — |
+| ~~**B-13**~~ | ~~**PP-07** — todo despliegue se verifica~~ | **CERRADA 2026-08-07** para el reinicio del backend. La misma función verifica estado `online`, uptime bajo y **delta del contador de reinicios ≤ 1**, y falla si no cuadra. Los puntos de humo funcional del checklist de PRO-001 §8.1.3 siguen siendo manuales, y eso no es una desviación: es lo que un script no puede decidir | **ADR-020** §4.6 — implementado | — |
+| **B-14** | **PP-01 / ADR-011** — el ecosystem es la fuente de verdad única | **`installer/scripts/08-pm2.sh` genera y sobrescribe `ecosystem.config.js` con un contenido que contradice al del repositorio**: declara un único `datafast-backend` en modo `cluster`, sin `RUN_CRONS` ni `RUN_MIGRATIONS`, en vez de `api-core` + `worker-auxiliary` en `fork`. Una instalación nueva **nace sin worker**, con el plano automático muerto desde el primer día, y `update.sh` no encontraría procesos de backend. Verificado leyendo el generador, **no probado sobre una instalación limpia** | El instalador **copia** el ecosystem del repositorio en vez de generar uno propio; lo que varía por servidor va al `.env` | Descubierta al cerrar A-3 (ADR-020 §7) |
 
 ### B.4 Nivel C — Mejoras futuras
 
@@ -895,8 +900,8 @@ quedar) · qué la cierra.
 
 | Nivel | Abiertas | Cerradas / retiradas | Autoriza | Estado |
 |---|---|---|---|---|
-| **A — crítico** | **3** | **1** — A-2 cerrada 2026-08-06 | **Propietario del producto** | **Requieren fecha comprometida** |
-| **B — riesgo técnico** | **10** | **1** — B-9 **retirada: nunca existió** | Arquitecto | Con condición de cierre declarada |
+| **A — crítico** | **2** | **2** — A-2 (06/08) · **A-3 (07/08)** | **Propietario del producto** | **Requieren fecha comprometida** |
+| **B — riesgo técnico** | **9** | **3** — B-9 **retirada: nunca existió** · **B-12** y **B-13** cerradas 07/08. Una nueva: **B-14** | Arquitecto | Con condición de cierre declarada |
 | **C — mejora futura** | 7 | 0 | Arquitecto | Cierre por avance natural |
 
 **Las desviaciones de nivel A son exactamente las iniciativas críticas del roadmap
@@ -908,4 +913,7 @@ potencial es lo que define el nivel A.
 | Desviación | Cerrada | Cómo se verificó |
 |---|---|---|
 | **A-2** — pre-flight antes de migrar ONUs | 2026-08-06 | Columna `origen` + guard en el **filtro** de los dos barridos + guard en la ruta manual + pre-flight que devuelve `seguro: false` + 4 tests que nombran el riesgo. `tsc` limpio, suite completa 65/65 · 593 tests. Ver ADR-014 §6 |
+| **A-3** — el worker puede morir en silencio | 2026-08-07 | **Se midió antes de escribir**: de 47 jobs programados latía **1**, y 26 de 29 `@Cron` no tenían `name:`. Cierre en tres piezas: latido **derivado** del `SchedulerRegistry` (47/47), vigilante en el proceso sin crons que escribe `PLANO_AUTOMATICO_MUDO`, y barrera de CI contra `@Cron` sin nombre o duplicado. 17 tests nuevos; `tsc` limpio; suite 68/68 · 610 tests. Ver **ADR-020** |
+| **B-12** — recargar por nombre suelto | 2026-08-07 | Los cinco scripts usan `scripts/lib/pm2-recargar.sh`. `update.sh` dejó de tener su propia copia: hay **una** definición, no seis. Ver ADR-020 §4.6 |
+| **B-13** — despliegue sin verificar | 2026-08-07 | La misma función compara el contador de reinicios antes/después y falla si el proceso no reinició, no está `online` o subió más de uno |
 | **B-9** — verificaciones en CI | **Retirada 2026-08-06** | **No era una desviación: era un error de este documento.** El CI existe desde 2026-07-28. Se verificó ejecutando `npx jest --runInBand --ci` (65/65, 593 tests, 70 s) y leyendo `.github/workflows/ci.yml`. **Origen del error: se propagó una memoria del 2026-07-28 sin ejecutar el comando** — el fallo que PI-2 prohíbe, cometido sobre el propio cuerpo normativo |

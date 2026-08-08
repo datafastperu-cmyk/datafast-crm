@@ -5,7 +5,8 @@ import { VPS } from './vps.config.mjs';
 const COMMANDS = [
   'cd /opt/datafast && git pull origin main 2>&1 | tail -5',
   'cd /opt/datafast/backend && NODE_OPTIONS="--max-old-space-size=2048" node_modules/.bin/tsc --build 2>&1 | tail -5',
-  'pm2 restart datafast-api-core datafast-worker-auxiliary',
+  // B-12/B-13: misma recarga verificada que update.sh (scripts/lib/pm2-recargar.sh).
+  'source /opt/datafast/scripts/lib/pm2-recargar.sh && pm2_recargar_backend /opt/datafast/ecosystem.config.js',
   'cd /opt/datafast/frontend && rm -rf .next && NODE_OPTIONS="--max-old-space-size=2048" NEXT_TELEMETRY_DISABLED=1 npm run build 2>&1 | tail -15',
   'pm2 startOrRestart /opt/datafast/ecosystem.config.js --only datafast-frontend || pm2 restart datafast-frontend || true',
   'pm2 status',

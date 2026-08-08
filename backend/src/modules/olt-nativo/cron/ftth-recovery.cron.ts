@@ -57,7 +57,7 @@ export class FtthRecoveryCron {
 
   // Minutos 4,9,…,59 — disjuntos del health-poller (x0) y del monitoreo (2,7,…)
   // para no colisionar sesiones SSH sobre la misma OLT.
-  @Cron('4-59/5 * * * *')
+  @Cron('4-59/5 * * * *', { name: 'ftth-liberar-bloqueados' })
   async liberarBloqueados(): Promise<void> {
     // UPDATE atómico: solo la instancia que gana el race obtiene las filas.
     // locked_at se renueva a NOW() para que la condición `< NOW() - 10min`
@@ -251,7 +251,7 @@ export class FtthRecoveryCron {
   // Cada 30 min: libera IDs de pool que quedaron 'ocupado' sin
   // registro FTTH asociado (crash entre allocar() e INSERT).
   // ─────────────────────────────────────────────────────────────
-  @Cron('*/30 * * * *')
+  @Cron('*/30 * * * *', { name: 'ftth-limpiar-ids-huerfanos' })
   async limpiarIdsHuerfanos(): Promise<void> {
     const [svcRes, onuRes] = await Promise.all([
       this.ds.query<{ rowCount: number }>(

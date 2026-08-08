@@ -99,7 +99,7 @@ export class MonitoreoWorkerService implements OnModuleInit {
   // ═══════════════════════════════════════════════════════════════
   // CICLO PRINCIPAL — cada 60 segundos
   // ═══════════════════════════════════════════════════════════════
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'monitoreo-ciclo' })
   async runCycle(): Promise<void> {
     if (process.env.NODE_APP_INSTANCE !== undefined &&
         process.env.NODE_APP_INSTANCE !== '0') {

@@ -25,6 +25,28 @@
   - Cron `limpiarWizardsAbandonados` (cada 30 min, corte a 2h) es red de seguridad adicional.
 - **Nunca reutilizar un cert que ya tenga `vpnIp` asignada** sin verificar primero que esa IP no esté en uso por otro router activo en BD.
 
+## Todo `@Cron` declara `name:` — Regla de Construcción Obligatoria
+
+**Un `@Cron()` sin `name:` recibe de NestJS un UUID v4 distinto en cada arranque**
+(`scheduler.orchestrator.js` → `addCron`: `options.name || uuid.v4()`). Sin nombre estable no
+puede latir, porque su identidad cambia con cada despliegue.
+
+```typescript
+@Cron('*/2 * * * *', { name: 'ztp-reinyeccion-pendiente' })   // ✅
+@Cron('*/2 * * * *')                                          // ❌ invisible
+```
+
+No hace falta llamar a `heartbeat.ejecutar`: `CronLatidoService` envuelve todo job registrado en el
+`SchedulerRegistry` y el latido se **deriva** de estar ahí. Lo único que hay que aportar es el
+nombre. Lo sostiene `cron-nombres.barrera.spec.ts`, que falla si aparece un `@Cron` sin nombre o
+con uno duplicado.
+
+Origen: 2026-08-07 (ADR-020). `WatcherHeartbeatService` llevaba diez días disponible y su módulo era
+`@Global()` precisamente «para que no haya watchers sin latido». De 47 jobs latía **1**: el
+`@Global()` quitó la fricción de importar y dejó intacta la de llamar. Una garantía que cada autor
+debe acordarse de implementar no es una garantía, es una estadística — la misma lección que la
+idempotencia derivada de la máquina de estados.
+
 ## Arquitectura de Resiliencia — Regla de Construcción Obligatoria
 
 ### Módulos Degradables: construir degradado desde el primer commit

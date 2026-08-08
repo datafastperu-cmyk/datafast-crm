@@ -113,3 +113,8 @@ vps.config.mjs
 
 # ── Permisos personales de Claude Code (por maquina, no del proyecto) ──
 .claude/settings.local.json
+
+# ── PDF generados desde los .md del corpus ────────────────────
+# Artefacto de build: se regeneran con el pipeline de Mermaid+Chrome desde el
+# Markdown, que es la fuente. Versionarlos duplica la verdad y garantiza conflictos.
+docs/*/pdf/
