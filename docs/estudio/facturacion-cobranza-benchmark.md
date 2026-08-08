@@ -90,7 +90,7 @@ Esto es lo más distinto de Datafast.
 | Concepto | Modelo validado | Datafast hoy |
 |---|---|---|
 | **Vencimiento** | *Payment term* reutilizable en el cliente; **puede producir varias fechas** (cuotas) | `diaPago`, un entero (1..28) dentro de un JSONB del cliente. Una sola fecha |
-| **Escala de avisos** | **Central**, una para toda la empresa; la excepción es por cliente | **Toda la configuración es por cliente** |
+| **Escala de avisos** | **Central**, una para toda la empresa; la excepción es por cliente | **Por cliente — decisión deliberada de producto** (§3.1). Existe `plantillas_abonados` como esquema con nombre, pero se **copia** al alta, no se referencia |
 | **Preaviso** | Un nivel más, con días negativos | Mecanismo aparte (`crearFactura`, `notif-preventivas`) |
 | **Corte** | *Automatic Closing* = N días sin pago | **Dos condiciones**: `diasGracia` **y** `aplicarCorte` (comprobantes acumulados) |
 | **Línea de factura** | Entidad con producto, cantidad, impuestos | **JSONB** |
@@ -98,18 +98,52 @@ Esto es lo más distinto de Datafast.
 | **Próxima emisión** | Campo `Next Invoice Date` en la suscripción | Se **deriva** del `diaPago` en cada corrida del cron |
 | **Inmutabilidad** | Publicada no se modifica; para cambiarla, se revierte | Estados `borrador → emitida`, sin regla equivalente escrita |
 
-### 3.1 El hallazgo que probablemente explica el desorden
+### 3.1 La hipótesis que este estudio tenía, y por qué era FALSA
 
-> **Odoo centraliza la escala de cobranza y deja en el cliente solo el término de pago y las
-> excepciones. Datafast pone TODO en el cliente.**
+> **RETIRADA el 2026-08-08, el mismo día.** La primera versión de este documento proponía que
+> Datafast tuviera «demasiada configuración por cliente» frente al modelo centralizado de Odoo, y
+> que eso explicara el desorden.
+>
+> **Era exactamente el falso defecto contra el que el propietario advirtió.** Su respuesta:
+> *«configurar facturación, notificaciones, cortes y tipo de comprobante por cliente es
+> DELIBERADO; así se debe trabajar para ofrecer mayor flexibilidad»*. Es una decisión de producto,
+> no una carencia. Se deja escrita la equivocación porque el estudio existe para distinguir lo que
+> está bien de lo que está mal, y confundirlos es su único modo de fallo.
 
-Eso encaja con el síntoma descrito —*«tiene configuradas las prórrogas, meses acumulados para el
-corte, tipo de comprobante y más… y no están funcionando correctamente»*—: mantener **N escalas de
-cobranza**, una por abonado, es un orden de magnitud más de superficie que mantener una y marcar
-excepciones.
+#### Lo que la corrección revela, que es más útil
 
-**No es una conclusión todavía.** Es la hipótesis que §4 debe confirmar o descartar, porque un ISP
-peruano puede tener razones para lo contrario.
+**El patrón de esquema reutilizable YA EXISTE en el ERP**, y es bueno:
+
+- `plantillas_abonados` guarda un `FacturacionConfig` completo —`diaPago`, `crearFactura`,
+  `diasGracia`, `aplicarCorte`, mora, reconexión, impuesto— **más** un `NotificacionesConfig` con
+  los tres recordatorios y sus plantillas de mensaje.
+- El alta de abonado ofrece **«Cargar desde plantilla»**.
+
+**Pero es una COPIA, no una referencia.** El cliente no guarda `plantilla_id`, y
+`PoliticaFacturacionService` nunca consulta la plantilla: solo lee `clientes.facturacion_config`.
+
+**Y copiar es defendible.** Es lo contrario de lo que hace Odoo —que referencia el término de
+pago— pero para un ISP tiene una ventaja concreta: **cambiar una plantilla no altera el ciclo de
+los abonados existentes**, que es la misma lógica del invariante propio de congelar el vencimiento
+en la factura al emitirla. Con referencia, editar una plantilla podría adelantarle el corte a
+cientos de abonados sin que nadie lo pidiera.
+
+#### La consecuencia real, que sí es un hueco
+
+Con copia y sin referencia, **no existe forma de cambiar la política de muchos abonados a la vez**.
+Si mañana se decide pasar los días de gracia de 5 a 7, hay que tocarlos uno a uno: la plantilla
+solo sirve para los que se den de alta después.
+
+Eso es un **hueco de funcionalidad**, no un defecto de diseño, y admite solución sin renunciar a
+la flexibilidad: una operación masiva que aplique una plantilla a un conjunto de abonados
+seleccionados, dejando constancia de a quién y cuándo. Sigue siendo copia —nada cambia solo—,
+pero deja de ser de uno en uno.
+
+#### Lo que sigue en pie del lado externo
+
+Independientemente de dónde viva la configuración, estas diferencias de la tabla anterior no
+dependen de esa decisión y siguen siendo válidas: la línea de factura como entidad, la nota de
+crédito ligada al documento que rectifica, y el vencimiento capaz de producir varias fechas.
 
 ### 3.2 Dos cosas de Datafast que el modelo externo NO trae
 
@@ -143,6 +177,9 @@ intención**, y responderlos mal produciría el peor resultado posible: cambiar 
 7. **Canales de cobranza.** Existen las tablas `canal_pago` y `forma_pago`. ¿Qué representa un
    canal en vuestro flujo, y quién lo elige?
 8. **Prórroga.** ¿Es un acuerdo puntual con el abonado, o una política que se aplica sola?
+9. **Plantillas de abonado.** Al cambiar una política —por ejemplo, gracia de 5 a 7 días—,
+   ¿cómo se hace hoy con los abonados que ya existen? ¿Uno a uno, o hay algún camino que no he
+   visto? La respuesta decide si el hueco de §3.1 es real o solo aparente.
 
 ---
 
