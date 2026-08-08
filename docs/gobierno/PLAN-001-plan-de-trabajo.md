@@ -251,7 +251,7 @@ La corrección impide el desajuste nuevo, **no repara el existente**.
 | # | Trabajo | Por qué en este orden |
 |---|---|---|
 | 4.1 | **R8** — observabilidad mínima (colas, edad del outbox, latido, duración de crons) | Multiplicador: sin medir no se verifica que 3.1 funcionó |
-| 4.2 | **R7** — entidades para las tablas de coordinación y dinero | Barato; el compilador empieza a proteger el outbox y la saga |
+| ~~4.2~~ | ~~**R7** — entidades para las tablas de coordinación y dinero~~ | **HECHA 2026-08-08.** Seis entidades: el outbox de red, la saga y sus pasos, el lock FTTH, el arqueo y el extorno. Sin cambiar el camino de acceso — el reclamo atómico y la adquisición del lock siguen siendo una sola sentencia a propósito. Barrera nueva `metadatos-typeorm.spec.ts`, que **construye los metadatos de TypeORM**: es la operación que falla al arrancar en frío, y probada rompiendo una entidad a propósito |
 | 4.3 | **R9** — dividir el controlador de `olt-nativo` por grupo funcional | Sin cambiar rutas. Reduce conflictos y hace legible el módulo |
 | 4.4 | **R6** — modelar el cambio de ONU (ADR-022) | Operación rutinaria que hoy se improvisa como baja + alta |
 | 4.5 | **R5** — extender garantías al plano MikroTik (ADR-021, ADR-028) | El trabajo más grande de esta fase |
