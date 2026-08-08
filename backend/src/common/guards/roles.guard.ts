@@ -40,10 +40,20 @@ export class RolesGuard implements CanActivate {
     const userRoles: string[] = user.roles || [];
     const userPermissions: string[] = user.permisos || [];
 
-    // Admin siempre tiene acceso total
-    if (userRoles.includes('admin')) {
-      return true;
-    }
+    // Aquí había un bypass: `if (userRoles.includes('admin')) return true;`
+    //
+    // **Era código muerto.** Verificado contra la base de producción el 2026-08-08: no existe
+    // ningún rol llamado `admin`. Los diez reales son `Administrador`, `Super Administrador`,
+    // `Supervisor`, `Cajero`, `Vendedor`, `Técnico`, `Atención al Cliente`, `Cobranza`,
+    // `Operador NOC` e `Invitado`. La condición nunca se cumplía.
+    //
+    // **Se BORRA, no se corrige.** Cambiarlo a `'Administrador'` parece el arreglo obvio y
+    // sería una regresión de seguridad: le daría a ese rol un bypass sobre TODOS los permisos
+    // finos, incluidos los 143 endpoints que hoy sí los comprueban uno a uno. Un rol con
+    // acceso total se concede asignándole los permisos, no saltándose el guard.
+    //
+    // Si alguien necesita un rol que lo pueda todo, la vía es `roles_permisos`, que además
+    // deja constancia de qué se le concedió y cuándo.
 
     // Verificar roles
     if (requiredRoles?.length) {

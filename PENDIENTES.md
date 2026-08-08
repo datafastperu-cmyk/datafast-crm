@@ -7,7 +7,7 @@
 > Formato de cada entrada: qué falta, **por qué importa** (la consecuencia real, no la
 > tarea) y cómo se comprueba. Una entrada sin consecuencia acaba siendo ignorada.
 >
-> Última actualización: 2026-08-06
+> Última actualización: 2026-08-08
 
 ---
 
@@ -184,6 +184,157 @@ del worker esa madrugada.
 Cobra sin reactivar el servicio (baja voluntaria que salda su último comprobante). Si se
 usa por error, **el abonado queda sin servicio hasta que una persona lo note**: ningún
 watcher lo levanta ni avisa. Queda en auditoría con la marca `SIN reactivar servicio`.
+
+---
+
+---
+
+## 🔒 Esperando una decisión tuya — no las puede tomar el arquitecto
+
+### 20. B-15 — la aplicación se conecta a PostgreSQL como SUPERUSUARIO
+**Por qué importa:** `datafast_db_user` tiene `rolsuper` y `rolbypassrls`, y es dueña de las
+111 tablas. Cualquier inyección SQL que alcance el motor lo hace con permisos totales:
+`DROP`, lectura de `pg_authid`, `COPY … TO PROGRAM` (ejecución de comandos en el servidor).
+No se encontró ninguna vía de inyección explotable —el SQL está parametrizado de forma
+consistente—, así que es defensa en profundidad, no una puerta abierta.
+
+**Ya está preparado, falta aplicarlo.** El `GRANT` mínimo está validado contra la base real
+(11 de 11 operaciones del ERP funcionan, 4 de 4 peligrosas quedan bloqueadas) y se eliminó el
+último DDL en tiempo de ejecución, que habría roto el alta de clientes. **ADR-017 §8.**
+
+**Por qué no lo aplico solo:** el modo de fallo es que al ERP le falte un permiso *en
+producción*. Falta además el rol de migración (api-core migra al arrancar, ADR-010) y probarlo
+sobre una instalación limpia.
+
+**Cómo se comprueba:** con el rol nuevo, una consulta `CREATE TABLE` debe fallar y las 11
+operaciones de la batería deben pasar.
+
+### 21. Instalación limpia — la prueba que cierra B-14 y habilita B-15
+**Por qué importa:** B-14 (el instalador generaba un arranque sin worker) se corrigió y se
+verificó **leyendo los scripts y contra el servidor existente, no levantando uno nuevo**. Y es
+el entorno donde probar el cambio de rol de B-15 sin arriesgar el que da servicio.
+
+**Cómo se comprueba:** instalación desde cero → `pm2 list` muestra los cinco procesos, el
+worker con `RUN_CRONS=true`, y `GET /admin/sistema/watchers` con latidos.
+
+---
+
+## 🟠 Deuda técnica — abierta, con techo congelado
+
+Estas tres tienen barrera en la suite: **no pueden empeorar**, y bajan al tocar cada módulo.
+
+### 22. B-3 — 102 endpoints mutantes sin autorización alguna
+**Por qué importa:** `RolesGuard` deja pasar a cualquier usuario autenticado cuando el
+endpoint no declara ni `@Roles` ni `@RequirePermission`. No es «protegido por rol al módulo»
+—como decía la ficha— es **no protegido**.
+
+De 317 endpoints mutantes: 143 con permiso fino, 50 con rol, **102 abiertos**. Ya se
+corrigieron los cinco de `auditoria` (`undo`, `redo` y dos restauraciones alcanzan CUALQUIER
+tabla del sistema).
+
+**79 de los 102 están en `olt-nativo.controller.ts`** → bajan con **R9** (partir ese
+controlador), que es el momento natural para decidir quién puede provisionar.
+
+**Por qué no se arreglan de golpe:** añadir `@Roles` a un endpoint cuyo permiso no esté
+concedido al rol produce un **403 en producción**.
+
+**Cómo se comprueba:** `npm run autorizacion:check`. Barrera: `autorizacion-endpoints.spec.ts`.
+
+### 23. PA-12 — 15 tablas con más de un módulo escritor
+**Por qué importa:** `contratos` la escriben **diez módulos**; `clientes`, cinco. Dos escritores
+son dos criterios que empiezan iguales y divergen en la primera modificación — exactamente
+como pasó con la deuda (A-4).
+
+**Cómo se comprueba:** `propiedad-tablas.spec.ts`. **Límite conocido: solo detecta SQL crudo**,
+no las escrituras por repositorio TypeORM — 15 es un suelo, no un total.
+
+### 24. B-2 — 19 tablas sin entidad TypeORM
+**Por qué importa:** un nombre de columna mal escrito dentro de un literal de plantilla es
+invisible para `tsc`. Las de **coordinación y dinero ya tienen entidad** (outbox, saga, lock
+FTTH, arqueo, extorno); quedan 19 de menor riesgo.
+
+**Cómo se comprueba:** `metadatos-typeorm.spec.ts`.
+
+### 25. PA-15 — 30 de 33 consultas de fondo sin cap
+**Por qué importa:** un lote sin límite no se degrada al crecer, **se cae de golpe** el día que
+el volumen pasa un umbral que nadie conoce. Afecta a `cobranza.worker`, `facturacion.worker`,
+`ztp.service` y los watchers FTTH.
+
+**Sin barrera todavía.** Es el pendiente de esta lista con más probabilidad de morder solo.
+
+---
+
+## 🔵 Medido y no convertido en trabajo
+
+### 26. El servidor lleva 1,9 GB en swap
+**Por qué importa:** 2 GB de RAM física, 2 CPUs, y **1,9 GB en swap**. PM2 solo consume
+385 MB; el resto lo comen PostgreSQL, Redis y el sistema. Todo va más lento de lo que debería,
+y **es lo que bloquea la adopción de OpenTelemetry** (ADR-034 §6.1): un colector añadiría
+100–200 MB.
+
+**No lo causa el volumen de clientes** —hay 16— sino el coste fijo. Crecer no lo mejora.
+
+### 27. Los crons de hardware ya consumen un quinto de su ventana
+**Por qué importa:** con **5 ONUs registradas**, `tr069-drift` tarda 253 s sobre un intervalo
+de 1 200 s (21 %) y `ftth-verificar-wan` 107 s sobre 600 s (18 %). No se puede extrapolar
+—buena parte es coste fijo de sesión— y ese es justo el problema: **no conocemos la curva**.
+
+Relacionado con ADR-033 (límite comercial de 5 000 abonados, **capacidad sin validar**).
+
+**Cómo se comprueba:** `watcher_heartbeat.duracion_ms` frente a `intervalo_esperado_seg`.
+
+### 28. `contratos.deuda_total` no debería existir
+**Por qué importa:** un modelo contable estándar deriva la deuda de los apuntes por cobrar
+abiertos. Almacenarla produjo las cuatro implementaciones de A-4 y el incidente del 04/08.
+**Ya no puede divergir** —un solo escritor, una sola definición— pero el concepto sigue mal
+planteado.
+
+Registrado en **DOM-001 §8.9.1** y es **entrada obligatoria del ADR de benchmark financiero**
+antes de H2-1 (SUNAT). No se toca antes: es cambio de modelo, no corrección.
+
+### 29. El ADR de benchmark de facturación y cobranza
+**Por qué importa:** PD-11 lo exige antes de diseñar SUNAT. Y **requiere fuentes citables**, no
+memoria: ADR-030 §4.1 prohíbe declarar conformidad con una norma sin *gap analysis*.
+
+**Se dispara:** antes de H2-1.
+
+---
+
+---
+
+## 📋 Índice de desviaciones abiertas — sincronizado con POL-001
+
+> **Esto es un índice, no una segunda descripción.** El detalle, el estado objetivo y la
+> condición de cierre viven en **POL-001 Anexo B**, que es la fuente. Aquí solo está la lista
+> para que responder «¿qué queda abierto?» no exija auditar el corpus.
+>
+> **Lo mantiene sincronizado `desviaciones-en-pendientes.spec.ts`**: si se abre una desviación
+> nueva en POL-001 y no aparece aquí, la suite falla. Una lista que hay que acordarse de
+> actualizar se desactualiza — es la lección de PA-12 y del latido.
+
+| # | Política | Qué falta |
+|---|---|---|
+| **B-1** | PD-08 | strict: false · strictNullChecks: false · noImplicitAny: false · regla no-explicit-any desactivada. Se cumple por d… |
+| **B-2** | PA-13 | PARCIAL 2026-08-08 (R7). Las de coordinación y dinero ya tienen entidad: comandos_red_pendientes, operacion_wizard,… |
+| **B-3** | PS-05 | MEDIDA 2026-08-08, y la ficha decía otra cosa. De 317 endpoints mutantes: 143 con permiso fino, 50 con rol, 102 ABI… |
+| **B-4** | PA-07 | Las operaciones interactivas de /red/routers son síncronas, sin outbox ni garantías |
+| **B-5** | PA-03 / PA-05 | El plano WISP tiene outbox parcial, sin máquina de estados, sin saga, y VIO solo como detección posterior |
+| **B-6** | PA-15 | reconciliar() itera sin cap ni lock; ningún cron declara presupuesto de tiempo |
+| **B-7** | PA-17 | El cambio de ONU no existe. Se improvisa como baja + alta |
+| **B-8** | PI-02 / PI-03 | Mercado Pago —el único que cobra dinero real— no usa el contrato de cobro. La abstracción no está validada |
+| **B-10** | PA-11 | Credenciales de connreq de GenieACS duplicadas en el ACS y en el .env, sin verificación de coincidencia. CCD y cron… |
+| **B-11** | PA-08 | Implementados y en producción, sin test que los ejercite |
+| **B-15** | PS-01 / OWASP | La aplicación se conecta a PostgreSQL como SUPERUSUARIO (datafast_db_user: rolsuper, rolbypassrls, dueña de las 111… |
+| **C-1** | PS-06 | forbidNonWhitelisted: false: los campos extra se descartan en silencio |
+| **C-2** | PA-06 | Solo en el plano de red; el financiero lanza excepciones HTTP a consumidores que a veces son máquinas |
+| **C-3** | PA-01 | El patrón existe y se aplica, pero nada obliga a implementarlo en un módulo nuevo |
+| **C-4** | PI-06 | telegraf, twilio, net-snmp instaladas sin uso; cola mikrotik-jobs declarada y no usada |
+| **C-5** | EST-001 §8.2 | Tres convenciones simultáneas; molecules/ vacío; 1,8 % de código reutilizable |
+| **C-6** | PA-16 | Se cumple, sin mecanismo que lo impida |
+| **C-7** | DAT-001 §8.6 | Seis tablas de serie temporal sin política de retención ni particionado |
+
+**18 abiertas** · Nivel A: **0** · Las marcadas arriba con entrada propia
+(20-29) llevan además su consecuencia y su forma de comprobarse.
 
 ---
 

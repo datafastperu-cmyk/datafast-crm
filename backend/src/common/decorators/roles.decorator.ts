@@ -13,15 +13,31 @@ export const Roles = (...roles: string[]) =>
 export const RequirePermission = (...permissions: string[]) =>
   SetMetadata(PERMISSIONS_KEY, permissions);
 
-// ─── Roles predefinidos del sistema ──────────────────────────
-export enum Role {
-  ADMIN = 'admin',
-  SUPERVISOR = 'supervisor',
-  VENDEDOR = 'vendedor',
-  CAJERO = 'cajero',
-  TECNICO = 'tecnico',
-  CLIENTE = 'cliente',
-}
+// ─── Aquí había un `enum Role`. Se BORRÓ el 2026-08-08, y no debe volver ─────
+//
+// Declaraba `ADMIN = 'admin'`, `SUPERVISOR = 'supervisor'`, `CAJERO = 'cajero'`… y **ninguno
+// de esos valores corresponde a un rol real**. Verificado contra la base de producción, los
+// diez que existen son:
+//
+//   Administrador · Super Administrador · Supervisor · Cajero · Vendedor
+//   Técnico · Atención al Cliente · Cobranza · Operador NOC · Invitado
+//
+// En minúscula y sin tilde no coincide ninguno, así que `@Roles(Role.ADMIN)` dejaba el
+// endpoint **inalcanzable para todo el mundo**. Ya ocurrió: `auditoria/papelera/eliminar`
+// exigía `'admin'` y `'superadmin'`, y nadie podía purgar la papelera. Falla cerrado —la
+// dirección segura— pero deja una función muerta que nada delata.
+//
+// **No se corrigieron los valores: se borró el enum.** Dos razones.
+//
+// 1. **Los roles son DATOS.** Viven en la tabla `roles` y varían entre instalaciones: esta
+//    tenía diez cuando el `seed` solo crea cinco. Un enum en código sería una segunda fuente
+//    de verdad para algo que ya tiene la suya (R-006 · ADR-032 · PA-12).
+// 2. **No lo usaba nadie.** Un enum equivocado y sin consumidores no es documentación: es una
+//    trampa esperando a que alguien lo encuentre y lo dé por bueno.
+//
+// La red de seguridad es `autorizacion-endpoints.spec.ts`, que falla si un endpoint exige un
+// rol que no existe. Los nombres se escriben como cadena literal, exactamente como están en
+// la base.
 
 // ─── Permisos granulares del sistema ─────────────────────────
 export enum Permission {
