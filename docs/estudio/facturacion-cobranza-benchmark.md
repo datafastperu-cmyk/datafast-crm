@@ -342,24 +342,57 @@ No ha dado la cara porque nadie asigna el estado — el mismo patrón que la not
 defecto que espera al primer uso. Si un operador marca `moroso` a mano (la transición está
 permitida), el reconciliador le corta el tráfico en MikroTik.
 
-#### H-3 · Prepago tiene dos fuentes de verdad, y no cobra por adelantado
+#### H-3 · El primer comprobante del prepago SÍ se emite — pero lo emite el navegador
 
-Dos campos distintos dicen si un abonado es prepago:
+> **Corregido el 2026-08-08 tras una indicación del propietario:** *«la configuración de facturación
+> se da por cliente, no por contrato; un contrato nuevo dentro del cliente nace con la configuración
+> del cliente, así que si el cliente es prepago, al crear un servicio nuevo se debe emitir un
+> comprobante. Esto ya está hecho»*.
+>
+> **Tenía razón, y mi hallazgo era falso en su parte principal.** Busqué la emisión en
+> `contratos.service` —donde no está— y concluí que no existía. **Existe, y en los dos caminos**:
 
-| Dónde | Quién lo lee |
-|---|---|
-| `contratos.tipo_pago` (enum `prepago`/`postpago`) | Solo el **portal**, para permitir bajar de plan con deuda |
-| `clientes.facturacion_config.tipo` | **`PoliticaFacturacionService`**, que decide el periodo de servicio del comprobante |
+| Camino | Dónde | Cómo decide |
+|---|---|---|
+| Alta de abonado nuevo | `ClienteWizard.tsx:423-455` | `s2.facturacion.tipo === 'prepago'` (lo que el operador acaba de elegir) |
+| **Servicio nuevo a un cliente existente** | `ClienteDetalle.tsx:1957-1984` | `clientesApi.getFacturacionConfig(clienteId)` → **lee la configuración del cliente**, exactamente como describe el propietario |
 
-Nada los sincroniza. Un abonado puede ser prepago para el portal y postpago para la facturación.
-Es el mismo patrón de A-4 (la deuda en cuatro sitios), sin haber mordido todavía.
+También cubre el **costo de instalación**, con o sin prepago. Y confirma la regla: **ninguno de los
+dos mira `contratos.tipo_pago`** — la verdad para facturar es siempre la del cliente.
 
-Y sobre la respuesta 4 —*«el prepago nace pagando el mes que va a consumir»*—: **`contratos.service`
-no emite ninguna factura al crear ni al activar un contrato.** El primer comprobante llega en la
-siguiente corrida del ciclo mensual. Entre el alta y esa fecha el abonado consume servicio sin
-comprobante, que es precisamente lo contrario de prepago. Lo único que el ERP sí aplica bien es el
-**periodo** que ampara el comprobante cuando por fin se emite (`periodoServicio` desplaza un mes en
-prepago).
+**Lo que queda en pie de H-3, y es distinto de lo que dije:**
+
+**a) La emisión vive en el navegador.** Los dos caminos son código de frontend. Si el operador
+cierra la pestaña, pierde la red, o el alta entra por API, importación o migración, **el prepago se
+queda sin su comprobante**. Es la regla del corpus sobre wizards, al revés: el clic no puede ser la
+frontera transaccional, porque no existe justo en los casos que la justifican.
+
+**b) `catch { /* no bloquea el flujo principal */ }` — vacío, en los dos.** Si la emisión falla, el
+error se descarta y el toast dice *«Abonado registrado correctamente»*. **Es un fallo de dinero,
+silencioso y sin rastro**: nadie sabrá que ese prepago no tiene comprobante hasta que alguien lo
+eche en falta.
+
+**c) No usan la política canónica.** Construyen el periodo a mano —`hoy → hoy + 1 mes`— en vez de
+`periodoServicio()`, que en prepago devuelve el **mes siguiente completo** (día 1 a fin de mes). El
+periodo del primer comprobante no encaja con el de los siguientes.
+
+**d) El vencimiento reintroduce el incidente del 2026-08-05.** El frontend no envía
+`fechaVencimiento` —aunque el DTO lo acepta—, así que `facturacion.service.create` cae a
+`calcularFechaVencimiento(empresas.dias_gracia)`: **hoy + días de gracia**. Es decir, el primer
+comprobante **no vence en el `diaPago` que el operador acaba de configurar**, y usa los días de
+gracia como distancia al vencimiento, que es exactamente lo que `PoliticaFacturacionService` existe
+para prohibir.
+
+**e) No envían `contratoId` —que el DTO también acepta—**, así que la factura nace consolidada
+(`contrato_id` NULL) y sus ítems no llevan `contratoId`. `DeudaPorContratoService` no puede
+imputarla: con un solo contrato vivo hay un fallback, pero **con el segundo servicio —el caso
+exacto de la pregunta— la deuda queda sin imputar a ningún contrato** y se sale del corte por
+contrato.
+
+**Lo que sí subsiste tal cual:** `contratos.tipo_pago` es un campo **huérfano**. No lo lee la
+facturación; solo el portal, para decidir si permite bajar de plan con deuda. Puede contradecir la
+configuración del cliente sin que nada lo impida — no es «dos fuentes compitiendo por facturar»,
+como escribí, sino **un campo que decide otra cosa a partir de una verdad que puede estar caducada**.
 
 ### 5.3 Reconocido por el propietario como pendiente de diseño
 
@@ -400,7 +433,7 @@ Falta:
 |---|---|---|---|
 | **1** | **H-1** — el corte no cuenta «3 vencidos + 5 días»; la gracia es inerte con `aplicarCorte >= 2` | Contar los días desde el vencimiento que **completa** la cuenta, no desde el más antiguo | **Cambia el día en que se corta a gente real.** Nunca sin confirmación |
 | **2** | **H-2** — `moroso` no lo escribe nadie, y el reconciliador de MikroTik lo trata como CORTADO | Si el estado debe existir de verdad en el ciclo automático (y entonces corregir el reconciliador), o retirarse | Latente hoy; **muerde el día que un operador lo ponga a mano** |
-| **3** | **H-3** — prepago en dos sitios, y sin comprobante al alta | Una sola fuente, y si el alta emite el primer comprobante | Es cambio de modelo, no corrección puntual |
+| **3** | **H-3** — el primer comprobante del prepago lo emite el **navegador**, con `catch` vacío, sin vencimiento de la política y sin `contratoId` | Mover la emisión al backend, al crear el contrato | La lógica ya existe y funciona; lo que cambia es **quién** la ejecuta y qué pasa si falla |
 | **4** | Nota de crédito vs. anular/editar (respuesta 5) | Cerrar la edición del comprobante emitido y usar el mecanismo que ya existe | Decisión de operación, no de código |
 | **5** | Cambios masivos de configuración (respuesta 9) | Alcance de los filtros y de los campos aplicables | Funcionalidad nueva, ya especificada por el propietario |
 

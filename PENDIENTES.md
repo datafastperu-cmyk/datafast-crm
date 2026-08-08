@@ -356,11 +356,30 @@ datos**: esos abonados figuran como `activo`, indistinguibles de los que están 
 es decir lo trata como SIN servicio, al revés que el enum. Latente: muerde el día que un operador lo
 ponga a mano, y MikroTik le corta el tráfico.
 
-**H-3 — prepago tiene dos fuentes, y no cobra por adelantado.** `contratos.tipo_pago` lo lee **solo
-el portal**; `clientes.facturacion_config.tipo` lo lee la política canónica. Nada los sincroniza —
-mismo patrón que A-4. Y `contratos.service` **no emite ninguna factura al crear ni al activar**, así
-que el prepago que «nace pagando el mes que va a consumir» no recibe ese comprobante hasta la
-siguiente corrida del ciclo.
+**H-3 — el primer comprobante del prepago SÍ se emite; lo emite el navegador.**
+*(Corregido el 2026-08-08: mi versión anterior decía que no se emitía. El propietario indicó que sí
+y tenía razón — lo busqué en `contratos.service`, y está en el frontend.)*
+
+Están **los dos caminos**: `ClienteWizard.tsx:423` para el alta, y `ClienteDetalle.tsx:1957` para un
+servicio nuevo a un cliente existente, que **lee la configuración del cliente** —el comportamiento
+correcto—. Cubre también el costo de instalación. Ninguno mira `contratos.tipo_pago`.
+
+Lo que queda mal, verificado:
+
+- **Vive en el navegador.** Pestaña cerrada, red caída, alta por API o migración → el prepago se
+  queda sin comprobante. El clic no puede ser la frontera transaccional.
+- **`catch { }` vacío en los dos**, y el toast dice «Abonado registrado correctamente». Un fallo de
+  dinero, en silencio y sin rastro.
+- **No usan la política canónica:** periodo `hoy → hoy+1 mes` a mano en vez de `periodoServicio()`,
+  que en prepago da el mes siguiente completo.
+- **El vencimiento reintroduce el incidente del 05/08.** No envían `fechaVencimiento`, así que
+  `facturacion.service.create` cae a `hoy + empresas.dias_gracia` — el primer comprobante **no vence
+  en el `diaPago` recién configurado**, y usa la gracia como distancia al vencimiento.
+- **No envían `contratoId`** (el DTO lo acepta), así que la factura nace consolidada y sin ítems
+  imputables: con **el segundo servicio** la deuda no se imputa a ningún contrato.
+
+Y `contratos.tipo_pago` es un **campo huérfano**: no lo lee la facturación, solo el portal para
+decidir si permite bajar de plan con deuda, y puede contradecir al cliente sin que nada lo impida.
 
 **Decisión de modelo que también queda abierta:** si el abono debe pasar a ser **negativo**, como en
 Odoo y ERPNext. Hoy no puede —`facturas_total_check (total >= 0)`— y por eso hizo falta distinguirlo
