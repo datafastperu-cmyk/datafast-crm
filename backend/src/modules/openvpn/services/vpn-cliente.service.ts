@@ -86,7 +86,12 @@ export class VpnClienteService implements OnModuleInit {
       void this.hb.ejecutar('vpn-invariantes', 300, () => this.verificarInvariantes())
         .catch((e) => this.logger.error(`[VPN invariantes] falló: ${e instanceof Error ? e.message : String(e)}`));
     }, null, true, tz);
-    this.schedulerRegistry.addCronJob('vpn-reconciliar-estado', rec);
+    // La clave del registro NO es 'vpn-reconciliar-estado' aunque ese sea uno de los dos
+    // latidos que emite. Desde ADR-020 el `SchedulerRegistry` genera un latido por job, y
+    // con el mismo nombre el envoltorio pisaría el del watcher interno. Aquí importa
+    // especialmente: este job emite DOS latidos a propósito, para poder distinguir cuál de
+    // los dos watchers murió — colapsarlos en uno destruiría justo esa distinción.
+    this.schedulerRegistry.addCronJob('vpn-watchers-tick', rec);
   }
 
   /**

@@ -42,8 +42,8 @@ nombre. Lo sostiene `cron-nombres.barrera.spec.ts`, que falla si aparece un `@Cr
 con uno duplicado.
 
 Origen: 2026-08-07 (ADR-020). `WatcherHeartbeatService` llevaba diez días disponible y su módulo era
-`@Global()` precisamente «para que no haya watchers sin latido». De 47 jobs latía **1**: el
-`@Global()` quitó la fricción de importar y dejó intacta la de llamar. Una garantía que cada autor
+`@Global()` precisamente «para que no haya watchers sin latido». Diez días después latían **10 de
+47**: el `@Global()` quitó la fricción de importar y dejó intacta la de llamar. Una garantía que cada autor
 debe acordarse de implementar no es una garantía, es una estadística — la misma lección que la
 idempotencia derivada de la máquina de estados.
 

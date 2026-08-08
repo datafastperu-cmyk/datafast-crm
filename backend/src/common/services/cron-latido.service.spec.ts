@@ -4,7 +4,7 @@ import { CronLatidoService } from './cron-latido.service';
 import { WatcherHeartbeatService } from './watcher-heartbeat.service';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Los tests de A-3 (2026-08-07): de 47 crons del ERP, latía 1.
+// Los tests de A-3 (2026-08-07): de 47 crons del ERP, latían 10.
 //
 // `WatcherHeartbeatService` llevaba desde el 28/07 haciendo bien su trabajo y su módulo
 // era @Global() precisamente "para que no haya watchers sin latido". No bastó: quitaba la

@@ -23,8 +23,17 @@ peor:**
 | Medición 2026-08-07 | |
 |---|---|
 | Jobs programados en el backend | **47** (29 `@Cron` + 18 `addCronJob`) |
-| Jobs que registraban latido | **1** (`pagos-reconciliacion`) |
+| Jobs que registraban latido | **10** (11 nombres: el job de VPN emite dos a propósito) |
 | `@Cron` sin `name:` en su decorador | **26 de 29** |
+
+> **Corrección de la propia medición, el mismo día.** La primera cifra que se escribió aquí fue
+> «**1** de 47», y era falsa: el `grep` buscaba `heartbeat.ejecutar` y once servicios usan
+> `this.hb.ejecutar`. Se descubrió al mirar los datos en producción tras desplegar —filas con
+> miles de ejecuciones que no podían ser nuevas— y se corrigió en los ocho sitios donde ya se
+> había propagado. Es el mismo fallo que retiró la desviación B-9: **una medición deducida de un
+> `grep` incompleto no es una medición**. Se deja escrito porque el error importa más que la
+> cifra: el argumento no dependía del número, pero el documento normativo sí depende de que sus
+> números sean ciertos.
 
 `WatcherHeartbeatService` existía desde el 2026-07-28, estaba bien construido —envuelve la
 ejecución, registra en el `finally`, no lanza nunca— y su módulo era `@Global()` con un comentario
@@ -32,7 +41,7 @@ que decía, literalmente, que se hizo así porque *«obligar a cada módulo a im
 fricción que termina en watchers sin latido — justo lo que se quiere evitar»*.
 
 **El `@Global()` quitó la fricción de IMPORTAR y dejó intacta la de LLAMAR, que era la que
-contaba.** Diez días después, la cobertura era del 2 %.
+contaba.** Diez días después, la cobertura era del 21 %.
 
 ### 1.1 Por qué esto es la misma lección de siempre
 
@@ -52,7 +61,7 @@ sigue funcionando, solo deja de ser observable.
 
 | Hueco | Síntoma | Qué NO lo resuelve |
 |---|---|---|
-| **Nadie late** | 46 de 47 jobs invisibles | Una alarma sobre una tabla vacía no denuncia nada |
+| **Nadie late** | 37 de 47 jobs invisibles | Una alarma sobre lo que no se registra no denuncia nada |
 | **Nadie vigila** | El latido se consulta, no avisa | Hacer latir a los 47 no sirve si nadie mira la tabla |
 
 Resolver uno sin el otro no cierra A-3.
@@ -82,7 +91,7 @@ Hace falta una pregunta agregada distinta: **¿ha latido alguien?**
 
 | # | Alternativa | Por qué se descarta |
 |---|---|---|
-| A | Instrumentar los 47 crons a mano con `heartbeat.ejecutar` | Es lo que ya estaba disponible y produjo 1 de 47. El cron nº 48 vuelve a olvidarse, y en silencio |
+| A | Instrumentar los 47 crons a mano con `hb.ejecutar` | Es lo que ya estaba disponible y produjo 10 de 47 en diez días. El cron nº 48 vuelve a olvidarse, y en silencio |
 | B | Monitor externo (Uptime Kuma, healthcheck de PM2) | Sabe si el PROCESO vive, no si sus crons corren. Un worker vivo con el scheduler colgado pasa el check |
 | C | Que el worker se vigile a sí mismo | Un testigo que se apaga con la luz. Falla justo en el caso que motiva la regla |
 | D | Alarma solo sobre `rancios()` | Con el worker muerto emite 40 eventos sin causa; con la tabla vacía, ninguno |
@@ -177,7 +186,7 @@ bajo, y delta del contador de reinicios ≤ 1).
 
 **Positivas**
 
-- La cobertura de latido pasa de **1/47 a 47/47**, y el cron nº 48 la hereda sin hacer nada.
+- La cobertura de latido pasa de **10/47 a 47/47**, y el cron nº 48 la hereda sin hacer nada.
 - El fallo que A-3 describe deja de ser invisible: pasa a `eventos_sistema` como `critical` en
   menos de 20 minutos.
 - PP-11 pasa de verificación manual a **automática**; PP-01 y PP-07 quedan cubiertas en los cinco
@@ -211,8 +220,26 @@ bajo, y delta del contador de reinicios ≤ 1).
 | El latido no depende de que nadie se acuerde | `cron-latido.service.spec.ts` — 7 tests sobre `CronJob` reales |
 | Ningún `@Cron` se queda sin nombre estable ni duplicado | `cron-nombres.barrera.spec.ts` — recorre el código fuente |
 | El que responde denuncia al que no late | `latido-vigilante.service.spec.ts` — 10 tests |
+| Ningún nombre de cron pisa el de un latido manual | `cron-nombres.barrera.spec.ts` — ver §6.1 |
 
 Los tres nombran el incidente. Un test llamado «no debería fallar» se borra en la primera limpieza.
+
+### 6.1 Lo que solo se vio mirando producción
+
+Los once latidos manuales que ya existían **son más finos que el automático**: varios devuelven
+contadores en `resultado` —`address-list-reconciliador` guarda `{sobrantes, revisados,
+noRevisados}` porque *«0 sobrantes con routers sin revisar no es lo mismo que 0 habiéndolos mirado
+todos»*— y el job de VPN emite **dos** latidos a propósito, para poder distinguir cuál de sus dos
+watchers murió.
+
+Por eso no se eliminaron. Pero en dos casos el nombre del cron coincidía con el del latido interno
+(`olt-sync-periodico` y `vpn-reconciliar-estado`): comparten fila, y **el envoltorio externo, que
+devuelve `void`, pisaba el `resultado` del interno**. La tabla parecía correcta; el dato se perdía.
+
+Se renombraron los dos nombres externos (`olt-sync-tick`, `vpn-watchers-tick`) y **se añadió una
+barrera** que falla si un nombre de cron vuelve a colisionar con uno de latido. No se detectó con
+tests ni con `tsc`: se detectó **consultando `watcher_heartbeat` en el servidor**, que es el único
+sitio donde ese fallo es visible.
 
 ---
 

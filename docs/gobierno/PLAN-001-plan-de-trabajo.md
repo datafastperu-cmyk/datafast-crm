@@ -126,12 +126,12 @@ En este orden, por relación seguridad/coste:
 #### 3.1 — CERRADA 2026-08-07 · A-3, y de paso B-12 y B-13
 
 **Lo primero fue medir, y la medición corrigió el diagnóstico.** A-3 decía que el latido existía
-pero era «consultable, no vigilante». La realidad: **de 47 jobs programados latía 1**, y 26 de los
-29 `@Cron` no tenían `name:`, así que NestJS les asignaba un UUID distinto en cada arranque.
+pero era «consultable, no vigilante». La realidad: **de 47 jobs programados latían 10**, y 26 de
+los 29 `@Cron` no tenían `name:`, así que NestJS les asignaba un UUID distinto en cada arranque.
 
 | Entregado | |
 |---|---|
-| `common/services/cron-latido.service.ts` | El latido se **deriva** de estar en el `SchedulerRegistry`. 47/47, y el cron nº 48 lo hereda |
+| `common/services/cron-latido.service.ts` | El latido se **deriva** de estar en el `SchedulerRegistry`. De 10/47 a 47/47, y el cron nº 48 lo hereda |
 | `common/services/latido-vigilante.service.ts` | Corre donde `RUN_CRONS !== 'true'`: el que responde denuncia al que no late |
 | `cron-nombres.barrera.spec.ts` | Falla si un `@Cron` no declara `name:` o lo duplica |
 | 26 `@Cron` nombrados · `pagos` desenvuelto | El wrapper manual sobraba: una sola mecánica |

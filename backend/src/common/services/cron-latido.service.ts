@@ -31,7 +31,7 @@ interface CronJobInterno {
 // porque "obligar a cada módulo a importar este sería fricción que termina en watchers sin
 // latido — justo lo que se quiere evitar".
 //
-// Al medirlo: **de 47 jobs programados en el ERP, exactamente 1 latía.**
+// Al medirlo: **de 47 jobs programados en el ERP, latían 10.**
 //
 // El @Global() quitó la fricción de IMPORTAR y dejó intacta la de LLAMAR, que era la que
 // importaba. Es el mismo error que la máquina de estados declarativa vino a corregir en

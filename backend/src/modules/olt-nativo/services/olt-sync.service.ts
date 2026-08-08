@@ -150,7 +150,11 @@ export class OltSyncService implements OnModuleInit {
   // Cada 6 horas y a las :50, desfasado de los watchers de ONU (que corren a :00/:05/:12/
   // :20/:30/:42): un sync completo recorre todos los slots y puertos, y el MA5800 admite
   // pocas sesiones VTY concurrentes. Serializado por OLT.
-  @Cron('50 */6 * * *', { name: 'olt-sync-periodico' })
+  // El nombre del cron NO coincide con el del latido interno a propósito. Desde ADR-020 el
+  // `SchedulerRegistry` genera un latido por job; si ambos se llamaran igual, el envoltorio
+  // externo —que devuelve void— pisaría el `resultado` del interno, que trae los contadores
+  // `{ olts, encoladas, yaEnCurso }`. Dos filas: el tick y el trabajo.
+  @Cron('50 */6 * * *', { name: 'olt-sync-tick' })
   async syncPeriodico(): Promise<void> {
     if (process.env.RUN_CRONS !== 'true') return;
     if (this._syncPeriodicoEnCurso) return;

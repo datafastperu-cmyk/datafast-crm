@@ -14,7 +14,7 @@ import { join } from 'node:path';
 // ser observable. Escrita aquí, no.
 //
 // El 2026-08-07, cuando se midió por primera vez, 26 de los 29 `@Cron` del ERP no tenían
-// nombre y 46 de los 47 jobs programados no latían.
+// nombre y 37 de los 47 jobs programados no latían.
 // ═══════════════════════════════════════════════════════════════════════════
 describe('Todo @Cron declara un `name:` estable (A-3)', () => {
   const RAIZ = join(__dirname, '..', '..');
@@ -52,5 +52,39 @@ describe('Todo @Cron declara un `name:` estable (A-3)', () => {
     }
 
     expect(infractores).toEqual([]);
+  });
+
+  // Once crons ya registraban su propio latido con `hb.ejecutar('<nombre>', ...)` antes de
+  // ADR-020, y varios son MÁS finos que el automático: devuelven contadores en `resultado`,
+  // y el job de VPN emite dos latidos a propósito para distinguir cuál de sus dos watchers
+  // murió.
+  //
+  // Si el nombre del cron coincide con el de su latido interno, comparten fila: el
+  // envoltorio externo devuelve `void` y **pisa el `resultado` del interno**. Pasó de verdad
+  // el 2026-08-07 con `olt-sync-periodico` y `vpn-reconciliar-estado`, y no se vio hasta
+  // mirar los datos en producción — la tabla parecía correcta.
+  it('ningún nombre de cron colisiona con el de un latido manual', () => {
+    const nombresCron   = new Map<string, string>();
+    const nombresLatido = new Map<string, string>();
+
+    for (const fichero of ficherosTs(RAIZ)) {
+      const rel = fichero.slice(RAIZ.length + 1).replace(/\\/g, '/');
+      readFileSync(fichero, 'utf8').split(/\r?\n/).forEach((linea, i) => {
+        const ubicacion = `${rel}:${i + 1}`;
+
+        const cron = /@Cron\([^)]*name:\s*'([^']+)'/.exec(linea)
+                  ?? /addCronJob\(\s*'([^']+)'/.exec(linea);
+        if (cron) nombresCron.set(cron[1], ubicacion);
+
+        const latido = /\.ejecutar\(\s*'([^']+)'/.exec(linea);
+        if (latido) nombresLatido.set(latido[1], ubicacion);
+      });
+    }
+
+    const colisiones = [...nombresLatido.keys()]
+      .filter((n) => nombresCron.has(n))
+      .map((n) => `"${n}": cron en ${nombresCron.get(n)} · latido en ${nombresLatido.get(n)}`);
+
+    expect(colisiones).toEqual([]);
   });
 });
