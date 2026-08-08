@@ -2,10 +2,11 @@
 
 **Naturaleza:** documento de **estudio**, no normativo. Es el insumo del ADR de benchmark que
 PD-11 exige antes de diseñar. **No decide nada todavía.**
-**Fecha:** 2026-08-08 · **Estado:** el flujo real **ya está respondido** (§4) y contrastado contra
-el código (§5). Dos modelos externos contrastados (Odoo 18 y ERPNext). **Falta la normativa SUNAT.**
-**Resultados ya aplicados:** un defecto de dinero latente encontrado y corregido (§3.3) y **tres
-hallazgos verificados** pendientes de decisión (§5.2).
+**Fecha:** 2026-08-08 · **Estado:** el flujo real **está respondido** (§4) y contrastado contra el
+código (§5). Dos modelos externos contrastados (Odoo 18 y ERPNext). **SUNAT ya no bloquea**: aún no
+se emite electrónicamente, así que la normativa es puerta del trabajo de emisión, no de este
+estudio (§6).
+**Aplicado ya:** el defecto de la nota de crédito (§3.3) y el del corte por acumulación (H-1).
 
 ---
 
@@ -287,7 +288,17 @@ nombra el fichero para que se pueda comprobar.
 
 ### 5.2 Está MAL — tres hallazgos verificados
 
-#### H-1 · El corte NO cuenta «3 vencidos más 5 días». Los días de gracia son inertes
+#### H-1 · El corte NO contaba «3 vencidos más 5 días» — **CORREGIDO el 2026-08-08**
+
+> **Regla confirmada por el propietario:** *«El sistema te tolera N comprobantes vencidos antes de
+> cortarte, y además te ofrece N días de gracia **luego del último comprobante vencido**. Un
+> comprobante cuenta como vencido desde el día siguiente de su día de pago.»*
+>
+> Aplicado: la CTE agrega con `MAX(fecha_vencimiento)` en vez de `MIN`. Barrera en
+> `corte-por-acumulacion.spec.ts` (8 tests), que fija tanto la decisión como la consulta — sin la
+> segunda, volver a poner `MIN` no rompería ningún test.
+
+Lo que estaba mal, y por qué nadie lo vio:
 
 `cobranza.worker.detectarMorosos` exige dos condiciones:
 
@@ -312,9 +323,9 @@ Y el efecto general es mayor que esos cuatro días: **con `aplicarCorte >= 2`, l
 no hacen nada nunca**, porque para cuando se acumula el segundo vencimiento el más antiguo ya
 lleva un mes. La gracia solo influye con `aplicarCorte = 1`.
 
-**Corrección:** contar los días desde el vencimiento del comprobante que **completa la cuenta**
-(el N-ésimo más antiguo), no desde el primero. Es un cambio de una consulta, y **cambia el día en
-que se le corta el servicio a gente real**, así que no se aplica sin confirmación explícita.
+Nadie lo notó porque **con `aplicarCorte = 1` —el valor heredado por defecto— `MIN` y `MAX` son el
+mismo comprobante** y el resultado coincide. El defecto solo aparecía en la configuración que el
+propietario usa de verdad.
 
 #### H-2 · `moroso` no lo escribe nadie, y dos módulos entienden lo contrario por él
 
@@ -422,20 +433,67 @@ Ya hecho:
   defecto de dinero latente, corregido y con barrera (§3.3). No hizo falta esperar al ADR, porque
   no dependía de qué modelo se elija.
 
-Falta:
+**SUNAT ya no bloquea este ADR.** El propietario lo aclaró el 2026-08-08: *«aún no se emiten
+comprobantes electrónicos con el API de SUNAT»*. Los tipos actuales (`int`, `fac`, `ci`) sirven para
+**llevar la cuenta del IGV y de los impuestos** según la carga fiscal del comprobante y los
+impuestos especiales que la configuración del abonado le asigne. La normativa pasa a ser una
+**puerta del trabajo de emisión electrónica**, no de este estudio — y con un requisito ya
+identificado: *«tendremos que ver el tema del correlativo y ajustarnos a las exigencias de SUNAT»*.
+El correlativo actual se calcula por serie con `pg_advisory_xact_lock`, que es la parte difícil ya
+resuelta; lo que cambiará es la forma de la serie y las reglas de anulación.
 
-- **La normativa SUNAT** para el comprobante electrónico, que es 🔴 por interoperabilidad
-  (ADR-034) y donde PD-12 exige fijar el marco legal **antes** del diseño.
+### 6.1 Estado de los hallazgos
 
-### 6.1 Lo que ahora espera decisión, en orden de daño
+| | Hallazgo | Estado |
+|---|---|---|
+| **H-1** | El corte no contaba «N vencidos + N días desde el último» | ✅ **CORREGIDO 2026-08-08.** `MAX` en vez de `MIN`; barrera de 8 tests |
+| **H-3** | El primer comprobante del prepago lo emite el **navegador**, con `catch` vacío, sin el vencimiento de la política y sin `contratoId` | **Siguiente.** Mover la emisión al backend resuelve los cinco defectos de golpe y no cambia ninguna fecha de corte |
+| **H-2** | `moroso` no lo escribe nadie | **Decidido, pendiente de construir.** Ver §6.2 |
+| — | Nota de crédito vs. anular/editar (respuesta 5) | **Aplazado por el propietario**, sin bloquear nada. Ver §6.3 |
+| — | Cambios masivos de configuración (respuesta 9) | Funcionalidad nueva, ya especificada |
+| — | Comprobante por contrato vs. consolidado (respuesta 3) | A estudiar |
+| — | Canales de cobranza (respuesta 7) | Rediseño, reconocido por el propietario |
 
-| | Hallazgo | Qué hay que decidir | Por qué no se aplicó ya |
-|---|---|---|---|
-| **1** | **H-1** — el corte no cuenta «3 vencidos + 5 días»; la gracia es inerte con `aplicarCorte >= 2` | Contar los días desde el vencimiento que **completa** la cuenta, no desde el más antiguo | **Cambia el día en que se corta a gente real.** Nunca sin confirmación |
-| **2** | **H-2** — `moroso` no lo escribe nadie, y el reconciliador de MikroTik lo trata como CORTADO | Si el estado debe existir de verdad en el ciclo automático (y entonces corregir el reconciliador), o retirarse | Latente hoy; **muerde el día que un operador lo ponga a mano** |
-| **3** | **H-3** — el primer comprobante del prepago lo emite el **navegador**, con `catch` vacío, sin vencimiento de la política y sin `contratoId` | Mover la emisión al backend, al crear el contrato | La lógica ya existe y funciona; lo que cambia es **quién** la ejecuta y qué pasa si falla |
-| **4** | Nota de crédito vs. anular/editar (respuesta 5) | Cerrar la edición del comprobante emitido y usar el mecanismo que ya existe | Decisión de operación, no de código |
-| **5** | Cambios masivos de configuración (respuesta 9) | Alcance de los filtros y de los campos aplicables | Funcionalidad nueva, ya especificada por el propietario |
+### 6.2 H-2 — qué se decidió, y por qué no es un cambio de una línea
+
+**Decisión del propietario (2026-08-08):** *«sería bueno que `moroso` sea un estado donde el
+cliente está activo pero ya pasó su fecha de pago; esto sirve para estadísticas — qué probabilidad
+tiene el cliente de pasar a moroso, si es un moroso recurrente»*.
+
+Es más amplio que la definición anterior (ya no es «dentro de la prórroga»): **desde el día
+siguiente al vencimiento, con servicio.** Y su propósito es analítico, no operativo — lo cual
+importa, porque marca lo que NO debe hacer: **`moroso` no puede cortar nada.**
+
+**Por qué no es una línea.** El estado no se lee en un sitio: `estado = 'activo'` aparece en **57
+consultas**. Empezar a escribir `moroso` haría que un abonado en mora **desapareciera** de todas
+ellas sin que nada fallara. Las dos más graves:
+
+- **`cobranza.worker.detectarMorosos` filtra `co.estado = 'activo'`.** Si el abonado pasa a
+  `moroso`, **deja de evaluarse para el corte**: el estado creado para medir la morosidad impediría
+  cortar a los morosos.
+- **`address-list-reconciliador.service.ts`** declara
+  `ESTADOS_CORTADOS = ['suspendido', 'cortado', 'moroso']` — trata `moroso` como **sin servicio**,
+  al revés de la decisión. Le cortaría el tráfico en MikroTik.
+
+Dos módulos ya lo entienden bien y sirven de referencia: `olt-sync.service` y
+`reconciliador.service` tratan `['activo','moroso']` como «debe tener servicio».
+
+**Orden correcto:** primero auditar las 57 y decidir cuáles significan «con servicio» y cuáles
+«al día»; después escribir el estado. Al revés se rompe el corte en producción.
+
+### 6.3 Lo que queda anotado sin bloquear
+
+**Anular emite una nota de crédito sin decirlo.** El frontend llama a `PATCH /facturacion/:id/anular`
+con solo `{ motivo }`, y el backend crea la NC salvo que reciba `crearNotaCredito: false`. El
+diálogo de confirmación dice únicamente *«Se anulará el comprobante. Deja de ser exigible al
+cliente»* — no menciona que se acuña un documento nuevo con serie `NC-…` y correlativo propio.
+
+Como el flujo real es **anular para poder editar** (respuesta 5), cada edición generaría en silencio
+un comprobante que nadie pidió. **Latente:** producción tiene 0 anulaciones.
+
+El propietario lo aplazó explícitamente, y **no bloquea nada**: no hay notas de crédito emitidas,
+y desde A-5 una nota de crédito ya no se cuenta como deuda, que era el daño real. Queda como
+decisión de operación para cuando se aborde el modelo del abono.
 
 Con eso, esto se convierte en el **ADR de benchmark** que decide qué modelo se adopta, qué se
 descarta y **qué invariantes propios se conservan pese a la adopción**.

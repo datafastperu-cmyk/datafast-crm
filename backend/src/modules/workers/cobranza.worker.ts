@@ -125,10 +125,22 @@ export class CobranzaScheduler implements OnModuleInit {
     // (`PoliticaFacturacionService`): vence el día de pago, se corta `diasGracia` después.
     // Aquí se lee el `fecha_vencimiento` GRABADO en cada factura, nunca recalculado: un
     // cambio de configuración no puede mover la fecha de una deuda ya notificada.
+    // LA REGLA, dicha por el propietario el 2026-08-08: «el sistema te tolera N
+    // comprobantes vencidos antes de cortarte, y además te ofrece N días de gracia
+    // **luego del ÚLTIMO comprobante vencido**». Un comprobante cuenta como vencido desde
+    // el día siguiente a su día de pago — la gracia no entra en esa cuenta.
+    //
+    // Aquí se medía desde `MIN(fecha_vencimiento)`, el más ANTIGUO, y eso tenía dos
+    // efectos: cortaba antes de tiempo (con día de pago 10, el tercer vencimiento cae el
+    // 10/03 y se cortaba el 11/03 en vez del 15/03), y sobre todo **hacía inertes los días
+    // de gracia siempre que `aplicarCorte >= 2`**: para cuando se acumula el segundo
+    // comprobante, el más antiguo lleva un mes y cualquier gracia razonable ya está
+    // superada. La gracia solo influía con `aplicarCorte = 1`, que es justo el caso en que
+    // MIN y MAX coinciden — por eso nadie lo notó.
     const morosos = await this.ds.query(`
       WITH impagas AS (
         SELECT cliente_id,
-               MIN(fecha_vencimiento) AS vencimiento_mas_antiguo,
+               MAX(fecha_vencimiento) AS vencimiento_del_ultimo,
                COUNT(*)::int          AS comprobantes_vencidos
           FROM facturas
          WHERE deleted_at IS NULL
@@ -148,9 +160,11 @@ export class CobranzaScheduler implements OnModuleInit {
         co.meses_deuda,
         cl.facturacion_config,
         em.dias_gracia     AS dias_gracia_empresa,
-        im.vencimiento_mas_antiguo,
+        im.vencimiento_del_ultimo,
         im.comprobantes_vencidos,
-        (CURRENT_DATE - im.vencimiento_mas_antiguo)::int AS dias_vencido,
+        -- Días transcurridos desde el ÚLTIMO vencimiento, que es contra lo que corre la
+        -- gracia. No desde el primero: ver el comentario de la regla, arriba.
+        (CURRENT_DATE - im.vencimiento_del_ultimo)::int AS dias_vencido,
         cl.nombre_completo AS nombre_cliente
       FROM contratos co
       JOIN empresas em ON em.id = co.empresa_id

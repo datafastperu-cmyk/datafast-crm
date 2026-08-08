@@ -335,26 +335,44 @@ cerrar el ADR.
 Los tres están **verificados leyendo el código**, no supuestos, y ninguno se aplica solo porque los
 tres cambian comportamiento que afecta a abonados reales.
 
-**H-1 — el corte no hace lo que especificaste.** Pediste «3 comprobantes vencidos MÁS 5 días».
-`cobranza.worker` cuenta los 5 días desde el vencimiento **más antiguo**, no desde el tercero:
+**~~H-1~~ — CORREGIDO 2026-08-08.** Regla fijada por el propietario: *«el sistema te tolera N
+comprobantes vencidos antes de cortarte, y además te ofrece N días de gracia luego del ÚLTIMO
+comprobante vencido; un comprobante cuenta como vencido desde el día siguiente de su día de pago»*.
+`cobranza.worker` medía desde `MIN(fecha_vencimiento)` —el más antiguo—, así que cortaba antes
+(11/03 en vez de 15/03 con día de pago 10) y, sobre todo, **dejaba inertes los días de gracia
+siempre que `aplicarCorte >= 2`**. Ahora agrega con `MAX`. Barrera `corte-por-acumulacion.spec.ts`
+(8 tests) que fija la decisión **y** la consulta: sin lo segundo, volver a poner `MIN` no rompería
+ningún test — que es exactamente cómo pasó inadvertido.
 
-```sql
-MIN(fecha_vencimiento) AS vencimiento_mas_antiguo,
-(CURRENT_DATE - im.vencimiento_mas_antiguo)::int AS dias_vencido
-```
+**H-2 — DECIDIDO, pendiente de construir, y NO es un cambio de una línea.**
+Definición del propietario: *«un estado donde el cliente está activo pero ya pasó su fecha de pago;
+sirve para estadísticas — qué probabilidad tiene de pasar a moroso, si es moroso recurrente»*. Más
+amplio que la definición anterior (ya no es «dentro de la prórroga») y de propósito **analítico**:
+`moroso` no debe cortar nada.
 
-Con día de pago 10, la tercera vence el 10/03 y el más antiguo lleva 60 días, así que corta el
-11/03 en vez del 15/03. Y lo general es peor que esos cuatro días: **con `aplicarCorte >= 2` los
-días de gracia no influyen nunca**, porque el más antiguo siempre los ha superado. La gracia solo
-vale con `aplicarCorte = 1`.
+Hoy las **26** apariciones son lecturas; ninguna escritura. Empezar a escribirlo tiene radio:
+**`estado = 'activo'` aparece en 57 consultas** y un abonado que pase a `moroso` desaparecería de
+todas sin que nada falle. Las dos graves:
 
-**H-2 — `moroso` no lo escribe nadie, y dos módulos lo entienden al revés.** Las **26** apariciones
-de `moroso` son lecturas; ninguna escritura. El ciclo automático va `activo → suspendido`, así que
-el estado que describes —en mora, con servicio, usando gracia o prórroga— **no existe en los
-datos**: esos abonados figuran como `activo`, indistinguibles de los que están al día. Y
-`address-list-reconciliador.service.ts` declara `ESTADOS_CORTADOS = ['suspendido','cortado','moroso']`,
-es decir lo trata como SIN servicio, al revés que el enum. Latente: muerde el día que un operador lo
-ponga a mano, y MikroTik le corta el tráfico.
+- **`cobranza.worker.detectarMorosos` filtra `co.estado = 'activo'`** → el moroso **dejaría de
+  evaluarse para el corte**. El estado creado para medir la morosidad impediría cortar a los morosos.
+- **`address-list-reconciliador`** declara `ESTADOS_CORTADOS = ['suspendido','cortado','moroso']` →
+  lo trata como SIN servicio, al revés de la decisión: le cortaría el tráfico en MikroTik.
+
+`olt-sync.service` y `reconciliador.service` ya lo tratan bien (`['activo','moroso']` = debe tener
+servicio) y sirven de referencia. **Orden:** auditar las 57 primero, escribir el estado después.
+
+**Anular emite una nota de crédito sin decirlo — APLAZADO por el propietario, no bloquea.**
+El frontend manda solo `{ motivo }` y el backend crea la NC salvo `crearNotaCredito: false`. El
+diálogo dice solo «Se anulará el comprobante», sin mencionar que se acuña un documento con serie
+`NC-…` y correlativo propio. Como el flujo real es *anular para editar*, cada edición generaría en
+silencio un comprobante no pedido. Latente (0 anulaciones), y desde A-5 una NC ya no cuenta como
+deuda, que era el daño real.
+
+**SUNAT ya no bloquea el ADR.** *«Aún no se emiten comprobantes electrónicos con el API de SUNAT»*;
+los tipos actuales sirven para llevar la cuenta del IGV según la carga fiscal del comprobante y los
+impuestos especiales del abonado. La normativa pasa a ser puerta del trabajo de emisión electrónica,
+con un requisito ya identificado: **el correlativo tendrá que ajustarse a las exigencias de SUNAT**.
 
 **H-3 — el primer comprobante del prepago SÍ se emite; lo emite el navegador.**
 *(Corregido el 2026-08-08: mi versión anterior decía que no se emitía. El propietario indicó que sí
