@@ -134,3 +134,27 @@ empresas?»* sino ***«¿va a haber más de una?»***, y costaba una consulta y 
 
 Verificar el mecanismo antes de construirlo evitó una garantía falsa. Verificar la **premisa** antes
 de planificar habría evitado la fase entera.
+
+---
+
+## 6. Verificación en producción — 2026-08-08
+
+Que el `CREATE UNIQUE INDEX` no diera error no prueba nada. Se intentó insertar una segunda
+empresa dentro de una transacción que siempre se deshace:
+
+```
+1. Indice presente          : true
+2. Empresas actuales        : 1
+3. Segunda empresa RECHAZADA: true
+   motivo: duplicate key value violates unique constraint "unica_empresa_por_instalacion"
+4. Rechazada POR EL INDICE  : true
+5. Empresas tras rollback   : 1
+```
+
+> **La primera versión de esa comprobación dio verde por el motivo equivocado.** El `INSERT`
+> llevaba una columna inexistente (`telefono`), PostgreSQL lo rechazó por eso, y el script lo
+> contó como barrera verificada. Se corrigió construyendo el `INSERT` desde las columnas reales
+> de la tabla y **exigiendo que el mensaje de error nombre al índice**.
+>
+> Es la tercera vez en dos días que una herramienta de verificación hereda el defecto que venía
+> a comprobar. Un rechazo no es una prueba si no se comprueba **por qué** se rechazó.
