@@ -97,12 +97,13 @@ Situación actual y desviaciones conocidas.
 | 014 | El reconcile solo actúa sobre ONUs aprovisionadas por el ERP | Aceptada (implementada 2026-08-06) | Riesgo de migración |
 | 015 | Bootstrap TR-069 por estrategia y decidido por modelo | Aceptada | El ME137 no materializa en EG8145V5 |
 | 016 | Módulos degradables vs Core Indestructible | Aceptada | Resiliencia de arranque |
-| **017** | RLS no es hoy un mecanismo de aislamiento: primero hay que poder aplicarla ([fichero propio](ADR-017-aislamiento-multi-tenant.md)) | **Aceptada** (2026-08-08) — **A-1 sigue parcialmente abierta** | La app es superusuario: RLS seria inerte |
+| **017** | RLS no es hoy un mecanismo de aislamiento: primero hay que poder aplicarla ([fichero propio](ADR-017-aislamiento-multi-tenant.md)) | **Aceptada**, con su **objetivo de RLS sin efecto** por ADR-031 (mismo día). Sigue vigente su hallazgo B-15 | La app es superusuario: RLS seria inerte |
 | **019** | La deuda se calcula en un servicio de dominio, no en la base ([fichero propio](ADR-019-destino-del-calculo-de-deuda.md)) | **Aceptada** (implementada 2026-08-08) | 4 cálculos; uno reactivaba morosos |
 | **020** | El latido se deriva del registro y lo vigila el proceso que responde ([fichero propio](ADR-020-latido-vigilado.md)) | **Aceptada** (implementada 2026-08-07) | De 47 crons latían 10 |
 | **018 · 021–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
 | **029** | Marco normativo externo de referencia | **Aceptada parcialmente** (D3, 2026-08-06) | Certificación descartada · adopción selectiva aceptada · programa legal suspendido con excepción |
 | **030** | Referencia por tipo de módulo (incluye TM Forum) | **Aceptada** (D4, 2026-08-06) — pendiente de reescritura | ¿Cada módulo desde 0? |
+| **031** | **El ERP es mono-empresa por diseño: una instalación, una empresa** ([fichero propio](ADR-031-erp-mono-empresa.md)) | **Aceptada** (D12, 2026-08-08) | Retira A-1 y deja sin efecto el objetivo de RLS de ADR-017 |
 
 ---
 

@@ -2,6 +2,22 @@
 /**
  * Barrido de aislamiento multi-tenant (desviación A-1).
  *
+ * ┌───────────────────────────────────────────────────────────────────────────────────────┐
+ * │ LATENTE desde 2026-08-08 — NO está en el CI, y es correcto que no esté.               │
+ * │                                                                                        │
+ * │ ADR-031: el ERP es **mono-empresa por diseño**. Una instalación sirve a exactamente    │
+ * │ una empresa, y la base lo impone con el índice único `unica_empresa_por_instalacion`.  │
+ * │ Este barrido protege de que una consulta devuelva datos de OTRA empresa; sin otra      │
+ * │ empresa posible, no protege de nada.                                                   │
+ * │                                                                                        │
+ * │ Se conserva en vez de borrarse porque la decisión es reversible y su reactivación      │
+ * │ tiene una señal clara: **retirar ese índice**. Los cuatro escenarios que lo            │
+ * │ despertarían están en ADR-031 §4.2 (SaaS multi-ISP, dos razones sociales, migración    │
+ * │ de MikroWISP a la misma instancia, o cualquier motivo para quitar la restricción).     │
+ * │                                                                                        │
+ * │ Sigue siendo útil como diagnóstico puntual: `npm run aislamiento:check`.               │
+ * └───────────────────────────────────────────────────────────────────────────────────────┘
+ *
  * Busca sentencias SQL crudas que **lean o muten una tabla con `empresa_id` sin filtrar por
  * `empresa_id`**. Esa omisión no produce un error: produce **datos de otra empresa**, sin
  * log y sin síntoma. Es la única clase de fallo del ERP que es silenciosa por definición.

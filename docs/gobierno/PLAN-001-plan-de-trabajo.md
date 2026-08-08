@@ -119,16 +119,33 @@ En este orden, por relación seguridad/coste:
 |---|---|---|---|
 | ~~3.1~~ | ~~**A-3** — el worker puede morir en silencio~~ | **CERRADA 2026-08-07** — ver §3.1 más abajo | ADR-020 **aceptado** |
 | ~~3.2~~ | ~~**A-4** — la deuda se calcula en 4 sitios~~ | **CERRADA 2026-08-08** — ver §3.2 más abajo | **D11** resuelto · ADR-019 **aceptado** |
-| 3.3 | **A-1** — aislamiento multi-tenant por convención | **PARCIAL 2026-08-08** — barrido entregado; **RLS descartada por ahora: sería inerte**. Ver §3.3 | ADR-017 **aceptado** · bloqueada por **B-15** |
+| ~~3.3~~ | ~~**A-1** — aislamiento multi-tenant por convención~~ | **RETIRADA 2026-08-08** — no corregida: **su premisa era falsa**. Ver §3.3 | **ADR-031** (D12) |
 
 **Salida:** cero desviaciones de nivel A. Es el hito que más cambia el perfil de riesgo del ERP.
 
-> **Corrección tras ejecutar la fase:** la salida NO se alcanza. A-2, A-3 y A-4 están cerradas;
-> **A-1 queda parcialmente abierta a propósito** porque su solución evidente (RLS) no funciona
-> sobre esta instalación y su prerrequisito es una decisión del propietario. Se deja escrito en vez
-> de forzar el hito: un plan que declara completo lo que no lo está deja de servir para planificar.
+> **Alcanzada el 2026-08-08 — pero no como estaba previsto.** A-2, A-3 y A-4 se cerraron
+> corrigiendo el defecto. **A-1 se retiró comprobando que su premisa era falsa**: asumía que el
+> ERP alojaría varias empresas, y nadie lo había verificado. Es un resultado legítimo, y más
+> barato que la fase que se había planificado para ella.
+>
+> **Queda B-15 como el hallazgo serio que deja esta fase**, y no es de nivel A por clasificación
+> sino por consecuencia: la aplicación se conecta a PostgreSQL como superusuario.
 
-#### 3.3 — PARCIAL 2026-08-08 · A-1
+#### 3.3 — RETIRADA 2026-08-08 · A-1 (la premisa era falsa)
+
+> **Desenlace, escrito después de todo lo que sigue.** A-1 llevaba semanas clasificada como
+> crítica y tenía una fase entera asignada. **No se corrigió: se comprobó que su premisa era
+> falsa.** El propietario confirmó que el ERP es **mono-empresa por diseño** — una instalación,
+> una empresa; otro operador, otra instalación desde cero (**ADR-031**, decisión D12).
+>
+> Sin una segunda empresa posible **no puede haber fuga entre empresas**. La desviación se retira,
+> el objetivo de RLS desaparece, y el barrido sale del CI el mismo día que entró. Para que la
+> decisión se sostenga sola, la base la impone: índice único `unica_empresa_por_instalacion`.
+>
+> **Lo que queda vivo de esta fase es B-15**, que no depende de la multi-tenancy en absoluto.
+>
+> Lo que sigue se conserva porque documenta **por qué RLS no funciona aquí**, y eso es lo que
+> evita que alguien lo reintente dentro de seis meses creyendo que lo resuelve.
 
 **La medición impidió construir una falsa garantía.** El plan decía «RLS en PostgreSQL + barrido en
 CI». Antes de escribir la migración se comprobó si RLS podía siquiera aplicarse:

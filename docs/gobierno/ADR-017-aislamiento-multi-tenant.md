@@ -1,8 +1,29 @@
 # ADR-017 — RLS no es hoy un mecanismo de aislamiento: primero hay que poder aplicarla
 
-**Estado:** **Aceptada** — 2026-08-08, Datafast (PLAN-001 Fase 3.3)
+**Estado:** **Aceptada, y su objetivo de RLS queda SIN EFECTO el mismo día** — ver **ADR-031**
+**Fecha:** 2026-08-08, Datafast (PLAN-001 Fase 3.3)
 **Decide:** Datafast · **Aborda:** desviación **A-1** (queda **parcialmente abierta**, a propósito) ·
 **Relacionado:** PS-04 · ADR-012 · RDM-001 **R3**
+
+> ## ⚠ Leer esto primero (2026-08-08, horas después de aceptarse)
+>
+> **ADR-031 deja sin efecto el objetivo de este ADR.** El propietario confirmó que el ERP es
+> **mono-empresa por diseño**: una instalación sirve a exactamente una empresa, y otra empresa
+> implica otra instalación desde cero. La base lo impone ahora con el índice único
+> `unica_empresa_por_instalacion`.
+>
+> Sin una segunda empresa posible, **no puede haber fuga entre empresas**: RLS deja de hacer
+> falta y el barrido sale del CI (queda latente).
+>
+> **Lo que de este ADR SIGUE VIGENTE y no depende de la multi-tenancy:**
+> - **§2.2 — la aplicación se conecta a PostgreSQL como superusuario** (desviación **B-15**).
+>   Es explotable hoy, con una sola empresa. Al desactivarse A-1, deja de estar tapada por ella.
+> - **§2.3 — siete tablas con `empresa_id` nulable**, si alguna vez se retoma RLS.
+> - **§2.4 — la clasificación del barrido** (20 abiertas / 171 transitivas / 13 globales), como
+>   fotografía del estado del código.
+>
+> Se conserva entero en vez de reescribirse: **el registro de por qué se descartó RLS aquí es lo
+> que evita que alguien lo reintente dentro de seis meses creyendo que lo resuelve.**
 
 ---
 
