@@ -16,6 +16,7 @@ import { decrypt }                    from '../../common/utils/encryption.util';
 import { filasUpdateReturning }       from '../../common/utils/pg-result.util';
 import { JwtPayload }                 from '../../common/decorators/current-user.decorator';
 import { NOTIFICATION_EVENTS }        from '../notificaciones/events/notification.events';
+import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
 
 export interface CrearPromesaDto {
   contratoId:       string;
@@ -620,7 +621,7 @@ export class PromesasPagoService {
          FROM facturas f
          JOIN contratos c ON c.id = $1
         WHERE (f.contrato_id = c.id OR (f.contrato_id IS NULL AND f.cliente_id = c.cliente_id))
-          AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+          AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
           AND f.deleted_at IS NULL`,
       [promesa.contratoId],
     ).catch(() => [{ deuda: '' }]);

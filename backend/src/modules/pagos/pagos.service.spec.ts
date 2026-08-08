@@ -172,7 +172,15 @@ describe('PagosService', () => {
         { provide: MercadoPagoService,  useValue: mockMpSvc },
         { provide: FacturacionService,  useValue: mockFacturacionSvc },
         // Recalcula deuda_total tras el pago; aquí no se ejercita.
-        { provide: DeudaPorContratoService, useValue: { recalcularPorCliente: jest.fn(), calcular: jest.fn() } },
+        // `calcular` devuelve el Map de deuda imputada por contrato. Desde ADR-019 es la
+        // ÚNICA fuente que consulta la reactivación automática: antes esta ruta tenía su
+        // propio SUM por `contrato_id`, ciego al comprobante consolidado, que devolvía cero
+        // para abonados que sí debían y reactivaba morosos. Un Map vacío significa "sin
+        // deuda imputada", que es el escenario de estos tests.
+        { provide: DeudaPorContratoService, useValue: {
+          recalcularPorCliente: jest.fn(),
+          calcular: jest.fn().mockResolvedValue(new Map()),
+        } },
         { provide: ContratosService,    useValue: mockContratosSvc },
         { provide: AuditoriaService,    useValue: mockAuditoria },
         { provide: ConfigService,       useValue: mockConfig },

@@ -28,6 +28,7 @@ import { SagaLogService } from '../sagas/saga-log.service';
 import { SagaTipo } from '../sagas/entities/saga-log.entity';
 import { OutboxRedService }    from '../outbox-red/outbox-red.service';
 import { PromesasPagoService } from '../promesas-pago/promesas-pago.service';
+import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 
 export interface ActivarResultado {
   contrato:     Contrato;
@@ -86,6 +87,7 @@ export class ContratosService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly events: EventEmitter2,
     private readonly promesasSvc: PromesasPagoService,
+    private readonly deudaSvc: DeudaPorContratoService,
   ) {}
 
   async create(dto: CreateContratoDto, user: JwtPayload, req?: any): Promise<Contrato> {
@@ -1221,9 +1223,17 @@ export class ContratosService {
     };
   }
 
-  async actualizarDeuda(id: string, deudaTotal: number, mesesDeuda: number, empresaId: string): Promise<void> {
-    await this.contratoRepo.update(id, { deudaTotal, mesesDeuda });
-  }
+  // `actualizarDeuda(id, deudaTotal, mesesDeuda)` se eliminó el 2026-08-08 (desviación A-4).
+  //
+  // Era una puerta abierta: aceptaba cualquier cifra de quien la llamara y la escribía en
+  // `contratos.deuda_total` sin contrastarla con una sola factura. Su único consumidor le
+  // pasaba el resultado de un cálculo que ignoraba los comprobantes consolidados, así que
+  // la puerta no solo permitía mentir: se usaba para eso.
+  //
+  // La proyección tiene ahora **un solo escritor**: `DeudaPorContratoService`. Quien
+  // necesite refrescarla llama a `recalcularPorCliente`, que parte de las facturas. No se
+  // repone este método ni una variante suya sin un ADR que explique por qué hace falta
+  // poder escribir una deuda que las facturas no respaldan.
 
   async registrarPago(id: string, fechaPago: string, empresaId: string): Promise<void> {
     await this.contratoRepo.update(id, { fechaUltimoPago:fechaPago });
@@ -1250,12 +1260,23 @@ export class ContratosService {
         en_prorroga = false,
         prorroga_hasta = NULL,
         fecha_vencimiento = $2,
-        deuda_total = 0,
-        meses_deuda = 0,
         updated_at = NOW(),
         updated_by = $3
       WHERE id = $1 AND empresa_id = $4
     `, [contratoId, nuevaFechaStr, operadorId, empresaId]);
+
+    // La deuda NO se pone a cero a mano: se recalcula desde las facturas.
+    //
+    // Aquí decía `deuda_total = 0, meses_deuda = 0`. Reactivar es una decisión del
+    // operador, y puede tomarla legítimamente con deuda viva —una promesa de pago, un
+    // gesto comercial—; lo que no puede es que el ERP responda que no debe nada. Escribir
+    // el cero convertía la orden "reactiva el servicio" en la afirmación "este abonado
+    // está al día", que es otra cosa y puede ser falsa.
+    //
+    // Con el recálculo, el servicio se levanta igual y la ficha dice la verdad. Si queda
+    // deuda, el cobro nocturno volverá a verla — que es exactamente lo que debe pasar.
+    // Un solo escritor de la proyección (desviación A-4).
+    await this.deudaSvc.recalcularPorCliente(c.clienteId, empresaId);
 
     await this.contratoRepo.guardarHistorial({
       contratoId, empresaId,

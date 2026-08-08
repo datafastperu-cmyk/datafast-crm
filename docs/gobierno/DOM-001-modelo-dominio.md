@@ -281,7 +281,7 @@ Servicios que expresan reglas que no pertenecen a una sola entidad.
 |---|---|---|
 | `PoliticaFacturacionService` | **Fórmula única** del ciclo de cobro por cliente | `facturacion/` |
 | `AplicadorFacturaService` | **Único escritor** del saldo | `facturacion/` |
-| `DeudaPorContratoService` | Cálculo de deuda (**uno de cuatro caminos — ver §8.8 R-9**) | `facturacion/` |
+| `DeudaPorContratoService` | Cálculo de deuda — **definición única desde 2026-08-08** (ADR-019). Imputa el comprobante consolidado en proporción a las líneas de cada contrato, y es el **único escritor** de `contratos.deuda_total` | `facturacion/` (módulo propio) |
 | `FtthMaquinaEstados` | Transiciones legales e idempotencia derivada | `olt-nativo/domain/` |
 | `PlantaExternaMaquinaEstados` | Transiciones de elementos de planta | `planta-externa/domain/` |
 | `PresupuestoOptico` | Atenuación acumulada de un trayecto | `planta-externa/domain/` |
@@ -344,7 +344,7 @@ lo confiado.**
 | R-6 | **Un solo servicio registra pagos** | Test `frontera-dinero.spec.ts` |
 | R-7 | **Un solo servicio aplica dinero a facturas** | Test |
 | R-8 | **El extorno es la única reversión legítima de un pago** | Test `extorno.spec.ts` |
-| R-9 | La deuda de un contrato se calcula **una sola vez** | ⚠️ **Incumplida: 4 implementaciones** |
+| R-9 | La deuda de un contrato se calcula **una sola vez** | ✅ **ADR-019** — una definición, un escritor, y barrera en tests contra la lista de estados escrita a mano |
 | R-10 | El ciclo de cobro tiene una sola fórmula; **la gracia es la distancia vencimiento→corte** | Test |
 | R-11 | No se aplica saldo a favor contra facturas anuladas | Test (guard de estado) |
 | R-12 | Los correlativos **no** se generan con `MAX()+1` | Función de BD |
@@ -391,9 +391,44 @@ lo confiado.**
 | R-33 | **Los datos de una empresa no son visibles para otra** | ⚠️ **Solo por convención (445 consultas)** |
 | R-34 | Solo 400 y 404 son rechazos definitivos | Test |
 
-> **Cinco reglas de este catálogo (R-9, R-19, R-25, R-33 y las marcadas "solo por código") no
-> tienen mecanismo propio.** R-9 y R-33 son las de mayor consecuencia: cálculo de deuda divergente
-> y fuga entre empresas. Ambas están priorizadas como críticas en RDM-001.
+> **Cuatro reglas de este catálogo (R-19, R-25, R-33 y las marcadas "solo por código") no tienen
+> mecanismo propio.** R-9 salió de esa lista el 2026-08-08 con ADR-019. **R-33 —fuga entre
+> empresas— es ahora la de mayor consecuencia sin mecanismo**, y sigue priorizada como crítica en
+> RDM-001 (desviación A-1, ADR-017).
+
+---
+
+## 8.9 Deuda de modelo conocida
+
+Decisiones de modelado que **hoy sostienen el sistema** y que un modelo de referencia no tomaría.
+No se corrigen aquí: se registran para que el siguiente rediseño parta de saberlas, en vez de
+redescubrirlas.
+
+### 8.9.1 `contratos.deuda_total` no debería existir
+
+| | |
+|---|---|
+| **Qué es hoy** | Una columna que almacena la deuda imputada a cada contrato, refrescada por `DeudaPorContratoService` desde las facturas |
+| **Qué haría un modelo contable estándar** | **No almacenarla.** La deuda se deriva de los apuntes por cobrar abiertos: no hay nada que sincronizar, y por tanto nada que pueda contradecirse |
+| **Qué costó** | El incidente **2026-08-04** (ficha S/64, deuda real S/128) y la desviación **A-4** entera: cuatro implementaciones del cálculo son el *síntoma* de almacenar algo que debería derivarse |
+| **Por qué sigue** | CON-001 §8.11.3 — no se re-modela el agregado raíz con desviaciones críticas abiertas. Y eliminarla toca a la vez el cobro nocturno, el portal y los listados: es cambio de modelo, no corrección |
+| **Cuándo se decide** | **Entrada obligatoria del ADR de benchmark financiero** que PD-11 exige antes de diseñar H2-1 (SUNAT). La pregunta allí no será cómo mantenerla sincronizada, sino **por qué existe** |
+
+> El propio código ya lo reconoce a medias. `facturacion.worker` explica que se abandonó el contador
+> incremental porque *«se recalcula desde facturas, la única fuente»*. Se llegó solo al axioma
+> correcto, pagándolo con un incidente en producción — que es exactamente el argumento de PD-11 para
+> consultar un modelo maduro **antes**, no después.
+
+### 8.9.2 Producto / Servicio / Recurso colapsados en `contratos`
+
+Registrado en **ADR-030 §2.3**: `contratos` contiene a la vez lo comercial (`plan_id`, precios,
+ciclo), el servicio (`tipo_servicio`, `tipo_auth`) y el recurso físico (`onu_id`, `ip_asignada`,
+`usuario_pppoe`, `router_id`).
+
+**Lo que el colapso explica —y lo que no—:** no impide técnicamente la sustitución de ONU
+(`uq_contratos_empresa_onu` no colisiona en un `UPDATE` A→B). Lo que explica es **por qué nadie la
+echó en falta**: si la ONU es un atributo del contrato, sustituirla no parece una operación de
+primera clase. Condiciona ADR-022.
 
 ---
 

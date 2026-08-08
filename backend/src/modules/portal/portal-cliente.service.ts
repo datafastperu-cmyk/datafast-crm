@@ -5,6 +5,7 @@ import {
   PoliticaFacturacionService,
   PoliticaFacturacion,
 } from '../facturacion/politica-facturacion.service';
+import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
 
 // Perfil del abonado y sus servicios. Todo lo que sale de aquí está acotado al
 // `clienteId` del token: el portal nunca recibe un identificador de cliente por
@@ -186,7 +187,7 @@ export class PortalClienteService {
          FROM facturas
         WHERE cliente_id = $1 AND empresa_id = $2
           AND deleted_at IS NULL
-          AND estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+          AND estado IN ${SQL_ESTADOS_CON_SALDO}
           AND COALESCE(saldo, total - monto_pagado) > 0`,
       [clienteId, empresaId],
     );

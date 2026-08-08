@@ -4,6 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { Pago, EstadoPago, MetodoPago, CuentaBancaria } from '../entities/pago.entity';
 import { FilterPagoDto } from '../dto/pago.dto';
 import { paginate, PaginatedResult } from '../../../common/utils/pagination.util';
+import { SQL_ESTADOS_CON_SALDO } from '../../facturacion/domain/estados-con-saldo';
 
 @Injectable()
 export class PagoRepository {
@@ -233,22 +234,16 @@ export class PagoRepository {
     return qb.orderBy('p.fecha_pago', 'ASC').addOrderBy('p.registrado_en', 'ASC').getMany();
   }
 
-  // ── Deuda total de un contrato (facturas pendientes) ──────
-  async calcularDeudaContrato(contratoId: string): Promise<{ deuda: number; meses: number }> {
-    const [result] = await this.ds.query(`
-      SELECT
-        COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda,
-        COUNT(f.id)::INTEGER               AS meses
-      FROM facturas f
-      WHERE f.contrato_id = $1
-        AND f.estado IN ('emitida','pagada_parcial','vencida','en_cobranza')
-        AND f.deleted_at IS NULL
-    `, [contratoId]);
-    return {
-      deuda: parseFloat(result?.deuda || '0'),
-      meses: parseInt(result?.meses  || '0', 10),
-    };
-  }
+  // `calcularDeudaContrato(contratoId)` se eliminó el 2026-08-08 (desviación A-4).
+  //
+  // Sumaba `WHERE f.contrato_id = $1`. El comprobante de este ERP es CONSOLIDADO por
+  // cliente —`contrato_id` en NULL—, así que devolvía **cero** para abonados que sí debían,
+  // y su consumidor usaba ese cero para reactivar el servicio de un moroso. Es el mecanismo
+  // del incidente 2026-08-04 (ficha S/64, deuda real S/128): `cobranza.worker` lo corrigió
+  // añadiendo `OR (contrato_id IS NULL AND cliente_id = ...)` y esta copia se quedó atrás.
+  //
+  // La deuda por contrato la calcula `DeudaPorContratoService.calcular`, que además imputa
+  // el consolidado en proporción a las líneas de cada contrato. Una sola definición.
 
   // ── Facturas pendientes del contrato ──────────────────────
   async findFacturasPendientes(
@@ -260,7 +255,7 @@ export class PagoRepository {
       FROM facturas
       WHERE contrato_id = $1
         AND empresa_id  = $2
-        AND estado IN ('emitida','pagada_parcial','vencida','en_cobranza')
+        AND estado IN ${SQL_ESTADOS_CON_SALDO}
         AND deleted_at IS NULL
       ORDER BY fecha_emision ASC
     `, [contratoId, empresaId]);

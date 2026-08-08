@@ -18,6 +18,7 @@ import { GatewayMensajeriaService } from '../notificaciones/services/gateway-men
 import { SYSTEM_DEFAULTS_WHATSAPP } from '../plantillas/plantillas.service';
 import { TipoNotificacion }         from '../notificaciones/services/whatsapp.service';
 import { EventosSistemaService }    from './eventos-sistema.service';
+import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
 
 export const GATEWAY_EVENTS = {
   PROVIDER_ACTIVATED: 'gateway.provider.activated',
@@ -861,7 +862,7 @@ export class SistemaService implements OnModuleInit {
         SELECT total, numero_completo, fecha_vencimiento
         FROM facturas
         WHERE contrato_id = co.id
-          AND estado IN ('emitida', 'pagada_parcial', 'vencida')
+          AND estado IN ${SQL_ESTADOS_CON_SALDO}
           AND deleted_at IS NULL
         ORDER BY created_at DESC LIMIT 1
       ) f ON true
@@ -970,7 +971,7 @@ export class SistemaService implements OnModuleInit {
           SELECT total, numero_completo, fecha_vencimiento
           FROM facturas
           WHERE contrato_id = co.id
-            AND estado IN ('emitida', 'pagada_parcial', 'vencida')
+            AND estado IN ${SQL_ESTADOS_CON_SALDO}
             AND deleted_at IS NULL
           ORDER BY created_at DESC LIMIT 1
         ) f ON true

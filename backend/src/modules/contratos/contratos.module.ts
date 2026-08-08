@@ -14,9 +14,11 @@ import { XuiModule } from '../xui/xui.module';
 import { SagasModule } from '../sagas/sagas.module';
 import { OutboxRedModule }    from '../outbox-red/outbox-red.module';
 import { PromesasPagoModule } from '../promesas-pago/promesas-pago.module';
+import { DeudaPorContratoModule } from '../facturacion/deuda-por-contrato.module';
 
 @Module({
   imports: [
+    DeudaPorContratoModule,
     TypeOrmModule.forFeature([Contrato, ContratoHistorial, SegmentoIpv4, IpAsignada]),
     PlanesModule,
     AuthModule,

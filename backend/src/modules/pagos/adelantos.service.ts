@@ -8,6 +8,7 @@ import { JwtPayload }           from '../../common/decorators/current-user.decor
 import { AuditoriaService }     from '../auth/auditoria.service';
 import { PagoAplicacion }       from './entities/pago-aplicacion.entity';
 import { AplicadorFacturaService } from '../facturacion/aplicador-factura.service';
+import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
 
 /**
  * Adelantos de pago (saldo a favor del abonado).
@@ -27,9 +28,6 @@ import { AplicadorFacturaService } from '../facturacion/aplicador-factura.servic
  *   · El estado (disponible / aplicado / devuelto) se deduce, no se guarda.
  *   · El arqueo de caja cuadra: el dinero entró una vez y hay una fila que lo representa.
  */
-
-/** Estados en los que una factura todavía representa dinero por cobrar. */
-const ESTADOS_CON_SALDO = `('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')`;
 
 export interface SaldoAFavor {
   clienteId:   string;
@@ -104,7 +102,7 @@ export class AdelantosService {
          FROM facturas
         WHERE cliente_id = $1 AND empresa_id = $2
           AND deleted_at IS NULL
-          AND estado IN ${ESTADOS_CON_SALDO}`,
+          AND estado IN ${SQL_ESTADOS_CON_SALDO}`,
       [clienteId, empresaId],
     );
     return parseFloat(row?.deuda ?? '0');

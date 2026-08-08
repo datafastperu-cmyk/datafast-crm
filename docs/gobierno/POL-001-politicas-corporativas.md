@@ -17,6 +17,7 @@
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
 | 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
+| **1.3** | **2026-08-08** | **A-4 cerrada** por ADR-019: la deuda pasa de cuatro implementaciones a una definición y un solo escritor. **R-9 de DOM-001 sale de la lista de reglas sin mecanismo**; queda R-33 (fuga entre empresas) como la de mayor consecuencia sin barrera. Registrada **deuda de modelo** en DOM-001 §8.9: `contratos.deuda_total` no debería existir | Fase 3.2 de PLAN-001. D11 se resolvió midiendo quién escribe, no eligiendo |
 | **1.2** | **2026-08-07** | **Tres desviaciones cerradas** (A-3, B-12, B-13) por ADR-020. **PP-11 y PP-07 pasan a verificación automática**: la cobertura sube de 23 % a 26 %, por barreras construidas y no por texto escrito. **Una desviación nueva: B-14** — el instalador genera un `ecosystem.config.js` que contradice al del repositorio y deja una instalación nueva sin worker | Fase 3.1 de PLAN-001. El diagnóstico original de A-3 se quedaba corto: no era solo que el latido no se vigilara, es que **37 de 47 crons no latían** |
 
 ## 4. Índice
@@ -863,7 +864,7 @@ quedar) · qué la cierra.
 | **A-1** | **PS-04** — toda consulta filtra por `empresa_id` | Garantía **convencional**: depende de que cada una de las 445 consultas crudas lo recuerde. Sin RLS ni guard central | **Una consulta que omita el filtro devuelve CERO filas, no filas ajenas.** Barrido en CI que detecte las que lo omiten | **ADR-017** + RDM-001 **R3** | **Fuga de datos entre empresas.** No produce error: produce datos ajenos, sin log ni síntoma |
 | ~~**A-2**~~ | ~~**PP-10** — pre-flight antes de migrar ONUs~~ | **CERRADA 2026-08-06** | Alcanzado: columna `origen`, guard en los dos barridos y en la ruta manual, pre-flight que devuelve `seguro: false`, y 4 tests que nombran el riesgo | **ADR-014** — implementado | — |
 | ~~**A-3**~~ | ~~**PP-11** — todo proceso de fondo late y **es vigilado**~~ | **CERRADA 2026-08-07.** El diagnóstico se quedaba corto: no es que el latido fuera consultable en vez de vigilante, es que **37 de 47 jobs no latían**. Cerrada con latido derivado del registro, vigilante en el proceso que responde y barrera contra `@Cron` sin nombre | **ADR-020** — implementado | — |
-| **A-4** | **PD-04** — reutilizar antes de construir (aplicado a la deuda) | **4 implementaciones** del cálculo de deuda, una de las cuales **decide cortes de servicio** | **Una sola definición**, los cuatro consumidores pasan por ella, y un test verifica que coinciden | **ADR-019** + RDM-001 **R4** | Cortar a quien no debe y no cortar a quien sí; respuestas distintas según la pantalla |
+| ~~**A-4**~~ | ~~**PD-04** — reutilizar antes de construir (aplicado a la deuda)~~ | **CERRADA 2026-08-08.** Una definición de los estados con saldo (eran **21 escrituras a mano** con tres variantes), un solo escritor de `contratos.deuda_total` (eran 4), y barrera en tests. Se eliminaron las dos puertas que permitían escribir deuda sin respaldo documental | **ADR-019** — implementado | — |
 
 ### B.3 Nivel B — Riesgos técnicos
 
@@ -900,7 +901,7 @@ quedar) · qué la cierra.
 
 | Nivel | Abiertas | Cerradas / retiradas | Autoriza | Estado |
 |---|---|---|---|---|
-| **A — crítico** | **2** | **2** — A-2 (06/08) · **A-3 (07/08)** | **Propietario del producto** | **Requieren fecha comprometida** |
+| **A — crítico** | **1** | **3** — A-2 (06/08) · A-3 (07/08) · **A-4 (08/08)** | **Propietario del producto** | **Requieren fecha comprometida** |
 | **B — riesgo técnico** | **9** | **3** — B-9 **retirada: nunca existió** · **B-12** y **B-13** cerradas 07/08. Una nueva: **B-14** | Arquitecto | Con condición de cierre declarada |
 | **C — mejora futura** | 7 | 0 | Arquitecto | Cierre por avance natural |
 
@@ -916,4 +917,5 @@ potencial es lo que define el nivel A.
 | **A-3** — el worker puede morir en silencio | 2026-08-07 | **Se midió antes de escribir**: de 47 jobs programados latían **10**, y 26 de 29 `@Cron` no tenían `name:`. (La primera medición dijo «1 de 47» y era falsa — el `grep` buscaba `heartbeat.ejecutar` y once servicios usan `this.hb.ejecutar`. Corregido el mismo día al ver los datos en producción.) Cierre en tres piezas: latido **derivado** del `SchedulerRegistry` (47/47), vigilante en el proceso sin crons que escribe `PLANO_AUTOMATICO_MUDO`, y barrera de CI contra `@Cron` sin nombre o duplicado. 17 tests nuevos; `tsc` limpio; suite 68/68 · 610 tests. Ver **ADR-020** |
 | **B-12** — recargar por nombre suelto | 2026-08-07 | Los cinco scripts usan `scripts/lib/pm2-recargar.sh`. `update.sh` dejó de tener su propia copia: hay **una** definición, no seis. Ver ADR-020 §4.6 |
 | **B-13** — despliegue sin verificar | 2026-08-07 | La misma función compara el contador de reinicios antes/después y falla si el proceso no reinició, no está `online` o subió más de uno |
+| **A-4** — la deuda se calcula en 4 sitios | 2026-08-08 | **D11 resuelto con medición, no con criterio**: `facturas.saldo` es una columna GENERATED, así que el único escritor ajeno a la aplicación ya está en la base y es inviolable; la agregación no tiene ninguno → va en servicio de dominio. Defecto real hallado: `pago.repository.calcularDeudaContrato` sumaba solo `contrato_id = $1`, ciega al comprobante consolidado, y reactivaba morosos. Ver **ADR-019** |
 | **B-9** — verificaciones en CI | **Retirada 2026-08-06** | **No era una desviación: era un error de este documento.** El CI existe desde 2026-07-28. Se verificó ejecutando `npx jest --runInBand --ci` (65/65, 593 tests, 70 s) y leyendo `.github/workflows/ci.yml`. **Origen del error: se propagó una memoria del 2026-07-28 sin ejecutar el comando** — el fallo que PI-2 prohíbe, cometido sobre el propio cuerpo normativo |

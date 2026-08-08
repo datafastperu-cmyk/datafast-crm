@@ -5,7 +5,7 @@ import { BullModule } from '@nestjs/bull';
 import { FacturacionController }       from './facturacion.controller';
 import { ComprobantesConfigController } from './comprobantes-config.controller';
 
-import { DeudaPorContratoService } from './deuda-por-contrato.service';
+import { DeudaPorContratoModule } from './deuda-por-contrato.module';
 import { PoliticaFacturacionService } from './politica-facturacion.service';
 import { AdelantosModule } from '../pagos/adelantos.module';
 import { AplicadorFacturaModule } from './aplicador-factura.module';
@@ -50,6 +50,7 @@ import { ConfiguracionModule }         from '../config/config.module';
     ConfiguracionModule,
     // La frontera del dinero. Se reexporta para que quien importe facturación la tenga.
     AplicadorFacturaModule,
+    DeudaPorContratoModule,
   ],
   controllers: [
     FacturacionController,
@@ -57,7 +58,6 @@ import { ConfiguracionModule }         from '../config/config.module';
   ],
   providers: [
     FacturacionService,
-    DeudaPorContratoService,
     PoliticaFacturacionService,
     ComprobantesConfigService,
     FacturaRepository,
@@ -67,8 +67,8 @@ import { ConfiguracionModule }         from '../config/config.module';
   ],
   exports: [
     AplicadorFacturaModule,
+    DeudaPorContratoModule,
     FacturacionService,
-    DeudaPorContratoService,
     PoliticaFacturacionService,
     ComprobantesConfigService,
     FacturaRepository,

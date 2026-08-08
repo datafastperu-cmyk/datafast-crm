@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { SQL_ESTADOS_CON_SALDO } from './domain/estados-con-saldo';
 
 /**
  * Imputa a cada contrato la parte de deuda que le corresponde.
@@ -27,10 +28,6 @@ import { DataSource } from 'typeorm';
 @Injectable()
 export class DeudaPorContratoService {
   private readonly logger = new Logger(DeudaPorContratoService.name);
-
-  // Estados que representan dinero que el cliente todavía debe.
-  private static readonly ESTADOS_CON_SALDO =
-    `('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')`;
 
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
 
@@ -100,7 +97,7 @@ export class DeudaPorContratoService {
         WHERE cliente_id = $1
           AND empresa_id = $2
           AND deleted_at IS NULL
-          AND estado IN ${DeudaPorContratoService.ESTADOS_CON_SALDO}`,
+          AND estado IN ${SQL_ESTADOS_CON_SALDO}`,
       [clienteId, empresaId],
     );
 

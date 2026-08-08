@@ -36,6 +36,7 @@ import { QUEUES, JOBS, PayloadReactivarContrato } from '../workers/workers.const
 import { Cron } from '@nestjs/schedule';
 import { formatPaginatedResponse } from '../../common/utils/pagination.util';
 import { WatcherHeartbeatService } from '../../common/services/watcher-heartbeat.service';
+import { SQL_ESTADOS_CON_SALDO } from '../facturacion/domain/estados-con-saldo';
 
 @Injectable()
 export class PagosService {
@@ -385,7 +386,7 @@ export class PagosService {
             SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
             FROM facturas f
             WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
-              AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+              AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
               AND f.deleted_at IS NULL
           `, [contrato.id, factura.clienteId]);
           if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
@@ -411,7 +412,7 @@ export class PagosService {
             SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
             FROM facturas f
             WHERE (f.contrato_id = $1 OR (f.contrato_id IS NULL AND f.cliente_id = $2))
-              AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+              AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
               AND f.deleted_at IS NULL
           `, [contrato.id, factura.clienteId]);
           if (parseFloat(deudaRow?.deuda ?? '0') <= 0) {
@@ -960,7 +961,7 @@ export class PagosService {
           `SELECT COALESCE(SUM(f.saldo), 0)::DECIMAL AS deuda
            FROM facturas f
            WHERE f.cliente_id = $1
-             AND f.estado IN ('emitida', 'pagada_parcial', 'vencida', 'en_cobranza')
+             AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
              AND f.deleted_at IS NULL`,
           [pago.clienteId],
         );
@@ -1095,13 +1096,13 @@ export class PagosService {
           AND NOT EXISTS (
             SELECT 1 FROM facturas f
              WHERE f.contrato_id = co.id
-               AND f.estado IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
+               AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
                AND f.deleted_at IS NULL
           )
           AND NOT EXISTS (
             SELECT 1 FROM facturas f
              WHERE f.cliente_id = co.cliente_id AND f.contrato_id IS NULL
-               AND f.estado IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
+               AND f.estado IN ${SQL_ESTADOS_CON_SALDO}
                AND f.deleted_at IS NULL
           )
         LIMIT 25`,
@@ -1131,14 +1132,37 @@ export class PagosService {
     user:       JwtPayload,
     pagoId?:    string,
   ): Promise<void> {
-    // Recalcular deuda total del contrato
-    const { deuda, meses } = await this.pagoRepo.calcularDeudaContrato(contratoId);
+    // ── Deuda: UNA sola definición, la de `DeudaPorContratoService` ─────────────
+    //
+    // Aquí había un cálculo propio (`pagoRepo.calcularDeudaContrato`) que sumaba solo
+    // `WHERE f.contrato_id = $1`. El comprobante de este ERP es CONSOLIDADO por cliente
+    // —`contrato_id` en NULL—, así que ese SUM daba **cero** para un abonado que sí debía,
+    // y esta puerta reactivaba el servicio de un moroso. Es el mecanismo del incidente
+    // 2026-08-04 (ficha S/64, deuda real S/128): se corrigió en `cobranza.worker`, que
+    // añadió el `OR contrato_id IS NULL AND cliente_id = ...`, y esta ruta se quedó atrás.
+    // Dos puertas al mismo sitio, una arreglada (desviación A-4).
+    //
+    // `recalcularPorCliente` es la definición canónica: parte de las facturas, imputa el
+    // consolidado en proporción a las líneas de cada contrato y refresca la proyección de
+    // TODOS los contratos del cliente — no solo del que originó el pago.
+    //
+    // El contrato se lee UNA vez y sirve para las dos cosas: obtener el `clienteId` que
+    // necesita el recálculo y decidir después si su estado admite reactivación. Antes se
+    // leía más abajo; adelantarlo evita una consulta extra solo para el identificador.
+    let contrato: any;
+    try {
+      contrato = await this.contratosSvc.findOne(contratoId, empresaId);
+    } catch {
+      return; // Contrato no encontrado: no hay nada que recalcular ni que reactivar.
+    }
 
-    // Actualizar deuda en el contrato
-    await this.contratosSvc.actualizarDeuda(contratoId, deuda, meses, empresaId);
+    await this.deudaSvc.recalcularPorCliente(contrato.clienteId, empresaId);
+
+    const imputada = await this.deudaSvc.calcular(contrato.clienteId, empresaId);
+    const deuda = imputada.get(contratoId)?.monto ?? 0;
 
     this.logger.debug(
-      `Contrato ${contratoId}: deuda recalculada = S/ ${deuda} (${meses} meses)`,
+      `Contrato ${contratoId}: deuda recalculada = S/ ${deuda}`,
     );
 
     // Si la deuda quedó en cero, verificar si el contrato está suspendido
@@ -1156,13 +1180,6 @@ export class PagosService {
           err.stack,
         ),
       );
-      let contrato: any;
-      try {
-        contrato = await this.contratosSvc.findOne(contratoId, empresaId);
-      } catch {
-        return; // Contrato no encontrado, ignorar
-      }
-
       const estadosReactivables = [
         EstadoContrato.SUSPENDIDO,
         EstadoContrato.CORTADO,  // post-prorroga: MikroTik ya cortó pero deuda saldada → reactivar
@@ -1611,7 +1628,7 @@ export class PagosService {
       FROM facturas
       WHERE cliente_id  = $1
         AND empresa_id  = $2
-        AND estado      IN ('emitida', 'vencida', 'en_cobranza', 'pagada_parcial')
+        AND estado      IN ${SQL_ESTADOS_CON_SALDO}
         AND deleted_at IS NULL
     `, [clienteId, empresaId]);
 

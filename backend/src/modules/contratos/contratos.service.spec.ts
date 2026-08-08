@@ -20,6 +20,7 @@ import { XuiLinesService } from '../xui/xui-lines.service';
 import { SagaLogService } from '../sagas/saga-log.service';
 import { OutboxRedService } from '../outbox-red/outbox-red.service';
 import { PromesasPagoService } from '../promesas-pago/promesas-pago.service';
+import { DeudaPorContratoService } from '../facturacion/deuda-por-contrato.service';
 
 const mockUser = { sub:'u-001', email:'admin@test.pe', empresaId:'emp-001', roles:['Administrador'], permisos:[], nombreCompleto:'Admin', tema:'dark' };
 const mockPlan = { id:'plan-001', empresaId:'emp-001', nombre:'Plan 30 Mbps', activo:true, precio:85.00, tipoQueue:TipoQueue.SIMPLE_QUEUE };
@@ -116,6 +117,9 @@ describe('ContratosService', () => {
           WirelessService, RouterConnectionPool, PppoeService, ArpService,
           FirewallService, MikrotikService, SmartoltApiService, XuiLinesService,
           SagaLogService, OutboxRedService, PromesasPagoService,
+          // Desde ADR-019 la reactivación manual no pone la deuda a cero: la recalcula
+          // desde las facturas, con la única definición que hay.
+          DeudaPorContratoService,
         ].map((token) => ({ provide: token, useValue: dobleInerte() })),
         { provide: getDataSourceToken(), useValue: mockDs },
         { provide: EventEmitter2,        useValue: { emit: jest.fn(), emitAsync: jest.fn().mockResolvedValue([]) } },

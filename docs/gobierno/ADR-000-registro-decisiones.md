@@ -6,7 +6,7 @@
 
 | Campo | Valor |
 |---|---|
-| **Código** | ADR-000 (índice) + ADR-001…016 (aceptados) + ADR-017…029 (propuestos) · **Versión** 1.1 · **Estado** Vigente |
+| **Código** | ADR-000 (índice) + **19 aceptados** (001–016, 019, 020, 030; 029 parcial) + **10 propuestos** (017–018, 021–028) · **Versión** 1.2 · **Estado** Vigente |
 | **Autor** | Arquitectura — reconstruido desde el código, los comentarios de diseño y los incidentes |
 | **Revisores** | Pendientes de asignar · **Fecha** 2026-08-06 |
 
@@ -16,6 +16,7 @@
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial con 16 ADR retroactivos | Las decisiones estaban tomadas y bien justificadas, pero dispersas en comentarios. Sin registro, la próxima persona no puede saber **qué se descartó y por qué** |
 | 1.1 | 2026-08-06 | ADR-014 pasa a **Aceptada** (implementado). Se reservan ADR-017…028 y se redacta **ADR-029 — Marco normativo externo de referencia** | ADR-014: cerrada la desviación A-2. ADR-029: se detectó que el cuerpo normativo **no declara filiación con ningún estándar externo** y que nunca se evaluó conformidad — el error que R-001/R-004 previenen, cometido sobre los propios documentos de gobierno |
+| **1.2** | **2026-08-08** | **ADR-020 y ADR-019 pasan de propuestos a aceptados**, cada uno en fichero propio. ADR-027 hereda de ADR-020 la segregación del worker por criticidad y sube de prioridad Media a Alta | Fases 3.1 y 3.2 de PLAN-001. Dos de las tres desviaciones críticas cerradas en dos días; queda **A-1** (aislamiento multi-tenant, ADR-017) |
 
 ## 4. Índice
 
@@ -96,8 +97,9 @@ Situación actual y desviaciones conocidas.
 | 014 | El reconcile solo actúa sobre ONUs aprovisionadas por el ERP | Aceptada (implementada 2026-08-06) | Riesgo de migración |
 | 015 | Bootstrap TR-069 por estrategia y decidido por modelo | Aceptada | El ME137 no materializa en EG8145V5 |
 | 016 | Módulos degradables vs Core Indestructible | Aceptada | Resiliencia de arranque |
-| **020** | El latido se deriva del registro y lo vigila el proceso que responde ([fichero propio](ADR-020-latido-vigilado.md)) | **Aceptada** (implementada 2026-08-07) | De 47 crons latía 1 |
-| **017–019 · 021–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
+| **019** | La deuda se calcula en un servicio de dominio, no en la base ([fichero propio](ADR-019-destino-del-calculo-de-deuda.md)) | **Aceptada** (implementada 2026-08-08) | 4 cálculos; uno reactivaba morosos |
+| **020** | El latido se deriva del registro y lo vigila el proceso que responde ([fichero propio](ADR-020-latido-vigilado.md)) | **Aceptada** (implementada 2026-08-07) | De 47 crons latían 10 |
+| **017–018 · 021–028** | **Decisiones pendientes** (ver Anexo A) | **Propuesta** | Desviaciones de POL-001 Anexo B |
 | **029** | Marco normativo externo de referencia | **Aceptada parcialmente** (D3, 2026-08-06) | Certificación descartada · adopción selectiva aceptada · programa legal suspendido con excepción |
 | **030** | Referencia por tipo de módulo (incluye TM Forum) | **Aceptada** (D4, 2026-08-06) — pendiente de reescritura | ¿Cada módulo desde 0? |
 
@@ -972,7 +974,7 @@ reservado para que las desviaciones de POL-001 Anexo B puedan citarla.
 |---|---|---|---|
 | **ADR-017** | **Mecanismo de aislamiento multi-tenant**: Row-Level Security en PostgreSQL frente a barrido en CI, o ambos | Desviación **A-1** · RDM-001 R3 | **Crítica** |
 | **ADR-018** | **Estrategia de adopción del tipado estricto**: global, por archivo nuevo, por opción o por módulo (ver EST-001 Anexo B.1) | Desviación **B-1** | Alta |
-| **ADR-019** | **Destino único del cálculo de deuda**: función de base de datos o servicio de dominio. Criterio: si algún escritor no pasa por la aplicación, va en la base | Desviación **A-4** · RDM-001 R4 | **Crítica** |
+| ~~**ADR-019**~~ | ~~Destino único del cálculo de deuda~~ — **ACEPTADA 2026-08-08**, ver [ADR-019](ADR-019-destino-del-calculo-de-deuda.md). El criterio de D11 se resolvió midiendo: `facturas.saldo` es una columna GENERATED, el único escritor ajeno a la aplicación ya está en la base; la agregación no tiene ninguno → servicio de dominio | Desviación **A-4** · RDM-001 R4 | — |
 | ~~**ADR-020**~~ | ~~Segregación del plano automático y alarma del latido~~ — **ACEPTADA 2026-08-07**, ver [ADR-020](ADR-020-latido-vigilado.md). La **alarma** queda resuelta; la **segregación por criticidad** se traslada a ADR-027, porque decidirla exige la medición de duración que ADR-020 acaba de habilitar | Desviación **A-3** · RDM-001 R2 | — |
 | **ADR-021** | **Puerto único hacia MikroTik** (`IRouterProvider`) y máquina de estados del servicio WISP | Desviación **B-5** · RDM-001 R5 | Alta |
 | **ADR-022** | **Modelado de la sustitución de ONU** como transición de primera clase | Desviación **B-7** · RDM-001 R6 | Alta |

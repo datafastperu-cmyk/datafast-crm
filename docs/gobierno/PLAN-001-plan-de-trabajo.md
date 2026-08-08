@@ -118,7 +118,7 @@ En este orden, por relación seguridad/coste:
 | # | Desviación | Trabajo | Decisión previa |
 |---|---|---|---|
 | ~~3.1~~ | ~~**A-3** — el worker puede morir en silencio~~ | **CERRADA 2026-08-07** — ver §3.1 más abajo | ADR-020 **aceptado** |
-| 3.2 | **A-4** — la deuda se calcula en 4 sitios | Una sola definición; los cuatro consumidores pasan por ella; test que verifica que coinciden | **D11** |
+| ~~3.2~~ | ~~**A-4** — la deuda se calcula en 4 sitios~~ | **CERRADA 2026-08-08** — ver §3.2 más abajo | **D11** resuelto · ADR-019 **aceptado** |
 | 3.3 | **A-1** — aislamiento multi-tenant por convención | RLS en PostgreSQL + barrido en CI. **El más delicado: mal configurado devuelve cero filas** | ADR-017 |
 
 **Salida:** cero desviaciones de nivel A. Es el hito que más cambia el perfil de riesgo del ERP.
@@ -150,6 +150,39 @@ no sobre intuición. El cap por cron va con ella.
 `ecosystem.config.js` que contradice al del repositorio (un solo `datafast-backend` en `cluster`,
 sin `RUN_CRONS`). **Una instalación nueva nace sin worker.** Fuera del alcance de 3.1; registrado,
 no arreglado.
+
+#### 3.2 — CERRADA 2026-08-08 · A-4
+
+**D11 se resolvió midiendo, no eligiendo.** Su criterio era *«si algún escritor no pasa por la
+aplicación, va en la base»*. La medición: `facturas.saldo` es una columna
+**`GENERATED ALWAYS AS (total - monto_pagado) STORED`** — el único escritor ajeno a la aplicación ya
+está en la base y **es inviolable** (el trigger que intentaba asignarla se eliminó en 2026 por
+chocar con ella). La agregación no tiene ningún escritor externo. **→ servicio de dominio.**
+
+**El defecto real, que no era el que la ficha describía:**
+
+`pago.repository.calcularDeudaContrato` sumaba `WHERE f.contrato_id = $1`. El comprobante de este
+ERP es **consolidado por cliente** (`contrato_id` en NULL), así que devolvía **cero** para abonados
+que sí debían — y su consumidor usaba ese cero para **reactivar el servicio de un moroso**. Es el
+mecanismo del incidente 2026-08-04, que se corrigió en `cobranza.worker` y **dejó esta segunda
+puerta sin tocar**. El punto 3 del checklist de PD-03 —«¿dónde más ocurre lo mismo?»— sin ejecutar.
+
+| Entregado | |
+|---|---|
+| `facturacion/domain/estados-con-saldo.ts` | Una definición. Eran **21 escrituras a mano** con tres variantes: `en_cobranza` era deuda para el cobro nocturno y no para el resumen financiero |
+| Barrera en `estados-con-saldo.spec.ts` | Falla si alguien vuelve a teclear la lista |
+| `DeudaPorContratoModule` | Módulo propio, sin dependencias — mismo patrón que `AdelantosModule`, extraído en su día por esta razón |
+| **Un solo escritor** de `contratos.deuda_total` | Eran 4. `reactivarPorPago` escribía `= 0` sin mirar una factura |
+| Eliminados `contratos.actualizarDeuda` y `pago.repository.calcularDeudaContrato` | Las dos puertas por las que se podía escribir deuda sin respaldo documental |
+| Migración `1791800000046` | `v_resumen_financiero` recupera `en_cobranza`; **se borra** `fn_calcular_deuda_contrato` (cero consumidores, definición divergente) |
+
+**Lo que NO se hizo, y está registrado:** eliminar `contratos.deuda_total`. Un modelo contable
+estándar no la tendría —la deuda se deriva de los apuntes abiertos—, y las cuatro implementaciones
+eran el síntoma de almacenar algo que debería calcularse. **DOM-001 §8.9.1** lo registra como deuda
+de modelo y lo hace entrada obligatoria del ADR de benchmark financiero (PD-11) antes de H2-1.
+
+**Sin verificar aún:** cuántos contratos tienen hoy un `deuda_total` que no cuadra con sus facturas.
+La corrección impide el desajuste nuevo, **no repara el existente**.
 
 ---
 
