@@ -209,6 +209,20 @@ sobre una instalación limpia.
 **Cómo se comprueba:** con el rol nuevo, una consulta `CREATE TABLE` debe fallar y las 11
 operaciones de la batería deben pasar.
 
+**DECISIÓN TOMADA 2026-08-08: esperar a la instalación limpia.** No se toca el servidor que
+da servicio. Se hará **A y B de una vez** allí:
+
+- **A** — un solo rol sin `SUPERUSER` ni `BYPASSRLS`, pero con DDL. Quita casi todo el riesgo
+  (ya no puede leer `pg_authid` ni ejecutar comandos del sistema) y es reversible en dos
+  minutos: usuario y contraseña salen de `.env.production`.
+- **B** — dos roles, uno de migración y otro de ejecución. Es lo correcto, pero **cambia el
+  procedimiento de despliegue**: las migraciones pasan a ser un paso explícito en vez de algo
+  que ocurre al arrancar (ADR-010). Por eso se prueba donde no hay clientes.
+
+**Por qué esperar es razonable:** no se encontró ninguna vía de inyección explotable — el SQL
+está parametrizado de forma consistente. B-15 es **defensa en profundidad, no una puerta
+abierta**. El coste de esperar es bajo; el de romper el ERP en producción, no.
+
 ### 21. Instalación limpia — la prueba que cierra B-14 y habilita B-15
 **Por qué importa:** B-14 (el instalador generaba un arranque sin worker) se corrigió y se
 verificó **leyendo los scripts y contra el servidor existente, no levantando uno nuevo**. Y es
@@ -296,7 +310,19 @@ antes de H2-1 (SUNAT). No se toca antes: es cambio de modelo, no corrección.
 **Por qué importa:** PD-11 lo exige antes de diseñar SUNAT. Y **requiere fuentes citables**, no
 memoria: ADR-030 §4.1 prohíbe declarar conformidad con una norma sin *gap analysis*.
 
-**Se dispara:** antes de H2-1.
+**EN CURSO desde 2026-08-08.** El lado externo está en `docs/estudio/facturacion-cobranza-benchmark.md`:
+cinco páginas de Odoo 18 consultadas y citadas, con la comparación estructural.
+
+**Bloqueado en §4 de ese documento: ocho preguntas sobre el flujo real** que el código no revela.
+Sin ellas no se puede convertir en ADR, porque marcaría como defecto lo que es adaptación
+deliberada al negocio ISP.
+
+**Falta además:** un segundo modelo (ERPNext u otro) para no adoptar el criterio de un solo
+producto, y la normativa SUNAT del comprobante electrónico (🔴 por interoperabilidad, ADR-034).
+
+**Adelanto del hallazgo principal:** Odoo **centraliza** la escala de cobranza y deja en el cliente
+solo el término de pago y las excepciones. Datafast pone **todo** en el cliente — mantener N
+escalas en vez de una es la hipótesis de por qué «hay muchas cosas configuradas que no funcionan».
 
 ---
 
