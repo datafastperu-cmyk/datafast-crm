@@ -110,3 +110,6 @@ backend/tsconfig.tsbuildinfo
 # de borrarse: son del operador, no del proyecto.
 _*.mjs
 vps.config.mjs
+
+# ── Permisos personales de Claude Code (por maquina, no del proyecto) ──
+.claude/settings.local.json
