@@ -104,6 +104,7 @@ Situación actual y desviaciones conocidas.
 | **029** | Marco normativo externo de referencia | **Aceptada parcialmente** (D3, 2026-08-06) | Certificación descartada · adopción selectiva aceptada · programa legal suspendido con excepción |
 | **030** | Referencia por tipo de módulo (incluye TM Forum) | **Aceptada** (D4, 2026-08-06) — pendiente de reescritura | ¿Cada módulo desde 0? |
 | **031** | **El ERP es mono-empresa por diseño: una instalación, una empresa** ([fichero propio](ADR-031-erp-mono-empresa.md)) | **Aceptada** (D12, 2026-08-08) | Retira A-1 y deja sin efecto el objetivo de RLS de ADR-017 |
+| **032** | **El Core es dueño de sus capacidades: contratos, no acceso directo** ([fichero propio](ADR-032-core-modulos-y-contratos.md)) | **Aceptada** (D13, 2026-08-08) | PA-12 escrita y no cumplida: 10 módulos escribían `contratos` |
 
 ---
 

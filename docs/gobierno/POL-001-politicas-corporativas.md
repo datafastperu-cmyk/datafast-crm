@@ -17,6 +17,7 @@
 |---|---|---|---|
 | 1.0 | 2026-08-06 | Emisión inicial | Las reglas existían en `CLAUDE.md` y en comentarios de código, pero no eran exigibles ni citables |
 | 1.1 | 2026-08-06 | **Siete políticas nuevas** (PD-11, PD-12, PS-10, PI-08, PP-14, PP-15) desde las decisiones D3, D5, D7, D8, D9 y D10. Matriz de verificación §8.7 ampliada. Dos desviaciones nuevas (B-12, B-13). **POL-001 pasa a ser la única fuente normativa**: `docs/directrices/` queda congelado | Fase 2 de PLAN-001. Dos fuentes para las mismas reglas es lo que R-006 prohíbe |
+| **1.6** | **2026-08-08** | **PA-12 reforzada y verificable** (manifiesto de propiedad + barrera): la cifra de 15 tablas con varios escritores queda congelada. **Dos politicas nuevas: PA-17** (que es degradable) y **PA-18** (evento vs outbox) | ADR-032, propuesta del propietario. PA-12 llevaba escrita desde la emision y no impidio que **diez modulos escribieran `contratos`** |
 | **1.5** | **2026-08-08** | **A-1 RETIRADA como nivel A** por ADR-031: el propietario confirma que el ERP es mono-empresa, y la base lo impone. **Cero desviaciones criticas abiertas.** El barrido de aislamiento sale del CI el mismo dia que entro | La desviacion no se corrigio: **se verifico que su premisa era falsa**. Nadie habia comprobado que fuera a haber mas de una empresa |
 | **1.4** | **2026-08-08** | **A-1 pasa a PARCIAL** (ADR-017): entra el barrido de aislamiento con cifra triada (20 abiertas / 171 transitivas / 13 globales). **RLS se descarta por ahora: seria inerte.** Nueva desviacion **B-15** — la aplicacion se conecta a PostgreSQL como SUPERUSUARIO con BYPASSRLS y dueña de las 111 tablas | Fase 3.3. La medicion impidio escribir ``aislamiento garantizado por RLS`` sobre un mecanismo que no filtra nada |
 | **1.3** | **2026-08-08** | **A-4 cerrada** por ADR-019: la deuda pasa de cuatro implementaciones a una definición y un solo escritor. **R-9 de DOM-001 sale de la lista de reglas sin mecanismo**; queda R-33 (fuga entre empresas) como la de mayor consecuencia sin barrera. Registrada **deuda de modelo** en DOM-001 §8.9: `contratos.deuda_total` no debería existir | Fase 3.2 de PLAN-001. D11 se resolvió midiendo quién escribe, no eligiendo |
@@ -275,10 +276,54 @@ adopta**: se observa y se respeta.
 
 ## PA-12 · Una tabla, un dueño — **DEBE**
 
-Cada tabla tiene un módulo que la escribe. Los demás la leen a través de él.
+Cada tabla tiene un módulo que la escribe. Los demás la leen a través de él. **Sin distinción
+entre Core y degradables**: al medirlo el 2026-08-08 los mayores infractores eran módulos del
+Core escribiendo tablas de otro Core.
 
-**Única excepción registrada:** `comandos_red_pendientes`, que los módulos de negocio escriben
-para que la intención esté en su transacción, y que solo `outbox-red` lee y actualiza.
+**Verificación (ADR-032):** el dueño se declara en `common/domain/propiedad-tablas.ts` y lo
+sostiene `propiedad-tablas.spec.ts`. La cifra de partida —**15 tablas con más de un escritor**,
+`contratos` con diez— queda **congelada como techo: puede bajar, nunca subir**.
+
+**Cómo se resuelve una infracción** (ADR-032 §3, en orden de preferencia): reubicar el dato en la
+tabla de su dueño natural · declarar propiedad **por columna** · exponer una capacidad del dueño.
+**Añadir un servicio pasarela que solo reenvía un `UPDATE` no es ninguna de las tres** — crearía
+el Core-Dios que ADR-032 existe para evitar.
+
+**Excepciones registradas:**
+- `comandos_red_pendientes` — los módulos de negocio ENCOLAN aquí para que la intención viaje en
+  su propia transacción (patrón outbox, ADR-002). *Corrección al texto original: `outbox-red`
+  también escribe —reclamo atómico, estado, reintentos—, no solo lee.*
+- `contratos.deuda_total` — propiedad de `facturacion` por declaración expresa. Resolverlo con un
+  método en contratos reintroduciría la puerta que ADR-019 eliminó.
+
+## PA-17 · Degradable es lo que depende de algo que no controlamos — **DEBE**
+
+*(ADR-032, decisión D13)*
+
+Un módulo es **degradable** si depende de hardware de red, de una API de terceros o de un servicio
+externo. Un módulo que solo depende de la base de datos **no tiene a qué degradarse**: si falla, es
+un defecto propio y debe verse al arrancar.
+
+**PROHIBIDO** declarar degradables a `facturacion`, `pagos` o `cobranza`. Un ERP que arranca con la
+facturación degradada es un ERP que responde y no factura — el fallo que costó la desviación B-14.
+
+**La caída de un degradable produce degradación funcional localizada y recuperable, nunca
+indisponibilidad general del ERP.**
+
+## PA-18 · Si debe ocurrir aunque el destino esté caído, no es un evento — **DEBE**
+
+*(ADR-032 §2.2)*
+
+El bus es in-process (PA-16): un evento no cruza procesos y **no sobrevive a la muerte del
+proceso**. WhatsApp corre en su propio proceso PM2; un evento emitido en `api-core` no le llega.
+
+| Mecanismo | Cuándo |
+|---|---|
+| **Evento** (`EventEmitter2`) | Reacción inmediata, mismo proceso, se puede perder sin consecuencia |
+| **Outbox / cola persistente** | El trabajo **debe** ejecutarse aunque el destino esté caído |
+
+«El evento queda pendiente y se procesa cuando el módulo vuelva» **describe un outbox**, no un
+evento: un `EventEmitter` en memoria tiene cero durabilidad.
 
 ## PA-13 · Toda tabla nace con entidad — **DEBE**
 
@@ -745,6 +790,9 @@ banderas que usa el CI.
 | PP-08 Ningún dominio es obligatorio | R | ✅ | Plantillas Nginx con caída elegante | — |
 | PP-09 Usar el flujo de negocio, nunca SQL directo | M | ❌ | Revisión y disciplina | `verificarInvariantes()` ampliado |
 | PP-10 Pre-flight antes de migrar ONUs | S | ❌ | Consulta manual | **Pre-flight que falle en seco** (**R1**) |
+| **PA-12 Una tabla, un dueno** | A | ✅ | Manifiesto `propiedad-tablas.ts` + barrera que congela el techo en 15 | Reducir los 15 al tocar cada modulo |
+| **PA-17 Que es degradable** | A | ⚠️ | Lista explicita en POL-001; el patron degradado se verifica al arrancar | Test que compruebe la lista contra los modulos reales |
+| **PA-18 Evento vs outbox** | M | ❌ | Directriz | Sin mecanismo: exige juicio sobre la naturaleza del trabajo |
 | PP-11 Todo proceso de fondo late y es vigilado | O | ✅ | **Late:** `CronLatidoService` envuelve todo job del `SchedulerRegistry` (47/47) — no depende de que el autor lo llame. **Vigila:** `LatidoVigilanteService` en el proceso sin crons escribe `PLANO_AUTOMATICO_MUDO` en `eventos_sistema`. **Barrera:** test que falla si un `@Cron` no declara `name:` | — (**ADR-020**, 2026-08-07) |
 | PP-12 No modificar OASIS sin leer antes | M | ❌ | Directriz | Sin mecanismo posible |
 | PP-13 Scripts de red fuera del repo | M | ❌ | Revisión | Regla de CI sobre rutas |
