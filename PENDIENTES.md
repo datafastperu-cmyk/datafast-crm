@@ -326,18 +326,46 @@ falta distinguirlo por tipo de documento. Con importe negativo restaría solo, s
 que acordarse. **No se hizo ahora a propósito:** cambia el modelo de dinero y toca toda la
 agregación.
 
-**Bloqueado en §4 de ese documento: nueve preguntas sobre el flujo real** que el código no revela.
-Sin ellas no se puede convertir en ADR, porque marcaría como defecto lo que es adaptación
-deliberada al negocio ISP.
+**DESBLOQUEADO 2026-08-08:** el propietario respondió las nueve preguntas del flujo real (§4) y el
+veredicto contrastado contra el código está en §5. Falta solo **la normativa SUNAT** para poder
+cerrar el ADR.
 
-**Falta además:** un segundo modelo (ERPNext u otro) para no adoptar el criterio de un solo
-producto, y la normativa SUNAT del comprobante electrónico (🔴 por interoperabilidad, ADR-034).
+### 29-bis. Los tres hallazgos que esperan TU decisión (estudio §6.1)
 
-**Adelanto del hallazgo principal:** Odoo **centraliza** la escala de cobranza y deja en el cliente
-solo el término de pago y las excepciones. Datafast pone **todo** en el cliente — mantener N
-escalas en vez de una es la hipótesis de por qué «hay muchas cosas configuradas que no funcionan».
+Los tres están **verificados leyendo el código**, no supuestos, y ninguno se aplica solo porque los
+tres cambian comportamiento que afecta a abonados reales.
 
----
+**H-1 — el corte no hace lo que especificaste.** Pediste «3 comprobantes vencidos MÁS 5 días».
+`cobranza.worker` cuenta los 5 días desde el vencimiento **más antiguo**, no desde el tercero:
+
+```sql
+MIN(fecha_vencimiento) AS vencimiento_mas_antiguo,
+(CURRENT_DATE - im.vencimiento_mas_antiguo)::int AS dias_vencido
+```
+
+Con día de pago 10, la tercera vence el 10/03 y el más antiguo lleva 60 días, así que corta el
+11/03 en vez del 15/03. Y lo general es peor que esos cuatro días: **con `aplicarCorte >= 2` los
+días de gracia no influyen nunca**, porque el más antiguo siempre los ha superado. La gracia solo
+vale con `aplicarCorte = 1`.
+
+**H-2 — `moroso` no lo escribe nadie, y dos módulos lo entienden al revés.** Las **26** apariciones
+de `moroso` son lecturas; ninguna escritura. El ciclo automático va `activo → suspendido`, así que
+el estado que describes —en mora, con servicio, usando gracia o prórroga— **no existe en los
+datos**: esos abonados figuran como `activo`, indistinguibles de los que están al día. Y
+`address-list-reconciliador.service.ts` declara `ESTADOS_CORTADOS = ['suspendido','cortado','moroso']`,
+es decir lo trata como SIN servicio, al revés que el enum. Latente: muerde el día que un operador lo
+ponga a mano, y MikroTik le corta el tráfico.
+
+**H-3 — prepago tiene dos fuentes, y no cobra por adelantado.** `contratos.tipo_pago` lo lee **solo
+el portal**; `clientes.facturacion_config.tipo` lo lee la política canónica. Nada los sincroniza —
+mismo patrón que A-4. Y `contratos.service` **no emite ninguna factura al crear ni al activar**, así
+que el prepago que «nace pagando el mes que va a consumir» no recibe ese comprobante hasta la
+siguiente corrida del ciclo.
+
+**Decisión de modelo que también queda abierta:** si el abono debe pasar a ser **negativo**, como en
+Odoo y ERPNext. Hoy no puede —`facturas_total_check (total >= 0)`— y por eso hizo falta distinguirlo
+por tipo de documento (A-5). Con importe negativo restaría solo. **No se hizo ahora a propósito:**
+cambia el modelo de dinero y toca toda la agregación.
 
 ---
 

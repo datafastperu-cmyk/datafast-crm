@@ -2,9 +2,10 @@
 
 **Naturaleza:** documento de **estudio**, no normativo. Es el insumo del ADR de benchmark que
 PD-11 exige antes de diseñar. **No decide nada todavía.**
-**Fecha:** 2026-08-08 · **Estado:** parcial — falta confirmar el flujo real de Datafast (§4) y la
-normativa SUNAT. Dos modelos externos ya contrastados (Odoo 18 y ERPNext).
-**Resultado ya aplicado:** un defecto de dinero latente encontrado y corregido (§3.3).
+**Fecha:** 2026-08-08 · **Estado:** el flujo real **ya está respondido** (§4) y contrastado contra
+el código (§5). Dos modelos externos contrastados (Odoo 18 y ERPNext). **Falta la normativa SUNAT.**
+**Resultados ya aplicados:** un defecto de dinero latente encontrado y corregido (§3.3) y **tres
+hallazgos verificados** pendientes de decisión (§5.2).
 
 ---
 
@@ -20,12 +21,17 @@ negocio ISP.
 
 Prueba de que el riesgo es real: al preparar este estudio hice cuatro comprobaciones puntuales
 sobre el código y **me equivoqué en tres**. Afirmé que el corte no conocía los meses acumulados
-(los conoce), que la política canónica no los exponía (los expone) y que nadie asignaba los
-estados `moroso`/`cortado` (los asigna, 12 veces cada uno). El módulo está bastante más completo
-de lo que sugerían mis catas.
+(los conoce), que la política canónica no los exponía (los expone), y que la nota de crédito no se
+relacionaba con el documento que rectifica (sí lo hace, §3.3).
 
-**Este documento recoge solo el lado externo.** El lado interno —el flujo real— está en §4 como
-preguntas, no como conclusiones.
+> **Y una de esas «correcciones» era a su vez falsa.** Dije también que *«nadie asigna los estados
+> `moroso`/`cortado`»*, me corregí a *«los asigna 12 veces cada uno»*… y al verificarlo en serio
+> resultó que **la primera versión era la correcta**: las 26 apariciones de `moroso` son lecturas,
+> ninguna escritura (H-2 en §5.2). Contar coincidencias de `grep` no es leer código. Es el mismo
+> fallo que ya produjo la cifra falsa «1 de 47» del latido, y queda escrito por eso.
+
+**Este documento recogía solo el lado externo.** El lado interno —el flujo real— lo respondió el
+propietario el 2026-08-08 y está en **§4**; el veredicto contrastado contra el código, en **§5**.
 
 ---
 
@@ -239,55 +245,171 @@ abono no cuente como cargo no depende del modelo que se acabe eligiendo.
 
 ---
 
-## 4. Lo que falta: el flujo real — **preguntas, no conclusiones**
+## 4. El flujo real — **respondido por el propietario el 2026-08-08**
 
-Sin esto el estudio no puede convertirse en ADR. Son puntos donde **el código no revela la
-intención**, y responderlos mal produciría el peor resultado posible: cambiar algo que estaba bien.
+Nueve preguntas, nueve respuestas. Se transcriben antes de juzgar nada, porque son **la
+especificación**: a partir de aquí, «bien» y «mal» significan «coincide o no coincide con esto».
 
-1. **El corte.** Con «aplicar corte = 3» y gracia de 5 días, ¿la intención es cortar **al acumular
-   3 comprobantes vencidos Y pasados 5 días del último**, o **5 días después del tercer
-   vencimiento**? El código hace lo primero.
-2. **`moroso` vs `cortado`.** El enum los distingue —*«moroso: deuda activa, aún con servicio»*—
-   pero un comentario de `cobranza.worker` dice que la prórroga ya no cambia el estado. ¿Cuándo
-   entra `moroso` en la práctica, y qué lo distingue de `suspendido`?
-3. **Comprobante consolidado.** Un abonado con dos servicios recibe **uno solo**, con
-   `contrato_id` en NULL. ¿Es siempre así, o hay casos de comprobante por contrato?
-4. **Prepago / postpago.** La política contempla ambos. ¿Se usa alguno de los dos hoy?
-5. **Nota de crédito.** ¿En qué casos se emite hoy, y quién la emite? (La relación con la factura
-   corregida **sí existe** y es automática — ver §3.3; lo que falta saber es el uso real.)
-6. **Tipo de comprobante** (boleta/factura). ¿Lo decide el cliente, el importe, o el operador?
-7. **Canales de cobranza.** Existen las tablas `canal_pago` y `forma_pago`. ¿Qué representa un
-   canal en vuestro flujo, y quién lo elige?
-8. **Prórroga.** ¿Es un acuerdo puntual con el abonado, o una política que se aplica sola?
-9. **Plantillas de abonado.** Al cambiar una política —por ejemplo, gracia de 5 a 7 días—,
-   ¿cómo se hace hoy con los abonados que ya existen? ¿Uno a uno, o hay algún camino que no he
-   visto? La respuesta decide si el hueco de §3.1 es real o solo aparente.
+| # | Tema | Lo que dijo el propietario |
+|---|---|---|
+| 1 | **Corte** | Acumular **3 comprobantes vencidos MÁS 5 días** |
+| 2 | **`moroso`** | «Cuando supera la fecha de corte y **está haciendo uso de los días de gracia y/o prórrogas**» |
+| 3 | **Consolidado** | El comprobante es consolidado cuando el abonado tiene **más de un servicio**. *«Si deben estar amarrados a contratos, eso hay que estudiarlo y evaluarlo»* |
+| 4 | **Prepago / postpago** | **Se usan los dos.** Prepago: el abonado *«nace pagando el mes que va a consumir»* — al contratar se le emite ya su comprobante. Postpago: consume y después se le genera. *«Sería bueno analizar este punto»* |
+| 5 | **Nota de crédito** | **No se ha contemplado en ningún escenario.** Lo que se hacía era **editar el pago, o anularlo para poder editar el comprobante**. *«Necesita análisis»* |
+| 6 | **Tipo de comprobante** | **Lo decide el operador.** Puede cambiar la configuración de facturación, cobranza y notificaciones del abonado, y **afecta desde la modificación hacia adelante**. Elige entre los comprobantes creados previamente; el **por defecto es un comprobante interno sin carga tributaria** |
+| 7 | **Canales de cobranza** | Es **el flujo de cómo entra el dinero**, y debe ser configurable. *«Hoy está construido pero no es intuitivo ni flexible»* |
+| 8 | **Prórroga** | Un **acuerdo con el cliente** |
+| 9 | **Plantillas de abonado** | Configuración **preestablecida para ahorrar tiempo**. Por sí solas **no producen efecto**: se cargan en el paso 2 del wizard de alta o en Facturación → Configuración, y no se guardan salvo que se termine el wizard o se pulse guardar. El operador puede **adoptarla entera, en parte, o ajustarla**. Se espera implementar **cambios masivos** de esta configuración —p. ej. poner día de pago 10, o prepago, a un grupo—, y **afectarán desde ahí hacia adelante: no corrigen lo ya hecho** |
+
+**La respuesta 9 confirma §3.1 entera**: copiar en vez de referenciar es deliberado, el operador
+ajusta caso a caso, y el hueco es la operación masiva — que ya está prevista, con pantalla de
+referencia (filtros por router, plan, estado, ubicación y día de pago sobre los mismos campos de
+Facturación y Notificaciones).
 
 ---
 
-## 5. Estado y siguiente paso
+## 5. El veredicto — qué está bien aunque parezca mal, y qué está mal
 
-**Parcial.** Falta:
+Cada punto contrastado contra el código. **Lo que se afirma aquí está leído, no supuesto**, y se
+nombra el fichero para que se pueda comprobar.
 
-- Las respuestas de §4.
-- **La normativa SUNAT** para el comprobante electrónico, que es 🔴 por interoperabilidad
-  (ADR-034) y donde PD-12 exige fijar el marco legal **antes** del diseño.
+### 5.1 Está BIEN, aunque el modelo externo lo haga distinto
+
+| Tema | Por qué está bien |
+|---|---|
+| **Configuración por abonado** (§3.1) | Decisión de producto. Odoo y ERPNext centralizan; un ISP con cobranza flexible, no |
+| **Emitir N días antes de un vencimiento fijo** | ERPNext tiene ese modo literal: `Bill N days before` + `days_until_due` |
+| **Corte por comprobantes acumulados** | Ni Odoo ni ERPNext lo traen, y para un ISP cortar al primer impago es inviable |
+| **Congelar el vencimiento en la factura** | `PoliticaFacturacionService`: la configuración nueva no reescribe deuda ya notificada. Coincide con la respuesta 6 («afecta hacia adelante») y con la 9 |
+| **Copiar la plantilla, no referenciarla** | Respuesta 9. Referenciar movería el ciclo de abonados vivos al editar una plantilla |
+| **Comprobante interno sin carga tributaria por defecto** | `comprobantes_config` lo modela con `tiene_carga_fiscal`, y la factura guarda el **snapshot** del tipo y de esa marca al emitir. Correcto: el histórico no cambia si el tipo se renombra |
+
+### 5.2 Está MAL — tres hallazgos verificados
+
+#### H-1 · El corte NO cuenta «3 vencidos más 5 días». Los días de gracia son inertes
+
+`cobranza.worker.detectarMorosos` exige dos condiciones:
+
+```
+comprobantes_vencidos >= aplicarCorte          ← 3
+dias_vencido          >= diasGracia            ← 5
+```
+
+pero `dias_vencido` se calcula sobre **`MIN(fecha_vencimiento)`** — el comprobante **más
+antiguo**, no el tercero:
+
+```sql
+MIN(fecha_vencimiento) AS vencimiento_mas_antiguo,
+(CURRENT_DATE - im.vencimiento_mas_antiguo)::int AS dias_vencido
+```
+
+Con día de pago 10 y facturación mensual: la 1.ª vence el 10/01, la 2.ª el 10/02, la 3.ª el 10/03.
+El 11/03 hay tres vencidas y el más antiguo lleva **60 días**, así que `60 >= 5` se cumple solo.
+**Se corta el 11/03; según la respuesta 1 debería cortarse el 15/03.**
+
+Y el efecto general es mayor que esos cuatro días: **con `aplicarCorte >= 2`, los días de gracia
+no hacen nada nunca**, porque para cuando se acumula el segundo vencimiento el más antiguo ya
+lleva un mes. La gracia solo influye con `aplicarCorte = 1`.
+
+**Corrección:** contar los días desde el vencimiento del comprobante que **completa la cuenta**
+(el N-ésimo más antiguo), no desde el primero. Es un cambio de una consulta, y **cambia el día en
+que se le corta el servicio a gente real**, así que no se aplica sin confirmación explícita.
+
+#### H-2 · `moroso` no lo escribe nadie, y dos módulos entienden lo contrario por él
+
+La respuesta 2 lo define como *«pasó la fecha de corte pero sigue con servicio, usando gracia o
+prórroga»*, y el comentario del enum dice exactamente eso: *«deuda activa, aún con servicio
+(dentro de prórroga)»*.
+
+**Hay 26 apariciones de `moroso` en el código y las 26 son LECTURAS**: tablas de transición,
+filtros `IN (…)`, listas de reactivación. **Ninguna lo asigna.** El ciclo automático va
+`activo → suspendido` directo, y el propio `cobranza.worker` lo dice: *«La prórroga ya no cambia
+estado — el contrato permanece ACTIVO hasta que detectarMorosos lo suspende»*.
+
+Consecuencia: **el estado que describe tu operación no existe en los datos.** Todo abonado en
+mora con servicio figura como `activo`, indistinguible de uno al día. No se puede listar, ni
+contar, ni notificar distinto.
+
+Y hay una contradicción latente encima: `address-list-reconciliador.service.ts` declara
+
+```ts
+const ESTADOS_CORTADOS = ['suspendido', 'cortado', 'moroso'];
+```
+
+es decir, **trata `moroso` como SIN servicio**, justo lo contrario del enum y de la respuesta 2.
+No ha dado la cara porque nadie asigna el estado — el mismo patrón que la nota de crédito: un
+defecto que espera al primer uso. Si un operador marca `moroso` a mano (la transición está
+permitida), el reconciliador le corta el tráfico en MikroTik.
+
+#### H-3 · Prepago tiene dos fuentes de verdad, y no cobra por adelantado
+
+Dos campos distintos dicen si un abonado es prepago:
+
+| Dónde | Quién lo lee |
+|---|---|
+| `contratos.tipo_pago` (enum `prepago`/`postpago`) | Solo el **portal**, para permitir bajar de plan con deuda |
+| `clientes.facturacion_config.tipo` | **`PoliticaFacturacionService`**, que decide el periodo de servicio del comprobante |
+
+Nada los sincroniza. Un abonado puede ser prepago para el portal y postpago para la facturación.
+Es el mismo patrón de A-4 (la deuda en cuatro sitios), sin haber mordido todavía.
+
+Y sobre la respuesta 4 —*«el prepago nace pagando el mes que va a consumir»*—: **`contratos.service`
+no emite ninguna factura al crear ni al activar un contrato.** El primer comprobante llega en la
+siguiente corrida del ciclo mensual. Entre el alta y esa fecha el abonado consume servicio sin
+comprobante, que es precisamente lo contrario de prepago. Lo único que el ERP sí aplica bien es el
+**periodo** que ampara el comprobante cuando por fin se emite (`periodoServicio` desplaza un mes en
+prepago).
+
+### 5.3 Reconocido por el propietario como pendiente de diseño
+
+No son defectos: son trabajo que él mismo señala.
+
+- **Nota de crédito (respuesta 5).** Hoy se **anula o se edita el pago** para corregir. Los dos
+  modelos validados prohíben exactamente eso: un documento publicado no se modifica, se rectifica
+  con otro documento. Es la diferencia entre «el importe cambió» y «hay constancia de por qué
+  cambió». El ERP **ya tiene el mecanismo correcto construido** (`crearNotaCredito`, §3.3); lo que
+  falta es decidir usarlo y cerrar la puerta de la edición.
+- **Canales de cobranza (respuesta 7).** *«Construido pero no intuitivo ni flexible.»*
+- **Comprobante por contrato vs. consolidado (respuesta 3).** A estudiar.
+- **Cambios masivos de configuración (respuesta 9).** Funcionalidad prevista, con la pantalla de
+  referencia ya identificada.
+
+---
+
+## 6. Estado y siguiente paso
 
 Ya hecho:
 
 - ~~Contrastar con un segundo modelo~~ → **ERPNext, §2.6.** Converge con Odoo en las seis
-  decisiones estructurales, así que lo de la tabla comparativa deja de ser el criterio de un
-  fabricante.
+  decisiones estructurales, así que la tabla comparativa deja de ser el criterio de un fabricante.
+- ~~El flujo real de trabajo~~ → **§4, respondido el 2026-08-08**, y contrastado punto por punto
+  contra el código en **§5**.
 - **El estudio ya se pagó solo**: el contraste con el abono negativo de ambos modelos destapó un
-  defecto de dinero latente en el ERP, corregido y con barrera (§3.3). No hizo falta esperar al
-  ADR para eso, porque no dependía de qué modelo se elija.
+  defecto de dinero latente, corregido y con barrera (§3.3). No hizo falta esperar al ADR, porque
+  no dependía de qué modelo se elija.
+
+Falta:
+
+- **La normativa SUNAT** para el comprobante electrónico, que es 🔴 por interoperabilidad
+  (ADR-034) y donde PD-12 exige fijar el marco legal **antes** del diseño.
+
+### 6.1 Lo que ahora espera decisión, en orden de daño
+
+| | Hallazgo | Qué hay que decidir | Por qué no se aplicó ya |
+|---|---|---|---|
+| **1** | **H-1** — el corte no cuenta «3 vencidos + 5 días»; la gracia es inerte con `aplicarCorte >= 2` | Contar los días desde el vencimiento que **completa** la cuenta, no desde el más antiguo | **Cambia el día en que se corta a gente real.** Nunca sin confirmación |
+| **2** | **H-2** — `moroso` no lo escribe nadie, y el reconciliador de MikroTik lo trata como CORTADO | Si el estado debe existir de verdad en el ciclo automático (y entonces corregir el reconciliador), o retirarse | Latente hoy; **muerde el día que un operador lo ponga a mano** |
+| **3** | **H-3** — prepago en dos sitios, y sin comprobante al alta | Una sola fuente, y si el alta emite el primer comprobante | Es cambio de modelo, no corrección puntual |
+| **4** | Nota de crédito vs. anular/editar (respuesta 5) | Cerrar la edición del comprobante emitido y usar el mecanismo que ya existe | Decisión de operación, no de código |
+| **5** | Cambios masivos de configuración (respuesta 9) | Alcance de los filtros y de los campos aplicables | Funcionalidad nueva, ya especificada por el propietario |
 
 Con eso, esto se convierte en el **ADR de benchmark** que decide qué modelo se adopta, qué se
 descarta y **qué invariantes propios se conservan pese a la adopción**.
 
 ---
 
-## 6. Fuentes
+## 7. Fuentes
 
 - [Customer invoices — Odoo 18](https://www.odoo.com/documentation/18.0/applications/finance/accounting/customer_invoices.html)
 - [Credit notes and refunds — Odoo 18](https://www.odoo.com/documentation/18.0/applications/finance/accounting/customer_invoices/credit_notes.html)
